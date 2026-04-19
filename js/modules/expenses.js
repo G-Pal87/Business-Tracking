@@ -1,0 +1,190 @@
+// Expenses module
+import { state } from '../core/state.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today } from '../core/ui.js';
+import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, groupByCategory } from '../core/data.js';
+import * as charts from '../core/charts.js';
+import { CURRENCIES, EXPENSE_CATEGORIES, STREAMS } from '../core/config.js';
+
+export default {
+  id: 'expenses',
+  label: 'Expenses',
+  icon: 'E',
+  render(container) { container.appendChild(build()); charts.destroyAll(); renderBreakdown(); },
+  refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); renderBreakdown(); },
+  destroy() { charts.destroyAll(); }
+};
+
+function build() {
+  const wrap = el('div', { class: 'view active' });
+
+  wrap.appendChild(el('div', { class: 'grid grid-2' },
+    el('div', { class: 'card' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'By Category (all time)')),
+      el('div', { class: 'chart-wrap' }, el('canvas', { id: 'chart-exp-cat' }))
+    ),
+    el('div', { class: 'card' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'By Property (all time)')),
+      el('div', { class: 'chart-wrap' }, el('canvas', { id: 'chart-exp-prop' }))
+    )
+  ));
+
+  const filterBar = el('div', { class: 'flex gap-8 mb-16 mt-24', style: 'flex-wrap:wrap' });
+  const propSel = select([{ value: 'all', label: 'All Properties' }, ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))], 'all');
+  const catSel = select([{ value: 'all', label: 'All Categories' }, ...Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label }))], 'all');
+  const streamSel = select([{ value: 'all', label: 'All Streams' }, ...Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short }))], 'all');
+  filterBar.appendChild(propSel);
+  filterBar.appendChild(catSel);
+  filterBar.appendChild(streamSel);
+  filterBar.appendChild(el('div', { class: 'flex-1' }));
+  filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
+  wrap.appendChild(filterBar);
+
+  const tableWrap = el('div', { class: 'table-wrap' });
+  wrap.appendChild(tableWrap);
+
+  const renderTable = () => {
+    tableWrap.innerHTML = '';
+    let rows = [...(state.db.expenses || [])];
+    if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
+    if (catSel.value !== 'all') rows = rows.filter(r => r.category === catSel.value);
+    if (streamSel.value !== 'all') rows = rows.filter(r => r.stream === streamSel.value);
+    rows.sort((a, b) => (b.date || '').localeCompare(a.date));
+
+    if (rows.length === 0) {
+      tableWrap.appendChild(el('div', { class: 'empty' }, 'No expenses'));
+      return;
+    }
+
+    const t = el('table', { class: 'table' });
+    t.innerHTML = `<thead><tr>
+      <th>Date</th><th>Property</th><th>Category</th><th>Description</th><th>Vendor</th><th class="right">Amount</th><th class="right">EUR</th><th></th>
+    </tr></thead>`;
+    const tb = el('tbody');
+    for (const r of rows) {
+      const prop = byId('properties', r.propertyId);
+      const cat = EXPENSE_CATEGORIES[r.category];
+      const tr = el('tr');
+      tr.appendChild(el('td', {}, fmtDate(r.date)));
+      tr.appendChild(el('td', {}, prop?.name || '-'));
+      tr.appendChild(el('td', {}, el('span', { class: 'badge ' + (r.category === 'renovation' ? 'warning' : '') }, cat?.label || r.category)));
+      tr.appendChild(el('td', {}, r.description || ''));
+      tr.appendChild(el('td', {}, r.vendor || ''));
+      tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
+      tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
+      const actions = el('td', { class: 'right' });
+      actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
+      actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
+        const ok = await confirmDialog('Delete expense?', { danger: true, okLabel: 'Delete' });
+        if (ok) { remove('expenses', r.id); toast('Deleted', 'success'); renderTable(); }
+      }}));
+      tr.appendChild(actions);
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    tableWrap.appendChild(t);
+
+    const totalEUR = rows.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
+    const renoEUR = rows.filter(r => r.category === 'renovation').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
+    tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
+      el('span', { class: 'muted' }, `${rows.length} expense(s) . Renovation: ${formatEUR(renoEUR)}`),
+      el('strong', { class: 'num' }, `Total: ${formatEUR(totalEUR)}`)
+    ));
+  };
+  propSel.onchange = renderTable;
+  catSel.onchange = renderTable;
+  streamSel.onchange = renderTable;
+  renderTable();
+  return wrap;
+}
+
+function renderBreakdown() {
+  // By category
+  const rows = state.db.expenses || [];
+  const byCat = groupByCategory(rows);
+  const catLabels = [], catData = [], catColors = [];
+  for (const [k, m] of Object.entries(EXPENSE_CATEGORIES)) {
+    if (!byCat.has(k)) continue;
+    catLabels.push(m.label);
+    catData.push(Math.round(byCat.get(k)));
+    catColors.push(m.color);
+  }
+  charts.doughnut('chart-exp-cat', { labels: catLabels, data: catData, colors: catColors });
+
+  // By property
+  const byProp = new Map();
+  for (const r of rows) {
+    const eur = toEUR(r.amount, r.currency);
+    byProp.set(r.propertyId, (byProp.get(r.propertyId) || 0) + eur);
+  }
+  const propLabels = [], propData = [], propColors = ['#6366f1', '#8b5cf6', '#14b8a6', '#ec4899', '#f59e0b', '#3b82f6'];
+  let i = 0;
+  for (const [id, val] of [...byProp.entries()].sort((a, b) => b[1] - a[1])) {
+    const p = byId('properties', id);
+    propLabels.push(p?.name || 'Unknown');
+    propData.push(Math.round(val));
+    i++;
+  }
+  charts.bar('chart-exp-prop', {
+    labels: propLabels,
+    datasets: [{ label: 'EUR', data: propData, backgroundColor: propColors }],
+    horizontal: true
+  });
+}
+
+function openForm(existing) {
+  const r = existing ? { ...existing } : {
+    id: newId('exp'),
+    propertyId: state.db.properties?.[0]?.id || '',
+    category: 'maintenance',
+    amount: 0, currency: 'EUR',
+    date: today(),
+    vendor: '', description: '',
+    stream: 'short_term_rental'
+  };
+
+  const body = el('div', {});
+  const propS = select((state.db.properties || []).map(p => ({ value: p.id, label: p.name })), r.propertyId);
+  const catS = select(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), r.category);
+  const amountI = input({ type: 'number', value: r.amount, min: 0, step: 0.01 });
+  const currencyS = select(CURRENCIES, r.currency);
+  const dateI = input({ type: 'date', value: r.date });
+  const vendorI = input({ value: r.vendor, placeholder: 'Vendor name' });
+  const descT = textarea({ placeholder: 'Description' });
+  descT.value = r.description || '';
+  const streamS = select(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), r.stream);
+
+  body.appendChild(formRow('Property', propS));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Category', catS), formRow('Stream', streamS)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', currencyS)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI), formRow('Vendor', vendorI)));
+  body.appendChild(formRow('Description', descT));
+
+  propS.onchange = () => {
+    const p = byId('properties', propS.value);
+    if (p) {
+      streamS.value = p.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
+      currencyS.value = p.currency;
+    }
+  };
+
+  const save = button('Save', { variant: 'primary', onClick: () => {
+    if (!propS.value) { toast('Select property', 'danger'); return; }
+    if (Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
+    Object.assign(r, {
+      propertyId: propS.value,
+      category: catS.value,
+      amount: Number(amountI.value),
+      currency: currencyS.value,
+      date: dateI.value,
+      vendor: vendorI.value.trim(),
+      description: descT.value.trim(),
+      stream: streamS.value
+    });
+    upsert('expenses', r);
+    toast(existing ? 'Expense updated' : 'Expense added', 'success');
+    closeModal();
+    setTimeout(() => location.hash = 'expenses', 200);
+  }});
+  const cancel = button('Cancel', { onClick: closeModal });
+  openModal({ title: existing ? 'Edit Expense' : 'New Expense', body, footer: [cancel, save] });
+}

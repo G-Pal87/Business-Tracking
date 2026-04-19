@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Business Tracking</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="brand-logo">BT</div>
+        <div>
+          <div class="brand-name">Business Tracking</div>
+          <div class="brand-sub">Properties &amp; Services</div>
+        </div>
+      </div>
+      <div id="nav"></div>
+      <div class="sidebar-footer">
+        <div class="sync-status">
+          <span id="sync-dot" class="sync-dot offline"></span>
+          <span id="sync-text">Loading...</span>
+        </div>
+      </div>
+    </aside>
+
+    <main id="main">
+      <header id="header">
+        <div>
+          <div id="header-title" class="header-title">Dashboard</div>
+          <div class="header-subtitle">Global property &amp; services performance</div>
+        </div>
+        <div class="header-spacer"></div>
+      </header>
+      <div id="content"></div>
+    </main>
+  </div>
+
+  <div id="modal-overlay" class="modal-overlay"></div>
+  <div id="toasts"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
