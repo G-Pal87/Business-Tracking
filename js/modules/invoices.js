@@ -159,7 +159,7 @@ function openBuilder(existing) {
 
   const body = el('div', {});
   const clientS = select(clients.map(c => ({ value: c.id, label: c.name })), inv.clientId);
-  const numberI = input({ value: inv.number, placeholder: 'Auto if empty' });
+  const numberI = input({ value: inv.number, placeholder: '' });
   const issueI = input({ type: 'date', value: inv.issueDate });
   const dueI = input({ type: 'date', value: inv.dueDate });
   const statusS = select(Object.keys(INVOICE_STATUSES), inv.status);
@@ -170,7 +170,7 @@ function openBuilder(existing) {
   notesT.value = inv.notes || '';
 
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Client', clientS), formRow('Owner', ownerS)));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Number (auto)', numberI), formRow('Status', statusS)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Number', numberI), formRow('Status', statusS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Issue Date', issueI), formRow('Due Date', dueI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Currency', currencyS), formRow('Tax %', taxI)));
 
@@ -274,13 +274,29 @@ function openBuilder(existing) {
     recalcInvoice();
   }
 
+  function refreshNumberHint() {
+    if (existing || numberI.value.trim()) return;
+    const s = state.db.settings;
+    const year = (issueI.value || today()).slice(0, 4);
+    const owner = ownerS.value;
+    const prefix = s.invoicePrefix?.[owner] || (owner === 'rita' ? 'RTA' : 'INV');
+    const key = `${owner}_${year}`;
+    const next = (s.invoiceCounters?.[key] || 0) + 1;
+    numberI.placeholder = `Auto: ${prefix}-${year}-${String(next).padStart(3, '0')}`;
+  }
+
   clientS.onchange = () => {
     const c = byId('clients', clientS.value);
     if (c) { ownerS.value = c.owner; currencyS.value = c.currency; drawLines(); }
+    refreshNumberHint();
   };
+  ownerS.onchange = refreshNumberHint;
+  issueI.onchange = refreshNumberHint;
+  numberI.oninput = () => { if (!numberI.value.trim()) refreshNumberHint(); else numberI.placeholder = ''; };
   currencyS.onchange = () => drawLines();
   taxI.oninput = recalcInvoice;
 
+  refreshNumberHint();
   drawLines();
 
   const preview = button('Preview', { onClick: () => previewInvoice(inv, clientS.value) });
@@ -301,10 +317,20 @@ function openBuilder(existing) {
       const year = inv.issueDate.slice(0, 4);
       const prefix = s.invoicePrefix[inv.owner] || (inv.owner === 'rita' ? 'RTA' : 'INV');
       const counterKey = `${inv.owner}_${year}`;
-      s.invoiceCounters[counterKey] = (s.invoiceCounters[counterKey] || 0) + 1;
-      inv.number = `${prefix}-${year}-${String(s.invoiceCounters[counterKey]).padStart(3, '0')}`;
+      const nextSeq = (s.invoiceCounters[counterKey] || 0) + 1;
+      const candidate = `${prefix}-${year}-${String(nextSeq).padStart(3, '0')}`;
+      if ((state.db.invoices || []).some(i => i.id !== inv.id && i.number === candidate)) {
+        toast(`Auto-generated number ${candidate} conflicts with an existing invoice`, 'danger');
+        return;
+      }
+      s.invoiceCounters[counterKey] = nextSeq;
+      inv.number = candidate;
     } else {
       inv.number = numberI.value.trim();
+      if ((state.db.invoices || []).some(i => i.id !== inv.id && i.number === inv.number)) {
+        toast(`Invoice number ${inv.number} is already in use`, 'danger');
+        return;
+      }
     }
     recalcInvoice();
     upsert('invoices', inv);
