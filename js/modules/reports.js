@@ -34,6 +34,7 @@ const NET_COLS = [
 ];
 
 let gFilters = { year: String(new Date().getFullYear()), stream: 'all' };
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 export default {
   id: 'reports',
@@ -67,7 +68,8 @@ function build() {
     { id: 'summary', label: 'Summary' },
     { id: 'property', label: 'By Property' },
     { id: 'stream', label: 'By Stream' },
-    { id: 'reconciliation', label: 'Reconciliation' }
+    { id: 'reconciliation', label: 'Reconciliation' },
+    { id: 'comparison', label: 'Comparison' }
   ];
   const tabs = el('div', { class: 'tabs' });
   const sections = {};
@@ -100,6 +102,7 @@ function build() {
     else if (id === 'property') renderByProperty(s);
     else if (id === 'stream') renderByStream(s);
     else if (id === 'reconciliation') renderReconciliation(s);
+    else if (id === 'comparison') renderComparison(s);
   }
 
   renderTab('summary');
@@ -349,6 +352,210 @@ function renderReconciliation(wrap) {
   entSel.onchange = render;
   yearSel.onchange = render;
   render();
+}
+
+// ===== COMPARISON TAB =====
+function renderComparison(wrap) {
+  const baseYear = gFilters.year !== 'all' ? Number(gFilters.year) : new Date().getFullYear();
+  const props = (state.db.properties || []).filter(p => p.status !== 'renovation');
+  const services = [
+    { id: 'customer_success', label: 'Customer Success', type: 'service' },
+    { id: 'marketing_services', label: 'Marketing Services', type: 'service' }
+  ];
+  const entities = [
+    ...props.map(p => ({ id: p.id, label: p.name, type: 'property' })),
+    ...services
+  ];
+  if (!entities.length) { wrap.appendChild(el('div', { class: 'empty' }, 'No entities to compare')); return; }
+
+  const entSel = select(entities.map(e => ({ value: e.id, label: e.label })), entities[0].id);
+  const yearSel = select(
+    [baseYear - 1, baseYear, baseYear + 1].map(y => ({ value: String(y), label: String(y) })),
+    String(baseYear)
+  );
+  const controls = el('div', { class: 'flex gap-8 mb-16' });
+  controls.appendChild(entSel);
+  controls.appendChild(yearSel);
+  wrap.appendChild(controls);
+
+  const body = el('div', {});
+  wrap.appendChild(body);
+
+  const render = () => {
+    body.innerHTML = '';
+    charts.destroy('cmp-yoy');
+    charts.destroy('cmp-mom');
+    const ent = entities.find(e => e.id === entSel.value);
+    if (!ent) return;
+    const yr = Number(yearSel.value);
+
+    const { months: cur, yearTarget } = getForecastVsActual(ent.type, ent.id, yr);
+    const { months: prv } = getForecastVsActual(ent.type, ent.id, yr - 1);
+
+    const curRev = cur.reduce((s, m) => s + m.actualRev, 0);
+    const prvRev = prv.reduce((s, m) => s + m.actualRev, 0);
+    const curFc  = cur.reduce((s, m) => s + m.forecastRev, 0);
+    const yoyPct = prvRev ? (curRev - prvRev) / prvRev * 100 : 0;
+    const fvaPct = curFc  ? (curRev - curFc)  / curFc  * 100 : 0;
+
+    body.appendChild(el('div', { class: 'grid grid-4 mb-16' },
+      kpi(`${yr} Actual`,   formatEUR(curRev)),
+      kpi(`${yr - 1} Actual`, formatEUR(prvRev)),
+      kpi('YoY Change', `${yoyPct >= 0 ? '+' : ''}${yoyPct.toFixed(1)}%`, yoyPct >= 0 ? 'success' : 'danger'),
+      kpi(`${yr} Forecast`, formatEUR(curFc), curFc ? (fvaPct >= 0 ? 'success' : 'danger') : '')
+    ));
+
+    body.appendChild(el('div', { class: 'grid grid-2 mb-16' },
+      el('div', { class: 'card' },
+        el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, `Year-over-Year: ${yr - 1} vs ${yr}`)),
+        el('div', { class: 'chart-wrap' }, el('canvas', { id: 'cmp-yoy' }))
+      ),
+      el('div', { class: 'card' },
+        el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, `Month-over-Month — ${yr}`)),
+        el('div', { class: 'chart-wrap' }, el('canvas', { id: 'cmp-mom' }))
+      )
+    ));
+
+    body.appendChild(el('div', { class: 'card mb-16' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, `Year-over-Year Detail — ${yr - 1} vs ${yr}`)),
+      buildYoYTable(cur, prv, yr)
+    ));
+
+    body.appendChild(el('div', { class: 'card' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, `Month-over-Month Detail — ${yr}`)),
+      buildMoMTable(cur, prv, yr)
+    ));
+
+    setTimeout(() => {
+      charts.bar('cmp-yoy', {
+        labels: MON,
+        datasets: [
+          { label: String(yr - 1), data: prv.map(m => Math.round(m.actualRev)), backgroundColor: 'rgba(99,102,241,0.35)', borderColor: '#6366f1', borderWidth: 1 },
+          { label: `${yr} Forecast`, data: cur.map(m => Math.round(m.forecastRev)), backgroundColor: 'rgba(16,185,129,0.3)', borderColor: '#10b981', borderWidth: 1 },
+          { label: `${yr} Actual`, data: cur.map(m => Math.round(m.actualRev)), backgroundColor: '#10b981' }
+        ],
+        onClickItem: (label, index, datasetIndex) => {
+          const m = datasetIndex === 0 ? prv[index] : cur[index];
+          if (!m) return;
+          const s = m.key + '-01', e = m.key + '-' + new Date(Number(m.key.slice(0, 4)), Number(m.key.slice(5, 7)), 0).getDate().toString().padStart(2, '0');
+          if (ent.type === 'property') {
+            const pays = (state.db.payments || []).filter(p => p.propertyId === ent.id && p.status === 'paid' && p.date >= s && p.date <= e);
+            drillDownModal(`${MON[index]} ${datasetIndex === 0 ? yr - 1 : yr} — Revenue`, drillRevRows(pays, []), REV_COLS);
+          } else {
+            const invs = (state.db.invoices || []).filter(i => i.stream === ent.id && i.status === 'paid' && i.issueDate >= s && i.issueDate <= e);
+            drillDownModal(`${MON[index]} ${datasetIndex === 0 ? yr - 1 : yr} — Invoiced`, drillRevRows([], invs), REV_COLS);
+          }
+        }
+      });
+
+      const momColors = cur.map((m, i) => {
+        const prevRev = i === 0 ? prv[11].actualRev : cur[i - 1].actualRev;
+        return m.actualRev >= prevRev ? '#10b981' : '#ef4444';
+      });
+      charts.bar('cmp-mom', {
+        labels: MON,
+        datasets: [
+          { label: 'Actual Revenue', data: cur.map(m => Math.round(m.actualRev)), backgroundColor: momColors },
+          { label: 'Forecast', data: cur.map(m => Math.round(m.forecastRev)), backgroundColor: 'rgba(99,102,241,0.4)', borderColor: '#6366f1', borderWidth: 1 }
+        ],
+        onClickItem: (label, index) => {
+          const m = cur[index];
+          if (!m) return;
+          const s = m.key + '-01', e = m.key + '-' + new Date(Number(m.key.slice(0, 4)), Number(m.key.slice(5, 7)), 0).getDate().toString().padStart(2, '0');
+          if (ent.type === 'property') {
+            const pays = (state.db.payments || []).filter(p => p.propertyId === ent.id && p.status === 'paid' && p.date >= s && p.date <= e);
+            drillDownModal(`${MON[index]} ${yr} — Revenue`, drillRevRows(pays, []), REV_COLS);
+          } else {
+            const invs = (state.db.invoices || []).filter(i => i.stream === ent.id && i.status === 'paid' && i.issueDate >= s && i.issueDate <= e);
+            drillDownModal(`${MON[index]} ${yr} — Invoiced`, drillRevRows([], invs), REV_COLS);
+          }
+        }
+      });
+    }, 0);
+  };
+
+  entSel.onchange = render;
+  yearSel.onchange = render;
+  render();
+}
+
+function buildYoYTable(cur, prv, yr) {
+  const now = new Date();
+  const t = el('table', { class: 'table' });
+  t.innerHTML = `<thead><tr>
+    <th>Month</th><th class="right">${yr - 1}</th><th class="right">${yr} Forecast</th>
+    <th class="right">${yr} Actual</th><th class="right">YoY Δ</th><th class="right">YoY %</th><th class="right">vs Forecast</th>
+  </tr></thead>`;
+  const tb = el('tbody');
+
+  for (let i = 0; i < 12; i++) {
+    const c = cur[i], p = prv[i];
+    const isPast = new Date(yr, i + 1, 0) < now;
+    const yoyD = c.actualRev - p.actualRev;
+    const yoyP = p.actualRev ? yoyD / p.actualRev * 100 : 0;
+    const vsF  = c.forecastRev ? c.actualRev - c.forecastRev : null;
+    const tr = el('tr');
+    tr.appendChild(el('td', {}, MON[i]));
+    tr.appendChild(el('td', { class: 'right num' }, p.actualRev ? formatEUR(p.actualRev) : '—'));
+    tr.appendChild(el('td', { class: 'right num muted' }, c.forecastRev ? formatEUR(c.forecastRev) : '—'));
+    tr.appendChild(el('td', { class: 'right num' + (!isPast ? ' muted' : '') }, formatEUR(c.actualRev)));
+    tr.appendChild(el('td', { class: `right num${isPast ? (yoyD >= 0 ? ' success' : ' danger') : ' muted'}` }, isPast ? (yoyD >= 0 ? '+' : '') + formatEUR(yoyD) : '—'));
+    tr.appendChild(el('td', { class: `right num${isPast ? (yoyP >= 0 ? ' success' : ' danger') : ' muted'}` }, isPast ? `${yoyP >= 0 ? '+' : ''}${yoyP.toFixed(1)}%` : '—'));
+    tr.appendChild(el('td', { class: `right num${vsF !== null && isPast ? (vsF >= 0 ? '' : ' danger') : ' muted'}` }, vsF !== null && isPast ? (vsF >= 0 ? '+' : '') + formatEUR(vsF) : '—'));
+    tb.appendChild(tr);
+  }
+
+  const tCur = cur.reduce((s, m) => s + m.actualRev, 0);
+  const tPrv = prv.reduce((s, m) => s + m.actualRev, 0);
+  const tFc  = cur.reduce((s, m) => s + m.forecastRev, 0);
+  const tYoY = tCur - tPrv;
+  const tYoYP = tPrv ? tYoY / tPrv * 100 : 0;
+  const tVsF  = tFc ? tCur - tFc : null;
+  const tot = el('tr', { style: 'font-weight:600;background:var(--bg-elev-2)' });
+  tot.appendChild(el('td', {}, 'TOTAL'));
+  tot.appendChild(el('td', { class: 'right num' }, formatEUR(tPrv)));
+  tot.appendChild(el('td', { class: 'right num muted' }, tFc ? formatEUR(tFc) : '—'));
+  tot.appendChild(el('td', { class: 'right num' }, formatEUR(tCur)));
+  tot.appendChild(el('td', { class: `right num ${tYoY >= 0 ? 'success' : 'danger'}` }, (tYoY >= 0 ? '+' : '') + formatEUR(tYoY)));
+  tot.appendChild(el('td', { class: `right num ${tYoYP >= 0 ? 'success' : 'danger'}` }, `${tYoYP >= 0 ? '+' : ''}${tYoYP.toFixed(1)}%`));
+  tot.appendChild(el('td', { class: `right num${tVsF !== null ? (tVsF >= 0 ? '' : ' danger') : ''}` }, tVsF !== null ? (tVsF >= 0 ? '+' : '') + formatEUR(tVsF) : '—'));
+  tb.appendChild(tot);
+
+  t.appendChild(tb);
+  const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+  return tw;
+}
+
+function buildMoMTable(cur, prv, yr) {
+  const now = new Date();
+  const t = el('table', { class: 'table' });
+  t.innerHTML = `<thead><tr>
+    <th>Month</th><th class="right">Actual Revenue</th><th class="right">Prev Month</th>
+    <th class="right">MoM Δ</th><th class="right">MoM %</th><th class="right">Forecast</th><th class="right">vs Forecast</th>
+  </tr></thead>`;
+  const tb = el('tbody');
+
+  for (let i = 0; i < 12; i++) {
+    const c = cur[i];
+    const prevRev = i === 0 ? prv[11].actualRev : cur[i - 1].actualRev;
+    const isPast = new Date(yr, i + 1, 0) < now;
+    const delta = c.actualRev - prevRev;
+    const deltaPct = prevRev ? delta / prevRev * 100 : 0;
+    const vsF = c.forecastRev ? c.actualRev - c.forecastRev : null;
+    const tr = el('tr');
+    tr.appendChild(el('td', {}, MON[i]));
+    tr.appendChild(el('td', { class: 'right num' + (!isPast ? ' muted' : '') }, formatEUR(c.actualRev)));
+    tr.appendChild(el('td', { class: 'right num muted' }, formatEUR(prevRev)));
+    tr.appendChild(el('td', { class: `right num${isPast ? (delta >= 0 ? ' success' : ' danger') : ' muted'}` }, isPast ? (delta >= 0 ? '+' : '') + formatEUR(delta) : '—'));
+    tr.appendChild(el('td', { class: `right num${isPast ? (deltaPct >= 0 ? ' success' : ' danger') : ' muted'}` }, isPast ? `${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%` : '—'));
+    tr.appendChild(el('td', { class: 'right num muted' }, c.forecastRev ? formatEUR(c.forecastRev) : '—'));
+    tr.appendChild(el('td', { class: `right num${vsF !== null && isPast ? (vsF >= 0 ? '' : ' danger') : ' muted'}` }, vsF !== null && isPast ? (vsF >= 0 ? '+' : '') + formatEUR(vsF) : '—'));
+    tb.appendChild(tr);
+  }
+
+  t.appendChild(tb);
+  const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+  return tw;
 }
 
 function collectMonths(...groups) {
