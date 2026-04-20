@@ -57,7 +57,7 @@ export function line(id, { labels, datasets }) {
   registry.set(id, c);
 }
 
-export function bar(id, { labels, datasets, stacked = false, horizontal = false }) {
+export function bar(id, { labels, datasets, stacked = false, horizontal = false, onClickItem }) {
   destroy(id);
   const canvas = document.getElementById(id);
   if (!canvas) return;
@@ -65,6 +65,14 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false 
   const opts = baseOpts();
   if (stacked) { opts.scales.x.stacked = true; opts.scales.y.stacked = true; }
   if (horizontal) opts.indexAxis = 'y';
+  if (onClickItem) {
+    opts.onClick = (_e, elements) => {
+      if (!elements.length) return;
+      const { datasetIndex, index } = elements[0];
+      onClickItem(labels[index], index, datasetIndex);
+    };
+    canvas.style.cursor = 'pointer';
+  }
   const c = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -76,7 +84,7 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false 
   registry.set(id, c);
 }
 
-export function doughnut(id, { labels, data, colors }) {
+export function doughnut(id, { labels, data, colors, onClickItem }) {
   destroy(id);
   const canvas = document.getElementById(id);
   if (!canvas) return;
@@ -85,6 +93,14 @@ export function doughnut(id, { labels, data, colors }) {
   delete opts.scales;
   opts.cutout = '65%';
   opts.plugins.legend.position = 'right';
+  if (onClickItem) {
+    opts.onClick = (_e, elements) => {
+      if (!elements.length) return;
+      const { index } = elements[0];
+      onClickItem(labels[index], index, 0);
+    };
+    canvas.style.cursor = 'pointer';
+  }
   const c = new Chart(ctx, {
     type: 'doughnut',
     data: {

@@ -314,3 +314,23 @@ export function buildReportData(filters = {}) {
 
   return { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net: rev - exp };
 }
+
+// ============== Drill-down row normalisers (used by all reporting modules) ==============
+export function drillRevRows(payments, invoices) {
+  return [
+    ...(payments || []).map(p => ({ date: p.date, type: 'Payment', source: byId('properties', p.propertyId)?.name || p.source || '', ref: p.type || '', eur: toEUR(p.amount, p.currency) })),
+    ...(invoices || []).map(i => ({ date: i.issueDate || i.date, type: 'Invoice', source: byId('clients', i.clientId)?.name || '', ref: i.number || '', eur: toEUR(i.total || i.amount, i.currency) }))
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+export function drillExpRows(expenses) {
+  return (expenses || []).map(e => ({ date: e.date, source: byId('properties', e.propertyId)?.name || '', category: e.category, description: e.description || '', eur: toEUR(e.amount, e.currency) }))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+export function drillNetRows(payments, invoices, expenses) {
+  return [
+    ...drillRevRows(payments, invoices).map(r => ({ date: r.date, kind: 'Revenue', source: r.source + (r.ref ? ' · ' + r.ref : ''), eur: r.eur })),
+    ...drillExpRows(expenses).map(r => ({ date: r.date, kind: 'Expense', source: (r.source ? r.source + ' · ' : '') + r.category, eur: r.eur }))
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}

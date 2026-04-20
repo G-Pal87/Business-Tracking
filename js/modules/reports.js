@@ -1,15 +1,37 @@
 // Reports module — single source of truth for all analytical views
 // Tabs: Summary | By Property | By Stream | Reconciliation
 import { state } from '../core/state.js';
-import { el, select, button, fmtDate } from '../core/ui.js';
+import { el, select, button, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS } from '../core/config.js';
 import {
   availableYears, formatEUR, toEUR, byId,
   propertyRevenueEUR, propertyExpensesEUR, propertyROI,
   renovationCapexEUR, groupByMonth, groupByStream,
-  buildReportData, getForecastVsActual
+  buildReportData, getForecastVsActual,
+  drillRevRows, drillExpRows, drillNetRows
 } from '../core/data.js';
+
+const REV_COLS = [
+  { key: 'date', label: 'Date', format: v => fmtDate(v) },
+  { key: 'type', label: 'Type' },
+  { key: 'source', label: 'Source' },
+  { key: 'ref', label: 'Ref' },
+  { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
+];
+const EXP_COLS = [
+  { key: 'date', label: 'Date', format: v => fmtDate(v) },
+  { key: 'source', label: 'Property' },
+  { key: 'category', label: 'Category' },
+  { key: 'description', label: 'Description' },
+  { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
+];
+const NET_COLS = [
+  { key: 'date', label: 'Date', format: v => fmtDate(v) },
+  { key: 'kind', label: 'Kind' },
+  { key: 'source', label: 'Source' },
+  { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
+];
 
 let gFilters = { year: String(new Date().getFullYear()), stream: 'all' };
 
@@ -88,10 +110,10 @@ function build() {
 function renderSummary(wrap) {
   const d = buildReportData(gFilters);
   wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' },
-    kpi('Revenue', formatEUR(d.rev)),
-    kpi('Operating Exp.', formatEUR(d.exp)),
-    kpi('Net', formatEUR(d.net), d.net >= 0 ? 'success' : 'danger'),
-    kpi('Renovation CapEx', formatEUR(d.reno), 'warning')
+    kpi('Revenue', formatEUR(d.rev), '', () => drillDownModal('Revenue', drillRevRows(d.payments, d.invoices), REV_COLS)),
+    kpi('Operating Exp.', formatEUR(d.exp), '', () => drillDownModal('Operating Expenses', drillExpRows(d.opExpenses), EXP_COLS)),
+    kpi('Net', formatEUR(d.net), d.net >= 0 ? 'success' : 'danger', () => drillDownModal('Net — Revenue & Expenses', drillNetRows(d.payments, d.invoices, d.opExpenses), NET_COLS)),
+    kpi('Renovation CapEx', formatEUR(d.reno), 'warning', () => drillDownModal('Renovation CapEx', drillExpRows(d.renoExpenses), EXP_COLS))
   ));
 
   const months = collectMonths(d.payments, d.invoices.map(i => ({ ...i, date: i.issueDate })), d.opExpenses, d.renoExpenses);
@@ -111,7 +133,20 @@ function renderSummary(wrap) {
         { label: 'Revenue', data: months.map(m => Math.round(revByM.get(m) || 0)), backgroundColor: '#10b981' },
         { label: 'Operating', data: months.map(m => Math.round(expByM.get(m) || 0)), backgroundColor: '#ef4444' },
         { label: 'Renovation', data: months.map(m => Math.round(renoByM.get(m) || 0)), backgroundColor: '#f59e0b' }
-      ]
+      ],
+      onClickItem: (label, index, datasetIndex) => {
+        const m = months[index];
+        if (!m) return;
+        const titles = ['Revenue', 'Operating Expenses', 'Renovation'];
+        const title = `${label} — ${titles[datasetIndex] || ''}`;
+        if (datasetIndex === 0) {
+          drillDownModal(title, drillRevRows(d.payments.filter(p => (p.date || '').startsWith(m)), d.invoices.filter(i => (i.issueDate || '').startsWith(m))), REV_COLS);
+        } else if (datasetIndex === 1) {
+          drillDownModal(title, drillExpRows(d.opExpenses.filter(e => (e.date || '').startsWith(m))), EXP_COLS);
+        } else {
+          drillDownModal(title, drillExpRows(d.renoExpenses.filter(e => (e.date || '').startsWith(m))), EXP_COLS);
+        }
+      }
     });
   }, 0);
 }
@@ -137,7 +172,12 @@ function renderByProperty(wrap) {
   </tr></thead>`;
   const tb = el('tbody');
   for (const { p, rev, exp, reno, purchaseEUR, net, roi } of rows) {
-    const tr = el('tr');
+    const tr = el('tr', { style: 'cursor:pointer' });
+    tr.onclick = () => {
+      const yearStr = gFilters.year !== 'all' ? gFilters.year : null;
+      const pays = (state.db.payments || []).filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (!yearStr || (pay.date || '').startsWith(yearStr)));
+      drillDownModal(`${p.name} — Payments`, drillRevRows(pays, []), REV_COLS);
+    };
     tr.appendChild(el('td', {}, el('div', {}, p.name), el('div', { class: 'muted', style: 'font-size:11px' }, `${p.city}, ${p.country}`)));
     tr.appendChild(el('td', {}, el('span', { class: 'badge ' + (p.status === 'active' ? 'success' : p.status === 'renovation' ? 'warning' : '') }, p.status)));
     tr.appendChild(el('td', { class: 'right num' }, formatEUR(purchaseEUR)));
@@ -202,12 +242,27 @@ function renderByStream(wrap) {
       datasets: [
         { label: 'Revenue', data: streamRev.map(n => Math.round(n)), backgroundColor: '#10b981' },
         { label: 'Expenses', data: streamExp.map(n => Math.round(n)), backgroundColor: '#ef4444' }
-      ]
+      ],
+      onClickItem: (label, index, datasetIndex) => {
+        const k = streamKeys[index];
+        if (!k) return;
+        if (datasetIndex === 0) {
+          drillDownModal(`${STREAMS[k].label} — Revenue`, drillRevRows(d.payments.filter(p => p.stream === k), d.invoices.filter(i => i.stream === k)), REV_COLS);
+        } else {
+          drillDownModal(`${STREAMS[k].label} — Expenses`, drillExpRows(d.opExpenses.filter(e => e.stream === k)), EXP_COLS);
+        }
+      }
     });
     charts.doughnut('rep-owner', {
       labels: ['You', 'Rita', 'Both'],
       data: [Math.round(ownerMap.you), Math.round(ownerMap.rita), Math.round(ownerMap.both)],
-      colors: ['#6366f1', '#ec4899', '#14b8a6']
+      colors: ['#6366f1', '#ec4899', '#14b8a6'],
+      onClickItem: (label, index) => {
+        const ownerKey = ['you', 'rita', 'both'][index];
+        const pays = d.payments.filter(p => (p.owner || byId('properties', p.propertyId)?.owner) === ownerKey);
+        const invs = d.invoices.filter(i => i.owner === ownerKey);
+        drillDownModal(`${label} — Revenue`, drillRevRows(pays, invs), REV_COLS);
+      }
     });
   }, 0);
 }
@@ -309,8 +364,10 @@ function collectMonths(...groups) {
   return [...all].sort();
 }
 
-function kpi(label, value, variant) {
-  return el('div', { class: 'kpi' + (variant ? ' ' + variant : '') },
+function kpi(label, value, variant, onClick) {
+  const attrs = { class: 'kpi' + (variant ? ' ' + variant : '') };
+  if (onClick) { attrs.style = 'cursor:pointer'; attrs.onclick = onClick; }
+  return el('div', attrs,
     el('div', { class: 'kpi-label' }, label),
     el('div', { class: 'kpi-value' }, value),
     el('div', { class: 'kpi-accent-bar' })

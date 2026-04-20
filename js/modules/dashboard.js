@@ -1,13 +1,35 @@
 // Dashboard module
 import { state } from '../core/state.js';
-import { el, escapeHtml, fmtDate, monthLabel } from '../core/ui.js';
+import { el, escapeHtml, fmtDate, monthLabel, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS } from '../core/config.js';
 import {
   totalRevenueEUR, totalExpensesEUR, renovationCapexEUR, netIncomeEUR,
   revenueInRangeEUR, expensesInRangeEUR, ytdRange,
-  groupByMonth, groupByStream, recentActivity, formatEUR, byId
+  groupByMonth, groupByStream, recentActivity, formatEUR, byId, toEUR,
+  drillRevRows, drillExpRows, drillNetRows
 } from '../core/data.js';
+
+const REV_COLS = [
+  { key: 'date', label: 'Date', format: v => fmtDate(v) },
+  { key: 'type', label: 'Type' },
+  { key: 'source', label: 'Source' },
+  { key: 'ref', label: 'Ref' },
+  { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
+];
+const EXP_COLS = [
+  { key: 'date', label: 'Date', format: v => fmtDate(v) },
+  { key: 'source', label: 'Property' },
+  { key: 'category', label: 'Category' },
+  { key: 'description', label: 'Description' },
+  { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
+];
+const NET_COLS = [
+  { key: 'date', label: 'Date', format: v => fmtDate(v) },
+  { key: 'kind', label: 'Kind' },
+  { key: 'source', label: 'Source' },
+  { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
+];
 
 export default {
   id: 'dashboard',
@@ -50,6 +72,11 @@ export default {
     const revDelta = revLY ? ((revYTD - revLY) / revLY) * 100 : 0;
     const expDelta = expLY ? ((expYTD - expLY) / expLY) * 100 : 0;
 
+    const ytdPays = (state.db.payments || []).filter(p => p.status === 'paid' && p.date >= start && p.date <= end);
+    const ytdInvs = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= start && i.issueDate <= end);
+    const ytdOpExps = (state.db.expenses || []).filter(e => e.category !== 'renovation' && e.date >= start && e.date <= end);
+    const ytdRenoExps = (state.db.expenses || []).filter(e => e.category === 'renovation' && e.date >= start && e.date <= end);
+
     const totalProperties = (state.db.properties || []).length;
     const active = (state.db.properties || []).filter(p => p.status === 'active').length;
     const reno = (state.db.properties || []).filter(p => p.status === 'renovation').length;
@@ -60,10 +87,10 @@ export default {
 
     // KPI grid
     const kpis = el('div', { class: 'grid grid-4' },
-      kpi('Revenue YTD', formatEUR(revYTD), revLY ? trendText(revDelta) : 'No prior data'),
-      kpi('Expenses YTD', formatEUR(expYTD), revLY ? trendText(-expDelta) : 'No prior data'),
-      kpi('Net YTD', formatEUR(netYTD), `Margin ${revYTD ? ((netYTD / revYTD) * 100).toFixed(0) : 0}%`, netYTD >= 0 ? 'success' : 'danger'),
-      kpi('Renovation CapEx YTD', formatEUR(renoYTD), `${reno} property in renovation`, 'warning')
+      kpi('Revenue YTD', formatEUR(revYTD), revLY ? trendText(revDelta) : 'No prior data', '', () => drillDownModal('Revenue YTD', drillRevRows(ytdPays, ytdInvs), REV_COLS)),
+      kpi('Expenses YTD', formatEUR(expYTD), revLY ? trendText(-expDelta) : 'No prior data', '', () => drillDownModal('Expenses YTD', drillExpRows(ytdOpExps), EXP_COLS)),
+      kpi('Net YTD', formatEUR(netYTD), `Margin ${revYTD ? ((netYTD / revYTD) * 100).toFixed(0) : 0}%`, netYTD >= 0 ? 'success' : 'danger', () => drillDownModal('Net YTD', drillNetRows(ytdPays, ytdInvs, ytdOpExps), NET_COLS)),
+      kpi('Renovation CapEx YTD', formatEUR(renoYTD), `${reno} property in renovation`, 'warning', () => drillDownModal('Renovation CapEx YTD', drillExpRows(ytdRenoExps), EXP_COLS))
     );
 
     const kpis2 = el('div', { class: 'grid grid-4 mt-16' },
@@ -124,7 +151,22 @@ export default {
         { label: 'Revenue', data: months.map(m => Math.round(revByMonth.get(m) || 0)), backgroundColor: '#10b981' },
         { label: 'Operating', data: months.map(m => Math.round(expByMonth.get(m) || 0)), backgroundColor: '#ef4444' },
         { label: 'Renovation', data: months.map(m => Math.round(renoByMonth.get(m) || 0)), backgroundColor: '#f59e0b' }
-      ]
+      ],
+      onClickItem: (label, index, datasetIndex) => {
+        const m = months[index];
+        if (!m) return;
+        const titles = ['Revenue', 'Operating Expenses', 'Renovation'];
+        const title = `${label} — ${titles[datasetIndex] || ''}`;
+        if (datasetIndex === 0) {
+          const pays = paidPayments.filter(p => (p.date || '').startsWith(m));
+          const invs = paidInvoices.filter(i => (i.issueDate || i.date || '').startsWith(m));
+          drillDownModal(title, drillRevRows(pays, invs), REV_COLS);
+        } else if (datasetIndex === 1) {
+          drillDownModal(title, drillExpRows(opExpenses.filter(e => (e.date || '').startsWith(m))), EXP_COLS);
+        } else {
+          drillDownModal(title, drillExpRows(renoExpenses.filter(e => (e.date || '').startsWith(m))), EXP_COLS);
+        }
+      }
     });
 
     // Top properties bar chart
@@ -132,18 +174,26 @@ export default {
     const propRevs = (state.db.properties || []).map(p => {
       const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
       const rev = (state.db.payments || []).filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (pay.date || '').startsWith(String(nowYear))).reduce((s, pay) => s + (pay.currency === 'HUF' ? pay.amount * fx : pay.amount), 0);
-      return { name: p.name.replace(' Apartment','').replace(' Loft','').replace(' Flat',''), rev };
+      return { id: p.id, name: p.name.replace(' Apartment','').replace(' Loft','').replace(' Flat',''), rev };
     }).sort((a, b) => b.rev - a.rev).slice(0, 5);
     charts.bar('chart-topprop', {
       labels: propRevs.map(p => p.name),
       datasets: [{ label: 'EUR Revenue YTD', data: propRevs.map(p => Math.round(p.rev)), backgroundColor: '#6366f1' }],
-      horizontal: true
+      horizontal: true,
+      onClickItem: (label, index) => {
+        const prop = propRevs[index];
+        if (!prop) return;
+        const pays = (state.db.payments || []).filter(p => p.propertyId === prop.id && p.status === 'paid' && (p.date || '').startsWith(String(nowYear)));
+        drillDownModal(`${label} — Payments ${nowYear}`, drillRevRows(pays, []), REV_COLS);
+      }
     });
   }
 };
 
-function kpi(label, value, sub, variant) {
-  return el('div', { class: 'kpi' + (variant ? ' ' + variant : '') },
+function kpi(label, value, sub, variant, onClick) {
+  const attrs = { class: 'kpi' + (variant ? ' ' + variant : '') };
+  if (onClick) { attrs.style = 'cursor:pointer'; attrs.onclick = onClick; }
+  return el('div', attrs,
     el('div', { class: 'kpi-label' }, label),
     el('div', { class: 'kpi-value' }, value),
     el('div', { class: 'kpi-trend' }, sub || ''),

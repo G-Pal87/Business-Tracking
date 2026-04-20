@@ -77,6 +77,40 @@ export function closeModal() {
   if (o) { o.classList.remove('open'); setTimeout(() => { o.innerHTML = ''; }, 200); }
 }
 
+export function drillDownModal(title, rows, columns) {
+  const table = el('table', { class: 'table' });
+  const headRow = el('tr');
+  for (const col of columns) headRow.appendChild(el('th', { class: col.right ? 'right' : '' }, col.label));
+  table.appendChild(el('thead', {}, headRow));
+  const tbody = el('tbody');
+  if (!rows.length) {
+    const tr = el('tr');
+    tr.appendChild(el('td', { colspan: String(columns.length), style: 'text-align:center;padding:24px;color:var(--text-muted)' }, 'No records'));
+    tbody.appendChild(tr);
+  }
+  for (const row of rows) {
+    const tr = el('tr');
+    for (const col of columns) {
+      const raw = row[col.key];
+      const display = col.format ? col.format(raw, row) : (raw ?? '—');
+      const cell = el('td', { class: col.right ? 'right num' : '' });
+      if (display instanceof Node) cell.appendChild(display);
+      else cell.appendChild(document.createTextNode(String(display ?? '—')));
+      tr.appendChild(cell);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  const tw = el('div', { class: 'table-wrap' });
+  tw.appendChild(table);
+  const meta = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px' },
+    `${rows.length} record${rows.length !== 1 ? 's' : ''}`);
+  const body = el('div');
+  body.appendChild(meta);
+  body.appendChild(tw);
+  openModal({ title, body, large: true });
+}
+
 export function confirmDialog(message, { title = 'Confirm', okLabel = 'OK', danger = false } = {}) {
   return new Promise(resolve => {
     const okBtn = el('button', { class: 'btn ' + (danger ? 'danger' : 'primary') }, okLabel);

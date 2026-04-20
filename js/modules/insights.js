@@ -1,10 +1,31 @@
 // Insights — derived layer: owner-split, YTD vs LY, cross-entity summary
 // Stream P&L detail lives in Reports > By Stream to avoid duplication
 import { state } from '../core/state.js';
-import { el, select } from '../core/ui.js';
+import { el, select, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS } from '../core/config.js';
-import { toEUR, formatEUR, byId, availableYears, revenueInRangeEUR, expensesInRangeEUR, ytdRange } from '../core/data.js';
+import { toEUR, formatEUR, byId, availableYears, revenueInRangeEUR, expensesInRangeEUR, ytdRange, drillRevRows, drillExpRows, drillNetRows } from '../core/data.js';
+
+const REV_COLS = [
+  { key: 'date', label: 'Date', format: v => fmtDate(v) },
+  { key: 'type', label: 'Type' },
+  { key: 'source', label: 'Source' },
+  { key: 'ref', label: 'Ref' },
+  { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
+];
+const EXP_COLS = [
+  { key: 'date', label: 'Date', format: v => fmtDate(v) },
+  { key: 'source', label: 'Property' },
+  { key: 'category', label: 'Category' },
+  { key: 'description', label: 'Description' },
+  { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
+];
+const NET_COLS = [
+  { key: 'date', label: 'Date', format: v => fmtDate(v) },
+  { key: 'kind', label: 'Kind' },
+  { key: 'source', label: 'Source' },
+  { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
+];
 
 export default {
   id: 'insights',
@@ -32,11 +53,15 @@ function build() {
   const yoyRev = revLY  ? ((revYTD - revLY)  / revLY  * 100) : 0;
   const yoyNet = netLY  ? ((netYTD - netLY)  / netLY  * 100) : 0;
 
+  const ytdPays = (state.db.payments || []).filter(p => p.status === 'paid' && p.date >= ytdStart && p.date <= ytdEnd);
+  const ytdInvs = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= ytdStart && i.issueDate <= ytdEnd);
+  const ytdOpExps = (state.db.expenses || []).filter(e => e.category !== 'renovation' && e.date >= ytdStart && e.date <= ytdEnd);
+
   // YTD vs LY KPIs
   wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' },
-    kpiYoY('Revenue YTD', formatEUR(revYTD), yoyRev),
-    kpiYoY('Expenses YTD', formatEUR(expYTD), -(expYTD - expLY) / (expLY || 1) * 100),
-    kpiYoY('Net YTD', formatEUR(netYTD), yoyNet),
+    kpiYoY('Revenue YTD', formatEUR(revYTD), yoyRev, () => drillDownModal('Revenue YTD', drillRevRows(ytdPays, ytdInvs), REV_COLS)),
+    kpiYoY('Expenses YTD', formatEUR(expYTD), -(expYTD - expLY) / (expLY || 1) * 100, () => drillDownModal('Expenses YTD', drillExpRows(ytdOpExps), EXP_COLS)),
+    kpiYoY('Net YTD', formatEUR(netYTD), yoyNet, () => drillDownModal('Net YTD', drillNetRows(ytdPays, ytdInvs, ytdOpExps), NET_COLS)),
     kpi('Last Year Net', formatEUR(netLY), 'full year')
   ));
 
@@ -76,7 +101,16 @@ function build() {
   setTimeout(() => {
     const ownerData = ownerRows.map(r => Math.round(r.rev));
     const ownerLabels = ownerRows.map(r => OWNERS[r.owner] || r.owner);
-    charts.doughnut('ins-owner', { labels: ownerLabels, data: ownerData, colors: ['#6366f1', '#ec4899', '#14b8a6'] });
+    charts.doughnut('ins-owner', {
+      labels: ownerLabels, data: ownerData, colors: ['#6366f1', '#ec4899', '#14b8a6'],
+      onClickItem: (label, index) => {
+        const ownerKey = ownerRows[index]?.owner;
+        if (!ownerKey) return;
+        const pays = ytdPays.filter(p => byId('properties', p.propertyId)?.owner === ownerKey);
+        const invs = ytdInvs.filter(i => i.owner === ownerKey);
+        drillDownModal(`${label} — Revenue YTD`, drillRevRows(pays, invs), REV_COLS);
+      }
+    });
 
     // YoY monthly comparison: last 12 months (this year) vs same 12 months last year
     const months = [];
@@ -101,7 +135,17 @@ function build() {
       datasets: [
         { label: 'This year', data: thisRevs, backgroundColor: '#6366f1' },
         { label: 'Last year', data: lastRevs, backgroundColor: 'rgba(99,102,241,0.3)' }
-      ]
+      ],
+      onClickItem: (label, index, datasetIndex) => {
+        const m = datasetIndex === 0 ? months[index] : lyMonths[index];
+        if (!m) return;
+        const s = m + '-01';
+        const e = m + '-' + new Date(Number(m.slice(0,4)), Number(m.slice(5,7)), 0).getDate().toString().padStart(2,'0');
+        const pays = (state.db.payments || []).filter(p => p.status === 'paid' && p.date >= s && p.date <= e);
+        const invs = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e);
+        const yearLabel = datasetIndex === 0 ? 'This Year' : 'Last Year';
+        drillDownModal(`${label} ${yearLabel} — Revenue`, drillRevRows(pays, invs), REV_COLS);
+      }
     });
   }, 0);
 
@@ -123,8 +167,10 @@ function buildOwnerRows(start, end) {
   }).filter(r => r.rev > 0 || r.exp > 0);
 }
 
-function kpi(label, value, sub) {
-  return el('div', { class: 'kpi' },
+function kpi(label, value, sub, onClick) {
+  const attrs = { class: 'kpi' };
+  if (onClick) { attrs.style = 'cursor:pointer'; attrs.onclick = onClick; }
+  return el('div', attrs,
     el('div', { class: 'kpi-label' }, label),
     el('div', { class: 'kpi-value' }, value),
     el('div', { class: 'kpi-trend' }, sub || ''),
@@ -132,10 +178,12 @@ function kpi(label, value, sub) {
   );
 }
 
-function kpiYoY(label, value, pct) {
+function kpiYoY(label, value, pct, onClick) {
   const cls = pct > 0 ? 'success' : pct < 0 ? 'danger' : '';
   const sign = pct > 0 ? '+' : '';
-  return el('div', { class: 'kpi' },
+  const attrs = { class: 'kpi' };
+  if (onClick) { attrs.style = 'cursor:pointer'; attrs.onclick = onClick; }
+  return el('div', attrs,
     el('div', { class: 'kpi-label' }, label),
     el('div', { class: 'kpi-value' }, value),
     el('div', { class: 'kpi-trend' }, el('span', { class: cls }, `${sign}${pct.toFixed(1)}% vs LY`)),
