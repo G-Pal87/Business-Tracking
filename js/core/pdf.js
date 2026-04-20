@@ -61,33 +61,37 @@ export function generateInvoicePDF(invoice) {
   y += 110;
 
   // Line items header
+  const rowH = 24;
   doc.setFillColor(243, 244, 246);
-  doc.rect(margin, y, 500, 22, 'F');
+  doc.rect(margin, y, 500, rowH, 'F');
   doc.setFontSize(9);
   doc.setTextColor(80);
   doc.setFont('helvetica', 'bold');
-  doc.text('DESCRIPTION', margin + 8, y + 14);
-  doc.text('QTY', 330, y + 14);
-  doc.text('RATE', 390, y + 14, { align: 'right' });
-  doc.text('AMOUNT', 536, y + 14, { align: 'right' });
+  doc.text('DESCRIPTION', margin + 8, y + 16);
+  doc.text('QTY', 330, y + 16);
+  doc.text('RATE', 390, y + 16, { align: 'right' });
+  doc.text('AMOUNT', 536, y + 16, { align: 'right' });
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0);
-  y += 40;
+  doc.setDrawColor(180);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y + rowH, 548, y + rowH);
+  y += rowH;
 
   // Line items
   doc.setFontSize(10);
   for (const li of invoice.lineItems || []) {
-    if (y > 720) { doc.addPage(); y = margin; }
-    doc.text(li.description || '', margin + 8, y);
-    doc.text(`${li.quantity} ${li.unit || ''}`, 330, y);
-    doc.text(formatMoney(li.rate, invoice.currency), 390, y, { align: 'right' });
-    doc.text(formatMoney(li.total, invoice.currency), 536, y, { align: 'right' });
-    y += 22;
+    if (y + rowH > 720) { doc.addPage(); y = margin; }
+    doc.text(li.description || '', margin + 8, y + 16);
+    doc.text(`${li.quantity} ${li.unit || ''}`, 330, y + 16);
+    doc.text(formatMoney(li.rate, invoice.currency), 390, y + 16, { align: 'right' });
+    doc.text(formatMoney(li.total, invoice.currency), 536, y + 16, { align: 'right' });
+    y += rowH;
     doc.setDrawColor(230);
-    doc.line(margin, y - 8, 548, y - 8);
+    doc.line(margin, y, 548, y);
   }
 
-  y += 12;
+  y += 16;
 
   // Totals
   const totalsX = 390;
