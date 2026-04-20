@@ -227,8 +227,11 @@ export function getVendorsByProperty(propertyId) {
 export function getOrCreateForecast(type, entityId, year) {
   if (!state.db.forecasts) state.db.forecasts = [];
   const existing = state.db.forecasts.find(f => f.type === type && f.entityId === entityId && f.year === Number(year));
-  if (existing) return existing;
-  const fc = { id: newId('fcs'), type, entityId, year: Number(year), taxRate: 0, months: {} };
+  if (existing) {
+    if (!existing.yearTarget) { existing.yearTarget = { revenue: 0, expenses: 0 }; markDirty(); }
+    return existing;
+  }
+  const fc = { id: newId('fcs'), type, entityId, year: Number(year), taxRate: 0, yearTarget: { revenue: 0, expenses: 0 }, months: {} };
   state.db.forecasts.push(fc);
   markDirty();
   return fc;
@@ -245,6 +248,13 @@ export function setForecastTaxRate(forecastId, rate) {
   const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
   if (!fc) return;
   fc.taxRate = Number(rate) || 0;
+  markDirty();
+}
+
+export function saveForecastYear(forecastId, data) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  if (!fc) return;
+  fc.yearTarget = { ...(fc.yearTarget || {}), ...data };
   markDirty();
 }
 
@@ -265,7 +275,7 @@ export function getForecastVsActual(type, entityId, year) {
     const fd = fc?.months?.[key] || {};
     months.push({ key, forecastRev: fd.revenue || 0, forecastExp: fd.expenses || 0, actualRev, actualExp, revVariance: actualRev - (fd.revenue || 0), expVariance: actualExp - (fd.expenses || 0) });
   }
-  return { forecast: fc, months };
+  return { forecast: fc, months, yearTarget: fc?.yearTarget || { revenue: 0, expenses: 0 } };
 }
 
 export function estimateTaxForYear(year, rate) {

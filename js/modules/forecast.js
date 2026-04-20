@@ -2,7 +2,7 @@
 import { state } from '../core/state.js';
 import { el, select, input, button, formRow, toast, fmtDate } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, setForecastTaxRate, getForecastVsActual, estimateTaxForYear } from '../core/data.js';
+import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, setForecastTaxRate, getForecastVsActual, estimateTaxForYear } from '../core/data.js';
 import { STREAMS } from '../core/config.js';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -106,7 +106,7 @@ function buildPropertySection(wrap) {
   };
 
   const renderSummary = () => {
-    const { forecast, months } = getForecastVsActual('property', propSel.value, yearSel.value);
+    const { forecast, months, yearTarget } = getForecastVsActual('property', propSel.value, yearSel.value);
     const forecastRev = months.reduce((s, m) => s + m.forecastRev, 0);
     const forecastExp = months.reduce((s, m) => s + m.forecastExp, 0);
     const actualRev = months.reduce((s, m) => s + m.actualRev, 0);
@@ -114,7 +114,7 @@ function buildPropertySection(wrap) {
     const el2 = document.getElementById('fc-prop-summary');
     if (!el2) return;
     el2.innerHTML = '';
-    el2.appendChild(el('div', { class: 'flex-col gap-8', style: 'padding:16px' },
+    const items = [
       summaryRow('Forecast Revenue', formatEUR(forecastRev)),
       summaryRow('Forecast Expenses', formatEUR(forecastExp)),
       summaryRow('Forecast Net', formatEUR(forecastRev - forecastExp)),
@@ -124,7 +124,18 @@ function buildPropertySection(wrap) {
       summaryRow('Actual Net YTD', formatEUR(actualRev - actualExp)),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
       summaryRow('Revenue Variance YTD', formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger'),
-    ));
+    ];
+    if (yearTarget.revenue || yearTarget.expenses) {
+      const ytRev = yearTarget.revenue || 0;
+      items.push(
+        el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
+        summaryRow('Annual Target Revenue', formatEUR(ytRev)),
+        summaryRow('Annual Target Expenses', formatEUR(yearTarget.expenses || 0)),
+        summaryRow('Forecast vs Target', formatEUR(forecastRev - ytRev), forecastRev >= ytRev ? 'success' : 'danger'),
+        summaryRow('Actual vs Target', formatEUR(actualRev - ytRev), actualRev >= ytRev ? 'success' : 'danger'),
+      );
+    }
+    el2.appendChild(el('div', { class: 'flex-col gap-8', style: 'padding:16px' }, ...items));
   };
 
   propSel.onchange = render;
@@ -182,12 +193,20 @@ function buildServiceSection(wrap) {
 // ===== SHARED MONTHLY GRID =====
 function buildMonthlyGrid(entityId, year, type, onChange) {
   const fc = getOrCreateForecast(type, entityId, year);
+  const now = new Date();
 
   const card = el('div', { class: 'card' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, `Monthly Forecast — ${year}`),
     el('div', { class: 'muted', style: 'font-size:12px' }, 'Click any cell to edit')
   ));
+
+  // Annual target bar — property forecasts only
+  let annualBar;
+  if (type === 'property') {
+    annualBar = el('div', { class: 'flex gap-16 items-center', style: 'padding:10px 16px;background:var(--bg-elev-2);border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap;gap:12px' });
+    card.appendChild(annualBar);
+  }
 
   const t = el('table', { class: 'table' });
   t.innerHTML = `<thead><tr>
@@ -199,53 +218,131 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
     <th class="right">Variance</th>
   </tr></thead>`;
   const tb = el('tbody');
-
-  const { months } = getForecastVsActual(type, entityId, year);
-  const now = new Date();
-
-  for (let i = 0; i < 12; i++) {
-    const mData = months[i];
-    const monthKey = mData.key;
-    const isPast = new Date(year, i + 1, 0) < now;
-    const tr = el('tr');
-    tr.appendChild(el('td', {}, MONTHS[i]));
-
-    const makeEditable = (field, current) => {
-      const cell = el('td', { class: 'right num' }, formatEUR(current));
-      cell.style.cursor = 'pointer';
-      cell.title = 'Click to edit';
-      cell.onclick = () => {
-        const inp = el('input', { type: 'number', value: current, min: 0, style: 'width:100px;text-align:right;background:var(--bg-elev-3);border:1px solid var(--accent);border-radius:4px;padding:4px 6px;color:var(--text)' });
-        cell.innerHTML = '';
-        cell.appendChild(inp);
-        inp.focus();
-        inp.select();
-        const commit = () => {
-          const val = Number(inp.value) || 0;
-          saveForecastMonth(fc.id, monthKey, { [field]: val });
-          cell.innerHTML = '';
-          cell.textContent = formatEUR(val);
-          if (onChange) onChange();
-        };
-        inp.onblur = commit;
-        inp.onkeydown = e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { cell.textContent = formatEUR(current); } };
-      };
-      return cell;
-    };
-
-    const net = mData.forecastRev - mData.forecastExp;
-    const varianceCls = mData.revVariance >= 0 ? '' : 'danger';
-    tr.appendChild(makeEditable('revenue', mData.forecastRev));
-    tr.appendChild(makeEditable('expenses', mData.forecastExp));
-    tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
-    tr.appendChild(el('td', { class: 'right num ' + (isPast ? '' : 'muted') }, formatEUR(mData.actualRev)));
-    tr.appendChild(el('td', { class: `right num ${varianceCls}` }, isPast || mData.actualRev > 0 ? formatEUR(mData.revVariance) : '—'));
-    tb.appendChild(tr);
-  }
+  renderRows();
   t.appendChild(tb);
   const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
   card.appendChild(tw);
+
+  if (annualBar) renderAnnualBar();
   return card;
+
+  function renderAnnualBar() {
+    annualBar.innerHTML = '';
+    annualBar.appendChild(el('span', { style: 'font-weight:600;color:var(--text-muted);letter-spacing:.04em;font-size:11px;white-space:nowrap' }, 'ANNUAL TARGET'));
+    for (const [field, label] of [['revenue', 'Revenue'], ['expenses', 'Expenses']]) {
+      const valSpan = el('span', { class: 'num', style: 'cursor:pointer;font-weight:600', title: 'Click to edit' });
+      valSpan.textContent = formatEUR((fc.yearTarget || {})[field] || 0);
+      valSpan.onclick = () => {
+        const inp = el('input', { type: 'number', value: (fc.yearTarget || {})[field] || 0, min: 0,
+          style: 'width:120px;text-align:right;background:var(--bg-elev-3);border:1px solid var(--accent);border-radius:4px;padding:4px 6px;color:var(--text)' });
+        valSpan.replaceWith(inp); inp.focus(); inp.select();
+        const commit = () => {
+          const v = Number(inp.value) || 0;
+          saveForecastYear(fc.id, { [field]: v });
+          inp.replaceWith(valSpan);
+          valSpan.textContent = formatEUR(v);
+          rebuildTotals();
+          if (onChange) onChange();
+        };
+        inp.onblur = commit;
+        inp.onkeydown = e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') inp.replaceWith(valSpan); };
+      };
+      const grp = el('span', { class: 'flex gap-4 items-center' });
+      grp.appendChild(el('span', { class: 'muted' }, label + ':'));
+      grp.appendChild(valSpan);
+      annualBar.appendChild(grp);
+    }
+    annualBar.appendChild(button('Distribute evenly', { variant: 'sm ghost', onClick: () => {
+      const yt = fc.yearTarget || {};
+      const rev12 = Math.round((yt.revenue || 0) / 12);
+      const exp12 = Math.round((yt.expenses || 0) / 12);
+      for (let m = 1; m <= 12; m++) {
+        saveForecastMonth(fc.id, `${year}-${String(m).padStart(2, '0')}`, { revenue: rev12, expenses: exp12 });
+      }
+      renderRows();
+      if (onChange) onChange();
+    }}));
+  }
+
+  function renderRows() {
+    tb.innerHTML = '';
+    const { months, yearTarget } = getForecastVsActual(type, entityId, year);
+    for (let i = 0; i < 12; i++) {
+      const mData = months[i];
+      const monthKey = mData.key;
+      const isPast = new Date(Number(year), i + 1, 0) < now;
+      const tr = el('tr');
+      tr.appendChild(el('td', {}, MONTHS[i]));
+
+      function makeEditable(field, current) {
+        const cell = el('td', { class: 'right num' }, formatEUR(current));
+        cell.style.cursor = 'pointer';
+        cell.title = 'Click to edit';
+        cell.onclick = () => {
+          const inp = el('input', { type: 'number', value: current, min: 0,
+            style: 'width:100px;text-align:right;background:var(--bg-elev-3);border:1px solid var(--accent);border-radius:4px;padding:4px 6px;color:var(--text)' });
+          cell.innerHTML = ''; cell.appendChild(inp);
+          inp.focus(); inp.select();
+          const commit = () => {
+            const val = Number(inp.value) || 0;
+            saveForecastMonth(fc.id, monthKey, { [field]: val });
+            cell.innerHTML = ''; cell.textContent = formatEUR(val);
+            rebuildTotals();
+            if (onChange) onChange();
+          };
+          inp.onblur = commit;
+          inp.onkeydown = e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { cell.innerHTML = ''; cell.textContent = formatEUR(current); } };
+        };
+        return cell;
+      }
+
+      const net = mData.forecastRev - mData.forecastExp;
+      tr.appendChild(makeEditable('revenue', mData.forecastRev));
+      tr.appendChild(makeEditable('expenses', mData.forecastExp));
+      tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
+      tr.appendChild(el('td', { class: 'right num ' + (isPast ? '' : 'muted') }, formatEUR(mData.actualRev)));
+      tr.appendChild(el('td', { class: `right num ${mData.revVariance >= 0 ? '' : 'danger'}` }, isPast || mData.actualRev > 0 ? formatEUR(mData.revVariance) : '—'));
+      tb.appendChild(tr);
+    }
+    appendTotals(months, yearTarget);
+  }
+
+  function rebuildTotals() {
+    const { months, yearTarget } = getForecastVsActual(type, entityId, year);
+    while (tb.rows.length > 12) tb.deleteRow(tb.rows.length - 1);
+    appendTotals(months, yearTarget);
+  }
+
+  function appendTotals(months, yearTarget) {
+    const fcRev = months.reduce((s, m) => s + m.forecastRev, 0);
+    const fcExp = months.reduce((s, m) => s + m.forecastExp, 0);
+    const fcNet = fcRev - fcExp;
+    const actRev = months.reduce((s, m) => s + m.actualRev, 0);
+    const variance = actRev - fcRev;
+
+    const tRow = el('tr', { style: 'font-weight:600;background:var(--bg-elev-2)' });
+    tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em' }, 'TOTAL'));
+    tRow.appendChild(el('td', { class: 'right num' }, formatEUR(fcRev)));
+    tRow.appendChild(el('td', { class: 'right num' }, formatEUR(fcExp)));
+    tRow.appendChild(el('td', { class: 'right num' + (fcNet < 0 ? ' danger' : '') }, formatEUR(fcNet)));
+    tRow.appendChild(el('td', { class: 'right num' }, formatEUR(actRev)));
+    tRow.appendChild(el('td', { class: `right num ${variance >= 0 ? '' : 'danger'}` }, formatEUR(variance)));
+    tb.appendChild(tRow);
+
+    if (type === 'property' && yearTarget && (yearTarget.revenue || yearTarget.expenses)) {
+      const ytRev = yearTarget.revenue || 0;
+      const ytExp = yearTarget.expenses || 0;
+      const ytNet = ytRev - ytExp;
+      const ytRow = el('tr', { style: 'font-size:11px;color:var(--text-muted);background:var(--bg-elev-3)' });
+      ytRow.appendChild(el('td', {}, 'vs Annual Target'));
+      ytRow.appendChild(el('td', { class: 'right num' + (fcRev - ytRev >= 0 ? '' : ' danger') }, formatEUR(fcRev - ytRev)));
+      ytRow.appendChild(el('td', { class: 'right num' + (fcExp - ytExp > 0 ? ' warning' : '') }, formatEUR(fcExp - ytExp)));
+      ytRow.appendChild(el('td', { class: 'right num' + (fcNet - ytNet >= 0 ? '' : ' danger') }, formatEUR(fcNet - ytNet)));
+      ytRow.appendChild(el('td', { class: 'right num' + (actRev >= ytRev ? '' : ' danger') }, formatEUR(actRev - ytRev)));
+      ytRow.appendChild(el('td', {}));
+      tb.appendChild(ytRow);
+    }
+  }
 }
 
 // ===== TAX ESTIMATION =====
