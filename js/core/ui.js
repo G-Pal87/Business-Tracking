@@ -160,14 +160,20 @@ export function input(opts = {}) {
 
 export function select(opts = [], current = '', attrs = {}) {
   const s = el('select', { class: 'select', ...attrs });
+  const sel = Array.isArray(current) ? current.map(String) : [String(current)];
   for (const o of opts) {
     const val = typeof o === 'string' ? o : o.value;
     const label = typeof o === 'string' ? o : o.label;
     const option = el('option', { value: val }, label);
-    if (String(val) === String(current)) option.selected = true;
+    if (sel.includes(String(val))) option.selected = true;
     s.appendChild(option);
   }
   return s;
+}
+
+export function selVals(sel) {
+  const vals = [...sel.selectedOptions].map(o => o.value);
+  return vals.length === 0 ? null : vals;
 }
 
 export function textarea(opts = {}) {

@@ -1,6 +1,6 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today } from '../core/ui.js';
 import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 
@@ -36,7 +36,7 @@ function build() {
 function buildAllPayments(wrap) {
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   const propSel = select([{ value: 'all', label: 'All Properties' }, ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))], 'all');
-  const statusSel = select([{ value: 'all', label: 'All Statuses' }, ...Object.entries(PAYMENT_STATUSES).map(([v, m]) => ({ value: v, label: m.label }))], 'all');
+  const statusSel = select(Object.entries(PAYMENT_STATUSES).map(([v, m]) => ({ value: v, label: m.label })), [], { multiple: true, title: 'Ctrl+click to select multiple statuses' });
   const streamSel = select([{ value: 'all', label: 'All Streams' }, ...Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short }))], 'all');
 
   filterBar.appendChild(propSel);
@@ -54,8 +54,9 @@ function buildAllPayments(wrap) {
   const renderTable = () => {
     tableWrap.innerHTML = '';
     let rows = [...(state.db.payments || [])];
+    const statuses = selVals(statusSel);
     if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
-    if (statusSel.value !== 'all') rows = rows.filter(r => r.status === statusSel.value);
+    if (statuses) rows = rows.filter(r => statuses.includes(r.status));
     if (streamSel.value !== 'all') rows = rows.filter(r => r.stream === streamSel.value);
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 

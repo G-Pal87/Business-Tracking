@@ -1,6 +1,6 @@
 // Expenses module
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today } from '../core/ui.js';
 import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, groupByCategory } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, STREAMS } from '../core/config.js';
@@ -30,8 +30,8 @@ function build() {
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16 mt-24', style: 'flex-wrap:wrap' });
   const propSel = select([{ value: 'all', label: 'All Properties' }, ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))], 'all');
-  const catSel = select([{ value: 'all', label: 'All Categories' }, ...Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label }))], 'all');
-  const streamSel = select([{ value: 'all', label: 'All Streams' }, ...Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short }))], 'all');
+  const catSel = select(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), [], { multiple: true, title: 'Ctrl+click to select multiple categories' });
+  const streamSel = select(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), [], { multiple: true, title: 'Ctrl+click to select multiple streams' });
   filterBar.appendChild(propSel);
   filterBar.appendChild(catSel);
   filterBar.appendChild(streamSel);
@@ -45,9 +45,11 @@ function build() {
   const renderTable = () => {
     tableWrap.innerHTML = '';
     let rows = [...(state.db.expenses || [])];
+    const cats = selVals(catSel);
+    const streams = selVals(streamSel);
     if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
-    if (catSel.value !== 'all') rows = rows.filter(r => r.category === catSel.value);
-    if (streamSel.value !== 'all') rows = rows.filter(r => r.stream === streamSel.value);
+    if (cats) rows = rows.filter(r => cats.includes(r.category));
+    if (streams) rows = rows.filter(r => streams.includes(r.stream));
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
     if (rows.length === 0) {
