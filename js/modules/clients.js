@@ -139,7 +139,8 @@ function openForm(existing) {
   const nameI = input({ value: c.name });
   const emailI = input({ value: c.email, type: 'email' });
   const addressI = input({ value: c.address });
-  const vatI = input({ value: c.vatNumber });
+  const vatI = input({ value: c.vatNumber, placeholder: 'e.g. HU12345678' });
+  const regI = input({ value: c.registrationNumber, placeholder: 'e.g. 01-09-123456' });
   const ownerS = select(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), c.owner);
   const streamS = select(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label })), c.stream);
   const currencyS = select(CURRENCIES, c.currency);
@@ -148,6 +149,7 @@ function openForm(existing) {
 
   body.appendChild(formRow('Name', nameI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Email', emailI), formRow('VAT Number', vatI)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI)));
   body.appendChild(formRow('Address', addressI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Stream', streamS), formRow('Owner', ownerS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Currency', currencyS), formRow('Contract Start', dateI)));
@@ -160,6 +162,7 @@ function openForm(existing) {
       email: emailI.value.trim(),
       address: addressI.value.trim(),
       vatNumber: vatI.value.trim(),
+      registrationNumber: regI.value.trim(),
       owner: ownerS.value,
       stream: streamS.value,
       currency: currencyS.value,

@@ -21,6 +21,8 @@ function build() {
   wrap.appendChild(buildGithubCard());
   wrap.appendChild(buildCurrencyCard());
   wrap.appendChild(buildBusinessCard());
+  wrap.appendChild(buildInvoiceNumberingCard());
+  wrap.appendChild(buildVendorsCard());
   wrap.appendChild(buildServicesCard());
   wrap.appendChild(buildTeamCard());
   wrap.appendChild(buildDangerCard());
@@ -113,27 +115,166 @@ function buildBusinessCard() {
   const nameI = input({ value: b.name });
   const emailI = input({ value: b.email });
   const addressI = input({ value: b.address });
-  const vatI = input({ value: b.vatNumber });
-  const ibanI = input({ value: b.iban });
-  const bicI = input({ value: b.bic });
+  const regI = input({ value: b.registrationNumber, placeholder: 'e.g. 01-09-123456' });
+  const vatI = input({ value: b.vatNumber, placeholder: 'e.g. HU12345678' });
+  const ibanI = input({ value: b.iban, placeholder: 'e.g. HU42 1177 3016 1111...' });
+  const bicI = input({ value: b.bic, placeholder: 'e.g. OTPVHUHB' });
+  const swiftI = input({ value: b.swift, placeholder: 'Same as BIC or separate SWIFT code' });
   card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Business Name', nameI), formRow('Email', emailI)));
   card.appendChild(formRow('Address', addressI));
-  card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('VAT Number', vatI), formRow('IBAN', ibanI)));
-  card.appendChild(formRow('BIC / SWIFT', bicI));
+  card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI), formRow('VAT Number', vatI)));
+  card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('IBAN', ibanI), formRow('BIC', bicI)));
+  card.appendChild(formRow('SWIFT', swiftI, 'Used on invoice payment details. BIC and SWIFT are often identical.'));
   const save = button('Save', { variant: 'primary', onClick: () => {
+    const iban = ibanI.value.trim().replace(/\s/g, '');
+    const bic = bicI.value.trim().toUpperCase();
+    if (iban && !/^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$/.test(iban)) { toast('IBAN format looks incorrect', 'warning'); }
+    if (bic && !/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(bic)) { toast('BIC/SWIFT format looks incorrect', 'warning'); }
     state.db.settings.business = {
+      ...b,
       name: nameI.value.trim(),
       email: emailI.value.trim(),
       address: addressI.value.trim(),
+      registrationNumber: regI.value.trim(),
       vatNumber: vatI.value.trim(),
-      iban: ibanI.value.trim(),
-      bic: bicI.value.trim()
+      iban,
+      bic,
+      swift: swiftI.value.trim().toUpperCase()
     };
     markDirty();
     toast('Saved', 'success');
   }});
   card.appendChild(save);
   return card;
+}
+
+function buildInvoiceNumberingCard() {
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', {}, el('div', { class: 'card-title' }, 'Invoice Numbering'),
+      el('div', { class: 'card-subtitle' }, 'Prefix and starting sequence per owner per year'))
+  ));
+  const s = state.db.settings;
+  const prefixYou = input({ value: s.invoicePrefix?.you || 'INV', style: 'width:80px' });
+  const prefixRita = input({ value: s.invoicePrefix?.rita || 'RTA', style: 'width:80px' });
+  const year = new Date().getFullYear();
+  const seqYou = input({ type: 'number', value: s.invoiceCounters?.[`you_${year}`] || 0, min: 0, style: 'width:80px' });
+  const seqRita = input({ type: 'number', value: s.invoiceCounters?.[`rita_${year}`] || 0, min: 0, style: 'width:80px' });
+
+  card.appendChild(el('div', { class: 'form-row horizontal' },
+    formRow('Prefix — You', prefixYou, `Preview: ${prefixYou.value || 'INV'}-${year}-001`),
+    formRow('Prefix — Rita', prefixRita, `Preview: ${prefixRita.value || 'RTA'}-${year}-001`)
+  ));
+  card.appendChild(el('div', { class: 'form-row horizontal' },
+    formRow(`Sequence start — You (${year})`, seqYou, 'Next invoice will use this + 1'),
+    formRow(`Sequence start — Rita (${year})`, seqRita)
+  ));
+
+  prefixYou.oninput = () => { const p = prefixYou.nextElementSibling; if (p) p.textContent = `Preview: ${prefixYou.value || 'INV'}-${year}-001`; };
+
+  const save = button('Save', { variant: 'primary', onClick: () => {
+    if (!s.invoicePrefix) s.invoicePrefix = {};
+    if (!s.invoiceCounters) s.invoiceCounters = {};
+    s.invoicePrefix.you = prefixYou.value.trim() || 'INV';
+    s.invoicePrefix.rita = prefixRita.value.trim() || 'RTA';
+    s.invoiceCounters[`you_${year}`] = Number(seqYou.value) || 0;
+    s.invoiceCounters[`rita_${year}`] = Number(seqRita.value) || 0;
+    markDirty();
+    toast('Invoice numbering saved', 'success');
+  }});
+  card.appendChild(save);
+  return card;
+}
+
+function buildVendorsCard() {
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', {}, el('div', { class: 'card-title' }, 'Vendors'), el('div', { class: 'card-subtitle' }, 'Cleaners, maintenance, management companies')),
+    button('+ Add Vendor', { variant: 'primary', onClick: () => openVendorForm() })
+  ));
+  const vendors = state.db.vendors || [];
+  if (vendors.length === 0) {
+    card.appendChild(el('div', { class: 'empty' }, 'No vendors'));
+    return card;
+  }
+  const t = el('table', { class: 'table' });
+  t.innerHTML = `<thead><tr><th>Name</th><th>Type</th><th>Properties</th><th>Contact</th><th></th></tr></thead>`;
+  const tb = el('tbody');
+  for (const v of vendors) {
+    const props = (state.db.properties || []).filter(p => (v.propertyIds || []).includes(p.id)).map(p => p.name).join(', ');
+    const tr = el('tr');
+    tr.appendChild(el('td', {}, v.name));
+    tr.appendChild(el('td', {}, el('span', { class: 'badge' }, v.type)));
+    tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, props || 'All'));
+    tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, v.email || ''));
+    const actions = el('td', { class: 'right' });
+    actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openVendorForm(v) }));
+    actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
+      const ok = await confirmDialog(`Delete vendor ${v.name}?`, { danger: true, okLabel: 'Delete' });
+      if (ok) { remove('vendors', v.id); toast('Deleted', 'success'); setTimeout(() => location.hash = 'settings', 200); }
+    }}));
+    tr.appendChild(actions);
+    tb.appendChild(tr);
+  }
+  t.appendChild(tb);
+  const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+  card.appendChild(tw);
+  return card;
+}
+
+function openVendorForm(existing) {
+  const v = existing ? { ...existing } : {
+    id: newId('vnd'), name: '', type: 'cleaner', email: '', phone: '',
+    pricing: { studio: 0, one_bedroom: 0, two_bedroom: 0, three_bedroom_plus: 0 },
+    currency: 'EUR', propertyIds: [], notes: ''
+  };
+  const body = el('div', {});
+  const nameI = input({ value: v.name });
+  const typeS = select(['cleaner', 'maintenance', 'management', 'other'], v.type);
+  const emailI = input({ value: v.email, type: 'email' });
+  const phoneI = input({ value: v.phone });
+  const currencyS = select(CURRENCIES, v.currency);
+  const notesT = textarea(); notesT.value = v.notes || '';
+
+  const pricing = { ...v.pricing };
+  const studioI = input({ type: 'number', value: pricing.studio || 0, min: 0 });
+  const oneBedI = input({ type: 'number', value: pricing.one_bedroom || 0, min: 0 });
+  const twoBedI = input({ type: 'number', value: pricing.two_bedroom || 0, min: 0 });
+  const threePlusI = input({ type: 'number', value: pricing.three_bedroom_plus || 0, min: 0 });
+
+  const propChecks = el('div', { class: 'flex', style: 'flex-wrap:wrap;gap:8px' });
+  for (const p of state.db.properties || []) {
+    const cb = el('input', { type: 'checkbox', id: `vc_${p.id}` });
+    cb.checked = (v.propertyIds || []).includes(p.id);
+    propChecks.appendChild(el('label', { style: 'display:flex;align-items:center;gap:4px;font-size:12px' }, cb, p.name));
+  }
+
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Name', nameI), formRow('Type', typeS)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Email', emailI), formRow('Phone', phoneI)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Currency', currencyS)));
+  body.appendChild(el('div', { class: 'card', style: 'background:var(--bg);padding:12px;margin-bottom:12px' },
+    el('div', { class: 'card-title mb-8' }, 'Cleaning Price per Apt Type'),
+    el('div', { class: 'form-row horizontal' }, formRow('Studio', studioI), formRow('1 Bedroom', oneBedI)),
+    el('div', { class: 'form-row horizontal' }, formRow('2 Bedroom', twoBedI), formRow('3+ Bedroom', threePlusI))
+  ));
+  body.appendChild(formRow('Properties', propChecks));
+  body.appendChild(formRow('Notes', notesT));
+
+  const save = button('Save', { variant: 'primary', onClick: () => {
+    if (!nameI.value.trim()) { toast('Name required', 'danger'); return; }
+    const selectedProps = [...document.querySelectorAll('[id^="vc_"]')].filter(c => c.checked).map(c => c.id.replace('vc_', ''));
+    Object.assign(v, {
+      name: nameI.value.trim(), type: typeS.value, email: emailI.value.trim(),
+      phone: phoneI.value.trim(), currency: currencyS.value,
+      pricing: { studio: Number(studioI.value), one_bedroom: Number(oneBedI.value), two_bedroom: Number(twoBedI.value), three_bedroom_plus: Number(threePlusI.value) },
+      propertyIds: selectedProps, notes: notesT.value.trim()
+    });
+    upsert('vendors', v);
+    toast('Vendor saved', 'success');
+    closeModal();
+    setTimeout(() => location.hash = 'settings', 200);
+  }});
+  openModal({ title: existing ? 'Edit Vendor' : 'New Vendor', body, footer: [button('Cancel', { onClick: closeModal }), save] });
 }
 
 function buildServicesCard() {

@@ -25,9 +25,17 @@ function build() {
     kpi('Overdue', formatEUR(stats.overdueEUR), `${stats.overdueCount}`, 'danger')
   ));
 
-  const bar = el('div', { class: 'flex gap-8 mb-16' });
+  const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
+  const years = [...new Set((state.db.invoices || []).map(i => i.issueDate?.slice(0, 4)).filter(Boolean))].sort().reverse();
+  const months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+  const yearSel = select([{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))], 'all');
+  const monthSel = select([{ value: 'all', label: 'All Months' }, ...months.map(m => ({ value: m, label: new Date(2000, Number(m)-1, 1).toLocaleDateString('en-US', { month: 'long' }) }))], 'all');
+  const clientSel = select([{ value: 'all', label: 'All Clients' }, ...(state.db.clients || []).map(c => ({ value: c.id, label: c.name }))], 'all');
   const ownerSel = select([{ value: 'all', label: 'All Owners' }, ...Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l }))], 'all');
   const statusSel = select([{ value: 'all', label: 'All Statuses' }, ...Object.entries(INVOICE_STATUSES).map(([v, m]) => ({ value: v, label: m.label }))], 'all');
+  bar.appendChild(yearSel);
+  bar.appendChild(monthSel);
+  bar.appendChild(clientSel);
   bar.appendChild(ownerSel);
   bar.appendChild(statusSel);
   bar.appendChild(el('div', { class: 'flex-1' }));
@@ -40,6 +48,9 @@ function build() {
   const renderTable = () => {
     tableWrap.innerHTML = '';
     let rows = [...(state.db.invoices || [])];
+    if (yearSel.value !== 'all') rows = rows.filter(r => r.issueDate?.startsWith(yearSel.value));
+    if (monthSel.value !== 'all') rows = rows.filter(r => r.issueDate?.slice(5, 7) === monthSel.value);
+    if (clientSel.value !== 'all') rows = rows.filter(r => r.clientId === clientSel.value);
     if (ownerSel.value !== 'all') rows = rows.filter(r => r.owner === ownerSel.value);
     if (statusSel.value !== 'all') rows = rows.filter(r => r.status === statusSel.value);
     rows.sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate));
@@ -78,7 +89,20 @@ function build() {
     }
     t.appendChild(tb);
     tableWrap.appendChild(t);
+    // Totals footer
+    const totalEUR = rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
+    const paidEUR = rows.filter(r => r.status === 'paid').reduce((s, r) => s + toEUR(r.total, r.currency), 0);
+    tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px;flex-wrap:wrap;gap:8px' },
+      el('span', { class: 'muted' }, `${rows.length} invoice(s)`),
+      el('div', { class: 'flex gap-16' },
+        el('span', {}, `Paid: `, el('strong', { class: 'num' }, formatEUR(paidEUR))),
+        el('span', {}, `Total: `, el('strong', { class: 'num' }, formatEUR(totalEUR)))
+      )
+    ));
   };
+  yearSel.onchange = renderTable;
+  monthSel.onchange = renderTable;
+  clientSel.onchange = renderTable;
   ownerSel.onchange = renderTable;
   statusSel.onchange = renderTable;
   renderTable();
@@ -269,11 +293,14 @@ function openBuilder(existing) {
     inv.stream = byId('clients', inv.clientId)?.stream || inv.stream;
     inv.notes = notesT.value;
     if (!numberI.value.trim()) {
-      const counters = state.db.settings.invoiceCounters || (state.db.settings.invoiceCounters = { you: 0, rita: 0 });
+      const s = state.db.settings;
+      if (!s.invoiceCounters) s.invoiceCounters = {};
+      if (!s.invoicePrefix) s.invoicePrefix = {};
       const year = inv.issueDate.slice(0, 4);
-      const prefix = inv.owner === 'rita' ? 'RTA' : 'INV';
-      counters[inv.owner] = (counters[inv.owner] || 0) + 1;
-      inv.number = `${prefix}-${year}-${String(counters[inv.owner]).padStart(3, '0')}`;
+      const prefix = s.invoicePrefix[inv.owner] || (inv.owner === 'rita' ? 'RTA' : 'INV');
+      const counterKey = `${inv.owner}_${year}`;
+      s.invoiceCounters[counterKey] = (s.invoiceCounters[counterKey] || 0) + 1;
+      inv.number = `${prefix}-${year}-${String(s.invoiceCounters[counterKey]).padStart(3, '0')}`;
     } else {
       inv.number = numberI.value.trim();
     }

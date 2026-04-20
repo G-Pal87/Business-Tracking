@@ -216,3 +216,101 @@ export function availableYears() {
   for (const i of state.db.invoices || []) if (i.issueDate) years.add(i.issueDate.slice(0, 4));
   return [...years].sort().reverse();
 }
+
+// ============== Vendors ==============
+export function getVendors() { return state.db.vendors || []; }
+export function getVendorsByProperty(propertyId) {
+  return (state.db.vendors || []).filter(v => !v.propertyIds?.length || v.propertyIds.includes(propertyId));
+}
+
+// ============== Forecasts ==============
+export function getOrCreateForecast(type, entityId, year) {
+  if (!state.db.forecasts) state.db.forecasts = [];
+  const existing = state.db.forecasts.find(f => f.type === type && f.entityId === entityId && f.year === Number(year));
+  if (existing) return existing;
+  const fc = { id: newId('fcs'), type, entityId, year: Number(year), taxRate: 0, months: {} };
+  state.db.forecasts.push(fc);
+  markDirty();
+  return fc;
+}
+
+export function saveForecastMonth(forecastId, month, data) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  if (!fc) return;
+  fc.months[month] = { ...(fc.months[month] || {}), ...data };
+  markDirty();
+}
+
+export function setForecastTaxRate(forecastId, rate) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  if (!fc) return;
+  fc.taxRate = Number(rate) || 0;
+  markDirty();
+}
+
+export function getForecastVsActual(type, entityId, year) {
+  const fc = (state.db.forecasts || []).find(f => f.type === type && f.entityId === entityId && f.year === Number(year));
+  const months = [];
+  for (let m = 1; m <= 12; m++) {
+    const key = `${year}-${String(m).padStart(2, '0')}`;
+    const start = `${key}-01`;
+    const end = `${key}-${new Date(year, m, 0).getDate().toString().padStart(2, '0')}`;
+    let actualRev = 0, actualExp = 0;
+    if (type === 'property') {
+      actualRev = (state.db.payments || []).filter(p => p.propertyId === entityId && p.status === 'paid' && p.date >= start && p.date <= end).reduce((s, p) => s + toEUR(p.amount, p.currency), 0);
+      actualExp = (state.db.expenses || []).filter(e => e.propertyId === entityId && e.category !== 'renovation' && e.date >= start && e.date <= end).reduce((s, e) => s + toEUR(e.amount, e.currency), 0);
+    } else {
+      actualRev = (state.db.invoices || []).filter(i => i.stream === entityId && i.status === 'paid' && i.issueDate >= start && i.issueDate <= end).reduce((s, i) => s + toEUR(i.total, i.currency), 0);
+    }
+    const fd = fc?.months?.[key] || {};
+    months.push({ key, forecastRev: fd.revenue || 0, forecastExp: fd.expenses || 0, actualRev, actualExp, revVariance: actualRev - (fd.revenue || 0), expVariance: actualExp - (fd.expenses || 0) });
+  }
+  return { forecast: fc, months };
+}
+
+export function estimateTaxForYear(year, rate) {
+  const s = `${year}-01-01`, e = `${year}-12-31`;
+  const rev = [...(state.db.payments || []).filter(p => p.status === 'paid' && p.date >= s && p.date <= e).map(p => toEUR(p.amount, p.currency)), ...(state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e).map(i => toEUR(i.total, i.currency))].reduce((a, b) => a + b, 0);
+  const exp = (state.db.expenses || []).filter(ex => ex.category !== 'renovation' && ex.date >= s && ex.date <= e).reduce((a, ex) => a + toEUR(ex.amount, ex.currency), 0);
+  const taxable = Math.max(0, rev - exp);
+  const forecastRev = (state.db.forecasts || []).filter(f => f.year === Number(year)).reduce((sum, f) => sum + Object.values(f.months || {}).reduce((ms, md) => ms + (md.revenue || 0), 0), 0);
+  const forecastTaxable = Math.max(0, forecastRev - exp);
+  const r = Number(rate) || 0;
+  return { rev, exp, taxable, estimatedTax: taxable * (r / 100), forecastRev, forecastTaxable, forecastTax: forecastTaxable * (r / 100), rate: r };
+}
+
+// ============== LT Schedule ==============
+export function generatePaymentSchedule(property, months = 12) {
+  if (property.type !== 'long_term' || !property.monthlyRent) return [];
+  const today = new Date();
+  const dueDay = property.paymentDayOfMonth || 1;
+  return Array.from({ length: months }, (_, i) => {
+    const d = new Date(today.getFullYear(), today.getMonth() + i - 1, dueDay);
+    const dateStr = d.toISOString().slice(0, 10);
+    const monthKey = dateStr.slice(0, 7);
+    const paid = (state.db.payments || []).some(p => p.propertyId === property.id && p.date.slice(0, 7) === monthKey && p.status === 'paid');
+    return { date: dateStr, monthKey, amount: property.monthlyRent, currency: property.currency, amountEUR: toEUR(property.monthlyRent, property.currency), paid, overdue: !paid && d < today };
+  });
+}
+
+// ============== Centralised report data (single source of truth) ==============
+export function buildReportData(filters = {}) {
+  const f = { ...state.ui.filters, ...filters };
+  const matchDate = row => {
+    if (!f.year || f.year === 'all') return true;
+    const d = row.date || row.issueDate || '';
+    return d.startsWith(String(f.year));
+  };
+  const matchStream = row => !f.stream || f.stream === 'all' || !row.stream || row.stream === f.stream;
+
+  const payments = (state.db.payments || []).filter(p => p.status === 'paid' && matchDate(p) && matchStream(p));
+  const invoices = (state.db.invoices || []).filter(i => i.status === 'paid' && matchDate({ date: i.issueDate }) && matchStream(i));
+  const opExpenses = (state.db.expenses || []).filter(e => e.category !== 'renovation' && matchDate(e) && matchStream(e));
+  const renoExpenses = (state.db.expenses || []).filter(e => e.category === 'renovation' && matchDate(e));
+
+  const rev = [...payments, ...invoices.map(i => ({ ...i, amount: i.total }))].reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
+  const exp = opExpenses.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
+  const reno = renoExpenses.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
+
+  return { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net: rev - exp };
+}

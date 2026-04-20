@@ -65,6 +65,7 @@
       "mortgageAmount": 55000000,
       "mortgageMonthly": 280000,
       "mortgageRate": 6.5,
+      "paymentDayOfMonth": 5,
       "owner": "both",
       "airbnbCalUrl": "",
       "notes": "Central Budapest rental"
@@ -117,85 +118,929 @@
     }
   ],
   "payments": [
-    {"id":"pay_001","propertyId":"prop_001","amount":1850,"currency":"EUR","date":"2025-01-12","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Jan bookings"},
-    {"id":"pay_002","propertyId":"prop_001","amount":2100,"currency":"EUR","date":"2025-02-10","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Feb bookings"},
-    {"id":"pay_003","propertyId":"prop_001","amount":2400,"currency":"EUR","date":"2025-03-15","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Mar bookings"},
-    {"id":"pay_004","propertyId":"prop_001","amount":2800,"currency":"EUR","date":"2025-04-08","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Apr bookings"},
-    {"id":"pay_005","propertyId":"prop_002","amount":1450,"currency":"EUR","date":"2025-01-14","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Jan bookings"},
-    {"id":"pay_006","propertyId":"prop_002","amount":1620,"currency":"EUR","date":"2025-02-11","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Feb bookings"},
-    {"id":"pay_007","propertyId":"prop_002","amount":1800,"currency":"EUR","date":"2025-03-12","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Mar bookings"},
-    {"id":"pay_008","propertyId":"prop_002","amount":2050,"currency":"EUR","date":"2025-04-10","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Apr bookings"},
-    {"id":"pay_009","propertyId":"prop_003","amount":350000,"currency":"HUF","date":"2025-01-05","type":"rental","status":"paid","source":"manual","stream":"long_term_rental","notes":"January rent"},
-    {"id":"pay_010","propertyId":"prop_003","amount":350000,"currency":"HUF","date":"2025-02-05","type":"rental","status":"paid","source":"manual","stream":"long_term_rental","notes":"February rent"},
-    {"id":"pay_011","propertyId":"prop_003","amount":350000,"currency":"HUF","date":"2025-03-05","type":"rental","status":"paid","source":"manual","stream":"long_term_rental","notes":"March rent"},
-    {"id":"pay_012","propertyId":"prop_003","amount":350000,"currency":"HUF","date":"2025-04-05","type":"rental","status":"paid","source":"manual","stream":"long_term_rental","notes":"April rent"},
-    {"id":"pay_013","propertyId":"prop_005","amount":2700,"currency":"EUR","date":"2025-01-18","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Jan bookings"},
-    {"id":"pay_014","propertyId":"prop_005","amount":3200,"currency":"EUR","date":"2025-02-15","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Feb bookings"},
-    {"id":"pay_015","propertyId":"prop_005","amount":3600,"currency":"EUR","date":"2025-03-20","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Mar bookings"},
-    {"id":"pay_016","propertyId":"prop_005","amount":4100,"currency":"EUR","date":"2025-04-12","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Apr bookings"},
-    {"id":"pay_017","propertyId":"prop_001","amount":2600,"currency":"EUR","date":"2024-07-10","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Jul bookings"},
-    {"id":"pay_018","propertyId":"prop_001","amount":3100,"currency":"EUR","date":"2024-08-08","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Aug bookings"},
-    {"id":"pay_019","propertyId":"prop_002","amount":1950,"currency":"EUR","date":"2024-08-12","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Aug bookings"},
-    {"id":"pay_020","propertyId":"prop_005","amount":4500,"currency":"EUR","date":"2024-08-15","type":"rental","status":"paid","source":"airbnb","stream":"short_term_rental","notes":"Peak season"}
+    {
+      "id": "pay_001",
+      "propertyId": "prop_001",
+      "amount": 1850,
+      "currency": "EUR",
+      "date": "2025-01-12",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Jan bookings"
+    },
+    {
+      "id": "pay_002",
+      "propertyId": "prop_001",
+      "amount": 2100,
+      "currency": "EUR",
+      "date": "2025-02-10",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Feb bookings"
+    },
+    {
+      "id": "pay_003",
+      "propertyId": "prop_001",
+      "amount": 2400,
+      "currency": "EUR",
+      "date": "2025-03-15",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Mar bookings"
+    },
+    {
+      "id": "pay_004",
+      "propertyId": "prop_001",
+      "amount": 2800,
+      "currency": "EUR",
+      "date": "2025-04-08",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Apr bookings"
+    },
+    {
+      "id": "pay_005",
+      "propertyId": "prop_002",
+      "amount": 1450,
+      "currency": "EUR",
+      "date": "2025-01-14",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Jan bookings"
+    },
+    {
+      "id": "pay_006",
+      "propertyId": "prop_002",
+      "amount": 1620,
+      "currency": "EUR",
+      "date": "2025-02-11",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Feb bookings"
+    },
+    {
+      "id": "pay_007",
+      "propertyId": "prop_002",
+      "amount": 1800,
+      "currency": "EUR",
+      "date": "2025-03-12",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Mar bookings"
+    },
+    {
+      "id": "pay_008",
+      "propertyId": "prop_002",
+      "amount": 2050,
+      "currency": "EUR",
+      "date": "2025-04-10",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Apr bookings"
+    },
+    {
+      "id": "pay_009",
+      "propertyId": "prop_003",
+      "amount": 350000,
+      "currency": "HUF",
+      "date": "2025-01-05",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "January rent"
+    },
+    {
+      "id": "pay_010",
+      "propertyId": "prop_003",
+      "amount": 350000,
+      "currency": "HUF",
+      "date": "2025-02-05",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "February rent"
+    },
+    {
+      "id": "pay_011",
+      "propertyId": "prop_003",
+      "amount": 350000,
+      "currency": "HUF",
+      "date": "2025-03-05",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "March rent"
+    },
+    {
+      "id": "pay_012",
+      "propertyId": "prop_003",
+      "amount": 350000,
+      "currency": "HUF",
+      "date": "2025-04-05",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "April rent"
+    },
+    {
+      "id": "pay_013",
+      "propertyId": "prop_005",
+      "amount": 2700,
+      "currency": "EUR",
+      "date": "2025-01-18",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Jan bookings"
+    },
+    {
+      "id": "pay_014",
+      "propertyId": "prop_005",
+      "amount": 3200,
+      "currency": "EUR",
+      "date": "2025-02-15",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Feb bookings"
+    },
+    {
+      "id": "pay_015",
+      "propertyId": "prop_005",
+      "amount": 3600,
+      "currency": "EUR",
+      "date": "2025-03-20",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Mar bookings"
+    },
+    {
+      "id": "pay_016",
+      "propertyId": "prop_005",
+      "amount": 4100,
+      "currency": "EUR",
+      "date": "2025-04-12",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Apr bookings"
+    },
+    {
+      "id": "pay_017",
+      "propertyId": "prop_001",
+      "amount": 2600,
+      "currency": "EUR",
+      "date": "2024-07-10",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Jul bookings"
+    },
+    {
+      "id": "pay_018",
+      "propertyId": "prop_001",
+      "amount": 3100,
+      "currency": "EUR",
+      "date": "2024-08-08",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Aug bookings"
+    },
+    {
+      "id": "pay_019",
+      "propertyId": "prop_002",
+      "amount": 1950,
+      "currency": "EUR",
+      "date": "2024-08-12",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Aug bookings"
+    },
+    {
+      "id": "pay_020",
+      "propertyId": "prop_005",
+      "amount": 4500,
+      "currency": "EUR",
+      "date": "2024-08-15",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Peak season"
+    }
   ],
   "expenses": [
-    {"id":"exp_001","propertyId":"prop_001","category":"mortgage","amount":920,"currency":"EUR","date":"2025-01-01","vendor":"Bank","description":"January mortgage","stream":"short_term_rental"},
-    {"id":"exp_002","propertyId":"prop_001","category":"mortgage","amount":920,"currency":"EUR","date":"2025-02-01","vendor":"Bank","description":"February mortgage","stream":"short_term_rental"},
-    {"id":"exp_003","propertyId":"prop_001","category":"mortgage","amount":920,"currency":"EUR","date":"2025-03-01","vendor":"Bank","description":"March mortgage","stream":"short_term_rental"},
-    {"id":"exp_004","propertyId":"prop_001","category":"mortgage","amount":920,"currency":"EUR","date":"2025-04-01","vendor":"Bank","description":"April mortgage","stream":"short_term_rental"},
-    {"id":"exp_005","propertyId":"prop_001","category":"maintenance","amount":180,"currency":"EUR","date":"2025-02-20","vendor":"Plumber","description":"Bathroom fix","stream":"short_term_rental"},
-    {"id":"exp_006","propertyId":"prop_001","category":"insurance","amount":340,"currency":"EUR","date":"2025-01-15","vendor":"Mapfre","description":"Annual insurance","stream":"short_term_rental"},
-    {"id":"exp_007","propertyId":"prop_002","category":"mortgage","amount":680,"currency":"EUR","date":"2025-01-01","vendor":"Bank","description":"January mortgage","stream":"short_term_rental"},
-    {"id":"exp_008","propertyId":"prop_002","category":"mortgage","amount":680,"currency":"EUR","date":"2025-02-01","vendor":"Bank","description":"February mortgage","stream":"short_term_rental"},
-    {"id":"exp_009","propertyId":"prop_002","category":"mortgage","amount":680,"currency":"EUR","date":"2025-03-01","vendor":"Bank","description":"March mortgage","stream":"short_term_rental"},
-    {"id":"exp_010","propertyId":"prop_002","category":"mortgage","amount":680,"currency":"EUR","date":"2025-04-01","vendor":"Bank","description":"April mortgage","stream":"short_term_rental"},
-    {"id":"exp_011","propertyId":"prop_003","category":"mortgage","amount":280000,"currency":"HUF","date":"2025-01-01","vendor":"OTP Bank","description":"January mortgage","stream":"long_term_rental"},
-    {"id":"exp_012","propertyId":"prop_003","category":"mortgage","amount":280000,"currency":"HUF","date":"2025-02-01","vendor":"OTP Bank","description":"February mortgage","stream":"long_term_rental"},
-    {"id":"exp_013","propertyId":"prop_003","category":"mortgage","amount":280000,"currency":"HUF","date":"2025-03-01","vendor":"OTP Bank","description":"March mortgage","stream":"long_term_rental"},
-    {"id":"exp_014","propertyId":"prop_003","category":"mortgage","amount":280000,"currency":"HUF","date":"2025-04-01","vendor":"OTP Bank","description":"April mortgage","stream":"long_term_rental"},
-    {"id":"exp_015","propertyId":"prop_004","category":"renovation","amount":8500000,"currency":"HUF","date":"2024-03-10","vendor":"Buda Construction","description":"Structural work","stream":"short_term_rental"},
-    {"id":"exp_016","propertyId":"prop_004","category":"renovation","amount":4200000,"currency":"HUF","date":"2024-06-15","vendor":"IKEA Pro","description":"Kitchen & bathrooms","stream":"short_term_rental"},
-    {"id":"exp_017","propertyId":"prop_004","category":"renovation","amount":3100000,"currency":"HUF","date":"2024-09-20","vendor":"Decor Hungary","description":"Interior design","stream":"short_term_rental"},
-    {"id":"exp_018","propertyId":"prop_004","category":"renovation","amount":2800000,"currency":"HUF","date":"2025-01-10","vendor":"Pool Builders","description":"Pool installation","stream":"short_term_rental"},
-    {"id":"exp_019","propertyId":"prop_004","category":"renovation","amount":1900000,"currency":"HUF","date":"2025-03-05","vendor":"Smart Home HU","description":"Home automation","stream":"short_term_rental"},
-    {"id":"exp_020","propertyId":"prop_004","category":"mortgage","amount":520000,"currency":"HUF","date":"2025-01-01","vendor":"OTP Bank","description":"January mortgage","stream":"short_term_rental"},
-    {"id":"exp_021","propertyId":"prop_004","category":"mortgage","amount":520000,"currency":"HUF","date":"2025-02-01","vendor":"OTP Bank","description":"February mortgage","stream":"short_term_rental"},
-    {"id":"exp_022","propertyId":"prop_004","category":"mortgage","amount":520000,"currency":"HUF","date":"2025-03-01","vendor":"OTP Bank","description":"March mortgage","stream":"short_term_rental"},
-    {"id":"exp_023","propertyId":"prop_004","category":"mortgage","amount":520000,"currency":"HUF","date":"2025-04-01","vendor":"OTP Bank","description":"April mortgage","stream":"short_term_rental"},
-    {"id":"exp_024","propertyId":"prop_005","category":"mortgage","amount":1100,"currency":"EUR","date":"2025-01-01","vendor":"Alpha Bank","description":"January mortgage","stream":"short_term_rental"},
-    {"id":"exp_025","propertyId":"prop_005","category":"mortgage","amount":1100,"currency":"EUR","date":"2025-02-01","vendor":"Alpha Bank","description":"February mortgage","stream":"short_term_rental"},
-    {"id":"exp_026","propertyId":"prop_005","category":"mortgage","amount":1100,"currency":"EUR","date":"2025-03-01","vendor":"Alpha Bank","description":"March mortgage","stream":"short_term_rental"},
-    {"id":"exp_027","propertyId":"prop_005","category":"mortgage","amount":1100,"currency":"EUR","date":"2025-04-01","vendor":"Alpha Bank","description":"April mortgage","stream":"short_term_rental"},
-    {"id":"exp_028","propertyId":"prop_005","category":"management","amount":250,"currency":"EUR","date":"2025-03-25","vendor":"Athens PM","description":"Property management Q1","stream":"short_term_rental"},
-    {"id":"exp_029","propertyId":"prop_001","category":"utilities","amount":95,"currency":"EUR","date":"2025-03-18","vendor":"Endesa","description":"Electricity Q1","stream":"short_term_rental"},
-    {"id":"exp_030","propertyId":"prop_002","category":"utilities","amount":72,"currency":"EUR","date":"2025-03-20","vendor":"EDP","description":"Electricity Q1","stream":"short_term_rental"}
+    {
+      "id": "exp_001",
+      "propertyId": "prop_001",
+      "category": "mortgage",
+      "amount": 920,
+      "currency": "EUR",
+      "date": "2025-01-01",
+      "vendor": "Bank",
+      "description": "January mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_002",
+      "propertyId": "prop_001",
+      "category": "mortgage",
+      "amount": 920,
+      "currency": "EUR",
+      "date": "2025-02-01",
+      "vendor": "Bank",
+      "description": "February mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_003",
+      "propertyId": "prop_001",
+      "category": "mortgage",
+      "amount": 920,
+      "currency": "EUR",
+      "date": "2025-03-01",
+      "vendor": "Bank",
+      "description": "March mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_004",
+      "propertyId": "prop_001",
+      "category": "mortgage",
+      "amount": 920,
+      "currency": "EUR",
+      "date": "2025-04-01",
+      "vendor": "Bank",
+      "description": "April mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_005",
+      "propertyId": "prop_001",
+      "category": "maintenance",
+      "amount": 180,
+      "currency": "EUR",
+      "date": "2025-02-20",
+      "vendor": "Plumber",
+      "description": "Bathroom fix",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_006",
+      "propertyId": "prop_001",
+      "category": "insurance",
+      "amount": 340,
+      "currency": "EUR",
+      "date": "2025-01-15",
+      "vendor": "Mapfre",
+      "description": "Annual insurance",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_007",
+      "propertyId": "prop_002",
+      "category": "mortgage",
+      "amount": 680,
+      "currency": "EUR",
+      "date": "2025-01-01",
+      "vendor": "Bank",
+      "description": "January mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_008",
+      "propertyId": "prop_002",
+      "category": "mortgage",
+      "amount": 680,
+      "currency": "EUR",
+      "date": "2025-02-01",
+      "vendor": "Bank",
+      "description": "February mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_009",
+      "propertyId": "prop_002",
+      "category": "mortgage",
+      "amount": 680,
+      "currency": "EUR",
+      "date": "2025-03-01",
+      "vendor": "Bank",
+      "description": "March mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_010",
+      "propertyId": "prop_002",
+      "category": "mortgage",
+      "amount": 680,
+      "currency": "EUR",
+      "date": "2025-04-01",
+      "vendor": "Bank",
+      "description": "April mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_011",
+      "propertyId": "prop_003",
+      "category": "mortgage",
+      "amount": 280000,
+      "currency": "HUF",
+      "date": "2025-01-01",
+      "vendor": "OTP Bank",
+      "description": "January mortgage",
+      "stream": "long_term_rental"
+    },
+    {
+      "id": "exp_012",
+      "propertyId": "prop_003",
+      "category": "mortgage",
+      "amount": 280000,
+      "currency": "HUF",
+      "date": "2025-02-01",
+      "vendor": "OTP Bank",
+      "description": "February mortgage",
+      "stream": "long_term_rental"
+    },
+    {
+      "id": "exp_013",
+      "propertyId": "prop_003",
+      "category": "mortgage",
+      "amount": 280000,
+      "currency": "HUF",
+      "date": "2025-03-01",
+      "vendor": "OTP Bank",
+      "description": "March mortgage",
+      "stream": "long_term_rental"
+    },
+    {
+      "id": "exp_014",
+      "propertyId": "prop_003",
+      "category": "mortgage",
+      "amount": 280000,
+      "currency": "HUF",
+      "date": "2025-04-01",
+      "vendor": "OTP Bank",
+      "description": "April mortgage",
+      "stream": "long_term_rental"
+    },
+    {
+      "id": "exp_015",
+      "propertyId": "prop_004",
+      "category": "renovation",
+      "amount": 8500000,
+      "currency": "HUF",
+      "date": "2024-03-10",
+      "vendor": "Buda Construction",
+      "description": "Structural work",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_016",
+      "propertyId": "prop_004",
+      "category": "renovation",
+      "amount": 4200000,
+      "currency": "HUF",
+      "date": "2024-06-15",
+      "vendor": "IKEA Pro",
+      "description": "Kitchen & bathrooms",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_017",
+      "propertyId": "prop_004",
+      "category": "renovation",
+      "amount": 3100000,
+      "currency": "HUF",
+      "date": "2024-09-20",
+      "vendor": "Decor Hungary",
+      "description": "Interior design",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_018",
+      "propertyId": "prop_004",
+      "category": "renovation",
+      "amount": 2800000,
+      "currency": "HUF",
+      "date": "2025-01-10",
+      "vendor": "Pool Builders",
+      "description": "Pool installation",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_019",
+      "propertyId": "prop_004",
+      "category": "renovation",
+      "amount": 1900000,
+      "currency": "HUF",
+      "date": "2025-03-05",
+      "vendor": "Smart Home HU",
+      "description": "Home automation",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_020",
+      "propertyId": "prop_004",
+      "category": "mortgage",
+      "amount": 520000,
+      "currency": "HUF",
+      "date": "2025-01-01",
+      "vendor": "OTP Bank",
+      "description": "January mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_021",
+      "propertyId": "prop_004",
+      "category": "mortgage",
+      "amount": 520000,
+      "currency": "HUF",
+      "date": "2025-02-01",
+      "vendor": "OTP Bank",
+      "description": "February mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_022",
+      "propertyId": "prop_004",
+      "category": "mortgage",
+      "amount": 520000,
+      "currency": "HUF",
+      "date": "2025-03-01",
+      "vendor": "OTP Bank",
+      "description": "March mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_023",
+      "propertyId": "prop_004",
+      "category": "mortgage",
+      "amount": 520000,
+      "currency": "HUF",
+      "date": "2025-04-01",
+      "vendor": "OTP Bank",
+      "description": "April mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_024",
+      "propertyId": "prop_005",
+      "category": "mortgage",
+      "amount": 1100,
+      "currency": "EUR",
+      "date": "2025-01-01",
+      "vendor": "Alpha Bank",
+      "description": "January mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_025",
+      "propertyId": "prop_005",
+      "category": "mortgage",
+      "amount": 1100,
+      "currency": "EUR",
+      "date": "2025-02-01",
+      "vendor": "Alpha Bank",
+      "description": "February mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_026",
+      "propertyId": "prop_005",
+      "category": "mortgage",
+      "amount": 1100,
+      "currency": "EUR",
+      "date": "2025-03-01",
+      "vendor": "Alpha Bank",
+      "description": "March mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_027",
+      "propertyId": "prop_005",
+      "category": "mortgage",
+      "amount": 1100,
+      "currency": "EUR",
+      "date": "2025-04-01",
+      "vendor": "Alpha Bank",
+      "description": "April mortgage",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_028",
+      "propertyId": "prop_005",
+      "category": "management",
+      "amount": 250,
+      "currency": "EUR",
+      "date": "2025-03-25",
+      "vendor": "Athens PM",
+      "description": "Property management Q1",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_029",
+      "propertyId": "prop_001",
+      "category": "utilities",
+      "amount": 95,
+      "currency": "EUR",
+      "date": "2025-03-18",
+      "vendor": "Endesa",
+      "description": "Electricity Q1",
+      "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_030",
+      "propertyId": "prop_002",
+      "category": "utilities",
+      "amount": 72,
+      "currency": "EUR",
+      "date": "2025-03-20",
+      "vendor": "EDP",
+      "description": "Electricity Q1",
+      "stream": "short_term_rental"
+    }
   ],
   "clients": [
-    {"id":"cli_001","name":"Acme SaaS Inc.","email":"billing@acmesaas.com","address":"123 Tech Ave, Austin TX","vatNumber":"US-842910","owner":"you","stream":"customer_success","currency":"EUR","contractStart":"2024-06-01","notes":"Monthly retainer"},
-    {"id":"cli_002","name":"Nordic Cloud AB","email":"finance@nordiccloud.se","address":"Storgatan 5, Stockholm","vatNumber":"SE556789012301","owner":"you","stream":"customer_success","currency":"EUR","contractStart":"2024-09-15","notes":"Quarterly reviews"},
-    {"id":"cli_003","name":"Budapest Bistro Group","email":"rita@bistro.hu","address":"Andrassy ut 21, Budapest","vatNumber":"HU12345678","owner":"rita","stream":"marketing_services","currency":"HUF","contractStart":"2024-11-01","notes":"Social media + campaigns"},
-    {"id":"cli_004","name":"Mediterra Boutique Hotels","email":"hello@mediterra.it","address":"Via Roma 8, Rome","vatNumber":"IT01234567890","owner":"rita","stream":"marketing_services","currency":"EUR","contractStart":"2025-01-10","notes":"Performance marketing"}
+    {
+      "id": "cli_001",
+      "name": "Acme SaaS Inc.",
+      "email": "billing@acmesaas.com",
+      "address": "123 Tech Ave, Austin TX",
+      "vatNumber": "US-842910",
+      "registrationNumber": "US-DE-8429100",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2024-06-01",
+      "notes": "Monthly retainer"
+    },
+    {
+      "id": "cli_002",
+      "name": "Nordic Cloud AB",
+      "email": "finance@nordiccloud.se",
+      "address": "Storgatan 5, Stockholm",
+      "vatNumber": "SE556789012301",
+      "registrationNumber": "SE5567890123",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2024-09-15",
+      "notes": "Quarterly reviews"
+    },
+    {
+      "id": "cli_003",
+      "name": "Budapest Bistro Group",
+      "email": "rita@bistro.hu",
+      "address": "Andrassy ut 21, Budapest",
+      "vatNumber": "HU12345678",
+      "registrationNumber": "01-09-123456",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "HUF",
+      "contractStart": "2024-11-01",
+      "notes": "Social media + campaigns"
+    },
+    {
+      "id": "cli_004",
+      "name": "Mediterra Boutique Hotels",
+      "email": "hello@mediterra.it",
+      "address": "Via Roma 8, Rome",
+      "vatNumber": "IT01234567890",
+      "registrationNumber": "IT-RM-20241234",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "contractStart": "2025-01-10",
+      "notes": "Performance marketing"
+    }
   ],
   "services": [
-    {"id":"svc_001","name":"Customer Success Management","description":"CS strategy, QBRs, health scoring","unit":"day","defaultRate":650,"currency":"EUR","stream":"customer_success"},
-    {"id":"svc_002","name":"Onboarding Program Design","description":"Build end-to-end onboarding playbook","unit":"project","defaultRate":4500,"currency":"EUR","stream":"customer_success"},
-    {"id":"svc_003","name":"CS Advisory Hour","description":"Ad-hoc advisory call","unit":"hour","defaultRate":120,"currency":"EUR","stream":"customer_success"},
-    {"id":"svc_004","name":"Social Media Management","description":"Content calendar, posting, community","unit":"month","defaultRate":1500,"currency":"EUR","stream":"marketing_services"},
-    {"id":"svc_005","name":"Paid Ads Campaign","description":"Meta/Google campaign setup + optimization","unit":"project","defaultRate":2800,"currency":"EUR","stream":"marketing_services"},
-    {"id":"svc_006","name":"Marketing Consulting Day","description":"Strategy day with deliverables","unit":"day","defaultRate":850,"currency":"EUR","stream":"marketing_services"}
+    {
+      "id": "svc_001",
+      "name": "Customer Success Management",
+      "description": "CS strategy, QBRs, health scoring",
+      "unit": "day",
+      "defaultRate": 650,
+      "currency": "EUR",
+      "stream": "customer_success"
+    },
+    {
+      "id": "svc_002",
+      "name": "Onboarding Program Design",
+      "description": "Build end-to-end onboarding playbook",
+      "unit": "project",
+      "defaultRate": 4500,
+      "currency": "EUR",
+      "stream": "customer_success"
+    },
+    {
+      "id": "svc_003",
+      "name": "CS Advisory Hour",
+      "description": "Ad-hoc advisory call",
+      "unit": "hour",
+      "defaultRate": 120,
+      "currency": "EUR",
+      "stream": "customer_success"
+    },
+    {
+      "id": "svc_004",
+      "name": "Social Media Management",
+      "description": "Content calendar, posting, community",
+      "unit": "month",
+      "defaultRate": 1500,
+      "currency": "EUR",
+      "stream": "marketing_services"
+    },
+    {
+      "id": "svc_005",
+      "name": "Paid Ads Campaign",
+      "description": "Meta/Google campaign setup + optimization",
+      "unit": "project",
+      "defaultRate": 2800,
+      "currency": "EUR",
+      "stream": "marketing_services"
+    },
+    {
+      "id": "svc_006",
+      "name": "Marketing Consulting Day",
+      "description": "Strategy day with deliverables",
+      "unit": "day",
+      "defaultRate": 850,
+      "currency": "EUR",
+      "stream": "marketing_services"
+    }
   ],
   "invoices": [
-    {"id":"inv_001","number":"INV-2025-001","clientId":"cli_001","owner":"you","issueDate":"2025-01-31","dueDate":"2025-02-28","stream":"customer_success","currency":"EUR","status":"paid","lineItems":[{"serviceId":"svc_001","description":"CS Management - January","quantity":10,"unit":"day","rate":650,"total":6500}],"subtotal":6500,"taxRate":0,"tax":0,"total":6500,"notes":""},
-    {"id":"inv_002","number":"INV-2025-002","clientId":"cli_001","owner":"you","issueDate":"2025-02-28","dueDate":"2025-03-31","stream":"customer_success","currency":"EUR","status":"paid","lineItems":[{"serviceId":"svc_001","description":"CS Management - February","quantity":9,"unit":"day","rate":650,"total":5850}],"subtotal":5850,"taxRate":0,"tax":0,"total":5850,"notes":""},
-    {"id":"inv_003","number":"INV-2025-003","clientId":"cli_002","owner":"you","issueDate":"2025-03-15","dueDate":"2025-04-15","stream":"customer_success","currency":"EUR","status":"paid","lineItems":[{"serviceId":"svc_002","description":"Onboarding Playbook","quantity":1,"unit":"project","rate":4500,"total":4500},{"serviceId":"svc_003","description":"Follow-up calls","quantity":4,"unit":"hour","rate":120,"total":480}],"subtotal":4980,"taxRate":0,"tax":0,"total":4980,"notes":""},
-    {"id":"inv_004","number":"INV-2025-004","clientId":"cli_001","owner":"you","issueDate":"2025-03-31","dueDate":"2025-04-30","stream":"customer_success","currency":"EUR","status":"paid","lineItems":[{"serviceId":"svc_001","description":"CS Management - March","quantity":11,"unit":"day","rate":650,"total":7150}],"subtotal":7150,"taxRate":0,"tax":0,"total":7150,"notes":""},
-    {"id":"inv_005","number":"RTA-2025-001","clientId":"cli_003","owner":"rita","issueDate":"2025-01-31","dueDate":"2025-02-28","stream":"marketing_services","currency":"HUF","status":"paid","lineItems":[{"serviceId":"svc_004","description":"Social Media - January","quantity":1,"unit":"month","rate":550000,"total":550000}],"subtotal":550000,"taxRate":0,"tax":0,"total":550000,"notes":""},
-    {"id":"inv_006","number":"RTA-2025-002","clientId":"cli_003","owner":"rita","issueDate":"2025-02-28","dueDate":"2025-03-31","stream":"marketing_services","currency":"HUF","status":"paid","lineItems":[{"serviceId":"svc_004","description":"Social Media - February","quantity":1,"unit":"month","rate":550000,"total":550000}],"subtotal":550000,"taxRate":0,"tax":0,"total":550000,"notes":""},
-    {"id":"inv_007","number":"RTA-2025-003","clientId":"cli_004","owner":"rita","issueDate":"2025-02-15","dueDate":"2025-03-15","stream":"marketing_services","currency":"EUR","status":"paid","lineItems":[{"serviceId":"svc_005","description":"Meta Ads Q1 Campaign","quantity":1,"unit":"project","rate":2800,"total":2800},{"serviceId":"svc_006","description":"Strategy Day","quantity":2,"unit":"day","rate":850,"total":1700}],"subtotal":4500,"taxRate":0,"tax":0,"total":4500,"notes":""},
-    {"id":"inv_008","number":"INV-2025-005","clientId":"cli_002","owner":"you","issueDate":"2025-04-15","dueDate":"2025-05-15","stream":"customer_success","currency":"EUR","status":"sent","lineItems":[{"serviceId":"svc_001","description":"CS Management - April","quantity":8,"unit":"day","rate":650,"total":5200}],"subtotal":5200,"taxRate":0,"tax":0,"total":5200,"notes":""}
+    {
+      "id": "inv_001",
+      "number": "INV-2025-001",
+      "clientId": "cli_001",
+      "owner": "you",
+      "issueDate": "2025-01-31",
+      "dueDate": "2025-02-28",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_001",
+          "description": "CS Management - January",
+          "quantity": 10,
+          "unit": "day",
+          "rate": 650,
+          "total": 6500
+        }
+      ],
+      "subtotal": 6500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 6500,
+      "notes": ""
+    },
+    {
+      "id": "inv_002",
+      "number": "INV-2025-002",
+      "clientId": "cli_001",
+      "owner": "you",
+      "issueDate": "2025-02-28",
+      "dueDate": "2025-03-31",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_001",
+          "description": "CS Management - February",
+          "quantity": 9,
+          "unit": "day",
+          "rate": 650,
+          "total": 5850
+        }
+      ],
+      "subtotal": 5850,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 5850,
+      "notes": ""
+    },
+    {
+      "id": "inv_003",
+      "number": "INV-2025-003",
+      "clientId": "cli_002",
+      "owner": "you",
+      "issueDate": "2025-03-15",
+      "dueDate": "2025-04-15",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_002",
+          "description": "Onboarding Playbook",
+          "quantity": 1,
+          "unit": "project",
+          "rate": 4500,
+          "total": 4500
+        },
+        {
+          "serviceId": "svc_003",
+          "description": "Follow-up calls",
+          "quantity": 4,
+          "unit": "hour",
+          "rate": 120,
+          "total": 480
+        }
+      ],
+      "subtotal": 4980,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 4980,
+      "notes": ""
+    },
+    {
+      "id": "inv_004",
+      "number": "INV-2025-004",
+      "clientId": "cli_001",
+      "owner": "you",
+      "issueDate": "2025-03-31",
+      "dueDate": "2025-04-30",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_001",
+          "description": "CS Management - March",
+          "quantity": 11,
+          "unit": "day",
+          "rate": 650,
+          "total": 7150
+        }
+      ],
+      "subtotal": 7150,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 7150,
+      "notes": ""
+    },
+    {
+      "id": "inv_005",
+      "number": "RTA-2025-001",
+      "clientId": "cli_003",
+      "owner": "rita",
+      "issueDate": "2025-01-31",
+      "dueDate": "2025-02-28",
+      "stream": "marketing_services",
+      "currency": "HUF",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_004",
+          "description": "Social Media - January",
+          "quantity": 1,
+          "unit": "month",
+          "rate": 550000,
+          "total": 550000
+        }
+      ],
+      "subtotal": 550000,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 550000,
+      "notes": ""
+    },
+    {
+      "id": "inv_006",
+      "number": "RTA-2025-002",
+      "clientId": "cli_003",
+      "owner": "rita",
+      "issueDate": "2025-02-28",
+      "dueDate": "2025-03-31",
+      "stream": "marketing_services",
+      "currency": "HUF",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_004",
+          "description": "Social Media - February",
+          "quantity": 1,
+          "unit": "month",
+          "rate": 550000,
+          "total": 550000
+        }
+      ],
+      "subtotal": 550000,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 550000,
+      "notes": ""
+    },
+    {
+      "id": "inv_007",
+      "number": "RTA-2025-003",
+      "clientId": "cli_004",
+      "owner": "rita",
+      "issueDate": "2025-02-15",
+      "dueDate": "2025-03-15",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_005",
+          "description": "Meta Ads Q1 Campaign",
+          "quantity": 1,
+          "unit": "project",
+          "rate": 2800,
+          "total": 2800
+        },
+        {
+          "serviceId": "svc_006",
+          "description": "Strategy Day",
+          "quantity": 2,
+          "unit": "day",
+          "rate": 850,
+          "total": 1700
+        }
+      ],
+      "subtotal": 4500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 4500,
+      "notes": ""
+    },
+    {
+      "id": "inv_008",
+      "number": "INV-2025-005",
+      "clientId": "cli_002",
+      "owner": "you",
+      "issueDate": "2025-04-15",
+      "dueDate": "2025-05-15",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "sent",
+      "lineItems": [
+        {
+          "serviceId": "svc_001",
+          "description": "CS Management - April",
+          "quantity": 8,
+          "unit": "day",
+          "rate": 650,
+          "total": 5200
+        }
+      ],
+      "subtotal": 5200,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 5200,
+      "notes": ""
+    }
   ],
   "tenants": [
-    {"id":"ten_001","propertyId":"prop_003","name":"Kovacs Anna","email":"akovacs@example.hu","phone":"+36 30 123 4567","leaseStart":"2024-09-01","leaseEnd":"2025-08-31","monthlyRent":350000,"currency":"HUF","deposit":700000,"notes":"On time payer"}
+    {
+      "id": "ten_001",
+      "propertyId": "prop_003",
+      "name": "Kovacs Anna",
+      "email": "akovacs@example.hu",
+      "phone": "+36 30 123 4567",
+      "leaseStart": "2024-09-01",
+      "leaseEnd": "2025-08-31",
+      "monthlyRent": 350000,
+      "currency": "HUF",
+      "deposit": 700000,
+      "notes": "On time payer"
+    }
   ],
   "settings": {
     "masterCurrency": "EUR",
@@ -212,12 +1057,307 @@
       "bic": ""
     },
     "team": [
-      {"id": "you", "name": "Owner", "role": "Customer Success"},
-      {"id": "rita", "name": "Rita", "role": "Marketing"}
+      {
+        "id": "you",
+        "name": "Owner",
+        "role": "Customer Success"
+      },
+      {
+        "id": "rita",
+        "name": "Rita",
+        "role": "Marketing"
+      }
     ],
+    "invoicePrefix": {
+      "you": "INV",
+      "rita": "RTA"
+    },
     "invoiceCounters": {
-      "you": 5,
-      "rita": 3
+      "you_2025": 5,
+      "rita_2025": 3
+    },
+    "globalTaxRate": 15
+  },
+  "vendors": [
+    {
+      "id": "vnd_001",
+      "name": "CleanTeam Barcelona",
+      "type": "cleaner",
+      "email": "clean@barcelona.es",
+      "phone": "+34 600 123 456",
+      "pricing": {
+        "studio": 15,
+        "one_bedroom": 20,
+        "two_bedroom": 28,
+        "three_bedroom_plus": 35
+      },
+      "currency": "EUR",
+      "propertyIds": [
+        "prop_001"
+      ],
+      "notes": "Reliable, 24h notice"
+    },
+    {
+      "id": "vnd_002",
+      "name": "BudaClean Kft.",
+      "type": "cleaner",
+      "email": "info@budaclean.hu",
+      "phone": "+36 30 555 1234",
+      "pricing": {
+        "studio": 4500,
+        "one_bedroom": 6000,
+        "two_bedroom": 8000,
+        "three_bedroom_plus": 12000
+      },
+      "currency": "HUF",
+      "propertyIds": [
+        "prop_003",
+        "prop_004"
+      ],
+      "notes": "Key holder"
+    },
+    {
+      "id": "vnd_003",
+      "name": "Athens Property Services",
+      "type": "management",
+      "email": "ops@athenspm.gr",
+      "phone": "+30 210 123 4567",
+      "pricing": {},
+      "currency": "EUR",
+      "propertyIds": [
+        "prop_005"
+      ],
+      "notes": "5% monthly management fee"
     }
-  }
+  ],
+  "forecasts": [
+    {
+      "id": "fcs_001",
+      "type": "property",
+      "entityId": "prop_001",
+      "year": 2025,
+      "taxRate": 0,
+      "months": {
+        "2025-01": {
+          "revenue": 1900,
+          "expenses": 1100
+        },
+        "2025-02": {
+          "revenue": 2100,
+          "expenses": 1100
+        },
+        "2025-03": {
+          "revenue": 2400,
+          "expenses": 1100
+        },
+        "2025-04": {
+          "revenue": 2800,
+          "expenses": 1100
+        },
+        "2025-05": {
+          "revenue": 3000,
+          "expenses": 1100
+        },
+        "2025-06": {
+          "revenue": 3200,
+          "expenses": 1100
+        },
+        "2025-07": {
+          "revenue": 3600,
+          "expenses": 1100
+        },
+        "2025-08": {
+          "revenue": 3800,
+          "expenses": 1100
+        },
+        "2025-09": {
+          "revenue": 3000,
+          "expenses": 1100
+        },
+        "2025-10": {
+          "revenue": 2500,
+          "expenses": 1100
+        },
+        "2025-11": {
+          "revenue": 2000,
+          "expenses": 1100
+        },
+        "2025-12": {
+          "revenue": 2200,
+          "expenses": 1100
+        }
+      }
+    },
+    {
+      "id": "fcs_002",
+      "type": "property",
+      "entityId": "prop_005",
+      "year": 2025,
+      "taxRate": 0,
+      "months": {
+        "2025-01": {
+          "revenue": 2800,
+          "expenses": 1400
+        },
+        "2025-02": {
+          "revenue": 3200,
+          "expenses": 1400
+        },
+        "2025-03": {
+          "revenue": 3600,
+          "expenses": 1400
+        },
+        "2025-04": {
+          "revenue": 4200,
+          "expenses": 1400
+        },
+        "2025-05": {
+          "revenue": 4500,
+          "expenses": 1400
+        },
+        "2025-06": {
+          "revenue": 5000,
+          "expenses": 1400
+        },
+        "2025-07": {
+          "revenue": 5500,
+          "expenses": 1400
+        },
+        "2025-08": {
+          "revenue": 5800,
+          "expenses": 1400
+        },
+        "2025-09": {
+          "revenue": 4500,
+          "expenses": 1400
+        },
+        "2025-10": {
+          "revenue": 3800,
+          "expenses": 1400
+        },
+        "2025-11": {
+          "revenue": 3200,
+          "expenses": 1400
+        },
+        "2025-12": {
+          "revenue": 3400,
+          "expenses": 1400
+        }
+      }
+    },
+    {
+      "id": "fcs_003",
+      "type": "service",
+      "entityId": "customer_success",
+      "year": 2025,
+      "taxRate": 15,
+      "months": {
+        "2025-01": {
+          "revenue": 6500,
+          "expenses": 500
+        },
+        "2025-02": {
+          "revenue": 6500,
+          "expenses": 500
+        },
+        "2025-03": {
+          "revenue": 7000,
+          "expenses": 500
+        },
+        "2025-04": {
+          "revenue": 7000,
+          "expenses": 500
+        },
+        "2025-05": {
+          "revenue": 7500,
+          "expenses": 500
+        },
+        "2025-06": {
+          "revenue": 7500,
+          "expenses": 500
+        },
+        "2025-07": {
+          "revenue": 7500,
+          "expenses": 500
+        },
+        "2025-08": {
+          "revenue": 7500,
+          "expenses": 500
+        },
+        "2025-09": {
+          "revenue": 8000,
+          "expenses": 500
+        },
+        "2025-10": {
+          "revenue": 8000,
+          "expenses": 500
+        },
+        "2025-11": {
+          "revenue": 8000,
+          "expenses": 500
+        },
+        "2025-12": {
+          "revenue": 8000,
+          "expenses": 500
+        }
+      }
+    },
+    {
+      "id": "fcs_004",
+      "type": "service",
+      "entityId": "marketing_services",
+      "year": 2025,
+      "taxRate": 15,
+      "months": {
+        "2025-01": {
+          "revenue": 2875,
+          "expenses": 300
+        },
+        "2025-02": {
+          "revenue": 2875,
+          "expenses": 300
+        },
+        "2025-03": {
+          "revenue": 4500,
+          "expenses": 300
+        },
+        "2025-04": {
+          "revenue": 4500,
+          "expenses": 300
+        },
+        "2025-05": {
+          "revenue": 5000,
+          "expenses": 300
+        },
+        "2025-06": {
+          "revenue": 5000,
+          "expenses": 300
+        },
+        "2025-07": {
+          "revenue": 5000,
+          "expenses": 300
+        },
+        "2025-08": {
+          "revenue": 5500,
+          "expenses": 300
+        },
+        "2025-09": {
+          "revenue": 5500,
+          "expenses": 300
+        },
+        "2025-10": {
+          "revenue": 5500,
+          "expenses": 300
+        },
+        "2025-11": {
+          "revenue": 5500,
+          "expenses": 300
+        },
+        "2025-12": {
+          "revenue": 6000,
+          "expenses": 300
+        }
+      }
+    }
+  ]
 }

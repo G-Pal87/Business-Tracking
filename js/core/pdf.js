@@ -72,7 +72,7 @@ export function generateInvoicePDF(invoice) {
   doc.text('AMOUNT', 536, y + 14, { align: 'right' });
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0);
-  y += 28;
+  y += 40;
 
   // Line items
   doc.setFontSize(10);

@@ -83,8 +83,11 @@ export default {
       el('div', { class: 'chart-wrap' }, el('canvas', { id: 'chart-rev-exp' }))
     ));
     row.appendChild(el('div', { class: 'card' },
-      el('div', { class: 'card-header' }, el('div', {}, el('div', { class: 'card-title' }, 'Revenue by Business Stream'))),
-      el('div', { class: 'chart-wrap' }, el('canvas', { id: 'chart-stream' }))
+      el('div', { class: 'card-header' },
+        el('div', {}, el('div', { class: 'card-title' }, 'Top Properties by Revenue YTD')),
+        el('a', { href: '#reports', style: 'font-size:12px;color:var(--accent)' }, 'View full report')
+      ),
+      el('div', { class: 'chart-wrap' }, el('canvas', { id: 'chart-topprop' }))
     ));
     wrap.appendChild(row);
 
@@ -124,20 +127,18 @@ export default {
       ]
     });
 
-    // Revenue by stream YTD
-    const { start, end } = ytdRange();
-    const streamPayments = (state.db.payments || []).filter(p => p.status === 'paid' && p.date >= start && p.date <= end);
-    const streamInvoices = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= start && i.issueDate <= end).map(i => ({ ...i, amount: i.total }));
-    const byStream = groupByStream([...streamPayments, ...streamInvoices]);
-    const labels2 = [];
-    const data2 = [];
-    const colors2 = [];
-    for (const [key, meta] of Object.entries(STREAMS)) {
-      labels2.push(meta.short);
-      data2.push(Math.round(byStream.get(key) || 0));
-      colors2.push(meta.color);
-    }
-    charts.doughnut('chart-stream', { labels: labels2, data: data2, colors: colors2 });
+    // Top properties bar chart
+    const nowYear = new Date().getFullYear();
+    const propRevs = (state.db.properties || []).map(p => {
+      const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
+      const rev = (state.db.payments || []).filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (pay.date || '').startsWith(String(nowYear))).reduce((s, pay) => s + (pay.currency === 'HUF' ? pay.amount * fx : pay.amount), 0);
+      return { name: p.name.replace(' Apartment','').replace(' Loft','').replace(' Flat',''), rev };
+    }).sort((a, b) => b.rev - a.rev).slice(0, 5);
+    charts.bar('chart-topprop', {
+      labels: propRevs.map(p => p.name),
+      datasets: [{ label: 'EUR Revenue YTD', data: propRevs.map(p => Math.round(p.rev)), backgroundColor: '#6366f1' }],
+      horizontal: true
+    });
   }
 };
 

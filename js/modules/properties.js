@@ -206,6 +206,7 @@ function openForm(existing) {
   const purchaseI = input({ type: 'number', value: p.purchasePrice, min: 0, step: 1000 });
   const dateI = input({ type: 'date', value: p.purchaseDate });
   const rentI = input({ type: 'number', value: p.monthlyRent || 0, min: 0 });
+  const payDayI = input({ type: 'number', value: p.paymentDayOfMonth || 1, min: 1, max: 28 });
   const nightlyI = input({ type: 'number', value: p.nightlyRate || 0, min: 0 });
   const mAmtI = input({ type: 'number', value: p.mortgageAmount, min: 0 });
   const mMoI = input({ type: 'number', value: p.mortgageMonthly, min: 0 });
@@ -216,6 +217,19 @@ function openForm(existing) {
   const bathsI = input({ type: 'number', value: p.bathrooms, min: 0 });
   const icalI = input({ value: p.airbnbCalUrl || '', placeholder: 'https://airbnb.com/calendar/ical/...' });
 
+  // Rows that toggle based on type
+  const ltRow = el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Payment Due Day', payDayI));
+  const stRow = el('div', { class: 'form-row horizontal' }, formRow('Nightly Rate', nightlyI));
+  const icalRow = formRow('Airbnb iCal URL', icalI);
+
+  const updateTypeFields = () => {
+    const isLT = typeS.value === 'long_term';
+    ltRow.style.display = isLT ? '' : 'none';
+    stRow.style.display = isLT ? 'none' : '';
+    icalRow.style.display = isLT ? 'none' : '';
+  };
+  typeS.onchange = updateTypeFields;
+
   body.appendChild(formRow('Name', nameI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Address', addressI), formRow('City', cityI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Country', countryI), formRow('Flag (ISO)', flagI)));
@@ -223,11 +237,13 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Owner', ownerS), formRow('Currency', currencyS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Purchase Price', purchaseI), formRow('Purchase Date', dateI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Bedrooms', bedsI), formRow('Bathrooms', bathsI)));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Nightly Rate', nightlyI)));
+  body.appendChild(ltRow);
+  body.appendChild(stRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Mortgage Amount', mAmtI), formRow('Monthly Payment', mMoI)));
   body.appendChild(formRow('Interest Rate %', mRateI));
-  body.appendChild(formRow('Airbnb iCal URL', icalI));
+  body.appendChild(icalRow);
   body.appendChild(formRow('Notes', notesT));
+  updateTypeFields();
 
   const saveBtn = button('Save', { variant: 'primary', onClick: () => {
     if (!nameI.value.trim()) { toast('Name is required', 'danger'); return; }
@@ -246,6 +262,7 @@ function openForm(existing) {
       bedrooms: Number(bedsI.value) || 0,
       bathrooms: Number(bathsI.value) || 0,
       monthlyRent: Number(rentI.value) || 0,
+      paymentDayOfMonth: Number(payDayI.value) || 1,
       nightlyRate: Number(nightlyI.value) || 0,
       mortgageAmount: Number(mAmtI.value) || 0,
       mortgageMonthly: Number(mMoI.value) || 0,
