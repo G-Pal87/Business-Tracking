@@ -7,6 +7,7 @@ import {
 } from '../core/data.js';
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS } from '../core/config.js';
 import { fetchICal, parseICal, nights } from '../core/ical.js';
+import { openExpenseForm } from './expenses.js';
 
 let selectedId = null;
 
@@ -136,10 +137,27 @@ function openDetail(id) {
     ));
   }
 
+  // Utility rates
+  if (p.cleaningFee || p.monthlyElectricity || p.monthlyWater) {
+    const ratesCard = el('div', { class: 'card mb-16' });
+    ratesCard.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Configured Expense Rates')));
+    const rateGrid = el('div', { class: 'grid grid-3', style: 'padding:12px 16px' });
+    if (p.cleaningFee) rateGrid.appendChild(smallStat('Cleaning Fee', formatMoney(p.cleaningFee, p.currency, { maxFrac: 0 }), 'per booking'));
+    if (p.monthlyElectricity) rateGrid.appendChild(smallStat('Electricity', formatMoney(p.monthlyElectricity, p.currency, { maxFrac: 0 }), 'per month'));
+    if (p.monthlyWater) rateGrid.appendChild(smallStat('Water', formatMoney(p.monthlyWater, p.currency, { maxFrac: 0 }), 'per month'));
+    ratesCard.appendChild(rateGrid);
+    body.appendChild(ratesCard);
+  }
+
   // Expense breakdown
   const expList = (state.db.expenses || []).filter(e => e.propertyId === id).sort((a, b) => (b.date || '').localeCompare(a.date));
   const expTable = el('div', { class: 'card mb-16' });
-  expTable.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Recent Expenses')));
+  const addExpBtn = button('+ Add Expense', { variant: 'primary', onClick: () => {
+    closeModal();
+    const defaults = { propertyId: id, stream: p.type === 'short_term' ? 'short_term_rental' : 'long_term_rental', currency: p.currency };
+    setTimeout(() => openExpenseForm(defaults), 220);
+  }});
+  expTable.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Recent Expenses'), el('div', { class: 'actions' }, addExpBtn)));
   if (expList.length === 0) expTable.appendChild(el('div', { class: 'empty' }, 'No expenses recorded'));
   else {
     const tw = el('div', { class: 'table-wrap' });
@@ -190,7 +208,8 @@ function openForm(existing) {
     purchasePrice: 0, currency: 'EUR', purchaseDate: new Date().toISOString().slice(0, 10),
     monthlyRent: 0, nightlyRate: 0,
     mortgageAmount: 0, mortgageMonthly: 0, mortgageRate: 0,
-    owner: 'both', airbnbCalUrl: '', notes: ''
+    owner: 'both', airbnbCalUrl: '', notes: '',
+    cleaningFee: 0, monthlyElectricity: 0, monthlyWater: 0
   };
 
   const body = el('div', {});
@@ -216,6 +235,9 @@ function openForm(existing) {
   const bedsI = input({ type: 'number', value: p.bedrooms, min: 0 });
   const bathsI = input({ type: 'number', value: p.bathrooms, min: 0 });
   const icalI = input({ value: p.airbnbCalUrl || '', placeholder: 'https://airbnb.com/calendar/ical/...' });
+  const cleaningFeeI = input({ type: 'number', value: p.cleaningFee || 0, min: 0, step: 0.01 });
+  const electricityI = input({ type: 'number', value: p.monthlyElectricity || 0, min: 0, step: 0.01 });
+  const waterI = input({ type: 'number', value: p.monthlyWater || 0, min: 0, step: 0.01 });
 
   // Rows that toggle based on type
   const ltRow = el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Payment Due Day', payDayI));
@@ -242,6 +264,8 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Mortgage Amount', mAmtI), formRow('Monthly Payment', mMoI)));
   body.appendChild(formRow('Interest Rate %', mRateI));
   body.appendChild(icalRow);
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Cleaning Fee (per booking)', cleaningFeeI), formRow('Monthly Electricity', electricityI)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Monthly Water', waterI)));
   body.appendChild(formRow('Notes', notesT));
   updateTypeFields();
 
@@ -268,7 +292,10 @@ function openForm(existing) {
       mortgageMonthly: Number(mMoI.value) || 0,
       mortgageRate: Number(mRateI.value) || 0,
       airbnbCalUrl: icalI.value.trim(),
-      notes: notesT.value.trim()
+      notes: notesT.value.trim(),
+      cleaningFee: Number(cleaningFeeI.value) || 0,
+      monthlyElectricity: Number(electricityI.value) || 0,
+      monthlyWater: Number(waterI.value) || 0
     });
     upsert('properties', p);
     toast(existing ? 'Property updated' : 'Property added', 'success');

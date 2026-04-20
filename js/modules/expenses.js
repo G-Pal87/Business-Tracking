@@ -133,7 +133,11 @@ function renderBreakdown() {
   });
 }
 
-function openForm(existing) {
+export function openExpenseForm(defaults = {}) {
+  openForm(null, defaults);
+}
+
+function openForm(existing, defaults = {}) {
   const r = existing ? { ...existing } : {
     id: newId('exp'),
     propertyId: state.db.properties?.[0]?.id || '',
@@ -141,7 +145,8 @@ function openForm(existing) {
     amount: 0, currency: 'EUR',
     date: today(),
     vendor: '', description: '',
-    stream: 'short_term_rental'
+    stream: 'short_term_rental',
+    ...defaults
   };
 
   const body = el('div', {});
@@ -161,11 +166,23 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI), formRow('Vendor', vendorI)));
   body.appendChild(formRow('Description', descT));
 
+  const autoFillAmount = () => {
+    if (Number(amountI.value) > 0) return;
+    const prop = byId('properties', propS.value);
+    if (!prop) return;
+    const cat = catS.value;
+    if (cat === 'cleaning' && prop.cleaningFee) amountI.value = prop.cleaningFee;
+    else if (cat === 'electricity' && prop.monthlyElectricity) amountI.value = prop.monthlyElectricity;
+    else if (cat === 'water' && prop.monthlyWater) amountI.value = prop.monthlyWater;
+  };
+
+  catS.onchange = autoFillAmount;
   propS.onchange = () => {
     const p = byId('properties', propS.value);
     if (p) {
       streamS.value = p.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
       currencyS.value = p.currency;
+      autoFillAmount();
     }
   };
 

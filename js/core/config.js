@@ -19,6 +19,8 @@ export const EXPENSE_CATEGORIES = {
   utilities:   { label: 'Utilities',   icon: 'U', color: '#8b5cf6' },
   management:  { label: 'Management',  icon: 'P', color: '#14b8a6' },
   cleaning:    { label: 'Cleaning',    icon: 'C', color: '#ec4899' },
+  electricity: { label: 'Electricity', icon: 'E', color: '#f59e0b' },
+  water:       { label: 'Water',       icon: 'W', color: '#06b6d4' },
   other:       { label: 'Other',       icon: 'O', color: '#8b93b0' }
 };
 
