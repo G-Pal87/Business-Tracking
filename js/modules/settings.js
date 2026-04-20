@@ -120,26 +120,33 @@ function buildBusinessCard() {
   const ibanI = input({ value: b.iban, placeholder: 'e.g. HU42 1177 3016 1111...' });
   const bicI = input({ value: b.bic, placeholder: 'e.g. OTPVHUHB' });
   const swiftI = input({ value: b.swift, placeholder: 'Same as BIC or separate SWIFT code' });
+  bicI.oninput  = () => { bicI.value  = bicI.value.toUpperCase(); };
+  swiftI.oninput = () => { swiftI.value = swiftI.value.toUpperCase(); };
   card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Business Name', nameI), formRow('Email', emailI)));
   card.appendChild(formRow('Address', addressI));
   card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI), formRow('VAT Number', vatI)));
   card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('IBAN', ibanI), formRow('BIC', bicI)));
   card.appendChild(formRow('SWIFT', swiftI, 'Used on invoice payment details. BIC and SWIFT are often identical.'));
   const save = button('Save', { variant: 'primary', onClick: () => {
-    const iban = ibanI.value.trim().replace(/\s/g, '');
-    const bic = bicI.value.trim().toUpperCase();
-    if (iban && !/^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$/.test(iban)) { toast('IBAN format looks incorrect', 'warning'); }
-    if (bic && !/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(bic)) { toast('BIC/SWIFT format looks incorrect', 'warning'); }
+    const iban  = ibanI.value.trim().replace(/\s/g, '').toUpperCase();
+    const bic   = bicI.value.trim().toUpperCase();
+    const swift = swiftI.value.trim().toUpperCase();
+    const reg   = regI.value.trim();
+    const BIC_RE = /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/;
+    if (iban  && !/^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$/.test(iban))  { toast('IBAN format looks incorrect', 'warning'); }
+    if (bic   && !BIC_RE.test(bic))   { toast('BIC must be 8 or 11 characters (e.g. OTPVHUHB)', 'warning'); }
+    if (swift && !BIC_RE.test(swift)) { toast('SWIFT must be 8 or 11 characters (e.g. OTPVHUHBXXX)', 'warning'); }
+    if (reg   && !/^[A-Z0-9][A-Z0-9 \-\.]{3,}$/i.test(reg)) { toast('Company registration number looks incorrect', 'warning'); }
     state.db.settings.business = {
       ...b,
       name: nameI.value.trim(),
       email: emailI.value.trim(),
       address: addressI.value.trim(),
-      registrationNumber: regI.value.trim(),
+      registrationNumber: reg,
       vatNumber: vatI.value.trim(),
       iban,
       bic,
-      swift: swiftI.value.trim().toUpperCase()
+      swift
     };
     markDirty();
     toast('Saved', 'success');
