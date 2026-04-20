@@ -95,6 +95,7 @@ function openDetail(id) {
     ),
     c.address ? el('div', { class: 'mt-8 muted', style: 'font-size:12px' }, c.address) : null,
     c.vatNumber ? el('div', { class: 'muted', style: 'font-size:12px' }, 'VAT: ' + c.vatNumber) : null,
+    c.registrationNumber ? el('div', { class: 'muted', style: 'font-size:12px' }, 'Reg: ' + c.registrationNumber) : null,
     c.notes ? el('div', { class: 'mt-8', style: 'font-size:13px' }, c.notes) : null
   ));
 
@@ -130,7 +131,7 @@ function openDetail(id) {
 function openForm(existing) {
   const c = existing ? { ...existing } : {
     id: newId('cli'),
-    name: '', email: '', address: '', vatNumber: '',
+    name: '', email: '', address: '', vatNumber: '', registrationNumber: '',
     owner: 'you', stream: 'customer_success', currency: 'EUR',
     contractStart: new Date().toISOString().slice(0, 10),
     notes: ''

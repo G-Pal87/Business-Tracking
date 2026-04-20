@@ -55,7 +55,7 @@ export function generateInvoicePDF(invoice) {
   doc.text(client.name || '', 320, y + 16);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  const toLines = [client.address, client.email, client.vatNumber ? `VAT: ${client.vatNumber}` : ''].filter(Boolean);
+  const toLines = [client.address, client.email, client.vatNumber ? `VAT: ${client.vatNumber}` : '', client.registrationNumber ? `Reg: ${client.registrationNumber}` : ''].filter(Boolean);
   toLines.forEach((line, i) => doc.text(line, 320, y + 32 + i * 12));
 
   y += 110;
