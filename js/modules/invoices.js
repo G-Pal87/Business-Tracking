@@ -1,9 +1,24 @@
 // Invoices module - builder + repository
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal } from '../core/ui.js';
 import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR } from '../core/data.js';
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
 import { downloadInvoicePDF } from '../core/pdf.js';
+
+const INV_COLS = [
+  { key: 'number', label: 'Number' },
+  { key: 'clientName', label: 'Client' },
+  { key: 'issueDate', label: 'Issued', format: v => fmtDate(v) },
+  { key: 'dueDate', label: 'Due', format: v => fmtDate(v) },
+  { key: 'owner', label: 'Owner', format: v => OWNERS[v] || v },
+  { key: 'status', label: 'Status', format: v => { const st = INVOICE_STATUSES[v] || { label: v, css: '' }; return el('span', { class: `badge ${st.css}` }, st.label); } },
+  { key: 'total', label: 'Amount', right: true, format: (v, row) => formatMoney(v, row.currency, { maxFrac: 0 }) },
+  { key: 'eur', label: '€ EUR', right: true, format: v => formatEUR(v) }
+];
+
+function invDrillRows(invs) {
+  return invs.map(i => ({ ...i, clientName: byId('clients', i.clientId)?.name || '-', eur: toEUR(i.total, i.currency) }));
+}
 
 export default {
   id: 'invoices',
@@ -18,11 +33,12 @@ function build() {
   const wrap = el('div', { class: 'view active' });
 
   const stats = computeStats();
+  const allInvs = state.db.invoices || [];
   wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' },
-    kpi('Total Issued', formatEUR(stats.totalEUR), `${stats.count} invoices`),
-    kpi('Paid', formatEUR(stats.paidEUR), `${stats.paidCount}`, 'success'),
-    kpi('Outstanding', formatEUR(stats.openEUR), `${stats.openCount}`, 'warning'),
-    kpi('Overdue', formatEUR(stats.overdueEUR), `${stats.overdueCount}`, 'danger')
+    kpi('Total Issued', formatEUR(stats.totalEUR), `${stats.count} invoices`, null, () => drillDownModal('All Invoices', invDrillRows(allInvs), INV_COLS)),
+    kpi('Paid', formatEUR(stats.paidEUR), `${stats.paidCount}`, 'success', () => drillDownModal('Paid Invoices', invDrillRows(allInvs.filter(i => i.status === 'paid')), INV_COLS)),
+    kpi('Outstanding', formatEUR(stats.openEUR), `${stats.openCount}`, 'warning', () => drillDownModal('Outstanding Invoices', invDrillRows(allInvs.filter(i => i.status === 'sent')), INV_COLS)),
+    kpi('Overdue', formatEUR(stats.overdueEUR), `${stats.overdueCount}`, 'danger', () => drillDownModal('Overdue Invoices', invDrillRows(allInvs.filter(i => i.status === 'overdue')), INV_COLS))
   ));
 
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
@@ -93,13 +109,19 @@ function build() {
     tableWrap.appendChild(t);
     // Totals footer
     const totalEUR = rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
-    const paidEUR = rows.filter(r => r.status === 'paid').reduce((s, r) => s + toEUR(r.total, r.currency), 0);
+    const paidRows = rows.filter(r => r.status === 'paid');
+    const paidEUR = paidRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
+    const paidSpan = el('span', { style: 'cursor:pointer', title: 'Drill down' });
+    paidSpan.appendChild(document.createTextNode('Paid: '));
+    paidSpan.appendChild(el('strong', { class: 'num' }, formatEUR(paidEUR)));
+    paidSpan.onclick = () => drillDownModal('Paid Invoices (filtered)', invDrillRows(paidRows), INV_COLS);
+    const totalSpanEl = el('span', { style: 'cursor:pointer', title: 'Drill down' });
+    totalSpanEl.appendChild(document.createTextNode('Total: '));
+    totalSpanEl.appendChild(el('strong', { class: 'num' }, formatEUR(totalEUR)));
+    totalSpanEl.onclick = () => drillDownModal('All Invoices (filtered)', invDrillRows(rows), INV_COLS);
     tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px;flex-wrap:wrap;gap:8px' },
       el('span', { class: 'muted' }, `${rows.length} invoice(s)`),
-      el('div', { class: 'flex gap-16' },
-        el('span', {}, `Paid: `, el('strong', { class: 'num' }, formatEUR(paidEUR))),
-        el('span', {}, `Total: `, el('strong', { class: 'num' }, formatEUR(totalEUR)))
-      )
+      el('div', { class: 'flex gap-16' }, paidSpan, totalSpanEl)
     ));
   };
   yearSel.onchange = renderTable;
@@ -129,13 +151,15 @@ function computeStats() {
   };
 }
 
-function kpi(label, value, sub, variant) {
-  return el('div', { class: 'kpi' + (variant ? ' ' + variant : '') },
+function kpi(label, value, sub, variant, onClick) {
+  const node = el('div', { class: 'kpi' + (variant ? ' ' + variant : '') },
     el('div', { class: 'kpi-label' }, label),
     el('div', { class: 'kpi-value', style: 'font-size:1.4rem' }, value),
     el('div', { class: 'kpi-trend' }, sub || ''),
     el('div', { class: 'kpi-accent-bar' })
   );
+  if (onClick) { node.onclick = onClick; node.style.cursor = 'pointer'; }
+  return node;
 }
 
 // ============ BUILDER ============
