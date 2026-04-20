@@ -5,6 +5,7 @@ const initialData = {
   properties: [],
   payments: [],
   expenses: [],
+  vendors: [],
   tenants: [],
   clients: [],
   services: [],

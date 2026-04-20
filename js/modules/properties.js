@@ -5,7 +5,7 @@ import {
   upsert, remove, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI
 } from '../core/data.js';
-import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS } from '../core/config.js';
+import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES } from '../core/config.js';
 import { fetchICal, parseICal, nights } from '../core/ical.js';
 import { openExpenseForm } from './expenses.js';
 
@@ -135,6 +135,20 @@ function openDetail(id) {
         input({ id: 'ical-url', value: p.airbnbCalUrl || '', placeholder: 'https://airbnb.com/calendar/ical/...' })
       )
     ));
+  }
+
+  // Vendors with rates for this property
+  const propVendors = (state.db.vendors || []).filter(v => v.rates && v.rates[id] !== undefined);
+  if (propVendors.length > 0) {
+    const vendorCard = el('div', { class: 'card mb-16' });
+    vendorCard.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Vendors')));
+    const vGrid = el('div', { class: 'grid grid-3', style: 'padding:12px 16px' });
+    for (const v of propVendors) {
+      const roleMeta = VENDOR_ROLES[v.role] || { label: v.role };
+      vGrid.appendChild(smallStat(v.name, formatMoney(v.rates[id], p.currency, { maxFrac: 0 }), roleMeta.label));
+    }
+    vendorCard.appendChild(vGrid);
+    body.appendChild(vendorCard);
   }
 
   // Utility rates

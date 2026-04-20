@@ -14,9 +14,10 @@ import clients from './modules/clients.js';
 import invoices from './modules/invoices.js';
 import insights from './modules/insights.js';
 import settings from './modules/settings.js';
+import vendors from './modules/vendors.js';
 
 const MODULES = [
-  dashboard, properties, payments, expenses,
+  dashboard, properties, payments, expenses, vendors,
   reports, forecast, clients, invoices, insights, settings
 ];
 
@@ -86,7 +87,7 @@ async function boot() {
 function buildSidebar() {
   const navGroups = [
     { title: 'Overview', items: ['dashboard', 'insights'] },
-    { title: 'Real Estate', items: ['properties', 'payments', 'expenses'] },
+    { title: 'Real Estate', items: ['properties', 'payments', 'expenses', 'vendors'] },
     { title: 'Analysis', items: ['reports', 'forecast'] },
     { title: 'Business Services', items: ['clients', 'invoices'] },
     { title: 'System', items: ['settings'] }

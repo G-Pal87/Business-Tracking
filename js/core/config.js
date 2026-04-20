@@ -24,6 +24,15 @@ export const EXPENSE_CATEGORIES = {
   other:       { label: 'Other',       icon: 'O', color: '#8b93b0' }
 };
 
+export const VENDOR_ROLES = {
+  cleaner:     { label: 'Cleaner',     color: '#ec4899' },
+  plumber:     { label: 'Plumber',     color: '#3b82f6' },
+  electrician: { label: 'Electrician', color: '#f59e0b' },
+  handyman:    { label: 'Handyman',    color: '#10b981' },
+  gardener:    { label: 'Gardener',    color: '#14b8a6' },
+  other:       { label: 'Other',       color: '#8b93b0' }
+};
+
 export const PROPERTY_TYPES = {
   short_term: 'Short-term (Airbnb)',
   long_term:  'Long-term (Lease)'

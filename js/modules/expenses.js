@@ -70,7 +70,7 @@ function build() {
       tr.appendChild(el('td', {}, prop?.name || '-'));
       tr.appendChild(el('td', {}, el('span', { class: 'badge ' + (r.category === 'renovation' ? 'warning' : '') }, cat?.label || r.category)));
       tr.appendChild(el('td', {}, r.description || ''));
-      tr.appendChild(el('td', {}, r.vendor || ''));
+      tr.appendChild(el('td', {}, r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || '')));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
       const actions = el('td', { class: 'right' });
@@ -144,7 +144,7 @@ function openForm(existing, defaults = {}) {
     category: 'maintenance',
     amount: 0, currency: 'EUR',
     date: today(),
-    vendor: '', description: '',
+    vendor: '', vendorId: '', description: '',
     stream: 'short_term_rental',
     ...defaults
   };
@@ -152,24 +152,30 @@ function openForm(existing, defaults = {}) {
   const body = el('div', {});
   const propS = select((state.db.properties || []).map(p => ({ value: p.id, label: p.name })), r.propertyId);
   const catS = select(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), r.category);
+  const vendorOpts = [{ value: '', label: '— No vendor —' }, ...(state.db.vendors || []).map(v => ({ value: v.id, label: v.name }))];
+  const vendorS = select(vendorOpts, r.vendorId || '');
   const amountI = input({ type: 'number', value: r.amount, min: 0, step: 0.01 });
   const currencyS = select(CURRENCIES, r.currency);
   const dateI = input({ type: 'date', value: r.date });
-  const vendorI = input({ value: r.vendor, placeholder: 'Vendor name' });
   const descT = textarea({ placeholder: 'Description' });
   descT.value = r.description || '';
   const streamS = select(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), r.stream);
 
   body.appendChild(formRow('Property', propS));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Category', catS), formRow('Stream', streamS)));
+  body.appendChild(formRow('Vendor', vendorS));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', currencyS)));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI), formRow('Vendor', vendorI)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI)));
   body.appendChild(formRow('Description', descT));
 
   const autoFillAmount = () => {
     if (Number(amountI.value) > 0) return;
     const prop = byId('properties', propS.value);
     if (!prop) return;
+    if (vendorS.value) {
+      const vendor = byId('vendors', vendorS.value);
+      if (vendor?.rates?.[prop.id]) { amountI.value = vendor.rates[prop.id]; return; }
+    }
     const cat = catS.value;
     if (cat === 'cleaning' && prop.cleaningFee) amountI.value = prop.cleaningFee;
     else if (cat === 'electricity' && prop.monthlyElectricity) amountI.value = prop.monthlyElectricity;
@@ -177,6 +183,7 @@ function openForm(existing, defaults = {}) {
   };
 
   catS.onchange = autoFillAmount;
+  vendorS.onchange = autoFillAmount;
   propS.onchange = () => {
     const p = byId('properties', propS.value);
     if (p) {
@@ -189,13 +196,15 @@ function openForm(existing, defaults = {}) {
   const save = button('Save', { variant: 'primary', onClick: () => {
     if (!propS.value) { toast('Select property', 'danger'); return; }
     if (Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
+    const selectedVendor = vendorS.value ? byId('vendors', vendorS.value) : null;
     Object.assign(r, {
       propertyId: propS.value,
       category: catS.value,
       amount: Number(amountI.value),
       currency: currencyS.value,
       date: dateI.value,
-      vendor: vendorI.value.trim(),
+      vendorId: vendorS.value || '',
+      vendor: selectedVendor?.name || r.vendor || '',
       description: descT.value.trim(),
       stream: streamS.value
     });
