@@ -162,16 +162,23 @@ function buildServiceSection(wrap) {
   const gridWrap = el('div', {});
   wrap.appendChild(gridWrap);
 
-  const chartWrap = el('div', { class: 'card mt-16' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Forecast vs Actual Invoiced')),
-    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'fc-svc-chart' }))
+  const chartWrap = el('div', { class: 'grid grid-2 mt-16' },
+    el('div', { class: 'card' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Forecast vs Actual Invoiced')),
+      el('div', { class: 'chart-wrap' }, el('canvas', { id: 'fc-svc-chart' }))
+    ),
+    el('div', { class: 'card' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Annual Summary')),
+      el('div', { id: 'fc-svc-summary' })
+    )
   );
   wrap.appendChild(chartWrap);
 
   const render = () => {
     gridWrap.innerHTML = '';
-    gridWrap.appendChild(buildMonthlyGrid(streamSel.value, yearSel.value, 'service', renderChart));
+    gridWrap.appendChild(buildMonthlyGrid(streamSel.value, yearSel.value, 'service', () => { renderChart(); renderSummary(); }));
     renderChart();
+    renderSummary();
   };
 
   const renderChart = () => {
@@ -183,6 +190,32 @@ function buildServiceSection(wrap) {
         { label: 'Invoiced (paid)', data: months.map(m => Math.round(m.actualRev)), backgroundColor: '#10b981' }
       ]
     });
+  };
+
+  const renderSummary = () => {
+    const { months, yearTarget } = getForecastVsActual('service', streamSel.value, yearSel.value);
+    const forecastRev = months.reduce((s, m) => s + m.forecastRev, 0);
+    const actualRev   = months.reduce((s, m) => s + m.actualRev,   0);
+    const el2 = document.getElementById('fc-svc-summary');
+    if (!el2) return;
+    el2.innerHTML = '';
+    const items = [
+      summaryRow('Forecast Revenue', formatEUR(forecastRev)),
+      el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
+      summaryRow('Actual Revenue YTD', formatEUR(actualRev)),
+      el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
+      summaryRow('Revenue Variance YTD', formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger'),
+    ];
+    if (yearTarget.revenue) {
+      const ytRev = yearTarget.revenue;
+      items.push(
+        el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
+        summaryRow('Annual Target', formatEUR(ytRev)),
+        summaryRow('Forecast vs Target', formatEUR(forecastRev - ytRev), forecastRev >= ytRev ? 'success' : 'danger'),
+        summaryRow('Actual vs Target', formatEUR(actualRev - ytRev), actualRev >= ytRev ? 'success' : 'danger'),
+      );
+    }
+    el2.appendChild(el('div', { class: 'flex-col gap-8', style: 'padding:16px' }, ...items));
   };
 
   streamSel.onchange = render;
@@ -201,12 +234,9 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
     el('div', { class: 'muted', style: 'font-size:12px' }, 'Click any cell to edit')
   ));
 
-  // Annual target bar — property forecasts only
-  let annualBar;
-  if (type === 'property') {
-    annualBar = el('div', { class: 'flex gap-16 items-center', style: 'padding:10px 16px;background:var(--bg-elev-2);border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap;gap:12px' });
-    card.appendChild(annualBar);
-  }
+  // Annual target bar
+  const annualBar = el('div', { class: 'flex gap-16 items-center', style: 'padding:10px 16px;background:var(--bg-elev-2);border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap;gap:12px' });
+  card.appendChild(annualBar);
 
   const t = el('table', { class: 'table' });
   t.innerHTML = `<thead><tr>
@@ -223,13 +253,16 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
   const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
   card.appendChild(tw);
 
-  if (annualBar) renderAnnualBar();
+  renderAnnualBar();
   return card;
 
   function renderAnnualBar() {
     annualBar.innerHTML = '';
     annualBar.appendChild(el('span', { style: 'font-weight:600;color:var(--text-muted);letter-spacing:.04em;font-size:11px;white-space:nowrap' }, 'ANNUAL TARGET'));
-    for (const [field, label] of [['revenue', 'Revenue'], ['expenses', 'Expenses']]) {
+    const targetFields = type === 'property'
+      ? [['revenue', 'Revenue'], ['expenses', 'Expenses']]
+      : [['revenue', 'Revenue']];
+    for (const [field, label] of targetFields) {
       const valSpan = el('span', { class: 'num', style: 'cursor:pointer;font-weight:600', title: 'Click to edit' });
       valSpan.textContent = formatEUR((fc.yearTarget || {})[field] || 0);
       valSpan.onclick = () => {
@@ -255,9 +288,10 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
     annualBar.appendChild(button('Distribute evenly', { variant: 'sm ghost', onClick: () => {
       const yt = fc.yearTarget || {};
       const rev12 = Math.round((yt.revenue || 0) / 12);
-      const exp12 = Math.round((yt.expenses || 0) / 12);
       for (let m = 1; m <= 12; m++) {
-        saveForecastMonth(fc.id, `${year}-${String(m).padStart(2, '0')}`, { revenue: rev12, expenses: exp12 });
+        const data = { revenue: rev12 };
+        if (type === 'property') data.expenses = Math.round((yt.expenses || 0) / 12);
+        saveForecastMonth(fc.id, `${year}-${String(m).padStart(2, '0')}`, data);
       }
       renderRows();
       if (onChange) onChange();
@@ -329,15 +363,20 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
     tRow.appendChild(el('td', { class: `right num ${variance >= 0 ? '' : 'danger'}` }, formatEUR(variance)));
     tb.appendChild(tRow);
 
-    if (type === 'property' && yearTarget && (yearTarget.revenue || yearTarget.expenses)) {
+    if (yearTarget && (yearTarget.revenue || yearTarget.expenses)) {
       const ytRev = yearTarget.revenue || 0;
       const ytExp = yearTarget.expenses || 0;
       const ytNet = ytRev - ytExp;
       const ytRow = el('tr', { style: 'font-size:11px;color:var(--text-muted);background:var(--bg-elev-3)' });
       ytRow.appendChild(el('td', {}, 'vs Annual Target'));
       ytRow.appendChild(el('td', { class: 'right num' + (fcRev - ytRev >= 0 ? '' : ' danger') }, formatEUR(fcRev - ytRev)));
-      ytRow.appendChild(el('td', { class: 'right num' + (fcExp - ytExp > 0 ? ' warning' : '') }, formatEUR(fcExp - ytExp)));
-      ytRow.appendChild(el('td', { class: 'right num' + (fcNet - ytNet >= 0 ? '' : ' danger') }, formatEUR(fcNet - ytNet)));
+      if (type === 'property') {
+        ytRow.appendChild(el('td', { class: 'right num' + (fcExp - ytExp > 0 ? ' warning' : '') }, formatEUR(fcExp - ytExp)));
+        ytRow.appendChild(el('td', { class: 'right num' + (fcNet - ytNet >= 0 ? '' : ' danger') }, formatEUR(fcNet - ytNet)));
+      } else {
+        ytRow.appendChild(el('td', {}));
+        ytRow.appendChild(el('td', {}));
+      }
       ytRow.appendChild(el('td', { class: 'right num' + (actRev >= ytRev ? '' : ' danger') }, formatEUR(actRev - ytRev)));
       ytRow.appendChild(el('td', {}));
       tb.appendChild(ytRow);
