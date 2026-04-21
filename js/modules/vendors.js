@@ -1,7 +1,7 @@
 // Vendors module
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
-import { upsert, remove, byId, newId, formatMoney } from '../core/data.js';
+import { upsert, remove, byId, newId, formatMoney, toEUR, formatEUR } from '../core/data.js';
 import { VENDOR_ROLES, PROPERTY_TYPES, CURRENCIES } from '../core/config.js';
 
 const APT_TYPES = [
@@ -96,10 +96,19 @@ function openDetail(id) {
 
   const body = el('div', {});
 
+  const totalPaidEUR = (state.db.expenses || [])
+    .filter(e => e.vendorId === v.id)
+    .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+
   body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
     smallStat('Role', (VENDOR_ROLES[v.role] || { label: v.role }).label),
     smallStat('Phone', v.phone || '—'),
     smallStat('Email', v.email || '—')
+  ));
+  body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
+    smallStat('Total Paid', formatEUR(totalPaidEUR)),
+    el('div', {}),
+    el('div', {})
   ));
 
   if (v.pricingMode === 'hourly' && v.hourlyRate) {
