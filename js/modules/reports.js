@@ -69,7 +69,8 @@ function build() {
     { id: 'property', label: 'By Property' },
     { id: 'stream', label: 'By Stream' },
     { id: 'reconciliation', label: 'Reconciliation' },
-    { id: 'comparison', label: 'Comparison' }
+    { id: 'comparison', label: 'Comparison' },
+    { id: 'contribution', label: 'Contribution' }
   ];
   const tabs = el('div', { class: 'tabs' });
   const sections = {};
@@ -103,6 +104,7 @@ function build() {
     else if (id === 'stream') renderByStream(s);
     else if (id === 'reconciliation') renderReconciliation(s);
     else if (id === 'comparison') renderComparison(s);
+    else if (id === 'contribution') renderContribution(s);
   }
 
   renderTab('summary');
@@ -712,6 +714,230 @@ function collectMonths(...groups) {
     }
   }
   return [...all].sort();
+}
+
+// ===== CONTRIBUTION TAB =====
+const CSTREAMS = [
+  { key: 'short_term_rental',  color: '#8b5cf6', payType: 'payment' },
+  { key: 'long_term_rental',   color: '#14b8a6', payType: 'payment' },
+  { key: 'customer_success',   color: '#3b82f6', payType: 'invoice' },
+  { key: 'marketing_services', color: '#ec4899', payType: 'invoice' }
+];
+
+function renderContribution(wrap) {
+  const curYear = gFilters.year !== 'all' ? gFilters.year : String(new Date().getFullYear());
+  const years = availableYears();
+  const yearOpts = [...new Set([String(Number(curYear) - 1), curYear, String(Number(curYear) + 1), ...years])].sort().reverse();
+
+  const streamLabel = key => STREAMS[key]?.label || key;
+
+  const yearSel     = select(yearOpts.map(y => ({ value: y, label: y })), curYear);
+  const viewMonthly = el('div', { class: 'tab active', style: 'padding:4px 12px;font-size:12px' }, 'Monthly');
+  const viewYearly  = el('div', { class: 'tab',        style: 'padding:4px 12px;font-size:12px' }, 'Yearly');
+  const viewTabs    = el('div', { class: 'tabs', style: 'display:inline-flex;margin-left:auto' }, viewMonthly, viewYearly);
+  let currentView   = 'monthly';
+
+  const ctrlBar = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
+  ctrlBar.appendChild(yearSel);
+  ctrlBar.appendChild(viewTabs);
+  wrap.appendChild(ctrlBar);
+
+  const kpiRow  = el('div', { class: 'grid grid-4 mb-16' });
+  const content = el('div', {});
+  wrap.appendChild(kpiRow);
+  wrap.appendChild(content);
+
+  // Collect revenue rows per stream for a given year prefix
+  const streamRevData = (yr) => CSTREAMS.map(cs => {
+    const label = streamLabel(cs.key);
+    let rows;
+    if (cs.payType === 'payment') {
+      rows = (state.db.payments || []).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(yr));
+    } else {
+      rows = (state.db.invoices || []).filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(yr));
+    }
+    const totalEUR = cs.payType === 'payment'
+      ? rows.reduce((s, p) => s + toEUR(p.amount, p.currency), 0)
+      : rows.reduce((s, i) => s + toEUR(i.total, i.currency), 0);
+    return { ...cs, label, rows, totalEUR };
+  });
+
+  // Collect revenue per stream per month
+  const monthlyRevData = (yr) => MON.map((mon, mi) => {
+    const mk = `${yr}-${String(mi + 1).padStart(2, '0')}`;
+    const streams = CSTREAMS.map(cs => {
+      const label = streamLabel(cs.key);
+      let rows;
+      if (cs.payType === 'payment') {
+        rows = (state.db.payments || []).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(mk));
+      } else {
+        rows = (state.db.invoices || []).filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(mk));
+      }
+      const totalEUR = cs.payType === 'payment'
+        ? rows.reduce((s, p) => s + toEUR(p.amount, p.currency), 0)
+        : rows.reduce((s, i) => s + toEUR(i.total, i.currency), 0);
+      return { ...cs, label, rows, totalEUR };
+    });
+    const total = streams.reduce((s, cs) => s + cs.totalEUR, 0);
+    return { mk, mon, streams, total };
+  });
+
+  const drillStream = (cs, titleSuffix) => {
+    const title = `${cs.label} — ${titleSuffix}`;
+    if (cs.payType === 'payment') drillDownModal(title, drillRevRows(cs.rows, []), REV_COLS);
+    else drillDownModal(title, drillRevRows([], cs.rows), REV_COLS);
+  };
+
+  const render = () => {
+    charts.destroy('ctrib-stacked');
+    charts.destroy('ctrib-donut');
+    charts.destroy('ctrib-hbar');
+    kpiRow.innerHTML = '';
+    content.innerHTML = '';
+
+    const yr = yearSel.value;
+    const annual = streamRevData(yr);
+    const total  = annual.reduce((s, cs) => s + cs.totalEUR, 0);
+
+    for (const cs of annual) {
+      const pct = total > 0 ? ((cs.totalEUR / total) * 100).toFixed(1) : '0.0';
+      kpiRow.appendChild(kpi(cs.label, `${formatEUR(cs.totalEUR)} (${pct}%)`, '', () => drillStream(cs, yr)));
+    }
+
+    if (currentView === 'monthly') renderContribMonthly(annual, total, yr);
+    else renderContribYearly(annual, total, yr);
+  };
+
+  const renderContribMonthly = (annual, total, yr) => {
+    const months = monthlyRevData(yr);
+
+    const chartCard = el('div', { class: 'card mb-16' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue Contribution by Month')),
+      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'ctrib-stacked' }))
+    );
+    content.appendChild(chartCard);
+
+    // Detail table
+    const t = el('table', { class: 'table' });
+    const hdrs = annual.map(cs => `<th class="right">${cs.label}</th>`).join('');
+    t.innerHTML = `<thead><tr><th>Month</th>${hdrs}<th class="right">Total</th></tr></thead>`;
+    const tb = el('tbody');
+
+    for (const mData of months) {
+      if (mData.total === 0) continue;
+      const tr = el('tr');
+      tr.appendChild(el('td', {}, mData.mon));
+      for (const cs of mData.streams) {
+        const td = el('td', { class: 'right num', style: cs.totalEUR > 0 ? 'cursor:pointer' : '' }, cs.totalEUR > 0 ? formatEUR(cs.totalEUR) : '—');
+        if (cs.totalEUR > 0) td.onclick = () => drillStream(cs, `${mData.mon} ${yr}`);
+        tr.appendChild(td);
+      }
+      tr.appendChild(el('td', { class: 'right num' }, formatEUR(mData.total)));
+      tb.appendChild(tr);
+    }
+
+    // Totals row with percentages
+    const totTr = el('tr', { style: 'font-weight:600;border-top:2px solid var(--border)' });
+    totTr.appendChild(el('td', {}, 'Total'));
+    for (const cs of annual) {
+      const pct = total > 0 ? ` (${((cs.totalEUR / total) * 100).toFixed(1)}%)` : '';
+      totTr.appendChild(el('td', { class: 'right num' }, `${formatEUR(cs.totalEUR)}${pct}`));
+    }
+    totTr.appendChild(el('td', { class: 'right num' }, formatEUR(total)));
+    tb.appendChild(totTr);
+    t.appendChild(tb);
+    content.appendChild(el('div', { class: 'table-wrap' }, t));
+
+    setTimeout(() => {
+      charts.bar('ctrib-stacked', {
+        labels: MON,
+        datasets: CSTREAMS.map((cs, ci) => ({
+          label: streamLabel(cs.key),
+          data: months.map(m => Math.round(m.streams[ci].totalEUR)),
+          backgroundColor: cs.color
+        })),
+        stacked: true,
+        onClickItem: (label, index, datasetIndex) => {
+          const mData = months[index];
+          const cs = mData && mData.streams[datasetIndex];
+          if (!cs || cs.totalEUR === 0) return;
+          drillStream(cs, `${mData.mon} ${yr}`);
+        }
+      });
+    }, 0);
+  };
+
+  const renderContribYearly = (annual, total, yr) => {
+    const chartRow = el('div', { class: 'grid grid-2 mb-16' },
+      el('div', { class: 'card' },
+        el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, `${yr} Revenue Share`)),
+        el('div', { class: 'chart-wrap' }, el('canvas', { id: 'ctrib-donut' }))
+      ),
+      el('div', { class: 'card' },
+        el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, `${yr} Absolute Revenue`)),
+        el('div', { class: 'chart-wrap' }, el('canvas', { id: 'ctrib-hbar' }))
+      )
+    );
+    content.appendChild(chartRow);
+
+    const t = el('table', { class: 'table' });
+    t.innerHTML = `<thead><tr><th>Stream</th><th class="right">Revenue (EUR)</th><th class="right">Share</th></tr></thead>`;
+    const tb = el('tbody');
+    for (const cs of annual) {
+      const pct = total > 0 ? ((cs.totalEUR / total) * 100).toFixed(1) : '0.0';
+      const tr = el('tr', { style: 'cursor:pointer' });
+      tr.onclick = () => drillStream(cs, yr);
+      tr.appendChild(el('td', {}, el('span', { class: `badge ${STREAMS[cs.key]?.css || ''}` }, cs.label)));
+      tr.appendChild(el('td', { class: 'right num' }, formatEUR(cs.totalEUR)));
+      tr.appendChild(el('td', { class: 'right num' }, `${pct}%`));
+      tb.appendChild(tr);
+    }
+    const totTr = el('tr', { style: 'font-weight:600;border-top:2px solid var(--border)' });
+    totTr.appendChild(el('td', {}, 'Total'));
+    totTr.appendChild(el('td', { class: 'right num' }, formatEUR(total)));
+    totTr.appendChild(el('td', { class: 'right num' }, '100%'));
+    tb.appendChild(totTr);
+    t.appendChild(tb);
+    content.appendChild(el('div', { class: 'table-wrap' }, t));
+
+    setTimeout(() => {
+      charts.doughnut('ctrib-donut', {
+        labels: annual.map(cs => cs.label),
+        data: annual.map(cs => Math.round(cs.totalEUR)),
+        colors: CSTREAMS.map(cs => cs.color),
+        onClickItem: (label, index) => {
+          const cs = annual[index];
+          if (cs) drillStream(cs, yr);
+        }
+      });
+      charts.bar('ctrib-hbar', {
+        labels: annual.map(cs => cs.label),
+        datasets: [{
+          label: 'Revenue',
+          data: annual.map(cs => Math.round(cs.totalEUR)),
+          backgroundColor: CSTREAMS.map(cs => cs.color)
+        }],
+        horizontal: true,
+        onClickItem: (label, index) => {
+          const cs = annual[index];
+          if (cs) drillStream(cs, yr);
+        }
+      });
+    }, 0);
+  };
+
+  viewMonthly.onclick = () => {
+    [viewMonthly, viewYearly].forEach(t => t.classList.remove('active'));
+    viewMonthly.classList.add('active');
+    currentView = 'monthly'; render();
+  };
+  viewYearly.onclick = () => {
+    [viewMonthly, viewYearly].forEach(t => t.classList.remove('active'));
+    viewYearly.classList.add('active');
+    currentView = 'yearly'; render();
+  };
+  yearSel.onchange = render;
+  render();
 }
 
 function kpi(label, value, variant, onClick) {
