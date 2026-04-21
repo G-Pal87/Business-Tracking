@@ -110,3 +110,31 @@ export async function fetchLocalDb() {
 export function saveLocalCache(db) {
   try { localStorage.setItem(DB_LS_KEY, JSON.stringify(db)); } catch (e) { console.warn(e); }
 }
+
+// Derive owner/repo/branch from the local .git directory (works when served from project root)
+export async function resolveGitRemote() {
+  try {
+    const [headRes, cfgRes] = await Promise.all([
+      fetch('.git/HEAD',   { cache: 'no-store' }),
+      fetch('.git/config', { cache: 'no-store' })
+    ]);
+    if (!headRes.ok || !cfgRes.ok) return null;
+
+    const head = await headRes.text();
+    const cfg  = await cfgRes.text();
+
+    const branchMatch = head.match(/^ref:\s*refs\/heads\/(.+)/m);
+    const branch = branchMatch ? branchMatch[1].trim() : 'main';
+
+    const urlMatch = cfg.match(/url\s*=\s*(.+)/);
+    if (!urlMatch) return null;
+
+    // Extract last two path segments as owner/repo (handles HTTPS, SSH, and proxy URLs)
+    const pathMatch = urlMatch[1].trim().replace(/\.git$/, '').match(/[/:]([^/:]+)\/([^/:]+)$/);
+    if (!pathMatch) return null;
+
+    return { owner: pathMatch[1], repo: pathMatch[2], branch };
+  } catch (e) {
+    return null;
+  }
+}

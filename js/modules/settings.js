@@ -1,7 +1,7 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
-import { saveConfig, clearConfig, fetchDb, pushDb, saveLocalCache } from '../core/github.js';
+import { saveConfig, clearConfig, fetchDb, pushDb, saveLocalCache, resolveGitRemote } from '../core/github.js';
 import { upsert, remove, newId, formatMoney } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
@@ -46,6 +46,15 @@ function buildGithubCard() {
   const repoI = input({ value: g.repo, placeholder: 'business-tracking' });
   const branchI = input({ value: g.branch || 'main', placeholder: 'main' });
   const tokenI = input({ value: g.token ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '', type: 'password', placeholder: 'Personal Access Token' });
+
+  // Auto-populate owner/repo from local .git when not already saved
+  if (!g.owner || !g.repo) {
+    resolveGitRemote().then(info => {
+      if (!info) return;
+      if (!ownerI.value) ownerI.value = info.owner;
+      if (!repoI.value)  repoI.value  = info.repo;
+    });
+  }
 
   card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Owner', ownerI), formRow('Repo', repoI)));
   card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Branch', branchI), formRow('Token (PAT)', tokenI, 'Requires repo scope. Stored in localStorage only.')));
