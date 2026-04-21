@@ -1411,6 +1411,30 @@
           "expenses": 300
         }
       }
+    },
+    {
+      "id": "fcs_mo8wkeqmj7",
+      "type": "property",
+      "entityId": "prop_001",
+      "year": 2026,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
+    },
+    {
+      "id": "fcs_mo8wkfghbf",
+      "type": "service",
+      "entityId": "customer_success",
+      "year": 2026,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
     }
   ]
 }
