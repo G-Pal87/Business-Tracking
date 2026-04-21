@@ -660,31 +660,31 @@ function openCSVImport() {
           status,
           airbnbRef: row.reference,
           airbnbCheckIn: row.checkIn,
+          airbnbCheckOut: row.checkOut,
           airbnbNights: row.nights,
+          avgNightlyRate: row.avgNightlyRate,
           notes: [row.guest, row.listing].filter(Boolean).join(' · ')
         });
         upsert('payments', pay);
-        if (matched.cleaningFee) {
-          const expDate = row.checkIn || row.date;
-          const existingExp = row.reference
-            ? (state.db.expenses || []).find(e => e.airbnbRef === row.reference && e.category === 'cleaning')
-            : (state.db.expenses || []).find(e =>
-                e.category === 'cleaning' && e.propertyId === matched.id && e.date === expDate);
-          if (!existingExp) {
-            upsert('expenses', {
-              id: newId('exp'),
-              propertyId: matched.id,
-              category: 'cleaning',
-              amount: matched.cleaningFee,
-              currency: matched.currency,
-              date: expDate,
-              airbnbRef: row.reference || '',
-              vendorId: '',
-              vendor: '',
-              description: '',
-              stream: 'short_term_rental'
-            });
-          }
+        const expDate = row.checkIn || row.date;
+        const existingExp = row.reference
+          ? (state.db.expenses || []).find(e => e.airbnbRef === row.reference && e.category === 'cleaning')
+          : (state.db.expenses || []).find(e =>
+              e.category === 'cleaning' && e.propertyId === matched.id && e.date === expDate);
+        if (!existingExp) {
+          upsert('expenses', {
+            id: newId('exp'),
+            propertyId: matched.id,
+            category: 'cleaning',
+            amount: 0,
+            currency: matched.currency,
+            date: expDate,
+            airbnbRef: row.reference || '',
+            vendorId: '',
+            vendor: '',
+            description: '',
+            stream: 'short_term_rental'
+          });
         }
         if (existing) totalUpdated++; else totalAdded++;
       }
@@ -762,15 +762,19 @@ function parseAirbnbCSV(text) {
     const amount   = Math.abs(parseFloat(amtStr.replace(/[^0-9.-]/g, '')) || 0);
 
     // Date: use payout/transaction date; fall back to check-in date for pending files
-    const dateRaw    = col(row, 'date', 'paid date', 'payout date', 'transaction date');
-    const checkInRaw = col(row, 'start date', 'check in', 'checkin', 'arrival date');
-    const date       = parseDateStr(dateRaw) || parseDateStr(checkInRaw);
+    const dateRaw     = col(row, 'date', 'paid date', 'payout date', 'transaction date');
+    const checkInRaw  = col(row, 'start date', 'check in', 'checkin', 'arrival date');
+    const checkOutRaw = col(row, 'end date', 'checkout', 'check out', 'departure date');
+    const date        = parseDateStr(dateRaw) || parseDateStr(checkInRaw);
     if (!date) continue;
+    const nights = parseInt(col(row, 'nights', 'number of nights'), 10) || 0;
 
     results.push({
       date,
-      checkIn:   parseDateStr(checkInRaw) || '',
-      nights:    parseInt(col(row, 'nights', 'number of nights'), 10) || 0,
+      checkIn:        parseDateStr(checkInRaw) || '',
+      checkOut:       parseDateStr(checkOutRaw) || '',
+      nights,
+      avgNightlyRate: nights > 0 ? Math.round((amount / nights) * 100) / 100 : 0,
       reference,
       amount,
       currency:  col(row, 'currency', 'currency code') || 'EUR',
