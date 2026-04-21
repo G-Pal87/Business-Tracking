@@ -220,6 +220,22 @@ function kpi(label, value, sub, variant, onClick) {
   return node;
 }
 
+function sanitizeClientName(name) {
+  return String(name).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'Client';
+}
+
+function nextInvoiceSequence(year, excludeId) {
+  let max = 0;
+  for (const inv of (state.db.invoices || [])) {
+    if (inv.id === excludeId) continue;
+    if ((inv.issueDate || '').startsWith(year) && inv.number) {
+      const n = parseInt(inv.number.split('_')[0], 10);
+      if (!isNaN(n) && n > max) max = n;
+    }
+  }
+  return max + 1;
+}
+
 // ============ BUILDER ============
 function openBuilder(existing) {
   const clients = state.db.clients || [];
@@ -358,13 +374,12 @@ function openBuilder(existing) {
 
   function refreshNumberHint() {
     if (existing || numberI.value.trim()) return;
-    const s = state.db.settings;
     const year = (issueI.value || today()).slice(0, 4);
-    const owner = ownerS.value;
-    const prefix = s.invoicePrefix?.[owner] || (owner === 'rita' ? 'RTA' : 'INV');
-    const key = `${owner}_${year}`;
-    const next = (s.invoiceCounters?.[key] || 0) + 1;
-    numberI.placeholder = `Auto: ${prefix}-${year}-${String(next).padStart(3, '0')}`;
+    const date = issueI.value || today();
+    const client = byId('clients', clientS.value);
+    const clientPart = client ? sanitizeClientName(client.name) : 'Client';
+    const seq = nextInvoiceSequence(year);
+    numberI.placeholder = `Auto: ${seq}_${clientPart}_${date}`;
   }
 
   clientS.onchange = () => {
@@ -393,19 +408,15 @@ function openBuilder(existing) {
     inv.stream = byId('clients', inv.clientId)?.stream || inv.stream;
     inv.notes = notesT.value;
     if (!numberI.value.trim()) {
-      const s = state.db.settings;
-      if (!s.invoiceCounters) s.invoiceCounters = {};
-      if (!s.invoicePrefix) s.invoicePrefix = {};
       const year = inv.issueDate.slice(0, 4);
-      const prefix = s.invoicePrefix[inv.owner] || (inv.owner === 'rita' ? 'RTA' : 'INV');
-      const counterKey = `${inv.owner}_${year}`;
-      const nextSeq = (s.invoiceCounters[counterKey] || 0) + 1;
-      const candidate = `${prefix}-${year}-${String(nextSeq).padStart(3, '0')}`;
+      const client = byId('clients', inv.clientId);
+      const clientPart = client ? sanitizeClientName(client.name) : 'Client';
+      const seq = nextInvoiceSequence(year, inv.id);
+      const candidate = `${seq}_${clientPart}_${inv.issueDate}`;
       if ((state.db.invoices || []).some(i => i.id !== inv.id && i.number === candidate)) {
         toast(`Auto-generated number ${candidate} conflicts with an existing invoice`, 'danger');
         return;
       }
-      s.invoiceCounters[counterKey] = nextSeq;
       inv.number = candidate;
     } else {
       inv.number = numberI.value.trim();
