@@ -30,6 +30,37 @@ const NET_COLS = [
   { key: 'source', label: 'Source' },
   { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
 ];
+const PROP_COLS = [
+  { key: 'name', label: 'Property' },
+  { key: 'type', label: 'Type' },
+  { key: 'status', label: 'Status' },
+  { key: 'location', label: 'Location' },
+  { key: 'purchase', label: 'Purchase Price', right: true },
+  { key: 'monthly', label: 'Monthly Rent', right: true }
+];
+const OPEN_INV_COLS = [
+  { key: 'number', label: 'Invoice' },
+  { key: 'client', label: 'Client' },
+  { key: 'status', label: 'Status' },
+  { key: 'issueDate', label: 'Issued', format: v => fmtDate(v) },
+  { key: 'dueDate', label: 'Due', format: v => fmtDate(v) },
+  { key: 'total', label: 'Amount', right: true },
+  { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
+];
+const CLIENT_COLS = [
+  { key: 'name', label: 'Client' },
+  { key: 'stream', label: 'Stream' },
+  { key: 'email', label: 'Email' },
+  { key: 'invoiceCount', label: 'Invoices', right: true },
+  { key: 'eur', label: 'Total Invoiced', right: true, format: v => formatEUR(v) }
+];
+const PORTFOLIO_COLS = [
+  { key: 'name', label: 'Property' },
+  { key: 'location', label: 'Location' },
+  { key: 'purchase', label: 'Purchase Price', right: true },
+  { key: 'reno', label: 'Reno CapEx', right: true, format: v => v > 0 ? formatEUR(v) : '—' },
+  { key: 'eur', label: 'Total Value (EUR)', right: true, format: v => formatEUR(v) }
+];
 
 export default {
   id: 'dashboard',
@@ -94,10 +125,66 @@ export default {
     );
 
     const kpis2 = el('div', { class: 'grid grid-4 mt-16' },
-      kpi('Properties', String(totalProperties), `${active} active, ${reno} renovation`),
-      kpi('Active Invoices', String(openInv), `Outstanding ${formatEUR(outstanding)}`),
-      kpi('Clients', String((state.db.clients || []).length), 'Across both streams'),
-      kpi('Total Portfolio', formatEUR(portfolioValueEUR()), 'At purchase + CapEx')
+      kpi('Properties', String(totalProperties), `${active} active, ${reno} renovation`, '', () => {
+        const rows = (state.db.properties || []).map(p => ({
+          name: p.name,
+          type: p.type === 'long_term' ? 'Long-term' : 'Short-term',
+          status: p.status || '—',
+          location: `${p.city || ''}, ${p.country || ''}`,
+          purchase: p.purchasePrice ? `${new Intl.NumberFormat().format(p.purchasePrice)} ${p.currency}` : '—',
+          monthly: p.monthlyRent ? `${new Intl.NumberFormat().format(p.monthlyRent)} ${p.currency}` : p.type === 'short_term' ? 'ST' : '—'
+        }));
+        drillDownModal('Properties', rows, PROP_COLS);
+      }),
+      kpi('Active Invoices', String(openInv), `Outstanding ${formatEUR(outstanding)}`, '', () => {
+        const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
+        const rows = (state.db.invoices || [])
+          .filter(i => i.status === 'sent' || i.status === 'overdue')
+          .map(i => {
+            const client = byId('clients', i.clientId);
+            return {
+              number: i.number || i.id,
+              client: client?.name || '—',
+              status: i.status,
+              issueDate: i.issueDate,
+              dueDate: i.dueDate,
+              total: i.total ? `${new Intl.NumberFormat().format(i.total)} ${i.currency}` : '—',
+              eur: i.currency === 'HUF' ? (i.total || 0) * fx : (i.total || 0)
+            };
+          }).sort((a, b) => b.eur - a.eur);
+        drillDownModal('Active Invoices', rows, OPEN_INV_COLS);
+      }),
+      kpi('Clients', String((state.db.clients || []).length), 'Across both streams', '', () => {
+        const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
+        const rows = (state.db.clients || []).map(c => {
+          const cInvs = (state.db.invoices || []).filter(i => i.clientId === c.id);
+          const eur = cInvs.reduce((s, i) => s + (i.currency === 'HUF' ? (i.total || 0) * fx : (i.total || 0)), 0);
+          return {
+            name: c.name,
+            stream: STREAMS[c.stream]?.label || c.stream || '—',
+            email: c.email || '—',
+            invoiceCount: String(cInvs.length),
+            eur
+          };
+        }).sort((a, b) => b.eur - a.eur);
+        drillDownModal('Clients', rows, CLIENT_COLS);
+      }),
+      kpi('Total Portfolio', formatEUR(portfolioValueEUR()), 'At purchase + CapEx', '', () => {
+        const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
+        const allReno = (state.db.expenses || []).filter(e => e.category === 'renovation');
+        const rows = (state.db.properties || []).map(p => {
+          const base = p.currency === 'HUF' ? (p.purchasePrice || 0) * fx : (p.purchasePrice || 0);
+          const reno = allReno.filter(e => e.propertyId === p.id).reduce((s, e) => s + (e.currency === 'HUF' ? e.amount * fx : e.amount), 0);
+          return {
+            name: p.name,
+            location: `${p.city || ''}, ${p.country || ''}`,
+            purchase: p.purchasePrice ? `${new Intl.NumberFormat().format(p.purchasePrice)} ${p.currency}` : '—',
+            reno,
+            eur: base + reno
+          };
+        }).sort((a, b) => b.eur - a.eur);
+        drillDownModal('Portfolio Breakdown', rows, PORTFOLIO_COLS);
+      })
     );
 
     wrap.appendChild(kpis);
