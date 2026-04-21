@@ -760,19 +760,6 @@
   ],
   "clients": [
     {
-      "id": "cli_001",
-      "name": "Acme SaaS Inc.",
-      "email": "billing@acmesaas.com",
-      "address": "123 Tech Ave, Austin TX",
-      "vatNumber": "US-842910",
-      "registrationNumber": "US-DE-8429100",
-      "owner": "you",
-      "stream": "customer_success",
-      "currency": "EUR",
-      "contractStart": "2024-06-01",
-      "notes": "Monthly retainer"
-    },
-    {
       "id": "cli_002",
       "name": "Nordic Cloud AB",
       "email": "finance@nordiccloud.se",
