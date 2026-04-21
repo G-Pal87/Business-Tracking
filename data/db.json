@@ -1147,6 +1147,18 @@
       "source": "manual",
       "stream": "long_term_rental",
       "notes": "Rent 2023-10"
+    },
+    {
+      "id": "pay_mo8x5hq19h",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2020-12-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2020-12"
     }
   ],
   "expenses": [
