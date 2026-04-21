@@ -760,19 +760,6 @@
   ],
   "clients": [
     {
-      "id": "cli_002",
-      "name": "Nordic Cloud AB",
-      "email": "finance@nordiccloud.se",
-      "address": "Storgatan 5, Stockholm",
-      "vatNumber": "SE556789012301",
-      "registrationNumber": "SE5567890123",
-      "owner": "you",
-      "stream": "customer_success",
-      "currency": "EUR",
-      "contractStart": "2024-09-15",
-      "notes": "Quarterly reviews"
-    },
-    {
       "id": "cli_003",
       "name": "Budapest Bistro Group",
       "email": "rita@bistro.hu",
