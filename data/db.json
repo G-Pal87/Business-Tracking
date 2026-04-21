@@ -1,29 +1,5 @@
 {
-  "properties": [
-    {
-      "id": "prop_005",
-      "name": "Athens Penthouse",
-      "address": "Vouliagmenis 105",
-      "city": "Athens",
-      "country": "Greece",
-      "flag": "GR",
-      "type": "short_term",
-      "status": "active",
-      "bedrooms": 3,
-      "bathrooms": 2,
-      "purchasePrice": 320000,
-      "currency": "EUR",
-      "purchaseDate": "2023-05-20",
-      "monthlyRent": 0,
-      "nightlyRate": 180,
-      "mortgageAmount": 224000,
-      "mortgageMonthly": 1100,
-      "mortgageRate": 3.8,
-      "owner": "you",
-      "airbnbCalUrl": "",
-      "notes": "Rooftop penthouse with Acropolis views"
-    }
-  ],
+  "properties": [],
   "payments": [
     {
       "id": "pay_001",
