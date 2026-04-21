@@ -760,19 +760,6 @@
   ],
   "clients": [
     {
-      "id": "cli_003",
-      "name": "Budapest Bistro Group",
-      "email": "rita@bistro.hu",
-      "address": "Andrassy ut 21, Budapest",
-      "vatNumber": "HU12345678",
-      "registrationNumber": "01-09-123456",
-      "owner": "rita",
-      "stream": "marketing_services",
-      "currency": "HUF",
-      "contractStart": "2024-11-01",
-      "notes": "Social media + campaigns"
-    },
-    {
       "id": "cli_004",
       "name": "Mediterra Boutique Hotels",
       "email": "hello@mediterra.it",
