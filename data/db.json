@@ -31,7 +31,104 @@
       "paymentDayOfMonth": 28
     }
   ],
-  "payments": [],
+  "payments": [
+    {
+      "id": "pay_mo8x2hdul7",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2016-01-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2016-01"
+    },
+    {
+      "id": "pay_mo8x2if0co",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2016-02-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2016-02"
+    },
+    {
+      "id": "pay_mo8x2j0c43",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2016-03-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2016-03"
+    },
+    {
+      "id": "pay_mo8x2jbqph",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2016-04-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2016-04"
+    },
+    {
+      "id": "pay_mo8x2jnaak",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2016-05-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2016-05"
+    },
+    {
+      "id": "pay_mo8x2jyy6r",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2016-06-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2016-06"
+    },
+    {
+      "id": "pay_mo8x2koyo7",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2016-08-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2016-08"
+    },
+    {
+      "id": "pay_mo8x2kzygo",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2016-07-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2016-07"
+    }
+  ],
   "expenses": [
     {
       "id": "exp_001",
