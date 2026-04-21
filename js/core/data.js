@@ -337,6 +337,84 @@ export function generatePaymentSchedule(property) {
   return results;
 }
 
+// ============== Reconciliation ==============
+export function buildReconciliationData(year) {
+  const yr = Number(year);
+  const now = new Date();
+  const entities = [];
+
+  for (const prop of (state.db.properties || [])) {
+    const months = [];
+    for (let m = 1; m <= 12; m++) {
+      const mk = `${yr}-${String(m).padStart(2, '0')}`;
+      const start = `${mk}-01`;
+      const end = `${mk}-${new Date(yr, m, 0).getDate().toString().padStart(2, '0')}`;
+      const monthEnd = new Date(yr, m, 0);
+      const isPast = monthEnd < now;
+      let expected = 0, actual = 0;
+
+      if (prop.type === 'long_term' && prop.monthlyRent) {
+        // Expected = monthly rent if this month falls within the lease window
+        const ls = prop.leaseStartDate ? new Date(prop.leaseStartDate) : null;
+        const le = prop.leaseEndDate   ? new Date(prop.leaseEndDate)   : null;
+        const mStart = new Date(yr, m - 1, 1);
+        const inLease =
+          (!ls || mStart >= new Date(ls.getFullYear(), ls.getMonth(), 1)) &&
+          (!le || mStart <= new Date(le.getFullYear(), le.getMonth(), 1));
+        if (inLease) expected = toEUR(prop.monthlyRent, prop.currency);
+        actual = (state.db.payments || [])
+          .filter(p => p.propertyId === prop.id && p.date >= start && p.date <= end && p.status === 'paid')
+          .reduce((s, p) => s + toEUR(p.amount, p.currency), 0);
+      } else if (prop.type === 'short_term') {
+        // Expected = all booked revenue (paid + pending); Actual = paid only
+        const all = (state.db.payments || []).filter(p =>
+          p.propertyId === prop.id && p.date >= start && p.date <= end
+        );
+        expected = all.reduce((s, p) => s + toEUR(p.amount, p.currency), 0);
+        actual   = all.filter(p => p.status === 'paid').reduce((s, p) => s + toEUR(p.amount, p.currency), 0);
+      }
+
+      months.push({ mk, m, expected, actual, variance: actual - expected, isPast });
+    }
+    const totExp = months.reduce((s, m) => s + m.expected, 0);
+    const totAct = months.reduce((s, m) => s + m.actual, 0);
+    entities.push({
+      id: prop.id, label: prop.name,
+      kind: prop.type === 'long_term' ? 'lt' : 'st',
+      months, totExp, totAct, totVariance: totAct - totExp
+    });
+  }
+
+  // Services: issued invoices = expected; paid = actual
+  for (const { stream, label } of [
+    { stream: 'customer_success',  label: 'Customer Success' },
+    { stream: 'marketing_services', label: 'Marketing Services' }
+  ]) {
+    const months = [];
+    for (let m = 1; m <= 12; m++) {
+      const mk = `${yr}-${String(m).padStart(2, '0')}`;
+      const start = `${mk}-01`;
+      const end = `${mk}-${new Date(yr, m, 0).getDate().toString().padStart(2, '0')}`;
+      const monthEnd = new Date(yr, m, 0);
+      const isPast = monthEnd < now;
+      const invs = (state.db.invoices || []).filter(i =>
+        i.stream === stream && i.issueDate >= start && i.issueDate <= end && i.status !== 'draft'
+      );
+      const expected = invs.reduce((s, i) => s + toEUR(i.total, i.currency), 0);
+      const actual   = invs.filter(i => i.status === 'paid').reduce((s, i) => s + toEUR(i.total, i.currency), 0);
+      months.push({ mk, m, expected, actual, variance: actual - expected, isPast });
+    }
+    const totExp = months.reduce((s, m) => s + m.expected, 0);
+    const totAct = months.reduce((s, m) => s + m.actual, 0);
+    entities.push({
+      id: stream, label, kind: 'service',
+      months, totExp, totAct, totVariance: totAct - totExp
+    });
+  }
+
+  return entities;
+}
+
 // ============== Centralised report data (single source of truth) ==============
 export function buildReportData(filters = {}) {
   const f = { ...state.ui.filters, ...filters };
