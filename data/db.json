@@ -760,19 +760,6 @@
   ],
   "clients": [
     {
-      "id": "cli_004",
-      "name": "Mediterra Boutique Hotels",
-      "email": "hello@mediterra.it",
-      "address": "Via Roma 8, Rome",
-      "vatNumber": "IT01234567890",
-      "registrationNumber": "IT-RM-20241234",
-      "owner": "rita",
-      "stream": "marketing_services",
-      "currency": "EUR",
-      "contractStart": "2025-01-10",
-      "notes": "Performance marketing"
-    },
-    {
       "id": "cli_mo8wghcok1",
       "name": "2 rabbits",
       "email": "",
