@@ -1547,6 +1547,18 @@
         "expenses": 0
       },
       "months": {}
+    },
+    {
+      "id": "fcs_mo92cf518j",
+      "type": "property",
+      "entityId": "prop_mo8ws698cn",
+      "year": 2026,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
     }
   ]
 }
