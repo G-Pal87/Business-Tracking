@@ -187,18 +187,14 @@ function buildInvoiceNumberingCard() {
   ));
   const s = state.db.settings;
   const prefixYou = input({ value: s.invoicePrefix?.you || 'INV', style: 'width:80px' });
-  const prefixRita = input({ value: s.invoicePrefix?.rita || 'RTA', style: 'width:80px' });
   const year = new Date().getFullYear();
   const seqYou = input({ type: 'number', value: s.invoiceCounters?.[`you_${year}`] || 0, min: 0, style: 'width:80px' });
-  const seqRita = input({ type: 'number', value: s.invoiceCounters?.[`rita_${year}`] || 0, min: 0, style: 'width:80px' });
 
   card.appendChild(el('div', { class: 'form-row horizontal' },
-    formRow('Prefix — You', prefixYou, `Preview: ${prefixYou.value || 'INV'}-${year}-001`),
-    formRow('Prefix — Rita', prefixRita, `Preview: ${prefixRita.value || 'RTA'}-${year}-001`)
+    formRow('Prefix', prefixYou, `Preview: ${prefixYou.value || 'INV'}-${year}-001`)
   ));
   card.appendChild(el('div', { class: 'form-row horizontal' },
-    formRow(`Sequence start — You (${year})`, seqYou, 'Next invoice will use this + 1'),
-    formRow(`Sequence start — Rita (${year})`, seqRita)
+    formRow(`Sequence start (${year})`, seqYou, 'Next invoice will use this + 1')
   ));
 
   prefixYou.oninput = () => { const p = prefixYou.nextElementSibling; if (p) p.textContent = `Preview: ${prefixYou.value || 'INV'}-${year}-001`; };
@@ -207,9 +203,7 @@ function buildInvoiceNumberingCard() {
     if (!s.invoicePrefix) s.invoicePrefix = {};
     if (!s.invoiceCounters) s.invoiceCounters = {};
     s.invoicePrefix.you = prefixYou.value.trim() || 'INV';
-    s.invoicePrefix.rita = prefixRita.value.trim() || 'RTA';
     s.invoiceCounters[`you_${year}`] = Number(seqYou.value) || 0;
-    s.invoiceCounters[`rita_${year}`] = Number(seqRita.value) || 0;
     markDirty();
     toast('Invoice numbering saved', 'success');
   }});
