@@ -1,30 +1,6 @@
 {
   "properties": [
     {
-      "id": "prop_003",
-      "name": "Budapest District V Flat",
-      "address": "Vaci utca 24",
-      "city": "Budapest",
-      "country": "Hungary",
-      "flag": "HU",
-      "type": "long_term",
-      "status": "active",
-      "bedrooms": 2,
-      "bathrooms": 1,
-      "purchasePrice": 85000000,
-      "currency": "HUF",
-      "purchaseDate": "2022-09-01",
-      "monthlyRent": 350000,
-      "nightlyRate": 0,
-      "mortgageAmount": 55000000,
-      "mortgageMonthly": 280000,
-      "mortgageRate": 6.5,
-      "paymentDayOfMonth": 5,
-      "owner": "both",
-      "airbnbCalUrl": "",
-      "notes": "Central Budapest rental"
-    },
-    {
       "id": "prop_004",
       "name": "Budapest Buda Hills Villa",
       "address": "Szechenyi hegy 12",
