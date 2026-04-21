@@ -1118,6 +1118,33 @@
       "tax": 0,
       "total": 5200,
       "notes": ""
+    },
+    {
+      "id": "inv_mo8wjmjull",
+      "number": "1_AcmeSaaSInc_21-04-2026",
+      "clientId": "cli_001",
+      "owner": "you",
+      "issueDate": "2026-04-21",
+      "dueDate": "2026-05-21",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_mo8wjslbet",
+          "serviceId": "svc_002",
+          "description": "Onboarding Program Design",
+          "quantity": 1,
+          "unit": "project",
+          "rate": 4500,
+          "total": 4500
+        }
+      ],
+      "subtotal": 4500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 4500,
+      "notes": ""
     }
   ],
   "settings": {
