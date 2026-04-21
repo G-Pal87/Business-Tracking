@@ -96,12 +96,14 @@ export async function pushDb(db, message = 'Update data') {
 
 // Fallback: localStorage + static fetch for initial data
 export async function fetchLocalDb() {
+  const cached = localStorage.getItem(DB_LS_KEY);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (e) { /* corrupt cache, fall through */ }
+  }
   try {
     const res = await fetch('data/db.json', { cache: 'no-store' });
     if (res.ok) return await res.json();
   } catch (e) { /* ignore */ }
-  const cached = localStorage.getItem(DB_LS_KEY);
-  if (cached) return JSON.parse(cached);
   return null;
 }
 
