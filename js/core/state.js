@@ -12,7 +12,7 @@ const initialData = {
   invoices: [],
   settings: {
     masterCurrency: 'EUR',
-    fxRates: { HUF_EUR: 0.0025 },
+    fxRates: { yearRates: {} },
     defaultTaxRate: 0,
     business: { name: '', email: '', address: '', vatNumber: '', iban: '', bic: '' },
     team: [],
@@ -39,7 +39,8 @@ export function notify(event = 'change') {
 export function setDb(db) {
   state.db = { ...initialData, ...db };
   if (!state.db.settings) state.db.settings = initialData.settings;
-  if (!state.db.settings.fxRates) state.db.settings.fxRates = { HUF_EUR: 0.0025 };
+  if (!state.db.settings.fxRates) state.db.settings.fxRates = { yearRates: {} };
+  if (!state.db.settings.fxRates.yearRates) state.db.settings.fxRates.yearRates = {};
   state.dirty = false;
   notify('data-loaded');
 }

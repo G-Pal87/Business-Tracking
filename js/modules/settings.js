@@ -91,45 +91,91 @@ function buildGithubCard() {
   return card;
 }
 
-const FX_DEFAULTS = { HUF: 0.0025, GBP: 1.17, USD: 0.92, CHF: 1.05, CZK: 0.041, PLN: 0.23, RON: 0.20 };
-
 function buildCurrencyCard() {
   const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
-    el('div', {},
-      el('div', { class: 'card-title' }, 'Currencies & FX Rates'),
-      el('div', { class: 'card-subtitle' }, 'Master currency: EUR — enter how much 1 unit of each currency equals in EUR')
-    )
-  ));
 
-  const nonEur = CURRENCIES.filter(c => c !== 'EUR');
-  const saved  = state.db.settings?.fxRates || {};
-  const rateInputs = {};
+  const renderCard = () => {
+    card.innerHTML = '';
+    card.appendChild(el('div', { class: 'card-header' },
+      el('div', {},
+        el('div', { class: 'card-title' }, 'HUF/EUR Annual Rates'),
+        el('div', { class: 'card-subtitle' }, 'Fixed yearly conversion rate: 1 HUF = X EUR')
+      ),
+      button('+ Add Year', { variant: 'primary', onClick: () => openAddYearForm(renderCard) })
+    ));
 
-  const rateGrid = el('div', { class: 'form-row horizontal', style: 'flex-wrap:wrap;gap:8px' });
-  for (const c of nonEur) {
-    const rate = saved[`${c}_EUR`] ?? FX_DEFAULTS[c] ?? 1;
-    const inp = input({ type: 'number', value: rate, step: 0.0001, min: 0 });
-    rateInputs[c] = inp;
-    rateGrid.appendChild(formRow(`${c} → EUR`, inp, `1 ${c} = ${rate} EUR`));
-  }
-  card.appendChild(rateGrid);
+    const yearRates = state.db.settings?.fxRates?.yearRates || {};
+    const years = Object.keys(yearRates).sort().reverse();
 
-  const taxI = input({ type: 'number', value: state.db.settings?.defaultTaxRate || 0, min: 0, max: 100, step: 0.1 });
-  card.appendChild(el('div', { class: 'form-row horizontal', style: 'margin-top:8px' },
-    formRow('Default invoice tax %', taxI)
-  ));
+    if (years.length === 0) {
+      card.appendChild(el('div', { class: 'empty' }, 'No rates defined. Add a year to get started.'));
+    } else {
+      const t = el('table', { class: 'table' });
+      t.innerHTML = `<thead><tr><th>Year</th><th>1 HUF = EUR</th><th></th></tr></thead>`;
+      const tb = el('tbody');
+      for (const yr of years) {
+        const rateI = input({ type: 'number', value: yearRates[yr], step: 0.000001, min: 0, style: 'width:140px' });
+        const saveBtn = button('Save', { variant: 'sm primary', onClick: () => {
+          const r = Number(rateI.value);
+          if (!r || r <= 0) { toast('Enter a valid rate', 'danger'); return; }
+          state.db.settings.fxRates.yearRates[yr] = r;
+          markDirty();
+          toast(`${yr} rate saved`, 'success');
+        }});
+        const delBtn = button('Del', { variant: 'sm ghost', onClick: async () => {
+          const ok = await confirmDialog(`Remove the ${yr} rate?`, { danger: true, okLabel: 'Remove' });
+          if (!ok) return;
+          delete state.db.settings.fxRates.yearRates[yr];
+          markDirty();
+          renderCard();
+        }});
+        const td = el('td', { class: 'right' });
+        td.appendChild(saveBtn);
+        td.appendChild(delBtn);
+        const tr = el('tr');
+        tr.appendChild(el('td', {}, yr));
+        tr.appendChild(el('td', {}, rateI));
+        tr.appendChild(td);
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb);
+      card.appendChild(el('div', { class: 'table-wrap' }, t));
+    }
 
-  const save = button('Save', { variant: 'primary', onClick: () => {
-    const rates = {};
-    for (const c of nonEur) rates[`${c}_EUR`] = Number(rateInputs[c].value) || FX_DEFAULTS[c] || 1;
-    state.db.settings.fxRates = rates;
-    state.db.settings.defaultTaxRate = Number(taxI.value) || 0;
-    markDirty();
-    toast('Saved', 'success');
-  }});
-  card.appendChild(save);
+    const taxI = input({ type: 'number', value: state.db.settings?.defaultTaxRate || 0, min: 0, max: 100, step: 0.1 });
+    card.appendChild(el('div', { class: 'form-row horizontal', style: 'margin-top:16px' },
+      formRow('Default invoice tax %', taxI)
+    ));
+    card.appendChild(button('Save Tax Rate', { variant: 'primary', onClick: () => {
+      state.db.settings.defaultTaxRate = Number(taxI.value) || 0;
+      markDirty();
+      toast('Saved', 'success');
+    }}));
+  };
+
+  renderCard();
   return card;
+}
+
+function openAddYearForm(onDone) {
+  const yearI = input({ type: 'number', value: new Date().getFullYear(), min: 2000, max: 2100, step: 1 });
+  const rateI = input({ type: 'number', step: 0.000001, min: 0, placeholder: 'e.g. 0.00256' });
+  const body = el('div', {});
+  body.appendChild(formRow('Year', yearI));
+  body.appendChild(formRow('1 HUF = EUR', rateI));
+  const save = button('Add', { variant: 'primary', onClick: () => {
+    const yr = String(Number(yearI.value) | 0);
+    const r = Number(rateI.value);
+    if (!yr || Number(yr) < 2000) { toast('Enter a valid year', 'danger'); return; }
+    if (!r || r <= 0) { toast('Enter a valid rate', 'danger'); return; }
+    if (!state.db.settings.fxRates.yearRates) state.db.settings.fxRates.yearRates = {};
+    state.db.settings.fxRates.yearRates[yr] = r;
+    markDirty();
+    toast(`${yr} rate added`, 'success');
+    closeModal();
+    onDone();
+  }});
+  openModal({ title: 'Add Annual Rate', body, footer: [button('Cancel', { onClick: closeModal }), save] });
 }
 
 function buildBusinessCard() {
