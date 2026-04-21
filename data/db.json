@@ -1,29 +1,6 @@
 {
   "properties": [
     {
-      "id": "prop_004",
-      "name": "Budapest Buda Hills Villa",
-      "address": "Szechenyi hegy 12",
-      "city": "Budapest",
-      "country": "Hungary",
-      "flag": "HU",
-      "type": "short_term",
-      "status": "renovation",
-      "bedrooms": 4,
-      "bathrooms": 3,
-      "purchasePrice": 145000000,
-      "currency": "HUF",
-      "purchaseDate": "2024-01-15",
-      "monthlyRent": 0,
-      "nightlyRate": 180,
-      "mortgageAmount": 100000000,
-      "mortgageMonthly": 520000,
-      "mortgageRate": 7,
-      "owner": "both",
-      "airbnbCalUrl": "",
-      "notes": "Premium villa - under full renovation until Q3"
-    },
-    {
       "id": "prop_005",
       "name": "Athens Penthouse",
       "address": "Vouliagmenis 105",
