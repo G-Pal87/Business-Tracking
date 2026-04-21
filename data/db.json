@@ -1162,21 +1162,7 @@
     }
   ],
   "expenses": [],
-  "vendors": [
-    {
-      "id": "vnd_003",
-      "name": "Athens Property Services",
-      "type": "management",
-      "email": "ops@athenspm.gr",
-      "phone": "+30 210 123 4567",
-      "pricing": {},
-      "currency": "EUR",
-      "propertyIds": [
-        "prop_005"
-      ],
-      "notes": "5% monthly management fee"
-    }
-  ],
+  "vendors": [],
   "tenants": [
     {
       "id": "ten_001",
