@@ -290,17 +290,51 @@ export function estimateTaxForYear(year, rate) {
 }
 
 // ============== LT Schedule ==============
-export function generatePaymentSchedule(property, months = 12) {
+export function generatePaymentSchedule(property) {
   if (property.type !== 'long_term' || !property.monthlyRent) return [];
-  const today = new Date();
-  const dueDay = property.paymentDayOfMonth || 1;
-  return Array.from({ length: months }, (_, i) => {
-    const d = new Date(today.getFullYear(), today.getMonth() + i - 1, dueDay);
-    const dateStr = d.toISOString().slice(0, 10);
-    const monthKey = dateStr.slice(0, 7);
-    const paid = (state.db.payments || []).some(p => p.propertyId === property.id && p.date.slice(0, 7) === monthKey && p.status === 'paid');
-    return { date: dateStr, monthKey, amount: property.monthlyRent, currency: property.currency, amountEUR: toEUR(property.monthlyRent, property.currency), paid, overdue: !paid && d < today };
-  });
+  const now = new Date();
+  const dueDay = Math.min(Math.max(property.paymentDayOfMonth || 1, 1), 28);
+
+  // Range: lease start (or 12 months back) → lease end (or 12 months ahead)
+  let rangeStart, rangeEnd;
+  if (property.leaseStartDate) {
+    const d = new Date(property.leaseStartDate);
+    rangeStart = new Date(d.getFullYear(), d.getMonth(), 1);
+  } else {
+    rangeStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  }
+  if (property.leaseEndDate) {
+    const d = new Date(property.leaseEndDate);
+    rangeEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  } else {
+    rangeEnd = new Date(now.getFullYear(), now.getMonth() + 13, 1);
+  }
+
+  const results = [];
+  let cursor = new Date(rangeStart);
+  while (cursor < rangeEnd) {
+    const lastDay = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+    const day = Math.min(dueDay, lastDay);
+    const dueDate = new Date(cursor.getFullYear(), cursor.getMonth(), day);
+    const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+    const dateStr = `${monthKey}-${String(day).padStart(2, '0')}`;
+    const paidPayment = (state.db.payments || []).find(p =>
+      p.propertyId === property.id &&
+      p.date?.slice(0, 7) === monthKey &&
+      p.status === 'paid' &&
+      (p.stream === 'long_term_rental' || p.type === 'rental')
+    );
+    const paid = !!paidPayment;
+    const overdue = !paid && dueDate < now;
+    results.push({
+      date: dateStr, monthKey,
+      amount: property.monthlyRent, currency: property.currency,
+      amountEUR: toEUR(property.monthlyRent, property.currency),
+      paid, overdue, paidPaymentId: paidPayment?.id || null
+    });
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+  return results;
 }
 
 // ============== Centralised report data (single source of truth) ==============

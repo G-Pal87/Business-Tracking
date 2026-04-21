@@ -19,15 +19,26 @@ function build() {
   const tabs = el('div', { class: 'tabs' });
   const allSection = el('div', {});
   const scheduleSection = el('div', { style: 'display:none' });
+  const upcomingSection = el('div', { style: 'display:none' });
 
-  const t1 = el('div', { class: 'tab active' }, 'All Payments');
-  const t2 = el('div', { class: 'tab' }, 'LT Rental Schedule');
-  t1.onclick = () => { [t1,t2].forEach(t=>t.classList.remove('active')); t1.classList.add('active'); allSection.style.display=''; scheduleSection.style.display='none'; };
-  t2.onclick = () => { [t1,t2].forEach(t=>t.classList.remove('active')); t2.classList.add('active'); allSection.style.display='none'; scheduleSection.style.display=''; if (!scheduleSection.dataset.built) { scheduleSection.dataset.built='1'; buildScheduleSection(scheduleSection); } };
-  tabs.appendChild(t1); tabs.appendChild(t2);
+  const sections = [allSection, scheduleSection, upcomingSection];
+  const tabEls = [
+    el('div', { class: 'tab active' }, 'All Payments'),
+    el('div', { class: 'tab' }, 'Rent Schedule'),
+    el('div', { class: 'tab' }, 'Upcoming')
+  ];
+  tabEls.forEach((t, i) => {
+    t.onclick = () => {
+      tabEls.forEach(x => x.classList.remove('active')); t.classList.add('active');
+      sections.forEach((s, j) => { s.style.display = j === i ? '' : 'none'; });
+      if (i === 1 && !scheduleSection.dataset.built) { scheduleSection.dataset.built = '1'; buildScheduleSection(scheduleSection); }
+      if (i === 2 && !upcomingSection.dataset.built) { upcomingSection.dataset.built = '1'; buildUpcomingSection(upcomingSection); }
+    };
+    tabs.appendChild(t);
+  });
+
   wrap.appendChild(tabs);
-  wrap.appendChild(allSection);
-  wrap.appendChild(scheduleSection);
+  sections.forEach(s => wrap.appendChild(s));
 
   buildAllPayments(allSection);
   return wrap;
@@ -104,65 +115,213 @@ function buildAllPayments(wrap) {
   renderTable();
 }
 
+function recordRentPayment(prop, entry, onDone) {
+  upsert('payments', {
+    id: newId('pay'),
+    propertyId: prop.id,
+    amount: entry.amount,
+    currency: entry.currency,
+    date: entry.date,
+    type: 'rental',
+    status: 'paid',
+    source: 'manual',
+    stream: 'long_term_rental',
+    notes: `Rent ${entry.monthKey}`
+  });
+  toast('Payment recorded', 'success');
+  if (onDone) onDone();
+}
+
 function buildScheduleSection(wrap) {
   const ltProps = (state.db.properties || []).filter(p => p.type === 'long_term');
   if (ltProps.length === 0) {
-    wrap.appendChild(el('div', { class: 'empty' }, 'No long-term rental properties'));
+    wrap.appendChild(el('div', { class: 'empty' }, 'No long-term rental properties configured'));
     return;
   }
+
   const propSel = select(ltProps.map(p => ({ value: p.id, label: p.name })), ltProps[0].id);
-  const bar = el('div', { class: 'flex gap-8 mb-16' });
+  const showUnpaidOnly = el('label', { class: 'flex gap-8', style: 'align-items:center;cursor:pointer;font-size:13px' });
+  const unpaidChk = el('input', { type: 'checkbox' });
+  showUnpaidOnly.appendChild(unpaidChk);
+  showUnpaidOnly.appendChild(document.createTextNode('Unpaid only'));
+
+  const bar = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center' });
   bar.appendChild(propSel);
+  bar.appendChild(el('div', { class: 'flex-1' }));
+  bar.appendChild(showUnpaidOnly);
   wrap.appendChild(bar);
+
+  const kpiRow = el('div', { class: 'grid grid-4 mb-16' });
+  wrap.appendChild(kpiRow);
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
 
   const render = () => {
-    tableWrap.innerHTML = '';
     const prop = byId('properties', propSel.value);
     if (!prop) return;
-    const schedule = generatePaymentSchedule(prop, 12);
+    const schedule = generatePaymentSchedule(prop);
+    const now = new Date();
+    const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const paidThisYear = schedule.filter(s => s.paid && s.monthKey.startsWith(String(now.getFullYear())));
+    const overdue = schedule.filter(s => s.overdue);
+    const upcoming = schedule.filter(s => !s.paid && !s.overdue);
+    const next = upcoming[0];
+    const daysToNext = next ? Math.ceil((new Date(next.date) - now) / 86400000) : null;
+
+    kpiRow.innerHTML = '';
+    kpiRow.appendChild(kpiCard('Paid This Year', String(paidThisYear.length), `${formatEUR(paidThisYear.reduce((s, e) => s + e.amountEUR, 0))}`, 'success'));
+    kpiRow.appendChild(kpiCard('Overdue', String(overdue.length), overdue.length ? formatEUR(overdue.reduce((s, e) => s + e.amountEUR, 0)) : '—', overdue.length ? 'danger' : ''));
+    kpiRow.appendChild(kpiCard('Upcoming', String(upcoming.length), upcoming.length ? formatEUR(upcoming.reduce((s, e) => s + e.amountEUR, 0)) : '—', ''));
+    kpiRow.appendChild(kpiCard('Next Due', next ? fmtDate(next.date) : '—', daysToNext !== null ? (daysToNext <= 0 ? 'Today!' : daysToNext === 1 ? 'Tomorrow' : `In ${daysToNext} days`) : '—', daysToNext !== null && daysToNext <= 3 ? 'warning' : ''));
+
+    tableWrap.innerHTML = '';
+    let rows = schedule;
+    if (unpaidChk.checked) rows = rows.filter(s => !s.paid);
+    if (rows.length === 0) { tableWrap.appendChild(el('div', { class: 'empty' }, 'No entries')); return; }
+
     const t = el('table', { class: 'table' });
-    t.innerHTML = `<thead><tr><th>Due Date</th><th class="right">Amount</th><th class="right">EUR</th><th>Status</th><th></th></tr></thead>`;
+    t.innerHTML = `<thead><tr><th>Due Date</th><th>Month</th><th class="right">Amount</th><th class="right">EUR</th><th>Status</th><th></th></tr></thead>`;
     const tb = el('tbody');
-    for (const s of schedule) {
-      const tr = el('tr');
+    for (const s of rows) {
+      const isThisMonth = s.monthKey === thisMonthKey;
+      const tr = el('tr', isThisMonth && !s.paid ? { style: 'background:var(--bg-highlight, #fefce8)' } : {});
       tr.appendChild(el('td', {}, fmtDate(s.date)));
+      tr.appendChild(el('td', { class: 'muted' }, s.monthKey));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(s.amount, s.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, s.currency === 'EUR' ? '' : formatEUR(s.amountEUR)));
       tr.appendChild(el('td', {},
         s.paid ? el('span', { class: 'badge success' }, 'Paid')
         : s.overdue ? el('span', { class: 'badge danger' }, 'Overdue')
-        : el('span', { class: 'badge warning' }, 'Upcoming')
+        : isThisMonth ? el('span', { class: 'badge warning' }, 'Due this month')
+        : el('span', { class: 'badge' }, 'Upcoming')
       ));
       const td = el('td', { class: 'right' });
       if (!s.paid) {
-        td.appendChild(button('Mark Paid', { variant: 'sm primary', onClick: () => {
-          const pay = {
-            id: newId('pay'),
-            propertyId: prop.id,
-            amount: s.amount,
-            currency: s.currency,
-            date: s.date,
-            type: 'rental',
-            status: 'paid',
-            source: 'manual',
-            stream: 'long_term_rental',
-            notes: `Rent ${s.monthKey}`
-          };
-          upsert('payments', pay);
-          toast('Payment recorded', 'success');
-          render();
-        }}));
+        td.appendChild(button('Mark Paid', { variant: 'sm primary', onClick: () => recordRentPayment(prop, s, render) }));
       }
       tr.appendChild(td);
       tb.appendChild(tr);
     }
     t.appendChild(tb);
     tableWrap.appendChild(t);
+
+    const totalEUR = rows.reduce((s, e) => s + e.amountEUR, 0);
+    tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
+      el('span', { class: 'muted' }, `${prop.tenantName ? prop.tenantName + ' · ' : ''}${rows.length} month(s) shown`),
+      el('strong', { class: 'num' }, `Total: ${formatEUR(totalEUR)}`)
+    ));
   };
+
   propSel.onchange = render;
+  unpaidChk.onchange = render;
+  render();
+}
+
+function kpiCard(label, value, sub, variant) {
+  return el('div', { class: `kpi${variant ? ' ' + variant : ''}` },
+    el('div', { class: 'kpi-label' }, label),
+    el('div', { class: 'kpi-value num' }, value),
+    sub ? el('div', { class: 'fx-hint' }, sub) : null
+  );
+}
+
+function buildUpcomingSection(wrap) {
+  const ltProps = (state.db.properties || []).filter(p => p.type === 'long_term' && p.monthlyRent);
+  if (ltProps.length === 0) {
+    wrap.appendChild(el('div', { class: 'empty' }, 'No long-term rental properties configured'));
+    return;
+  }
+
+  const horizonSel = select([
+    { value: '1', label: 'Next 1 month' },
+    { value: '3', label: 'Next 3 months' },
+    { value: '6', label: 'Next 6 months' },
+    { value: '12', label: 'Next 12 months' }
+  ], '3');
+  const bar = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center' });
+  bar.appendChild(el('span', { style: 'font-size:13px;color:var(--text-muted)' }, 'Show:'));
+  bar.appendChild(horizonSel);
+  wrap.appendChild(bar);
+
+  const kpiRow = el('div', { class: 'grid grid-4 mb-16' });
+  wrap.appendChild(kpiRow);
+
+  const tableWrap = el('div', { class: 'table-wrap' });
+  wrap.appendChild(tableWrap);
+
+  const render = () => {
+    const now = new Date();
+    const horizonMonths = Number(horizonSel.value);
+    const cutoff = new Date(now.getFullYear(), now.getMonth() + horizonMonths + 1, 1);
+    const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    // Collect all overdue + upcoming within horizon across all LT properties
+    const allEntries = [];
+    for (const prop of ltProps) {
+      for (const entry of generatePaymentSchedule(prop)) {
+        if (entry.paid) continue;
+        if (!entry.overdue && new Date(entry.date) >= cutoff) continue;
+        allEntries.push({ ...entry, prop });
+      }
+    }
+    allEntries.sort((a, b) => a.date.localeCompare(b.date));
+
+    const overdue = allEntries.filter(e => e.overdue);
+    const thisMonth = allEntries.filter(e => e.monthKey === thisMonthKey);
+    const upcoming = allEntries.filter(e => !e.overdue);
+    const totalEUR = allEntries.reduce((s, e) => s + e.amountEUR, 0);
+
+    kpiRow.innerHTML = '';
+    kpiRow.appendChild(kpiCard('Overdue', String(overdue.length), overdue.length ? formatEUR(overdue.reduce((s, e) => s + e.amountEUR, 0)) : '—', overdue.length ? 'danger' : ''));
+    kpiRow.appendChild(kpiCard('Due This Month', String(thisMonth.length), thisMonth.length ? formatEUR(thisMonth.reduce((s, e) => s + e.amountEUR, 0)) : '—', thisMonth.length ? 'warning' : ''));
+    kpiRow.appendChild(kpiCard('Upcoming', String(upcoming.length), upcoming.length ? formatEUR(upcoming.reduce((s, e) => s + e.amountEUR, 0)) : '—', ''));
+    kpiRow.appendChild(kpiCard('Total Expected', formatEUR(totalEUR), `${allEntries.length} payment(s)`, ''));
+
+    tableWrap.innerHTML = '';
+    if (allEntries.length === 0) {
+      tableWrap.appendChild(el('div', { class: 'empty' }, 'No upcoming payments'));
+      return;
+    }
+
+    const t = el('table', { class: 'table' });
+    t.innerHTML = `<thead><tr><th>Due Date</th><th>Property</th><th>Tenant</th><th class="right">Amount</th><th class="right">EUR</th><th>Status</th><th></th></tr></thead>`;
+    const tb = el('tbody');
+    for (const entry of allEntries) {
+      const { prop } = entry;
+      const dueDate = new Date(entry.date);
+      const diffDays = Math.ceil((dueDate - now) / 86400000);
+      const isThisMonth = entry.monthKey === thisMonthKey;
+
+      const statusBadge = entry.overdue
+        ? el('span', { class: 'badge danger' }, 'Overdue')
+        : isThisMonth
+          ? el('span', { class: 'badge warning' }, 'Due this month')
+          : el('span', { class: 'badge' }, diffDays <= 7 ? `In ${diffDays}d` : 'Upcoming');
+
+      const tr = el('tr', entry.overdue ? { style: 'background:rgba(239,68,68,.04)' } : {});
+      tr.appendChild(el('td', {}, fmtDate(entry.date)));
+      tr.appendChild(el('td', {}, prop.name));
+      tr.appendChild(el('td', { class: 'muted' }, prop.tenantName || '—'));
+      tr.appendChild(el('td', { class: 'right num' }, formatMoney(entry.amount, entry.currency, { maxFrac: 0 })));
+      tr.appendChild(el('td', { class: 'right num muted' }, entry.currency === 'EUR' ? '' : formatEUR(entry.amountEUR)));
+      tr.appendChild(el('td', {}, statusBadge));
+      const td = el('td', { class: 'right' });
+      td.appendChild(button('Mark Paid', { variant: 'sm primary', onClick: () => recordRentPayment(prop, entry, render) }));
+      tr.appendChild(td);
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    tableWrap.appendChild(t);
+
+    tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
+      el('span', { class: 'muted' }, `${ltProps.length} propert${ltProps.length === 1 ? 'y' : 'ies'} · ${allEntries.length} payment(s)`),
+      el('strong', { class: 'num' }, `Expected: ${formatEUR(totalEUR)}`)
+    ));
+  };
+
+  horizonSel.onchange = render;
   render();
 }
 
