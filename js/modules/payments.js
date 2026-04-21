@@ -438,8 +438,18 @@ function openCSVImport() {
   const props = state.db.properties || [];
   if (props.length === 0) { toast('Add properties first', 'warning'); return; }
 
+  const stProps = props.filter(p => p.type === 'short_term');
+  const normName = s => (s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  const findProp = listing => {
+    const n = normName(listing);
+    if (!n) return null;
+    return stProps.find(p => normName(p.name) === n)
+      || stProps.find(p => n.includes(normName(p.name)) || normName(p.name).includes(n))
+      || null;
+  };
+
   const body = el('div', {});
-  const propS = select(props.map(p => ({ value: p.id, label: p.name })));
+  const propS = select([{ value: '', label: 'None (auto-match only)' }, ...stProps.map(p => ({ value: p.id, label: p.name }))]);
 
   const makeFileSlot = (label, hint) => {
     const fileI = el('input', { type: 'file', accept: '.csv', class: 'input' });
@@ -462,7 +472,7 @@ function openCSVImport() {
 
   const preview = el('div', { style: 'font-size:13px;min-height:24px' });
 
-  body.appendChild(formRow('Property', propS));
+  body.appendChild(formRow('Fallback Property', propS));
   body.appendChild(completedWrap);
   body.appendChild(pendingWrap);
   body.appendChild(preview);
@@ -479,19 +489,17 @@ function openCSVImport() {
       if (!file) continue;
       const text = await file.text();
       const rows = parseAirbnbCSV(text);
-      let added = 0, updated = 0, skipped = 0;
+      let added = 0, updated = 0, unmatched = 0;
       for (const row of rows) {
-        if (!row.reference) { skipped++; continue; }
-        const exists = (state.db.payments || []).some(p =>
-          p.propertyId === prop.id && p.airbnbRef === row.reference
-        );
-        if (exists) updated++; else added++;
+        const exists = row.reference && (state.db.payments || []).some(p => p.airbnbRef === row.reference);
+        if (exists) { updated++; continue; }
+        if (findProp(row.listing) || prop) added++; else unmatched++;
       }
       const badge = el('span', { class: `badge ${status === 'paid' ? 'success' : 'warning'}` }, status === 'paid' ? 'Paid' : 'Pending');
       preview.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center;margin-bottom:6px' },
         badge,
         el('span', { style: 'font-weight:500' }, file.name),
-        el('span', { class: 'muted' }, `— ${rows.length} rows · ${added} new · ${updated} update${skipped ? ` · ${skipped} skipped` : ''}`)
+        el('span', { class: 'muted' }, `— ${rows.length} rows · ${added} new · ${updated} update${unmatched ? ` · ${unmatched} unmatched` : ''}`)
       ));
     }
   };
@@ -501,8 +509,7 @@ function openCSVImport() {
   propS.onchange = updatePreview;
 
   const importBtn = button('Import', { variant: 'primary', onClick: async () => {
-    const prop = byId('properties', propS.value);
-    if (!prop) { toast('Select a property', 'warning'); return; }
+    const prop = byId('properties', propS.value) || null;
     if (!completedFileI.files?.[0] && !pendingFileI.files?.[0]) {
       toast('Select at least one file', 'warning'); return;
     }
@@ -518,15 +525,15 @@ function openCSVImport() {
       const rows = parseAirbnbCSV(text);
 
       for (const row of rows) {
-        if (!row.reference) continue;
+        const matched = findProp(row.listing) || prop;
 
-        // Idempotency: match on propertyId + Confirmation Code
-        const existing = (state.db.payments || []).find(p =>
-          p.propertyId === prop.id && p.airbnbRef === row.reference
-        );
+        // Idempotency: Airbnb Confirmation Codes are globally unique
+        const existing = row.reference
+          ? (state.db.payments || []).find(p => p.airbnbRef === row.reference)
+          : null;
         const pay = existing ? { ...existing } : {
           id: newId('pay'),
-          propertyId: prop.id,
+          propertyId: matched?.id || '',
           stream: 'short_term_rental',
           source: 'airbnb'
         };
@@ -616,7 +623,6 @@ function parseAirbnbCSV(text) {
     const rawAmt   = col(row, 'amount', 'total amount', 'total');
     const amtStr   = paidOut || rawAmt;
     const amount   = Math.abs(parseFloat(amtStr.replace(/[^0-9.-]/g, '')) || 0);
-    if (!amount) continue;
 
     // Date: use payout/transaction date; fall back to check-in date for pending files
     const dateRaw    = col(row, 'date', 'paid date', 'payout date', 'transaction date');
