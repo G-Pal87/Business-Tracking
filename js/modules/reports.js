@@ -33,7 +33,7 @@ const NET_COLS = [
   { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
 ];
 
-let gFilters = { year: String(new Date().getFullYear()), stream: 'all', propertyId: 'all' };
+let gFilters = { year: String(new Date().getFullYear()), streams: new Set(), propertyId: 'all' };
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 export default {
@@ -45,17 +45,64 @@ export default {
   destroy() { charts.destroyAll(); }
 };
 
+function buildStreamMultiSelect(onRefresh) {
+  const streamEntries = Object.entries(STREAMS);
+  const wrapper = el('div', { style: 'position:relative' });
+
+  const trigLabel = el('span', {}, 'All Streams');
+  const trigger = el('div', {
+    class: 'select',
+    style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:150px;user-select:none'
+  }, trigLabel);
+
+  const menu = el('div', {
+    style: 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0'
+  });
+
+  const allChk = el('input', { type: 'checkbox' });
+  menu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px' },
+    allChk, el('span', {}, 'All Streams')));
+
+  const chks = streamEntries.map(([key, meta]) => {
+    const chk = el('input', { type: 'checkbox' });
+    chk.dataset.key = key;
+    chk.checked = gFilters.streams.size === 0 || gFilters.streams.has(key);
+    menu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px' },
+      chk, el('span', { class: `badge ${meta.css}` }, meta.label)));
+    return chk;
+  });
+
+  const sync = () => {
+    const sel = chks.filter(c => c.checked);
+    const n = sel.length;
+    allChk.checked = n === chks.length; allChk.indeterminate = n > 0 && n < chks.length;
+    trigLabel.textContent = n === chks.length ? 'All Streams' : n === 0 ? 'No Streams' : n === 1 ? (STREAMS[sel[0].dataset.key]?.label || '') : `${n} Streams`;
+    gFilters.streams = n === chks.length ? new Set() : new Set(sel.map(c => c.dataset.key));
+  };
+
+  allChk.checked = gFilters.streams.size === 0;
+  allChk.onchange = () => { chks.forEach(c => { c.checked = allChk.checked; }); allChk.indeterminate = false; sync(); onRefresh(); };
+  chks.forEach(chk => { chk.onchange = () => { sync(); onRefresh(); }; });
+
+  trigger.onclick = e => { e.stopPropagation(); menu.style.display = menu.style.display === 'none' ? '' : 'none'; };
+  menu.onclick = e => e.stopPropagation();
+  document.addEventListener('click', () => { menu.style.display = 'none'; });
+
+  wrapper.appendChild(trigger); wrapper.appendChild(menu);
+  sync();
+  return wrapper;
+}
+
 function build() {
   const wrap = el('div', { class: 'view active' });
 
   // Global filter bar
   const years = availableYears();
   const yearSel = select([{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))], gFilters.year);
-  const streamSel = select([{ value: 'all', label: 'All Streams' }, ...Object.entries(STREAMS).map(([v, m]) => ({ value: v, label: m.label }))], gFilters.stream);
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   filterBar.appendChild(el('span', { class: 'muted', style: 'align-self:center' }, 'Filter:'));
   filterBar.appendChild(yearSel);
-  filterBar.appendChild(streamSel);
+  filterBar.appendChild(buildStreamMultiSelect(() => refreshActive()));
   const rentalProps = (state.db.properties || []).filter(p => p.type === 'short_term' || p.type === 'long_term');
   const propSel = select([
     { value: 'all', label: 'All Properties' },
@@ -67,7 +114,6 @@ function build() {
   wrap.appendChild(filterBar);
 
   yearSel.onchange = () => { gFilters.year = yearSel.value; refreshActive(); };
-  streamSel.onchange = () => { gFilters.stream = streamSel.value; refreshActive(); };
   propSel.onchange = () => { gFilters.propertyId = propSel.value; refreshActive(); };
 
   // Tabs

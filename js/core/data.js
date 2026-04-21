@@ -421,7 +421,10 @@ export function buildReportData(filters = {}) {
     const d = row.date || row.issueDate || '';
     return d.startsWith(String(f.year));
   };
-  const matchStream = row => !f.stream || f.stream === 'all' || !row.stream || row.stream === f.stream;
+  const matchStream = row => {
+    if (f.streams instanceof Set) return f.streams.size === 0 || !row.stream || f.streams.has(row.stream);
+    return !f.stream || f.stream === 'all' || !row.stream || row.stream === f.stream;
+  };
   const matchProperty = row => !f.propertyId || f.propertyId === 'all' || row.propertyId === f.propertyId;
 
   const payments = (state.db.payments || []).filter(p => p.status === 'paid' && matchDate(p) && matchStream(p) && matchProperty(p));
