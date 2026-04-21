@@ -1087,6 +1087,66 @@
       "source": "manual",
       "stream": "long_term_rental",
       "notes": "Rent 2027-01"
+    },
+    {
+      "id": "pay_mo8x4xmo81",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2025-06-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2025-06"
+    },
+    {
+      "id": "pay_mo8x4yht6r",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2024-05-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2024-05"
+    },
+    {
+      "id": "pay_mo8x4yvg9s",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2023-12-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2023-12"
+    },
+    {
+      "id": "pay_mo8x4z5gow",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2023-11-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2023-11"
+    },
+    {
+      "id": "pay_mo8x4zg4rq",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2023-10-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2023-10"
     }
   ],
   "expenses": [
