@@ -693,24 +693,6 @@
   ],
   "vendors": [
     {
-      "id": "vnd_001",
-      "name": "CleanTeam Barcelona",
-      "type": "cleaner",
-      "email": "clean@barcelona.es",
-      "phone": "+34 600 123 456",
-      "pricing": {
-        "studio": 15,
-        "one_bedroom": 20,
-        "two_bedroom": 28,
-        "three_bedroom_plus": 35
-      },
-      "currency": "EUR",
-      "propertyIds": [
-        "prop_001"
-      ],
-      "notes": "Reliable, 24h notice"
-    },
-    {
       "id": "vnd_002",
       "name": "BudaClean Kft.",
       "type": "cleaner",
