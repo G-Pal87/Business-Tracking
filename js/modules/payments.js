@@ -115,6 +115,7 @@ function buildAllPayments(wrap) {
     ['Date', 'Property', 'Type', 'Source', 'Status'].forEach(h => htr.appendChild(el('th', {}, h)));
     htr.appendChild(el('th', { class: 'right' }, 'Amount'));
     htr.appendChild(el('th', { class: 'right' }, 'EUR'));
+    ['Check-in', 'Check-out', 'Nights', 'Avg/Night'].forEach(h => htr.appendChild(el('th', { class: 'right' }, h)));
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
 
@@ -145,6 +146,10 @@ function buildAllPayments(wrap) {
       tr.appendChild(el('td', {}, el('span', { class: `badge ${sMeta.css}` }, sMeta.label)));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
+      tr.appendChild(el('td', { class: 'right muted' }, r.airbnbCheckIn ? fmtDate(r.airbnbCheckIn) : ''));
+      tr.appendChild(el('td', { class: 'right muted' }, r.airbnbCheckOut ? fmtDate(r.airbnbCheckOut) : ''));
+      tr.appendChild(el('td', { class: 'right muted' }, r.airbnbNights ? String(r.airbnbNights) : ''));
+      tr.appendChild(el('td', { class: 'right num muted' }, r.avgNightlyRate ? formatMoney(r.avgNightlyRate, r.currency, { maxFrac: 0 }) : ''));
       const actions = el('td', { class: 'right' });
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
@@ -755,9 +760,9 @@ function parseAirbnbCSV(text) {
     // Confirmation Code is the reservation idempotency key
     const reference = col(row, 'reference', 'transaction id', 'trans id', 'confirmation code', 'confirmation', 'reservation code', 'code');
 
-    // Amount: prefer "paid out" (actual cash received) → fall back to abs(amount)
-    const paidOut  = col(row, 'paid out', 'gross earnings', 'host payout', 'payout amount');
-    const rawAmt   = col(row, 'amount', 'total amount', 'total');
+    // Amount: "paid out" = actual host payout; fall back to "amount" column
+    const paidOut  = col(row, 'paid out', 'host payout', 'payout amount');
+    const rawAmt   = col(row, 'amount', 'total amount');
     const amtStr   = paidOut || rawAmt;
     const amount   = Math.abs(parseFloat(amtStr.replace(/[^0-9.-]/g, '')) || 0);
 
