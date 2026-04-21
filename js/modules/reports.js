@@ -33,7 +33,7 @@ const NET_COLS = [
   { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
 ];
 
-let gFilters = { year: String(new Date().getFullYear()), stream: 'all', rentalType: 'all' };
+let gFilters = { year: String(new Date().getFullYear()), stream: 'all' };
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 export default {
@@ -56,19 +56,12 @@ function build() {
   filterBar.appendChild(el('span', { class: 'muted', style: 'align-self:center' }, 'Filter:'));
   filterBar.appendChild(yearSel);
   filterBar.appendChild(streamSel);
-  const rentalSel = select([
-    { value: 'all', label: 'All Rental Types' },
-    { value: 'short_term', label: 'Short-term' },
-    { value: 'long_term', label: 'Long-term' }
-  ], gFilters.rentalType);
-  filterBar.appendChild(rentalSel);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(button('Print / PDF', { onClick: () => window.print() }));
   wrap.appendChild(filterBar);
 
   yearSel.onchange = () => { gFilters.year = yearSel.value; refreshActive(); };
   streamSel.onchange = () => { gFilters.stream = streamSel.value; refreshActive(); };
-  rentalSel.onchange = () => { gFilters.rentalType = rentalSel.value; refreshActive(); };
 
   // Tabs
   const tabDefs = [
@@ -166,8 +159,7 @@ function renderSummary(wrap) {
 // ===== BY PROPERTY TAB =====
 function renderByProperty(wrap) {
   const yearFilter = gFilters.year !== 'all' ? { year: gFilters.year } : {};
-  let props = state.db.properties || [];
-  if (gFilters.rentalType !== 'all') props = props.filter(p => p.type === gFilters.rentalType);
+  const props = state.db.properties || [];
   const rows = props.map(p => {
     const rev = propertyRevenueEUR(p.id, yearFilter);
     const exp = propertyExpensesEUR(p.id, yearFilter, { includeRenovation: false });
@@ -341,11 +333,7 @@ function renderReconciliation(wrap) {
     kpiRow.innerHTML = '';
     content.innerHTML = '';
 
-    let entities = allEntities();
-    if (gFilters.rentalType !== 'all') {
-      const kindMap = { short_term: 'st', long_term: 'lt' };
-      entities = entities.filter(e => e.kind === kindMap[gFilters.rentalType]);
-    }
+    const entities = allEntities();
     const totExp = entities.reduce((s, e) => s + e.totExp, 0);
     const totAct = entities.reduce((s, e) => s + e.totAct, 0);
     const outstanding = entities.reduce((s, e) => s + Math.max(0, e.totExp - e.totAct), 0);
@@ -742,9 +730,6 @@ function renderContribution(wrap) {
   const yearOpts = [...new Set([String(Number(curYear) - 1), curYear, String(Number(curYear) + 1), ...years])].sort().reverse();
 
   const streamLabel = key => STREAMS[key]?.label || key;
-  const activeStreams = gFilters.rentalType === 'all'
-    ? CSTREAMS
-    : CSTREAMS.filter(cs => cs.payType !== 'payment' || cs.key === `${gFilters.rentalType}_rental`);
 
   const yearSel     = select(yearOpts.map(y => ({ value: y, label: y })), curYear);
   const viewMonthly = el('div', { class: 'tab active', style: 'padding:4px 12px;font-size:12px' }, 'Monthly');
@@ -763,7 +748,7 @@ function renderContribution(wrap) {
   wrap.appendChild(content);
 
   // Collect revenue rows per stream for a given year prefix
-  const streamRevData = (yr) => activeStreams.map(cs => {
+  const streamRevData = (yr) => CSTREAMS.map(cs => {
     const label = streamLabel(cs.key);
     let rows;
     if (cs.payType === 'payment') {
@@ -780,7 +765,7 @@ function renderContribution(wrap) {
   // Collect revenue per stream per month
   const monthlyRevData = (yr) => MON.map((mon, mi) => {
     const mk = `${yr}-${String(mi + 1).padStart(2, '0')}`;
-    const streams = activeStreams.map(cs => {
+    const streams = CSTREAMS.map(cs => {
       const label = streamLabel(cs.key);
       let rows;
       if (cs.payType === 'payment') {
@@ -866,7 +851,7 @@ function renderContribution(wrap) {
     setTimeout(() => {
       charts.bar('ctrib-stacked', {
         labels: MON,
-        datasets: activeStreams.map((cs, ci) => ({
+        datasets: CSTREAMS.map((cs, ci) => ({
           label: streamLabel(cs.key),
           data: months.map(m => Math.round(m.streams[ci].totalEUR)),
           backgroundColor: cs.color
