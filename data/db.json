@@ -1063,6 +1063,30 @@
       "source": "manual",
       "stream": "long_term_rental",
       "notes": "Rent 2026-11"
+    },
+    {
+      "id": "pay_mo8x4vge43",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2026-12-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2026-12"
+    },
+    {
+      "id": "pay_mo8x4vva38",
+      "propertyId": "prop_mo8ws698cn",
+      "amount": 130000,
+      "currency": "HUF",
+      "date": "2027-01-28",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2027-01"
     }
   ],
   "expenses": [
