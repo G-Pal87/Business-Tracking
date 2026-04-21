@@ -1162,7 +1162,17 @@
     }
   ],
   "expenses": [],
-  "vendors": [],
+  "vendors": [
+    {
+      "id": "vnd_mo8xfao7jy",
+      "name": "Viktoria Paphos",
+      "role": "cleaner",
+      "phone": "",
+      "email": "",
+      "notes": "",
+      "rates": {}
+    }
+  ],
   "tenants": [
     {
       "id": "ten_001",
