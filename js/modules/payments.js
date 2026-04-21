@@ -664,8 +664,7 @@ function openCSVImport() {
           notes: [row.guest, row.listing].filter(Boolean).join(' · ')
         });
         upsert('payments', pay);
-        const cleanAmt = row.cleaningFee || matched.cleaningFee || 0;
-        if (cleanAmt > 0) {
+        if (matched.cleaningFee) {
           const expDate = row.checkIn || row.date;
           const existingExp = row.reference
             ? (state.db.expenses || []).find(e => e.airbnbRef === row.reference && e.category === 'cleaning')
@@ -676,8 +675,8 @@ function openCSVImport() {
               id: newId('exp'),
               propertyId: matched.id,
               category: 'cleaning',
-              amount: cleanAmt,
-              currency: row.currency || matched.currency,
+              amount: matched.cleaningFee,
+              currency: matched.currency,
               date: expDate,
               airbnbRef: row.reference || '',
               vendorId: '',
@@ -770,14 +769,13 @@ function parseAirbnbCSV(text) {
 
     results.push({
       date,
-      checkIn:     parseDateStr(checkInRaw) || '',
-      nights:      parseInt(col(row, 'nights', 'number of nights'), 10) || 0,
+      checkIn:   parseDateStr(checkInRaw) || '',
+      nights:    parseInt(col(row, 'nights', 'number of nights'), 10) || 0,
       reference,
       amount,
-      currency:    col(row, 'currency', 'currency code') || 'EUR',
-      guest:       col(row, 'guest', 'guest name'),
-      listing:     col(row, 'listing', 'listing name', 'property'),
-      cleaningFee: Math.abs(parseFloat((col(row, 'cleaning fee', 'cleaning') || '').replace(/[^0-9.-]/g, '')) || 0)
+      currency:  col(row, 'currency', 'currency code') || 'EUR',
+      guest:     col(row, 'guest', 'guest name'),
+      listing:   col(row, 'listing', 'listing name', 'property')
     });
   }
 
