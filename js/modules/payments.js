@@ -760,10 +760,7 @@ function parseAirbnbCSV(text) {
     // Confirmation Code is the reservation idempotency key
     const reference = col(row, 'reference', 'transaction id', 'trans id', 'confirmation code', 'confirmation', 'reservation code', 'code');
 
-    // Amount: use "amount" column directly; fall back to "paid out" if absent
-    const rawAmt   = col(row, 'amount', 'total amount');
-    const paidOut  = col(row, 'paid out', 'host payout', 'payout amount');
-    const amtStr   = rawAmt || paidOut;
+    const amtStr   = col(row, 'amount', 'total amount');
     const amount   = Math.abs(parseFloat(amtStr.replace(/[^0-9.-]/g, '')) || 0);
 
     // Date: use payout/transaction date; fall back to check-in date for pending files
