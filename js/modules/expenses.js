@@ -31,8 +31,8 @@ function build() {
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16 mt-24', style: 'flex-wrap:wrap' });
   const propSel   = select([{ value: 'all', label: 'All Properties' }, ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))], 'all');
-  const catSel    = select(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), [], { multiple: true, title: 'Ctrl+click to select multiple categories' });
-  const streamSel = select(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), [], { multiple: true, title: 'Ctrl+click to select multiple streams' });
+  const catSel    = select([{ value: 'all', label: 'All expenses' }, ...Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label }))], 'all');
+  const streamSel = select([{ value: 'all', label: 'All rental types' }, ...Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short }))], 'all');
 
   let selected = new Set();
 
@@ -74,11 +74,9 @@ function build() {
     tableWrap.innerHTML = '';
 
     let rows = [...(state.db.expenses || [])];
-    const cats    = selVals(catSel);
-    const streams = selVals(streamSel);
-    if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
-    if (cats)    rows = rows.filter(r => cats.includes(r.category));
-    if (streams) rows = rows.filter(r => streams.includes(r.stream));
+    if (propSel.value !== 'all')   rows = rows.filter(r => r.propertyId === propSel.value);
+    if (catSel.value !== 'all')    rows = rows.filter(r => r.category === catSel.value);
+    if (streamSel.value !== 'all') rows = rows.filter(r => r.stream === streamSel.value);
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
     if (rows.length === 0) {
