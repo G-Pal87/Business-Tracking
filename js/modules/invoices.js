@@ -4,6 +4,7 @@ import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input
 import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR } from '../core/data.js';
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
 import { downloadInvoicePDF } from '../core/pdf.js';
+import { navigate } from '../core/router.js';
 
 const INV_COLS = [
   { key: 'number', label: 'Number' },
@@ -54,14 +55,40 @@ function build() {
   bar.appendChild(clientSel);
   bar.appendChild(ownerSel);
   bar.appendChild(statusSel);
+  let selected = new Set();
+
+  const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
+    const count = selected.size;
+    if (!count) return;
+    const ok = await confirmDialog(`Delete ${count} invoice(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
+    if (!ok) return;
+    for (const id of [...selected]) remove('invoices', id);
+    selected.clear();
+    toast(`Deleted ${count} invoice(s)`, 'success');
+    renderTable();
+  }});
+  deleteSelBtn.style.display = 'none';
+
   bar.appendChild(el('div', { class: 'flex-1' }));
+  bar.appendChild(deleteSelBtn);
   bar.appendChild(button('+ New Invoice', { variant: 'primary', onClick: () => openBuilder() }));
   wrap.appendChild(bar);
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
 
+  const syncDeleteBtn = () => {
+    if (selected.size > 0) {
+      deleteSelBtn.textContent = `Delete ${selected.size} Selected`;
+      deleteSelBtn.style.display = '';
+    } else {
+      deleteSelBtn.style.display = 'none';
+    }
+  };
+
   const renderTable = () => {
+    selected.clear();
+    syncDeleteBtn();
     tableWrap.innerHTML = '';
     let rows = [...(state.db.invoices || [])];
     if (yearSel.value !== 'all') rows = rows.filter(r => r.issueDate?.startsWith(yearSel.value));
@@ -78,14 +105,38 @@ function build() {
       return;
     }
     const t = el('table', { class: 'table' });
-    t.innerHTML = `<thead><tr>
-      <th>Number</th><th>Client</th><th>Issued</th><th>Due</th><th>Owner</th><th>Status</th><th class="right">Total</th><th></th>
-    </tr></thead>`;
+
+    const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
+    const htr = el('tr', {});
+    const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
+    htr.appendChild(chkTh);
+    ['Number', 'Client', 'Issued', 'Due', 'Owner', 'Status'].forEach(h => htr.appendChild(el('th', {}, h)));
+    htr.appendChild(el('th', { class: 'right' }, 'Total'));
+    htr.appendChild(el('th', {}));
+    const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
+
     const tb = el('tbody');
+    const rowChks = [];
+
     for (const r of rows) {
       const client = byId('clients', r.clientId);
       const st = INVOICE_STATUSES[r.status] || { label: r.status, css: '' };
+
+      const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
+      rowChks.push(chk);
+      chk.onclick = e => e.stopPropagation();
+      chk.onchange = () => {
+        if (chk.checked) selected.add(r.id); else selected.delete(r.id);
+        const n = rowChks.filter(c => c.checked).length;
+        selectAllChk.indeterminate = n > 0 && n < rows.length;
+        selectAllChk.checked = n === rows.length;
+        syncDeleteBtn();
+      };
+
       const tr = el('tr');
+      const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
+      chkTd.onclick = e => e.stopPropagation();
+      tr.appendChild(chkTd);
       tr.appendChild(el('td', { style: 'font-weight:600' }, r.number));
       tr.appendChild(el('td', {}, client?.name || '-'));
       tr.appendChild(el('td', {}, fmtDate(r.issueDate)));
@@ -107,6 +158,13 @@ function build() {
     }
     t.appendChild(tb);
     tableWrap.appendChild(t);
+
+    selectAllChk.onchange = () => {
+      rowChks.forEach(c => { c.checked = selectAllChk.checked; });
+      selectAllChk.indeterminate = false;
+      if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
+      syncDeleteBtn();
+    };
     // Totals footer
     const totalEUR = rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
     const paidRows = rows.filter(r => r.status === 'paid');
@@ -360,7 +418,7 @@ function openBuilder(existing) {
     upsert('invoices', inv);
     toast(existing ? 'Invoice updated' : 'Invoice saved', 'success');
     closeModal();
-    setTimeout(() => location.hash = 'invoices', 200);
+    setTimeout(() => navigate('invoices'), 200);
   }});
   const cancel = button('Cancel', { onClick: closeModal });
 
