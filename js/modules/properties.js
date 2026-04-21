@@ -8,6 +8,7 @@ import {
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES } from '../core/config.js';
 import { fetchICal, parseICal, nights } from '../core/ical.js';
 import { openExpenseForm } from './expenses.js';
+import { navigate } from '../core/router.js';
 
 let selectedId = null;
 
@@ -208,7 +209,7 @@ function openDetail(id) {
     remove('properties', p.id);
     toast('Property deleted', 'success');
     closeModal();
-    setTimeout(() => location.hash = 'properties', 250);
+    setTimeout(() => navigate('properties'),250);
   }});
 
   openModal({ title: 'Property Details', body, footer: [delBtn, editBtn], large: true });
@@ -338,7 +339,7 @@ function openForm(existing) {
     upsert('properties', p);
     toast(existing ? 'Property updated' : 'Property added', 'success');
     closeModal();
-    setTimeout(() => location.hash = 'properties', 200);
+    setTimeout(() => navigate('properties'),200);
   }});
   const cancelBtn = button('Cancel', { onClick: closeModal });
 
@@ -381,7 +382,7 @@ async function doImportICal(prop) {
     upsert('properties', prop);
     toast(`Imported ${added} booking(s)`, 'success');
     closeModal();
-    setTimeout(() => location.hash = 'properties', 200);
+    setTimeout(() => navigate('properties'),200);
   } catch (e) {
     toast(`iCal import failed: ${e.message}`, 'danger', 5000);
   }
