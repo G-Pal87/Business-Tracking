@@ -4,6 +4,13 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import { upsert, remove, byId, newId, formatMoney } from '../core/data.js';
 import { VENDOR_ROLES, PROPERTY_TYPES, CURRENCIES } from '../core/config.js';
 
+const APT_TYPES = [
+  { key: 'studio',             label: 'Studio' },
+  { key: 'one_bedroom',        label: '1 Bedroom' },
+  { key: 'two_bedroom',        label: '2 Bedroom' },
+  { key: 'three_bedroom_plus', label: '3+ Bedroom' }
+];
+
 export default {
   id: 'vendors',
   label: 'Vendors',
@@ -94,6 +101,23 @@ function openDetail(id) {
     smallStat('Phone', v.phone || '—'),
     smallStat('Email', v.email || '—')
   ));
+
+  if (v.pricingMode === 'hourly' && v.hourlyRate) {
+    body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
+      smallStat('Pricing', 'Hourly'),
+      smallStat('Rate', formatMoney(v.hourlyRate, v.currency || 'EUR') + ' / hr'),
+      el('div', {})
+    ));
+  } else if (v.pricingMode === 'apt_type') {
+    const ar = v.aptTypeRates || {};
+    const cur = v.currency || 'EUR';
+    body.appendChild(el('div', { class: 'card mb-16' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Rates per Apartment Type')),
+      el('div', { class: 'grid grid-4', style: 'padding:8px 16px 16px' },
+        ...APT_TYPES.map(t => smallStat(t.label, formatMoney(ar[t.key] || 0, cur, { maxFrac: 0 })))
+      )
+    ));
+  }
 
   if (v.notes) {
     body.appendChild(el('div', {
@@ -217,7 +241,9 @@ function openForm(existing) {
     id: newId('vnd'),
     name: '', role: 'cleaner',
     phone: '', email: '', notes: '',
-    rates: {}
+    rates: {},
+    pricingMode: 'hourly', hourlyRate: 0, currency: 'EUR',
+    aptTypeRates: { studio: 0, one_bedroom: 0, two_bedroom: 0, three_bedroom_plus: 0 }
   };
 
   const body = el('div', {});
@@ -228,9 +254,39 @@ function openForm(existing) {
   const notesT = textarea({ placeholder: 'Notes (bank details, contact info, etc.)' });
   notesT.value = v.notes || '';
 
+  // Pricing section
+  const pricingModeS = select(
+    [{ value: 'hourly', label: 'Hourly rate' }, { value: 'apt_type', label: 'Per apartment type' }],
+    v.pricingMode || 'hourly'
+  );
+  const currencyS = select(CURRENCIES, v.currency || 'EUR');
+  const hourlyRateI = input({ type: 'number', value: v.hourlyRate || 0, min: 0, step: 0.01 });
+  const aptRates = v.aptTypeRates || {};
+  const aptInputs = Object.fromEntries(APT_TYPES.map(t => [t.key, input({ type: 'number', value: aptRates[t.key] || 0, min: 0, step: 0.01 })]));
+
+  const hourlyRow = el('div', { class: 'form-row horizontal' }, formRow('Hourly Rate', hourlyRateI));
+  const aptGrid = el('div', {},
+    el('div', { class: 'form-row horizontal' }, formRow('Studio', aptInputs.studio), formRow('1 Bedroom', aptInputs.one_bedroom)),
+    el('div', { class: 'form-row horizontal' }, formRow('2 Bedroom', aptInputs.two_bedroom), formRow('3+ Bedroom', aptInputs.three_bedroom_plus))
+  );
+  const syncPricingMode = () => {
+    const isHourly = pricingModeS.value === 'hourly';
+    hourlyRow.style.display = isHourly ? '' : 'none';
+    aptGrid.style.display   = isHourly ? 'none' : '';
+  };
+  pricingModeS.onchange = syncPricingMode;
+
+  const pricingCard = el('div', { class: 'card', style: 'background:var(--bg);padding:12px;margin-bottom:14px' });
+  pricingCard.appendChild(el('div', { class: 'card-title mb-8' }, 'Pricing'));
+  pricingCard.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Mode', pricingModeS), formRow('Currency', currencyS)));
+  pricingCard.appendChild(hourlyRow);
+  pricingCard.appendChild(aptGrid);
+  syncPricingMode();
+
   body.appendChild(formRow('Name', nameI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Role', roleS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Phone', phoneI), formRow('Email', emailI)));
+  body.appendChild(pricingCard);
   body.appendChild(formRow('Notes', notesT));
 
   const saveBtn = button('Save', {
@@ -242,7 +298,11 @@ function openForm(existing) {
         role: roleS.value,
         phone: phoneI.value.trim(),
         email: emailI.value.trim(),
-        notes: notesT.value.trim()
+        notes: notesT.value.trim(),
+        pricingMode: pricingModeS.value,
+        currency: currencyS.value,
+        hourlyRate: Number(hourlyRateI.value) || 0,
+        aptTypeRates: Object.fromEntries(APT_TYPES.map(t => [t.key, Number(aptInputs[t.key].value) || 0]))
       });
       upsert('vendors', v);
       toast(existing ? 'Vendor updated' : 'Vendor added', 'success');
