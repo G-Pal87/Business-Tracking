@@ -823,6 +823,19 @@
       "currency": "EUR",
       "contractStart": "2026-04-21",
       "notes": ""
+    },
+    {
+      "id": "cli_mo8wghcok1",
+      "name": "2 rabbits",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2026-04-21",
+      "notes": ""
     }
   ],
   "services": [
