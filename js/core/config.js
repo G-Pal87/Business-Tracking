@@ -50,7 +50,7 @@ export const OWNERS = {
   both: 'Both'
 };
 
-export const CURRENCIES = ['EUR', 'HUF'];
+export const CURRENCIES = ['EUR', 'HUF', 'GBP', 'USD', 'CHF', 'CZK', 'PLN', 'RON'];
 export const MASTER_CURRENCY = 'EUR';
 
 export const SERVICE_UNITS = {

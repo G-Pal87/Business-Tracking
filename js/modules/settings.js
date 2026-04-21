@@ -82,27 +82,42 @@ function buildGithubCard() {
   return card;
 }
 
+const FX_DEFAULTS = { HUF: 0.0025, GBP: 1.17, USD: 0.92, CHF: 1.05, CZK: 0.041, PLN: 0.23, RON: 0.20 };
+
 function buildCurrencyCard() {
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', {},
-      el('div', { class: 'card-title' }, 'Currencies'),
-      el('div', { class: 'card-subtitle' }, `Master currency: ${state.db.settings?.masterCurrency || 'EUR'}`)
+      el('div', { class: 'card-title' }, 'Currencies & FX Rates'),
+      el('div', { class: 'card-subtitle' }, 'Master currency: EUR — enter how much 1 unit of each currency equals in EUR')
     )
   ));
-  const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
-  const rateI = input({ type: 'number', value: fx, step: 0.0001 });
+
+  const nonEur = CURRENCIES.filter(c => c !== 'EUR');
+  const saved  = state.db.settings?.fxRates || {};
+  const rateInputs = {};
+
+  const rateGrid = el('div', { class: 'form-row horizontal', style: 'flex-wrap:wrap;gap:8px' });
+  for (const c of nonEur) {
+    const rate = saved[`${c}_EUR`] ?? FX_DEFAULTS[c] ?? 1;
+    const inp = input({ type: 'number', value: rate, step: 0.0001, min: 0 });
+    rateInputs[c] = inp;
+    rateGrid.appendChild(formRow(`${c} → EUR`, inp, `1 ${c} = ${rate} EUR`));
+  }
+  card.appendChild(rateGrid);
+
   const taxI = input({ type: 'number', value: state.db.settings?.defaultTaxRate || 0, min: 0, max: 100, step: 0.1 });
-  card.appendChild(el('div', { class: 'form-row horizontal' },
-    formRow('HUF -> EUR rate', rateI, `1 HUF = ${fx} EUR . Example: 350,000 HUF = ${formatMoney(350000 * fx, 'EUR')}`),
+  card.appendChild(el('div', { class: 'form-row horizontal', style: 'margin-top:8px' },
     formRow('Default invoice tax %', taxI)
   ));
+
   const save = button('Save', { variant: 'primary', onClick: () => {
-    state.db.settings.fxRates = { HUF_EUR: Number(rateI.value) };
+    const rates = {};
+    for (const c of nonEur) rates[`${c}_EUR`] = Number(rateInputs[c].value) || FX_DEFAULTS[c] || 1;
+    state.db.settings.fxRates = rates;
     state.db.settings.defaultTaxRate = Number(taxI.value) || 0;
     markDirty();
     toast('Saved', 'success');
-    setTimeout(() => location.hash = 'settings', 200);
   }});
   card.appendChild(save);
   return card;

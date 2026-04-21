@@ -6,10 +6,8 @@ import { MASTER_CURRENCY } from './config.js';
 export function toEUR(amount, currency) {
   if (!amount) return 0;
   if (currency === 'EUR' || !currency) return Number(amount);
-  if (currency === 'HUF') {
-    const rate = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
-    return Number(amount) * rate;
-  }
+  const rate = state.db.settings?.fxRates?.[`${currency}_EUR`];
+  if (rate) return Number(amount) * rate;
   return Number(amount);
 }
 
