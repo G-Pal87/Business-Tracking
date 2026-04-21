@@ -12,6 +12,40 @@ import { navigate } from '../core/router.js';
 
 let selectedId = null;
 
+function fmtSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+function previewDoc(doc) {
+  const mime = doc.type || 'application/octet-stream';
+  const byteChars = atob(doc.data);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mime });
+  window.open(URL.createObjectURL(blob), '_blank');
+}
+
+function docIcon(type) {
+  if (!type) return '\u{1F4CE}';
+  if (type.startsWith('image/')) return '\u{1F5BC}';
+  if (type === 'application/pdf') return '\u{1F4C4}';
+  if (type.includes('word')) return '\u{1F4DD}';
+  if (type.includes('excel') || type.includes('spreadsheet')) return '\u{1F4CA}';
+  return '\u{1F4CE}';
+}
+
 export default {
   id: 'properties',
   label: 'Properties',
@@ -202,6 +236,30 @@ function openDetail(id) {
   }
   body.appendChild(expTable);
 
+  // Documents
+  const docs = p.documents || [];
+  const docsViewCard = el('div', { class: 'card mb-16' });
+  docsViewCard.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, `Documents (${docs.length})`),
+    button('Manage', { onClick: () => { closeModal(); setTimeout(() => openForm(p), 220); } })
+  ));
+  if (docs.length === 0) {
+    docsViewCard.appendChild(el('div', { class: 'doc-empty' }, 'No documents attached. Use Manage to upload.'));
+  } else {
+    const dl = el('div', { class: 'doc-list' });
+    for (const d of docs) {
+      const row = el('div', { class: 'doc-row' });
+      row.appendChild(el('span', { class: 'doc-icon' }, docIcon(d.type)));
+      row.appendChild(el('span', { class: 'doc-name', title: d.name }, d.name));
+      row.appendChild(el('span', { class: 'doc-size' }, fmtSize(d.size)));
+      if (d.uploadedAt) row.appendChild(el('span', { class: 'doc-date' }, fmtDate(d.uploadedAt.slice(0, 10))));
+      row.appendChild(button('Preview', { variant: 'ghost', onClick: () => previewDoc(d) }));
+      dl.appendChild(row);
+    }
+    docsViewCard.appendChild(dl);
+  }
+  body.appendChild(docsViewCard);
+
   const editBtn = button('Edit', { onClick: () => { closeModal(); setTimeout(() => openForm(p), 220); } });
   const delBtn = button('Delete', { variant: 'danger', onClick: async () => {
     const ok = await confirmDialog(`Delete property "${p.name}"? This will NOT delete its payments/expenses.`, { danger: true, okLabel: 'Delete' });
@@ -302,6 +360,65 @@ function openForm(existing) {
   body.appendChild(icalRow);
   body.appendChild(stCleaningRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Monthly Electricity', electricityI), formRow('Monthly Water', waterI)));
+  // Documents upload
+  let pendingDocs = [...(p.documents || [])];
+  const fileInput = el('input', {
+    type: 'file',
+    accept: '.pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx',
+    multiple: true,
+    style: 'display:none'
+  });
+  const docListEl = el('div', { class: 'doc-list', style: 'margin-top:8px' });
+  const renderDocList = () => {
+    docListEl.innerHTML = '';
+    if (pendingDocs.length === 0) {
+      docListEl.appendChild(el('div', { class: 'doc-empty' }, 'No documents yet.'));
+      return;
+    }
+    for (const d of pendingDocs) {
+      const row = el('div', { class: 'doc-row' });
+      row.appendChild(el('span', { class: 'doc-icon' }, docIcon(d.type)));
+      row.appendChild(el('span', { class: 'doc-name', title: d.name }, d.name));
+      row.appendChild(el('span', { class: 'doc-size' }, fmtSize(d.size)));
+      row.appendChild(el('button', {
+        class: 'btn ghost sm',
+        type: 'button',
+        title: 'Remove',
+        onClick: () => { pendingDocs = pendingDocs.filter(x => x.id !== d.id); renderDocList(); }
+      }, '✕'));
+      docListEl.appendChild(row);
+    }
+  };
+  renderDocList();
+  const dropZone = el('div', { class: 'doc-drop-zone' }, 'Drop files here or click to browse');
+  dropZone.onclick = () => fileInput.click();
+  dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('dragover'); };
+  dropZone.ondragleave = () => dropZone.classList.remove('dragover');
+  dropZone.ondrop = async e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    for (const file of [...e.dataTransfer.files]) {
+      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, data: await readFileAsBase64(file), uploadedAt: new Date().toISOString() });
+    }
+    renderDocList();
+  };
+  fileInput.onchange = async () => {
+    for (const file of [...fileInput.files]) {
+      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, data: await readFileAsBase64(file), uploadedAt: new Date().toISOString() });
+    }
+    renderDocList();
+    fileInput.value = '';
+  };
+  const docsCard = el('div', { class: 'card mb-16' });
+  docsCard.appendChild(fileInput);
+  docsCard.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Documents'),
+    button('+ Upload', { variant: 'primary', onClick: () => fileInput.click() })
+  ));
+  docsCard.appendChild(dropZone);
+  docsCard.appendChild(docListEl);
+  body.appendChild(docsCard);
+
   body.appendChild(formRow('Notes', notesT));
   updateTypeFields();
 
@@ -334,7 +451,8 @@ function openForm(existing) {
       monthlyWater: Number(waterI.value) || 0,
       tenantName: tenantI.value.trim(),
       leaseStartDate: leaseStartI.value,
-      leaseEndDate: leaseEndI.value
+      leaseEndDate: leaseEndI.value,
+      documents: pendingDocs
     });
     upsert('properties', p);
     toast(existing ? 'Property updated' : 'Property added', 'success');
