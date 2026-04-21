@@ -1,5 +1,36 @@
 {
-  "properties": [],
+  "properties": [
+    {
+      "id": "prop_mo8ws698cn",
+      "name": "Danko u. 38 -2",
+      "address": "Danko u. 38 -2",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 6000000,
+      "currency": "HUF",
+      "purchaseDate": "2016-01-01",
+      "monthlyRent": 130000,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "rita",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "tenantName": "",
+      "leaseStartDate": "2016-01-01",
+      "leaseEndDate": "2027-01-01",
+      "paymentDayOfMonth": 1
+    }
+  ],
   "payments": [
     {
       "id": "pay_001",
