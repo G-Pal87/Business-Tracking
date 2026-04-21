@@ -3,6 +3,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today } from '../core/ui.js';
 import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
+import { navigate } from '../core/router.js';
 
 export default {
   id: 'payments',
@@ -46,14 +47,29 @@ function build() {
 
 function buildAllPayments(wrap) {
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
-  const propSel = select([{ value: 'all', label: 'All Properties' }, ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))], 'all');
+  const propSel   = select([{ value: 'all', label: 'All Properties' }, ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))], 'all');
   const statusSel = select(Object.entries(PAYMENT_STATUSES).map(([v, m]) => ({ value: v, label: m.label })), [], { multiple: true, title: 'Ctrl+click to select multiple statuses' });
   const streamSel = select([{ value: 'all', label: 'All Streams' }, ...Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short }))], 'all');
+
+  let selected = new Set();
+
+  const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
+    const count = selected.size;
+    if (!count) return;
+    const ok = await confirmDialog(`Delete ${count} payment(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
+    if (!ok) return;
+    for (const id of [...selected]) remove('payments', id);
+    selected.clear();
+    toast(`Deleted ${count} payment(s)`, 'success');
+    renderTable();
+  }});
+  deleteSelBtn.style.display = 'none';
 
   filterBar.appendChild(propSel);
   filterBar.appendChild(statusSel);
   filterBar.appendChild(streamSel);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
+  filterBar.appendChild(deleteSelBtn);
   filterBar.appendChild(button('Import Airbnb CSV', { onClick: () => openCSVImport() }));
   filterBar.appendChild(button('Export CSV', { onClick: () => exportCSV() }));
   filterBar.appendChild(button('+ Add Payment', { variant: 'primary', onClick: () => openForm() }));
@@ -62,8 +78,20 @@ function buildAllPayments(wrap) {
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
 
+  const syncDeleteBtn = () => {
+    if (selected.size > 0) {
+      deleteSelBtn.textContent = `Delete ${selected.size} Selected`;
+      deleteSelBtn.style.display = '';
+    } else {
+      deleteSelBtn.style.display = 'none';
+    }
+  };
+
   const renderTable = () => {
+    selected.clear();
+    syncDeleteBtn();
     tableWrap.innerHTML = '';
+
     let rows = [...(state.db.payments || [])];
     const statuses = selVals(statusSel);
     if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
@@ -75,15 +103,41 @@ function buildAllPayments(wrap) {
       tableWrap.appendChild(el('div', { class: 'empty' }, 'No payments match your filters'));
       return;
     }
+
     const t = el('table', { class: 'table' });
-    t.innerHTML = `<thead><tr>
-      <th>Date</th><th>Property</th><th>Type</th><th>Source</th><th>Status</th><th class="right">Amount</th><th class="right">EUR</th><th></th>
-    </tr></thead>`;
+
+    // Header with select-all checkbox
+    const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
+    const htr = el('tr', {});
+    const chkTh = el('th', { style: 'width:36px' });
+    chkTh.appendChild(selectAllChk);
+    htr.appendChild(chkTh);
+    ['Date', 'Property', 'Type', 'Source', 'Status'].forEach(h => htr.appendChild(el('th', {}, h)));
+    htr.appendChild(el('th', { class: 'right' }, 'Amount'));
+    htr.appendChild(el('th', { class: 'right' }, 'EUR'));
+    htr.appendChild(el('th', {}));
+    const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
+
     const tb = el('tbody');
+    const rowChks = [];
+
     for (const r of rows) {
-      const prop = byId('properties', r.propertyId);
+      const prop  = byId('properties', r.propertyId);
       const sMeta = PAYMENT_STATUSES[r.status] || { label: r.status, css: '' };
+
+      const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
+      rowChks.push(chk);
+      chk.onchange = () => {
+        if (chk.checked) selected.add(r.id); else selected.delete(r.id);
+        const n = rowChks.filter(c => c.checked).length;
+        selectAllChk.indeterminate = n > 0 && n < rows.length;
+        selectAllChk.checked = n === rows.length;
+        syncDeleteBtn();
+      };
+
       const tr = el('tr');
+      const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
+      tr.appendChild(chkTd);
       tr.appendChild(el('td', {}, fmtDate(r.date)));
       tr.appendChild(el('td', {}, prop?.name || '-'));
       tr.appendChild(el('td', {}, r.type || '-'));
@@ -102,6 +156,14 @@ function buildAllPayments(wrap) {
     }
     t.appendChild(tb);
     tableWrap.appendChild(t);
+
+    selectAllChk.onchange = () => {
+      rowChks.forEach(c => { c.checked = selectAllChk.checked; });
+      selectAllChk.indeterminate = false;
+      if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
+      syncDeleteBtn();
+    };
+
     const totalEUR = rows.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
     tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
       el('span', { class: 'muted' }, `${rows.length} payment(s)`),
@@ -366,7 +428,7 @@ function openForm(existing) {
     upsert('payments', r);
     toast(existing ? 'Payment updated' : 'Payment added', 'success');
     closeModal();
-    setTimeout(() => location.hash = 'payments', 200);
+    setTimeout(() => navigate('payments'), 200);
   }});
   openModal({ title: existing ? 'Edit Payment' : 'New Payment', body, footer: [button('Cancel', { onClick: closeModal }), save] });
 }
@@ -486,7 +548,7 @@ function openCSVImport() {
 
     toast(`Imported: ${totalAdded} new, ${totalUpdated} updated`, 'success');
     closeModal();
-    setTimeout(() => location.hash = 'payments', 200);
+    setTimeout(() => navigate('payments'), 200);
   }});
 
   openModal({
