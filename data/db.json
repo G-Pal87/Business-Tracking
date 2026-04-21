@@ -28,7 +28,7 @@
       "tenantName": "",
       "leaseStartDate": "2016-01-01",
       "leaseEndDate": "2027-01-01",
-      "paymentDayOfMonth": 1
+      "paymentDayOfMonth": 28
     }
   ],
   "payments": [],
