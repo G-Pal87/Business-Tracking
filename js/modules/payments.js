@@ -244,28 +244,142 @@ function buildScheduleSection(wrap) {
     if (rows.length === 0) { tableWrap.appendChild(el('div', { class: 'empty' }, 'No entries')); return; }
 
     const t = el('table', { class: 'table' });
-    t.innerHTML = `<thead><tr><th>Due Date</th><th>Month</th><th class="right">Amount</th><th class="right">EUR</th><th>Status</th><th></th></tr></thead>`;
+    t.innerHTML = `<thead><tr>
+      <th>Due Date</th><th>Month</th>
+      <th class="right">Amount</th><th>Cur.</th>
+      <th>Status</th><th></th>
+    </tr></thead>`;
     const tb = el('tbody');
+
     for (const s of rows) {
       const isThisMonth = s.monthKey === thisMonthKey;
-      const tr = el('tr', isThisMonth && !s.paid ? { style: 'background:var(--bg-highlight, #fefce8)' } : {});
-      tr.appendChild(el('td', {}, fmtDate(s.date)));
-      tr.appendChild(el('td', { class: 'muted' }, s.monthKey));
-      tr.appendChild(el('td', { class: 'right num' }, formatMoney(s.amount, s.currency, { maxFrac: 0 })));
-      tr.appendChild(el('td', { class: 'right num muted' }, s.currency === 'EUR' ? '' : formatEUR(s.amountEUR)));
-      tr.appendChild(el('td', {},
-        s.paid ? el('span', { class: 'badge success' }, 'Paid')
-        : s.overdue ? el('span', { class: 'badge danger' }, 'Overdue')
-        : isThisMonth ? el('span', { class: 'badge warning' }, 'Due this month')
-        : el('span', { class: 'badge' }, 'Upcoming')
-      ));
-      const td = el('td', { class: 'right' });
-      if (!s.paid) {
-        td.appendChild(button('Mark Paid', { variant: 'sm primary', onClick: () => recordRentPayment(prop, s, render) }));
-      }
-      tr.appendChild(td);
+      const tr = el('tr');
+
+      const closeOtherEdits = () => {
+        tb.querySelectorAll('tr.row-editing').forEach(r => r.dispatchEvent(new CustomEvent('cancel-edit')));
+      };
+
+      const renderViewRow = () => {
+        tr.innerHTML = '';
+        tr.classList.remove('row-editing');
+        tr.style.background = isThisMonth && !s.paid ? 'rgba(99,102,241,0.04)' : '';
+
+        tr.appendChild(el('td', {}, fmtDate(s.date)));
+        tr.appendChild(el('td', { class: 'muted' }, s.monthKey));
+        tr.appendChild(el('td', { class: 'right num' }, formatMoney(s.amount, s.currency, { maxFrac: 0 })));
+        tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, s.currency));
+        tr.appendChild(el('td', {},
+          s.paid ? el('span', { class: 'badge success' }, 'Paid')
+          : s.overdue ? el('span', { class: 'badge danger' }, 'Overdue')
+          : isThisMonth ? el('span', { class: 'badge warning' }, 'Due this month')
+          : el('span', { class: 'badge' }, 'Upcoming')
+        ));
+        const td = el('td', { class: 'right', style: 'white-space:nowrap' });
+        if (!s.paid) {
+          td.appendChild(button('Mark Paid', { variant: 'sm primary', onClick: () => recordRentPayment(prop, s, render) }));
+        }
+        td.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => { closeOtherEdits(); renderEditRow(); } }));
+        tr.appendChild(td);
+      };
+
+      const renderEditRow = () => {
+        tr.innerHTML = '';
+        tr.classList.add('row-editing');
+        tr.style.background = '';
+
+        const linked = s.linkedPaymentId
+          ? (state.db.payments || []).find(p => p.id === s.linkedPaymentId) || null
+          : null;
+
+        const dateI = el('input', {
+          type: 'date', class: 'input',
+          value: linked?.date || s.date,
+          style: 'min-width:130px;width:100%'
+        });
+        const amtI = el('input', {
+          type: 'number', class: 'input',
+          value: String(linked?.amount ?? s.amount),
+          min: '0', step: '0.01',
+          style: 'min-width:80px;width:100%'
+        });
+        const curS = el('select', { class: 'select', style: 'width:100%' });
+        for (const c of CURRENCIES) {
+          const o = el('option', { value: c }, c);
+          if (c === (linked?.currency || s.currency)) o.selected = true;
+          curS.appendChild(o);
+        }
+
+        const statusOpts = [
+          { value: 'paid', label: 'Paid' },
+          { value: 'pending', label: 'Pending' }
+        ];
+        if (s.linkedPaymentId) statusOpts.push({ value: 'revert', label: 'Revert to Scheduled' });
+        const currentStatus = linked?.status === 'paid' ? 'paid' : linked ? 'pending' : 'pending';
+        const statusS = el('select', { class: 'select', style: 'width:100%' });
+        for (const o of statusOpts) {
+          const opt = el('option', { value: o.value }, o.label);
+          if (o.value === currentStatus) opt.selected = true;
+          statusS.appendChild(opt);
+        }
+
+        const notesI = el('input', {
+          type: 'text', class: 'input',
+          value: linked?.notes || `Rent ${s.monthKey}`,
+          placeholder: 'Notes',
+          style: 'width:100%;margin-bottom:6px'
+        });
+
+        tr.addEventListener('cancel-edit', renderViewRow);
+
+        const saveBtn = button('Save', { variant: 'sm primary', onClick: () => {
+          const newDate = dateI.value;
+          const newAmt  = Number(amtI.value);
+          const newCur  = curS.value;
+          const newStat = statusS.value;
+          const newNotes = notesI.value.trim() || `Rent ${s.monthKey}`;
+
+          if (!newDate) { toast('Date is required', 'danger'); return; }
+          if (newAmt <= 0) { toast('Amount must be greater than zero', 'danger'); return; }
+
+          if (newStat === 'revert') {
+            if (s.linkedPaymentId) remove('payments', s.linkedPaymentId);
+            toast('Payment record removed — row reverted to scheduled state', 'success');
+          } else {
+            const pay = linked ? { ...linked } : {
+              id: newId('pay'),
+              propertyId: prop.id,
+              stream: 'long_term_rental',
+              source: 'manual',
+              type: 'rental'
+            };
+            Object.assign(pay, { amount: newAmt, currency: newCur, date: newDate, status: newStat, notes: newNotes });
+            upsert('payments', pay);
+            toast(`Payment ${linked ? 'updated' : 'recorded'} as ${newStat}`, 'success');
+          }
+          render();
+        }});
+
+        const cancelBtn = button('Cancel', { variant: 'sm ghost', onClick: renderViewRow });
+
+        // Col 1: date | Col 2: month (static) | Col 3: amount | Col 4: currency | Col 5: status | Col 6: notes + buttons
+        tr.appendChild(el('td', {}, dateI));
+        tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px;white-space:nowrap' }, s.monthKey));
+        tr.appendChild(el('td', {}, amtI));
+        tr.appendChild(el('td', {}, curS));
+        tr.appendChild(el('td', {}, statusS));
+        const lastTd = el('td', {});
+        lastTd.appendChild(notesI);
+        const btnRow = el('div', { class: 'flex gap-4', style: 'justify-content:flex-end' });
+        btnRow.appendChild(cancelBtn);
+        btnRow.appendChild(saveBtn);
+        lastTd.appendChild(btnRow);
+        tr.appendChild(lastTd);
+      };
+
+      renderViewRow();
       tb.appendChild(tr);
     }
+
     t.appendChild(tb);
     tableWrap.appendChild(t);
 

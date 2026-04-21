@@ -457,3 +457,21 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 .doc-size { font-size: 11px; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
 .doc-date { font-size: 11px; color: var(--text-muted); white-space: nowrap; flex-shrink: 0; }
 .doc-empty { font-size: 12px; color: var(--text-muted); padding: 6px 0; }
+
+/* Inline row editing */
+.row-editing {
+  background: var(--accent-soft) !important;
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.row-editing td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  vertical-align: top;
+}
+.row-editing .input,
+.row-editing .select {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.row-editing .select { padding-right: 26px; }

@@ -322,13 +322,20 @@ export function generatePaymentSchedule(property) {
       p.status === 'paid' &&
       (p.stream === 'long_term_rental' || p.type === 'rental')
     );
+    const linkedPayment = paidPayment || (state.db.payments || []).find(p =>
+      p.propertyId === property.id &&
+      p.date?.slice(0, 7) === monthKey &&
+      (p.stream === 'long_term_rental' || p.type === 'rental')
+    );
     const paid = !!paidPayment;
     const overdue = !paid && dueDate < now;
     results.push({
       date: dateStr, monthKey,
       amount: property.monthlyRent, currency: property.currency,
       amountEUR: toEUR(property.monthlyRent, property.currency),
-      paid, overdue, paidPaymentId: paidPayment?.id || null
+      paid, overdue,
+      paidPaymentId: paidPayment?.id || null,
+      linkedPaymentId: linkedPayment?.id || null
     });
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
