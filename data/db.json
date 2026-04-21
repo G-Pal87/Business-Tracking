@@ -1,29 +1,6 @@
 {
   "properties": [
     {
-      "id": "prop_002",
-      "name": "Lisbon City Loft",
-      "address": "Rua Augusta 18",
-      "city": "Lisbon",
-      "country": "Portugal",
-      "flag": "PT",
-      "type": "short_term",
-      "status": "active",
-      "bedrooms": 1,
-      "bathrooms": 1,
-      "purchasePrice": 195000,
-      "currency": "EUR",
-      "purchaseDate": "2022-03-10",
-      "monthlyRent": 0,
-      "nightlyRate": 95,
-      "mortgageAmount": 136500,
-      "mortgageMonthly": 680,
-      "mortgageRate": 2.9,
-      "owner": "both",
-      "airbnbCalUrl": "",
-      "notes": "Modern loft in the heart of Lisbon"
-    },
-    {
       "id": "prop_003",
       "name": "Budapest District V Flat",
       "address": "Vaci utca 24",
