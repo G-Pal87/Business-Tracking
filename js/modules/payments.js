@@ -486,9 +486,14 @@ function openCSVImport() {
       const rows = parseAirbnbCSV(text);
       let added = 0, updated = 0, skipped = 0;
       for (const row of rows) {
-        const exists = row.reference && (state.db.payments || []).some(p => p.airbnbRef === row.reference);
+        const pmatch = findProp(row.listing);
+        const exists = row.reference
+          ? (state.db.payments || []).some(p => p.airbnbRef === row.reference)
+          : pmatch && (state.db.payments || []).some(p =>
+              p.source === 'airbnb' && p.propertyId === pmatch.id &&
+              p.date === row.date && Number(p.amount) === Number(row.amount));
         if (exists) { updated++; continue; }
-        if (findProp(row.listing)) added++; else skipped++;
+        if (pmatch) added++; else skipped++;
       }
       const badge = el('span', { class: `badge ${status === 'paid' ? 'success' : 'warning'}` }, status === 'paid' ? 'Paid' : 'Pending');
       preview.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center;margin-bottom:6px' },
@@ -521,10 +526,12 @@ function openCSVImport() {
         const matched = findProp(row.listing);
         if (!matched) continue;
 
-        // Idempotency: use transaction-level reference as unique key
+        // Idempotency: primary key = airbnbRef; fallback = source+property+date+amount
         const existing = row.reference
           ? (state.db.payments || []).find(p => p.airbnbRef === row.reference)
-          : null;
+          : (state.db.payments || []).find(p =>
+              p.source === 'airbnb' && p.propertyId === matched.id &&
+              p.date === row.date && Number(p.amount) === Number(row.amount));
         const pay = existing ? { ...existing } : {
           id: newId('pay'),
           propertyId: matched.id,
