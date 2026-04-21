@@ -3,6 +3,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate } from '../core/ui.js';
 import { upsert, remove, newId, formatMoney, formatEUR, toEUR, byId } from '../core/data.js';
 import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
+import { navigate } from '../core/router.js';
 
 export default {
   id: 'clients',
@@ -123,7 +124,7 @@ function openDetail(id) {
     if (!ok) return;
     remove('clients', c.id);
     toast('Deleted', 'success');
-    closeModal(); setTimeout(() => location.hash = 'clients', 200);
+    closeModal(); setTimeout(() => navigate('clients'), 200);
   }});
   openModal({ title: 'Client', body, footer: [del, edit], large: true });
 }
@@ -173,7 +174,7 @@ function openForm(existing) {
     upsert('clients', c);
     toast(existing ? 'Client updated' : 'Client added', 'success');
     closeModal();
-    setTimeout(() => location.hash = 'clients', 200);
+    setTimeout(() => navigate('clients'), 200);
   }});
   const cancel = button('Cancel', { onClick: closeModal });
   openModal({ title: existing ? 'Edit Client' : 'New Client', body, footer: [cancel, save] });
