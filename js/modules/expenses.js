@@ -4,6 +4,7 @@ import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input
 import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, groupByCategory } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, STREAMS } from '../core/config.js';
+import { navigate } from '../core/router.js';
 
 export default {
   id: 'expenses',
@@ -29,26 +30,54 @@ function build() {
   ));
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16 mt-24', style: 'flex-wrap:wrap' });
-  const propSel = select([{ value: 'all', label: 'All Properties' }, ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))], 'all');
-  const catSel = select(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), [], { multiple: true, title: 'Ctrl+click to select multiple categories' });
+  const propSel   = select([{ value: 'all', label: 'All Properties' }, ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))], 'all');
+  const catSel    = select(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), [], { multiple: true, title: 'Ctrl+click to select multiple categories' });
   const streamSel = select(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), [], { multiple: true, title: 'Ctrl+click to select multiple streams' });
+
+  let selected = new Set();
+
+  const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
+    const count = selected.size;
+    if (!count) return;
+    const ok = await confirmDialog(`Delete ${count} expense(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
+    if (!ok) return;
+    for (const id of [...selected]) remove('expenses', id);
+    selected.clear();
+    toast(`Deleted ${count} expense(s)`, 'success');
+    renderTable();
+  }});
+  deleteSelBtn.style.display = 'none';
+
   filterBar.appendChild(propSel);
   filterBar.appendChild(catSel);
   filterBar.appendChild(streamSel);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
+  filterBar.appendChild(deleteSelBtn);
   filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
   wrap.appendChild(filterBar);
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
 
+  const syncDeleteBtn = () => {
+    if (selected.size > 0) {
+      deleteSelBtn.textContent = `Delete ${selected.size} Selected`;
+      deleteSelBtn.style.display = '';
+    } else {
+      deleteSelBtn.style.display = 'none';
+    }
+  };
+
   const renderTable = () => {
+    selected.clear();
+    syncDeleteBtn();
     tableWrap.innerHTML = '';
+
     let rows = [...(state.db.expenses || [])];
-    const cats = selVals(catSel);
+    const cats    = selVals(catSel);
     const streams = selVals(streamSel);
     if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
-    if (cats) rows = rows.filter(r => cats.includes(r.category));
+    if (cats)    rows = rows.filter(r => cats.includes(r.category));
     if (streams) rows = rows.filter(r => streams.includes(r.stream));
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
@@ -58,14 +87,37 @@ function build() {
     }
 
     const t = el('table', { class: 'table' });
-    t.innerHTML = `<thead><tr>
-      <th>Date</th><th>Property</th><th>Category</th><th>Description</th><th>Vendor</th><th class="right">Amount</th><th class="right">EUR</th><th></th>
-    </tr></thead>`;
+
+    const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
+    const htr = el('tr', {});
+    const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
+    htr.appendChild(chkTh);
+    ['Date', 'Property', 'Category', 'Description', 'Vendor'].forEach(h => htr.appendChild(el('th', {}, h)));
+    htr.appendChild(el('th', { class: 'right' }, 'Amount'));
+    htr.appendChild(el('th', { class: 'right' }, 'EUR'));
+    htr.appendChild(el('th', {}));
+    const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
+
     const tb = el('tbody');
+    const rowChks = [];
+
     for (const r of rows) {
       const prop = byId('properties', r.propertyId);
-      const cat = EXPENSE_CATEGORIES[r.category];
+      const cat  = EXPENSE_CATEGORIES[r.category];
+
+      const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
+      rowChks.push(chk);
+      chk.onchange = () => {
+        if (chk.checked) selected.add(r.id); else selected.delete(r.id);
+        const n = rowChks.filter(c => c.checked).length;
+        selectAllChk.indeterminate = n > 0 && n < rows.length;
+        selectAllChk.checked = n === rows.length;
+        syncDeleteBtn();
+      };
+
       const tr = el('tr');
+      const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
+      tr.appendChild(chkTd);
       tr.appendChild(el('td', {}, fmtDate(r.date)));
       tr.appendChild(el('td', {}, prop?.name || '-'));
       tr.appendChild(el('td', {}, el('span', { class: 'badge ' + (r.category === 'renovation' ? 'warning' : '') }, cat?.label || r.category)));
@@ -85,15 +137,23 @@ function build() {
     t.appendChild(tb);
     tableWrap.appendChild(t);
 
+    selectAllChk.onchange = () => {
+      rowChks.forEach(c => { c.checked = selectAllChk.checked; });
+      selectAllChk.indeterminate = false;
+      if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
+      syncDeleteBtn();
+    };
+
     const totalEUR = rows.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
-    const renoEUR = rows.filter(r => r.category === 'renovation').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
+    const renoEUR  = rows.filter(r => r.category === 'renovation').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
     tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
       el('span', { class: 'muted' }, `${rows.length} expense(s) . Renovation: ${formatEUR(renoEUR)}`),
       el('strong', { class: 'num' }, `Total: ${formatEUR(totalEUR)}`)
     ));
   };
+
   propSel.onchange = renderTable;
-  catSel.onchange = renderTable;
+  catSel.onchange  = renderTable;
   streamSel.onchange = renderTable;
   renderTable();
   return wrap;
@@ -211,7 +271,7 @@ function openForm(existing, defaults = {}) {
     upsert('expenses', r);
     toast(existing ? 'Expense updated' : 'Expense added', 'success');
     closeModal();
-    setTimeout(() => location.hash = 'expenses', 200);
+    setTimeout(() => navigate('expenses'), 200);
   }});
   const cancel = button('Cancel', { onClick: closeModal });
   openModal({ title: existing ? 'Edit Expense' : 'New Expense', body, footer: [cancel, save] });
