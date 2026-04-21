@@ -422,11 +422,12 @@ export function buildReportData(filters = {}) {
     return d.startsWith(String(f.year));
   };
   const matchStream = row => !f.stream || f.stream === 'all' || !row.stream || row.stream === f.stream;
+  const matchProperty = row => !f.propertyId || f.propertyId === 'all' || row.propertyId === f.propertyId;
 
-  const payments = (state.db.payments || []).filter(p => p.status === 'paid' && matchDate(p) && matchStream(p));
-  const invoices = (state.db.invoices || []).filter(i => i.status === 'paid' && matchDate({ date: i.issueDate }) && matchStream(i));
-  const opExpenses = (state.db.expenses || []).filter(e => e.category !== 'renovation' && matchDate(e) && matchStream(e));
-  const renoExpenses = (state.db.expenses || []).filter(e => e.category === 'renovation' && matchDate(e));
+  const payments = (state.db.payments || []).filter(p => p.status === 'paid' && matchDate(p) && matchStream(p) && matchProperty(p));
+  const invoices = (state.db.invoices || []).filter(i => i.status === 'paid' && matchDate({ date: i.issueDate }) && matchStream(i) && matchProperty(i));
+  const opExpenses = (state.db.expenses || []).filter(e => e.category !== 'renovation' && matchDate(e) && matchStream(e) && matchProperty(e));
+  const renoExpenses = (state.db.expenses || []).filter(e => e.category === 'renovation' && matchDate(e) && matchProperty(e));
 
   const rev = [...payments, ...invoices.map(i => ({ ...i, amount: i.total }))].reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
   const exp = opExpenses.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);

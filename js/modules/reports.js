@@ -33,7 +33,7 @@ const NET_COLS = [
   { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
 ];
 
-let gFilters = { year: String(new Date().getFullYear()), stream: 'all' };
+let gFilters = { year: String(new Date().getFullYear()), stream: 'all', propertyId: 'all' };
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 export default {
@@ -56,12 +56,19 @@ function build() {
   filterBar.appendChild(el('span', { class: 'muted', style: 'align-self:center' }, 'Filter:'));
   filterBar.appendChild(yearSel);
   filterBar.appendChild(streamSel);
+  const rentalProps = (state.db.properties || []).filter(p => p.type === 'short_term' || p.type === 'long_term');
+  const propSel = select([
+    { value: 'all', label: 'All Properties' },
+    ...rentalProps.map(p => ({ value: p.id, label: `${p.name} (${p.type === 'short_term' ? 'ST' : 'LT'})` }))
+  ], gFilters.propertyId);
+  filterBar.appendChild(propSel);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(button('Print / PDF', { onClick: () => window.print() }));
   wrap.appendChild(filterBar);
 
   yearSel.onchange = () => { gFilters.year = yearSel.value; refreshActive(); };
   streamSel.onchange = () => { gFilters.stream = streamSel.value; refreshActive(); };
+  propSel.onchange = () => { gFilters.propertyId = propSel.value; refreshActive(); };
 
   // Tabs
   const tabDefs = [
@@ -159,7 +166,8 @@ function renderSummary(wrap) {
 // ===== BY PROPERTY TAB =====
 function renderByProperty(wrap) {
   const yearFilter = gFilters.year !== 'all' ? { year: gFilters.year } : {};
-  const props = state.db.properties || [];
+  let props = state.db.properties || [];
+  if (gFilters.propertyId !== 'all') props = props.filter(p => p.id === gFilters.propertyId);
   const rows = props.map(p => {
     const rev = propertyRevenueEUR(p.id, yearFilter);
     const exp = propertyExpensesEUR(p.id, yearFilter, { includeRenovation: false });
@@ -333,7 +341,8 @@ function renderReconciliation(wrap) {
     kpiRow.innerHTML = '';
     content.innerHTML = '';
 
-    const entities = allEntities();
+    let entities = allEntities();
+    if (gFilters.propertyId !== 'all') entities = entities.filter(e => e.id === gFilters.propertyId);
     const totExp = entities.reduce((s, e) => s + e.totExp, 0);
     const totAct = entities.reduce((s, e) => s + e.totAct, 0);
     const outstanding = entities.reduce((s, e) => s + Math.max(0, e.totExp - e.totAct), 0);
@@ -752,7 +761,7 @@ function renderContribution(wrap) {
     const label = streamLabel(cs.key);
     let rows;
     if (cs.payType === 'payment') {
-      rows = (state.db.payments || []).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(yr));
+      rows = (state.db.payments || []).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(yr) && (gFilters.propertyId === 'all' || p.propertyId === gFilters.propertyId));
     } else {
       rows = (state.db.invoices || []).filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(yr));
     }
@@ -769,7 +778,7 @@ function renderContribution(wrap) {
       const label = streamLabel(cs.key);
       let rows;
       if (cs.payType === 'payment') {
-        rows = (state.db.payments || []).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(mk));
+        rows = (state.db.payments || []).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(mk) && (gFilters.propertyId === 'all' || p.propertyId === gFilters.propertyId));
       } else {
         rows = (state.db.invoices || []).filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(mk));
       }
