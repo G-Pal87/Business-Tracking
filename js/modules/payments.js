@@ -664,6 +664,20 @@ function openCSVImport() {
           notes: [row.guest, row.listing].filter(Boolean).join(' · ')
         });
         upsert('payments', pay);
+        if (!existing && matched.cleaningFee) {
+          upsert('expenses', {
+            id: newId('exp'),
+            propertyId: matched.id,
+            category: 'cleaning',
+            amount: matched.cleaningFee,
+            currency: matched.currency,
+            date: row.checkIn || row.date,
+            vendorId: '',
+            vendor: '',
+            description: '',
+            stream: 'short_term_rental'
+          });
+        }
         if (existing) totalUpdated++; else totalAdded++;
       }
     }
