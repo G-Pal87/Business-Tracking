@@ -693,25 +693,6 @@
   ],
   "vendors": [
     {
-      "id": "vnd_002",
-      "name": "BudaClean Kft.",
-      "type": "cleaner",
-      "email": "info@budaclean.hu",
-      "phone": "+36 30 555 1234",
-      "pricing": {
-        "studio": 4500,
-        "one_bedroom": 6000,
-        "two_bedroom": 8000,
-        "three_bedroom_plus": 12000
-      },
-      "currency": "HUF",
-      "propertyIds": [
-        "prop_003",
-        "prop_004"
-      ],
-      "notes": "Key holder"
-    },
-    {
       "id": "vnd_003",
       "name": "Athens Property Services",
       "type": "management",
