@@ -1,29 +1,6 @@
 {
   "properties": [
     {
-      "id": "prop_001",
-      "name": "Barcelona Beach Apartment",
-      "address": "Carrer de la Marina 42",
-      "city": "Barcelona",
-      "country": "Spain",
-      "flag": "ES",
-      "type": "short_term",
-      "status": "active",
-      "bedrooms": 2,
-      "bathrooms": 1,
-      "purchasePrice": 280000,
-      "currency": "EUR",
-      "purchaseDate": "2021-06-15",
-      "monthlyRent": 0,
-      "nightlyRate": 120,
-      "mortgageAmount": 196000,
-      "mortgageMonthly": 920,
-      "mortgageRate": 3.2,
-      "owner": "you",
-      "airbnbCalUrl": "",
-      "notes": "Beachfront apartment with sea views"
-    },
-    {
       "id": "prop_002",
       "name": "Lisbon City Loft",
       "address": "Rua Augusta 18",
