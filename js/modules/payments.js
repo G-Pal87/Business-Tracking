@@ -664,19 +664,27 @@ function openCSVImport() {
           notes: [row.guest, row.listing].filter(Boolean).join(' · ')
         });
         upsert('payments', pay);
-        if (!existing && matched.cleaningFee) {
-          upsert('expenses', {
-            id: newId('exp'),
-            propertyId: matched.id,
-            category: 'cleaning',
-            amount: matched.cleaningFee,
-            currency: matched.currency,
-            date: row.checkIn || row.date,
-            vendorId: '',
-            vendor: '',
-            description: '',
-            stream: 'short_term_rental'
-          });
+        if (matched.cleaningFee) {
+          const expDate = row.checkIn || row.date;
+          const existingExp = row.reference
+            ? (state.db.expenses || []).find(e => e.airbnbRef === row.reference && e.category === 'cleaning')
+            : (state.db.expenses || []).find(e =>
+                e.category === 'cleaning' && e.propertyId === matched.id && e.date === expDate);
+          if (!existingExp) {
+            upsert('expenses', {
+              id: newId('exp'),
+              propertyId: matched.id,
+              category: 'cleaning',
+              amount: matched.cleaningFee,
+              currency: matched.currency,
+              date: expDate,
+              airbnbRef: row.reference || '',
+              vendorId: '',
+              vendor: '',
+              description: '',
+              stream: 'short_term_rental'
+            });
+          }
         }
         if (existing) totalUpdated++; else totalAdded++;
       }
