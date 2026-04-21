@@ -88,7 +88,7 @@
       "nightlyRate": 180,
       "mortgageAmount": 100000000,
       "mortgageMonthly": 520000,
-      "mortgageRate": 7.0,
+      "mortgageRate": 7,
       "owner": "both",
       "airbnbCalUrl": "",
       "notes": "Premium villa - under full renovation until Q3"
@@ -691,6 +691,73 @@
       "stream": "short_term_rental"
     }
   ],
+  "vendors": [
+    {
+      "id": "vnd_001",
+      "name": "CleanTeam Barcelona",
+      "type": "cleaner",
+      "email": "clean@barcelona.es",
+      "phone": "+34 600 123 456",
+      "pricing": {
+        "studio": 15,
+        "one_bedroom": 20,
+        "two_bedroom": 28,
+        "three_bedroom_plus": 35
+      },
+      "currency": "EUR",
+      "propertyIds": [
+        "prop_001"
+      ],
+      "notes": "Reliable, 24h notice"
+    },
+    {
+      "id": "vnd_002",
+      "name": "BudaClean Kft.",
+      "type": "cleaner",
+      "email": "info@budaclean.hu",
+      "phone": "+36 30 555 1234",
+      "pricing": {
+        "studio": 4500,
+        "one_bedroom": 6000,
+        "two_bedroom": 8000,
+        "three_bedroom_plus": 12000
+      },
+      "currency": "HUF",
+      "propertyIds": [
+        "prop_003",
+        "prop_004"
+      ],
+      "notes": "Key holder"
+    },
+    {
+      "id": "vnd_003",
+      "name": "Athens Property Services",
+      "type": "management",
+      "email": "ops@athenspm.gr",
+      "phone": "+30 210 123 4567",
+      "pricing": {},
+      "currency": "EUR",
+      "propertyIds": [
+        "prop_005"
+      ],
+      "notes": "5% monthly management fee"
+    }
+  ],
+  "tenants": [
+    {
+      "id": "ten_001",
+      "propertyId": "prop_003",
+      "name": "Kovacs Anna",
+      "email": "akovacs@example.hu",
+      "phone": "+36 30 123 4567",
+      "leaseStart": "2024-09-01",
+      "leaseEnd": "2025-08-31",
+      "monthlyRent": 350000,
+      "currency": "HUF",
+      "deposit": 700000,
+      "notes": "On time payer"
+    }
+  ],
   "clients": [
     {
       "id": "cli_001",
@@ -743,6 +810,19 @@
       "currency": "EUR",
       "contractStart": "2025-01-10",
       "notes": "Performance marketing"
+    },
+    {
+      "id": "cli_mo8wettwp7",
+      "name": "rabbit",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2026-04-21",
+      "notes": ""
     }
   ],
   "services": [
@@ -1027,21 +1107,6 @@
       "notes": ""
     }
   ],
-  "tenants": [
-    {
-      "id": "ten_001",
-      "propertyId": "prop_003",
-      "name": "Kovacs Anna",
-      "email": "akovacs@example.hu",
-      "phone": "+36 30 123 4567",
-      "leaseStart": "2024-09-01",
-      "leaseEnd": "2025-08-31",
-      "monthlyRent": 350000,
-      "currency": "HUF",
-      "deposit": 700000,
-      "notes": "On time payer"
-    }
-  ],
   "settings": {
     "masterCurrency": "EUR",
     "fxRates": {
@@ -1078,58 +1143,6 @@
     },
     "globalTaxRate": 15
   },
-  "vendors": [
-    {
-      "id": "vnd_001",
-      "name": "CleanTeam Barcelona",
-      "type": "cleaner",
-      "email": "clean@barcelona.es",
-      "phone": "+34 600 123 456",
-      "pricing": {
-        "studio": 15,
-        "one_bedroom": 20,
-        "two_bedroom": 28,
-        "three_bedroom_plus": 35
-      },
-      "currency": "EUR",
-      "propertyIds": [
-        "prop_001"
-      ],
-      "notes": "Reliable, 24h notice"
-    },
-    {
-      "id": "vnd_002",
-      "name": "BudaClean Kft.",
-      "type": "cleaner",
-      "email": "info@budaclean.hu",
-      "phone": "+36 30 555 1234",
-      "pricing": {
-        "studio": 4500,
-        "one_bedroom": 6000,
-        "two_bedroom": 8000,
-        "three_bedroom_plus": 12000
-      },
-      "currency": "HUF",
-      "propertyIds": [
-        "prop_003",
-        "prop_004"
-      ],
-      "notes": "Key holder"
-    },
-    {
-      "id": "vnd_003",
-      "name": "Athens Property Services",
-      "type": "management",
-      "email": "ops@athenspm.gr",
-      "phone": "+30 210 123 4567",
-      "pricing": {},
-      "currency": "EUR",
-      "propertyIds": [
-        "prop_005"
-      ],
-      "notes": "5% monthly management fee"
-    }
-  ],
   "forecasts": [
     {
       "id": "fcs_001",
