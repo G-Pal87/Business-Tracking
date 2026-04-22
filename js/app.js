@@ -5,7 +5,7 @@ import * as router from './core/router.js';
 import { toast } from './core/ui.js';
 import { requireAuth, clearSession } from './core/auth.js';
 
-const VERSION = window._appV || Date.now();
+const VERSION = window._appV || '20260422b';
 
 async function boot() {
   const [

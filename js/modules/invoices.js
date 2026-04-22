@@ -515,10 +515,10 @@ function openPDFImport() {
   const clientS = select([{ value: '', label: '— No client —' }, ...clients.map(c => ({ value: c.id, label: c.name }))], clients[0]?.id || '');
   const fileI = el('input', { type: 'file', accept: '.pdf', class: 'input' });
 
-  // Date + invoice # are always editable; pre-filled from auto-parse if found
-  const metaWrap = el('div', { style: 'display:none;display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px' });
+  // Meta row — hidden until a file is chosen
+  const metaWrap = el('div', { style: 'display:none;gap:12px;flex-wrap:wrap;margin-bottom:4px' });
   const dateI = el('input', { type: 'date', class: 'input', value: today() });
-  const numI = el('input', { type: 'text', class: 'input', placeholder: 'e.g. INV-001', style: 'width:140px' });
+  const numI = el('input', { type: 'text', class: 'input', placeholder: 'e.g. INV-001', style: 'width:180px' });
   metaWrap.appendChild(formRow('Invoice Date', dateI));
   metaWrap.appendChild(formRow('Invoice #', numI));
 
@@ -556,20 +556,21 @@ function openPDFImport() {
     manualList.appendChild(tw);
   };
 
-  const showManualEntry = (rawLines) => {
+  const showManualEntry = (rawLines, statusMsg) => {
     preview.innerHTML = '';
+    const msg = statusMsg ||
+      (rawLines.length > 0
+        ? 'Auto-parse found no items — enter them manually using the extracted text as reference:'
+        : 'Could not extract text from this PDF. Fill in the line items below and click Import:');
+    preview.appendChild(el('div', { style: 'color:var(--warning,#f59e0b);font-size:12px;margin-bottom:6px' }, msg));
+
     if (rawLines.length > 0) {
-      preview.appendChild(el('div', { style: 'color:var(--warning,#f59e0b);font-size:12px;margin-bottom:6px' },
-        'Auto-parse found no items — enter them manually using the extracted text as reference:'));
-      const pre = el('pre', { style: 'font-size:11px;color:var(--text-muted);white-space:pre-wrap;max-height:130px;overflow:auto;background:var(--bg-elev-2);padding:8px;border-radius:4px;margin-bottom:12px' });
+      const pre = el('pre', { style: 'font-size:11px;color:var(--text-muted);white-space:pre-wrap;max-height:120px;overflow:auto;background:var(--bg-elev-2);padding:8px;border-radius:4px;margin-bottom:12px' });
       pre.textContent = rawLines.slice(0, 60).join('\n');
       preview.appendChild(pre);
-    } else {
-      preview.appendChild(el('div', { style: 'color:var(--warning,#f59e0b);font-size:12px;margin-bottom:12px' },
-        'Could not extract text from this PDF. Enter invoice items manually:'));
     }
 
-    const descI = el('input', { type: 'text', class: 'input', placeholder: 'Service description', style: 'min-width:180px' });
+    const descI = el('input', { type: 'text', class: 'input', placeholder: 'Service description', style: 'min-width:200px' });
     const qtyI = el('input', { type: 'number', class: 'input', value: '1', style: 'width:64px' });
     const rateI = el('input', { type: 'number', class: 'input', placeholder: '0.00', style: 'width:90px' });
     const totalI = el('input', { type: 'number', class: 'input', placeholder: '0.00', style: 'width:90px' });
@@ -581,7 +582,7 @@ function openPDFImport() {
     qtyI.oninput = calcTotal;
     rateI.oninput = calcTotal;
 
-    const addBtn = button('+ Add', { onClick: () => {
+    const addBtn = button('+ Add Item', { onClick: () => {
       const desc = descI.value.trim();
       const qty = parseFloat(qtyI.value) || 1;
       const rate = parseFloat(rateI.value) || 0;
@@ -607,47 +608,75 @@ function openPDFImport() {
   const refresh = async () => {
     const file = fileI.files?.[0];
     if (!file) return;
+
+    // Immediately: show meta fields and set invoice number from filename
+    metaWrap.style.display = 'flex';
+    const filenameBase = file.name.replace(/\.pdf$/i, '').trim();
+    if (!numI.value || numI.value === numI.getAttribute('data-auto')) {
+      numI.value = filenameBase;
+      numI.setAttribute('data-auto', filenameBase);
+    }
+
+    parsed = null;
     manualItems = [];
-    preview.textContent = 'Parsing…';
+    preview.textContent = 'Extracting text…';
+
+    let lines = [];
     try {
-      const lines = await extractPDFLines(await file.arrayBuffer(), msg => { preview.textContent = msg; });
+      lines = await extractPDFLines(await file.arrayBuffer(), msg => { preview.textContent = msg; });
+    } catch (e) {
+      // Extraction failed entirely — go straight to manual entry
+      showManualEntry([], 'Could not read this PDF. Fill in the invoice details below:');
+      return;
+    }
+
+    try {
       parsed = parsePDFInvoice(lines, streamS.value);
-      if (parsed.issueDate) dateI.value = parsed.issueDate;
-      if (parsed.invoiceNumber) numI.value = parsed.invoiceNumber;
-      preview.innerHTML = '';
+    } catch (e) {
+      parsed = { issueDate: '', invoiceNumber: '', clientName: '', lineItems: [] };
+    }
 
-      if (!parsed || parsed.lineItems.length === 0) {
-        showManualEntry(lines);
-        return;
-      }
+    // Pre-fill meta from parsed data (but don't overwrite a user-edited field)
+    if (parsed.issueDate) dateI.value = parsed.issueDate;
+    if (parsed.invoiceNumber) {
+      numI.value = parsed.invoiceNumber;
+      numI.setAttribute('data-auto', parsed.invoiceNumber);
+    }
 
-      const info = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px' },
-        `Date: ${parsed.issueDate || '—'}  ·  #: ${parsed.invoiceNumber || '—'}  ·  Client: ${parsed.clientName || '—'}  ·  ${parsed.lineItems.length} item(s)`
-      );
-      const tw = el('div', { class: 'table-wrap' });
-      const t = el('table', { class: 'table' });
-      t.innerHTML = '<thead><tr><th>Description</th><th class="right">Qty</th><th class="right">Rate</th><th class="right">Total</th></tr></thead>';
-      const tb = el('tbody');
-      for (const li of parsed.lineItems) {
-        const tr = el('tr');
-        tr.appendChild(el('td', {}, li.description));
-        tr.appendChild(el('td', { class: 'right num' }, String(li.quantity)));
-        tr.appendChild(el('td', { class: 'right num' }, `€ ${li.rate.toFixed(2)}`));
-        tr.appendChild(el('td', { class: 'right num' }, `€ ${li.total.toFixed(2)}`));
-        tb.appendChild(tr);
-      }
-      t.appendChild(tb); tw.appendChild(t);
-      preview.appendChild(info);
-      preview.appendChild(tw);
-    } catch (e) { preview.textContent = 'Parse error: ' + e.message; }
+    preview.innerHTML = '';
+
+    if (!parsed.lineItems.length) {
+      showManualEntry(lines);
+      return;
+    }
+
+    // Auto-parse succeeded — show preview table
+    const info = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px' },
+      `Date: ${parsed.issueDate || '—'}  ·  #: ${parsed.invoiceNumber || '—'}  ·  Client: ${parsed.clientName || '—'}  ·  ${parsed.lineItems.length} item(s)`
+    );
+    const tw = el('div', { class: 'table-wrap' });
+    const t = el('table', { class: 'table' });
+    t.innerHTML = '<thead><tr><th>Description</th><th class="right">Qty</th><th class="right">Rate</th><th class="right">Total</th></tr></thead>';
+    const tb = el('tbody');
+    for (const li of parsed.lineItems) {
+      const tr = el('tr');
+      tr.appendChild(el('td', {}, li.description));
+      tr.appendChild(el('td', { class: 'right num' }, String(li.quantity)));
+      tr.appendChild(el('td', { class: 'right num' }, `€ ${li.rate.toFixed(2)}`));
+      tr.appendChild(el('td', { class: 'right num' }, `€ ${li.total.toFixed(2)}`));
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb); tw.appendChild(t);
+    preview.appendChild(info);
+    preview.appendChild(tw);
   };
 
   fileI.onchange = refresh;
-  streamS.onchange = refresh;
+  streamS.onchange = () => { if (fileI.files?.[0]) refresh(); };
 
   const importBtn = button('Import', { variant: 'primary', onClick: () => {
     const items = (parsed?.lineItems?.length > 0) ? parsed.lineItems : manualItems;
-    if (items.length === 0) { toast('No line items to import', 'warning'); return; }
+    if (items.length === 0) { toast('Add at least one line item before importing', 'warning'); return; }
     const issueDate = dateI.value || today();
     const invoiceNum = numI.value.trim();
     const total = items.reduce((s, l) => s + l.total, 0);
