@@ -49,7 +49,7 @@ function buildAllPayments(wrap) {
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   const propSel   = select([{ value: 'all', label: 'All Properties' }, ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))], 'all');
   const statusSel = select(Object.entries(PAYMENT_STATUSES).map(([v, m]) => ({ value: v, label: m.label })), [], { multiple: true, title: 'Ctrl+click to select multiple statuses' });
-  const streamSel = select([{ value: 'all', label: 'All Streams' }, ...Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short }))], 'all');
+  const streamSel = select([{ value: 'all', label: 'All Streams' }, ...Object.entries(STREAMS).map(([v, m]) => ({ value: v, label: m.short }))], 'all');
 
   let selected = new Set();
 
@@ -70,6 +70,7 @@ function buildAllPayments(wrap) {
   filterBar.appendChild(streamSel);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(deleteSelBtn);
+  filterBar.appendChild(button('Import Services PDF', { onClick: () => openPDFImport() }));
   filterBar.appendChild(button('Import Airbnb CSV', { onClick: () => openCSVImport() }));
   filterBar.appendChild(button('Export CSV', { onClick: () => exportCSV() }));
   filterBar.appendChild(button('+ Add Payment', { variant: 'primary', onClick: () => openForm() }));
@@ -806,4 +807,128 @@ function exportCSV() {
   a.download = `payments-${today()}.csv`;
   a.click();
   toast('CSV downloaded', 'success');
+}
+
+// ===== Services PDF Import =====
+function openPDFImport() {
+  const body = el('div', {});
+  const streamS = select([
+    { value: 'customer_success',   label: 'Customer Success' },
+    { value: 'marketing_services', label: 'Marketing Services' }
+  ], 'customer_success');
+  const fileI = el('input', { type: 'file', accept: '.pdf', class: 'input' });
+  const preview = el('div', { style: 'margin-top:12px;font-size:13px;min-height:20px' });
+
+  body.appendChild(formRow('Stream', streamS));
+  body.appendChild(formRow('PDF File', fileI));
+  body.appendChild(preview);
+
+  let parsedRows = [];
+
+  const refresh = async () => {
+    const file = fileI.files?.[0];
+    if (!file) return;
+    preview.textContent = 'Parsing…';
+    try {
+      const lines = await extractPDFLines(await file.arrayBuffer());
+      parsedRows = parsePDFServiceLines(lines, streamS.value);
+      preview.innerHTML = '';
+      if (parsedRows.length === 0) { preview.textContent = 'No matching payment rows found in PDF.'; return; }
+      preview.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-bottom:8px' }, `${parsedRows.length} row(s) found`));
+      const tw = el('div', { class: 'table-wrap' });
+      const t = el('table', { class: 'table' });
+      t.innerHTML = '<thead><tr><th>Date</th><th>Description</th><th class="right">Amount</th><th>Stream</th></tr></thead>';
+      const tb = el('tbody');
+      for (const r of parsedRows) {
+        const tr = el('tr');
+        tr.appendChild(el('td', {}, r.date));
+        tr.appendChild(el('td', {}, r.description));
+        tr.appendChild(el('td', { class: 'right num' }, `€ ${r.amount.toFixed(2)}`));
+        tr.appendChild(el('td', {}, el('span', { class: 'badge' }, STREAMS[r.stream]?.short || r.stream)));
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb); tw.appendChild(t); preview.appendChild(tw);
+    } catch (e) { preview.textContent = 'Parse error: ' + e.message; }
+  };
+
+  fileI.onchange = refresh;
+  streamS.onchange = refresh;
+
+  const importBtn = button('Import', { variant: 'primary', onClick: () => {
+    if (parsedRows.length === 0) { toast('No rows to import', 'warning'); return; }
+    let added = 0, skipped = 0;
+    for (const r of parsedRows) {
+      const dup = (state.db.payments || []).some(p =>
+        p.source === 'pdf_import' && p.stream === r.stream &&
+        p.date === r.date && Number(p.amount) === r.amount
+      );
+      if (dup) { skipped++; continue; }
+      upsert('payments', {
+        id: newId('pay'), propertyId: '',
+        amount: r.amount, currency: r.currency,
+        date: r.date, type: 'service', status: 'paid',
+        source: 'pdf_import', stream: r.stream, notes: r.description
+      });
+      added++;
+    }
+    toast(`Imported: ${added} new${skipped ? `, ${skipped} skipped (duplicate)` : ''}`, 'success');
+    closeModal();
+    setTimeout(() => navigate('payments'), 200);
+  }});
+
+  openModal({ title: 'Import Services PDF', body, footer: [button('Cancel', { onClick: closeModal }), importBtn], large: true });
+}
+
+async function extractPDFLines(arrayBuffer) {
+  const lib = window.pdfjsLib;
+  if (!lib) throw new Error('PDF.js not loaded. Refresh the page and try again.');
+  lib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
+  const allLines = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const byY = new Map();
+    for (const item of content.items) {
+      if (!item.str?.trim()) continue;
+      const y = Math.round(item.transform[5]);
+      if (!byY.has(y)) byY.set(y, []);
+      byY.get(y).push({ x: item.transform[4], str: item.str });
+    }
+    [...byY.entries()].sort((a, b) => b[0] - a[0]).forEach(([, items]) => {
+      const line = items.sort((a, b) => a.x - b.x).map(i => i.str).join(' ').trim();
+      if (line) allLines.push(line);
+    });
+  }
+  return allLines;
+}
+
+function parsePDFServiceLines(lines, fallbackStream = 'customer_success') {
+  const SKIP = /^(description|days|rate|amount|subtotal|vat|total|invoice|date|due|reg\s*no|vat\s*no|address|make\s*all|beneficiary|iban|bic|swift)/i;
+  const MONTH_MAP = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+  const monthPat = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(\d{2,4})\b/i;
+  const results = [];
+  for (const line of lines) {
+    if (SKIP.test(line.trim())) continue;
+    const amts = [...line.matchAll(/[-]?\s*[€£$]\s*([\d,]+\.?\d*)/g)];
+    if (amts.length === 0) continue;
+    const last = amts[amts.length - 1];
+    const amount = parseFloat(last[1].replace(/,/g, ''));
+    if (isNaN(amount) || amount <= 0) continue;
+    let desc = line;
+    for (const m of amts) desc = desc.replace(m[0], '');
+    desc = desc.replace(/\b\d{1,3}\.\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
+    if (!desc) continue;
+    let stream = fallbackStream;
+    if (/customer[\s-]*success|customer[\s-]*service/i.test(desc)) stream = 'customer_success';
+    else if (/marketing/i.test(desc)) stream = 'marketing_services';
+    const mm = desc.match(monthPat);
+    if (!mm) continue;
+    const month = MONTH_MAP[mm[1].slice(0, 3).toLowerCase()];
+    let year = parseInt(mm[2]);
+    if (year < 100) year += 2000;
+    const date = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    results.push({ description: desc, amount, date, stream, currency: 'EUR' });
+  }
+  return results;
 }
