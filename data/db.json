@@ -1660,7 +1660,43 @@
       "stream": "marketing_services"
     }
   ],
-  "invoices": [],
+  "invoices": [
+    {
+      "id": "inv_mo9yvnb17m",
+      "number": "1",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2026-04-22",
+      "dueDate": "2026-04-22",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mo9yvnb1le",
+          "description": "Customer Success Professional Services Nov 25",
+          "quantity": 20,
+          "unit": "day",
+          "rate": 670,
+          "total": 13400
+        },
+        {
+          "id": "li_mo9yvnb1ik",
+          "description": "Customer Success Professional Services Dec 25",
+          "quantity": 12,
+          "unit": "day",
+          "rate": 670,
+          "total": 8040
+        }
+      ],
+      "subtotal": 21440,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 21440,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    }
+  ],
   "users": [
     {
       "id": "usr_mo9srebrjq",
