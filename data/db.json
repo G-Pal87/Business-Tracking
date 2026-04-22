@@ -1628,6 +1628,19 @@
       "currency": "EUR",
       "contractStart": "2026-04-22",
       "notes": ""
+    },
+    {
+      "id": "cli_moam6l5wj1",
+      "name": "dsf",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2026-04-22",
+      "notes": ""
     }
   ],
   "services": [
