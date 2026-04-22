@@ -531,7 +531,13 @@ function openPDFImport() {
       const lines = await extractPDFLines(await file.arrayBuffer());
       parsed = parsePDFInvoice(lines, streamS.value);
       preview.innerHTML = '';
-      if (!parsed || parsed.lineItems.length === 0) { preview.textContent = 'No line items found in PDF.'; return; }
+      if (!parsed || parsed.lineItems.length === 0) {
+        preview.appendChild(el('div', { style: 'color:var(--danger,#ef4444);margin-bottom:8px' }, 'No line items found. Raw text extracted from PDF:'));
+        const pre = el('pre', { style: 'font-size:11px;color:var(--text-muted);white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg-elev-2);padding:8px;border-radius:4px' });
+        pre.textContent = lines.slice(0, 60).join('\n');
+        preview.appendChild(pre);
+        return;
+      }
       const info = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px' },
         `Date: ${parsed.issueDate || '—'}  ·  Invoice #: ${parsed.invoiceNumber || '—'}  ·  Client: ${parsed.clientName || '—'}  ·  ${parsed.lineItems.length} line item(s)`
       );
