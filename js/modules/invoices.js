@@ -514,32 +514,115 @@ function openPDFImport() {
   ], 'customer_success');
   const clientS = select([{ value: '', label: '— No client —' }, ...clients.map(c => ({ value: c.id, label: c.name }))], clients[0]?.id || '');
   const fileI = el('input', { type: 'file', accept: '.pdf', class: 'input' });
+
+  // Date + invoice # are always editable; pre-filled from auto-parse if found
+  const metaWrap = el('div', { style: 'display:none;display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px' });
+  const dateI = el('input', { type: 'date', class: 'input', value: today() });
+  const numI = el('input', { type: 'text', class: 'input', placeholder: 'e.g. INV-001', style: 'width:140px' });
+  metaWrap.appendChild(formRow('Invoice Date', dateI));
+  metaWrap.appendChild(formRow('Invoice #', numI));
+
   const preview = el('div', { style: 'margin-top:12px;font-size:13px;min-height:20px' });
 
   body.appendChild(formRow('Stream', streamS));
   body.appendChild(formRow('Client', clientS));
   body.appendChild(formRow('PDF File', fileI));
+  body.appendChild(el('div', { style: 'margin-top:12px' }, metaWrap));
   body.appendChild(preview);
 
   let parsed = null;
+  let manualItems = [];
+
+  const manualList = el('div', {});
+  const renderManualList = () => {
+    manualList.innerHTML = '';
+    if (manualItems.length === 0) return;
+    const tw = el('div', { class: 'table-wrap' });
+    const t = el('table', { class: 'table' });
+    t.innerHTML = '<thead><tr><th>Description</th><th class="right">Qty</th><th class="right">Rate</th><th class="right">Total</th><th></th></tr></thead>';
+    const tb = el('tbody');
+    manualItems.forEach((item, idx) => {
+      const tr = el('tr');
+      tr.appendChild(el('td', {}, item.description));
+      tr.appendChild(el('td', { class: 'right num' }, String(item.quantity)));
+      tr.appendChild(el('td', { class: 'right num' }, `€ ${item.rate.toFixed(2)}`));
+      tr.appendChild(el('td', { class: 'right num' }, `€ ${item.total.toFixed(2)}`));
+      const rm = el('button', { class: 'btn', style: 'padding:2px 8px;font-size:11px' }, '×');
+      rm.onclick = () => { manualItems.splice(idx, 1); renderManualList(); };
+      tr.appendChild(el('td', { style: 'width:32px;text-align:center' }, rm));
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb); tw.appendChild(t);
+    manualList.appendChild(tw);
+  };
+
+  const showManualEntry = (rawLines) => {
+    preview.innerHTML = '';
+    if (rawLines.length > 0) {
+      preview.appendChild(el('div', { style: 'color:var(--warning,#f59e0b);font-size:12px;margin-bottom:6px' },
+        'Auto-parse found no items — enter them manually using the extracted text as reference:'));
+      const pre = el('pre', { style: 'font-size:11px;color:var(--text-muted);white-space:pre-wrap;max-height:130px;overflow:auto;background:var(--bg-elev-2);padding:8px;border-radius:4px;margin-bottom:12px' });
+      pre.textContent = rawLines.slice(0, 60).join('\n');
+      preview.appendChild(pre);
+    } else {
+      preview.appendChild(el('div', { style: 'color:var(--warning,#f59e0b);font-size:12px;margin-bottom:12px' },
+        'Could not extract text from this PDF. Enter invoice items manually:'));
+    }
+
+    const descI = el('input', { type: 'text', class: 'input', placeholder: 'Service description', style: 'min-width:180px' });
+    const qtyI = el('input', { type: 'number', class: 'input', value: '1', style: 'width:64px' });
+    const rateI = el('input', { type: 'number', class: 'input', placeholder: '0.00', style: 'width:90px' });
+    const totalI = el('input', { type: 'number', class: 'input', placeholder: '0.00', style: 'width:90px' });
+
+    const calcTotal = () => {
+      const q = parseFloat(qtyI.value) || 0, r = parseFloat(rateI.value) || 0;
+      if (q > 0 && r > 0) totalI.value = (q * r).toFixed(2);
+    };
+    qtyI.oninput = calcTotal;
+    rateI.oninput = calcTotal;
+
+    const addBtn = button('+ Add', { onClick: () => {
+      const desc = descI.value.trim();
+      const qty = parseFloat(qtyI.value) || 1;
+      const rate = parseFloat(rateI.value) || 0;
+      const total = parseFloat(totalI.value) || (rate * qty);
+      if (!desc || total <= 0) { toast('Enter a description and total amount', 'warning'); return; }
+      manualItems.push({ description: desc, quantity: qty, rate, total });
+      descI.value = ''; qtyI.value = '1'; rateI.value = ''; totalI.value = '';
+      renderManualList();
+    }});
+
+    const row = el('div', { style: 'display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px' });
+    row.appendChild(formRow('Description', descI));
+    row.appendChild(formRow('Qty', qtyI));
+    row.appendChild(formRow('Rate (€)', rateI));
+    row.appendChild(formRow('Total (€)', totalI));
+    row.appendChild(el('div', { style: 'display:flex;align-items:flex-end;padding-bottom:1px' }, addBtn));
+
+    preview.appendChild(row);
+    preview.appendChild(manualList);
+    renderManualList();
+  };
 
   const refresh = async () => {
     const file = fileI.files?.[0];
     if (!file) return;
+    manualItems = [];
     preview.textContent = 'Parsing…';
     try {
       const lines = await extractPDFLines(await file.arrayBuffer(), msg => { preview.textContent = msg; });
       parsed = parsePDFInvoice(lines, streamS.value);
+      if (parsed.issueDate) dateI.value = parsed.issueDate;
+      if (parsed.invoiceNumber) numI.value = parsed.invoiceNumber;
       preview.innerHTML = '';
+
       if (!parsed || parsed.lineItems.length === 0) {
-        preview.appendChild(el('div', { style: 'color:var(--danger,#ef4444);margin-bottom:8px' }, 'No line items found. Raw text extracted from PDF:'));
-        const pre = el('pre', { style: 'font-size:11px;color:var(--text-muted);white-space:pre-wrap;max-height:200px;overflow:auto;background:var(--bg-elev-2);padding:8px;border-radius:4px' });
-        pre.textContent = lines.slice(0, 60).join('\n');
-        preview.appendChild(pre);
+        showManualEntry(lines);
         return;
       }
+
       const info = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px' },
-        `Date: ${parsed.issueDate || '—'}  ·  Invoice #: ${parsed.invoiceNumber || '—'}  ·  Client: ${parsed.clientName || '—'}  ·  ${parsed.lineItems.length} line item(s)`
+        `Date: ${parsed.issueDate || '—'}  ·  #: ${parsed.invoiceNumber || '—'}  ·  Client: ${parsed.clientName || '—'}  ·  ${parsed.lineItems.length} item(s)`
       );
       const tw = el('div', { class: 'table-wrap' });
       const t = el('table', { class: 'table' });
@@ -563,24 +646,27 @@ function openPDFImport() {
   streamS.onchange = refresh;
 
   const importBtn = button('Import', { variant: 'primary', onClick: () => {
-    if (!parsed || parsed.lineItems.length === 0) { toast('No line items to import', 'warning'); return; }
-    const total = parsed.lineItems.reduce((s, l) => s + l.total, 0);
-    const year = (parsed.issueDate || today()).slice(0, 4);
+    const items = (parsed?.lineItems?.length > 0) ? parsed.lineItems : manualItems;
+    if (items.length === 0) { toast('No line items to import', 'warning'); return; }
+    const issueDate = dateI.value || today();
+    const invoiceNum = numI.value.trim();
+    const total = items.reduce((s, l) => s + l.total, 0);
+    const year = issueDate.slice(0, 4);
     const dup = (state.db.invoices || []).some(i =>
-      i.source === 'pdf_import' && i.issueDate === parsed.issueDate && Math.abs(i.total - total) < 0.01
+      i.source === 'pdf_import' && i.issueDate === issueDate && Math.abs(i.total - total) < 0.01
     );
     if (dup) { toast('Invoice already imported (same date & total)', 'warning'); return; }
     const inv = {
       id: newId('inv'),
-      number: parsed.invoiceNumber || String(nextInvoiceSequence(year, null)),
+      number: invoiceNum || String(nextInvoiceSequence(year, null)),
       clientId: clientS.value || '',
       owner: byId('clients', clientS.value)?.owner || 'you',
-      issueDate: parsed.issueDate || today(),
-      dueDate: parsed.issueDate || today(),
+      issueDate,
+      dueDate: issueDate,
       stream: streamS.value,
       currency: 'EUR',
       status: 'paid',
-      lineItems: parsed.lineItems.map(li => ({ id: newId('li'), description: li.description, quantity: li.quantity, unit: 'day', rate: li.rate, total: li.total })),
+      lineItems: items.map(li => ({ id: newId('li'), description: li.description, quantity: li.quantity, unit: 'day', rate: li.rate, total: li.total })),
       subtotal: total, taxRate: 0, tax: 0, total,
       notes: 'Imported from PDF',
       source: 'pdf_import'
@@ -619,12 +705,18 @@ async function extractPDFLines(arrayBuffer, onStatus) {
 
   // No text operators found — PDF uses vector-path glyphs; fall back to OCR
   if (onStatus) onStatus('No selectable text found — running OCR (may take ~30s)…');
-  return extractPDFLinesOCR(pdf);
+  return extractPDFLinesOCR(pdf, onStatus);
 }
 
-async function extractPDFLinesOCR(pdf) {
+async function extractPDFLinesOCR(pdf, onStatus) {
   if (!window.Tesseract) throw new Error('Tesseract.js not loaded. Refresh the page and try again.');
-  const worker = await window.Tesseract.createWorker('eng');
+  const worker = await window.Tesseract.createWorker('eng', 1, {
+    logger: m => {
+      if (onStatus && m.status === 'recognizing text') {
+        onStatus(`OCR: ${Math.round((m.progress || 0) * 100)}%`);
+      }
+    }
+  });
   const allLines = [];
   try {
     for (let p = 1; p <= pdf.numPages; p++) {
@@ -644,7 +736,7 @@ async function extractPDFLinesOCR(pdf) {
 }
 
 function parsePDFInvoice(lines, fallbackStream = 'customer_success') {
-  const SKIP = /^(description|days|rate|amount|subtotal|vat|total|reg\s*no|vat\s*no|address|make\s*all|beneficiary|iban|bic|swift)/i;
+  const SKIP = /^(description|days|rate|amount|subtotal|vat|total|reg\s*no|vat\s*no|address|make\s*all|beneficiary|iban|bic|swift|bank|account|sort\s*code)/i;
   let invoiceDate = '', invoiceNumber = '', clientName = '';
   let inTo = false;
   const lineItems = [];
@@ -652,33 +744,43 @@ function parsePDFInvoice(lines, fallbackStream = 'customer_success') {
   for (const line of lines) {
     // Invoice date
     if (!invoiceDate) {
-      const dm = line.match(/date\s*[:\s]\s*(.+)/i);
+      const dm = line.match(/(?:date|issued?)\s*[:\s]+(.+)/i);
       if (dm) { const d = new Date(dm[1].trim()); if (!isNaN(d)) invoiceDate = d.toISOString().slice(0, 10); }
     }
     // Invoice number
     if (!invoiceNumber) {
-      const nm = line.match(/invoice\s*#\s*(\S+)/i);
+      const nm = line.match(/invoice\s*[#:]\s*(\S+)/i);
       if (nm) invoiceNumber = nm[1];
     }
-    // Client name (first non-empty line after "TO:")
-    if (/^to:\s*$/i.test(line.trim())) { inTo = true; continue; }
+    // Client name (first non-empty line after "TO:" or "BILL TO:")
+    if (/^(?:bill\s+)?to:\s*$/i.test(line.trim())) { inTo = true; continue; }
     if (inTo && !clientName && line.trim()) { clientName = line.trim(); inTo = false; }
 
     if (SKIP.test(line.trim())) continue;
 
-    // Currency amounts
-    const amts = [...line.matchAll(/[-]?\s*[€£$]\s*([\d,]+\.?\d*)/g)];
+    // Try amounts with currency symbol first, then plain decimals for OCR output
+    let amts = [...line.matchAll(/[-]?\s*[€£$]\s*([\d,]+\.?\d*)/g)];
+    if (amts.length === 0) {
+      // OCR fallback: match decimal numbers that look like money (e.g. 2,500.00 or 250.00)
+      amts = [...line.matchAll(/\b(\d{1,3}(?:[,\s]\d{3})*[.,]\d{2})\b/g)].filter(m => {
+        const n = parseFloat(m[1].replace(/[,\s]/g, ''));
+        return !isNaN(n) && n >= 1;
+      });
+    }
     if (amts.length === 0) continue;
-    const total = parseFloat(amts[amts.length - 1][1].replace(/,/g, ''));
+
+    const rawTotal = amts[amts.length - 1][1].replace(/[,\s]/g, '');
+    const total = parseFloat(rawTotal);
     if (isNaN(total) || total <= 0) continue;
-    const rate = amts.length >= 2 ? parseFloat(amts[amts.length - 2][1].replace(/,/g, '')) : total;
+    const rawRate = amts.length >= 2 ? amts[amts.length - 2][1].replace(/[,\s]/g, '') : rawTotal;
+    const rate = parseFloat(rawRate);
 
     let desc = line;
     for (const m of amts) desc = desc.replace(m[0], '');
-    const qtyMatch = desc.match(/\b(\d{1,3}\.\d{2})\b/);
-    const quantity = qtyMatch ? parseFloat(qtyMatch[1]) : 1;
-    desc = desc.replace(/\b\d{1,3}\.\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
-    if (!desc) continue;
+    const qtyMatch = desc.match(/\b(\d{1,3}[.,]\d{2})\b/);
+    const quantity = qtyMatch ? parseFloat(qtyMatch[1].replace(',', '.')) : 1;
+    desc = desc.replace(/\b\d{1,3}[.,]\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
+    if (!desc || desc.length < 3) continue;
 
     lineItems.push({ description: desc, quantity, rate: isNaN(rate) ? total : rate, total });
   }

@@ -5,27 +5,44 @@ import * as router from './core/router.js';
 import { toast } from './core/ui.js';
 import { requireAuth, clearSession } from './core/auth.js';
 
-import dashboard from './modules/dashboard.js';
-import properties from './modules/properties.js';
-import payments from './modules/payments.js';
-import expenses from './modules/expenses.js';
-import reports from './modules/reports.js';
-import forecast from './modules/forecast.js';
-import clients from './modules/clients.js';
-import invoices from './modules/invoices.js';
-import insights from './modules/insights.js';
-import settings from './modules/settings.js';
-import vendors from './modules/vendors.js';
-import users from './modules/users.js';
-
-const MODULES = [
-  dashboard, properties, payments, expenses, vendors,
-  reports, forecast, clients, invoices, insights, settings, users
-];
+const VERSION = '20260422';
 
 async function boot() {
+  const [
+    { default: dashboard },
+    { default: properties },
+    { default: payments },
+    { default: expenses },
+    { default: reports },
+    { default: forecast },
+    { default: clients },
+    { default: invoices },
+    { default: insights },
+    { default: settings },
+    { default: vendors },
+    { default: users }
+  ] = await Promise.all([
+    import(`./modules/dashboard.js?v=${VERSION}`),
+    import(`./modules/properties.js?v=${VERSION}`),
+    import(`./modules/payments.js?v=${VERSION}`),
+    import(`./modules/expenses.js?v=${VERSION}`),
+    import(`./modules/reports.js?v=${VERSION}`),
+    import(`./modules/forecast.js?v=${VERSION}`),
+    import(`./modules/clients.js?v=${VERSION}`),
+    import(`./modules/invoices.js?v=${VERSION}`),
+    import(`./modules/insights.js?v=${VERSION}`),
+    import(`./modules/settings.js?v=${VERSION}`),
+    import(`./modules/vendors.js?v=${VERSION}`),
+    import(`./modules/users.js?v=${VERSION}`)
+  ]);
+
+  const MODULES = [
+    dashboard, properties, payments, expenses, vendors,
+    reports, forecast, clients, invoices, insights, settings, users
+  ];
+
   MODULES.forEach(router.registerModule);
-  buildSidebar();
+  buildSidebar(MODULES);
 
   github.loadConfig();
 
@@ -109,7 +126,7 @@ function buildUserFooter() {
   footer.insertBefore(wrap, footer.firstChild);
 }
 
-function buildSidebar() {
+function buildSidebar(MODULES) {
   const navGroups = [
     { title: 'Overview', items: ['dashboard', 'insights'] },
     { title: 'Real Estate', items: ['properties', 'payments', 'expenses', 'vendors'] },
