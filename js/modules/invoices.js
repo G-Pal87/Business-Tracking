@@ -71,6 +71,7 @@ function build() {
 
   bar.appendChild(el('div', { class: 'flex-1' }));
   bar.appendChild(deleteSelBtn);
+  bar.appendChild(button('Import PDF', { onClick: () => openPDFImport() }));
   bar.appendChild(button('+ New Invoice', { variant: 'primary', onClick: () => openBuilder() }));
   wrap.appendChild(bar);
 
@@ -501,4 +502,160 @@ function previewInvoice(inv, clientId) {
 function escape(s) {
   if (s == null) return '';
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ===== PDF Import =====
+function openPDFImport() {
+  const clients = state.db.clients || [];
+  const body = el('div', {});
+  const streamS = select([
+    { value: 'customer_success',   label: 'Customer Success' },
+    { value: 'marketing_services', label: 'Marketing Services' }
+  ], 'customer_success');
+  const clientS = select([{ value: '', label: '— No client —' }, ...clients.map(c => ({ value: c.id, label: c.name }))], clients[0]?.id || '');
+  const fileI = el('input', { type: 'file', accept: '.pdf', class: 'input' });
+  const preview = el('div', { style: 'margin-top:12px;font-size:13px;min-height:20px' });
+
+  body.appendChild(formRow('Stream', streamS));
+  body.appendChild(formRow('Client', clientS));
+  body.appendChild(formRow('PDF File', fileI));
+  body.appendChild(preview);
+
+  let parsed = null;
+
+  const refresh = async () => {
+    const file = fileI.files?.[0];
+    if (!file) return;
+    preview.textContent = 'Parsing…';
+    try {
+      const lines = await extractPDFLines(await file.arrayBuffer());
+      parsed = parsePDFInvoice(lines, streamS.value);
+      preview.innerHTML = '';
+      if (!parsed || parsed.lineItems.length === 0) { preview.textContent = 'No line items found in PDF.'; return; }
+      const info = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px' },
+        `Date: ${parsed.issueDate || '—'}  ·  Invoice #: ${parsed.invoiceNumber || '—'}  ·  Client: ${parsed.clientName || '—'}  ·  ${parsed.lineItems.length} line item(s)`
+      );
+      const tw = el('div', { class: 'table-wrap' });
+      const t = el('table', { class: 'table' });
+      t.innerHTML = '<thead><tr><th>Description</th><th class="right">Qty</th><th class="right">Rate</th><th class="right">Total</th></tr></thead>';
+      const tb = el('tbody');
+      for (const li of parsed.lineItems) {
+        const tr = el('tr');
+        tr.appendChild(el('td', {}, li.description));
+        tr.appendChild(el('td', { class: 'right num' }, li.quantity));
+        tr.appendChild(el('td', { class: 'right num' }, `€ ${li.rate.toFixed(2)}`));
+        tr.appendChild(el('td', { class: 'right num' }, `€ ${li.total.toFixed(2)}`));
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb); tw.appendChild(t);
+      preview.appendChild(info);
+      preview.appendChild(tw);
+    } catch (e) { preview.textContent = 'Parse error: ' + e.message; }
+  };
+
+  fileI.onchange = refresh;
+  streamS.onchange = refresh;
+
+  const importBtn = button('Import', { variant: 'primary', onClick: () => {
+    if (!parsed || parsed.lineItems.length === 0) { toast('No line items to import', 'warning'); return; }
+    const total = parsed.lineItems.reduce((s, l) => s + l.total, 0);
+    const year = (parsed.issueDate || today()).slice(0, 4);
+    const dup = (state.db.invoices || []).some(i =>
+      i.source === 'pdf_import' && i.issueDate === parsed.issueDate && Math.abs(i.total - total) < 0.01
+    );
+    if (dup) { toast('Invoice already imported (same date & total)', 'warning'); return; }
+    const inv = {
+      id: newId('inv'),
+      number: parsed.invoiceNumber || String(nextInvoiceSequence(year, null)),
+      clientId: clientS.value || '',
+      owner: byId('clients', clientS.value)?.owner || 'you',
+      issueDate: parsed.issueDate || today(),
+      dueDate: parsed.issueDate || today(),
+      stream: streamS.value,
+      currency: 'EUR',
+      status: 'paid',
+      lineItems: parsed.lineItems.map(li => ({ id: newId('li'), description: li.description, quantity: li.quantity, unit: 'day', rate: li.rate, total: li.total })),
+      subtotal: total, taxRate: 0, tax: 0, total,
+      notes: 'Imported from PDF',
+      source: 'pdf_import'
+    };
+    upsert('invoices', inv);
+    toast('Invoice imported', 'success');
+    closeModal();
+    setTimeout(() => navigate('invoices'), 200);
+  }});
+
+  openModal({ title: 'Import Invoice PDF', body, footer: [button('Cancel', { onClick: closeModal }), importBtn], large: true });
+}
+
+async function extractPDFLines(arrayBuffer) {
+  const lib = window.pdfjsLib;
+  if (!lib) throw new Error('PDF.js not loaded. Refresh the page and try again.');
+  lib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
+  const allLines = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const byY = new Map();
+    for (const item of content.items) {
+      if (!item.str?.trim()) continue;
+      const y = Math.round(item.transform[5]);
+      if (!byY.has(y)) byY.set(y, []);
+      byY.get(y).push({ x: item.transform[4], str: item.str });
+    }
+    [...byY.entries()].sort((a, b) => b[0] - a[0]).forEach(([, items]) => {
+      const line = items.sort((a, b) => a.x - b.x).map(i => i.str).join(' ').trim();
+      if (line) allLines.push(line);
+    });
+  }
+  return allLines;
+}
+
+function parsePDFInvoice(lines, fallbackStream = 'customer_success') {
+  const SKIP = /^(description|days|rate|amount|subtotal|vat|total|reg\s*no|vat\s*no|address|make\s*all|beneficiary|iban|bic|swift)/i;
+  let invoiceDate = '', invoiceNumber = '', clientName = '';
+  let inTo = false;
+  const lineItems = [];
+
+  for (const line of lines) {
+    // Invoice date
+    if (!invoiceDate) {
+      const dm = line.match(/date\s*[:\s]\s*(.+)/i);
+      if (dm) { const d = new Date(dm[1].trim()); if (!isNaN(d)) invoiceDate = d.toISOString().slice(0, 10); }
+    }
+    // Invoice number
+    if (!invoiceNumber) {
+      const nm = line.match(/invoice\s*#\s*(\S+)/i);
+      if (nm) invoiceNumber = nm[1];
+    }
+    // Client name (first non-empty line after "TO:")
+    if (/^to:\s*$/i.test(line.trim())) { inTo = true; continue; }
+    if (inTo && !clientName && line.trim()) { clientName = line.trim(); inTo = false; }
+
+    if (SKIP.test(line.trim())) continue;
+
+    // Currency amounts
+    const amts = [...line.matchAll(/[-]?\s*[€£$]\s*([\d,]+\.?\d*)/g)];
+    if (amts.length === 0) continue;
+    const total = parseFloat(amts[amts.length - 1][1].replace(/,/g, ''));
+    if (isNaN(total) || total <= 0) continue;
+    const rate = amts.length >= 2 ? parseFloat(amts[amts.length - 2][1].replace(/,/g, '')) : total;
+
+    let desc = line;
+    for (const m of amts) desc = desc.replace(m[0], '');
+    const qtyMatch = desc.match(/\b(\d{1,3}\.\d{2})\b/);
+    const quantity = qtyMatch ? parseFloat(qtyMatch[1]) : 1;
+    desc = desc.replace(/\b\d{1,3}\.\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
+    if (!desc) continue;
+
+    // Only keep classifiable service lines
+    const isCS = /customer[\s-]*success|customer[\s-]*service/i.test(desc);
+    const isMkt = /marketing/i.test(desc);
+    if (!isCS && !isMkt) continue;
+
+    lineItems.push({ description: desc, quantity, rate: isNaN(rate) ? total : rate, total });
+  }
+
+  return { invoiceDate, invoiceNumber, clientName, lineItems };
 }
