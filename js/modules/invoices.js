@@ -528,7 +528,7 @@ function openPDFImport() {
     if (!file) return;
     preview.textContent = 'Parsing…';
     try {
-      const lines = await extractPDFLines(await file.arrayBuffer());
+      const lines = await extractPDFLines(await file.arrayBuffer(), msg => { preview.textContent = msg; });
       parsed = parsePDFInvoice(lines, streamS.value);
       preview.innerHTML = '';
       if (!parsed || parsed.lineItems.length === 0) {
@@ -594,7 +594,7 @@ function openPDFImport() {
   openModal({ title: 'Import Invoice PDF', body, footer: [button('Cancel', { onClick: closeModal }), importBtn], large: true });
 }
 
-async function extractPDFLines(arrayBuffer) {
+async function extractPDFLines(arrayBuffer, onStatus) {
   const lib = window.pdfjsLib;
   if (!lib) throw new Error('PDF.js not loaded. Refresh the page and try again.');
   lib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
@@ -614,6 +614,31 @@ async function extractPDFLines(arrayBuffer) {
       const line = items.sort((a, b) => a.x - b.x).map(i => i.str).join(' ').trim();
       if (line) allLines.push(line);
     });
+  }
+  if (allLines.length > 0) return allLines;
+
+  // No text operators found — PDF uses vector-path glyphs; fall back to OCR
+  if (onStatus) onStatus('No selectable text found — running OCR (may take ~30s)…');
+  return extractPDFLinesOCR(pdf);
+}
+
+async function extractPDFLinesOCR(pdf) {
+  if (!window.Tesseract) throw new Error('Tesseract.js not loaded. Refresh the page and try again.');
+  const worker = await window.Tesseract.createWorker('eng');
+  const allLines = [];
+  try {
+    for (let p = 1; p <= pdf.numPages; p++) {
+      const page = await pdf.getPage(p);
+      const viewport = page.getViewport({ scale: 2 });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      const { data: { text } } = await worker.recognize(canvas);
+      text.split('\n').forEach(line => { if (line.trim()) allLines.push(line.trim()); });
+    }
+  } finally {
+    await worker.terminate();
   }
   return allLines;
 }
@@ -654,11 +679,6 @@ function parsePDFInvoice(lines, fallbackStream = 'customer_success') {
     const quantity = qtyMatch ? parseFloat(qtyMatch[1]) : 1;
     desc = desc.replace(/\b\d{1,3}\.\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
     if (!desc) continue;
-
-    // Only keep classifiable service lines
-    const isCS = /customer[\s-]*success|customer[\s-]*service/i.test(desc);
-    const isMkt = /marketing/i.test(desc);
-    if (!isCS && !isMkt) continue;
 
     lineItems.push({ description: desc, quantity, rate: isNaN(rate) ? total : rate, total });
   }
