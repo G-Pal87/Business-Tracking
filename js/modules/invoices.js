@@ -542,7 +542,7 @@ function openPDFImport() {
       for (const li of parsed.lineItems) {
         const tr = el('tr');
         tr.appendChild(el('td', {}, li.description));
-        tr.appendChild(el('td', { class: 'right num' }, li.quantity));
+        tr.appendChild(el('td', { class: 'right num' }, String(li.quantity)));
         tr.appendChild(el('td', { class: 'right num' }, `€ ${li.rate.toFixed(2)}`));
         tr.appendChild(el('td', { class: 'right num' }, `€ ${li.total.toFixed(2)}`));
         tb.appendChild(tr);
