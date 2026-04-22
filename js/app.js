@@ -4,47 +4,29 @@ import * as github from './core/github.js';
 import * as router from './core/router.js';
 import { toast } from './core/ui.js';
 
-async function boot() {
-  // Dynamic imports carry a timestamp so browsers never serve stale module files
-  const v = Date.now();
-  const [
-    { default: dashboard },
-    { default: properties },
-    { default: payments },
-    { default: expenses },
-    { default: reports },
-    { default: forecast },
-    { default: clients },
-    { default: invoices },
-    { default: insights },
-    { default: settings },
-    { default: vendors }
-  ] = await Promise.all([
-    import(`./modules/dashboard.js?v=${v}`),
-    import(`./modules/properties.js?v=${v}`),
-    import(`./modules/payments.js?v=${v}`),
-    import(`./modules/expenses.js?v=${v}`),
-    import(`./modules/reports.js?v=${v}`),
-    import(`./modules/forecast.js?v=${v}`),
-    import(`./modules/clients.js?v=${v}`),
-    import(`./modules/invoices.js?v=${v}`),
-    import(`./modules/insights.js?v=${v}`),
-    import(`./modules/settings.js?v=${v}`),
-    import(`./modules/vendors.js?v=${v}`)
-  ]);
+import dashboard from './modules/dashboard.js';
+import properties from './modules/properties.js';
+import payments from './modules/payments.js';
+import expenses from './modules/expenses.js';
+import reports from './modules/reports.js';
+import forecast from './modules/forecast.js';
+import clients from './modules/clients.js';
+import invoices from './modules/invoices.js';
+import insights from './modules/insights.js';
+import settings from './modules/settings.js';
+import vendors from './modules/vendors.js';
 
-  const MODULES = [
-    dashboard, properties, payments, expenses, vendors,
-    reports, forecast, clients, invoices, insights, settings
-  ];
-  // Register modules
+const MODULES = [
+  dashboard, properties, payments, expenses, vendors,
+  reports, forecast, clients, invoices, insights, settings
+];
+
+async function boot() {
   MODULES.forEach(router.registerModule);
   buildSidebar();
 
-  // Load GitHub config
   github.loadConfig();
 
-  // Initial data load - try GitHub first, fall back to local db.json, then localStorage
   let loaded = false;
   if (state.github.owner && state.github.repo) {
     try {
@@ -71,10 +53,8 @@ async function boot() {
     updateSyncStatus('offline', 'Local only - connect GitHub in Settings');
   }
 
-  // Init router
   router.init(document.getElementById('content'));
 
-  // Auto-push on dirty if connected
   let pushTimer = null;
   subscribe(evt => {
     if (evt === 'dirty') {
@@ -140,7 +120,6 @@ function updateSyncStatus(state, message) {
   if (text) text.textContent = message;
 }
 
-// Boot when DOM ready
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', boot);
 } else {
