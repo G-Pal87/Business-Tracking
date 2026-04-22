@@ -711,6 +711,9 @@ async function extractPDFLines(arrayBuffer, onStatus) {
 async function extractPDFLinesOCR(pdf, onStatus) {
   if (!window.Tesseract) throw new Error('Tesseract.js not loaded. Refresh the page and try again.');
   const worker = await window.Tesseract.createWorker('eng', 1, {
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+    langPath: 'https://tessdata.projectnaptha.com/4.0.0',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd-lstm.wasm.js',
     logger: m => {
       if (onStatus && m.status === 'recognizing text') {
         onStatus(`OCR: ${Math.round((m.progress || 0) * 100)}%`);
@@ -761,22 +764,23 @@ function parsePDFInvoice(lines, fallbackStream = 'customer_success') {
     // Try amounts with currency symbol first, then plain decimals for OCR output
     let amts = [...line.matchAll(/[-]?\s*[€£$]\s*([\d,]+\.?\d*)/g)];
     if (amts.length === 0) {
-      // OCR fallback: match decimal numbers that look like money (e.g. 2,500.00 or 250.00)
-      amts = [...line.matchAll(/\b(\d{1,3}(?:[,\s]\d{3})*[.,]\d{2})\b/g)].filter(m => {
-        const n = parseFloat(m[1].replace(/[,\s]/g, ''));
-        return !isNaN(n) && n >= 1;
-      });
+      // OCR fallback: negative lookbehind stops "400.00" matching inside "13,400.00"
+      amts = [...line.matchAll(/(?<![,\d])(\d{1,3}(?:,\d{3})+\.\d{2}|\d+\.\d{2})(?!\d)/g)]
+        .filter(m => parseFloat(m[1].replace(/,/g, '')) >= 1);
     }
     if (amts.length === 0) continue;
 
-    const rawTotal = amts[amts.length - 1][1].replace(/[,\s]/g, '');
+    const rawTotal = amts[amts.length - 1][1].replace(/,/g, '');
     const total = parseFloat(rawTotal);
     if (isNaN(total) || total <= 0) continue;
-    const rawRate = amts.length >= 2 ? amts[amts.length - 2][1].replace(/[,\s]/g, '') : rawTotal;
+    const rawRate = amts.length >= 2 ? amts[amts.length - 2][1].replace(/,/g, '') : rawTotal;
     const rate = parseFloat(rawRate);
 
+    // Remove amount spans right-to-left to preserve earlier indices
     let desc = line;
-    for (const m of amts) desc = desc.replace(m[0], '');
+    for (const m of [...amts].sort((a, b) => b.index - a.index)) {
+      desc = desc.slice(0, m.index) + desc.slice(m.index + m[0].length);
+    }
     const qtyMatch = desc.match(/\b(\d{1,3}[.,]\d{2})\b/);
     const quantity = qtyMatch ? parseFloat(qtyMatch[1].replace(',', '.')) : 1;
     desc = desc.replace(/\b\d{1,3}[.,]\d{2}\b/g, '').replace(/\s+/g, ' ').trim();
