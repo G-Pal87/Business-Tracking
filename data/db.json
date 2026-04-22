@@ -1589,7 +1589,21 @@
       "notes": "On time payer"
     }
   ],
-  "clients": [],
+  "clients": [
+    {
+      "id": "cli_mo9sroqs7s",
+      "name": "C TWO",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2026-04-22",
+      "notes": ""
+    }
+  ],
   "services": [
     {
       "id": "svc_001",
@@ -1647,6 +1661,15 @@
     }
   ],
   "invoices": [],
+  "users": [
+    {
+      "id": "usr_mo9srebrjq",
+      "username": "Giorgos",
+      "name": "Giorgos",
+      "role": "admin",
+      "passwordHash": "32a0c8ee7c01475e18fcefb7a0a950097ce183f3501889fe2cc75288e9eeb506"
+    }
+  ],
   "settings": {
     "masterCurrency": "EUR",
     "fxRates": {
