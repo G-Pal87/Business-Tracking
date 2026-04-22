@@ -13,6 +13,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
   <div id="app">
@@ -48,6 +49,10 @@
   <div id="modal-overlay" class="modal-overlay"></div>
   <div id="toasts"></div>
 
-  <script type="module">import(`./js/app.js?v=${Date.now()}`);</script>
+  <script type="module">
+    const _v = Date.now();
+    window._appV = _v;
+    import(`./js/app.js?v=${_v}`);
+  </script>
 </body>
 </html>
