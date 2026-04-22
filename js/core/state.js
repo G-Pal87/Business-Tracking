@@ -10,6 +10,7 @@ const initialData = {
   clients: [],
   services: [],
   invoices: [],
+  users: [],
   settings: {
     masterCurrency: 'EUR',
     fxRates: { yearRates: {} },
@@ -24,6 +25,7 @@ export const state = {
   db: structuredClone(initialData),
   github: { token: '', owner: '', repo: '', branch: 'main', sha: null, connected: false },
   ui: { currentRoute: 'dashboard', filters: { year: 'all', stream: 'all', owner: 'all' } },
+  session: null,
   dirty: false
 };
 
@@ -41,6 +43,7 @@ export function setDb(db) {
   if (!state.db.settings) state.db.settings = initialData.settings;
   if (!state.db.settings.fxRates) state.db.settings.fxRates = { yearRates: {} };
   if (!state.db.settings.fxRates.yearRates) state.db.settings.fxRates.yearRates = {};
+  if (!state.db.users) state.db.users = [];
   state.dirty = false;
   notify('data-loaded');
 }

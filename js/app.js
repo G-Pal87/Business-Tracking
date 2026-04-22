@@ -3,6 +3,7 @@ import { state, subscribe, setDb } from './core/state.js';
 import * as github from './core/github.js';
 import * as router from './core/router.js';
 import { toast } from './core/ui.js';
+import { requireAuth, clearSession } from './core/auth.js';
 
 import dashboard from './modules/dashboard.js';
 import properties from './modules/properties.js';
@@ -15,10 +16,11 @@ import invoices from './modules/invoices.js';
 import insights from './modules/insights.js';
 import settings from './modules/settings.js';
 import vendors from './modules/vendors.js';
+import users from './modules/users.js';
 
 const MODULES = [
   dashboard, properties, payments, expenses, vendors,
-  reports, forecast, clients, invoices, insights, settings
+  reports, forecast, clients, invoices, insights, settings, users
 ];
 
 async function boot() {
@@ -53,6 +55,9 @@ async function boot() {
     updateSyncStatus('offline', 'Local only - connect GitHub in Settings');
   }
 
+  await requireAuth();
+  buildUserFooter();
+
   router.init(document.getElementById('content'));
 
   let pushTimer = null;
@@ -79,13 +84,38 @@ async function boot() {
   });
 }
 
+function buildUserFooter() {
+  const footer = document.querySelector('.sidebar-footer');
+  if (!footer || !state.session) return;
+  const existing = document.getElementById('user-footer');
+  if (existing) existing.remove();
+  const wrap = document.createElement('div');
+  wrap.id = 'user-footer';
+  wrap.style.cssText = 'padding:10px 16px 0;border-top:1px solid var(--border);margin-top:8px';
+  const nameEl = document.createElement('div');
+  nameEl.style.cssText = 'font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px';
+  nameEl.textContent = state.session.name || state.session.username;
+  const roleEl = document.createElement('div');
+  roleEl.style.cssText = 'font-size:11px;color:var(--text-muted);margin-bottom:8px';
+  roleEl.textContent = state.session.role;
+  const logoutBtn = document.createElement('button');
+  logoutBtn.className = 'btn';
+  logoutBtn.style.cssText = 'width:100%;font-size:11px;padding:4px 8px';
+  logoutBtn.textContent = 'Sign Out';
+  logoutBtn.onclick = () => { clearSession(); location.reload(); };
+  wrap.appendChild(nameEl);
+  wrap.appendChild(roleEl);
+  wrap.appendChild(logoutBtn);
+  footer.insertBefore(wrap, footer.firstChild);
+}
+
 function buildSidebar() {
   const navGroups = [
     { title: 'Overview', items: ['dashboard', 'insights'] },
     { title: 'Real Estate', items: ['properties', 'payments', 'expenses', 'vendors'] },
     { title: 'Analysis', items: ['reports', 'forecast'] },
     { title: 'Business Services', items: ['clients', 'invoices'] },
-    { title: 'System', items: ['settings'] }
+    { title: 'System', items: ['settings', 'users'] }
   ];
   const nav = document.getElementById('nav');
   nav.innerHTML = '';
