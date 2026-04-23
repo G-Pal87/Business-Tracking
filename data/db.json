@@ -1730,6 +1730,13 @@
       "name": "Giorgos",
       "role": "admin",
       "passwordHash": "32a0c8ee7c01475e18fcefb7a0a950097ce183f3501889fe2cc75288e9eeb506"
+    },
+    {
+      "id": "usr_mob4bvisd3",
+      "username": "Rita",
+      "name": "Rita",
+      "role": "admin",
+      "passwordHash": "64bf621b3dad972a3e1a4c3115e712c4c30ae503ec6e82fa4242f3b05eadf3a6"
     }
   ],
   "settings": {
