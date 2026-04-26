@@ -1442,7 +1442,12 @@
         "revenue": 0,
         "expenses": 0
       },
-      "months": {}
+      "months": {
+        "2026-01": {
+          "revenue": 0,
+          "expenses": 0
+        }
+      }
     }
   ]
 }
