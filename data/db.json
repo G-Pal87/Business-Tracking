@@ -341,7 +341,7 @@
       "username": "Giorgos",
       "name": "Giorgos",
       "role": "admin",
-      "passwordHash": "32a0c8ee7c01475e18fcefb7a0a950097ce183f3501889fe2cc75288e9eeb506"
+      "passwordHash": "c078c908eeb2a235a0b51ebfcb92b787ee2b9ccaf28cc1e43879505ffa257d65"
     },
     {
       "id": "usr_mob4bvisd3",
@@ -707,5 +707,6 @@
       },
       "months": {}
     }
-  ]
+  ],
+  "inventory": []
 }
