@@ -6,6 +6,7 @@ const initialData = {
   payments: [],
   expenses: [],
   vendors: [],
+  inventory: [],
   tenants: [],
   clients: [],
   services: [],

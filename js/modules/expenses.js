@@ -15,6 +15,12 @@ export default {
   destroy() { charts.destroyAll(); }
 };
 
+function restoreInventoryStock(expense) {
+  if (!expense.inventoryItemId || !expense.inventoryQty) return;
+  const item = byId('inventory', expense.inventoryItemId);
+  if (item) { item.stock += expense.inventoryQty; upsert('inventory', item); }
+}
+
 function build() {
   const wrap = el('div', { class: 'view active' });
 
@@ -41,7 +47,11 @@ function build() {
     if (!count) return;
     const ok = await confirmDialog(`Delete ${count} expense(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
-    for (const id of [...selected]) remove('expenses', id);
+    for (const id of [...selected]) {
+      const exp = (state.db.expenses || []).find(e => e.id === id);
+      if (exp) restoreInventoryStock(exp);
+      remove('expenses', id);
+    }
     selected.clear();
     toast(`Deleted ${count} expense(s)`, 'success');
     renderTable();
@@ -127,7 +137,7 @@ function build() {
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog('Delete expense?', { danger: true, okLabel: 'Delete' });
-        if (ok) { remove('expenses', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (ok) { restoreInventoryStock(r); remove('expenses', r.id); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
       tb.appendChild(tr);
@@ -219,14 +229,27 @@ function openForm(existing, defaults = {}) {
   descT.value = r.description || '';
   const streamS = select(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), r.stream);
 
+  const invItemOpts = [
+    { value: '', label: '— Select item —' },
+    ...(state.db.inventory || []).map(item => {
+      const avail = item.stock + (existing?.inventoryItemId === item.id ? (existing.inventoryQty || 0) : 0);
+      return { value: item.id, label: `${item.name} (avail: ${avail})` };
+    })
+  ];
+  const invItemS = select(invItemOpts, r.inventoryItemId || '');
+  const invQtyI  = input({ type: 'number', value: r.inventoryQty || 1, min: 1, step: 1 });
+  const invRow   = el('div', { class: 'form-row horizontal' }, formRow('Item', invItemS), formRow('Qty', invQtyI));
+
   body.appendChild(formRow('Property', propS));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Category', catS), formRow('Stream', streamS)));
+  body.appendChild(invRow);
   body.appendChild(formRow('Vendor', vendorS));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', currencyS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI)));
   body.appendChild(formRow('Description', descT));
 
   const autoFillAmount = () => {
+    if (catS.value === 'inventory') return;
     if (Number(amountI.value) > 0) return;
     const prop = byId('properties', propS.value);
     if (!prop) return;
@@ -240,7 +263,23 @@ function openForm(existing, defaults = {}) {
     else if (cat === 'water' && prop.monthlyWater) amountI.value = prop.monthlyWater;
   };
 
-  catS.onchange = autoFillAmount;
+  const syncInventoryAmount = () => {
+    const item = byId('inventory', invItemS.value);
+    if (!item) return;
+    amountI.value = (item.unitPrice * (Number(invQtyI.value) || 1)).toFixed(2);
+    currencyS.value = item.currency;
+  };
+
+  const syncInventoryRow = () => {
+    invRow.style.display = catS.value === 'inventory' ? '' : 'none';
+  };
+  syncInventoryRow();
+
+  catS.onchange = () => {
+    syncInventoryRow();
+    if (catS.value === 'inventory') syncInventoryAmount();
+    else autoFillAmount();
+  };
   vendorS.onchange = autoFillAmount;
   propS.onchange = () => {
     const p = byId('properties', propS.value);
@@ -250,9 +289,39 @@ function openForm(existing, defaults = {}) {
       autoFillAmount();
     }
   };
+  invItemS.onchange = syncInventoryAmount;
+  invQtyI.oninput   = syncInventoryAmount;
 
   const save = button('Save', { variant: 'primary', onClick: () => {
     if (!propS.value) { toast('Select property', 'danger'); return; }
+
+    if (catS.value === 'inventory') {
+      const itemId = invItemS.value;
+      const qty    = Number(invQtyI.value) || 0;
+      if (!itemId) { toast('Select an inventory item', 'danger'); return; }
+      if (qty <= 0) { toast('Quantity must be > 0', 'danger'); return; }
+      const item = byId('inventory', itemId);
+      if (!item) { toast('Item not found', 'danger'); return; }
+      let available = item.stock;
+      if (existing?.inventoryItemId === itemId) available += (existing.inventoryQty || 0);
+      if (qty > available) { toast(`Insufficient stock. Available: ${available}`, 'danger'); return; }
+      if (existing?.inventoryItemId && existing.inventoryItemId !== itemId) {
+        const old = byId('inventory', existing.inventoryItemId);
+        if (old) { old.stock += (existing.inventoryQty || 0); upsert('inventory', old); }
+      }
+      item.stock = available - qty;
+      upsert('inventory', item);
+      r.inventoryItemId = itemId;
+      r.inventoryQty    = qty;
+    } else {
+      if (existing?.inventoryItemId) {
+        const old = byId('inventory', existing.inventoryItemId);
+        if (old) { old.stock += (existing.inventoryQty || 0); upsert('inventory', old); }
+      }
+      r.inventoryItemId = '';
+      r.inventoryQty    = 0;
+    }
+
     if (Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
     const selectedVendor = vendorS.value ? byId('vendors', vendorS.value) : null;
     Object.assign(r, {

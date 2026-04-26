@@ -21,6 +21,7 @@ export const EXPENSE_CATEGORIES = {
   cleaning:    { label: 'Cleaning',    icon: 'C', color: '#ec4899' },
   electricity: { label: 'Electricity', icon: 'E', color: '#f59e0b' },
   water:       { label: 'Water',       icon: 'W', color: '#06b6d4' },
+  inventory:   { label: 'Inventory',   icon: 'B', color: '#84cc16' },
   other:       { label: 'Other',       icon: 'O', color: '#8b93b0' }
 };
 
