@@ -243,7 +243,8 @@ function openForm(existing, defaults = {}) {
   body.appendChild(formRow('Property', propS));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Category', catS), formRow('Stream', streamS)));
   body.appendChild(invRow);
-  body.appendChild(formRow('Vendor', vendorS));
+  const vendorRow = formRow('Vendor', vendorS);
+  body.appendChild(vendorRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', currencyS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI)));
   body.appendChild(formRow('Description', descT));
@@ -271,7 +272,9 @@ function openForm(existing, defaults = {}) {
   };
 
   const syncInventoryRow = () => {
-    invRow.style.display = catS.value === 'inventory' ? '' : 'none';
+    const isInv = catS.value === 'inventory';
+    invRow.style.display   = isInv ? '' : 'none';
+    vendorRow.style.display = isInv ? 'none' : '';
   };
   syncInventoryRow();
 
