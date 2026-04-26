@@ -32,12 +32,6 @@ export function clearSession() {
 export function requireAuth() {
   return new Promise(resolve => {
     const users = state.db.users || [];
-    const stored = getSession();
-    if (stored && users.find(u => u.id === stored.userId)) {
-      state.session = stored;
-      resolve(state.session);
-      return;
-    }
     const screen = el('div', { id: 'login-screen', class: 'login-screen' });
     document.body.appendChild(screen);
     if (users.length === 0) renderSetup(screen, resolve);
