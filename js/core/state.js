@@ -23,10 +23,11 @@ const initialData = {
 
 export const state = {
   db: structuredClone(initialData),
-  github: { token: '', owner: '', repo: '', branch: 'main', sha: null, connected: false },
+  github: { token: '', owner: '', repo: '', branch: 'main', sha: null, connected: false, remoteDb: null },
   ui: { currentRoute: 'dashboard', filters: { year: 'all', stream: 'all', owner: 'all' } },
   session: null,
-  dirty: false
+  dirty: false,
+  saving: false
 };
 
 export function subscribe(fn) {

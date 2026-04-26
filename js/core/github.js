@@ -31,7 +31,7 @@ export function saveConfig({ token, owner, repo, branch }) {
 
 export function clearConfig() {
   localStorage.removeItem(LS_KEY);
-  state.github = { token: '', owner: '', repo: '', branch: 'main', sha: null, connected: false };
+  state.github = { token: '', owner: '', repo: '', branch: 'main', sha: null, connected: false, remoteDb: null };
 }
 
 function headers() {
@@ -64,33 +64,75 @@ export async function fetchDb() {
   state.github.sha = json.sha;
   state.github.connected = true;
   const content = b64decode(json.content);
-  return JSON.parse(content);
+  const parsed = JSON.parse(content);
+  state.github.remoteDb = structuredClone(parsed);
+  return parsed;
+}
+
+// Three-way merge by stable id: local adds/edits win; remote-only adds preserved;
+// items deleted locally (present in lastSynced but absent in local) are removed.
+function mergeDb(freshRemote, localCurrent, lastSynced) {
+  const result = {};
+  const cols = new Set([...Object.keys(freshRemote), ...Object.keys(localCurrent)]);
+  for (const col of cols) {
+    const fresh = freshRemote[col];
+    const local = localCurrent[col];
+    const base  = lastSynced ? lastSynced[col] : undefined;
+    if (!Array.isArray(local) || !Array.isArray(fresh)) {
+      // Non-array field (e.g. settings object): local wins
+      result[col] = local !== undefined ? local : fresh;
+      continue;
+    }
+    const baseIds  = new Set((Array.isArray(base) ? base : []).map(x => x.id));
+    const localMap = new Map(local.map(x => [x.id, x]));
+    // Start from remote state, then apply local changes on top
+    const merged   = new Map(fresh.map(x => [x.id, x]));
+    for (const item of local) merged.set(item.id, item);
+    // Drop items deleted locally (were in base, missing from local)
+    for (const id of baseIds) { if (!localMap.has(id)) merged.delete(id); }
+    result[col] = [...merged.values()];
+  }
+  return result;
 }
 
 export async function pushDb(db, message = 'Update data') {
-  const { owner, repo, branch, sha } = state.github;
+  const { owner, repo, branch } = state.github;
   if (!owner || !repo) throw new Error('GitHub repo not configured');
   if (!state.github.token) throw new Error('GitHub token required to save');
 
   const url = `${GH}/repos/${owner}/${repo}/contents/${FILE_PATH}`;
-  const body = {
-    message,
-    content: b64encode(JSON.stringify(db, null, 2)),
-    branch: branch || 'main'
-  };
-  if (sha) body.sha = sha;
 
-  const res = await fetch(url, {
-    method: 'PUT',
-    headers: { ...headers(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    const errTxt = await res.text();
-    throw new Error(`GitHub push failed: ${res.status} ${errTxt}`);
+  const fetchMergePush = async () => {
+    const getRes = await fetch(`${url}?ref=${branch || 'main'}`, { headers: headers() });
+    if (!getRes.ok) throw new Error(`GitHub fetch failed: ${getRes.status}`);
+    const getMeta  = await getRes.json();
+    const freshDb  = JSON.parse(b64decode(getMeta.content));
+    const merged   = mergeDb(freshDb, db, state.github.remoteDb);
+    const putRes   = await fetch(url, {
+      method: 'PUT',
+      headers: { ...headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        content: b64encode(JSON.stringify(merged, null, 2)),
+        branch: branch || 'main',
+        sha: getMeta.sha
+      })
+    });
+    return { putRes, merged };
+  };
+
+  let { putRes, merged } = await fetchMergePush();
+  // On 409 a concurrent write raced us; fetch again and retry once
+  if (putRes.status === 409) ({ putRes, merged } = await fetchMergePush());
+
+  if (!putRes.ok) {
+    const errTxt = await putRes.text();
+    throw new Error(`GitHub push failed: ${putRes.status} ${errTxt}`);
   }
-  const json = await res.json();
-  state.github.sha = json.content.sha;
+  const json = await putRes.json();
+  state.github.sha      = json.content.sha;
+  state.github.remoteDb = structuredClone(merged);
+  state.db              = merged;
   return json;
 }
 

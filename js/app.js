@@ -78,24 +78,47 @@ async function boot() {
   router.init(document.getElementById('content'));
 
   let pushTimer = null;
+  let pendingDirty = false;
+
+  const doSave = async () => {
+    if (state.saving) return;
+    state.saving = true;
+    pendingDirty = false;
+    document.body.classList.add('app-saving');
+    try {
+      updateSyncStatus('syncing', 'Saving…');
+      await github.pushDb(state.db, 'Auto-sync from app');
+      state.dirty = false;
+      updateSyncStatus('online', `Saved ${new Date().toLocaleTimeString()}`);
+    } catch (e) {
+      updateSyncStatus('offline', 'Save failed — ' + e.message);
+      toast('Save failed: ' + e.message, 'danger', 4000);
+    } finally {
+      state.saving = false;
+      document.body.classList.remove('app-saving');
+      // If changes arrived while the save was in-flight, do one follow-up save
+      if (pendingDirty) {
+        pendingDirty = false;
+        pushTimer = setTimeout(doSave, 300);
+      }
+    }
+  };
+
   subscribe(evt => {
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
       if (state.github.token && state.github.owner && state.github.repo) {
-        clearTimeout(pushTimer);
-        pushTimer = setTimeout(async () => {
-          try {
-            updateSyncStatus('syncing', 'Syncing to GitHub...');
-            await github.pushDb(state.db, 'Auto-sync from app');
-            state.dirty = false;
-            updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
-          } catch (e) {
-            updateSyncStatus('offline', 'Sync failed - ' + e.message);
-            toast('Sync failed: ' + e.message, 'danger', 4000);
-          }
-        }, 1500);
+        if (state.saving) {
+          // Save in progress — flag for a follow-up save once it finishes
+          pendingDirty = true;
+        } else {
+          // Debounce: reset the timer on every change so rapid edits
+          // collapse into a single network request
+          clearTimeout(pushTimer);
+          pushTimer = setTimeout(doSave, 1500);
+        }
       } else {
-        updateSyncStatus('offline', 'Unsaved - connect GitHub');
+        updateSyncStatus('offline', 'Unsaved — connect GitHub in Settings');
       }
     }
   });
