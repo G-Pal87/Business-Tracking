@@ -341,14 +341,14 @@
       "username": "Giorgos",
       "name": "Giorgos",
       "role": "admin",
-      "passwordHash": "32a0c8ee7c01475e18fcefb7a0a950097ce183f3501889fe2cc75288e9eeb506"
+      "passwordHash": "c078c908eeb2a235a0b51ebfcb92b787ee2b9ccaf28cc1e43879505ffa257d65"
     },
     {
       "id": "usr_mob4bvisd3",
       "username": "Rita",
       "name": "Rita",
       "role": "admin",
-      "passwordHash": "64bf621b3dad972a3e1a4c3115e712c4c30ae503ec6e82fa4242f3b05eadf3a6"
+      "passwordHash": "c078c908eeb2a235a0b51ebfcb92b787ee2b9ccaf28cc1e43879505ffa257d65"
     }
   ],
   "settings": {
@@ -714,6 +714,15 @@
       "name": "Wine",
       "stock": 10,
       "unitPrice": 2,
+      "currency": "EUR",
+      "dateBought": "2026-04-26",
+      "comments": ""
+    },
+    {
+      "id": "ivt_mog7mqb08w",
+      "name": "1",
+      "stock": 0,
+      "unitPrice": 0,
       "currency": "EUR",
       "dateBought": "2026-04-26",
       "comments": ""
