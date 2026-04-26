@@ -556,6 +556,33 @@
       "tax": 0,
       "total": 650,
       "notes": ""
+    },
+    {
+      "id": "inv_mog2vf4f7y",
+      "number": "5_CTWO_26-04-2026",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2026-04-26",
+      "dueDate": "2026-05-26",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_mog2vjntgf",
+          "serviceId": "svc_002",
+          "description": "Onboarding Program Design",
+          "quantity": 1,
+          "unit": "project",
+          "rate": 4500,
+          "total": 4500
+        }
+      ],
+      "subtotal": 4500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 4500,
+      "notes": ""
     }
   ],
   "users": [
