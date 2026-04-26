@@ -93,19 +93,6 @@
   ],
   "clients": [
     {
-      "id": "cli_mo9sroqs7s",
-      "name": "C TWO",
-      "email": "",
-      "address": "",
-      "vatNumber": "",
-      "registrationNumber": "",
-      "owner": "you",
-      "stream": "customer_success",
-      "currency": "EUR",
-      "contractStart": "2026-04-22",
-      "notes": ""
-    },
-    {
       "id": "cli_moam7tlp6p",
       "name": "a",
       "email": "",
