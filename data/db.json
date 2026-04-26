@@ -216,12 +216,12 @@
       "id": "exp_mog2jtvs66",
       "propertyId": "prop_mo946nvbck",
       "category": "cleaning",
-      "amount": 0,
+      "amount": 20,
       "currency": "EUR",
       "date": "2026-09-29",
       "airbnbRef": "",
-      "vendorId": "",
-      "vendor": "",
+      "vendorId": "vnd_mo8xfao7jy",
+      "vendor": "Viktoria Paphos",
       "description": "",
       "stream": "short_term_rental"
     }
