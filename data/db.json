@@ -1693,6 +1693,19 @@
       "currency": "EUR",
       "contractStart": "2026-04-26",
       "notes": ""
+    },
+    {
+      "id": "cli_mog1ohwxqi",
+      "name": "222",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2026-04-26",
+      "notes": ""
     }
   ],
   "services": [
