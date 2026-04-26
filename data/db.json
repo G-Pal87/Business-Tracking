@@ -95,7 +95,22 @@
     }
   ],
   "payments": [],
-  "expenses": [],
+  "expenses": [
+    {
+      "id": "exp_mog9whn0j6",
+      "propertyId": "prop_mo946nvbck",
+      "category": "inventory",
+      "amount": 20,
+      "currency": "EUR",
+      "date": "2026-04-26",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "short_term_rental",
+      "inventoryItemId": "ivt_mog7logd36",
+      "inventoryQty": 10
+    }
+  ],
   "vendors": [
     {
       "id": "vnd_mo8xfao7jy",
@@ -743,7 +758,7 @@
     {
       "id": "ivt_mog7logd36",
       "name": "Wine",
-      "stock": 10,
+      "stock": 0,
       "unitPrice": 2,
       "currency": "EUR",
       "dateBought": "2026-04-26",
