@@ -1,8 +1,8 @@
 // Forecast module: monthly grid per property/service, stored, tax estimation
 import { state } from '../core/state.js';
-import { el, select, input, button, formRow, toast, fmtDate } from '../core/ui.js';
+import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, setForecastTaxRate, getForecastVsActual, estimateTaxForYear } from '../core/data.js';
+import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, setForecastTaxRate, getForecastVsActual, estimateTaxForYear, getForecastEntries, upsertForecastEntry, removeForecastEntry } from '../core/data.js';
 import { STREAMS } from '../core/config.js';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -331,7 +331,11 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
       }
 
       const net = mData.forecastRev - mData.forecastExp;
-      tr.appendChild(makeEditable('revenue', mData.forecastRev));
+      if (type === 'service') {
+        tr.appendChild(makeEntriesCell(monthKey, mData.forecastRev, i));
+      } else {
+        tr.appendChild(makeEditable('revenue', mData.forecastRev));
+      }
       tr.appendChild(makeEditable('expenses', mData.forecastExp));
       tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
       tr.appendChild(el('td', { class: 'right num ' + (isPast ? '' : 'muted') }, formatEUR(mData.actualRev)));
@@ -345,6 +349,77 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
     const { months, yearTarget } = getForecastVsActual(type, entityId, year);
     while (tb.rows.length > 12) tb.deleteRow(tb.rows.length - 1);
     appendTotals(months, yearTarget);
+  }
+
+  function makeEntriesCell(monthKey, current, monthIdx) {
+    const cell = el('td', { class: 'right num' });
+    const entries = getForecastEntries(fc.id, monthKey);
+    const sub = entries.length ? el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' }, `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`) : null;
+    cell.appendChild(el('div', {}, formatEUR(current)));
+    if (sub) cell.appendChild(sub);
+    cell.style.cursor = 'pointer';
+    cell.title = 'Click to manage entries';
+    cell.onclick = () => openEntriesEditor(monthKey, `${MONTHS[monthIdx]} ${year}`);
+    return cell;
+  }
+
+  function openEntriesEditor(monthKey, monthLabel) {
+    const body = el('div', {});
+    const listWrap = el('div', {});
+    body.appendChild(listWrap);
+
+    const refresh = () => {
+      listWrap.innerHTML = '';
+      const entries = getForecastEntries(fc.id, monthKey);
+
+      if (entries.length === 0) {
+        listWrap.appendChild(el('div', { class: 'empty', style: 'padding:24px' }, 'No entries yet — click "Add Entry" below.'));
+      } else {
+        const t = el('table', { class: 'table' });
+        t.innerHTML = '<thead><tr><th>Client / Lead</th><th class="right" style="width:130px">Amount (€)</th><th>Notes / Status</th><th style="width:60px"></th></tr></thead>';
+        const tb2 = el('tbody');
+        for (const e of entries) {
+          const tr = el('tr');
+          const nameI = input({ value: e.clientName || '', placeholder: 'Client name' });
+          const amtI  = input({ type: 'number', value: e.amount || 0, min: 0, step: 0.01, style: 'text-align:right' });
+          const noteI = input({ value: e.notes || '', placeholder: 'e.g. Lead, In Discussion, Confirmed' });
+          nameI.onchange = () => { e.clientName = nameI.value.trim(); upsertForecastEntry(fc.id, monthKey, e); };
+          amtI.onchange  = () => { e.amount = Number(amtI.value) || 0; upsertForecastEntry(fc.id, monthKey, e); refresh(); rebuildTotals(); if (onChange) onChange(); };
+          noteI.onchange = () => { e.notes = noteI.value; upsertForecastEntry(fc.id, monthKey, e); };
+          tr.appendChild(el('td', {}, nameI));
+          tr.appendChild(el('td', { class: 'right' }, amtI));
+          tr.appendChild(el('td', {}, noteI));
+          tr.appendChild(el('td', { class: 'right' }, button('Del', { variant: 'sm ghost', onClick: () => {
+            removeForecastEntry(fc.id, monthKey, e.id);
+            refresh();
+            rebuildTotals();
+            if (onChange) onChange();
+          }})));
+          tb2.appendChild(tr);
+        }
+        t.appendChild(tb2);
+        const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+        listWrap.appendChild(tw);
+      }
+
+      const total = getForecastEntries(fc.id, monthKey).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      listWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:12px 16px;margin-top:12px;border-top:1px solid var(--border);font-weight:600' },
+        el('span', {}, 'Monthly Total'),
+        el('span', { class: 'num' }, formatEUR(total))
+      ));
+    };
+
+    refresh();
+
+    const addBtn = button('+ Add Entry', { variant: 'primary', onClick: () => {
+      upsertForecastEntry(fc.id, monthKey, { clientName: '', amount: 0, notes: '' });
+      refresh();
+      rebuildTotals();
+      if (onChange) onChange();
+    }});
+    const doneBtn = button('Done', { onClick: () => { closeModal(); renderRows(); } });
+
+    openModal({ title: `Forecast Entries — ${monthLabel}`, body, footer: [addBtn, doneBtn], large: true });
   }
 
   function appendTotals(months, yearTarget) {

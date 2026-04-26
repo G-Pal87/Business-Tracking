@@ -253,6 +253,37 @@ export function saveForecastMonth(forecastId, month, data) {
   markDirty();
 }
 
+// Multi-entry forecast helpers (used by service forecast).
+// When entries[] exists, the month's revenue is auto-derived from their sum.
+// Months with only the legacy `revenue` field continue to work unchanged.
+export function getForecastEntries(forecastId, month) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  return fc?.months?.[month]?.entries || [];
+}
+
+export function upsertForecastEntry(forecastId, month, entry) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  if (!fc) return null;
+  if (!fc.months[month]) fc.months[month] = {};
+  const m = fc.months[month];
+  if (!Array.isArray(m.entries)) m.entries = [];
+  if (!entry.id) entry.id = newId('fce');
+  const idx = m.entries.findIndex(e => e.id === entry.id);
+  if (idx >= 0) m.entries[idx] = entry; else m.entries.push(entry);
+  m.revenue = m.entries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  markDirty();
+  return entry;
+}
+
+export function removeForecastEntry(forecastId, month, entryId) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  const m = fc?.months?.[month];
+  if (!m?.entries) return;
+  m.entries = m.entries.filter(e => e.id !== entryId);
+  m.revenue = m.entries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  markDirty();
+}
+
 export function setForecastTaxRate(forecastId, rate) {
   const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
   if (!fc) return;
