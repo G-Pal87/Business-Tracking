@@ -159,73 +159,7 @@
       "notes": "Ekaterina Ianykina · Poolside Central Studio | Balcony & Beach Walk"
     }
   ],
-  "expenses": [
-    {
-      "id": "exp_mog2jtvr60",
-      "propertyId": "prop_mo946nvbck",
-      "category": "cleaning",
-      "amount": 0,
-      "currency": "EUR",
-      "date": "2026-04-18",
-      "airbnbRef": "",
-      "vendorId": "",
-      "vendor": "",
-      "description": "",
-      "stream": "short_term_rental"
-    },
-    {
-      "id": "exp_mog2jtvr5e",
-      "propertyId": "prop_mo946nvbck",
-      "category": "cleaning",
-      "amount": 0,
-      "currency": "EUR",
-      "date": "2026-04-25",
-      "airbnbRef": "",
-      "vendorId": "",
-      "vendor": "",
-      "description": "",
-      "stream": "short_term_rental"
-    },
-    {
-      "id": "exp_mog2jtvrjc",
-      "propertyId": "prop_mo946nvbck",
-      "category": "cleaning",
-      "amount": 0,
-      "currency": "EUR",
-      "date": "2026-05-10",
-      "airbnbRef": "",
-      "vendorId": "",
-      "vendor": "",
-      "description": "",
-      "stream": "short_term_rental"
-    },
-    {
-      "id": "exp_mog2jtvsk1",
-      "propertyId": "prop_mo946nvbck",
-      "category": "cleaning",
-      "amount": 0,
-      "currency": "EUR",
-      "date": "2026-06-07",
-      "airbnbRef": "",
-      "vendorId": "",
-      "vendor": "",
-      "description": "",
-      "stream": "short_term_rental"
-    },
-    {
-      "id": "exp_mog2jtvs66",
-      "propertyId": "prop_mo946nvbck",
-      "category": "cleaning",
-      "amount": 20,
-      "currency": "EUR",
-      "date": "2026-09-29",
-      "airbnbRef": "",
-      "vendorId": "vnd_mo8xfao7jy",
-      "vendor": "Viktoria Paphos",
-      "description": "",
-      "stream": "short_term_rental"
-    }
-  ],
+  "expenses": [],
   "vendors": [
     {
       "id": "vnd_mo8xfao7jy",
