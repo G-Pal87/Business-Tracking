@@ -68,23 +68,35 @@ export async function fetchDb() {
 }
 
 export async function pushDb(db, message = 'Update data') {
-  const { owner, repo, branch, sha } = state.github;
+  const { owner, repo, branch } = state.github;
   if (!owner || !repo) throw new Error('GitHub repo not configured');
   if (!state.github.token) throw new Error('GitHub token required to save');
 
   const url = `${GH}/repos/${owner}/${repo}/contents/${FILE_PATH}`;
-  const body = {
-    message,
-    content: b64encode(JSON.stringify(db, null, 2)),
-    branch: branch || 'main'
-  };
-  if (sha) body.sha = sha;
+  const encoded = b64encode(JSON.stringify(db, null, 2));
 
-  const res = await fetch(url, {
-    method: 'PUT',
-    headers: { ...headers(), 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
+  const tryPut = async (sha) => {
+    const body = { message, content: encoded, branch: branch || 'main' };
+    if (sha) body.sha = sha;
+    return fetch(url, {
+      method: 'PUT',
+      headers: { ...headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  };
+
+  let res = await tryPut(state.github.sha);
+
+  // 409 = SHA mismatch (stale cache). Refresh the SHA and retry once.
+  if (res.status === 409) {
+    const fresh = await fetch(`${url}?ref=${branch || 'main'}`, { headers: headers() });
+    if (fresh.ok) {
+      const meta = await fresh.json();
+      state.github.sha = meta.sha;
+      res = await tryPut(state.github.sha);
+    }
+  }
+
   if (!res.ok) {
     const errTxt = await res.text();
     throw new Error(`GitHub push failed: ${res.status} ${errTxt}`);
