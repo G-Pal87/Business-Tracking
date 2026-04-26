@@ -529,6 +529,33 @@
       "tax": 0,
       "total": 650,
       "notes": ""
+    },
+    {
+      "id": "inv_mog2ulzijr",
+      "number": "4_CTWO_26-04-2026",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2026-04-26",
+      "dueDate": "2026-05-26",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_mog2uumo0",
+          "serviceId": "svc_001",
+          "description": "Customer Success Management",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 650,
+          "total": 650
+        }
+      ],
+      "subtotal": 650,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 650,
+      "notes": ""
     }
   ],
   "users": [
