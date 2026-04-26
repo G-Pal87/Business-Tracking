@@ -1448,6 +1448,18 @@
           "expenses": 0
         }
       }
+    },
+    {
+      "id": "fcs_mog2bwu2gm",
+      "type": "service",
+      "entityId": "marketing_services",
+      "year": 2026,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
     }
   ]
 }
