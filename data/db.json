@@ -32,44 +32,7 @@
       "documents": []
     }
   ],
-  "payments": [
-    {
-      "id": "pay_mog3t6zcn2",
-      "propertyId": "prop_mog3j3d77s",
-      "amount": 2,
-      "currency": "EUR",
-      "date": "2026-01-01",
-      "type": "rental",
-      "status": "paid",
-      "source": "manual",
-      "stream": "long_term_rental",
-      "notes": "Rent 2026-01"
-    },
-    {
-      "id": "pay_mog3t7s5dq",
-      "propertyId": "prop_mog3j3d77s",
-      "amount": 2,
-      "currency": "EUR",
-      "date": "2026-02-01",
-      "type": "rental",
-      "status": "paid",
-      "source": "manual",
-      "stream": "long_term_rental",
-      "notes": "Rent 2026-02"
-    },
-    {
-      "id": "pay_mog3t8u62b",
-      "propertyId": "prop_mog3j3d77s",
-      "amount": 2,
-      "currency": "EUR",
-      "date": "2026-03-01",
-      "type": "rental",
-      "status": "paid",
-      "source": "manual",
-      "stream": "long_term_rental",
-      "notes": "Rent 2026-03"
-    }
-  ],
+  "payments": [],
   "expenses": [],
   "vendors": [
     {
