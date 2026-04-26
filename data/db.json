@@ -93,6 +93,19 @@
   ],
   "clients": [
     {
+      "id": "cli_mo9sroqs7s",
+      "name": "C TWO",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2026-04-22",
+      "notes": ""
+    },
+    {
       "id": "cli_moam7tlp6p",
       "name": "a",
       "email": "",
@@ -266,21 +279,76 @@
       "stream": "marketing_services"
     }
   ],
-  "invoices": [],
+  "invoices": [
+    {
+      "id": "inv_mog2vwvapd",
+      "number": "1_CTWO_26-04-2026",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2026-04-26",
+      "dueDate": "2026-05-26",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_mog2w2dsaq",
+          "serviceId": "svc_001",
+          "description": "Customer Success Management",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 650,
+          "total": 650
+        }
+      ],
+      "subtotal": 650,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 650,
+      "notes": ""
+    },
+    {
+      "id": "inv_mog2wcdfb4",
+      "number": "1_CTWO_26-04-2027",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2027-04-26",
+      "dueDate": "2027-05-26",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_mog2wo38l4",
+          "serviceId": "svc_001",
+          "description": "Customer Success Management",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 650,
+          "total": 650
+        }
+      ],
+      "subtotal": 650,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 650,
+      "notes": ""
+    }
+  ],
   "users": [
     {
       "id": "usr_mo9srebrjq",
       "username": "Giorgos",
       "name": "Giorgos",
       "role": "admin",
-      "passwordHash": "c078c908eeb2a235a0b51ebfcb92b787ee2b9ccaf28cc1e43879505ffa257d65"
+      "passwordHash": "32a0c8ee7c01475e18fcefb7a0a950097ce183f3501889fe2cc75288e9eeb506"
     },
     {
       "id": "usr_mob4bvisd3",
       "username": "Rita",
       "name": "Rita",
       "role": "admin",
-      "passwordHash": "c078c908eeb2a235a0b51ebfcb92b787ee2b9ccaf28cc1e43879505ffa257d65"
+      "passwordHash": "64bf621b3dad972a3e1a4c3115e712c4c30ae503ec6e82fa4242f3b05eadf3a6"
     }
   ],
   "settings": {
@@ -640,5 +708,15 @@
       "months": {}
     }
   ],
-  "inventory": []
+  "inventory": [
+    {
+      "id": "ivt_mog7logd36",
+      "name": "Wine",
+      "stock": 10,
+      "unitPrice": 2,
+      "currency": "EUR",
+      "dateBought": "2026-04-26",
+      "comments": ""
+    }
+  ]
 }
