@@ -224,7 +224,20 @@ function buildScheduleSection(wrap) {
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
 
+  let selected = new Set();
+
+  const syncDeleteBtn = () => {
+    if (selected.size > 0) {
+      deleteSelBtn.textContent = `Delete ${selected.size} Selected`;
+      deleteSelBtn.style.display = '';
+    } else {
+      deleteSelBtn.style.display = 'none';
+    }
+  };
+
   const render = () => {
+    selected.clear();
+    syncDeleteBtn();
     const prop = byId('properties', propSel.value);
     if (!prop) return;
     const schedule = generatePaymentSchedule(prop);
@@ -249,11 +262,16 @@ function buildScheduleSection(wrap) {
     if (rows.length === 0) { tableWrap.appendChild(el('div', { class: 'empty' }, 'No entries')); return; }
 
     const t = el('table', { class: 'table' });
-    t.innerHTML = `<thead><tr>
-      <th>Due Date</th><th>Month</th>
-      <th class="right">Amount</th><th>Cur.</th>
-      <th>Status</th><th></th>
-    </tr></thead>`;
+
+    const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
+    const htr = el('tr');
+    const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
+    htr.appendChild(chkTh);
+    [['Due Date', ''], ['Month', ''], ['Amount', 'right'], ['Cur.', ''], ['Status', ''], ['', '']].forEach(([h, cls]) => {
+      htr.appendChild(el('th', cls ? { class: cls } : {}, h));
+    });
+    const thead = el('thead'); thead.appendChild(htr); t.appendChild(thead);
+
     const tb = el('tbody');
 
     for (const s of rows) {
@@ -268,6 +286,22 @@ function buildScheduleSection(wrap) {
         tr.innerHTML = '';
         tr.classList.remove('row-editing');
         tr.style.background = isThisMonth && !s.paid ? 'rgba(99,102,241,0.04)' : '';
+
+        const chkTd = el('td', { style: 'width:36px' });
+        if (s.linkedPaymentId) {
+          const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
+          chk.checked = selected.has(s.linkedPaymentId);
+          chk.onchange = () => {
+            if (chk.checked) selected.add(s.linkedPaymentId); else selected.delete(s.linkedPaymentId);
+            const allChks = [...tb.querySelectorAll('input[type="checkbox"]')];
+            const n = allChks.filter(c => c.checked).length;
+            selectAllChk.indeterminate = n > 0 && n < allChks.length;
+            selectAllChk.checked = allChks.length > 0 && n === allChks.length;
+            syncDeleteBtn();
+          };
+          chkTd.appendChild(chk);
+        }
+        tr.appendChild(chkTd);
 
         tr.appendChild(el('td', {}, fmtDate(s.date)));
         tr.appendChild(el('td', { class: 'muted' }, s.monthKey));
@@ -291,6 +325,8 @@ function buildScheduleSection(wrap) {
         tr.innerHTML = '';
         tr.classList.add('row-editing');
         tr.style.background = '';
+
+        tr.appendChild(el('td', {})); // checkbox column placeholder
 
         const linked = s.linkedPaymentId
           ? (state.db.payments || []).find(p => p.id === s.linkedPaymentId) || null
@@ -366,7 +402,7 @@ function buildScheduleSection(wrap) {
 
         const cancelBtn = button('Cancel', { variant: 'sm ghost', onClick: renderViewRow });
 
-        // Col 1: date | Col 2: month (static) | Col 3: amount | Col 4: currency | Col 5: status | Col 6: notes + buttons
+        // Col 1: checkbox placeholder | Col 2: date | Col 3: month | Col 4: amount | Col 5: currency | Col 6: status | Col 7: notes + buttons
         tr.appendChild(el('td', {}, dateI));
         tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px;white-space:nowrap' }, s.monthKey));
         tr.appendChild(el('td', {}, amtI));
@@ -388,12 +424,37 @@ function buildScheduleSection(wrap) {
     t.appendChild(tb);
     tableWrap.appendChild(t);
 
+    selectAllChk.onchange = () => {
+      const allChks = [...tb.querySelectorAll('input[type="checkbox"]')];
+      allChks.forEach(c => { c.checked = selectAllChk.checked; });
+      selectAllChk.indeterminate = false;
+      if (selectAllChk.checked) {
+        for (const s of rows) { if (s.linkedPaymentId) selected.add(s.linkedPaymentId); }
+      } else {
+        selected.clear();
+      }
+      syncDeleteBtn();
+    };
+
     const totalEUR = rows.reduce((s, e) => s + e.amountEUR, 0);
     tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
       el('span', { class: 'muted' }, `${prop.tenantName ? prop.tenantName + ' · ' : ''}${rows.length} month(s) shown`),
       el('strong', { class: 'num' }, `Total: ${formatEUR(totalEUR)}`)
     ));
   };
+
+  const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
+    const count = selected.size;
+    if (!count) return;
+    const ok = await confirmDialog(`Delete ${count} payment record(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
+    if (!ok) return;
+    for (const id of [...selected]) remove('payments', id);
+    selected.clear();
+    toast(`Deleted ${count} payment record(s)`, 'success');
+    render();
+  }});
+  deleteSelBtn.style.display = 'none';
+  bar.insertBefore(deleteSelBtn, showUnpaidOnly);
 
   propSel.onchange = render;
   unpaidChk.onchange = render;
