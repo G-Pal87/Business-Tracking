@@ -186,6 +186,7 @@ function recordRentPayment(prop, entry, onDone) {
   upsert('payments', {
     id: newId('pay'),
     propertyId: prop.id,
+    tenantId: entry.tenantId || null,
     amount: entry.amount,
     currency: entry.currency,
     date: entry.date,
@@ -389,6 +390,7 @@ function buildScheduleSection(wrap) {
             const pay = linked ? { ...linked } : {
               id: newId('pay'),
               propertyId: prop.id,
+              tenantId: s.tenantId || null,
               stream: 'long_term_rental',
               source: 'manual',
               type: 'rental'
@@ -436,9 +438,11 @@ function buildScheduleSection(wrap) {
       syncDeleteBtn();
     };
 
+    const activeTenant = (state.db.tenants || []).find(t => t.propertyId === prop.id && t.status === 'active');
+    const tenantLabel = activeTenant?.name || prop.tenantName || '';
     const totalEUR = rows.reduce((s, e) => s + e.amountEUR, 0);
     tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted' }, `${prop.tenantName ? prop.tenantName + ' · ' : ''}${rows.length} month(s) shown`),
+      el('span', { class: 'muted' }, `${tenantLabel ? tenantLabel + ' · ' : ''}${rows.length} month(s) shown`),
       el('strong', { class: 'num' }, `Total: ${formatEUR(totalEUR)}`)
     ));
   };
@@ -470,7 +474,8 @@ function kpiCard(label, value, sub, variant) {
 }
 
 function buildUpcomingSection(wrap) {
-  const ltProps = (state.db.properties || []).filter(p => p.type === 'long_term' && p.monthlyRent);
+  const tenantPropIds = new Set((state.db.tenants || []).filter(t => t.monthlyRent).map(t => t.propertyId));
+  const ltProps = (state.db.properties || []).filter(p => p.type === 'long_term' && (p.monthlyRent || tenantPropIds.has(p.id)));
   if (ltProps.length === 0) {
     wrap.appendChild(el('div', { class: 'empty' }, 'No long-term rental properties configured'));
     return;
@@ -545,7 +550,8 @@ function buildUpcomingSection(wrap) {
       const tr = el('tr', entry.overdue ? { style: 'background:rgba(239,68,68,.04)' } : {});
       tr.appendChild(el('td', {}, fmtDate(entry.date)));
       tr.appendChild(el('td', {}, prop.name));
-      tr.appendChild(el('td', { class: 'muted' }, prop.tenantName || '—'));
+      const entryTenant = entry.tenantId ? byId('tenants', entry.tenantId) : null;
+      tr.appendChild(el('td', { class: 'muted' }, entryTenant?.name || prop.tenantName || '—'));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(entry.amount, entry.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, entry.currency === 'EUR' ? '' : formatEUR(entry.amountEUR)));
       tr.appendChild(el('td', {}, statusBadge));
