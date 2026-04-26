@@ -1,5 +1,28 @@
 /* ========== COMPONENTS: cards, tables, forms, modals, buttons, charts ========== */
 
+/* ── Save-in-progress guard ───────────────────────────────────────────────── */
+/* Animated bar at top of screen */
+.app-saving::before {
+  content: '';
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent, #6366f1) 40%, var(--accent, #6366f1) 60%, transparent 100%);
+  animation: app-saving-bar 1.2s ease-in-out infinite;
+  z-index: 10000;
+  pointer-events: none;
+}
+@keyframes app-saving-bar {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+/* Disable primary action buttons in modals while save is in-flight */
+.app-saving .modal-footer .btn.primary {
+  opacity: 0.45;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
 /* Card */
 .card {
   background: var(--bg-elev-1);

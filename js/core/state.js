@@ -26,7 +26,8 @@ export const state = {
   github: { token: '', owner: '', repo: '', branch: 'main', sha: null, connected: false },
   ui: { currentRoute: 'dashboard', filters: { year: 'all', stream: 'all', owner: 'all' } },
   session: null,
-  dirty: false
+  dirty: false,
+  saving: false
 };
 
 export function subscribe(fn) {
