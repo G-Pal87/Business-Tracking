@@ -602,13 +602,13 @@
       }
     ],
     "invoicePrefix": {
-      "you": "1_",
+      "you": "INV",
       "rita": "RTA"
     },
     "invoiceCounters": {
       "you_2025": 5,
       "rita_2025": 3,
-      "you_2026": 10
+      "you_2026": 0
     },
     "globalTaxRate": 15
   },
