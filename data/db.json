@@ -1245,6 +1245,33 @@
       "total": 900,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohmb4r7r6",
+      "number": "M&WPrimeSolutions-2014_24 - SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-11-04",
+      "dueDate": "2024-11-04",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohmb4r7c",
+          "description": "Cleantech 1 Startup Program Support (Oct 24)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        }
+      ],
+      "subtotal": 6200,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 6200,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
