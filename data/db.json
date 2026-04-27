@@ -1898,6 +1898,12 @@
               "amount": 150,
               "notes": "asdasd",
               "id": "fce_mohnbq1brp"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mohnbzo1l4"
             }
           ],
           "revenue": 150
