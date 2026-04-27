@@ -78,7 +78,7 @@
       "purchasePrice": 0,
       "currency": "EUR",
       "purchaseDate": "2026-04-27",
-      "monthlyRent": 0,
+      "monthlyRent": 1,
       "nightlyRate": 0,
       "mortgageAmount": 0,
       "mortgageMonthly": 0,
