@@ -177,23 +177,7 @@
       "rates": {}
     }
   ],
-  "tenants": [
-    {
-      "id": "ten_moh7793gpw",
-      "name": "rita",
-      "phone": "",
-      "email": "",
-      "propertyId": "prop_moh72ni7lc",
-      "leaseStartDate": "2026-04-27",
-      "leaseEndDate": "",
-      "monthlyRent": 1,
-      "currency": "EUR",
-      "deposit": 0,
-      "paymentDayOfMonth": 1,
-      "notes": "",
-      "status": "active"
-    }
-  ],
+  "tenants": [],
   "clients": [
     {
       "id": "cli_mo9sroqs7s",
