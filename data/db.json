@@ -1461,6 +1461,41 @@
       "total": 12730,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohn12nyd7",
+      "number": "5_CTWO_Reimbursement_310125",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-05-31",
+      "dueDate": "2025-05-31",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohn12ny5o",
+          "description": "C TWO Connect",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1901.38,
+          "total": 1901.38
+        },
+        {
+          "id": "li_mohn12nyed",
+          "description": "Nestle Onsite Meeting",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 225.25,
+          "total": 225.25
+        }
+      ],
+      "subtotal": 2126.63,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2126.63,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
