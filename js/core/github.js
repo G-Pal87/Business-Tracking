@@ -100,15 +100,18 @@ export async function pushDb(db, message = 'Update data') {
   if (!owner || !repo) throw new Error('GitHub repo not configured');
   if (!state.github.token) throw new Error('GitHub token required to save');
 
-  const url = `${GH}/repos/${owner}/${repo}/contents/${FILE_PATH}`;
+  const url      = `${GH}/repos/${owner}/${repo}/contents/${FILE_PATH}`;
+  // Snapshot local state now so async operations see a stable view
+  const snapshot = structuredClone(db);
+  const base     = state.github.remoteDb;
 
-  const fetchMergePush = async () => {
+  const attempt = async () => {
     const getRes = await fetch(`${url}?ref=${branch || 'main'}`, { headers: headers() });
     if (!getRes.ok) throw new Error(`GitHub fetch failed: ${getRes.status}`);
-    const getMeta  = await getRes.json();
-    const freshDb  = JSON.parse(b64decode(getMeta.content));
-    const merged   = mergeDb(freshDb, db, state.github.remoteDb);
-    const putRes   = await fetch(url, {
+    const getMeta = await getRes.json();
+    const freshDb = JSON.parse(b64decode(getMeta.content));
+    const merged  = mergeDb(freshDb, snapshot, base);
+    const putRes  = await fetch(url, {
       method: 'PUT',
       headers: { ...headers(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -121,10 +124,18 @@ export async function pushDb(db, message = 'Update data') {
     return { putRes, merged };
   };
 
-  let { putRes, merged } = await fetchMergePush();
-  // On 409 a concurrent write raced us; fetch again and retry once
-  if (putRes.status === 409) ({ putRes, merged } = await fetchMergePush());
+  // Retry up to 3 times on 409 (concurrent-write SHA race) with back-off
+  let result = await attempt();
+  if (result.putRes.status === 409) {
+    await new Promise(r => setTimeout(r, 600));
+    result = await attempt();
+  }
+  if (result.putRes.status === 409) {
+    await new Promise(r => setTimeout(r, 1200));
+    result = await attempt();
+  }
 
+  const { putRes, merged } = result;
   if (!putRes.ok) {
     const errTxt = await putRes.text();
     throw new Error(`GitHub push failed: ${putRes.status} ${errTxt}`);
@@ -132,7 +143,16 @@ export async function pushDb(db, message = 'Update data') {
   const json = await putRes.json();
   state.github.sha      = json.content.sha;
   state.github.remoteDb = structuredClone(merged);
-  state.db              = merged;
+  // Merge remote-only additions into live state without clobbering
+  // edits the user made while this push was in-flight
+  for (const col of Object.keys(merged)) {
+    if (Array.isArray(merged[col]) && Array.isArray(state.db[col])) {
+      const liveIds = new Set(state.db[col].map(x => x.id));
+      for (const item of merged[col]) {
+        if (!liveIds.has(item.id)) state.db[col].push(item);
+      }
+    }
+  }
   return json;
 }
 
