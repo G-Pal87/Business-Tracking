@@ -778,7 +778,9 @@
     "masterCurrency": "EUR",
     "fxRates": {
       "HUF_EUR": 0.0025,
-      "yearRates": {}
+      "yearRates": {
+        "2016": 0.0032
+      }
     },
     "defaultTaxRate": 0,
     "business": {
