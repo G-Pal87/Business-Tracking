@@ -86,6 +86,7 @@ export function applyFilters(rows, { year, stream, owner, propertyId, clientId }
     }
     if (s && s !== 'all' && r.stream && r.stream !== s) return false;
     if (o && o !== 'all' && r.owner && r.owner !== o && r.owner !== 'both' && o !== 'both') {
+      // property/invoice owner filter
       return false;
     }
     if (propertyId && r.propertyId !== propertyId) return false;
@@ -183,7 +184,7 @@ export function propertyROI(propertyId) {
 export function groupByMonth(rows, dateField = 'date', amountField = 'amount', currencyField = 'currency') {
   const map = new Map();
   for (const r of rows) {
-    const key = (r[dateField] || '').slice(0, 7);
+    const key = (r[dateField] || '').slice(0, 7); // YYYY-MM
     if (!key) continue;
     map.set(key, (map.get(key) || 0) + toEUR(r[amountField], r[currencyField], r[dateField]));
   }
@@ -252,6 +253,9 @@ export function saveForecastMonth(forecastId, month, data) {
   markDirty();
 }
 
+// Multi-entry forecast helpers (used by service forecast).
+// When entries[] exists, the month's revenue is auto-derived from their sum.
+// Months with only the legacy `revenue` field continue to work unchanged.
 export function getForecastEntries(forecastId, month) {
   const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
   return fc?.months?.[month]?.entries || [];
@@ -367,6 +371,7 @@ function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDa
       (p.stream === 'long_term_rental' || p.type === 'rental')
     );
     const paid = !!paidPayment;
+    // Skip unpaid entries in a vacant period or on/after the sold date
     if (!paid) {
       const inVacant = (vacantPeriods || []).some(vp =>
         vp.startDate && dateStr >= vp.startDate && dateStr <= (vp.endDate || '9999-12-31')
@@ -404,6 +409,7 @@ export function generatePaymentSchedule(property) {
   const vacantPeriods = property.vacantPeriods || [];
   const soldDate = (property.status === 'sold' && property.soldDate) ? property.soldDate : null;
 
+  // Merge segments from all tenants, deduplicate by monthKey (earlier lease wins)
   const all = [];
   for (const t of tenants) all.push(..._scheduleSegment(property.id, t, t.id, vacantPeriods, soldDate));
   all.sort((a, b) => a.date.localeCompare(b.date));
@@ -440,6 +446,7 @@ export function buildReconciliationData(year) {
           .filter(p => p.propertyId === prop.id && p.date >= start && p.date <= end && p.status === 'paid')
           .reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
       } else if (prop.type === 'short_term') {
+        // Expected = all booked revenue (paid + pending); Actual = paid only
         const all = (state.db.payments || []).filter(p =>
           p.propertyId === prop.id && p.date >= start && p.date <= end
         );
@@ -458,6 +465,7 @@ export function buildReconciliationData(year) {
     });
   }
 
+  // Services: issued invoices = expected; paid = actual
   for (const { stream, label } of [
     { stream: 'customer_success',  label: 'Customer Success' },
     { stream: 'marketing_services', label: 'Marketing Services' }
@@ -513,6 +521,7 @@ export function buildReportData(filters = {}) {
   return { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net: rev - exp };
 }
 
+// ============== Drill-down row normalisers (used by all reporting modules) ==============
 export function drillRevRows(payments, invoices) {
   return [
     ...(payments || []).map(p => ({ date: p.date, type: 'Payment', source: byId('properties', p.propertyId)?.name || p.source || '', ref: p.type || '', eur: toEUR(p.amount, p.currency, p.date) })),
