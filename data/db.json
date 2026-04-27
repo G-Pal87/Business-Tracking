@@ -5633,12 +5633,14 @@
     },
     "defaultTaxRate": 0,
     "business": {
-      "name": "Property & Services Ltd.",
+      "name": "M&W Prime Solutions Limited",
       "email": "hello@business.example",
-      "address": "Budapest, Hungary",
-      "vatNumber": "",
+      "address": "Morphou 27,  Paphos, 8015",
+      "vatNumber": "60080676C",
       "iban": "",
-      "bic": ""
+      "bic": "",
+      "registrationNumber": "HE 461745",
+      "swift": ""
     },
     "team": [
       {
