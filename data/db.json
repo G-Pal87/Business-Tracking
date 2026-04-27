@@ -442,6 +442,21 @@
       "paymentDayOfMonth": 1,
       "notes": "",
       "status": "active"
+    },
+    {
+      "id": "ten_moh74mn3g2",
+      "name": "rita",
+      "phone": "",
+      "email": "",
+      "propertyId": "prop_mogwvjnfl9",
+      "leaseStartDate": "2026-01-01",
+      "leaseEndDate": "2026-12-31",
+      "monthlyRent": 1,
+      "currency": "EUR",
+      "deposit": 0,
+      "paymentDayOfMonth": 1,
+      "notes": "",
+      "status": "active"
     }
   ],
   "clients": [
