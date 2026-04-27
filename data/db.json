@@ -653,6 +653,19 @@
       "currency": "EUR",
       "contractStart": "2024-02-07",
       "notes": ""
+    },
+    {
+      "id": "cli_mohltfi7fg",
+      "name": "Nexial Unipessoal LDA",
+      "email": "",
+      "address": "25 Rua Dom João V, 1250-090, Lisboa, Portugal",
+      "vatNumber": "PT516931890",
+      "registrationNumber": "",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "contractStart": "2024-11-10",
+      "notes": ""
     }
   ],
   "services": [
