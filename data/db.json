@@ -179,21 +179,6 @@
   ],
   "tenants": [
     {
-      "id": "ten_moh57gxz7m",
-      "name": "g",
-      "phone": "",
-      "email": "",
-      "propertyId": "prop_mogz28lna3",
-      "leaseStartDate": "2026-03-01",
-      "leaseEndDate": "2026-08-01",
-      "monthlyRent": 150,
-      "currency": "EUR",
-      "deposit": 0,
-      "paymentDayOfMonth": 1,
-      "notes": "",
-      "status": "active"
-    },
-    {
       "id": "ten_moh7793gpw",
       "name": "rita",
       "phone": "",
