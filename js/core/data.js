@@ -333,7 +333,7 @@ export function estimateTaxForYear(year, rate) {
 
 // Internal helper: generate schedule entries for one lease segment.
 // leaseData must have: monthlyRent, currency, leaseStartDate?, leaseEndDate?, paymentDayOfMonth?
-function _scheduleSegment(propertyId, leaseData, tenantId) {
+function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDate) {
   const now = new Date();
   const dueDay = Math.min(Math.max(leaseData.paymentDayOfMonth || 1, 1), 28);
 
@@ -371,6 +371,17 @@ function _scheduleSegment(propertyId, leaseData, tenantId) {
       (p.stream === 'long_term_rental' || p.type === 'rental')
     );
     const paid = !!paidPayment;
+    // Skip unpaid entries in a vacant period or on/after the sold date
+    if (!paid) {
+      const inVacant = (vacantPeriods || []).some(vp =>
+        vp.startDate && dateStr >= vp.startDate && dateStr <= (vp.endDate || '9999-12-31')
+      );
+      const afterSold = soldDate ? dateStr > soldDate : false;
+      if (inVacant || afterSold) {
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+        continue;
+      }
+    }
     const overdue = !paid && dueDate < now;
     results.push({
       date: dateStr, monthKey,
@@ -394,14 +405,17 @@ export function generatePaymentSchedule(property) {
     .filter(t => t.propertyId === property.id && t.monthlyRent)
     .sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || ''));
 
+  const vacantPeriods = property.vacantPeriods || [];
+  const soldDate = (property.status === 'sold' && property.soldDate) ? property.soldDate : null;
+
   if (!tenants.length) {
     if (!property.monthlyRent) return [];
-    return _scheduleSegment(property.id, property, null);
+    return _scheduleSegment(property.id, property, null, vacantPeriods, soldDate);
   }
 
   // Merge segments from all tenants, deduplicate by monthKey (earlier lease wins)
   const all = [];
-  for (const t of tenants) all.push(..._scheduleSegment(property.id, t, t.id));
+  for (const t of tenants) all.push(..._scheduleSegment(property.id, t, t.id, vacantPeriods, soldDate));
   all.sort((a, b) => a.date.localeCompare(b.date));
   const seen = new Set();
   return all.filter(e => { if (seen.has(e.monthKey)) return false; seen.add(e.monthKey); return true; });
