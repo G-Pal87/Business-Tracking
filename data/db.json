@@ -360,6 +360,19 @@
       "airbnbNights": 18,
       "avgNightlyRate": 60.06,
       "notes": "Ekaterina Ianykina · Poolside Central Studio | Balcony & Beach Walk"
+    },
+    {
+      "id": "pay_moh80zayqv",
+      "propertyId": "prop_moh7xerm4g",
+      "tenantId": "ten_moh7z893e3",
+      "amount": 1,
+      "currency": "EUR",
+      "date": "2026-01-01",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2026-01"
     }
   ],
   "expenses": [
