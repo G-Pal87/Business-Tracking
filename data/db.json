@@ -1890,7 +1890,19 @@
         "revenue": 0,
         "expenses": 0
       },
-      "months": {}
+      "months": {
+        "2026-01": {
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mohnbq1brp"
+            }
+          ],
+          "revenue": 0
+        }
+      }
     },
     {
       "id": "fcs_mo92cf518j",
