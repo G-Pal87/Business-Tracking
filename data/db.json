@@ -285,73 +285,7 @@
       "notes": "Rent 2026-01"
     }
   ],
-  "expenses": [
-    {
-      "id": "exp_mogwv0riqk",
-      "propertyId": "prop_mo946nvbck",
-      "category": "cleaning",
-      "amount": 0,
-      "currency": "EUR",
-      "date": "2026-04-18",
-      "airbnbRef": "",
-      "vendorId": "",
-      "vendor": "",
-      "description": "",
-      "stream": "short_term_rental"
-    },
-    {
-      "id": "exp_mogwv0rika",
-      "propertyId": "prop_mo946nvbck",
-      "category": "cleaning",
-      "amount": 0,
-      "currency": "EUR",
-      "date": "2026-04-25",
-      "airbnbRef": "",
-      "vendorId": "",
-      "vendor": "",
-      "description": "",
-      "stream": "short_term_rental"
-    },
-    {
-      "id": "exp_mogwv0rj23",
-      "propertyId": "prop_mo946nvbck",
-      "category": "cleaning",
-      "amount": 0,
-      "currency": "EUR",
-      "date": "2026-05-10",
-      "airbnbRef": "",
-      "vendorId": "",
-      "vendor": "",
-      "description": "",
-      "stream": "short_term_rental"
-    },
-    {
-      "id": "exp_mogwv0rjio",
-      "propertyId": "prop_mo946nvbck",
-      "category": "cleaning",
-      "amount": 0,
-      "currency": "EUR",
-      "date": "2026-06-07",
-      "airbnbRef": "",
-      "vendorId": "",
-      "vendor": "",
-      "description": "",
-      "stream": "short_term_rental"
-    },
-    {
-      "id": "exp_mogwv0rjp2",
-      "propertyId": "prop_mo946nvbck",
-      "category": "cleaning",
-      "amount": 0,
-      "currency": "EUR",
-      "date": "2026-09-29",
-      "airbnbRef": "",
-      "vendorId": "",
-      "vendor": "",
-      "description": "",
-      "stream": "short_term_rental"
-    }
-  ],
+  "expenses": [],
   "vendors": [
     {
       "id": "vnd_mo8xfao7jy",
