@@ -927,6 +927,33 @@
       "total": 1100,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohlbpfv2p",
+      "number": "Invoice - M&WPrimeSolutions#1002#2024",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2024-08-30",
+      "dueDate": "2024-08-30",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohlbpfvh7",
+          "description": "Customer Success professional services",
+          "quantity": 22,
+          "unit": "day",
+          "rate": 670,
+          "total": 14740
+        }
+      ],
+      "subtotal": 14740,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 14740,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
