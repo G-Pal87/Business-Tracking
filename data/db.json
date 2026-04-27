@@ -900,6 +900,33 @@
       "total": 3300,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohl83rg33",
+      "number": "M&WPrimeSolutions#2007-SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-07-31",
+      "dueDate": "2024-07-31",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohl83rgkb",
+          "description": "Startup lead coaching on Growth / Marketing - (Cyber Growth 2024) (B47) Block-auth – 2h Certopus – 5h Cloudtainer – 1h Passport GG – 3h",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1100,
+          "total": 1100
+        }
+      ],
+      "subtotal": 1100,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1100,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
