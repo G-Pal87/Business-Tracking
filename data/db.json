@@ -591,15 +591,15 @@
   "clients": [
     {
       "id": "cli_mo9sroqs7s",
-      "name": "C TWO",
+      "name": "C TWO Automate AS",
       "email": "",
-      "address": "",
-      "vatNumber": "",
-      "registrationNumber": "",
+      "address": "Nøstegaten 58, 5011 Bergen, Norway",
+      "vatNumber": "921883463 MVA",
+      "registrationNumber": "921883463",
       "owner": "you",
       "stream": "customer_success",
       "currency": "EUR",
-      "contractStart": "2026-04-22",
+      "contractStart": "2022-07-14",
       "notes": ""
     }
   ],
