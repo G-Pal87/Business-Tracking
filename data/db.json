@@ -627,6 +627,19 @@
       "currency": "EUR",
       "contractStart": "2024-02-01",
       "notes": ""
+    },
+    {
+      "id": "cli_mohkjrhl90",
+      "name": "Creerplan OÜ",
+      "email": "",
+      "address": "Laaneotsa tee4, 74011 Viimsi",
+      "vatNumber": "EE102617676",
+      "registrationNumber": "16010673",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "contractStart": "2024-07-01",
+      "notes": ""
     }
   ],
   "services": [
