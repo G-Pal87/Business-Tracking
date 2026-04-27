@@ -1523,6 +1523,41 @@
       "total": 1500,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohn4qh996",
+      "number": "6_SWG_030225",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2025-02-03",
+      "dueDate": "2025-02-03",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohn4qh9lw",
+          "description": "Startup Program Support 2025 Jan",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        },
+        {
+          "id": "li_mohn4qh9ie",
+          "description": "Payment due within 48 hours TOTAL",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        }
+      ],
+      "subtotal": 12400,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 12400,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
