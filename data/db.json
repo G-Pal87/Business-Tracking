@@ -792,6 +792,33 @@
       "total": 2500,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohkzofiaw",
+      "number": "Invoice-M&WPrimeSolutions#2004",
+      "clientId": "cli_mohkjrhl90",
+      "owner": "rita",
+      "issueDate": "2026-04-27",
+      "dueDate": "2026-04-27",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohkzofieu",
+          "description": "Marketing / Growth coaching (1h)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 90,
+          "total": 90
+        }
+      ],
+      "subtotal": 90,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 90,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
