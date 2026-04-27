@@ -313,7 +313,7 @@ function renderByStream(wrap) {
       }
     });
     charts.doughnut('rep-owner', {
-      labels: ['You', 'Rita', 'Both'],
+      labels: ['Giorgos', 'Rita', 'Both'],
       data: [Math.round(ownerMap.you), Math.round(ownerMap.rita), Math.round(ownerMap.both)],
       colors: ['#6366f1', '#ec4899', '#14b8a6'],
       onClickItem: (label, index) => {

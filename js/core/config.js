@@ -47,7 +47,7 @@ export const PROPERTY_STATUSES = {
 };
 
 export const OWNERS = {
-  you:  'You',
+  you:  'Giorgos',
   rita: 'Rita',
   both: 'Both'
 };
