@@ -765,6 +765,33 @@
       "total": 500,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohkw7hj80",
+      "number": "Invoice-M&WPrimeSolutions#2003-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-07-12",
+      "dueDate": "2024-07-12",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohkw7hjfq",
+          "description": "Marketing / Growth campaigns management (Apr)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2500,
+          "total": 2500
+        }
+      ],
+      "subtotal": 2500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
