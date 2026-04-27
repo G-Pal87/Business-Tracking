@@ -1895,12 +1895,12 @@
           "entries": [
             {
               "clientName": "adssd",
-              "amount": 0,
+              "amount": 150,
               "notes": "",
               "id": "fce_mohnbq1brp"
             }
           ],
-          "revenue": 0
+          "revenue": 150
         }
       }
     },
