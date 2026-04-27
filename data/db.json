@@ -981,6 +981,33 @@
       "total": 2000,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohle2r1hf",
+      "number": "M&WPrimeSolutions#2009-24",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-08-06",
+      "dueDate": "2024-08-06",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohle2r1i2",
+          "description": "Marketing / Growth campaigns management (Juli)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 3300,
+          "total": 3300
+        }
+      ],
+      "subtotal": 3300,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 3300,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
