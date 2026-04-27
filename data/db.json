@@ -155,13 +155,13 @@
       "documents": []
     },
     {
-      "id": "prop_moh6yn902w",
-      "name": "4",
+      "id": "prop_moh72ni7lc",
+      "name": "test",
       "address": "",
       "city": "",
       "country": "",
       "flag": "",
-      "type": "short_term",
+      "type": "long_term",
       "status": "active",
       "bedrooms": 1,
       "bathrooms": 1,
