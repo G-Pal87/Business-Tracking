@@ -1299,6 +1299,33 @@
       "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohmfe02od",
+      "number": "M&WPrimeSolutions 2018_24-SWG-EMPOW",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-12-04",
+      "dueDate": "2024-12-04",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohmfe025y",
+          "description": "Mentoring EmpoWomen 2024 - code: empowomen-ew",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2000,
+          "total": 2000
+        }
+      ],
+      "subtotal": 2000,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2000,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
