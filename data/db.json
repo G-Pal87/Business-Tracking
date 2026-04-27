@@ -1353,6 +1353,33 @@
       "total": 1500,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohmrgcwow",
+      "number": "1",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-01-09",
+      "dueDate": "2025-01-09",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohmrgcwhj",
+          "description": "Customer Success Professional Services",
+          "quantity": 21,
+          "unit": "day",
+          "rate": 670,
+          "total": 14070
+        }
+      ],
+      "subtotal": 14070,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 14070,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
