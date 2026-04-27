@@ -209,3 +209,85 @@ export function monthLabel(yyyymm) {
     return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
   } catch { return yyyymm; }
 }
+
+// ========== Table sort + filter ==========
+export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } = {}) {
+  let sortCol = -1, sortDir = 1, searchTerm = '';
+
+  const searchWrap = el('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:8px' });
+  const searchInput = el('input', { type: 'search', class: 'input', placeholder, style: 'max-width:220px;font-size:13px' });
+  searchWrap.appendChild(searchInput);
+  tableWrap.parentNode.insertBefore(searchWrap, tableWrap);
+
+  const parseCell = txt => {
+    if ((/^\d{4}-\d{2}/.test(txt) || (/[a-zA-Z]/.test(txt) && txt.length >= 6)) && !isNaN(new Date(txt)))
+      return { t: 'd', v: new Date(txt).getTime() };
+    const n = parseFloat(txt.replace(/[^0-9.-]/g, ''));
+    if (!isNaN(n) && txt.trim() !== '') return { t: 'n', v: n };
+    return { t: 's', v: txt };
+  };
+
+  const applySort = () => {
+    if (sortCol < 0) return;
+    const tbody = tableWrap.querySelector('tbody');
+    if (!tbody || tbody.querySelector('.row-editing')) return;
+    const rows = [...tbody.querySelectorAll('tr')];
+    rows.sort((a, b) => {
+      const ap = parseCell(a.cells[sortCol]?.textContent?.trim() || '');
+      const bp = parseCell(b.cells[sortCol]?.textContent?.trim() || '');
+      if (ap.t === bp.t && ap.t !== 's') return (ap.v - bp.v) * sortDir;
+      return String(ap.v).localeCompare(String(bp.v)) * sortDir;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+  };
+
+  const applyFilter = () => {
+    const tbody = tableWrap.querySelector('tbody');
+    if (!tbody) return;
+    [...tbody.querySelectorAll('tr')].forEach(tr => {
+      tr.style.display = !searchTerm || tr.textContent.toLowerCase().includes(searchTerm) ? '' : 'none';
+    });
+  };
+
+  const updateArrows = ths => {
+    ths.forEach((th, i) => {
+      const arr = th.querySelector('.sf-arr');
+      if (!arr) return;
+      arr.textContent = sortCol === i ? (sortDir > 0 ? ' ▲' : ' ▼') : ' ⇅';
+      arr.style.opacity = sortCol === i ? '1' : '0.4';
+    });
+  };
+
+  const enhance = () => {
+    const table = tableWrap.querySelector('table');
+    if (!table) return;
+    const ths = [...table.querySelectorAll('thead th')];
+    ths.forEach((th, i) => {
+      if (!th.textContent.trim() || th.dataset.sfOk) return;
+      th.dataset.sfOk = '1';
+      th.style.cursor = 'pointer';
+      th.style.userSelect = 'none';
+      const arr = el('span', { class: 'sf-arr', style: 'margin-left:4px;opacity:0.4;font-size:10px' }, ' ⇅');
+      th.appendChild(arr);
+      th.addEventListener('click', () => {
+        if (sortCol === i) sortDir *= -1; else { sortCol = i; sortDir = 1; }
+        applySort();
+        applyFilter();
+        updateArrows([...tableWrap.querySelector('table').querySelectorAll('thead th')]);
+      });
+    });
+    applySort();
+    applyFilter();
+    updateArrows(ths);
+  };
+
+  searchInput.addEventListener('input', () => {
+    searchTerm = searchInput.value.toLowerCase();
+    applyFilter();
+  });
+
+  let debounce;
+  const observer = new MutationObserver(() => { clearTimeout(debounce); debounce = setTimeout(enhance, 0); });
+  observer.observe(tableWrap, { childList: true, subtree: true });
+  enhance();
+}

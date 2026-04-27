@@ -1,6 +1,6 @@
 // Users module - admin only
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, input, select, formRow, button } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, input, select, formRow, button, attachSortFilter } from '../core/ui.js';
 import { upsert, remove, newId } from '../core/data.js';
 import { hashPassword } from '../core/auth.js';
 
@@ -74,6 +74,7 @@ function renderTable(container, wrap) {
   t.appendChild(tb);
   tw.appendChild(t);
   container.appendChild(tw);
+  attachSortFilter(tw);
 }
 
 function openForm(existing, wrap) {
