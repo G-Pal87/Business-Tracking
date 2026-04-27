@@ -711,62 +711,7 @@
       "stream": "marketing_services"
     }
   ],
-  "invoices": [
-    {
-      "id": "inv_mog2vwvapd",
-      "number": "1_CTWO_26-04-2026",
-      "clientId": "cli_mo9sroqs7s",
-      "owner": "you",
-      "issueDate": "2026-04-26",
-      "dueDate": "2026-05-26",
-      "stream": "customer_success",
-      "currency": "EUR",
-      "status": "draft",
-      "lineItems": [
-        {
-          "id": "li_mog2w2dsaq",
-          "serviceId": "svc_001",
-          "description": "Customer Success Management",
-          "quantity": 1,
-          "unit": "day",
-          "rate": 650,
-          "total": 650
-        }
-      ],
-      "subtotal": 650,
-      "taxRate": 0,
-      "tax": 0,
-      "total": 650,
-      "notes": ""
-    },
-    {
-      "id": "inv_mog2wcdfb4",
-      "number": "1_CTWO_26-04-2027",
-      "clientId": "cli_mo9sroqs7s",
-      "owner": "you",
-      "issueDate": "2027-04-26",
-      "dueDate": "2027-05-26",
-      "stream": "customer_success",
-      "currency": "EUR",
-      "status": "draft",
-      "lineItems": [
-        {
-          "id": "li_mog2wo38l4",
-          "serviceId": "svc_001",
-          "description": "Customer Success Management",
-          "quantity": 1,
-          "unit": "day",
-          "rate": 650,
-          "total": 650
-        }
-      ],
-      "subtotal": 650,
-      "taxRate": 0,
-      "tax": 0,
-      "total": 650,
-      "notes": ""
-    }
-  ],
+  "invoices": [],
   "users": [
     {
       "id": "usr_mo9srebrjq",
