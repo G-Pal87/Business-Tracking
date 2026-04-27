@@ -330,21 +330,22 @@ export function estimateTaxForYear(year, rate) {
 }
 
 // ============== LT Schedule ==============
-export function generatePaymentSchedule(property) {
-  if (property.type !== 'long_term' || !property.monthlyRent) return [];
-  const now = new Date();
-  const dueDay = Math.min(Math.max(property.paymentDayOfMonth || 1, 1), 28);
 
-  // Range: lease start (or 12 months back) → lease end (or 12 months ahead)
+// Internal helper: generate schedule entries for one lease segment.
+// leaseData must have: monthlyRent, currency, leaseStartDate?, leaseEndDate?, paymentDayOfMonth?
+function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDate) {
+  const now = new Date();
+  const dueDay = Math.min(Math.max(leaseData.paymentDayOfMonth || 1, 1), 28);
+
   let rangeStart, rangeEnd;
-  if (property.leaseStartDate) {
-    const d = new Date(property.leaseStartDate);
+  if (leaseData.leaseStartDate) {
+    const d = new Date(leaseData.leaseStartDate);
     rangeStart = new Date(d.getFullYear(), d.getMonth(), 1);
   } else {
     rangeStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
   }
-  if (property.leaseEndDate) {
-    const d = new Date(property.leaseEndDate);
+  if (leaseData.leaseEndDate) {
+    const d = new Date(leaseData.leaseEndDate);
     rangeEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
   } else {
     rangeEnd = new Date(now.getFullYear(), now.getMonth() + 13, 1);
@@ -359,29 +360,65 @@ export function generatePaymentSchedule(property) {
     const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
     const dateStr = `${monthKey}-${String(day).padStart(2, '0')}`;
     const paidPayment = (state.db.payments || []).find(p =>
-      p.propertyId === property.id &&
+      p.propertyId === propertyId &&
       p.date?.slice(0, 7) === monthKey &&
       p.status === 'paid' &&
       (p.stream === 'long_term_rental' || p.type === 'rental')
     );
     const linkedPayment = paidPayment || (state.db.payments || []).find(p =>
-      p.propertyId === property.id &&
+      p.propertyId === propertyId &&
       p.date?.slice(0, 7) === monthKey &&
       (p.stream === 'long_term_rental' || p.type === 'rental')
     );
     const paid = !!paidPayment;
+    // Skip unpaid entries in a vacant period or on/after the sold date
+    if (!paid) {
+      const inVacant = (vacantPeriods || []).some(vp =>
+        vp.startDate && dateStr >= vp.startDate && dateStr <= (vp.endDate || '9999-12-31')
+      );
+      const afterSold = soldDate ? dateStr > soldDate : false;
+      if (inVacant || afterSold) {
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+        continue;
+      }
+    }
     const overdue = !paid && dueDate < now;
     results.push({
       date: dateStr, monthKey,
-      amount: property.monthlyRent, currency: property.currency,
-      amountEUR: toEUR(property.monthlyRent, property.currency, cursor.getFullYear()),
+      amount: leaseData.monthlyRent, currency: leaseData.currency || 'EUR',
+      amountEUR: toEUR(leaseData.monthlyRent, leaseData.currency || 'EUR', cursor.getFullYear()),
       paid, overdue,
       paidPaymentId: paidPayment?.id || null,
-      linkedPaymentId: linkedPayment?.id || null
+      linkedPaymentId: linkedPayment?.id || null,
+      tenantId: tenantId || null
     });
     cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
   return results;
+}
+
+export function generatePaymentSchedule(property) {
+  if (property.type !== 'long_term') return [];
+
+  // Use tenants collection when available; fall back to property-level fields for compatibility
+  const tenants = (state.db.tenants || [])
+    .filter(t => t.propertyId === property.id && t.monthlyRent)
+    .sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || ''));
+
+  const vacantPeriods = property.vacantPeriods || [];
+  const soldDate = (property.status === 'sold' && property.soldDate) ? property.soldDate : null;
+
+  if (!tenants.length) {
+    if (!property.monthlyRent) return [];
+    return _scheduleSegment(property.id, property, null, vacantPeriods, soldDate);
+  }
+
+  // Merge segments from all tenants, deduplicate by monthKey (earlier lease wins)
+  const all = [];
+  for (const t of tenants) all.push(..._scheduleSegment(property.id, t, t.id, vacantPeriods, soldDate));
+  all.sort((a, b) => a.date.localeCompare(b.date));
+  const seen = new Set();
+  return all.filter(e => { if (seen.has(e.monthKey)) return false; seen.add(e.monthKey); return true; });
 }
 
 // ============== Reconciliation ==============

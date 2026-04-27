@@ -42,7 +42,8 @@ export const PROPERTY_TYPES = {
 export const PROPERTY_STATUSES = {
   active:     { label: 'Active',     css: 'active' },
   renovation: { label: 'Renovation', css: 'renovation' },
-  vacant:     { label: 'Vacant',     css: 'vacant' }
+  vacant:     { label: 'Vacant',     css: 'vacant' },
+  sold:       { label: 'Sold',       css: 'sold' }
 };
 
 export const OWNERS = {

@@ -97,7 +97,7 @@ function card(p) {
       el('div', { class: 'prop-card-name' }, p.name),
       el('div', { class: 'prop-card-loc' }, `${p.flag || ''} ${p.city}, ${p.country}`)
     ),
-    el('span', { class: `badge ${statusCss === 'active' ? 'success' : statusCss === 'renovation' ? 'warning' : ''}` },
+    el('span', { class: `badge ${statusCss === 'active' ? 'success' : statusCss === 'renovation' ? 'warning' : statusCss === 'sold' ? 'danger' : ''}` },
       el('span', { class: `dot ${statusCss}` }),
       PROPERTY_STATUSES[p.status]?.label || p.status
     )
@@ -139,7 +139,7 @@ function openDetail(id) {
       el('h2', {}, p.name),
       el('div', { class: 'muted', style: 'font-size:12px' }, `${p.address}, ${p.city}, ${p.country}`),
       el('div', { class: 'flex gap-8 mt-8' },
-        el('span', { class: `badge ${p.status === 'active' ? 'success' : p.status === 'renovation' ? 'warning' : ''}` }, PROPERTY_STATUSES[p.status]?.label || p.status),
+        el('span', { class: `badge ${p.status === 'active' ? 'success' : p.status === 'renovation' ? 'warning' : p.status === 'sold' ? 'danger' : ''}` }, PROPERTY_STATUSES[p.status]?.label || p.status),
         el('span', { class: `badge ${p.type === 'short_term' ? 'short' : 'long'}` }, PROPERTY_TYPES[p.type]),
         el('span', { class: 'badge' }, OWNERS[p.owner] || p.owner)
       )
@@ -165,6 +165,31 @@ function openDetail(id) {
       smallStat('Lease Start', p.leaseStartDate ? fmtDate(p.leaseStartDate) : '—'),
       smallStat('Lease End', p.leaseEndDate ? fmtDate(p.leaseEndDate) : 'Open-ended')
     ));
+  }
+
+  if (p.status === 'sold' && p.soldDate) {
+    body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
+      smallStat('Sold Date', fmtDate(p.soldDate))
+    ));
+  }
+
+  if ((p.vacantPeriods || []).length > 0) {
+    const vpCard = el('div', { class: 'card mb-16' });
+    vpCard.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, `Vacant Periods (${p.vacantPeriods.length})`)));
+    const vpTw = el('div', { class: 'table-wrap' });
+    const vpT = el('table', { class: 'table' });
+    vpT.innerHTML = '<thead><tr><th>Start</th><th>End</th><th>Notes</th></tr></thead>';
+    const vpTb = el('tbody');
+    for (const vp of p.vacantPeriods) {
+      const vptr = el('tr');
+      vptr.appendChild(el('td', {}, fmtDate(vp.startDate)));
+      vptr.appendChild(el('td', {}, vp.endDate ? fmtDate(vp.endDate) : 'Ongoing'));
+      vptr.appendChild(el('td', { class: 'muted' }, vp.notes || ''));
+      vpTb.appendChild(vptr);
+    }
+    vpT.appendChild(vpTb); vpTw.appendChild(vpT);
+    vpCard.appendChild(vpTw);
+    body.appendChild(vpCard);
   }
 
   if (p.type === 'short_term') {
@@ -324,6 +349,7 @@ function openForm(existing) {
   const tenantI = input({ value: p.tenantName || '', placeholder: 'Tenant full name' });
   const leaseStartI = input({ type: 'date', value: p.leaseStartDate || '' });
   const leaseEndI = input({ type: 'date', value: p.leaseEndDate || '' });
+  const soldDateI = input({ type: 'date', value: p.soldDate || '' });
 
   // Rows that toggle based on type
   const ltRow = el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Payment Due Day (1–28)', payDayI));
@@ -344,10 +370,17 @@ function openForm(existing) {
   };
   typeS.onchange = updateTypeFields;
 
+  const soldDateRow = formRow('Sold Date', soldDateI);
+  const updateStatusFields = () => {
+    soldDateRow.style.display = statusS.value === 'sold' ? '' : 'none';
+  };
+  statusS.onchange = updateStatusFields;
+
   body.appendChild(formRow('Name', nameI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Address', addressI), formRow('City', cityI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Country', countryI), formRow('Flag (ISO)', flagI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Type', typeS), formRow('Status', statusS)));
+  body.appendChild(soldDateRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Owner', ownerS), formRow('Currency', currencyS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Purchase Price', purchaseI), formRow('Purchase Date', dateI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Bedrooms', bedsI), formRow('Bathrooms', bathsI)));
@@ -360,6 +393,51 @@ function openForm(existing) {
   body.appendChild(icalRow);
   body.appendChild(stCleaningRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Monthly Electricity', electricityI), formRow('Monthly Water', waterI)));
+
+  // Vacant periods editor
+  let pendingVacantPeriods = [...(p.vacantPeriods || [])];
+  const vpListEl = el('div', { style: 'padding:0 16px 8px' });
+  const renderVPList = () => {
+    vpListEl.innerHTML = '';
+    if (pendingVacantPeriods.length === 0) {
+      vpListEl.appendChild(el('div', { class: 'muted', style: 'font-size:13px;padding:4px 0' }, 'No vacant periods added'));
+      return;
+    }
+    for (const vp of pendingVacantPeriods) {
+      const vpRow = el('div', { class: 'flex gap-8', style: 'align-items:center;margin-bottom:4px' });
+      vpRow.appendChild(el('span', { style: 'font-size:13px;flex:1' },
+        `${fmtDate(vp.startDate)} – ${vp.endDate ? fmtDate(vp.endDate) : 'ongoing'}${vp.notes ? ' · ' + vp.notes : ''}`
+      ));
+      vpRow.appendChild(button('✕', { variant: 'sm ghost', onClick: () => {
+        pendingVacantPeriods = pendingVacantPeriods.filter(x => x !== vp);
+        renderVPList();
+      }}));
+      vpListEl.appendChild(vpRow);
+    }
+  };
+  renderVPList();
+  const vpStartI = el('input', { type: 'date', class: 'input', style: 'min-width:130px' });
+  const vpEndI   = el('input', { type: 'date', class: 'input', style: 'min-width:130px' });
+  const vpNotesI = el('input', { type: 'text',  class: 'input', placeholder: 'Notes (optional)', style: 'flex:1;min-width:100px' });
+  const addVPBtn = button('Add', { onClick: () => {
+    if (!vpStartI.value) { toast('Start date is required', 'danger'); return; }
+    pendingVacantPeriods.push({ startDate: vpStartI.value, endDate: vpEndI.value || '', notes: vpNotesI.value.trim() });
+    vpStartI.value = ''; vpEndI.value = ''; vpNotesI.value = '';
+    renderVPList();
+  }});
+  const vpCard = el('div', { class: 'card mb-16' });
+  vpCard.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Vacant Periods')));
+  const vpAddRow = el('div', { class: 'flex gap-8', style: 'padding:8px 16px 4px;flex-wrap:wrap;align-items:center' });
+  vpAddRow.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Start'));
+  vpAddRow.appendChild(vpStartI);
+  vpAddRow.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'End'));
+  vpAddRow.appendChild(vpEndI);
+  vpAddRow.appendChild(vpNotesI);
+  vpAddRow.appendChild(addVPBtn);
+  vpCard.appendChild(vpAddRow);
+  vpCard.appendChild(vpListEl);
+  body.appendChild(vpCard);
+
   // Documents upload
   let pendingDocs = [...(p.documents || [])];
   const fileInput = el('input', {
@@ -421,6 +499,7 @@ function openForm(existing) {
 
   body.appendChild(formRow('Notes', notesT));
   updateTypeFields();
+  updateStatusFields();
 
   const saveBtn = button('Save', { variant: 'primary', onClick: () => {
     if (!nameI.value.trim()) { toast('Name is required', 'danger'); return; }
@@ -452,6 +531,8 @@ function openForm(existing) {
       tenantName: tenantI.value.trim(),
       leaseStartDate: leaseStartI.value,
       leaseEndDate: leaseEndI.value,
+      soldDate: soldDateI.value,
+      vacantPeriods: pendingVacantPeriods,
       documents: pendingDocs
     });
     upsert('properties', p);

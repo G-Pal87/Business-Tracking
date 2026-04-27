@@ -21,7 +21,8 @@ async function boot() {
     { default: settings },
     { default: vendors },
     { default: users },
-    { default: inventory }
+    { default: inventory },
+    { default: tenants }
   ] = await Promise.all([
     import(`./modules/dashboard.js?v=${VERSION}`),
     import(`./modules/properties.js?v=${VERSION}`),
@@ -35,11 +36,12 @@ async function boot() {
     import(`./modules/settings.js?v=${VERSION}`),
     import(`./modules/vendors.js?v=${VERSION}`),
     import(`./modules/users.js?v=${VERSION}`),
-    import(`./modules/inventory.js?v=${VERSION}`)
+    import(`./modules/inventory.js?v=${VERSION}`),
+    import(`./modules/tenants.js?v=${VERSION}`)
   ]);
 
   const MODULES = [
-    dashboard, properties, payments, expenses, vendors, inventory,
+    dashboard, properties, payments, expenses, tenants, vendors, inventory,
     reports, forecast, clients, invoices, insights, settings, users
   ];
 
@@ -154,7 +156,7 @@ function buildUserFooter() {
 function buildSidebar(MODULES) {
   const navGroups = [
     { title: 'Overview', items: ['dashboard', 'insights'] },
-    { title: 'Real Estate', items: ['properties', 'payments', 'expenses', 'vendors', 'inventory'] },
+    { title: 'Real Estate', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory'] },
     { title: 'Analysis', items: ['reports', 'forecast'] },
     { title: 'Business Services', items: ['clients', 'invoices'] },
     { title: 'System', items: ['settings', 'users'] }
