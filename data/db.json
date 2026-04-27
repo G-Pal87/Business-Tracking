@@ -738,6 +738,33 @@
       "total": 9999.75,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohktt6g2t",
+      "number": "Invoice-M&WPrimeSolutions#2002-SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-07-11",
+      "dueDate": "2024-07-11",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohktt6gkx",
+          "description": "Marketing / Growth Mentoring Wise Guys Founders Club 2024 - Program Code: Founders Club 8 FC 8",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 500,
+          "total": 500
+        }
+      ],
+      "subtotal": 500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
