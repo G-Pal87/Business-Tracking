@@ -1407,6 +1407,41 @@
       "total": 14070,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohmuy2bjq",
+      "number": "3_SWG_080125",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-01-08",
+      "dueDate": "2025-01-08",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohmuy2bc5",
+          "description": "Startup Program Support 2024 Dec",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        },
+        {
+          "id": "li_mohmuy2b36",
+          "description": "Payment due within 48 hours TOTAL",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        }
+      ],
+      "subtotal": 12400,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 12400,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
