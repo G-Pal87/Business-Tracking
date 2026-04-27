@@ -1,6 +1,6 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal } from '../core/ui.js';
 import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -251,11 +251,33 @@ function buildScheduleSection(wrap) {
     const next = upcoming[0];
     const daysToNext = next ? Math.ceil((new Date(next.date) - now) / 86400000) : null;
 
+    const tenants = state.db.tenants || [];
+    const toRows = entries => entries.map(e => {
+      const t = tenants.find(t => t.id === e.tenantId);
+      return {
+        tenant: t ? t.name : (prop.tenantName || prop.name),
+        dueDate: e.date,
+        amount: e.amount,
+        currency: e.currency,
+        status: e.paid ? 'paid' : e.overdue ? 'overdue' : 'upcoming'
+      };
+    });
+    const schedCols = [
+      { key: 'tenant', label: 'Tenant' },
+      { key: 'dueDate', label: 'Due Date', format: v => fmtDate(v) },
+      { key: 'amount', label: 'Amount', right: true, format: (v, row) => formatMoney(v, row.currency, { maxFrac: 0 }) },
+      { key: 'status', label: 'Status', format: v => ({ paid: el('span', { class: 'badge success' }, 'Paid'), overdue: el('span', { class: 'badge danger' }, 'Overdue'), upcoming: el('span', { class: 'badge' }, 'Upcoming') })[v] || el('span', { class: 'badge' }, v) }
+    ];
+
     kpiRow.innerHTML = '';
-    kpiRow.appendChild(kpiCard('Paid This Year', String(paidThisYear.length), `${formatEUR(paidThisYear.reduce((s, e) => s + e.amountEUR, 0))}`, 'success'));
-    kpiRow.appendChild(kpiCard('Overdue', String(overdue.length), overdue.length ? formatEUR(overdue.reduce((s, e) => s + e.amountEUR, 0)) : '—', overdue.length ? 'danger' : ''));
-    kpiRow.appendChild(kpiCard('Upcoming', String(upcoming.length), upcoming.length ? formatEUR(upcoming.reduce((s, e) => s + e.amountEUR, 0)) : '—', ''));
-    kpiRow.appendChild(kpiCard('Next Due', next ? fmtDate(next.date) : '—', daysToNext !== null ? (daysToNext <= 0 ? 'Today!' : daysToNext === 1 ? 'Tomorrow' : `In ${daysToNext} days`) : '—', daysToNext !== null && daysToNext <= 3 ? 'warning' : ''));
+    kpiRow.appendChild(kpiCard('Paid This Year', String(paidThisYear.length), `${formatEUR(paidThisYear.reduce((s, e) => s + e.amountEUR, 0))}`, 'success',
+      () => drillDownModal('Paid This Year', toRows(paidThisYear), schedCols)));
+    kpiRow.appendChild(kpiCard('Overdue', String(overdue.length), overdue.length ? formatEUR(overdue.reduce((s, e) => s + e.amountEUR, 0)) : '—', overdue.length ? 'danger' : '',
+      overdue.length ? () => drillDownModal('Overdue Payments', toRows(overdue), schedCols) : null));
+    kpiRow.appendChild(kpiCard('Upcoming', String(upcoming.length), upcoming.length ? formatEUR(upcoming.reduce((s, e) => s + e.amountEUR, 0)) : '—', '',
+      upcoming.length ? () => drillDownModal('Upcoming Payments', toRows(upcoming), schedCols) : null));
+    kpiRow.appendChild(kpiCard('Next Due', next ? fmtDate(next.date) : '—', daysToNext !== null ? (daysToNext <= 0 ? 'Today!' : daysToNext === 1 ? 'Tomorrow' : `In ${daysToNext} days`) : '—', daysToNext !== null && daysToNext <= 3 ? 'warning' : '',
+      next ? () => drillDownModal('Next Due', toRows([next]), schedCols) : null));
 
     tableWrap.innerHTML = '';
     let rows = schedule;
@@ -465,12 +487,14 @@ function buildScheduleSection(wrap) {
   render();
 }
 
-function kpiCard(label, value, sub, variant) {
-  return el('div', { class: `kpi${variant ? ' ' + variant : ''}` },
+function kpiCard(label, value, sub, variant, onClick) {
+  const card = el('div', { class: `kpi${variant ? ' ' + variant : ''}` },
     el('div', { class: 'kpi-label' }, label),
     el('div', { class: 'kpi-value num' }, value),
     sub ? el('div', { class: 'fx-hint' }, sub) : null
   );
+  if (onClick) { card.onclick = onClick; card.style.cursor = 'pointer'; }
+  return card;
 }
 
 function buildUpcomingSection(wrap) {
