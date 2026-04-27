@@ -17,8 +17,7 @@ const initialData = {
     fxRates: { yearRates: {} },
     defaultTaxRate: 0,
     business: { name: '', email: '', address: '', vatNumber: '', iban: '', bic: '' },
-    team: [],
-    invoiceCounters: { you: 0, rita: 0 }
+    team: []
   }
 };
 
