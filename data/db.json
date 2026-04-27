@@ -61,7 +61,13 @@
       "leaseEndDate": "",
       "paymentDayOfMonth": 1,
       "soldDate": "",
-      "vacantPeriods": [],
+      "vacantPeriods": [
+        {
+          "startDate": "2026-01-01",
+          "endDate": "2026-08-01",
+          "notes": ""
+        }
+      ],
       "documents": []
     }
   ],
