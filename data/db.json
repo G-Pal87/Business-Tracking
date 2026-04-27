@@ -207,23 +207,6 @@
       "paymentDayOfMonth": 1,
       "notes": "",
       "status": "active"
-    },
-    {
-      "id": "ten_001",
-      "propertyId": "prop_mogwvjnfl9",
-      "name": "Kovacs Anna",
-      "email": "akovacs@example.hu",
-      "phone": "+36 30 123 4567",
-      "leaseStart": "2024-09-01",
-      "leaseEnd": "2025-08-31",
-      "monthlyRent": 350000,
-      "currency": "HUF",
-      "deposit": 700000,
-      "notes": "On time payer",
-      "leaseStartDate": "2026-02-25",
-      "leaseEndDate": "2026-06-30",
-      "paymentDayOfMonth": 1,
-      "status": "active"
     }
   ],
   "clients": [
