@@ -601,6 +601,19 @@
       "currency": "EUR",
       "contractStart": "2022-07-14",
       "notes": ""
+    },
+    {
+      "id": "cli_mohkf6ip14",
+      "name": "Wise Guys Holding OÜ",
+      "email": "",
+      "address": "A. Lauteri 3, 10114, Tallinn, Estonia",
+      "vatNumber": "EE101914859",
+      "registrationNumber": "14081077",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "contractStart": "2024-01-01",
+      "notes": ""
     }
   ],
   "services": [
