@@ -1124,6 +1124,33 @@
       "total": 2500,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohlmgkhk6",
+      "number": "M&WPrimeSolutions20101 _24-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-09-09",
+      "dueDate": "2024-09-09",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohlmgkhcx",
+          "description": "Cleantech 1 Startup Program Support (Aug 24)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 4227,
+          "total": 4227
+        }
+      ],
+      "subtotal": 4227,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 4227,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
