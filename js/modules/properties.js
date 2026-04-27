@@ -159,14 +159,6 @@ function openDetail(id) {
     smallStat('Annual ROI', `${roi.toFixed(2)}%`)
   ));
 
-  if (p.type === 'long_term') {
-    body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
-      smallStat('Tenant', p.tenantName || '—'),
-      smallStat('Lease Start', p.leaseStartDate ? fmtDate(p.leaseStartDate) : '—'),
-      smallStat('Lease End', p.leaseEndDate ? fmtDate(p.leaseEndDate) : 'Open-ended')
-    ));
-  }
-
   if (p.status === 'sold' && p.soldDate) {
     body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
       smallStat('Sold Date', fmtDate(p.soldDate))
@@ -316,8 +308,7 @@ function openForm(existing) {
     monthlyRent: 0, nightlyRate: 0,
     mortgageAmount: 0, mortgageMonthly: 0, mortgageRate: 0,
     owner: 'both', airbnbCalUrl: '', notes: '',
-    cleaningFee: 0, monthlyElectricity: 0, monthlyWater: 0,
-    tenantName: '', leaseStartDate: '', leaseEndDate: ''
+    cleaningFee: 0, monthlyElectricity: 0, monthlyWater: 0
   };
 
   const body = el('div', {});
@@ -346,15 +337,10 @@ function openForm(existing) {
   const cleaningFeeI = input({ type: 'number', value: p.cleaningFee || 0, min: 0, step: 0.01 });
   const electricityI = input({ type: 'number', value: p.monthlyElectricity || 0, min: 0, step: 0.01 });
   const waterI = input({ type: 'number', value: p.monthlyWater || 0, min: 0, step: 0.01 });
-  const tenantI = input({ value: p.tenantName || '', placeholder: 'Tenant full name' });
-  const leaseStartI = input({ type: 'date', value: p.leaseStartDate || '' });
-  const leaseEndI = input({ type: 'date', value: p.leaseEndDate || '' });
   const soldDateI = input({ type: 'date', value: p.soldDate || '' });
 
   // Rows that toggle based on type
   const ltRow = el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Payment Due Day (1–28)', payDayI));
-  const ltTenantRow = formRow('Tenant Name', tenantI);
-  const ltLeaseRow = el('div', { class: 'form-row horizontal' }, formRow('Lease Start', leaseStartI), formRow('Lease End', leaseEndI));
   const stRow = el('div', { class: 'form-row horizontal' }, formRow('Nightly Rate', nightlyI));
   const icalRow = formRow('Airbnb iCal URL', icalI);
   const stCleaningRow = formRow('Cleaning Fee (per booking)', cleaningFeeI);
@@ -362,8 +348,6 @@ function openForm(existing) {
   const updateTypeFields = () => {
     const isLT = typeS.value === 'long_term';
     ltRow.style.display = isLT ? '' : 'none';
-    ltTenantRow.style.display = isLT ? '' : 'none';
-    ltLeaseRow.style.display = isLT ? '' : 'none';
     stRow.style.display = isLT ? 'none' : '';
     icalRow.style.display = isLT ? 'none' : '';
     stCleaningRow.style.display = isLT ? 'none' : '';
@@ -385,8 +369,6 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Purchase Price', purchaseI), formRow('Purchase Date', dateI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Bedrooms', bedsI), formRow('Bathrooms', bathsI)));
   body.appendChild(ltRow);
-  body.appendChild(ltTenantRow);
-  body.appendChild(ltLeaseRow);
   body.appendChild(stRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Mortgage Amount', mAmtI), formRow('Monthly Payment', mMoI)));
   body.appendChild(formRow('Interest Rate %', mRateI));
@@ -528,13 +510,18 @@ function openForm(existing) {
       cleaningFee: Number(cleaningFeeI.value) || 0,
       monthlyElectricity: Number(electricityI.value) || 0,
       monthlyWater: Number(waterI.value) || 0,
-      tenantName: tenantI.value.trim(),
-      leaseStartDate: leaseStartI.value,
-      leaseEndDate: leaseEndI.value,
       soldDate: soldDateI.value,
       vacantPeriods: pendingVacantPeriods,
       documents: pendingDocs
     });
+    // Purge unpaid payments within vacant periods (keep paid history intact)
+    if (pendingVacantPeriods.length > 0) {
+      state.db.payments = (state.db.payments || []).filter(pmt => {
+        if (pmt.propertyId !== p.id || pmt.status === 'paid') return true;
+        const d = pmt.date?.slice(0, 10) || '';
+        return !pendingVacantPeriods.some(vp => vp.startDate && d >= vp.startDate && d <= (vp.endDate || '9999-12-31'));
+      });
+    }
     upsert('properties', p);
     toast(existing ? 'Property updated' : 'Property added', 'success');
     closeModal();
