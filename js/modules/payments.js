@@ -230,7 +230,7 @@ function buildScheduleSection(wrap) {
   const syncDeleteBtn = () => {
     if (selected.size > 0) {
       deleteSelBtn.textContent = `Delete ${selected.size} Selected`;
-      deleteSelBtn.style.display = '';
+      deleteSelBtn.style.display = 'inline-flex';
     } else {
       deleteSelBtn.style.display = 'none';
     }
@@ -286,9 +286,11 @@ function buildScheduleSection(wrap) {
 
     const t = el('table', { class: 'table' });
 
+    const hasSelectable = rows.some(s => !!s.linkedPaymentId);
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr');
-    const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
+    const chkTh = el('th', { style: 'width:36px' });
+    if (hasSelectable) chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
     [['Due Date', ''], ['Month', ''], ['Amount', 'right'], ['Cur.', ''], ['Status', ''], ['', '']].forEach(([h, cls]) => {
       htr.appendChild(el('th', cls ? { class: cls } : {}, h));
@@ -341,6 +343,15 @@ function buildScheduleSection(wrap) {
           td.appendChild(button('Mark Paid', { variant: 'sm primary', onClick: () => recordRentPayment(prop, s, render) }));
         }
         td.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => { closeOtherEdits(); renderEditRow(); } }));
+        if (s.linkedPaymentId) {
+          td.appendChild(button('Delete', { variant: 'sm danger', onClick: async () => {
+            const ok = await confirmDialog('Delete this payment record? This cannot be undone.', { danger: true, okLabel: 'Delete' });
+            if (!ok) return;
+            remove('payments', s.linkedPaymentId);
+            toast('Payment record deleted', 'success');
+            render();
+          }}));
+        }
         tr.appendChild(td);
       };
 
@@ -448,17 +459,19 @@ function buildScheduleSection(wrap) {
     t.appendChild(tb);
     tableWrap.appendChild(t);
 
-    selectAllChk.onchange = () => {
-      const allChks = [...tb.querySelectorAll('input[type="checkbox"]')];
-      allChks.forEach(c => { c.checked = selectAllChk.checked; });
-      selectAllChk.indeterminate = false;
-      if (selectAllChk.checked) {
-        for (const s of rows) { if (s.linkedPaymentId) selected.add(s.linkedPaymentId); }
-      } else {
-        selected.clear();
-      }
-      syncDeleteBtn();
-    };
+    if (hasSelectable) {
+      selectAllChk.onchange = () => {
+        const allChks = [...tb.querySelectorAll('input[type="checkbox"]')];
+        allChks.forEach(c => { c.checked = selectAllChk.checked; });
+        selectAllChk.indeterminate = false;
+        if (selectAllChk.checked) {
+          for (const s of rows) { if (s.linkedPaymentId) selected.add(s.linkedPaymentId); }
+        } else {
+          selected.clear();
+        }
+        syncDeleteBtn();
+      };
+    }
 
     const activeTenant = (state.db.tenants || []).find(t => t.propertyId === prop.id && t.status === 'active');
     const tenantLabel = activeTenant?.name || prop.tenantName || '';
