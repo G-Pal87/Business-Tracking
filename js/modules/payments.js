@@ -1,6 +1,6 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter } from '../core/ui.js';
 import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -77,6 +77,7 @@ function buildAllPayments(wrap) {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
+  attachSortFilter(tableWrap);
 
   const syncDeleteBtn = () => {
     if (selected.size > 0) {
@@ -224,6 +225,7 @@ function buildScheduleSection(wrap) {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
+  attachSortFilter(tableWrap);
 
   let selected = new Set();
 
@@ -534,6 +536,7 @@ function buildUpcomingSection(wrap) {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
+  attachSortFilter(tableWrap);
 
   const render = () => {
     const now = new Date();
