@@ -640,6 +640,19 @@
       "currency": "EUR",
       "contractStart": "2024-07-01",
       "notes": ""
+    },
+    {
+      "id": "cli_mohkkscfr5",
+      "name": "Nordic Startup Ventures Oy",
+      "email": "",
+      "address": "Akerlundinkatu 8 33100 Tampere, Finland",
+      "vatNumber": "3130554-4",
+      "registrationNumber": "3130554-4",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "contractStart": "2024-02-07",
+      "notes": ""
     }
   ],
   "services": [
