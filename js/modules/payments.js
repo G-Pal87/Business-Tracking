@@ -544,11 +544,31 @@ function buildUpcomingSection(wrap) {
     const upcoming = allEntries.filter(e => !e.overdue);
     const totalEUR = allEntries.reduce((s, e) => s + e.amountEUR, 0);
 
+    const toRows = entries => entries.map(e => ({
+      property: e.prop.name,
+      tenant: e.tenantId ? (byId('tenants', e.tenantId)?.name || e.prop.tenantName || '—') : (e.prop.tenantName || '—'),
+      dueDate: e.date,
+      amount: e.amount,
+      currency: e.currency,
+      status: e.overdue ? 'overdue' : e.monthKey === thisMonthKey ? 'due-this-month' : 'upcoming'
+    }));
+    const upcomingCols = [
+      { key: 'property', label: 'Property' },
+      { key: 'tenant', label: 'Tenant' },
+      { key: 'dueDate', label: 'Due Date', format: v => fmtDate(v) },
+      { key: 'amount', label: 'Amount', right: true, format: (v, row) => formatMoney(v, row.currency, { maxFrac: 0 }) },
+      { key: 'status', label: 'Status', format: v => ({ overdue: el('span', { class: 'badge danger' }, 'Overdue'), 'due-this-month': el('span', { class: 'badge warning' }, 'Due this month'), upcoming: el('span', { class: 'badge' }, 'Upcoming') })[v] || el('span', { class: 'badge' }, v) }
+    ];
+
     kpiRow.innerHTML = '';
-    kpiRow.appendChild(kpiCard('Overdue', String(overdue.length), overdue.length ? formatEUR(overdue.reduce((s, e) => s + e.amountEUR, 0)) : '—', overdue.length ? 'danger' : ''));
-    kpiRow.appendChild(kpiCard('Due This Month', String(thisMonth.length), thisMonth.length ? formatEUR(thisMonth.reduce((s, e) => s + e.amountEUR, 0)) : '—', thisMonth.length ? 'warning' : ''));
-    kpiRow.appendChild(kpiCard('Upcoming', String(upcoming.length), upcoming.length ? formatEUR(upcoming.reduce((s, e) => s + e.amountEUR, 0)) : '—', ''));
-    kpiRow.appendChild(kpiCard('Total Expected', formatEUR(totalEUR), `${allEntries.length} payment(s)`, ''));
+    kpiRow.appendChild(kpiCard('Overdue', String(overdue.length), overdue.length ? formatEUR(overdue.reduce((s, e) => s + e.amountEUR, 0)) : '—', overdue.length ? 'danger' : '',
+      overdue.length ? () => drillDownModal('Overdue', toRows(overdue), upcomingCols) : null));
+    kpiRow.appendChild(kpiCard('Due This Month', String(thisMonth.length), thisMonth.length ? formatEUR(thisMonth.reduce((s, e) => s + e.amountEUR, 0)) : '—', thisMonth.length ? 'warning' : '',
+      thisMonth.length ? () => drillDownModal('Due This Month', toRows(thisMonth), upcomingCols) : null));
+    kpiRow.appendChild(kpiCard('Upcoming', String(upcoming.length), upcoming.length ? formatEUR(upcoming.reduce((s, e) => s + e.amountEUR, 0)) : '—', '',
+      upcoming.length ? () => drillDownModal('Upcoming Payments', toRows(upcoming), upcomingCols) : null));
+    kpiRow.appendChild(kpiCard('Total Expected', formatEUR(totalEUR), `${allEntries.length} payment(s)`, '',
+      allEntries.length ? () => drillDownModal('Total Expected', toRows(allEntries), upcomingCols) : null));
 
     tableWrap.innerHTML = '';
     if (allEntries.length === 0) {
