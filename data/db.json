@@ -954,6 +954,33 @@
       "total": 14740,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohld1gqda",
+      "number": "M&WPrimeSolutions#2008-SWG-EmpoW",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-08-01",
+      "dueDate": "2024-08-01",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohld1gq1m",
+          "description": "Startup Mentoring EmpoWomen 2024 - code: empowomen-ew Teams: IPLEXMED, Pinky Tech",
+          "quantity": 2,
+          "unit": "day",
+          "rate": 1000,
+          "total": 2000
+        }
+      ],
+      "subtotal": 2000,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2000,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
