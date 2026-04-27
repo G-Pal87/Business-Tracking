@@ -5637,10 +5637,10 @@
       "email": "hello@business.example",
       "address": "Morphou 27,  Paphos, 8015",
       "vatNumber": "60080676C",
-      "iban": "",
-      "bic": "",
+      "iban": "LT283250049546458651",
+      "bic": "REVOLT21",
       "registrationNumber": "HE 461745",
-      "swift": ""
+      "swift": "CHASDEFX"
     },
     "team": [
       {
