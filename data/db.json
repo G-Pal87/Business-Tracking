@@ -614,6 +614,19 @@
       "currency": "EUR",
       "contractStart": "2024-01-01",
       "notes": ""
+    },
+    {
+      "id": "cli_mohkh25z92",
+      "name": "VITAS GmbH",
+      "email": "",
+      "address": "Zollhof 7, 90443 Nuremberg, Germany",
+      "vatNumber": "DE323474782",
+      "registrationNumber": "HRB 36296",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "contractStart": "2024-02-01",
+      "notes": ""
     }
   ],
   "services": [
