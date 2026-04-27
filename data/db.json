@@ -125,13 +125,13 @@
       "documents": []
     },
     {
-      "id": "prop_moh6yk92gi",
-      "name": "3",
+      "id": "prop_moh72ni7lc",
+      "name": "test",
       "address": "",
       "city": "",
       "country": "",
       "flag": "",
-      "type": "short_term",
+      "type": "long_term",
       "status": "active",
       "bedrooms": 1,
       "bathrooms": 1,
@@ -155,13 +155,13 @@
       "documents": []
     },
     {
-      "id": "prop_moh72ni7lc",
-      "name": "test",
+      "id": "prop_moh6yn902w",
+      "name": "4",
       "address": "",
       "city": "",
       "country": "",
       "flag": "",
-      "type": "long_term",
+      "type": "short_term",
       "status": "active",
       "bedrooms": 1,
       "bathrooms": 1,
