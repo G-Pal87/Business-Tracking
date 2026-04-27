@@ -587,23 +587,7 @@
       "rates": {}
     }
   ],
-  "tenants": [
-    {
-      "id": "ten_mohcg4breq",
-      "name": "Hungarian",
-      "phone": "",
-      "email": "",
-      "propertyId": "prop_mogwvjnfl9",
-      "leaseStartDate": "2026-01-01",
-      "leaseEndDate": "2026-12-31",
-      "monthlyRent": 1,
-      "currency": "EUR",
-      "deposit": 0,
-      "paymentDayOfMonth": 1,
-      "notes": "",
-      "status": "active"
-    }
-  ],
+  "tenants": [],
   "clients": [
     {
       "id": "cli_mo9sroqs7s",
