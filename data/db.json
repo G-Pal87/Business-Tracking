@@ -846,6 +846,33 @@
       "total": 480,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohl4ru4j2",
+      "number": "M&WPrimeSolutions#2005-VITAS",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2024-07-17",
+      "dueDate": "2024-07-17",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohl4ru4c1",
+          "description": "Marketing campaign management (Google, META) - Mai",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2500,
+          "total": 2500
+        }
+      ],
+      "subtotal": 2500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
