@@ -1097,6 +1097,33 @@
       "total": 490,
       "notes": "Imported from PDF",
       "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohll9m22f",
+      "number": "M&WPrimeSolutions#2011-SWG-Aug24",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2024-09-02",
+      "dueDate": "2024-09-02",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohll9m28o",
+          "description": "Marketing services (Google & META Kampagnen) Aug 2024",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2500,
+          "total": 2500
+        }
+      ],
+      "subtotal": 2500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
