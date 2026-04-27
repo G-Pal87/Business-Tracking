@@ -1411,11 +1411,11 @@
     {
       "id": "inv_mohmuy2bjq",
       "number": "3_SWG_080125",
-      "clientId": "cli_mo9sroqs7s",
-      "owner": "you",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
       "issueDate": "2025-01-08",
-      "dueDate": "2025-01-08",
-      "stream": "customer_success",
+      "dueDate": "2025-01-10",
+      "stream": "marketing_services",
       "currency": "EUR",
       "status": "paid",
       "lineItems": [
@@ -1426,20 +1426,12 @@
           "unit": "day",
           "rate": 6200,
           "total": 6200
-        },
-        {
-          "id": "li_mohmuy2b36",
-          "description": "Payment due within 48 hours TOTAL",
-          "quantity": 1,
-          "unit": "day",
-          "rate": 6200,
-          "total": 6200
         }
       ],
-      "subtotal": 12400,
+      "subtotal": 6200,
       "taxRate": 0,
       "tax": 0,
-      "total": 12400,
+      "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import"
     }
