@@ -822,15 +822,5 @@
       "months": {}
     }
   ],
-  "inventory": [
-    {
-      "id": "ivt_mog7logd36",
-      "name": "Wine",
-      "stock": 10,
-      "unitPrice": 2,
-      "currency": "EUR",
-      "dateBought": "2026-04-26",
-      "comments": ""
-    }
-  ]
+  "inventory": []
 }
