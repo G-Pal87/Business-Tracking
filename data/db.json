@@ -603,6 +603,20 @@
       "stream": "long_term_rental",
       "inventoryItemId": "",
       "inventoryQty": 0
+    },
+    {
+      "id": "exp_moiol7wmli",
+      "propertyId": "prop_mo946nvbck",
+      "category": "renovation",
+      "amount": 8333333,
+      "currency": "EUR",
+      "date": "2026-04-28",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "long_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0
     }
   ],
   "vendors": [
