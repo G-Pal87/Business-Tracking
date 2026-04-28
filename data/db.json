@@ -4216,26 +4216,12 @@
         "2025-06": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": [
-            {
-              "id": "expe_moilr2e7gc",
-              "description": "",
-              "amount": 0,
-              "notes": ""
-            }
-          ]
+          "expenseEntries": []
         },
         "2025-07": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": [
-            {
-              "id": "expe_moilr6dxc2",
-              "description": "",
-              "amount": 0,
-              "notes": ""
-            }
-          ]
+          "expenseEntries": []
         },
         "2025-08": {
           "revenue": 0,
