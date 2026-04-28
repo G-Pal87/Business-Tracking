@@ -4241,32 +4241,12 @@
         "2025-11": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": [
-            {
-              "id": "expe_moilrozjca",
-              "description": "",
-              "amount": 0,
-              "notes": ""
-            },
-            {
-              "id": "expe_moilrsllbw",
-              "description": "",
-              "amount": 0,
-              "notes": ""
-            }
-          ]
+          "expenseEntries": []
         },
         "2025-12": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": [
-            {
-              "id": "expe_moilrwgifc",
-              "description": "",
-              "amount": 0,
-              "notes": ""
-            }
-          ]
+          "expenseEntries": []
         }
       },
       "yearTarget": {
