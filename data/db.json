@@ -589,6 +589,20 @@
       "stream": "short_term_rental",
       "inventoryItemId": "",
       "inventoryQty": 0
+    },
+    {
+      "id": "exp_moioka9yih",
+      "propertyId": "prop_mohgu7hc28",
+      "category": "maintenance",
+      "amount": 8333333,
+      "currency": "HUF",
+      "date": "2026-04-28",
+      "vendor": "Csaba",
+      "vendorId": "vnd_moi9r96ng2",
+      "description": "",
+      "stream": "long_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0
     }
   ],
   "vendors": [
