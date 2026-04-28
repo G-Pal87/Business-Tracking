@@ -605,7 +605,23 @@
       }
     }
   ],
-  "tenants": [],
+  "tenants": [
+    {
+      "id": "ten_mohnmxgiw",
+      "name": "Maria",
+      "phone": "",
+      "email": "",
+      "propertyId": "prop_mohfq1ly6o",
+      "leaseStartDate": "2026-01-25",
+      "leaseEndDate": "2027-01-27",
+      "monthlyRent": 140000,
+      "currency": "HUF",
+      "deposit": 0,
+      "paymentDayOfMonth": 10,
+      "notes": "",
+      "status": "active"
+    }
+  ],
   "clients": [
     {
       "id": "cli_mo9sroqs7s",
@@ -2166,6 +2182,18 @@
       "type": "property",
       "entityId": "prop_mohfkihdlh",
       "year": 2026,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
+    },
+    {
+      "id": "fcs_moim9h0zc6",
+      "type": "property",
+      "entityId": "prop_mo946nvbck",
+      "year": 2024,
       "taxRate": 0,
       "yearTarget": {
         "revenue": 0,
