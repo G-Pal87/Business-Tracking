@@ -4610,6 +4610,20 @@
       "stream": "long_term_rental",
       "inventoryItemId": "",
       "inventoryQty": 0
+    },
+    {
+      "id": "exp_moia32rmnq",
+      "propertyId": "prop_mohgxct7b6",
+      "category": "renovation",
+      "amount": 8300000,
+      "currency": "HUF",
+      "date": "2026-04-28",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "long_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0
     }
   ],
   "vendors": [
