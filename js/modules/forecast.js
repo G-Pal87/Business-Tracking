@@ -1,9 +1,9 @@
 // Forecast module: monthly grid per property/service, stored, tax estimation
 import { state } from '../core/state.js';
-import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal } from '../core/ui.js';
+import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, setForecastTaxRate, getForecastVsActual, estimateTaxForYear, getForecastEntries, upsertForecastEntry, removeForecastEntry } from '../core/data.js';
-import { STREAMS } from '../core/config.js';
+import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -822,61 +822,237 @@ function buildTaxSection(wrap) {
   const yearSel = select(availYears.map(y => ({ value: y, label: String(y) })), availYears[availYears.length - 1]);
   const rateI = input({ type: 'number', value: state.db.settings?.globalTaxRate || 15, min: 0, max: 100, step: 0.1, style: 'width:80px' });
 
-  const controls = el('div', { class: 'flex gap-8 mb-16 items-center' });
+  // --- Stream checklist (same pattern as Property/Service Forecast) ---
+  const streamKeys = Object.keys(STREAMS);
+  let selStreams = new Set(streamKeys);
+
+  const strWrapper = el('div', { style: 'position:relative' });
+  const strTrigLabel = el('span', {}, 'All Streams');
+  const strTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:150px;user-select:none' }, strTrigLabel);
+  const strMenu = el('div', { style: 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:220px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0' });
+
+  const allStrChk = el('input', { type: 'checkbox' });
+  allStrChk.checked = true;
+  strMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px' }, allStrChk, el('span', {}, 'All Streams')));
+
+  const strChks = streamKeys.map(k => {
+    const chk = el('input', { type: 'checkbox' });
+    chk.dataset.key = k;
+    chk.checked = true;
+    strMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px' },
+      chk, el('span', { class: `badge ${STREAMS[k].css}` }, STREAMS[k].label)));
+    return chk;
+  });
+
+  const syncStrSel = () => {
+    const sel = strChks.filter(c => c.checked);
+    const n = sel.length;
+    allStrChk.checked = n === strChks.length;
+    allStrChk.indeterminate = n > 0 && n < strChks.length;
+    strTrigLabel.textContent = n === strChks.length ? 'All Streams'
+      : n === 0 ? 'No Streams'
+      : n === 1 ? (STREAMS[sel[0].dataset.key]?.label || '1 Stream')
+      : `${n} Streams`;
+    selStreams = new Set(sel.map(c => c.dataset.key));
+  };
+
+  allStrChk.onchange = () => { strChks.forEach(c => { c.checked = allStrChk.checked; }); allStrChk.indeterminate = false; syncStrSel(); render(); };
+  strChks.forEach(chk => { chk.onchange = () => { syncStrSel(); render(); }; });
+  strTrigger.onclick = e => { e.stopPropagation(); strMenu.style.display = strMenu.style.display === 'none' ? '' : 'none'; };
+  strMenu.onclick = e => e.stopPropagation();
+  document.addEventListener('click', () => { strMenu.style.display = 'none'; });
+  strWrapper.appendChild(strTrigger); strWrapper.appendChild(strMenu);
+
+  // --- Property filter ---
+  const allProps = state.db.properties || [];
+  const propSel = select([{ value: 'all', label: 'All Properties' }, ...allProps.map(p => ({ value: p.id, label: p.name }))], 'all');
+
+  const controls = el('div', { class: 'flex gap-8 mb-16 items-center', style: 'flex-wrap:wrap' });
   controls.appendChild(el('span', { class: 'muted' }, 'Year:'));
   controls.appendChild(yearSel);
   controls.appendChild(el('span', { class: 'muted' }, 'Tax rate %:'));
   controls.appendChild(rateI);
+  controls.appendChild(strWrapper);
+  controls.appendChild(propSel);
   wrap.appendChild(controls);
 
   const resultsWrap = el('div', {});
   wrap.appendChild(resultsWrap);
 
   const chartCard = el('div', { class: 'card mt-16' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Actual vs Forecast Tax')),
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue by Stream')),
     el('div', { class: 'chart-wrap' }, el('canvas', { id: 'fc-tax-chart' }))
   );
   wrap.appendChild(chartCard);
 
-  const render = () => {
-    // Save rate
-    if (state.db.settings) {
-      state.db.settings.globalTaxRate = Number(rateI.value) || 0;
+  // Build filtered source data; returns { pays, invs, exps, forecastRows, rev, exp,
+  // taxable, estimatedTax, forecastRev, forecastTaxable, forecastTax, rate }
+  const getFiltered = () => {
+    const y = yearSel.value;
+    const s = `${y}-01-01`, e2 = `${y}-12-31`;
+    const pid = propSel.value;
+    const r = Number(rateI.value) || 0;
+
+    const pays = (state.db.payments || []).filter(p =>
+      p.status === 'paid' && p.date >= s && p.date <= e2 &&
+      selStreams.has(p.stream) &&
+      (pid === 'all' || p.propertyId === pid)
+    );
+    // Invoices are service-based (no propertyId); only include when no property filter
+    const invs = (state.db.invoices || []).filter(i =>
+      i.status === 'paid' && i.issueDate >= s && i.issueDate <= e2 &&
+      selStreams.has(i.stream) &&
+      pid === 'all'
+    );
+    const exps = (state.db.expenses || []).filter(ex =>
+      ex.category !== 'renovation' && ex.date >= s && ex.date <= e2 &&
+      (pid === 'all' || ex.propertyId === pid)
+    );
+
+    // Map selected streams → forecast entityIds
+    const fcEntityIds = [];
+    for (const k of selStreams) {
+      if (k === 'short_term_rental' || k === 'long_term_rental') {
+        const ptype = k === 'short_term_rental' ? 'short_term' : 'long_term';
+        if (pid !== 'all') {
+          if (allProps.find(p => p.id === pid)?.type === ptype) fcEntityIds.push(pid);
+        } else {
+          allProps.filter(p => p.type === ptype).forEach(p => fcEntityIds.push(p.id));
+        }
+      } else if (pid === 'all') {
+        fcEntityIds.push(k); // 'customer_success' | 'marketing_services'
+      }
     }
-    const data = estimateTaxForYear(yearSel.value, rateI.value);
+
+    const forecastRows = [];
+    (state.db.forecasts || []).filter(f => f.year === Number(y) && fcEntityIds.includes(f.entityId)).forEach(f => {
+      const entityLabel = f.type === 'property'
+        ? (byId('properties', f.entityId)?.name || f.entityId)
+        : (STREAMS[f.entityId]?.label || f.entityId);
+      Object.entries(f.months || {}).forEach(([mk, md]) => {
+        const rev = md.revenue || 0;
+        if (rev > 0) forecastRows.push({ entityLabel, monthKey: mk, revenue: rev });
+      });
+    });
+
+    const rev = [...pays.map(p => toEUR(p.amount, p.currency, y)), ...invs.map(i => toEUR(i.total, i.currency, y))].reduce((a, b) => a + b, 0);
+    const exp = exps.reduce((a, ex) => a + toEUR(ex.amount, ex.currency, y), 0);
+    const taxable = Math.max(0, rev - exp);
+    const forecastRev = forecastRows.reduce((s, m) => s + m.revenue, 0);
+    const forecastTaxable = Math.max(0, forecastRev - exp);
+
+    return { pays, invs, exps, forecastRows, rev, exp, taxable, forecastRev, forecastTaxable,
+      estimatedTax: taxable * (r / 100), forecastTax: forecastTaxable * (r / 100), rate: r };
+  };
+
+  // Drilldown column definitions
+  const revCols = [
+    { key: 'date',   label: 'Date',    format: v => fmtDate(v) },
+    { key: 'stream', label: 'Stream',  format: v => el('span', { class: `badge ${STREAMS[v]?.css || ''}` }, STREAMS[v]?.label || v || '—') },
+    { key: 'prop',   label: 'Property / Source' },
+    { key: 'ref',    label: 'Ref / Type' },
+    { key: 'eur',    label: 'Amount (€)', right: true, format: v => formatEUR(v) },
+  ];
+  const expCols = [
+    { key: 'date',     label: 'Date',     format: v => fmtDate(v) },
+    { key: 'category', label: 'Category' },
+    { key: 'prop',     label: 'Property' },
+    { key: 'desc',     label: 'Description' },
+    { key: 'eur',      label: 'Amount (€)', right: true, format: v => formatEUR(v) },
+  ];
+  const fcCols = [
+    { key: 'entityLabel', label: 'Entity / Stream' },
+    { key: 'monthKey',    label: 'Month' },
+    { key: 'revenue',     label: 'Forecast Revenue (€)', right: true, format: v => formatEUR(v) },
+  ];
+
+  const toRevRows = (pays, invs, y) => [
+    ...pays.map(p => ({
+      date: p.date, stream: p.stream,
+      prop: byId('properties', p.propertyId)?.name || p.source || '—',
+      ref: p.type || '—',
+      eur: toEUR(p.amount, p.currency, y),
+    })),
+    ...invs.map(i => ({
+      date: i.issueDate, stream: i.stream,
+      prop: i.clientName || '—',
+      ref: i.invoiceNumber || '—',
+      eur: toEUR(i.total, i.currency, y),
+    })),
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  const toExpRows = (exps, y) => exps.map(ex => ({
+    date: ex.date,
+    category: EXPENSE_CATEGORIES[ex.category]?.label || ex.category,
+    prop: byId('properties', ex.propertyId)?.name || '—',
+    desc: ex.description || '—',
+    eur: toEUR(ex.amount, ex.currency, y),
+  })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  const render = () => {
+    if (state.db.settings) state.db.settings.globalTaxRate = Number(rateI.value) || 0;
+    const d = getFiltered();
+    const y = yearSel.value;
+
     resultsWrap.innerHTML = '';
     resultsWrap.appendChild(el('div', { class: 'grid grid-4 mb-16' },
-      kpi('Actual Revenue', formatEUR(data.rev)),
-      kpi('Actual Expenses', formatEUR(data.exp)),
-      kpi('Taxable Income (actual)', formatEUR(data.taxable)),
-      kpi(`Estimated Tax @ ${data.rate}%`, formatEUR(data.estimatedTax), 'warning')
+      kpi('Actual Revenue', formatEUR(d.rev), null,
+        () => drillDownModal('Actual Revenue', toRevRows(d.pays, d.invs, y), revCols)),
+      kpi('Actual Expenses', formatEUR(d.exp), null,
+        () => drillDownModal('Actual Expenses', toExpRows(d.exps, y), expCols)),
+      kpi('Taxable Income (actual)', formatEUR(d.taxable), null,
+        () => drillDownModal('Taxable Income — Revenue Records', toRevRows(d.pays, d.invs, y), revCols)),
+      kpi(`Estimated Tax @ ${d.rate}%`, formatEUR(d.estimatedTax), 'warning',
+        () => drillDownModal(`Estimated Tax @ ${d.rate}% — Revenue Records`, toRevRows(d.pays, d.invs, y), revCols))
     ));
     resultsWrap.appendChild(el('div', { class: 'grid grid-4' },
-      kpi('Forecast Revenue', formatEUR(data.forecastRev), 'info'),
-      kpi('Taxable Income (forecast)', formatEUR(data.forecastTaxable)),
-      kpi('Forecast Tax Liability', formatEUR(data.forecastTax), 'warning'),
-      kpi('Variance vs Forecast', formatEUR(data.estimatedTax - data.forecastTax), data.estimatedTax > data.forecastTax ? 'danger' : 'success')
+      kpi('Forecast Revenue', formatEUR(d.forecastRev), 'info',
+        () => drillDownModal('Forecast Revenue', d.forecastRows, fcCols)),
+      kpi('Taxable Income (forecast)', formatEUR(d.forecastTaxable), null,
+        () => drillDownModal('Taxable Income (forecast) — Revenue Records', d.forecastRows, fcCols)),
+      kpi('Forecast Tax Liability', formatEUR(d.forecastTax), 'warning',
+        () => drillDownModal('Forecast Tax Liability — Revenue Records', d.forecastRows, fcCols)),
+      kpi('Variance vs Forecast', formatEUR(d.estimatedTax - d.forecastTax), d.estimatedTax > d.forecastTax ? 'danger' : 'success',
+        () => {
+          const varRows = [
+            { label: 'Actual Revenue',           eur: d.rev },
+            { label: 'Actual Expenses',           eur: d.exp },
+            { label: 'Taxable Income (actual)',   eur: d.taxable },
+            { label: `Estimated Tax @ ${d.rate}%`, eur: d.estimatedTax },
+            { label: '—', eur: null },
+            { label: 'Forecast Revenue',          eur: d.forecastRev },
+            { label: 'Taxable Income (forecast)', eur: d.forecastTaxable },
+            { label: 'Forecast Tax Liability',    eur: d.forecastTax },
+            { label: '—', eur: null },
+            { label: 'Variance (actual − forecast tax)', eur: d.estimatedTax - d.forecastTax },
+          ];
+          drillDownModal('Variance vs Forecast — Tax Breakdown', varRows, [
+            { key: 'label', label: 'Item' },
+            { key: 'eur',   label: 'Amount (€)', right: true, format: v => v === null ? '—' : formatEUR(v) },
+          ]);
+        })
     ));
 
-    // Chart: per-stream breakdown
-    const streamKeys = ['short_term_rental', 'long_term_rental', 'customer_success', 'marketing_services'];
-    const streamRevs = streamKeys.map(k => {
-      const y = yearSel.value;
-      const pays = (state.db.payments || []).filter(p => p.stream === k && p.status === 'paid' && p.date?.startsWith(String(y)));
-      const invs = (state.db.invoices || []).filter(i => i.stream === k && i.status === 'paid' && i.issueDate?.startsWith(String(y)));
-      return Math.round([...pays.map(p => toEUR(p.amount, p.currency)), ...invs.map(i => toEUR(i.total, i.currency))].reduce((a, b) => a + b, 0));
+    // Chart: per selected stream, filtered by property
+    const visibleStreamKeys = streamKeys.filter(k => selStreams.has(k));
+    const pid = propSel.value;
+    const streamRevs = visibleStreamKeys.map(k => {
+      const p2 = (state.db.payments || []).filter(p => p.stream === k && p.status === 'paid' && p.date?.startsWith(y) && (pid === 'all' || p.propertyId === pid));
+      const i2 = pid === 'all' ? (state.db.invoices || []).filter(i => i.stream === k && i.status === 'paid' && i.issueDate?.startsWith(y)) : [];
+      return Math.round([...p2.map(p => toEUR(p.amount, p.currency)), ...i2.map(i => toEUR(i.total, i.currency))].reduce((a, b) => a + b, 0));
     });
     charts.bar('fc-tax-chart', {
-      labels: streamKeys.map(k => STREAMS[k].short),
+      labels: visibleStreamKeys.map(k => STREAMS[k].short),
       datasets: [
         { label: 'Revenue', data: streamRevs, backgroundColor: '#10b981' },
-        { label: `Est. Tax (${data.rate}%)`, data: streamRevs.map(r => Math.round(r * (data.rate / 100))), backgroundColor: '#f59e0b' }
+        { label: `Est. Tax (${d.rate}%)`, data: streamRevs.map(r => Math.round(r * (d.rate / 100))), backgroundColor: '#f59e0b' }
       ]
     });
   };
 
   yearSel.onchange = render;
   rateI.oninput = render;
+  propSel.onchange = render;
   render();
 }
 
@@ -887,10 +1063,12 @@ function summaryRow(label, value, variant) {
   );
 }
 
-function kpi(label, value, variant) {
-  return el('div', { class: 'kpi' + (variant ? ' ' + variant : '') },
+function kpi(label, value, variant, onClick) {
+  const div = el('div', { class: 'kpi' + (variant ? ' ' + variant : '') },
     el('div', { class: 'kpi-label' }, label),
     el('div', { class: 'kpi-value', style: 'font-size:1.3rem' }, value),
     el('div', { class: 'kpi-accent-bar' })
   );
+  if (onClick) { div.style.cursor = 'pointer'; div.title = 'Click to see breakdown'; div.onclick = onClick; }
+  return div;
 }
