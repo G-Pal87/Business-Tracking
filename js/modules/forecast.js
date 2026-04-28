@@ -959,7 +959,7 @@ function buildTaxSection(wrap) {
       selPropIds.size === 0
     );
     const exps = (state.db.expenses || []).filter(ex =>
-      ex.category !== 'renovation' && ex.date >= s && ex.date <= e2 &&
+      ex.date >= s && ex.date <= e2 &&
       propOk(ex.propertyId)
     );
 
