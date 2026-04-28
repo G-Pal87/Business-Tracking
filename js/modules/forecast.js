@@ -125,7 +125,7 @@ function buildPropertySection(wrap) {
     const selIds = getSelIds();
     const forecasts = (state.db.forecasts || []).filter(f => f.type === 'property' && selIds.includes(f.entityId));
     const years = new Set(forecasts.map(f => String(f.year)));
-    years.add(String(new Date().getFullYear()));
+    availableYears().forEach(y => years.add(y));
     const sorted = [...years].sort();
     const prev = yearSel.value;
     yearSel.innerHTML = '';
@@ -307,7 +307,7 @@ function buildServiceSection(wrap) {
     const selIds = getSelIds();
     const forecasts = (state.db.forecasts || []).filter(f => f.type === 'service' && selIds.includes(f.entityId));
     const years = new Set(forecasts.map(f => String(f.year)));
-    years.add(String(new Date().getFullYear()));
+    availableYears().forEach(y => years.add(y));
     const sorted = [...years].sort();
     const prev = yearSel.value;
     yearSel.innerHTML = '';
