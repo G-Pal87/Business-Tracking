@@ -4617,7 +4617,7 @@
       "notes": "",
       "rates": {},
       "pricingMode": "hourly",
-      "hourlyRate": 0,
+      "hourlyRate": 2.5,
       "currency": "HUF",
       "aptTypeRates": {
         "studio": 0,
