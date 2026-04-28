@@ -6741,7 +6741,11 @@
         "revenue": 0,
         "expenses": 0
       },
-      "months": {}
+      "months": {
+        "2025-01": {
+          "expenses": 0
+        }
+      }
     },
     {
       "id": "fcs_moicubaqo3",
