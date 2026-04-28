@@ -4582,6 +4582,20 @@
       "vendor": "",
       "description": "",
       "stream": "short_term_rental"
+    },
+    {
+      "id": "exp_moi9o5y81z",
+      "propertyId": "prop_mo946nvbck",
+      "category": "renovation",
+      "amount": 830000,
+      "currency": "HUF",
+      "date": "2026-04-28",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "long_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0
     }
   ],
   "vendors": [
