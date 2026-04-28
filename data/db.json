@@ -4191,20 +4191,7 @@
         "2025-01": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": [
-            {
-              "id": "expe_moilq9z4kc",
-              "description": "",
-              "amount": 0,
-              "notes": ""
-            },
-            {
-              "id": "expe_moilqa677y",
-              "description": "",
-              "amount": 0,
-              "notes": ""
-            }
-          ]
+          "expenseEntries": []
         },
         "2025-02": {
           "revenue": 0,
