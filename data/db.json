@@ -6726,6 +6726,18 @@
         "expenses": 0
       },
       "months": {}
+    },
+    {
+      "id": "fcs_moicucntk6",
+      "type": "property",
+      "entityId": "prop_moheuw76co",
+      "year": 2028,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
     }
   ],
   "inventory": []
