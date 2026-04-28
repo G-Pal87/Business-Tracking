@@ -6478,51 +6478,51 @@
       "taxRate": 15,
       "months": {
         "2025-01": {
-          "revenue": 6500,
+          "revenue": 0,
           "expenses": 500
         },
         "2025-02": {
-          "revenue": 6500,
+          "revenue": 0,
           "expenses": 500
         },
         "2025-03": {
-          "revenue": 7000,
+          "revenue": 0,
           "expenses": 500
         },
         "2025-04": {
-          "revenue": 7000,
+          "revenue": 0,
           "expenses": 500
         },
         "2025-05": {
-          "revenue": 7500,
+          "revenue": 0,
           "expenses": 500
         },
         "2025-06": {
-          "revenue": 7500,
+          "revenue": 0,
           "expenses": 500
         },
         "2025-07": {
-          "revenue": 7500,
+          "revenue": 0,
           "expenses": 500
         },
         "2025-08": {
-          "revenue": 7500,
+          "revenue": 0,
           "expenses": 500
         },
         "2025-09": {
-          "revenue": 8000,
+          "revenue": 0,
           "expenses": 500
         },
         "2025-10": {
-          "revenue": 8000,
+          "revenue": 0,
           "expenses": 500
         },
         "2025-11": {
-          "revenue": 8000,
+          "revenue": 0,
           "expenses": 500
         },
         "2025-12": {
-          "revenue": 8000,
+          "revenue": 0,
           "expenses": 500
         }
       },
