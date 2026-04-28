@@ -6148,6 +6148,18 @@
         "expenses": 0
       },
       "months": {}
+    },
+    {
+      "id": "fcs_moii0434mo",
+      "type": "property",
+      "entityId": "prop_mohfnur5bi",
+      "year": 2026,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
     }
   ],
   "inventory": []
