@@ -6743,7 +6743,8 @@
       },
       "months": {
         "2025-01": {
-          "expenses": 0
+          "expenses": 0,
+          "revenue": 0
         }
       }
     },
