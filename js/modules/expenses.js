@@ -1,6 +1,6 @@
 // Expenses module
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal } from '../core/ui.js';
 import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, groupByCategory } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, STREAMS } from '../core/config.js';
@@ -10,8 +10,8 @@ export default {
   id: 'expenses',
   label: 'Expenses',
   icon: 'E',
-  render(container) { container.appendChild(build()); charts.destroyAll(); renderBreakdown(); },
-  refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); renderBreakdown(); },
+  render(container) { container.appendChild(build()); },
+  refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() { charts.destroyAll(); }
 };
 
@@ -22,23 +22,55 @@ function restoreInventoryStock(expense) {
 }
 
 function build() {
+  charts.destroyAll();
+
   const wrap = el('div', { class: 'view active' });
 
   wrap.appendChild(el('div', { class: 'grid grid-2' },
     el('div', { class: 'card' },
-      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'By Category (all time)')),
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'By Category')),
       el('div', { class: 'chart-wrap' }, el('canvas', { id: 'chart-exp-cat' }))
     ),
     el('div', { class: 'card' },
-      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'By Property (all time)')),
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'By Property')),
       el('div', { class: 'chart-wrap' }, el('canvas', { id: 'chart-exp-prop' }))
     )
   ));
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16 mt-24', style: 'flex-wrap:wrap' });
-  const propSel   = select([{ value: 'all', label: 'All Properties' }, ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))], 'all');
-  const catSel    = select([{ value: 'all', label: 'All expenses' }, ...Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label }))], 'all');
-  const streamSel = select([{ value: 'all', label: 'All rental types' }, ...Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short }))], 'all');
+
+  const streamSel = select([
+    { value: 'all', label: 'All rental types' },
+    ...Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short }))
+  ], 'all');
+
+  // Property filter — rebuilt when stream changes
+  const propSel = el('select', { class: 'select' });
+  const updatePropOptions = () => {
+    const sv = streamSel.value;
+    const all = state.db.properties || [];
+    const relevant = sv === 'short_term_rental' ? all.filter(p => p.type === 'short_term')
+      : sv === 'long_term_rental'  ? all.filter(p => p.type === 'long_term')
+      : all;
+    const prev = propSel.value;
+    propSel.innerHTML = '';
+    const opt = document.createElement('option');
+    opt.value = 'all'; opt.textContent = 'All Properties';
+    propSel.appendChild(opt);
+    relevant.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.id; o.textContent = p.name;
+      if (p.id === prev) o.selected = true;
+      propSel.appendChild(o);
+    });
+    if (prev !== 'all' && !relevant.find(p => p.id === prev)) propSel.value = 'all';
+  };
+  updatePropOptions();
+
+  const catSel = select([
+    { value: 'all', label: 'All expenses' },
+    ...Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label }))
+  ], 'all');
 
   let selected = new Set();
 
@@ -58,9 +90,9 @@ function build() {
   }});
   deleteSelBtn.style.display = 'none';
 
+  filterBar.appendChild(streamSel);
   filterBar.appendChild(propSel);
   filterBar.appendChild(catSel);
-  filterBar.appendChild(streamSel);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(deleteSelBtn);
   filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
@@ -161,45 +193,90 @@ function build() {
     ));
   };
 
-  propSel.onchange = renderTable;
-  catSel.onchange  = renderTable;
-  streamSel.onchange = renderTable;
+  // Drilldown helpers shared by both charts
+  const drillCols = [
+    { key: 'date',     label: 'Date',        format: v => fmtDate(v) },
+    { key: 'property', label: 'Property' },
+    { key: 'category', label: 'Category' },
+    { key: 'desc',     label: 'Description' },
+    { key: 'vendor',   label: 'Vendor' },
+    { key: 'eur',      label: 'Amount (€)',  right: true, format: v => formatEUR(v) },
+  ];
+  const toDrillRows = rows => rows
+    .map(r => ({
+      date:     r.date,
+      property: byId('properties', r.propertyId)?.name || '—',
+      category: EXPENSE_CATEGORIES[r.category]?.label || r.category,
+      desc:     r.description || '—',
+      vendor:   r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '—') : (r.vendor || '—'),
+      eur:      toEUR(r.amount, r.currency),
+    }))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  // Dashboard: respects stream + property filters; category filter stays for table only
+  const renderDash = () => {
+    let bkRows = [...(state.db.expenses || [])];
+    if (streamSel.value !== 'all') bkRows = bkRows.filter(r => r.stream === streamSel.value);
+    if (propSel.value !== 'all')   bkRows = bkRows.filter(r => r.propertyId === propSel.value);
+
+    // By Category doughnut
+    const byCat = groupByCategory(bkRows);
+    const catLabels = [], catData = [], catColors = [], catKeys = [];
+    for (const [k, m] of Object.entries(EXPENSE_CATEGORIES)) {
+      if (!byCat.has(k)) continue;
+      catLabels.push(m.label);
+      catData.push(Math.round(byCat.get(k)));
+      catColors.push(m.color);
+      catKeys.push(k);
+    }
+    charts.doughnut('chart-exp-cat', {
+      labels: catLabels, data: catData, colors: catColors,
+      onClickItem: (_label, idx) => {
+        const key = catKeys[idx];
+        drillDownModal(
+          `Expenses — ${EXPENSE_CATEGORIES[key]?.label || key}`,
+          toDrillRows(bkRows.filter(r => r.category === key)),
+          drillCols
+        );
+      }
+    });
+
+    // By Property bar chart
+    const byProp = new Map();
+    for (const r of bkRows) byProp.set(r.propertyId, (byProp.get(r.propertyId) || 0) + toEUR(r.amount, r.currency));
+    const propLabels = [], propData = [], propIds = [];
+    const propColors = ['#6366f1', '#8b5cf6', '#14b8a6', '#ec4899', '#f59e0b', '#3b82f6'];
+    for (const [id, val] of [...byProp.entries()].sort((a, b) => b[1] - a[1])) {
+      propLabels.push(byId('properties', id)?.name || 'Unknown');
+      propData.push(Math.round(val));
+      propIds.push(id);
+    }
+    charts.bar('chart-exp-prop', {
+      labels: propLabels,
+      datasets: [{ label: 'EUR', data: propData, backgroundColor: propColors }],
+      horizontal: true,
+      onClickItem: (_label, idx) => {
+        const pid = propIds[idx];
+        drillDownModal(
+          `Expenses — ${byId('properties', pid)?.name || 'Unknown'}`,
+          toDrillRows(bkRows.filter(r => r.propertyId === pid)),
+          drillCols
+        );
+      }
+    });
+  };
+
+  const renderAll = () => { renderTable(); renderDash(); };
+
+  streamSel.onchange = () => { updatePropOptions(); renderAll(); };
+  propSel.onchange   = renderAll;
+  catSel.onchange    = renderTable; // category filter affects table only
+
   renderTable();
+  // Defer chart render until canvas elements are in the DOM
+  requestAnimationFrame(() => renderDash());
+
   return wrap;
-}
-
-function renderBreakdown() {
-  // By category
-  const rows = state.db.expenses || [];
-  const byCat = groupByCategory(rows);
-  const catLabels = [], catData = [], catColors = [];
-  for (const [k, m] of Object.entries(EXPENSE_CATEGORIES)) {
-    if (!byCat.has(k)) continue;
-    catLabels.push(m.label);
-    catData.push(Math.round(byCat.get(k)));
-    catColors.push(m.color);
-  }
-  charts.doughnut('chart-exp-cat', { labels: catLabels, data: catData, colors: catColors });
-
-  // By property
-  const byProp = new Map();
-  for (const r of rows) {
-    const eur = toEUR(r.amount, r.currency);
-    byProp.set(r.propertyId, (byProp.get(r.propertyId) || 0) + eur);
-  }
-  const propLabels = [], propData = [], propColors = ['#6366f1', '#8b5cf6', '#14b8a6', '#ec4899', '#f59e0b', '#3b82f6'];
-  let i = 0;
-  for (const [id, val] of [...byProp.entries()].sort((a, b) => b[1] - a[1])) {
-    const p = byId('properties', id);
-    propLabels.push(p?.name || 'Unknown');
-    propData.push(Math.round(val));
-    i++;
-  }
-  charts.bar('chart-exp-prop', {
-    labels: propLabels,
-    datasets: [{ label: 'EUR', data: propData, backgroundColor: propColors }],
-    horizontal: true
-  });
 }
 
 export function openExpenseForm(defaults = {}) {
