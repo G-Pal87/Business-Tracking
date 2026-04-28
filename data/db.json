@@ -575,7 +575,22 @@
     }
   ],
   "payments": [],
-  "expenses": [],
+  "expenses": [
+    {
+      "id": "exp_moinvtjpmz",
+      "propertyId": "prop_mo946nvbck",
+      "category": "cleaning",
+      "amount": 15,
+      "currency": "EUR",
+      "date": "2026-04-28",
+      "vendor": "Viktoria Paphos",
+      "vendorId": "vnd_mo8xfao7jy",
+      "description": "",
+      "stream": "short_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0
+    }
+  ],
   "vendors": [
     {
       "id": "vnd_mo8xfao7jy",
