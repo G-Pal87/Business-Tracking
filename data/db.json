@@ -4129,7 +4129,8 @@
       "months": {
         "2025-01": {
           "revenue": 0,
-          "expenses": 500
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-02": {
           "revenue": 0,
