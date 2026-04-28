@@ -6610,19 +6610,13 @@
         "2026-01": {
           "entries": [
             {
-              "clientName": "adssd",
-              "amount": 150,
-              "notes": "asdasd",
-              "id": "fce_mohnbq1brp"
-            },
-            {
               "clientName": "adsdsdsf",
               "amount": 132,
               "notes": "234",
               "id": "fce_mohnbzo1l4"
             }
           ],
-          "revenue": 0,
+          "revenue": 132,
           "expenses": 0
         },
         "2026-02": {
