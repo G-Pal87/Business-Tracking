@@ -4219,7 +4219,15 @@
         },
         "2025-04": {
           "revenue": 0,
-          "expenses": 300
+          "expenses": 0,
+          "expenseEntries": [
+            {
+              "id": "expe_moilqu6qib",
+              "description": "",
+              "amount": 0,
+              "notes": ""
+            }
+          ]
         },
         "2025-05": {
           "revenue": 0,
