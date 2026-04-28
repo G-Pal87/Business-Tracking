@@ -6291,33 +6291,6 @@
       "total": 1500,
       "notes": "Imported from PDF",
       "source": "pdf_import"
-    },
-    {
-      "id": "inv_moibfvtg7c",
-      "number": "test",
-      "clientId": "cli_mo9sroqs7s",
-      "owner": "you",
-      "issueDate": "2026-04-28",
-      "dueDate": "2026-05-28",
-      "stream": "customer_success",
-      "currency": "EUR",
-      "status": "draft",
-      "lineItems": [
-        {
-          "id": "li_moibg4xu5z",
-          "serviceId": "svc_001",
-          "description": "Customer Success Management",
-          "quantity": 1,
-          "unit": "day",
-          "rate": 650,
-          "total": 650
-        }
-      ],
-      "subtotal": 650,
-      "taxRate": 0,
-      "tax": 0,
-      "total": 650,
-      "notes": ""
     }
   ],
   "users": [
