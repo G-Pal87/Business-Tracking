@@ -2257,6 +2257,18 @@
         "expenses": 0
       },
       "months": {}
+    },
+    {
+      "id": "fcs_moj187qgbo",
+      "type": "service",
+      "entityId": "customer_success",
+      "year": 2024,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
     }
   ],
   "inventory": []
