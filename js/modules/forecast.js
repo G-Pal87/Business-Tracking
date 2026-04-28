@@ -1,6 +1,6 @@
 // Forecast module: monthly grid per property/service, stored, tax estimation
 import { state } from '../core/state.js';
-import { el, select, selVals, input, button, formRow, toast, fmtDate, openModal, closeModal } from '../core/ui.js';
+import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, setForecastTaxRate, getForecastVsActual, estimateTaxForYear, getForecastEntries, upsertForecastEntry, removeForecastEntry } from '../core/data.js';
 import { STREAMS } from '../core/config.js';
@@ -61,13 +61,65 @@ function buildPropertySection(wrap) {
   const props = (state.db.properties || []).filter(p => p.status !== 'renovation');
   if (props.length === 0) { wrap.appendChild(el('div', { class: 'empty' }, 'No active properties to forecast')); return; }
 
-  const propSel = select(props.map(p => ({ value: p.id, label: p.name })), props[0].id, { multiple: true, size: Math.min(4, props.length) });
-  const yearSel = el('select', { class: 'select' });
+  // --- Property checklist dropdown (matches Reports "All Streams" pattern) ---
+  let selectedPropIds = new Set(props.map(p => p.id));
 
-  const getSelIds = () => {
-    const vals = selVals(propSel);
-    return vals && vals.length > 0 ? vals : [props[0].id];
+  const getSelIds = () => selectedPropIds.size > 0 ? [...selectedPropIds] : [props[0].id];
+
+  const propWrapper = el('div', { style: 'position:relative' });
+  const trigLabel = el('span', {}, 'All Properties');
+  const propTrigger = el('div', {
+    class: 'select',
+    style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:160px;user-select:none'
+  }, trigLabel);
+
+  const propMenu = el('div', {
+    style: 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:220px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0'
+  });
+
+  const allChk = el('input', { type: 'checkbox' });
+  allChk.checked = true;
+  propMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px' },
+    allChk, el('span', {}, 'All Properties')));
+
+  const propChks = props.map(p => {
+    const chk = el('input', { type: 'checkbox' });
+    chk.dataset.id = p.id;
+    chk.checked = true;
+    propMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px' },
+      chk, el('span', {}, p.name)));
+    return chk;
+  });
+
+  const syncPropSel = () => {
+    const sel = propChks.filter(c => c.checked);
+    const n = sel.length;
+    allChk.checked = n === propChks.length;
+    allChk.indeterminate = n > 0 && n < propChks.length;
+    trigLabel.textContent = n === propChks.length ? 'All Properties'
+      : n === 0 ? 'No Properties'
+      : n === 1 ? (props.find(p => p.id === sel[0].dataset.id)?.name || '1 Property')
+      : `${n} Properties`;
+    selectedPropIds = new Set(sel.map(c => c.dataset.id));
   };
+
+  allChk.onchange = () => {
+    propChks.forEach(c => { c.checked = allChk.checked; });
+    allChk.indeterminate = false;
+    syncPropSel();
+    render();
+  };
+  propChks.forEach(chk => { chk.onchange = () => { syncPropSel(); render(); }; });
+
+  propTrigger.onclick = e => { e.stopPropagation(); propMenu.style.display = propMenu.style.display === 'none' ? '' : 'none'; };
+  propMenu.onclick = e => e.stopPropagation();
+  document.addEventListener('click', () => { propMenu.style.display = 'none'; });
+
+  propWrapper.appendChild(propTrigger);
+  propWrapper.appendChild(propMenu);
+  // -------------------------------------------------------------------------
+
+  const yearSel = el('select', { class: 'select' });
 
   const updateYearOptions = () => {
     const selIds = getSelIds();
@@ -89,7 +141,7 @@ function buildPropertySection(wrap) {
   updateYearOptions();
 
   const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:flex-start' });
-  controls.appendChild(propSel);
+  controls.appendChild(propWrapper);
   controls.appendChild(yearSel);
   wrap.appendChild(controls);
 
@@ -185,7 +237,6 @@ function buildPropertySection(wrap) {
     el2.appendChild(el('div', { class: 'flex-col gap-8', style: 'padding:16px' }, ...items));
   };
 
-  propSel.onchange = render;
   yearSel.onchange = render;
   render();
 }
