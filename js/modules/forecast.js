@@ -247,13 +247,83 @@ function buildServiceSection(wrap) {
     { id: 'customer_success', label: 'Customer Success' },
     { id: 'marketing_services', label: 'Marketing Services' }
   ];
-  const year = new Date().getFullYear();
-  const years = [year - 1, year, year + 1, year + 2];
-  const streamSel = select(serviceEntities.map(s => ({ value: s.id, label: s.label })), serviceEntities[0].id);
-  const yearSel = select(years.map(y => ({ value: y, label: String(y) })), year);
+
+  // --- Service checklist dropdown (matches Property Forecast / Reports pattern) ---
+  let selectedStreamIds = new Set(serviceEntities.map(s => s.id));
+
+  const getSelIds = () => selectedStreamIds.size > 0 ? [...selectedStreamIds] : [serviceEntities[0].id];
+
+  const svcWrapper = el('div', { style: 'position:relative' });
+  const trigLabel = el('span', {}, 'All Services');
+  const svcTrigger = el('div', {
+    class: 'select',
+    style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:160px;user-select:none'
+  }, trigLabel);
+
+  const svcMenu = el('div', {
+    style: 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:220px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0'
+  });
+
+  const allSvcChk = el('input', { type: 'checkbox' });
+  allSvcChk.checked = true;
+  svcMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px' },
+    allSvcChk, el('span', {}, 'All Services')));
+
+  const svcChks = serviceEntities.map(s => {
+    const chk = el('input', { type: 'checkbox' });
+    chk.dataset.id = s.id;
+    chk.checked = true;
+    svcMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px' },
+      chk, el('span', {}, s.label)));
+    return chk;
+  });
+
+  const syncSvcSel = () => {
+    const sel = svcChks.filter(c => c.checked);
+    const n = sel.length;
+    allSvcChk.checked = n === svcChks.length;
+    allSvcChk.indeterminate = n > 0 && n < svcChks.length;
+    trigLabel.textContent = n === svcChks.length ? 'All Services'
+      : n === 0 ? 'No Services'
+      : n === 1 ? (serviceEntities.find(s => s.id === sel[0].dataset.id)?.label || '1 Service')
+      : `${n} Services`;
+    selectedStreamIds = new Set(sel.map(c => c.dataset.id));
+  };
+
+  allSvcChk.onchange = () => { svcChks.forEach(c => { c.checked = allSvcChk.checked; }); allSvcChk.indeterminate = false; syncSvcSel(); render(); };
+  svcChks.forEach(chk => { chk.onchange = () => { syncSvcSel(); render(); }; });
+
+  svcTrigger.onclick = e => { e.stopPropagation(); svcMenu.style.display = svcMenu.style.display === 'none' ? '' : 'none'; };
+  svcMenu.onclick = e => e.stopPropagation();
+  document.addEventListener('click', () => { svcMenu.style.display = 'none'; });
+
+  svcWrapper.appendChild(svcTrigger);
+  svcWrapper.appendChild(svcMenu);
+  // -------------------------------------------------------------------------
+
+  const yearSel = el('select', { class: 'select' });
+
+  const updateYearOptions = () => {
+    const selIds = getSelIds();
+    const forecasts = (state.db.forecasts || []).filter(f => f.type === 'service' && selIds.includes(f.entityId));
+    const years = new Set(forecasts.map(f => String(f.year)));
+    years.add(String(new Date().getFullYear()));
+    const sorted = [...years].sort();
+    const prev = yearSel.value;
+    yearSel.innerHTML = '';
+    sorted.forEach(y => {
+      const o = document.createElement('option');
+      o.value = y; o.textContent = y;
+      if (y === prev) o.selected = true;
+      yearSel.appendChild(o);
+    });
+    if (!yearSel.value && sorted.length) yearSel.value = sorted[sorted.length - 1];
+  };
+
+  updateYearOptions();
 
   const controls = el('div', { class: 'flex gap-8 mb-16' });
-  controls.appendChild(streamSel);
+  controls.appendChild(svcWrapper);
   controls.appendChild(yearSel);
   wrap.appendChild(controls);
 
@@ -272,15 +342,37 @@ function buildServiceSection(wrap) {
   );
   wrap.appendChild(chartWrap);
 
+  const getAggregated = () => {
+    const streamIds = getSelIds();
+    const year = yearSel.value;
+    const results = streamIds.map(id => getForecastVsActual('service', id, year));
+    const months = results[0].months.map((_, i) => ({
+      key: results[0].months[i].key,
+      forecastRev: results.reduce((s, r) => s + r.months[i].forecastRev, 0),
+      forecastExp: results.reduce((s, r) => s + r.months[i].forecastExp, 0),
+      actualRev:   results.reduce((s, r) => s + r.months[i].actualRev, 0),
+      actualExp:   results.reduce((s, r) => s + r.months[i].actualExp, 0),
+      revVariance: results.reduce((s, r) => s + r.months[i].revVariance, 0),
+    }));
+    const yearTarget = { revenue: results.reduce((s, r) => s + (r.yearTarget?.revenue || 0), 0) };
+    return { months, yearTarget };
+  };
+
   const render = () => {
+    updateYearOptions();
+    const selIds = getSelIds();
     gridWrap.innerHTML = '';
-    gridWrap.appendChild(buildMonthlyGrid(streamSel.value, yearSel.value, 'service', () => { renderChart(); renderSummary(); }));
+    if (selIds.length === 1) {
+      gridWrap.appendChild(buildMonthlyGrid(selIds[0], yearSel.value, 'service', () => { renderChart(); renderSummary(); }));
+    } else {
+      gridWrap.appendChild(buildAggregatedGrid(selIds, yearSel.value, 'service'));
+    }
     renderChart();
     renderSummary();
   };
 
   const renderChart = () => {
-    const { months } = getForecastVsActual('service', streamSel.value, yearSel.value);
+    const { months } = getAggregated();
     charts.bar('fc-svc-chart', {
       labels: MONTHS,
       datasets: [
@@ -291,7 +383,7 @@ function buildServiceSection(wrap) {
   };
 
   const renderSummary = () => {
-    const { months, yearTarget } = getForecastVsActual('service', streamSel.value, yearSel.value);
+    const { months, yearTarget } = getAggregated();
     const forecastRev = months.reduce((s, m) => s + m.forecastRev, 0);
     const actualRev   = months.reduce((s, m) => s + m.actualRev,   0);
     const el2 = document.getElementById('fc-svc-summary');
@@ -316,7 +408,6 @@ function buildServiceSection(wrap) {
     el2.appendChild(el('div', { class: 'flex-col gap-8', style: 'padding:16px' }, ...items));
   };
 
-  streamSel.onchange = render;
   yearSel.onchange = render;
   render();
 }
@@ -437,11 +528,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
       } else {
         tr.appendChild(makeEditable('revenue', mData.forecastRev));
       }
-      if (type === 'property') {
-        tr.appendChild(makeExpEntriesCell(monthKey, mData.forecastExp, i));
-      } else {
-        tr.appendChild(makeEditable('expenses', mData.forecastExp));
-      }
+      tr.appendChild(makeExpEntriesCell(monthKey, mData.forecastExp, i));
       tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
       tr.appendChild(el('td', { class: 'right num ' + (isPast ? '' : 'muted') }, formatEUR(mData.actualRev)));
       tr.appendChild(el('td', { class: `right num ${mData.revVariance >= 0 ? '' : 'danger'}` }, isPast || mData.actualRev > 0 ? formatEUR(mData.revVariance) : '—'));
@@ -653,15 +740,16 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
   }
 }
 
-// ===== AGGREGATED PROPERTY GRID (multi-select, read-only) =====
-function buildAggregatedGrid(propIds, year) {
+// ===== AGGREGATED GRID (multi-select, read-only — property and service) =====
+function buildAggregatedGrid(entityIds, year, type = 'property') {
   const card = el('div', { class: 'card' });
+  const label = type === 'service' ? `${entityIds.length} services selected` : `${entityIds.length} properties selected`;
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, `Aggregated Forecast — ${year}`),
-    el('div', { class: 'muted', style: 'font-size:12px' }, `${propIds.length} properties selected`)
+    el('div', { class: 'muted', style: 'font-size:12px' }, label)
   ));
 
-  const results = propIds.map(id => getForecastVsActual('property', id, year));
+  const results = entityIds.map(id => getForecastVsActual(type, id, year));
   const months = results[0].months.map((_, i) => ({
     key: results[0].months[i].key,
     forecastRev: results.reduce((s, r) => s + r.months[i].forecastRev, 0),
