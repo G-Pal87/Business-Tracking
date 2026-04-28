@@ -4184,7 +4184,8 @@
         },
         "2025-12": {
           "revenue": 0,
-          "expenses": 500
+          "expenses": 0,
+          "expenseEntries": []
         }
       },
       "yearTarget": {
