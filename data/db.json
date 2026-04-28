@@ -4321,7 +4321,15 @@
         },
         "2025-12": {
           "revenue": 0,
-          "expenses": 300
+          "expenses": 0,
+          "expenseEntries": [
+            {
+              "id": "expe_moilrwgifc",
+              "description": "",
+              "amount": 0,
+              "notes": ""
+            }
+          ]
         }
       },
       "yearTarget": {
