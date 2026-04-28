@@ -6681,7 +6681,7 @@
       "year": 2026,
       "taxRate": 0,
       "yearTarget": {
-        "revenue": 0,
+        "revenue": 10000000,
         "expenses": 0
       },
       "months": {
