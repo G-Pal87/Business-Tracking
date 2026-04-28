@@ -4196,26 +4196,12 @@
         "2025-02": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": [
-            {
-              "id": "expe_moilqkemfn",
-              "description": "",
-              "amount": 0,
-              "notes": ""
-            }
-          ]
+          "expenseEntries": []
         },
         "2025-03": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": [
-            {
-              "id": "expe_moilqomxrf",
-              "description": "",
-              "amount": 0,
-              "notes": ""
-            }
-          ]
+          "expenseEntries": []
         },
         "2025-04": {
           "revenue": 0,
