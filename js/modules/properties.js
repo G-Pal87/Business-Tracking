@@ -159,14 +159,6 @@ function openDetail(id) {
     smallStat('Annual ROI', `${roi.toFixed(2)}%`)
   ));
 
-  if (p.type === 'long_term') {
-    body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
-      smallStat('Tenant', p.tenantName || '—'),
-      smallStat('Lease Start', p.leaseStartDate ? fmtDate(p.leaseStartDate) : '—'),
-      smallStat('Lease End', p.leaseEndDate ? fmtDate(p.leaseEndDate) : 'Open-ended')
-    ));
-  }
-
   if (p.status === 'sold' && p.soldDate) {
     body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
       smallStat('Sold Date', fmtDate(p.soldDate))
@@ -314,8 +306,7 @@ function openForm(existing) {
     monthlyRent: 0, nightlyRate: 0,
     mortgageAmount: 0, mortgageMonthly: 0, mortgageRate: 0,
     owner: 'both', airbnbCalUrl: '', notes: '',
-    cleaningFee: 0, monthlyElectricity: 0, monthlyWater: 0,
-    tenantName: '', leaseStartDate: '', leaseEndDate: ''
+    cleaningFee: 0, monthlyElectricity: 0, monthlyWater: 0
   };
 
   const body = el('div', {});
@@ -523,6 +514,14 @@ function openForm(existing) {
       vacantPeriods: pendingVacantPeriods,
       documents: pendingDocs
     });
+    // Purge unpaid payments within vacant periods (keep paid history intact)
+    if (pendingVacantPeriods.length > 0) {
+      state.db.payments = (state.db.payments || []).filter(pmt => {
+        if (pmt.propertyId !== p.id || pmt.status === 'paid') return true;
+        const d = pmt.date?.slice(0, 10) || '';
+        return !pendingVacantPeriods.some(vp => vp.startDate && d >= vp.startDate && d <= (vp.endDate || '9999-12-31'));
+      });
+    }
     upsert('properties', p);
     toast(existing ? 'Property updated' : 'Property added', 'success');
     closeModal();

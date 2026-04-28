@@ -4,22 +4,22 @@
       "id": "prop_mo946nvbck",
       "name": "Poolside Central Studio | Balcony & Beach Walk",
       "address": "",
-      "city": "",
-      "country": "",
-      "flag": "",
+      "city": "Paphos",
+      "country": "Cyprus",
+      "flag": "CY",
       "type": "short_term",
       "status": "active",
       "bedrooms": 1,
       "bathrooms": 1,
-      "purchasePrice": 0,
+      "purchasePrice": 125000,
       "currency": "EUR",
-      "purchaseDate": "2026-04-21",
+      "purchaseDate": "2025-05-13",
       "monthlyRent": 0,
       "nightlyRate": 0,
       "mortgageAmount": 0,
       "mortgageMonthly": 0,
       "mortgageRate": 0,
-      "owner": "both",
+      "owner": "you",
       "airbnbCalUrl": "",
       "notes": "",
       "cleaningFee": 15,
@@ -29,22 +29,54 @@
       "leaseStartDate": "",
       "leaseEndDate": "",
       "paymentDayOfMonth": 1,
-      "documents": []
+      "documents": [],
+      "soldDate": "",
+      "vacantPeriods": []
     },
     {
-      "id": "prop_mog7u1un4",
-      "name": "2",
-      "address": "",
-      "city": "",
-      "country": "",
-      "flag": "",
-      "type": "long_term",
+      "id": "prop_moheuw76co",
+      "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
+      "address": "Morphou 27",
+      "city": "Paphos",
+      "country": "Cyprus",
+      "flag": "CY",
+      "type": "short_term",
       "status": "active",
       "bedrooms": 1,
       "bathrooms": 1,
-      "purchasePrice": 0,
+      "purchasePrice": 145000,
       "currency": "EUR",
-      "purchaseDate": "2026-04-26",
+      "purchaseDate": "2025-03-18",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 20,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohfkihdlh",
+      "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
+      "address": "",
+      "city": "Paphos",
+      "country": "Cyprus",
+      "flag": "CY",
+      "type": "short_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 155000,
+      "currency": "EUR",
+      "purchaseDate": "2025-05-13",
       "monthlyRent": 0,
       "nightlyRate": 0,
       "mortgageAmount": 0,
@@ -53,31 +85,594 @@
       "owner": "both",
       "airbnbCalUrl": "",
       "notes": "",
+      "cleaningFee": 20,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohfnur5bi",
+      "name": "Danko u. 38 -2",
+      "address": "Danko u. 38 -2",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 6000000,
+      "currency": "HUF",
+      "purchaseDate": "2016-01-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "rita",
+      "airbnbCalUrl": "",
+      "notes": "",
       "cleaningFee": 0,
       "monthlyElectricity": 0,
       "monthlyWater": 0,
-      "tenantName": "",
-      "leaseStartDate": "",
-      "leaseEndDate": "",
       "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohfq1ly6o",
+      "name": "Danko u. 38 -3",
+      "address": "Danko u. 38 -3",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 9500000,
+      "currency": "HUF",
+      "purchaseDate": "2019-01-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "rita",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohfv8np89",
+      "name": "Rooftop Tenerife",
+      "address": "",
+      "city": "Tenerife",
+      "country": "Spain",
+      "flag": "SE",
+      "type": "short_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 39000,
+      "currency": "EUR",
+      "purchaseDate": "2019-01-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "rita",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohfwhqrgj",
+      "name": "Studio Tenerife",
+      "address": "",
+      "city": "Tenerife",
+      "country": "Spain",
+      "flag": "SE",
+      "type": "short_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 19000,
+      "currency": "EUR",
+      "purchaseDate": "2019-01-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "rita",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohfxic4em",
+      "name": "Petnehazy u. 62",
+      "address": "Petnehazy u. 62",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "renovation",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 9200000,
+      "currency": "HUF",
+      "purchaseDate": "2018-01-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "rita",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohfyxp815",
+      "name": "Szilagyi u 5",
+      "address": "",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 14000000,
+      "currency": "HUF",
+      "purchaseDate": "2024-08-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "rita",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohg1qiy3j",
+      "name": "Prater u. 65",
+      "address": "Prater u. 65",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 21000000,
+      "currency": "HUF",
+      "purchaseDate": "2025-04-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohg2xyol2",
+      "name": "Danko u. 36 -3 albetet",
+      "address": "Danko u. 36 -3 albetet",
+      "city": "Budapest",
+      "country": "hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 23000000,
+      "currency": "HUF",
+      "purchaseDate": "2025-04-15",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohg4jrjb0",
+      "name": "Reitter Ferenc utca 3.",
+      "address": "Reitter Ferenc utca 3.",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 26500000,
+      "currency": "HUF",
+      "purchaseDate": "2025-09-20",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "rita",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohg6old31",
+      "name": "Karacsony 1",
+      "address": "Karacsony S u",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 24000000,
+      "currency": "HUF",
+      "purchaseDate": "2026-12-26",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohgap08rl",
+      "name": "Koranyi S u",
+      "address": "Koranyi S u",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 17000000,
+      "currency": "HUF",
+      "purchaseDate": "2025-12-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohgcpkr2r",
+      "name": "Visi u 8",
+      "address": "Visi u 8",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 19000000,
+      "currency": "HUF",
+      "purchaseDate": "2025-12-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohgf9k39v",
+      "name": "Karacsony 2",
+      "address": "Karacsony S u",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 12500000,
+      "currency": "HUF",
+      "purchaseDate": "2025-12-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohgu7hc28",
+      "name": "Lojza 1",
+      "address": "Lojza 1",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "renovation",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 6333333,
+      "currency": "HUF",
+      "purchaseDate": "2026-04-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohgwjvdlg",
+      "name": "Lojza 2",
+      "address": "Lojza",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "renovation",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 6333333,
+      "currency": "HUF",
+      "purchaseDate": "2026-04-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
+      "documents": []
+    },
+    {
+      "id": "prop_mohgxct7b6",
+      "name": "Lojza 3",
+      "address": "Lojza",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "renovation",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 6333333,
+      "currency": "HUF",
+      "purchaseDate": "2026-04-01",
+      "monthlyRent": 0,
+      "nightlyRate": 0,
+      "mortgageAmount": 0,
+      "mortgageMonthly": 0,
+      "mortgageRate": 0,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "",
+      "cleaningFee": 0,
+      "monthlyElectricity": 0,
+      "monthlyWater": 0,
+      "paymentDayOfMonth": 1,
+      "soldDate": "",
+      "vacantPeriods": [],
       "documents": []
     }
   ],
-  "payments": [],
+  "payments": [
+    {
+      "id": "pay_moizzqe77e",
+      "propertyId": "prop_mohfq1ly6o",
+      "tenantId": "ten_mohnmxgiw",
+      "amount": 140000,
+      "currency": "HUF",
+      "date": "2026-01-10",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2026-01"
+    }
+  ],
   "expenses": [
     {
-      "id": "exp_mog9whn0j6",
+      "id": "exp_moinvtjpmz",
+      "propertyId": "prop_mohgxct7b6",
+      "category": "renovation",
+      "amount": 8333333,
+      "currency": "HUF",
+      "date": "2026-04-28",
+      "vendor": "Csaba",
+      "vendorId": "vnd_moi9r96ng2",
+      "description": "",
+      "stream": "long_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0
+    },
+    {
+      "id": "exp_moioka9yih",
+      "propertyId": "prop_mohgu7hc28",
+      "category": "renovation",
+      "amount": 8333333,
+      "currency": "HUF",
+      "date": "2026-04-28",
+      "vendor": "Csaba",
+      "vendorId": "vnd_moi9r96ng2",
+      "description": "",
+      "stream": "long_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0
+    },
+    {
+      "id": "exp_moiol7wmli",
+      "propertyId": "prop_mohgwjvdlg",
+      "category": "renovation",
+      "amount": 8333333,
+      "currency": "HUF",
+      "date": "2026-04-28",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "long_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0
+    },
+    {
+      "id": "exp_moj1a2v27y",
+      "propertyId": "prop_mohfnur5bi",
+      "category": "maintenance",
+      "amount": 2,
+      "currency": "HUF",
+      "date": "2026-04-28",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "long_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0
+    },
+    {
+      "id": "exp_moj1b9av91",
       "propertyId": "prop_mo946nvbck",
-      "category": "inventory",
-      "amount": 20,
+      "category": "maintenance",
+      "amount": 100000,
       "currency": "EUR",
-      "date": "2026-04-26",
+      "date": "2026-04-28",
       "vendor": "",
       "vendorId": "",
       "description": "",
       "stream": "short_term_rental",
-      "inventoryItemId": "ivt_mog7logd36",
-      "inventoryQty": 10
+      "inventoryItemId": "",
+      "inventoryQty": 0
+    },
+    {
+      "id": "exp_moj1c828b1",
+      "propertyId": "prop_mo946nvbck",
+      "category": "renovation",
+      "amount": 200000,
+      "currency": "EUR",
+      "date": "2026-04-28",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "short_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0
     }
   ],
   "vendors": [
@@ -89,152 +684,120 @@
       "email": "",
       "notes": "",
       "rates": {}
+    },
+    {
+      "id": "vnd_moi9r96ng2",
+      "name": "Csaba",
+      "role": "handyman",
+      "phone": "",
+      "email": "",
+      "notes": "",
+      "rates": {},
+      "pricingMode": "hourly",
+      "hourlyRate": 2.5,
+      "currency": "HUF",
+      "aptTypeRates": {
+        "studio": 0,
+        "one_bedroom": 0,
+        "two_bedroom": 0,
+        "three_bedroom_plus": 0
+      }
     }
   ],
   "tenants": [
     {
-      "id": "ten_001",
-      "propertyId": "prop_003",
-      "name": "Kovacs Anna",
-      "email": "akovacs@example.hu",
-      "phone": "+36 30 123 4567",
-      "leaseStart": "2024-09-01",
-      "leaseEnd": "2025-08-31",
-      "monthlyRent": 350000,
+      "id": "ten_mohnmxgiw",
+      "name": "Maria",
+      "phone": "",
+      "email": "",
+      "propertyId": "prop_mohfq1ly6o",
+      "leaseStartDate": "2026-01-25",
+      "leaseEndDate": "2027-01-27",
+      "monthlyRent": 140000,
       "currency": "HUF",
-      "deposit": 700000,
-      "notes": "On time payer"
+      "deposit": 0,
+      "paymentDayOfMonth": 10,
+      "notes": "",
+      "status": "active"
     }
   ],
   "clients": [
     {
       "id": "cli_mo9sroqs7s",
-      "name": "C TWO",
+      "name": "C TWO Automate AS",
       "email": "",
-      "address": "",
-      "vatNumber": "",
-      "registrationNumber": "",
+      "address": "Nøstegaten 58, 5011 Bergen, Norway",
+      "vatNumber": "921883463 MVA",
+      "registrationNumber": "921883463",
       "owner": "you",
       "stream": "customer_success",
       "currency": "EUR",
-      "contractStart": "2026-04-22",
+      "contractStart": "2022-07-14",
       "notes": ""
     },
     {
-      "id": "cli_moam7tlp6p",
-      "name": "a",
+      "id": "cli_mohkf6ip14",
+      "name": "Wise Guys Holding OÜ",
       "email": "",
-      "address": "",
-      "vatNumber": "",
-      "registrationNumber": "",
-      "owner": "you",
-      "stream": "customer_success",
+      "address": "A. Lauteri 3, 10114, Tallinn, Estonia",
+      "vatNumber": "EE101914859",
+      "registrationNumber": "14081077",
+      "owner": "rita",
+      "stream": "marketing_services",
       "currency": "EUR",
-      "contractStart": "2026-04-22",
+      "contractStart": "2024-01-01",
       "notes": ""
     },
     {
-      "id": "cli_moamasth35",
-      "name": "b",
+      "id": "cli_mohkh25z92",
+      "name": "VITAS GmbH",
       "email": "",
-      "address": "",
-      "vatNumber": "",
-      "registrationNumber": "",
-      "owner": "you",
-      "stream": "customer_success",
+      "address": "Zollhof 7, 90443 Nuremberg, Germany",
+      "vatNumber": "DE323474782",
+      "registrationNumber": "HRB 36296",
+      "owner": "rita",
+      "stream": "marketing_services",
       "currency": "EUR",
-      "contractStart": "2026-04-22",
+      "contractStart": "2024-02-01",
       "notes": ""
     },
     {
-      "id": "cli_mog0nmq0cb",
-      "name": "test",
+      "id": "cli_mohkjrhl90",
+      "name": "Creerplan OÜ",
       "email": "",
-      "address": "",
-      "vatNumber": "",
-      "registrationNumber": "",
-      "owner": "you",
-      "stream": "customer_success",
+      "address": "Laaneotsa tee4, 74011 Viimsi",
+      "vatNumber": "EE102617676",
+      "registrationNumber": "16010673",
+      "owner": "rita",
+      "stream": "marketing_services",
       "currency": "EUR",
-      "contractStart": "2026-04-26",
+      "contractStart": "2024-07-01",
       "notes": ""
     },
     {
-      "id": "cli_mog0tay7dr",
-      "name": "sdf",
+      "id": "cli_mohkkscfr5",
+      "name": "Nordic Startup Ventures Oy",
       "email": "",
-      "address": "",
-      "vatNumber": "",
-      "registrationNumber": "",
-      "owner": "you",
-      "stream": "customer_success",
+      "address": "Akerlundinkatu 8 33100 Tampere, Finland",
+      "vatNumber": "3130554-4",
+      "registrationNumber": "3130554-4",
+      "owner": "rita",
+      "stream": "marketing_services",
       "currency": "EUR",
-      "contractStart": "2026-04-26",
+      "contractStart": "2024-02-07",
       "notes": ""
     },
     {
-      "id": "cli_mog1jvbl5q",
-      "name": "new",
+      "id": "cli_mohltfi7fg",
+      "name": "Nexial Unipessoal LDA",
       "email": "",
-      "address": "",
-      "vatNumber": "",
+      "address": "25 Rua Dom João V, 1250-090, Lisboa, Portugal",
+      "vatNumber": "PT516931890",
       "registrationNumber": "",
-      "owner": "you",
-      "stream": "customer_success",
+      "owner": "rita",
+      "stream": "marketing_services",
       "currency": "EUR",
-      "contractStart": "2026-04-26",
-      "notes": ""
-    },
-    {
-      "id": "cli_mog1jz3rh3",
-      "name": "asd",
-      "email": "",
-      "address": "",
-      "vatNumber": "",
-      "registrationNumber": "",
-      "owner": "you",
-      "stream": "customer_success",
-      "currency": "EUR",
-      "contractStart": "2026-04-26",
-      "notes": ""
-    },
-    {
-      "id": "cli_mog1oetl3h",
-      "name": "11",
-      "email": "",
-      "address": "",
-      "vatNumber": "",
-      "registrationNumber": "",
-      "owner": "you",
-      "stream": "customer_success",
-      "currency": "EUR",
-      "contractStart": "2026-04-26",
-      "notes": ""
-    },
-    {
-      "id": "cli_mog1ohwxqi",
-      "name": "222",
-      "email": "",
-      "address": "",
-      "vatNumber": "",
-      "registrationNumber": "",
-      "owner": "you",
-      "stream": "customer_success",
-      "currency": "EUR",
-      "contractStart": "2026-04-26",
-      "notes": ""
-    },
-    {
-      "id": "cli_mog1rzkf6a",
-      "name": "3",
-      "email": "",
-      "address": "",
-      "vatNumber": "",
-      "registrationNumber": "",
-      "owner": "you",
-      "stream": "customer_success",
-      "currency": "EUR",
-      "contractStart": "2026-04-26",
+      "contractStart": "2024-11-10",
       "notes": ""
     }
   ],
@@ -296,58 +859,857 @@
   ],
   "invoices": [
     {
-      "id": "inv_mog2vwvapd",
-      "number": "1_CTWO_26-04-2026",
+      "id": "inv_mohkrd8qh2",
+      "number": "Invoice - M&WPrimeSolutions#1001",
       "clientId": "cli_mo9sroqs7s",
       "owner": "you",
-      "issueDate": "2026-04-26",
-      "dueDate": "2026-05-26",
+      "issueDate": "2024-07-31",
+      "dueDate": "2024-07-31",
       "stream": "customer_success",
       "currency": "EUR",
-      "status": "draft",
+      "status": "paid",
       "lineItems": [
         {
-          "id": "li_mog2w2dsaq",
-          "serviceId": "svc_001",
-          "description": "Customer Success Management",
-          "quantity": 1,
+          "id": "li_mohkrd8rrf",
+          "description": "Customer Success professional services",
+          "quantity": 14.925,
           "unit": "day",
-          "rate": 650,
-          "total": 650
+          "rate": 670,
+          "total": 9999.75
         }
       ],
-      "subtotal": 650,
+      "subtotal": 9999.75,
       "taxRate": 0,
       "tax": 0,
-      "total": 650,
-      "notes": ""
+      "total": 9999.75,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     },
     {
-      "id": "inv_mog2wcdfb4",
-      "number": "1_CTWO_26-04-2027",
-      "clientId": "cli_mo9sroqs7s",
-      "owner": "you",
-      "issueDate": "2027-04-26",
-      "dueDate": "2027-05-26",
-      "stream": "customer_success",
+      "id": "inv_mohktt6g2t",
+      "number": "Invoice-M&WPrimeSolutions#2002-SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-07-11",
+      "dueDate": "2024-07-11",
+      "stream": "marketing_services",
       "currency": "EUR",
-      "status": "draft",
+      "status": "paid",
       "lineItems": [
         {
-          "id": "li_mog2wo38l4",
-          "serviceId": "svc_001",
-          "description": "Customer Success Management",
+          "id": "li_mohktt6gkx",
+          "description": "Marketing / Growth Mentoring Wise Guys Founders Club 2024 - Program Code: Founders Club 8 FC 8",
           "quantity": 1,
           "unit": "day",
-          "rate": 650,
-          "total": 650
+          "rate": 500,
+          "total": 500
         }
       ],
-      "subtotal": 650,
+      "subtotal": 500,
       "taxRate": 0,
       "tax": 0,
-      "total": 650,
-      "notes": ""
+      "total": 500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohkw7hj80",
+      "number": "Invoice-M&WPrimeSolutions#2003-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-07-12",
+      "dueDate": "2024-07-12",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohkw7hjfq",
+          "description": "Marketing / Growth campaigns management (Apr)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2500,
+          "total": 2500
+        }
+      ],
+      "subtotal": 2500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohkzofiaw",
+      "number": "Invoice-M&WPrimeSolutions#2004",
+      "clientId": "cli_mohkjrhl90",
+      "owner": "rita",
+      "issueDate": "2024-07-12",
+      "dueDate": "2024-04-27",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohkzofieu",
+          "description": "Marketing / Growth coaching (1h)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 90,
+          "total": 90
+        }
+      ],
+      "subtotal": 90,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 90,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohl1lrr7z",
+      "number": "M&WPrimeSolutions 2001 _24-NordicSV",
+      "clientId": "cli_mohkkscfr5",
+      "owner": "rita",
+      "issueDate": "2024-07-11",
+      "dueDate": "2024-04-27",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohl1lrr6v",
+          "description": "International Edge Program Startup Coaching (Growth Marketing)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 480,
+          "total": 480
+        }
+      ],
+      "subtotal": 480,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 480,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohl4ru4j2",
+      "number": "M&WPrimeSolutions#2005-VITAS",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "rita",
+      "issueDate": "2024-07-17",
+      "dueDate": "2024-07-17",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohl4ru4c1",
+          "description": "Marketing campaign management (Google, META) - Mai",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2500,
+          "total": 2500
+        }
+      ],
+      "subtotal": 2500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohl6i51i2",
+      "number": "M&WPrimeSolutions#2006-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-07-29",
+      "dueDate": "2024-07-29",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohl6i514k",
+          "description": "Marketing campaign management (Google, META, Tracking) - Juni",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 3300,
+          "total": 3300
+        }
+      ],
+      "subtotal": 3300,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 3300,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohl83rg33",
+      "number": "M&WPrimeSolutions#2007-SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-07-31",
+      "dueDate": "2024-07-31",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohl83rgkb",
+          "description": "Startup lead coaching on Growth / Marketing - (Cyber Growth 2024) (B47) Block-auth – 2h Certopus – 5h Cloudtainer – 1h Passport GG – 3h",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1100,
+          "total": 1100
+        }
+      ],
+      "subtotal": 1100,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1100,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohlbpfv2p",
+      "number": "Invoice - M&WPrimeSolutions#1002#2024",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2024-08-30",
+      "dueDate": "2024-08-30",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohlbpfvh7",
+          "description": "Customer Success professional services",
+          "quantity": 22,
+          "unit": "day",
+          "rate": 670,
+          "total": 14740
+        }
+      ],
+      "subtotal": 14740,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 14740,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohld1gqda",
+      "number": "M&WPrimeSolutions#2008-SWG-EmpoW",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-08-01",
+      "dueDate": "2024-08-01",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohld1gq1m",
+          "description": "Startup Mentoring EmpoWomen 2024 - code: empowomen-ew Teams: IPLEXMED, Pinky Tech",
+          "quantity": 2,
+          "unit": "day",
+          "rate": 1000,
+          "total": 2000
+        }
+      ],
+      "subtotal": 2000,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2000,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohle2r1hf",
+      "number": "M&WPrimeSolutions#2009-24",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-08-06",
+      "dueDate": "2024-08-06",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohle2r1i2",
+          "description": "Marketing / Growth campaigns management (Juli)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 3300,
+          "total": 3300
+        }
+      ],
+      "subtotal": 3300,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 3300,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohlhga9gd",
+      "number": "Invoice - M&WPrimeSolutions#1003#24",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2024-09-30",
+      "dueDate": "2024-09-30",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohlhga91",
+          "description": "Customer Success professional services",
+          "quantity": 21,
+          "unit": "day",
+          "rate": 670,
+          "total": 14070
+        },
+        {
+          "id": "li_mohlhga990",
+          "description": "Expenses",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 125,
+          "total": 125
+        }
+      ],
+      "subtotal": 14195,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 14195,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohliq9886",
+      "number": "M&WPrimeSolutions 2012 -24_SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-09-03",
+      "dueDate": "2024-09-03",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohliq98ne",
+          "description": "Marketing services (Performance Kampagnen) Sept 2024",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2500,
+          "total": 2500
+        }
+      ],
+      "subtotal": 2500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohljre84j",
+      "number": "M&WPrimeSolutions#2010_24-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-09-30",
+      "dueDate": "2024-09-30",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohljre8os",
+          "description": "Startup lead coaching on Growth / Marketing - (Cyber Growth 2024) (B47) Certopus – 2h Passport GG – 2h",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 490,
+          "total": 490
+        }
+      ],
+      "subtotal": 490,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 490,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohll9m22f",
+      "number": "M&WPrimeSolutions#2011-SWG-Aug24",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "rita",
+      "issueDate": "2024-09-02",
+      "dueDate": "2024-09-02",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohll9m28o",
+          "description": "Marketing services (Google & META Kampagnen) Aug 2024",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2500,
+          "total": 2500
+        }
+      ],
+      "subtotal": 2500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohlmgkhk6",
+      "number": "M&WPrimeSolutions20101 _24-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-09-09",
+      "dueDate": "2024-09-09",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohlmgkhcx",
+          "description": "Cleantech 1 Startup Program Support (Aug 24)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 4227,
+          "total": 4227
+        }
+      ],
+      "subtotal": 4227,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 4227,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohlpp4wj3",
+      "number": "Invoice - M&WPrimeSolutions#1004#24",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2024-10-31",
+      "dueDate": "2024-10-31",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohlpp4w1x",
+          "description": "Customer Success professional services",
+          "quantity": 23,
+          "unit": "day",
+          "rate": 670,
+          "total": 15410
+        }
+      ],
+      "subtotal": 15410,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 15410,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohlqjyo6u",
+      "number": "M&WPrimeSolutions 2013_24_SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-10-03",
+      "dueDate": "2024-10-03",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohlqjyoah",
+          "description": "Cleantech 1 Startup Program Support (Sept 24)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        }
+      ],
+      "subtotal": 6200,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 6200,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohlsrmjhp",
+      "number": "M&WPrimeSolutions 2015_24-VITAS",
+      "clientId": "cli_mohltfi7fg",
+      "owner": "rita",
+      "issueDate": "2024-11-10",
+      "dueDate": "2024-11-10",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohlsrmjgx",
+          "description": "Marketing services June-Nov 2024",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 900,
+          "total": 900
+        }
+      ],
+      "subtotal": 900,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 900,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohmb4r7r6",
+      "number": "M&WPrimeSolutions-2014_24 - SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-11-04",
+      "dueDate": "2024-11-04",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohmb4r7c",
+          "description": "Cleantech 1 Startup Program Support (Oct 24)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        }
+      ],
+      "subtotal": 6200,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 6200,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohme7u5mq",
+      "number": "M&WPrimeSolutions 2017_24-SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-12-04",
+      "dueDate": "2024-12-04",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohme7u5ak",
+          "description": "Cleantech 1 Startup Program Support (Nov 24)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        }
+      ],
+      "subtotal": 6200,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 6200,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohmfe02od",
+      "number": "M&WPrimeSolutions 2018_24-SWG-EMPOW",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-12-04",
+      "dueDate": "2024-12-04",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohmfe025y",
+          "description": "Mentoring EmpoWomen 2024 - code: empowomen-ew",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2000,
+          "total": 2000
+        }
+      ],
+      "subtotal": 2000,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2000,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohmgimo7g",
+      "number": "M&WPrimeSolutions 2019_24-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-12-16",
+      "dueDate": "2024-12-16",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohmgimodl",
+          "description": "Marketing services (Performance Kampagnen) Nov 2024",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1500,
+          "total": 1500
+        }
+      ],
+      "subtotal": 1500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohmrgcwow",
+      "number": "1_CTWO_010125",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-01-09",
+      "dueDate": "2025-01-09",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohmrgcwhj",
+          "description": "Customer Success Professional Services",
+          "quantity": 21,
+          "unit": "day",
+          "rate": 670,
+          "total": 14070
+        }
+      ],
+      "subtotal": 14070,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 14070,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohmt6r2lk",
+      "number": "2_CTWO_020125",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-01-02",
+      "dueDate": "2025-01-02",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohmt6r293",
+          "description": "Customer Success Professional Services",
+          "quantity": 21,
+          "unit": "day",
+          "rate": 670,
+          "total": 14070
+        }
+      ],
+      "subtotal": 14070,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 14070,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohmuy2bjq",
+      "number": "3_SWG_080125",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2025-01-08",
+      "dueDate": "2025-01-10",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohmuy2bc5",
+          "description": "Startup Program Support 2024 Dec",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        }
+      ],
+      "subtotal": 6200,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 6200,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohmypggl3",
+      "number": "4_CTWO_310125",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-01-31",
+      "dueDate": "2025-01-31",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohmypggkx",
+          "description": "Customer Success Professional Services",
+          "quantity": 19,
+          "unit": "day",
+          "rate": 670,
+          "total": 12730
+        }
+      ],
+      "subtotal": 12730,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 12730,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohn12nyd7",
+      "number": "5_CTWO_Reimbursement_310125",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-05-31",
+      "dueDate": "2025-05-31",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohn12ny5o",
+          "description": "C TWO Connect",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1901.38,
+          "total": 1901.38
+        },
+        {
+          "id": "li_mohn12nyed",
+          "description": "Nestle Onsite Meeting",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 225.25,
+          "total": 225.25
+        }
+      ],
+      "subtotal": 2126.63,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2126.63,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohn28idj9",
+      "number": "8_VITAS_09012025",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2025-01-09",
+      "dueDate": "2025-01-09",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohn28idkf",
+          "description": "Marketing services (Performance Kampagnen) Jan 2025",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1500,
+          "total": 1500
+        }
+      ],
+      "subtotal": 1500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohn4qh996",
+      "number": "6_SWG_030225",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2025-02-03",
+      "dueDate": "2025-02-05",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohn4qh9lw",
+          "description": "Startup Program Support 2025 Jan",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        }
+      ],
+      "subtotal": 6200,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 6200,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
+    },
+    {
+      "id": "inv_mohn6fv92r",
+      "number": "7_VITAS_030225",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2025-02-03",
+      "dueDate": "2025-02-03",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mohn6fvab6",
+          "description": "Marketing services (Performance Kampagnen) Jan 2025",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1500,
+          "total": 1500
+        }
+      ],
+      "subtotal": 1500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import"
     }
   ],
   "users": [
@@ -363,23 +1725,31 @@
       "username": "Rita",
       "name": "Rita",
       "role": "admin",
-      "passwordHash": "c078c908eeb2a235a0b51ebfcb92b787ee2b9ccaf28cc1e43879505ffa257d65"
+      "passwordHash": "64bf621b3dad972a3e1a4c3115e712c4c30ae503ec6e82fa4242f3b05eadf3a6"
     }
   ],
   "settings": {
     "masterCurrency": "EUR",
     "fxRates": {
       "HUF_EUR": 0.0025,
-      "yearRates": {}
+      "yearRates": {
+        "2016": 0.0032,
+        "2018": 0.0031,
+        "2019": 0.0031,
+        "2024": 0.0025,
+        "2025": 0.0025
+      }
     },
     "defaultTaxRate": 0,
     "business": {
-      "name": "Property & Services Ltd.",
-      "email": "hello@business.example",
-      "address": "Budapest, Hungary",
-      "vatNumber": "",
-      "iban": "",
-      "bic": ""
+      "name": "M&W Prime Solutions Limited",
+      "email": "",
+      "address": "Morphou 27,  Paphos, 8015",
+      "vatNumber": "60080676C",
+      "iban": "LT283250049546458651",
+      "bic": "REVOLT21",
+      "registrationNumber": "HE 461745",
+      "swift": "CHASDEFX"
     },
     "team": [
       {
@@ -527,53 +1897,69 @@
       "taxRate": 15,
       "months": {
         "2025-01": {
-          "revenue": 6500,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-02": {
-          "revenue": 6500,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-03": {
-          "revenue": 7000,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-04": {
-          "revenue": 7000,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-05": {
-          "revenue": 7500,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-06": {
-          "revenue": 7500,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-07": {
-          "revenue": 7500,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-08": {
-          "revenue": 7500,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-09": {
-          "revenue": 8000,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-10": {
-          "revenue": 8000,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-11": {
-          "revenue": 8000,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-12": {
-          "revenue": 8000,
-          "expenses": 500
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         }
+      },
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
       }
     },
     {
@@ -584,53 +1970,69 @@
       "taxRate": 15,
       "months": {
         "2025-01": {
-          "revenue": 2875,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-02": {
-          "revenue": 2875,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-03": {
-          "revenue": 4500,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-04": {
-          "revenue": 4500,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-05": {
-          "revenue": 5000,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-06": {
-          "revenue": 5000,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-07": {
-          "revenue": 5000,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-08": {
-          "revenue": 5500,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-09": {
-          "revenue": 5500,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-10": {
-          "revenue": 5500,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-11": {
-          "revenue": 5500,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-12": {
-          "revenue": 6000,
-          "expenses": 300
+          "revenue": 0,
+          "expenses": 0,
+          "expenseEntries": []
         }
+      },
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
       }
     },
     {
@@ -655,7 +2057,46 @@
         "revenue": 0,
         "expenses": 0
       },
-      "months": {}
+      "months": {
+        "2026-01": {
+          "entries": [],
+          "revenue": 0,
+          "expenses": 0
+        },
+        "2026-02": {
+          "revenue": 0
+        },
+        "2026-03": {
+          "revenue": 0
+        },
+        "2026-04": {
+          "revenue": 0
+        },
+        "2026-05": {
+          "revenue": 0
+        },
+        "2026-06": {
+          "revenue": 0
+        },
+        "2026-07": {
+          "revenue": 0
+        },
+        "2026-08": {
+          "revenue": 0
+        },
+        "2026-09": {
+          "revenue": 0
+        },
+        "2026-10": {
+          "revenue": 0
+        },
+        "2026-11": {
+          "revenue": 0
+        },
+        "2026-12": {
+          "revenue": 0
+        }
+      }
     },
     {
       "id": "fcs_mo92cf518j",
@@ -681,8 +2122,52 @@
       },
       "months": {
         "2026-01": {
-          "revenue": 1000,
-          "expenses": 2000
+          "revenue": 1,
+          "expenses": 0
+        },
+        "2026-02": {
+          "revenue": 0,
+          "expenses": 0
+        },
+        "2026-03": {
+          "revenue": 0,
+          "expenses": 0
+        },
+        "2026-04": {
+          "revenue": 0,
+          "expenses": 0
+        },
+        "2026-05": {
+          "revenue": 0,
+          "expenses": 0
+        },
+        "2026-06": {
+          "revenue": 0,
+          "expenses": 0
+        },
+        "2026-07": {
+          "revenue": 0,
+          "expenses": 0
+        },
+        "2026-08": {
+          "revenue": 0,
+          "expenses": 0
+        },
+        "2026-09": {
+          "revenue": 0,
+          "expenses": 0
+        },
+        "2026-10": {
+          "revenue": 0,
+          "expenses": 0
+        },
+        "2026-11": {
+          "revenue": 0,
+          "expenses": 0
+        },
+        "2026-12": {
+          "revenue": 0,
+          "expenses": 0
         }
       }
     },
@@ -721,26 +2206,112 @@
         "expenses": 0
       },
       "months": {}
-    }
-  ],
-  "inventory": [
-    {
-      "id": "ivt_mog7logd36",
-      "name": "Wine",
-      "stock": 0,
-      "unitPrice": 2,
-      "currency": "EUR",
-      "dateBought": "2026-04-26",
-      "comments": ""
     },
     {
-      "id": "ivt_mog7mqb08w",
-      "name": "1",
-      "stock": 0,
-      "unitPrice": 0,
-      "currency": "EUR",
-      "dateBought": "2026-04-26",
-      "comments": ""
+      "id": "fcs_moicrnko73",
+      "type": "property",
+      "entityId": "prop_mo946nvbck",
+      "year": 2025,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {
+        "2025-01": {
+          "revenue": 0
+        }
+      }
+    },
+    {
+      "id": "fcs_moict800n6",
+      "type": "property",
+      "entityId": "prop_moheuw76co",
+      "year": 2025,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {
+        "2025-01": {
+          "expenses": 0,
+          "revenue": 0
+        }
+      }
+    },
+    {
+      "id": "fcs_moicubaqo3",
+      "type": "property",
+      "entityId": "prop_moheuw76co",
+      "year": 2026,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
+    },
+    {
+      "id": "fcs_moicucntk6",
+      "type": "property",
+      "entityId": "prop_moheuw76co",
+      "year": 2028,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
+    },
+    {
+      "id": "fcs_moii0434mo",
+      "type": "property",
+      "entityId": "prop_mohfnur5bi",
+      "year": 2026,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
+    },
+    {
+      "id": "fcs_moii0a01b5",
+      "type": "property",
+      "entityId": "prop_mohfkihdlh",
+      "year": 2026,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
+    },
+    {
+      "id": "fcs_moim9h0zc6",
+      "type": "property",
+      "entityId": "prop_mo946nvbck",
+      "year": 2024,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
+    },
+    {
+      "id": "fcs_moj187qgbo",
+      "type": "service",
+      "entityId": "customer_success",
+      "year": 2024,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
     }
-  ]
+  ],
+  "inventory": []
 }

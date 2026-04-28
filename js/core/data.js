@@ -400,18 +400,14 @@ function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDa
 export function generatePaymentSchedule(property) {
   if (property.type !== 'long_term') return [];
 
-  // Use tenants collection when available; fall back to property-level fields for compatibility
   const tenants = (state.db.tenants || [])
     .filter(t => t.propertyId === property.id && t.monthlyRent)
     .sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || ''));
 
+  if (!tenants.length) return [];
+
   const vacantPeriods = property.vacantPeriods || [];
   const soldDate = (property.status === 'sold' && property.soldDate) ? property.soldDate : null;
-
-  if (!tenants.length) {
-    if (!property.monthlyRent) return [];
-    return _scheduleSegment(property.id, property, null, vacantPeriods, soldDate);
-  }
 
   // Merge segments from all tenants, deduplicate by monthKey (earlier lease wins)
   const all = [];
@@ -437,15 +433,15 @@ export function buildReconciliationData(year) {
       const isPast = monthEnd < now;
       let expected = 0, actual = 0;
 
-      if (prop.type === 'long_term' && prop.monthlyRent) {
-        // Expected = monthly rent if this month falls within the lease window
-        const ls = prop.leaseStartDate ? new Date(prop.leaseStartDate) : null;
-        const le = prop.leaseEndDate   ? new Date(prop.leaseEndDate)   : null;
-        const mStart = new Date(yr, m - 1, 1);
-        const inLease =
-          (!ls || mStart >= new Date(ls.getFullYear(), ls.getMonth(), 1)) &&
-          (!le || mStart <= new Date(le.getFullYear(), le.getMonth(), 1));
-        if (inLease) expected = toEUR(prop.monthlyRent, prop.currency, yr);
+      if (prop.type === 'long_term') {
+        const propTenants = (state.db.tenants || []).filter(t => t.propertyId === prop.id && t.monthlyRent);
+        const mStr = `${mk}-01`;
+        const tenant = propTenants.find(t => {
+          const ls = t.leaseStartDate ? t.leaseStartDate.slice(0, 7) + '-01' : null;
+          const le = t.leaseEndDate   ? t.leaseEndDate.slice(0, 7)   + '-01' : null;
+          return (!ls || mStr >= ls) && (!le || mStr <= le);
+        });
+        if (tenant) expected = toEUR(tenant.monthlyRent, tenant.currency || 'EUR', yr);
         actual = (state.db.payments || [])
           .filter(p => p.propertyId === prop.id && p.date >= start && p.date <= end && p.status === 'paid')
           .reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);

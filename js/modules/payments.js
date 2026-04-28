@@ -514,7 +514,7 @@ function kpiCard(label, value, sub, variant, onClick) {
 
 function buildUpcomingSection(wrap) {
   const tenantPropIds = new Set((state.db.tenants || []).filter(t => t.monthlyRent).map(t => t.propertyId));
-  const ltProps = (state.db.properties || []).filter(p => p.type === 'long_term' && (p.monthlyRent || tenantPropIds.has(p.id)));
+  const ltProps = (state.db.properties || []).filter(p => p.type === 'long_term' && tenantPropIds.has(p.id));
   if (ltProps.length === 0) {
     wrap.appendChild(el('div', { class: 'empty' }, 'No long-term rental properties configured'));
     return;
