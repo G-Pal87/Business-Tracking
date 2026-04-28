@@ -3,7 +3,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal } from '../core/ui.js';
 import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, groupByCategory } from '../core/data.js';
 import * as charts from '../core/charts.js';
-import { CURRENCIES, EXPENSE_CATEGORIES, STREAMS } from '../core/config.js';
+import { CURRENCIES, EXPENSE_CATEGORIES } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
 export default {
@@ -14,6 +14,21 @@ export default {
   refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() { charts.destroyAll(); }
 };
+
+function addPeriod(date, period) {
+  const d = new Date(date);
+  if (period === 'weekly')         d.setDate(d.getDate() + 7);
+  else if (period === 'monthly')   d.setMonth(d.getMonth() + 1);
+  else if (period === 'quarterly') d.setMonth(d.getMonth() + 3);
+  else if (period === 'annually')  d.setFullYear(d.getFullYear() + 1);
+  return d;
+}
+
+function addOneYear(dateStr) {
+  const d = new Date(dateStr);
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 function restoreInventoryStock(expense) {
   if (!expense.inventoryItemId || !expense.inventoryQty) return;
@@ -39,33 +54,10 @@ function build() {
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16 mt-24', style: 'flex-wrap:wrap' });
 
-  const streamSel = select([
-    { value: 'all', label: 'All rental types' },
-    ...Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short }))
+  const propSel = select([
+    { value: 'all', label: 'All Properties' },
+    ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))
   ], 'all');
-
-  // Property filter — rebuilt when stream changes
-  const propSel = el('select', { class: 'select' });
-  const updatePropOptions = () => {
-    const sv = streamSel.value;
-    const all = state.db.properties || [];
-    const relevant = sv === 'short_term_rental' ? all.filter(p => p.type === 'short_term')
-      : sv === 'long_term_rental'  ? all.filter(p => p.type === 'long_term')
-      : all;
-    const prev = propSel.value;
-    propSel.innerHTML = '';
-    const opt = document.createElement('option');
-    opt.value = 'all'; opt.textContent = 'All Properties';
-    propSel.appendChild(opt);
-    relevant.forEach(p => {
-      const o = document.createElement('option');
-      o.value = p.id; o.textContent = p.name;
-      if (p.id === prev) o.selected = true;
-      propSel.appendChild(o);
-    });
-    if (prev !== 'all' && !relevant.find(p => p.id === prev)) propSel.value = 'all';
-  };
-  updatePropOptions();
 
   const catSel = select([
     { value: 'all', label: 'All expenses' },
@@ -90,7 +82,6 @@ function build() {
   }});
   deleteSelBtn.style.display = 'none';
 
-  filterBar.appendChild(streamSel);
   filterBar.appendChild(propSel);
   filterBar.appendChild(catSel);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
@@ -117,9 +108,8 @@ function build() {
     tableWrap.innerHTML = '';
 
     let rows = [...(state.db.expenses || [])];
-    if (propSel.value !== 'all')   rows = rows.filter(r => r.propertyId === propSel.value);
-    if (catSel.value !== 'all')    rows = rows.filter(r => r.category === catSel.value);
-    if (streamSel.value !== 'all') rows = rows.filter(r => r.stream === streamSel.value);
+    if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
+    if (catSel.value !== 'all')  rows = rows.filter(r => r.category === catSel.value);
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
     if (rows.length === 0) {
@@ -162,7 +152,10 @@ function build() {
       tr.appendChild(el('td', {}, fmtDate(r.date)));
       tr.appendChild(el('td', {}, prop?.name || '-'));
       tr.appendChild(el('td', {}, el('span', { class: 'badge ' + (r.category === 'renovation' ? 'warning' : '') }, cat?.label || r.category)));
-      tr.appendChild(el('td', {}, r.description || ''));
+      const descCell = el('td', {});
+      if (r.recurringGroupId) descCell.appendChild(el('span', { class: 'badge', style: 'margin-right:4px;font-size:10px' }, '↻'));
+      descCell.appendChild(document.createTextNode(r.description || ''));
+      tr.appendChild(descCell);
       tr.appendChild(el('td', {}, r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || '')));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
@@ -216,8 +209,7 @@ function build() {
   // Dashboard: respects stream + property filters; category filter stays for table only
   const renderDash = () => {
     let bkRows = [...(state.db.expenses || [])];
-    if (streamSel.value !== 'all') bkRows = bkRows.filter(r => r.stream === streamSel.value);
-    if (propSel.value !== 'all')   bkRows = bkRows.filter(r => r.propertyId === propSel.value);
+    if (propSel.value !== 'all') bkRows = bkRows.filter(r => r.propertyId === propSel.value);
 
     // By Category doughnut
     const byCat = groupByCategory(bkRows);
@@ -268,9 +260,8 @@ function build() {
 
   const renderAll = () => { renderTable(); renderDash(); };
 
-  streamSel.onchange = () => { updatePropOptions(); renderAll(); };
-  propSel.onchange   = renderAll;
-  catSel.onchange    = renderTable; // category filter affects table only
+  propSel.onchange = renderAll;
+  catSel.onchange  = renderTable;
 
   renderTable();
   // Defer chart render until canvas elements are in the DOM
@@ -305,7 +296,6 @@ function openForm(existing, defaults = {}) {
   const dateI = input({ type: 'date', value: r.date });
   const descT = textarea({ placeholder: 'Description' });
   descT.value = r.description || '';
-  const streamS = select(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), r.stream);
 
   const invItemOpts = [
     { value: '', label: '— Select item —' },
@@ -318,13 +308,32 @@ function openForm(existing, defaults = {}) {
   const invQtyI  = input({ type: 'number', value: r.inventoryQty || 1, min: 1, step: 1 });
   const invRow   = el('div', { class: 'form-row horizontal' }, formRow('Item', invItemS), formRow('Qty', invQtyI));
 
+  // Recurring — only shown for new expenses
+  const recurChk = el('input', { type: 'checkbox' });
+  const recurPeriodS = select([
+    { value: 'weekly',    label: 'Weekly' },
+    { value: 'monthly',   label: 'Monthly' },
+    { value: 'quarterly', label: 'Quarterly' },
+    { value: 'annually',  label: 'Annually' }
+  ], 'monthly');
+  const recurEndI = input({ type: 'date', value: addOneYear(r.date || today()) });
+  const recurOptsRow = el('div', { class: 'form-row horizontal' }, formRow('Period', recurPeriodS), formRow('Repeat Until', recurEndI));
+  recurOptsRow.style.display = 'none';
+  recurChk.onchange = () => { recurOptsRow.style.display = recurChk.checked ? '' : 'none'; };
+
   body.appendChild(formRow('Property', propS));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Category', catS), formRow('Stream', streamS)));
+  body.appendChild(formRow('Category', catS));
   body.appendChild(invRow);
   const vendorRow = formRow('Vendor', vendorS);
   body.appendChild(vendorRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', currencyS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI)));
+  if (!existing) {
+    body.appendChild(el('div', { style: 'padding:8px 0 2px' },
+      el('label', { style: 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px' }, recurChk, ' Recurring'),
+      recurOptsRow
+    ));
+  }
   body.appendChild(formRow('Description', descT));
 
   const autoFillAmount = () => {
@@ -351,7 +360,7 @@ function openForm(existing, defaults = {}) {
 
   const syncInventoryRow = () => {
     const isInv = catS.value === 'inventory';
-    invRow.style.display   = isInv ? '' : 'none';
+    invRow.style.display    = isInv ? '' : 'none';
     vendorRow.style.display = isInv ? 'none' : '';
   };
   syncInventoryRow();
@@ -364,11 +373,7 @@ function openForm(existing, defaults = {}) {
   vendorS.onchange = autoFillAmount;
   propS.onchange = () => {
     const p = byId('properties', propS.value);
-    if (p) {
-      streamS.value = p.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
-      currencyS.value = p.currency;
-      autoFillAmount();
-    }
+    if (p) { currencyS.value = p.currency; autoFillAmount(); }
   };
   invItemS.onchange = syncInventoryAmount;
   invQtyI.oninput   = syncInventoryAmount;
@@ -405,19 +410,39 @@ function openForm(existing, defaults = {}) {
 
     if (Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
     const selectedVendor = vendorS.value ? byId('vendors', vendorS.value) : null;
+    const prop = byId('properties', propS.value);
+    const autoStream = prop?.type === 'short_term' ? 'short_term_rental'
+      : prop?.type === 'long_term' ? 'long_term_rental'
+      : r.stream || 'short_term_rental';
     Object.assign(r, {
-      propertyId: propS.value,
-      category: catS.value,
-      amount: Number(amountI.value),
-      currency: currencyS.value,
-      date: dateI.value,
-      vendorId: vendorS.value || '',
-      vendor: selectedVendor?.name || r.vendor || '',
+      propertyId:  propS.value,
+      category:    catS.value,
+      amount:      Number(amountI.value),
+      currency:    currencyS.value,
+      date:        dateI.value,
+      vendorId:    vendorS.value || '',
+      vendor:      selectedVendor?.name || r.vendor || '',
       description: descT.value.trim(),
-      stream: streamS.value
+      stream:      autoStream
     });
-    upsert('expenses', r);
-    toast(existing ? 'Expense updated' : 'Expense added', 'success');
+
+    if (!existing && recurChk.checked && catS.value !== 'inventory') {
+      const period  = recurPeriodS.value;
+      const endDate = recurEndI.value || addOneYear(r.date);
+      const groupId = newId('rgrp');
+      let d = new Date(r.date);
+      const end = new Date(endDate);
+      let count = 0;
+      while (d <= end && count < 120) {
+        upsert('expenses', { ...r, id: newId('exp'), date: d.toISOString().slice(0, 10), recurringGroupId: groupId });
+        d = addPeriod(d, period);
+        count++;
+      }
+      toast(`${count} recurring expense(s) added`, 'success');
+    } else {
+      upsert('expenses', r);
+      toast(existing ? 'Expense updated' : 'Expense added', 'success');
+    }
     closeModal();
     setTimeout(() => navigate('expenses'), 200);
   }});
