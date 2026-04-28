@@ -4607,6 +4607,24 @@
       "email": "",
       "notes": "",
       "rates": {}
+    },
+    {
+      "id": "vnd_moi9r96ng2",
+      "name": "Csaba",
+      "role": "handyman",
+      "phone": "",
+      "email": "",
+      "notes": "",
+      "rates": {},
+      "pricingMode": "hourly",
+      "hourlyRate": 0,
+      "currency": "HUF",
+      "aptTypeRates": {
+        "studio": 0,
+        "one_bedroom": 0,
+        "two_bedroom": 0,
+        "three_bedroom_plus": 0
+      }
     }
   ],
   "tenants": [
