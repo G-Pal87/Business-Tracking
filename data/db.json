@@ -4236,14 +4236,7 @@
         "2025-10": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": [
-            {
-              "id": "expe_moilrhgoh7",
-              "description": "",
-              "amount": 0,
-              "notes": ""
-            }
-          ]
+          "expenseEntries": []
         },
         "2025-11": {
           "revenue": 0,
