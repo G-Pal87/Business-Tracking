@@ -4134,7 +4134,8 @@
         },
         "2025-02": {
           "revenue": 0,
-          "expenses": 500
+          "expenses": 0,
+          "expenseEntries": []
         },
         "2025-03": {
           "revenue": 0,
