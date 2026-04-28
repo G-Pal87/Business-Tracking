@@ -863,9 +863,15 @@ function buildTaxSection(wrap) {
   document.addEventListener('click', () => { strMenu.style.display = 'none'; });
   strWrapper.appendChild(strTrigger); strWrapper.appendChild(strMenu);
 
-  // --- Property filter (updates based on selected streams) ---
+  // --- Property filter — checklist (updates based on selected streams) ---
   const allProps = state.db.properties || [];
-  const propSel = el('select', { class: 'select' });
+  let selPropIds = new Set(); // empty = all; non-empty = specific selected ids
+
+  const propWrapper = el('div', { style: 'position:relative' });
+  const propTrigLabel = el('span', {}, 'All Properties');
+  const propTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:160px;user-select:none' }, propTrigLabel);
+  const propMenu = el('div', { style: 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:220px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0' });
+  let allPropChk = null, propChks = [];
 
   const getRelevantProps = () => {
     const hasST = selStreams.has('short_term_rental');
@@ -874,23 +880,46 @@ function buildTaxSection(wrap) {
     return allProps.filter(p => (hasST && p.type === 'short_term') || (hasLT && p.type === 'long_term'));
   };
 
+  const syncPropSel = () => {
+    const sel = propChks.filter(c => c.checked);
+    const n = sel.length, total = propChks.length;
+    if (allPropChk) { allPropChk.checked = n === total; allPropChk.indeterminate = n > 0 && n < total; }
+    propTrigLabel.textContent = (n === 0 || n === total) ? 'All Properties'
+      : n === 1 ? (allProps.find(p => p.id === sel[0].dataset.id)?.name || '1 Property')
+      : `${n} Properties`;
+    selPropIds = (n === 0 || n === total) ? new Set() : new Set(sel.map(c => c.dataset.id));
+  };
+
   const updatePropOptions = () => {
     const relevant = getRelevantProps();
-    const prev = propSel.value;
-    propSel.innerHTML = '';
-    const allOpt = document.createElement('option');
-    allOpt.value = 'all'; allOpt.textContent = 'All Properties';
-    propSel.appendChild(allOpt);
-    relevant.forEach(p => {
-      const o = document.createElement('option');
-      o.value = p.id; o.textContent = p.name;
-      if (p.id === prev) o.selected = true;
-      propSel.appendChild(o);
+    propMenu.innerHTML = ''; propChks = [];
+    propWrapper.style.display = relevant.length === 0 ? 'none' : '';
+    if (relevant.length === 0) { selPropIds = new Set(); propTrigLabel.textContent = 'All Properties'; return; }
+
+    allPropChk = el('input', { type: 'checkbox' });
+    allPropChk.checked = true;
+    propMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px' },
+      allPropChk, el('span', {}, 'All Properties')));
+
+    propChks = relevant.map(p => {
+      const chk = el('input', { type: 'checkbox' });
+      chk.dataset.id = p.id;
+      chk.checked = selPropIds.size === 0 || selPropIds.has(p.id);
+      propMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px' },
+        chk, el('span', {}, p.name)));
+      return chk;
     });
-    if (prev !== 'all' && !relevant.find(p => p.id === prev)) propSel.value = 'all';
-    propSel.style.display = relevant.length === 0 ? 'none' : '';
+
+    allPropChk.onchange = () => { propChks.forEach(c => { c.checked = allPropChk.checked; }); allPropChk.indeterminate = false; syncPropSel(); render(); };
+    propChks.forEach(chk => { chk.onchange = () => { syncPropSel(); render(); }; });
+    syncPropSel();
   };
   updatePropOptions();
+
+  propTrigger.onclick = e => { e.stopPropagation(); propMenu.style.display = propMenu.style.display === 'none' ? '' : 'none'; };
+  propMenu.onclick = e => e.stopPropagation();
+  document.addEventListener('click', () => { propMenu.style.display = 'none'; });
+  propWrapper.appendChild(propTrigger); propWrapper.appendChild(propMenu);
 
   const controls = el('div', { class: 'flex gap-8 mb-16 items-center', style: 'flex-wrap:wrap' });
   controls.appendChild(el('span', { class: 'muted' }, 'Year:'));
@@ -898,7 +927,7 @@ function buildTaxSection(wrap) {
   controls.appendChild(el('span', { class: 'muted' }, 'Tax rate %:'));
   controls.appendChild(rateI);
   controls.appendChild(strWrapper);
-  controls.appendChild(propSel);
+  controls.appendChild(propWrapper);
   wrap.appendChild(controls);
 
   const resultsWrap = el('div', {});
@@ -915,23 +944,23 @@ function buildTaxSection(wrap) {
   const getFiltered = () => {
     const y = yearSel.value;
     const s = `${y}-01-01`, e2 = `${y}-12-31`;
-    const pid = propSel.value;
     const r = Number(rateI.value) || 0;
+    const propOk = id => selPropIds.size === 0 || selPropIds.has(id);
 
     const pays = (state.db.payments || []).filter(p =>
       p.status === 'paid' && p.date >= s && p.date <= e2 &&
       selStreams.has(p.stream) &&
-      (pid === 'all' || p.propertyId === pid)
+      propOk(p.propertyId)
     );
-    // Invoices are service-based (no propertyId); only include when no property filter
+    // Invoices are service-based (no propertyId); include only when no property filter
     const invs = (state.db.invoices || []).filter(i =>
       i.status === 'paid' && i.issueDate >= s && i.issueDate <= e2 &&
       selStreams.has(i.stream) &&
-      pid === 'all'
+      selPropIds.size === 0
     );
     const exps = (state.db.expenses || []).filter(ex =>
       ex.category !== 'renovation' && ex.date >= s && ex.date <= e2 &&
-      (pid === 'all' || ex.propertyId === pid)
+      propOk(ex.propertyId)
     );
 
     // Map selected streams → forecast entityIds
@@ -939,12 +968,8 @@ function buildTaxSection(wrap) {
     for (const k of selStreams) {
       if (k === 'short_term_rental' || k === 'long_term_rental') {
         const ptype = k === 'short_term_rental' ? 'short_term' : 'long_term';
-        if (pid !== 'all') {
-          if (allProps.find(p => p.id === pid)?.type === ptype) fcEntityIds.push(pid);
-        } else {
-          allProps.filter(p => p.type === ptype).forEach(p => fcEntityIds.push(p.id));
-        }
-      } else if (pid === 'all') {
+        allProps.filter(p => p.type === ptype && propOk(p.id)).forEach(p => fcEntityIds.push(p.id));
+      } else if (selPropIds.size === 0) {
         fcEntityIds.push(k); // 'customer_success' | 'marketing_services'
       }
     }
@@ -1060,10 +1085,9 @@ function buildTaxSection(wrap) {
 
     // Chart: per selected stream, filtered by property
     const visibleStreamKeys = streamKeys.filter(k => selStreams.has(k));
-    const pid = propSel.value;
     const streamRevs = visibleStreamKeys.map(k => {
-      const p2 = (state.db.payments || []).filter(p => p.stream === k && p.status === 'paid' && p.date?.startsWith(y) && (pid === 'all' || p.propertyId === pid));
-      const i2 = pid === 'all' ? (state.db.invoices || []).filter(i => i.stream === k && i.status === 'paid' && i.issueDate?.startsWith(y)) : [];
+      const p2 = (state.db.payments || []).filter(p => p.stream === k && p.status === 'paid' && p.date?.startsWith(y) && (selPropIds.size === 0 || selPropIds.has(p.propertyId)));
+      const i2 = selPropIds.size === 0 ? (state.db.invoices || []).filter(i => i.stream === k && i.status === 'paid' && i.issueDate?.startsWith(y)) : [];
       return Math.round([...p2.map(p => toEUR(p.amount, p.currency)), ...i2.map(i => toEUR(i.total, i.currency))].reduce((a, b) => a + b, 0));
     });
     charts.bar('fc-tax-chart', {
