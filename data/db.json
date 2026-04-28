@@ -4190,7 +4190,15 @@
       "months": {
         "2025-01": {
           "revenue": 0,
-          "expenses": 300
+          "expenses": 0,
+          "expenseEntries": [
+            {
+              "id": "expe_moilptjvd",
+              "description": "",
+              "amount": 0,
+              "notes": ""
+            }
+          ]
         },
         "2025-02": {
           "revenue": 0,
