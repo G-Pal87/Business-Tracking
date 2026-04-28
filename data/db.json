@@ -4243,7 +4243,15 @@
         },
         "2025-06": {
           "revenue": 0,
-          "expenses": 300
+          "expenses": 0,
+          "expenseEntries": [
+            {
+              "id": "expe_moilr2e7gc",
+              "description": "",
+              "amount": 0,
+              "notes": ""
+            }
+          ]
         },
         "2025-07": {
           "revenue": 0,
