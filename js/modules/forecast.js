@@ -1,6 +1,6 @@
 // Forecast module: monthly grid per property/service, stored, tax estimation
 import { state } from '../core/state.js';
-import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal } from '../core/ui.js';
+import { el, select, selVals, input, button, formRow, toast, fmtDate, openModal, closeModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, setForecastTaxRate, getForecastVsActual, estimateTaxForYear, getForecastEntries, upsertForecastEntry, removeForecastEntry } from '../core/data.js';
 import { STREAMS } from '../core/config.js';
@@ -61,12 +61,34 @@ function buildPropertySection(wrap) {
   const props = (state.db.properties || []).filter(p => p.status !== 'renovation');
   if (props.length === 0) { wrap.appendChild(el('div', { class: 'empty' }, 'No active properties to forecast')); return; }
 
-  const year = new Date().getFullYear();
-  const years = [year - 1, year, year + 1, year + 2];
-  const propSel = select(props.map(p => ({ value: p.id, label: p.name })), props[0].id);
-  const yearSel = select(years.map(y => ({ value: y, label: String(y) })), year);
+  const propSel = select(props.map(p => ({ value: p.id, label: p.name })), props[0].id, { multiple: true, size: Math.min(4, props.length) });
+  const yearSel = el('select', { class: 'select' });
 
-  const controls = el('div', { class: 'flex gap-8 mb-16' });
+  const getSelIds = () => {
+    const vals = selVals(propSel);
+    return vals && vals.length > 0 ? vals : [props[0].id];
+  };
+
+  const updateYearOptions = () => {
+    const selIds = getSelIds();
+    const forecasts = (state.db.forecasts || []).filter(f => f.type === 'property' && selIds.includes(f.entityId));
+    const years = new Set(forecasts.map(f => String(f.year)));
+    years.add(String(new Date().getFullYear()));
+    const sorted = [...years].sort();
+    const prev = yearSel.value;
+    yearSel.innerHTML = '';
+    sorted.forEach(y => {
+      const o = document.createElement('option');
+      o.value = y; o.textContent = y;
+      if (y === prev) o.selected = true;
+      yearSel.appendChild(o);
+    });
+    if (!yearSel.value && sorted.length) yearSel.value = sorted[sorted.length - 1];
+  };
+
+  updateYearOptions();
+
+  const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:flex-start' });
   controls.appendChild(propSel);
   controls.appendChild(yearSel);
   wrap.appendChild(controls);
@@ -80,59 +102,84 @@ function buildPropertySection(wrap) {
       el('div', { class: 'chart-wrap' }, el('canvas', { id: 'fc-prop-chart' }))
     ),
     el('div', { class: 'card' },
-      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Annual Summary' )),
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Annual Summary')),
       el('div', { id: 'fc-prop-summary' })
     )
   );
   wrap.appendChild(chartWrap);
 
+  const getAggregated = () => {
+    const propIds = getSelIds();
+    const year = yearSel.value;
+    const results = propIds.map(id => getForecastVsActual('property', id, year));
+    const months = results[0].months.map((_, i) => ({
+      key: results[0].months[i].key,
+      forecastRev: results.reduce((s, r) => s + r.months[i].forecastRev, 0),
+      forecastExp: results.reduce((s, r) => s + r.months[i].forecastExp, 0),
+      actualRev:   results.reduce((s, r) => s + r.months[i].actualRev, 0),
+      actualExp:   results.reduce((s, r) => s + r.months[i].actualExp, 0),
+      revVariance: results.reduce((s, r) => s + r.months[i].revVariance, 0),
+    }));
+    const yearTarget = {
+      revenue:  results.reduce((s, r) => s + (r.yearTarget?.revenue || 0), 0),
+      expenses: results.reduce((s, r) => s + (r.yearTarget?.expenses || 0), 0),
+    };
+    return { months, yearTarget };
+  };
+
   const render = () => {
+    updateYearOptions();
+    const selIds = getSelIds();
     gridWrap.innerHTML = '';
-    gridWrap.appendChild(buildMonthlyGrid(propSel.value, yearSel.value, 'property', () => { renderChart(); renderSummary(); }));
+    if (selIds.length === 1) {
+      gridWrap.appendChild(buildMonthlyGrid(selIds[0], yearSel.value, 'property', () => { renderChart(); renderSummary(); }));
+    } else {
+      gridWrap.appendChild(buildAggregatedGrid(selIds, yearSel.value));
+    }
     renderChart();
     renderSummary();
   };
 
   const renderChart = () => {
-    const { months } = getForecastVsActual('property', propSel.value, yearSel.value);
+    const { months } = getAggregated();
     charts.bar('fc-prop-chart', {
       labels: MONTHS,
       datasets: [
         { label: 'Forecast Rev', data: months.map(m => Math.round(m.forecastRev)), backgroundColor: 'rgba(99,102,241,0.5)', borderColor: '#6366f1', borderWidth: 1 },
-        { label: 'Actual Rev', data: months.map(m => Math.round(m.actualRev)), backgroundColor: '#10b981' },
-        { label: 'Variance', data: months.map(m => Math.round(m.revVariance)), backgroundColor: m => m.raw < 0 ? '#ef4444' : '#10b981' }
+        { label: 'Actual Rev',   data: months.map(m => Math.round(m.actualRev)),   backgroundColor: '#10b981' },
+        { label: 'Variance',     data: months.map(m => Math.round(m.revVariance)), backgroundColor: m => m.raw < 0 ? '#ef4444' : '#10b981' }
       ]
     });
   };
 
   const renderSummary = () => {
-    const { forecast, months, yearTarget } = getForecastVsActual('property', propSel.value, yearSel.value);
+    const { months, yearTarget } = getAggregated();
     const forecastRev = months.reduce((s, m) => s + m.forecastRev, 0);
     const forecastExp = months.reduce((s, m) => s + m.forecastExp, 0);
-    const actualRev = months.reduce((s, m) => s + m.actualRev, 0);
-    const actualExp = months.reduce((s, m) => s + m.actualExp, 0);
+    const actualRev   = months.reduce((s, m) => s + m.actualRev, 0);
+    const actualExp   = months.reduce((s, m) => s + m.actualExp, 0);
     const el2 = document.getElementById('fc-prop-summary');
     if (!el2) return;
     el2.innerHTML = '';
     const items = [
-      summaryRow('Forecast Revenue', formatEUR(forecastRev)),
-      summaryRow('Forecast Expenses', formatEUR(forecastExp)),
-      summaryRow('Forecast Net', formatEUR(forecastRev - forecastExp)),
+      summaryRow('Forecast Revenue',      formatEUR(forecastRev)),
+      summaryRow('Forecast Expenses',     formatEUR(forecastExp)),
+      summaryRow('Forecast Net',          formatEUR(forecastRev - forecastExp)),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
-      summaryRow('Actual Revenue YTD', formatEUR(actualRev)),
-      summaryRow('Actual Expenses YTD', formatEUR(actualExp)),
-      summaryRow('Actual Net YTD', formatEUR(actualRev - actualExp)),
+      summaryRow('Actual Revenue YTD',    formatEUR(actualRev)),
+      summaryRow('Actual Expenses YTD',   formatEUR(actualExp)),
+      summaryRow('Actual Net YTD',        formatEUR(actualRev - actualExp)),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
-      summaryRow('Revenue Variance YTD', formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger'),
+      summaryRow('Revenue Variance YTD',  formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger'),
     ];
     if (yearTarget.revenue || yearTarget.expenses) {
       const ytRev = yearTarget.revenue || 0;
       items.push(
         el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
-        summaryRow('Annual Target Revenue', formatEUR(ytRev)),
+        summaryRow('Annual Target Revenue',  formatEUR(ytRev)),
         summaryRow('Annual Target Expenses', formatEUR(yearTarget.expenses || 0)),
-        summaryRow('Forecast vs Target', formatEUR(forecastRev - ytRev), forecastRev >= ytRev ? 'success' : 'danger'),
-        summaryRow('Actual vs Target', formatEUR(actualRev - ytRev), actualRev >= ytRev ? 'success' : 'danger'),
+        summaryRow('Forecast vs Target',     formatEUR(forecastRev - ytRev), forecastRev >= ytRev ? 'success' : 'danger'),
+        summaryRow('Actual vs Target',       formatEUR(actualRev   - ytRev), actualRev   >= ytRev ? 'success' : 'danger'),
       );
     }
     el2.appendChild(el('div', { class: 'flex-col gap-8', style: 'padding:16px' }, ...items));
@@ -290,7 +337,10 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
       const rev12 = Math.round((yt.revenue || 0) / 12);
       for (let m = 1; m <= 12; m++) {
         const data = { revenue: rev12 };
-        if (type === 'property') data.expenses = Math.round((yt.expenses || 0) / 12);
+        if (type === 'property') {
+          data.expenses = Math.round((yt.expenses || 0) / 12);
+          data.expenseEntries = [];
+        }
         saveForecastMonth(fc.id, `${year}-${String(m).padStart(2, '0')}`, data);
       }
       renderRows();
@@ -336,7 +386,11 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
       } else {
         tr.appendChild(makeEditable('revenue', mData.forecastRev));
       }
-      tr.appendChild(makeEditable('expenses', mData.forecastExp));
+      if (type === 'property') {
+        tr.appendChild(makeExpEntriesCell(monthKey, mData.forecastExp, i));
+      } else {
+        tr.appendChild(makeEditable('expenses', mData.forecastExp));
+      }
       tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
       tr.appendChild(el('td', { class: 'right num ' + (isPast ? '' : 'muted') }, formatEUR(mData.actualRev)));
       tr.appendChild(el('td', { class: `right num ${mData.revVariance >= 0 ? '' : 'danger'}` }, isPast || mData.actualRev > 0 ? formatEUR(mData.revVariance) : '—'));
@@ -422,6 +476,95 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
     openModal({ title: `Forecast Entries — ${monthLabel}`, body, footer: [addBtn, doneBtn], large: true });
   }
 
+  function makeExpEntriesCell(monthKey, currentExp, monthIdx) {
+    const cell = el('td', { class: 'right num' });
+    const entries = fc.months?.[monthKey]?.expenseEntries || [];
+    const sub = entries.length ? el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' }, `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`) : null;
+    cell.appendChild(el('div', {}, formatEUR(currentExp)));
+    if (sub) cell.appendChild(sub);
+    cell.style.cursor = 'pointer';
+    cell.title = 'Click to manage expense entries';
+    cell.onclick = () => openExpEntriesEditor(monthKey, `${MONTHS[monthIdx]} ${year}`);
+    return cell;
+  }
+
+  function openExpEntriesEditor(monthKey, monthLabel) {
+    const body = el('div', {});
+    const listWrap = el('div', {});
+    body.appendChild(listWrap);
+
+    const getEntries = () => fc.months?.[monthKey]?.expenseEntries || [];
+
+    const saveEntries = (entries) => {
+      const total = entries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      saveForecastMonth(fc.id, monthKey, { expenseEntries: entries, expenses: total });
+    };
+
+    const refresh = () => {
+      listWrap.innerHTML = '';
+      const entries = getEntries();
+
+      if (entries.length === 0) {
+        listWrap.appendChild(el('div', { class: 'empty', style: 'padding:24px' }, 'No expense entries yet — click "Add Entry" below.'));
+      } else {
+        const t = el('table', { class: 'table' });
+        t.innerHTML = '<thead><tr><th>Description</th><th class="right" style="width:130px">Amount (€)</th><th>Category / Notes</th><th style="width:60px"></th></tr></thead>';
+        const tb2 = el('tbody');
+        for (const e of entries) {
+          const tr = el('tr');
+          const descI = input({ value: e.description || '', placeholder: 'e.g. Cleaning, Maintenance' });
+          const amtI  = input({ type: 'number', value: e.amount || 0, min: 0, step: 0.01, style: 'text-align:right' });
+          const noteI = input({ value: e.notes || '', placeholder: 'Category or notes' });
+          const commit = () => {
+            e.description = descI.value.trim();
+            e.amount = Number(amtI.value) || 0;
+            e.notes = noteI.value.trim();
+            saveEntries(getEntries());
+            rebuildTotals();
+            if (onChange) onChange();
+            refresh();
+          };
+          descI.onchange = commit;
+          amtI.onchange  = commit;
+          noteI.onchange = commit;
+          tr.appendChild(el('td', {}, descI));
+          tr.appendChild(el('td', { class: 'right' }, amtI));
+          tr.appendChild(el('td', {}, noteI));
+          tr.appendChild(el('td', { class: 'right' }, button('Del', { variant: 'sm ghost', onClick: () => {
+            const updated = getEntries().filter(x => x !== e);
+            saveEntries(updated);
+            refresh();
+            rebuildTotals();
+            if (onChange) onChange();
+          }})));
+          tb2.appendChild(tr);
+        }
+        t.appendChild(tb2);
+        const tw2 = el('div', { class: 'table-wrap' }); tw2.appendChild(t);
+        listWrap.appendChild(tw2);
+      }
+
+      const total = getEntries().reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      listWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:12px 16px;margin-top:12px;border-top:1px solid var(--border);font-weight:600' },
+        el('span', {}, 'Monthly Total'),
+        el('span', { class: 'num' }, formatEUR(total))
+      ));
+    };
+
+    refresh();
+
+    const addBtn = button('+ Add Entry', { variant: 'primary', onClick: () => {
+      const updated = [...getEntries(), { id: newId('expe'), description: '', amount: 0, notes: '' }];
+      saveEntries(updated);
+      refresh();
+      rebuildTotals();
+      if (onChange) onChange();
+    }});
+    const doneBtn = button('Done', { onClick: () => { closeModal(); renderRows(); } });
+
+    openModal({ title: `Expense Entries — ${monthLabel}`, body, footer: [addBtn, doneBtn], large: true });
+  }
+
   function appendTotals(months, yearTarget) {
     const fcRev = months.reduce((s, m) => s + m.forecastRev, 0);
     const fcExp = months.reduce((s, m) => s + m.forecastExp, 0);
@@ -457,6 +600,87 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
       tb.appendChild(ytRow);
     }
   }
+}
+
+// ===== AGGREGATED PROPERTY GRID (multi-select, read-only) =====
+function buildAggregatedGrid(propIds, year) {
+  const card = el('div', { class: 'card' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, `Aggregated Forecast — ${year}`),
+    el('div', { class: 'muted', style: 'font-size:12px' }, `${propIds.length} properties selected`)
+  ));
+
+  const results = propIds.map(id => getForecastVsActual('property', id, year));
+  const months = results[0].months.map((_, i) => ({
+    key: results[0].months[i].key,
+    forecastRev: results.reduce((s, r) => s + r.months[i].forecastRev, 0),
+    forecastExp: results.reduce((s, r) => s + r.months[i].forecastExp, 0),
+    actualRev:   results.reduce((s, r) => s + r.months[i].actualRev, 0),
+    revVariance: results.reduce((s, r) => s + r.months[i].revVariance, 0),
+  }));
+  const yearTarget = {
+    revenue:  results.reduce((s, r) => s + (r.yearTarget?.revenue || 0), 0),
+    expenses: results.reduce((s, r) => s + (r.yearTarget?.expenses || 0), 0),
+  };
+
+  const t = el('table', { class: 'table' });
+  t.innerHTML = `<thead><tr>
+    <th>Month</th>
+    <th class="right">Forecast Revenue</th>
+    <th class="right">Forecast Expenses</th>
+    <th class="right">Forecast Net</th>
+    <th class="right">Actual Revenue</th>
+    <th class="right">Variance</th>
+  </tr></thead>`;
+  const tb = el('tbody');
+
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const m = months[i];
+    const isPast = new Date(Number(year), i + 1, 0) < now;
+    const net = m.forecastRev - m.forecastExp;
+    const tr = el('tr');
+    tr.appendChild(el('td', {}, MONTHS[i]));
+    tr.appendChild(el('td', { class: 'right num' }, formatEUR(m.forecastRev)));
+    tr.appendChild(el('td', { class: 'right num' }, formatEUR(m.forecastExp)));
+    tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
+    tr.appendChild(el('td', { class: 'right num ' + (isPast ? '' : 'muted') }, formatEUR(m.actualRev)));
+    tr.appendChild(el('td', { class: `right num ${m.revVariance >= 0 ? '' : 'danger'}` }, isPast || m.actualRev > 0 ? formatEUR(m.revVariance) : '—'));
+    tb.appendChild(tr);
+  }
+
+  const fcRev = months.reduce((s, m) => s + m.forecastRev, 0);
+  const fcExp = months.reduce((s, m) => s + m.forecastExp, 0);
+  const fcNet = fcRev - fcExp;
+  const actRev = months.reduce((s, m) => s + m.actualRev, 0);
+  const variance = actRev - fcRev;
+  const tRow = el('tr', { style: 'font-weight:600;background:var(--bg-elev-2)' });
+  tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em' }, 'TOTAL'));
+  tRow.appendChild(el('td', { class: 'right num' }, formatEUR(fcRev)));
+  tRow.appendChild(el('td', { class: 'right num' }, formatEUR(fcExp)));
+  tRow.appendChild(el('td', { class: 'right num' + (fcNet < 0 ? ' danger' : '') }, formatEUR(fcNet)));
+  tRow.appendChild(el('td', { class: 'right num' }, formatEUR(actRev)));
+  tRow.appendChild(el('td', { class: `right num ${variance >= 0 ? '' : 'danger'}` }, formatEUR(variance)));
+  tb.appendChild(tRow);
+
+  if (yearTarget.revenue || yearTarget.expenses) {
+    const ytRev = yearTarget.revenue || 0;
+    const ytExp = yearTarget.expenses || 0;
+    const ytNet = ytRev - ytExp;
+    const ytRow = el('tr', { style: 'font-size:11px;color:var(--text-muted);background:var(--bg-elev-3)' });
+    ytRow.appendChild(el('td', {}, 'vs Annual Target'));
+    ytRow.appendChild(el('td', { class: 'right num' + (fcRev - ytRev >= 0 ? '' : ' danger') }, formatEUR(fcRev - ytRev)));
+    ytRow.appendChild(el('td', { class: 'right num' + (fcExp - ytExp > 0 ? ' warning' : '') }, formatEUR(fcExp - ytExp)));
+    ytRow.appendChild(el('td', { class: 'right num' + (fcNet - ytNet >= 0 ? '' : ' danger') }, formatEUR(fcNet - ytNet)));
+    ytRow.appendChild(el('td', { class: 'right num' + (actRev >= ytRev ? '' : ' danger') }, formatEUR(actRev - ytRev)));
+    ytRow.appendChild(el('td', {}));
+    tb.appendChild(ytRow);
+  }
+
+  t.appendChild(tb);
+  const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+  card.appendChild(tw);
+  return card;
 }
 
 // ===== TAX ESTIMATION =====
