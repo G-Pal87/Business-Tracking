@@ -6424,7 +6424,11 @@
         "revenue": 0,
         "expenses": 0
       },
-      "months": {}
+      "months": {
+        "2025-01": {
+          "revenue": 0
+        }
+      }
     },
     {
       "id": "fcs_moict800n6",
