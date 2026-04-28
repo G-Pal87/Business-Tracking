@@ -6608,7 +6608,14 @@
       },
       "months": {
         "2026-01": {
-          "entries": [],
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_moiczfk4p7"
+            }
+          ],
           "revenue": 0,
           "expenses": 0
         },
