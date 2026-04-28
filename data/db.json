@@ -6690,6 +6690,18 @@
         "expenses": 0
       },
       "months": {}
+    },
+    {
+      "id": "fcs_moicrnko73",
+      "type": "property",
+      "entityId": "prop_mo946nvbck",
+      "year": 2025,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {}
     }
   ],
   "inventory": []
