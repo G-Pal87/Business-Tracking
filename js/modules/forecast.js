@@ -122,10 +122,7 @@ function buildPropertySection(wrap) {
   const yearSel = el('select', { class: 'select' });
 
   const updateYearOptions = () => {
-    const selIds = getSelIds();
-    const forecasts = (state.db.forecasts || []).filter(f => f.type === 'property' && selIds.includes(f.entityId));
-    const years = new Set(forecasts.map(f => String(f.year)));
-    availableYears().forEach(y => years.add(y));
+    const years = new Set(availableYears());
     const sorted = [...years].sort();
     const prev = yearSel.value;
     yearSel.innerHTML = '';
@@ -304,10 +301,7 @@ function buildServiceSection(wrap) {
   const yearSel = el('select', { class: 'select' });
 
   const updateYearOptions = () => {
-    const selIds = getSelIds();
-    const forecasts = (state.db.forecasts || []).filter(f => f.type === 'service' && selIds.includes(f.entityId));
-    const years = new Set(forecasts.map(f => String(f.year)));
-    availableYears().forEach(y => years.add(y));
+    const years = new Set(availableYears());
     const sorted = [...years].sort();
     const prev = yearSel.value;
     yearSel.innerHTML = '';
@@ -824,9 +818,8 @@ function buildAggregatedGrid(entityIds, year, type = 'property') {
 
 // ===== TAX ESTIMATION =====
 function buildTaxSection(wrap) {
-  const year = new Date().getFullYear();
-  const years = [year - 1, year, year + 1];
-  const yearSel = select(years.map(y => ({ value: y, label: String(y) })), year);
+  const availYears = availableYears().slice().reverse(); // ascending
+  const yearSel = select(availYears.map(y => ({ value: y, label: String(y) })), availYears[availYears.length - 1]);
   const rateI = input({ type: 'number', value: state.db.settings?.globalTaxRate || 15, min: 0, max: 100, step: 0.1, style: 'width:80px' });
 
   const controls = el('div', { class: 'flex gap-8 mb-16 items-center' });
