@@ -6586,6 +6586,10 @@
           "revenue": 6000,
           "expenses": 300
         }
+      },
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
       }
     },
     {
