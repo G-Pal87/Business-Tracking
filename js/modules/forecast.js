@@ -856,16 +856,41 @@ function buildTaxSection(wrap) {
     selStreams = new Set(sel.map(c => c.dataset.key));
   };
 
-  allStrChk.onchange = () => { strChks.forEach(c => { c.checked = allStrChk.checked; }); allStrChk.indeterminate = false; syncStrSel(); render(); };
-  strChks.forEach(chk => { chk.onchange = () => { syncStrSel(); render(); }; });
+  allStrChk.onchange = () => { strChks.forEach(c => { c.checked = allStrChk.checked; }); allStrChk.indeterminate = false; syncStrSel(); updatePropOptions(); render(); };
+  strChks.forEach(chk => { chk.onchange = () => { syncStrSel(); updatePropOptions(); render(); }; });
   strTrigger.onclick = e => { e.stopPropagation(); strMenu.style.display = strMenu.style.display === 'none' ? '' : 'none'; };
   strMenu.onclick = e => e.stopPropagation();
   document.addEventListener('click', () => { strMenu.style.display = 'none'; });
   strWrapper.appendChild(strTrigger); strWrapper.appendChild(strMenu);
 
-  // --- Property filter ---
+  // --- Property filter (updates based on selected streams) ---
   const allProps = state.db.properties || [];
-  const propSel = select([{ value: 'all', label: 'All Properties' }, ...allProps.map(p => ({ value: p.id, label: p.name }))], 'all');
+  const propSel = el('select', { class: 'select' });
+
+  const getRelevantProps = () => {
+    const hasST = selStreams.has('short_term_rental');
+    const hasLT = selStreams.has('long_term_rental');
+    if (!hasST && !hasLT) return [];
+    return allProps.filter(p => (hasST && p.type === 'short_term') || (hasLT && p.type === 'long_term'));
+  };
+
+  const updatePropOptions = () => {
+    const relevant = getRelevantProps();
+    const prev = propSel.value;
+    propSel.innerHTML = '';
+    const allOpt = document.createElement('option');
+    allOpt.value = 'all'; allOpt.textContent = 'All Properties';
+    propSel.appendChild(allOpt);
+    relevant.forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.id; o.textContent = p.name;
+      if (p.id === prev) o.selected = true;
+      propSel.appendChild(o);
+    });
+    if (prev !== 'all' && !relevant.find(p => p.id === prev)) propSel.value = 'all';
+    propSel.style.display = relevant.length === 0 ? 'none' : '';
+  };
+  updatePropOptions();
 
   const controls = el('div', { class: 'flex gap-8 mb-16 items-center', style: 'flex-wrap:wrap' });
   controls.appendChild(el('span', { class: 'muted' }, 'Year:'));
