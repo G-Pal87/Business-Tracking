@@ -659,6 +659,20 @@
       "stream": "short_term_rental",
       "inventoryItemId": "",
       "inventoryQty": 0
+    },
+    {
+      "id": "exp_moj1c828b1",
+      "propertyId": "prop_mo946nvbck",
+      "category": "renovation",
+      "amount": 200000,
+      "currency": "EUR",
+      "date": "2026-04-28",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "short_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0
     }
   ],
   "vendors": [
