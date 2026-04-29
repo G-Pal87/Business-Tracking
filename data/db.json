@@ -888,8 +888,10 @@
       "notes": "",
       "createdAt": 1777464057871,
       "createdBy": "Giorgos",
-      "updatedAt": 1777464057871,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777464188172,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777464188172,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "cli_mok090at5",
