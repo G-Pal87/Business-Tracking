@@ -847,7 +847,11 @@
       "deposit": 0,
       "paymentDayOfMonth": 10,
       "notes": "",
-      "status": "active"
+      "status": "active",
+      "deletedAt": 1777485953851,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485953851,
+      "updatedBy": "Giorgos"
     }
   ],
   "clients": [
