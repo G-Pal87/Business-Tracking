@@ -685,10 +685,8 @@
       "documents": [],
       "createdAt": 1777485911315,
       "createdBy": "Giorgos",
-      "updatedAt": 1777485925621,
-      "updatedBy": "Giorgos",
-      "deletedAt": 1777485925621,
-      "deletedBy": "Giorgos"
+      "updatedAt": 1777485911315,
+      "updatedBy": "Giorgos"
     }
   ],
   "payments": [
@@ -847,11 +845,7 @@
       "deposit": 0,
       "paymentDayOfMonth": 10,
       "notes": "",
-      "status": "active",
-      "deletedAt": 1777485953851,
-      "deletedBy": "Giorgos",
-      "updatedAt": 1777485953851,
-      "updatedBy": "Giorgos"
+      "status": "active"
     }
   ],
   "clients": [
@@ -1055,9 +1049,9 @@
       "total": 9999.75,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940714,
+      "deletedAt": 1777485965825,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940714,
+      "updatedAt": 1777485965825,
       "updatedBy": "Giorgos"
     },
     {
@@ -1086,9 +1080,9 @@
       "total": 500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940716,
+      "deletedAt": 1777485965828,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940716,
+      "updatedAt": 1777485965828,
       "updatedBy": "Giorgos"
     },
     {
@@ -1117,9 +1111,9 @@
       "total": 2500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940715,
+      "deletedAt": 1777485965827,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940715,
+      "updatedAt": 1777485965827,
       "updatedBy": "Giorgos"
     },
     {
@@ -1148,9 +1142,9 @@
       "total": 90,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940716,
+      "deletedAt": 1777485965827,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940716,
+      "updatedAt": 1777485965827,
       "updatedBy": "Giorgos"
     },
     {
@@ -1179,9 +1173,9 @@
       "total": 480,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940716,
+      "deletedAt": 1777485965828,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940716,
+      "updatedAt": 1777485965828,
       "updatedBy": "Giorgos"
     },
     {
@@ -1210,9 +1204,9 @@
       "total": 2500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940715,
+      "deletedAt": 1777485965826,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940715,
+      "updatedAt": 1777485965826,
       "updatedBy": "Giorgos"
     },
     {
@@ -1241,9 +1235,9 @@
       "total": 3300,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940714,
+      "deletedAt": 1777485965826,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940714,
+      "updatedAt": 1777485965826,
       "updatedBy": "Giorgos"
     },
     {
@@ -1272,9 +1266,9 @@
       "total": 1100,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940714,
+      "deletedAt": 1777485965825,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940714,
+      "updatedAt": 1777485965825,
       "updatedBy": "Giorgos"
     },
     {
@@ -1303,9 +1297,9 @@
       "total": 14740,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940713,
+      "deletedAt": 1777485965824,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940713,
+      "updatedAt": 1777485965824,
       "updatedBy": "Giorgos"
     },
     {
@@ -1334,9 +1328,9 @@
       "total": 2000,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940713,
+      "deletedAt": 1777485965825,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940713,
+      "updatedAt": 1777485965825,
       "updatedBy": "Giorgos"
     },
     {
@@ -1365,9 +1359,9 @@
       "total": 3300,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940713,
+      "deletedAt": 1777485965824,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940713,
+      "updatedAt": 1777485965824,
       "updatedBy": "Giorgos"
     },
     {
@@ -1404,9 +1398,9 @@
       "total": 14195,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940711,
+      "deletedAt": 1777485965822,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940711,
+      "updatedAt": 1777485965822,
       "updatedBy": "Giorgos"
     },
     {
@@ -1435,9 +1429,9 @@
       "total": 2500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940712,
+      "deletedAt": 1777485965823,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940712,
+      "updatedAt": 1777485965823,
       "updatedBy": "Giorgos"
     },
     {
@@ -1466,9 +1460,9 @@
       "total": 490,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940711,
+      "deletedAt": 1777485965822,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940711,
+      "updatedAt": 1777485965822,
       "updatedBy": "Giorgos"
     },
     {
@@ -1497,9 +1491,9 @@
       "total": 2500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940712,
+      "deletedAt": 1777485965823,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940712,
+      "updatedAt": 1777485965823,
       "updatedBy": "Giorgos"
     },
     {
@@ -1528,9 +1522,9 @@
       "total": 4227,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940712,
+      "deletedAt": 1777485965822,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940712,
+      "updatedAt": 1777485965822,
       "updatedBy": "Giorgos"
     },
     {
@@ -1559,9 +1553,9 @@
       "total": 15410,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940710,
+      "deletedAt": 1777485965821,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940710,
+      "updatedAt": 1777485965821,
       "updatedBy": "Giorgos"
     },
     {
@@ -1590,9 +1584,9 @@
       "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940711,
+      "deletedAt": 1777485965821,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940711,
+      "updatedAt": 1777485965821,
       "updatedBy": "Giorgos"
     },
     {
@@ -1621,9 +1615,9 @@
       "total": 900,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940710,
+      "deletedAt": 1777485965820,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940710,
+      "updatedAt": 1777485965820,
       "updatedBy": "Giorgos"
     },
     {
@@ -1652,9 +1646,9 @@
       "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940710,
+      "deletedAt": 1777485965820,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940710,
+      "updatedAt": 1777485965820,
       "updatedBy": "Giorgos"
     },
     {
@@ -1683,9 +1677,9 @@
       "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940709,
+      "deletedAt": 1777485965819,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940709,
+      "updatedAt": 1777485965819,
       "updatedBy": "Giorgos"
     },
     {
@@ -1714,9 +1708,9 @@
       "total": 2000,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940709,
+      "deletedAt": 1777485965820,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940709,
+      "updatedAt": 1777485965820,
       "updatedBy": "Giorgos"
     },
     {
@@ -1745,9 +1739,9 @@
       "total": 1500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940709,
+      "deletedAt": 1777485965819,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940709,
+      "updatedAt": 1777485965819,
       "updatedBy": "Giorgos"
     },
     {
@@ -1776,9 +1770,9 @@
       "total": 14070,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940707,
+      "deletedAt": 1777485965818,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940707,
+      "updatedAt": 1777485965818,
       "updatedBy": "Giorgos"
     },
     {
@@ -1807,9 +1801,9 @@
       "total": 14070,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940708,
+      "deletedAt": 1777485965819,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940708,
+      "updatedAt": 1777485965819,
       "updatedBy": "Giorgos"
     },
     {
@@ -1838,9 +1832,9 @@
       "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940708,
+      "deletedAt": 1777485965818,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940708,
+      "updatedAt": 1777485965818,
       "updatedBy": "Giorgos"
     },
     {
@@ -1869,9 +1863,9 @@
       "total": 12730,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940707,
+      "deletedAt": 1777485965817,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940707,
+      "updatedAt": 1777485965817,
       "updatedBy": "Giorgos"
     },
     {
@@ -1908,9 +1902,9 @@
       "total": 2126.63,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940705,
+      "deletedAt": 1777485965816,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940705,
+      "updatedAt": 1777485965816,
       "updatedBy": "Giorgos"
     },
     {
@@ -1939,9 +1933,9 @@
       "total": 1500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940708,
+      "deletedAt": 1777485965818,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940708,
+      "updatedAt": 1777485965818,
       "updatedBy": "Giorgos"
     },
     {
@@ -1970,9 +1964,9 @@
       "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940706,
+      "deletedAt": 1777485965817,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940706,
+      "updatedAt": 1777485965817,
       "updatedBy": "Giorgos"
     },
     {
@@ -2001,9 +1995,9 @@
       "total": 1500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "deletedAt": 1777485940707,
+      "deletedAt": 1777485965817,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777485940707,
+      "updatedAt": 1777485965817,
       "updatedBy": "Giorgos"
     }
   ],
