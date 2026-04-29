@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter } from '../core/ui.js';
-import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule } from '../core/data.js';
+import { upsert, remove, listActive, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -47,7 +47,7 @@ function build() {
 
 function buildAllPayments(wrap) {
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
-  const propSel   = select([{ value: 'all', label: 'All Properties' }, ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))], 'all');
+  const propSel   = select([{ value: 'all', label: 'All Properties' }, ...(listActive('properties')).map(p => ({ value: p.id, label: p.name }))], 'all');
   const statusSel = select(Object.entries(PAYMENT_STATUSES).map(([v, m]) => ({ value: v, label: m.label })), [], { multiple: true, title: 'Ctrl+click to select multiple statuses' });
   const streamSel = select([{ value: 'all', label: 'All Streams' }, ...Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short }))], 'all');
 
@@ -202,7 +202,7 @@ function recordRentPayment(prop, entry, onDone) {
 }
 
 function buildScheduleSection(wrap) {
-  const ltProps = (state.db.properties || []).filter(p => p.type === 'long_term');
+  const ltProps = (listActive('properties')).filter(p => p.type === 'long_term');
   if (ltProps.length === 0) {
     wrap.appendChild(el('div', { class: 'empty' }, 'No long-term rental properties configured'));
     return;
@@ -253,7 +253,7 @@ function buildScheduleSection(wrap) {
     const next = upcoming[0];
     const daysToNext = next ? Math.ceil((new Date(next.date) - now) / 86400000) : null;
 
-    const tenants = state.db.tenants || [];
+    const tenants = listActive('tenants');
     const toRows = entries => entries.map(e => {
       const t = tenants.find(t => t.id === e.tenantId);
       return {
@@ -475,7 +475,7 @@ function buildScheduleSection(wrap) {
       };
     }
 
-    const activeTenant = (state.db.tenants || []).find(t => t.propertyId === prop.id && t.status === 'active');
+    const activeTenant = (listActive('tenants')).find(t => t.propertyId === prop.id && t.status === 'active');
     const tenantLabel = activeTenant?.name || prop.tenantName || '';
     const totalEUR = rows.reduce((s, e) => s + e.amountEUR, 0);
     tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
@@ -513,8 +513,8 @@ function kpiCard(label, value, sub, variant, onClick) {
 }
 
 function buildUpcomingSection(wrap) {
-  const tenantPropIds = new Set((state.db.tenants || []).filter(t => t.monthlyRent).map(t => t.propertyId));
-  const ltProps = (state.db.properties || []).filter(p => p.type === 'long_term' && tenantPropIds.has(p.id));
+  const tenantPropIds = new Set((listActive('tenants')).filter(t => t.monthlyRent).map(t => t.propertyId));
+  const ltProps = (listActive('properties')).filter(p => p.type === 'long_term' && tenantPropIds.has(p.id));
   if (ltProps.length === 0) {
     wrap.appendChild(el('div', { class: 'empty' }, 'No long-term rental properties configured'));
     return;
@@ -640,7 +640,7 @@ function openForm(existing) {
     status: 'paid', source: 'manual', stream: 'short_term_rental', notes: ''
   };
   const body = el('div', {});
-  const propS = select((state.db.properties || []).map(p => ({ value: p.id, label: p.name })), r.propertyId);
+  const propS = select((listActive('properties')).map(p => ({ value: p.id, label: p.name })), r.propertyId);
   const amountI = input({ type: 'number', value: r.amount, min: 0, step: 0.01 });
   const currencyS = select(CURRENCIES, r.currency);
   const dateI = input({ type: 'date', value: r.date });
@@ -681,7 +681,7 @@ function openForm(existing) {
 
 // ===== Airbnb CSV Import =====
 function openCSVImport() {
-  const props = state.db.properties || [];
+  const props = listActive('properties');
   if (props.length === 0) { toast('Add properties first', 'warning'); return; }
 
   const stProps = props.filter(p => p.type === 'short_term');

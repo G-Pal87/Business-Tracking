@@ -1,7 +1,7 @@
 // Tenants module – CRUD for long-term rental tenants
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter } from '../core/ui.js';
-import { upsert, remove, byId, newId, formatMoney } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
 
 export default {
@@ -23,7 +23,7 @@ function build() {
   const wrap = el('div', { class: 'view active' });
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
-  const ltProps = (state.db.properties || []).filter(p => p.type === 'long_term');
+  const ltProps = listActive('properties').filter(p => p.type === 'long_term');
   const propSel = select([
     { value: 'all', label: 'All Properties' },
     ...ltProps.map(p => ({ value: p.id, label: p.name }))
@@ -45,7 +45,7 @@ function build() {
 
   const renderTable = () => {
     tableWrap.innerHTML = '';
-    let rows = [...(state.db.tenants || [])];
+    let rows = [...listActive('tenants')];
     if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
     if (statusSel.value !== 'all') rows = rows.filter(r => r.status === statusSel.value);
     rows.sort((a, b) => (b.leaseStartDate || '').localeCompare(a.leaseStartDate || ''));
@@ -80,7 +80,7 @@ function build() {
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r, renderTable) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog(`Delete tenant "${r.name}"? This will not affect recorded payments.`, { danger: true, okLabel: 'Delete' });
-        if (ok) { remove('tenants', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (ok) { softDelete('tenants', r.id); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
       tb.appendChild(tr);
@@ -99,7 +99,7 @@ function build() {
 }
 
 function openForm(existing, onSave) {
-  const ltProps = (state.db.properties || []).filter(p => p.type === 'long_term');
+  const ltProps = listActive('properties').filter(p => p.type === 'long_term');
   const defaultProp = ltProps[0]?.id || '';
   const r = existing ? { ...existing } : {
     id: newId('ten'),

@@ -5,7 +5,7 @@ import { el, select, button, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS } from '../core/config.js';
 import {
-  availableYears, formatEUR, toEUR, byId,
+  availableYears, formatEUR, toEUR, byId, listActive,
   propertyRevenueEUR, propertyExpensesEUR, propertyROI,
   renovationCapexEUR, groupByMonth, groupByStream,
   buildReportData, getForecastVsActual, buildReconciliationData,
@@ -103,7 +103,7 @@ function build() {
   filterBar.appendChild(el('span', { class: 'muted', style: 'align-self:center' }, 'Filter:'));
   filterBar.appendChild(yearSel);
   filterBar.appendChild(buildStreamMultiSelect(() => refreshActive()));
-  const rentalProps = (state.db.properties || []).filter(p => p.type === 'short_term' || p.type === 'long_term');
+  const rentalProps = (listActive('properties')).filter(p => p.type === 'short_term' || p.type === 'long_term');
   const propSel = select([
     { value: 'all', label: 'All Properties' },
     ...rentalProps.map(p => ({ value: p.id, label: `${p.name} (${p.type === 'short_term' ? 'ST' : 'LT'})` }))
@@ -212,7 +212,7 @@ function renderSummary(wrap) {
 // ===== BY PROPERTY TAB =====
 function renderByProperty(wrap) {
   const yearFilter = gFilters.year !== 'all' ? { year: gFilters.year } : {};
-  let props = state.db.properties || [];
+  let props = listActive('properties');
   if (gFilters.propertyId !== 'all') props = props.filter(p => p.id === gFilters.propertyId);
   const rows = props.map(p => {
     const rev = propertyRevenueEUR(p.id, yearFilter);
@@ -557,7 +557,7 @@ function renderReconciliation(wrap) {
 // ===== COMPARISON TAB =====
 function renderComparison(wrap) {
   const baseYear = gFilters.year !== 'all' ? Number(gFilters.year) : new Date().getFullYear();
-  const props = (state.db.properties || []).filter(p => p.status !== 'renovation');
+  const props = (listActive('properties')).filter(p => p.status !== 'renovation');
   const services = [
     { id: 'customer_success', label: 'Customer Success', type: 'service' },
     { id: 'marketing_services', label: 'Marketing Services', type: 'service' }

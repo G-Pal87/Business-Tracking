@@ -7,7 +7,7 @@ import {
   totalRevenueEUR, totalExpensesEUR, renovationCapexEUR, netIncomeEUR,
   revenueInRangeEUR, expensesInRangeEUR, ytdRange,
   groupByMonth, groupByStream, recentActivity, formatEUR, byId, toEUR,
-  drillRevRows, drillExpRows, drillNetRows, isCapEx
+  drillRevRows, drillExpRows, drillNetRows, isCapEx, listActive
 } from '../core/data.js';
 
 const REV_COLS = [
@@ -108,9 +108,9 @@ export default {
     const ytdOpExps = (state.db.expenses || []).filter(e => !isCapEx(e) && e.date >= start && e.date <= end);
     const ytdRenoExps = (state.db.expenses || []).filter(e => isCapEx(e) && e.date >= start && e.date <= end);
 
-    const totalProperties = (state.db.properties || []).length;
-    const active = (state.db.properties || []).filter(p => p.status === 'active').length;
-    const reno = (state.db.properties || []).filter(p => p.status === 'renovation').length;
+    const totalProperties = (listActive('properties')).length;
+    const active = (listActive('properties')).filter(p => p.status === 'active').length;
+    const reno = (listActive('properties')).filter(p => p.status === 'renovation').length;
     const openInv = (state.db.invoices || []).filter(i => i.status === 'sent' || i.status === 'overdue').length;
     const outstanding = (state.db.invoices || [])
       .filter(i => i.status !== 'paid' && i.status !== 'draft')
@@ -126,7 +126,7 @@ export default {
 
     const kpis2 = el('div', { class: 'grid grid-4 mt-16' },
       kpi('Properties', String(totalProperties), `${active} active, ${reno} renovation`, '', () => {
-        const rows = (state.db.properties || []).map(p => ({
+        const rows = (listActive('properties')).map(p => ({
           name: p.name,
           type: p.type === 'long_term' ? 'Long-term' : 'Short-term',
           status: p.status || '—',
@@ -154,9 +154,9 @@ export default {
           }).sort((a, b) => b.eur - a.eur);
         drillDownModal('Active Invoices', rows, OPEN_INV_COLS);
       }),
-      kpi('Clients', String((state.db.clients || []).length), 'Across both streams', '', () => {
+      kpi('Clients', String((listActive('clients')).length), 'Across both streams', '', () => {
         const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
-        const rows = (state.db.clients || []).map(c => {
+        const rows = (listActive('clients')).map(c => {
           const cInvs = (state.db.invoices || []).filter(i => i.clientId === c.id);
           const eur = cInvs.reduce((s, i) => s + (i.currency === 'HUF' ? (i.total || 0) * fx : (i.total || 0)), 0);
           return {
@@ -172,7 +172,7 @@ export default {
       kpi('Total Portfolio', formatEUR(portfolioValueEUR()), 'At purchase + CapEx', '', () => {
         const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
         const allReno = (state.db.expenses || []).filter(e => isCapEx(e));
-        const rows = (state.db.properties || []).map(p => {
+        const rows = (listActive('properties')).map(p => {
           const base = p.currency === 'HUF' ? (p.purchasePrice || 0) * fx : (p.purchasePrice || 0);
           const reno = allReno.filter(e => e.propertyId === p.id).reduce((s, e) => s + (e.currency === 'HUF' ? e.amount * fx : e.amount), 0);
           return {
@@ -258,7 +258,7 @@ export default {
 
     // Top properties bar chart
     const nowYear = new Date().getFullYear();
-    const propRevs = (state.db.properties || []).map(p => {
+    const propRevs = (listActive('properties')).map(p => {
       const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
       const rev = (state.db.payments || []).filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (pay.date || '').startsWith(String(nowYear))).reduce((s, pay) => s + (pay.currency === 'HUF' ? pay.amount * fx : pay.amount), 0);
       return { id: p.id, name: p.name.replace(' Apartment','').replace(' Loft','').replace(' Flat',''), rev };
@@ -297,7 +297,7 @@ function trendText(pct) {
 function portfolioValueEUR() {
   const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
   let total = 0;
-  for (const p of state.db.properties || []) {
+  for (const p of listActive('properties')) {
     const base = p.currency === 'HUF' ? (p.purchasePrice || 0) * fx : (p.purchasePrice || 0);
     total += base;
   }
@@ -349,7 +349,7 @@ function buildActivityCard() {
 
 function buildTopPropertiesCard() {
   const now = new Date().getFullYear();
-  const props = (state.db.properties || []).map(p => {
+  const props = (listActive('properties')).map(p => {
     const rev = (state.db.payments || [])
       .filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (pay.date || '').startsWith(String(now)))
       .reduce((s, pay) => s + (pay.currency === 'HUF' ? pay.amount * (state.db.settings?.fxRates?.HUF_EUR || 0.0025) : pay.amount), 0);

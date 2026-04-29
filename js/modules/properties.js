@@ -2,7 +2,7 @@
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate } from '../core/ui.js';
 import {
-  upsert, remove, byId, newId, formatEUR, formatMoney, toEUR,
+  upsert, softDelete, listActive, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI
 } from '../core/data.js';
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES } from '../core/config.js';
@@ -66,7 +66,7 @@ function build() {
   const wrap = el('div', { class: 'view active' });
 
   const header = el('div', { class: 'section-header' },
-    el('div', { class: 'card-title' }, `${(state.db.properties || []).length} Properties`),
+    el('div', { class: 'card-title' }, `${listActive('properties').length} Properties`),
     el('div', { class: 'actions' },
       button('+ Add Property', { variant: 'primary', onClick: () => openForm() })
     )
@@ -74,7 +74,7 @@ function build() {
   wrap.appendChild(header);
 
   const grid = el('div', { class: 'prop-grid' });
-  const props = state.db.properties || [];
+  const props = listActive('properties');
   if (props.length === 0) {
     grid.appendChild(el('div', { class: 'empty' }, el('div', { class: 'empty-icon' }, 'H'), 'No properties yet. Add your first one.'));
   }
@@ -279,7 +279,7 @@ function openDetail(id) {
   const delBtn = button('Delete', { variant: 'danger', onClick: async () => {
     const ok = await confirmDialog(`Delete property "${p.name}"? This will NOT delete its payments/expenses.`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
-    remove('properties', p.id);
+    softDelete('properties', p.id);
     toast('Property deleted', 'success');
     closeModal();
     setTimeout(() => navigate('properties'),250);

@@ -1,7 +1,7 @@
 // Users module - admin only
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, input, select, formRow, button, attachSortFilter } from '../core/ui.js';
-import { upsert, remove, newId } from '../core/data.js';
+import { upsert, softDelete, listActive, newId } from '../core/data.js';
 import { hashPassword } from '../core/auth.js';
 
 export default {
@@ -35,7 +35,7 @@ function build() {
 
 function renderTable(container, wrap) {
   container.innerHTML = '';
-  const users = state.db.users || [];
+  const users = listActive('users');
 
   if (users.length === 0) {
     container.appendChild(el('div', { class: 'empty' }, 'No users yet.'));
@@ -60,7 +60,7 @@ function renderTable(container, wrap) {
         if (u.id === state.session?.userId) { toast('Cannot delete your own account', 'warning'); return; }
         const ok = await confirmDialog(`Delete user "${u.username}"?`, { danger: true, okLabel: 'Delete' });
         if (!ok) return;
-        remove('users', u.id);
+        softDelete('users', u.id);
         toast('User deleted', 'success');
         const c = document.getElementById('content');
         c.innerHTML = '';
@@ -101,7 +101,7 @@ function openForm(existing, wrap) {
       if (!name || !username) { toast('Name and username are required', 'danger'); return; }
       if (isNew && !password) { toast('Password is required', 'danger'); return; }
       if (password && password.length < 6) { toast('Password must be at least 6 characters', 'danger'); return; }
-      const dup = (state.db.users || []).find(x => x.username === username && x.id !== u.id);
+      const dup = listActive('users').find(x => x.username === username && x.id !== u.id);
       if (dup) { toast('Username already taken', 'danger'); return; }
       Object.assign(u, { name, username, role: roleS.value });
       if (password) u.passwordHash = await hashPassword(password);
