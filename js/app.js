@@ -95,8 +95,19 @@ async function boot() {
       state.dirty = false;
       updateSyncStatus('online', `Saved ${new Date().toLocaleTimeString()}`);
     } catch (e) {
-      updateSyncStatus('offline', 'Save failed — ' + e.message);
-      toast('Save failed: ' + e.message, 'danger', 4000);
+      if (e.name === 'ConflictError') {
+        pendingDirty = false;
+        clearTimeout(pushTimer);
+        updateSyncStatus('offline', 'Conflict — refresh required');
+        toast(
+          'Another user modified the same data. Refresh the page to load the latest version before saving your changes.',
+          'danger',
+          10000
+        );
+      } else {
+        updateSyncStatus('offline', 'Save failed — ' + e.message);
+        toast('Save failed: ' + e.message, 'danger', 4000);
+      }
     } finally {
       state.saving = false;
       document.body.classList.remove('app-saving');

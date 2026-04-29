@@ -104,6 +104,7 @@ export async function fetchDb() {
 
 function mergeDb(freshRemote, localCurrent, lastSynced) {
   const result = {};
+  const conflicts = [];
   const cols = new Set([
     ...Object.keys(freshRemote || {}),
     ...Object.keys(localCurrent || {})
@@ -119,21 +120,37 @@ function mergeDb(freshRemote, localCurrent, lastSynced) {
       continue;
     }
 
-    const baseIds = new Set((Array.isArray(base) ? base : []).map(x => x.id));
+    const baseMap = new Map((Array.isArray(base) ? base : []).map(x => [x.id, x]));
     const localMap = new Map(local.map(x => [x.id, x]));
     const merged = new Map(fresh.map(x => [x.id, x]));
 
     for (const item of local) {
+      const remoteItem = merged.get(item.id);
+      const baseItem = baseMap.get(item.id);
+      if (
+        remoteItem && baseItem &&
+        item.updatedAt && remoteItem.updatedAt && baseItem.updatedAt &&
+        item.updatedAt !== baseItem.updatedAt &&
+        remoteItem.updatedAt !== baseItem.updatedAt
+      ) {
+        conflicts.push({ collection: col, id: item.id });
+        continue;
+      }
       merged.set(item.id, item);
     }
 
-    for (const id of baseIds) {
-      if (!localMap.has(id)) {
-        merged.delete(id);
-      }
+    for (const id of baseMap.keys()) {
+      if (!localMap.has(id)) merged.delete(id);
     }
 
     result[col] = [...merged.values()];
+  }
+
+  if (conflicts.length > 0) {
+    const err = new Error('Concurrent edit conflict — another user modified the same records');
+    err.name = 'ConflictError';
+    err.conflicts = conflicts;
+    throw err;
   }
 
   return result;
