@@ -722,11 +722,7 @@
       "description": "",
       "stream": "long_term_rental",
       "inventoryItemId": "",
-      "inventoryQty": 0,
-      "deletedAt": 1777481150499,
-      "deletedBy": "Giorgos",
-      "updatedAt": 1777481150499,
-      "updatedBy": "Giorgos"
+      "inventoryQty": 0
     },
     {
       "id": "exp_moj1b9av91",
@@ -740,11 +736,7 @@
       "description": "",
       "stream": "short_term_rental",
       "inventoryItemId": "",
-      "inventoryQty": 0,
-      "deletedAt": 1777481141887,
-      "deletedBy": "Giorgos",
-      "updatedAt": 1777481141887,
-      "updatedBy": "Giorgos"
+      "inventoryQty": 0
     },
     {
       "id": "exp_moj1c828b1",
@@ -759,9 +751,9 @@
       "stream": "short_term_rental",
       "inventoryItemId": "",
       "inventoryQty": 0,
-      "deletedAt": 1777481147970,
+      "deletedAt": 1777481174276,
       "deletedBy": "Giorgos",
-      "updatedAt": 1777481147970,
+      "updatedAt": 1777481174276,
       "updatedBy": "Giorgos"
     }
   ],
