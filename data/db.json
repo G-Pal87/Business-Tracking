@@ -890,6 +890,23 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777464057871,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "cli_mok090at5",
+      "name": "Nike",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2026-04-29",
+      "notes": "",
+      "createdAt": 1777464133759,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777464133759,
+      "updatedBy": "Giorgos"
     }
   ],
   "services": [
