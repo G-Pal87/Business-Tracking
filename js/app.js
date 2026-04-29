@@ -15,6 +15,7 @@ async function boot() {
     { default: expenses },
     { default: reports },
     { default: forecast },
+    { default: analytics },
     { default: clients },
     { default: invoices },
     { default: insights },
@@ -30,6 +31,7 @@ async function boot() {
     import(`./modules/expenses.js?v=${VERSION}`),
     import(`./modules/reports.js?v=${VERSION}`),
     import(`./modules/forecast.js?v=${VERSION}`),
+    import(`./modules/analytics.js?v=${VERSION}`),
     import(`./modules/clients.js?v=${VERSION}`),
     import(`./modules/invoices.js?v=${VERSION}`),
     import(`./modules/insights.js?v=${VERSION}`),
@@ -42,7 +44,7 @@ async function boot() {
 
   const MODULES = [
     dashboard, properties, payments, expenses, tenants, vendors, inventory,
-    reports, forecast, clients, invoices, insights, settings, users
+    reports, forecast, analytics, clients, invoices, insights, settings, users
   ];
 
   MODULES.forEach(router.registerModule);
@@ -168,7 +170,7 @@ function buildSidebar(MODULES) {
   const navGroups = [
     { title: 'Overview', items: ['dashboard', 'insights'] },
     { title: 'Real Estate', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory'] },
-    { title: 'Analysis', items: ['reports', 'forecast'] },
+    { title: 'Analysis', items: ['reports', 'forecast', 'analytics'] },
     { title: 'Business Services', items: ['clients', 'invoices'] },
     { title: 'System', items: ['settings', 'users'] }
   ];
