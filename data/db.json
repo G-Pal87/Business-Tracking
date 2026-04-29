@@ -1050,7 +1050,11 @@
       "tax": 0,
       "total": 9999.75,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940714,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940714,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohktt6g2t",
@@ -1077,7 +1081,11 @@
       "tax": 0,
       "total": 500,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940716,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940716,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohkw7hj80",
@@ -1104,7 +1112,11 @@
       "tax": 0,
       "total": 2500,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940715,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940715,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohkzofiaw",
@@ -1131,7 +1143,11 @@
       "tax": 0,
       "total": 90,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940716,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940716,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohl1lrr7z",
@@ -1158,7 +1174,11 @@
       "tax": 0,
       "total": 480,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940716,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940716,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohl4ru4j2",
@@ -1185,7 +1205,11 @@
       "tax": 0,
       "total": 2500,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940715,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940715,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohl6i51i2",
@@ -1212,7 +1236,11 @@
       "tax": 0,
       "total": 3300,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940714,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940714,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohl83rg33",
@@ -1239,7 +1267,11 @@
       "tax": 0,
       "total": 1100,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940714,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940714,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohlbpfv2p",
@@ -1266,7 +1298,11 @@
       "tax": 0,
       "total": 14740,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940713,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940713,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohld1gqda",
@@ -1293,7 +1329,11 @@
       "tax": 0,
       "total": 2000,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940713,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940713,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohle2r1hf",
@@ -1320,7 +1360,11 @@
       "tax": 0,
       "total": 3300,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940713,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940713,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohlhga9gd",
@@ -1355,7 +1399,11 @@
       "tax": 0,
       "total": 14195,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940711,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940711,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohliq9886",
@@ -1382,7 +1430,11 @@
       "tax": 0,
       "total": 2500,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940712,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940712,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohljre84j",
@@ -1409,7 +1461,11 @@
       "tax": 0,
       "total": 490,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940711,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940711,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohll9m22f",
@@ -1436,7 +1492,11 @@
       "tax": 0,
       "total": 2500,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940712,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940712,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohlmgkhk6",
@@ -1463,7 +1523,11 @@
       "tax": 0,
       "total": 4227,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940712,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940712,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohlpp4wj3",
@@ -1490,7 +1554,11 @@
       "tax": 0,
       "total": 15410,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940710,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940710,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohlqjyo6u",
@@ -1517,7 +1585,11 @@
       "tax": 0,
       "total": 6200,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940711,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940711,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohlsrmjhp",
@@ -1544,7 +1616,11 @@
       "tax": 0,
       "total": 900,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940710,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940710,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohmb4r7r6",
@@ -1571,7 +1647,11 @@
       "tax": 0,
       "total": 6200,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940710,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940710,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohme7u5mq",
@@ -1598,7 +1678,11 @@
       "tax": 0,
       "total": 6200,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940709,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940709,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohmfe02od",
@@ -1625,7 +1709,11 @@
       "tax": 0,
       "total": 2000,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940709,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940709,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohmgimo7g",
@@ -1652,7 +1740,11 @@
       "tax": 0,
       "total": 1500,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940709,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940709,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohmrgcwow",
@@ -1679,7 +1771,11 @@
       "tax": 0,
       "total": 14070,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940707,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940707,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohmt6r2lk",
@@ -1706,7 +1802,11 @@
       "tax": 0,
       "total": 14070,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940708,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940708,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohmuy2bjq",
@@ -1733,7 +1833,11 @@
       "tax": 0,
       "total": 6200,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940708,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940708,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohmypggl3",
@@ -1760,7 +1864,11 @@
       "tax": 0,
       "total": 12730,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940707,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940707,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohn12nyd7",
@@ -1795,7 +1903,11 @@
       "tax": 0,
       "total": 2126.63,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940705,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940705,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohn28idj9",
@@ -1822,7 +1934,11 @@
       "tax": 0,
       "total": 1500,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940708,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940708,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohn4qh996",
@@ -1849,7 +1965,11 @@
       "tax": 0,
       "total": 6200,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940706,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940706,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "inv_mohn6fv92r",
@@ -1876,7 +1996,11 @@
       "tax": 0,
       "total": 1500,
       "notes": "Imported from PDF",
-      "source": "pdf_import"
+      "source": "pdf_import",
+      "deletedAt": 1777485940707,
+      "deletedBy": "Giorgos",
+      "updatedAt": 1777485940707,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
