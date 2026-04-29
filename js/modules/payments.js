@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter } from '../core/ui.js';
-import { upsert, remove, listActive, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule } from '../core/data.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -58,7 +58,7 @@ function buildAllPayments(wrap) {
     if (!count) return;
     const ok = await confirmDialog(`Delete ${count} payment(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
-    for (const id of [...selected]) remove('payments', id);
+    for (const id of [...selected]) softDelete('payments', id);
     selected.clear();
     toast(`Deleted ${count} payment(s)`, 'success');
     renderTable();
@@ -93,7 +93,7 @@ function buildAllPayments(wrap) {
     syncDeleteBtn();
     tableWrap.innerHTML = '';
 
-    let rows = [...(state.db.payments || [])];
+    let rows = [...listActivePayments()];
     const statuses = selVals(statusSel);
     if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
     if (statuses) rows = rows.filter(r => statuses.includes(r.status));
@@ -155,7 +155,7 @@ function buildAllPayments(wrap) {
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog('Delete this payment?', { danger: true, okLabel: 'Delete' });
-        if (ok) { remove('payments', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (ok) { softDelete('payments', r.id); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
       tb.appendChild(tr);
@@ -349,7 +349,7 @@ function buildScheduleSection(wrap) {
           td.appendChild(button('Delete', { variant: 'sm danger', onClick: async () => {
             const ok = await confirmDialog('Delete this payment record? This cannot be undone.', { danger: true, okLabel: 'Delete' });
             if (!ok) return;
-            remove('payments', s.linkedPaymentId);
+            softDelete('payments', s.linkedPaymentId);
             toast('Payment record deleted', 'success');
             render();
           }}));
@@ -365,7 +365,7 @@ function buildScheduleSection(wrap) {
         tr.appendChild(el('td', {})); // checkbox column placeholder
 
         const linked = s.linkedPaymentId
-          ? (state.db.payments || []).find(p => p.id === s.linkedPaymentId) || null
+          ? byId('payments', s.linkedPaymentId) || null
           : null;
 
         const dateI = el('input', {
@@ -419,7 +419,7 @@ function buildScheduleSection(wrap) {
           if (newAmt <= 0) { toast('Amount must be greater than zero', 'danger'); return; }
 
           if (newStat === 'revert') {
-            if (s.linkedPaymentId) remove('payments', s.linkedPaymentId);
+            if (s.linkedPaymentId) softDelete('payments', s.linkedPaymentId);
             toast('Payment record removed — row reverted to scheduled state', 'success');
           } else {
             const pay = linked ? { ...linked } : {
@@ -489,7 +489,7 @@ function buildScheduleSection(wrap) {
     if (!count) return;
     const ok = await confirmDialog(`Delete ${count} payment record(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
-    for (const id of [...selected]) remove('payments', id);
+    for (const id of [...selected]) softDelete('payments', id);
     selected.clear();
     toast(`Deleted ${count} payment record(s)`, 'success');
     render();
@@ -734,8 +734,8 @@ function openCSVImport() {
       for (const row of rows) {
         const pmatch = findProp(row.listing);
         const exists = row.reference
-          ? (state.db.payments || []).some(p => p.airbnbRef === row.reference)
-          : pmatch && (state.db.payments || []).some(p =>
+          ? listActivePayments().some(p => p.airbnbRef === row.reference)
+          : pmatch && listActivePayments().some(p =>
               p.source === 'airbnb' && p.propertyId === pmatch.id &&
               p.date === row.date && Number(p.amount) === Number(row.amount));
         if (exists) { updated++; continue; }
@@ -774,8 +774,8 @@ function openCSVImport() {
 
         // Idempotency: primary key = airbnbRef; fallback = source+property+date+amount
         const existing = row.reference
-          ? (state.db.payments || []).find(p => p.airbnbRef === row.reference)
-          : (state.db.payments || []).find(p =>
+          ? listActivePayments().find(p => p.airbnbRef === row.reference)
+          : listActivePayments().find(p =>
               p.source === 'airbnb' && p.propertyId === matched.id &&
               p.date === row.date && Number(p.amount) === Number(row.amount));
         const pay = existing ? { ...existing } : {
@@ -923,7 +923,7 @@ function parseDateStr(raw) {
 }
 
 function exportCSV() {
-  const rows = state.db.payments || [];
+  const rows = listActivePayments();
   const headers = ['id', 'date', 'propertyId', 'amount', 'currency', 'type', 'status', 'source', 'stream', 'notes'];
   const lines = [headers.join(',')];
   for (const r of rows) lines.push(headers.map(h => JSON.stringify(r[h] ?? '')).join(','));

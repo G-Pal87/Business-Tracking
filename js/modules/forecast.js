@@ -2,7 +2,7 @@
 import { state } from '../core/state.js';
 import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, setForecastTaxRate, getForecastVsActual, estimateTaxForYear, getForecastEntries, upsertForecastEntry, removeForecastEntry } from '../core/data.js';
+import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, setForecastTaxRate, getForecastVsActual, estimateTaxForYear, getForecastEntries, upsertForecastEntry, removeForecastEntry, listActive, listActivePayments } from '../core/data.js';
 import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -58,7 +58,7 @@ function build() {
 
 // ===== PROPERTY FORECAST =====
 function buildPropertySection(wrap) {
-  const props = (state.db.properties || []).filter(p => p.status !== 'renovation');
+  const props = listActive('properties').filter(p => p.status !== 'renovation');
   if (props.length === 0) { wrap.appendChild(el('div', { class: 'empty' }, 'No active properties to forecast')); return; }
 
   // --- Property checklist dropdown (matches Reports "All Streams" pattern) ---
@@ -864,7 +864,7 @@ function buildTaxSection(wrap) {
   strWrapper.appendChild(strTrigger); strWrapper.appendChild(strMenu);
 
   // --- Property filter — checklist (updates based on selected streams) ---
-  const allProps = state.db.properties || [];
+  const allProps = listActive('properties');
   let selPropIds = new Set(); // empty = all; non-empty = specific selected ids
 
   const propWrapper = el('div', { style: 'position:relative' });
@@ -947,18 +947,18 @@ function buildTaxSection(wrap) {
     const r = Number(rateI.value) || 0;
     const propOk = id => selPropIds.size === 0 || selPropIds.has(id);
 
-    const pays = (state.db.payments || []).filter(p =>
+    const pays = listActivePayments().filter(p =>
       p.status === 'paid' && p.date >= s && p.date <= e2 &&
       selStreams.has(p.stream) &&
       propOk(p.propertyId)
     );
     // Invoices are service-based (no propertyId); include only when no property filter
-    const invs = (state.db.invoices || []).filter(i =>
+    const invs = listActive('invoices').filter(i =>
       i.status === 'paid' && i.issueDate >= s && i.issueDate <= e2 &&
       selStreams.has(i.stream) &&
       selPropIds.size === 0
     );
-    const exps = (state.db.expenses || []).filter(ex =>
+    const exps = listActive('expenses').filter(ex =>
       ex.date >= s && ex.date <= e2 &&
       propOk(ex.propertyId)
     );
@@ -1086,8 +1086,8 @@ function buildTaxSection(wrap) {
     // Chart: per selected stream, filtered by property
     const visibleStreamKeys = streamKeys.filter(k => selStreams.has(k));
     const streamRevs = visibleStreamKeys.map(k => {
-      const p2 = (state.db.payments || []).filter(p => p.stream === k && p.status === 'paid' && p.date?.startsWith(y) && (selPropIds.size === 0 || selPropIds.has(p.propertyId)));
-      const i2 = selPropIds.size === 0 ? (state.db.invoices || []).filter(i => i.stream === k && i.status === 'paid' && i.issueDate?.startsWith(y)) : [];
+      const p2 = listActivePayments().filter(p => p.stream === k && p.status === 'paid' && p.date?.startsWith(y) && (selPropIds.size === 0 || selPropIds.has(p.propertyId)));
+      const i2 = selPropIds.size === 0 ? listActive('invoices').filter(i => i.stream === k && i.status === 'paid' && i.issueDate?.startsWith(y)) : [];
       return Math.round([...p2.map(p => toEUR(p.amount, p.currency)), ...i2.map(i => toEUR(i.total, i.currency))].reduce((a, b) => a + b, 0));
     });
     charts.bar('fc-tax-chart', {

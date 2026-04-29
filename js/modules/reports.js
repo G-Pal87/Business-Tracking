@@ -5,7 +5,7 @@ import { el, select, button, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS } from '../core/config.js';
 import {
-  availableYears, formatEUR, toEUR, byId, listActive,
+  availableYears, formatEUR, toEUR, byId, listActive, listActivePayments,
   propertyRevenueEUR, propertyExpensesEUR, propertyROI,
   renovationCapexEUR, groupByMonth, groupByStream,
   buildReportData, getForecastVsActual, buildReconciliationData,
@@ -234,7 +234,7 @@ function renderByProperty(wrap) {
     const tr = el('tr', { style: 'cursor:pointer' });
     tr.onclick = () => {
       const yearStr = gFilters.year !== 'all' ? gFilters.year : null;
-      const pays = (state.db.payments || []).filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (!yearStr || (pay.date || '').startsWith(yearStr)));
+      const pays = (listActivePayments()).filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (!yearStr || (pay.date || '').startsWith(yearStr)));
       drillDownModal(`${p.name} — Payments`, drillRevRows(pays, []), REV_COLS);
     };
     tr.appendChild(el('td', {}, el('div', {}, p.name), el('div', { class: 'muted', style: 'font-size:11px' }, `${p.city}, ${p.country}`)));
@@ -639,7 +639,7 @@ function renderComparison(wrap) {
           if (!m) return;
           const s = m.key + '-01', e = m.key + '-' + new Date(Number(m.key.slice(0, 4)), Number(m.key.slice(5, 7)), 0).getDate().toString().padStart(2, '0');
           if (ent.type === 'property') {
-            const pays = (state.db.payments || []).filter(p => p.propertyId === ent.id && p.status === 'paid' && p.date >= s && p.date <= e);
+            const pays = (listActivePayments()).filter(p => p.propertyId === ent.id && p.status === 'paid' && p.date >= s && p.date <= e);
             drillDownModal(`${MON[index]} ${datasetIndex === 0 ? yr - 1 : yr} — Revenue`, drillRevRows(pays, []), REV_COLS);
           } else {
             const invs = (state.db.invoices || []).filter(i => i.stream === ent.id && i.status === 'paid' && i.issueDate >= s && i.issueDate <= e);
@@ -663,7 +663,7 @@ function renderComparison(wrap) {
           if (!m) return;
           const s = m.key + '-01', e = m.key + '-' + new Date(Number(m.key.slice(0, 4)), Number(m.key.slice(5, 7)), 0).getDate().toString().padStart(2, '0');
           if (ent.type === 'property') {
-            const pays = (state.db.payments || []).filter(p => p.propertyId === ent.id && p.status === 'paid' && p.date >= s && p.date <= e);
+            const pays = (listActivePayments()).filter(p => p.propertyId === ent.id && p.status === 'paid' && p.date >= s && p.date <= e);
             drillDownModal(`${MON[index]} ${yr} — Revenue`, drillRevRows(pays, []), REV_COLS);
           } else {
             const invs = (state.db.invoices || []).filter(i => i.stream === ent.id && i.status === 'paid' && i.issueDate >= s && i.issueDate <= e);
@@ -807,7 +807,7 @@ function renderContribution(wrap) {
     const label = streamLabel(cs.key);
     let rows;
     if (cs.payType === 'payment') {
-      rows = (state.db.payments || []).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(yr) && (gFilters.propertyId === 'all' || p.propertyId === gFilters.propertyId));
+      rows = (listActivePayments()).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(yr) && (gFilters.propertyId === 'all' || p.propertyId === gFilters.propertyId));
     } else {
       rows = (state.db.invoices || []).filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(yr));
     }
@@ -824,7 +824,7 @@ function renderContribution(wrap) {
       const label = streamLabel(cs.key);
       let rows;
       if (cs.payType === 'payment') {
-        rows = (state.db.payments || []).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(mk) && (gFilters.propertyId === 'all' || p.propertyId === gFilters.propertyId));
+        rows = (listActivePayments()).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(mk) && (gFilters.propertyId === 'all' || p.propertyId === gFilters.propertyId));
       } else {
         rows = (state.db.invoices || []).filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(mk));
       }

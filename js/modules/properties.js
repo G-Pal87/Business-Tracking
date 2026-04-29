@@ -2,7 +2,7 @@
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate } from '../core/ui.js';
 import {
-  upsert, softDelete, listActive, byId, newId, formatEUR, formatMoney, toEUR,
+  upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI
 } from '../core/data.js';
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES } from '../core/config.js';
@@ -514,13 +514,15 @@ function openForm(existing) {
       vacantPeriods: pendingVacantPeriods,
       documents: pendingDocs
     });
-    // Purge unpaid payments within vacant periods (keep paid history intact)
+    // Soft-delete unpaid payments within vacant periods (keep paid history intact)
     if (pendingVacantPeriods.length > 0) {
-      state.db.payments = (state.db.payments || []).filter(pmt => {
-        if (pmt.propertyId !== p.id || pmt.status === 'paid') return true;
+      for (const pmt of (state.db.payments || [])) {
+        if (pmt.propertyId !== p.id || pmt.status === 'paid' || pmt.deletedAt) continue;
         const d = pmt.date?.slice(0, 10) || '';
-        return !pendingVacantPeriods.some(vp => vp.startDate && d >= vp.startDate && d <= (vp.endDate || '9999-12-31'));
-      });
+        if (pendingVacantPeriods.some(vp => vp.startDate && d >= vp.startDate && d <= (vp.endDate || '9999-12-31'))) {
+          softDelete('payments', pmt.id);
+        }
+      }
     }
     upsert('properties', p);
     toast(existing ? 'Property updated' : 'Property added', 'success');
@@ -547,7 +549,7 @@ async function doImportICal(prop) {
       if (n <= 0) continue;
       const amount = n * (prop.nightlyRate || 0);
       // avoid duplicates
-      const dupe = (state.db.payments || []).some(p => p.propertyId === prop.id && p.date === ev.start && p.source === 'airbnb' && p.notes?.includes(ev.uid || ''));
+      const dupe = listActivePayments().some(p => p.propertyId === prop.id && p.date === ev.start && p.source === 'airbnb' && p.notes?.includes(ev.uid || ''));
       if (dupe) continue;
       const pay = {
         id: newId('pay'),
