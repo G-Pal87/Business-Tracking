@@ -905,8 +905,10 @@
       "notes": "",
       "createdAt": 1777464133759,
       "createdBy": "Giorgos",
-      "updatedAt": 1777464133759,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777464178952,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777464178952,
+      "deletedBy": "Giorgos"
     }
   ],
   "services": [
