@@ -873,6 +873,23 @@
       "currency": "EUR",
       "contractStart": "2024-11-10",
       "notes": ""
+    },
+    {
+      "id": "cli_mok07ei0b4",
+      "name": "new",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2026-04-29",
+      "notes": "",
+      "createdAt": 1777464057871,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777464057871,
+      "updatedBy": "Giorgos"
     }
   ],
   "services": [
