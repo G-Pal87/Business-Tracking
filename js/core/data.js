@@ -51,6 +51,7 @@ export function newId(prefix) {
 
 // ============== Generic CRUD ==============
 export function upsert(collection, item) {
+  item.updatedAt = Date.now();
   const arr = state.db[collection] || (state.db[collection] = []);
   const idx = arr.findIndex(x => x.id === item.id);
   if (idx >= 0) arr[idx] = item; else arr.push(item);
