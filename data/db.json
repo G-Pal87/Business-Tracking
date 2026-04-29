@@ -985,6 +985,23 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777486762173,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "cli_mokdyhpkcw",
+      "name": "Pling Solutions GmbH",
+      "email": "",
+      "address": "Karl Liebknecht Str. 12, 04107 Leipzig, Deutschland /Germany",
+      "vatNumber": "DE456366349",
+      "registrationNumber": "",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "contractStart": "2025-11-01",
+      "notes": "",
+      "createdAt": 1777487207327,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777487207327,
+      "updatedBy": "Giorgos"
     }
   ],
   "services": [
