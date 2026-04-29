@@ -4,7 +4,7 @@ import { state } from '../core/state.js';
 import { el, select, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS } from '../core/config.js';
-import { toEUR, formatEUR, byId, availableYears, revenueInRangeEUR, expensesInRangeEUR, ytdRange, drillRevRows, drillExpRows, drillNetRows, isCapEx } from '../core/data.js';
+import { toEUR, formatEUR, byId, availableYears, revenueInRangeEUR, expensesInRangeEUR, ytdRange, drillRevRows, drillExpRows, drillNetRows, isCapEx, listActive, listActivePayments } from '../core/data.js';
 
 const REV_COLS = [
   { key: 'date', label: 'Date', format: v => fmtDate(v) },
@@ -53,9 +53,9 @@ function build() {
   const yoyRev = revLY  ? ((revYTD - revLY)  / revLY  * 100) : 0;
   const yoyNet = netLY  ? ((netYTD - netLY)  / netLY  * 100) : 0;
 
-  const ytdPays = (state.db.payments || []).filter(p => p.status === 'paid' && p.date >= ytdStart && p.date <= ytdEnd);
-  const ytdInvs = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= ytdStart && i.issueDate <= ytdEnd);
-  const ytdOpExps = (state.db.expenses || []).filter(e => !isCapEx(e) && e.date >= ytdStart && e.date <= ytdEnd);
+  const ytdPays = (listActivePayments()).filter(p => p.status === 'paid' && p.date >= ytdStart && p.date <= ytdEnd);
+  const ytdInvs = (listActive('invoices')).filter(i => i.status === 'paid' && i.issueDate >= ytdStart && i.issueDate <= ytdEnd);
+  const ytdOpExps = (listActive('expenses')).filter(e => !isCapEx(e) && e.date >= ytdStart && e.date <= ytdEnd);
 
   // YTD vs LY KPIs
   wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' },
@@ -141,8 +141,8 @@ function build() {
         if (!m) return;
         const s = m + '-01';
         const e = m + '-' + new Date(Number(m.slice(0,4)), Number(m.slice(5,7)), 0).getDate().toString().padStart(2,'0');
-        const pays = (state.db.payments || []).filter(p => p.status === 'paid' && p.date >= s && p.date <= e);
-        const invs = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e);
+        const pays = (listActivePayments()).filter(p => p.status === 'paid' && p.date >= s && p.date <= e);
+        const invs = (listActive('invoices')).filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e);
         const yearLabel = datasetIndex === 0 ? 'This Year' : 'Last Year';
         drillDownModal(`${label} ${yearLabel} — Revenue`, drillRevRows(pays, invs), REV_COLS);
       }
@@ -155,12 +155,12 @@ function build() {
 function buildOwnerRows(start, end) {
   const ownerKeys = ['you', 'rita', 'both'];
   return ownerKeys.map(owner => {
-    const pays = (state.db.payments || []).filter(p => {
+    const pays = (listActivePayments()).filter(p => {
       const prop = byId('properties', p.propertyId);
       return p.status === 'paid' && p.date >= start && p.date <= end && prop?.owner === owner;
     });
-    const invs = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= start && i.issueDate <= end && i.owner === owner);
-    const exps = (state.db.expenses || []).filter(e => !isCapEx(e) && e.date >= start && e.date <= end && (byId('properties', e.propertyId)?.owner === owner));
+    const invs = (listActive('invoices')).filter(i => i.status === 'paid' && i.issueDate >= start && i.issueDate <= end && i.owner === owner);
+    const exps = (listActive('expenses')).filter(e => !isCapEx(e) && e.date >= start && e.date <= end && (byId('properties', e.propertyId)?.owner === owner));
     const rev = [...pays.map(p => toEUR(p.amount, p.currency)), ...invs.map(i => toEUR(i.total, i.currency))].reduce((a, b) => a + b, 0);
     const exp = exps.reduce((s, e) => s + toEUR(e.amount, e.currency), 0);
     return { owner, rev, exp, net: rev - exp };

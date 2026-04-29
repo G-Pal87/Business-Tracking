@@ -81,8 +81,12 @@ export function softDelete(collection, id) {
   const arr = state.db[collection] || [];
   const item = arr.find(x => x.id === id);
   if (!item) return false;
-  item.deletedAt = Date.now();
-  item.deletedBy = state.session?.username || 'system';
+  const now = Date.now();
+  const actor = state.session?.username || 'system';
+  item.deletedAt = now;
+  item.deletedBy = actor;
+  item.updatedAt = now;
+  item.updatedBy = actor;
   markDirty();
   return true;
 }
@@ -90,6 +94,16 @@ export function softDelete(collection, id) {
 export function listActive(collection) {
   return (state.db[collection] || []).filter(x => !x.deletedAt);
 }
+
+export function listActivePayments()   { return listActive('payments'); }
+export function listActiveExpenses()   { return listActive('expenses'); }
+export function listActiveInvoices()   { return listActive('invoices'); }
+export function listActiveProperties() { return listActive('properties'); }
+export function listActiveTenants()    { return listActive('tenants'); }
+export function listActiveVendors()    { return listActive('vendors'); }
+export function listActiveClients()    { return listActive('clients'); }
+export function listActiveServices()   { return listActive('services'); }
+export function listActiveInventory()  { return listActive('inventory'); }
 
 export function byId(collection, id) {
   return (state.db[collection] || []).find(x => x.id === id);
@@ -149,7 +163,7 @@ export function resolveExpenseFields(e) {
 
 // ============== Aggregations ==============
 export function totalRevenueEUR(filters) {
-  const payments = applyFilters(state.db.payments || [], filters).filter(p => p.status === 'paid');
+  const payments = applyFilters(listActivePayments(), filters).filter(p => p.status === 'paid');
   const invoices = applyFilters(listActive('invoices'), filters).filter(i => i.status === 'paid');
 
   let total = 0;
@@ -187,7 +201,7 @@ function inDateRange(date, start, end) {
 }
 
 export function revenueInRangeEUR(start, end, filters = {}) {
-  const rows = (state.db.payments || []).filter(p => inDateRange(p.date, start, end) && p.status === 'paid');
+  const rows = listActivePayments().filter(p => inDateRange(p.date, start, end) && p.status === 'paid');
   const invs = listActive('invoices').filter(i => inDateRange(i.issueDate, start, end) && i.status === 'paid');
   const fRows = applyFilters(rows, filters);
   const fInvs = applyFilters(invs.map(i => ({ ...i, date: i.issueDate })), filters);
@@ -207,7 +221,7 @@ export function expensesInRangeEUR(start, end, filters = {}, { includeRenovation
 }
 
 export function propertyRevenueEUR(propertyId, filters) {
-  const rows = (state.db.payments || []).filter(p => p.propertyId === propertyId && p.status === 'paid');
+  const rows = listActivePayments().filter(p => p.propertyId === propertyId && p.status === 'paid');
   const filtered = applyFilters(rows, filters);
   return filtered.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
 }
@@ -263,7 +277,7 @@ export function groupByCategory(rows) {
 
 export function recentActivity(limit = 8) {
   const items = [];
-  for (const p of state.db.payments || []) items.push({ kind: 'payment', date: p.date, data: p });
+  for (const p of listActivePayments()) items.push({ kind: 'payment', date: p.date, data: p });
   for (const e of listActive('expenses')) items.push({ kind: 'expense', date: e.date, data: e });
   for (const i of listActive('invoices')) items.push({ kind: 'invoice', date: i.issueDate, data: i });
   items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -272,7 +286,7 @@ export function recentActivity(limit = 8) {
 
 export function availableYears() {
   const years = new Set();
-  for (const p of state.db.payments || []) if (p.date) years.add(p.date.slice(0, 4));
+  for (const p of listActivePayments()) if (p.date) years.add(p.date.slice(0, 4));
   for (const e of listActive('expenses')) if (e.date) years.add(e.date.slice(0, 4));
   for (const i of listActive('invoices')) if (i.issueDate) years.add(i.issueDate.slice(0, 4));
   return [...years].sort().reverse();
@@ -359,7 +373,7 @@ export function getForecastVsActual(type, entityId, year) {
     const end = `${key}-${new Date(year, m, 0).getDate().toString().padStart(2, '0')}`;
     let actualRev = 0, actualExp = 0;
     if (type === 'property') {
-      actualRev = (state.db.payments || []).filter(p => p.propertyId === entityId && p.status === 'paid' && p.date >= start && p.date <= end).reduce((s, p) => s + toEUR(p.amount, p.currency, year), 0);
+      actualRev = listActivePayments().filter(p => p.propertyId === entityId && p.status === 'paid' && p.date >= start && p.date <= end).reduce((s, p) => s + toEUR(p.amount, p.currency, year), 0);
       actualExp = listActive('expenses').filter(e => e.propertyId === entityId && !isCapEx(e) && e.date >= start && e.date <= end).reduce((s, e) => s + toEUR(e.amount, e.currency, year), 0);
     } else {
       actualRev = listActive('invoices').filter(i => i.stream === entityId && i.status === 'paid' && i.issueDate >= start && i.issueDate <= end).reduce((s, i) => s + toEUR(i.total, i.currency, year), 0);
@@ -372,7 +386,7 @@ export function getForecastVsActual(type, entityId, year) {
 
 export function estimateTaxForYear(year, rate) {
   const s = `${year}-01-01`, e = `${year}-12-31`;
-  const rev = [...(state.db.payments || []).filter(p => p.status === 'paid' && p.date >= s && p.date <= e).map(p => toEUR(p.amount, p.currency, year)), ...listActive('invoices').filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e).map(i => toEUR(i.total, i.currency, year))].reduce((a, b) => a + b, 0);
+  const rev = [...listActivePayments().filter(p => p.status === 'paid' && p.date >= s && p.date <= e).map(p => toEUR(p.amount, p.currency, year)), ...listActive('invoices').filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e).map(i => toEUR(i.total, i.currency, year))].reduce((a, b) => a + b, 0);
   const exp = listActive('expenses').filter(ex => !isCapEx(ex) && ex.date >= s && ex.date <= e).reduce((a, ex) => a + toEUR(ex.amount, ex.currency, year), 0);
   const taxable = Math.max(0, rev - exp);
   const forecastRev = (state.db.forecasts || []).filter(f => f.year === Number(year)).reduce((sum, f) => sum + Object.values(f.months || {}).reduce((ms, md) => ms + (md.revenue || 0), 0), 0);
@@ -411,13 +425,13 @@ function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDa
     const dueDate = new Date(cursor.getFullYear(), cursor.getMonth(), day);
     const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
     const dateStr = `${monthKey}-${String(day).padStart(2, '0')}`;
-    const paidPayment = (state.db.payments || []).find(p =>
+    const paidPayment = listActivePayments().find(p =>
       p.propertyId === propertyId &&
       p.date?.slice(0, 7) === monthKey &&
       p.status === 'paid' &&
       (p.stream === 'long_term_rental' || p.type === 'rental')
     );
-    const linkedPayment = paidPayment || (state.db.payments || []).find(p =>
+    const linkedPayment = paidPayment || listActivePayments().find(p =>
       p.propertyId === propertyId &&
       p.date?.slice(0, 7) === monthKey &&
       (p.stream === 'long_term_rental' || p.type === 'rental')
@@ -494,12 +508,12 @@ export function buildReconciliationData(year) {
           return (!ls || mStr >= ls) && (!le || mStr <= le);
         });
         if (tenant) expected = toEUR(tenant.monthlyRent, tenant.currency || 'EUR', yr);
-        actual = (state.db.payments || [])
+        actual = listActivePayments()
           .filter(p => p.propertyId === prop.id && p.date >= start && p.date <= end && p.status === 'paid')
           .reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
       } else if (prop.type === 'short_term') {
         // Expected = all booked revenue (paid + pending); Actual = paid only
-        const all = (state.db.payments || []).filter(p =>
+        const all = listActivePayments().filter(p =>
           p.propertyId === prop.id && p.date >= start && p.date <= end
         );
         expected = all.reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
@@ -561,7 +575,7 @@ export function buildReportData(filters = {}) {
   };
   const matchProperty = row => !f.propertyId || f.propertyId === 'all' || row.propertyId === f.propertyId;
 
-  const payments = (state.db.payments || []).filter(p => p.status === 'paid' && matchDate(p) && matchStream(p) && matchProperty(p));
+  const payments = listActivePayments().filter(p => p.status === 'paid' && matchDate(p) && matchStream(p) && matchProperty(p));
   const invoices = listActive('invoices').filter(i => i.status === 'paid' && matchDate({ date: i.issueDate }) && matchStream(i) && matchProperty(i));
   const opExpenses = listActive('expenses').filter(e => !isCapEx(e) && matchDate(e) && matchStream(e) && matchProperty(e));
   const renoExpenses = listActive('expenses').filter(e => isCapEx(e) && matchDate(e) && matchProperty(e));

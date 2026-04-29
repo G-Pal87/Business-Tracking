@@ -7,7 +7,7 @@ import {
   totalRevenueEUR, totalExpensesEUR, renovationCapexEUR, netIncomeEUR,
   revenueInRangeEUR, expensesInRangeEUR, ytdRange,
   groupByMonth, groupByStream, recentActivity, formatEUR, byId, toEUR,
-  drillRevRows, drillExpRows, drillNetRows, isCapEx, listActive
+  drillRevRows, drillExpRows, drillNetRows, isCapEx, listActive, listActivePayments
 } from '../core/data.js';
 
 const REV_COLS = [
@@ -103,7 +103,7 @@ export default {
     const revDelta = revLY ? ((revYTD - revLY) / revLY) * 100 : 0;
     const expDelta = expLY ? ((expYTD - expLY) / expLY) * 100 : 0;
 
-    const ytdPays = (state.db.payments || []).filter(p => p.status === 'paid' && p.date >= start && p.date <= end);
+    const ytdPays = (listActivePayments()).filter(p => p.status === 'paid' && p.date >= start && p.date <= end);
     const ytdInvs = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= start && i.issueDate <= end);
     const ytdOpExps = (state.db.expenses || []).filter(e => !isCapEx(e) && e.date >= start && e.date <= end);
     const ytdRenoExps = (state.db.expenses || []).filter(e => isCapEx(e) && e.date >= start && e.date <= end);
@@ -223,7 +223,7 @@ export default {
       months.push(d.toISOString().slice(0, 7));
     }
 
-    const paidPayments = (state.db.payments || []).filter(p => p.status === 'paid');
+    const paidPayments = (listActivePayments()).filter(p => p.status === 'paid');
     const paidInvoices = (state.db.invoices || []).filter(i => i.status === 'paid').map(i => ({ ...i, date: i.issueDate, amount: i.total }));
     const revByMonth = groupByMonth([...paidPayments, ...paidInvoices]);
     const opExpenses = (state.db.expenses || []).filter(e => !isCapEx(e));
@@ -260,7 +260,7 @@ export default {
     const nowYear = new Date().getFullYear();
     const propRevs = (listActive('properties')).map(p => {
       const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
-      const rev = (state.db.payments || []).filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (pay.date || '').startsWith(String(nowYear))).reduce((s, pay) => s + (pay.currency === 'HUF' ? pay.amount * fx : pay.amount), 0);
+      const rev = (listActivePayments()).filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (pay.date || '').startsWith(String(nowYear))).reduce((s, pay) => s + (pay.currency === 'HUF' ? pay.amount * fx : pay.amount), 0);
       return { id: p.id, name: p.name.replace(' Apartment','').replace(' Loft','').replace(' Flat',''), rev };
     }).sort((a, b) => b.rev - a.rev).slice(0, 5);
     charts.bar('chart-topprop', {
@@ -270,7 +270,7 @@ export default {
       onClickItem: (label, index) => {
         const prop = propRevs[index];
         if (!prop) return;
-        const pays = (state.db.payments || []).filter(p => p.propertyId === prop.id && p.status === 'paid' && (p.date || '').startsWith(String(nowYear)));
+        const pays = (listActivePayments()).filter(p => p.propertyId === prop.id && p.status === 'paid' && (p.date || '').startsWith(String(nowYear)));
         drillDownModal(`${label} — Payments ${nowYear}`, drillRevRows(pays, []), REV_COLS);
       }
     });
@@ -350,7 +350,7 @@ function buildActivityCard() {
 function buildTopPropertiesCard() {
   const now = new Date().getFullYear();
   const props = (listActive('properties')).map(p => {
-    const rev = (state.db.payments || [])
+    const rev = (listActivePayments())
       .filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (pay.date || '').startsWith(String(now)))
       .reduce((s, pay) => s + (pay.currency === 'HUF' ? pay.amount * (state.db.settings?.fxRates?.HUF_EUR || 0.0025) : pay.amount), 0);
     return { p, rev };
