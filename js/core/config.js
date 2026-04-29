@@ -26,6 +26,33 @@ export const EXPENSE_CATEGORIES = {
   other:       { label: 'Other',       icon: 'O', color: '#8b93b0' }
 };
 
+// ---- Classification model (OpEx/CapEx, costCategory, recurrence) ----
+
+export const ACCOUNTING_TYPES = {
+  opex:  { label: 'OpEx (Operating)' },
+  capex: { label: 'CapEx (Capital)' }
+};
+
+export const COST_CATEGORIES = {
+  renovation:          { label: 'Renovation',         color: '#f59e0b' },
+  maintenance:         { label: 'Maintenance',         color: '#10b981' },
+  utilities:           { label: 'Utilities',           color: '#8b5cf6' },
+  cleaning:            { label: 'Cleaning',            color: '#ec4899' },
+  insurance:           { label: 'Insurance',           color: '#3b82f6' },
+  tax:                 { label: 'Tax',                 color: '#ef4444' },
+  financing:           { label: 'Financing',           color: '#6366f1' },
+  software:            { label: 'Software',            color: '#06b6d4' },
+  legal:               { label: 'Legal',               color: '#84cc16' },
+  accounting:          { label: 'Accounting',          color: '#14b8a6' },
+  property_management: { label: 'Property Mgmt',       color: '#f97316' },
+  other:               { label: 'Other',               color: '#8b93b0' }
+};
+
+export const RECURRENCE_TYPES = {
+  recurring: { label: 'Recurring' },
+  one_off:   { label: 'One-off' }
+};
+
 export const VENDOR_ROLES = {
   cleaner:     { label: 'Cleaner',     color: '#ec4899' },
   plumber:     { label: 'Plumber',     color: '#3b82f6' },

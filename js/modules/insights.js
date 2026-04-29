@@ -4,7 +4,7 @@ import { state } from '../core/state.js';
 import { el, select, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS } from '../core/config.js';
-import { toEUR, formatEUR, byId, availableYears, revenueInRangeEUR, expensesInRangeEUR, ytdRange, drillRevRows, drillExpRows, drillNetRows } from '../core/data.js';
+import { toEUR, formatEUR, byId, availableYears, revenueInRangeEUR, expensesInRangeEUR, ytdRange, drillRevRows, drillExpRows, drillNetRows, isCapEx } from '../core/data.js';
 
 const REV_COLS = [
   { key: 'date', label: 'Date', format: v => fmtDate(v) },
@@ -55,7 +55,7 @@ function build() {
 
   const ytdPays = (state.db.payments || []).filter(p => p.status === 'paid' && p.date >= ytdStart && p.date <= ytdEnd);
   const ytdInvs = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= ytdStart && i.issueDate <= ytdEnd);
-  const ytdOpExps = (state.db.expenses || []).filter(e => e.category !== 'renovation' && e.date >= ytdStart && e.date <= ytdEnd);
+  const ytdOpExps = (state.db.expenses || []).filter(e => !isCapEx(e) && e.date >= ytdStart && e.date <= ytdEnd);
 
   // YTD vs LY KPIs
   wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' },
@@ -160,7 +160,7 @@ function buildOwnerRows(start, end) {
       return p.status === 'paid' && p.date >= start && p.date <= end && prop?.owner === owner;
     });
     const invs = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= start && i.issueDate <= end && i.owner === owner);
-    const exps = (state.db.expenses || []).filter(e => e.category !== 'renovation' && e.date >= start && e.date <= end && (byId('properties', e.propertyId)?.owner === owner));
+    const exps = (state.db.expenses || []).filter(e => !isCapEx(e) && e.date >= start && e.date <= end && (byId('properties', e.propertyId)?.owner === owner));
     const rev = [...pays.map(p => toEUR(p.amount, p.currency)), ...invs.map(i => toEUR(i.total, i.currency))].reduce((a, b) => a + b, 0);
     const exp = exps.reduce((s, e) => s + toEUR(e.amount, e.currency), 0);
     return { owner, rev, exp, net: rev - exp };

@@ -95,6 +95,36 @@ export function applyFilters(rows, { year, stream, owner, propertyId, clientId }
   });
 }
 
+// ============== Cost classification helpers ==============
+
+// Backwards-compatible CapEx detection:
+// New records carry accountingType; legacy records fall back to category === 'renovation'.
+export function isCapEx(e) {
+  if (e.accountingType) return e.accountingType === 'capex';
+  return e.category === 'renovation';
+}
+
+// Legacy category → costCategory mapping (mirrors COST_CATEGORIES in config.js)
+const LEGACY_CAT_MAP = {
+  mortgage:   'financing',           maintenance: 'maintenance',
+  renovation: 'renovation',          insurance:   'insurance',
+  tax:        'tax',                 utilities:   'utilities',
+  management: 'property_management', cleaning:    'cleaning',
+  electricity:'utilities',           water:       'utilities',
+  inventory:  'other',               vat:         'tax',
+  other:      'other'
+};
+
+// Derives accountingType / costCategory / recurrence for any expense record
+// without mutating stored data — safe, non-destructive migration layer.
+export function resolveExpenseFields(e) {
+  return {
+    accountingType: e.accountingType || (e.category === 'renovation' ? 'capex' : 'opex'),
+    costCategory:   e.costCategory   || LEGACY_CAT_MAP[e.category] || 'other',
+    recurrence:     e.recurrence     || (e.recurringGroupId ? 'recurring' : e.category === 'renovation' ? 'one_off' : 'recurring')
+  };
+}
+
 // ============== Aggregations ==============
 export function totalRevenueEUR(filters) {
   const payments = applyFilters(state.db.payments || [], filters).filter(p => p.status === 'paid');
@@ -108,14 +138,14 @@ export function totalRevenueEUR(filters) {
 
 export function totalExpensesEUR(filters, { includeRenovation = true } = {}) {
   let rows = applyFilters(state.db.expenses || [], filters);
-  if (!includeRenovation) rows = rows.filter(e => e.category !== 'renovation');
+  if (!includeRenovation) rows = rows.filter(e => !isCapEx(e));
   let total = 0;
   for (const e of rows) total += toEUR(e.amount, e.currency, e.date);
   return total;
 }
 
 export function renovationCapexEUR(filters) {
-  const rows = applyFilters(state.db.expenses || [], filters).filter(e => e.category === 'renovation');
+  const rows = applyFilters(state.db.expenses || [], filters).filter(e => isCapEx(e));
   let total = 0;
   for (const e of rows) total += toEUR(e.amount, e.currency, e.date);
   return total;
@@ -147,7 +177,7 @@ export function revenueInRangeEUR(start, end, filters = {}) {
 
 export function expensesInRangeEUR(start, end, filters = {}, { includeRenovation = true } = {}) {
   let rows = (state.db.expenses || []).filter(e => inDateRange(e.date, start, end));
-  if (!includeRenovation) rows = rows.filter(e => e.category !== 'renovation');
+  if (!includeRenovation) rows = rows.filter(e => !isCapEx(e));
   rows = applyFilters(rows, filters);
   let total = 0;
   for (const e of rows) total += toEUR(e.amount, e.currency, e.date);
@@ -162,7 +192,7 @@ export function propertyRevenueEUR(propertyId, filters) {
 
 export function propertyExpensesEUR(propertyId, filters, { includeRenovation = true } = {}) {
   let rows = (state.db.expenses || []).filter(e => e.propertyId === propertyId);
-  if (!includeRenovation) rows = rows.filter(e => e.category !== 'renovation');
+  if (!includeRenovation) rows = rows.filter(e => !isCapEx(e));
   const filtered = applyFilters(rows, filters);
   return filtered.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 }
@@ -308,7 +338,7 @@ export function getForecastVsActual(type, entityId, year) {
     let actualRev = 0, actualExp = 0;
     if (type === 'property') {
       actualRev = (state.db.payments || []).filter(p => p.propertyId === entityId && p.status === 'paid' && p.date >= start && p.date <= end).reduce((s, p) => s + toEUR(p.amount, p.currency, year), 0);
-      actualExp = (state.db.expenses || []).filter(e => e.propertyId === entityId && e.category !== 'renovation' && e.date >= start && e.date <= end).reduce((s, e) => s + toEUR(e.amount, e.currency, year), 0);
+      actualExp = (state.db.expenses || []).filter(e => e.propertyId === entityId && !isCapEx(e) && e.date >= start && e.date <= end).reduce((s, e) => s + toEUR(e.amount, e.currency, year), 0);
     } else {
       actualRev = (state.db.invoices || []).filter(i => i.stream === entityId && i.status === 'paid' && i.issueDate >= start && i.issueDate <= end).reduce((s, i) => s + toEUR(i.total, i.currency, year), 0);
     }
@@ -321,7 +351,7 @@ export function getForecastVsActual(type, entityId, year) {
 export function estimateTaxForYear(year, rate) {
   const s = `${year}-01-01`, e = `${year}-12-31`;
   const rev = [...(state.db.payments || []).filter(p => p.status === 'paid' && p.date >= s && p.date <= e).map(p => toEUR(p.amount, p.currency, year)), ...(state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e).map(i => toEUR(i.total, i.currency, year))].reduce((a, b) => a + b, 0);
-  const exp = (state.db.expenses || []).filter(ex => ex.category !== 'renovation' && ex.date >= s && ex.date <= e).reduce((a, ex) => a + toEUR(ex.amount, ex.currency, year), 0);
+  const exp = (state.db.expenses || []).filter(ex => !isCapEx(ex) && ex.date >= s && ex.date <= e).reduce((a, ex) => a + toEUR(ex.amount, ex.currency, year), 0);
   const taxable = Math.max(0, rev - exp);
   const forecastRev = (state.db.forecasts || []).filter(f => f.year === Number(year)).reduce((sum, f) => sum + Object.values(f.months || {}).reduce((ms, md) => ms + (md.revenue || 0), 0), 0);
   const forecastTaxable = Math.max(0, forecastRev - exp);
@@ -511,8 +541,8 @@ export function buildReportData(filters = {}) {
 
   const payments = (state.db.payments || []).filter(p => p.status === 'paid' && matchDate(p) && matchStream(p) && matchProperty(p));
   const invoices = (state.db.invoices || []).filter(i => i.status === 'paid' && matchDate({ date: i.issueDate }) && matchStream(i) && matchProperty(i));
-  const opExpenses = (state.db.expenses || []).filter(e => e.category !== 'renovation' && matchDate(e) && matchStream(e) && matchProperty(e));
-  const renoExpenses = (state.db.expenses || []).filter(e => e.category === 'renovation' && matchDate(e) && matchProperty(e));
+  const opExpenses = (state.db.expenses || []).filter(e => !isCapEx(e) && matchDate(e) && matchStream(e) && matchProperty(e));
+  const renoExpenses = (state.db.expenses || []).filter(e => isCapEx(e) && matchDate(e) && matchProperty(e));
 
   const rev = [...payments, ...invoices.map(i => ({ ...i, amount: i.total, date: i.date || i.issueDate }))].reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
   const exp = opExpenses.reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
