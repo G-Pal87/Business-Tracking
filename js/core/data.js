@@ -105,6 +105,23 @@ export function listActiveClients()    { return listActive('clients'); }
 export function listActiveServices()   { return listActive('services'); }
 export function listActiveInventory()  { return listActive('inventory'); }
 
+export function patchSettings(patch) {
+  if (!state.db.settings) state.db.settings = {};
+  Object.assign(state.db.settings, patch);
+  markDirty();
+}
+
+export function createRecord(collection, data) {
+  const item = { id: newId(collection.slice(0, 3)), ...data };
+  return upsert(collection, item);
+}
+
+export function updateRecord(collection, id, patch) {
+  const item = byId(collection, id);
+  if (!item) return null;
+  return upsert(collection, { ...item, ...patch });
+}
+
 export function byId(collection, id) {
   return (state.db[collection] || []).find(x => x.id === id);
 }
@@ -300,15 +317,16 @@ export function getVendorsByProperty(propertyId) {
 
 // ============== Forecasts ==============
 export function getOrCreateForecast(type, entityId, year) {
-  if (!state.db.forecasts) state.db.forecasts = [];
-  const existing = state.db.forecasts.find(f => f.type === type && f.entityId === entityId && f.year === Number(year));
+  const existing = (state.db.forecasts || []).find(f => f.type === type && f.entityId === entityId && f.year === Number(year));
   if (existing) {
-    if (!existing.yearTarget) { existing.yearTarget = { revenue: 0, expenses: 0 }; markDirty(); }
+    if (!existing.yearTarget) {
+      existing.yearTarget = { revenue: 0, expenses: 0 };
+      upsert('forecasts', existing);
+    }
     return existing;
   }
   const fc = { id: newId('fcs'), type, entityId, year: Number(year), taxRate: 0, yearTarget: { revenue: 0, expenses: 0 }, months: {} };
-  state.db.forecasts.push(fc);
-  markDirty();
+  upsert('forecasts', fc);
   return fc;
 }
 
@@ -316,7 +334,7 @@ export function saveForecastMonth(forecastId, month, data) {
   const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
   if (!fc) return;
   fc.months[month] = { ...(fc.months[month] || {}), ...data };
-  markDirty();
+  upsert('forecasts', fc);
 }
 
 // Multi-entry forecast helpers (used by service forecast).
@@ -337,7 +355,7 @@ export function upsertForecastEntry(forecastId, month, entry) {
   const idx = m.entries.findIndex(e => e.id === entry.id);
   if (idx >= 0) m.entries[idx] = entry; else m.entries.push(entry);
   m.revenue = m.entries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  markDirty();
+  upsert('forecasts', fc);
   return entry;
 }
 
@@ -347,21 +365,21 @@ export function removeForecastEntry(forecastId, month, entryId) {
   if (!m?.entries) return;
   m.entries = m.entries.filter(e => e.id !== entryId);
   m.revenue = m.entries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-  markDirty();
+  upsert('forecasts', fc);
 }
 
 export function setForecastTaxRate(forecastId, rate) {
   const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
   if (!fc) return;
   fc.taxRate = Number(rate) || 0;
-  markDirty();
+  upsert('forecasts', fc);
 }
 
 export function saveForecastYear(forecastId, data) {
   const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
   if (!fc) return;
   fc.yearTarget = { ...(fc.yearTarget || {}), ...data };
-  markDirty();
+  upsert('forecasts', fc);
 }
 
 export function getForecastVsActual(type, entityId, year) {
