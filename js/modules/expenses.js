@@ -33,7 +33,7 @@ function addOneYear(dateStr) {
 function restoreInventoryStock(expense) {
   if (!expense.inventoryItemId || !expense.inventoryQty) return;
   const item = byId('inventory', expense.inventoryItemId);
-  if (item) { item.stock += expense.inventoryQty; upsert('inventory', item); }
+  if (item) { upsert('inventory', { ...item, stock: item.stock + expense.inventoryQty }); }
 }
 
 function build() {

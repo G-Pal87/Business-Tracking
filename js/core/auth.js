@@ -1,7 +1,7 @@
 // Auth: session management + login/setup screen
-import { state, markDirty } from './state.js';
+import { state } from './state.js';
 import { el, input, formRow, button } from './ui.js';
-import { newId } from './data.js';
+import { newId, upsert } from './data.js';
 
 const SESSION_KEY = 'bt_session';
 
@@ -120,9 +120,7 @@ function renderSetup(screen, resolve) {
     try {
       const hash = await hashPassword(password);
       const user = { id: newId('usr'), username, name, role: 'admin', passwordHash: hash };
-      if (!state.db.users) state.db.users = [];
-      state.db.users.push(user);
-      markDirty();
+      upsert('users', user);
       setSession(user);
       screen.remove();
       resolve(state.session);
