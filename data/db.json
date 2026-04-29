@@ -968,6 +968,23 @@
       "updatedBy": "Giorgos",
       "deletedAt": 1777464178952,
       "deletedBy": "Giorgos"
+    },
+    {
+      "id": "cli_mokdo7ny9h",
+      "name": "Zollhof Holding GmbH",
+      "email": "",
+      "address": "Zollhof 7 90443 Nürnberg Deutschland / Germany",
+      "vatNumber": "DE450476101",
+      "registrationNumber": "",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "contractStart": "2025-10-20",
+      "notes": "",
+      "createdAt": 1777486762173,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777486762173,
+      "updatedBy": "Giorgos"
     }
   ],
   "services": [
