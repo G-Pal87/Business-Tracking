@@ -3,7 +3,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR } from '../core/data.js';
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
-import { downloadInvoicePDF } from '../core/pdf.js';
+import { downloadInvoicePDF, generateInvoicePDF } from '../core/pdf.js';
 import { navigate } from '../core/router.js';
 
 const INV_COLS = [
@@ -147,7 +147,11 @@ function build() {
       tr.appendChild(el('td', {}, el('span', { class: `badge ${st.css}` }, st.label)));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.total, r.currency, { maxFrac: 0 })));
       const actions = el('td', { class: 'right flex gap-4', style: 'justify-content:flex-end' });
-      actions.appendChild(button('PDF', { variant: 'sm ghost', onClick: (e) => { e.stopPropagation(); downloadInvoicePDF(r); }}));
+      actions.appendChild(button('View', { variant: 'sm ghost', onClick: (e) => { e.stopPropagation(); openPDFViewer(r); }}));
+      actions.appendChild(button('PDF', { variant: 'sm ghost', onClick: (e) => {
+        e.stopPropagation();
+        if (r.source === 'pdf_import' && r.pdfData) downloadOriginalPDF(r); else downloadInvoicePDF(r);
+      }}));
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: (e) => { e.stopPropagation(); openBuilder(r); }}));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async (e) => {
         e.stopPropagation();
@@ -495,7 +499,9 @@ function previewInvoice(inv, clientId) {
     ${inv.notes ? `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#666">${escape(inv.notes)}</div>` : ''}
   `;
   body.appendChild(preview);
-  const pdfBtn = button('Download PDF', { variant: 'primary', onClick: () => downloadInvoicePDF(inv) });
+  const pdfBtn = button('Download PDF', { variant: 'primary', onClick: () => {
+    if (inv.source === 'pdf_import' && inv.pdfData) downloadOriginalPDF(inv); else downloadInvoicePDF(inv);
+  }});
   const closeBtn = button('Close', { onClick: closeModal });
   openModal({ title: `Invoice ${inv.number || 'Preview'}`, body, footer: [closeBtn, pdfBtn], large: true });
 }
@@ -675,7 +681,7 @@ function openPDFImport() {
   fileI.onchange = refresh;
   streamS.onchange = () => { if (fileI.files?.[0]) refresh(); };
 
-  const importBtn = button('Import', { variant: 'primary', onClick: () => {
+  const importBtn = button('Import', { variant: 'primary', onClick: async () => {
     const items = (parsed?.lineItems?.length > 0) ? parsed.lineItems : manualItems;
     if (items.length === 0) { toast('Add at least one line item before importing', 'warning'); return; }
     const issueDate = dateI.value || today();
@@ -686,6 +692,20 @@ function openPDFImport() {
       i.source === 'pdf_import' && i.issueDate === issueDate && Math.abs(i.total - total) < 0.01
     );
     if (dup) { toast('Invoice already imported (same date & total)', 'warning'); return; }
+
+    let pdfData = null;
+    const file = fileI.files?.[0];
+    if (file) {
+      try {
+        pdfData = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      } catch { /* import without original PDF if read fails */ }
+    }
+
     const inv = {
       id: newId('inv'),
       number: invoiceNum || String(nextInvoiceSequence(year, null)),
@@ -699,7 +719,8 @@ function openPDFImport() {
       lineItems: items.map(li => ({ id: newId('li'), description: li.description, quantity: li.quantity, unit: 'day', rate: li.rate, total: li.total })),
       subtotal: total, taxRate: 0, tax: 0, total,
       notes: 'Imported from PDF',
-      source: 'pdf_import'
+      source: 'pdf_import',
+      ...(pdfData ? { pdfData } : {})
     };
     upsert('invoices', inv);
     toast('Invoice imported', 'success');
@@ -820,4 +841,36 @@ function parsePDFInvoice(lines, fallbackStream = 'customer_success') {
   }
 
   return { invoiceDate, invoiceNumber, clientName, lineItems };
+}
+
+// ===== PDF viewer / download helpers =====
+
+function b64toBlob(b64, mimeType = 'application/pdf') {
+  const bytes = atob(b64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return new Blob([arr], { type: mimeType });
+}
+
+function downloadOriginalPDF(inv) {
+  const blob = b64toBlob(inv.pdfData);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${inv.number || 'invoice'}.pdf`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function openPDFViewer(inv) {
+  const blob = (inv.source === 'pdf_import' && inv.pdfData)
+    ? b64toBlob(inv.pdfData)
+    : generateInvoicePDF(inv).output('blob');
+  const url = URL.createObjectURL(blob);
+  const frame = el('iframe', { src: url, style: 'width:100%;height:70vh;border:none;display:block' });
+  const onClose = () => { URL.revokeObjectURL(url); closeModal(); };
+  const dlBtn = button('Download', { variant: 'primary', onClick: () => {
+    if (inv.source === 'pdf_import' && inv.pdfData) downloadOriginalPDF(inv); else downloadInvoicePDF(inv);
+  }});
+  openModal({ title: `Invoice ${inv.number || 'Preview'}`, body: el('div', {}, frame), footer: [button('Close', { onClick: onClose }), dlBtn], large: true });
 }
