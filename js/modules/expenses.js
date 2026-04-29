@@ -1,9 +1,9 @@
 // Expenses module
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal } from '../core/ui.js';
-import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, groupByCategory } from '../core/data.js';
+import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields } from '../core/data.js';
 import * as charts from '../core/charts.js';
-import { CURRENCIES, EXPENSE_CATEGORIES } from '../core/config.js';
+import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
 export default {
@@ -64,6 +64,16 @@ function build() {
     ...Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label }))
   ], 'all');
 
+  const accountingTypeSel = select([
+    { value: 'all', label: 'All Types' },
+    ...Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label }))
+  ], 'all');
+
+  const recurrenceSel = select([
+    { value: 'all', label: 'All Recurrence' },
+    ...Object.entries(RECURRENCE_TYPES).map(([v, m]) => ({ value: v, label: m.label }))
+  ], 'all');
+
   let selected = new Set();
 
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
@@ -84,6 +94,8 @@ function build() {
 
   filterBar.appendChild(propSel);
   filterBar.appendChild(catSel);
+  filterBar.appendChild(accountingTypeSel);
+  filterBar.appendChild(recurrenceSel);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(deleteSelBtn);
   filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
@@ -110,6 +122,8 @@ function build() {
     let rows = [...(state.db.expenses || [])];
     if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
     if (catSel.value !== 'all')  rows = rows.filter(r => r.category === catSel.value);
+    if (accountingTypeSel.value !== 'all') rows = rows.filter(r => resolveExpenseFields(r).accountingType === accountingTypeSel.value);
+    if (recurrenceSel.value !== 'all')     rows = rows.filter(r => resolveExpenseFields(r).recurrence === recurrenceSel.value);
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
     if (rows.length === 0) {
@@ -151,7 +165,11 @@ function build() {
       tr.appendChild(chkTd);
       tr.appendChild(el('td', {}, fmtDate(r.date)));
       tr.appendChild(el('td', {}, prop?.name || '-'));
-      tr.appendChild(el('td', {}, el('span', { class: 'badge ' + (r.category === 'renovation' ? 'warning' : '') }, cat?.label || r.category)));
+      const catCell = el('td', {});
+      catCell.appendChild(el('span', { class: 'badge ' + (r.category === 'renovation' ? 'warning' : '') }, cat?.label || r.category));
+      if (resolveExpenseFields(r).accountingType === 'capex' && r.category !== 'renovation')
+        catCell.appendChild(el('span', { class: 'badge warning', style: 'margin-left:4px;font-size:10px' }, 'CapEx'));
+      tr.appendChild(catCell);
       const descCell = el('td', {});
       if (r.recurringGroupId) descCell.appendChild(el('span', { class: 'badge', style: 'margin-right:4px;font-size:10px' }, '↻'));
       descCell.appendChild(document.createTextNode(r.description || ''));
@@ -179,45 +197,57 @@ function build() {
     };
 
     const totalEUR = rows.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
-    const renoEUR  = rows.filter(r => r.category === 'renovation').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
+    const capexEUR = rows.filter(r => resolveExpenseFields(r).accountingType === 'capex').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
     tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted' }, `${rows.length} expense(s) . Renovation: ${formatEUR(renoEUR)}`),
+      el('span', { class: 'muted' }, `${rows.length} expense(s) · CapEx: ${formatEUR(capexEUR)}`),
       el('strong', { class: 'num' }, `Total: ${formatEUR(totalEUR)}`)
     ));
   };
 
   // Drilldown helpers shared by both charts
   const drillCols = [
-    { key: 'date',     label: 'Date',        format: v => fmtDate(v) },
-    { key: 'property', label: 'Property' },
-    { key: 'category', label: 'Category' },
-    { key: 'desc',     label: 'Description' },
-    { key: 'vendor',   label: 'Vendor' },
-    { key: 'eur',      label: 'Amount (€)',  right: true, format: v => formatEUR(v) },
+    { key: 'date',          label: 'Date',        format: v => fmtDate(v) },
+    { key: 'property',      label: 'Property' },
+    { key: 'category',      label: 'Category' },
+    { key: 'accountingType',label: 'Type' },
+    { key: 'recurrence',    label: 'Recurrence' },
+    { key: 'desc',          label: 'Description' },
+    { key: 'vendor',        label: 'Vendor' },
+    { key: 'eur',           label: 'Amount (€)',  right: true, format: v => formatEUR(v) },
   ];
   const toDrillRows = rows => rows
-    .map(r => ({
-      date:     r.date,
-      property: byId('properties', r.propertyId)?.name || '—',
-      category: EXPENSE_CATEGORIES[r.category]?.label || r.category,
-      desc:     r.description || '—',
-      vendor:   r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '—') : (r.vendor || '—'),
-      eur:      toEUR(r.amount, r.currency),
-    }))
+    .map(r => {
+      const res = resolveExpenseFields(r);
+      return {
+        date:          r.date,
+        property:      byId('properties', r.propertyId)?.name || '—',
+        category:      EXPENSE_CATEGORIES[r.category]?.label || r.category,
+        accountingType: ACCOUNTING_TYPES[res.accountingType]?.label || res.accountingType,
+        recurrence:    RECURRENCE_TYPES[res.recurrence]?.label || res.recurrence,
+        desc:          r.description || '—',
+        vendor:        r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '—') : (r.vendor || '—'),
+        eur:           toEUR(r.amount, r.currency),
+      };
+    })
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-  // Dashboard: respects stream + property filters; category filter stays for table only
+  // Dashboard: respects property + accountingType filters; category/recurrence stay for table only
   const renderDash = () => {
     let bkRows = [...(state.db.expenses || [])];
-    if (propSel.value !== 'all') bkRows = bkRows.filter(r => r.propertyId === propSel.value);
+    if (propSel.value !== 'all')           bkRows = bkRows.filter(r => r.propertyId === propSel.value);
+    if (accountingTypeSel.value !== 'all') bkRows = bkRows.filter(r => resolveExpenseFields(r).accountingType === accountingTypeSel.value);
 
-    // By Category doughnut
-    const byCat = groupByCategory(bkRows);
+    // By Cost Category doughnut (groups by resolved costCategory for correct OpEx/CapEx separation)
+    const byCostCat = new Map();
+    for (const r of bkRows) {
+      const k = resolveExpenseFields(r).costCategory;
+      byCostCat.set(k, (byCostCat.get(k) || 0) + toEUR(r.amount, r.currency));
+    }
     const catLabels = [], catData = [], catColors = [], catKeys = [];
-    for (const [k, m] of Object.entries(EXPENSE_CATEGORIES)) {
-      if (!byCat.has(k)) continue;
+    for (const [k, m] of Object.entries(COST_CATEGORIES)) {
+      if (!byCostCat.has(k)) continue;
       catLabels.push(m.label);
-      catData.push(Math.round(byCat.get(k)));
+      catData.push(Math.round(byCostCat.get(k)));
       catColors.push(m.color);
       catKeys.push(k);
     }
@@ -226,8 +256,8 @@ function build() {
       onClickItem: (_label, idx) => {
         const key = catKeys[idx];
         drillDownModal(
-          `Expenses — ${EXPENSE_CATEGORIES[key]?.label || key}`,
-          toDrillRows(bkRows.filter(r => r.category === key)),
+          `Expenses — ${COST_CATEGORIES[key]?.label || key}`,
+          toDrillRows(bkRows.filter(r => resolveExpenseFields(r).costCategory === key)),
           drillCols
         );
       }
@@ -260,8 +290,10 @@ function build() {
 
   const renderAll = () => { renderTable(); renderDash(); };
 
-  propSel.onchange = renderAll;
-  catSel.onchange  = renderTable;
+  propSel.onchange          = renderAll;
+  accountingTypeSel.onchange = renderAll;
+  catSel.onchange           = renderTable;
+  recurrenceSel.onchange    = renderTable;
 
   renderTable();
   // Defer chart render until canvas elements are in the DOM
@@ -289,6 +321,10 @@ function openForm(existing, defaults = {}) {
   const body = el('div', {});
   const propS = select((state.db.properties || []).map(p => ({ value: p.id, label: p.name })), r.propertyId);
   const catS = select(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), r.category);
+  const resolved = resolveExpenseFields(r);
+  const accountingTypeS = select(Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label })), resolved.accountingType);
+  const costCategoryS   = select(Object.entries(COST_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), resolved.costCategory);
+  const recurrenceS     = select(Object.entries(RECURRENCE_TYPES).map(([v, m]) => ({ value: v, label: m.label })), resolved.recurrence);
   const vendorOpts = [{ value: '', label: '— No vendor —' }, ...(state.db.vendors || []).map(v => ({ value: v.id, label: v.name }))];
   const vendorS = select(vendorOpts, r.vendorId || '');
   const amountI = input({ type: 'number', value: r.amount, min: 0, step: 0.01 });
@@ -323,6 +359,8 @@ function openForm(existing, defaults = {}) {
 
   body.appendChild(formRow('Property', propS));
   body.appendChild(formRow('Category', catS));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Accounting Type', accountingTypeS), formRow('Recurrence', recurrenceS)));
+  body.appendChild(formRow('Cost Category', costCategoryS));
   body.appendChild(invRow);
   const vendorRow = formRow('Vendor', vendorS);
   body.appendChild(vendorRow);
@@ -366,6 +404,13 @@ function openForm(existing, defaults = {}) {
   syncInventoryRow();
 
   catS.onchange = () => {
+    // Renovation always forces CapEx; all categories auto-suggest costCategory
+    if (catS.value === 'renovation') {
+      accountingTypeS.value = 'capex';
+      costCategoryS.value   = 'renovation';
+    } else {
+      costCategoryS.value = resolveExpenseFields({ category: catS.value }).costCategory;
+    }
     syncInventoryRow();
     if (catS.value === 'inventory') syncInventoryAmount();
     else autoFillAmount();
@@ -415,15 +460,18 @@ function openForm(existing, defaults = {}) {
       : prop?.type === 'long_term' ? 'long_term_rental'
       : r.stream || 'short_term_rental';
     Object.assign(r, {
-      propertyId:  propS.value,
-      category:    catS.value,
-      amount:      Number(amountI.value),
-      currency:    currencyS.value,
-      date:        dateI.value,
-      vendorId:    vendorS.value || '',
-      vendor:      selectedVendor?.name || r.vendor || '',
-      description: descT.value.trim(),
-      stream:      autoStream
+      propertyId:    propS.value,
+      category:      catS.value,
+      accountingType: catS.value === 'renovation' ? 'capex' : accountingTypeS.value,
+      costCategory:   catS.value === 'renovation' ? 'renovation' : costCategoryS.value,
+      recurrence:    recurrenceS.value,
+      amount:        Number(amountI.value),
+      currency:      currencyS.value,
+      date:          dateI.value,
+      vendorId:      vendorS.value || '',
+      vendor:        selectedVendor?.name || r.vendor || '',
+      description:   descT.value.trim(),
+      stream:        autoStream
     });
 
     if (!existing && recurChk.checked && catS.value !== 'inventory') {

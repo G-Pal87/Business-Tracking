@@ -7,7 +7,7 @@ import {
   totalRevenueEUR, totalExpensesEUR, renovationCapexEUR, netIncomeEUR,
   revenueInRangeEUR, expensesInRangeEUR, ytdRange,
   groupByMonth, groupByStream, recentActivity, formatEUR, byId, toEUR,
-  drillRevRows, drillExpRows, drillNetRows
+  drillRevRows, drillExpRows, drillNetRows, isCapEx
 } from '../core/data.js';
 
 const REV_COLS = [
@@ -105,8 +105,8 @@ export default {
 
     const ytdPays = (state.db.payments || []).filter(p => p.status === 'paid' && p.date >= start && p.date <= end);
     const ytdInvs = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= start && i.issueDate <= end);
-    const ytdOpExps = (state.db.expenses || []).filter(e => e.category !== 'renovation' && e.date >= start && e.date <= end);
-    const ytdRenoExps = (state.db.expenses || []).filter(e => e.category === 'renovation' && e.date >= start && e.date <= end);
+    const ytdOpExps = (state.db.expenses || []).filter(e => !isCapEx(e) && e.date >= start && e.date <= end);
+    const ytdRenoExps = (state.db.expenses || []).filter(e => isCapEx(e) && e.date >= start && e.date <= end);
 
     const totalProperties = (state.db.properties || []).length;
     const active = (state.db.properties || []).filter(p => p.status === 'active').length;
@@ -171,7 +171,7 @@ export default {
       }),
       kpi('Total Portfolio', formatEUR(portfolioValueEUR()), 'At purchase + CapEx', '', () => {
         const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
-        const allReno = (state.db.expenses || []).filter(e => e.category === 'renovation');
+        const allReno = (state.db.expenses || []).filter(e => isCapEx(e));
         const rows = (state.db.properties || []).map(p => {
           const base = p.currency === 'HUF' ? (p.purchasePrice || 0) * fx : (p.purchasePrice || 0);
           const reno = allReno.filter(e => e.propertyId === p.id).reduce((s, e) => s + (e.currency === 'HUF' ? e.amount * fx : e.amount), 0);
@@ -226,8 +226,8 @@ export default {
     const paidPayments = (state.db.payments || []).filter(p => p.status === 'paid');
     const paidInvoices = (state.db.invoices || []).filter(i => i.status === 'paid').map(i => ({ ...i, date: i.issueDate, amount: i.total }));
     const revByMonth = groupByMonth([...paidPayments, ...paidInvoices]);
-    const opExpenses = (state.db.expenses || []).filter(e => e.category !== 'renovation');
-    const renoExpenses = (state.db.expenses || []).filter(e => e.category === 'renovation');
+    const opExpenses = (state.db.expenses || []).filter(e => !isCapEx(e));
+    const renoExpenses = (state.db.expenses || []).filter(e => isCapEx(e));
     const expByMonth = groupByMonth(opExpenses);
     const renoByMonth = groupByMonth(renoExpenses);
 
@@ -301,7 +301,7 @@ function portfolioValueEUR() {
     const base = p.currency === 'HUF' ? (p.purchasePrice || 0) * fx : (p.purchasePrice || 0);
     total += base;
   }
-  const renoFX = (state.db.expenses || []).filter(e => e.category === 'renovation').reduce((s, e) => s + (e.currency === 'HUF' ? e.amount * fx : e.amount), 0);
+  const renoFX = (state.db.expenses || []).filter(e => isCapEx(e)).reduce((s, e) => s + (e.currency === 'HUF' ? e.amount * fx : e.amount), 0);
   return total + renoFX;
 }
 
