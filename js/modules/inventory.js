@@ -1,7 +1,7 @@
 // Inventory module
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter } from '../core/ui.js';
-import { upsert, remove, newId, formatMoney } from '../core/data.js';
+import { upsert, softDelete, listActive, newId, formatMoney } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
 
 export default {
@@ -27,7 +27,7 @@ function build() {
 
   const render = () => {
     tableWrap.innerHTML = '';
-    const rows = [...(state.db.inventory || [])];
+    const rows = [...listActive('inventory')];
     if (rows.length === 0) {
       tableWrap.appendChild(el('div', { class: 'empty' }, 'No inventory items'));
       return;
@@ -47,7 +47,7 @@ function build() {
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(item) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog(`Delete "${item.name}"?`, { danger: true, okLabel: 'Delete' });
-        if (ok) { remove('inventory', item.id); toast('Deleted', 'success'); render(); }
+        if (ok) { softDelete('inventory', item.id); toast('Deleted', 'success'); render(); }
       }}));
       tr.appendChild(actions);
       tb.appendChild(tr);

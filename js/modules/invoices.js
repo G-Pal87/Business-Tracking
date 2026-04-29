@@ -1,7 +1,7 @@
 // Invoices module - builder + repository
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter } from '../core/ui.js';
-import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR } from '../core/data.js';
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
 import { downloadInvoicePDF } from '../core/pdf.js';
 import { navigate } from '../core/router.js';
@@ -34,7 +34,7 @@ function build() {
   const wrap = el('div', { class: 'view active' });
 
   const stats = computeStats();
-  const allInvs = state.db.invoices || [];
+  const allInvs = listActive('invoices');
   wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' },
     kpi('Total Issued', formatEUR(stats.totalEUR), `${stats.count} invoices`, null, () => drillDownModal('All Invoices', invDrillRows(allInvs), INV_COLS)),
     kpi('Paid', formatEUR(stats.paidEUR), `${stats.paidCount}`, 'success', () => drillDownModal('Paid Invoices', invDrillRows(allInvs.filter(i => i.status === 'paid')), INV_COLS)),
@@ -43,11 +43,11 @@ function build() {
   ));
 
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
-  const years = [...new Set((state.db.invoices || []).map(i => i.issueDate?.slice(0, 4)).filter(Boolean))].sort().reverse();
+  const years = [...new Set(listActive('invoices').map(i => i.issueDate?.slice(0, 4)).filter(Boolean))].sort().reverse();
   const months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const yearSel = select([{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))], 'all');
   const monthSel = select([{ value: 'all', label: 'All Months' }, ...months.map(m => ({ value: m, label: new Date(2000, Number(m)-1, 1).toLocaleDateString('en-US', { month: 'long' }) }))], 'all');
-  const clientSel = select([{ value: 'all', label: 'All Clients' }, ...(state.db.clients || []).map(c => ({ value: c.id, label: c.name }))], 'all');
+  const clientSel = select([{ value: 'all', label: 'All Clients' }, ...listActive('clients').map(c => ({ value: c.id, label: c.name }))], 'all');
   const ownerSel = select(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), [], { multiple: true, title: 'Ctrl+click to select multiple owners' });
   const statusSel = select(Object.entries(INVOICE_STATUSES).map(([v, m]) => ({ value: v, label: m.label })), [], { multiple: true, title: 'Ctrl+click to select multiple statuses' });
   bar.appendChild(yearSel);
@@ -62,7 +62,7 @@ function build() {
     if (!count) return;
     const ok = await confirmDialog(`Delete ${count} invoice(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
-    for (const id of [...selected]) remove('invoices', id);
+    for (const id of [...selected]) softDelete('invoices', id);
     selected.clear();
     toast(`Deleted ${count} invoice(s)`, 'success');
     renderTable();
@@ -92,7 +92,7 @@ function build() {
     selected.clear();
     syncDeleteBtn();
     tableWrap.innerHTML = '';
-    let rows = [...(state.db.invoices || [])];
+    let rows = [...listActive('invoices')];
     if (yearSel.value !== 'all') rows = rows.filter(r => r.issueDate?.startsWith(yearSel.value));
     if (monthSel.value !== 'all') rows = rows.filter(r => r.issueDate?.slice(5, 7) === monthSel.value);
     const owners = selVals(ownerSel);
@@ -152,7 +152,7 @@ function build() {
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async (e) => {
         e.stopPropagation();
         const ok = await confirmDialog(`Delete ${r.number}?`, { danger: true, okLabel: 'Delete' });
-        if (ok) { remove('invoices', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (ok) { softDelete('invoices', r.id); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
       tr.onclick = () => openPreview(r.id);

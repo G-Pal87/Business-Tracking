@@ -1,7 +1,7 @@
 // Expenses module
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal } from '../core/ui.js';
-import { upsert, remove, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -56,7 +56,7 @@ function build() {
 
   const propSel = select([
     { value: 'all', label: 'All Properties' },
-    ...(state.db.properties || []).map(p => ({ value: p.id, label: p.name }))
+    ...listActive('properties').map(p => ({ value: p.id, label: p.name }))
   ], 'all');
 
   const catSel = select([
@@ -82,9 +82,9 @@ function build() {
     const ok = await confirmDialog(`Delete ${count} expense(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
     for (const id of [...selected]) {
-      const exp = (state.db.expenses || []).find(e => e.id === id);
+      const exp = listActive('expenses').find(e => e.id === id);
       if (exp) restoreInventoryStock(exp);
-      remove('expenses', id);
+      softDelete('expenses', id);
     }
     selected.clear();
     toast(`Deleted ${count} expense(s)`, 'success');
@@ -119,7 +119,7 @@ function build() {
     syncDeleteBtn();
     tableWrap.innerHTML = '';
 
-    let rows = [...(state.db.expenses || [])];
+    let rows = [...listActive('expenses')];
     if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
     if (catSel.value !== 'all')  rows = rows.filter(r => r.category === catSel.value);
     if (accountingTypeSel.value !== 'all') rows = rows.filter(r => resolveExpenseFields(r).accountingType === accountingTypeSel.value);
@@ -181,7 +181,7 @@ function build() {
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog('Delete expense?', { danger: true, okLabel: 'Delete' });
-        if (ok) { restoreInventoryStock(r); remove('expenses', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (ok) { restoreInventoryStock(r); softDelete('expenses', r.id); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
       tb.appendChild(tr);

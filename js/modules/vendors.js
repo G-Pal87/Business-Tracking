@@ -1,7 +1,7 @@
 // Vendors module
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
-import { upsert, remove, byId, newId, formatMoney, toEUR, formatEUR } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, toEUR, formatEUR } from '../core/data.js';
 import { VENDOR_ROLES, PROPERTY_TYPES, CURRENCIES } from '../core/config.js';
 
 const APT_TYPES = [
@@ -38,7 +38,7 @@ function build() {
 
   const renderCards = () => {
     grid.innerHTML = '';
-    let rows = [...(state.db.vendors || [])];
+    let rows = [...listActive('vendors')];
     if (roleSel.value !== 'all') rows = rows.filter(r => r.role === roleSel.value);
     if (rows.length === 0) {
       grid.appendChild(el('div', { class: 'empty' },
@@ -198,7 +198,7 @@ function openDetail(id) {
     onClick: async () => {
       const ok = await confirmDialog(`Delete vendor "${v.name}"?`, { danger: true, okLabel: 'Delete' });
       if (!ok) return;
-      remove('vendors', v.id);
+      softDelete('vendors', v.id);
       toast('Vendor deleted', 'success');
       closeModal();
       setTimeout(() => location.hash = 'vendors', 250);
@@ -210,7 +210,7 @@ function openDetail(id) {
 
 function openRateForm(vendor, existingPropId, onDone) {
   if (!vendor.rates) vendor.rates = {};
-  const allProps = state.db.properties || [];
+  const allProps = listActive('properties');
   const available = existingPropId
     ? allProps.filter(p => p.id === existingPropId)
     : allProps.filter(p => !(p.id in vendor.rates));

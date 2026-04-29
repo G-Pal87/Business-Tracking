@@ -1,7 +1,7 @@
 // Clients module
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate } from '../core/ui.js';
-import { upsert, remove, newId, formatMoney, formatEUR, toEUR, byId } from '../core/data.js';
+import { upsert, softDelete, listActive, newId, formatMoney, formatEUR, toEUR, byId } from '../core/data.js';
 import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -31,7 +31,7 @@ function build() {
 
   const renderCards = () => {
     grid.innerHTML = '';
-    let rows = [...(state.db.clients || [])];
+    let rows = [...listActive('clients')];
     if (streamSel.value !== 'all') rows = rows.filter(r => r.stream === streamSel.value);
     if (ownerSel.value !== 'all') rows = rows.filter(r => r.owner === ownerSel.value);
     if (rows.length === 0) {
@@ -122,7 +122,7 @@ function openDetail(id) {
   const del = button('Delete', { variant: 'danger', onClick: async () => {
     const ok = await confirmDialog(`Delete client ${c.name}?`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
-    remove('clients', c.id);
+    softDelete('clients', c.id);
     toast('Deleted', 'success');
     closeModal(); setTimeout(() => navigate('clients'), 200);
   }});

@@ -2,7 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, pushDb, saveLocalCache, resolveGitRemote } from '../core/github.js';
-import { upsert, remove, newId, formatMoney } from '../core/data.js';
+import { upsert, softDelete, listActive, newId, formatMoney } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
 
@@ -230,7 +230,7 @@ function buildVendorsCard() {
     el('div', {}, el('div', { class: 'card-title' }, 'Vendors'), el('div', { class: 'card-subtitle' }, 'Cleaners, maintenance, management companies')),
     button('+ Add Vendor', { variant: 'primary', onClick: () => openVendorForm() })
   ));
-  const vendors = state.db.vendors || [];
+  const vendors = listActive('vendors');
   if (vendors.length === 0) {
     card.appendChild(el('div', { class: 'empty' }, 'No vendors'));
     return card;
@@ -249,7 +249,7 @@ function buildVendorsCard() {
     actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openVendorForm(v) }));
     actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
       const ok = await confirmDialog(`Delete vendor ${v.name}?`, { danger: true, okLabel: 'Delete' });
-      if (ok) { remove('vendors', v.id); toast('Deleted', 'success'); setTimeout(() => location.hash = 'settings', 200); }
+      if (ok) { softDelete('vendors', v.id); toast('Deleted', 'success'); setTimeout(() => location.hash = 'settings', 200); }
     }}));
     tr.appendChild(actions);
     tb.appendChild(tr);
@@ -324,7 +324,7 @@ function buildServicesCard() {
     ),
     button('+ Add Service', { variant: 'primary', onClick: () => openServiceForm() })
   ));
-  const services = state.db.services || [];
+  const services = listActive('services');
   if (services.length === 0) {
     card.appendChild(el('div', { class: 'empty' }, 'No services'));
   } else {
@@ -341,7 +341,7 @@ function buildServicesCard() {
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openServiceForm(s) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog(`Delete service ${s.name}?`, { danger: true, okLabel: 'Delete' });
-        if (ok) { remove('services', s.id); toast('Deleted', 'success'); setTimeout(() => location.hash = 'settings', 200); }
+        if (ok) { softDelete('services', s.id); toast('Deleted', 'success'); setTimeout(() => location.hash = 'settings', 200); }
       }}));
       tr.appendChild(actions);
       tb.appendChild(tr);
