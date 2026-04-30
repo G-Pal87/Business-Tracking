@@ -19,7 +19,7 @@ let gFilters = {
 };
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-rev-donut', 'prop-value-hbar', 'prop-value-owner-donut', 'prop-value-stream-donut'];
+const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-rev-donut', 'prop-value-hbar', 'prop-value-owner-donut', 'prop-value-stream-donut', 'prop-acq-bar', 'prop-growth-line', 'prop-capital-line'];
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -243,6 +243,117 @@ function mixedRows(pays, exps) {
     ...toExpDrillRows(exps) .map(r => ({ ...r, kind: r.type,   status:   '—' }))
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
+
+// ── Acquisition & growth data ─────────────────────────────────────────────────
+function formatMonthKey(mk) {
+  const [year, mm] = mk.split('-');
+  return `${MONTH_LABELS[parseInt(mm, 10) - 1]} ${year}`;
+}
+
+// Accepts the already-filtered allProps list from getData() to avoid re-filtering.
+// Ignores gFilters.year / gFilters.months — acquisition is always plotted across all time.
+function getAcquisitionData(allProps) {
+  const propIds    = new Set(allProps.map(p => p.id));
+  const allCapEx   = listActive('expenses').filter(e => isCapEx(e) && propIds.has(e.propertyId));
+  const withDate   = allProps.filter(p => p.purchaseDate);
+  const withoutDate = allProps.filter(p => !p.purchaseDate);
+
+  // Build per-month buckets for acquisitions
+  const bucketMap = new Map(); // 'YYYY-MM' → { count, props[] }
+  withDate.forEach(p => {
+    const mk = p.purchaseDate.slice(0, 7);
+    if (!bucketMap.has(mk)) bucketMap.set(mk, { count: 0, props: [] });
+    const b = bucketMap.get(mk);
+    b.count++;
+    b.props.push(p);
+  });
+
+  // Capital events map: purchase prices + CapEx per month
+  const capitalMap = new Map(); // 'YYYY-MM' → { purchaseEUR, capExEUR, capExItems[] }
+  withDate.forEach(p => {
+    const mk = p.purchaseDate.slice(0, 7);
+    if (!capitalMap.has(mk)) capitalMap.set(mk, { purchaseEUR: 0, capExEUR: 0, capExItems: [] });
+    capitalMap.get(mk).purchaseEUR += p.purchasePrice
+      ? toEUR(p.purchasePrice, p.currency, p.purchaseDate) : 0;
+  });
+  allCapEx.forEach(e => {
+    if (!e.date) return;
+    const mk = e.date.slice(0, 7);
+    if (!capitalMap.has(mk)) capitalMap.set(mk, { purchaseEUR: 0, capExEUR: 0, capExItems: [] });
+    const c = capitalMap.get(mk);
+    c.capExEUR += toEUR(e.amount, e.currency, e.date);
+    c.capExItems.push(e);
+  });
+
+  // All months in chronological order (union of both maps)
+  const allMonths = [...new Set([...bucketMap.keys(), ...capitalMap.keys()])].sort();
+
+  let cumCount = 0, cumCapital = 0;
+  const timeline = allMonths.map(mk => {
+    const b = bucketMap.get(mk);
+    const c = capitalMap.get(mk) || { purchaseEUR: 0, capExEUR: 0, capExItems: [] };
+    cumCount   += b ? b.count : 0;
+    cumCapital += c.purchaseEUR + c.capExEUR;
+    return {
+      mk,
+      label:       formatMonthKey(mk),
+      count:       b ? b.count : 0,
+      cumCount,
+      capital:     c.purchaseEUR + c.capExEUR,
+      cumCapital,
+      props:       b ? b.props : [],      // properties acquired this month
+      capExItems:  c.capExItems           // CapEx expenses this month
+    };
+  });
+
+  return { timeline, withoutDate };
+}
+
+// Drill-down: properties acquired in a given period
+function toPropAcqRows(props) {
+  return props.map(p => ({
+    name:   p.name,
+    stream: STREAMS[propStream(p)]?.short || propStream(p),
+    owner:  OWNERS[p.owner] || p.owner || '—',
+    city:   p.city || '—',
+    pdate:  p.purchaseDate || '—',
+    price:  p.purchasePrice ? toEUR(p.purchasePrice, p.currency, p.purchaseDate) : 0
+  })).sort((a, b) => (a.pdate || '').localeCompare(b.pdate || ''));
+}
+const PROP_ACQ_COLS = [
+  { key: 'name',   label: 'Property'                                            },
+  { key: 'stream', label: 'Stream'                                              },
+  { key: 'owner',  label: 'Owner'                                               },
+  { key: 'city',   label: 'City'                                                },
+  { key: 'pdate',  label: 'Purchase Date', format: v => fmtDate(v)              },
+  { key: 'price',  label: 'Price (EUR)',   right: true, format: v => formatEUR(v) }
+];
+
+// Drill-down: capital events (purchases + CapEx) for a given month
+function toCapitalDrillRows(monthProps, capExItems) {
+  const purchaseRows = monthProps.map(p => ({
+    date:    p.purchaseDate || '—',
+    type:    'Purchase',
+    name:    p.name,
+    detail:  p.city || '—',
+    eur:     p.purchasePrice ? toEUR(p.purchasePrice, p.currency, p.purchaseDate) : 0
+  }));
+  const capExRows = capExItems.map(e => ({
+    date:    e.date || '—',
+    type:    'CapEx',
+    name:    byId('properties', e.propertyId)?.name || '—',
+    detail:  e.category || '—',
+    eur:     toEUR(e.amount, e.currency, e.date)
+  }));
+  return [...purchaseRows, ...capExRows].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+const CAPITAL_DRILL_COLS = [
+  { key: 'date',   label: 'Date',     format: v => fmtDate(v)               },
+  { key: 'type',   label: 'Type'                                             },
+  { key: 'name',   label: 'Property'                                         },
+  { key: 'detail', label: 'Detail'                                           },
+  { key: 'eur',    label: 'EUR',      right: true, format: v => formatEUR(v) }
+];
 
 // ── Multi-select dropdown ─────────────────────────────────────────────────────
 function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
@@ -472,6 +583,42 @@ function buildView() {
   buildSummaryTable(tableCard, propData);
   wrap.appendChild(tableCard);
 
+  // ── Acquisition & Growth ───────────────────────────────────────────────────
+  const acqData = getAcquisitionData(allProps);
+
+  wrap.appendChild(el('div', { style: 'margin:28px 0 12px' },
+    el('h3', { style: 'margin:0 0 4px;font-size:16px;font-weight:700' }, 'Portfolio Acquisition & Growth'),
+    el('p',  { style: 'margin:0;font-size:12px;color:var(--text-muted)' },
+      'Based on purchase dates. Property / Stream / Owner filters apply; Year / Month filter does not.' +
+      (acqData.withoutDate.length ? ` ${acqData.withoutDate.length} propert${acqData.withoutDate.length > 1 ? 'ies' : 'y'} excluded (no purchase date).` : '')
+    )
+  ));
+
+  wrap.appendChild(el('div', { class: 'card mb-16' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Acquisitions per Month'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a bar to see properties acquired')
+    ),
+    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-acq-bar' }))
+  ));
+
+  const acqGrowthRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
+  acqGrowthRow.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Cumulative Portfolio Growth'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a point to see portfolio at that date')
+    ),
+    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-growth-line' }))
+  ));
+  acqGrowthRow.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Cumulative Capital Deployed'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Purchase prices + Renovation CapEx')
+    ),
+    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-capital-line' }))
+  ));
+  wrap.appendChild(acqGrowthRow);
+
   setTimeout(() => {
     renderProfitHBar(data);
     renderRevDonut(data);
@@ -479,6 +626,9 @@ function buildView() {
     renderValueHBar(data);
     renderValueOwnerDonut(data);
     renderValueStreamDonut(data);
+    renderAcqBar(acqData);
+    renderGrowthLine(acqData);
+    renderCapitalLine(acqData);
   }, 0);
 
   return wrap;
@@ -719,6 +869,70 @@ function portfolioAvgTile(propData, avgROI) {
     ));
   });
   return tile;
+}
+
+// ── Chart 7: Bar — Acquisitions per month ────────────────────────────────────
+function renderAcqBar({ timeline }) {
+  const active = timeline.filter(t => t.count > 0);
+  if (!active.length) return;
+
+  charts.bar('prop-acq-bar', {
+    labels: active.map(t => t.label),
+    datasets: [{
+      label:           'Properties Acquired',
+      data:            active.map(t => t.count),
+      backgroundColor: 'rgba(99,102,241,0.8)'
+    }],
+    onClickItem: (_label, idx) => {
+      const t = active[idx];
+      drillDownModal(`Acquisitions — ${t.label}`, toPropAcqRows(t.props), PROP_ACQ_COLS);
+    }
+  });
+}
+
+// ── Chart 8: Line — Cumulative portfolio growth ───────────────────────────────
+function renderGrowthLine({ timeline }) {
+  if (!timeline.length) return;
+
+  charts.line('prop-growth-line', {
+    labels: timeline.map(t => t.label),
+    datasets: [{
+      label:           'Total Properties',
+      data:            timeline.map(t => t.cumCount),
+      borderColor:     '#6366f1',
+      backgroundColor: 'rgba(99,102,241,0.1)',
+      fill:            true
+    }],
+    onClickItem: (_label, idx) => {
+      const propsUpTo = timeline.slice(0, idx + 1).flatMap(t => t.props);
+      drillDownModal(`Portfolio as of ${timeline[idx].label}`, toPropAcqRows(propsUpTo), PROP_ACQ_COLS);
+    }
+  });
+}
+
+// ── Chart 9: Line — Cumulative capital deployed ───────────────────────────────
+function renderCapitalLine({ timeline }) {
+  if (!timeline.length) return;
+
+  charts.line('prop-capital-line', {
+    labels: timeline.map(t => t.label),
+    datasets: [{
+      label:           'Capital Deployed (EUR)',
+      data:            timeline.map(t => Math.round(t.cumCapital)),
+      borderColor:     '#f59e0b',
+      backgroundColor: 'rgba(245,158,11,0.1)',
+      fill:            true
+    }],
+    onClickItem: (_label, idx) => {
+      const t = timeline[idx];
+      if (!t.capital) return;
+      drillDownModal(
+        `Capital Events — ${t.label}`,
+        toCapitalDrillRows(t.props, t.capExItems),
+        CAPITAL_DRILL_COLS
+      );
+    }
+  });
 }
 
 // ── Summary table — one row per property ──────────────────────────────────────
