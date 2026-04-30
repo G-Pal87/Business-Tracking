@@ -104,15 +104,15 @@ export default {
     const expDelta = expLY ? ((expYTD - expLY) / expLY) * 100 : 0;
 
     const ytdPays = (listActivePayments()).filter(p => p.status === 'paid' && p.date >= start && p.date <= end);
-    const ytdInvs = (state.db.invoices || []).filter(i => i.status === 'paid' && i.issueDate >= start && i.issueDate <= end);
-    const ytdOpExps = (state.db.expenses || []).filter(e => !isCapEx(e) && e.date >= start && e.date <= end);
-    const ytdRenoExps = (state.db.expenses || []).filter(e => isCapEx(e) && e.date >= start && e.date <= end);
+    const ytdInvs = listActive('invoices').filter(i => i.status === 'paid' && i.issueDate >= start && i.issueDate <= end);
+    const ytdOpExps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= start && e.date <= end);
+    const ytdRenoExps = listActive('expenses').filter(e => isCapEx(e) && e.date >= start && e.date <= end);
 
     const totalProperties = (listActive('properties')).length;
     const active = (listActive('properties')).filter(p => p.status === 'active').length;
     const reno = (listActive('properties')).filter(p => p.status === 'renovation').length;
-    const openInv = (state.db.invoices || []).filter(i => i.status === 'sent' || i.status === 'overdue').length;
-    const outstanding = (state.db.invoices || [])
+    const openInv = listActive('invoices').filter(i => i.status === 'sent' || i.status === 'overdue').length;
+    const outstanding = listActive('invoices')
       .filter(i => i.status !== 'paid' && i.status !== 'draft')
       .reduce((s, i) => s + (i.currency === 'HUF' ? i.total * (state.db.settings?.fxRates?.HUF_EUR || 0.0025) : i.total), 0);
 
@@ -138,7 +138,7 @@ export default {
       }),
       kpi('Active Invoices', String(openInv), `Outstanding ${formatEUR(outstanding)}`, '', () => {
         const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
-        const rows = (state.db.invoices || [])
+        const rows = listActive('invoices')
           .filter(i => i.status === 'sent' || i.status === 'overdue')
           .map(i => {
             const client = byId('clients', i.clientId);
@@ -157,7 +157,7 @@ export default {
       kpi('Clients', String((listActive('clients')).length), 'Across both streams', '', () => {
         const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
         const rows = (listActive('clients')).map(c => {
-          const cInvs = (state.db.invoices || []).filter(i => i.clientId === c.id);
+          const cInvs = listActive('invoices').filter(i => i.clientId === c.id);
           const eur = cInvs.reduce((s, i) => s + (i.currency === 'HUF' ? (i.total || 0) * fx : (i.total || 0)), 0);
           return {
             name: c.name,
@@ -171,7 +171,7 @@ export default {
       }),
       kpi('Total Portfolio', formatEUR(portfolioValueEUR()), 'At purchase + CapEx', '', () => {
         const fx = state.db.settings?.fxRates?.HUF_EUR || 0.0025;
-        const allReno = (state.db.expenses || []).filter(e => isCapEx(e));
+        const allReno = listActive('expenses').filter(e => isCapEx(e));
         const rows = (listActive('properties')).map(p => {
           const base = p.currency === 'HUF' ? (p.purchasePrice || 0) * fx : (p.purchasePrice || 0);
           const reno = allReno.filter(e => e.propertyId === p.id).reduce((s, e) => s + (e.currency === 'HUF' ? e.amount * fx : e.amount), 0);
@@ -224,10 +224,10 @@ export default {
     }
 
     const paidPayments = (listActivePayments()).filter(p => p.status === 'paid');
-    const paidInvoices = (state.db.invoices || []).filter(i => i.status === 'paid').map(i => ({ ...i, date: i.issueDate, amount: i.total }));
+    const paidInvoices = listActive('invoices').filter(i => i.status === 'paid').map(i => ({ ...i, date: i.issueDate, amount: i.total }));
     const revByMonth = groupByMonth([...paidPayments, ...paidInvoices]);
-    const opExpenses = (state.db.expenses || []).filter(e => !isCapEx(e));
-    const renoExpenses = (state.db.expenses || []).filter(e => isCapEx(e));
+    const opExpenses = listActive('expenses').filter(e => !isCapEx(e));
+    const renoExpenses = listActive('expenses').filter(e => isCapEx(e));
     const expByMonth = groupByMonth(opExpenses);
     const renoByMonth = groupByMonth(renoExpenses);
 
@@ -301,7 +301,7 @@ function portfolioValueEUR() {
     const base = p.currency === 'HUF' ? (p.purchasePrice || 0) * fx : (p.purchasePrice || 0);
     total += base;
   }
-  const renoFX = (state.db.expenses || []).filter(e => isCapEx(e)).reduce((s, e) => s + (e.currency === 'HUF' ? e.amount * fx : e.amount), 0);
+  const renoFX = listActive('expenses').filter(e => isCapEx(e)).reduce((s, e) => s + (e.currency === 'HUF' ? e.amount * fx : e.amount), 0);
   return total + renoFX;
 }
 
