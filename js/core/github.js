@@ -71,6 +71,17 @@ function b64decode(str) {
   return decodeURIComponent(escape(atob(str.replace(/\s/g, ''))));
 }
 
+// Files > 1 MB: Contents API returns encoding "none" and empty content.
+// Fall back to the raw download URL (authenticated) in that case.
+async function getFileContent(meta) {
+  if (!meta.content || meta.encoding === 'none') {
+    const res = await fetch(meta.download_url, { headers: headers(), cache: 'no-store' });
+    if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
+    return res.text();
+  }
+  return b64decode(meta.content);
+}
+
 export async function fetchDb() {
   const { owner, repo, branch } = state.github;
 
@@ -94,7 +105,7 @@ export async function fetchDb() {
   state.github.sha = json.sha;
   state.github.connected = true;
 
-  const content = b64decode(json.content);
+  const content = await getFileContent(json);
   const parsed = JSON.parse(content);
 
   state.github.remoteDb = structuredClone(parsed);
@@ -195,7 +206,7 @@ async function doPushDb(db, message = 'Update data') {
     }
 
     const getMeta = await getRes.json();
-    const freshDb = JSON.parse(b64decode(getMeta.content));
+    const freshDb = JSON.parse(await getFileContent(getMeta));
     const merged = mergeDb(freshDb, snapshot, base);
 
     const putRes = await fetch(url, {

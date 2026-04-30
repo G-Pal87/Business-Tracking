@@ -1101,7 +1101,6 @@ function buildTaxSection(wrap) {
 
   yearSel.onchange = render;
   rateI.oninput = render;
-  propSel.onchange = render;
   render();
 }
 
