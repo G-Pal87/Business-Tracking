@@ -228,17 +228,12 @@ async function doPushDb(db, message = 'Update data') {
     state.github.sha = json.content.sha;
     state.github.remoteDb = structuredClone(merged);
 
-    for (const col of Object.keys(merged)) {
-      if (Array.isArray(merged[col]) && Array.isArray(state.db[col])) {
-        const liveIds = new Set(state.db[col].map(x => x.id));
-
-        for (const item of merged[col]) {
-          if (!liveIds.has(item.id)) {
-            state.db[col].push(item);
-          }
-        }
-      }
+    // Replace state.db in-place so it exactly matches what was pushed.
+    // Remove keys absent from merged, then overwrite everything else.
+    for (const col of Object.keys(state.db)) {
+      if (!(col in merged)) delete state.db[col];
     }
+    Object.assign(state.db, merged);
 
     saveLocalCache(merged);
 
