@@ -1,25 +1,26 @@
 // Expense Analytics Dashboard — understand cost structure
 import { el, select, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { STREAMS, COST_CATEGORIES } from '../core/config.js';
+import { STREAMS, COST_CATEGORIES, ACCOUNTING_TYPES } from '../core/config.js';
 import {
   availableYears, formatEUR, toEUR, byId,
-  listActive, listActiveVendors,
+  listActive, listActiveVendors, listActivePayments,
   isCapEx, resolveExpenseFields
 } from '../core/data.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gFilters = {
-  year:        String(new Date().getFullYear()),
-  months:      new Set(),   // empty = all
-  categories:  new Set(),   // costCategory keys
-  propertyIds: new Set(),
-  vendorIds:   new Set(),
-  streams:     new Set()
+  year:            String(new Date().getFullYear()),
+  months:          new Set(),   // empty = all
+  categories:      new Set(),   // costCategory keys
+  propertyIds:     new Set(),
+  vendorIds:       new Set(),
+  streams:         new Set(),
+  accountingTypes: new Set()    // 'opex' | 'capex'
 };
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CHART_IDS    = ['exp-cat-bar', 'exp-stream-donut', 'exp-vendor-bar', 'exp-cat-hbar'];
+const CHART_IDS    = ['exp-cat-bar', 'exp-stream-donut', 'exp-vendor-bar', 'exp-cat-hbar', 'exp-type-donut', 'exp-prop-hbar'];
 
 // renovation is the only CapEx cost-category key
 const CAPEX_CATS   = new Set(['renovation']);
@@ -62,6 +63,10 @@ function matchVendor(row) {
   }
   return false;
 }
+function matchAccType(row) {
+  if (gFilters.accountingTypes.size === 0) return true;
+  return gFilters.accountingTypes.has(isCapEx(row) ? 'capex' : 'opex');
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function expStream(e) {
@@ -79,15 +84,22 @@ function vendorLabel(e) {
   return e.vendor || '—';
 }
 
+function getFilteredRevenue() {
+  return listActivePayments()
+    .filter(p => p.status === 'paid' && matchDate(p))
+    .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+}
+
 function getData() {
   const allExp = listActive('expenses').filter(e =>
-    matchDate(e) && matchCategory(e) && matchProperty(e) && matchStream(e) && matchVendor(e)
+    matchDate(e) && matchCategory(e) && matchProperty(e) && matchStream(e) && matchVendor(e) && matchAccType(e)
   );
   const opEx     = allExp.filter(e => !isCapEx(e));
   const capEx    = allExp.filter(e =>  isCapEx(e));
   const opTotal  = opEx.reduce( (s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
   const capTotal = capEx.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-  return { allExp, opEx, capEx, opTotal, capTotal, total: opTotal + capTotal };
+  const revenue  = getFilteredRevenue();
+  return { allExp, opEx, capEx, opTotal, capTotal, total: opTotal + capTotal, revenue };
 }
 
 // ── Rebuild ───────────────────────────────────────────────────────────────────
@@ -259,11 +271,18 @@ function buildView() {
     Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, color: v.color })),
     gFilters.streams, 'All Streams', rebuildView
   ));
+  filterBar.appendChild(buildMultiSelect(
+    Object.entries(ACCOUNTING_TYPES).map(([k, v]) => ({
+      value: k, label: v.label,
+      color: k === 'capex' ? '#f59e0b' : '#ef4444'
+    })),
+    gFilters.accountingTypes, 'OpEx + CapEx', rebuildView
+  ));
   wrap.appendChild(filterBar);
 
   // Data
   const data = getData();
-  const { allExp, opEx, capEx, opTotal, capTotal, total } = data;
+  const { allExp, opEx, capEx, opTotal, capTotal, total, revenue } = data;
   const vendorSet = new Set(allExp.map(e => e.vendorId || e.vendor || '').filter(Boolean));
 
   // ── CapEx/OpEx split banner ────────────────────────────────────────────────
@@ -308,7 +327,6 @@ function buildView() {
   kpiRow.appendChild(kpiCard(
     'Vendors Used', String(vendorSet.size), `across ${allExp.length} expense(s)`,
     () => {
-      // Per-vendor summary
       const vMap = new Map();
       allExp.forEach(e => {
         const name = vendorLabel(e) === '—' ? 'No Vendor' : vendorLabel(e);
@@ -324,6 +342,51 @@ function buildView() {
     }
   ));
   wrap.appendChild(kpiRow);
+
+  // ── Secondary KPI row: ratio metrics ──────────────────────────────────────
+  const propWithCosts = new Set(allExp.map(e => e.propertyId).filter(Boolean));
+  const costRatioPct  = revenue > 0 ? (total / revenue) * 100 : null;
+  const capSharePct   = total > 0   ? (capTotal / total) * 100 : null;
+  const avgCostProp   = propWithCosts.size > 0 ? total / propWithCosts.size : null;
+
+  const kpiRow2 = el('div', { class: 'grid grid-4 mb-16' });
+  kpiRow2.appendChild(kpiCard(
+    'Cost Ratio', costRatioPct !== null ? `${costRatioPct.toFixed(1)}%` : '—',
+    costRatioPct !== null && costRatioPct > 80 ? 'danger' : '',
+    () => drillDownModal('Cost Ratio Breakdown', [
+      { metric: 'Total Revenue', value: formatEUR(revenue) },
+      { metric: 'Total Expenses', value: formatEUR(total) },
+      { metric: 'Cost Ratio', value: costRatioPct !== null ? `${costRatioPct.toFixed(1)}%` : '—' }
+    ], [
+      { key: 'metric', label: 'Metric' },
+      { key: 'value',  label: 'Value', right: true }
+    ])
+  ));
+  kpiRow2.appendChild(kpiCard(
+    'CapEx Share', capSharePct !== null ? `${capSharePct.toFixed(1)}%` : '—',
+    '',
+    () => drillDownModal('CapEx Records', toExpDrillRows(capEx), DRILL_COLS)
+  ));
+  kpiRow2.appendChild(kpiCard(
+    'Properties w/ Costs', String(propWithCosts.size), '',
+    () => {
+      const rows = [...propWithCosts].map(pid => {
+        const p   = byId('properties', pid);
+        const amt = allExp.filter(e => e.propertyId === pid)
+          .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+        return { property: p?.name || pid, eur: amt };
+      }).sort((a, b) => b.eur - a.eur);
+      drillDownModal('Costs by Property', rows, [
+        { key: 'property', label: 'Property' },
+        { key: 'eur',      label: 'EUR', right: true, format: v => formatEUR(v) }
+      ]);
+    }
+  ));
+  kpiRow2.appendChild(kpiCard(
+    'Avg Cost / Property', avgCostProp !== null ? formatEUR(avgCostProp) : '—', '',
+    () => drillDownModal('All Expenses', toExpDrillRows(allExp), DRILL_COLS)
+  ));
+  wrap.appendChild(kpiRow2);
 
   // ── Chart row 1: Stacked bar (2/3) + Stream donut (1/3) ───────────────────
   const row1 = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px' });
@@ -352,6 +415,18 @@ function buildView() {
   ));
   wrap.appendChild(row2);
 
+  // ── Chart row 3: OpEx vs CapEx donut (1/3) + Cost by Property hbar (2/3) ──
+  const row3 = el('div', { style: 'display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:16px' });
+  row3.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'OpEx vs CapEx')),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exp-type-donut' }))
+  ));
+  row3.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Cost by Property')),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exp-prop-hbar' }))
+  ));
+  wrap.appendChild(row3);
+
   // ── Expense table ──────────────────────────────────────────────────────────
   const tableCard = el('div', { class: 'card' });
   tableCard.appendChild(el('div', { class: 'card-header' },
@@ -370,11 +445,16 @@ function buildView() {
   buildExpenseTable(tableCard, data);
   wrap.appendChild(tableCard);
 
+  // ── CapEx Impact section ───────────────────────────────────────────────────
+  if (capEx.length > 0) buildCapExImpactSection(wrap, data);
+
   setTimeout(() => {
     renderCatBar(data);
     renderStreamDonut(data);
     renderCatHBar(data);
     renderVendorBar(data);
+    renderTypeDonut(data);
+    renderPropHBar(data);
   }, 0);
 
   return wrap;
@@ -520,6 +600,110 @@ function renderVendorBar({ allExp }) {
       drillDownModal(`Expenses — ${name}`, toExpDrillRows(rows), DRILL_COLS);
     }
   });
+}
+
+// ── Chart 5: Donut — OpEx vs CapEx ───────────────────────────────────────────
+function renderTypeDonut({ opTotal, capTotal, opEx, capEx }) {
+  if (opTotal + capTotal === 0) return;
+  charts.doughnut('exp-type-donut', {
+    labels: ['OpEx', 'CapEx'],
+    data:   [Math.round(opTotal), Math.round(capTotal)],
+    colors: ['#ef4444', '#f59e0b'],
+    onClickItem: (_label, idx) => {
+      const rows = idx === 0 ? opEx : capEx;
+      const name = idx === 0 ? 'Operating Expenses' : 'Renovation CapEx';
+      drillDownModal(name, toExpDrillRows(rows), DRILL_COLS);
+    }
+  });
+}
+
+// ── Chart 6: Horizontal bar — Cost by Property ────────────────────────────────
+function renderPropHBar({ allExp }) {
+  const propMap = new Map();
+  allExp.forEach(e => {
+    if (!e.propertyId) return;
+    const p   = byId('properties', e.propertyId);
+    const key = e.propertyId;
+    const cur = propMap.get(key) || { eur: 0, name: p?.name || key };
+    propMap.set(key, { eur: cur.eur + toEUR(e.amount, e.currency, e.date), name: cur.name });
+  });
+
+  const sorted  = [...propMap.entries()].sort((a, b) => b[1].eur - a[1].eur);
+  const propIds = sorted.map(([k]) => k);
+  if (!sorted.length) return;
+
+  charts.bar('exp-prop-hbar', {
+    labels: sorted.map(([, m]) => m.name),
+    datasets: [{
+      label:           'Amount (EUR)',
+      data:            sorted.map(([, m]) => Math.round(m.eur)),
+      backgroundColor: sorted.map((_, i) => `hsla(${(200 + i * 31) % 360}, 55%, 50%, 0.85)`)
+    }],
+    horizontal: true,
+    onClickItem: (_label, idx) => {
+      const pid  = propIds[idx];
+      const name = sorted[idx][1].name;
+      const rows = allExp.filter(e => e.propertyId === pid);
+      drillDownModal(`Expenses — ${name}`, toExpDrillRows(rows), DRILL_COLS);
+    }
+  });
+}
+
+// ── CapEx Impact section ──────────────────────────────────────────────────────
+function buildCapExImpactSection(container, { capEx, total }) {
+  const card = el('div', { class: 'card', style: 'margin-top:16px' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'CapEx Impact — Renovation Detail'),
+    el('div', { style: 'font-size:11px;color:var(--text-muted)' },
+      `${capEx.length} record(s) · ${total > 0 ? ((capEx.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0) / total * 100).toFixed(1)) : '0'}% of total spend`
+    )
+  ));
+
+  const rows = capEx.map(e => {
+    const resolved = resolveExpenseFields(e);
+    const eur      = toEUR(e.amount, e.currency, e.date);
+    return {
+      _eur:        eur,
+      date:        fmtDate(e.date),
+      property:    byId('properties', e.propertyId)?.name || '—',
+      category:    COST_CATEGORIES[resolved.costCategory]?.label || e.category || '—',
+      vendor:      vendorLabel(e),
+      description: e.description || '—',
+      eur:         formatEUR(eur),
+      pctTotal:    total > 0 ? `${((eur / total) * 100).toFixed(1)}%` : '—'
+    };
+  }).sort((a, b) => b._eur - a._eur);
+
+  const CAPEX_COLS = [
+    { key: 'date',        label: 'Date'        },
+    { key: 'property',    label: 'Property'    },
+    { key: 'category',    label: 'Category'    },
+    { key: 'vendor',      label: 'Vendor'      },
+    { key: 'description', label: 'Description' },
+    { key: 'eur',         label: 'EUR',         right: true },
+    { key: 'pctTotal',    label: '% of Total',  right: true }
+  ];
+
+  const table = el('table', { class: 'table' });
+  const htr   = el('tr');
+  CAPEX_COLS.forEach(col => htr.appendChild(el('th', { class: col.right ? 'right' : '' }, col.label)));
+  table.appendChild(el('thead', {}, htr));
+
+  const tbody = el('tbody');
+  rows.forEach(r => {
+    const tr = el('tr', { style: 'border-left:3px solid #f59e0b' });
+    CAPEX_COLS.forEach(col => {
+      tr.appendChild(el('td', { class: col.right ? 'right num' : '' }, r[col.key] ?? '—'));
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  const tableWrap = el('div', { class: 'table-wrap' });
+  tableWrap.appendChild(table);
+  card.appendChild(tableWrap);
+  container.appendChild(card);
+  attachSortFilter(tableWrap);
 }
 
 // ── Expense table ─────────────────────────────────────────────────────────────
