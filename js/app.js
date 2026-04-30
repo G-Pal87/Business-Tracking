@@ -1,5 +1,5 @@
 // Application bootstrap - registers modules and loads data
-import { state, subscribe, setDb } from './core/state.js';
+import { state, subscribe, setDb, markDirty } from './core/state.js';
 import * as github from './core/github.js';
 import * as router from './core/router.js';
 import { toast } from './core/ui.js';
@@ -137,6 +137,36 @@ async function boot() {
       }
     }
   });
+
+  // Backfill metadata on legacy records so conflict detection has updatedAt
+  // on every record. Called after subscribe so markDirty triggers a real save.
+  migrateDb();
+}
+
+// Backfills createdAt/createdBy/updatedAt/updatedBy on records that pre-date
+// the metadata stamping introduced in upsert(). Only fills missing fields;
+// never overwrites existing values or modifies business data.
+function migrateDb() {
+  const COLLECTIONS = [
+    'payments', 'expenses', 'invoices', 'properties', 'tenants',
+    'vendors', 'clients', 'services', 'inventory', 'forecasts'
+  ];
+  const now = Date.now();
+  const actor = state.session?.username || 'system';
+  let changed = false;
+
+  for (const col of COLLECTIONS) {
+    const arr = state.db[col];
+    if (!Array.isArray(arr)) continue;
+    for (const item of arr) {
+      if (!item.createdAt) { item.createdAt = now; changed = true; }
+      if (!item.createdBy) { item.createdBy = actor; changed = true; }
+      if (!item.updatedAt) { item.updatedAt = now; changed = true; }
+      if (!item.updatedBy) { item.updatedBy = actor; changed = true; }
+    }
+  }
+
+  if (changed) markDirty();
 }
 
 function buildUserFooter() {
