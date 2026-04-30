@@ -355,6 +355,143 @@ const CAPITAL_DRILL_COLS = [
   { key: 'eur',    label: 'EUR',      right: true, format: v => formatEUR(v) }
 ];
 
+// ── Mortgage estimation ───────────────────────────────────────────────────────
+// Uses standard amortization: B = P(1+r)^n − PMT·((1+r)^n − 1)/r
+// Falls back to simple subtraction when rate = 0.
+// Returns null for yearsLeft / dtvRatio when inputs are insufficient.
+function computeMortgageEstimate(prop) {
+  const principalRaw = prop.mortgageAmount  || 0;
+  if (!principalRaw) {
+    return { financed: false, principalEUR: 0, remaining: 0, yearsLeft: null, paidOff: false, monthlyDebt: 0, dtvRatio: null };
+  }
+
+  const cur        = prop.currency    || 'EUR';
+  const rateDate   = prop.purchaseDate || null;
+  const principalEUR = toEUR(principalRaw,          cur, rateDate);
+  const monthlyEUR   = toEUR(prop.mortgageMonthly || 0, cur, rateDate);
+  const purchaseEUR  = prop.purchasePrice ? toEUR(prop.purchasePrice, cur, rateDate) : 0;
+  const r            = (prop.mortgageRate || 0) / 100 / 12; // monthly rate
+
+  let remaining = principalEUR;
+  let yearsLeft = null;
+  let paidOff   = false;
+
+  if (rateDate && monthlyEUR > 0) {
+    const msSince = Date.now() - new Date(rateDate).getTime();
+    const n       = Math.max(0, Math.round(msSince / (30.4375 * 24 * 3600 * 1000)));
+
+    if (r > 0) {
+      const f = Math.pow(1 + r, n);
+      remaining = principalEUR * f - monthlyEUR * (f - 1) / r;
+    } else {
+      remaining = principalEUR - monthlyEUR * n;
+    }
+    remaining = Math.max(0, remaining);
+    paidOff   = remaining <= 0;
+
+    if (!paidOff) {
+      if (r > 0) {
+        const arg = 1 - (remaining * r / monthlyEUR);
+        yearsLeft = arg > 0 ? (-Math.log(arg) / Math.log(1 + r)) / 12 : null;
+      } else {
+        yearsLeft = remaining / monthlyEUR / 12;
+      }
+    } else {
+      yearsLeft = 0;
+    }
+  }
+
+  return {
+    financed:     true,
+    principalEUR,
+    remaining,
+    yearsLeft,
+    paidOff,
+    monthlyDebt:  monthlyEUR,
+    dtvRatio:     purchaseEUR > 0 ? (remaining / purchaseEUR) * 100 : null
+  };
+}
+
+// ── Financing data aggregation ────────────────────────────────────────────────
+function getFinancingData(allProps) {
+  const finData    = allProps.map(prop => ({ prop, ...computeMortgageEstimate(prop) }));
+  const withMortgage = finData.filter(d => d.financed);
+  const activeDebt   = finData.filter(d => d.financed && !d.paidOff);
+
+  const totalDebt    = withMortgage.reduce((s, d) => s + d.remaining,   0);
+  const totalMonthly = activeDebt  .reduce((s, d) => s + d.monthlyDebt, 0);
+  const totalValue   = allProps.reduce((s, p) =>
+    s + (p.purchasePrice ? toEUR(p.purchasePrice, p.currency, p.purchaseDate) : 0), 0);
+
+  const yearsItems   = activeDebt.filter(d => d.yearsLeft != null);
+  const avgYearsLeft = yearsItems.length > 0
+    ? yearsItems.reduce((s, d) => s + d.yearsLeft, 0) / yearsItems.length : null;
+
+  return {
+    finData,
+    totals: {
+      totalDebt,
+      totalMonthly,
+      leverageRatio: totalValue > 0 ? (totalDebt / totalValue) * 100 : null,
+      avgYearsLeft,
+      nFinanced: withMortgage.length,
+      nActive:   activeDebt.length,
+      nPaidOff:  allProps.length - withMortgage.length
+    }
+  };
+}
+
+// Drill-down rows for KPI modals
+function toFinancingDrillRows(finData) {
+  return [...finData].sort((a, b) => b.remaining - a.remaining).map(d => ({
+    name:      d.prop.name,
+    owner:     OWNERS[d.prop.owner] || d.prop.owner || '—',
+    stream:    STREAMS[propStream(d.prop)]?.short || propStream(d.prop),
+    principal: d.principalEUR || 0,
+    remaining: d.remaining    || 0,
+    monthly:   d.monthlyDebt  || 0,
+    yearsLeft: d.yearsLeft,
+    dtv:       d.dtvRatio,
+    status:    d.paidOff ? 'Paid Off' : d.financed ? 'Active' : 'None'
+  }));
+}
+const FINANCING_DRILL_COLS = [
+  { key: 'name',      label: 'Property'                                                      },
+  { key: 'owner',     label: 'Owner'                                                         },
+  { key: 'stream',    label: 'Stream'                                                        },
+  { key: 'principal', label: 'Orig. Loan', right: true, format: v => formatEUR(v)            },
+  { key: 'remaining', label: 'Remaining',  right: true, format: v => formatEUR(v)            },
+  { key: 'monthly',   label: 'Monthly',    right: true, format: v => v ? formatEUR(v) : '—'  },
+  { key: 'yearsLeft', label: 'Yrs Left',   right: true, format: v => v != null ? v.toFixed(1) : '—' },
+  { key: 'dtv',       label: 'DTV %',      right: true, format: v => v != null ? v.toFixed(0) + '%' : '—' },
+  { key: 'status',    label: 'Status'                                                        }
+];
+
+// Per-property amortization detail for row click modal
+function toMortgageDetailRows(d) {
+  if (!d.financed) {
+    return [
+      { metric: 'Property', value: d.prop.name },
+      { metric: 'Mortgage',  value: 'None — cash purchase or no mortgage data entered' }
+    ];
+  }
+  return [
+    { metric: 'Property',               value: d.prop.name                                         },
+    { metric: 'Original Loan (EUR)',     value: formatEUR(d.principalEUR)                           },
+    { metric: 'Monthly Payment (EUR)',   value: d.monthlyDebt ? formatEUR(d.monthlyDebt) : '—'      },
+    { metric: 'Interest Rate',           value: d.prop.mortgageRate ? d.prop.mortgageRate + '%' : '—' },
+    { metric: 'Purchase Date',           value: d.prop.purchaseDate ? fmtDate(d.prop.purchaseDate) : '—' },
+    { metric: 'Est. Remaining Balance',  value: formatEUR(d.remaining)                              },
+    { metric: 'Est. Years to Payoff',    value: d.yearsLeft != null ? d.yearsLeft.toFixed(1) + ' years' : 'N/A (missing payment data)' },
+    { metric: 'Debt-to-Value Ratio',     value: d.dtvRatio != null ? d.dtvRatio.toFixed(1) + '%' : '—' },
+    { metric: 'Status',                  value: d.paidOff ? '✓ Paid Off' : 'Active'                }
+  ];
+}
+const MORTGAGE_DETAIL_COLS = [
+  { key: 'metric', label: 'Metric' },
+  { key: 'value',  label: 'Value'  }
+];
+
 // ── Multi-select dropdown ─────────────────────────────────────────────────────
 function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
   const wrapper   = el('div', { style: 'position:relative' });
@@ -618,6 +755,9 @@ function buildView() {
     el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-capital-line' }))
   ));
   wrap.appendChild(acqGrowthRow);
+
+  // ── Financing & Payoff ─────────────────────────────────────────────────────
+  wrap.appendChild(buildFinancingSection(getFinancingData(allProps)));
 
   setTimeout(() => {
     renderProfitHBar(data);
@@ -933,6 +1073,161 @@ function renderCapitalLine({ timeline }) {
       );
     }
   });
+}
+
+// ── Financing & Payoff section ────────────────────────────────────────────────
+function buildFinancingSection(finData) {
+  const t        = finData.totals;
+  const active   = finData.finData.filter(d => d.financed && !d.paidOff);
+  const section  = el('div', {});
+
+  section.appendChild(el('div', { style: 'margin:28px 0 12px' },
+    el('h3', { style: 'margin:0 0 4px;font-size:16px;font-weight:700' }, 'Financing & Payoff'),
+    el('p',  { style: 'margin:0;font-size:12px;color:var(--text-muted)' },
+      'Estimated mortgage positions using amortization formula. Values are approximations; ' +
+      'requires Mortgage Amount, Monthly Payment, and Rate to be set on each property.'
+    )
+  ));
+
+  // KPIs
+  const kpiRow = el('div', { class: 'grid grid-4 mb-16' });
+  kpiRow.appendChild(kpiCard(
+    'Total Outstanding Debt', formatEUR(t.totalDebt), '',
+    () => drillDownModal('Debt by Property', toFinancingDrillRows(finData.finData), FINANCING_DRILL_COLS)
+  ));
+  kpiRow.appendChild(kpiCard(
+    'Leverage Ratio',
+    t.leverageRatio != null ? t.leverageRatio.toFixed(1) + '%' : '—',
+    t.leverageRatio != null && t.leverageRatio > 60 ? 'danger' : t.leverageRatio != null && t.leverageRatio > 30 ? 'warning' : '',
+    () => drillDownModal('Portfolio Leverage', toFinancingDrillRows(finData.finData), FINANCING_DRILL_COLS)
+  ));
+  kpiRow.appendChild(kpiCard(
+    'Monthly Debt Burden', formatEUR(t.totalMonthly), '',
+    () => drillDownModal('Active Mortgages', toFinancingDrillRows(active), FINANCING_DRILL_COLS)
+  ));
+  kpiRow.appendChild(kpiCard(
+    'Avg Years to Payoff',
+    t.avgYearsLeft != null ? t.avgYearsLeft.toFixed(1) + ' yrs' : '—', '',
+    () => drillDownModal('Years to Payoff', toFinancingDrillRows(active), FINANCING_DRILL_COLS)
+  ));
+  section.appendChild(kpiRow);
+
+  // Count summary
+  const statsWrap = el('div', { style: 'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px' });
+  [
+    [String(t.nFinanced), 'Mortgaged Properties', `${t.nActive} active · ${t.nFinanced - t.nActive} paid off`],
+    [String(t.nPaidOff),  'No Mortgage',          'Cash purchase or fully paid']
+  ].forEach(([count, label, sub]) => {
+    statsWrap.appendChild(el('div', {
+      class: 'card',
+      style: 'flex:1;min-width:160px;padding:12px 16px'
+    },
+      el('div', { style: 'font-size:22px;font-weight:700;line-height:1;margin-bottom:2px' }, count),
+      el('div', { style: 'font-size:12px;font-weight:600' }, label),
+      el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub)
+    ));
+  });
+  section.appendChild(statsWrap);
+
+  // Table
+  const card = el('div', { class: 'card' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Property Financing Details'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a row for mortgage breakdown')
+  ));
+  buildFinancingTable(card, finData.finData);
+  section.appendChild(card);
+
+  return section;
+}
+
+function buildFinancingTable(container, finData) {
+  if (!finData.length) {
+    container.appendChild(el('div', { class: 'empty' }, 'No properties match the selected filters'));
+    return;
+  }
+
+  const COLS = [
+    { key: 'name',      label: 'Property'   },
+    { key: 'stream',    label: 'Stream'     },
+    { key: 'owner',     label: 'Owner'      },
+    { key: 'principal', label: 'Orig. Loan', right: true },
+    { key: 'remaining', label: 'Remaining',  right: true },
+    { key: 'monthly',   label: 'Monthly',    right: true },
+    { key: 'rate',      label: 'Rate',        right: true },
+    { key: 'yearsLeft', label: 'Yrs Left',   right: true },
+    { key: 'dtv',       label: 'DTV %',       right: true },
+    { key: 'status',    label: 'Status'      }
+  ];
+
+  const sorted = [...finData].sort((a, b) => b.remaining - a.remaining);
+
+  const table = el('table', { class: 'table' });
+  const htr   = el('tr');
+  COLS.forEach(col => htr.appendChild(el('th', { class: col.right ? 'right' : '' }, col.label)));
+  table.appendChild(el('thead', {}, htr));
+
+  const tbody = el('tbody');
+  for (const d of sorted) {
+    const sm = STREAMS[propStream(d.prop)];
+    const tr = el('tr', { style: 'cursor:pointer', title: 'Click for mortgage breakdown' });
+    tr.onclick = () => drillDownModal(
+      `${d.prop.name} — Mortgage Breakdown`,
+      toMortgageDetailRows(d),
+      MORTGAGE_DETAIL_COLS
+    );
+    COLS.forEach(col => {
+      const td = el('td', { class: col.right ? 'right num' : '' });
+      switch (col.key) {
+        case 'name':
+          td.textContent = d.prop.name;
+          break;
+        case 'stream':
+          td.appendChild(el('span', { class: `badge ${sm?.css || ''}` }, sm?.short || propStream(d.prop)));
+          break;
+        case 'owner':
+          td.textContent = OWNERS[d.prop.owner] || d.prop.owner || '—';
+          break;
+        case 'principal':
+          td.textContent = d.financed ? formatEUR(d.principalEUR) : '—';
+          break;
+        case 'remaining':
+          if (!d.financed) { td.textContent = '—'; break; }
+          td.textContent = formatEUR(d.remaining);
+          td.style.color = d.paidOff ? 'var(--success)' : '';
+          break;
+        case 'monthly':
+          td.textContent = d.monthlyDebt ? formatEUR(d.monthlyDebt) : '—';
+          break;
+        case 'rate':
+          td.textContent = d.prop.mortgageRate ? d.prop.mortgageRate + '%' : '—';
+          break;
+        case 'yearsLeft':
+          if (!d.financed || d.paidOff) { td.textContent = d.paidOff ? '0' : '—'; break; }
+          td.textContent = d.yearsLeft != null ? d.yearsLeft.toFixed(1) : 'N/A';
+          if (d.yearsLeft != null && d.yearsLeft < 2) td.style.color = 'var(--success)';
+          break;
+        case 'dtv':
+          td.textContent = d.dtvRatio != null ? d.dtvRatio.toFixed(0) + '%' : '—';
+          if (d.dtvRatio != null && d.dtvRatio > 70) td.style.color = 'var(--danger)';
+          break;
+        case 'status': {
+          const lbl = d.paidOff ? 'Paid Off' : d.financed ? 'Active' : 'None';
+          const css = d.paidOff ? 'success' : d.financed ? 'warning' : '';
+          td.appendChild(el('span', { class: `badge ${css}` }, lbl));
+          break;
+        }
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+
+  const tableWrap = el('div', { class: 'table-wrap' });
+  tableWrap.appendChild(table);
+  container.appendChild(tableWrap);
+  attachSortFilter(tableWrap);
 }
 
 // ── Summary table — one row per property ──────────────────────────────────────
