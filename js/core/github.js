@@ -75,11 +75,27 @@ function b64decode(str) {
 // Fall back to the raw download URL (authenticated) in that case.
 async function getFileContent(meta) {
   if (!meta.content || meta.encoding === 'none') {
+    if (!meta.download_url) {
+      throw new Error('GitHub returned no content and no download_url for db.json');
+    }
     const res = await fetch(meta.download_url, { headers: headers(), cache: 'no-store' });
     if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
     return res.text();
   }
   return b64decode(meta.content);
+}
+
+// Validate and parse db.json content — throws a clear error instead of
+// letting JSON.parse produce "Unexpected end of JSON input" on empty input.
+function safeParseDb(content) {
+  if (typeof content !== 'string' || !content.trim()) {
+    throw new Error('GitHub returned empty content for db.json');
+  }
+  try {
+    return JSON.parse(content);
+  } catch (e) {
+    throw new Error(`db.json contains invalid JSON: ${e.message}`);
+  }
 }
 
 export async function fetchDb() {
@@ -106,7 +122,7 @@ export async function fetchDb() {
   state.github.connected = true;
 
   const content = await getFileContent(json);
-  const parsed = JSON.parse(content);
+  const parsed = safeParseDb(content);
 
   state.github.remoteDb = structuredClone(parsed);
 
@@ -206,7 +222,7 @@ async function doPushDb(db, message = 'Update data') {
     }
 
     const getMeta = await getRes.json();
-    const freshDb = JSON.parse(await getFileContent(getMeta));
+    const freshDb = safeParseDb(await getFileContent(getMeta));
     const merged = mergeDb(freshDb, snapshot, base);
 
     const putRes = await fetch(url, {
