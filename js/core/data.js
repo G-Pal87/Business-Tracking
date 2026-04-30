@@ -641,3 +641,60 @@ export function drillNetRows(payments, invoices, expenses) {
     ...drillExpRows(expenses).map(r => ({ date: r.date, kind: 'Expense', source: (r.source ? r.source + ' · ' : '') + r.category, eur: r.eur }))
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
+
+// ============== Trash / Soft-delete management ==============
+
+export function listDeletedRecords() {
+  const records = [];
+  Object.keys(state.db).forEach(collection => {
+    if (!Array.isArray(state.db[collection])) return;
+    state.db[collection]
+      .filter(item => item && item.deletedAt)
+      .forEach(item => records.push({ key: `${collection}:${item.id}`, collection, item }));
+  });
+  return records;
+}
+
+export function restoreRecord(collection, id) {
+  const arr = state.db[collection];
+  if (!Array.isArray(arr)) return false;
+  const item = arr.find(x => x.id === id);
+  if (!item || !item.deletedAt) return false;
+  delete item.deletedAt;
+  delete item.deletedBy;
+  item.updatedAt = Date.now();
+  item.updatedBy = state.session?.username || 'system';
+  return true;
+}
+
+export function permanentlyDeleteRecord(collection, id) {
+  const arr = state.db[collection];
+  if (!Array.isArray(arr)) return false;
+  const index = arr.findIndex(x => x && x.id === id);
+  if (index === -1) return false;
+  arr.splice(index, 1);
+  return true;
+}
+
+export function restoreRecords(records) {
+  let count = 0;
+  records.forEach(({ collection, id }) => { if (restoreRecord(collection, id)) count++; });
+  return count;
+}
+
+export function permanentlyDeleteRecords(records) {
+  let count = 0;
+  records.forEach(({ collection, id }) => { if (permanentlyDeleteRecord(collection, id)) count++; });
+  return count;
+}
+
+export function purgeDeletedRecords() {
+  let count = 0;
+  Object.keys(state.db).forEach(collection => {
+    if (!Array.isArray(state.db[collection])) return;
+    const before = state.db[collection].length;
+    state.db[collection] = state.db[collection].filter(item => !item.deletedAt);
+    count += before - state.db[collection].length;
+  });
+  return count;
+}

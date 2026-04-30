@@ -2,7 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, pushDb, saveLocalCache, resolveGitRemote } from '../core/github.js';
-import { upsert, softDelete, listActive, newId, formatMoney } from '../core/data.js';
+import { upsert, softDelete, listActive, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
 
@@ -24,6 +24,7 @@ function build() {
   wrap.appendChild(buildVendorsCard());
   wrap.appendChild(buildServicesCard());
   wrap.appendChild(buildTeamCard());
+  wrap.appendChild(buildTrashCard());
   wrap.appendChild(buildDangerCard());
   return wrap;
 }
@@ -401,6 +402,219 @@ function buildTeamCard() {
     roleI.onchange = () => { t.role = roleI.value.trim(); markDirty(); };
   }
   card.appendChild(rows);
+  return card;
+}
+
+function trashDisplayName(collection, item) {
+  if (item.name) return item.name;
+  if (item.number) return `#${item.number}`;
+  if (item.description) return item.description;
+  if (item.amount != null && item.date) return `${item.date} · ${item.amount}${item.currency ? ' ' + item.currency : ''}`;
+  return item.id;
+}
+
+function capitalizeFirst(str) {
+  return str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
+}
+
+function buildTrashCard() {
+  const card = el('div', { class: 'card mb-16' });
+
+  const renderCard = (activeCol = 'all') => {
+    card.innerHTML = '';
+
+    const all = listDeletedRecords().sort((a, b) => (b.item.deletedAt || 0) - (a.item.deletedAt || 0));
+    const colNames = [...new Set(all.map(r => r.collection))].sort();
+
+    card.appendChild(el('div', { class: 'card-header' },
+      el('div', {},
+        el('div', { class: 'card-title' }, 'Trash'),
+        el('div', { class: 'card-subtitle' }, `${all.length} soft-deleted record${all.length !== 1 ? 's' : ''}`)
+      )
+    ));
+
+    if (all.length === 0) {
+      card.appendChild(el('div', { class: 'empty' }, 'Trash is empty'));
+      return;
+    }
+
+    // --- Selection state ---
+    const selection = new Set();
+    const rowCbs = new Map(); // key -> <input type=checkbox>
+
+    // --- Bulk action controls ---
+    const selCountEl  = el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, '');
+    const restoreSelBtn = button('Restore Selected', { variant: 'primary' });
+    const deleteSelBtn  = button('Delete Selected',  { variant: 'danger' });
+    const deleteAllBtn  = button('Delete All',       { variant: 'danger' });
+
+    const updateBulkState = () => {
+      const n = selection.size;
+      selCountEl.textContent = n > 0 ? `${n} selected` : '';
+      restoreSelBtn.disabled = n === 0;
+      deleteSelBtn.disabled  = n === 0;
+    };
+    updateBulkState();
+
+    // --- Collection filter ---
+    const colOptions = [
+      { value: 'all', label: 'All Collections' },
+      ...colNames.map(c => ({ value: c, label: capitalizeFirst(c) }))
+    ];
+    const colSel = select(colOptions, activeCol);
+
+    const getVisible = () => colSel.value === 'all' ? all : all.filter(r => r.collection === colSel.value);
+
+    // --- Select All checkbox ---
+    const selectAllCb = el('input', { type: 'checkbox', title: 'Select all visible' });
+
+    const syncSelectAll = () => {
+      const vis = getVisible();
+      const n = vis.filter(r => selection.has(r.key)).length;
+      selectAllCb.checked       = n > 0 && n === vis.length;
+      selectAllCb.indeterminate = n > 0 && n < vis.length;
+    };
+
+    const toggleRow = (key, checked) => {
+      if (checked) selection.add(key); else selection.delete(key);
+      syncSelectAll();
+      updateBulkState();
+    };
+
+    selectAllCb.onchange = () => {
+      for (const { key } of getVisible()) {
+        const cb = rowCbs.get(key);
+        if (!cb) continue;
+        cb.checked = selectAllCb.checked;
+        if (selectAllCb.checked) selection.add(key); else selection.delete(key);
+      }
+      updateBulkState();
+    };
+
+    colSel.onchange = () => renderCard(colSel.value);
+
+    // --- Bulk action handlers ---
+    restoreSelBtn.onclick = () => {
+      const targets = [...selection].map(key => {
+        const i = key.indexOf(':');
+        return { collection: key.slice(0, i), id: key.slice(i + 1) };
+      });
+      const count = restoreRecords(targets);
+      if (count > 0) markDirty();
+      toast(`Restored ${count} record${count !== 1 ? 's' : ''}`, 'success');
+      renderCard(colSel.value);
+    };
+
+    deleteSelBtn.onclick = async () => {
+      const n = selection.size;
+      const ok = await confirmDialog(
+        `This will permanently remove ${n} selected record${n !== 1 ? 's' : ''} from the database. This cannot be undone. Continue?`,
+        { danger: true, okLabel: 'Delete Permanently' }
+      );
+      if (!ok) return;
+      const targets = [...selection].map(key => {
+        const i = key.indexOf(':');
+        return { collection: key.slice(0, i), id: key.slice(i + 1) };
+      });
+      const count = permanentlyDeleteRecords(targets);
+      if (count > 0) markDirty();
+      toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
+      renderCard(colSel.value);
+    };
+
+    deleteAllBtn.onclick = async () => {
+      const ok = await confirmDialog(
+        'This will permanently remove all deleted records from the database. This cannot be undone. Continue?',
+        { danger: true, okLabel: 'Delete All Permanently' }
+      );
+      if (!ok) return;
+      const count = purgeDeletedRecords();
+      if (count > 0) markDirty();
+      toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
+      renderCard();
+    };
+
+    // --- Filter + bulk action bar ---
+    card.appendChild(el('div', {
+      class: 'flex gap-8 mb-16',
+      style: 'align-items:center;flex-wrap:wrap;padding-top:12px'
+    }, colSel, el('div', { class: 'flex-1' }), selCountEl, restoreSelBtn, deleteSelBtn, deleteAllBtn));
+
+    // --- Table ---
+    const vis = getVisible();
+    if (vis.length === 0) {
+      card.appendChild(el('div', { class: 'empty' }, 'No deleted records in this collection'));
+      return;
+    }
+
+    const tw = el('div', { class: 'table-wrap' });
+    const t  = el('table', { class: 'table' });
+
+    const thCb = el('th', { style: 'width:36px;text-align:center' });
+    thCb.appendChild(selectAllCb);
+    const htr = el('tr');
+    [thCb,
+      el('th', {}, 'Collection'),
+      el('th', {}, 'Record'),
+      el('th', {}, 'Deleted At'),
+      el('th', {}, 'Deleted By'),
+      el('th', {})
+    ].forEach(th => htr.appendChild(th));
+    const thead = el('thead');
+    thead.appendChild(htr);
+    t.appendChild(thead);
+
+    const tb = el('tbody');
+    for (const { key, collection, item } of vis) {
+      const cb = el('input', { type: 'checkbox' });
+      cb.onchange = () => toggleRow(key, cb.checked);
+      rowCbs.set(key, cb);
+
+      const tdCb = el('td', { style: 'text-align:center' });
+      tdCb.appendChild(cb);
+
+      const tr = el('tr');
+      tr.appendChild(tdCb);
+      tr.appendChild(el('td', {}, el('span', { class: 'badge' }, capitalizeFirst(collection))));
+      tr.appendChild(el('td', {}, trashDisplayName(collection, item)));
+      tr.appendChild(el('td', { style: 'font-size:12px;white-space:nowrap' },
+        item.deletedAt ? new Date(item.deletedAt).toLocaleString() : '—'
+      ));
+      tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' }, item.deletedBy || '—'));
+
+      const actions = el('td', { class: 'right' });
+      actions.appendChild(button('Restore', {
+        variant: 'sm ghost',
+        onClick: () => {
+          restoreRecord(collection, item.id);
+          markDirty();
+          toast('Restored', 'success');
+          renderCard(colSel.value);
+        }
+      }));
+      actions.appendChild(button('Delete', {
+        variant: 'sm ghost',
+        onClick: async () => {
+          const ok = await confirmDialog(
+            'Permanently delete this record? This cannot be undone.',
+            { danger: true, okLabel: 'Delete Permanently' }
+          );
+          if (!ok) return;
+          permanentlyDeleteRecord(collection, item.id);
+          markDirty();
+          toast('Permanently deleted', 'success');
+          renderCard(colSel.value);
+        }
+      }));
+      tr.appendChild(actions);
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    tw.appendChild(t);
+    card.appendChild(tw);
+  };
+
+  renderCard();
   return card;
 }
 
