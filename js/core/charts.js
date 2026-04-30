@@ -34,11 +34,20 @@ export function destroyAll() {
   registry.clear();
 }
 
-export function line(id, { labels, datasets }) {
+export function line(id, { labels, datasets, onClickItem }) {
   destroy(id);
   const canvas = document.getElementById(id);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
+  const opts = baseOpts();
+  if (onClickItem) {
+    opts.onClick = (_e, elements) => {
+      if (!elements.length) return;
+      const { datasetIndex, index } = elements[0];
+      onClickItem(labels[index], index, datasetIndex);
+    };
+    canvas.style.cursor = 'pointer';
+  }
   const c = new Chart(ctx, {
     type: 'line',
     data: {
@@ -52,7 +61,7 @@ export function line(id, { labels, datasets }) {
         ...d
       }))
     },
-    options: baseOpts()
+    options: opts
   });
   registry.set(id, c);
 }
