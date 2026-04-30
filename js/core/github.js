@@ -79,13 +79,20 @@ export async function fetchDb() {
   }
 
   const url = `${GH}/repos/${owner}/${repo}/contents/${FILE_PATH}?ref=${branch || 'main'}`;
-  const res = await fetch(url, { headers: headers() });
+  let res;
+  try {
+    res = await fetch(url, { headers: headers() });
+  } catch {
+    throw new Error('Cannot reach GitHub — check your internet connection');
+  }
 
   if (!res.ok) {
     if (res.status === 404) {
       throw new Error('db.json not found in repo. Make sure data/db.json exists.');
     }
-
+    if (res.status === 401 || res.status === 403) {
+      throw new Error(`GitHub auth failed (${res.status}) — check your token in Settings`);
+    }
     throw new Error(`GitHub API error ${res.status}: ${res.statusText}`);
   }
 
@@ -182,15 +189,24 @@ async function doPushDb(db, message = 'Update data') {
   let lastError = null;
 
   for (let attemptNo = 1; attemptNo <= 5; attemptNo++) {
-    const getRes = await fetch(
-      `${url}?ref=${branch || 'main'}&t=${Date.now()}`,
-      {
-        headers: headers(),
-        cache: 'no-store'
+    let getRes;
+    try {
+      getRes = await fetch(
+        `${url}?ref=${branch || 'main'}&t=${Date.now()}`,
+        { headers: headers(), cache: 'no-store' }
+      );
+    } catch {
+      if (attemptNo < 5) {
+        await new Promise(resolve => setTimeout(resolve, 500 * attemptNo));
+        continue;
       }
-    );
+      throw new Error('Cannot reach GitHub — check your internet connection');
+    }
 
     if (!getRes.ok) {
+      if (getRes.status === 401 || getRes.status === 403) {
+        throw new Error(`GitHub auth failed (${getRes.status}) — check your token in Settings`);
+      }
       throw new Error(`GitHub fetch failed: ${getRes.status}`);
     }
 
@@ -198,19 +214,25 @@ async function doPushDb(db, message = 'Update data') {
     const freshDb = JSON.parse(b64decode(getMeta.content));
     const merged = mergeDb(freshDb, snapshot, base);
 
-    const putRes = await fetch(url, {
-      method: 'PUT',
-      headers: {
-        ...headers(),
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message,
-        content: b64encode(JSON.stringify(merged, null, 2)),
-        branch: branch || 'main',
-        sha: getMeta.sha
-      })
-    });
+    let putRes;
+    try {
+      putRes = await fetch(url, {
+        method: 'PUT',
+        headers: { ...headers(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message,
+          content: b64encode(JSON.stringify(merged, null, 2)),
+          branch: branch || 'main',
+          sha: getMeta.sha
+        })
+      });
+    } catch {
+      if (attemptNo < 5) {
+        await new Promise(resolve => setTimeout(resolve, 500 * attemptNo));
+        continue;
+      }
+      throw new Error('Cannot reach GitHub — check your internet connection');
+    }
 
     if (putRes.status === 409 && attemptNo < 5) {
       lastError = await putRes.text();

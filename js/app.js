@@ -89,6 +89,7 @@ async function boot() {
 
   let pushTimer = null;
   let pendingDirty = false;
+  let saveFailCount = 0;
 
   const doSave = async () => {
     if (state.saving) return;
@@ -99,8 +100,10 @@ async function boot() {
       updateSyncStatus('syncing', 'Saving…');
       await github.pushDb(state.db, 'Auto-sync from app');
       state.dirty = false;
+      saveFailCount = 0;
       updateSyncStatus('online', `Saved ${new Date().toLocaleTimeString()}`);
     } catch (e) {
+      saveFailCount++;
       if (e.name === 'ConflictError') {
         pendingDirty = false;
         clearTimeout(pushTimer);
@@ -112,7 +115,10 @@ async function boot() {
         );
       } else {
         updateSyncStatus('offline', 'Save failed — ' + e.message);
-        toast('Save failed: ' + e.message, 'danger', 4000);
+        // Only show the toast on the first failure; status bar stays updated on subsequent ones
+        if (saveFailCount === 1) {
+          toast('Save failed: ' + e.message, 'danger', 6000);
+        }
       }
     } finally {
       state.saving = false;
