@@ -233,7 +233,7 @@ function build() {
 
   // Dashboard: respects property + accountingType filters; category/recurrence stay for table only
   const renderDash = () => {
-    let bkRows = [...(state.db.expenses || [])];
+    let bkRows = listActive('expenses');
     if (propSel.value !== 'all')           bkRows = bkRows.filter(r => r.propertyId === propSel.value);
     if (accountingTypeSel.value !== 'all') bkRows = bkRows.filter(r => resolveExpenseFields(r).accountingType === accountingTypeSel.value);
 

@@ -47,7 +47,7 @@ function build() {
 }
 
 function card(c) {
-  const invs = (state.db.invoices || []).filter(i => i.clientId === c.id);
+  const invs = listActive('invoices').filter(i => i.clientId === c.id);
   const paid = invs.filter(i => i.status === 'paid');
   const totalPaidEUR = paid.reduce((s, i) => s + toEUR(i.total, i.currency), 0);
   const totalOutEUR = invs.filter(i => i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + toEUR(i.total, i.currency), 0);
@@ -84,7 +84,7 @@ function stat(label, value) {
 function openDetail(id) {
   const c = byId('clients', id);
   if (!c) return;
-  const invs = (state.db.invoices || []).filter(i => i.clientId === id).sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate));
+  const invs = listActive('invoices').filter(i => i.clientId === id).sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate));
   const body = el('div', {});
   body.appendChild(el('div', { class: 'mb-16' },
     el('h2', {}, c.name),

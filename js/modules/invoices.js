@@ -198,7 +198,7 @@ function build() {
 }
 
 function computeStats() {
-  const rows = state.db.invoices || [];
+  const rows = listActive('invoices');
   const totalEUR = rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
   const paid = rows.filter(r => r.status === 'paid');
   const open = rows.filter(r => r.status === 'sent');
@@ -244,7 +244,7 @@ function nextInvoiceSequence(year, excludeId) {
 
 // ============ BUILDER ============
 function openBuilder(existing) {
-  const clients = state.db.clients || [];
+  const clients = listActive('clients');
   if (clients.length === 0) { toast('Add a client first', 'warning'); return; }
 
   const inv = existing ? { ...existing, lineItems: existing.lineItems?.map(l => ({ ...l })) || [] } : {
@@ -513,7 +513,7 @@ function escape(s) {
 
 // ===== PDF Import =====
 function openPDFImport() {
-  const clients = state.db.clients || [];
+  const clients = listActive('clients');
   const body = el('div', {});
   const streamS = select([
     { value: 'customer_success',   label: 'Customer Success' },

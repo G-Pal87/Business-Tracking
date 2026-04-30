@@ -223,7 +223,7 @@ function openDetail(id) {
   }
 
   // Expense breakdown
-  const expList = (state.db.expenses || []).filter(e => e.propertyId === id).sort((a, b) => (b.date || '').localeCompare(a.date));
+  const expList = listActive('expenses').filter(e => e.propertyId === id).sort((a, b) => (b.date || '').localeCompare(a.date));
   const expTable = el('div', { class: 'card mb-16' });
   const addExpBtn = button('+ Add Expense', { variant: 'primary', onClick: () => {
     closeModal();

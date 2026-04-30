@@ -96,7 +96,7 @@ function openDetail(id) {
 
   const body = el('div', {});
 
-  const totalPaidEUR = (state.db.expenses || [])
+  const totalPaidEUR = listActive('expenses')
     .filter(e => e.vendorId === v.id)
     .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 

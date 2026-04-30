@@ -642,7 +642,7 @@ function renderComparison(wrap) {
             const pays = (listActivePayments()).filter(p => p.propertyId === ent.id && p.status === 'paid' && p.date >= s && p.date <= e);
             drillDownModal(`${MON[index]} ${datasetIndex === 0 ? yr - 1 : yr} — Revenue`, drillRevRows(pays, []), REV_COLS);
           } else {
-            const invs = (state.db.invoices || []).filter(i => i.stream === ent.id && i.status === 'paid' && i.issueDate >= s && i.issueDate <= e);
+            const invs = listActive('invoices').filter(i => i.stream === ent.id && i.status === 'paid' && i.issueDate >= s && i.issueDate <= e);
             drillDownModal(`${MON[index]} ${datasetIndex === 0 ? yr - 1 : yr} — Invoiced`, drillRevRows([], invs), REV_COLS);
           }
         }
@@ -666,7 +666,7 @@ function renderComparison(wrap) {
             const pays = (listActivePayments()).filter(p => p.propertyId === ent.id && p.status === 'paid' && p.date >= s && p.date <= e);
             drillDownModal(`${MON[index]} ${yr} — Revenue`, drillRevRows(pays, []), REV_COLS);
           } else {
-            const invs = (state.db.invoices || []).filter(i => i.stream === ent.id && i.status === 'paid' && i.issueDate >= s && i.issueDate <= e);
+            const invs = listActive('invoices').filter(i => i.stream === ent.id && i.status === 'paid' && i.issueDate >= s && i.issueDate <= e);
             drillDownModal(`${MON[index]} ${yr} — Invoiced`, drillRevRows([], invs), REV_COLS);
           }
         }
@@ -809,7 +809,7 @@ function renderContribution(wrap) {
     if (cs.payType === 'payment') {
       rows = (listActivePayments()).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(yr) && (gFilters.propertyId === 'all' || p.propertyId === gFilters.propertyId));
     } else {
-      rows = (state.db.invoices || []).filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(yr));
+      rows = listActive('invoices').filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(yr));
     }
     const totalEUR = cs.payType === 'payment'
       ? rows.reduce((s, p) => s + toEUR(p.amount, p.currency), 0)
@@ -826,7 +826,7 @@ function renderContribution(wrap) {
       if (cs.payType === 'payment') {
         rows = (listActivePayments()).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(mk) && (gFilters.propertyId === 'all' || p.propertyId === gFilters.propertyId));
       } else {
-        rows = (state.db.invoices || []).filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(mk));
+        rows = listActive('invoices').filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(mk));
       }
       const totalEUR = cs.payType === 'payment'
         ? rows.reduce((s, p) => s + toEUR(p.amount, p.currency), 0)
