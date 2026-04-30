@@ -281,6 +281,69 @@ export function propertyROI(propertyId) {
   return (net / totalInvested) * 100;
 }
 
+// net profit / total invested capital × 100
+// Accepts pre-computed { netIncome, totalInvested } to avoid double work in callers
+// that already have filtered data; falls back to current-year calculation.
+export function simplePropertyROI(propertyId, { netIncome, totalInvested } = {}) {
+  const prop = byId('properties', propertyId);
+  if (!prop) return null;
+
+  const invested = totalInvested !== undefined ? totalInvested : (() => {
+    const purchaseEUR = prop.purchasePrice
+      ? toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) : 0;
+    return purchaseEUR + renovationCapexEUR({ propertyId });
+  })();
+  if (invested <= 0) return null;
+
+  const net = netIncome !== undefined ? netIncome : (() => {
+    const yr  = new Date().getFullYear();
+    const rev = propertyRevenueEUR(propertyId, { year: yr });
+    const exp = propertyExpensesEUR(propertyId, { year: yr }, { includeRenovation: false });
+    return rev - exp;
+  })();
+
+  return (net / invested) * 100;
+}
+
+// Simple ROI normalized by years of ownership since purchaseDate.
+// Represents the average annual return per year the asset has been held.
+// Accepts same overrides as simplePropertyROI.
+export function annualizedPropertyROI(propertyId, { netIncome, totalInvested } = {}) {
+  const prop = byId('properties', propertyId);
+  if (!prop || !prop.purchaseDate) return null;
+
+  const years = (Date.now() - new Date(prop.purchaseDate).getTime()) / (365.25 * 24 * 3600 * 1000);
+  if (years < 0.083) return null; // less than ~1 month owned — too early to be meaningful
+
+  const simple = simplePropertyROI(propertyId, { netIncome, totalInvested });
+  if (simple === null) return null;
+
+  return simple / years;
+}
+
+// Annual cash flow / actual cash invested × 100
+// Cash invested = purchase price − mortgage balance (i.e., the equity/down-payment).
+// Returns null when no mortgage data is present (cash purchase) or when the
+// mortgage covers the full price, since the denominator would be zero.
+export function cashOnCashPropertyROI(propertyId, { annualCashFlow } = {}) {
+  const prop = byId('properties', propertyId);
+  if (!prop || !(prop.mortgageAmount > 0) || !prop.purchasePrice) return null;
+
+  const purchaseEUR  = toEUR(prop.purchasePrice,   prop.currency, prop.purchaseDate);
+  const mortgageEUR  = toEUR(prop.mortgageAmount,  prop.currency, prop.purchaseDate);
+  const cashInvested = purchaseEUR - mortgageEUR;
+  if (cashInvested <= 0) return null;
+
+  const cashFlow = annualCashFlow !== undefined ? annualCashFlow : (() => {
+    const yr  = new Date().getFullYear();
+    const rev = propertyRevenueEUR(propertyId, { year: yr });
+    const exp = propertyExpensesEUR(propertyId, { year: yr }, { includeRenovation: false });
+    return rev - exp;
+  })();
+
+  return (cashFlow / cashInvested) * 100;
+}
+
 export function groupByMonth(rows, dateField = 'date', amountField = 'amount', currencyField = 'currency') {
   const map = new Map();
   for (const r of rows) {
