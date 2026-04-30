@@ -66,6 +66,8 @@ export function upsert(collection, item) {
   return item;
 }
 
+// WARNING: internal / machine-generated records only.
+// Do NOT call remove() for user-facing business entities — use softDelete() instead.
 export function remove(collection, id) {
   const arr = state.db[collection] || [];
   const idx = arr.findIndex(x => x.id === id);
@@ -105,9 +107,24 @@ export function listActiveClients()    { return listActive('clients'); }
 export function listActiveServices()   { return listActive('services'); }
 export function listActiveInventory()  { return listActive('inventory'); }
 
+function deepMerge(target, source) {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    const sv = source[key];
+    const tv = result[key];
+    if (sv !== null && typeof sv === 'object' && !Array.isArray(sv) &&
+        tv !== null && typeof tv === 'object' && !Array.isArray(tv)) {
+      result[key] = deepMerge(tv, sv);
+    } else {
+      result[key] = sv;
+    }
+  }
+  return result;
+}
+
 export function patchSettings(patch) {
   if (!state.db.settings) state.db.settings = {};
-  Object.assign(state.db.settings, patch);
+  state.db.settings = deepMerge(state.db.settings, patch);
   markDirty();
 }
 
@@ -310,9 +327,9 @@ export function availableYears() {
 }
 
 // ============== Vendors ==============
-export function getVendors() { return state.db.vendors || []; }
+export function getVendors() { return listActive('vendors'); }
 export function getVendorsByProperty(propertyId) {
-  return (state.db.vendors || []).filter(v => !v.propertyIds?.length || v.propertyIds.includes(propertyId));
+  return listActive('vendors').filter(v => !v.propertyIds?.length || v.propertyIds.includes(propertyId));
 }
 
 // ============== Forecasts ==============
