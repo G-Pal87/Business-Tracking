@@ -14,11 +14,13 @@ let gFilters = {
   streams:     new Set(),
   propertyIds: new Set(),
   clientIds:   new Set(),
-  owners:      new Set()
+  owners:      new Set(),
+  dateFrom:    '',
+  dateTo:      ''
 };
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CHART_IDS    = ['cf-cumulative-line', 'cf-month-bar', 'cf-net-donut'];
+const CHART_IDS    = ['cf-cumulative-line', 'cf-month-bar', 'cf-net-donut', 'cf-net-month-bar', 'cf-prop-hbar', 'cf-stream-bar'];
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -46,6 +48,8 @@ function matchDate(row) {
   const d = row.date || row.issueDate || '';
   if (gFilters.year && gFilters.year !== 'all' && !d.startsWith(gFilters.year)) return false;
   if (gFilters.months.size > 0 && !gFilters.months.has(d.slice(5, 7))) return false;
+  if (gFilters.dateFrom && d < gFilters.dateFrom) return false;
+  if (gFilters.dateTo   && d > gFilters.dateTo)   return false;
   return true;
 }
 function matchStream(row) {
@@ -290,6 +294,17 @@ function buildView() {
     Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })),
     gFilters.owners, 'All Owners', rebuildView
   ));
+
+  // Date range inputs (from / to)
+  const dateFromIn = el('input', { type: 'date', class: 'select', style: 'min-width:0;width:130px', value: gFilters.dateFrom, title: 'From date' });
+  const dateToIn   = el('input', { type: 'date', class: 'select', style: 'min-width:0;width:130px', value: gFilters.dateTo,   title: 'To date'   });
+  dateFromIn.onchange = () => { gFilters.dateFrom = dateFromIn.value; rebuildView(); };
+  dateToIn.onchange   = () => { gFilters.dateTo   = dateToIn.value;   rebuildView(); };
+  filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'From:'));
+  filterBar.appendChild(dateFromIn);
+  filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'To:'));
+  filterBar.appendChild(dateToIn);
+
   wrap.appendChild(filterBar);
 
   // Data
@@ -368,6 +383,33 @@ function buildView() {
   ));
   wrap.appendChild(row2);
 
+  // ── Chart row 3: Monthly Net Cash Flow bar (full width) ───────────────────
+  wrap.appendChild(el('div', { class: 'card mb-16' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Monthly Net Cash Flow'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Green = surplus · Red = deficit · Click for transactions')
+    ),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-net-month-bar' }))
+  ));
+
+  // ── Chart row 4: Property breakdown + Stream breakdown ────────────────────
+  const row4 = el('div', { class: 'grid grid-2 mb-16' });
+  row4.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Cash Flow by Property'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, '● Green = In · Red = Out · Click for breakdown')
+    ),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-prop-hbar' }))
+  ));
+  row4.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Cash Flow by Stream'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, '● Green = In · Red = Out · Click for breakdown')
+    ),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-stream-bar' }))
+  ));
+  wrap.appendChild(row4);
+
   // ── Cash flow table ────────────────────────────────────────────────────────
   const tableCard = el('div', { class: 'card' });
   tableCard.appendChild(el('div', { class: 'card-header' },
@@ -390,6 +432,9 @@ function buildView() {
     renderCumulativeLine(data);
     renderMonthBar(data);
     renderNetStreamDonut(data);
+    renderNetMonthBar(data);
+    renderPropHBar(data);
+    renderStreamBar(data);
   }, 0);
 
   return wrap;
@@ -507,6 +552,144 @@ function renderNetStreamDonut({ payments, invoices, expenses }) {
       drillDownModal(
         `Cash Flow — ${STREAMS[sk]?.label || sk}`,
         buildCashFlowRows(sPay, sInv, sExp),
+        CF_DRILL_COLS
+      );
+    }
+  });
+}
+
+// ── Chart 4: Bar — Monthly Net Cash Flow ─────────────────────────────────────
+function renderNetMonthBar({ payments, invoices, expenses }) {
+  const months = getMonthKeys();
+  if (!months.length) return;
+
+  const netByMonth = new Map();
+  months.forEach(m => netByMonth.set(m.key, 0));
+
+  payments .forEach(p => { const mk = p.date?.slice(0, 7);             if (netByMonth.has(mk)) netByMonth.set(mk, netByMonth.get(mk) + toEUR(p.amount,  p.currency,  p.date)); });
+  invoices .forEach(i => { const mk = (i.issueDate || '').slice(0, 7); if (netByMonth.has(mk)) netByMonth.set(mk, netByMonth.get(mk) + toEUR(i.total,   i.currency,  i.issueDate)); });
+  expenses .forEach(e => { const mk = e.date?.slice(0, 7);             if (netByMonth.has(mk)) netByMonth.set(mk, netByMonth.get(mk) - toEUR(e.amount,  e.currency,  e.date)); });
+
+  const netData = months.map(m => Math.round(netByMonth.get(m.key) || 0));
+  if (netData.every(v => v === 0)) return;
+
+  charts.bar('cf-net-month-bar', {
+    labels: months.map(m => m.label),
+    datasets: [{
+      label:           'Net Cash Flow (EUR)',
+      data:            netData,
+      backgroundColor: netData.map(v => v >= 0 ? 'rgba(16,185,129,0.8)' : 'rgba(239,68,68,0.8)')
+    }],
+    stacked: false,
+    onClickItem: (_label, idx) => {
+      const mk = months[idx]?.key;
+      if (!mk) return;
+      const mPay = payments.filter(p => p.date?.slice(0, 7) === mk);
+      const mInv = invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk);
+      const mExp = expenses.filter(e => e.date?.slice(0, 7) === mk);
+      drillDownModal(
+        `Net Cash Flow — ${months[idx].label}`,
+        buildCashFlowRows(mPay, mInv, mExp),
+        CF_DRILL_COLS
+      );
+    }
+  });
+}
+
+// ── Chart 5: Horizontal grouped bar — Cash Flow by Property ──────────────────
+function renderPropHBar({ payments, expenses }) {
+  const propInMap  = new Map();
+  const propOutMap = new Map();
+  const propNames  = new Map();
+
+  const regName = (pid) => {
+    if (!propNames.has(pid)) propNames.set(pid, byId('properties', pid)?.name || pid);
+  };
+
+  payments.forEach(p => {
+    if (!p.propertyId) return;
+    regName(p.propertyId);
+    propInMap.set(p.propertyId, (propInMap.get(p.propertyId) || 0) + toEUR(p.amount, p.currency, p.date));
+  });
+  expenses.forEach(e => {
+    if (!e.propertyId) return;
+    regName(e.propertyId);
+    propOutMap.set(e.propertyId, (propOutMap.get(e.propertyId) || 0) + toEUR(e.amount, e.currency, e.date));
+  });
+
+  const allPids = [...new Set([...propInMap.keys(), ...propOutMap.keys()])];
+  if (!allPids.length) return;
+
+  allPids.sort((a, b) =>
+    ((propInMap.get(b) || 0) + (propOutMap.get(b) || 0)) -
+    ((propInMap.get(a) || 0) + (propOutMap.get(a) || 0))
+  );
+
+  const labels  = allPids.map(pid => propNames.get(pid) || pid);
+  const inData  = allPids.map(pid => Math.round(propInMap.get(pid)  || 0));
+  const outData = allPids.map(pid => Math.round(propOutMap.get(pid) || 0));
+
+  charts.bar('cf-prop-hbar', {
+    labels,
+    datasets: [
+      { label: 'Cash In',  data: inData,  backgroundColor: 'rgba(16,185,129,0.8)' },
+      { label: 'Cash Out', data: outData, backgroundColor: 'rgba(239,68,68,0.8)'  }
+    ],
+    horizontal: true,
+    stacked: false,
+    onClickItem: (_label, idx, dsIdx) => {
+      const pid  = allPids[idx];
+      const name = propNames.get(pid) || pid;
+      const pPay = payments.filter(p => p.propertyId === pid);
+      const pExp = expenses.filter(e => e.propertyId === pid);
+      const isCashIn = dsIdx === 0;
+      drillDownModal(
+        `${name} — ${isCashIn ? 'Cash In' : 'Cash Out'}`,
+        buildCashFlowRows(isCashIn ? pPay : [], [], isCashIn ? [] : pExp),
+        CF_DRILL_COLS
+      );
+    }
+  });
+}
+
+// ── Chart 6: Horizontal grouped bar — Cash Flow by Stream ────────────────────
+function renderStreamBar({ payments, invoices, expenses }) {
+  const streamInMap  = new Map();
+  const streamOutMap = new Map();
+
+  payments .forEach(p => { const k = p.stream || 'other'; streamInMap .set(k, (streamInMap .get(k) || 0) + toEUR(p.amount, p.currency, p.date)); });
+  invoices .forEach(i => { const k = i.stream || 'other'; streamInMap .set(k, (streamInMap .get(k) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+  expenses .forEach(e => { const k = expStream(e);         streamOutMap.set(k, (streamOutMap.get(k) || 0) + toEUR(e.amount, e.currency, e.date)); });
+
+  const allKeys = [...new Set([...streamInMap.keys(), ...streamOutMap.keys()])];
+  if (!allKeys.length) return;
+
+  allKeys.sort((a, b) =>
+    ((streamInMap.get(b) || 0) + (streamOutMap.get(b) || 0)) -
+    ((streamInMap.get(a) || 0) + (streamOutMap.get(a) || 0))
+  );
+
+  const labels  = allKeys.map(k => STREAMS[k]?.label || k);
+  const inData  = allKeys.map(k => Math.round(streamInMap.get(k)  || 0));
+  const outData = allKeys.map(k => Math.round(streamOutMap.get(k) || 0));
+
+  charts.bar('cf-stream-bar', {
+    labels,
+    datasets: [
+      { label: 'Cash In',  data: inData,  backgroundColor: 'rgba(16,185,129,0.8)' },
+      { label: 'Cash Out', data: outData, backgroundColor: 'rgba(239,68,68,0.8)'  }
+    ],
+    horizontal: true,
+    stacked: false,
+    onClickItem: (_label, idx, dsIdx) => {
+      const sk   = allKeys[idx];
+      const sPay = payments.filter(p => (p.stream || 'other') === sk);
+      const sInv = invoices.filter(i => (i.stream || 'other') === sk);
+      const sExp = expenses.filter(e => expStream(e) === sk);
+      const isCashIn = dsIdx === 0;
+      drillDownModal(
+        `${STREAMS[sk]?.label || sk} — ${isCashIn ? 'Cash In' : 'Cash Out'}`,
+        buildCashFlowRows(isCashIn ? sPay : [], isCashIn ? sInv : [], isCashIn ? [] : sExp),
         CF_DRILL_COLS
       );
     }
