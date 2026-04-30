@@ -5,7 +5,8 @@ import { STREAMS, OWNERS, PROPERTY_STREAMS } from '../core/config.js';
 import {
   availableYears, formatEUR, toEUR, byId,
   listActive, listActivePayments, listActiveProperties,
-  isCapEx
+  isCapEx,
+  simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
@@ -89,19 +90,10 @@ function getData() {
       ? toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) : 0;
     const totalInvested = purchaseEUR + allTimeCapEx;
 
-    const simpleROI = totalInvested > 0 ? ((rev - opEx) / totalInvested) * 100 : null;
-
-    let annualizedROI = null;
-    if (simpleROI !== null && gFilters.months.size > 0) {
-      annualizedROI = simpleROI * (12 / gFilters.months.size);
-    }
-
-    let cashOnCashROI = null;
-    if (prop.mortgageAmount > 0 && purchaseEUR > 0) {
-      const mortgageEUR    = toEUR(prop.mortgageAmount, prop.currency, prop.purchaseDate);
-      const equityInvested = Math.max(purchaseEUR - mortgageEUR + allTimeCapEx, 0);
-      if (equityInvested > 0) cashOnCashROI = ((rev - opEx) / equityInvested) * 100;
-    }
+    const netIncome     = rev - opEx;
+    const simpleROI     = simplePropertyROI(prop.id,     { netIncome, totalInvested });
+    const annualizedROI = annualizedPropertyROI(prop.id, { netIncome, totalInvested });
+    const cashOnCashROI = cashOnCashPropertyROI(prop.id, { annualCashFlow: netIncome });
 
     return {
       prop, rev, opEx, capEx, allTimeCapEx, purchaseEUR, totalInvested,
