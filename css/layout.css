@@ -154,8 +154,60 @@
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .grid-3 { grid-template-columns: repeat(2, 1fr); }
 }
+#mobile-menu-btn {
+  display: none;
+}
+
+#mobile-backdrop {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
   #app { grid-template-columns: 1fr; }
-  #sidebar { display: none; }
+
+  #mobile-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    margin-right: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-elev-1);
+    color: var(--text);
+    font-size: 18px;
+    cursor: pointer;
+  }
+
+  #sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: var(--sidebar-width);
+    max-width: 80vw;
+    height: 100vh;
+    z-index: 500;
+    transform: translateX(-100%);
+    transition: transform 220ms ease;
+    overflow-y: auto;
+  }
+
+  body.nav-open #sidebar {
+    transform: translateX(0);
+  }
+
+  #mobile-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 499;
+    cursor: pointer;
+  }
+
+  body.nav-open #mobile-backdrop {
+    display: block;
+  }
 }
