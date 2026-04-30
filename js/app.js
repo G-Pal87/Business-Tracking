@@ -59,6 +59,7 @@ async function boot() {
 
   MODULES.forEach(router.registerModule);
   buildSidebar(MODULES);
+  initMobileNav();
 
   github.loadConfig();
 
@@ -244,6 +245,21 @@ function buildSidebar(MODULES) {
     }
     nav.appendChild(list);
   }
+}
+
+function initMobileNav() {
+  const btn      = document.getElementById('mobile-menu-btn');
+  const backdrop = document.getElementById('mobile-backdrop');
+  const nav      = document.getElementById('nav');
+
+  const open  = () => document.body.classList.add('nav-open');
+  const close = () => document.body.classList.remove('nav-open');
+
+  btn?.addEventListener('click', () => {
+    document.body.classList.toggle('nav-open');
+  });
+  backdrop?.addEventListener('click', close);
+  nav?.addEventListener('click', close);
 }
 
 function updateSyncStatus(state, message) {
