@@ -98,6 +98,58 @@ function getData() {
   return { payments, invoices, expenses, cashIn, cashOut, net: cashIn - cashOut };
 }
 
+// ── Inline insights ───────────────────────────────────────────────────────────
+function buildInsightsBanner(insights) {
+  if (!insights.length) return null;
+  const wrap = el('div', { style: 'display:flex;flex-direction:column;gap:8px;margin-bottom:16px' });
+  const STYLES = {
+    danger:  { bg: 'rgba(239,68,68,0.08)',  border: '#ef4444', icon: '⚠' },
+    warning: { bg: 'rgba(245,158,11,0.08)', border: '#f59e0b', icon: '⚡' },
+    info:    { bg: 'rgba(99,102,241,0.08)', border: '#6366f1', icon: 'ℹ' }
+  };
+  for (const { level, text } of insights) {
+    const s = STYLES[level] || STYLES.info;
+    wrap.appendChild(el('div', {
+      style: `display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:${s.bg};border-left:3px solid ${s.border};border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13px`
+    },
+      el('span', { style: `color:${s.border};flex-shrink:0` }, s.icon),
+      el('span', { style: 'color:var(--text);line-height:1.4' }, text)
+    ));
+  }
+  return wrap;
+}
+
+function computeCashFlowInsights({ payments, invoices, expenses, cashIn, cashOut, net }) {
+  const items = [];
+  if (cashIn === 0 && cashOut === 0) {
+    items.push({ level: 'info', text: 'No cash flow data for the selected period.' });
+    return items;
+  }
+  if (net < 0) {
+    items.push({ level: 'danger', text: `Net cash flow is ${formatEUR(net)} — more cash is flowing out than in for this period.` });
+  }
+  const burnRate = cashIn > 0 ? (cashOut / cashIn) * 100 : null;
+  if (burnRate !== null && burnRate > 90 && net >= 0) {
+    items.push({ level: 'warning', text: `Cash burn rate is ${burnRate.toFixed(0)}% — expenses consume nearly all incoming cash. Buffer is very thin.` });
+  }
+  // Per-month analysis: count negative months
+  const monthMap = new Map();
+  const addMk = (mk, inAmt, outAmt) => {
+    if (!monthMap.has(mk)) monthMap.set(mk, { in: 0, out: 0 });
+    monthMap.get(mk).in  += inAmt;
+    monthMap.get(mk).out += outAmt;
+  };
+  payments.forEach(p => { const mk = p.date?.slice(0, 7); if (mk) addMk(mk, toEUR(p.amount, p.currency, p.date), 0); });
+  invoices.forEach(i => { const mk = (i.issueDate || '').slice(0, 7); if (mk) addMk(mk, toEUR(i.total, i.currency, i.issueDate), 0); });
+  expenses.forEach(e => { const mk = e.date?.slice(0, 7); if (mk) addMk(mk, 0, toEUR(e.amount, e.currency, e.date)); });
+  const months   = [...monthMap.values()];
+  const negCount = months.filter(m => m.in - m.out < 0).length;
+  if (months.length > 1 && negCount > Math.floor(months.length / 2)) {
+    items.push({ level: 'warning', text: `${negCount} of ${months.length} months have negative cash flow — deficit months are the majority.` });
+  }
+  return items;
+}
+
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -361,6 +413,11 @@ function buildView() {
     }
   ));
   wrap.appendChild(kpiRow);
+
+  // Inline insights
+  const cfInsights = computeCashFlowInsights(data);
+  const cfBanner = buildInsightsBanner(cfInsights);
+  if (cfBanner) wrap.appendChild(cfBanner);
 
   // ── Chart row 1: Cumulative line (full width, tall) ────────────────────────
   wrap.appendChild(el('div', { class: 'card mb-16' },

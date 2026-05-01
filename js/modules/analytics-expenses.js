@@ -102,6 +102,59 @@ function getData() {
   return { allExp, opEx, capEx, opTotal, capTotal, total: opTotal + capTotal, revenue };
 }
 
+// ── Inline insights ───────────────────────────────────────────────────────────
+function buildInsightsBanner(insights) {
+  if (!insights.length) return null;
+  const wrap = el('div', { style: 'display:flex;flex-direction:column;gap:8px;margin-bottom:16px' });
+  const STYLES = {
+    danger:  { bg: 'rgba(239,68,68,0.08)',  border: '#ef4444', icon: '⚠' },
+    warning: { bg: 'rgba(245,158,11,0.08)', border: '#f59e0b', icon: '⚡' },
+    info:    { bg: 'rgba(99,102,241,0.08)', border: '#6366f1', icon: 'ℹ' }
+  };
+  for (const { level, text } of insights) {
+    const s = STYLES[level] || STYLES.info;
+    wrap.appendChild(el('div', {
+      style: `display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:${s.bg};border-left:3px solid ${s.border};border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13px`
+    },
+      el('span', { style: `color:${s.border};flex-shrink:0` }, s.icon),
+      el('span', { style: 'color:var(--text);line-height:1.4' }, text)
+    ));
+  }
+  return wrap;
+}
+
+function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }) {
+  const items = [];
+  if (total === 0) {
+    items.push({ level: 'info', text: 'No expenses recorded for the selected period.' });
+    return items;
+  }
+  const costRatio = revenue > 0 ? (total / revenue) * 100 : null;
+  if (costRatio !== null && costRatio > 100) {
+    items.push({ level: 'danger', text: `Cost ratio is ${costRatio.toFixed(0)}% — expenses exceed revenue. Portfolio is unprofitable for this period.` });
+  } else if (costRatio !== null && costRatio > 80) {
+    items.push({ level: 'warning', text: `Cost ratio is ${costRatio.toFixed(0)}% — expenses consume over 80% of revenue. Margins are thin.` });
+  }
+  const capPct = total > 0 ? (capTotal / total) * 100 : 0;
+  if (capPct > 50) {
+    items.push({ level: 'warning', text: `CapEx is ${capPct.toFixed(0)}% of total expenses — major capital expenditure activity. Verify this is planned renovation.` });
+  } else if (capPct > 30) {
+    items.push({ level: 'info', text: `CapEx is ${capPct.toFixed(0)}% of total expenses — elevated renovation or capital investment activity.` });
+  }
+  // Category concentration
+  const catMap = new Map();
+  allExp.forEach(e => {
+    const cat = e.category || 'other';
+    catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
+  });
+  const topCat = [...catMap.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (topCat && topCat[1] / total > 0.55) {
+    const pct = Math.round(topCat[1] / total * 100);
+    items.push({ level: 'info', text: `"${topCat[0]}" is the dominant expense category at ${pct}% of total costs.` });
+  }
+  return items;
+}
+
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -387,6 +440,11 @@ function buildView() {
     () => drillDownModal('All Expenses', toExpDrillRows(allExp), DRILL_COLS)
   ));
   wrap.appendChild(kpiRow2);
+
+  // Inline insights
+  const expInsights = computeExpenseInsights(data);
+  const expBanner = buildInsightsBanner(expInsights);
+  if (expBanner) wrap.appendChild(expBanner);
 
   // ── Chart row 1: Stacked bar (2/3) + Stream donut (1/3) ───────────────────
   const row1 = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px' });

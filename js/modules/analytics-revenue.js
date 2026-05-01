@@ -182,6 +182,78 @@ function getMonthKeys() {
   }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
 }
 
+// ── Inline insights ───────────────────────────────────────────────────────────
+function buildInsightsBanner(insights) {
+  if (!insights.length) return null;
+  const wrap = el('div', { style: 'display:flex;flex-direction:column;gap:8px;margin-bottom:16px' });
+  const STYLES = {
+    danger:  { bg: 'rgba(239,68,68,0.08)',  border: '#ef4444', icon: '⚠' },
+    warning: { bg: 'rgba(245,158,11,0.08)', border: '#f59e0b', icon: '⚡' },
+    info:    { bg: 'rgba(99,102,241,0.08)', border: '#6366f1', icon: 'ℹ' }
+  };
+  for (const { level, text } of insights) {
+    const s = STYLES[level] || STYLES.info;
+    wrap.appendChild(el('div', {
+      style: `display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:${s.bg};border-left:3px solid ${s.border};border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13px`
+    },
+      el('span', { style: `color:${s.border};flex-shrink:0` }, s.icon),
+      el('span', { style: 'color:var(--text);line-height:1.4' }, text)
+    ));
+  }
+  return wrap;
+}
+
+function computeRevenueInsights({ payments, invoices, propRev, svcRev, total }) {
+  const items = [];
+  if (total === 0) {
+    items.push({ level: 'info', text: 'No revenue recorded for the selected period.' });
+    return items;
+  }
+  // Stream concentration
+  const streamMap = new Map();
+  payments.forEach(p => {
+    const sk = p.stream || 'other';
+    streamMap.set(sk, (streamMap.get(sk) || 0) + toEUR(p.amount, p.currency, p.date));
+  });
+  invoices.forEach(i => {
+    const sk = i.stream || 'other';
+    streamMap.set(sk, (streamMap.get(sk) || 0) + toEUR(i.total, i.currency, i.issueDate));
+  });
+  const topStream = [...streamMap.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (topStream && topStream[1] / total > 0.80) {
+    const pct   = Math.round(topStream[1] / total * 100);
+    const label = STREAMS[topStream[0]]?.label || topStream[0];
+    items.push({ level: 'warning', text: `"${label}" accounts for ${pct}% of total revenue — high stream concentration.` });
+  }
+  // Property concentration
+  const propMap = new Map();
+  payments.forEach(p => {
+    const name = byId('properties', p.propertyId)?.name || 'Unknown';
+    propMap.set(name, (propMap.get(name) || 0) + toEUR(p.amount, p.currency, p.date));
+  });
+  const topProp = [...propMap.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (topProp && propRev > 0 && topProp[1] / propRev > 0.75) {
+    const pct = Math.round(topProp[1] / propRev * 100);
+    items.push({ level: 'warning', text: `"${topProp[0]}" generates ${pct}% of property revenue — single-property concentration risk.` });
+  }
+  // Owner concentration
+  const ownerMap = new Map();
+  payments.forEach(p => {
+    const owner = byId('properties', p.propertyId)?.owner || 'both';
+    ownerMap.set(owner, (ownerMap.get(owner) || 0) + toEUR(p.amount, p.currency, p.date));
+  });
+  invoices.forEach(i => {
+    const owner = byId('clients', i.clientId)?.owner || 'both';
+    ownerMap.set(owner, (ownerMap.get(owner) || 0) + toEUR(i.total, i.currency, i.issueDate));
+  });
+  const topOwner = [...ownerMap.entries()].filter(([k]) => k !== 'both').sort((a, b) => b[1] - a[1])[0];
+  if (topOwner && topOwner[1] / total > 0.85) {
+    const pct = Math.round(topOwner[1] / total * 100);
+    items.push({ level: 'info', text: `One owner contributes ${pct}% of all revenue — limited diversification across owners.` });
+  }
+  return items;
+}
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 function buildView() {
   const wrap = el('div', { class: 'view active' });
@@ -273,6 +345,11 @@ function buildView() {
     }
   ));
   wrap.appendChild(kpiRow);
+
+  // Inline insights
+  const revInsights = computeRevenueInsights(data);
+  const revBanner = buildInsightsBanner(revInsights);
+  if (revBanner) wrap.appendChild(revBanner);
 
   // Charts row 1: stacked bar (2/3) + owner donut (1/3)
   const row1 = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px' });

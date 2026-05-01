@@ -284,7 +284,9 @@ function buildPropertySection(wrap) {
     const el2 = document.getElementById('fc-prop-summary');
     if (!el2) return;
     el2.innerHTML = '';
+    const insightItems = buildForecastInsightItems(months, yearTarget);
     const items = [
+      ...insightItems,
       summaryRow('Forecast Revenue',      formatEUR(forecastRev)),
       summaryRow('Forecast Expenses',     formatEUR(forecastExp)),
       summaryRow('Forecast Net',          formatEUR(forecastRev - forecastExp)),
@@ -459,7 +461,9 @@ function buildServiceSection(wrap) {
     const el2 = document.getElementById('fc-svc-summary');
     if (!el2) return;
     el2.innerHTML = '';
+    const insightItems = buildForecastInsightItems(months, yearTarget);
     const items = [
+      ...insightItems,
       summaryRow('Forecast Revenue', formatEUR(forecastRev)),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
       summaryRow('Actual Revenue YTD', formatEUR(actualRev)),
@@ -482,6 +486,51 @@ function buildServiceSection(wrap) {
 
   yearSel.onchange = render;
   render();
+}
+
+// ===== INLINE INSIGHTS =====
+function buildForecastInsightItems(months, yearTarget) {
+  const STYLES = {
+    danger:  { bg: 'rgba(239,68,68,0.08)',  border: '#ef4444', icon: '⚠' },
+    warning: { bg: 'rgba(245,158,11,0.08)', border: '#f59e0b', icon: '⚡' },
+    info:    { bg: 'rgba(99,102,241,0.08)', border: '#6366f1', icon: 'ℹ' }
+  };
+  const insights = [];
+  const forecastRev = months.reduce((s, m) => s + m.forecastRev, 0);
+  const actualRev   = months.reduce((s, m) => s + m.actualRev, 0);
+  const forecastExp = months.reduce((s, m) => s + m.forecastExp, 0);
+  const actualExp   = months.reduce((s, m) => s + m.actualExp, 0);
+
+  if (forecastRev > 0) {
+    const varPct = ((actualRev - forecastRev) / forecastRev) * 100;
+    if (varPct < -20) {
+      insights.push({ level: 'danger',  text: `Actual revenue is ${Math.abs(varPct).toFixed(0)}% below forecast — significant shortfall detected.` });
+    } else if (varPct < -10) {
+      insights.push({ level: 'warning', text: `Actual revenue is ${Math.abs(varPct).toFixed(0)}% below forecast for the selected period.` });
+    } else if (varPct > 15) {
+      insights.push({ level: 'info',    text: `Actual revenue is ${varPct.toFixed(0)}% above forecast — outperforming projections.` });
+    }
+  }
+  if (forecastExp > 0) {
+    const expVarPct = ((actualExp - forecastExp) / forecastExp) * 100;
+    if (expVarPct > 25) {
+      insights.push({ level: 'warning', text: `Actual expenses are ${expVarPct.toFixed(0)}% above forecast — overspending detected.` });
+    }
+  }
+  if (yearTarget?.revenue && forecastRev > 0 && forecastRev < yearTarget.revenue * 0.75) {
+    insights.push({ level: 'warning', text: 'Forecast revenue is more than 25% below the annual target — on-track assessment needed.' });
+  }
+  if (!insights.length) return [];
+
+  return insights.map(({ level, text }) => {
+    const s = STYLES[level] || STYLES.info;
+    return el('div', {
+      style: `display:flex;align-items:flex-start;gap:10px;padding:10px 14px;margin-bottom:6px;background:${s.bg};border-left:3px solid ${s.border};border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13px`
+    },
+      el('span', { style: `color:${s.border};flex-shrink:0` }, s.icon),
+      el('span', { style: 'color:var(--text);line-height:1.4' }, text)
+    );
+  });
 }
 
 // ===== DRILL-DOWN HELPERS =====
