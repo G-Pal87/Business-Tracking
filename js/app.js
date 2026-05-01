@@ -117,13 +117,10 @@ async function boot() {
   router.init(document.getElementById('content'));
 
   let pushTimer = null;
-  let pendingDirty = false;
   let saveFailCount = 0;
 
   const doSave = async () => {
-    if (state.saving) return;
     state.saving = true;
-    pendingDirty = false;
     document.body.classList.add('app-saving');
     try {
       updateSyncStatus('syncing', 'Saving…');
@@ -136,7 +133,6 @@ async function boot() {
       saveFailCount++;
       state.github.lastSyncError = normalizeNetworkError(e.message);
       if (e.name === 'ConflictError') {
-        pendingDirty = false;
         clearTimeout(pushTimer);
         updateSyncStatus('offline', 'Conflict — refresh required', true);
         toast(
@@ -154,10 +150,6 @@ async function boot() {
     } finally {
       state.saving = false;
       document.body.classList.remove('app-saving');
-      if (pendingDirty) {
-        pendingDirty = false;
-        pushTimer = setTimeout(() => doSave().catch(() => {}), 300);
-      }
     }
   };
 
@@ -179,13 +171,9 @@ async function boot() {
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
       if (state.github.token && state.github.owner && state.github.repo) {
-        if (state.saving) {
-          pendingDirty = true;
-        } else {
-          updateSyncStatus('syncing', 'Local changes pending sync…');
-          clearTimeout(pushTimer);
-          pushTimer = setTimeout(() => doSave().catch(() => {}), 1500);
-        }
+        updateSyncStatus('syncing', 'Local changes pending sync…');
+        clearTimeout(pushTimer);
+        pushTimer = setTimeout(() => doSave().catch(() => {}), 1500);
       } else {
         updateSyncStatus('offline', 'Unsaved — connect GitHub in Settings');
       }

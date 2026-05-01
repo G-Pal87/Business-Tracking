@@ -1,6 +1,6 @@
 /* ========== COMPONENTS: cards, tables, forms, modals, buttons, charts ========== */
 
-/* ── Save-in-progress guard ───────────────────────────────────────────────── */
+/* ── Save-in-progress indicator ───────────────────────────────────────────── */
 /* Animated bar at top of screen */
 .app-saving::before {
   content: '';
@@ -15,12 +15,6 @@
 @keyframes app-saving-bar {
   0%   { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
-}
-/* Disable primary action buttons in modals while save is in-flight */
-.app-saving .modal-footer .btn.primary {
-  opacity: 0.45;
-  pointer-events: none;
-  cursor: not-allowed;
 }
 
 /* Card */
@@ -544,9 +538,4 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
 @keyframes app-saving-bar {
   0%   { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
-}
-.app-saving .modal-footer .btn.primary {
-  opacity: 0.45;
-  pointer-events: none;
-  cursor: not-allowed;
 }

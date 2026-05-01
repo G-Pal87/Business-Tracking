@@ -106,7 +106,6 @@ function buildGithubCard() {
   }});
 
   const pushBtn = button('Push to GitHub', { onClick: async () => {
-    if (state.saving) { toast('Already saving \u2014 please wait', 'info'); return; }
     if (!state.github.syncNow) { toast('Not ready \u2014 reload the page', 'warning'); return; }
     pushBtn.disabled = true;
     pushBtn.textContent = 'Pushing\u2026';
@@ -138,7 +137,6 @@ function buildGithubCard() {
 
   if (g.lastSyncError && !g.usingCache) {
     const retryBtn = button('Retry Sync Now', { variant: 'primary', onClick: async () => {
-      if (state.saving) { toast('Already saving \u2014 please wait', 'info'); return; }
       if (!state.github.syncNow) { toast('Not ready \u2014 reload the page', 'warning'); return; }
       retryBtn.disabled = true;
       retryBtn.textContent = 'Retrying\u2026';
