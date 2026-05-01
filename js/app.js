@@ -118,17 +118,23 @@ async function boot() {
 
   let pushTimer = null;
   let saveFailCount = 0;
+  let pushPending = false; // true while doSave is queued or running
 
   const doSave = async () => {
+    pushPending = true;
+    clearTimeout(pushTimer);
+    pushTimer = null;
     state.saving = true;
     document.body.classList.add('app-saving');
+    let hadNewChanges = false;
     try {
       updateSyncStatus('syncing', 'Saving…');
       await github.pushDb('Auto-sync from app');
+      hadNewChanges = state.dirty; // true if markDirty() fired during the push
       state.dirty = false;
       saveFailCount = 0;
       state.github.lastSyncError = null;
-      if (pushTimer === null) {
+      if (!hadNewChanges) {
         updateSyncStatus('online', `Saved to GitHub at ${new Date().toLocaleTimeString()}`);
       }
     } catch (e) {
@@ -136,6 +142,7 @@ async function boot() {
       state.github.lastSyncError = normalizeNetworkError(e.message);
       if (e.name === 'ConflictError') {
         clearTimeout(pushTimer);
+        pushTimer = null;
         updateSyncStatus('offline', 'Conflict — refresh required', true);
         toast(
           'Another user modified the same data. Refresh the page to load the latest version before saving your changes.',
@@ -151,7 +158,14 @@ async function boot() {
       throw e;
     } finally {
       state.saving = false;
+      pushPending = false;
       document.body.classList.remove('app-saving');
+    }
+
+    // Changes arrived during the push — do one more push immediately instead
+    // of waiting for the subscriber's 1.5 s timer to fire again.
+    if (hadNewChanges && state.github.token && state.github.owner && state.github.repo) {
+      doSave().catch(() => {});
     }
   };
 
@@ -161,9 +175,11 @@ async function boot() {
   if (retryBtn) {
     retryBtn.onclick = () => {
       if (state.github.token && state.github.owner && state.github.repo) {
-        clearTimeout(pushTimer);
-        pushTimer = null;
-        doSave().catch(() => {});
+        if (!pushPending) {
+          clearTimeout(pushTimer);
+          pushTimer = null;
+          doSave().catch(() => {});
+        }
       } else {
         location.hash = 'settings';
       }
@@ -174,9 +190,14 @@ async function boot() {
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
       if (state.github.token && state.github.owner && state.github.repo) {
-        updateSyncStatus('syncing', 'Local changes pending sync…');
-        clearTimeout(pushTimer);
-        pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 1500);
+        if (!pushPending) {
+          // No push in flight — start the debounce timer.
+          updateSyncStatus('syncing', 'Local changes pending sync…');
+          clearTimeout(pushTimer);
+          pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 1500);
+        }
+        // If pushPending, the in-flight push will detect state.dirty and re-push
+        // automatically — no need to schedule another timer.
       } else {
         updateSyncStatus('offline', 'Unsaved — connect GitHub in Settings');
       }
