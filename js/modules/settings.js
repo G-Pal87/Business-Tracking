@@ -1,7 +1,7 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
-import { saveConfig, clearConfig, fetchDb, pushDb, saveLocalCache, resolveGitRemote } from '../core/github.js';
+import { saveConfig, clearConfig, fetchDb, saveLocalCache, resolveGitRemote } from '../core/github.js';
 import { upsert, softDelete, listActive, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
@@ -29,6 +29,31 @@ function build() {
   return wrap;
 }
 
+function githubStatusBadge(g) {
+  if (!g.owner || !g.repo || !g.token) {
+    return el('span', { class: 'badge' }, 'Not configured');
+  }
+  if (g.lastSyncError && (g.lastSyncError.toLowerCase().includes('conflict'))) {
+    return el('span', { class: 'badge danger' }, 'Conflict');
+  }
+  if (g.lastSyncError && !g.usingCache) {
+    return el('span', { class: 'badge danger' }, 'Save failed');
+  }
+  if (g.usingCache) {
+    return el('span', { class: 'badge warning' }, 'Using local cache');
+  }
+  if (state.dirty) {
+    return el('span', { class: 'badge warning' }, 'Local changes pending');
+  }
+  if (g.lastPushOk) {
+    return el('span', { class: 'badge success' }, 'Connected and synced');
+  }
+  if (g.lastPullOk) {
+    return el('span', { class: 'badge success' }, 'Connected');
+  }
+  return el('span', { class: 'badge' }, 'Configured');
+}
+
 function buildGithubCard() {
   const card = el('div', { class: 'card mb-16' });
   const g = state.github;
@@ -37,17 +62,21 @@ function buildGithubCard() {
       el('div', { class: 'card-title' }, 'GitHub Storage'),
       el('div', { class: 'card-subtitle' }, 'Sync data to a repo so it is accessible to everyone')
     ),
-    g.connected
-      ? el('span', { class: 'badge success' }, 'Connected')
-      : el('span', { class: 'badge' }, 'Not connected')
+    githubStatusBadge(g)
   ));
+
+  if (g.lastSyncError) {
+    const errBanner = el('div', {
+      style: 'background:var(--danger-light,#fff0f0);border-left:3px solid var(--danger,#dc3545);padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--danger,#dc3545);border-radius:4px'
+    }, `Last sync error: ${g.lastSyncError}`);
+    card.appendChild(errBanner);
+  }
 
   const ownerI = input({ value: g.owner, placeholder: 'github-username' });
   const repoI = input({ value: g.repo, placeholder: 'business-tracking' });
   const branchI = input({ value: g.branch || 'main', placeholder: 'main' });
   const tokenI = input({ value: g.token ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '', type: 'password', placeholder: 'Personal Access Token' });
 
-  // Auto-populate owner/repo from local .git when not already saved
   if (!g.owner || !g.repo) {
     resolveGitRemote().then(info => {
       if (!info) return;
@@ -72,22 +101,57 @@ function buildGithubCard() {
       toast('Pull failed: ' + e.message, 'danger', 5000);
     }
   }});
+
   const pushBtn = button('Push to GitHub', { onClick: async () => {
+    if (state.saving) { toast('Already saving \u2014 please wait', 'info'); return; }
+    if (!state.github.syncNow) { toast('Not ready \u2014 reload the page', 'warning'); return; }
+    pushBtn.disabled = true;
+    pushBtn.textContent = 'Pushing\u2026';
     try {
-      await pushDb(state.db, 'Manual sync from app');
-      state.dirty = false;
-      toast('Data pushed to GitHub', 'success');
-    } catch (e) {
-      toast('Push failed: ' + e.message, 'danger', 5000);
+      await state.github.syncNow();
+    } finally {
+      pushBtn.disabled = false;
+      pushBtn.textContent = 'Push to GitHub';
     }
+    setTimeout(() => location.hash = 'settings', 150);
   }});
+
   const disconnect = button('Disconnect', { variant: 'danger', onClick: () => {
     clearConfig();
     toast('Disconnected', 'info');
     setTimeout(() => location.hash = 'settings', 200);
   }});
 
-  card.appendChild(el('div', { class: 'flex gap-8' }, saveBtn, pushBtn, g.token ? disconnect : null));
+  const btnRow = el('div', { class: 'flex gap-8' });
+  btnRow.appendChild(saveBtn);
+  if (g.token) {
+    btnRow.appendChild(pushBtn);
+    btnRow.appendChild(disconnect);
+  }
+  card.appendChild(btnRow);
+
+  if (g.lastSyncError && !g.usingCache) {
+    const retryBtn = button('Retry Sync Now', { variant: 'primary', onClick: async () => {
+      if (state.saving) { toast('Already saving \u2014 please wait', 'info'); return; }
+      if (!state.github.syncNow) { toast('Not ready \u2014 reload the page', 'warning'); return; }
+      retryBtn.disabled = true;
+      retryBtn.textContent = 'Retrying\u2026';
+      try {
+        await state.github.syncNow();
+        toast('Sync successful', 'success');
+      } catch (e) {
+        toast('Sync failed: ' + e.message, 'danger', 5000);
+      } finally {
+        retryBtn.disabled = false;
+        retryBtn.textContent = 'Retry Sync Now';
+      }
+      setTimeout(() => location.hash = 'settings', 150);
+    }});
+    const retryRow = el('div', { style: 'margin-top:8px' });
+    retryRow.appendChild(retryBtn);
+    card.appendChild(retryRow);
+  }
+
   return card;
 }
 

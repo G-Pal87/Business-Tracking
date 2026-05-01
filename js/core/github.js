@@ -40,13 +40,11 @@ export function saveConfig({ token, owner, repo, branch }) {
 export function clearConfig() {
   localStorage.removeItem(LS_KEY);
   state.github = {
-    token: '',
-    owner: '',
-    repo: '',
-    branch: 'main',
-    sha: null,
-    connected: false,
-    remoteDb: null
+    token: '', owner: '', repo: '', branch: 'main',
+    sha: null, connected: false, remoteDb: null,
+    lastPullOk: false, lastPushOk: false, usingCache: false,
+    lastSyncError: null, lastPulledAt: null, lastPushedAt: null,
+    syncNow: null
   };
 }
 
@@ -99,7 +97,11 @@ export async function fetchDb() {
   const json = await res.json();
 
   state.github.sha = json.sha;
-  state.github.connected = true;
+  state.github.connected  = true;
+  state.github.lastPullOk = true;
+  state.github.usingCache = false;
+  state.github.lastPulledAt  = Date.now();
+  state.github.lastSyncError = null;
 
   const content = b64decode(json.content);
   const parsed = JSON.parse(content);
@@ -248,7 +250,10 @@ async function doPushDb(db, message = 'Update data') {
     const json = await putRes.json();
 
     state.github.sha = json.content.sha;
-    state.github.remoteDb = structuredClone(merged);
+    state.github.remoteDb     = structuredClone(merged);
+    state.github.lastPushOk   = true;
+    state.github.lastPushedAt = Date.now();
+    state.github.lastSyncError = null;
 
     for (const col of Object.keys(merged)) {
       if (Array.isArray(merged[col]) && Array.isArray(state.db[col])) {

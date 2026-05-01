@@ -60,6 +60,8 @@ async function boot() {
   github.loadConfig();
 
   let loaded = false;
+  let githubFailed = false;
+
   if (state.github.owner && state.github.repo) {
     try {
       const db = await github.fetchDb();
@@ -69,20 +71,40 @@ async function boot() {
       updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
     } catch (e) {
       console.warn('GitHub load failed, falling back', e);
-      updateSyncStatus('offline', 'GitHub unreachable - using cache');
+      state.github.lastSyncError = e.message;
+      githubFailed = true;
     }
   }
+
   if (!loaded) {
     try {
       const db = await github.fetchLocalDb();
       if (db) { setDb(db); loaded = true; }
     } catch (e) { console.warn(e); }
   }
+
   if (!loaded) {
     setDb({});
-    updateSyncStatus('offline', 'Offline - configure GitHub in Settings');
-  } else if (!state.github.connected) {
-    updateSyncStatus('offline', 'Local only - connect GitHub in Settings');
+  }
+
+  // Set the correct initial status (only when GitHub fetch didn't already set 'online')
+  if (!state.github.connected) {
+    if (githubFailed) {
+      state.github.usingCache = loaded;
+      if (loaded) {
+        updateSyncStatus('offline', 'Using local cache — GitHub is currently unavailable');
+      } else {
+        updateSyncStatus('offline', 'GitHub unreachable — no local data available');
+      }
+    } else if (loaded) {
+      if (state.github.owner && state.github.repo) {
+        updateSyncStatus('offline', 'Local only — connect GitHub in Settings');
+      } else {
+        updateSyncStatus('offline', 'Local only — configure GitHub in Settings');
+      }
+    } else {
+      updateSyncStatus('offline', 'Offline — configure GitHub in Settings');
+    }
   }
 
   await requireAuth();
@@ -104,21 +126,22 @@ async function boot() {
       await github.pushDb(state.db, 'Auto-sync from app');
       state.dirty = false;
       saveFailCount = 0;
-      updateSyncStatus('online', `Saved ${new Date().toLocaleTimeString()}`);
+      state.github.lastSyncError = null;
+      updateSyncStatus('online', `Saved to GitHub at ${new Date().toLocaleTimeString()}`);
     } catch (e) {
       saveFailCount++;
+      state.github.lastSyncError = e.message;
       if (e.name === 'ConflictError') {
         pendingDirty = false;
         clearTimeout(pushTimer);
-        updateSyncStatus('offline', 'Conflict — refresh required');
+        updateSyncStatus('offline', 'Conflict — refresh required', true);
         toast(
           'Another user modified the same data. Refresh the page to load the latest version before saving your changes.',
           'danger',
           10000
         );
       } else {
-        updateSyncStatus('offline', 'Save failed — ' + e.message);
-        // Only show the toast on the first failure; status bar stays updated on subsequent ones
+        updateSyncStatus('offline', 'Save failed — changes saved locally only', true);
         if (saveFailCount === 1) {
           toast('Save failed: ' + e.message, 'danger', 6000);
         }
@@ -126,7 +149,6 @@ async function boot() {
     } finally {
       state.saving = false;
       document.body.classList.remove('app-saving');
-      // If changes arrived while the save was in-flight, do one follow-up save
       if (pendingDirty) {
         pendingDirty = false;
         pushTimer = setTimeout(doSave, 300);
@@ -134,16 +156,28 @@ async function boot() {
     }
   };
 
+  state.github.syncNow = doSave;
+
+  const retryBtn = document.getElementById('sync-retry');
+  if (retryBtn) {
+    retryBtn.onclick = () => {
+      if (state.github.token && state.github.owner && state.github.repo) {
+        clearTimeout(pushTimer);
+        doSave();
+      } else {
+        location.hash = 'settings';
+      }
+    };
+  }
+
   subscribe(evt => {
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
       if (state.github.token && state.github.owner && state.github.repo) {
         if (state.saving) {
-          // Save in progress — flag for a follow-up save once it finishes
           pendingDirty = true;
         } else {
-          // Debounce: reset the timer on every change so rapid edits
-          // collapse into a single network request
+          updateSyncStatus('syncing', 'Local changes pending sync…');
           clearTimeout(pushTimer);
           pushTimer = setTimeout(doSave, 1500);
         }
@@ -227,11 +261,13 @@ function initMobileNav() {
   nav?.addEventListener('click', close);
 }
 
-function updateSyncStatus(state, message) {
+function updateSyncStatus(dotState, message, showRetry = false) {
   const dot = document.getElementById('sync-dot');
   const text = document.getElementById('sync-text');
-  if (dot) dot.className = 'sync-dot ' + state;
-  if (text) text.textContent = message;
+  const retry = document.getElementById('sync-retry');
+  if (dot)   dot.className = 'sync-dot ' + dotState;
+  if (text)  text.textContent = message;
+  if (retry) retry.style.display = showRetry ? '' : 'none';
 }
 
 if (document.readyState === 'loading') {
