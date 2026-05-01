@@ -67,7 +67,7 @@ function buildGithubCard() {
       setDb(db);
       saveLocalCache(db);
       toast('Connected! Data loaded from GitHub.', 'success');
-      setTimeout(() => location.hash = 'dashboard', 250);
+      setTimeout(() => location.hash = 'analytics', 250);
     } catch (e) {
       toast('Pull failed: ' + e.message, 'danger', 5000);
     }
@@ -640,7 +640,7 @@ function buildDangerCard() {
         setDb(db);
         saveLocalCache(db);
         toast('Data replaced', 'success');
-        setTimeout(() => location.hash = 'dashboard', 200);
+        setTimeout(() => location.hash = 'analytics', 200);
       }
     } catch (e) {
       toast('Invalid JSON', 'danger');

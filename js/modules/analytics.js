@@ -159,7 +159,7 @@ function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
 }
 
 // ── KPI card (matches reports.js .kpi pattern, adds hover ring) ───────────────
-function kpiCard(label, value, variant, onClick) {
+function kpiCard(label, value, variant, onClick, sub) {
   const card = el('div', {
     class: 'kpi' + (variant ? ' ' + variant : ''),
     style: 'cursor:pointer;transition:box-shadow 120ms',
@@ -170,8 +170,17 @@ function kpiCard(label, value, variant, onClick) {
   card.onclick = onClick;
   card.appendChild(el('div', { class: 'kpi-label' }, label));
   card.appendChild(el('div', { class: 'kpi-value' }, value));
+  if (sub != null) card.appendChild(el('div', { class: 'kpi-trend' }, sub));
   card.appendChild(el('div', { class: 'kpi-accent-bar' }));
   return card;
+}
+
+function yoyTrend(current, prev, prevYear) {
+  if (prev === null || prev === 0) return null;
+  const pct  = ((current - prev) / Math.abs(prev)) * 100;
+  const sign = pct > 0 ? '+' : '';
+  const cls  = pct > 0 ? 'up' : pct < 0 ? 'down' : '';
+  return el('span', { class: cls }, `${sign}${pct.toFixed(1)}% vs ${prevYear}`);
 }
 
 // ── Drill-down column sets ────────────────────────────────────────────────────
@@ -263,13 +272,28 @@ function buildView() {
   const { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net } = data;
   const netCash = net - reno;
 
+  // YoY comparison (only when a specific year is selected)
+  let prevRev = null, prevNet = null;
+  const prevYear = gFilters.year && gFilters.year !== 'all'
+    ? String(Number(gFilters.year) - 1) : null;
+  if (prevYear) {
+    const pyPay = listActivePayments().filter(p => p.status === 'paid' && (p.date || '').startsWith(prevYear));
+    const pyInv = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '').startsWith(prevYear));
+    const pyExp = listActive('expenses').filter(e => !isCapEx(e) && (e.date || '').startsWith(prevYear));
+    prevRev = pyPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
+            + pyInv.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+    const prevExp2 = pyExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    prevNet = prevRev - prevExp2;
+  }
+
   // ── KPI row (5 cards) ──────────────────────────────────────────────────────
   const kpiRow = el('div', { class: 'grid grid-4 mb-16', style: 'grid-template-columns:repeat(5,1fr)' });
 
   kpiRow.appendChild(kpiCard(
     'Revenue', formatEUR(rev),
     rev >= 0 ? '' : 'danger',
-    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS)
+    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
+    yoyTrend(rev, prevRev, prevYear)
   ));
   kpiRow.appendChild(kpiCard(
     'Operating Expenses', formatEUR(exp),
@@ -283,7 +307,8 @@ function buildView() {
       'Operating Profit Breakdown',
       mixedRows(payments, invoices, opExpenses),
       MIXED_COLS
-    )
+    ),
+    yoyTrend(net, prevNet, prevYear)
   ));
   kpiRow.appendChild(kpiCard(
     'Renovation CapEx', formatEUR(reno),
@@ -335,6 +360,42 @@ function buildView() {
   );
   buildTransactionTable(txCard, data);
   wrap.appendChild(txCard);
+
+  // ── Performance by Owner ───────────────────────────────────────────────────
+  const ownerRows = Object.keys(OWNERS).map(owner => {
+    const oPay = payments.filter(p => (byId('properties', p.propertyId)?.owner || 'both') === owner);
+    const oInv = invoices.filter(i => (byId('clients',    i.clientId)?.owner  || 'both') === owner);
+    const oExp = opExpenses.filter(e => (byId('properties', e.propertyId)?.owner || 'both') === owner);
+    const oRev = oPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
+               + oInv.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+    const oExp2 = oExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    return { owner, rev: oRev, exp: oExp2, net: oRev - oExp2 };
+  }).filter(r => r.rev > 0 || r.exp > 0);
+
+  if (ownerRows.length > 0) {
+    const ownerCard = el('div', { class: 'card mt-16' });
+    ownerCard.appendChild(el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Performance by Owner')
+    ));
+    const ownerTable = el('table', { class: 'table' });
+    const hdr = el('tr');
+    ['Owner','Revenue','Expenses','Net'].forEach((h, i) => hdr.appendChild(el('th', { class: i > 0 ? 'right' : '' }, h)));
+    ownerTable.appendChild(el('thead', {}, hdr));
+    const tb = el('tbody');
+    for (const r of ownerRows) {
+      const tr = el('tr');
+      tr.appendChild(el('td', {}, el('span', { class: 'badge' }, OWNERS[r.owner] || r.owner)));
+      tr.appendChild(el('td', { class: 'right num' }, formatEUR(r.rev)));
+      tr.appendChild(el('td', { class: 'right num' }, formatEUR(r.exp)));
+      tr.appendChild(el('td', { class: 'right num' + (r.net < 0 ? ' danger' : '') }, formatEUR(r.net)));
+      tb.appendChild(tr);
+    }
+    ownerTable.appendChild(tb);
+    const tw = el('div', { class: 'table-wrap' });
+    tw.appendChild(ownerTable);
+    ownerCard.appendChild(tw);
+    wrap.appendChild(ownerCard);
+  }
 
   // ── Render charts after view is in live DOM ────────────────────────────────
   setTimeout(() => {
