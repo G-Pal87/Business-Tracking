@@ -761,8 +761,10 @@
       "documents": [],
       "createdAt": 1777675404519,
       "createdBy": "Giorgos",
-      "updatedAt": 1777675404519,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777675473495,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777675473495,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_moni1dq4q2",
@@ -798,8 +800,10 @@
       "documents": [],
       "createdAt": 1777675408653,
       "createdBy": "Giorgos",
-      "updatedAt": 1777675408653,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777675479618,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777675479618,
+      "deletedBy": "Giorgos"
     }
   ],
   "payments": [],
