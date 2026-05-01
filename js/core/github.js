@@ -339,14 +339,22 @@ async function doPushDb(db, message = 'Update data') {
     state.github.connected     = true;
     state.github.usingCache    = false;
 
-    // Replace state.db in-place so it exactly matches what was pushed.
-    // Remove keys absent from merged, then overwrite everything else.
-    for (const col of Object.keys(state.db)) {
-      if (!(col in merged)) delete state.db[col];
+    // Do NOT overwrite state.db with merged — state.db is the live source of
+    // truth and may have accumulated more changes during the network round-trip.
+    // Overwriting would silently erase those in-flight mutations, causing the
+    // next queued push to snapshot and re-push stale data (the deletion bug).
+    //
+    // Instead, only adopt items that exist in merged but are absent locally
+    // (remote-only additions from another user). Local versions always win.
+    for (const [col, items] of Object.entries(merged)) {
+      if (!Array.isArray(items) || !Array.isArray(state.db[col])) continue;
+      const localIds = new Set(state.db[col].map(x => x.id));
+      for (const item of items) {
+        if (!localIds.has(item.id)) state.db[col].push(item);
+      }
     }
-    Object.assign(state.db, merged);
 
-    saveLocalCache(merged);
+    saveLocalCache(state.db);
 
     return json;
   }
