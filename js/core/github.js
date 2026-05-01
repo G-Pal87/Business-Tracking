@@ -69,20 +69,6 @@ function b64decode(str) {
   return decodeURIComponent(escape(atob(str.replace(/\s/g, ''))));
 }
 
-// Files > 1 MB: Contents API returns encoding "none" and empty content.
-// Fall back to the raw download URL (authenticated) in that case.
-async function getFileContent(meta) {
-  if (!meta.content || meta.encoding === 'none') {
-    if (!meta.download_url) {
-      throw new Error('GitHub returned no content and no download_url for db.json');
-    }
-    const res = await fetch(meta.download_url, { headers: headers(), cache: 'no-store' });
-    if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
-    return res.text();
-  }
-  return b64decode(meta.content);
-}
-
 // Validate and parse db.json content — throws a clear error instead of
 // letting JSON.parse produce "Unexpected end of JSON input" on empty input.
 function safeParseDb(content) {
@@ -103,38 +89,92 @@ export async function fetchDb() {
     throw new Error('GitHub repo not configured');
   }
 
-  const url = `${GH}/repos/${owner}/${repo}/contents/${FILE_PATH}?ref=${branch || 'main'}`;
+  const br = branch || 'main';
+  const apiUrl = `${GH}/repos/${owner}/${repo}/contents/${FILE_PATH}?ref=${br}`;
+
   let res;
+  let apiOk = false;
+
   try {
-    res = await fetch(url, { headers: headers() });
+    res = await fetch(apiUrl, { headers: headers() });
+    apiOk = true;
+  } catch {
+    // fetch() threw — most likely a CORS preflight failure caused by the GitHub API
+    // redirecting to raw.githubusercontent.com while carrying custom headers
+    // (X-GitHub-Api-Version triggers a preflight that raw.githubusercontent.com rejects).
+    // Fall through to the no-auth raw fallback below.
+  }
+
+  if (apiOk) {
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error('db.json not found in repo. Make sure data/db.json exists.');
+      }
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(`GitHub auth failed (${res.status}) — check your token in Settings`);
+      }
+      throw new Error(`GitHub API error ${res.status}: ${res.statusText}`);
+    }
+
+    const json = await res.json();
+
+    state.github.sha = json.sha;
+    state.github.connected  = true;
+    state.github.lastPullOk = true;
+    state.github.usingCache = false;
+    state.github.lastPulledAt  = Date.now();
+    state.github.lastSyncError = null;
+
+    if (json.content && json.encoding === 'base64') {
+      // Normal path: file ≤ 1 MB, content is inline base64.
+      const parsed = safeParseDb(b64decode(json.content));
+      state.github.remoteDb = structuredClone(parsed);
+      return parsed;
+    }
+
+    // Content not inline (file > 1 MB or API omitted it).
+    // Fetch download_url WITHOUT auth headers — raw.githubusercontent.com does not
+    // support Authorization or X-GitHub-Api-Version through CORS preflight.
+    const downloadUrl = json.download_url ||
+      `https://raw.githubusercontent.com/${owner}/${repo}/${br}/${FILE_PATH}`;
+    try {
+      const rawRes = await fetch(downloadUrl, { cache: 'no-store' }); // no auth headers
+      if (!rawRes.ok) throw new Error(`HTTP ${rawRes.status}`);
+      const parsed = safeParseDb(await rawRes.text());
+      state.github.remoteDb = structuredClone(parsed);
+      return parsed;
+    } catch (err) {
+      throw new Error(`Cannot download db.json content: ${err.message}`);
+    }
+  }
+
+  // API fetch failed entirely (CORS or network). For public repos, try fetching
+  // the raw file directly without any auth headers, which avoids the CORS preflight.
+  const rawFallbackUrl =
+    `https://raw.githubusercontent.com/${owner}/${repo}/${br}/${FILE_PATH}`;
+  let rawRes;
+  try {
+    rawRes = await fetch(rawFallbackUrl, { cache: 'no-store' }); // no auth headers
   } catch {
     throw new Error('Cannot reach GitHub — check your internet connection');
   }
 
-  if (!res.ok) {
-    if (res.status === 404) {
-      throw new Error('db.json not found in repo. Make sure data/db.json exists.');
-    }
-    if (res.status === 401 || res.status === 403) {
-      throw new Error(`GitHub auth failed (${res.status}) — check your token in Settings`);
-    }
-    throw new Error(`GitHub API error ${res.status}: ${res.statusText}`);
+  if (!rawRes.ok) {
+    // raw.githubusercontent.com returned an error — could be private repo or bad config.
+    throw new Error(
+      `Cannot load db.json (API CORS error, raw fallback ${rawRes.status}) — ` +
+      `verify your GitHub token and that the repo is accessible`
+    );
   }
 
-  const json = await res.json();
-
-  state.github.sha = json.sha;
+  // SHA unavailable without the API response; doPushDb always refreshes it before PUT.
+  const parsed = safeParseDb(await rawRes.text());
   state.github.connected  = true;
   state.github.lastPullOk = true;
   state.github.usingCache = false;
   state.github.lastPulledAt  = Date.now();
   state.github.lastSyncError = null;
-
-  const content = await getFileContent(json);
-  const parsed = safeParseDb(content);
-
   state.github.remoteDb = structuredClone(parsed);
-
   return parsed;
 }
 
@@ -240,7 +280,18 @@ async function doPushDb(db, message = 'Update data') {
     }
 
     const getMeta = await getRes.json();
-    const freshDb = safeParseDb(await getFileContent(getMeta));
+    let freshDb;
+    if (getMeta.content && getMeta.encoding === 'base64') {
+      freshDb = safeParseDb(b64decode(getMeta.content));
+    } else {
+      // File > 1 MB: content not inline. Fetch download_url WITHOUT auth headers —
+      // raw.githubusercontent.com rejects CORS preflight for custom headers.
+      const rawUrl = getMeta.download_url ||
+        `https://raw.githubusercontent.com/${owner}/${repo}/${branch || 'main'}/${FILE_PATH}`;
+      const rawContentRes = await fetch(rawUrl, { cache: 'no-store' }); // no auth headers
+      if (!rawContentRes.ok) throw new Error(`Failed to read db.json: ${rawContentRes.status}`);
+      freshDb = safeParseDb(await rawContentRes.text());
+    }
     const merged = mergeDb(freshDb, snapshot, base);
 
     let putRes;
