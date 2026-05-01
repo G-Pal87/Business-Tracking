@@ -124,11 +124,13 @@ async function boot() {
     document.body.classList.add('app-saving');
     try {
       updateSyncStatus('syncing', 'Saving…');
-      await github.pushDb(state.db, 'Auto-sync from app');
+      await github.pushDb('Auto-sync from app');
       state.dirty = false;
       saveFailCount = 0;
       state.github.lastSyncError = null;
-      updateSyncStatus('online', `Saved to GitHub at ${new Date().toLocaleTimeString()}`);
+      if (pushTimer === null) {
+        updateSyncStatus('online', `Saved to GitHub at ${new Date().toLocaleTimeString()}`);
+      }
     } catch (e) {
       saveFailCount++;
       state.github.lastSyncError = normalizeNetworkError(e.message);
@@ -160,6 +162,7 @@ async function boot() {
     retryBtn.onclick = () => {
       if (state.github.token && state.github.owner && state.github.repo) {
         clearTimeout(pushTimer);
+        pushTimer = null;
         doSave().catch(() => {});
       } else {
         location.hash = 'settings';
@@ -173,7 +176,7 @@ async function boot() {
       if (state.github.token && state.github.owner && state.github.repo) {
         updateSyncStatus('syncing', 'Local changes pending sync…');
         clearTimeout(pushTimer);
-        pushTimer = setTimeout(() => doSave().catch(() => {}), 1500);
+        pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 1500);
       } else {
         updateSyncStatus('offline', 'Unsaved — connect GitHub in Settings');
       }
