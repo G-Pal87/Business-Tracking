@@ -233,15 +233,15 @@ function mergeDb(freshRemote, localCurrent, lastSynced) {
   return result;
 }
 
-export async function pushDb(db, message = 'Update data') {
+export async function pushDb(message = 'Update data') {
   pushQueue = pushQueue
     .catch(() => null)
-    .then(() => doPushDb(db, message));
+    .then(() => doPushDb(message));
 
   return pushQueue;
 }
 
-async function doPushDb(db, message = 'Update data') {
+async function doPushDb(message = 'Update data') {
   const { owner, repo, branch } = state.github;
 
   if (!owner || !repo) {
@@ -253,7 +253,7 @@ async function doPushDb(db, message = 'Update data') {
   }
 
   const url = `${GH}/repos/${owner}/${repo}/contents/${FILE_PATH}`;
-  const snapshot = structuredClone(db);
+  const snapshot = structuredClone(state.db);
   const base = state.github.remoteDb ? structuredClone(state.github.remoteDb) : null;
 
   let lastError = null;
