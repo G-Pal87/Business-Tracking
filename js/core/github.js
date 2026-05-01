@@ -69,6 +69,33 @@ function b64decode(str) {
   return decodeURIComponent(escape(atob(str.replace(/\s/g, ''))));
 }
 
+// Files > 1 MB: Contents API returns encoding "none" and empty content.
+// Fall back to the raw download URL (authenticated) in that case.
+async function getFileContent(meta) {
+  if (!meta.content || meta.encoding === 'none') {
+    if (!meta.download_url) {
+      throw new Error('GitHub returned no content and no download_url for db.json');
+    }
+    const res = await fetch(meta.download_url, { headers: headers(), cache: 'no-store' });
+    if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
+    return res.text();
+  }
+  return b64decode(meta.content);
+}
+
+// Validate and parse db.json content — throws a clear error instead of
+// letting JSON.parse produce "Unexpected end of JSON input" on empty input.
+function safeParseDb(content) {
+  if (typeof content !== 'string' || !content.trim()) {
+    throw new Error('GitHub returned empty content for db.json');
+  }
+  try {
+    return JSON.parse(content);
+  } catch (e) {
+    throw new Error(`db.json contains invalid JSON: ${e.message}`);
+  }
+}
+
 export async function fetchDb() {
   const { owner, repo, branch } = state.github;
 
@@ -103,8 +130,8 @@ export async function fetchDb() {
   state.github.lastPulledAt  = Date.now();
   state.github.lastSyncError = null;
 
-  const content = b64decode(json.content);
-  const parsed = JSON.parse(content);
+  const content = await getFileContent(json);
+  const parsed = safeParseDb(content);
 
   state.github.remoteDb = structuredClone(parsed);
 
@@ -213,7 +240,7 @@ async function doPushDb(db, message = 'Update data') {
     }
 
     const getMeta = await getRes.json();
-    const freshDb = JSON.parse(b64decode(getMeta.content));
+    const freshDb = safeParseDb(await getFileContent(getMeta));
     const merged = mergeDb(freshDb, snapshot, base);
 
     let putRes;
@@ -257,17 +284,12 @@ async function doPushDb(db, message = 'Update data') {
     state.github.connected     = true;
     state.github.usingCache    = false;
 
-    for (const col of Object.keys(merged)) {
-      if (Array.isArray(merged[col]) && Array.isArray(state.db[col])) {
-        const liveIds = new Set(state.db[col].map(x => x.id));
-
-        for (const item of merged[col]) {
-          if (!liveIds.has(item.id)) {
-            state.db[col].push(item);
-          }
-        }
-      }
+    // Replace state.db in-place so it exactly matches what was pushed.
+    // Remove keys absent from merged, then overwrite everything else.
+    for (const col of Object.keys(state.db)) {
+      if (!(col in merged)) delete state.db[col];
     }
+    Object.assign(state.db, merged);
 
     saveLocalCache(merged);
 
