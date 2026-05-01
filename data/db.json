@@ -683,8 +683,10 @@
       "documents": [],
       "createdAt": 1777672162407,
       "createdBy": "Giorgos",
-      "updatedAt": 1777672162407,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777672276394,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777672276394,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_mong3vqqq1",
