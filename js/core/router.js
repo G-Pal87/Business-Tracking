@@ -33,8 +33,8 @@ export function navigate(id) {
 }
 
 function onHashChange() {
-  const id = (location.hash || '#dashboard').slice(1);
-  const mod = modules.get(id) || modules.get('dashboard');
+  const id = (location.hash || '#analytics').slice(1);
+  const mod = modules.get(id) || modules.get('analytics');
   if (!mod) return;
 
   if (currentModule && currentModule.destroy) {

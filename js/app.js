@@ -9,7 +9,6 @@ const VERSION = window._appV || '20260422b';
 
 async function boot() {
   const [
-    { default: dashboard },
     { default: properties },
     { default: payments },
     { default: expenses },
@@ -23,14 +22,12 @@ async function boot() {
     { default: analyticsCashflow },
     { default: clients },
     { default: invoices },
-    { default: insights },
     { default: settings },
     { default: vendors },
     { default: users },
     { default: inventory },
     { default: tenants }
   ] = await Promise.all([
-    import(`./modules/dashboard.js?v=${VERSION}`),
     import(`./modules/properties.js?v=${VERSION}`),
     import(`./modules/payments.js?v=${VERSION}`),
     import(`./modules/expenses.js?v=${VERSION}`),
@@ -44,7 +41,6 @@ async function boot() {
     import(`./modules/analytics-cashflow.js?v=${VERSION}`),
     import(`./modules/clients.js?v=${VERSION}`),
     import(`./modules/invoices.js?v=${VERSION}`),
-    import(`./modules/insights.js?v=${VERSION}`),
     import(`./modules/settings.js?v=${VERSION}`),
     import(`./modules/vendors.js?v=${VERSION}`),
     import(`./modules/users.js?v=${VERSION}`),
@@ -53,8 +49,8 @@ async function boot() {
   ]);
 
   const MODULES = [
-    dashboard, properties, payments, expenses, tenants, vendors, inventory,
-    reports, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, clients, invoices, insights, settings, users
+    properties, payments, expenses, tenants, vendors, inventory,
+    reports, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, clients, invoices, settings, users
   ];
 
   MODULES.forEach(router.registerModule);
@@ -185,10 +181,9 @@ function buildUserFooter() {
 
 function buildSidebar(MODULES) {
   const navGroups = [
-    { title: 'Overview', items: ['dashboard', 'insights'] },
-    { title: 'Real Estate', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory'] },
-    { title: 'Analysis', items: ['reports', 'forecast', 'analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow'] },
-    { title: 'Business Services', items: ['clients', 'invoices'] },
+    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow'] },
+    { title: 'Operations', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'forecast'] },
+    { title: 'Reports', items: ['reports'] },
     { title: 'System', items: ['settings', 'users'] }
   ];
   const nav = document.getElementById('nav');

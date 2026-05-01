@@ -24,7 +24,7 @@ const initialData = {
 export const state = {
   db: structuredClone(initialData),
   github: { token: '', owner: '', repo: '', branch: 'main', sha: null, connected: false, remoteDb: null },
-  ui: { currentRoute: 'dashboard', filters: { year: 'all', stream: 'all', owner: 'all' } },
+  ui: { currentRoute: 'analytics', filters: { year: 'all', stream: 'all', owner: 'all' } },
   session: null,
   dirty: false,
   saving: false
