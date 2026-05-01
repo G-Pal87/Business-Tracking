@@ -761,8 +761,10 @@
       "documents": [],
       "createdAt": 1777485911315,
       "createdBy": "Giorgos",
-      "updatedAt": 1777485911315,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777670684651,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777670684651,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_moneljv1mp",
