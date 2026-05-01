@@ -299,6 +299,36 @@ export async function fetchLocalDb() {
   return null;
 }
 
+export function mergeLocalPending(remoteDb, localCache) {
+  const cols = new Set([
+    ...Object.keys(remoteDb || {}),
+    ...Object.keys(localCache || {})
+  ]);
+  let changed = false;
+  const result = {};
+
+  for (const col of cols) {
+    const remote = remoteDb[col];
+    const local = localCache[col];
+
+    if (!Array.isArray(remote) || !Array.isArray(local)) {
+      result[col] = remote !== undefined ? remote : local;
+      continue;
+    }
+
+    const merged = new Map(remote.map(x => [x.id, x]));
+    for (const item of local) {
+      if (!merged.has(item.id)) {
+        merged.set(item.id, item);
+        changed = true;
+      }
+    }
+    result[col] = [...merged.values()];
+  }
+
+  return changed ? result : remoteDb;
+}
+
 export function saveLocalCache(db) {
   try {
     localStorage.setItem(DB_LS_KEY, JSON.stringify(db));

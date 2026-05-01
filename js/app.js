@@ -1,5 +1,5 @@
 // Application bootstrap - registers modules and loads data
-import { state, subscribe, setDb } from './core/state.js';
+import { state, subscribe, setDb, markDirty } from './core/state.js';
 import * as github from './core/github.js';
 import * as router from './core/router.js';
 import { toast } from './core/ui.js';
@@ -64,14 +64,22 @@ async function boot() {
 
   if (state.github.owner && state.github.repo) {
     try {
-      const db = await github.fetchDb();
-      setDb(db);
-      github.saveLocalCache(db);
+      const remoteDb = await github.fetchDb();
+      // Preserve any locally-imported items that were never pushed to GitHub.
+      // This prevents data loss when GitHub reconnects after a failed auto-push.
+      const localCache = await github.fetchLocalDb();
+      const finalDb = localCache ? github.mergeLocalPending(remoteDb, localCache) : remoteDb;
+      setDb(finalDb);
+      github.saveLocalCache(finalDb);
       loaded = true;
       updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+      // If local items were merged in, push them to GitHub automatically
+      if (finalDb !== remoteDb) {
+        markDirty();
+      }
     } catch (e) {
       console.warn('GitHub load failed, falling back', e);
-      state.github.lastSyncError = e.message;
+      state.github.lastSyncError = normalizeNetworkError(e.message);
       githubFailed = true;
     }
   }
@@ -130,7 +138,7 @@ async function boot() {
       updateSyncStatus('online', `Saved to GitHub at ${new Date().toLocaleTimeString()}`);
     } catch (e) {
       saveFailCount++;
-      state.github.lastSyncError = e.message;
+      state.github.lastSyncError = normalizeNetworkError(e.message);
       if (e.name === 'ConflictError') {
         pendingDirty = false;
         clearTimeout(pushTimer);
@@ -259,6 +267,13 @@ function initMobileNav() {
   });
   backdrop?.addEventListener('click', close);
   nav?.addEventListener('click', close);
+}
+
+function normalizeNetworkError(msg) {
+  if (!msg || msg === 'Failed to fetch' || msg.startsWith('NetworkError') || msg.startsWith('Load failed')) {
+    return 'Cannot reach GitHub — check your internet connection';
+  }
+  return msg;
 }
 
 function updateSyncStatus(dotState, message, showRetry = false) {
