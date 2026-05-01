@@ -13,6 +13,7 @@ export function loadConfig() {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
       const cfg = JSON.parse(raw);
+      if (cfg.token) cfg.token = cfg.token.trim();
       Object.assign(state.github, cfg);
     }
   } catch (e) {
@@ -321,6 +322,9 @@ async function doPushDb(db, message = 'Update data') {
     }
 
     if (!putRes.ok) {
+      if (putRes.status === 401 || putRes.status === 403) {
+        throw new Error(`GitHub token is invalid or expired (${putRes.status}) — update your token in Settings`);
+      }
       const errTxt = await putRes.text();
       throw new Error(`GitHub push failed: ${putRes.status} ${errTxt}`);
     }
