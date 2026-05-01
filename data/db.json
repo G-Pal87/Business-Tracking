@@ -913,8 +913,10 @@
       "documents": [],
       "createdAt": 1777675918176,
       "createdBy": "Giorgos",
-      "updatedAt": 1777675918176,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777675994158,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777675994158,
+      "deletedBy": "Giorgos"
     }
   ],
   "payments": [],
