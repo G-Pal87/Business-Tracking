@@ -492,6 +492,51 @@ const MORTGAGE_DETAIL_COLS = [
   { key: 'value',  label: 'Value'  }
 ];
 
+// ── Inline insights ───────────────────────────────────────────────────────────
+function buildInsightsBanner(insights) {
+  if (!insights.length) return null;
+  const wrap = el('div', { style: 'display:flex;flex-direction:column;gap:8px;margin-bottom:16px' });
+  const STYLES = {
+    danger:  { bg: 'rgba(239,68,68,0.08)',  border: '#ef4444', icon: '⚠' },
+    warning: { bg: 'rgba(245,158,11,0.08)', border: '#f59e0b', icon: '⚡' },
+    info:    { bg: 'rgba(99,102,241,0.08)', border: '#6366f1', icon: 'ℹ' }
+  };
+  for (const { level, text } of insights) {
+    const s = STYLES[level] || STYLES.info;
+    wrap.appendChild(el('div', {
+      style: `display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:${s.bg};border-left:3px solid ${s.border};border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13px`
+    },
+      el('span', { style: `color:${s.border};flex-shrink:0` }, s.icon),
+      el('span', { style: 'color:var(--text);line-height:1.4' }, text)
+    ));
+  }
+  return wrap;
+}
+
+function computePropertyInsights({ totals, propData, avgROI, best, worst }) {
+  const items = [];
+  if (totals.rev === 0 && totals.opEx === 0) {
+    items.push({ level: 'info', text: 'No revenue or expenses recorded for the selected period and filters.' });
+    return items;
+  }
+  if (totals.profit < 0) {
+    items.push({ level: 'danger', text: `Portfolio is operating at a loss: ${formatEUR(totals.profit)} net operating profit for the period.` });
+  }
+  if (totals.rev > 0 && totals.opEx / totals.rev > 0.80) {
+    const pct = Math.round(totals.opEx / totals.rev * 100);
+    items.push({ level: 'warning', text: `Operating expense ratio is ${pct}% — high relative to revenue. Consider reviewing recurring costs.` });
+  }
+  if (avgROI !== null && avgROI < 0) {
+    items.push({ level: 'danger', text: `Portfolio average ROI is negative (${avgROI.toFixed(1)}%). Net losses exceed investment value.` });
+  } else if (worst && avgROI !== null && worst.simpleROI !== null && worst.simpleROI < avgROI - 15) {
+    items.push({ level: 'warning', text: `"${worst.prop.name}" has ROI of ${worst.simpleROI.toFixed(1)}% vs portfolio average ${avgROI.toFixed(1)}% — underperforming by more than 15 pp.` });
+  }
+  if (totals.net < 0 && totals.capEx > 0) {
+    items.push({ level: 'info', text: `Net income is negative after CapEx (${formatEUR(totals.net)}). This may reflect an active renovation period.` });
+  }
+  return items;
+}
+
 // ── Multi-select dropdown ─────────────────────────────────────────────────────
 function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
   const wrapper   = el('div', { style: 'position:relative' });
@@ -672,6 +717,11 @@ function buildView() {
     () => drillDownModal('Renovation CapEx — All Properties', toExpDrillRows(capExpenses), EXP_DRILL_COLS)
   ));
   wrap.appendChild(kpiRow);
+
+  // Inline insights
+  const propInsights = computePropertyInsights(data);
+  const propBanner = buildInsightsBanner(propInsights);
+  if (propBanner) wrap.appendChild(propBanner);
 
   // ── Chart row 1: profit hbar (2/3) + revenue donut (1/3) ──────────────────
   const row1 = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px' });
