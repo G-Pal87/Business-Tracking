@@ -1,6 +1,6 @@
 // Forecast module: monthly grid per property/service, stored, tax estimation
 import { state } from '../core/state.js';
-import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, drillDownModal } from '../core/ui.js';
+import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, setForecastTaxRate, getForecastVsActual, estimateTaxForYear, getForecastEntries, upsertForecastEntry, removeForecastEntry, listActive, listActivePayments } from '../core/data.js';
 import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
@@ -61,11 +61,65 @@ function buildPropertySection(wrap) {
   const props = listActive('properties').filter(p => p.status !== 'renovation');
   if (props.length === 0) { wrap.appendChild(el('div', { class: 'empty' }, 'No active properties to forecast')); return; }
 
-  // --- Property checklist dropdown (matches Reports "All Streams" pattern) ---
   let selectedPropIds = new Set(props.map(p => p.id));
+  let selectedStreamIds = new Set(); // empty = all
 
-  const getSelIds = () => selectedPropIds.size > 0 ? [...selectedPropIds] : [props[0].id];
+  const getSelIds = () => {
+    const base = selectedPropIds.size > 0 ? [...selectedPropIds] : props.map(p => p.id);
+    if (selectedStreamIds.size === 0) return base.length ? base : [props[0].id];
+    const filtered = base.filter(id => {
+      const p = byId('properties', id);
+      const sk = p?.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
+      return selectedStreamIds.has(sk);
+    });
+    return filtered.length ? filtered : [props[0].id];
+  };
 
+  // Stream filter dropdown
+  const streamOpts = [
+    { value: 'short_term_rental', label: STREAMS.short_term_rental?.label || 'Short-term' },
+    { value: 'long_term_rental',  label: STREAMS.long_term_rental?.label  || 'Long-term'  }
+  ];
+  const streamWrapper = el('div', { style: 'position:relative' });
+  const streamTrigLabel = el('span', {}, 'All Streams');
+  const streamTrigger = el('div', {
+    class: 'select',
+    style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:140px;user-select:none'
+  }, streamTrigLabel);
+  const streamMenu = el('div', {
+    style: 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0'
+  });
+  const allStreamChk = el('input', { type: 'checkbox' });
+  allStreamChk.checked = true;
+  streamMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px' },
+    allStreamChk, el('span', {}, 'All Streams')));
+  const streamChks = streamOpts.map(opt => {
+    const chk = el('input', { type: 'checkbox' });
+    chk.dataset.value = opt.value;
+    chk.checked = true;
+    streamMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px' },
+      chk, el('span', {}, opt.label)));
+    return chk;
+  });
+  const syncStreamSel = () => {
+    const sel = streamChks.filter(c => c.checked);
+    const n = sel.length;
+    allStreamChk.checked = n === streamChks.length;
+    allStreamChk.indeterminate = n > 0 && n < streamChks.length;
+    streamTrigLabel.textContent = n === streamChks.length || n === 0 ? 'All Streams'
+      : n === 1 ? (streamOpts.find(o => o.value === sel[0].dataset.value)?.label || '')
+      : `${n} Streams`;
+    selectedStreamIds = n === streamChks.length ? new Set() : new Set(sel.map(c => c.dataset.value));
+  };
+  allStreamChk.onchange = () => { streamChks.forEach(c => { c.checked = allStreamChk.checked; }); allStreamChk.indeterminate = false; syncStreamSel(); render(); };
+  streamChks.forEach(chk => { chk.onchange = () => { syncStreamSel(); render(); }; });
+  streamTrigger.onclick = e => { e.stopPropagation(); streamMenu.style.display = streamMenu.style.display === 'none' ? '' : 'none'; };
+  streamMenu.onclick = e => e.stopPropagation();
+  document.addEventListener('click', () => { streamMenu.style.display = 'none'; });
+  streamWrapper.appendChild(streamTrigger);
+  streamWrapper.appendChild(streamMenu);
+
+  // --- Property checklist dropdown ---
   const propWrapper = el('div', { style: 'position:relative' });
   const trigLabel = el('span', {}, 'All Properties');
   const propTrigger = el('div', {
@@ -137,7 +191,8 @@ function buildPropertySection(wrap) {
 
   updateYearOptions();
 
-  const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:flex-start' });
+  const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:flex-start;flex-wrap:wrap' });
+  controls.appendChild(streamWrapper);
   controls.appendChild(propWrapper);
   controls.appendChild(yearSel);
   wrap.appendChild(controls);
@@ -156,6 +211,9 @@ function buildPropertySection(wrap) {
     )
   );
   wrap.appendChild(chartWrap);
+
+  const breakdownWrap = el('div', {});
+  wrap.appendChild(breakdownWrap);
 
   const getAggregated = () => {
     const propIds = getSelIds();
@@ -187,6 +245,22 @@ function buildPropertySection(wrap) {
     }
     renderChart();
     renderSummary();
+    renderBreakdown(selIds);
+  };
+
+  const renderBreakdown = (selIds) => {
+    breakdownWrap.innerHTML = '';
+    const year = yearSel.value;
+    const bCard = buildPropertyBreakdownCard(selIds, year);
+    breakdownWrap.appendChild(bCard);
+    const bTw = bCard.querySelector('.table-wrap');
+    if (bTw) attachSortFilter(bTw);
+    const sCard = buildStreamBreakdownCard(selIds, year);
+    if (sCard) {
+      breakdownWrap.appendChild(sCard);
+      const sTw = sCard.querySelector('.table-wrap');
+      if (sTw) attachSortFilter(sTw);
+    }
   };
 
   const renderChart = () => {
@@ -220,6 +294,8 @@ function buildPropertySection(wrap) {
       summaryRow('Actual Net YTD',        formatEUR(actualRev - actualExp)),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
       summaryRow('Revenue Variance YTD',  formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger'),
+      summaryRow('Revenue Variance %',    forecastRev > 0 ? ((actualRev - forecastRev) / forecastRev * 100).toFixed(1) + '%' : '—',
+        actualRev >= forecastRev ? 'success' : 'danger'),
     ];
     if (yearTarget.revenue || yearTarget.expenses) {
       const ytRev = yearTarget.revenue || 0;
@@ -389,6 +465,8 @@ function buildServiceSection(wrap) {
       summaryRow('Actual Revenue YTD', formatEUR(actualRev)),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
       summaryRow('Revenue Variance YTD', formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger'),
+      summaryRow('Revenue Variance %',   forecastRev > 0 ? ((actualRev - forecastRev) / forecastRev * 100).toFixed(1) + '%' : '—',
+        actualRev >= forecastRev ? 'success' : 'danger'),
     ];
     if (yearTarget.revenue) {
       const ytRev = yearTarget.revenue;
@@ -405,6 +483,60 @@ function buildServiceSection(wrap) {
   yearSel.onchange = render;
   render();
 }
+
+// ===== DRILL-DOWN HELPERS =====
+function getActualRevRows(entityId, type, monthKey) {
+  if (type === 'service') {
+    return listActive('invoices').filter(i =>
+      i.status === 'paid' && (i.issueDate || '').slice(0, 7) === monthKey && i.stream === entityId
+    ).map(i => ({
+      date:   i.issueDate,
+      source: byId('clients', i.clientId)?.name || '—',
+      ref:    i.invoiceNumber || '—',
+      eur:    toEUR(i.total, i.currency, i.issueDate)
+    })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  }
+  return listActivePayments().filter(p =>
+    p.status === 'paid' && p.date?.slice(0, 7) === monthKey && p.propertyId === entityId
+  ).map(p => ({
+    date:   p.date,
+    source: byId('properties', p.propertyId)?.name || p.source || '—',
+    ref:    p.type || '—',
+    eur:    toEUR(p.amount, p.currency, p.date)
+  })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+function getActualExpRows(entityId, type, monthKey) {
+  return listActive('expenses').filter(e =>
+    e.date?.slice(0, 7) === monthKey &&
+    (type === 'property' ? e.propertyId === entityId : (e.stream === entityId))
+  ).map(e => ({
+    date:     e.date,
+    category: EXPENSE_CATEGORIES[e.category]?.label || e.category || '—',
+    desc:     e.description || '—',
+    vendor:   e.vendor || (e.vendorId ? byId('vendors', e.vendorId)?.name : '') || '—',
+    eur:      toEUR(e.amount, e.currency, e.date)
+  })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+const FC_REV_COLS = [
+  { key: 'date',   label: 'Date',   format: v => fmtDate(v) },
+  { key: 'source', label: 'Source' },
+  { key: 'ref',    label: 'Ref'    },
+  { key: 'eur',    label: 'EUR',    right: true, format: v => formatEUR(v) }
+];
+const FC_EXP_COLS = [
+  { key: 'date',     label: 'Date',        format: v => fmtDate(v) },
+  { key: 'category', label: 'Category'    },
+  { key: 'desc',     label: 'Description' },
+  { key: 'vendor',   label: 'Vendor'      },
+  { key: 'eur',      label: 'EUR',         right: true, format: v => formatEUR(v) }
+];
+const FC_VAR_COLS = [
+  { key: 'label', label: 'Item' },
+  { key: 'eur',   label: 'EUR', right: true, format: v => v === null ? '—' : formatEUR(v) },
+  { key: 'pct',   label: '%',   right: true }
+];
 
 // ===== SHARED MONTHLY GRID =====
 function buildMonthlyGrid(entityId, year, type, onChange) {
@@ -428,7 +560,10 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
     <th class="right">Forecast Expenses</th>
     <th class="right">Forecast Net</th>
     <th class="right">Actual Revenue</th>
-    <th class="right">Variance</th>
+    <th class="right">Actual Expenses</th>
+    <th class="right">Actual Net</th>
+    <th class="right">Rev Variance</th>
+    <th class="right">Var %</th>
   </tr></thead>`;
   const tb = el('tbody');
   renderRows();
@@ -524,8 +659,54 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
       }
       tr.appendChild(makeExpEntriesCell(monthKey, mData.forecastExp, i));
       tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
-      tr.appendChild(el('td', { class: 'right num ' + (isPast ? '' : 'muted') }, formatEUR(mData.actualRev)));
-      tr.appendChild(el('td', { class: `right num ${mData.revVariance >= 0 ? '' : 'danger'}` }, isPast || mData.actualRev > 0 ? formatEUR(mData.revVariance) : '—'));
+      // Actual Revenue — clickable drill-down
+      const actRevCell = el('td', { class: 'right num ' + (isPast ? '' : 'muted') });
+      actRevCell.textContent = formatEUR(mData.actualRev);
+      if (mData.actualRev > 0) {
+        actRevCell.style.cursor = 'pointer';
+        actRevCell.title = 'Click for revenue records';
+        actRevCell.onclick = () => drillDownModal(
+          `Actual Revenue — ${MONTHS[i]}`, getActualRevRows(entityId, type, monthKey), FC_REV_COLS);
+      }
+      tr.appendChild(actRevCell);
+
+      // Actual Expenses — clickable drill-down
+      const actExpCell = el('td', { class: 'right num ' + (isPast ? '' : 'muted') });
+      actExpCell.textContent = (isPast || mData.actualExp > 0) ? formatEUR(mData.actualExp) : '—';
+      if (mData.actualExp > 0) {
+        actExpCell.style.cursor = 'pointer';
+        actExpCell.title = 'Click for expense records';
+        actExpCell.onclick = () => drillDownModal(
+          `Actual Expenses — ${MONTHS[i]}`, getActualExpRows(entityId, type, monthKey), FC_EXP_COLS);
+      }
+      tr.appendChild(actExpCell);
+
+      // Actual Net
+      const actualNet = mData.actualRev - mData.actualExp;
+      const showAct = isPast || mData.actualRev > 0 || mData.actualExp > 0;
+      tr.appendChild(el('td', { class: 'right num ' + (showAct ? (actualNet < 0 ? 'danger' : '') : 'muted') },
+        showAct ? formatEUR(actualNet) : '—'));
+
+      // Rev Variance — clickable drill-down
+      const showVar = isPast || mData.actualRev > 0;
+      const varCell = el('td', { class: `right num ${mData.revVariance >= 0 ? '' : 'danger'}` });
+      varCell.textContent = showVar ? formatEUR(mData.revVariance) : '—';
+      if (showVar) {
+        varCell.style.cursor = 'pointer';
+        varCell.title = 'Click for variance breakdown';
+        varCell.onclick = () => drillDownModal(`Variance — ${MONTHS[i]}`, [
+          { label: 'Forecast Revenue',           eur: mData.forecastRev,   pct: '' },
+          { label: 'Actual Revenue',             eur: mData.actualRev,     pct: '' },
+          { label: 'Variance (Actual − Forecast)', eur: mData.revVariance,
+            pct: mData.forecastRev > 0 ? ((mData.revVariance / mData.forecastRev) * 100).toFixed(1) + '%' : '—' },
+        ], FC_VAR_COLS);
+      }
+      tr.appendChild(varCell);
+
+      // Var %
+      const varPct = mData.forecastRev > 0 && showVar
+        ? ((mData.revVariance / mData.forecastRev) * 100).toFixed(1) + '%' : '—';
+      tr.appendChild(el('td', { class: `right num ${mData.revVariance < 0 && showVar ? 'danger' : ''}` }, varPct));
       tb.appendChild(tr);
     }
     appendTotals(months, yearTarget);
@@ -698,11 +879,14 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
   }
 
   function appendTotals(months, yearTarget) {
-    const fcRev = months.reduce((s, m) => s + m.forecastRev, 0);
-    const fcExp = months.reduce((s, m) => s + m.forecastExp, 0);
-    const fcNet = fcRev - fcExp;
+    const fcRev  = months.reduce((s, m) => s + m.forecastRev, 0);
+    const fcExp  = months.reduce((s, m) => s + m.forecastExp, 0);
+    const fcNet  = fcRev - fcExp;
     const actRev = months.reduce((s, m) => s + m.actualRev, 0);
+    const actExp = months.reduce((s, m) => s + m.actualExp, 0);
+    const actNet = actRev - actExp;
     const variance = actRev - fcRev;
+    const varPct   = fcRev > 0 ? ((variance / fcRev) * 100).toFixed(1) + '%' : '—';
 
     const tRow = el('tr', { style: 'font-weight:600;background:var(--bg-elev-2)' });
     tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em' }, 'TOTAL'));
@@ -710,7 +894,10 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
     tRow.appendChild(el('td', { class: 'right num' }, formatEUR(fcExp)));
     tRow.appendChild(el('td', { class: 'right num' + (fcNet < 0 ? ' danger' : '') }, formatEUR(fcNet)));
     tRow.appendChild(el('td', { class: 'right num' }, formatEUR(actRev)));
+    tRow.appendChild(el('td', { class: 'right num' }, formatEUR(actExp)));
+    tRow.appendChild(el('td', { class: 'right num' + (actNet < 0 ? ' danger' : '') }, formatEUR(actNet)));
     tRow.appendChild(el('td', { class: `right num ${variance >= 0 ? '' : 'danger'}` }, formatEUR(variance)));
+    tRow.appendChild(el('td', { class: `right num ${variance >= 0 ? '' : 'danger'}` }, varPct));
     tb.appendChild(tRow);
 
     if (yearTarget && (yearTarget.revenue || yearTarget.expenses)) {
@@ -728,7 +915,10 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         ytRow.appendChild(el('td', {}));
       }
       ytRow.appendChild(el('td', { class: 'right num' + (actRev >= ytRev ? '' : ' danger') }, formatEUR(actRev - ytRev)));
-      ytRow.appendChild(el('td', {}));
+      ytRow.appendChild(el('td', {})); // actExp
+      ytRow.appendChild(el('td', {})); // actNet
+      ytRow.appendChild(el('td', {})); // variance
+      ytRow.appendChild(el('td', {})); // var%
       tb.appendChild(ytRow);
     }
   }
@@ -763,7 +953,10 @@ function buildAggregatedGrid(entityIds, year, type = 'property') {
     <th class="right">Forecast Expenses</th>
     <th class="right">Forecast Net</th>
     <th class="right">Actual Revenue</th>
-    <th class="right">Variance</th>
+    <th class="right">Actual Expenses</th>
+    <th class="right">Actual Net</th>
+    <th class="right">Rev Variance</th>
+    <th class="right">Var %</th>
   </tr></thead>`;
   const tb = el('tbody');
 
@@ -771,29 +964,81 @@ function buildAggregatedGrid(entityIds, year, type = 'property') {
   for (let i = 0; i < 12; i++) {
     const m = months[i];
     const isPast = new Date(Number(year), i + 1, 0) < now;
-    const net = m.forecastRev - m.forecastExp;
+    const net    = m.forecastRev - m.forecastExp;
+    const actNet = m.actualRev - m.actualExp;
+    const showVar = isPast || m.actualRev > 0;
+    const varPct  = m.forecastRev > 0 && showVar
+      ? ((m.revVariance / m.forecastRev) * 100).toFixed(1) + '%' : '—';
     const tr = el('tr');
     tr.appendChild(el('td', {}, MONTHS[i]));
     tr.appendChild(el('td', { class: 'right num' }, formatEUR(m.forecastRev)));
     tr.appendChild(el('td', { class: 'right num' }, formatEUR(m.forecastExp)));
     tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
-    tr.appendChild(el('td', { class: 'right num ' + (isPast ? '' : 'muted') }, formatEUR(m.actualRev)));
-    tr.appendChild(el('td', { class: `right num ${m.revVariance >= 0 ? '' : 'danger'}` }, isPast || m.actualRev > 0 ? formatEUR(m.revVariance) : '—'));
+
+    // Actual Revenue — clickable
+    const aRev = el('td', { class: 'right num ' + (isPast ? '' : 'muted') }, formatEUR(m.actualRev));
+    if (m.actualRev > 0) {
+      aRev.style.cursor = 'pointer'; aRev.title = 'Click for revenue records';
+      aRev.onclick = () => {
+        const rows = entityIds.flatMap(id => getActualRevRows(id, type, months[i].key))
+          .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        drillDownModal(`Actual Revenue — ${MONTHS[i]}`, rows, FC_REV_COLS);
+      };
+    }
+    tr.appendChild(aRev);
+
+    // Actual Expenses — clickable
+    const showAct = isPast || m.actualExp > 0;
+    const aExp = el('td', { class: 'right num ' + (isPast ? '' : 'muted') }, showAct ? formatEUR(m.actualExp) : '—');
+    if (m.actualExp > 0) {
+      aExp.style.cursor = 'pointer'; aExp.title = 'Click for expense records';
+      aExp.onclick = () => {
+        const rows = entityIds.flatMap(id => getActualExpRows(id, type, months[i].key))
+          .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        drillDownModal(`Actual Expenses — ${MONTHS[i]}`, rows, FC_EXP_COLS);
+      };
+    }
+    tr.appendChild(aExp);
+
+    tr.appendChild(el('td', { class: 'right num ' + (showAct ? (actNet < 0 ? 'danger' : '') : 'muted') },
+      showAct ? formatEUR(actNet) : '—'));
+
+    // Rev Variance — clickable
+    const vCell = el('td', { class: `right num ${m.revVariance >= 0 ? '' : 'danger'}` });
+    vCell.textContent = showVar ? formatEUR(m.revVariance) : '—';
+    if (showVar) {
+      vCell.style.cursor = 'pointer'; vCell.title = 'Click for variance breakdown';
+      vCell.onclick = () => drillDownModal(`Variance — ${MONTHS[i]}`, [
+        { label: 'Forecast Revenue',             eur: m.forecastRev, pct: '' },
+        { label: 'Actual Revenue',               eur: m.actualRev,   pct: '' },
+        { label: 'Variance (Actual − Forecast)', eur: m.revVariance,
+          pct: m.forecastRev > 0 ? ((m.revVariance / m.forecastRev) * 100).toFixed(1) + '%' : '—' },
+      ], FC_VAR_COLS);
+    }
+    tr.appendChild(vCell);
+    tr.appendChild(el('td', { class: `right num ${m.revVariance < 0 && showVar ? 'danger' : ''}` }, varPct));
     tb.appendChild(tr);
   }
 
-  const fcRev = months.reduce((s, m) => s + m.forecastRev, 0);
-  const fcExp = months.reduce((s, m) => s + m.forecastExp, 0);
-  const fcNet = fcRev - fcExp;
+  const fcRev  = months.reduce((s, m) => s + m.forecastRev, 0);
+  const fcExp  = months.reduce((s, m) => s + m.forecastExp, 0);
+  const fcNet  = fcRev - fcExp;
   const actRev = months.reduce((s, m) => s + m.actualRev, 0);
+  const actExp = months.reduce((s, m) => s + m.actualExp, 0);
+  const actNet = actRev - actExp;
   const variance = actRev - fcRev;
+  const totVarPct = fcRev > 0 ? ((variance / fcRev) * 100).toFixed(1) + '%' : '—';
+
   const tRow = el('tr', { style: 'font-weight:600;background:var(--bg-elev-2)' });
   tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em' }, 'TOTAL'));
   tRow.appendChild(el('td', { class: 'right num' }, formatEUR(fcRev)));
   tRow.appendChild(el('td', { class: 'right num' }, formatEUR(fcExp)));
   tRow.appendChild(el('td', { class: 'right num' + (fcNet < 0 ? ' danger' : '') }, formatEUR(fcNet)));
   tRow.appendChild(el('td', { class: 'right num' }, formatEUR(actRev)));
+  tRow.appendChild(el('td', { class: 'right num' }, formatEUR(actExp)));
+  tRow.appendChild(el('td', { class: 'right num' + (actNet < 0 ? ' danger' : '') }, formatEUR(actNet)));
   tRow.appendChild(el('td', { class: `right num ${variance >= 0 ? '' : 'danger'}` }, formatEUR(variance)));
+  tRow.appendChild(el('td', { class: `right num ${variance >= 0 ? '' : 'danger'}` }, totVarPct));
   tb.appendChild(tRow);
 
   if (yearTarget.revenue || yearTarget.expenses) {
@@ -806,9 +1051,186 @@ function buildAggregatedGrid(entityIds, year, type = 'property') {
     ytRow.appendChild(el('td', { class: 'right num' + (fcExp - ytExp > 0 ? ' warning' : '') }, formatEUR(fcExp - ytExp)));
     ytRow.appendChild(el('td', { class: 'right num' + (fcNet - ytNet >= 0 ? '' : ' danger') }, formatEUR(fcNet - ytNet)));
     ytRow.appendChild(el('td', { class: 'right num' + (actRev >= ytRev ? '' : ' danger') }, formatEUR(actRev - ytRev)));
-    ytRow.appendChild(el('td', {}));
+    ytRow.appendChild(el('td', {})); // actExp
+    ytRow.appendChild(el('td', {})); // actNet
+    ytRow.appendChild(el('td', {})); // variance
+    ytRow.appendChild(el('td', {})); // var%
     tb.appendChild(ytRow);
   }
+
+  t.appendChild(tb);
+  const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+  card.appendChild(tw);
+  return card;
+}
+
+// ===== PROPERTY BREAKDOWN CARD =====
+function buildPropertyBreakdownCard(selIds, year) {
+  const rows = selIds.map(id => {
+    const prop = byId('properties', id);
+    const { months } = getForecastVsActual('property', id, year);
+    const fcRev  = months.reduce((s, m) => s + m.forecastRev, 0);
+    const fcExp  = months.reduce((s, m) => s + m.forecastExp, 0);
+    const actRev = months.reduce((s, m) => s + m.actualRev, 0);
+    const actExp = months.reduce((s, m) => s + m.actualExp, 0);
+    const revVar = actRev - fcRev;
+    const sk     = prop?.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
+    return { id, prop, fcRev, fcExp, actRev, actExp, revVar,
+             fcNet: fcRev - fcExp, actNet: actRev - actExp,
+             revVarPct: fcRev > 0 ? ((revVar / fcRev) * 100).toFixed(1) + '%' : '—',
+             stream: STREAMS[sk]?.short || sk };
+  });
+
+  const card = el('div', { class: 'card mt-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Property-Level Forecast'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${year} · click row for monthly detail`)
+  ));
+
+  const t = el('table', { class: 'table' });
+  t.innerHTML = `<thead><tr>
+    <th>Property</th><th>Stream</th>
+    <th class="right">For. Rev</th><th class="right">Act. Rev</th>
+    <th class="right">Rev Var</th><th class="right">Var %</th>
+    <th class="right">For. Exp</th><th class="right">Act. Exp</th>
+    <th class="right">For. Net</th><th class="right">Act. Net</th>
+  </tr></thead>`;
+  const tb = el('tbody');
+
+  rows.forEach(d => {
+    const tr = el('tr', { style: 'cursor:pointer', title: 'Click for monthly breakdown' });
+    tr.onclick = () => {
+      const { months } = getForecastVsActual('property', d.id, year);
+      const mRows = months.map((m, i) => ({
+        month:   MONTHS[i],
+        fcRev:   formatEUR(m.forecastRev),
+        actRev:  formatEUR(m.actualRev),
+        revVar:  formatEUR(m.revVariance),
+        varPct:  m.forecastRev > 0 ? ((m.revVariance / m.forecastRev) * 100).toFixed(1) + '%' : '—',
+        fcExp:   formatEUR(m.forecastExp),
+        actExp:  formatEUR(m.actualExp),
+        actNet:  formatEUR(m.actualRev - m.actualExp),
+      }));
+      drillDownModal(`${d.prop?.name || d.id} — ${year}`, mRows, [
+        { key: 'month',  label: 'Month' },
+        { key: 'fcRev',  label: 'For. Rev',  right: true },
+        { key: 'actRev', label: 'Act. Rev',  right: true },
+        { key: 'revVar', label: 'Variance',  right: true },
+        { key: 'varPct', label: 'Var %',     right: true },
+        { key: 'fcExp',  label: 'For. Exp',  right: true },
+        { key: 'actExp', label: 'Act. Exp',  right: true },
+        { key: 'actNet', label: 'Act. Net',  right: true },
+      ]);
+    };
+    tr.appendChild(el('td', {}, d.prop?.name || d.id));
+    tr.appendChild(el('td', {}, d.stream));
+    tr.appendChild(el('td', { class: 'right num' }, formatEUR(d.fcRev)));
+    tr.appendChild(el('td', { class: 'right num' }, formatEUR(d.actRev)));
+    tr.appendChild(el('td', { class: `right num ${d.revVar >= 0 ? '' : 'danger'}` }, formatEUR(d.revVar)));
+    tr.appendChild(el('td', { class: `right num ${d.revVar >= 0 ? '' : 'danger'}` }, d.revVarPct));
+    tr.appendChild(el('td', { class: 'right num' }, formatEUR(d.fcExp)));
+    tr.appendChild(el('td', { class: 'right num' }, formatEUR(d.actExp)));
+    tr.appendChild(el('td', { class: `right num ${d.fcNet < 0 ? 'danger' : ''}` }, formatEUR(d.fcNet)));
+    tr.appendChild(el('td', { class: `right num ${d.actNet < 0 ? 'danger' : ''}` }, formatEUR(d.actNet)));
+    tb.appendChild(tr);
+  });
+
+  // Totals row
+  const tot = rows.reduce((a, d) => ({
+    fcRev:  a.fcRev  + d.fcRev,  fcExp:  a.fcExp  + d.fcExp,
+    actRev: a.actRev + d.actRev, actExp: a.actExp + d.actExp,
+    revVar: a.revVar + d.revVar, fcNet:  a.fcNet  + d.fcNet,
+    actNet: a.actNet + d.actNet,
+  }), { fcRev: 0, fcExp: 0, actRev: 0, actExp: 0, revVar: 0, fcNet: 0, actNet: 0 });
+  const totVarPct = tot.fcRev > 0 ? ((tot.revVar / tot.fcRev) * 100).toFixed(1) + '%' : '—';
+  const tRow = el('tr', { style: 'font-weight:600;background:var(--bg-elev-2)' });
+  ['TOTAL', ''].forEach(v => tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em' }, v)));
+  [tot.fcRev, tot.actRev].forEach(v => tRow.appendChild(el('td', { class: 'right num' }, formatEUR(v))));
+  tRow.appendChild(el('td', { class: `right num ${tot.revVar >= 0 ? '' : 'danger'}` }, formatEUR(tot.revVar)));
+  tRow.appendChild(el('td', { class: `right num ${tot.revVar >= 0 ? '' : 'danger'}` }, totVarPct));
+  [tot.fcExp, tot.actExp].forEach(v => tRow.appendChild(el('td', { class: 'right num' }, formatEUR(v))));
+  tRow.appendChild(el('td', { class: `right num ${tot.fcNet < 0 ? 'danger' : ''}` }, formatEUR(tot.fcNet)));
+  tRow.appendChild(el('td', { class: `right num ${tot.actNet < 0 ? 'danger' : ''}` }, formatEUR(tot.actNet)));
+  tb.appendChild(tRow);
+
+  t.appendChild(tb);
+  const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+  card.appendChild(tw);
+  return card;
+}
+
+// ===== STREAM BREAKDOWN CARD =====
+function buildStreamBreakdownCard(selIds, year) {
+  const streamMap = new Map();
+  selIds.forEach(id => {
+    const prop = byId('properties', id);
+    const sk   = prop?.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
+    const { months } = getForecastVsActual('property', id, year);
+    const fcRev  = months.reduce((s, m) => s + m.forecastRev, 0);
+    const fcExp  = months.reduce((s, m) => s + m.forecastExp, 0);
+    const actRev = months.reduce((s, m) => s + m.actualRev, 0);
+    const actExp = months.reduce((s, m) => s + m.actualExp, 0);
+    const cur = streamMap.get(sk) || { fcRev: 0, fcExp: 0, actRev: 0, actExp: 0, count: 0 };
+    streamMap.set(sk, { fcRev: cur.fcRev + fcRev, fcExp: cur.fcExp + fcExp,
+      actRev: cur.actRev + actRev, actExp: cur.actExp + actExp, count: cur.count + 1 });
+  });
+
+  if (streamMap.size < 2) return null; // only meaningful when both streams present
+
+  const card = el('div', { class: 'card mt-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Stream-Level Forecast'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${year} · click row for underlying records`)
+  ));
+
+  const t = el('table', { class: 'table' });
+  t.innerHTML = `<thead><tr>
+    <th>Stream</th><th class="right">Properties</th>
+    <th class="right">For. Rev</th><th class="right">Act. Rev</th>
+    <th class="right">Rev Var</th><th class="right">Var %</th>
+    <th class="right">For. Exp</th><th class="right">Act. Exp</th>
+    <th class="right">For. Net</th><th class="right">Act. Net</th>
+  </tr></thead>`;
+  const tb = el('tbody');
+
+  [...streamMap.entries()].forEach(([sk, d]) => {
+    const revVar = d.actRev - d.fcRev;
+    const varPct = d.fcRev > 0 ? ((revVar / d.fcRev) * 100).toFixed(1) + '%' : '—';
+    const fcNet  = d.fcRev - d.fcExp;
+    const actNet = d.actRev - d.actExp;
+    const tr = el('tr', { style: 'cursor:pointer', title: 'Click for underlying properties' });
+    tr.onclick = () => {
+      const propRows = selIds
+        .filter(id => { const p = byId('properties', id); return (p?.type === 'short_term' ? 'short_term_rental' : 'long_term_rental') === sk; })
+        .map(id => {
+          const p = byId('properties', id);
+          const { months } = getForecastVsActual('property', id, year);
+          const fRev = months.reduce((s, m) => s + m.forecastRev, 0);
+          const aRev = months.reduce((s, m) => s + m.actualRev, 0);
+          return { name: p?.name || id, fcRev: formatEUR(fRev), actRev: formatEUR(aRev),
+            revVar: formatEUR(aRev - fRev),
+            varPct: fRev > 0 ? ((aRev - fRev) / fRev * 100).toFixed(1) + '%' : '—' };
+        });
+      drillDownModal(`${STREAMS[sk]?.label || sk} — Properties`, propRows, [
+        { key: 'name',   label: 'Property' },
+        { key: 'fcRev',  label: 'For. Rev',  right: true },
+        { key: 'actRev', label: 'Act. Rev',  right: true },
+        { key: 'revVar', label: 'Variance',  right: true },
+        { key: 'varPct', label: 'Var %',     right: true },
+      ]);
+    };
+    tr.appendChild(el('td', {}, STREAMS[sk]?.label || sk));
+    tr.appendChild(el('td', { class: 'right num' }, String(d.count)));
+    tr.appendChild(el('td', { class: 'right num' }, formatEUR(d.fcRev)));
+    tr.appendChild(el('td', { class: 'right num' }, formatEUR(d.actRev)));
+    tr.appendChild(el('td', { class: `right num ${revVar >= 0 ? '' : 'danger'}` }, formatEUR(revVar)));
+    tr.appendChild(el('td', { class: `right num ${revVar >= 0 ? '' : 'danger'}` }, varPct));
+    tr.appendChild(el('td', { class: 'right num' }, formatEUR(d.fcExp)));
+    tr.appendChild(el('td', { class: 'right num' }, formatEUR(d.actExp)));
+    tr.appendChild(el('td', { class: `right num ${fcNet < 0 ? 'danger' : ''}` }, formatEUR(fcNet)));
+    tr.appendChild(el('td', { class: `right num ${actNet < 0 ? 'danger' : ''}` }, formatEUR(actNet)));
+    tb.appendChild(tr);
+  });
 
   t.appendChild(tb);
   const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
