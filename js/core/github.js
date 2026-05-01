@@ -277,10 +277,12 @@ async function doPushDb(db, message = 'Update data') {
     const json = await putRes.json();
 
     state.github.sha = json.content.sha;
-    state.github.remoteDb     = structuredClone(merged);
-    state.github.lastPushOk   = true;
-    state.github.lastPushedAt = Date.now();
+    state.github.remoteDb      = structuredClone(merged);
+    state.github.lastPushOk    = true;
+    state.github.lastPushedAt  = Date.now();
     state.github.lastSyncError = null;
+    state.github.connected     = true;
+    state.github.usingCache    = false;
 
     // Replace state.db in-place so it exactly matches what was pushed.
     // Remove keys absent from merged, then overwrite everything else.
