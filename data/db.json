@@ -835,8 +835,10 @@
       "documents": [],
       "createdAt": 1777670095665,
       "createdBy": "Giorgos",
-      "updatedAt": 1777670095665,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777670211109,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777670211109,
+      "deletedBy": "Giorgos"
     }
   ],
   "payments": [
