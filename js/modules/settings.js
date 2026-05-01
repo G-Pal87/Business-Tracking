@@ -2,6 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, resolveGitRemote } from '../core/github.js';
+import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
@@ -109,11 +110,14 @@ function buildGithubCard() {
     pushBtn.textContent = 'Pushing\u2026';
     try {
       await state.github.syncNow();
+      toast('Pushed to GitHub', 'success');
+    } catch (e) {
+      toast('Push failed: ' + (state.github.lastSyncError || e.message), 'danger', 5000);
     } finally {
       pushBtn.disabled = false;
       pushBtn.textContent = 'Push to GitHub';
     }
-    setTimeout(() => location.hash = 'settings', 150);
+    setTimeout(() => navigate('settings'), 150);
   }});
 
   const disconnect = button('Disconnect', { variant: 'danger', onClick: () => {
@@ -140,12 +144,12 @@ function buildGithubCard() {
         await state.github.syncNow();
         toast('Sync successful', 'success');
       } catch (e) {
-        toast('Sync failed: ' + e.message, 'danger', 5000);
+        toast('Sync failed: ' + (state.github.lastSyncError || e.message), 'danger', 5000);
       } finally {
         retryBtn.disabled = false;
         retryBtn.textContent = 'Retry Sync Now';
       }
-      setTimeout(() => location.hash = 'settings', 150);
+      setTimeout(() => navigate('settings'), 150);
     }});
     const retryRow = el('div', { style: 'margin-top:8px' });
     retryRow.appendChild(retryBtn);

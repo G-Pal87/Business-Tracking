@@ -250,10 +250,12 @@ async function doPushDb(db, message = 'Update data') {
     const json = await putRes.json();
 
     state.github.sha = json.content.sha;
-    state.github.remoteDb     = structuredClone(merged);
-    state.github.lastPushOk   = true;
-    state.github.lastPushedAt = Date.now();
+    state.github.remoteDb      = structuredClone(merged);
+    state.github.lastPushOk    = true;
+    state.github.lastPushedAt  = Date.now();
     state.github.lastSyncError = null;
+    state.github.connected     = true;
+    state.github.usingCache    = false;
 
     for (const col of Object.keys(merged)) {
       if (Array.isArray(merged[col]) && Array.isArray(state.db[col])) {

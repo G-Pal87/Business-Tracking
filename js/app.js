@@ -61,22 +61,18 @@ async function boot() {
 
   let loaded = false;
   let githubFailed = false;
+  let needAutoSave = false;
 
   if (state.github.owner && state.github.repo) {
     try {
       const remoteDb = await github.fetchDb();
-      // Preserve any locally-imported items that were never pushed to GitHub.
-      // This prevents data loss when GitHub reconnects after a failed auto-push.
       const localCache = await github.fetchLocalDb();
       const finalDb = localCache ? github.mergeLocalPending(remoteDb, localCache) : remoteDb;
       setDb(finalDb);
       github.saveLocalCache(finalDb);
       loaded = true;
+      needAutoSave = (finalDb !== remoteDb);
       updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
-      // If local items were merged in, push them to GitHub automatically
-      if (finalDb !== remoteDb) {
-        markDirty();
-      }
     } catch (e) {
       console.warn('GitHub load failed, falling back', e);
       state.github.lastSyncError = normalizeNetworkError(e.message);
@@ -154,12 +150,13 @@ async function boot() {
           toast('Save failed: ' + e.message, 'danger', 6000);
         }
       }
+      throw e;
     } finally {
       state.saving = false;
       document.body.classList.remove('app-saving');
       if (pendingDirty) {
         pendingDirty = false;
-        pushTimer = setTimeout(doSave, 300);
+        pushTimer = setTimeout(() => doSave().catch(() => {}), 300);
       }
     }
   };
@@ -171,7 +168,7 @@ async function boot() {
     retryBtn.onclick = () => {
       if (state.github.token && state.github.owner && state.github.repo) {
         clearTimeout(pushTimer);
-        doSave();
+        doSave().catch(() => {});
       } else {
         location.hash = 'settings';
       }
@@ -187,13 +184,19 @@ async function boot() {
         } else {
           updateSyncStatus('syncing', 'Local changes pending sync…');
           clearTimeout(pushTimer);
-          pushTimer = setTimeout(doSave, 1500);
+          pushTimer = setTimeout(() => doSave().catch(() => {}), 1500);
         }
       } else {
         updateSyncStatus('offline', 'Unsaved — connect GitHub in Settings');
       }
     }
   });
+
+  // Trigger push for any local-only items merged in from cache during boot.
+  // This must happen AFTER the dirty subscriber above is registered.
+  if (needAutoSave && state.github.token) {
+    markDirty();
+  }
 }
 
 function buildUserFooter() {
