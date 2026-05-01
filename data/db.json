@@ -839,8 +839,10 @@
       "documents": [],
       "createdAt": 1777675912104,
       "createdBy": "Giorgos",
-      "updatedAt": 1777675912104,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777675999658,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777675999658,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_monic909i9",
@@ -876,8 +878,10 @@
       "documents": [],
       "createdAt": 1777675915112,
       "createdBy": "Giorgos",
-      "updatedAt": 1777675915112,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777675996689,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777675996689,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_monicbftoy",
