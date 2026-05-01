@@ -952,8 +952,10 @@
       "documents": [],
       "createdAt": 1777672813908,
       "createdBy": "Giorgos",
-      "updatedAt": 1777672813908,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777673235127,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777673235127,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_mongijurob",
