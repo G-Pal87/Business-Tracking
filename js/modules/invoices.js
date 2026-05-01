@@ -640,11 +640,11 @@ function openPDFImport() {
     try {
       parsed = parsePDFInvoice(lines, streamS.value);
     } catch (e) {
-      parsed = { issueDate: '', invoiceNumber: '', clientName: '', lineItems: [] };
+      parsed = { invoiceDate: '', invoiceNumber: '', clientName: '', lineItems: [] };
     }
 
     // Pre-fill meta from parsed data (but don't overwrite a user-edited field)
-    if (parsed.issueDate) dateI.value = parsed.issueDate;
+    if (parsed.invoiceDate) dateI.value = parsed.invoiceDate;
     if (parsed.invoiceNumber) {
       numI.value = parsed.invoiceNumber;
       numI.setAttribute('data-auto', parsed.invoiceNumber);
@@ -659,7 +659,7 @@ function openPDFImport() {
 
     // Auto-parse succeeded — show preview table
     const info = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px' },
-      `Date: ${parsed.issueDate || '—'}  ·  #: ${parsed.invoiceNumber || '—'}  ·  Client: ${parsed.clientName || '—'}  ·  ${parsed.lineItems.length} item(s)`
+      `Date: ${parsed.invoiceDate || '—'}  ·  #: ${parsed.invoiceNumber || '—'}  ·  Client: ${parsed.clientName || '—'}  ·  ${parsed.lineItems.length} item(s)`
     );
     const tw = el('div', { class: 'table-wrap' });
     const t = el('table', { class: 'table' });
