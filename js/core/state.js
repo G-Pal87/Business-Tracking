@@ -18,14 +18,16 @@ const initialData = {
     defaultTaxRate: 0,
     business: { name: '', email: '', address: '', vatNumber: '', iban: '', bic: '' },
     team: []
+  },
+  appConfig: {
+    github: { owner: '', repo: '', branch: 'main', path: 'data/db.json', token: '' }
   }
 };
 
 export const state = {
   db: structuredClone(initialData),
   github: {
-    owner: '', repo: '', branch: 'main', dbPath: 'data/db.json',
-    tokenConfigured: false,
+    token: '', owner: '', repo: '', branch: 'main', dbPath: 'data/db.json',
     sha: null, connected: false, remoteDb: null,
     lastPullOk:  false,
     lastPushOk:  false,
