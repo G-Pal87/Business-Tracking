@@ -332,27 +332,35 @@ export async function fetchLocalDb() {
 }
 
 export function mergeLocalPending(remoteDb, localCache) {
-  const cols    = new Set([...Object.keys(remoteDb || {}), ...Object.keys(localCache || {})]);
-  let   changed = false;
-  const result  = {};
+  const cols   = new Set([...Object.keys(remoteDb || {}), ...Object.keys(localCache || {})]);
+  const result = {};
 
   for (const col of cols) {
     const remote = remoteDb[col];
     const local  = localCache[col];
 
     if (!Array.isArray(remote) || !Array.isArray(local)) {
-      result[col] = remote !== undefined ? remote : local;
+      // Non-array fields (settings, appConfig): local is the authoritative version
+      // because it holds the user's latest changes. Remote wins only when local has no value.
+      result[col] = local !== undefined ? local : remote;
       continue;
     }
 
-    const merged = new Map(remote.map(x => [x.id, x]));
-    for (const item of local) {
-      if (!merged.has(item.id)) { merged.set(item.id, item); changed = true; }
+    // Seed from local — it holds all recent user actions (soft-deletes, edits, permanent deletes).
+    const merged = new Map(local.map(x => [x.id, x]));
+
+    // Add remote-only items that are still active (created on another device).
+    // Skip remote soft-deleted records: if they're absent from local the user permanently deleted them.
+    for (const item of remote) {
+      if (!merged.has(item.id) && !item.deletedAt) {
+        merged.set(item.id, item);
+      }
     }
+
     result[col] = [...merged.values()];
   }
 
-  return changed ? result : remoteDb;
+  return result;
 }
 
 export function saveLocalCache(db) {
