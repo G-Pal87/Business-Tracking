@@ -1190,8 +1190,10 @@
       "documents": [],
       "createdAt": 1777708008831,
       "createdBy": "Giorgos",
-      "updatedAt": 1777708008831,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777708091479,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777708091479,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_moo1g7mkll",
