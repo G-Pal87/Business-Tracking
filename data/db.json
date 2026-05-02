@@ -1879,8 +1879,10 @@
       "name": "RitaK",
       "role": "admin",
       "passwordHash": "64bf621b3dad972a3e1a4c3115e712c4c30ae503ec6e82fa4242f3b05eadf3a6",
-      "updatedAt": 1777743083764,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777743163734,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777743163734,
+      "deletedBy": "Giorgos"
     }
   ],
   "settings": {
