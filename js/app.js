@@ -57,7 +57,7 @@ async function boot() {
   buildSidebar(MODULES);
   initMobileNav();
 
-  github.loadConfig();
+  await github.loadConfig();
 
   let loaded = false;
   let githubFailed = false;
@@ -164,7 +164,7 @@ async function boot() {
 
     // Changes arrived during the push — do one more push immediately instead
     // of waiting for the subscriber's 1.5 s timer to fire again.
-    if (hadNewChanges && state.github.token && state.github.owner && state.github.repo) {
+    if (hadNewChanges && state.github.tokenConfigured && state.github.owner && state.github.repo) {
       doSave().catch(() => {});
     }
   };
@@ -174,7 +174,7 @@ async function boot() {
   const retryBtn = document.getElementById('sync-retry');
   if (retryBtn) {
     retryBtn.onclick = () => {
-      if (state.github.token && state.github.owner && state.github.repo) {
+      if (state.github.tokenConfigured && state.github.owner && state.github.repo) {
         if (!pushPending) {
           clearTimeout(pushTimer);
           pushTimer = null;
@@ -189,7 +189,7 @@ async function boot() {
   subscribe(evt => {
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
-      if (state.github.token && state.github.owner && state.github.repo) {
+      if (state.github.tokenConfigured && state.github.owner && state.github.repo) {
         if (!pushPending) {
           // No push in flight — start the debounce timer.
           updateSyncStatus('syncing', 'Local changes pending sync…');

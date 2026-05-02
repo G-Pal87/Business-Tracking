@@ -24,16 +24,16 @@ const initialData = {
 export const state = {
   db: structuredClone(initialData),
   github: {
-    token: '', owner: '', repo: '', branch: 'main',
+    owner: '', repo: '', branch: 'main', dbPath: 'data/db.json',
+    tokenConfigured: false,
     sha: null, connected: false, remoteDb: null,
-    // fine-grained sync tracking
     lastPullOk:  false,
     lastPushOk:  false,
     usingCache:  false,
     lastSyncError: null,
     lastPulledAt:  null,
     lastPushedAt:  null,
-    syncNow: null        // async fn set by app.js boot()
+    syncNow: null
   },
   ui: { currentRoute: 'analytics', filters: { year: 'all', stream: 'all', owner: 'all' } },
   session: null,
