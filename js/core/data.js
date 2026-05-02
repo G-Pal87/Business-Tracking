@@ -727,6 +727,7 @@ export function restoreRecord(collection, id) {
   delete item.deletedBy;
   item.updatedAt = Date.now();
   item.updatedBy = state.session?.username || 'system';
+  markDirty();
   return true;
 }
 
@@ -736,18 +737,38 @@ export function permanentlyDeleteRecord(collection, id) {
   const index = arr.findIndex(x => x && x.id === id);
   if (index === -1) return false;
   arr.splice(index, 1);
+  markDirty();
   return true;
 }
 
 export function restoreRecords(records) {
   let count = 0;
-  records.forEach(({ collection, id }) => { if (restoreRecord(collection, id)) count++; });
+  records.forEach(({ collection, id }) => {
+    const arr = state.db[collection];
+    if (!Array.isArray(arr)) return;
+    const item = arr.find(x => x.id === id);
+    if (!item || !item.deletedAt) return;
+    delete item.deletedAt;
+    delete item.deletedBy;
+    item.updatedAt = Date.now();
+    item.updatedBy = state.session?.username || 'system';
+    count++;
+  });
+  if (count > 0) markDirty();
   return count;
 }
 
 export function permanentlyDeleteRecords(records) {
   let count = 0;
-  records.forEach(({ collection, id }) => { if (permanentlyDeleteRecord(collection, id)) count++; });
+  records.forEach(({ collection, id }) => {
+    const arr = state.db[collection];
+    if (!Array.isArray(arr)) return;
+    const index = arr.findIndex(x => x && x.id === id);
+    if (index === -1) return;
+    arr.splice(index, 1);
+    count++;
+  });
+  if (count > 0) markDirty();
   return count;
 }
 
@@ -759,5 +780,6 @@ export function purgeDeletedRecords() {
     state.db[collection] = state.db[collection].filter(item => !item.deletedAt);
     count += before - state.db[collection].length;
   });
+  if (count > 0) markDirty();
   return count;
 }
