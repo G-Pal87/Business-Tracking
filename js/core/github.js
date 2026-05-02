@@ -346,11 +346,26 @@ async function doPushDb(message = 'Update data') {
     //
     // Instead, only adopt items that exist in merged but are absent locally
     // (remote-only additions from another user). Local versions always win.
+    //
+    // Exception: if an item was in the snapshot but is now gone from state.db,
+    // the user permanently deleted it DURING this push. Never re-add those,
+    // or the permanent delete gets silently undone by the post-push sync.
+    const permanentlyDeletedDuringPush = new Set();
+    for (const [col, items] of Object.entries(snapshot)) {
+      if (!Array.isArray(items)) continue;
+      const currentIds = new Set((state.db[col] || []).map(x => x.id));
+      for (const item of items) {
+        if (!currentIds.has(item.id)) permanentlyDeletedDuringPush.add(`${col}:${item.id}`);
+      }
+    }
+
     for (const [col, items] of Object.entries(merged)) {
       if (!Array.isArray(items) || !Array.isArray(state.db[col])) continue;
       const localIds = new Set(state.db[col].map(x => x.id));
       for (const item of items) {
-        if (!localIds.has(item.id)) state.db[col].push(item);
+        if (!localIds.has(item.id) && !permanentlyDeletedDuringPush.has(`${col}:${item.id}`)) {
+          state.db[col].push(item);
+        }
       }
     }
 
