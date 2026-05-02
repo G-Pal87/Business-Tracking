@@ -1266,8 +1266,10 @@
       "documents": [],
       "createdAt": 1777734622683,
       "createdBy": "Giorgos",
-      "updatedAt": 1777734622683,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777750727328,
+      "updatedBy": "RitaK",
+      "deletedAt": 1777750727328,
+      "deletedBy": "RitaK"
     }
   ],
   "payments": [],
