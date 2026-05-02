@@ -1,98 +1,82 @@
-// GitHub API layer — all calls are proxied through the backend server.
-// The PAT is stored server-side only; the browser never sees it.
+// GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
 import { state } from './state.js';
 
-const DB_LS_KEY = 'bt_db_cache';
+const DB_LS_KEY  = 'bt_db_cache';
+const CFG_LS_KEY = 'bt_github_config';
 
 let pushQueue = Promise.resolve();
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
-export async function loadConfig() {
+export function loadConfig() {
   try {
-    const res = await fetch('/api/github/config');
-    if (res.ok) {
-      const cfg = await res.json();
-      state.github.owner          = cfg.owner  || '';
-      state.github.repo           = cfg.repo   || '';
-      state.github.branch         = cfg.branch || 'main';
-      state.github.dbPath         = cfg.dbPath || 'data/db.json';
-      state.github.tokenConfigured = !!cfg.tokenConfigured;
-    }
-  } catch (e) {
-    console.warn('loadConfig', e);
-  }
+    const cfg = JSON.parse(localStorage.getItem(CFG_LS_KEY) || '{}');
+    state.github.owner  = cfg.owner  || '';
+    state.github.repo   = cfg.repo   || '';
+    state.github.branch = cfg.branch || 'main';
+    state.github.dbPath = cfg.path   || 'data/db.json';
+    state.github.token  = cfg.token  || '';
+  } catch { /* ignore */ }
 }
 
-// Save GitHub config to the server (admin only — requires credentials).
-// adminCreds: { username, passwordHash }  (passwordHash = SHA-256 hex of password)
-export async function saveConfig({ owner, repo, branch, dbPath, token, adminCreds }) {
-  const headers = { 'Content-Type': 'application/json' };
-  if (adminCreds?.username && adminCreds?.passwordHash) {
-    headers['Authorization'] = 'Bearer ' +
-      btoa(JSON.stringify({ username: adminCreds.username, passwordHash: adminCreds.passwordHash }));
-  }
+// Called after db.json is loaded — overrides state.github with db.appConfig.github
+// and caches the result to localStorage for next-load bootstrap.
+export function applyDbConfig(ghCfg) {
+  if (!ghCfg) return;
+  if (ghCfg.owner)  state.github.owner  = ghCfg.owner;
+  if (ghCfg.repo)   state.github.repo   = ghCfg.repo;
+  if (ghCfg.branch) state.github.branch = ghCfg.branch;
+  if (ghCfg.path)   state.github.dbPath = ghCfg.path;
+  if (ghCfg.token)  state.github.token  = ghCfg.token;
+  try {
+    localStorage.setItem(CFG_LS_KEY, JSON.stringify({
+      owner:  state.github.owner,
+      repo:   state.github.repo,
+      branch: state.github.branch,
+      path:   state.github.dbPath,
+      token:  state.github.token
+    }));
+  } catch { /* ignore */ }
+}
 
-  const res = await fetch('/api/github/config', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      owner:  owner  || '',
-      repo:   repo   || '',
-      branch: branch || 'main',
-      dbPath: dbPath || 'data/db.json',
-      ...(token ? { token } : {})
-    })
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Config save failed (${res.status})`);
-  }
-
-  const cfg = await res.json();
-  state.github.owner           = cfg.owner;
-  state.github.repo            = cfg.repo;
-  state.github.branch          = cfg.branch;
-  state.github.dbPath          = cfg.dbPath;
-  state.github.tokenConfigured = cfg.tokenConfigured;
-  return cfg;
+export function saveConfig({ owner, repo, branch, dbPath, token }) {
+  state.github.owner  = owner  || '';
+  state.github.repo   = repo   || '';
+  state.github.branch = branch || 'main';
+  state.github.dbPath = dbPath || 'data/db.json';
+  if (token !== undefined) state.github.token = token || '';
+  try {
+    localStorage.setItem(CFG_LS_KEY, JSON.stringify({
+      owner:  state.github.owner,
+      repo:   state.github.repo,
+      branch: state.github.branch,
+      path:   state.github.dbPath,
+      token:  state.github.token
+    }));
+  } catch { /* ignore */ }
 }
 
 export function clearConfig() {
-  // Reset in-memory state. The server config is managed via POST /api/github/config.
-  state.github.owner           = '';
-  state.github.repo            = '';
-  state.github.branch          = 'main';
-  state.github.dbPath          = 'data/db.json';
-  state.github.tokenConfigured = false;
-  state.github.sha             = null;
-  state.github.connected       = false;
-  state.github.remoteDb        = null;
-  state.github.lastPullOk      = false;
-  state.github.lastPushOk      = false;
-  state.github.usingCache      = false;
-  state.github.lastSyncError   = null;
-  state.github.lastPulledAt    = null;
-  state.github.lastPushedAt    = null;
-  state.github.syncNow         = null;
-}
-
-export async function testConnection(adminCreds) {
-  const headers = {};
-  if (adminCreds?.username && adminCreds?.passwordHash) {
-    headers['Authorization'] = 'Bearer ' +
-      btoa(JSON.stringify({ username: adminCreds.username, passwordHash: adminCreds.passwordHash }));
-  }
-  const res = await fetch('/api/github/test', { method: 'POST', headers });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.error || `Test failed (${res.status})`);
-  return body;
+  state.github.token         = '';
+  state.github.owner         = '';
+  state.github.repo          = '';
+  state.github.branch        = 'main';
+  state.github.dbPath        = 'data/db.json';
+  state.github.sha           = null;
+  state.github.connected     = false;
+  state.github.remoteDb      = null;
+  state.github.lastPullOk    = false;
+  state.github.lastPushOk    = false;
+  state.github.usingCache    = false;
+  state.github.lastSyncError = null;
+  state.github.lastPulledAt  = null;
+  state.github.lastPushedAt  = null;
+  state.github.syncNow       = null;
+  try { localStorage.removeItem(CFG_LS_KEY); } catch { /* ignore */ }
 }
 
 // ── Fetch db.json ─────────────────────────────────────────────────────────────
 
-// Decode base64 returned by GET /api/db (server re-encodes large files too)
 function b64decode(str) {
   return decodeURIComponent(escape(atob(str.replace(/\s/g, ''))));
 }
@@ -103,35 +87,54 @@ function b64encode(str) {
 
 function safeParseDb(content) {
   if (typeof content !== 'string' || !content.trim()) {
-    throw new Error('Server returned empty content for db.json');
+    throw new Error('GitHub returned empty content for db.json');
   }
   try { return JSON.parse(content); }
   catch (e) { throw new Error(`db.json contains invalid JSON: ${e.message}`); }
 }
 
 export async function fetchDb() {
+  const { owner, repo, branch, dbPath, token } = state.github;
+  if (!owner || !repo) throw new Error('GitHub not configured');
+
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (token) headers['Authorization'] = `token ${token}`;
+
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}?ref=${encodeURIComponent(branch || 'main')}`;
   let res;
-  try { res = await fetch('/api/db', { cache: 'no-store' }); }
-  catch { throw new Error('Cannot reach server — is it running?'); }
+  try { res = await fetch(url, { headers, cache: 'no-store' }); }
+  catch { throw new Error('Cannot reach GitHub — check your internet connection'); }
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    if (res.status === 503) throw new Error('GitHub not configured on server — set it up in admin settings');
     if (res.status === 404) throw new Error('db.json not found in repo. Create data/db.json first.');
-    if (res.status === 401) throw new Error(err.error || 'GitHub auth failed — update token in admin settings');
-    throw new Error(err.error || `GitHub fetch failed (${res.status})`);
+    if (res.status === 401) throw new Error('GitHub auth failed — check your token');
+    if (res.status === 403) throw new Error('GitHub access denied — check token permissions');
+    throw new Error(`GitHub fetch failed (${res.status})`);
   }
 
-  const { sha, content } = await res.json();
-  const parsed = safeParseDb(b64decode(content));
+  const data = await res.json();
+  const { sha, content, download_url } = data;
 
-  state.github.sha          = sha;
-  state.github.connected    = true;
-  state.github.lastPullOk   = true;
-  state.github.usingCache   = false;
-  state.github.lastPulledAt = Date.now();
+  let parsed;
+  if (content) {
+    parsed = safeParseDb(b64decode(content));
+  } else if (download_url) {
+    const raw = await fetch(download_url).then(r => {
+      if (!r.ok) throw new Error(`Download failed (${r.status})`);
+      return r.text();
+    });
+    parsed = safeParseDb(raw);
+  } else {
+    throw new Error('GitHub returned no content');
+  }
+
+  state.github.sha           = sha;
+  state.github.connected     = true;
+  state.github.lastPullOk    = true;
+  state.github.usingCache    = false;
+  state.github.lastPulledAt  = Date.now();
   state.github.lastSyncError = null;
-  state.github.remoteDb     = structuredClone(parsed);
+  state.github.remoteDb      = structuredClone(parsed);
   return parsed;
 }
 
@@ -143,9 +146,16 @@ export async function pushDb(message = 'Update data') {
 }
 
 async function doPushDb(message = 'Update data') {
-  const { owner, repo } = state.github;
+  const { owner, repo, branch, dbPath, token } = state.github;
   if (!owner || !repo) throw new Error('GitHub not configured');
-  if (!state.github.tokenConfigured) throw new Error('GitHub token not configured — set it in admin settings');
+  if (!token) throw new Error('GitHub token not configured — add it in Settings');
+
+  const apiBase  = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}`;
+  const ghHeaders = {
+    'Accept':        'application/vnd.github+json',
+    'Authorization': `token ${token}`,
+    'Content-Type':  'application/json'
+  };
 
   const snapshot = structuredClone(state.db);
   const base     = state.github.remoteDb ? structuredClone(state.github.remoteDb) : null;
@@ -154,16 +164,18 @@ async function doPushDb(message = 'Update data') {
   for (let attempt = 1; attempt <= 5; attempt++) {
     // GET current SHA + content
     let getRes;
-    try { getRes = await fetch('/api/db', { cache: 'no-store' }); }
-    catch {
+    try {
+      getRes = await fetch(`${apiBase}?ref=${encodeURIComponent(branch || 'main')}`, {
+        headers: ghHeaders, cache: 'no-store'
+      });
+    } catch {
       if (attempt < 5) { await sleep(500 * attempt); continue; }
-      throw new Error('Cannot reach server');
+      throw new Error('Cannot reach GitHub');
     }
 
     if (!getRes.ok) {
-      const err = await getRes.json().catch(() => ({}));
-      if (getRes.status === 401) throw new Error(err.error || 'GitHub auth failed — update token in admin settings');
-      throw new Error(err.error || `Server fetch failed (${getRes.status})`);
+      if (getRes.status === 401 || getRes.status === 403) throw new Error('GitHub auth failed — check your token');
+      throw new Error(`GitHub fetch failed (${getRes.status})`);
     }
 
     const { sha, content } = await getRes.json();
@@ -173,18 +185,19 @@ async function doPushDb(message = 'Update data') {
     // PUT merged content
     let putRes;
     try {
-      putRes = await fetch('/api/db', {
+      putRes = await fetch(apiBase, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: ghHeaders,
         body: JSON.stringify({
-          content: b64encode(JSON.stringify(merged, null, 2)),
           message,
+          content: b64encode(JSON.stringify(merged, null, 2)),
+          branch:  branch || 'main',
           sha
         })
       });
     } catch {
       if (attempt < 5) { await sleep(500 * attempt); continue; }
-      throw new Error('Cannot reach server');
+      throw new Error('Cannot reach GitHub');
     }
 
     if (putRes.status === 409 && attempt < 5) {
@@ -194,12 +207,11 @@ async function doPushDb(message = 'Update data') {
     }
 
     if (!putRes.ok) {
-      const err = await putRes.json().catch(() => ({}));
-      if (putRes.status === 401) throw new Error('Token lacks write access — update in admin settings');
-      throw new Error(err.error || `Push failed (${putRes.status})`);
+      if (putRes.status === 401 || putRes.status === 403) throw new Error('Token lacks write access');
+      throw new Error(`Push failed (${putRes.status})`);
     }
 
-    const { sha: newSha } = await putRes.json();
+    const newSha = (await putRes.json()).content.sha;
 
     state.github.sha          = newSha;
     state.github.remoteDb     = structuredClone(merged);

@@ -57,7 +57,7 @@ async function boot() {
   buildSidebar(MODULES);
   initMobileNav();
 
-  await github.loadConfig();
+  github.loadConfig();
 
   let loaded = false;
   let githubFailed = false;
@@ -69,6 +69,7 @@ async function boot() {
       const localCache = await github.fetchLocalDb();
       const finalDb = localCache ? github.mergeLocalPending(remoteDb, localCache) : remoteDb;
       setDb(finalDb);
+      github.applyDbConfig(finalDb.appConfig?.github);
       github.saveLocalCache(finalDb);
       loaded = true;
       needAutoSave = (finalDb !== remoteDb);
@@ -83,7 +84,11 @@ async function boot() {
   if (!loaded) {
     try {
       const db = await github.fetchLocalDb();
-      if (db) { setDb(db); loaded = true; }
+      if (db) {
+        setDb(db);
+        github.applyDbConfig(db.appConfig?.github);
+        loaded = true;
+      }
     } catch (e) { console.warn(e); }
   }
 
@@ -164,7 +169,7 @@ async function boot() {
 
     // Changes arrived during the push — do one more push immediately instead
     // of waiting for the subscriber's 1.5 s timer to fire again.
-    if (hadNewChanges && state.github.tokenConfigured && state.github.owner && state.github.repo) {
+    if (hadNewChanges && state.github.token && state.github.owner && state.github.repo) {
       doSave().catch(() => {});
     }
   };
@@ -174,7 +179,7 @@ async function boot() {
   const retryBtn = document.getElementById('sync-retry');
   if (retryBtn) {
     retryBtn.onclick = () => {
-      if (state.github.tokenConfigured && state.github.owner && state.github.repo) {
+      if (state.github.token && state.github.owner && state.github.repo) {
         if (!pushPending) {
           clearTimeout(pushTimer);
           pushTimer = null;
@@ -189,7 +194,7 @@ async function boot() {
   subscribe(evt => {
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
-      if (state.github.tokenConfigured && state.github.owner && state.github.repo) {
+      if (state.github.token && state.github.owner && state.github.repo) {
         if (!pushPending) {
           // No push in flight — start the debounce timer.
           updateSyncStatus('syncing', 'Local changes pending sync…');
