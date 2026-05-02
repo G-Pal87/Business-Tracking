@@ -1229,8 +1229,10 @@
       "documents": [],
       "createdAt": 1777734611075,
       "createdBy": "Giorgos",
-      "updatedAt": 1777734611075,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777751028624,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777751028624,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_moohaizjbi",
