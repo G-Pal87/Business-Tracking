@@ -1,7 +1,8 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
-import { saveConfig, clearConfig, fetchDb, saveLocalCache, resolveGitRemote } from '../core/github.js';
+import { saveConfig, clearConfig, testConnection, fetchDb, saveLocalCache } from '../core/github.js';
+import { hashPassword } from '../core/auth.js';
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords } from '../core/data.js';
 import { setDb } from '../core/state.js';
@@ -31,7 +32,7 @@ function build() {
 }
 
 function githubStatusBadge(g) {
-  if (!g.owner || !g.repo || !g.token) {
+  if (!g.owner || !g.repo || !g.tokenConfigured) {
     return el('span', { class: 'badge' }, 'Not configured');
   }
   if (g.lastSyncError && (g.lastSyncError.toLowerCase().includes('conflict'))) {
@@ -58,6 +59,9 @@ function githubStatusBadge(g) {
 function buildGithubCard() {
   const card = el('div', { class: 'card mb-16' });
   const g = state.github;
+  const isAdmin = state.session?.role === 'admin';
+  const isFirstSetup = !g.tokenConfigured;
+
   card.appendChild(el('div', { class: 'card-header' },
     el('div', {},
       el('div', { class: 'card-title' }, 'GitHub Storage'),
@@ -67,72 +71,141 @@ function buildGithubCard() {
   ));
 
   if (g.lastSyncError) {
-    const errBanner = el('div', {
+    card.appendChild(el('div', {
       style: 'background:var(--danger-light,#fff0f0);border-left:3px solid var(--danger,#dc3545);padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--danger,#dc3545);border-radius:4px'
-    }, `Last sync error: ${g.lastSyncError}`);
-    card.appendChild(errBanner);
+    }, `Last sync error: ${g.lastSyncError}`));
   }
 
-  const ownerI = input({ value: g.owner, placeholder: 'github-username' });
-  const repoI = input({ value: g.repo, placeholder: 'business-tracking' });
+  if (!isAdmin) {
+    const infoGrid = el('div', { style: 'display:grid;grid-template-columns:120px 1fr;gap:8px 16px;font-size:13px;margin-bottom:8px' });
+    for (const [label, value] of [
+      ['Owner', g.owner || '\u2014'],
+      ['Repo',  g.repo  || '\u2014'],
+      ['Branch', g.branch || 'main'],
+      ['DB Path', g.dbPath || 'data/db.json'],
+      ['Token', g.tokenConfigured ? 'Configured' : 'Not configured'],
+    ]) {
+      infoGrid.appendChild(el('div', { style: 'color:var(--text-muted)' }, label));
+      infoGrid.appendChild(el('div', {}, value));
+    }
+    card.appendChild(infoGrid);
+    return card;
+  }
+
+  // Admin edit form
+  const ownerI  = input({ value: g.owner,  placeholder: 'github-username' });
+  const repoI   = input({ value: g.repo,   placeholder: 'business-tracking' });
   const branchI = input({ value: g.branch || 'main', placeholder: 'main' });
-  const tokenI = input({ value: g.token ? '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' : '', type: 'password', placeholder: 'Personal Access Token' });
-  tokenI.dataset.modified = 'false';
-  tokenI.addEventListener('input', () => { tokenI.dataset.modified = 'true'; });
-
-  if (!g.owner || !g.repo) {
-    resolveGitRemote().then(info => {
-      if (!info) return;
-      if (!ownerI.value) ownerI.value = info.owner;
-      if (!repoI.value)  repoI.value  = info.repo;
-    });
-  }
+  const dbPathI = input({ value: g.dbPath || 'data/db.json', placeholder: 'data/db.json' });
+  const tokenI  = input({ type: 'password', placeholder: g.tokenConfigured ? 'Leave blank to keep current token' : 'ghp_\u2026' });
 
   card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Owner', ownerI), formRow('Repo', repoI)));
-  card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Branch', branchI), formRow('Token (PAT)', tokenI, 'Requires repo scope. Stored in localStorage only.')));
+  card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Branch', branchI), formRow('DB Path', dbPathI)));
+
+  const tokenHint = g.tokenConfigured
+    ? 'Token is configured server-side. Leave blank to keep it. Enter a new value to replace.'
+    : 'Required. Stored encrypted on the server \u2014 never in the browser.';
+  card.appendChild(el('div', { class: 'form-row horizontal' },
+    formRow(g.tokenConfigured ? 'Token (configured)' : 'Token (PAT)', tokenI, tokenHint)
+  ));
+
+  let adminPwI = null;
+  if (!isFirstSetup) {
+    adminPwI = input({ type: 'password', placeholder: 'Your admin password (required to save)' });
+    card.appendChild(formRow('Admin Password', adminPwI));
+  }
+
+  const getAdminCreds = async () => {
+    if (isFirstSetup) return null;
+    const pw = adminPwI?.value || '';
+    if (!pw) { toast('Admin password required to save', 'danger'); return undefined; }
+    const passwordHash = await hashPassword(pw);
+    return { username: state.session.username, passwordHash };
+  };
 
   const saveBtn = button('Save & Pull', { variant: 'primary', onClick: async () => {
-    const token = tokenI.dataset.modified === 'true' ? tokenI.value.trim() : g.token;
-    saveConfig({ token, owner: ownerI.value.trim(), repo: repoI.value.trim(), branch: branchI.value.trim() });
+    const adminCreds = await getAdminCreds();
+    if (adminCreds === undefined) return;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving\u2026';
     try {
+      const tokenVal = tokenI.value.trim();
+      await saveConfig({
+        owner:  ownerI.value.trim(),
+        repo:   repoI.value.trim(),
+        branch: branchI.value.trim(),
+        dbPath: dbPathI.value.trim(),
+        ...(tokenVal ? { token: tokenVal } : {}),
+        adminCreds
+      });
       const db = await fetchDb();
       setDb(db);
       saveLocalCache(db);
       toast('Connected! Data loaded from GitHub.', 'success');
-      setTimeout(() => location.hash = 'analytics', 250);
+      setTimeout(() => navigate('settings'), 250);
     } catch (e) {
-      toast('Pull failed: ' + e.message, 'danger', 5000);
-    }
-  }});
-
-  const pushBtn = button('Push to GitHub', { onClick: async () => {
-    if (!state.github.syncNow) { toast('Not ready \u2014 reload the page', 'warning'); return; }
-    pushBtn.disabled = true;
-    pushBtn.textContent = 'Pushing\u2026';
-    try {
-      await state.github.syncNow();
-      toast('Pushed to GitHub', 'success');
-    } catch (e) {
-      toast('Push failed: ' + (state.github.lastSyncError || e.message), 'danger', 5000);
+      toast('Save failed: ' + e.message, 'danger', 5000);
     } finally {
-      pushBtn.disabled = false;
-      pushBtn.textContent = 'Push to GitHub';
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save & Pull';
     }
-    setTimeout(() => navigate('settings'), 150);
   }});
 
-  const disconnect = button('Disconnect', { variant: 'danger', onClick: () => {
-    clearConfig();
-    toast('Disconnected', 'info');
-    setTimeout(() => location.hash = 'settings', 200);
+  const testBtn = button('Test Connection', { onClick: async () => {
+    const adminCreds = await getAdminCreds();
+    if (adminCreds === undefined) return;
+    testBtn.disabled = true;
+    testBtn.textContent = 'Testing\u2026';
+    try {
+      const result = await testConnection(adminCreds);
+      toast(result.message || 'Connection OK', 'success');
+    } catch (e) {
+      toast('Test failed: ' + e.message, 'danger', 5000);
+    } finally {
+      testBtn.disabled = false;
+      testBtn.textContent = 'Test Connection';
+    }
   }});
 
-  const btnRow = el('div', { class: 'flex gap-8' });
+  const btnRow = el('div', { class: 'flex gap-8', style: 'margin-top:8px' });
   btnRow.appendChild(saveBtn);
-  if (g.token) {
+  btnRow.appendChild(testBtn);
+
+  if (g.tokenConfigured) {
+    const pushBtn = button('Push Now', { onClick: async () => {
+      if (!state.github.syncNow) { toast('Not ready \u2014 reload the page', 'warning'); return; }
+      pushBtn.disabled = true;
+      pushBtn.textContent = 'Pushing\u2026';
+      try {
+        await state.github.syncNow();
+        toast('Pushed to GitHub', 'success');
+      } catch (e) {
+        toast('Push failed: ' + (state.github.lastSyncError || e.message), 'danger', 5000);
+      } finally {
+        pushBtn.disabled = false;
+        pushBtn.textContent = 'Push Now';
+      }
+      setTimeout(() => navigate('settings'), 150);
+    }});
     btnRow.appendChild(pushBtn);
-    btnRow.appendChild(disconnect);
+
+    const disconnectBtn = button('Disconnect', { variant: 'danger', onClick: async () => {
+      const adminCreds = await getAdminCreds();
+      if (adminCreds === undefined) return;
+      const ok = await confirmDialog('Disconnect from GitHub? The server config will be cleared.', { danger: true, okLabel: 'Disconnect' });
+      if (!ok) return;
+      try {
+        await saveConfig({ owner: '', repo: '', branch: 'main', dbPath: 'data/db.json', adminCreds });
+        clearConfig();
+        toast('Disconnected from GitHub', 'info');
+        setTimeout(() => navigate('settings'), 200);
+      } catch (e) {
+        toast('Disconnect failed: ' + e.message, 'danger', 5000);
+      }
+    }});
+    btnRow.appendChild(disconnectBtn);
   }
+
   card.appendChild(btnRow);
 
   if (g.lastSyncError && !g.usingCache) {
