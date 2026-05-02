@@ -178,8 +178,20 @@ async function doPushDb(message = 'Update data') {
       throw new Error(`GitHub fetch failed (${getRes.status})`);
     }
 
-    const { sha, content } = await getRes.json();
-    const freshDb = safeParseDb(b64decode(content));
+    const getData = await getRes.json();
+    const { sha } = getData;
+    let freshDb;
+    if (getData.content) {
+      freshDb = safeParseDb(b64decode(getData.content));
+    } else if (getData.download_url) {
+      const raw = await fetch(getData.download_url).then(r => {
+        if (!r.ok) throw new Error(`Download failed (${r.status})`);
+        return r.text();
+      });
+      freshDb = safeParseDb(raw);
+    } else {
+      throw new Error('GitHub returned no content for db.json');
+    }
     const merged  = mergeDb(freshDb, snapshot, base);
 
     // PUT merged content
