@@ -1309,8 +1309,10 @@
       "recurrence": "recurring",
       "createdAt": 1777708164475,
       "createdBy": "Giorgos",
-      "updatedAt": 1777708164475,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777708199172,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777708199172,
+      "deletedBy": "Giorgos"
     }
   ],
   "vendors": [
