@@ -627,7 +627,6 @@ function buildTrashCard() {
         return { collection: key.slice(0, i), id: key.slice(i + 1) };
       });
       const count = permanentlyDeleteRecords(targets);
-      if (count > 0) markDirty();
       toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
       renderCard(colSel.value);
     };
@@ -639,7 +638,6 @@ function buildTrashCard() {
       );
       if (!ok) return;
       const count = purgeDeletedRecords();
-      if (count > 0) markDirty();
       toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
       renderCard();
     };
@@ -711,7 +709,6 @@ function buildTrashCard() {
           );
           if (!ok) return;
           permanentlyDeleteRecord(collection, item.id);
-          markDirty();
           toast('Permanently deleted', 'success');
           renderCard(colSel.value);
         }
