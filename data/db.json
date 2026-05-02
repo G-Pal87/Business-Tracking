@@ -1883,6 +1883,17 @@
       "updatedBy": "Giorgos",
       "deletedAt": 1777743163734,
       "deletedBy": "Giorgos"
+    },
+    {
+      "id": "usr_mooqtijpq5",
+      "username": "RitaK",
+      "name": "Rita",
+      "role": "admin",
+      "passwordHash": "64bf621b3dad972a3e1a4c3115e712c4c30ae503ec6e82fa4242f3b05eadf3a6",
+      "createdAt": 1777750639978,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777750639978,
+      "updatedBy": "Giorgos"
     }
   ],
   "settings": {
