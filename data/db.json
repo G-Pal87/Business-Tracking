@@ -1600,6 +1600,23 @@
       "createdBy": "RitaK",
       "updatedAt": 1777818230071,
       "updatedBy": "RitaK"
+    },
+    {
+      "id": "cli_mopva4gida",
+      "name": "Alexis Papageorgiou",
+      "email": "",
+      "address": "Louis-Gellersen Weg 16 21271 Hanstedt Deutschland /Germany",
+      "vatNumber": "Tax-ID: 50-133-09634",
+      "registrationNumber": "",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "contractStart": "2026-04-30",
+      "notes": "",
+      "createdAt": 1777818631173,
+      "createdBy": "RitaK",
+      "updatedAt": 1777818631173,
+      "updatedBy": "RitaK"
     }
   ],
   "services": [
