@@ -1583,6 +1583,23 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777487207327,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "cli_mopv1ry6r4",
+      "name": "Plug & Play Germany GmbH",
+      "email": "",
+      "address": "Pfaffenwaldring 19 70569 Stuttgart",
+      "vatNumber": "DE305954942",
+      "registrationNumber": "",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2026-03-01",
+      "notes": "",
+      "createdAt": 1777818230071,
+      "createdBy": "RitaK",
+      "updatedAt": 1777818230071,
+      "updatedBy": "RitaK"
     }
   ],
   "services": [
