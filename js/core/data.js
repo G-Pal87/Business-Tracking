@@ -221,6 +221,29 @@ export function renovationCapexEUR(filters) {
   return total;
 }
 
+// ── Sum helpers — operate on already-filtered arrays ─────────────────────────
+export function sumPaymentsEUR(payments) {
+  return payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+}
+export function sumInvoicesEUR(invoices) {
+  return invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+}
+export function sumExpensesEUR(expenses) {
+  return expenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+}
+
+// Unfiltered yearly totals — used for period-over-period comparisons
+export function yearTotalsEUR(year) {
+  const pays  = listActivePayments().filter(p => p.status === 'paid'    && (p.date      || '').startsWith(year));
+  const invs  = listActive('invoices').filter(i => i.status === 'paid'  && (i.issueDate || '').startsWith(year));
+  const opEx  = listActive('expenses').filter(e => !isCapEx(e)          && (e.date      || '').startsWith(year));
+  const capEx = listActive('expenses').filter(e =>  isCapEx(e)          && (e.date      || '').startsWith(year));
+  const rev   = sumPaymentsEUR(pays) + sumInvoicesEUR(invs);
+  const exp   = sumExpensesEUR(opEx);
+  const reno  = sumExpensesEUR(capEx);
+  return { rev, exp, reno, net: rev - exp, netCash: rev - exp - reno };
+}
+
 export function netIncomeEUR(filters) {
   return totalRevenueEUR(filters) - totalExpensesEUR(filters, { includeRenovation: false });
 }
