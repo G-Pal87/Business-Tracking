@@ -482,6 +482,18 @@ export function getForecastVsActual(type, entityId, year) {
   return { forecast: fc, months, yearTarget: fc?.yearTarget || { revenue: 0, expenses: 0 } };
 }
 
+export function forecastedRevenueEUR(year) {
+  const forecasts = (state.db.forecasts || []).filter(f => f.year === Number(year));
+  return forecasts.reduce((sum, fc) => {
+    return sum + Object.values(fc.months || {}).reduce((ms, md) => {
+      const entries = Array.isArray(md.entries) ? md.entries : [];
+      return ms + (entries.length > 0
+        ? entries.reduce((es, e) => es + (Number(e.amount) || 0), 0)
+        : Number(md.revenue) || 0);
+    }, 0);
+  }, 0);
+}
+
 export function estimateTaxForYear(year, rate) {
   const s = `${year}-01-01`, e = `${year}-12-31`;
   const rev = [...listActivePayments().filter(p => p.status === 'paid' && p.date >= s && p.date <= e).map(p => toEUR(p.amount, p.currency, year)), ...listActive('invoices').filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e).map(i => toEUR(i.total, i.currency, year))].reduce((a, b) => a + b, 0);
