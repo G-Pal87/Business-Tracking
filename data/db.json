@@ -2983,7 +2983,7 @@
       "year": 2026,
       "taxRate": 0,
       "yearTarget": {
-        "revenue": 0,
+        "revenue": 100000,
         "expenses": 0
       },
       "months": {
@@ -3028,8 +3028,8 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777846070491,
+      "updatedBy": "RitaK"
     },
     {
       "id": "fcs_mo92cf518j",
