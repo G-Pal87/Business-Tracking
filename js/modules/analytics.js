@@ -5,7 +5,8 @@ import { STREAMS, OWNERS, COST_CATEGORIES, EXPENSE_CATEGORIES } from '../core/co
 import {
   availableYears, formatEUR, toEUR, byId,
   listActive, listActivePayments, listActiveClients,
-  isCapEx, drillRevRows, drillExpRows, forecastedRevenueEUR, forecastMonthlyEUR
+  isCapEx, drillRevRows, drillExpRows, forecastedRevenueEUR, forecastMonthlyEUR,
+  sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR, yearTotalsEUR
 } from '../core/data.js';
 
 // ── Module-local filter state ────────────────────────────────────────────────
@@ -70,10 +71,9 @@ function getData() {
   const renoExpenses = listActive('expenses').filter(e =>
     isCapEx(e) && matchDate(e) && matchOwner(e) && matchProperty(e)
   );
-  const rev  = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
-             + invoices.reduce((s, i) => s + toEUR(i.total,  i.currency, i.issueDate), 0);
-  const exp  = opExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-  const reno = renoExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const rev  = sumPaymentsEUR(payments) + sumInvoicesEUR(invoices);
+  const exp  = sumExpensesEUR(opExpenses);
+  const reno = sumExpensesEUR(renoExpenses);
   return { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net: rev - exp };
 }
 
@@ -228,7 +228,8 @@ function mixedRows(revPays, revInvs, expItems) {
 }
 
 // ── Business Health Summary strip ─────────────────────────────────────────────
-function buildHealthSummary(data) {
+// prevYearCtx: { year, rev, exp, reno, net, netCash, expRatio, outstanding, forecastVariance } | null
+function buildHealthSummary(data, prevYearCtx) {
   const { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net } = data;
   const netCash  = net - reno;
   const expRatio = rev > 0 ? (exp / rev) * 100 : 0;
@@ -240,7 +241,7 @@ function buildHealthSummary(data) {
     matchStream(i) &&
     matchClient(i)
   );
-  const outstanding = outstandingInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const outstanding = sumInvoicesEUR(outstandingInvs);
 
   // Forecast variance: actual revenue minus total forecasted revenue for current year
   const currentYear = gFilters.year !== 'all' ? gFilters.year : null;
@@ -248,30 +249,6 @@ function buildHealthSummary(data) {
   if (currentYear) {
     const fRev = forecastedRevenueEUR(currentYear);
     if (fRev > 0) forecastVariance = rev - fRev;
-  }
-
-  // Previous period (year - 1) — only available when a specific year is selected
-  let prevRev = null, prevNet = null, prevNetCash = null, prevExpRatio = null;
-  let prevOutstanding = null, prevForecastVariance = null;
-  const prevYear = currentYear ? String(Number(currentYear) - 1) : null;
-  if (prevYear) {
-    const pyPay  = listActivePayments().filter(p => p.status === 'paid' && (p.date || '').startsWith(prevYear));
-    const pyInv  = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '').startsWith(prevYear));
-    const pyOpEx = listActive('expenses').filter(e => !isCapEx(e) && (e.date || '').startsWith(prevYear));
-    const pyReno = listActive('expenses').filter(e => isCapEx(e)  && (e.date || '').startsWith(prevYear));
-    prevRev = pyPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
-            + pyInv.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-    const pyExpTotal  = pyOpEx.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    const pyRenoTotal = pyReno.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    prevNet      = prevRev - pyExpTotal;
-    prevNetCash  = prevNet - pyRenoTotal;
-    prevExpRatio = prevRev > 0 ? (pyExpTotal / prevRev) * 100 : null;
-    const pyOutInvs = listActive('invoices').filter(i =>
-      (i.status === 'sent' || i.status === 'overdue') && (i.issueDate || '').startsWith(prevYear)
-    );
-    prevOutstanding = pyOutInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-    const pyFRev = forecastedRevenueEUR(prevYear);
-    if (pyFRev > 0) prevForecastVariance = prevRev - pyFRev;
   }
 
   const section = el('div', { class: 'card mb-16' });
@@ -287,35 +264,35 @@ function buildHealthSummary(data) {
     'Revenue', formatEUR(rev),
     rev >= 0 ? '' : 'danger',
     () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
-    periodTrend(rev, prevRev, prevYear)
+    periodTrend(rev, prevYearCtx?.rev, prevYearCtx?.year)
   ));
 
   strip.appendChild(kpiCard(
     'Net Profit', formatEUR(net),
     net >= 0 ? 'success' : 'danger',
     () => drillDownModal('Net Profit Breakdown', mixedRows(payments, invoices, opExpenses), MIXED_COLS),
-    periodTrend(net, prevNet, prevYear)
+    periodTrend(net, prevYearCtx?.net, prevYearCtx?.year)
   ));
 
   strip.appendChild(kpiCard(
     'Cash Flow', formatEUR(netCash),
     netCash >= 0 ? 'success' : 'danger',
     () => drillDownModal('Cash Flow Breakdown', mixedRows(payments, invoices, [...opExpenses, ...renoExpenses]), MIXED_COLS),
-    periodTrend(netCash, prevNetCash, prevYear)
+    periodTrend(netCash, prevYearCtx?.netCash, prevYearCtx?.year)
   ));
 
   strip.appendChild(kpiCard(
     'Expense Ratio', rev > 0 ? `${expRatio.toFixed(1)}%` : '—',
     expRatio > 80 ? 'danger' : expRatio > 60 ? 'warning' : '',
     () => drillDownModal('Operating Expenses', drillExpRows(opExpenses), EXP_COLS),
-    periodTrend(expRatio, prevExpRatio, prevYear, true)
+    periodTrend(expRatio, prevYearCtx?.expRatio, prevYearCtx?.year, true)
   ));
 
   strip.appendChild(kpiCard(
     'Outstanding Invoices', formatEUR(outstanding),
     outstanding > 0 ? 'warning' : '',
     () => drillDownModal('Outstanding Invoices', drillRevRows([], outstandingInvs), REV_COLS),
-    periodTrend(outstanding, prevOutstanding, prevYear, true)
+    periodTrend(outstanding, prevYearCtx?.outstanding, prevYearCtx?.year, true)
   ));
 
   const varVariant = forecastVariance === null ? '' : forecastVariance >= 0 ? 'success' : 'danger';
@@ -323,7 +300,7 @@ function buildHealthSummary(data) {
     'Forecast Variance', forecastVariance !== null ? formatEUR(forecastVariance) : '—',
     varVariant,
     () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
-    forecastVariance !== null ? periodTrend(forecastVariance, prevForecastVariance, prevYear) : null
+    forecastVariance !== null ? periodTrend(forecastVariance, prevYearCtx?.forecastVariance, prevYearCtx?.year) : null
   ));
 
   section.appendChild(strip);
@@ -633,25 +610,32 @@ function buildView() {
   const { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net } = data;
   const netCash = net - reno;
 
+  // Previous year context — computed once, shared by Health Summary and KPI row
+  const currentYear = gFilters.year !== 'all' ? gFilters.year : null;
+  const prevYear    = currentYear ? String(Number(currentYear) - 1) : null;
+  let prevYearCtx   = null;
+  if (prevYear) {
+    const pt = yearTotalsEUR(prevYear);
+    const prevExpRatio = pt.rev > 0 ? (pt.exp / pt.rev) * 100 : null;
+    const prevOutstanding = sumInvoicesEUR(
+      listActive('invoices').filter(i =>
+        (i.status === 'sent' || i.status === 'overdue') && (i.issueDate || '').startsWith(prevYear)
+      )
+    );
+    const pyFRev = forecastedRevenueEUR(prevYear);
+    prevYearCtx = {
+      year: prevYear, ...pt,
+      expRatio: prevExpRatio,
+      outstanding: prevOutstanding,
+      forecastVariance: pyFRev > 0 ? pt.rev - pyFRev : null
+    };
+  }
+
   // ── Business Health Summary ────────────────────────────────────────────────
-  wrap.appendChild(buildHealthSummary(data));
+  wrap.appendChild(buildHealthSummary(data, prevYearCtx));
 
   // ── Business Trends ────────────────────────────────────────────────────────
   wrap.appendChild(buildTrendsSection());
-
-  // YoY comparison (only when a specific year is selected)
-  let prevRev = null, prevNet = null;
-  const prevYear = gFilters.year && gFilters.year !== 'all'
-    ? String(Number(gFilters.year) - 1) : null;
-  if (prevYear) {
-    const pyPay = listActivePayments().filter(p => p.status === 'paid' && (p.date || '').startsWith(prevYear));
-    const pyInv = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '').startsWith(prevYear));
-    const pyExp = listActive('expenses').filter(e => !isCapEx(e) && (e.date || '').startsWith(prevYear));
-    prevRev = pyPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
-            + pyInv.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-    const prevExp2 = pyExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    prevNet = prevRev - prevExp2;
-  }
 
   // ── KPI row (5 cards) ──────────────────────────────────────────────────────
   const kpiRow = el('div', { class: 'grid grid-4 mb-16', style: 'grid-template-columns:repeat(5,1fr)' });
@@ -660,7 +644,7 @@ function buildView() {
     'Revenue', formatEUR(rev),
     rev >= 0 ? '' : 'danger',
     () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
-    yoyTrend(rev, prevRev, prevYear)
+    yoyTrend(rev, prevYearCtx?.rev, prevYear)
   ));
   kpiRow.appendChild(kpiCard(
     'Operating Expenses', formatEUR(exp),
@@ -675,7 +659,7 @@ function buildView() {
       mixedRows(payments, invoices, opExpenses),
       MIXED_COLS
     ),
-    yoyTrend(net, prevNet, prevYear)
+    yoyTrend(net, prevYearCtx?.net, prevYear)
   ));
   kpiRow.appendChild(kpiCard(
     'Renovation CapEx', formatEUR(reno),
@@ -740,9 +724,8 @@ function buildView() {
     const oPay = payments.filter(p => (byId('properties', p.propertyId)?.owner || 'both') === owner);
     const oInv = invoices.filter(i => (byId('clients',    i.clientId)?.owner  || 'both') === owner);
     const oExp = opExpenses.filter(e => (byId('properties', e.propertyId)?.owner || 'both') === owner);
-    const oRev = oPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
-               + oInv.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-    const oExp2 = oExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    const oRev  = sumPaymentsEUR(oPay) + sumInvoicesEUR(oInv);
+    const oExp2 = sumExpensesEUR(oExp);
     return { owner, rev: oRev, exp: oExp2, net: oRev - oExp2, pays: oPay, invs: oInv, opExps: oExp };
   }).filter(r => r.rev > 0 || r.exp > 0);
 
