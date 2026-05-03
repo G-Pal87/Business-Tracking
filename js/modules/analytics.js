@@ -743,7 +743,7 @@ function buildView() {
     const oRev = oPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
                + oInv.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
     const oExp2 = oExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    return { owner, rev: oRev, exp: oExp2, net: oRev - oExp2 };
+    return { owner, rev: oRev, exp: oExp2, net: oRev - oExp2, pays: oPay, invs: oInv, opExps: oExp };
   }).filter(r => r.rev > 0 || r.exp > 0);
 
   if (ownerRows.length > 0) {
@@ -757,7 +757,14 @@ function buildView() {
     ownerTable.appendChild(el('thead', {}, hdr));
     const tb = el('tbody');
     for (const r of ownerRows) {
-      const tr = el('tr');
+      const tr = el('tr', { style: 'cursor:pointer', title: 'Click for breakdown' });
+      tr.addEventListener('mouseenter', () => { tr.style.background = 'var(--bg-elev-2)'; });
+      tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+      tr.onclick = () => drillDownModal(
+        `${OWNERS[r.owner] || r.owner} — Breakdown`,
+        mixedRows(r.pays, r.invs, r.opExps),
+        MIXED_COLS
+      );
       tr.appendChild(el('td', {}, el('span', { class: 'badge' }, OWNERS[r.owner] || r.owner)));
       tr.appendChild(el('td', { class: 'right num' }, formatEUR(r.rev)));
       tr.appendChild(el('td', { class: 'right num' }, formatEUR(r.exp)));
@@ -1014,6 +1021,7 @@ function buildTransactionTable(container, { payments, invoices, opExpenses, reno
     rows.push({
       _date:     p.date,
       _eur:      toEUR(p.amount, p.currency, p.date),
+      _srcPay:   p,
       date:      fmtDate(p.date),
       type:      'Payment',
       stream:    STREAMS[p.stream]?.short || p.stream || '—',
@@ -1029,6 +1037,7 @@ function buildTransactionTable(container, { payments, invoices, opExpenses, reno
     rows.push({
       _date:     i.issueDate,
       _eur:      toEUR(i.total, i.currency, i.issueDate),
+      _srcInv:   i,
       date:      fmtDate(i.issueDate),
       type:      'Invoice',
       stream:    STREAMS[i.stream]?.short || i.stream || '—',
@@ -1045,6 +1054,7 @@ function buildTransactionTable(container, { payments, invoices, opExpenses, reno
     rows.push({
       _date:     e.date,
       _eur:      -eurAmt,
+      _srcExp:   e,
       date:      fmtDate(e.date),
       type:      isCapEx(e) ? 'CapEx' : 'OpEx',
       stream:    STREAMS[e.stream]?.short || '—',
@@ -1076,7 +1086,14 @@ function buildTransactionTable(container, { payments, invoices, opExpenses, reno
 
   const tbody = el('tbody');
   for (const r of rows) {
-    const tr = el('tr');
+    const tr = el('tr', { style: 'cursor:pointer', title: 'Click for details' });
+    tr.addEventListener('mouseenter', () => { tr.style.background = 'var(--bg-elev-2)'; });
+    tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+    tr.onclick = () => {
+      if (r._srcPay) drillDownModal('Payment Detail', drillRevRows([r._srcPay], []), REV_COLS);
+      else if (r._srcInv) drillDownModal('Invoice Detail', drillRevRows([], [r._srcInv]), REV_COLS);
+      else if (r._srcExp) drillDownModal('Expense Detail', drillExpRows([r._srcExp]), EXP_COLS);
+    };
     TX_COLS.forEach(col => {
       tr.appendChild(el('td', { class: col.right ? 'right num' : '' }, r[col.key] ?? '—'));
     });
