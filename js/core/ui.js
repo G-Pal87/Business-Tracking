@@ -113,15 +113,18 @@ export function drillDownModal(title, rows, columns) {
 
 export function confirmDialog(message, { title = 'Confirm', okLabel = 'OK', danger = false } = {}) {
   return new Promise(resolve => {
+    let resolved = false;
+    const settle = val => { if (!resolved) { resolved = true; resolve(val); } };
     const okBtn = el('button', { class: 'btn ' + (danger ? 'danger' : 'primary') }, okLabel);
     const cancelBtn = el('button', { class: 'btn' }, 'Cancel');
     const { close } = openModal({
       title,
       body: el('div', {}, message),
-      footer: [cancelBtn, okBtn]
+      footer: [cancelBtn, okBtn],
+      onClose: () => settle(false)
     });
-    okBtn.onclick = () => { close(); resolve(true); };
-    cancelBtn.onclick = () => { close(); resolve(false); };
+    okBtn.onclick = () => { close(); settle(true); };
+    cancelBtn.onclick = () => { close(); settle(false); };
   });
 }
 
