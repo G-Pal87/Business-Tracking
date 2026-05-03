@@ -1,7 +1,7 @@
 // Executive Analytics Dashboard
 import { el, select, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { STREAMS, OWNERS } from '../core/config.js';
+import { STREAMS, OWNERS, COST_CATEGORIES, EXPENSE_CATEGORIES } from '../core/config.js';
 import {
   availableYears, formatEUR, toEUR, byId,
   listActive, listActivePayments, listActiveClients,
@@ -19,7 +19,7 @@ let gFilters = {
 };
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CHART_IDS    = ['exec-bar', 'exec-donut', 'exec-hbar', 'exec-trend-rev', 'exec-trend-profit', 'exec-trend-cashflow'];
+const CHART_IDS    = ['exec-bar', 'exec-donut', 'exec-hbar', 'exec-trend-rev', 'exec-trend-profit', 'exec-trend-cashflow', 'exec-kd-rev-stream', 'exec-kd-profit-stream', 'exec-kd-exp-cat'];
 
 // ── Module definition ────────────────────────────────────────────────────────
 export default {
@@ -468,6 +468,117 @@ function renderTrendCharts({ payments, invoices, opExpenses, renoExpenses }) {
   });
 }
 
+// ── Key Drivers section — DOM skeleton ───────────────────────────────────────
+function buildKeyDriversSection() {
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Key Drivers')
+  ));
+  const grid = el('div', {
+    style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:0 16px 16px'
+  });
+  const makePanel = (title, canvasId) => {
+    const panel = el('div');
+    panel.appendChild(el('div', { class: 'kpi-label', style: 'margin-bottom:8px' }, title));
+    panel.appendChild(el('div', { class: 'chart-wrap' }, el('canvas', { id: canvasId })));
+    return panel;
+  };
+  grid.appendChild(makePanel('Revenue by Stream',    'exec-kd-rev-stream'));
+  grid.appendChild(makePanel('Profit by Stream',     'exec-kd-profit-stream'));
+  grid.appendChild(makePanel('Expenses by Category', 'exec-kd-exp-cat'));
+  card.appendChild(grid);
+  return card;
+}
+
+// ── Key Drivers — render 3 doughnut charts ────────────────────────────────────
+function renderKeyDrivers({ payments, invoices, opExpenses, renoExpenses }) {
+  // ── Revenue by Stream ─────────────────────────────────────────────────────
+  const revStreamMap = new Map();
+  payments.forEach(p => {
+    const s = p.stream || 'other';
+    revStreamMap.set(s, (revStreamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
+  });
+  invoices.forEach(i => {
+    const s = i.stream || 'other';
+    revStreamMap.set(s, (revStreamMap.get(s) || 0) + toEUR(i.total, i.currency, i.issueDate));
+  });
+  const revEntries    = [...revStreamMap.entries()].filter(([, v]) => v > 0);
+  const revStreamKeys = revEntries.map(([k]) => k);
+  if (revEntries.length) {
+    charts.doughnut('exec-kd-rev-stream', {
+      labels: revEntries.map(([k]) => STREAMS[k]?.label || k),
+      data:   revEntries.map(([, v]) => Math.round(v)),
+      colors: revEntries.map(([k]) => STREAMS[k]?.color || '#8b93b0'),
+      onClickItem: (label, idx) => {
+        const sk = revStreamKeys[idx];
+        drillDownModal(
+          `Revenue — ${label}`,
+          drillRevRows(
+            payments.filter(p => (p.stream || 'other') === sk),
+            invoices.filter(i => (i.stream || 'other') === sk)
+          ),
+          REV_COLS
+        );
+      }
+    });
+  }
+
+  // ── Profit by Stream ──────────────────────────────────────────────────────
+  const allStreams = new Set([
+    ...payments.map(p => p.stream || 'other'),
+    ...invoices.map(i => i.stream || 'other'),
+    ...opExpenses.map(e => e.stream || 'other')
+  ]);
+  const profitStreamMap = new Map();
+  allStreams.forEach(s => {
+    const sRev = payments.filter(p => (p.stream || 'other') === s)
+                         .reduce((sum, p) => sum + toEUR(p.amount, p.currency, p.date), 0)
+               + invoices.filter(i => (i.stream || 'other') === s)
+                         .reduce((sum, i) => sum + toEUR(i.total, i.currency, i.issueDate), 0);
+    const sExp = opExpenses.filter(e => (e.stream || 'other') === s)
+                           .reduce((sum, e) => sum + toEUR(e.amount, e.currency, e.date), 0);
+    profitStreamMap.set(s, sRev - sExp);
+  });
+  const profEntries    = [...profitStreamMap.entries()].filter(([, v]) => Math.abs(v) > 0);
+  const profStreamKeys = profEntries.map(([k]) => k);
+  if (profEntries.length) {
+    charts.doughnut('exec-kd-profit-stream', {
+      labels: profEntries.map(([k]) => STREAMS[k]?.label || k),
+      data:   profEntries.map(([, v]) => Math.round(v)),
+      colors: profEntries.map(([k]) => STREAMS[k]?.color || '#8b93b0'),
+      onClickItem: (label, idx) => {
+        const sk   = profStreamKeys[idx];
+        const sPay = payments.filter(p => (p.stream || 'other') === sk);
+        const sInv = invoices.filter(i => (i.stream || 'other') === sk);
+        const sExp = opExpenses.filter(e => (e.stream || 'other') === sk);
+        drillDownModal(`Profit — ${label}`, mixedRows(sPay, sInv, sExp), MIXED_COLS);
+      }
+    });
+  }
+
+  // ── Expenses by Category ──────────────────────────────────────────────────
+  const expCatMap = new Map();
+  [...opExpenses, ...renoExpenses].forEach(e => {
+    const cat = e.costCategory || e.category || 'other';
+    expCatMap.set(cat, (expCatMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
+  });
+  const catEntries = [...expCatMap.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const catKeys    = catEntries.map(([k]) => k);
+  if (catEntries.length) {
+    charts.doughnut('exec-kd-exp-cat', {
+      labels: catEntries.map(([k]) => COST_CATEGORIES[k]?.label || EXPENSE_CATEGORIES[k]?.label || k),
+      data:   catEntries.map(([, v]) => Math.round(v)),
+      colors: catEntries.map(([k]) => COST_CATEGORIES[k]?.color || EXPENSE_CATEGORIES[k]?.color || '#8b93b0'),
+      onClickItem: (label, idx) => {
+        const ck   = catKeys[idx];
+        const rows = [...opExpenses, ...renoExpenses]
+          .filter(e => (e.costCategory || e.category || 'other') === ck);
+        drillDownModal(`Expenses — ${label}`, drillExpRows(rows), EXP_COLS);
+      }
+    });
+  }
+}
+
 // ── Main view builder ─────────────────────────────────────────────────────────
 function buildView() {
   const wrap = el('div', { class: 'view active' });
@@ -582,6 +693,9 @@ function buildView() {
   ));
   wrap.appendChild(kpiRow);
 
+  // ── Key Drivers ────────────────────────────────────────────────────────────
+  wrap.appendChild(buildKeyDriversSection());
+
   // ── Charts row 1: Grouped bar (2/3) + Donut (1/3) ─────────────────────────
   const chartsRow1 = el('div', {
     style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px'
@@ -663,6 +777,7 @@ function buildView() {
     renderStreamDonut(data);
     renderContribBar(data);
     renderTrendCharts(data);
+    renderKeyDrivers(data);
   }, 0);
 
   return wrap;
