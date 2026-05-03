@@ -5,7 +5,7 @@ import { STREAMS, OWNERS } from '../core/config.js';
 import {
   availableYears, formatEUR, toEUR, byId,
   listActive, listActivePayments, listActiveClients,
-  isCapEx, drillRevRows, drillExpRows, forecastedRevenueEUR
+  isCapEx, drillRevRows, drillExpRows, forecastedRevenueEUR, forecastMonthlyEUR
 } from '../core/data.js';
 
 // ── Module-local filter state ────────────────────────────────────────────────
@@ -19,7 +19,7 @@ let gFilters = {
 };
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CHART_IDS    = ['exec-bar', 'exec-donut', 'exec-hbar'];
+const CHART_IDS    = ['exec-bar', 'exec-donut', 'exec-hbar', 'exec-trend-rev', 'exec-trend-profit', 'exec-trend-cashflow'];
 
 // ── Module definition ────────────────────────────────────────────────────────
 export default {
@@ -330,6 +330,144 @@ function buildHealthSummary(data) {
   return section;
 }
 
+// ── Business Trends section — DOM skeleton ────────────────────────────────────
+function buildTrendsSection() {
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Business Trends')
+  ));
+  const grid = el('div', {
+    style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:0 16px 16px'
+  });
+  const makePanel = (title, canvasId) => {
+    const panel = el('div');
+    panel.appendChild(el('div', { class: 'kpi-label', style: 'margin-bottom:8px' }, title));
+    panel.appendChild(el('div', { class: 'chart-wrap' }, el('canvas', { id: canvasId })));
+    return panel;
+  };
+  grid.appendChild(makePanel('Revenue', 'exec-trend-rev'));
+  grid.appendChild(makePanel('Net Profit', 'exec-trend-profit'));
+  grid.appendChild(makePanel('Cash Flow', 'exec-trend-cashflow'));
+  card.appendChild(grid);
+  return card;
+}
+
+// ── Business Trends — render 3 line charts ────────────────────────────────────
+function renderTrendCharts({ payments, invoices, opExpenses, renoExpenses }) {
+  const months = getMonthKeys();
+  if (!months.length) return;
+
+  // Monthly aggregation maps — same pattern as renderMonthlyBar
+  const revMap = new Map(), expMap = new Map(), renoMap = new Map();
+  payments.forEach(p => {
+    const mk = p.date?.slice(0, 7);
+    if (mk) revMap.set(mk, (revMap.get(mk) || 0) + toEUR(p.amount, p.currency, p.date));
+  });
+  invoices.forEach(i => {
+    const mk = (i.issueDate || '').slice(0, 7);
+    if (mk) revMap.set(mk, (revMap.get(mk) || 0) + toEUR(i.total, i.currency, i.issueDate));
+  });
+  opExpenses.forEach(e => {
+    const mk = e.date?.slice(0, 7);
+    if (mk) expMap.set(mk, (expMap.get(mk) || 0) + toEUR(e.amount, e.currency, e.date));
+  });
+  renoExpenses.forEach(e => {
+    const mk = e.date?.slice(0, 7);
+    if (mk) renoMap.set(mk, (renoMap.get(mk) || 0) + toEUR(e.amount, e.currency, e.date));
+  });
+
+  const labels   = months.map(m => m.label);
+  const revData  = months.map(m => Math.round(revMap.get(m.key)  || 0));
+  const expData  = months.map(m => Math.round(expMap.get(m.key)  || 0));
+  const renoData = months.map(m => Math.round(renoMap.get(m.key) || 0));
+  const netData  = months.map((_, i) => revData[i] - expData[i]);
+  const cashData = months.map((_, i) => netData[i] - renoData[i]);
+
+  // Forecast overlay for revenue (current-year filter only)
+  const currentYear = gFilters.year !== 'all' ? gFilters.year : null;
+  let fcMap = null;
+  if (currentYear) {
+    const raw = forecastMonthlyEUR(currentYear);
+    if (raw.size > 0) fcMap = raw;
+  }
+
+  // ── Revenue trend ──────────────────────────────────────────────────────────
+  const revDatasets = [{
+    label: 'Revenue', data: revData,
+    borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', fill: true
+  }];
+  if (fcMap) {
+    const fcData = months.map(m => Math.round(fcMap.get(m.key) || 0));
+    if (fcData.some(v => v > 0)) {
+      revDatasets.push({
+        label: 'Forecast', data: fcData,
+        borderColor: '#6366f1', backgroundColor: 'transparent',
+        borderDash: [4, 4], fill: false
+      });
+    }
+  }
+  charts.line('exec-trend-rev', {
+    labels,
+    datasets: revDatasets,
+    onClickItem: (label, idx) => {
+      const mk = months[idx]?.key;
+      if (!mk) return;
+      drillDownModal(
+        `${label} — Revenue`,
+        drillRevRows(
+          payments.filter(p => p.date?.slice(0, 7) === mk),
+          invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk)
+        ),
+        REV_COLS
+      );
+    }
+  });
+
+  // ── Net Profit trend ───────────────────────────────────────────────────────
+  charts.line('exec-trend-profit', {
+    labels,
+    datasets: [{
+      label: 'Net Profit', data: netData,
+      borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', fill: true
+    }],
+    onClickItem: (label, idx) => {
+      const mk = months[idx]?.key;
+      if (!mk) return;
+      drillDownModal(
+        `${label} — Net Profit`,
+        mixedRows(
+          payments.filter(p => p.date?.slice(0, 7) === mk),
+          invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk),
+          opExpenses.filter(e => e.date?.slice(0, 7) === mk)
+        ),
+        MIXED_COLS
+      );
+    }
+  });
+
+  // ── Cash Flow trend ────────────────────────────────────────────────────────
+  charts.line('exec-trend-cashflow', {
+    labels,
+    datasets: [{
+      label: 'Cash Flow', data: cashData,
+      borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', fill: true
+    }],
+    onClickItem: (label, idx) => {
+      const mk = months[idx]?.key;
+      if (!mk) return;
+      drillDownModal(
+        `${label} — Cash Flow`,
+        mixedRows(
+          payments.filter(p => p.date?.slice(0, 7) === mk),
+          invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk),
+          [...opExpenses, ...renoExpenses].filter(e => e.date?.slice(0, 7) === mk)
+        ),
+        MIXED_COLS
+      );
+    }
+  });
+}
+
 // ── Main view builder ─────────────────────────────────────────────────────────
 function buildView() {
   const wrap = el('div', { class: 'view active' });
@@ -386,6 +524,9 @@ function buildView() {
 
   // ── Business Health Summary ────────────────────────────────────────────────
   wrap.appendChild(buildHealthSummary(data));
+
+  // ── Business Trends ────────────────────────────────────────────────────────
+  wrap.appendChild(buildTrendsSection());
 
   // YoY comparison (only when a specific year is selected)
   let prevRev = null, prevNet = null;
@@ -517,6 +658,7 @@ function buildView() {
     renderMonthlyBar(data);
     renderStreamDonut(data);
     renderContribBar(data);
+    renderTrendCharts(data);
   }, 0);
 
   return wrap;
