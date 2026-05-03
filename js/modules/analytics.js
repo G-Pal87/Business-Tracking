@@ -609,6 +609,10 @@ function buildView() {
     )
   );
 
+  // ── Performance Rankings ───────────────────────────────────────────────────
+  const rankingsEl = buildPerformanceRankings(data);
+  if (rankingsEl) wrap.appendChild(rankingsEl);
+
   // ── Transactions table ─────────────────────────────────────────────────────
   const txCard = el('div', { class: 'card' });
   txCard.appendChild(
@@ -791,6 +795,99 @@ function renderContribBar({ payments, invoices }) {
       drillDownModal(`Revenue — ${label}`, rows, REV_COLS);
     }
   });
+}
+
+// ── Performance Rankings (Top / Underperformers) ──────────────────────────────
+function buildPerformanceRankings({ payments, invoices, opExpenses }) {
+  // Accumulate per-entity stats from already-filtered data
+  const map = new Map();
+
+  payments.forEach(p => {
+    if (!p.propertyId) return;
+    const prop = byId('properties', p.propertyId);
+    if (!prop) return;
+    const e = map.get(p.propertyId) || { id: p.propertyId, name: prop.name, type: 'property', rev: 0, exp: 0, pays: [], invs: [], opExps: [] };
+    e.rev += toEUR(p.amount, p.currency, p.date);
+    e.pays.push(p);
+    map.set(p.propertyId, e);
+  });
+
+  invoices.forEach(i => {
+    if (!i.clientId) return;
+    const client = byId('clients', i.clientId);
+    if (!client) return;
+    const e = map.get(i.clientId) || { id: i.clientId, name: client.name, type: 'client', rev: 0, exp: 0, pays: [], invs: [], opExps: [] };
+    e.rev += toEUR(i.total, i.currency, i.issueDate);
+    e.invs.push(i);
+    map.set(i.clientId, e);
+  });
+
+  opExpenses.forEach(x => {
+    const e = x.propertyId && map.get(x.propertyId);
+    if (e) { e.exp += toEUR(x.amount, x.currency, x.date); e.opExps.push(x); }
+  });
+
+  const entities = [...map.values()].map(e => {
+    const net = e.rev - e.exp;
+    let roi = null;
+    if (e.type === 'property') {
+      const prop = byId('properties', e.id);
+      if (prop?.purchasePrice) {
+        const purchaseEUR   = toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate);
+        // All-time CapEx as denominator — not period-filtered, same as properties module
+        const allRenoEUR    = listActive('expenses')
+          .filter(ex => isCapEx(ex) && ex.propertyId === e.id)
+          .reduce((s, ex) => s + toEUR(ex.amount, ex.currency, ex.date), 0);
+        const totalInvested = purchaseEUR + allRenoEUR;
+        if (totalInvested > 0) roi = (net / totalInvested) * 100;
+      }
+    }
+    return { ...e, net, roi };
+  });
+
+  if (!entities.length) return null;
+
+  const topN  = Math.min(5, entities.length);
+  const top   = [...entities].sort((a, b) => b.net - a.net).slice(0, topN);
+  const under = [...entities].sort((a, b) => a.net - b.net).slice(0, topN);
+
+  const makeTable = (title, rows) => {
+    const card = el('div', { class: 'card' });
+    card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, title)));
+
+    const tbl  = el('table', { class: 'table' });
+    const htr  = el('tr');
+    [['Name', false], ['Revenue', true], ['Net Profit', true], ['ROI', true]].forEach(([h, right]) =>
+      htr.appendChild(el('th', { class: right ? 'right' : '' }, h))
+    );
+    tbl.appendChild(el('thead', {}, htr));
+
+    const tbody = el('tbody');
+    rows.forEach(r => {
+      const tr = el('tr', { style: 'cursor:pointer', title: 'Click for breakdown' });
+      tr.addEventListener('mouseenter', () => { tr.style.background = 'var(--bg-elev-2)'; });
+      tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+      tr.onclick = () => drillDownModal(`${r.name} — Breakdown`, mixedRows(r.pays, r.invs, r.opExps), MIXED_COLS);
+
+      tr.appendChild(el('td', {}, r.name));
+      tr.appendChild(el('td', { class: 'right num' }, formatEUR(r.rev)));
+      tr.appendChild(el('td', { class: 'right num' + (r.net < 0 ? ' danger' : '') }, formatEUR(r.net)));
+      tr.appendChild(el('td', { class: 'right num' + (r.roi !== null && r.roi < 0 ? ' danger' : '') },
+        r.roi !== null ? `${r.roi.toFixed(1)}%` : '—'
+      ));
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    const tw = el('div', { class: 'table-wrap' });
+    tw.appendChild(tbl);
+    card.appendChild(tw);
+    return card;
+  };
+
+  const section = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
+  section.appendChild(makeTable('Top Performers', top));
+  section.appendChild(makeTable('Underperformers', under));
+  return section;
 }
 
 // ── Transactions table ────────────────────────────────────────────────────────
