@@ -1,26 +1,24 @@
 // Executive Analytics Dashboard
-import { el, select, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, select, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, COST_CATEGORIES, EXPENSE_CATEGORIES } from '../core/config.js';
 import {
   availableYears, formatEUR, toEUR, byId,
-  listActive, listActivePayments, listActiveClients,
+  listActive, listActivePayments,
   isCapEx, drillRevRows, drillExpRows, forecastedRevenueEUR, forecastMonthlyEUR,
   sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR, yearTotalsEUR
 } from '../core/data.js';
 
 // ── Module-local filter state ────────────────────────────────────────────────
 let gFilters = {
-  year:        String(new Date().getFullYear()),
-  months:      new Set(),   // empty = all
-  streams:     new Set(),   // empty = all
-  owners:      new Set(),   // empty = all
-  propertyIds: new Set(),   // empty = all
-  clientIds:   new Set()    // empty = all
+  year:    String(new Date().getFullYear()),
+  months:  new Set(),
+  streams: new Set(),
+  owners:  new Set()
 };
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CHART_IDS    = ['exec-bar', 'exec-donut', 'exec-hbar', 'exec-trend-rev', 'exec-trend-profit', 'exec-trend-cashflow', 'exec-kd-rev-stream', 'exec-kd-profit-stream', 'exec-kd-exp-cat'];
+const CHART_IDS    = ['exec-trend-rev', 'exec-trend-profit', 'exec-trend-cashflow', 'exec-kd-rev-stream', 'exec-kd-exp-cat'];
 
 // ── Module definition ────────────────────────────────────────────────────────
 export default {
@@ -48,28 +46,19 @@ function matchOwner(row) {
   const owner = byId('properties', row.propertyId)?.owner || 'both';
   return owner === 'both' || gFilters.owners.has(owner);
 }
-function matchProperty(row) {
-  return gFilters.propertyIds.size === 0 || !row.propertyId || gFilters.propertyIds.has(row.propertyId);
-}
-function matchClient(row) {
-  return gFilters.clientIds.size === 0 || !row.clientId || gFilters.clientIds.has(row.clientId);
-}
 
 function getData() {
   const payments = listActivePayments().filter(p =>
-    p.status === 'paid' && matchDate(p) && matchStream(p) && matchOwner(p) && matchProperty(p)
+    p.status === 'paid' && matchDate(p) && matchStream(p) && matchOwner(p)
   );
   const invoices = listActive('invoices').filter(i =>
-    i.status === 'paid' &&
-    matchDate({ date: i.issueDate }) &&
-    matchStream(i) &&
-    matchClient(i)
+    i.status === 'paid' && matchDate({ date: i.issueDate }) && matchStream(i)
   );
   const opExpenses = listActive('expenses').filter(e =>
-    !isCapEx(e) && matchDate(e) && matchStream(e) && matchOwner(e) && matchProperty(e)
+    !isCapEx(e) && matchDate(e) && matchStream(e) && matchOwner(e)
   );
   const renoExpenses = listActive('expenses').filter(e =>
-    isCapEx(e) && matchDate(e) && matchOwner(e) && matchProperty(e)
+    isCapEx(e) && matchDate(e) && matchOwner(e)
   );
   const rev  = sumPaymentsEUR(payments) + sumInvoicesEUR(invoices);
   const exp  = sumExpensesEUR(opExpenses);
@@ -77,7 +66,7 @@ function getData() {
   return { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net: rev - exp };
 }
 
-// ── Rebuild helper (used by filter callbacks) ─────────────────────────────────
+// ── Rebuild helper ────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
   const c = document.getElementById('content');
@@ -87,8 +76,6 @@ function rebuildView() {
 }
 
 // ── Multi-select dropdown ────────────────────────────────────────────────────
-// items: [{ value, label, css? }]
-// filterSet: the Set in gFilters to mutate
 function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
   const wrapper = el('div', { style: 'position:relative' });
 
@@ -113,10 +100,10 @@ function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
   }, allChk, el('span', {}, allLabel)));
 
   const chks = items.map(({ value, label, css }) => {
-    const chk     = el('input', { type: 'checkbox' });
-    chk.dataset.value = value;
-    chk.checked   = filterSet.size === 0 || filterSet.has(value);
-    const content = css ? el('span', { class: `badge ${css}` }, label) : el('span', {}, label);
+    const chk          = el('input', { type: 'checkbox' });
+    chk.dataset.value  = value;
+    chk.checked        = filterSet.size === 0 || filterSet.has(value);
+    const content      = css ? el('span', { class: `badge ${css}` }, label) : el('span', {}, label);
     menu.appendChild(el('label', {
       style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px'
     }, chk, content));
@@ -136,7 +123,7 @@ function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
     if (n > 0 && n < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
   };
 
-  allChk.checked = filterSet.size === 0;
+  allChk.checked  = filterSet.size === 0;
   allChk.onchange = () => {
     chks.forEach(c => { c.checked = allChk.checked; });
     allChk.indeterminate = false;
@@ -158,7 +145,7 @@ function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
   return wrapper;
 }
 
-// ── KPI card (matches reports.js .kpi pattern, adds hover ring) ───────────────
+// ── KPI card ──────────────────────────────────────────────────────────────────
 function kpiCard(label, value, variant, onClick, sub) {
   const card = el('div', {
     class: 'kpi' + (variant ? ' ' + variant : ''),
@@ -175,15 +162,6 @@ function kpiCard(label, value, variant, onClick, sub) {
   return card;
 }
 
-function yoyTrend(current, prev, prevYear) {
-  if (prev === null || prev === 0) return null;
-  const pct  = ((current - prev) / Math.abs(prev)) * 100;
-  const sign = pct > 0 ? '+' : '';
-  const cls  = pct > 0 ? 'up' : pct < 0 ? 'down' : '';
-  return el('span', { class: cls }, `${sign}${pct.toFixed(1)}% vs ${prevYear}`);
-}
-
-// Like yoyTrend but with invert support (lower-is-better metrics: expense ratio, outstanding)
 function periodTrend(current, prev, prevLabel, invert = false) {
   if (prev === null || prev === undefined || prev === 0) return null;
   const pct  = ((current - prev) / Math.abs(prev)) * 100;
@@ -201,17 +179,17 @@ const REV_COLS = [
   { key: 'eur',    label: 'EUR',    right: true, format: v => formatEUR(v) }
 ];
 const EXP_COLS = [
-  { key: 'date',        label: 'Date',        format: v => fmtDate(v) },
-  { key: 'source',      label: 'Property'     },
-  { key: 'category',    label: 'Category'     },
-  { key: 'description', label: 'Description'  },
-  { key: 'eur',         label: 'EUR',          right: true, format: v => formatEUR(v) }
+  { key: 'date',        label: 'Date',       format: v => fmtDate(v) },
+  { key: 'source',      label: 'Property'    },
+  { key: 'category',    label: 'Category'    },
+  { key: 'description', label: 'Description' },
+  { key: 'eur',         label: 'EUR',         right: true, format: v => formatEUR(v) }
 ];
 const MIXED_COLS = [
-  { key: 'date',   label: 'Date',   format: v => fmtDate(v) },
-  { key: 'kind',   label: 'Kind'   },
-  { key: 'source', label: 'Entity / Source' },
-  { key: 'eur',    label: 'EUR',    right: true, format: v => formatEUR(v) }
+  { key: 'date',   label: 'Date',             format: v => fmtDate(v) },
+  { key: 'kind',   label: 'Kind'              },
+  { key: 'source', label: 'Entity / Source'   },
+  { key: 'eur',    label: 'EUR',               right: true, format: v => formatEUR(v) }
 ];
 
 function mixedRows(revPays, revInvs, expItems) {
@@ -227,87 +205,191 @@ function mixedRows(revPays, revInvs, expItems) {
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 
-// ── Business Health Summary strip ─────────────────────────────────────────────
-// prevYearCtx: { year, rev, exp, reno, net, netCash, expRatio, outstanding, forecastVariance } | null
-function buildHealthSummary(data, prevYearCtx) {
+// ── Single source of truth ────────────────────────────────────────────────────
+function calculateExecutiveSummary(data) {
   const { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net } = data;
   const netCash  = net - reno;
   const expRatio = rev > 0 ? (exp / rev) * 100 : 0;
 
-  // Outstanding invoices: sent/overdue, respecting current filters
+  // Outstanding / overdue invoices — respecting current date + stream filters
   const outstandingInvs = listActive('invoices').filter(i =>
     (i.status === 'sent' || i.status === 'overdue') &&
     matchDate({ date: i.issueDate }) &&
-    matchStream(i) &&
-    matchClient(i)
+    matchStream(i)
   );
-  const outstanding = sumInvoicesEUR(outstandingInvs);
+  const overdueInvs  = outstandingInvs.filter(i => i.status === 'overdue');
+  const outstanding  = sumInvoicesEUR(outstandingInvs);
+  const overdue      = sumInvoicesEUR(overdueInvs);
 
-  // Forecast variance: actual revenue minus total forecasted revenue for current year
+  // Forecast variance
   const currentYear = gFilters.year !== 'all' ? gFilters.year : null;
-  let forecastVariance = null;
+  let forecastVariance = null, forecastRev = null;
   if (currentYear) {
-    const fRev = forecastedRevenueEUR(currentYear);
-    if (fRev > 0) forecastVariance = rev - fRev;
+    forecastRev = forecastedRevenueEUR(currentYear);
+    if (forecastRev > 0) forecastVariance = rev - forecastRev;
   }
 
-  const section = el('div', { class: 'card mb-16' });
-  section.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Business Health Summary')
-  ));
-
-  const strip = el('div', {
-    style: 'display:grid;grid-template-columns:repeat(6,1fr);gap:12px;padding:0 16px 16px'
+  // Revenue by Stream — accumulate pays/invs per stream
+  const revByStream = new Map();
+  payments.forEach(p => {
+    const s = p.stream || 'other';
+    const e = revByStream.get(s) || { rev: 0, pays: [], invs: [] };
+    e.rev += toEUR(p.amount, p.currency, p.date);
+    e.pays.push(p);
+    revByStream.set(s, e);
+  });
+  invoices.forEach(i => {
+    const s = i.stream || 'other';
+    const e = revByStream.get(s) || { rev: 0, pays: [], invs: [] };
+    e.rev += toEUR(i.total, i.currency, i.issueDate);
+    e.invs.push(i);
+    revByStream.set(s, e);
   });
 
-  strip.appendChild(kpiCard(
+  // Expenses by Category — accumulate items per category
+  const expByCategory = new Map();
+  [...opExpenses, ...renoExpenses].forEach(x => {
+    const cat   = x.costCategory || x.category || 'other';
+    const entry = expByCategory.get(cat) || { exp: 0, items: [] };
+    entry.exp += toEUR(x.amount, x.currency, x.date);
+    entry.items.push(x);
+    expByCategory.set(cat, entry);
+  });
+
+  // Entities — properties + clients, with per-entity rev/exp/net/roi
+  const entityMap = new Map();
+  payments.forEach(p => {
+    if (!p.propertyId) return;
+    const prop = byId('properties', p.propertyId);
+    if (!prop) return;
+    const e = entityMap.get(p.propertyId) || { id: p.propertyId, name: prop.name, type: 'property', rev: 0, exp: 0, pays: [], invs: [], opExps: [] };
+    e.rev += toEUR(p.amount, p.currency, p.date);
+    e.pays.push(p);
+    entityMap.set(p.propertyId, e);
+  });
+  invoices.forEach(i => {
+    if (!i.clientId) return;
+    const client = byId('clients', i.clientId);
+    if (!client) return;
+    const e = entityMap.get(i.clientId) || { id: i.clientId, name: client.name, type: 'client', rev: 0, exp: 0, pays: [], invs: [], opExps: [] };
+    e.rev += toEUR(i.total, i.currency, i.issueDate);
+    e.invs.push(i);
+    entityMap.set(i.clientId, e);
+  });
+  opExpenses.forEach(x => {
+    const e = x.propertyId && entityMap.get(x.propertyId);
+    if (e) { e.exp += toEUR(x.amount, x.currency, x.date); e.opExps.push(x); }
+  });
+  const entities = [...entityMap.values()].map(e => {
+    const eNet = e.rev - e.exp;
+    let roi = null;
+    if (e.type === 'property') {
+      const prop = byId('properties', e.id);
+      if (prop?.purchasePrice) {
+        const purchaseEUR   = toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate);
+        const allRenoEUR    = listActive('expenses')
+          .filter(ex => isCapEx(ex) && ex.propertyId === e.id)
+          .reduce((s, ex) => s + toEUR(ex.amount, ex.currency, ex.date), 0);
+        const totalInvested = purchaseEUR + allRenoEUR;
+        if (totalInvested > 0) roi = (eNet / totalInvested) * 100;
+      }
+    }
+    return { ...e, net: eNet, roi };
+  });
+
+  return {
+    rev, exp, reno, net, netCash, expRatio,
+    outstanding, overdue, outstandingInvs, overdueInvs,
+    forecastVariance, forecastRev,
+    revByStream, expByCategory, entities,
+    payments, invoices, opExpenses, renoExpenses
+  };
+}
+
+// Unfiltered summary for a previous year — used only for period-over-period deltas
+function calculatePrevYearSummary(year) {
+  const pt       = yearTotalsEUR(year);
+  const expRatio = pt.rev > 0 ? (pt.exp / pt.rev) * 100 : null;
+  const outstandingInvs = listActive('invoices').filter(i =>
+    (i.status === 'sent' || i.status === 'overdue') && (i.issueDate || '').startsWith(year)
+  );
+  const overdueInvs = outstandingInvs.filter(i => i.status === 'overdue');
+  const outstanding = sumInvoicesEUR(outstandingInvs);
+  const overdue     = sumInvoicesEUR(overdueInvs);
+  const pyFRev      = forecastedRevenueEUR(year);
+  return {
+    year, ...pt, expRatio, outstanding, overdue,
+    forecastVariance: pyFRev > 0 ? pt.rev - pyFRev : null,
+    forecastRev:      pyFRev > 0 ? pyFRev : null
+  };
+}
+
+// ── 8-card KPI Row ────────────────────────────────────────────────────────────
+function buildKpiRow(summary, prevSummary, prevYear) {
+  const { rev, net, netCash, outstanding, exp, reno, expRatio, forecastVariance,
+          payments, invoices, opExpenses, renoExpenses, outstandingInvs } = summary;
+  const pl = prevYear;
+
+  const grid = el('div', {
+    class: 'mb-16',
+    style: 'display:grid;grid-template-columns:repeat(8,1fr);gap:12px'
+  });
+
+  grid.appendChild(kpiCard(
     'Revenue', formatEUR(rev),
     rev >= 0 ? '' : 'danger',
     () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
-    periodTrend(rev, prevYearCtx?.rev, prevYearCtx?.year)
+    prevSummary ? periodTrend(rev, prevSummary.rev, pl) : null
   ));
-
-  strip.appendChild(kpiCard(
+  grid.appendChild(kpiCard(
     'Net Profit', formatEUR(net),
     net >= 0 ? 'success' : 'danger',
     () => drillDownModal('Net Profit Breakdown', mixedRows(payments, invoices, opExpenses), MIXED_COLS),
-    periodTrend(net, prevYearCtx?.net, prevYearCtx?.year)
+    prevSummary ? periodTrend(net, prevSummary.net, pl) : null
   ));
-
-  strip.appendChild(kpiCard(
+  grid.appendChild(kpiCard(
     'Cash Flow', formatEUR(netCash),
     netCash >= 0 ? 'success' : 'danger',
     () => drillDownModal('Cash Flow Breakdown', mixedRows(payments, invoices, [...opExpenses, ...renoExpenses]), MIXED_COLS),
-    periodTrend(netCash, prevYearCtx?.netCash, prevYearCtx?.year)
+    prevSummary ? periodTrend(netCash, prevSummary.netCash, pl) : null
   ));
-
-  strip.appendChild(kpiCard(
+  grid.appendChild(kpiCard(
+    'Outstanding', formatEUR(outstanding),
+    outstanding > 0 ? 'warning' : '',
+    () => drillDownModal('Outstanding Invoices', drillRevRows([], outstandingInvs), REV_COLS),
+    prevSummary ? periodTrend(outstanding, prevSummary.outstanding, pl, true) : null
+  ));
+  grid.appendChild(kpiCard(
+    'OpEx', formatEUR(exp),
+    '',
+    () => drillDownModal('Operating Expenses', drillExpRows(opExpenses), EXP_COLS),
+    prevSummary ? periodTrend(exp, prevSummary.exp, pl, true) : null
+  ));
+  grid.appendChild(kpiCard(
+    'CapEx', formatEUR(reno),
+    reno > 0 ? 'warning' : '',
+    () => drillDownModal('Renovation CapEx', drillExpRows(renoExpenses), EXP_COLS),
+    prevSummary ? periodTrend(reno, prevSummary.reno, pl, true) : null
+  ));
+  grid.appendChild(kpiCard(
     'Expense Ratio', rev > 0 ? `${expRatio.toFixed(1)}%` : '—',
     expRatio > 80 ? 'danger' : expRatio > 60 ? 'warning' : '',
     () => drillDownModal('Operating Expenses', drillExpRows(opExpenses), EXP_COLS),
-    periodTrend(expRatio, prevYearCtx?.expRatio, prevYearCtx?.year, true)
+    prevSummary ? periodTrend(expRatio, prevSummary.expRatio, pl, true) : null
   ));
-
-  strip.appendChild(kpiCard(
-    'Outstanding Invoices', formatEUR(outstanding),
-    outstanding > 0 ? 'warning' : '',
-    () => drillDownModal('Outstanding Invoices', drillRevRows([], outstandingInvs), REV_COLS),
-    periodTrend(outstanding, prevYearCtx?.outstanding, prevYearCtx?.year, true)
-  ));
-
   const varVariant = forecastVariance === null ? '' : forecastVariance >= 0 ? 'success' : 'danger';
-  strip.appendChild(kpiCard(
+  grid.appendChild(kpiCard(
     'Forecast Variance', forecastVariance !== null ? formatEUR(forecastVariance) : '—',
     varVariant,
     () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
-    forecastVariance !== null ? periodTrend(forecastVariance, prevYearCtx?.forecastVariance, prevYearCtx?.year) : null
+    prevSummary && forecastVariance !== null
+      ? periodTrend(forecastVariance, prevSummary.forecastVariance, pl) : null
   ));
 
-  section.appendChild(strip);
-  return section;
+  return grid;
 }
 
-// ── Business Trends section — DOM skeleton ────────────────────────────────────
+// ── Business Trends — DOM skeleton ────────────────────────────────────────────
 function buildTrendsSection() {
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' },
@@ -322,137 +404,138 @@ function buildTrendsSection() {
     panel.appendChild(el('div', { class: 'chart-wrap' }, el('canvas', { id: canvasId })));
     return panel;
   };
-  grid.appendChild(makePanel('Revenue', 'exec-trend-rev'));
+  grid.appendChild(makePanel('Revenue',    'exec-trend-rev'));
   grid.appendChild(makePanel('Net Profit', 'exec-trend-profit'));
-  grid.appendChild(makePanel('Cash Flow', 'exec-trend-cashflow'));
+  grid.appendChild(makePanel('Cash Flow',  'exec-trend-cashflow'));
   card.appendChild(grid);
   return card;
 }
 
-// ── Business Trends — render 3 line charts ────────────────────────────────────
-function renderTrendCharts({ payments, invoices, opExpenses, renoExpenses }) {
-  const months = getMonthKeys();
-  if (!months.length) return;
+// ── Driver Explanations ───────────────────────────────────────────────────────
+function buildDriverExplanations(summary) {
+  const { rev, exp, revByStream, expByCategory, entities } = summary;
 
-  // Monthly aggregation maps — same pattern as renderMonthlyBar
-  const revMap = new Map(), expMap = new Map(), renoMap = new Map();
-  payments.forEach(p => {
-    const mk = p.date?.slice(0, 7);
-    if (mk) revMap.set(mk, (revMap.get(mk) || 0) + toEUR(p.amount, p.currency, p.date));
-  });
-  invoices.forEach(i => {
-    const mk = (i.issueDate || '').slice(0, 7);
-    if (mk) revMap.set(mk, (revMap.get(mk) || 0) + toEUR(i.total, i.currency, i.issueDate));
-  });
-  opExpenses.forEach(e => {
-    const mk = e.date?.slice(0, 7);
-    if (mk) expMap.set(mk, (expMap.get(mk) || 0) + toEUR(e.amount, e.currency, e.date));
-  });
-  renoExpenses.forEach(e => {
-    const mk = e.date?.slice(0, 7);
-    if (mk) renoMap.set(mk, (renoMap.get(mk) || 0) + toEUR(e.amount, e.currency, e.date));
+  const section = el('div', { class: 'card mb-16' });
+  section.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Driver Explanations')
+  ));
+  const body = el('div', {
+    style: 'padding:0 16px 16px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px'
   });
 
-  const labels   = months.map(m => m.label);
-  const revData  = months.map(m => Math.round(revMap.get(m.key)  || 0));
-  const expData  = months.map(m => Math.round(expMap.get(m.key)  || 0));
-  const renoData = months.map(m => Math.round(renoMap.get(m.key) || 0));
-  const netData  = months.map((_, i) => revData[i] - expData[i]);
-  const cashData = months.map((_, i) => netData[i] - renoData[i]);
+  const topRevStream = [...revByStream.entries()].sort((a, b) => b[1].rev - a[1].rev)[0];
+  const topExpCat    = [...expByCategory.entries()].sort((a, b) => b[1].exp - a[1].exp)[0];
+  const topEntity    = [...entities].sort((a, b) => b.net - a.net)[0];
 
-  // Forecast overlay for revenue (current-year filter only)
-  const currentYear = gFilters.year !== 'all' ? gFilters.year : null;
-  let fcMap = null;
-  if (currentYear) {
-    const raw = forecastMonthlyEUR(currentYear);
-    if (raw.size > 0) fcMap = raw;
+  const makeInsight = (title, text, onClick) => {
+    const card = el('div', {
+      style: 'background:var(--bg-elev-1);border-radius:var(--radius-sm);padding:12px;cursor:pointer',
+      title: 'Click for breakdown'
+    });
+    card.addEventListener('mouseenter', () => { card.style.background = 'var(--bg-elev-2)'; });
+    card.addEventListener('mouseleave', () => { card.style.background = 'var(--bg-elev-1)'; });
+    card.onclick = onClick;
+    card.appendChild(el('div', {
+      style: 'font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px'
+    }, title));
+    card.appendChild(el('div', { style: 'font-size:13px;line-height:1.5' }, text));
+    return card;
+  };
+
+  if (topRevStream) {
+    const [sk, sd]    = topRevStream;
+    const share       = rev > 0 ? ((sd.rev / rev) * 100).toFixed(0) : 0;
+    const streamLabel = STREAMS[sk]?.label || sk;
+    body.appendChild(makeInsight(
+      'Top Revenue Driver',
+      `${streamLabel} drives ${share}% of revenue (${formatEUR(sd.rev)})`,
+      () => drillDownModal(`Revenue — ${streamLabel}`, drillRevRows(sd.pays, sd.invs), REV_COLS)
+    ));
   }
 
-  // ── Revenue trend ──────────────────────────────────────────────────────────
-  const revDatasets = [{
-    label: 'Revenue', data: revData,
-    borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', fill: true
-  }];
-  if (fcMap) {
-    const fcData = months.map(m => Math.round(fcMap.get(m.key) || 0));
-    if (fcData.some(v => v > 0)) {
-      revDatasets.push({
-        label: 'Forecast', data: fcData,
-        borderColor: '#6366f1', backgroundColor: 'transparent',
-        borderDash: [4, 4], fill: false
-      });
-    }
+  if (topExpCat) {
+    const [ck, cd]  = topExpCat;
+    const share     = exp > 0 ? ((cd.exp / exp) * 100).toFixed(0) : 0;
+    const catLabel  = COST_CATEGORIES[ck]?.label || EXPENSE_CATEGORIES[ck]?.label || ck;
+    body.appendChild(makeInsight(
+      'Largest Cost Driver',
+      `${catLabel} is ${share}% of expenses (${formatEUR(cd.exp)})`,
+      () => drillDownModal(`Expenses — ${catLabel}`, drillExpRows(cd.items), EXP_COLS)
+    ));
   }
-  charts.line('exec-trend-rev', {
-    labels,
-    datasets: revDatasets,
-    onClickItem: (label, idx) => {
-      const mk = months[idx]?.key;
-      if (!mk) return;
-      drillDownModal(
-        `${label} — Revenue`,
-        drillRevRows(
-          payments.filter(p => p.date?.slice(0, 7) === mk),
-          invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk)
-        ),
-        REV_COLS
-      );
-    }
-  });
 
-  // ── Net Profit trend ───────────────────────────────────────────────────────
-  charts.line('exec-trend-profit', {
-    labels,
-    datasets: [{
-      label: 'Net Profit', data: netData,
-      borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', fill: true
-    }],
-    onClickItem: (label, idx) => {
-      const mk = months[idx]?.key;
-      if (!mk) return;
-      drillDownModal(
-        `${label} — Net Profit`,
-        mixedRows(
-          payments.filter(p => p.date?.slice(0, 7) === mk),
-          invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk),
-          opExpenses.filter(e => e.date?.slice(0, 7) === mk)
-        ),
-        MIXED_COLS
-      );
-    }
-  });
+  if (topEntity) {
+    const margin = topEntity.rev > 0 ? ((topEntity.net / topEntity.rev) * 100).toFixed(0) : 0;
+    body.appendChild(makeInsight(
+      'Top Performing Entity',
+      `${topEntity.name}: ${formatEUR(topEntity.net)} net (${margin}% margin)`,
+      () => drillDownModal(`${topEntity.name} — Breakdown`, mixedRows(topEntity.pays, topEntity.invs, topEntity.opExps), MIXED_COLS)
+    ));
+  }
 
-  // ── Cash Flow trend ────────────────────────────────────────────────────────
-  charts.line('exec-trend-cashflow', {
-    labels,
-    datasets: [{
-      label: 'Cash Flow', data: cashData,
-      borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', fill: true
-    }],
-    onClickItem: (label, idx) => {
-      const mk = months[idx]?.key;
-      if (!mk) return;
-      drillDownModal(
-        `${label} — Cash Flow`,
-        mixedRows(
-          payments.filter(p => p.date?.slice(0, 7) === mk),
-          invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk),
-          [...opExpenses, ...renoExpenses].filter(e => e.date?.slice(0, 7) === mk)
-        ),
-        MIXED_COLS
-      );
-    }
-  });
+  if (!topRevStream && !topExpCat && !topEntity) {
+    body.appendChild(el('div', {
+      style: 'color:var(--text-muted);font-size:13px;grid-column:1/-1'
+    }, 'No data for selected period.'));
+  }
+
+  section.appendChild(body);
+  return section;
 }
 
-// ── Key Drivers section — DOM skeleton ───────────────────────────────────────
+// ── Forecast vs Actual ────────────────────────────────────────────────────────
+function buildForecastVsActual(summary) {
+  const { rev, forecastRev, forecastVariance, payments, invoices } = summary;
+
+  const section = el('div', { class: 'card mb-16' });
+  section.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Forecast vs Actual')
+  ));
+
+  if (!forecastRev) {
+    section.appendChild(el('div', { style: 'padding:16px;color:var(--text-muted);font-size:13px' },
+      'No forecast data available for the selected period.'
+    ));
+    return section;
+  }
+
+  const pct = forecastRev > 0 ? (rev / forecastRev) * 100 : null;
+
+  const strip = el('div', {
+    style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 16px 16px'
+  });
+
+  strip.appendChild(kpiCard(
+    'Forecast Revenue', formatEUR(forecastRev),
+    '',
+    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS)
+  ));
+  strip.appendChild(kpiCard(
+    'Actual Revenue', formatEUR(rev),
+    '',
+    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS)
+  ));
+  strip.appendChild(kpiCard(
+    'Variance', formatEUR(forecastVariance),
+    forecastVariance >= 0 ? 'success' : 'danger',
+    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
+    pct !== null
+      ? el('span', { class: forecastVariance >= 0 ? 'up' : 'down' }, `${pct.toFixed(0)}% of forecast`)
+      : null
+  ));
+
+  section.appendChild(strip);
+  return section;
+}
+
+// ── Key Drivers — DOM skeleton (2-panel) ──────────────────────────────────────
 function buildKeyDriversSection() {
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Key Drivers')
   ));
   const grid = el('div', {
-    style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:0 16px 16px'
+    style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:0 16px 16px'
   });
   const makePanel = (title, canvasId) => {
     const panel = el('div');
@@ -461,507 +544,60 @@ function buildKeyDriversSection() {
     return panel;
   };
   grid.appendChild(makePanel('Revenue by Stream',    'exec-kd-rev-stream'));
-  grid.appendChild(makePanel('Profit by Stream',     'exec-kd-profit-stream'));
   grid.appendChild(makePanel('Expenses by Category', 'exec-kd-exp-cat'));
   card.appendChild(grid);
   return card;
 }
 
-// ── Key Drivers — render 3 doughnut charts ────────────────────────────────────
-function renderKeyDrivers({ payments, invoices, opExpenses, renoExpenses }) {
-  // ── Revenue by Stream ─────────────────────────────────────────────────────
-  const revStreamMap = new Map();
-  payments.forEach(p => {
-    const s = p.stream || 'other';
-    revStreamMap.set(s, (revStreamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
-  });
-  invoices.forEach(i => {
-    const s = i.stream || 'other';
-    revStreamMap.set(s, (revStreamMap.get(s) || 0) + toEUR(i.total, i.currency, i.issueDate));
-  });
-  const revEntries    = [...revStreamMap.entries()].filter(([, v]) => v > 0);
-  const revStreamKeys = revEntries.map(([k]) => k);
+// ── Key Drivers — render 2 doughnut charts from summary ──────────────────────
+function renderKeyDrivers(summary) {
+  const { revByStream, expByCategory } = summary;
+
+  // Revenue by Stream
+  const revEntries = [...revByStream.entries()].filter(([, d]) => d.rev > 0);
   if (revEntries.length) {
     charts.doughnut('exec-kd-rev-stream', {
       labels: revEntries.map(([k]) => STREAMS[k]?.label || k),
-      data:   revEntries.map(([, v]) => Math.round(v)),
+      data:   revEntries.map(([, d]) => Math.round(d.rev)),
       colors: revEntries.map(([k]) => STREAMS[k]?.color || '#8b93b0'),
       onClickItem: (label, idx) => {
-        const sk = revStreamKeys[idx];
-        drillDownModal(
-          `Revenue — ${label}`,
-          drillRevRows(
-            payments.filter(p => (p.stream || 'other') === sk),
-            invoices.filter(i => (i.stream || 'other') === sk)
-          ),
-          REV_COLS
-        );
+        const [, sd] = revEntries[idx];
+        drillDownModal(`Revenue — ${label}`, drillRevRows(sd.pays, sd.invs), REV_COLS);
       }
     });
   }
 
-  // ── Profit by Stream ──────────────────────────────────────────────────────
-  const allStreams = new Set([
-    ...payments.map(p => p.stream || 'other'),
-    ...invoices.map(i => i.stream || 'other'),
-    ...opExpenses.map(e => e.stream || 'other')
-  ]);
-  const profitStreamMap = new Map();
-  allStreams.forEach(s => {
-    const sRev = payments.filter(p => (p.stream || 'other') === s)
-                         .reduce((sum, p) => sum + toEUR(p.amount, p.currency, p.date), 0)
-               + invoices.filter(i => (i.stream || 'other') === s)
-                         .reduce((sum, i) => sum + toEUR(i.total, i.currency, i.issueDate), 0);
-    const sExp = opExpenses.filter(e => (e.stream || 'other') === s)
-                           .reduce((sum, e) => sum + toEUR(e.amount, e.currency, e.date), 0);
-    profitStreamMap.set(s, sRev - sExp);
-  });
-  const profEntries    = [...profitStreamMap.entries()].filter(([, v]) => Math.abs(v) > 0);
-  const profStreamKeys = profEntries.map(([k]) => k);
-  if (profEntries.length) {
-    charts.doughnut('exec-kd-profit-stream', {
-      labels: profEntries.map(([k]) => STREAMS[k]?.label || k),
-      data:   profEntries.map(([, v]) => Math.round(v)),
-      colors: profEntries.map(([k]) => STREAMS[k]?.color || '#8b93b0'),
-      onClickItem: (label, idx) => {
-        const sk   = profStreamKeys[idx];
-        const sPay = payments.filter(p => (p.stream || 'other') === sk);
-        const sInv = invoices.filter(i => (i.stream || 'other') === sk);
-        const sExp = opExpenses.filter(e => (e.stream || 'other') === sk);
-        drillDownModal(`Profit — ${label}`, mixedRows(sPay, sInv, sExp), MIXED_COLS);
-      }
-    });
-  }
-
-  // ── Expenses by Category ──────────────────────────────────────────────────
-  const expCatMap = new Map();
-  [...opExpenses, ...renoExpenses].forEach(e => {
-    const cat = e.costCategory || e.category || 'other';
-    expCatMap.set(cat, (expCatMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
-  });
-  const catEntries = [...expCatMap.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-  const catKeys    = catEntries.map(([k]) => k);
+  // Expenses by Category
+  const catEntries = [...expByCategory.entries()]
+    .filter(([, d]) => d.exp > 0)
+    .sort((a, b) => b[1].exp - a[1].exp);
   if (catEntries.length) {
     charts.doughnut('exec-kd-exp-cat', {
       labels: catEntries.map(([k]) => COST_CATEGORIES[k]?.label || EXPENSE_CATEGORIES[k]?.label || k),
-      data:   catEntries.map(([, v]) => Math.round(v)),
+      data:   catEntries.map(([, d]) => Math.round(d.exp)),
       colors: catEntries.map(([k]) => COST_CATEGORIES[k]?.color || EXPENSE_CATEGORIES[k]?.color || '#8b93b0'),
       onClickItem: (label, idx) => {
-        const ck   = catKeys[idx];
-        const rows = [...opExpenses, ...renoExpenses]
-          .filter(e => (e.costCategory || e.category || 'other') === ck);
-        drillDownModal(`Expenses — ${label}`, drillExpRows(rows), EXP_COLS);
+        const [, cd] = catEntries[idx];
+        drillDownModal(`Expenses — ${label}`, drillExpRows(cd.items), EXP_COLS);
       }
     });
   }
 }
 
-// ── Main view builder ─────────────────────────────────────────────────────────
-function buildView() {
-  const wrap = el('div', { class: 'view active' });
-
-  // Page header
-  wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
-    el('h2', { style: 'margin:0 0 4px;font-size:20px;font-weight:700' }, 'Executive Analytics'),
-    el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' },
-      'Consolidated overview — revenue, expenses and cash flow')
-  ));
-
-  // Filter bar
-  const years  = availableYears();
-  const yearSel = select(
-    [{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))],
-    gFilters.year
-  );
-  yearSel.onchange = () => { gFilters.year = yearSel.value; rebuildView(); };
-
-  const filterBar = el('div', {
-    class: 'flex gap-8 mb-16',
-    style: 'flex-wrap:wrap;align-items:center'
-  });
-  filterBar.appendChild(
-    el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:')
-  );
-  filterBar.appendChild(yearSel);
-  filterBar.appendChild(buildMultiSelect(
-    MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })),
-    gFilters.months, 'All Months', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, css: v.css })),
-    gFilters.streams, 'All Streams', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })),
-    gFilters.owners, 'All Owners', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    listActive('properties').map(p => ({ value: p.id, label: p.name })),
-    gFilters.propertyIds, 'All Properties', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    listActiveClients().map(c => ({ value: c.id, label: c.name })),
-    gFilters.clientIds, 'All Clients', rebuildView
-  ));
-  wrap.appendChild(filterBar);
-
-  // Data
-  const data = getData();
-  const { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net } = data;
-  const netCash = net - reno;
-
-  // Previous year context — computed once, shared by Health Summary and KPI row
-  const currentYear = gFilters.year !== 'all' ? gFilters.year : null;
-  const prevYear    = currentYear ? String(Number(currentYear) - 1) : null;
-  let prevYearCtx   = null;
-  if (prevYear) {
-    const pt = yearTotalsEUR(prevYear);
-    const prevExpRatio = pt.rev > 0 ? (pt.exp / pt.rev) * 100 : null;
-    const prevOutstanding = sumInvoicesEUR(
-      listActive('invoices').filter(i =>
-        (i.status === 'sent' || i.status === 'overdue') && (i.issueDate || '').startsWith(prevYear)
-      )
-    );
-    const pyFRev = forecastedRevenueEUR(prevYear);
-    prevYearCtx = {
-      year: prevYear, ...pt,
-      expRatio: prevExpRatio,
-      outstanding: prevOutstanding,
-      forecastVariance: pyFRev > 0 ? pt.rev - pyFRev : null
-    };
-  }
-
-  // ── Business Health Summary ────────────────────────────────────────────────
-  wrap.appendChild(buildHealthSummary(data, prevYearCtx));
-
-  // ── Business Trends ────────────────────────────────────────────────────────
-  wrap.appendChild(buildTrendsSection());
-
-  // ── KPI row (5 cards) ──────────────────────────────────────────────────────
-  const kpiRow = el('div', { class: 'grid grid-4 mb-16', style: 'grid-template-columns:repeat(5,1fr)' });
-
-  kpiRow.appendChild(kpiCard(
-    'Revenue', formatEUR(rev),
-    rev >= 0 ? '' : 'danger',
-    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
-    yoyTrend(rev, prevYearCtx?.rev, prevYear)
-  ));
-  kpiRow.appendChild(kpiCard(
-    'Operating Expenses', formatEUR(exp),
-    '',
-    () => drillDownModal('Operating Expenses', drillExpRows(opExpenses), EXP_COLS)
-  ));
-  kpiRow.appendChild(kpiCard(
-    'Operating Profit', formatEUR(net),
-    net >= 0 ? 'success' : 'danger',
-    () => drillDownModal(
-      'Operating Profit Breakdown',
-      mixedRows(payments, invoices, opExpenses),
-      MIXED_COLS
-    ),
-    yoyTrend(net, prevYearCtx?.net, prevYear)
-  ));
-  kpiRow.appendChild(kpiCard(
-    'Renovation CapEx', formatEUR(reno),
-    'warning',
-    () => drillDownModal('Renovation CapEx', drillExpRows(renoExpenses), EXP_COLS)
-  ));
-  kpiRow.appendChild(kpiCard(
-    'Net Cash Flow', formatEUR(netCash),
-    netCash >= 0 ? 'success' : 'danger',
-    () => drillDownModal(
-      'Net Cash Flow Breakdown',
-      mixedRows(payments, invoices, [...opExpenses, ...renoExpenses]),
-      MIXED_COLS
-    )
-  ));
-  wrap.appendChild(kpiRow);
-
-  // ── Key Drivers ────────────────────────────────────────────────────────────
-  wrap.appendChild(buildKeyDriversSection());
-
-  // ── Charts row 1: Grouped bar (2/3) + Donut (1/3) ─────────────────────────
-  const chartsRow1 = el('div', {
-    style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px'
-  });
-
-  chartsRow1.appendChild(
-    el('div', { class: 'card' },
-      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Monthly Overview (Revenue / OpEx / CapEx)')),
-      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-bar' }))
-    )
-  );
-  chartsRow1.appendChild(
-    el('div', { class: 'card' },
-      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue by Stream')),
-      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-donut' }))
-    )
-  );
-  wrap.appendChild(chartsRow1);
-
-  // ── Chart row 2: Horizontal bar — Top contributors ─────────────────────────
-  wrap.appendChild(
-    el('div', { class: 'card mb-16' },
-      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Top Contributors (Properties & Clients)')),
-      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-hbar' }))
-    )
-  );
-
-  // ── Performance Rankings ───────────────────────────────────────────────────
-  const rankingsEl = buildPerformanceRankings(data);
-  if (rankingsEl) wrap.appendChild(rankingsEl);
-
-  // ── Transactions table ─────────────────────────────────────────────────────
-  const txCard = el('div', { class: 'card' });
-  txCard.appendChild(
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Transactions'))
-  );
-  buildTransactionTable(txCard, data);
-  wrap.appendChild(txCard);
-
-  // ── Performance by Owner ───────────────────────────────────────────────────
-  const ownerRows = Object.keys(OWNERS).map(owner => {
-    const oPay = payments.filter(p => (byId('properties', p.propertyId)?.owner || 'both') === owner);
-    const oInv = invoices.filter(i => (byId('clients',    i.clientId)?.owner  || 'both') === owner);
-    const oExp = opExpenses.filter(e => (byId('properties', e.propertyId)?.owner || 'both') === owner);
-    const oRev  = sumPaymentsEUR(oPay) + sumInvoicesEUR(oInv);
-    const oExp2 = sumExpensesEUR(oExp);
-    return { owner, rev: oRev, exp: oExp2, net: oRev - oExp2, pays: oPay, invs: oInv, opExps: oExp };
-  }).filter(r => r.rev > 0 || r.exp > 0);
-
-  if (ownerRows.length > 0) {
-    const ownerCard = el('div', { class: 'card mt-16' });
-    ownerCard.appendChild(el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Performance by Owner')
-    ));
-    const ownerTable = el('table', { class: 'table' });
-    const hdr = el('tr');
-    ['Owner','Revenue','Expenses','Net'].forEach((h, i) => hdr.appendChild(el('th', { class: i > 0 ? 'right' : '' }, h)));
-    ownerTable.appendChild(el('thead', {}, hdr));
-    const tb = el('tbody');
-    for (const r of ownerRows) {
-      const tr = el('tr', { style: 'cursor:pointer', title: 'Click for breakdown' });
-      tr.addEventListener('mouseenter', () => { tr.style.background = 'var(--bg-elev-2)'; });
-      tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
-      tr.onclick = () => drillDownModal(
-        `${OWNERS[r.owner] || r.owner} — Breakdown`,
-        mixedRows(r.pays, r.invs, r.opExps),
-        MIXED_COLS
-      );
-      tr.appendChild(el('td', {}, el('span', { class: 'badge' }, OWNERS[r.owner] || r.owner)));
-      tr.appendChild(el('td', { class: 'right num' }, formatEUR(r.rev)));
-      tr.appendChild(el('td', { class: 'right num' }, formatEUR(r.exp)));
-      tr.appendChild(el('td', { class: 'right num' + (r.net < 0 ? ' danger' : '') }, formatEUR(r.net)));
-      tb.appendChild(tr);
-    }
-    ownerTable.appendChild(tb);
-    const tw = el('div', { class: 'table-wrap' });
-    tw.appendChild(ownerTable);
-    ownerCard.appendChild(tw);
-    wrap.appendChild(ownerCard);
-  }
-
-  // ── Render charts after view is in live DOM ────────────────────────────────
-  setTimeout(() => {
-    renderMonthlyBar(data);
-    renderStreamDonut(data);
-    renderContribBar(data);
-    renderTrendCharts(data);
-    renderKeyDrivers(data);
-  }, 0);
-
-  return wrap;
-}
-
-// ── Chart 1: Grouped bar — Month × (Revenue, OpEx, CapEx) ────────────────────
-function getMonthKeys() {
-  const year = gFilters.year !== 'all' ? gFilters.year : String(new Date().getFullYear());
-  return MONTH_LABELS.map((label, i) => {
-    const mm  = String(i + 1).padStart(2, '0');
-    const key = `${year}-${mm}`;
-    return { label, key, mm };
-  }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
-}
-
-function renderMonthlyBar({ payments, invoices, opExpenses, renoExpenses }) {
-  const months = getMonthKeys();
-  if (!months.length) return;
-
-  const revMap = new Map(), expMap = new Map(), renoMap = new Map();
-  payments.forEach(p => {
-    const mk = p.date?.slice(0, 7);
-    if (mk) revMap.set(mk, (revMap.get(mk) || 0) + toEUR(p.amount, p.currency, p.date));
-  });
-  invoices.forEach(i => {
-    const mk = (i.issueDate || '').slice(0, 7);
-    if (mk) revMap.set(mk, (revMap.get(mk) || 0) + toEUR(i.total, i.currency, i.issueDate));
-  });
-  opExpenses.forEach(e => {
-    const mk = e.date?.slice(0, 7);
-    if (mk) expMap.set(mk, (expMap.get(mk) || 0) + toEUR(e.amount, e.currency, e.date));
-  });
-  renoExpenses.forEach(e => {
-    const mk = e.date?.slice(0, 7);
-    if (mk) renoMap.set(mk, (renoMap.get(mk) || 0) + toEUR(e.amount, e.currency, e.date));
-  });
-
-  charts.bar('exec-bar', {
-    labels: months.map(m => m.label),
-    datasets: [
-      { label: 'Revenue', data: months.map(m => Math.round(revMap.get(m.key)  || 0)), backgroundColor: '#10b981' },
-      { label: 'OpEx',    data: months.map(m => Math.round(expMap.get(m.key)  || 0)), backgroundColor: '#ef4444' },
-      { label: 'CapEx',   data: months.map(m => Math.round(renoMap.get(m.key) || 0)), backgroundColor: '#f59e0b' }
-    ],
-    onClickItem: (label, idx, dsIdx) => {
-      const mk    = months[idx]?.key;
-      if (!mk) return;
-      const mPay  = payments.filter(p => p.date?.slice(0, 7) === mk);
-      const mInv  = invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk);
-      const mOpEx = opExpenses.filter(e => e.date?.slice(0, 7) === mk);
-      const mReno = renoExpenses.filter(e => e.date?.slice(0, 7) === mk);
-      const titles = ['Revenue', 'OpEx', 'CapEx'];
-      if (dsIdx === 0) {
-        drillDownModal(`${label} — Revenue`, drillRevRows(mPay, mInv), REV_COLS);
-      } else if (dsIdx === 1) {
-        drillDownModal(`${label} — OpEx`, drillExpRows(mOpEx), EXP_COLS);
-      } else {
-        drillDownModal(`${label} — CapEx`, drillExpRows(mReno), EXP_COLS);
-      }
-    }
-  });
-}
-
-// ── Chart 2: Donut — Revenue by Stream ───────────────────────────────────────
-function renderStreamDonut({ payments, invoices }) {
-  const streamMap = new Map();
-  payments.forEach(p => {
-    const s = p.stream || 'other';
-    streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
-  });
-  invoices.forEach(i => {
-    const s = i.stream || 'other';
-    streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.total, i.currency, i.issueDate));
-  });
-
-  const entries    = [...streamMap.entries()].filter(([, v]) => v > 0);
-  const streamKeys = entries.map(([k]) => k);
-  if (!entries.length) return;
-
-  charts.doughnut('exec-donut', {
-    labels: entries.map(([k]) => STREAMS[k]?.label || k),
-    data:   entries.map(([, v]) => Math.round(v)),
-    colors: entries.map(([k]) => STREAMS[k]?.color || '#8b93b0'),
-    onClickItem: (label, idx) => {
-      const sk = streamKeys[idx];
-      drillDownModal(
-        `Revenue — ${label}`,
-        drillRevRows(
-          payments.filter(p => (p.stream || 'other') === sk),
-          invoices.filter(i => (i.stream || 'other') === sk)
-        ),
-        REV_COLS
-      );
-    }
-  });
-}
-
-// ── Chart 3: Horizontal bar — Top contributors ────────────────────────────────
-function renderContribBar({ payments, invoices }) {
-  const map = new Map();
-
-  payments.forEach(p => {
-    const name = byId('properties', p.propertyId)?.name || 'Unknown';
-    const cur  = map.get(name) || { eur: 0, type: 'property', id: p.propertyId };
-    map.set(name, { ...cur, eur: cur.eur + toEUR(p.amount, p.currency, p.date) });
-  });
-  invoices.forEach(i => {
-    const name = byId('clients', i.clientId)?.name || 'Unknown';
-    const cur  = map.get(name) || { eur: 0, type: 'client', id: i.clientId };
-    map.set(name, { ...cur, eur: cur.eur + toEUR(i.total, i.currency, i.issueDate) });
-  });
-
-  const sorted     = [...map.entries()].sort((a, b) => b[1].eur - a[1].eur).slice(0, 10);
-  const entityMeta = sorted.map(([, m]) => m);
-  if (!sorted.length) return;
-
-  charts.bar('exec-hbar', {
-    labels: sorted.map(([name]) => name),
-    datasets: [{
-      label:           'Revenue (EUR)',
-      data:            sorted.map(([, m]) => Math.round(m.eur)),
-      backgroundColor: sorted.map((_, i) => `hsla(${(210 + i * 28) % 360}, 65%, 55%, 0.85)`)
-    }],
-    horizontal: true,
-    onClickItem: (label, idx) => {
-      const meta = entityMeta[idx];
-      const rows = meta.type === 'property'
-        ? drillRevRows(payments.filter(p => p.propertyId === meta.id), [])
-        : drillRevRows([], invoices.filter(i => i.clientId === meta.id));
-      drillDownModal(`Revenue — ${label}`, rows, REV_COLS);
-    }
-  });
-}
-
-// ── Performance Rankings (Top / Underperformers) ──────────────────────────────
-function buildPerformanceRankings({ payments, invoices, opExpenses }) {
-  // Accumulate per-entity stats from already-filtered data
-  const map = new Map();
-
-  payments.forEach(p => {
-    if (!p.propertyId) return;
-    const prop = byId('properties', p.propertyId);
-    if (!prop) return;
-    const e = map.get(p.propertyId) || { id: p.propertyId, name: prop.name, type: 'property', rev: 0, exp: 0, pays: [], invs: [], opExps: [] };
-    e.rev += toEUR(p.amount, p.currency, p.date);
-    e.pays.push(p);
-    map.set(p.propertyId, e);
-  });
-
-  invoices.forEach(i => {
-    if (!i.clientId) return;
-    const client = byId('clients', i.clientId);
-    if (!client) return;
-    const e = map.get(i.clientId) || { id: i.clientId, name: client.name, type: 'client', rev: 0, exp: 0, pays: [], invs: [], opExps: [] };
-    e.rev += toEUR(i.total, i.currency, i.issueDate);
-    e.invs.push(i);
-    map.set(i.clientId, e);
-  });
-
-  opExpenses.forEach(x => {
-    const e = x.propertyId && map.get(x.propertyId);
-    if (e) { e.exp += toEUR(x.amount, x.currency, x.date); e.opExps.push(x); }
-  });
-
-  const entities = [...map.values()].map(e => {
-    const net = e.rev - e.exp;
-    let roi = null;
-    if (e.type === 'property') {
-      const prop = byId('properties', e.id);
-      if (prop?.purchasePrice) {
-        const purchaseEUR   = toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate);
-        // All-time CapEx as denominator — not period-filtered, same as properties module
-        const allRenoEUR    = listActive('expenses')
-          .filter(ex => isCapEx(ex) && ex.propertyId === e.id)
-          .reduce((s, ex) => s + toEUR(ex.amount, ex.currency, ex.date), 0);
-        const totalInvested = purchaseEUR + allRenoEUR;
-        if (totalInvested > 0) roi = (net / totalInvested) * 100;
-      }
-    }
-    return { ...e, net, roi };
-  });
-
+// ── Performance Rankings (Top 3 / Worst 3 by net profit) ─────────────────────
+function buildPerformanceRankings(summary) {
+  const { entities } = summary;
   if (!entities.length) return null;
 
-  const topN  = Math.min(5, entities.length);
-  const top   = [...entities].sort((a, b) => b.net - a.net).slice(0, topN);
-  const under = [...entities].sort((a, b) => a.net - b.net).slice(0, topN);
+  const top   = [...entities].sort((a, b) => b.net - a.net).slice(0, 3);
+  const worst = [...entities].sort((a, b) => a.net - b.net).slice(0, 3);
 
   const makeTable = (title, rows) => {
     const card = el('div', { class: 'card' });
     card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, title)));
 
-    const tbl  = el('table', { class: 'table' });
-    const htr  = el('tr');
+    const tbl = el('table', { class: 'table' });
+    const htr = el('tr');
     [['Name', false], ['Revenue', true], ['Net Profit', true], ['ROI', true]].forEach(([h, right]) =>
       htr.appendChild(el('th', { class: right ? 'right' : '' }, h))
     );
@@ -990,110 +626,226 @@ function buildPerformanceRankings({ payments, invoices, opExpenses }) {
   };
 
   const section = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
-  section.appendChild(makeTable('Top Performers', top));
-  section.appendChild(makeTable('Underperformers', under));
+  section.appendChild(makeTable('Top 3 — Net Profit', top));
+  section.appendChild(makeTable('Worst 3 — Net Profit', worst));
   return section;
 }
 
-// ── Transactions table ────────────────────────────────────────────────────────
-function buildTransactionTable(container, { payments, invoices, opExpenses, renoExpenses }) {
-  const rows = [];
+// ── Liquidity ─────────────────────────────────────────────────────────────────
+function buildLiquidity(summary) {
+  const { outstanding, overdue, outstandingInvs, overdueInvs } = summary;
+  const current = outstanding - overdue;
 
-  for (const p of payments) {
-    const prop = byId('properties', p.propertyId);
-    rows.push({
-      _date:     p.date,
-      _eur:      toEUR(p.amount, p.currency, p.date),
-      _srcPay:   p,
-      date:      fmtDate(p.date),
-      type:      'Payment',
-      stream:    STREAMS[p.stream]?.short || p.stream || '—',
-      entity:    prop?.name || '—',
-      owner:     OWNERS[prop?.owner] || prop?.owner || '—',
-      category:  p.type || '—',
-      status:    p.status || '—',
-      amountEUR: formatEUR(toEUR(p.amount, p.currency, p.date))
-    });
-  }
-  for (const i of invoices) {
-    const client = byId('clients', i.clientId);
-    rows.push({
-      _date:     i.issueDate,
-      _eur:      toEUR(i.total, i.currency, i.issueDate),
-      _srcInv:   i,
-      date:      fmtDate(i.issueDate),
-      type:      'Invoice',
-      stream:    STREAMS[i.stream]?.short || i.stream || '—',
-      entity:    client?.name || '—',
-      owner:     '—',
-      category:  'Invoice',
-      status:    i.status || '—',
-      amountEUR: formatEUR(toEUR(i.total, i.currency, i.issueDate))
-    });
-  }
-  for (const e of [...opExpenses, ...renoExpenses]) {
-    const prop   = byId('properties', e.propertyId);
-    const eurAmt = toEUR(e.amount, e.currency, e.date);
-    rows.push({
-      _date:     e.date,
-      _eur:      -eurAmt,
-      _srcExp:   e,
-      date:      fmtDate(e.date),
-      type:      isCapEx(e) ? 'CapEx' : 'OpEx',
-      stream:    STREAMS[e.stream]?.short || '—',
-      entity:    prop?.name || '—',
-      owner:     OWNERS[prop?.owner] || prop?.owner || '—',
-      category:  e.category || e.costCategory || '—',
-      status:    'recorded',
-      amountEUR: formatEUR(eurAmt)
-    });
-  }
-
-  rows.sort((a, b) => (b._date || '').localeCompare(a._date || ''));
-
-  const TX_COLS = [
-    { key: 'date',      label: 'Date'        },
-    { key: 'type',      label: 'Type'        },
-    { key: 'stream',    label: 'Stream'      },
-    { key: 'entity',    label: 'Entity'      },
-    { key: 'owner',     label: 'Owner'       },
-    { key: 'category',  label: 'Category'    },
-    { key: 'status',    label: 'Status'      },
-    { key: 'amountEUR', label: 'Amount EUR', right: true }
-  ];
-
-  const table = el('table', { class: 'table' });
-  const htr   = el('tr');
-  TX_COLS.forEach(col => htr.appendChild(el('th', { class: col.right ? 'right' : '' }, col.label)));
-  table.appendChild(el('thead', {}, htr));
-
-  const tbody = el('tbody');
-  for (const r of rows) {
-    const tr = el('tr', { style: 'cursor:pointer', title: 'Click for details' });
-    tr.addEventListener('mouseenter', () => { tr.style.background = 'var(--bg-elev-2)'; });
-    tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
-    tr.onclick = () => {
-      if (r._srcPay) drillDownModal('Payment Detail', drillRevRows([r._srcPay], []), REV_COLS);
-      else if (r._srcInv) drillDownModal('Invoice Detail', drillRevRows([], [r._srcInv]), REV_COLS);
-      else if (r._srcExp) drillDownModal('Expense Detail', drillExpRows([r._srcExp]), EXP_COLS);
-    };
-    TX_COLS.forEach(col => {
-      tr.appendChild(el('td', { class: col.right ? 'right num' : '' }, r[col.key] ?? '—'));
-    });
-    tbody.appendChild(tr);
-  }
-  table.appendChild(tbody);
-
-  const tableWrap = el('div', { class: 'table-wrap' });
-  tableWrap.appendChild(table);
-  container.appendChild(tableWrap);  // must be appended before attachSortFilter
-  attachSortFilter(tableWrap);
-
-  const netTotal = rows.reduce((s, r) => s + (r._eur || 0), 0);
-  container.appendChild(el('div', {
-    style: 'display:flex;justify-content:space-between;margin-top:8px;font-size:13px'
-  },
-    el('span', { style: 'color:var(--text-muted)' }, `${rows.length} record(s)`),
-    el('strong', { class: 'num' }, `Net: ${formatEUR(netTotal)}`)
+  const section = el('div', { class: 'card mb-16' });
+  section.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Liquidity')
   ));
+
+  const strip = el('div', {
+    style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 16px 16px'
+  });
+
+  strip.appendChild(kpiCard(
+    'Outstanding', formatEUR(outstanding),
+    outstanding > 0 ? 'warning' : '',
+    () => drillDownModal('Outstanding Invoices', drillRevRows([], outstandingInvs), REV_COLS)
+  ));
+  strip.appendChild(kpiCard(
+    'Overdue', formatEUR(overdue),
+    overdue > 0 ? 'danger' : '',
+    () => drillDownModal('Overdue Invoices', drillRevRows([], overdueInvs), REV_COLS)
+  ));
+  strip.appendChild(kpiCard(
+    'Current (not overdue)', formatEUR(current),
+    '',
+    () => drillDownModal('Current Invoices',
+      drillRevRows([], outstandingInvs.filter(i => i.status !== 'overdue')), REV_COLS)
+  ));
+
+  section.appendChild(strip);
+  return section;
+}
+
+// ── Main view builder ─────────────────────────────────────────────────────────
+function buildView() {
+  const wrap = el('div', { class: 'view active' });
+
+  // Page header
+  wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
+    el('h2', { style: 'margin:0 0 4px;font-size:20px;font-weight:700' }, 'Executive Analytics'),
+    el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' },
+      'Consolidated overview — revenue, expenses and cash flow')
+  ));
+
+  // Filter bar: Year → Month → Owner → Stream
+  const years   = availableYears();
+  const yearSel = select(
+    [{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))],
+    gFilters.year
+  );
+  yearSel.onchange = () => { gFilters.year = yearSel.value; rebuildView(); };
+
+  const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
+  filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
+  filterBar.appendChild(yearSel);
+  filterBar.appendChild(buildMultiSelect(
+    MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })),
+    gFilters.months, 'All Months', rebuildView
+  ));
+  filterBar.appendChild(buildMultiSelect(
+    Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })),
+    gFilters.owners, 'All Owners', rebuildView
+  ));
+  filterBar.appendChild(buildMultiSelect(
+    Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, css: v.css })),
+    gFilters.streams, 'All Streams', rebuildView
+  ));
+  wrap.appendChild(filterBar);
+
+  // Single data pass → single summary object
+  const data    = getData();
+  const summary = calculateExecutiveSummary(data);
+
+  const currentYear = gFilters.year !== 'all' ? gFilters.year : null;
+  const prevYear    = currentYear ? String(Number(currentYear) - 1) : null;
+  const prevSummary = prevYear ? calculatePrevYearSummary(prevYear) : null;
+
+  // Layout: KPI Row → Trends → Driver Explanations → Forecast vs Actual
+  //         → Key Drivers → Performance Rankings → Liquidity
+  wrap.appendChild(buildKpiRow(summary, prevSummary, prevYear));
+  wrap.appendChild(buildTrendsSection());
+  wrap.appendChild(buildDriverExplanations(summary));
+  wrap.appendChild(buildForecastVsActual(summary));
+  wrap.appendChild(buildKeyDriversSection());
+  const rankingsEl = buildPerformanceRankings(summary);
+  if (rankingsEl) wrap.appendChild(rankingsEl);
+  wrap.appendChild(buildLiquidity(summary));
+
+  setTimeout(() => {
+    renderTrendCharts(data);
+    renderKeyDrivers(summary);
+  }, 0);
+
+  return wrap;
+}
+
+// ── Month key helper ──────────────────────────────────────────────────────────
+function getMonthKeys() {
+  const year = gFilters.year !== 'all' ? gFilters.year : String(new Date().getFullYear());
+  return MONTH_LABELS.map((label, i) => {
+    const mm  = String(i + 1).padStart(2, '0');
+    const key = `${year}-${mm}`;
+    return { label, key, mm };
+  }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+}
+
+// ── Business Trends — render 3 line charts ────────────────────────────────────
+function renderTrendCharts({ payments, invoices, opExpenses, renoExpenses }) {
+  const months = getMonthKeys();
+  if (!months.length) return;
+
+  const revMap = new Map(), expMap = new Map(), renoMap = new Map();
+  payments.forEach(p => {
+    const mk = p.date?.slice(0, 7);
+    if (mk) revMap.set(mk, (revMap.get(mk) || 0) + toEUR(p.amount, p.currency, p.date));
+  });
+  invoices.forEach(i => {
+    const mk = (i.issueDate || '').slice(0, 7);
+    if (mk) revMap.set(mk, (revMap.get(mk) || 0) + toEUR(i.total, i.currency, i.issueDate));
+  });
+  opExpenses.forEach(e => {
+    const mk = e.date?.slice(0, 7);
+    if (mk) expMap.set(mk, (expMap.get(mk) || 0) + toEUR(e.amount, e.currency, e.date));
+  });
+  renoExpenses.forEach(e => {
+    const mk = e.date?.slice(0, 7);
+    if (mk) renoMap.set(mk, (renoMap.get(mk) || 0) + toEUR(e.amount, e.currency, e.date));
+  });
+
+  const labels   = months.map(m => m.label);
+  const revData  = months.map(m => Math.round(revMap.get(m.key)  || 0));
+  const expData  = months.map(m => Math.round(expMap.get(m.key)  || 0));
+  const renoData = months.map(m => Math.round(renoMap.get(m.key) || 0));
+  const netData  = months.map((_, i) => revData[i] - expData[i]);
+  const cashData = months.map((_, i) => netData[i] - renoData[i]);
+
+  const currentYear = gFilters.year !== 'all' ? gFilters.year : null;
+  let fcMap = null;
+  if (currentYear) {
+    const raw = forecastMonthlyEUR(currentYear);
+    if (raw.size > 0) fcMap = raw;
+  }
+
+  // Revenue trend (with optional forecast overlay)
+  const revDatasets = [{
+    label: 'Revenue', data: revData,
+    borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', fill: true
+  }];
+  if (fcMap) {
+    const fcData = months.map(m => Math.round(fcMap.get(m.key) || 0));
+    if (fcData.some(v => v > 0)) {
+      revDatasets.push({
+        label: 'Forecast', data: fcData,
+        borderColor: '#6366f1', backgroundColor: 'transparent',
+        borderDash: [4, 4], fill: false
+      });
+    }
+  }
+  charts.line('exec-trend-rev', {
+    labels, datasets: revDatasets,
+    onClickItem: (label, idx) => {
+      const mk = months[idx]?.key;
+      if (!mk) return;
+      drillDownModal(
+        `${label} — Revenue`,
+        drillRevRows(
+          payments.filter(p => p.date?.slice(0, 7) === mk),
+          invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk)
+        ),
+        REV_COLS
+      );
+    }
+  });
+
+  charts.line('exec-trend-profit', {
+    labels,
+    datasets: [{
+      label: 'Net Profit', data: netData,
+      borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', fill: true
+    }],
+    onClickItem: (label, idx) => {
+      const mk = months[idx]?.key;
+      if (!mk) return;
+      drillDownModal(
+        `${label} — Net Profit`,
+        mixedRows(
+          payments.filter(p => p.date?.slice(0, 7) === mk),
+          invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk),
+          opExpenses.filter(e => e.date?.slice(0, 7) === mk)
+        ),
+        MIXED_COLS
+      );
+    }
+  });
+
+  charts.line('exec-trend-cashflow', {
+    labels,
+    datasets: [{
+      label: 'Cash Flow', data: cashData,
+      borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', fill: true
+    }],
+    onClickItem: (label, idx) => {
+      const mk = months[idx]?.key;
+      if (!mk) return;
+      drillDownModal(
+        `${label} — Cash Flow`,
+        mixedRows(
+          payments.filter(p => p.date?.slice(0, 7) === mk),
+          invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk),
+          [...opExpenses, ...renoExpenses].filter(e => e.date?.slice(0, 7) === mk)
+        ),
+        MIXED_COLS
+      );
+    }
+  });
 }
