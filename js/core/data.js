@@ -494,6 +494,22 @@ export function forecastedRevenueEUR(year) {
   }, 0);
 }
 
+// Returns a Map of YYYY-MM → forecasted EUR for monthly trend overlay
+export function forecastMonthlyEUR(year) {
+  const forecasts = (state.db.forecasts || []).filter(f => f.year === Number(year));
+  const map = new Map();
+  for (const fc of forecasts) {
+    for (const [mk, md] of Object.entries(fc.months || {})) {
+      const entries = Array.isArray(md.entries) ? md.entries : [];
+      const val = entries.length > 0
+        ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+        : Number(md.revenue) || 0;
+      if (val > 0) map.set(mk, (map.get(mk) || 0) + val);
+    }
+  }
+  return map;
+}
+
 export function estimateTaxForYear(year, rate) {
   const s = `${year}-01-01`, e = `${year}-12-31`;
   const rev = [...listActivePayments().filter(p => p.status === 'paid' && p.date >= s && p.date <= e).map(p => toEUR(p.amount, p.currency, year)), ...listActive('invoices').filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e).map(i => toEUR(i.total, i.currency, year))].reduce((a, b) => a + b, 0);
