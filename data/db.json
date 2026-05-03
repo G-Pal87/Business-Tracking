@@ -1617,6 +1617,23 @@
       "createdBy": "RitaK",
       "updatedAt": 1777818631173,
       "updatedBy": "RitaK"
+    },
+    {
+      "id": "cli_mopvfxalho",
+      "name": "Event & More Produkciós Iroda Korlátolt Felelősségű",
+      "email": "",
+      "address": "Társaság 1112 Budapest, Sasadi str 134., Hungary",
+      "vatNumber": "12676785-2-43",
+      "registrationNumber": "01-09-698048",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "contractStart": "2026-04-01",
+      "notes": "",
+      "createdAt": 1777818890458,
+      "createdBy": "RitaK",
+      "updatedAt": 1777818890458,
+      "updatedBy": "RitaK"
     }
   ],
   "services": [
