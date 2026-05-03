@@ -1307,8 +1307,10 @@
       "documents": [],
       "createdAt": 1777793414106,
       "createdBy": "Giorgos",
-      "updatedAt": 1777793414106,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777793520868,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777793520868,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_mopgaq67js",
