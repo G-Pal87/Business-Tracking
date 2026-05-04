@@ -3196,6 +3196,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777935845633,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mort53hfk9",
+      "number": "21_CTWO_010625",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-06-01",
+      "dueDate": "2025-06-10",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mort53hflb",
+          "description": "Customer Success Professional Services",
+          "quantity": 22,
+          "unit": "day",
+          "rate": 670,
+          "total": 14740
+        }
+      ],
+      "subtotal": 14740,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 14740,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mort53hfk9.pdf",
+      "createdAt": 1777935922952,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777935922952,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
