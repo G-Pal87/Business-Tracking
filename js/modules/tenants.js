@@ -27,11 +27,13 @@ function build() {
   const propFilter   = new Set();
   const statusFilter = new Set();
 
-  const propMS   = buildMultiSelect(ltProps.map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderTable());
-  const statusMS = buildMultiSelect(Object.entries(STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable());
+  const propMS   = buildMultiSelect(ltProps.map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderTable(), 'ten_props');
+  const statusMS = buildMultiSelect(Object.entries(STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable(), 'ten_statuses');
 
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); statusMS.reset(); renderTable(); } });
   filterBar.appendChild(propMS);
   filterBar.appendChild(statusMS);
+  filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(button('+ Add Tenant', { variant: 'primary', onClick: () => openForm(null, renderTable) }));
   wrap.appendChild(filterBar);

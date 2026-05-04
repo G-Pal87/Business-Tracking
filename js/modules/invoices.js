@@ -92,16 +92,18 @@ function build() {
   const clientFilter = new Set();
   const ownerFilter  = new Set();
   const statusFilter = new Set();
-  const yearMS   = buildMultiSelect(years.map(y => ({ value: y, label: y })), yearFilter, 'All Years', () => renderTable());
-  const monthMS  = buildMultiSelect(months.map(m => ({ value: m, label: new Date(2000, Number(m)-1, 1).toLocaleDateString('en-US', { month: 'long' }) })), monthFilter, 'All Months', () => renderTable());
-  const clientMS = buildMultiSelect(listActive('clients').map(c => ({ value: c.id, label: c.name })), clientFilter, 'All Clients', () => renderTable());
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), ownerFilter, 'All Owners', () => renderTable());
-  const statusMS = buildMultiSelect(Object.entries(INVOICE_STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable());
+  const yearMS   = buildMultiSelect(years.map(y => ({ value: y, label: y })), yearFilter, 'All Years', () => renderTable(), 'inv_years');
+  const monthMS  = buildMultiSelect(months.map(m => ({ value: m, label: new Date(2000, Number(m)-1, 1).toLocaleDateString('en-US', { month: 'long' }) })), monthFilter, 'All Months', () => renderTable(), 'inv_months');
+  const clientMS = buildMultiSelect(listActive('clients').map(c => ({ value: c.id, label: c.name })), clientFilter, 'All Clients', () => renderTable(), 'inv_clients');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), ownerFilter, 'All Owners', () => renderTable(), 'inv_owners');
+  const statusMS = buildMultiSelect(Object.entries(INVOICE_STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable(), 'inv_statuses');
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); clientMS.reset(); ownerMS.reset(); statusMS.reset(); renderTable(); } });
   bar.appendChild(yearMS);
   bar.appendChild(monthMS);
   bar.appendChild(clientMS);
   bar.appendChild(ownerMS);
   bar.appendChild(statusMS);
+  bar.appendChild(resetFiltersBtn);
   let selected = new Set();
 
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {

@@ -59,10 +59,10 @@ function build() {
   const accountingTypeFilter = new Set();
   const recurrenceFilter     = new Set();
 
-  const propMS           = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderAll());
-  const catMS            = buildMultiSelect(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), catFilter, 'All Expenses', () => renderTable());
-  const accountingTypeMS = buildMultiSelect(Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label })), accountingTypeFilter, 'All Types', () => renderAll());
-  const recurrenceMS     = buildMultiSelect(Object.entries(RECURRENCE_TYPES).map(([v, m]) => ({ value: v, label: m.label })), recurrenceFilter, 'All Recurrence', () => renderTable());
+  const propMS           = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderAll(), 'exp_props');
+  const catMS            = buildMultiSelect(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), catFilter, 'All Expenses', () => renderTable(), 'exp_cats');
+  const accountingTypeMS = buildMultiSelect(Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label })), accountingTypeFilter, 'All Types', () => renderAll(), 'exp_types');
+  const recurrenceMS     = buildMultiSelect(Object.entries(RECURRENCE_TYPES).map(([v, m]) => ({ value: v, label: m.label })), recurrenceFilter, 'All Recurrence', () => renderTable(), 'exp_recurrence');
 
   let selected = new Set();
 
@@ -82,10 +82,12 @@ function build() {
   }});
   deleteSelBtn.style.display = 'none';
 
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); catMS.reset(); accountingTypeMS.reset(); recurrenceMS.reset(); renderAll(); } });
   filterBar.appendChild(propMS);
   filterBar.appendChild(catMS);
   filterBar.appendChild(accountingTypeMS);
   filterBar.appendChild(recurrenceMS);
+  filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(deleteSelBtn);
   filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));

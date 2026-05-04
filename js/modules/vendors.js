@@ -25,8 +25,10 @@ function build() {
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16' });
   const roleFilter = new Set();
-  const roleMS = buildMultiSelect(Object.entries(VENDOR_ROLES).map(([v, m]) => ({ value: v, label: m.label })), roleFilter, 'All Roles', () => renderCards());
+  const roleMS = buildMultiSelect(Object.entries(VENDOR_ROLES).map(([v, m]) => ({ value: v, label: m.label })), roleFilter, 'All Roles', () => renderCards(), 'vnd_roles');
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { roleMS.reset(); renderCards(); } });
   filterBar.appendChild(roleMS);
+  filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(button('+ Add Vendor', { variant: 'primary', onClick: () => openForm() }));
   wrap.appendChild(filterBar);

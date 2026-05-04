@@ -51,9 +51,9 @@ function buildAllPayments(wrap) {
   const statusFilter = new Set();
   const streamFilter = new Set();
 
-  const propMS   = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderTable());
-  const statusMS = buildMultiSelect(Object.entries(PAYMENT_STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable());
-  const streamMS = buildMultiSelect(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), streamFilter, 'All Streams', () => renderTable());
+  const propMS   = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderTable(), 'pay_props');
+  const statusMS = buildMultiSelect(Object.entries(PAYMENT_STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable(), 'pay_statuses');
+  const streamMS = buildMultiSelect(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), streamFilter, 'All Streams', () => renderTable(), 'pay_streams');
 
   let selected = new Set();
 
@@ -69,9 +69,11 @@ function buildAllPayments(wrap) {
   }});
   deleteSelBtn.style.display = 'none';
 
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); statusMS.reset(); streamMS.reset(); renderTable(); } });
   filterBar.appendChild(propMS);
   filterBar.appendChild(statusMS);
   filterBar.appendChild(streamMS);
+  filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(deleteSelBtn);
   filterBar.appendChild(button('Import Airbnb CSV', { onClick: () => openCSVImport() }));

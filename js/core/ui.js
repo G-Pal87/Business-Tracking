@@ -230,10 +230,17 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } =
     return { t: 's', v: txt };
   };
 
+  // obs is declared below; applySort references it via closure — safe because
+  // applySort is only ever called after obs is initialised.
+  let obs;
+
   const applySort = () => {
     if (sortCol < 0) return;
     const tbody = tableWrap.querySelector('tbody');
     if (!tbody || tbody.querySelector('.row-editing')) return;
+    // Disconnect while re-ordering rows to prevent MutationObserver from
+    // triggering enhance() → applySort() in an infinite loop.
+    obs?.disconnect();
     const rows = [...tbody.querySelectorAll('tr')];
     rows.sort((a, b) => {
       const ap = parseCell(a.cells[sortCol]?.textContent?.trim() || '');
@@ -242,6 +249,7 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } =
       return String(ap.v).localeCompare(String(bp.v)) * sortDir;
     });
     rows.forEach(r => tbody.appendChild(r));
+    obs?.observe(tableWrap, { childList: true, subtree: true });
   };
 
   const applyFilter = () => {
@@ -290,16 +298,31 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } =
   });
 
   let debounce;
-  const observer = new MutationObserver(() => { clearTimeout(debounce); debounce = setTimeout(enhance, 0); });
-  observer.observe(tableWrap, { childList: true, subtree: true });
+  obs = new MutationObserver(() => { clearTimeout(debounce); debounce = setTimeout(enhance, 0); });
+  obs.observe(tableWrap, { childList: true, subtree: true });
   enhance();
 }
 
 // ── Shared multi-select dropdown ──────────────────────────────────────────────
-// items: [{ value, label, css? }]
-// filterSet: a Set that is mutated to hold selected values (empty = all)
-// onRefresh: called once when the menu closes after a change was made
-export function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
+// items:      [{ value, label, css? }]
+// filterSet:  a Set that is mutated to hold selected values (empty = all)
+// onRefresh:  called once when the menu closes after a change was made
+// storageKey: optional localStorage key for filter persistence
+//
+// The returned element has a .reset() method that restores the "show all" state.
+export function buildMultiSelect(items, filterSet, allLabel, onRefresh, storageKey = null) {
+  // ── Restore persisted state into the Set before building the UI ────────────
+  if (storageKey) {
+    try {
+      const raw = localStorage.getItem(`btf:${storageKey}`);
+      if (raw !== null) {
+        const vals = JSON.parse(raw);
+        filterSet.clear();
+        if (Array.isArray(vals)) vals.forEach(v => filterSet.add(v));
+      }
+    } catch { /* ignore corrupt data */ }
+  }
+
   const wrapper   = el('div', { style: 'position:relative' });
   const trigLabel = el('span');
   const trigger   = el('div', {
@@ -332,6 +355,12 @@ export function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
     return chk;
   });
 
+  const persist = () => {
+    if (!storageKey) return;
+    try { localStorage.setItem(`btf:${storageKey}`, JSON.stringify([...filterSet])); }
+    catch { /* quota exceeded — ignore */ }
+  };
+
   const sync = () => {
     const sel = chks.filter(c => c.checked);
     const n   = sel.length;
@@ -348,6 +377,7 @@ export function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
   const closeMenu = () => {
     if (menu.style.display === 'none') return;
     menu.style.display = 'none';
+    persist();
     onRefresh();
   };
 
@@ -361,5 +391,15 @@ export function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
   wrapper.appendChild(trigger);
   wrapper.appendChild(menu);
   sync();
+
+  // ── Public reset method — restores "show all" without triggering onRefresh ─
+  wrapper.reset = () => {
+    chks.forEach(c => { c.checked = true; });
+    allChk.checked = true;
+    allChk.indeterminate = false;
+    sync(); // clears filterSet and updates label
+    persist();
+  };
+
   return wrapper;
 }
