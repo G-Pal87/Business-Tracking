@@ -11,7 +11,7 @@ import {
 
 // ── Module-local filter state ────────────────────────────────────────────────
 let gFilters = {
-  year:    String(new Date().getFullYear()),
+  years:   new Set([String(new Date().getFullYear())]),
   months:  new Set(),
   streams: new Set(),
   owners:  new Set()
@@ -33,7 +33,7 @@ export default {
 // ── Filter helpers ───────────────────────────────────────────────────────────
 function matchDate(row) {
   const d = row.date || row.issueDate || '';
-  if (gFilters.year && gFilters.year !== 'all' && !d.startsWith(gFilters.year)) return false;
+  if (gFilters.years.size > 0 && !gFilters.years.has(d.slice(0, 4))) return false;
   if (gFilters.months.size > 0 && !gFilters.months.has(d.slice(5, 7))) return false;
   return true;
 }
@@ -123,22 +123,24 @@ function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
     if (n > 0 && n < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
   };
 
-  allChk.checked  = filterSet.size === 0;
+  allChk.checked = filterSet.size === 0;
   allChk.onchange = () => {
     chks.forEach(c => { c.checked = allChk.checked; });
     allChk.indeterminate = false;
     sync();
+  };
+  chks.forEach(chk => { chk.onchange = () => sync(); });
+  const closeMenu = () => {
+    if (menu.style.display === 'none') return;
+    menu.style.display = 'none';
     onRefresh();
   };
-  chks.forEach(chk => { chk.onchange = () => { sync(); onRefresh(); }; });
-
   trigger.onclick = e => {
     e.stopPropagation();
-    menu.style.display = menu.style.display === 'none' ? '' : 'none';
+    menu.style.display === 'none' ? (menu.style.display = '') : closeMenu();
   };
   menu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { menu.style.display = 'none'; });
-
+  document.addEventListener('click', closeMenu);
   wrapper.appendChild(trigger);
   wrapper.appendChild(menu);
   sync();
@@ -222,7 +224,7 @@ function calculateExecutiveSummary(data) {
   const overdue      = sumInvoicesEUR(overdueInvs);
 
   // Forecast variance
-  const currentYear = gFilters.year !== 'all' ? gFilters.year : null;
+  const currentYear = gFilters.years.size === 1 ? [...gFilters.years][0] : null;
   let forecastVariance = null, forecastRev = null;
   if (currentYear) {
     forecastRev = forecastedRevenueEUR(currentYear);
@@ -582,16 +584,14 @@ function buildView() {
   ));
 
   // Filter bar: Year → Month → Owner → Stream
-  const years   = availableYears();
-  const yearSel = select(
-    [{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))],
-    gFilters.year
+  const yearFilter = buildMultiSelect(
+    availableYears().map(y => ({ value: y, label: y })),
+    gFilters.years, 'All Years', rebuildView
   );
-  yearSel.onchange = () => { gFilters.year = yearSel.value; rebuildView(); };
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
-  filterBar.appendChild(yearSel);
+  filterBar.appendChild(yearFilter);
   filterBar.appendChild(buildMultiSelect(
     MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })),
     gFilters.months, 'All Months', rebuildView
@@ -610,7 +610,7 @@ function buildView() {
   const data    = getData();
   const summary = calculateExecutiveSummary(data);
 
-  const currentYear = gFilters.year !== 'all' ? gFilters.year : null;
+  const currentYear = gFilters.years.size === 1 ? [...gFilters.years][0] : null;
   const prevYear    = currentYear ? String(Number(currentYear) - 1) : null;
   const prevSummary = prevYear ? calculatePrevYearSummary(prevYear) : null;
 
@@ -630,12 +630,26 @@ function buildView() {
 
 // ── Month key helper ──────────────────────────────────────────────────────────
 function getMonthKeys() {
-  const year = gFilters.year !== 'all' ? gFilters.year : String(new Date().getFullYear());
-  return MONTH_LABELS.map((label, i) => {
-    const mm  = String(i + 1).padStart(2, '0');
-    const key = `${year}-${mm}`;
-    return { label, key, mm };
-  }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+  const selectedYears = gFilters.years.size > 0
+    ? [...gFilters.years].sort()
+    : availableYears();
+  if (selectedYears.length === 1) {
+    const year = selectedYears[0];
+    return MONTH_LABELS.map((label, i) => {
+      const mm = String(i + 1).padStart(2, '0');
+      return { label, key: `${year}-${mm}`, mm };
+    }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+  }
+  const keys = [];
+  for (const year of selectedYears) {
+    MONTH_LABELS.forEach((label, i) => {
+      const mm = String(i + 1).padStart(2, '0');
+      if (gFilters.months.size === 0 || gFilters.months.has(mm)) {
+        keys.push({ label: `${label} '${year.slice(2)}`, key: `${year}-${mm}`, mm });
+      }
+    });
+  }
+  return keys;
 }
 
 // ── Business Trends — render 3 line charts ────────────────────────────────────
@@ -668,7 +682,7 @@ function renderTrendCharts({ payments, invoices, opExpenses, renoExpenses }) {
   const netData  = months.map((_, i) => revData[i] - expData[i]);
   const cashData = months.map((_, i) => netData[i] - renoData[i]);
 
-  const currentYear = gFilters.year !== 'all' ? gFilters.year : null;
+  const currentYear = gFilters.years.size === 1 ? [...gFilters.years][0] : null;
   let fcMap = null;
   if (currentYear) {
     const raw = forecastMonthlyEUR(currentYear);
