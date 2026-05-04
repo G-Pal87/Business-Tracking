@@ -3119,26 +3119,18 @@
           "unit": "day",
           "rate": 6000,
           "total": 6000
-        },
-        {
-          "id": "li_mort0wff30",
-          "description": "Payment due within 48 hours TOTAL",
-          "quantity": 1,
-          "unit": "day",
-          "rate": 6000,
-          "total": 6000
         }
       ],
-      "subtotal": 12000,
+      "subtotal": 6000,
       "taxRate": 0,
       "tax": 0,
-      "total": 12000,
+      "total": 6000,
       "notes": "Imported from PDF",
       "source": "pdf_import",
       "pdfPath": "invoices/inv_mort0wff58.pdf",
       "createdAt": 1777935726818,
       "createdBy": "Giorgos",
-      "updatedAt": 1777935726818,
+      "updatedAt": 1777935735291,
       "updatedBy": "Giorgos"
     }
   ],
