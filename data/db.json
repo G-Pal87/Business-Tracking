@@ -3292,6 +3292,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777936023784,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mort8kyubx",
+      "number": "24_SWG_10062025",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2026-06-10",
+      "dueDate": "2026-06-12",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mort8kyugf",
+          "description": "Mentoring EmpoWomen 2025 - code: empowomen-ew 3 startups (Veles Sense, AlongRoute, Shinrai Robotics)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 4500,
+          "total": 4500
+        }
+      ],
+      "subtotal": 4500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 4500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mort8kyubx.pdf",
+      "createdAt": 1777936085439,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777936085439,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
