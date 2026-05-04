@@ -9,7 +9,7 @@ import {
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gFilters = {
-  year:        String(new Date().getFullYear()),
+  years:       new Set([String(new Date().getFullYear())]),
   months:      new Set(),
   streams:     new Set(),
   propertyIds: new Set(),
@@ -46,7 +46,7 @@ function expStream(e) {
 // ── Filtering ─────────────────────────────────────────────────────────────────
 function matchDate(row) {
   const d = row.date || row.issueDate || '';
-  if (gFilters.year && gFilters.year !== 'all' && !d.startsWith(gFilters.year)) return false;
+  if (gFilters.years.size > 0 && !gFilters.years.has(d.slice(0, 4))) return false;
   if (gFilters.months.size > 0 && !gFilters.months.has(d.slice(5, 7))) return false;
   if (gFilters.dateFrom && d < gFilters.dateFrom) return false;
   if (gFilters.dateTo   && d > gFilters.dateTo)   return false;
@@ -264,15 +264,20 @@ function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
   allChk.onchange = () => {
     chks.forEach(c => { c.checked = allChk.checked; });
     allChk.indeterminate = false;
-    sync(); onRefresh();
+    sync();
   };
-  chks.forEach(chk => { chk.onchange = () => { sync(); onRefresh(); }; });
+  chks.forEach(chk => { chk.onchange = () => sync(); });
+  const closeMenu = () => {
+    if (menu.style.display === 'none') return;
+    menu.style.display = 'none';
+    onRefresh();
+  };
   trigger.onclick = e => {
     e.stopPropagation();
-    menu.style.display = menu.style.display === 'none' ? '' : 'none';
+    menu.style.display === 'none' ? (menu.style.display = '') : closeMenu();
   };
   menu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { menu.style.display = 'none'; });
+  document.addEventListener('click', closeMenu);
   wrapper.appendChild(trigger);
   wrapper.appendChild(menu);
   sync();
@@ -297,11 +302,26 @@ function kpiCard(label, value, variant, onClick) {
 
 // ── Month key helper ──────────────────────────────────────────────────────────
 function getMonthKeys() {
-  const year = gFilters.year !== 'all' ? gFilters.year : String(new Date().getFullYear());
-  return MONTH_LABELS.map((label, i) => {
-    const mm = String(i + 1).padStart(2, '0');
-    return { label, key: `${year}-${mm}`, mm };
-  }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+  const selectedYears = gFilters.years.size > 0
+    ? [...gFilters.years].sort()
+    : availableYears();
+  if (selectedYears.length === 1) {
+    const year = selectedYears[0];
+    return MONTH_LABELS.map((label, i) => {
+      const mm = String(i + 1).padStart(2, '0');
+      return { label, key: `${year}-${mm}`, mm };
+    }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+  }
+  const keys = [];
+  for (const year of selectedYears) {
+    MONTH_LABELS.forEach((label, i) => {
+      const mm = String(i + 1).padStart(2, '0');
+      if (gFilters.months.size === 0 || gFilters.months.has(mm)) {
+        keys.push({ label: `${label} '${year.slice(2)}`, key: `${year}-${mm}`, mm });
+      }
+    });
+  }
+  return keys;
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
@@ -316,16 +336,14 @@ function buildView() {
   ));
 
   // Filter bar
-  const years   = availableYears();
-  const yearSel = select(
-    [{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))],
-    gFilters.year
+  const yearFilter = buildMultiSelect(
+    availableYears().map(y => ({ value: y, label: y })),
+    gFilters.years, 'All Years', rebuildView
   );
-  yearSel.onchange = () => { gFilters.year = yearSel.value; rebuildView(); };
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
-  filterBar.appendChild(yearSel);
+  filterBar.appendChild(yearFilter);
   filterBar.appendChild(buildMultiSelect(
     MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })),
     gFilters.months, 'All Months', rebuildView
