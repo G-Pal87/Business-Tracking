@@ -2972,6 +2972,38 @@
       "updatedAt": 1777934414134,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/inv_morkl6zt8x.pdf"
+    },
+    {
+      "id": "inv_morst9erv",
+      "number": "14_CTWO_01042025",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-04-01",
+      "dueDate": "2025-04-10",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_morst9erk0",
+          "description": "Mobile roaming - Belgrade Airport 27/02/25",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 41.94,
+          "total": 41.94
+        }
+      ],
+      "subtotal": 41.94,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 41.94,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_morst9erv.pdf",
+      "createdAt": 1777935370480,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777935370480,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
