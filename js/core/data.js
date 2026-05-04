@@ -144,14 +144,16 @@ export function byId(collection, id) {
 }
 
 // ============== Filtering ==============
-export function applyFilters(rows, { year, stream, owner, propertyId, clientId } = {}) {
+export function applyFilters(rows, { year, years, stream, owner, propertyId, clientId } = {}) {
   const f = state.ui.filters;
   const y = year ?? f.year;
   const s = stream ?? f.stream;
   const o = owner ?? f.owner;
 
   return rows.filter(r => {
-    if (y && y !== 'all' && r.date) {
+    if (years instanceof Set && years.size > 0 && r.date) {
+      if (![...years].some(yr => r.date.startsWith(String(yr)))) return false;
+    } else if (y && y !== 'all' && r.date) {
       if (!r.date.startsWith(String(y))) return false;
     }
     if (s && s !== 'all' && r.stream && r.stream !== s) return false;
@@ -714,6 +716,11 @@ export function buildReconciliationData(year) {
 export function buildReportData(filters = {}) {
   const f = { ...state.ui.filters, ...filters };
   const matchDate = row => {
+    if (f.years instanceof Set) {
+      if (f.years.size === 0) return true;
+      const d = row.date || row.issueDate || '';
+      return [...f.years].some(y => d.startsWith(String(y)));
+    }
     if (!f.year || f.year === 'all') return true;
     const d = row.date || row.issueDate || '';
     return d.startsWith(String(f.year));
@@ -722,7 +729,10 @@ export function buildReportData(filters = {}) {
     if (f.streams instanceof Set) return f.streams.size === 0 || !row.stream || f.streams.has(row.stream);
     return !f.stream || f.stream === 'all' || !row.stream || row.stream === f.stream;
   };
-  const matchProperty = row => !f.propertyId || f.propertyId === 'all' || row.propertyId === f.propertyId;
+  const matchProperty = row => {
+    if (f.propertyIds instanceof Set) return f.propertyIds.size === 0 || f.propertyIds.has(row.propertyId);
+    return !f.propertyId || f.propertyId === 'all' || row.propertyId === f.propertyId;
+  };
 
   const payments = listActivePayments().filter(p => p.status === 'paid' && matchDate(p) && matchStream(p) && matchProperty(p));
   const invoices = listActive('invoices').filter(i => i.status === 'paid' && matchDate({ date: i.issueDate }) && matchStream(i) && matchProperty(i));

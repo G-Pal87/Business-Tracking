@@ -1,6 +1,6 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -47,9 +47,13 @@ function build() {
 
 function buildAllPayments(wrap) {
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
-  const propSel   = select([{ value: 'all', label: 'All Properties' }, ...(listActive('properties')).map(p => ({ value: p.id, label: p.name }))], 'all');
-  const statusSel = select(Object.entries(PAYMENT_STATUSES).map(([v, m]) => ({ value: v, label: m.label })), [], { multiple: true, title: 'Ctrl+click to select multiple statuses' });
-  const streamSel = select([{ value: 'all', label: 'All Streams' }, ...Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short }))], 'all');
+  const propFilter   = new Set();
+  const statusFilter = new Set();
+  const streamFilter = new Set();
+
+  const propMS   = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderTable());
+  const statusMS = buildMultiSelect(Object.entries(PAYMENT_STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable());
+  const streamMS = buildMultiSelect(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), streamFilter, 'All Streams', () => renderTable());
 
   let selected = new Set();
 
@@ -65,9 +69,9 @@ function buildAllPayments(wrap) {
   }});
   deleteSelBtn.style.display = 'none';
 
-  filterBar.appendChild(propSel);
-  filterBar.appendChild(statusSel);
-  filterBar.appendChild(streamSel);
+  filterBar.appendChild(propMS);
+  filterBar.appendChild(statusMS);
+  filterBar.appendChild(streamMS);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(deleteSelBtn);
   filterBar.appendChild(button('Import Airbnb CSV', { onClick: () => openCSVImport() }));
@@ -94,10 +98,9 @@ function buildAllPayments(wrap) {
     tableWrap.innerHTML = '';
 
     let rows = [...listActivePayments()];
-    const statuses = selVals(statusSel);
-    if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
-    if (statuses) rows = rows.filter(r => statuses.includes(r.status));
-    if (streamSel.value !== 'all') rows = rows.filter(r => r.stream === streamSel.value);
+    if (propFilter.size > 0)   rows = rows.filter(r => propFilter.has(r.propertyId));
+    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(r.status));
+    if (streamFilter.size > 0) rows = rows.filter(r => streamFilter.has(r.stream));
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
     if (rows.length === 0) {
@@ -177,9 +180,6 @@ function buildAllPayments(wrap) {
     ));
   };
 
-  propSel.onchange = renderTable;
-  statusSel.onchange = renderTable;
-  streamSel.onchange = renderTable;
   renderTable();
 }
 

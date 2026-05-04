@@ -294,3 +294,72 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } =
   observer.observe(tableWrap, { childList: true, subtree: true });
   enhance();
 }
+
+// ── Shared multi-select dropdown ──────────────────────────────────────────────
+// items: [{ value, label, css? }]
+// filterSet: a Set that is mutated to hold selected values (empty = all)
+// onRefresh: called once when the menu closes after a change was made
+export function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
+  const wrapper   = el('div', { style: 'position:relative' });
+  const trigLabel = el('span');
+  const trigger   = el('div', {
+    class: 'select',
+    style: 'cursor:pointer;display:flex;align-items:center;gap:6px;width:auto;min-width:130px;user-select:none'
+  }, trigLabel);
+
+  const menu = el('div', {
+    style: [
+      'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300',
+      'background:var(--bg-elev-2);border:1px solid var(--border)',
+      'border-radius:var(--radius-sm);min-width:190px',
+      'box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0;max-height:260px;overflow-y:auto'
+    ].join(';')
+  });
+
+  const allChk = el('input', { type: 'checkbox' });
+  menu.appendChild(el('label', {
+    style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px'
+  }, allChk, el('span', {}, allLabel)));
+
+  const chks = items.map(({ value, label, css }) => {
+    const chk         = el('input', { type: 'checkbox' });
+    chk.dataset.value = value;
+    chk.checked       = filterSet.size === 0 || filterSet.has(value);
+    const content     = css ? el('span', { class: `badge ${css}` }, label) : el('span', {}, label);
+    menu.appendChild(el('label', {
+      style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px'
+    }, chk, content));
+    return chk;
+  });
+
+  const sync = () => {
+    const sel = chks.filter(c => c.checked);
+    const n   = sel.length;
+    allChk.checked       = n === chks.length;
+    allChk.indeterminate = n > 0 && n < chks.length;
+    trigLabel.textContent =
+      n === chks.length || n === 0 ? allLabel
+      : n === 1 ? (items.find(i => i.value === sel[0].dataset.value)?.label || '')
+      : `${n} selected`;
+    filterSet.clear();
+    if (n > 0 && n < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
+  };
+
+  const closeMenu = () => {
+    if (menu.style.display === 'none') return;
+    menu.style.display = 'none';
+    onRefresh();
+  };
+
+  allChk.checked  = filterSet.size === 0;
+  allChk.onchange = () => { chks.forEach(c => { c.checked = allChk.checked; }); allChk.indeterminate = false; sync(); };
+  chks.forEach(chk => { chk.onchange = () => sync(); });
+  trigger.onclick = e => { e.stopPropagation(); menu.style.display === 'none' ? (menu.style.display = '') : closeMenu(); };
+  menu.onclick    = e => e.stopPropagation();
+  document.addEventListener('click', closeMenu);
+
+  wrapper.appendChild(trigger);
+  wrapper.appendChild(menu);
+  sync();
+  return wrapper;
+}

@@ -1,6 +1,6 @@
 // Clients module
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, newId, formatMoney, formatEUR, toEUR, byId } from '../core/data.js';
 import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -18,10 +18,12 @@ function build() {
   const wrap = el('div', { class: 'view active' });
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16' });
-  const streamSel = select([{ value: 'all', label: 'All Streams' }, ...SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label }))], 'all');
-  const ownerSel = select([{ value: 'all', label: 'All Owners' }, ...Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l }))], 'all');
-  filterBar.appendChild(streamSel);
-  filterBar.appendChild(ownerSel);
+  const streamFilter = new Set();
+  const ownerFilter  = new Set();
+  const streamMS = buildMultiSelect(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label, css: STREAMS[s].css })), streamFilter, 'All Streams', renderCards);
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), ownerFilter, 'All Owners', renderCards);
+  filterBar.appendChild(streamMS);
+  filterBar.appendChild(ownerMS);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(button('+ Add Client', { variant: 'primary', onClick: () => openForm() }));
   wrap.appendChild(filterBar);
@@ -29,19 +31,17 @@ function build() {
   const grid = el('div', { class: 'prop-grid' });
   wrap.appendChild(grid);
 
-  const renderCards = () => {
+  function renderCards() {
     grid.innerHTML = '';
     let rows = [...listActive('clients')];
-    if (streamSel.value !== 'all') rows = rows.filter(r => r.stream === streamSel.value);
-    if (ownerSel.value !== 'all') rows = rows.filter(r => r.owner === ownerSel.value);
+    if (streamFilter.size > 0) rows = rows.filter(r => streamFilter.has(r.stream));
+    if (ownerFilter.size > 0)  rows = rows.filter(r => ownerFilter.has(r.owner));
     if (rows.length === 0) {
       grid.appendChild(el('div', { class: 'empty' }, 'No clients'));
       return;
     }
     for (const c of rows) grid.appendChild(card(c));
-  };
-  streamSel.onchange = renderCards;
-  ownerSel.onchange = renderCards;
+  }
   renderCards();
   return wrap;
 }

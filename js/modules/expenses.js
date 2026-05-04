@@ -1,6 +1,6 @@
 // Expenses module
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES } from '../core/config.js';
@@ -54,25 +54,15 @@ function build() {
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16 mt-24', style: 'flex-wrap:wrap' });
 
-  const propSel = select([
-    { value: 'all', label: 'All Properties' },
-    ...listActive('properties').map(p => ({ value: p.id, label: p.name }))
-  ], 'all');
+  const propFilter           = new Set();
+  const catFilter            = new Set();
+  const accountingTypeFilter = new Set();
+  const recurrenceFilter     = new Set();
 
-  const catSel = select([
-    { value: 'all', label: 'All expenses' },
-    ...Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label }))
-  ], 'all');
-
-  const accountingTypeSel = select([
-    { value: 'all', label: 'All Types' },
-    ...Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label }))
-  ], 'all');
-
-  const recurrenceSel = select([
-    { value: 'all', label: 'All Recurrence' },
-    ...Object.entries(RECURRENCE_TYPES).map(([v, m]) => ({ value: v, label: m.label }))
-  ], 'all');
+  const propMS           = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderAll());
+  const catMS            = buildMultiSelect(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), catFilter, 'All Expenses', () => renderTable());
+  const accountingTypeMS = buildMultiSelect(Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label })), accountingTypeFilter, 'All Types', () => renderAll());
+  const recurrenceMS     = buildMultiSelect(Object.entries(RECURRENCE_TYPES).map(([v, m]) => ({ value: v, label: m.label })), recurrenceFilter, 'All Recurrence', () => renderTable());
 
   let selected = new Set();
 
@@ -92,10 +82,10 @@ function build() {
   }});
   deleteSelBtn.style.display = 'none';
 
-  filterBar.appendChild(propSel);
-  filterBar.appendChild(catSel);
-  filterBar.appendChild(accountingTypeSel);
-  filterBar.appendChild(recurrenceSel);
+  filterBar.appendChild(propMS);
+  filterBar.appendChild(catMS);
+  filterBar.appendChild(accountingTypeMS);
+  filterBar.appendChild(recurrenceMS);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(deleteSelBtn);
   filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
@@ -120,10 +110,10 @@ function build() {
     tableWrap.innerHTML = '';
 
     let rows = [...listActive('expenses')];
-    if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
-    if (catSel.value !== 'all')  rows = rows.filter(r => r.category === catSel.value);
-    if (accountingTypeSel.value !== 'all') rows = rows.filter(r => resolveExpenseFields(r).accountingType === accountingTypeSel.value);
-    if (recurrenceSel.value !== 'all')     rows = rows.filter(r => resolveExpenseFields(r).recurrence === recurrenceSel.value);
+    if (propFilter.size > 0)           rows = rows.filter(r => propFilter.has(r.propertyId));
+    if (catFilter.size > 0)            rows = rows.filter(r => catFilter.has(r.category));
+    if (accountingTypeFilter.size > 0) rows = rows.filter(r => accountingTypeFilter.has(resolveExpenseFields(r).accountingType));
+    if (recurrenceFilter.size > 0)     rows = rows.filter(r => recurrenceFilter.has(resolveExpenseFields(r).recurrence));
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
     if (rows.length === 0) {
@@ -234,8 +224,8 @@ function build() {
   // Dashboard: respects property + accountingType filters; category/recurrence stay for table only
   const renderDash = () => {
     let bkRows = listActive('expenses');
-    if (propSel.value !== 'all')           bkRows = bkRows.filter(r => r.propertyId === propSel.value);
-    if (accountingTypeSel.value !== 'all') bkRows = bkRows.filter(r => resolveExpenseFields(r).accountingType === accountingTypeSel.value);
+    if (propFilter.size > 0)           bkRows = bkRows.filter(r => propFilter.has(r.propertyId));
+    if (accountingTypeFilter.size > 0) bkRows = bkRows.filter(r => accountingTypeFilter.has(resolveExpenseFields(r).accountingType));
 
     // By Cost Category doughnut (groups by resolved costCategory for correct OpEx/CapEx separation)
     const byCostCat = new Map();
@@ -289,11 +279,6 @@ function build() {
   };
 
   const renderAll = () => { renderTable(); renderDash(); };
-
-  propSel.onchange          = renderAll;
-  accountingTypeSel.onchange = renderAll;
-  catSel.onchange           = renderTable;
-  recurrenceSel.onchange    = renderTable;
 
   renderTable();
   // Defer chart render until canvas elements are in the DOM
