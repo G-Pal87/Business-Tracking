@@ -2620,8 +2620,10 @@
       "pdfPath": "invoices/inv_mort8kyubx.pdf",
       "createdAt": 1777936085439,
       "createdBy": "Giorgos",
-      "updatedAt": 1777936085439,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777936586714,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777936586714,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "inv_mortcicyb2",
