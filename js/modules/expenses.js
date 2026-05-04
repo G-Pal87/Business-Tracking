@@ -411,7 +411,7 @@ function openForm(existing, defaults = {}) {
   syncInventoryRow();
 
   const syncAccountingTypeRow = () => {
-    accountingTypeRow.style.display = catS.value === 'renovation' ? 'none' : '';
+    accountingTypeRow.style.display = catS.value === 'other' ? '' : 'none';
   };
   syncAccountingTypeRow();
 
