@@ -3023,26 +3023,18 @@
           "unit": "day",
           "rate": 6200,
           "total": 6200
-        },
-        {
-          "id": "li_morsw5d4ai",
-          "description": "Payment due within 48 hours TOTAL",
-          "quantity": 1,
-          "unit": "day",
-          "rate": 6200,
-          "total": 6200
         }
       ],
-      "subtotal": 12400,
+      "subtotal": 6200,
       "taxRate": 0,
       "tax": 0,
-      "total": 12400,
+      "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
       "pdfPath": "invoices/inv_morsw5d4qm.pdf",
       "createdAt": 1777935505297,
       "createdBy": "Giorgos",
-      "updatedAt": 1777935505297,
+      "updatedAt": 1777935518627,
       "updatedBy": "Giorgos"
     }
   ],
