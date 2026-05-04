@@ -5,6 +5,7 @@ import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, to
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
 import { downloadInvoicePDF, generateInvoicePDF } from '../core/pdf.js';
 import { navigate } from '../core/router.js';
+import { uploadGithubFile, fetchGithubFile, deleteGithubFile } from '../core/github.js';
 
 const INV_COLS = [
   { key: 'number', label: 'Number' },
@@ -25,10 +26,51 @@ export default {
   id: 'invoices',
   label: 'Invoices',
   icon: 'I',
-  render(container) { container.appendChild(build()); },
+  render(container) { container.appendChild(build()); scheduleMigration(); },
   refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() {}
 };
+
+// ── One-time migration: move embedded pdfData → GitHub invoices/ folder ───────
+
+let migrationScheduled = false;
+function scheduleMigration() {
+  if (migrationScheduled) return;
+  const pending = (state.db.invoices || []).filter(i => i.pdfData && !i.pdfPath && !i.deletedAt);
+  if (pending.length === 0) return;
+  migrationScheduled = true;
+  // Run after a short delay so the UI renders first
+  setTimeout(() => migrateEmbeddedPDFs(pending), 2000);
+}
+
+async function migrateEmbeddedPDFs(pending) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) {
+    // GitHub not configured — can't upload; the saveLocalCache fix already strips pdfData
+    // from localStorage so at least the quota error is gone. Nothing else to do here.
+    return;
+  }
+
+  let done = 0;
+  for (const inv of pending) {
+    try {
+      const pdfPath = `invoices/${inv.id}.pdf`;
+      await uploadGithubFile(pdfPath, inv.pdfData, `Migrate PDF for invoice ${inv.number || inv.id}`);
+      const updated = { ...inv, pdfPath };
+      delete updated.pdfData;
+      upsert('invoices', updated);
+      done++;
+    } catch (err) {
+      console.warn(`Migration: could not upload PDF for invoice ${inv.id}:`, err);
+    }
+  }
+
+  if (done > 0) {
+    toast(`Migrated ${done} invoice PDF${done > 1 ? 's' : ''} to GitHub repository`, 'success', 5000);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function build() {
   const wrap = el('div', { class: 'view active' });
@@ -153,7 +195,7 @@ function build() {
       actions.appendChild(button('View', { variant: 'sm ghost', onClick: (e) => { e.stopPropagation(); openPDFViewer(r); }}));
       actions.appendChild(button('PDF', { variant: 'sm ghost', onClick: (e) => {
         e.stopPropagation();
-        if (r.source === 'pdf_import' && r.pdfData) downloadOriginalPDF(r); else downloadInvoicePDF(r);
+        if (r.source === 'pdf_import' && (r.pdfPath || r.pdfData)) downloadOriginalPDF(r); else downloadInvoicePDF(r);
       }}));
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: (e) => { e.stopPropagation(); openBuilder(r); }}));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async (e) => {
@@ -497,8 +539,82 @@ function previewInvoice(inv, clientId) {
     ${inv.notes ? `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#666">${escape(inv.notes)}</div>` : ''}
   `;
   body.appendChild(preview);
+
+  // PDF attachment section (only for imported invoices)
+  if (inv.source === 'pdf_import') {
+    const hasFile = inv.pdfPath || inv.pdfData;
+    const attachWrap = el('div', { style: 'margin-top:16px;padding:12px;background:var(--bg-elev-2);border-radius:var(--radius-sm);display:flex;gap:8px;align-items:center;flex-wrap:wrap' });
+    const attachLabel = el('span', { style: 'font-size:13px;color:var(--text-muted);flex:1' },
+      hasFile
+        ? (inv.pdfPath ? `Attached: ${inv.pdfPath}` : 'Attached: embedded PDF (legacy)')
+        : 'No PDF attached'
+    );
+    attachWrap.appendChild(attachLabel);
+
+    if (hasFile) {
+      attachWrap.appendChild(button('View PDF', { variant: 'sm', onClick: () => { closeModal(); setTimeout(() => openPDFViewer(inv), 200); } }));
+      attachWrap.appendChild(button('Download', { variant: 'sm', onClick: () => downloadOriginalPDF(inv) }));
+    }
+
+    // Replace / upload button
+    const replaceInput = el('input', { type: 'file', accept: '.pdf', style: 'display:none' });
+    replaceInput.onchange = async () => {
+      const file = replaceInput.files?.[0];
+      if (!file) return;
+      const replBtn = attachWrap.querySelector('.btn-replace');
+      if (replBtn) { replBtn.disabled = true; replBtn.textContent = 'Uploading…'; }
+      try {
+        const b64 = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload  = () => res(r.result.split(',')[1]);
+          r.onerror = rej;
+          r.readAsDataURL(file);
+        });
+        // Delete old file from GitHub if it was stored there
+        if (inv.pdfPath) {
+          try { await deleteGithubFile(inv.pdfPath, null, `Replace PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
+        }
+        const newPath = inv.pdfPath || `invoices/${inv.id}.pdf`;
+        await uploadGithubFile(newPath, b64, `Upload PDF for invoice ${inv.number || inv.id}`);
+        const updated = { ...inv, pdfPath: newPath };
+        delete updated.pdfData;
+        upsert('invoices', updated);
+        toast('PDF replaced', 'success');
+        closeModal();
+      } catch (err) {
+        toast(`Upload failed: ${err.message}`, 'danger');
+      }
+      if (replBtn) { replBtn.disabled = false; replBtn.textContent = hasFile ? 'Replace PDF' : 'Attach PDF'; }
+    };
+    const replBtn = button(hasFile ? 'Replace PDF' : 'Attach PDF', { variant: 'sm ghost' });
+    replBtn.className += ' btn-replace';
+    replBtn.onclick = () => replaceInput.click();
+    attachWrap.appendChild(replaceInput);
+    attachWrap.appendChild(replBtn);
+
+    // Delete PDF button (only when a file is attached)
+    if (hasFile) {
+      const delPdfBtn = button('Remove PDF', { variant: 'sm ghost' });
+      delPdfBtn.onclick = async () => {
+        const ok = await confirmDialog('Remove the attached PDF from this invoice?', { danger: true, okLabel: 'Remove' });
+        if (!ok) return;
+        if (inv.pdfPath) {
+          try { await deleteGithubFile(inv.pdfPath, null, `Remove PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
+        }
+        const updated = { ...inv };
+        delete updated.pdfPath;
+        delete updated.pdfData;
+        upsert('invoices', updated);
+        toast('PDF removed', 'success');
+        closeModal();
+      };
+      attachWrap.appendChild(delPdfBtn);
+    }
+    body.appendChild(attachWrap);
+  }
+
   const pdfBtn = button('Download PDF', { variant: 'primary', onClick: () => {
-    if (inv.source === 'pdf_import' && inv.pdfData) downloadOriginalPDF(inv); else downloadInvoicePDF(inv);
+    if (inv.source === 'pdf_import' && (inv.pdfPath || inv.pdfData)) downloadOriginalPDF(inv); else downloadInvoicePDF(inv);
   }});
   const closeBtn = button('Close', { onClick: closeModal });
   openModal({ title: `Invoice ${inv.number || 'Preview'}`, body, footer: [closeBtn, pdfBtn], large: true });
@@ -522,9 +638,11 @@ function openPDFImport() {
 
   // Meta row — hidden until a file is chosen
   const metaWrap = el('div', { style: 'display:none;gap:12px;flex-wrap:wrap;margin-bottom:4px' });
-  const dateI = el('input', { type: 'date', class: 'input', value: today() });
-  const numI = el('input', { type: 'text', class: 'input', placeholder: 'e.g. INV-001', style: 'width:180px' });
+  const dateI    = el('input', { type: 'date', class: 'input', value: today() });
+  const dueDateI = el('input', { type: 'date', class: 'input', value: addDays(today(), 30) });
+  const numI     = el('input', { type: 'text', class: 'input', placeholder: 'e.g. INV-001', style: 'width:180px' });
   metaWrap.appendChild(formRow('Invoice Date', dateI));
+  metaWrap.appendChild(formRow('Due Date', dueDateI));
   metaWrap.appendChild(formRow('Invoice #', numI));
 
   const preview = el('div', { style: 'margin-top:12px;font-size:13px;min-height:20px' });
@@ -642,7 +760,11 @@ function openPDFImport() {
     }
 
     // Pre-fill meta from parsed data (but don't overwrite a user-edited field)
-    if (parsed.invoiceDate) dateI.value = parsed.invoiceDate;
+    if (parsed.invoiceDate) {
+      dateI.value = parsed.invoiceDate;
+      // Keep due date relative if user hasn't manually changed it
+      if (!dueDateI.dataset.manual) dueDateI.value = addDays(parsed.invoiceDate, 30);
+    }
     if (parsed.invoiceNumber) {
       numI.value = parsed.invoiceNumber;
       numI.setAttribute('data-auto', parsed.invoiceNumber);
@@ -676,13 +798,15 @@ function openPDFImport() {
     preview.appendChild(tw);
   };
 
+  dueDateI.addEventListener('input', () => { dueDateI.dataset.manual = '1'; });
   fileI.onchange = refresh;
   streamS.onchange = () => { if (fileI.files?.[0]) refresh(); };
 
   const importBtn = button('Import', { variant: 'primary', onClick: async () => {
     const items = (parsed?.lineItems?.length > 0) ? parsed.lineItems : manualItems;
     if (items.length === 0) { toast('Add at least one line item before importing', 'warning'); return; }
-    const issueDate = dateI.value || today();
+    const issueDate  = dateI.value || today();
+    const dueDate    = dueDateI.value || addDays(issueDate, 30);
     const invoiceNum = numI.value.trim();
     const total = items.reduce((s, l) => s + l.total, 0);
     const year = issueDate.slice(0, 4);
@@ -691,35 +815,47 @@ function openPDFImport() {
     );
     if (dup) { toast('Invoice already imported (same date & total)', 'warning'); return; }
 
-    let pdfData = null;
-    const file = fileI.files?.[0];
-    if (file) {
-      try {
-        pdfData = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result.split(',')[1]);
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-      } catch { /* import without original PDF if read fails */ }
-    }
-
+    const invId = newId('inv');
     const inv = {
-      id: newId('inv'),
+      id: invId,
       number: invoiceNum || String(nextInvoiceSequence(year, null)),
       clientId: clientS.value || '',
       owner: byId('clients', clientS.value)?.owner || 'you',
       issueDate,
-      dueDate: issueDate,
+      dueDate,
       stream: streamS.value,
       currency: 'EUR',
       status: 'paid',
       lineItems: items.map(li => ({ id: newId('li'), description: li.description, quantity: li.quantity, unit: 'day', rate: li.rate, total: li.total })),
       subtotal: total, taxRate: 0, tax: 0, total,
       notes: 'Imported from PDF',
-      source: 'pdf_import',
-      ...(pdfData ? { pdfData } : {})
+      source: 'pdf_import'
     };
+
+    // Upload PDF to GitHub (preferred) — avoids storing large base64 in the DB / localStorage.
+    const file = fileI.files?.[0];
+    if (file) {
+      importBtn.disabled = true;
+      importBtn.textContent = 'Uploading…';
+      try {
+        const b64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload  = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const pdfPath = `invoices/${invId}.pdf`;
+        await uploadGithubFile(pdfPath, b64, `Upload invoice PDF ${inv.number || invId}`);
+        inv.pdfPath = pdfPath;
+      } catch (err) {
+        // GitHub not configured or upload failed — warn but still save the record.
+        console.warn('PDF upload to GitHub failed:', err);
+        toast(`PDF not saved to GitHub: ${err.message}. Invoice saved without attachment.`, 'warning', 6000);
+      }
+      importBtn.disabled = false;
+      importBtn.textContent = 'Import';
+    }
+
     upsert('invoices', inv);
     toast('Invoice imported', 'success');
     closeModal();
@@ -850,25 +986,67 @@ function b64toBlob(b64, mimeType = 'application/pdf') {
   return new Blob([arr], { type: mimeType });
 }
 
-function downloadOriginalPDF(inv) {
-  const blob = b64toBlob(inv.pdfData);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${inv.number || 'invoice'}.pdf`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+async function resolveInvoiceBlob(inv) {
+  if (inv.pdfPath) {
+    const data = await fetchGithubFile(inv.pdfPath);
+    const b64  = (data.content || '').replace(/\s/g, '');
+    return b64toBlob(b64);
+  }
+  if (inv.pdfData) return b64toBlob(inv.pdfData);
+  return generateInvoicePDF(inv).output('blob');
 }
 
-function openPDFViewer(inv) {
-  const blob = (inv.source === 'pdf_import' && inv.pdfData)
-    ? b64toBlob(inv.pdfData)
-    : generateInvoicePDF(inv).output('blob');
-  const url = URL.createObjectURL(blob);
-  const frame = el('iframe', { src: url, style: 'width:100%;height:70vh;border:none;display:block' });
-  const onClose = () => { URL.revokeObjectURL(url); closeModal(); };
-  const dlBtn = button('Download', { variant: 'primary', onClick: () => {
-    if (inv.source === 'pdf_import' && inv.pdfData) downloadOriginalPDF(inv); else downloadInvoicePDF(inv);
-  }});
-  openModal({ title: `Invoice ${inv.number || 'Preview'}`, body: el('div', {}, frame), footer: [button('Close', { onClick: onClose }), dlBtn], large: true });
+async function downloadOriginalPDF(inv) {
+  try {
+    const blob = await resolveInvoiceBlob(inv);
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `${inv.number || 'invoice'}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch (err) {
+    toast(`Download failed: ${err.message}`, 'danger');
+  }
+}
+
+async function openPDFViewer(inv) {
+  const hasAttached = inv.pdfPath || inv.pdfData;
+  const titleLabel  = `Invoice ${inv.number || 'Preview'}`;
+
+  // Loading placeholder while we fetch
+  const frame = el('iframe', { style: 'width:100%;height:70vh;border:none;display:block' });
+  const loadMsg = el('div', { style: 'padding:24px;text-align:center;color:var(--text-muted)' }, 'Loading PDF…');
+  const bodyWrap = el('div', {}, hasAttached ? loadMsg : frame);
+
+  const dlBtn = button('Download', { variant: 'primary', onClick: () => downloadOriginalPDF(inv) });
+  const { close } = openModal({ title: titleLabel, body: bodyWrap, footer: [button('Close', { onClick: () => close() }), dlBtn], large: true });
+
+  let objectUrl = null;
+  const cleanup = () => { if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; } };
+
+  if (hasAttached) {
+    try {
+      const blob  = await resolveInvoiceBlob(inv);
+      objectUrl   = URL.createObjectURL(blob);
+      frame.src   = objectUrl;
+      bodyWrap.replaceChildren(frame);
+    } catch (err) {
+      bodyWrap.replaceChildren(el('div', { style: 'padding:24px;color:var(--danger,#ef4444)' }, `Could not load PDF: ${err.message}`));
+    }
+  } else {
+    // Generated invoice — render immediately
+    try {
+      const blob = generateInvoicePDF(inv).output('blob');
+      objectUrl  = URL.createObjectURL(blob);
+      frame.src  = objectUrl;
+    } catch (err) {
+      bodyWrap.replaceChildren(el('div', { style: 'padding:24px;color:var(--danger,#ef4444)' }, `Could not render invoice: ${err.message}`));
+    }
+  }
+
+  // Revoke object URL when modal is dismissed
+  const overlay = document.getElementById('modal-overlay');
+  if (overlay) overlay.addEventListener('click', cleanup, { once: true });
+  document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { cleanup(); document.removeEventListener('keydown', esc); } });
 }
