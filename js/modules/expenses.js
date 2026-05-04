@@ -355,17 +355,24 @@ function openForm(existing, defaults = {}) {
   const recurEndI = input({ type: 'date', value: addOneYear(r.date || today()) });
   const recurOptsRow = el('div', { class: 'form-row horizontal' }, formRow('Period', recurPeriodS), formRow('Repeat Until', recurEndI));
   recurOptsRow.style.display = 'none';
-  recurChk.onchange = () => { recurOptsRow.style.display = recurChk.checked ? '' : 'none'; };
+  recurChk.onchange = () => {
+    recurOptsRow.style.display = recurChk.checked ? '' : 'none';
+    recurrenceS.value = recurChk.checked ? 'recurring' : 'one_off';
+  };
+
+  const accountingTypeRow = el('div', { class: 'form-row horizontal' }, formRow('Expense Type', accountingTypeS));
 
   body.appendChild(formRow('Property', propS));
   body.appendChild(formRow('Category', catS));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Accounting Type', accountingTypeS), formRow('Recurrence', recurrenceS)));
-  body.appendChild(formRow('Cost Category', costCategoryS));
+  body.appendChild(accountingTypeRow);
   body.appendChild(invRow);
   const vendorRow = formRow('Vendor', vendorS);
   body.appendChild(vendorRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', currencyS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI)));
+  if (existing && resolved.recurrence === 'recurring') {
+    body.appendChild(el('div', { style: 'padding:4px 0 2px;font-size:12px;color:var(--text-muted)' }, '↻ Recurring expense'));
+  }
   if (!existing) {
     body.appendChild(el('div', { style: 'padding:8px 0 2px' },
       el('label', { style: 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px' }, recurChk, ' Recurring'),
@@ -403,14 +410,19 @@ function openForm(existing, defaults = {}) {
   };
   syncInventoryRow();
 
+  const syncAccountingTypeRow = () => {
+    accountingTypeRow.style.display = catS.value === 'renovation' ? 'none' : '';
+  };
+  syncAccountingTypeRow();
+
   catS.onchange = () => {
-    // Renovation always forces CapEx; all categories auto-suggest costCategory
     if (catS.value === 'renovation') {
       accountingTypeS.value = 'capex';
       costCategoryS.value   = 'renovation';
     } else {
       costCategoryS.value = resolveExpenseFields({ category: catS.value }).costCategory;
     }
+    syncAccountingTypeRow();
     syncInventoryRow();
     if (catS.value === 'inventory') syncInventoryAmount();
     else autoFillAmount();
