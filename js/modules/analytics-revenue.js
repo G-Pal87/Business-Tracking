@@ -186,6 +186,9 @@ function getMonthKeys() {
 function buildInsightsBanner(insights) {
   if (!insights.length) return null;
   const wrap = el('div', { style: 'display:flex;flex-direction:column;gap:8px;margin-bottom:16px' });
+  wrap.appendChild(el('div', {
+    style: 'font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:2px'
+  }, 'Revenue Insights'));
   const STYLES = {
     danger:  { bg: 'rgba(239,68,68,0.08)',  border: '#ef4444', icon: '⚠' },
     warning: { bg: 'rgba(245,158,11,0.08)', border: '#f59e0b', icon: '⚡' },
@@ -318,15 +321,15 @@ function buildView() {
     () => drillDownModal('All Revenue', drillRevRows(payments, invoices), REV_COLS)
   ));
   kpiRow.appendChild(kpiCard(
-    'Property Revenue', formatEUR(propRev), '',
-    () => drillDownModal('Property Revenue', drillRevRows(payments, []), REV_COLS)
+    'Rental Revenue', formatEUR(propRev), '',
+    () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS)
   ));
   kpiRow.appendChild(kpiCard(
     'Service Revenue', formatEUR(svcRev), '',
     () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS)
   ));
   kpiRow.appendChild(kpiCard(
-    'Avg / Month', formatEUR(avgMonthly),
+    'Average Monthly Revenue', formatEUR(avgMonthly),
     monthsWithRev.length ? `over ${monthsWithRev.length} month(s)` : '',
     () => {
       // Show per-month summary
@@ -375,10 +378,23 @@ function buildView() {
   ));
   wrap.appendChild(row2);
 
-  // Revenue table
-  const tableCard = el('div', { class: 'card' });
-  tableCard.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue Records')));
-  buildRevenueTable(tableCard, data);
+  // Revenue table — collapsed by default
+  const tableCard  = el('div', { class: 'card' });
+  const tableBody  = el('div', { style: 'display:none' });
+  const toggleBtn  = el('button', {
+    style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0'
+  }, 'Show Revenue Records');
+  toggleBtn.onclick = () => {
+    const collapsed = tableBody.style.display === 'none';
+    tableBody.style.display = collapsed ? '' : 'none';
+    toggleBtn.textContent   = collapsed ? 'Hide Revenue Records' : 'Show Revenue Records';
+  };
+  tableCard.appendChild(el('div', { class: 'card-header', style: 'display:flex;align-items:center;justify-content:space-between' },
+    el('div', { class: 'card-title' }, 'Revenue Records'),
+    toggleBtn
+  ));
+  buildRevenueTable(tableBody, data);
+  tableCard.appendChild(tableBody);
   wrap.appendChild(tableCard);
 
   // Render all charts after view enters live DOM
