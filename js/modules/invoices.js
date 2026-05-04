@@ -1,6 +1,6 @@
 // Invoices module - builder + repository
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR } from '../core/data.js';
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
 import { downloadInvoicePDF, generateInvoicePDF } from '../core/pdf.js';
@@ -45,16 +45,21 @@ function build() {
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   const years = [...new Set(listActive('invoices').map(i => i.issueDate?.slice(0, 4)).filter(Boolean))].sort().reverse();
   const months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
-  const yearSel = select([{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))], 'all');
-  const monthSel = select([{ value: 'all', label: 'All Months' }, ...months.map(m => ({ value: m, label: new Date(2000, Number(m)-1, 1).toLocaleDateString('en-US', { month: 'long' }) }))], 'all');
-  const clientSel = select([{ value: 'all', label: 'All Clients' }, ...listActive('clients').map(c => ({ value: c.id, label: c.name }))], 'all');
-  const ownerSel = select(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), [], { multiple: true, title: 'Ctrl+click to select multiple owners' });
-  const statusSel = select(Object.entries(INVOICE_STATUSES).map(([v, m]) => ({ value: v, label: m.label })), [], { multiple: true, title: 'Ctrl+click to select multiple statuses' });
-  bar.appendChild(yearSel);
-  bar.appendChild(monthSel);
-  bar.appendChild(clientSel);
-  bar.appendChild(ownerSel);
-  bar.appendChild(statusSel);
+  const yearFilter   = new Set();
+  const monthFilter  = new Set();
+  const clientFilter = new Set();
+  const ownerFilter  = new Set();
+  const statusFilter = new Set();
+  const yearMS   = buildMultiSelect(years.map(y => ({ value: y, label: y })), yearFilter, 'All Years', () => renderTable());
+  const monthMS  = buildMultiSelect(months.map(m => ({ value: m, label: new Date(2000, Number(m)-1, 1).toLocaleDateString('en-US', { month: 'long' }) })), monthFilter, 'All Months', () => renderTable());
+  const clientMS = buildMultiSelect(listActive('clients').map(c => ({ value: c.id, label: c.name })), clientFilter, 'All Clients', () => renderTable());
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), ownerFilter, 'All Owners', () => renderTable());
+  const statusMS = buildMultiSelect(Object.entries(INVOICE_STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable());
+  bar.appendChild(yearMS);
+  bar.appendChild(monthMS);
+  bar.appendChild(clientMS);
+  bar.appendChild(ownerMS);
+  bar.appendChild(statusMS);
   let selected = new Set();
 
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
@@ -93,13 +98,11 @@ function build() {
     syncDeleteBtn();
     tableWrap.innerHTML = '';
     let rows = [...listActive('invoices')];
-    if (yearSel.value !== 'all') rows = rows.filter(r => r.issueDate?.startsWith(yearSel.value));
-    if (monthSel.value !== 'all') rows = rows.filter(r => r.issueDate?.slice(5, 7) === monthSel.value);
-    const owners = selVals(ownerSel);
-    const statuses = selVals(statusSel);
-    if (clientSel.value !== 'all') rows = rows.filter(r => r.clientId === clientSel.value);
-    if (owners) rows = rows.filter(r => owners.includes(r.owner));
-    if (statuses) rows = rows.filter(r => statuses.includes(r.status));
+    if (yearFilter.size > 0)   rows = rows.filter(r => yearFilter.has(r.issueDate?.slice(0, 4)));
+    if (monthFilter.size > 0)  rows = rows.filter(r => monthFilter.has(r.issueDate?.slice(5, 7)));
+    if (clientFilter.size > 0) rows = rows.filter(r => clientFilter.has(r.clientId));
+    if (ownerFilter.size > 0)  rows = rows.filter(r => ownerFilter.has(r.owner));
+    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(r.status));
     rows.sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate));
 
     if (rows.length === 0) {
@@ -188,11 +191,6 @@ function build() {
       el('div', { class: 'flex gap-16' }, paidSpan, totalSpanEl)
     ));
   };
-  yearSel.onchange = renderTable;
-  monthSel.onchange = renderTable;
-  clientSel.onchange = renderTable;
-  ownerSel.onchange = renderTable;
-  statusSel.onchange = renderTable;
   renderTable();
   return wrap;
 }

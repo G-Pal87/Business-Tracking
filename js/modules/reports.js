@@ -1,7 +1,7 @@
 // Reports module — single source of truth for all analytical views
 // Tabs: Summary | By Property | By Stream | Reconciliation
 import { state } from '../core/state.js';
-import { el, select, button, fmtDate, drillDownModal } from '../core/ui.js';
+import { el, select, button, fmtDate, drillDownModal, buildMultiSelect } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS } from '../core/config.js';
 import {
@@ -33,7 +33,7 @@ const NET_COLS = [
   { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }
 ];
 
-let gFilters = { year: String(new Date().getFullYear()), streams: new Set(), propertyId: 'all' };
+let gFilters = { year: String(new Date().getFullYear()), years: new Set([String(new Date().getFullYear())]), streams: new Set(), propertyId: 'all', propertyIds: new Set() };
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 export default {
@@ -46,51 +46,12 @@ export default {
 };
 
 function buildStreamMultiSelect(onRefresh) {
-  const streamEntries = Object.entries(STREAMS);
-  const wrapper = el('div', { style: 'position:relative' });
-
-  const trigLabel = el('span', {}, 'All Streams');
-  const trigger = el('div', {
-    class: 'select',
-    style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:150px;user-select:none'
-  }, trigLabel);
-
-  const menu = el('div', {
-    style: 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0'
-  });
-
-  const allChk = el('input', { type: 'checkbox' });
-  menu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px' },
-    allChk, el('span', {}, 'All Streams')));
-
-  const chks = streamEntries.map(([key, meta]) => {
-    const chk = el('input', { type: 'checkbox' });
-    chk.dataset.key = key;
-    chk.checked = gFilters.streams.size === 0 || gFilters.streams.has(key);
-    menu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px' },
-      chk, el('span', { class: `badge ${meta.css}` }, meta.label)));
-    return chk;
-  });
-
-  const sync = () => {
-    const sel = chks.filter(c => c.checked);
-    const n = sel.length;
-    allChk.checked = n === chks.length; allChk.indeterminate = n > 0 && n < chks.length;
-    trigLabel.textContent = n === chks.length ? 'All Streams' : n === 0 ? 'No Streams' : n === 1 ? (STREAMS[sel[0].dataset.key]?.label || '') : `${n} Streams`;
-    gFilters.streams = n === chks.length ? new Set() : new Set(sel.map(c => c.dataset.key));
-  };
-
-  allChk.checked = gFilters.streams.size === 0;
-  allChk.onchange = () => { chks.forEach(c => { c.checked = allChk.checked; }); allChk.indeterminate = false; sync(); onRefresh(); };
-  chks.forEach(chk => { chk.onchange = () => { sync(); onRefresh(); }; });
-
-  trigger.onclick = e => { e.stopPropagation(); menu.style.display = menu.style.display === 'none' ? '' : 'none'; };
-  menu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { menu.style.display = 'none'; });
-
-  wrapper.appendChild(trigger); wrapper.appendChild(menu);
-  sync();
-  return wrapper;
+  return buildMultiSelect(
+    Object.entries(STREAMS).map(([key, meta]) => ({ value: key, label: meta.label, css: meta.css })),
+    gFilters.streams,
+    'All Streams',
+    onRefresh
+  );
 }
 
 function build() {
@@ -98,23 +59,15 @@ function build() {
 
   // Global filter bar
   const years = availableYears();
-  const yearSel = select([{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))], gFilters.year);
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   filterBar.appendChild(el('span', { class: 'muted', style: 'align-self:center' }, 'Filter:'));
-  filterBar.appendChild(yearSel);
+  filterBar.appendChild(buildMultiSelect(years.map(y => ({ value: y, label: y })), gFilters.years, 'All Years', () => { gFilters.year = gFilters.years.size === 1 ? [...gFilters.years][0] : 'all'; refreshActive(); }));
   filterBar.appendChild(buildStreamMultiSelect(() => refreshActive()));
   const rentalProps = (listActive('properties')).filter(p => p.type === 'short_term' || p.type === 'long_term');
-  const propSel = select([
-    { value: 'all', label: 'All Properties' },
-    ...rentalProps.map(p => ({ value: p.id, label: `${p.name} (${p.type === 'short_term' ? 'ST' : 'LT'})` }))
-  ], gFilters.propertyId);
-  filterBar.appendChild(propSel);
+  filterBar.appendChild(buildMultiSelect(rentalProps.map(p => ({ value: p.id, label: `${p.name} (${p.type === 'short_term' ? 'ST' : 'LT'})` })), gFilters.propertyIds, 'All Properties', () => { gFilters.propertyId = gFilters.propertyIds.size === 1 ? [...gFilters.propertyIds][0] : 'all'; refreshActive(); }));
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(button('Print / PDF', { onClick: () => window.print() }));
   wrap.appendChild(filterBar);
-
-  yearSel.onchange = () => { gFilters.year = yearSel.value; refreshActive(); };
-  propSel.onchange = () => { gFilters.propertyId = propSel.value; refreshActive(); };
 
   // Tabs
   const tabDefs = [
@@ -211,9 +164,9 @@ function renderSummary(wrap) {
 
 // ===== BY PROPERTY TAB =====
 function renderByProperty(wrap) {
-  const yearFilter = gFilters.year !== 'all' ? { year: gFilters.year } : {};
+  const yearFilter = gFilters.years.size > 0 ? { years: gFilters.years } : {};
   let props = listActive('properties');
-  if (gFilters.propertyId !== 'all') props = props.filter(p => p.id === gFilters.propertyId);
+  if (gFilters.propertyIds.size > 0) props = props.filter(p => gFilters.propertyIds.has(p.id));
   const rows = props.map(p => {
     const rev = propertyRevenueEUR(p.id, yearFilter);
     const exp = propertyExpensesEUR(p.id, yearFilter, { includeRenovation: false });
@@ -233,8 +186,7 @@ function renderByProperty(wrap) {
   for (const { p, rev, exp, reno, purchaseEUR, net, roi } of rows) {
     const tr = el('tr', { style: 'cursor:pointer' });
     tr.onclick = () => {
-      const yearStr = gFilters.year !== 'all' ? gFilters.year : null;
-      const pays = (listActivePayments()).filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (!yearStr || (pay.date || '').startsWith(yearStr)));
+      const pays = (listActivePayments()).filter(pay => pay.propertyId === p.id && pay.status === 'paid' && (gFilters.years.size === 0 || [...gFilters.years].some(y => (pay.date || '').startsWith(y))));
       drillDownModal(`${p.name} — Payments`, drillRevRows(pays, []), REV_COLS);
     };
     tr.appendChild(el('td', {}, el('div', {}, p.name), el('div', { class: 'muted', style: 'font-size:11px' }, `${p.city}, ${p.country}`)));
@@ -328,7 +280,7 @@ function renderByStream(wrap) {
 
 // ===== RECONCILIATION TAB =====
 function renderReconciliation(wrap) {
-  const curYear = gFilters.year !== 'all' ? gFilters.year : String(new Date().getFullYear());
+  const curYear = gFilters.years.size === 1 ? [...gFilters.years][0] : String(new Date().getFullYear());
   const years = availableYears();
   const yearOpts = [...new Set([String(Number(curYear) - 1), curYear, String(Number(curYear) + 1), ...years])].sort().reverse();
 
@@ -388,7 +340,7 @@ function renderReconciliation(wrap) {
     content.innerHTML = '';
 
     let entities = allEntities();
-    if (gFilters.propertyId !== 'all') entities = entities.filter(e => e.id === gFilters.propertyId);
+    if (gFilters.propertyIds.size > 0) entities = entities.filter(e => gFilters.propertyIds.has(e.id));
     const totExp = entities.reduce((s, e) => s + e.totExp, 0);
     const totAct = entities.reduce((s, e) => s + e.totAct, 0);
     const outstanding = entities.reduce((s, e) => s + Math.max(0, e.totExp - e.totAct), 0);
@@ -556,7 +508,7 @@ function renderReconciliation(wrap) {
 
 // ===== COMPARISON TAB =====
 function renderComparison(wrap) {
-  const baseYear = gFilters.year !== 'all' ? Number(gFilters.year) : new Date().getFullYear();
+  const baseYear = gFilters.years.size === 1 ? Number([...gFilters.years][0]) : new Date().getFullYear();
   const props = (listActive('properties')).filter(p => p.status !== 'renovation');
   const services = [
     { id: 'customer_success', label: 'Customer Success', type: 'service' },
@@ -780,7 +732,7 @@ const CSTREAMS = [
 ];
 
 function renderContribution(wrap) {
-  const curYear = gFilters.year !== 'all' ? gFilters.year : String(new Date().getFullYear());
+  const curYear = gFilters.years.size === 1 ? [...gFilters.years][0] : String(new Date().getFullYear());
   const years = availableYears();
   const yearOpts = [...new Set([String(Number(curYear) - 1), curYear, String(Number(curYear) + 1), ...years])].sort().reverse();
 
@@ -807,7 +759,7 @@ function renderContribution(wrap) {
     const label = streamLabel(cs.key);
     let rows;
     if (cs.payType === 'payment') {
-      rows = (listActivePayments()).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(yr) && (gFilters.propertyId === 'all' || p.propertyId === gFilters.propertyId));
+      rows = (listActivePayments()).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(yr) && (gFilters.propertyIds.size === 0 || gFilters.propertyIds.has(p.propertyId)));
     } else {
       rows = listActive('invoices').filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(yr));
     }
@@ -824,7 +776,7 @@ function renderContribution(wrap) {
       const label = streamLabel(cs.key);
       let rows;
       if (cs.payType === 'payment') {
-        rows = (listActivePayments()).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(mk) && (gFilters.propertyId === 'all' || p.propertyId === gFilters.propertyId));
+        rows = (listActivePayments()).filter(p => p.status === 'paid' && p.stream === cs.key && (p.date || '').startsWith(mk) && (gFilters.propertyIds.size === 0 || gFilters.propertyIds.has(p.propertyId)));
       } else {
         rows = listActive('invoices').filter(i => i.status === 'paid' && i.stream === cs.key && (i.issueDate || '').startsWith(mk));
       }
