@@ -3151,26 +3151,18 @@
           "unit": "day",
           "rate": 200,
           "total": 200
-        },
-        {
-          "id": "li_mort2jcplf",
-          "description": "Payment due within 48 hours TOTAL",
-          "quantity": 1,
-          "unit": "day",
-          "rate": 200,
-          "total": 200
         }
       ],
-      "subtotal": 400,
+      "subtotal": 200,
       "taxRate": 0,
       "tax": 0,
-      "total": 400,
+      "total": 200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
       "pdfPath": "invoices/inv_mort2jcpbx.pdf",
       "createdAt": 1777935803239,
       "createdBy": "Giorgos",
-      "updatedAt": 1777935803239,
+      "updatedAt": 1777935808527,
       "updatedBy": "Giorgos"
     }
   ],
