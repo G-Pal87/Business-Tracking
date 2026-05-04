@@ -20,10 +20,12 @@ function build() {
   const filterBar = el('div', { class: 'flex gap-8 mb-16' });
   const streamFilter = new Set();
   const ownerFilter  = new Set();
-  const streamMS = buildMultiSelect(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label, css: STREAMS[s].css })), streamFilter, 'All Streams', renderCards);
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), ownerFilter, 'All Owners', renderCards);
+  const streamMS = buildMultiSelect(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label, css: STREAMS[s].css })), streamFilter, 'All Streams', renderCards, 'cli_streams');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), ownerFilter, 'All Owners', renderCards, 'cli_owners');
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { streamMS.reset(); ownerMS.reset(); renderCards(); } });
   filterBar.appendChild(streamMS);
   filterBar.appendChild(ownerMS);
+  filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(button('+ Add Client', { variant: 'primary', onClick: () => openForm() }));
   wrap.appendChild(filterBar);

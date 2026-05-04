@@ -50,21 +50,36 @@ function buildStreamMultiSelect(onRefresh) {
     Object.entries(STREAMS).map(([key, meta]) => ({ value: key, label: meta.label, css: meta.css })),
     gFilters.streams,
     'All Streams',
-    onRefresh
+    onRefresh,
+    'rep_streams'
   );
 }
 
 function build() {
   const wrap = el('div', { class: 'view active' });
 
-  // Global filter bar
+  // Global filter bar — persisted filters are loaded into gFilters.* Sets by buildMultiSelect
   const years = availableYears();
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   filterBar.appendChild(el('span', { class: 'muted', style: 'align-self:center' }, 'Filter:'));
-  filterBar.appendChild(buildMultiSelect(years.map(y => ({ value: y, label: y })), gFilters.years, 'All Years', () => { gFilters.year = gFilters.years.size === 1 ? [...gFilters.years][0] : 'all'; refreshActive(); }));
-  filterBar.appendChild(buildStreamMultiSelect(() => refreshActive()));
+  const syncYear = () => { gFilters.year = gFilters.years.size === 1 ? [...gFilters.years][0] : 'all'; };
+  const syncProp = () => { gFilters.propertyId = gFilters.propertyIds.size === 1 ? [...gFilters.propertyIds][0] : 'all'; };
+  const yearMS = buildMultiSelect(years.map(y => ({ value: y, label: y })), gFilters.years, 'All Years', () => { syncYear(); refreshActive(); }, 'rep_years');
+  const streamMS = buildStreamMultiSelect(() => refreshActive());
   const rentalProps = (listActive('properties')).filter(p => p.type === 'short_term' || p.type === 'long_term');
-  filterBar.appendChild(buildMultiSelect(rentalProps.map(p => ({ value: p.id, label: `${p.name} (${p.type === 'short_term' ? 'ST' : 'LT'})` })), gFilters.propertyIds, 'All Properties', () => { gFilters.propertyId = gFilters.propertyIds.size === 1 ? [...gFilters.propertyIds][0] : 'all'; refreshActive(); }));
+  const propMS = buildMultiSelect(rentalProps.map(p => ({ value: p.id, label: `${p.name} (${p.type === 'short_term' ? 'ST' : 'LT'})` })), gFilters.propertyIds, 'All Properties', () => { syncProp(); refreshActive(); }, 'rep_props');
+  // Sync derived string fields from the persisted Sets (loaded before any user interaction)
+  syncYear();
+  syncProp();
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => {
+    yearMS.reset(); streamMS.reset?.(); propMS.reset();
+    syncYear(); syncProp();
+    refreshActive();
+  }});
+  filterBar.appendChild(yearMS);
+  filterBar.appendChild(streamMS);
+  filterBar.appendChild(propMS);
+  filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(button('Print / PDF', { onClick: () => window.print() }));
   wrap.appendChild(filterBar);
