@@ -2652,8 +2652,10 @@
       "pdfPath": "invoices/inv_mortcicyb2.pdf",
       "createdAt": 1777936268786,
       "createdBy": "Giorgos",
-      "updatedAt": 1777936268786,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1777936516435,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1777936516435,
+      "deletedBy": "Giorgos"
     }
   ],
   "users": [
