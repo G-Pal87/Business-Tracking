@@ -326,13 +326,13 @@ function calculatePrevYearSummary(year) {
 
 // ── 8-card KPI Row ────────────────────────────────────────────────────────────
 function buildKpiRow(summary, prevSummary, prevYear) {
-  const { rev, net, netCash, outstanding, exp, reno, expRatio, forecastVariance,
+  const { rev, net, netCash, outstanding, exp, reno, expRatio, forecastVariance, forecastRev,
           payments, invoices, opExpenses, renoExpenses, outstandingInvs } = summary;
   const pl = prevYear;
 
   const grid = el('div', {
     class: 'mb-16',
-    style: 'display:grid;grid-template-columns:repeat(8,1fr);gap:12px'
+    style: 'display:grid;grid-template-columns:repeat(9,1fr);gap:12px'
   });
 
   grid.appendChild(kpiCard(
@@ -340,6 +340,19 @@ function buildKpiRow(summary, prevSummary, prevYear) {
     rev >= 0 ? '' : 'danger',
     () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
     prevSummary ? periodTrend(rev, prevSummary.rev, pl) : null
+  ));
+  grid.appendChild(kpiCard(
+    'Forecast Revenue', forecastRev ? formatEUR(forecastRev) : '—',
+    '',
+    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS)
+  ));
+  const varVariant = forecastVariance === null ? '' : forecastVariance >= 0 ? 'success' : 'danger';
+  grid.appendChild(kpiCard(
+    'Forecast Variance', forecastVariance !== null ? formatEUR(forecastVariance) : '—',
+    varVariant,
+    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
+    prevSummary && forecastVariance !== null
+      ? periodTrend(forecastVariance, prevSummary.forecastVariance, pl) : null
   ));
   grid.appendChild(kpiCard(
     'Net Profit', formatEUR(net),
@@ -377,14 +390,6 @@ function buildKpiRow(summary, prevSummary, prevYear) {
     () => drillDownModal('Operating Expenses', drillExpRows(opExpenses), EXP_COLS),
     prevSummary ? periodTrend(expRatio, prevSummary.expRatio, pl, true) : null
   ));
-  const varVariant = forecastVariance === null ? '' : forecastVariance >= 0 ? 'success' : 'danger';
-  grid.appendChild(kpiCard(
-    'Forecast Variance', forecastVariance !== null ? formatEUR(forecastVariance) : '—',
-    varVariant,
-    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
-    prevSummary && forecastVariance !== null
-      ? periodTrend(forecastVariance, prevSummary.forecastVariance, pl) : null
-  ));
 
   return grid;
 }
@@ -413,118 +418,48 @@ function buildTrendsSection() {
 
 // ── Driver Explanations ───────────────────────────────────────────────────────
 function buildDriverExplanations(summary) {
-  const { rev, exp, revByStream, expByCategory, entities } = summary;
+  const { expByCategory, entities } = summary;
 
   const section = el('div', { class: 'card mb-16' });
   section.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Driver Explanations')
+    el('div', { class: 'card-title' }, 'What changed & why')
   ));
-  const body = el('div', {
-    style: 'padding:0 16px 16px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px'
-  });
+  const body = el('div', { style: 'padding:0 16px 16px;font-size:13px;line-height:1.7' });
 
-  const topRevStream = [...revByStream.entries()].sort((a, b) => b[1].rev - a[1].rev)[0];
-  const topExpCat    = [...expByCategory.entries()].sort((a, b) => b[1].exp - a[1].exp)[0];
-  const topEntity    = [...entities].sort((a, b) => b.net - a.net)[0];
+  const topEntities = [...entities].sort((a, b) => b.rev - a.rev).slice(0, 2);
+  const topExpCat   = [...expByCategory.entries()].sort((a, b) => b[1].exp - a[1].exp)[0];
 
-  const makeInsight = (title, text, onClick) => {
-    const card = el('div', {
-      style: 'background:var(--bg-elev-1);border-radius:var(--radius-sm);padding:12px;cursor:pointer',
-      title: 'Click for breakdown'
-    });
-    card.addEventListener('mouseenter', () => { card.style.background = 'var(--bg-elev-2)'; });
-    card.addEventListener('mouseleave', () => { card.style.background = 'var(--bg-elev-1)'; });
-    card.onclick = onClick;
-    card.appendChild(el('div', {
-      style: 'font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px'
-    }, title));
-    card.appendChild(el('div', { style: 'font-size:13px;line-height:1.5' }, text));
-    return card;
-  };
-
-  if (topRevStream) {
-    const [sk, sd]    = topRevStream;
-    const share       = rev > 0 ? ((sd.rev / rev) * 100).toFixed(0) : 0;
-    const streamLabel = STREAMS[sk]?.label || sk;
-    body.appendChild(makeInsight(
-      'Top Revenue Driver',
-      `${streamLabel} drives ${share}% of revenue (${formatEUR(sd.rev)})`,
-      () => drillDownModal(`Revenue — ${streamLabel}`, drillRevRows(sd.pays, sd.invs), REV_COLS)
+  if (!topEntities.length && !topExpCat) {
+    body.appendChild(el('div', { style: 'color:var(--text-muted)' },
+      'No explanation available for the selected filters.'
     ));
-  }
-
-  if (topExpCat) {
-    const [ck, cd]  = topExpCat;
-    const share     = exp > 0 ? ((cd.exp / exp) * 100).toFixed(0) : 0;
-    const catLabel  = COST_CATEGORIES[ck]?.label || EXPENSE_CATEGORIES[ck]?.label || ck;
-    body.appendChild(makeInsight(
-      'Largest Cost Driver',
-      `${catLabel} is ${share}% of expenses (${formatEUR(cd.exp)})`,
-      () => drillDownModal(`Expenses — ${catLabel}`, drillExpRows(cd.items), EXP_COLS)
-    ));
-  }
-
-  if (topEntity) {
-    const margin = topEntity.rev > 0 ? ((topEntity.net / topEntity.rev) * 100).toFixed(0) : 0;
-    body.appendChild(makeInsight(
-      'Top Performing Entity',
-      `${topEntity.name}: ${formatEUR(topEntity.net)} net (${margin}% margin)`,
-      () => drillDownModal(`${topEntity.name} — Breakdown`, mixedRows(topEntity.pays, topEntity.invs, topEntity.opExps), MIXED_COLS)
-    ));
-  }
-
-  if (!topRevStream && !topExpCat && !topEntity) {
-    body.appendChild(el('div', {
-      style: 'color:var(--text-muted);font-size:13px;grid-column:1/-1'
-    }, 'No data for selected period.'));
-  }
-
-  section.appendChild(body);
-  return section;
-}
-
-// ── Forecast vs Actual ────────────────────────────────────────────────────────
-function buildForecastVsActual(summary) {
-  const { rev, forecastRev, forecastVariance, payments, invoices } = summary;
-
-  const section = el('div', { class: 'card mb-16' });
-  section.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Forecast vs Actual')
-  ));
-
-  if (!forecastRev) {
-    section.appendChild(el('div', { style: 'padding:16px;color:var(--text-muted);font-size:13px' },
-      'No forecast data available for the selected period.'
-    ));
+    section.appendChild(body);
     return section;
   }
 
-  const pct = forecastRev > 0 ? (rev / forecastRev) * 100 : null;
+  if (topEntities.length) {
+    body.appendChild(el('p', { style: 'margin:0 0 2px;font-weight:600' }, 'Driven by:'));
+    const ul = el('ul', { style: 'margin:0 0 12px;padding-left:20px' });
+    topEntities.forEach(e => {
+      const li = el('li', { style: 'cursor:pointer', title: 'Click for breakdown' }, `${e.name} (${formatEUR(e.rev)})`);
+      li.onclick = () => drillDownModal(`${e.name} — Revenue`, drillRevRows(e.pays, e.invs), REV_COLS);
+      ul.appendChild(li);
+    });
+    body.appendChild(ul);
+  }
 
-  const strip = el('div', {
-    style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 16px 16px'
-  });
+  if (topExpCat) {
+    const [ck, cd] = topExpCat;
+    const catLabel = COST_CATEGORIES[ck]?.label || EXPENSE_CATEGORIES[ck]?.label || ck;
+    body.appendChild(el('p', { style: 'margin:0 0 2px;font-weight:600' }, 'Costs driven by:'));
+    const ul = el('ul', { style: 'margin:0;padding-left:20px' });
+    const li = el('li', { style: 'cursor:pointer', title: 'Click for breakdown' }, `${catLabel} (${formatEUR(cd.exp)})`);
+    li.onclick = () => drillDownModal(`Expenses — ${catLabel}`, drillExpRows(cd.items), EXP_COLS);
+    ul.appendChild(li);
+    body.appendChild(ul);
+  }
 
-  strip.appendChild(kpiCard(
-    'Forecast Revenue', formatEUR(forecastRev),
-    '',
-    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS)
-  ));
-  strip.appendChild(kpiCard(
-    'Actual Revenue', formatEUR(rev),
-    '',
-    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS)
-  ));
-  strip.appendChild(kpiCard(
-    'Variance', formatEUR(forecastVariance),
-    forecastVariance >= 0 ? 'success' : 'danger',
-    () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
-    pct !== null
-      ? el('span', { class: forecastVariance >= 0 ? 'up' : 'down' }, `${pct.toFixed(0)}% of forecast`)
-      : null
-  ));
-
-  section.appendChild(strip);
+  section.appendChild(body);
   return section;
 }
 
@@ -584,88 +519,6 @@ function renderKeyDrivers(summary) {
   }
 }
 
-// ── Performance Rankings (Top 3 / Worst 3 by net profit) ─────────────────────
-function buildPerformanceRankings(summary) {
-  const { entities } = summary;
-  if (!entities.length) return null;
-
-  const top   = [...entities].sort((a, b) => b.net - a.net).slice(0, 3);
-  const worst = [...entities].sort((a, b) => a.net - b.net).slice(0, 3);
-
-  const makeTable = (title, rows) => {
-    const card = el('div', { class: 'card' });
-    card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, title)));
-
-    const tbl = el('table', { class: 'table' });
-    const htr = el('tr');
-    [['Name', false], ['Revenue', true], ['Net Profit', true], ['ROI', true]].forEach(([h, right]) =>
-      htr.appendChild(el('th', { class: right ? 'right' : '' }, h))
-    );
-    tbl.appendChild(el('thead', {}, htr));
-
-    const tbody = el('tbody');
-    rows.forEach(r => {
-      const tr = el('tr', { style: 'cursor:pointer', title: 'Click for breakdown' });
-      tr.addEventListener('mouseenter', () => { tr.style.background = 'var(--bg-elev-2)'; });
-      tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
-      tr.onclick = () => drillDownModal(`${r.name} — Breakdown`, mixedRows(r.pays, r.invs, r.opExps), MIXED_COLS);
-
-      tr.appendChild(el('td', {}, r.name));
-      tr.appendChild(el('td', { class: 'right num' }, formatEUR(r.rev)));
-      tr.appendChild(el('td', { class: 'right num' + (r.net < 0 ? ' danger' : '') }, formatEUR(r.net)));
-      tr.appendChild(el('td', { class: 'right num' + (r.roi !== null && r.roi < 0 ? ' danger' : '') },
-        r.roi !== null ? `${r.roi.toFixed(1)}%` : '—'
-      ));
-      tbody.appendChild(tr);
-    });
-    tbl.appendChild(tbody);
-    const tw = el('div', { class: 'table-wrap' });
-    tw.appendChild(tbl);
-    card.appendChild(tw);
-    return card;
-  };
-
-  const section = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
-  section.appendChild(makeTable('Top 3 — Net Profit', top));
-  section.appendChild(makeTable('Worst 3 — Net Profit', worst));
-  return section;
-}
-
-// ── Liquidity ─────────────────────────────────────────────────────────────────
-function buildLiquidity(summary) {
-  const { outstanding, overdue, outstandingInvs, overdueInvs } = summary;
-  const current = outstanding - overdue;
-
-  const section = el('div', { class: 'card mb-16' });
-  section.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Liquidity')
-  ));
-
-  const strip = el('div', {
-    style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:0 16px 16px'
-  });
-
-  strip.appendChild(kpiCard(
-    'Outstanding', formatEUR(outstanding),
-    outstanding > 0 ? 'warning' : '',
-    () => drillDownModal('Outstanding Invoices', drillRevRows([], outstandingInvs), REV_COLS)
-  ));
-  strip.appendChild(kpiCard(
-    'Overdue', formatEUR(overdue),
-    overdue > 0 ? 'danger' : '',
-    () => drillDownModal('Overdue Invoices', drillRevRows([], overdueInvs), REV_COLS)
-  ));
-  strip.appendChild(kpiCard(
-    'Current (not overdue)', formatEUR(current),
-    '',
-    () => drillDownModal('Current Invoices',
-      drillRevRows([], outstandingInvs.filter(i => i.status !== 'overdue')), REV_COLS)
-  ));
-
-  section.appendChild(strip);
-  return section;
-}
-
 // ── Main view builder ─────────────────────────────────────────────────────────
 function buildView() {
   const wrap = el('div', { class: 'view active' });
@@ -710,16 +563,11 @@ function buildView() {
   const prevYear    = currentYear ? String(Number(currentYear) - 1) : null;
   const prevSummary = prevYear ? calculatePrevYearSummary(prevYear) : null;
 
-  // Layout: KPI Row → Trends → Driver Explanations → Forecast vs Actual
-  //         → Key Drivers → Performance Rankings → Liquidity
+  // Layout: KPI Row → Trends → What changed & why → Key Drivers
   wrap.appendChild(buildKpiRow(summary, prevSummary, prevYear));
   wrap.appendChild(buildTrendsSection());
   wrap.appendChild(buildDriverExplanations(summary));
-  wrap.appendChild(buildForecastVsActual(summary));
   wrap.appendChild(buildKeyDriversSection());
-  const rankingsEl = buildPerformanceRankings(summary);
-  if (rankingsEl) wrap.appendChild(rankingsEl);
-  wrap.appendChild(buildLiquidity(summary));
 
   setTimeout(() => {
     renderTrendCharts(data);
