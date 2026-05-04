@@ -3100,6 +3100,46 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777935684881,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mort0wff58",
+      "number": "18_SWG_14042025",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2025-05-14",
+      "dueDate": "2025-05-16",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mort0wffbx",
+          "description": "Startup Program Support April 2025",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6000,
+          "total": 6000
+        },
+        {
+          "id": "li_mort0wff30",
+          "description": "Payment due within 48 hours TOTAL",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6000,
+          "total": 6000
+        }
+      ],
+      "subtotal": 12000,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 12000,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mort0wff58.pdf",
+      "createdAt": 1777935726818,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777935726818,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
