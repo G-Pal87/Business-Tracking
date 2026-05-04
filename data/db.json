@@ -2596,8 +2596,8 @@
       "number": "24_SWG_10062025",
       "clientId": "cli_mohkf6ip14",
       "owner": "rita",
-      "issueDate": "2026-05-04",
-      "dueDate": "2026-06-03",
+      "issueDate": "2025-06-10",
+      "dueDate": "2025-06-12",
       "stream": "marketing_services",
       "currency": "EUR",
       "status": "paid",
@@ -2620,7 +2620,7 @@
       "pdfPath": "invoices/inv_mortknzt2t.pdf",
       "createdAt": 1777936649049,
       "createdBy": "Giorgos",
-      "updatedAt": 1777936649049,
+      "updatedAt": 1777936773140,
       "updatedBy": "Giorgos"
     }
   ],
