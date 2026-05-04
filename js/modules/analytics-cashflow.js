@@ -65,7 +65,7 @@ function matchOwner(row) {
 }
 function matchInvOwner(inv) {
   if (gFilters.owners.size === 0) return true;
-  const owner = byId('clients', inv.clientId)?.owner || 'both';
+  const owner = inv.owner || 'both';
   return owner === 'both' || gFilters.owners.has(owner);
 }
 function matchProperty(row) {
