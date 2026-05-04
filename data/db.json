@@ -3260,6 +3260,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777935974785,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mort79ig55",
+      "number": "23_VITAS_04062025",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2025-06-04",
+      "dueDate": "2025-06-11",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mort79igj3",
+          "description": "Marketing services (Performance Kampagnen) Mai 2025",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1500,
+          "total": 1500
+        }
+      ],
+      "subtotal": 1500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mort79ig55.pdf",
+      "createdAt": 1777936023784,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777936023784,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
