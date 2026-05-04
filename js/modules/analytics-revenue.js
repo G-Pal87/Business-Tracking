@@ -48,7 +48,7 @@ function matchOwner(row) {
   const clientId = row.clientId;
   const owner    = propId
     ? (byId('properties', propId)?.owner || 'both')
-    : (byId('clients', clientId)?.owner  || 'both');
+    : (row.owner || 'both');
   return owner === 'both' || gFilters.owners.has(owner);
 }
 function matchProperty(row) {
@@ -246,7 +246,7 @@ function computeRevenueInsights({ payments, invoices, propRev, svcRev, total }) 
     ownerMap.set(owner, (ownerMap.get(owner) || 0) + toEUR(p.amount, p.currency, p.date));
   });
   invoices.forEach(i => {
-    const owner = byId('clients', i.clientId)?.owner || 'both';
+    const owner = i.owner || 'both';
     ownerMap.set(owner, (ownerMap.get(owner) || 0) + toEUR(i.total, i.currency, i.issueDate));
   });
   const topOwner = [...ownerMap.entries()].filter(([k]) => k !== 'both').sort((a, b) => b[1] - a[1])[0];
@@ -468,7 +468,7 @@ function renderOwnerDonut({ payments, invoices }) {
     ownerMap.set(owner, (ownerMap.get(owner) || 0) + toEUR(p.amount, p.currency, p.date));
   });
   invoices.forEach(i => {
-    const owner = byId('clients', i.clientId)?.owner || 'both';
+    const owner = i.owner || 'both';
     ownerMap.set(owner, (ownerMap.get(owner) || 0) + toEUR(i.total, i.currency, i.issueDate));
   });
 
@@ -482,7 +482,7 @@ function renderOwnerDonut({ payments, invoices }) {
     onClickItem: (_label, idx) => {
       const ok   = keys[idx];
       const oPay = payments.filter(p => (byId('properties', p.propertyId)?.owner || 'both') === ok);
-      const oInv = invoices.filter(i => (byId('clients',    i.clientId)?.owner   || 'both') === ok);
+      const oInv = invoices.filter(i => (i.owner || 'both') === ok);
       drillDownModal(`Revenue — ${OWNERS[ok]}`, drillRevRows(oPay, oInv), REV_COLS);
     }
   });

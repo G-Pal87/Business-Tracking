@@ -133,7 +133,7 @@ function openForm(existing) {
   const c = existing ? { ...existing } : {
     id: newId('cli'),
     name: '', email: '', address: '', vatNumber: '', registrationNumber: '',
-    owner: 'you', stream: 'customer_success', currency: 'EUR',
+    currency: 'EUR',
     contractStart: new Date().toISOString().slice(0, 10),
     notes: ''
   };
@@ -143,8 +143,6 @@ function openForm(existing) {
   const addressI = input({ value: c.address });
   const vatI = input({ value: c.vatNumber, placeholder: 'e.g. HU12345678' });
   const regI = input({ value: c.registrationNumber, placeholder: 'e.g. 01-09-123456' });
-  const ownerS = select(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), c.owner);
-  const streamS = select(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label })), c.stream);
   const currencyS = select(CURRENCIES, c.currency);
   const dateI = input({ type: 'date', value: c.contractStart });
   const notesT = textarea(); notesT.value = c.notes || '';
@@ -153,7 +151,6 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Email', emailI), formRow('VAT Number', vatI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI)));
   body.appendChild(formRow('Address', addressI));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Stream', streamS), formRow('Owner', ownerS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Currency', currencyS), formRow('Contract Start', dateI)));
   body.appendChild(formRow('Notes', notesT));
 
@@ -165,8 +162,6 @@ function openForm(existing) {
       address: addressI.value.trim(),
       vatNumber: vatI.value.trim(),
       registrationNumber: regI.value.trim(),
-      owner: ownerS.value,
-      stream: streamS.value,
       currency: currencyS.value,
       contractStart: dateI.value,
       notes: notesT.value.trim()
