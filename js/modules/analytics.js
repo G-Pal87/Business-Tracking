@@ -416,15 +416,15 @@ function buildTrendsSection() {
   return card;
 }
 
-// ── Driver Explanations ───────────────────────────────────────────────────────
+// ── Performance Insights ──────────────────────────────────────────────────────
 function buildDriverExplanations(summary) {
   const { expByCategory, entities } = summary;
 
   const section = el('div', { class: 'card mb-16' });
   section.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'What changed & why')
+    el('div', { class: 'card-title' }, 'Performance Insights')
   ));
-  const body = el('div', { style: 'padding:0 16px 16px;font-size:13px;line-height:1.7' });
+  const body = el('div', { style: 'padding:0 16px 16px;font-size:13px;line-height:1.8' });
 
   const topEntities = [...entities].sort((a, b) => b.rev - a.rev).slice(0, 2);
   const topExpCat   = [...expByCategory.entries()].sort((a, b) => b[1].exp - a[1].exp)[0];
@@ -437,28 +437,79 @@ function buildDriverExplanations(summary) {
     return section;
   }
 
-  if (topEntities.length) {
-    body.appendChild(el('p', { style: 'margin:0 0 2px;font-weight:600' }, 'Driven by:'));
-    const ul = el('ul', { style: 'margin:0 0 12px;padding-left:20px' });
-    topEntities.forEach(e => {
-      const li = el('li', { style: 'cursor:pointer', title: 'Click for breakdown' }, `${e.name} (${formatEUR(e.rev)})`);
-      li.onclick = () => drillDownModal(`${e.name} — Revenue`, drillRevRows(e.pays, e.invs), REV_COLS);
-      ul.appendChild(li);
+  const row = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px' });
+
+  const makeBlock = (label, lines) => {
+    const block = el('div');
+    block.appendChild(el('div', {
+      style: 'font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px'
+    }, label));
+    lines.forEach(({ text, onClick }) => {
+      const p = el('p', { style: 'margin:0' }, text);
+      if (onClick) {
+        p.style.cursor = 'pointer';
+        p.title = 'Click for breakdown';
+        p.onclick = onClick;
+      }
+      block.appendChild(p);
     });
-    body.appendChild(ul);
+    return block;
+  };
+
+  // Revenue concentration
+  if (topEntities.length) {
+    const lines = [];
+    if (topEntities[0]) {
+      const e = topEntities[0];
+      lines.push({
+        text: `Top contributor: ${e.name} (${formatEUR(e.rev)})`,
+        onClick: () => drillDownModal(`${e.name} — Revenue`, drillRevRows(e.pays, e.invs), REV_COLS)
+      });
+    }
+    if (topEntities[1]) {
+      const e = topEntities[1];
+      lines.push({
+        text: `Second: ${e.name} (${formatEUR(e.rev)})`,
+        onClick: () => drillDownModal(`${e.name} — Revenue`, drillRevRows(e.pays, e.invs), REV_COLS)
+      });
+    }
+    row.appendChild(makeBlock('Revenue concentration', lines));
   }
 
+  // Cost concentration
   if (topExpCat) {
     const [ck, cd] = topExpCat;
     const catLabel = COST_CATEGORIES[ck]?.label || EXPENSE_CATEGORIES[ck]?.label || ck;
-    body.appendChild(el('p', { style: 'margin:0 0 2px;font-weight:600' }, 'Costs driven by:'));
-    const ul = el('ul', { style: 'margin:0;padding-left:20px' });
-    const li = el('li', { style: 'cursor:pointer', title: 'Click for breakdown' }, `${catLabel} (${formatEUR(cd.exp)})`);
-    li.onclick = () => drillDownModal(`Expenses — ${catLabel}`, drillExpRows(cd.items), EXP_COLS);
-    ul.appendChild(li);
-    body.appendChild(ul);
+    row.appendChild(makeBlock('Cost concentration', [{
+      text: `Main cost driver: ${catLabel} (${formatEUR(cd.exp)})`,
+      onClick: () => drillDownModal(`Expenses — ${catLabel}`, drillExpRows(cd.items), EXP_COLS)
+    }]));
   }
 
+  // Risk signal — only if there is a dominant single contributor
+  if (topEntities[0]) {
+    row.appendChild(makeBlock('Risk signal', [{
+      text: `High dependency on a single contributor (${topEntities[0].name})`,
+      onClick: () => drillDownModal(`${topEntities[0].name} — Revenue`, drillRevRows(topEntities[0].pays, topEntities[0].invs), REV_COLS)
+    }]));
+  }
+
+  // Investment signal — only if CapEx category data is present
+  const capExCat = [...expByCategory.entries()]
+    .filter(([k]) => (COST_CATEGORIES[k]?.label || '').toLowerCase().includes('capex') ||
+                     (EXPENSE_CATEGORIES[k]?.label || '').toLowerCase().includes('capex') ||
+                     k === 'capex' || k === 'renovation')
+    .sort((a, b) => b[1].exp - a[1].exp)[0];
+  if (capExCat) {
+    const [ck, cd] = capExCat;
+    const catLabel = COST_CATEGORIES[ck]?.label || EXPENSE_CATEGORIES[ck]?.label || ck;
+    row.appendChild(makeBlock('Investment signal', [{
+      text: `High CapEx driven by ${catLabel} (${formatEUR(cd.exp)})`,
+      onClick: () => drillDownModal(`Expenses — ${catLabel}`, drillExpRows(cd.items), EXP_COLS)
+    }]));
+  }
+
+  body.appendChild(row);
   section.appendChild(body);
   return section;
 }
@@ -563,11 +614,11 @@ function buildView() {
   const prevYear    = currentYear ? String(Number(currentYear) - 1) : null;
   const prevSummary = prevYear ? calculatePrevYearSummary(prevYear) : null;
 
-  // Layout: KPI Row → Trends → What changed & why → Key Drivers
+  // Layout: KPI Row → Trends → Key Drivers → Performance Insights
   wrap.appendChild(buildKpiRow(summary, prevSummary, prevYear));
   wrap.appendChild(buildTrendsSection());
-  wrap.appendChild(buildDriverExplanations(summary));
   wrap.appendChild(buildKeyDriversSection());
+  wrap.appendChild(buildDriverExplanations(summary));
 
   setTimeout(() => {
     renderTrendCharts(data);
