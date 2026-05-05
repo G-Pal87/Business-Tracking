@@ -3011,6 +3011,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777969790716,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosdcga1qk",
+      "number": "36_VITAS_011025",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2025-11-01",
+      "dueDate": "2025-11-08",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosdcga12h",
+          "description": "Marketing services (Performance campaigns) - Sept",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1500,
+          "total": 1500
+        }
+      ],
+      "subtotal": 1500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosdcga1qk.pdf",
+      "createdAt": 1777969859168,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777969859168,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
