@@ -2868,6 +2868,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777969256794,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosd2bxpr7",
+      "number": "32_CTWO_010925",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-09-01",
+      "dueDate": "2025-09-10",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosd2bxp9p",
+          "description": "Customer Success Professional Services",
+          "quantity": 21,
+          "unit": "day",
+          "rate": 670,
+          "total": 14070
+        }
+      ],
+      "subtotal": 14070,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 14070,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosd2bxpr7.pdf",
+      "createdAt": 1777969387028,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777969387028,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
