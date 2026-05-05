@@ -3507,6 +3507,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777972197971,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosesj0gpv",
+      "number": "M&WPrimeSolutions#2005-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-07-17",
+      "dueDate": "2024-07-25",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosesj0gb7",
+          "description": "International Edge Program Startup Coaching (Growth Marketing)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2500,
+          "total": 2500
+        }
+      ],
+      "subtotal": 2500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosesj0gpv.pdf",
+      "createdAt": 1777972287951,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777972287951,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
