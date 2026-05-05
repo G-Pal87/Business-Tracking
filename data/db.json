@@ -3379,6 +3379,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777971869613,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosekkn58w",
+      "number": "Invoice-M&WPrimeSolutions#2002-SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-07-11",
+      "dueDate": "2024-07-13",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosekkn5bb",
+          "description": "Marketing / Growth Mentoring Wise Guys Founders Club 2024 - Program Code: Founders Club 8 FC 8",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 500,
+          "total": 500
+        }
+      ],
+      "subtotal": 500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosekkn58w.pdf",
+      "createdAt": 1777971918833,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777971918833,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
