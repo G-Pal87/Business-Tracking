@@ -3739,6 +3739,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777974031301,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosfy356dg",
+      "number": "M&WPrimeSolutions 2012 -24_SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-09-30",
+      "dueDate": "2024-10-10",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosfy356ck",
+          "description": "Startup lead coaching on Growth / Marketing - (Cyber Growth 2024) (B47) Certopus – 2h Passport GG – 2h",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 400,
+          "total": 400
+        }
+      ],
+      "subtotal": 400,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 400,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosfy356dg.pdf",
+      "createdAt": 1777974226805,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777974226805,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
