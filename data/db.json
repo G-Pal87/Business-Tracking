@@ -2622,6 +2622,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777936773140,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosa9v4626",
+      "number": "25_Nexial_01072025",
+      "clientId": "cli_mohltfi7fg",
+      "owner": "rita",
+      "issueDate": "2025-07-01",
+      "dueDate": "2025-07-08",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosa9v4648",
+          "description": "Marketing services Setup fee (50%)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 300,
+          "total": 300
+        }
+      ],
+      "subtotal": 300,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 300,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosa9v4626.pdf",
+      "createdAt": 1777964699171,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777964699171,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
