@@ -246,7 +246,6 @@ function build() {
     };
     // Totals footer
     const totalEUR = rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
-    const paidRows = rows.filter(r => r.status === 'paid');
     const paidEUR = paidRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
     const paidSpan = el('span', { style: 'cursor:pointer', title: 'Drill down' });
     paidSpan.appendChild(document.createTextNode('Paid: '));
