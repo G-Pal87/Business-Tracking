@@ -3443,6 +3443,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777971965760,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosemtjgkg",
+      "number": "Invoice-M&WPrimeSolutions#2004",
+      "clientId": "cli_mohkjrhl90",
+      "owner": "rita",
+      "issueDate": "2024-07-12",
+      "dueDate": "2024-07-22",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosemtjg2e",
+          "description": "Marketing / Growth coaching (1h)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 90,
+          "total": 90
+        }
+      ],
+      "subtotal": 90,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 90,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosemtjgkg.pdf",
+      "createdAt": 1777972021905,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777972021905,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
