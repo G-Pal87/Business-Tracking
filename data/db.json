@@ -3315,6 +3315,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777971198581,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mose6x7hnz",
+      "number": "45_Nexial_15122025",
+      "clientId": "cli_mohltfi7fg",
+      "owner": "rita",
+      "issueDate": "2025-12-15",
+      "dueDate": "2026-12-25",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mose6x7hfk",
+          "description": "Marketing services (Google Ads)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 300,
+          "total": 300
+        }
+      ],
+      "subtotal": 300,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 300,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mose6x7hnz.pdf",
+      "createdAt": 1777971280272,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777971280272,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
