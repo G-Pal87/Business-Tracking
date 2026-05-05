@@ -3899,6 +3899,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777974580168,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosg72g49v",
+      "number": "M&WPrimeSolutions 2013_24_SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-10-03",
+      "dueDate": "2024-10-10",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosg72g5ar",
+          "description": "Cleantech 1 Startup Program Support (Sept 24)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        }
+      ],
+      "subtotal": 6200,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 6200,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosg72g49v.pdf",
+      "createdAt": 1777974645871,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777974645871,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
