@@ -2932,6 +2932,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777969452534,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosd5tzh2r",
+      "number": "34_Avionas_290925",
+      "clientId": "cli_moscy9x3iu",
+      "owner": "you",
+      "issueDate": "2025-08-29",
+      "dueDate": "2025-09-02",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosd5tzhpb",
+          "description": "Startup coaching (4h) Topics: 1. Value Proposition 2. Customer Development/ Customer segmentation 3. VC Ecosystem",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 650,
+          "total": 650
+        }
+      ],
+      "subtotal": 650,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 650,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosd5tzh2r.pdf",
+      "createdAt": 1777969549879,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777969549879,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
