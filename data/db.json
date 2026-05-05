@@ -2757,6 +2757,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777968907638,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_moscuowq8g",
+      "number": "29_Nexial_11072025",
+      "clientId": "cli_mohltfi7fg",
+      "owner": "rita",
+      "issueDate": "2025-07-11",
+      "dueDate": "2025-07-18",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_moscuowq2m",
+          "description": "Marketing services (Social Media)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 300,
+          "total": 300
+        }
+      ],
+      "subtotal": 300,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 300,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_moscuowq8g.pdf",
+      "createdAt": 1777969029732,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777969029732,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
