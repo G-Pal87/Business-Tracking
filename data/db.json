@@ -3571,6 +3571,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777972334228,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosf04xp16",
+      "number": "Invoice - M&WPrimeSolutions#1002#2024",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2024-08-30",
+      "dueDate": "2024-09-10",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosf04xqit",
+          "description": "Customer Success professional services",
+          "quantity": 22,
+          "unit": "day",
+          "rate": 670,
+          "total": 14740
+        }
+      ],
+      "subtotal": 14740,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 14740,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosf04xp16.pdf",
+      "createdAt": 1777972646471,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777972646471,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
