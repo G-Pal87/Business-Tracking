@@ -3251,6 +3251,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777971112572,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mose4div74",
+      "number": "43_SWG_13112025",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2025-11-11",
+      "dueDate": "2025-11-13",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mose4divlj",
+          "description": "Mentoring Wise Guys Founders Club 2025 - Program Code: Founders Club 16 FC 16",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 250,
+          "total": 250
+        }
+      ],
+      "subtotal": 250,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 250,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mose4div74.pdf",
+      "createdAt": 1777971161179,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777971161179,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
