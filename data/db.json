@@ -3475,6 +3475,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777972021905,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_moseqlhojp",
+      "number": "M&WPrimeSolutions 2001 _24-NordicSV",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2024-07-11",
+      "dueDate": "2024-07-15",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_moseqlho4p",
+          "description": "International Edge Program Startup Coaching (Growth Marketing)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 480,
+          "total": 480
+        }
+      ],
+      "subtotal": 480,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 480,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_moseqlhojp.pdf",
+      "createdAt": 1777972197971,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777972197971,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
