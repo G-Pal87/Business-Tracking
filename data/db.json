@@ -22150,6 +22150,22 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777989630148,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "fcs_mot6caopnn",
+      "type": "service",
+      "entityId": "marketing_services",
+      "year": 2024,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {},
+      "createdAt": 1778018556697,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778018556697,
+      "updatedBy": "Giorgos"
     }
   ],
   "inventory": [],
