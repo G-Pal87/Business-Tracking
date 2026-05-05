@@ -1021,8 +1021,9 @@ function parseAirbnbCSV(text) {
     const amount      = parseAmt(col(row, 'amount', 'payout', 'total amount', 'paid out'));
     const serviceFee  = parseAmt(col(row, 'service fee', 'host fee', 'airbnb fee'));
     const cleaningFee = parseAmt(col(row, 'cleaning fee'));
-    // Gross = host payout + cleaning fee (cleaning is in payout but separated for analysis)
-    const grossEarnings = amount + cleaningFee;
+    // Use the CSV's own "Gross earnings" column when present; otherwise amount + serviceFee
+    const grossRaw    = col(row, 'gross earnings', 'gross earning', 'gross');
+    const grossEarnings = grossRaw ? parseAmt(grossRaw) : (amount + serviceFee);
 
     results.push({
       date,
@@ -1051,6 +1052,13 @@ function parseAirbnbCSV(text) {
 
 function parseDateStr(raw) {
   if (!raw) return null;
+  // MM/DD/YYYY (Airbnb US export format) — parse manually to avoid timezone shift
+  const mdy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) return `${mdy[3]}-${mdy[1].padStart(2, '0')}-${mdy[2].padStart(2, '0')}`;
+  // ISO 8601 (YYYY-MM-DD) — Date constructor treats as UTC, no shift
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return raw.slice(0, 10);
+  // Last resort: Date constructor (may drift ±1 day near midnight in non-UTC zones)
   const d = new Date(raw);
   if (!isNaN(d)) return d.toISOString().slice(0, 10);
   return null;
