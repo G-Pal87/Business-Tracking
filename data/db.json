@@ -3931,6 +3931,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777974645871,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosg8urll2",
+      "number": "M&WPrimeSolutions 2015_24-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-11-05",
+      "dueDate": "2024-11-10",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosg8urlgy",
+          "description": "Marketing services (Performance Kampagnen) Okt 2024",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1000,
+          "total": 1000
+        }
+      ],
+      "subtotal": 1000,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1000,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosg8urll2.pdf",
+      "createdAt": 1777974729294,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777974729294,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
