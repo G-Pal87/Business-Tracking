@@ -947,6 +947,21 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777969244909,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "cli_mosd5z53ms",
+      "name": "Avionas PL sp. zo.o.",
+      "email": "",
+      "address": "Ul. Szelagowska 49 61-642 Poznan Poland",
+      "vatNumber": "PL9721363200",
+      "registrationNumber": "",
+      "currency": "EUR",
+      "contractStart": "2025-08-01",
+      "notes": "",
+      "createdAt": 1777969609574,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777969609574,
+      "updatedBy": "Giorgos"
     }
   ],
   "services": [
