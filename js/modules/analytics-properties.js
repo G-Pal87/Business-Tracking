@@ -1,5 +1,5 @@
 // Property Performance Analytics Dashboard
-import { el, select, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, PROPERTY_STREAMS } from '../core/config.js';
 import {
@@ -11,7 +11,7 @@ import {
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gFilters = {
-  year:        String(new Date().getFullYear()),
+  years:       new Set([String(new Date().getFullYear())]),
   months:      new Set(),
   propertyIds: new Set(),
   streams:     new Set(),
@@ -41,7 +41,7 @@ function propStream(p) {
 // ── Filtering ─────────────────────────────────────────────────────────────────
 function matchDate(row) {
   const d = row.date || '';
-  if (gFilters.year && gFilters.year !== 'all' && !d.startsWith(gFilters.year)) return false;
+  if (gFilters.years.size > 0 && !gFilters.years.has(d.slice(0, 4))) return false;
   if (gFilters.months.size > 0 && !gFilters.months.has(d.slice(5, 7))) return false;
   return true;
 }
@@ -537,71 +537,7 @@ function computePropertyInsights({ totals, propData, avgROI, best, worst }) {
   return items;
 }
 
-// ── Multi-select dropdown ─────────────────────────────────────────────────────
-function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
-  const wrapper   = el('div', { style: 'position:relative' });
-  const trigLabel = el('span');
-  const trigger   = el('div', {
-    class: 'select',
-    style: 'cursor:pointer;display:flex;align-items:center;gap:6px;width:auto;min-width:130px;user-select:none'
-  }, trigLabel);
-  const menu = el('div', {
-    style: [
-      'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300',
-      'background:var(--bg-elev-2);border:1px solid var(--border)',
-      'border-radius:var(--radius-sm);min-width:190px',
-      'box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0;max-height:260px;overflow-y:auto'
-    ].join(';')
-  });
 
-  const allChk = el('input', { type: 'checkbox' });
-  menu.appendChild(el('label', {
-    style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px'
-  }, allChk, el('span', {}, allLabel)));
-
-  const chks = items.map(({ value, label, color }) => {
-    const chk = el('input', { type: 'checkbox' });
-    chk.dataset.value = value;
-    chk.checked = filterSet.size === 0 || filterSet.has(value);
-    const dot     = color ? el('span', { style: `display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0` }) : null;
-    const content = el('span', { style: 'display:flex;align-items:center;gap:6px' }, ...(dot ? [dot] : []), el('span', {}, label));
-    menu.appendChild(el('label', {
-      style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px'
-    }, chk, content));
-    return chk;
-  });
-
-  const sync = () => {
-    const sel = chks.filter(c => c.checked);
-    const n   = sel.length;
-    allChk.checked       = n === chks.length;
-    allChk.indeterminate = n > 0 && n < chks.length;
-    trigLabel.textContent =
-      n === chks.length || n === 0 ? allLabel
-      : n === 1 ? (items.find(i => i.value === sel[0].dataset.value)?.label || '')
-      : `${n} selected`;
-    filterSet.clear();
-    if (n > 0 && n < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
-  };
-
-  allChk.checked = filterSet.size === 0;
-  allChk.onchange = () => {
-    chks.forEach(c => { c.checked = allChk.checked; });
-    allChk.indeterminate = false;
-    sync(); onRefresh();
-  };
-  chks.forEach(chk => { chk.onchange = () => { sync(); onRefresh(); }; });
-  trigger.onclick = e => {
-    e.stopPropagation();
-    menu.style.display = menu.style.display === 'none' ? '' : 'none';
-  };
-  menu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { menu.style.display = 'none'; });
-  wrapper.appendChild(trigger);
-  wrapper.appendChild(menu);
-  sync();
-  return wrapper;
-}
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
 function kpiCard(label, value, variant, onClick) {
@@ -621,11 +557,24 @@ function kpiCard(label, value, variant, onClick) {
 
 // ── Month key helper ──────────────────────────────────────────────────────────
 function getMonthKeys() {
-  const year = gFilters.year !== 'all' ? gFilters.year : String(new Date().getFullYear());
-  return MONTH_LABELS.map((label, i) => {
-    const mm = String(i + 1).padStart(2, '0');
-    return { label, key: `${year}-${mm}`, mm };
-  }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+  const selectedYears = gFilters.years.size > 0 ? [...gFilters.years].sort() : availableYears();
+  if (selectedYears.length === 1) {
+    const year = selectedYears[0];
+    return MONTH_LABELS.map((label, i) => {
+      const mm = String(i + 1).padStart(2, '0');
+      return { label, key: `${year}-${mm}`, mm };
+    }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+  }
+  const keys = [];
+  for (const year of selectedYears) {
+    MONTH_LABELS.forEach((label, i) => {
+      const mm = String(i + 1).padStart(2, '0');
+      if (gFilters.months.size === 0 || gFilters.months.has(mm)) {
+        keys.push({ label: `${label} '${year.slice(2)}`, key: `${year}-${mm}`, mm });
+      }
+    });
+  }
+  return keys;
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
@@ -640,32 +589,20 @@ function buildView() {
   ));
 
   // Filter bar
-  const years   = availableYears();
-  const yearSel = select(
-    [{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))],
-    gFilters.year
-  );
-  yearSel.onchange = () => { gFilters.year = yearSel.value; rebuildView(); };
+  const yearMS   = buildMultiSelect(availableYears().map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'prop_years');
+  const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'prop_months');
+  const propMS   = buildMultiSelect(listActiveProperties().map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'prop_props');
+  const streamMS = buildMultiSelect(PROPERTY_STREAMS.map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })), gFilters.streams, 'All Streams', rebuildView, 'prop_streams');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'prop_owners');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
-  filterBar.appendChild(yearSel);
-  filterBar.appendChild(buildMultiSelect(
-    MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })),
-    gFilters.months, 'All Months', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    listActiveProperties().map(p => ({ value: p.id, label: p.name })),
-    gFilters.propertyIds, 'All Properties', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    PROPERTY_STREAMS.map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })),
-    gFilters.streams, 'All Streams', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })),
-    gFilters.owners, 'All Owners', rebuildView
-  ));
+  filterBar.appendChild(yearMS);
+  filterBar.appendChild(monthMS);
+  filterBar.appendChild(propMS);
+  filterBar.appendChild(streamMS);
+  filterBar.appendChild(ownerMS);
+  filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); propMS.reset(); streamMS.reset(); ownerMS.reset(); rebuildView(); } }));
   wrap.appendChild(filterBar);
 
   // Data

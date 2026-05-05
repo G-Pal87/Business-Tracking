@@ -1,5 +1,5 @@
 // Revenue Analytics Dashboard — understand revenue sources
-import { el, select, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS } from '../core/config.js';
 import {
@@ -81,76 +81,6 @@ function rebuildView() {
   if (!c) return;
   c.innerHTML = '';
   c.appendChild(buildView());
-}
-
-// ── Multi-select dropdown ─────────────────────────────────────────────────────
-function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
-  const wrapper    = el('div', { style: 'position:relative' });
-  const trigLabel  = el('span');
-  const trigger    = el('div', {
-    class: 'select',
-    style: 'cursor:pointer;display:flex;align-items:center;gap:6px;width:auto;min-width:130px;user-select:none'
-  }, trigLabel);
-  const menu = el('div', {
-    style: [
-      'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300',
-      'background:var(--bg-elev-2);border:1px solid var(--border)',
-      'border-radius:var(--radius-sm);min-width:190px',
-      'box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0;max-height:260px;overflow-y:auto'
-    ].join(';')
-  });
-
-  const allChk = el('input', { type: 'checkbox' });
-  menu.appendChild(el('label', {
-    style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px'
-  }, allChk, el('span', {}, allLabel)));
-
-  const chks = items.map(({ value, label, css }) => {
-    const chk = el('input', { type: 'checkbox' });
-    chk.dataset.value = value;
-    chk.checked = filterSet.size === 0 || filterSet.has(value);
-    const content = css ? el('span', { class: `badge ${css}` }, label) : el('span', {}, label);
-    menu.appendChild(el('label', {
-      style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px'
-    }, chk, content));
-    return chk;
-  });
-
-  const sync = () => {
-    const sel = chks.filter(c => c.checked);
-    const n   = sel.length;
-    allChk.checked       = n === chks.length;
-    allChk.indeterminate = n > 0 && n < chks.length;
-    trigLabel.textContent =
-      n === chks.length || n === 0 ? allLabel
-      : n === 1 ? (items.find(i => i.value === sel[0].dataset.value)?.label || '')
-      : `${n} selected`;
-    filterSet.clear();
-    if (n > 0 && n < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
-  };
-
-  allChk.checked = filterSet.size === 0;
-  allChk.onchange = () => {
-    chks.forEach(c => { c.checked = allChk.checked; });
-    allChk.indeterminate = false;
-    sync();
-  };
-  chks.forEach(chk => { chk.onchange = () => sync(); });
-  const closeMenu = () => {
-    if (menu.style.display === 'none') return;
-    menu.style.display = 'none';
-    onRefresh();
-  };
-  trigger.onclick = e => {
-    e.stopPropagation();
-    menu.style.display === 'none' ? (menu.style.display = '') : closeMenu();
-  };
-  menu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', closeMenu);
-  wrapper.appendChild(trigger);
-  wrapper.appendChild(menu);
-  sync();
-  return wrapper;
 }
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
@@ -289,34 +219,22 @@ function buildView() {
   ));
 
   // Filter bar
-  const yearFilter = buildMultiSelect(
-    availableYears().map(y => ({ value: y, label: y })),
-    gFilters.years, 'All Years', rebuildView
-  );
+  const yearMS   = buildMultiSelect(availableYears().map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'rev_years');
+  const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'rev_months');
+  const streamMS = buildMultiSelect(Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, css: v.css })), gFilters.streams, 'All Streams', rebuildView, 'rev_streams');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'rev_owners');
+  const propMS   = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'rev_props');
+  const clientMS = buildMultiSelect(listActiveClients().map(c => ({ value: c.id, label: c.name })), gFilters.clientIds, 'All Clients', rebuildView, 'rev_clients');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
-  filterBar.appendChild(yearFilter);
-  filterBar.appendChild(buildMultiSelect(
-    MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })),
-    gFilters.months, 'All Months', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, css: v.css })),
-    gFilters.streams, 'All Streams', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })),
-    gFilters.owners, 'All Owners', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    listActive('properties').map(p => ({ value: p.id, label: p.name })),
-    gFilters.propertyIds, 'All Properties', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    listActiveClients().map(c => ({ value: c.id, label: c.name })),
-    gFilters.clientIds, 'All Clients', rebuildView
-  ));
+  filterBar.appendChild(yearMS);
+  filterBar.appendChild(monthMS);
+  filterBar.appendChild(streamMS);
+  filterBar.appendChild(ownerMS);
+  filterBar.appendChild(propMS);
+  filterBar.appendChild(clientMS);
+  filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); streamMS.reset(); ownerMS.reset(); propMS.reset(); clientMS.reset(); rebuildView(); } }));
   wrap.appendChild(filterBar);
 
   // Data
