@@ -932,6 +932,21 @@
       "createdBy": "RitaK",
       "updatedAt": 1777818890458,
       "updatedBy": "RitaK"
+    },
+    {
+      "id": "cli_moscy9x3iu",
+      "name": "Neverblink",
+      "email": "",
+      "address": "ul. Wspólna 56 00-684 Warszawa, Poland",
+      "vatNumber": "PL7011239754",
+      "registrationNumber": "540594783",
+      "currency": "EUR",
+      "contractStart": "2025-08-01",
+      "notes": "",
+      "createdAt": 1777969244909,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777969244909,
+      "updatedBy": "Giorgos"
     }
   ],
   "services": [
