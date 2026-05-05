@@ -191,10 +191,24 @@ function buildPropertySection(wrap) {
 
   updateYearOptions();
 
-  const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:flex-start;flex-wrap:wrap' });
+  const resetBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => {
+    streamChks.forEach(c => { c.checked = true; });
+    allStreamChk.checked = true; allStreamChk.indeterminate = false;
+    syncStreamSel();
+    propChks.forEach(c => { c.checked = true; });
+    allChk.checked = true; allChk.indeterminate = false;
+    syncPropSel();
+    const cy = String(new Date().getFullYear());
+    if ([...yearSel.options].some(o => o.value === cy)) yearSel.value = cy;
+    render();
+  }});
+
+  const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
+  controls.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
   controls.appendChild(streamWrapper);
   controls.appendChild(propWrapper);
   controls.appendChild(yearSel);
+  controls.appendChild(resetBtn);
   wrap.appendChild(controls);
 
   const gridWrap = el('div', {});
@@ -394,9 +408,20 @@ function buildServiceSection(wrap) {
 
   updateYearOptions();
 
-  const controls = el('div', { class: 'flex gap-8 mb-16' });
+  const svcResetBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => {
+    svcChks.forEach(c => { c.checked = true; });
+    allSvcChk.checked = true; allSvcChk.indeterminate = false;
+    syncSvcSel();
+    const cy = String(new Date().getFullYear());
+    if ([...yearSel.options].some(o => o.value === cy)) yearSel.value = cy;
+    render();
+  }});
+
+  const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
+  controls.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
   controls.appendChild(svcWrapper);
   controls.appendChild(yearSel);
+  controls.appendChild(svcResetBtn);
   wrap.appendChild(controls);
 
   const gridWrap = el('div', {});

@@ -1,5 +1,5 @@
 // Services Analytics Dashboard — track CS + Marketing invoice revenue
-import { el, select, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, INVOICE_STATUSES, SERVICE_STREAMS } from '../core/config.js';
 import {
@@ -110,84 +110,6 @@ const INV_DRILL_COLS = [
   { key: 'eur',    label: 'EUR',      right: true, format: v => formatEUR(v) }
 ];
 
-// ── Multi-select — supports color dots (streams/owners) and css badges (statuses)
-function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
-  const wrapper   = el('div', { style: 'position:relative' });
-  const trigLabel = el('span');
-  const trigger   = el('div', {
-    class: 'select',
-    style: 'cursor:pointer;display:flex;align-items:center;gap:6px;width:auto;min-width:130px;user-select:none'
-  }, trigLabel);
-  const menu = el('div', {
-    style: [
-      'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300',
-      'background:var(--bg-elev-2);border:1px solid var(--border)',
-      'border-radius:var(--radius-sm);min-width:190px',
-      'box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0;max-height:260px;overflow-y:auto'
-    ].join(';')
-  });
-
-  const allChk = el('input', { type: 'checkbox' });
-  menu.appendChild(el('label', {
-    style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px'
-  }, allChk, el('span', {}, allLabel)));
-
-  const chks = items.map(({ value, label, color, css }) => {
-    const chk = el('input', { type: 'checkbox' });
-    chk.dataset.value = value;
-    chk.checked = filterSet.size === 0 || filterSet.has(value);
-    let content;
-    if (css) {
-      content = el('span', { class: `badge ${css}`, style: 'font-size:11px' }, label);
-    } else if (color) {
-      const dot = el('span', { style: `display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0` });
-      content = el('span', { style: 'display:flex;align-items:center;gap:6px' }, dot, el('span', {}, label));
-    } else {
-      content = el('span', {}, label);
-    }
-    menu.appendChild(el('label', {
-      style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px'
-    }, chk, content));
-    return chk;
-  });
-
-  const sync = () => {
-    const sel = chks.filter(c => c.checked);
-    const n   = sel.length;
-    allChk.checked       = n === chks.length;
-    allChk.indeterminate = n > 0 && n < chks.length;
-    trigLabel.textContent =
-      n === chks.length || n === 0 ? allLabel
-      : n === 1 ? (items.find(i => i.value === sel[0].dataset.value)?.label || '')
-      : `${n} selected`;
-    filterSet.clear();
-    if (n > 0 && n < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
-  };
-
-  allChk.checked = filterSet.size === 0;
-  allChk.onchange = () => {
-    chks.forEach(c => { c.checked = allChk.checked; });
-    allChk.indeterminate = false;
-    sync();
-  };
-  chks.forEach(chk => { chk.onchange = () => sync(); });
-  const closeMenu = () => {
-    if (menu.style.display === 'none') return;
-    menu.style.display = 'none';
-    onRefresh();
-  };
-  trigger.onclick = e => {
-    e.stopPropagation();
-    menu.style.display === 'none' ? (menu.style.display = '') : closeMenu();
-  };
-  menu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', closeMenu);
-  wrapper.appendChild(trigger);
-  wrapper.appendChild(menu);
-  sync();
-  return wrapper;
-}
-
 // ── KPI card ──────────────────────────────────────────────────────────────────
 function kpiCard(label, value, variant, onClick) {
   const card = el('div', {
@@ -240,34 +162,22 @@ function buildView() {
   ));
 
   // Filter bar
-  const yearFilter = buildMultiSelect(
-    availableYears().map(y => ({ value: y, label: y })),
-    gFilters.years, 'All Years', rebuildView
-  );
+  const yearMS   = buildMultiSelect(availableYears().map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'svc_years');
+  const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'svc_months');
+  const clientMS = buildMultiSelect(listActiveClients().map(c => ({ value: c.id, label: c.name })), gFilters.clientIds, 'All Clients', rebuildView, 'svc_clients');
+  const streamMS = buildMultiSelect(SERVICE_STREAMS.map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })), gFilters.streams, 'All Streams', rebuildView, 'svc_streams');
+  const statusMS = buildMultiSelect(Object.entries(INVOICE_STATUSES).map(([k, v]) => ({ value: k, label: v.label, css: v.css })), gFilters.statuses, 'All Statuses', rebuildView, 'svc_statuses');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'svc_owners');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
-  filterBar.appendChild(yearFilter);
-  filterBar.appendChild(buildMultiSelect(
-    MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })),
-    gFilters.months, 'All Months', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    listActiveClients().map(c => ({ value: c.id, label: c.name })),
-    gFilters.clientIds, 'All Clients', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    SERVICE_STREAMS.map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })),
-    gFilters.streams, 'All Streams', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(INVOICE_STATUSES).map(([k, v]) => ({ value: k, label: v.label, css: v.css })),
-    gFilters.statuses, 'All Statuses', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })),
-    gFilters.owners, 'All Owners', rebuildView
-  ));
+  filterBar.appendChild(yearMS);
+  filterBar.appendChild(monthMS);
+  filterBar.appendChild(clientMS);
+  filterBar.appendChild(streamMS);
+  filterBar.appendChild(statusMS);
+  filterBar.appendChild(ownerMS);
+  filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); clientMS.reset(); streamMS.reset(); statusMS.reset(); ownerMS.reset(); rebuildView(); } }));
   wrap.appendChild(filterBar);
 
   // Data
