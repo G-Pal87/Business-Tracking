@@ -72,17 +72,27 @@ async function migrateEmbeddedPDFs(pending) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+function makeKpiCard(label, variant, onClick) {
+  const valEl = el('div', { class: 'kpi-value', style: 'font-size:1.4rem' }, '—');
+  const subEl = el('div', { class: 'kpi-trend' }, '');
+  const node  = el('div', { class: 'kpi' + (variant ? ' ' + variant : ''), style: 'cursor:pointer' },
+    el('div', { class: 'kpi-label' }, label),
+    valEl, subEl,
+    el('div', { class: 'kpi-accent-bar' })
+  );
+  node.onclick = onClick;
+  return { node, valEl, subEl };
+}
+
 function build() {
   const wrap = el('div', { class: 'view active' });
 
-  const stats = computeStats();
-  const allInvs = listActive('invoices');
-  wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' },
-    kpi('Total Issued', formatEUR(stats.totalEUR), `${stats.count} invoices`, null, () => drillDownModal('All Invoices', invDrillRows(allInvs), INV_COLS)),
-    kpi('Paid', formatEUR(stats.paidEUR), `${stats.paidCount}`, 'success', () => drillDownModal('Paid Invoices', invDrillRows(allInvs.filter(i => i.status === 'paid')), INV_COLS)),
-    kpi('Outstanding', formatEUR(stats.openEUR), `${stats.openCount}`, 'warning', () => drillDownModal('Outstanding Invoices', invDrillRows(allInvs.filter(i => i.status === 'sent')), INV_COLS)),
-    kpi('Overdue', formatEUR(stats.overdueEUR), `${stats.overdueCount}`, 'danger', () => drillDownModal('Overdue Invoices', invDrillRows(allInvs.filter(i => i.status === 'overdue')), INV_COLS))
-  ));
+  let filteredRows = [];
+  const totalKpi   = makeKpiCard('Total Issued', null,      () => drillDownModal('All Invoices',          invDrillRows(filteredRows), INV_COLS));
+  const paidKpi    = makeKpiCard('Paid',          'success', () => drillDownModal('Paid Invoices',          invDrillRows(filteredRows.filter(i => i.status === 'paid')), INV_COLS));
+  const openKpi    = makeKpiCard('Outstanding',   'warning', () => drillDownModal('Outstanding Invoices',   invDrillRows(filteredRows.filter(i => i.status === 'sent')), INV_COLS));
+  const overdueKpi = makeKpiCard('Overdue',       'danger',  () => drillDownModal('Overdue Invoices',       invDrillRows(filteredRows.filter(i => i.status === 'overdue')), INV_COLS));
+  wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' }, totalKpi.node, paidKpi.node, openKpi.node, overdueKpi.node));
 
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   const years = [...new Set(listActive('invoices').map(i => i.issueDate?.slice(0, 4)).filter(Boolean))].sort().reverse();
@@ -149,6 +159,20 @@ function build() {
     if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(r.status));
     rows.sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate));
 
+    // Update KPI cards to reflect current filter
+    filteredRows = rows;
+    const paidRows    = rows.filter(r => r.status === 'paid');
+    const sentRows    = rows.filter(r => r.status === 'sent');
+    const overdueRows = rows.filter(r => r.status === 'overdue');
+    totalKpi.valEl.textContent   = formatEUR(rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
+    totalKpi.subEl.textContent   = `${rows.length} invoices`;
+    paidKpi.valEl.textContent    = formatEUR(paidRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
+    paidKpi.subEl.textContent    = String(paidRows.length);
+    openKpi.valEl.textContent    = formatEUR(sentRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
+    openKpi.subEl.textContent    = String(sentRows.length);
+    overdueKpi.valEl.textContent = formatEUR(overdueRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
+    overdueKpi.subEl.textContent = String(overdueRows.length);
+
     if (rows.length === 0) {
       tableWrap.appendChild(el('div', { class: 'empty' }, 'No invoices'));
       return;
@@ -186,7 +210,9 @@ function build() {
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       chkTd.onclick = e => e.stopPropagation();
       tr.appendChild(chkTd);
-      tr.appendChild(el('td', { style: 'font-weight:600' }, r.number));
+      const numTd = el('td', { style: 'font-weight:600' }, r.number);
+      numTd.dataset.sort = String(parseInt((r.number || '').split('_')[0], 10) || r.number || '');
+      tr.appendChild(numTd);
       tr.appendChild(el('td', {}, client?.name || '-'));
       tr.appendChild(el('td', {}, fmtDate(r.issueDate)));
       tr.appendChild(el('td', {}, fmtDate(r.dueDate)));
@@ -239,34 +265,8 @@ function build() {
   return wrap;
 }
 
-function computeStats() {
-  const rows = listActive('invoices');
-  const totalEUR = rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
-  const paid = rows.filter(r => r.status === 'paid');
-  const open = rows.filter(r => r.status === 'sent');
-  const overdue = rows.filter(r => r.status === 'overdue');
-  return {
-    count: rows.length,
-    totalEUR,
-    paidEUR: paid.reduce((s, r) => s + toEUR(r.total, r.currency), 0),
-    paidCount: paid.length,
-    openEUR: open.reduce((s, r) => s + toEUR(r.total, r.currency), 0),
-    openCount: open.length,
-    overdueEUR: overdue.reduce((s, r) => s + toEUR(r.total, r.currency), 0),
-    overdueCount: overdue.length
-  };
-}
 
-function kpi(label, value, sub, variant, onClick) {
-  const node = el('div', { class: 'kpi' + (variant ? ' ' + variant : '') },
-    el('div', { class: 'kpi-label' }, label),
-    el('div', { class: 'kpi-value', style: 'font-size:1.4rem' }, value),
-    el('div', { class: 'kpi-trend' }, sub || ''),
-    el('div', { class: 'kpi-accent-bar' })
-  );
-  if (onClick) { node.onclick = onClick; node.style.cursor = 'pointer'; }
-  return node;
-}
+
 
 function sanitizeClientName(name) {
   return String(name).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'Client';
