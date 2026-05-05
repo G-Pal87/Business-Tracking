@@ -2979,6 +2979,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777969549879,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosdb06cbf",
+      "number": "35_CTWO_011025",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-10-01",
+      "dueDate": "2025-10-10",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosdb06cd2",
+          "description": "Customer Success Professional Services",
+          "quantity": 7,
+          "unit": "day",
+          "rate": 670,
+          "total": 4690
+        }
+      ],
+      "subtotal": 4690,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 4690,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosdb06cbf.pdf",
+      "createdAt": 1777969790716,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777969790716,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
