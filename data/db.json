@@ -3283,6 +3283,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777971161179,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mose56ii6z",
+      "number": "44_ZOLLHOF_21112025",
+      "clientId": "cli_mokdo7ny9h",
+      "owner": "rita",
+      "issueDate": "2025-11-21",
+      "dueDate": "2025-12-01",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mose56ii3",
+          "description": "Marketing support (Month 1)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 3500,
+          "total": 3500
+        }
+      ],
+      "subtotal": 3500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 3500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mose56ii6z.pdf",
+      "createdAt": 1777971198581,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777971198581,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
