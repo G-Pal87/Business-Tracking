@@ -3995,6 +3995,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777974784546,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosgb15bq7",
+      "number": "M&WPrimeSolutions-2014_24 - SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-11-04",
+      "dueDate": "2024-11-10",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosgb15b9h",
+          "description": "Marketing services June-Nov 2024",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 6200,
+          "total": 6200
+        }
+      ],
+      "subtotal": 6200,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 6200,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosgb15bq7.pdf",
+      "createdAt": 1777974830613,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777974830613,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
