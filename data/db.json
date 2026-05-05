@@ -3089,23 +3089,31 @@
       "lineItems": [
         {
           "id": "li_mosdquynnc",
+          "description": "Marketing services (Google Ads Setup+ 2 weeks)",
+          "quantity": 1,
+          "unit": "project",
+          "rate": 600,
+          "total": 600
+        },
+        {
+          "id": "li_mosdroti3x",
           "description": "Marketing services (Social Media posts x4)",
           "quantity": 1,
-          "unit": "day",
+          "unit": "project",
           "rate": 320,
           "total": 320
         }
       ],
-      "subtotal": 320,
+      "subtotal": 920,
       "taxRate": 0,
       "tax": 0,
-      "total": 320,
+      "total": 920,
       "notes": "Imported from PDF",
       "source": "pdf_import",
       "pdfPath": "invoices/inv_mosdquyn71.pdf",
       "createdAt": 1777970532460,
       "createdBy": "Giorgos",
-      "updatedAt": 1777970532460,
+      "updatedAt": 1777970602995,
       "updatedBy": "Giorgos"
     }
   ],
