@@ -3707,6 +3707,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777972913515,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosftwb5jz",
+      "number": "M&WPrimeSolutions#2007-SWG",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2024-07-31",
+      "dueDate": "2024-08-10",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosftwb5iy",
+          "description": "Startup lead coaching on Growth / Marketing - (Cyber Growth 2024) (B47) Block-auth – 2h Certopus – 5h Cloudtainer – 1h Passport GG – 3h Total : 11 hours",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1100,
+          "total": 1100
+        }
+      ],
+      "subtotal": 1100,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1100,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosftwb5jz.pdf",
+      "createdAt": 1777974031301,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777974031301,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
