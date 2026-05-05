@@ -3043,6 +3043,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777969859168,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosdpmqp5r",
+      "number": "37_SWG_041025",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2025-10-04",
+      "dueDate": "2025-10-10",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosdpmqqf6",
+          "description": "Mentoring Wise Guys Founders Club 2025 - Program Code: Founders Club 17 FC 17",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 250,
+          "total": 250
+        }
+      ],
+      "subtotal": 250,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 250,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosdpmqp5r.pdf",
+      "createdAt": 1777970475176,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777970475176,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
