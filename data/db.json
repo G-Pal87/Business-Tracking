@@ -2900,6 +2900,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777969387028,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosd3r8zrq",
+      "number": "33_VITAS_250925",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2025-09-25",
+      "dueDate": "2025-10-02",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosd3r8zoq",
+          "description": "Marketing services (Performance campaigns) - Juli-August",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2750,
+          "total": 2750
+        }
+      ],
+      "subtotal": 2750,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2750,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosd3r8zrq.pdf",
+      "createdAt": 1777969452534,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777969452534,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
