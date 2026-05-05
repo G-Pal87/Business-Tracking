@@ -1392,8 +1392,10 @@
       "status": "active",
       "createdAt": 1778014323586,
       "createdBy": "Giorgos",
-      "updatedAt": 1778014323586,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778019572243,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778019572243,
+      "deletedBy": "Giorgos"
     }
   ],
   "clients": [
