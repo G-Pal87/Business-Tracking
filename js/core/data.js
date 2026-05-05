@@ -411,6 +411,8 @@ export function availableYears() {
   for (const p of listActivePayments()) if (p.date) years.add(p.date.slice(0, 4));
   for (const e of listActive('expenses')) if (e.date) years.add(e.date.slice(0, 4));
   for (const i of listActive('invoices')) if (i.issueDate) years.add(i.issueDate.slice(0, 4));
+  // Include years that have forecast records (e.g. from pending Airbnb import)
+  for (const f of (state.db.forecasts || [])) if (f.year) years.add(String(f.year));
   return [...years].sort().reverse();
 }
 
@@ -489,6 +491,22 @@ export function saveForecastYear(forecastId, data) {
 
 export function getForecastVsActual(type, entityId, year) {
   const fc = (state.db.forecasts || []).find(f => f.type === type && f.entityId === entityId && f.year === Number(year));
+
+  // For LT rental properties: build a monthKey→amountEUR map from the rent schedule
+  // so months with no manual forecast entry still show projected rent.
+  let ltRentByMonth = null;
+  if (type === 'property') {
+    const prop = byId('properties', entityId);
+    if (prop?.type === 'long_term') {
+      ltRentByMonth = {};
+      for (const entry of generatePaymentSchedule(prop)) {
+        if (entry.monthKey?.startsWith(String(year))) {
+          ltRentByMonth[entry.monthKey] = toEUR(entry.amount, entry.currency, year);
+        }
+      }
+    }
+  }
+
   const months = [];
   for (let m = 1; m <= 12; m++) {
     const key = `${year}-${String(m).padStart(2, '0')}`;
@@ -502,7 +520,10 @@ export function getForecastVsActual(type, entityId, year) {
       actualRev = listActive('invoices').filter(i => i.stream === entityId && i.status === 'paid' && i.issueDate >= start && i.issueDate <= end).reduce((s, i) => s + toEUR(i.total, i.currency, year), 0);
     }
     const fd = fc?.months?.[key] || {};
-    months.push({ key, forecastRev: fd.revenue || 0, forecastExp: fd.expenses || 0, actualRev, actualExp, revVariance: actualRev - (fd.revenue || 0), expVariance: actualExp - (fd.expenses || 0) });
+    // Fall back to scheduled LT rent when no manual forecast entry exists for this month
+    const forecastRev = fd.revenue || (ltRentByMonth?.[key] ?? 0);
+    const forecastExp = fd.expenses || 0;
+    months.push({ key, forecastRev, forecastExp, actualRev, actualExp, revVariance: actualRev - forecastRev, expVariance: actualExp - forecastExp });
   }
   return { forecast: fc, months, yearTarget: fc?.yearTarget || { revenue: 0, expenses: 0 } };
 }

@@ -924,11 +924,10 @@ function openCSVImport() {
         const refDate = row.checkIn || row.date;
         if (refDate && matched.id) {
           const year = refDate.slice(0, 4);
-          const monthNum = parseInt(refDate.slice(5, 7), 10);
+          const monthKey = `${year}-${refDate.slice(5, 7)}`;
           const fc = getOrCreateForecast('property', matched.id, year);
-          const existing_month = fc.months?.[monthNum] || {};
-          const existingRevenue = existing_month.revenue || 0;
-          saveForecastMonth(fc.id, monthNum, { revenue: existingRevenue + row.amount });
+          const existingRevenue = fc.months?.[monthKey]?.revenue || 0;
+          saveForecastMonth(fc.id, monthKey, { revenue: existingRevenue + row.amount });
         }
       }
     }
