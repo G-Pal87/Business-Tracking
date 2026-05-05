@@ -3963,6 +3963,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777974729294,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosga1lgna",
+      "number": "M&WPrimeSolutions 2016_24-Nexial",
+      "clientId": "cli_mohltfi7fg",
+      "owner": "rita",
+      "issueDate": "2024-11-10",
+      "dueDate": "2024-11-15",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosga1lhr3",
+          "description": "Marketing services June-Nov 2024",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 900,
+          "total": 900
+        }
+      ],
+      "subtotal": 900,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 900,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosga1lgna.pdf",
+      "createdAt": 1777974784546,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777974784546,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
