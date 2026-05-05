@@ -3147,6 +3147,46 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777970679002,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosdwa7b16",
+      "number": "40_CTWO_011125",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-11-01",
+      "dueDate": "2025-11-10",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosdwa7bdq",
+          "description": "Customer Success Professional Services",
+          "quantity": 23,
+          "unit": "day",
+          "rate": 670,
+          "total": 15410
+        },
+        {
+          "id": "li_mosdwa7bnu",
+          "description": "Expense Deduction",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 138.9,
+          "total": 138.9
+        }
+      ],
+      "subtotal": 15548.9,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 15548.9,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosdwa7b16.pdf",
+      "createdAt": 1777970784435,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777970784435,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
