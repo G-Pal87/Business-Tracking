@@ -3835,6 +3835,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777974337622,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosg1v3s6c",
+      "number": "M&WPrimeSolutions20101 _24-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-09-03",
+      "dueDate": "2024-09-10",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosg1v3s4r",
+          "description": "Marketing services (Performance Kampagnen) Sept 2024",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2500,
+          "total": 2500
+        }
+      ],
+      "subtotal": 2500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosg1v3s6c.pdf",
+      "createdAt": 1777974402873,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777974402873,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
