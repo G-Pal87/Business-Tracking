@@ -3075,6 +3075,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777970475176,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosdquyn71",
+      "number": "38_Nexial_131025",
+      "clientId": "cli_mohltfi7fg",
+      "owner": "rita",
+      "issueDate": "2025-10-13",
+      "dueDate": "2025-10-23",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosdquynnc",
+          "description": "Marketing services (Social Media posts x4)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 320,
+          "total": 320
+        }
+      ],
+      "subtotal": 320,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 320,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosdquyn71.pdf",
+      "createdAt": 1777970532460,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777970532460,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
