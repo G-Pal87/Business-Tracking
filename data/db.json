@@ -2717,6 +2717,46 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777968690215,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_moscs23mr1",
+      "number": "28_CTWO_020725",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2025-07-01",
+      "dueDate": "2025-07-10",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_moscs23mh",
+          "description": "Taxi to airport 23/06/2025",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 45,
+          "total": 45
+        },
+        {
+          "id": "li_moscs23m7k",
+          "description": "Taxi home 25/06/2531",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 45,
+          "total": 45
+        }
+      ],
+      "subtotal": 90,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 90,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_moscs23mr1.pdf",
+      "createdAt": 1777968907638,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777968907638,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
