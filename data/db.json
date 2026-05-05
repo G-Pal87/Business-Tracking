@@ -3187,6 +3187,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777970784435,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mose1fa3hi",
+      "number": "41_VITAS_061125",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2025-11-06",
+      "dueDate": "2025-11-13",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mose1fa3hd",
+          "description": "Marketing services (Performance campaigns) - Okt",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1500,
+          "total": 1500
+        }
+      ],
+      "subtotal": 1500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mose1fa3hi.pdf",
+      "createdAt": 1777971023613,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777971023613,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
