@@ -16469,6 +16469,22 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777669591749,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "fcs_mosp430nkk",
+      "type": "property",
+      "entityId": "prop_mohfkihdlh",
+      "year": 2024,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {},
+      "createdAt": 1777989620039,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777989620039,
+      "updatedBy": "Giorgos"
     }
   ],
   "inventory": [],
