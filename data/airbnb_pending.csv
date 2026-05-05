@@ -1,0 +1,4 @@
+Date,Type,Confirmation Code,Booking Date,Start Date,End Date,Nights,Listing,Details,Reference Code,Currency,Amount,Host Fee,Cleaning Fee,Gross Earnings,Guest
+2025-06-01,Reservation,HMXYZ22222,2025-05-01,2025-06-05,2025-06-10,5,My Beachfront Villa,,REF006,EUR,600.00,54.00,80.00,680.00,Alice Brown
+2025-06-01,Reservation,HMXYZ33333,2025-05-03,2025-06-12,2025-06-16,4,My Beachfront Villa,,REF007,EUR,480.00,43.20,80.00,560.00,Carlos Garcia
+2025-07-15,Reservation,HMXYZ44444,2025-05-10,2025-07-18,2025-07-25,7,My Beachfront Villa,,REF008,EUR,875.00,78.75,80.00,955.00,Emma Wilson

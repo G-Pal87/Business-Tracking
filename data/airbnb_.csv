@@ -1,0 +1,9 @@
+Date,Type,Confirmation Code,Booking Date,Start Date,End Date,Nights,Listing,Details,Reference Code,Currency,Amount,Host Fee,Cleaning Fee,Gross Earnings,Guest
+2025-01-18,Reservation,HMXYZ12345,2024-12-10,2025-01-20,2025-01-25,5,My Beachfront Villa,,REF001,EUR,625.00,56.25,80.00,705.00,John Doe
+2025-01-20,Payout,,,,,,,,,,,,,,
+2025-02-03,Reservation,HMXYZ67890,2025-01-15,2025-02-05,2025-02-08,3,My Beachfront Villa,,REF002,EUR,390.00,35.10,80.00,470.00,Jane Smith
+2025-02-03,Payout,,,,,,,,,,,,,,
+2025-02-15,Resolution Payout,HMXYZ12345,,,,,My Beachfront Villa,,REF003,EUR,45.00,0.00,0.00,45.00,John Doe
+2025-03-10,Reservation,HMXYZ11111,2025-02-20,2025-03-12,2025-03-17,5,My Beachfront Villa,,REF004,EUR,550.00,49.50,80.00,630.00,Bob Johnson
+2025-03-10,Payout,,,,,,,,,,,,,,
+2025-03-22,Adjustment,HMXYZ67890,,,,,My Beachfront Villa,,REF005,EUR,20.00,0.00,0.00,20.00,Jane Smith

@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule } from '../core/data.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -121,7 +121,8 @@ function buildAllPayments(wrap) {
     ['Date', 'Property', 'Type', 'Source', 'Status'].forEach(h => htr.appendChild(el('th', {}, h)));
     htr.appendChild(el('th', { class: 'right' }, 'Amount'));
     htr.appendChild(el('th', { class: 'right' }, 'EUR'));
-    ['Check-in', 'Check-out', 'Nights', 'Avg/Night'].forEach(h => htr.appendChild(el('th', { class: 'right' }, h)));
+    htr.appendChild(el('th', { class: 'right' }, 'Gross'));
+    ['Check-in', 'Check-out', 'Nights', 'Avg/Night', 'Avg Gross/N'].forEach(h => htr.appendChild(el('th', { class: 'right' }, h)));
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
 
@@ -147,15 +148,17 @@ function buildAllPayments(wrap) {
       tr.appendChild(chkTd);
       tr.appendChild(el('td', {}, fmtDate(r.date)));
       tr.appendChild(el('td', {}, prop?.name || '-'));
-      tr.appendChild(el('td', {}, r.type || '-'));
+      tr.appendChild(el('td', {}, r.source === 'airbnb' ? (r.airbnbType || r.type || '-') : (r.type || '-')));
       tr.appendChild(el('td', {}, el('span', { class: 'badge' }, r.source || 'manual')));
       tr.appendChild(el('td', {}, el('span', { class: `badge ${sMeta.css}` }, sMeta.label)));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
+      tr.appendChild(el('td', { class: 'right num muted' }, r.airbnbGrossEarnings != null ? formatMoney(r.airbnbGrossEarnings, r.currency, { maxFrac: 0 }) : ''));
       tr.appendChild(el('td', { class: 'right muted' }, r.airbnbCheckIn ? fmtDate(r.airbnbCheckIn) : ''));
       tr.appendChild(el('td', { class: 'right muted' }, r.airbnbCheckOut ? fmtDate(r.airbnbCheckOut) : ''));
       tr.appendChild(el('td', { class: 'right muted' }, r.airbnbNights ? String(r.airbnbNights) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, r.avgNightlyRate ? formatMoney(r.avgNightlyRate, r.currency, { maxFrac: 0 }) : ''));
+      tr.appendChild(el('td', { class: 'right num muted' }, r.avgNightExclCleaning != null ? formatMoney(r.avgNightExclCleaning, r.currency, { maxFrac: 0 }) : (r.avgNightlyRate ? formatMoney(r.avgNightlyRate, r.currency, { maxFrac: 0 }) : '')));
+      tr.appendChild(el('td', { class: 'right num muted' }, r.avgGross != null ? formatMoney(r.avgGross, r.currency, { maxFrac: 0 }) : ''));
       const actions = el('td', { class: 'right' });
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
@@ -710,11 +713,11 @@ function openCSVImport() {
 
   const { fileI: completedFileI, wrap: completedWrap } = makeFileSlot(
     'Completed Payouts',
-    'airbnb_.csv — historical paid-out transactions'
+    'airbnb_.csv — historical paid-out transactions (overwrites/syncs existing records)'
   );
   const { fileI: pendingFileI, wrap: pendingWrap } = makeFileSlot(
     'Future / Pending Payouts',
-    'airbnb_pending.csv — forecasted upcoming reservations'
+    'airbnb_pending.csv — upcoming reservations (adds new only, updates forecast)'
   );
 
   const preview = el('div', { style: 'font-size:13px;min-height:24px' });
@@ -725,29 +728,48 @@ function openCSVImport() {
 
   const updatePreview = async () => {
     preview.innerHTML = '';
-    for (const { file, status } of [
-      { file: completedFileI.files?.[0], status: 'paid' },
-      { file: pendingFileI.files?.[0], status: 'pending' }
-    ]) {
-      if (!file) continue;
-      const text = await file.text();
+
+    const completedFile = completedFileI.files?.[0];
+    if (completedFile) {
+      const text = await completedFile.text();
       const rows = parseAirbnbCSV(text);
       let added = 0, updated = 0, skipped = 0;
+      const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
+      const toDelete = listActivePayments().filter(p => p.source === 'airbnb' && p.airbnbKey && !csvKeys.has(p.airbnbKey)).length;
       for (const row of rows) {
         const pmatch = findProp(row.listing);
-        const exists = row.reference
-          ? listActivePayments().some(p => p.airbnbRef === row.reference)
-          : pmatch && listActivePayments().some(p =>
-              p.source === 'airbnb' && p.propertyId === pmatch.id &&
-              p.date === row.date && Number(p.amount) === Number(row.amount));
-        if (exists) { updated++; continue; }
-        if (pmatch) added++; else skipped++;
+        if (!pmatch) { skipped++; continue; }
+        const exists = row.airbnbKey
+          ? listActivePayments().some(p => p.airbnbKey === row.airbnbKey)
+          : false;
+        if (exists) updated++; else added++;
       }
-      const badge = el('span', { class: `badge ${status === 'paid' ? 'success' : 'warning'}` }, status === 'paid' ? 'Paid' : 'Pending');
+      const badge = el('span', { class: 'badge success' }, 'Paid');
       preview.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center;margin-bottom:6px' },
         badge,
-        el('span', { style: 'font-weight:500' }, file.name),
-        el('span', { class: 'muted' }, `— ${rows.length} rows · ${added} new · ${updated} update${skipped ? ` · ${skipped} skipped (no match)` : ''}`)
+        el('span', { style: 'font-weight:500' }, completedFile.name),
+        el('span', { class: 'muted' }, `— ${rows.length} rows · ${added} new · ${updated} update${skipped ? ` · ${skipped} skipped` : ''}${toDelete ? ` · ${toDelete} to remove` : ''}`)
+      ));
+    }
+
+    const pendingFile = pendingFileI.files?.[0];
+    if (pendingFile) {
+      const text = await pendingFile.text();
+      const rows = parseAirbnbCSV(text);
+      let added = 0, skipped = 0;
+      for (const row of rows) {
+        const pmatch = findProp(row.listing);
+        if (!pmatch) { skipped++; continue; }
+        const exists = row.airbnbKey
+          ? listActivePayments().some(p => p.airbnbKey === row.airbnbKey)
+          : false;
+        if (!exists) added++;
+      }
+      const badge = el('span', { class: 'badge warning' }, 'Pending');
+      preview.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center;margin-bottom:6px' },
+        badge,
+        el('span', { style: 'font-weight:500' }, pendingFile.name),
+        el('span', { class: 'muted' }, `— ${rows.length} rows · ${added} new · forecast updated${skipped ? ` · ${skipped} skipped` : ''}`)
       ));
     }
   };
@@ -760,26 +782,43 @@ function openCSVImport() {
       toast('Select at least one file', 'warning'); return;
     }
 
-    let totalAdded = 0, totalUpdated = 0;
+    let totalAdded = 0, totalUpdated = 0, totalRemoved = 0;
 
-    for (const { file, status } of [
-      { file: completedFileI.files?.[0], status: 'paid' },
-      { file: pendingFileI.files?.[0], status: 'pending' }
-    ]) {
-      if (!file) continue;
-      const text = await file.text();
+    // ── Completed CSV (airbnb_.csv): full sync / overwrite ──────────────────
+    const completedFile = completedFileI.files?.[0];
+    if (completedFile) {
+      const text = await completedFile.text();
       const rows = parseAirbnbCSV(text);
 
+      // Collect keys and confirmation codes present in the CSV
+      const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
+      const csvReservationCodes = new Set(
+        rows.filter(r => r.type.toLowerCase() === 'reservation').map(r => r.confirmationCode).filter(Boolean)
+      );
+
+      // Remove orphaned payments (airbnbKey set but not in CSV)
+      for (const p of listActivePayments()) {
+        if (p.source === 'airbnb' && p.airbnbKey && !csvKeys.has(p.airbnbKey)) {
+          softDelete('payments', p.id);
+          totalRemoved++;
+        }
+      }
+
+      // Remove orphaned cleaning expenses (airbnbRef not in reservation codes)
+      for (const e of (state.db.expenses || [])) {
+        if (e.airbnbRef && e.category === 'cleaning' && !e.deleted && !csvReservationCodes.has(e.airbnbRef)) {
+          softDelete('expenses', e.id);
+        }
+      }
+
+      // Upsert each row as a separate payment line item (one per type per code)
       for (const row of rows) {
         const matched = findProp(row.listing);
         if (!matched) continue;
 
-        // Idempotency: primary key = airbnbRef; fallback = source+property+date+amount
-        const existing = row.reference
-          ? listActivePayments().find(p => p.airbnbRef === row.reference)
-          : listActivePayments().find(p =>
-              p.source === 'airbnb' && p.propertyId === matched.id &&
-              p.date === row.date && Number(p.amount) === Number(row.amount));
+        const existing = row.airbnbKey
+          ? listActivePayments().find(p => p.airbnbKey === row.airbnbKey)
+          : null;
         const pay = existing ? { ...existing } : {
           id: newId('pay'),
           propertyId: matched.id,
@@ -791,40 +830,112 @@ function openCSVImport() {
           currency: row.currency || matched.currency,
           date: row.date,
           type: 'rental',
-          status,
-          airbnbRef: row.reference,
+          status: 'paid',
+          airbnbKey: row.airbnbKey,
+          airbnbRef: row.confirmationCode,
+          airbnbType: row.type,
+          airbnbBookingDate: row.bookingDate,
           airbnbCheckIn: row.checkIn,
           airbnbCheckOut: row.checkOut,
           airbnbNights: row.nights,
-          avgNightlyRate: row.avgNightlyRate,
+          airbnbServiceFee: row.serviceFee,
+          airbnbCleaningFee: row.cleaningFee,
+          airbnbGrossEarnings: row.grossEarnings,
+          avgGross: row.avgGross,
+          avgNightlyRate: row.avgNightExclCleaning,
+          avgNightInclCleaning: row.avgNightInclCleaning,
+          avgNightExclCleaning: row.avgNightExclCleaning,
           notes: [row.guest, row.listing].filter(Boolean).join(' · ')
         });
         upsert('payments', pay);
-        const expDate = row.checkIn || row.date;
-        const existingExp = row.reference
-          ? (state.db.expenses || []).find(e => e.airbnbRef === row.reference && e.category === 'cleaning')
-          : (state.db.expenses || []).find(e =>
-              e.category === 'cleaning' && e.propertyId === matched.id && e.date === expDate);
-        if (!existingExp) {
-          upsert('expenses', {
-            id: newId('exp'),
-            propertyId: matched.id,
-            category: 'cleaning',
-            amount: 0,
-            currency: matched.currency,
-            date: expDate,
-            airbnbRef: row.reference || '',
-            vendorId: '',
-            vendor: '',
-            description: '',
-            stream: 'short_term_rental'
-          });
-        }
         if (existing) totalUpdated++; else totalAdded++;
+
+        // Cleaning expense: only for Reservation type, once per confirmation code
+        if (row.type.toLowerCase() === 'reservation' && row.confirmationCode) {
+          const expDate = row.checkIn || row.date;
+          const existingExp = (state.db.expenses || []).find(e =>
+            e.airbnbRef === row.confirmationCode && e.category === 'cleaning' && !e.deleted
+          );
+          if (!existingExp) {
+            upsert('expenses', {
+              id: newId('exp'),
+              propertyId: matched.id,
+              category: 'cleaning',
+              amount: 0,
+              currency: matched.currency,
+              date: expDate,
+              airbnbRef: row.confirmationCode,
+              vendorId: '',
+              vendor: '',
+              description: '',
+              stream: 'short_term_rental'
+            });
+          }
+        }
       }
     }
 
-    toast(`Imported: ${totalAdded} new, ${totalUpdated} updated`, 'success');
+    // ── Pending CSV (airbnb_pending.csv): add new only + forecast ───────────
+    const pendingFile = pendingFileI.files?.[0];
+    if (pendingFile) {
+      const text = await pendingFile.text();
+      const rows = parseAirbnbCSV(text);
+
+      for (const row of rows) {
+        const matched = findProp(row.listing);
+        if (!matched) continue;
+
+        // Skip if already exists (unique by airbnbKey)
+        const alreadyExists = row.airbnbKey
+          ? listActivePayments().some(p => p.airbnbKey === row.airbnbKey)
+          : false;
+        if (alreadyExists) { totalUpdated++; continue; }
+
+        const pay = {
+          id: newId('pay'),
+          propertyId: matched.id,
+          stream: 'short_term_rental',
+          source: 'airbnb',
+          amount: row.amount,
+          currency: row.currency || matched.currency,
+          date: row.date,
+          type: 'rental',
+          status: 'pending',
+          airbnbKey: row.airbnbKey,
+          airbnbRef: row.confirmationCode,
+          airbnbType: row.type,
+          airbnbBookingDate: row.bookingDate,
+          airbnbCheckIn: row.checkIn,
+          airbnbCheckOut: row.checkOut,
+          airbnbNights: row.nights,
+          airbnbServiceFee: row.serviceFee,
+          airbnbCleaningFee: row.cleaningFee,
+          airbnbGrossEarnings: row.grossEarnings,
+          avgGross: row.avgGross,
+          avgNightlyRate: row.avgNightExclCleaning,
+          avgNightInclCleaning: row.avgNightInclCleaning,
+          avgNightExclCleaning: row.avgNightExclCleaning,
+          notes: [row.guest, row.listing].filter(Boolean).join(' · ')
+        };
+        upsert('payments', pay);
+        totalAdded++;
+
+        // Update property forecast for the check-in month using Amount as forecasted revenue
+        const refDate = row.checkIn || row.date;
+        if (refDate && matched.id) {
+          const year = refDate.slice(0, 4);
+          const monthNum = parseInt(refDate.slice(5, 7), 10);
+          const fc = getOrCreateForecast('property', matched.id, year);
+          const existing_month = fc.months?.[monthNum] || {};
+          const existingRevenue = existing_month.revenue || 0;
+          saveForecastMonth(fc.id, monthNum, { revenue: existingRevenue + row.amount });
+        }
+      }
+    }
+
+    const parts = [`${totalAdded} new`, `${totalUpdated} updated`];
+    if (totalRemoved > 0) parts.push(`${totalRemoved} removed`);
+    toast(`Imported: ${parts.join(', ')}`, 'success');
     closeModal();
     setTimeout(() => navigate('payments'), 200);
   }});
@@ -861,6 +972,8 @@ function parseAirbnbCSV(text) {
     return fields;
   };
 
+  const parseAmt = str => Math.abs(parseFloat((str || '').replace(/[^0-9.-]/g, '')) || 0);
+
   // Find the header row (first non-empty line)
   const headerLine = lines.find(l => l.trim());
   if (!headerLine) return [];
@@ -886,31 +999,50 @@ function parseAirbnbCSV(text) {
 
     const row = parseLine(line);
 
-    // Confirmation Code is the reservation idempotency key
-    const reference = col(row, 'reference', 'transaction id', 'trans id', 'confirmation code', 'confirmation', 'reservation code', 'code');
+    // Transaction type — skip "Payout" rows (settlement rows, not reservation data)
+    const type = col(row, 'type', 'transaction type') || 'Reservation';
+    if (type.toLowerCase() === 'payout') continue;
 
-    const amtStr   = col(row, 'amount', 'total amount');
-    const amount   = Math.abs(parseFloat(amtStr.replace(/[^0-9.-]/g, '')) || 0);
+    // Confirmation Code is the reservation idempotency key; combined with type for uniqueness
+    const confirmationCode = col(row, 'confirmation code', 'confirmation', 'reservation code', 'reference', 'transaction id', 'trans id', 'code');
+    const airbnbKey = confirmationCode ? `${confirmationCode}|${type}` : null;
 
-    // Date: use payout/transaction date; fall back to check-in date for pending files
-    const dateRaw     = col(row, 'date', 'paid date', 'payout date', 'transaction date');
-    const checkInRaw  = col(row, 'start date', 'check in', 'checkin', 'arrival date');
-    const checkOutRaw = col(row, 'end date', 'checkout', 'check out', 'departure date');
-    const date        = parseDateStr(dateRaw) || parseDateStr(checkInRaw);
+    // Dates
+    const dateRaw        = col(row, 'date', 'paid date', 'payout date', 'transaction date');
+    const bookingDateRaw = col(row, 'booking date', 'booked date', 'booked on');
+    const checkInRaw     = col(row, 'start date', 'check in', 'checkin', 'arrival date');
+    const checkOutRaw    = col(row, 'end date', 'checkout', 'check out', 'departure date');
+    const date           = parseDateStr(dateRaw) || parseDateStr(checkInRaw);
     if (!date) continue;
+
     const nights = parseInt(col(row, 'nights', 'number of nights'), 10) || 0;
+
+    // Financials
+    const amount      = parseAmt(col(row, 'amount', 'payout', 'total amount', 'paid out'));
+    const serviceFee  = parseAmt(col(row, 'service fee', 'host fee', 'airbnb fee'));
+    const cleaningFee = parseAmt(col(row, 'cleaning fee'));
+    // Gross = host payout + cleaning fee (cleaning is in payout but separated for analysis)
+    const grossEarnings = amount + cleaningFee;
 
     results.push({
       date,
-      checkIn:        parseDateStr(checkInRaw) || '',
-      checkOut:       parseDateStr(checkOutRaw) || '',
+      bookingDate:          parseDateStr(bookingDateRaw) || '',
+      checkIn:              parseDateStr(checkInRaw) || '',
+      checkOut:             parseDateStr(checkOutRaw) || '',
       nights,
-      avgNightlyRate: nights > 0 ? Math.round((amount / nights) * 100) / 100 : 0,
-      reference,
+      type,
+      confirmationCode,
+      airbnbKey,
       amount,
-      currency:  col(row, 'currency', 'currency code') || 'EUR',
-      guest:     col(row, 'guest', 'guest name'),
-      listing:   col(row, 'listing', 'listing name', 'property')
+      serviceFee,
+      cleaningFee,
+      grossEarnings,
+      avgGross:             nights > 0 ? Math.round((grossEarnings / nights) * 100) / 100 : 0,
+      avgNightInclCleaning: nights > 0 ? Math.round((amount / nights) * 100) / 100 : 0,
+      avgNightExclCleaning: nights > 0 ? Math.round(((amount - cleaningFee) / nights) * 100) / 100 : 0,
+      currency:             col(row, 'currency', 'currency code') || 'EUR',
+      guest:                col(row, 'guest', 'guest name'),
+      listing:              col(row, 'listing', 'listing name', 'property')
     });
   }
 
