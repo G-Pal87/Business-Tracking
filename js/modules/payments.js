@@ -875,27 +875,31 @@ function openCSVImport() {
       }
     }
 
-    // ── Pending CSV (airbnb_pending.csv): add new only + forecast ───────────
+    // ── Pending CSV (airbnb_pending.csv): upsert + always sync forecast ────
     const pendingFile = pendingFileI.files?.[0];
     if (pendingFile) {
       const text = await pendingFile.text();
       const rows = parseAirbnbCSV(text);
 
+      // Accumulate totals per (property, month) so we can set the forecast in
+      // one pass — prevents double-counting when the same CSV is re-imported.
+      const forecastMap = new Map(); // "propertyId|monthKey" → { year, propertyId, monthKey, total }
+
       for (const row of rows) {
         const matched = findProp(row.listing);
         if (!matched) continue;
 
-        // Skip if already exists (unique by airbnbKey)
-        const alreadyExists = row.airbnbKey
-          ? listActivePayments().some(p => p.airbnbKey === row.airbnbKey)
-          : false;
-        if (alreadyExists) { totalUpdated++; continue; }
+        // Dedup: prefer airbnbKey match; fall back to confirmationCode (airbnbRef)
+        // for payments imported before the airbnbKey field was introduced.
+        const existingByKey = row.airbnbKey
+          ? listActivePayments().find(p => p.airbnbKey === row.airbnbKey)
+          : null;
+        const existingByRef = !existingByKey && row.confirmationCode
+          ? listActivePayments().find(p => p.airbnbRef === row.confirmationCode && p.source === 'airbnb' && p.status === 'pending')
+          : null;
+        const existing = existingByKey || existingByRef;
 
-        const pay = {
-          id: newId('pay'),
-          propertyId: matched.id,
-          stream: 'short_term_rental',
-          source: 'airbnb',
+        const payFields = {
           amount: row.amount,
           currency: row.currency || matched.currency,
           date: row.date,
@@ -917,18 +921,41 @@ function openCSVImport() {
           avgNightExclCleaning: row.avgNightExclCleaning,
           notes: [row.guest, row.listing].filter(Boolean).join(' · ')
         };
-        upsert('payments', pay);
-        totalAdded++;
 
-        // Update property forecast for the check-in month using Amount as forecasted revenue
+        if (existing) {
+          // Migrate old-format records (no airbnbKey) to new format
+          Object.assign(existing, payFields);
+          upsert('payments', existing);
+          totalUpdated++;
+        } else {
+          upsert('payments', {
+            id: newId('pay'),
+            propertyId: matched.id,
+            stream: 'short_term_rental',
+            source: 'airbnb',
+            ...payFields
+          });
+          totalAdded++;
+        }
+
+        // Accumulate forecast total for this property+month
         const refDate = row.checkIn || row.date;
         if (refDate && matched.id) {
           const year = refDate.slice(0, 4);
           const monthKey = `${year}-${refDate.slice(5, 7)}`;
-          const fc = getOrCreateForecast('property', matched.id, year);
-          const existingRevenue = fc.months?.[monthKey]?.revenue || 0;
-          saveForecastMonth(fc.id, monthKey, { revenue: existingRevenue + row.amount });
+          const fKey = `${matched.id}|${monthKey}`;
+          if (!forecastMap.has(fKey)) {
+            forecastMap.set(fKey, { year, propertyId: matched.id, monthKey, total: 0 });
+          }
+          forecastMap.get(fKey).total += row.amount;
         }
+      }
+
+      // Write forecast once per (property, month) — set rather than accumulate
+      // so re-importing the same CSV never double-counts.
+      for (const { year, propertyId, monthKey, total } of forecastMap.values()) {
+        const fc = getOrCreateForecast('property', propertyId, year);
+        saveForecastMonth(fc.id, monthKey, { revenue: total });
       }
     }
 
