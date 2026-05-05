@@ -2654,6 +2654,37 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777964699171,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosaeau95i",
+      "number": "26_VITAS_01072025",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2025-07-01",
+      "dueDate": "2025-07-08",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosaeau94c",
+          "description": "Marketing services (Performance campaigns)",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1500,
+          "total": 1500
+        }
+      ],
+      "subtotal": 1500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "createdAt": 1777964913538,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777964913538,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
