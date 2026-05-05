@@ -243,13 +243,14 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } =
     obs?.disconnect();
     const rows = [...tbody.querySelectorAll('tr')];
     rows.sort((a, b) => {
-      const ap = parseCell(a.cells[sortCol]?.textContent?.trim() || '');
-      const bp = parseCell(b.cells[sortCol]?.textContent?.trim() || '');
+      const getText = cell => cell?.dataset?.sort ?? cell?.textContent?.trim() ?? '';
+      const ap = parseCell(getText(a.cells[sortCol]));
+      const bp = parseCell(getText(b.cells[sortCol]));
       if (ap.t === bp.t && ap.t !== 's') return (ap.v - bp.v) * sortDir;
       return String(ap.v).localeCompare(String(bp.v)) * sortDir;
     });
     rows.forEach(r => tbody.appendChild(r));
-    obs?.observe(tableWrap, { childList: true, subtree: true });
+    obs?.observe(tableWrap, { childList: true });
   };
 
   const applyFilter = () => {
@@ -299,7 +300,7 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } =
 
   let debounce;
   obs = new MutationObserver(() => { clearTimeout(debounce); debounce = setTimeout(enhance, 0); });
-  obs.observe(tableWrap, { childList: true, subtree: true });
+  obs.observe(tableWrap, { childList: true });
   enhance();
 }
 
