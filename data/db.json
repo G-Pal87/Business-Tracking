@@ -2821,6 +2821,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777969150071,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_moscy48044",
+      "number": "31_Neverblink_290825",
+      "clientId": "cli_mopvfxalho",
+      "owner": "rita",
+      "issueDate": "2025-08-29",
+      "dueDate": "2025-10-02",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_moscy480r1",
+          "description": "Startup coaching - Topic: \"Customer development\"",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 170,
+          "total": 170
+        }
+      ],
+      "subtotal": 170,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 170,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_moscy48044.pdf",
+      "createdAt": 1777969189087,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777969189087,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
