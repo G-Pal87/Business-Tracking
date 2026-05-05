@@ -4091,6 +4091,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777974946726,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosgetemkr",
+      "number": "M&WPrimeSolutions 2019_24-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-12-16",
+      "dueDate": "2024-12-20",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosgetemq3",
+          "description": "Marketing services (Performance Kampagnen) Nov 2024",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 1500,
+          "total": 1500
+        }
+      ],
+      "subtotal": 1500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 1500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosgetemkr.pdf",
+      "createdAt": 1777975007519,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777975007519,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
