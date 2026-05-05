@@ -3771,6 +3771,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777974226805,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mosfzap7gs",
+      "number": "M&WPrimeSolutions#2010_24-VITAS",
+      "clientId": "cli_mohkh25z92",
+      "owner": "rita",
+      "issueDate": "2024-09-02",
+      "dueDate": "2024-09-10",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "id": "li_mosfzap7jm",
+          "description": "Marketing services (Google & META Kampagnen) Aug 2024",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 2500,
+          "total": 2500
+        }
+      ],
+      "subtotal": 2500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 2500,
+      "notes": "Imported from PDF",
+      "source": "pdf_import",
+      "pdfPath": "invoices/inv_mosfzap7gs.pdf",
+      "createdAt": 1777974282705,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777974282705,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
