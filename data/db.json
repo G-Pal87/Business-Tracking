@@ -1359,6 +1359,27 @@
       "updatedBy": "Giorgos",
       "deletedAt": 1778051367748,
       "deletedBy": "Giorgos"
+    },
+    {
+      "id": "exp_motpwl3wgx",
+      "propertyId": "prop_mohgcpkr2r",
+      "category": "maintenance",
+      "amount": 100000,
+      "currency": "HUF",
+      "date": "2026-12-10",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "long_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0,
+      "accountingType": "opex",
+      "costCategory": "maintenance",
+      "recurrence": "recurring",
+      "createdAt": 1778051438678,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778051438678,
+      "updatedBy": "Giorgos"
     }
   ],
   "vendors": [
