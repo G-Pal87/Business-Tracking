@@ -1336,6 +1336,27 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778013993531,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "exp_motpovx7f8",
+      "propertyId": "prop_mo946nvbck",
+      "category": "maintenance",
+      "amount": 200000,
+      "currency": "EUR",
+      "date": "2026-05-06",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "short_term_rental",
+      "inventoryItemId": "",
+      "inventoryQty": 0,
+      "accountingType": "opex",
+      "costCategory": "maintenance",
+      "recurrence": "recurring",
+      "createdAt": 1778051066375,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778051066375,
+      "updatedBy": "Giorgos"
     }
   ],
   "vendors": [
