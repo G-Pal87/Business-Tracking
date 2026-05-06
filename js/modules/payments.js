@@ -62,7 +62,20 @@ function buildAllPayments(wrap) {
     if (!count) return;
     const ok = await confirmDialog(`Delete ${count} payment(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
+    // Collect affected pending Airbnb months before deleting
+    const affectedForecast = new Set();
+    for (const id of [...selected]) {
+      const p = listActivePayments().find(p => p.id === id);
+      if (p?.source === 'airbnb' && p?.status === 'pending') {
+        const mk = (p.airbnbCheckIn || p.date || '').slice(0, 7);
+        if (mk) affectedForecast.add(`${p.propertyId}|${mk}`);
+      }
+    }
     for (const id of [...selected]) softDelete('payments', id);
+    for (const key of affectedForecast) {
+      const [propId, monthKey] = key.split('|');
+      recalcPendingAirbnbForecast(propId, monthKey);
+    }
     selected.clear();
     toast(`Deleted ${count} payment(s)`, 'success');
     renderTable();
@@ -163,7 +176,14 @@ function buildAllPayments(wrap) {
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog('Delete this payment?', { danger: true, okLabel: 'Delete' });
-        if (ok) { softDelete('payments', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (!ok) return;
+        const isAirbnbPending = r.source === 'airbnb' && r.status === 'pending';
+        const propId = r.propertyId;
+        const monthKey = (r.airbnbCheckIn || r.date || '').slice(0, 7);
+        softDelete('payments', r.id);
+        if (isAirbnbPending && propId && monthKey) recalcPendingAirbnbForecast(propId, monthKey);
+        toast('Deleted', 'success');
+        renderTable();
       }}));
       tr.appendChild(actions);
       tb.appendChild(tr);
@@ -1088,6 +1108,18 @@ function parseDateStr(raw) {
   const d = new Date(raw);
   if (!isNaN(d)) return d.toISOString().slice(0, 10);
   return null;
+}
+
+// Recalculate forecast revenue for a property/month from remaining pending Airbnb payments.
+// Call after deleting any pending Airbnb payment so the forecast stays in sync.
+function recalcPendingAirbnbForecast(propertyId, monthKey) {
+  const year = monthKey.slice(0, 4);
+  const total = listActivePayments()
+    .filter(p => p.propertyId === propertyId && p.source === 'airbnb' && p.status === 'pending'
+      && (p.airbnbCheckIn || p.date || '').slice(0, 7) === monthKey)
+    .reduce((s, p) => s + (p.amount || 0), 0);
+  const fc = getOrCreateForecast('property', propertyId, year);
+  saveForecastMonth(fc.id, monthKey, { revenue: total });
 }
 
 function exportCSV() {

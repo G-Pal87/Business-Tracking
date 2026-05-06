@@ -611,6 +611,26 @@ const FC_VAR_COLS = [
   { key: 'eur',   label: 'EUR', right: true, format: v => v === null ? '—' : formatEUR(v) },
   { key: 'pct',   label: '%',   right: true }
 ];
+const FC_PENDING_COLS = [
+  { key: 'date',   label: 'Check-in', format: v => fmtDate(v) },
+  { key: 'guest',  label: 'Guest' },
+  { key: 'nights', label: 'Nights', right: true },
+  { key: 'eur',    label: 'Amount', right: true, format: v => formatEUR(v) }
+];
+
+function getPendingAirbnbRows(propertyId, monthKey) {
+  return listActivePayments()
+    .filter(p => p.source === 'airbnb' && p.status === 'pending'
+      && p.propertyId === propertyId
+      && (p.airbnbCheckIn || p.date || '').slice(0, 7) === monthKey)
+    .map(p => ({
+      date:   p.airbnbCheckIn || p.date,
+      guest:  (p.notes || '').split(' · ')[0] || '—',
+      nights: p.airbnbNights || 0,
+      eur:    toEUR(p.amount, p.currency || 'EUR', p.date)
+    }))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+}
 
 // ===== SHARED MONTHLY GRID =====
 function buildMonthlyGrid(entityId, year, type, onChange) {
@@ -620,7 +640,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
   const card = el('div', { class: 'card' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, `Monthly Forecast — ${year}`),
-    el('div', { class: 'muted', style: 'font-size:12px' }, 'Click any cell to edit')
+    el('div', { class: 'muted', style: 'font-size:12px' }, 'Click forecast revenue to drill down · Click expenses to manage entries')
   ));
 
   // Annual target bar
@@ -725,11 +745,62 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         return cell;
       }
 
+      // Property forecast revenue: drill-down if pending Airbnb payments exist,
+      // otherwise falls back to inline edit. Always shows a pencil icon for manual edit.
+      function makeForecastRevCell(current, mk, monthIdx) {
+        const pending = getPendingAirbnbRows(entityId, mk);
+        const cell = el('td', { class: 'right num', style: 'white-space:nowrap' });
+
+        const amtSpan = el('span', {}, formatEUR(current));
+        cell.appendChild(amtSpan);
+
+        // Edit icon — always present; stops propagation so it doesn't trigger drill-down
+        const editIcon = el('span', {
+          title: 'Edit forecast value',
+          style: 'margin-left:6px;opacity:0.35;font-size:11px;cursor:pointer;user-select:none'
+        }, '✎');
+        editIcon.onmouseenter = () => { editIcon.style.opacity = '1'; };
+        editIcon.onmouseleave = () => { editIcon.style.opacity = '0.35'; };
+        editIcon.onclick = e => {
+          e.stopPropagation();
+          cell.innerHTML = '';
+          const inp = el('input', { type: 'number', value: current, min: 0,
+            style: 'width:100px;text-align:right;background:var(--bg-elev-3);border:1px solid var(--accent);border-radius:4px;padding:4px 6px;color:var(--text)' });
+          cell.appendChild(inp); inp.focus(); inp.select();
+          const commit = () => {
+            const val = Number(inp.value) || 0;
+            saveForecastMonth(fc.id, mk, { revenue: val });
+            current = val;
+            cell.innerHTML = '';
+            amtSpan.textContent = formatEUR(val);
+            cell.appendChild(amtSpan);
+            cell.appendChild(editIcon);
+            rebuildTotals();
+            if (onChange) onChange();
+          };
+          inp.onblur = commit;
+          inp.onkeydown = ev => { if (ev.key === 'Enter') commit(); if (ev.key === 'Escape') { cell.innerHTML = ''; cell.appendChild(amtSpan); cell.appendChild(editIcon); } };
+        };
+        cell.appendChild(editIcon);
+
+        if (pending.length > 0) {
+          // Sub-label showing reservation count
+          const sub = el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' },
+            `${pending.length} reservation${pending.length === 1 ? '' : 's'}`);
+          cell.appendChild(sub);
+          cell.style.cursor = 'pointer';
+          cell.title = 'Click to see pending reservations';
+          cell.onclick = () => drillDownModal(
+            `Forecast Revenue — ${MONTHS[monthIdx]} ${year}`, pending, FC_PENDING_COLS);
+        }
+        return cell;
+      }
+
       const net = mData.forecastRev - mData.forecastExp;
       if (type === 'service') {
         tr.appendChild(makeEntriesCell(monthKey, mData.forecastRev, i));
       } else {
-        tr.appendChild(makeEditable('revenue', mData.forecastRev));
+        tr.appendChild(makeForecastRevCell(mData.forecastRev, monthKey, i));
       }
       tr.appendChild(makeExpEntriesCell(monthKey, mData.forecastExp, i));
       tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
@@ -1045,7 +1116,28 @@ function buildAggregatedGrid(entityIds, year, type = 'property') {
       ? ((m.revVariance / m.forecastRev) * 100).toFixed(1) + '%' : '—';
     const tr = el('tr');
     tr.appendChild(el('td', {}, MONTHS[i]));
-    tr.appendChild(el('td', { class: 'right num' }, formatEUR(m.forecastRev)));
+
+    // Forecast Revenue — clickable drill-down for property type
+    const fRevCell = el('td', { class: 'right num' });
+    if (type === 'property') {
+      const pending = entityIds.flatMap(id => getPendingAirbnbRows(id, months[i].key))
+        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      fRevCell.appendChild(el('div', {}, formatEUR(m.forecastRev)));
+      if (pending.length > 0) {
+        fRevCell.appendChild(el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' },
+          `${pending.length} reservation${pending.length === 1 ? '' : 's'}`));
+        fRevCell.style.cursor = 'pointer';
+        fRevCell.title = 'Click to see pending reservations';
+        fRevCell.onclick = () => drillDownModal(
+          `Forecast Revenue — ${MONTHS[i]}`, pending, FC_PENDING_COLS);
+      } else {
+        fRevCell.textContent = formatEUR(m.forecastRev);
+      }
+    } else {
+      fRevCell.textContent = formatEUR(m.forecastRev);
+    }
+    tr.appendChild(fRevCell);
+
     tr.appendChild(el('td', { class: 'right num' }, formatEUR(m.forecastExp)));
     tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
 
