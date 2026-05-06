@@ -135,6 +135,36 @@ function getData() {
   return { allProps, propData, payments, opExpenses, capExpenses, totals, avgROI, best, worst };
 }
 
+// ── Valid filter options (leave-one-out faceting) ─────────────────────────────
+function getValidOpts() {
+  const allProps = listActiveProperties();
+  const pays     = listActivePayments().filter(p => p.status === 'paid');
+  const exps     = listActive('expenses');
+  const vY = new Set(), vSt = new Set(), vPi = new Set(), vOw = new Set();
+  const psk = p => p.type === 'short_term' ? 'short_term_rental' : p.type === 'long_term' ? 'long_term_rental' : 'other';
+  const yrOk = yr => !gFilters.years.size       || gFilters.years.has(yr);
+  const stOk = st => !gFilters.streams.size     || gFilters.streams.has(st);
+  const owOk = ow => !gFilters.owners.size      || ow === 'both' || gFilters.owners.has(ow);
+  const piOk = pi => !gFilters.propertyIds.size || gFilters.propertyIds.has(pi);
+  const addOw = ow => { if (ow === 'both') { vOw.add('you'); vOw.add('rita'); vOw.add('both'); } else if (ow) vOw.add(ow); };
+  for (const p of allProps) {
+    const st = psk(p), ow = p.owner || 'both', pi = p.id;
+    if (stOk(st) && owOk(ow)) vPi.add(pi);
+    if (piOk(pi) && owOk(ow)) vSt.add(st);
+    if (piOk(pi) && stOk(st)) addOw(ow);
+  }
+  const scanDate = (date, propId) => {
+    if (!propId) return;
+    const prop = byId('properties', propId);
+    if (!prop) return;
+    const yr = (date || '').slice(0, 4);
+    if (yr && stOk(psk(prop)) && owOk(prop.owner || 'both') && piOk(propId)) vY.add(yr);
+  };
+  pays.forEach(p => scanDate(p.date, p.propertyId));
+  exps.forEach(e => scanDate(e.date, e.propertyId));
+  return { vY, vSt, vPi, vOw };
+}
+
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -589,11 +619,15 @@ function buildView() {
   ));
 
   // Filter bar
-  const yearMS   = buildMultiSelect(availableYears().map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'prop_years');
+  const opts = getValidOpts();
+  const trim = (set, valid) => { if (valid.size) for (const v of [...set]) if (!valid.has(v)) set.delete(v); };
+  trim(gFilters.years, opts.vY); trim(gFilters.streams, opts.vSt);
+  trim(gFilters.propertyIds, opts.vPi); trim(gFilters.owners, opts.vOw);
+  const yearMS   = buildMultiSelect(availableYears().filter(y => !opts.vY.size || opts.vY.has(y)).map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'prop_years');
   const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'prop_months');
-  const propMS   = buildMultiSelect(listActiveProperties().map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'prop_props');
-  const streamMS = buildMultiSelect(PROPERTY_STREAMS.map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })), gFilters.streams, 'All Streams', rebuildView, 'prop_streams');
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'prop_owners');
+  const propMS   = buildMultiSelect(listActiveProperties().filter(p => !opts.vPi.size || opts.vPi.has(p.id)).map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'prop_props');
+  const streamMS = buildMultiSelect(PROPERTY_STREAMS.filter(k => !opts.vSt.size || opts.vSt.has(k)).map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })), gFilters.streams, 'All Streams', rebuildView, 'prop_streams');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => !opts.vOw.size || opts.vOw.has(k)).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'prop_owners');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));

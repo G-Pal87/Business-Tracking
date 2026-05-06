@@ -66,6 +66,28 @@ function getData() {
   return { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net: rev - exp };
 }
 
+// ── Valid filter options (leave-one-out faceting) ─────────────────────────────
+function getValidOpts() {
+  const pays = listActivePayments().filter(p => p.status === 'paid');
+  const invs = listActive('invoices').filter(i => i.status === 'paid');
+  const exps = listActive('expenses');
+  const vY = new Set(), vSt = new Set(), vOw = new Set();
+  const yrOk = yr => !gFilters.years.size   || gFilters.years.has(yr);
+  const stOk = st => !gFilters.streams.size || gFilters.streams.has(st);
+  const owOk = ow => !gFilters.owners.size  || ow === 'both' || gFilters.owners.has(ow);
+  const addOw = ow => { if (ow === 'both') { vOw.add('you'); vOw.add('rita'); vOw.add('both'); } else if (ow) vOw.add(ow); };
+  const scan = (date, st, ow) => {
+    const yr = (date || '').slice(0, 4);
+    if (yr && stOk(st) && owOk(ow)) vY.add(yr);
+    if (yrOk(yr) && owOk(ow)) vSt.add(st);
+    if (yrOk(yr) && stOk(st)) addOw(ow);
+  };
+  pays.forEach(p => scan(p.date, p.stream || 'other', byId('properties', p.propertyId)?.owner || 'both'));
+  invs.forEach(i => scan(i.issueDate, i.stream || 'other', i.owner || 'both'));
+  exps.forEach(e => scan(e.date, e.stream || 'other', byId('properties', e.propertyId)?.owner || 'both'));
+  return { vY, vSt, vOw };
+}
+
 // ── Rebuild helper ────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -512,10 +534,13 @@ function buildView() {
   ));
 
   // Filter bar: Year → Month → Owner → Stream
-  const yearMS   = buildMultiSelect(availableYears().map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'ana_years');
+  const opts = getValidOpts();
+  const trim = (set, valid) => { if (valid.size) for (const v of [...set]) if (!valid.has(v)) set.delete(v); };
+  trim(gFilters.years, opts.vY); trim(gFilters.streams, opts.vSt); trim(gFilters.owners, opts.vOw);
+  const yearMS   = buildMultiSelect(availableYears().filter(y => !opts.vY.size || opts.vY.has(y)).map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'ana_years');
   const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'ana_months');
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'ana_owners');
-  const streamMS = buildMultiSelect(Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, css: v.css })), gFilters.streams, 'All Streams', rebuildView, 'ana_streams');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => !opts.vOw.size || opts.vOw.has(k)).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'ana_owners');
+  const streamMS = buildMultiSelect(Object.entries(STREAMS).filter(([k]) => !opts.vSt.size || opts.vSt.has(k)).map(([k, v]) => ({ value: k, label: v.label, css: v.css })), gFilters.streams, 'All Streams', rebuildView, 'ana_streams');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));

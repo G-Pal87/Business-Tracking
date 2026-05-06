@@ -155,6 +155,34 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }) {
   return items;
 }
 
+// ── Valid filter options (leave-one-out faceting) ─────────────────────────────
+function getValidOpts() {
+  const exps    = listActive('expenses');
+  const vendors = listActiveVendors();
+  const vMap    = new Map(vendors.map(v => [v.name, v.id]));
+  const vY = new Set(), vSt = new Set(), vPi = new Set(), vCat = new Set(), vVi = new Set();
+  const yrOk  = yr  => !gFilters.years.size           || gFilters.years.has(yr);
+  const stOk  = st  => !gFilters.streams.size         || gFilters.streams.has(st);
+  const piOk  = pi  => !gFilters.propertyIds.size     || gFilters.propertyIds.has(pi);
+  const catOk = cat => !gFilters.categories.size      || gFilters.categories.has(cat);
+  const viOk  = vi  => !gFilters.vendorIds.size       || gFilters.vendorIds.has(vi);
+  const accOk = e   => !gFilters.accountingTypes.size || gFilters.accountingTypes.has(isCapEx(e) ? 'capex' : 'opex');
+  for (const e of exps) {
+    const prop = e.propertyId ? byId('properties', e.propertyId) : null;
+    const st  = e.stream || (prop?.type === 'short_term' ? 'short_term_rental' : prop?.type === 'long_term' ? 'long_term_rental' : 'other');
+    const yr  = (e.date || '').slice(0, 4);
+    const pi  = e.propertyId;
+    const cat = resolveExpenseFields(e).costCategory;
+    const vi  = e.vendorId || (e.vendor ? vMap.get(e.vendor) : null);
+    if (yr && stOk(st) && piOk(pi) && catOk(cat) && viOk(vi) && accOk(e)) vY.add(yr);
+    if (yrOk(yr) && piOk(pi) && catOk(cat) && viOk(vi) && accOk(e)) vSt.add(st);
+    if (pi && yrOk(yr) && stOk(st) && catOk(cat) && viOk(vi) && accOk(e)) vPi.add(pi);
+    if (yrOk(yr) && stOk(st) && piOk(pi) && viOk(vi) && accOk(e)) vCat.add(cat);
+    if (vi && yrOk(yr) && stOk(st) && piOk(pi) && catOk(cat) && accOk(e)) vVi.add(vi);
+  }
+  return { vY, vSt, vPi, vCat, vVi };
+}
+
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -242,12 +270,16 @@ function buildView() {
   ));
 
   // Filter bar
-  const yearMS   = buildMultiSelect(availableYears().map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'aexp_years');
+  const opts = getValidOpts();
+  const trim = (set, valid) => { if (valid.size) for (const v of [...set]) if (!valid.has(v)) set.delete(v); };
+  trim(gFilters.years, opts.vY); trim(gFilters.streams, opts.vSt);
+  trim(gFilters.propertyIds, opts.vPi); trim(gFilters.categories, opts.vCat); trim(gFilters.vendorIds, opts.vVi);
+  const yearMS   = buildMultiSelect(availableYears().filter(y => !opts.vY.size || opts.vY.has(y)).map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'aexp_years');
   const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'aexp_months');
-  const catMS    = buildMultiSelect(Object.entries(COST_CATEGORIES).map(([k, v]) => ({ value: k, label: v.label, color: v.color })), gFilters.categories, 'All Categories', rebuildView, 'aexp_cats');
-  const propMS   = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'aexp_props');
-  const vendorMS = buildMultiSelect(listActiveVendors().map(v => ({ value: v.id, label: v.name })), gFilters.vendorIds, 'All Vendors', rebuildView, 'aexp_vendors');
-  const streamMS = buildMultiSelect(Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, color: v.color })), gFilters.streams, 'All Streams', rebuildView, 'aexp_streams');
+  const catMS    = buildMultiSelect(Object.entries(COST_CATEGORIES).filter(([k]) => !opts.vCat.size || opts.vCat.has(k)).map(([k, v]) => ({ value: k, label: v.label, color: v.color })), gFilters.categories, 'All Categories', rebuildView, 'aexp_cats');
+  const propMS   = buildMultiSelect(listActive('properties').filter(p => !opts.vPi.size || opts.vPi.has(p.id)).map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'aexp_props');
+  const vendorMS = buildMultiSelect(listActiveVendors().filter(v => !opts.vVi.size || opts.vVi.has(v.id)).map(v => ({ value: v.id, label: v.name })), gFilters.vendorIds, 'All Vendors', rebuildView, 'aexp_vendors');
+  const streamMS = buildMultiSelect(Object.entries(STREAMS).filter(([k]) => !opts.vSt.size || opts.vSt.has(k)).map(([k, v]) => ({ value: k, label: v.label, color: v.color })), gFilters.streams, 'All Streams', rebuildView, 'aexp_streams');
   const typeMS   = buildMultiSelect(Object.entries(ACCOUNTING_TYPES).map(([k, v]) => ({ value: k, label: v.label, color: k === 'capex' ? '#f59e0b' : '#ef4444' })), gFilters.accountingTypes, 'OpEx + CapEx', rebuildView, 'aexp_types');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });

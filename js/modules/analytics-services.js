@@ -80,6 +80,29 @@ function getData() {
   };
 }
 
+// ── Valid filter options (leave-one-out faceting) ─────────────────────────────
+function getValidOpts() {
+  const invs = listActive('invoices').filter(i => SERVICE_STREAMS.includes(i.stream));
+  const vY = new Set(), vSt = new Set(), vCi = new Set(), vOw = new Set(), vStat = new Set();
+  const yrOk   = yr  => !gFilters.years.size     || gFilters.years.has(yr);
+  const stOk   = st  => !gFilters.streams.size   || gFilters.streams.has(st);
+  const ciOk   = ci  => !gFilters.clientIds.size || gFilters.clientIds.has(ci);
+  const owOk   = ow  => !gFilters.owners.size    || ow === 'both' || gFilters.owners.has(ow);
+  const statOk = s   => !gFilters.statuses.size  || gFilters.statuses.has(s);
+  const addOw  = (vSet, ow) => { if (ow === 'both') { vSet.add('you'); vSet.add('rita'); vSet.add('both'); } else if (ow) vSet.add(ow); };
+  for (const i of invs) {
+    const ow   = i.owner || 'both', st = i.stream || 'other';
+    const yr   = (i.issueDate || '').slice(0, 4);
+    const ci   = i.clientId, stat = i.status || 'draft';
+    if (yr && stOk(st) && ciOk(ci) && owOk(ow) && statOk(stat)) vY.add(yr);
+    if (yrOk(yr) && ciOk(ci) && owOk(ow) && statOk(stat)) vSt.add(st);
+    if (ci && yrOk(yr) && stOk(st) && owOk(ow) && statOk(stat)) vCi.add(ci);
+    if (yrOk(yr) && stOk(st) && ciOk(ci) && statOk(stat)) addOw(vOw, ow);
+    if (yrOk(yr) && stOk(st) && ciOk(ci) && owOk(ow)) vStat.add(stat);
+  }
+  return { vY, vSt, vCi, vOw, vStat };
+}
+
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -162,12 +185,16 @@ function buildView() {
   ));
 
   // Filter bar
-  const yearMS   = buildMultiSelect(availableYears().map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'svc_years');
+  const opts = getValidOpts();
+  const trim = (set, valid) => { if (valid.size) for (const v of [...set]) if (!valid.has(v)) set.delete(v); };
+  trim(gFilters.years, opts.vY); trim(gFilters.streams, opts.vSt);
+  trim(gFilters.clientIds, opts.vCi); trim(gFilters.owners, opts.vOw); trim(gFilters.statuses, opts.vStat);
+  const yearMS   = buildMultiSelect(availableYears().filter(y => !opts.vY.size || opts.vY.has(y)).map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'svc_years');
   const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'svc_months');
-  const clientMS = buildMultiSelect(listActiveClients().map(c => ({ value: c.id, label: c.name })), gFilters.clientIds, 'All Clients', rebuildView, 'svc_clients');
-  const streamMS = buildMultiSelect(SERVICE_STREAMS.map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })), gFilters.streams, 'All Streams', rebuildView, 'svc_streams');
-  const statusMS = buildMultiSelect(Object.entries(INVOICE_STATUSES).map(([k, v]) => ({ value: k, label: v.label, css: v.css })), gFilters.statuses, 'All Statuses', rebuildView, 'svc_statuses');
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'svc_owners');
+  const clientMS = buildMultiSelect(listActiveClients().filter(c => !opts.vCi.size || opts.vCi.has(c.id)).map(c => ({ value: c.id, label: c.name })), gFilters.clientIds, 'All Clients', rebuildView, 'svc_clients');
+  const streamMS = buildMultiSelect(SERVICE_STREAMS.filter(k => !opts.vSt.size || opts.vSt.has(k)).map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })), gFilters.streams, 'All Streams', rebuildView, 'svc_streams');
+  const statusMS = buildMultiSelect(Object.entries(INVOICE_STATUSES).filter(([k]) => !opts.vStat.size || opts.vStat.has(k)).map(([k, v]) => ({ value: k, label: v.label, css: v.css })), gFilters.statuses, 'All Statuses', rebuildView, 'svc_statuses');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => !opts.vOw.size || opts.vOw.has(k)).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'svc_owners');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));

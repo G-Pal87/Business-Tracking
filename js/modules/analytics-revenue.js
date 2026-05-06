@@ -74,6 +74,37 @@ function getData() {
   return { payments, invoices, propRev, svcRev, total: propRev + svcRev };
 }
 
+// ── Valid filter options (leave-one-out faceting) ─────────────────────────────
+function getValidOpts() {
+  const pays = listActivePayments().filter(p => p.status === 'paid');
+  const invs = listActive('invoices').filter(i => i.status === 'paid');
+  const vY = new Set(), vSt = new Set(), vPi = new Set(), vOw = new Set(), vCi = new Set();
+  const yrOk = yr => !gFilters.years.size       || gFilters.years.has(yr);
+  const stOk = st => !gFilters.streams.size     || gFilters.streams.has(st);
+  const owOk = ow => !gFilters.owners.size      || ow === 'both' || gFilters.owners.has(ow);
+  const piOk = pi => !gFilters.propertyIds.size || gFilters.propertyIds.has(pi);
+  const ciOk = ci => !gFilters.clientIds.size   || gFilters.clientIds.has(ci);
+  const addOw = (vSet, ow) => { if (ow === 'both') { vSet.add('you'); vSet.add('rita'); vSet.add('both'); } else if (ow) vSet.add(ow); };
+  for (const p of pays) {
+    const prop = p.propertyId ? byId('properties', p.propertyId) : null;
+    const ow = prop?.owner || 'both', st = p.stream || 'other';
+    const yr = (p.date || '').slice(0, 4), pi = p.propertyId;
+    if (yr && stOk(st) && owOk(ow) && piOk(pi)) vY.add(yr);
+    if (yrOk(yr) && owOk(ow) && piOk(pi)) vSt.add(st);
+    if (pi && yrOk(yr) && stOk(st) && owOk(ow)) vPi.add(pi);
+    if (yrOk(yr) && stOk(st) && piOk(pi)) addOw(vOw, ow);
+  }
+  for (const i of invs) {
+    const ow = i.owner || 'both', st = i.stream || 'other';
+    const yr = (i.issueDate || '').slice(0, 4), ci = i.clientId;
+    if (yr && stOk(st) && owOk(ow) && ciOk(ci)) vY.add(yr);
+    if (yrOk(yr) && owOk(ow) && ciOk(ci)) vSt.add(st);
+    if (ci && yrOk(yr) && stOk(st) && owOk(ow)) vCi.add(ci);
+    if (yrOk(yr) && stOk(st) && ciOk(ci)) addOw(vOw, ow);
+  }
+  return { vY, vSt, vPi, vOw, vCi };
+}
+
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -219,12 +250,16 @@ function buildView() {
   ));
 
   // Filter bar
-  const yearMS   = buildMultiSelect(availableYears().map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'rev_years');
+  const opts = getValidOpts();
+  const trim = (set, valid) => { if (valid.size) for (const v of [...set]) if (!valid.has(v)) set.delete(v); };
+  trim(gFilters.years, opts.vY); trim(gFilters.streams, opts.vSt);
+  trim(gFilters.propertyIds, opts.vPi); trim(gFilters.owners, opts.vOw); trim(gFilters.clientIds, opts.vCi);
+  const yearMS   = buildMultiSelect(availableYears().filter(y => !opts.vY.size || opts.vY.has(y)).map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'rev_years');
   const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'rev_months');
-  const streamMS = buildMultiSelect(Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, css: v.css })), gFilters.streams, 'All Streams', rebuildView, 'rev_streams');
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'rev_owners');
-  const propMS   = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'rev_props');
-  const clientMS = buildMultiSelect(listActiveClients().map(c => ({ value: c.id, label: c.name })), gFilters.clientIds, 'All Clients', rebuildView, 'rev_clients');
+  const streamMS = buildMultiSelect(Object.entries(STREAMS).filter(([k]) => !opts.vSt.size || opts.vSt.has(k)).map(([k, v]) => ({ value: k, label: v.label, css: v.css })), gFilters.streams, 'All Streams', rebuildView, 'rev_streams');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => !opts.vOw.size || opts.vOw.has(k)).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'rev_owners');
+  const propMS   = buildMultiSelect(listActive('properties').filter(p => !opts.vPi.size || opts.vPi.has(p.id)).map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'rev_props');
+  const clientMS = buildMultiSelect(listActiveClients().filter(c => !opts.vCi.size || opts.vCi.has(c.id)).map(c => ({ value: c.id, label: c.name })), gFilters.clientIds, 'All Clients', rebuildView, 'rev_clients');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
