@@ -816,9 +816,11 @@ function openCSVImport() {
         rows.filter(r => r.type.toLowerCase() === 'reservation').map(r => r.confirmationCode).filter(Boolean)
       );
 
-      // Remove orphaned payments (airbnbKey set but not in CSV)
+      // Remove orphaned completed payments (airbnbKey set but not in CSV).
+      // Never delete pending payments — they come from a separate CSV and aren't
+      // in the completed export until after payout.
       for (const p of listActivePayments()) {
-        if (p.source === 'airbnb' && p.airbnbKey && !csvKeys.has(p.airbnbKey)) {
+        if (p.source === 'airbnb' && p.status !== 'pending' && p.airbnbKey && !csvKeys.has(p.airbnbKey)) {
           softDelete('payments', p.id);
           totalRemoved++;
         }

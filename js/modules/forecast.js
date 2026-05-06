@@ -1084,6 +1084,7 @@ function buildAggregatedGrid(entityIds, year, type = 'property') {
     forecastRev: results.reduce((s, r) => s + r.months[i].forecastRev, 0),
     forecastExp: results.reduce((s, r) => s + r.months[i].forecastExp, 0),
     actualRev:   results.reduce((s, r) => s + r.months[i].actualRev, 0),
+    actualExp:   results.reduce((s, r) => s + r.months[i].actualExp, 0),
     revVariance: results.reduce((s, r) => s + r.months[i].revVariance, 0),
   }));
   const yearTarget = {
