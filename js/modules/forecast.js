@@ -58,49 +58,152 @@ function build() {
 
 // ===== PROPERTY FORECAST =====
 function buildPropertySection(wrap) {
-  const props = listActive('properties').filter(p => p.status !== 'renovation');
+  // All active properties — no status filter so all 19 (or however many) appear
+  const props = listActive('properties');
   if (props.length === 0) { wrap.appendChild(el('div', { class: 'empty' }, 'No active properties to forecast')); return; }
 
   let selectedPropIds = new Set(props.map(p => p.id));
   let selectedStreamIds = new Set(); // empty = all
+  let selectedYears = new Set();
+  let yearChks = [];
 
-  const getSelIds = () => {
-    const base = selectedPropIds.size > 0 ? [...selectedPropIds] : props.map(p => p.id);
-    if (selectedStreamIds.size === 0) return base.length ? base : [props[0].id];
-    const filtered = base.filter(id => {
-      const p = byId('properties', id);
-      const sk = p?.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
-      return selectedStreamIds.has(sk);
-    });
-    return filtered.length ? filtered : [props[0].id];
-  };
+  const MENU_STYLE = 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0;max-height:320px;overflow-y:auto';
+  const LABEL_STYLE = 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px';
 
-  // Stream filter dropdown
+  // ── Stream filter ─────────────────────────────────────────────────────────
   const streamOpts = [
     { value: 'short_term_rental', label: STREAMS.short_term_rental?.label || 'Short-term' },
     { value: 'long_term_rental',  label: STREAMS.long_term_rental?.label  || 'Long-term'  }
   ];
   const streamWrapper = el('div', { style: 'position:relative' });
   const streamTrigLabel = el('span', {}, 'All Streams');
-  const streamTrigger = el('div', {
-    class: 'select',
-    style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:140px;user-select:none'
-  }, streamTrigLabel);
-  const streamMenu = el('div', {
-    style: 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0'
-  });
+  const streamTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:140px;user-select:none' }, streamTrigLabel);
+  const streamMenu = el('div', { style: MENU_STYLE });
   const allStreamChk = el('input', { type: 'checkbox' });
   allStreamChk.checked = true;
-  streamMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px' },
-    allStreamChk, el('span', {}, 'All Streams')));
+  streamMenu.appendChild(el('label', { style: LABEL_STYLE + ';border-bottom:1px solid var(--border)' }, allStreamChk, el('span', {}, 'All Streams')));
   const streamChks = streamOpts.map(opt => {
     const chk = el('input', { type: 'checkbox' });
     chk.dataset.value = opt.value;
     chk.checked = true;
-    streamMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px' },
-      chk, el('span', {}, opt.label)));
+    streamMenu.appendChild(el('label', { style: LABEL_STYLE }, chk, el('span', {}, opt.label)));
     return chk;
   });
+
+  // ── Property checklist ────────────────────────────────────────────────────
+  const propWrapper = el('div', { style: 'position:relative' });
+  const trigLabel = el('span', {}, 'All Properties');
+  const propTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:160px;user-select:none' }, trigLabel);
+  const propMenu = el('div', { style: MENU_STYLE.replace('200px', '240px') });
+  const allChk = el('input', { type: 'checkbox' });
+  allChk.checked = true;
+  propMenu.appendChild(el('label', { style: LABEL_STYLE + ';border-bottom:1px solid var(--border)' }, allChk, el('span', {}, 'All Properties')));
+  const propChks = props.map(p => {
+    const chk = el('input', { type: 'checkbox' });
+    chk.dataset.id = p.id;
+    chk.checked = true;
+    propMenu.appendChild(el('label', { style: LABEL_STYLE }, chk, el('span', {}, p.name)));
+    return chk;
+  });
+
+  // ── Year multi-select ─────────────────────────────────────────────────────
+  const yearWrapper = el('div', { style: 'position:relative' });
+  const yearTrigLabel = el('span', {}, String(new Date().getFullYear()));
+  const yearTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:90px;user-select:none' }, yearTrigLabel);
+  const yearMenu = el('div', { style: MENU_STYLE.replace('200px', '160px') });
+
+  // ── Sync helpers ──────────────────────────────────────────────────────────
+  const syncYearSel = () => {
+    const sel = yearChks.filter(c => c.checked);
+    yearTrigLabel.textContent =
+      sel.length === 0 ? 'No Years'
+      : sel.length === yearChks.length && yearChks.length === 1 ? sel[0].dataset.year
+      : sel.length === yearChks.length ? 'All Years'
+      : sel.length === 1 ? sel[0].dataset.year
+      : `${sel.length} Years`;
+    selectedYears = new Set(sel.map(c => c.dataset.year));
+  };
+
+  const syncPropSel = () => {
+    const visibleChks = propChks.filter(c => c.closest('label')?.style.display !== 'none');
+    const sel = visibleChks.filter(c => c.checked);
+    allChk.checked = visibleChks.length > 0 && sel.length === visibleChks.length;
+    allChk.indeterminate = sel.length > 0 && sel.length < visibleChks.length;
+    trigLabel.textContent = sel.length === visibleChks.length && visibleChks.length > 0 ? 'All Properties'
+      : sel.length === 0 ? 'No Properties'
+      : sel.length === 1 ? (props.find(p => p.id === sel[0].dataset.id)?.name || '1 Property')
+      : `${sel.length} Properties`;
+    selectedPropIds = new Set(propChks.filter(c => c.checked).map(c => c.dataset.id));
+  };
+
+  // Rebuilds year checkboxes from data available for the selected properties
+  const updateYearOptions = () => {
+    const pIds = new Set([...selectedPropIds]);
+    const years = new Set();
+    for (const p of listActivePayments()) {
+      if (!pIds.size || pIds.has(p.propertyId)) if (p.date) years.add(p.date.slice(0, 4));
+    }
+    for (const e of listActive('expenses')) {
+      if (!pIds.size || pIds.has(e.propertyId)) if (e.date) years.add(e.date.slice(0, 4));
+    }
+    for (const f of (state.db.forecasts || [])) {
+      if (f.type === 'property' && (!pIds.size || pIds.has(f.entityId)) && f.year) years.add(String(f.year));
+    }
+    if (years.size === 0) years.add(String(new Date().getFullYear()));
+
+    const sorted = [...years].sort();
+    const prev = new Set([...selectedYears]);
+    const curYear = String(new Date().getFullYear());
+
+    yearMenu.innerHTML = '';
+    yearChks = [];
+
+    const allYearChk = el('input', { type: 'checkbox' });
+    allYearChk.onchange = () => {
+      yearChks.forEach(c => { c.checked = allYearChk.checked; });
+      allYearChk.indeterminate = false;
+      syncYearSel();
+      render();
+    };
+    yearMenu.appendChild(el('label', { style: LABEL_STYLE + ';border-bottom:1px solid var(--border)' }, allYearChk, el('span', {}, 'All Years')));
+
+    sorted.forEach(y => {
+      const chk = el('input', { type: 'checkbox' });
+      chk.dataset.year = y;
+      chk.checked = prev.size > 0 ? prev.has(y) : y === curYear;
+      chk.onchange = () => {
+        const sel = yearChks.filter(c => c.checked);
+        allYearChk.checked = yearChks.length > 0 && sel.length === yearChks.length;
+        allYearChk.indeterminate = sel.length > 0 && sel.length < yearChks.length;
+        syncYearSel();
+        render();
+      };
+      yearMenu.appendChild(el('label', { style: LABEL_STYLE }, chk, el('span', {}, y)));
+      yearChks.push(chk);
+    });
+
+    // Ensure at least one year selected
+    if (yearChks.every(c => !c.checked) && yearChks.length > 0) yearChks[yearChks.length - 1].checked = true;
+    const sel = yearChks.filter(c => c.checked);
+    allYearChk.checked = yearChks.length > 0 && sel.length === yearChks.length;
+    allYearChk.indeterminate = sel.length > 0 && sel.length < yearChks.length;
+    syncYearSel();
+  };
+
+  // Stream changes → filter property list to matching type
+  const syncPropertyVisibility = () => {
+    propChks.forEach(chk => {
+      const p = byId('properties', chk.dataset.id);
+      const sk = p?.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
+      const visible = selectedStreamIds.size === 0 || selectedStreamIds.has(sk);
+      const row = chk.closest('label');
+      if (row) row.style.display = visible ? '' : 'none';
+      chk.checked = visible; // auto-select all visible, deselect hidden
+    });
+    syncPropSel();
+    updateYearOptions();
+  };
+
   const syncStreamSel = () => {
     const sel = streamChks.filter(c => c.checked);
     const n = sel.length;
@@ -110,128 +213,59 @@ function buildPropertySection(wrap) {
       : n === 1 ? (streamOpts.find(o => o.value === sel[0].dataset.value)?.label || '')
       : `${n} Streams`;
     selectedStreamIds = n === streamChks.length ? new Set() : new Set(sel.map(c => c.dataset.value));
+    syncPropertyVisibility();
   };
+
+  // ── Event wiring ──────────────────────────────────────────────────────────
   allStreamChk.onchange = () => { streamChks.forEach(c => { c.checked = allStreamChk.checked; }); allStreamChk.indeterminate = false; syncStreamSel(); render(); };
   streamChks.forEach(chk => { chk.onchange = () => { syncStreamSel(); render(); }; });
   streamTrigger.onclick = e => { e.stopPropagation(); streamMenu.style.display = streamMenu.style.display === 'none' ? '' : 'none'; };
   streamMenu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { streamMenu.style.display = 'none'; });
-  streamWrapper.appendChild(streamTrigger);
-  streamWrapper.appendChild(streamMenu);
-
-  // --- Property checklist dropdown ---
-  const propWrapper = el('div', { style: 'position:relative' });
-  const trigLabel = el('span', {}, 'All Properties');
-  const propTrigger = el('div', {
-    class: 'select',
-    style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:160px;user-select:none'
-  }, trigLabel);
-
-  const propMenu = el('div', {
-    style: 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:220px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0'
-  });
-
-  const allChk = el('input', { type: 'checkbox' });
-  allChk.checked = true;
-  propMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px' },
-    allChk, el('span', {}, 'All Properties')));
-
-  const propChks = props.map(p => {
-    const chk = el('input', { type: 'checkbox' });
-    chk.dataset.id = p.id;
-    chk.checked = true;
-    propMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px' },
-      chk, el('span', {}, p.name)));
-    return chk;
-  });
-
-  const syncPropSel = () => {
-    const sel = propChks.filter(c => c.checked);
-    const n = sel.length;
-    allChk.checked = n === propChks.length;
-    allChk.indeterminate = n > 0 && n < propChks.length;
-    trigLabel.textContent = n === propChks.length ? 'All Properties'
-      : n === 0 ? 'No Properties'
-      : n === 1 ? (props.find(p => p.id === sel[0].dataset.id)?.name || '1 Property')
-      : `${n} Properties`;
-    selectedPropIds = new Set(sel.map(c => c.dataset.id));
-  };
 
   allChk.onchange = () => {
-    propChks.forEach(c => { c.checked = allChk.checked; });
+    const visibleChks = propChks.filter(c => c.closest('label')?.style.display !== 'none');
+    visibleChks.forEach(c => { c.checked = allChk.checked; });
     allChk.indeterminate = false;
     syncPropSel();
+    updateYearOptions();
     render();
   };
-  propChks.forEach(chk => { chk.onchange = () => { syncPropSel(); render(); }; });
-
+  propChks.forEach(chk => { chk.onchange = () => { syncPropSel(); updateYearOptions(); render(); }; });
   propTrigger.onclick = e => { e.stopPropagation(); propMenu.style.display = propMenu.style.display === 'none' ? '' : 'none'; };
   propMenu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { propMenu.style.display = 'none'; });
 
+  yearTrigger.onclick = e => { e.stopPropagation(); yearMenu.style.display = yearMenu.style.display === 'none' ? '' : 'none'; };
+  yearMenu.onclick = e => e.stopPropagation();
+
+  document.addEventListener('click', () => {
+    streamMenu.style.display = 'none';
+    propMenu.style.display = 'none';
+    yearMenu.style.display = 'none';
+  });
+
+  streamWrapper.appendChild(streamTrigger);
+  streamWrapper.appendChild(streamMenu);
   propWrapper.appendChild(propTrigger);
   propWrapper.appendChild(propMenu);
-  // -------------------------------------------------------------------------
+  yearWrapper.appendChild(yearTrigger);
+  yearWrapper.appendChild(yearMenu);
 
-  const yearSel = el('select', { class: 'select' });
-
-  const updateYearOptions = () => {
-    const years = new Set(availableYears());
-    const sorted = [...years].sort();
-    const prev = yearSel.value;
-    yearSel.innerHTML = '';
-    sorted.forEach(y => {
-      const o = document.createElement('option');
-      o.value = y; o.textContent = y;
-      if (y === prev) o.selected = true;
-      yearSel.appendChild(o);
+  // ── Data helpers ──────────────────────────────────────────────────────────
+  const getSelIds = () => {
+    const base = selectedPropIds.size > 0 ? [...selectedPropIds] : props.map(p => p.id);
+    if (selectedStreamIds.size === 0) return base.length ? base : [props[0].id];
+    const filtered = base.filter(id => {
+      const p = byId('properties', id);
+      const sk = p?.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
+      return selectedStreamIds.has(sk);
     });
-    if (!yearSel.value && sorted.length) yearSel.value = sorted[sorted.length - 1];
+    return filtered.length ? filtered : base.length ? [base[0]] : [props[0].id];
   };
 
-  updateYearOptions();
+  const getSelYears = () => [...selectedYears].sort().filter(Boolean);
 
-  const resetBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => {
-    streamChks.forEach(c => { c.checked = true; });
-    allStreamChk.checked = true; allStreamChk.indeterminate = false;
-    syncStreamSel();
-    propChks.forEach(c => { c.checked = true; });
-    allChk.checked = true; allChk.indeterminate = false;
-    syncPropSel();
-    const cy = String(new Date().getFullYear());
-    if ([...yearSel.options].some(o => o.value === cy)) yearSel.value = cy;
-    render();
-  }});
-
-  const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
-  controls.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
-  controls.appendChild(streamWrapper);
-  controls.appendChild(propWrapper);
-  controls.appendChild(yearSel);
-  controls.appendChild(resetBtn);
-  wrap.appendChild(controls);
-
-  const gridWrap = el('div', {});
-  wrap.appendChild(gridWrap);
-
-  const chartWrap = el('div', { class: 'grid grid-2 mt-16' },
-    el('div', { class: 'card' },
-      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Forecast vs Actual')),
-      el('div', { class: 'chart-wrap' }, el('canvas', { id: 'fc-prop-chart' }))
-    ),
-    el('div', { class: 'card' },
-      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Annual Summary')),
-      el('div', { id: 'fc-prop-summary' })
-    )
-  );
-  wrap.appendChild(chartWrap);
-
-  const breakdownWrap = el('div', {});
-  wrap.appendChild(breakdownWrap);
-
-  const getAggregated = () => {
+  const getAggregated = (year) => {
     const propIds = getSelIds();
-    const year = yearSel.value;
     const results = propIds.map(id => getForecastVsActual('property', id, year));
     const months = results[0].months.map((_, i) => ({
       key: results[0].months[i].key,
@@ -248,14 +282,23 @@ function buildPropertySection(wrap) {
     return { months, yearTarget };
   };
 
+  // ── Render functions ──────────────────────────────────────────────────────
   const render = () => {
-    updateYearOptions();
     const selIds = getSelIds();
+    const years = getSelYears();
     gridWrap.innerHTML = '';
-    if (selIds.length === 1) {
-      gridWrap.appendChild(buildMonthlyGrid(selIds[0], yearSel.value, 'property', () => { renderChart(); renderSummary(); }));
-    } else {
-      gridWrap.appendChild(buildAggregatedGrid(selIds, yearSel.value));
+    if (years.length === 0) return;
+    for (const year of years) {
+      if (years.length > 1) {
+        gridWrap.appendChild(el('div', {
+          style: 'font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);padding:16px 0 4px;border-top:2px solid var(--border);margin-top:8px'
+        }, year));
+      }
+      if (selIds.length === 1) {
+        gridWrap.appendChild(buildMonthlyGrid(selIds[0], year, 'property', () => { renderChart(); renderSummary(); }));
+      } else {
+        gridWrap.appendChild(buildAggregatedGrid(selIds, year));
+      }
     }
     renderChart();
     renderSummary();
@@ -264,7 +307,8 @@ function buildPropertySection(wrap) {
 
   const renderBreakdown = (selIds) => {
     breakdownWrap.innerHTML = '';
-    const year = yearSel.value;
+    const years = getSelYears();
+    const year = years[years.length - 1] || String(new Date().getFullYear());
     const bCard = buildPropertyBreakdownCard(selIds, year);
     breakdownWrap.appendChild(bCard);
     const bTw = bCard.querySelector('.table-wrap');
@@ -278,27 +322,42 @@ function buildPropertySection(wrap) {
   };
 
   const renderChart = () => {
-    const { months } = getAggregated();
-    charts.bar('fc-prop-chart', {
-      labels: MONTHS,
-      datasets: [
-        { label: 'Forecast Rev', data: months.map(m => Math.round(m.forecastRev)), backgroundColor: 'rgba(99,102,241,0.5)', borderColor: '#6366f1', borderWidth: 1 },
-        { label: 'Actual Rev',   data: months.map(m => Math.round(m.actualRev)),   backgroundColor: '#10b981' },
-        { label: 'Variance',     data: months.map(m => Math.round(m.revVariance)), backgroundColor: m => m.raw < 0 ? '#ef4444' : '#10b981' }
-      ]
+    const years = getSelYears();
+    const bgColors  = ['rgba(99,102,241,0.5)', 'rgba(245,158,11,0.45)', 'rgba(16,185,129,0.4)', 'rgba(239,68,68,0.4)'];
+    const lineColors = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
+    const datasets = [];
+    years.forEach((year, idx) => {
+      const { months } = getAggregated(year);
+      const bg = bgColors[idx % bgColors.length];
+      const ln = lineColors[idx % lineColors.length];
+      datasets.push({ label: `Forecast ${year}`, data: months.map(m => Math.round(m.forecastRev)), backgroundColor: bg, borderColor: ln, borderWidth: 1 });
+      datasets.push({ label: `Actual ${year}`,   data: months.map(m => Math.round(m.actualRev)),   backgroundColor: ln });
+      if (years.length === 1) {
+        datasets.push({ label: 'Variance', data: months.map(m => Math.round(m.revVariance)), backgroundColor: m => m.raw < 0 ? '#ef4444' : '#10b981' });
+      }
     });
+    charts.bar('fc-prop-chart', { labels: MONTHS, datasets });
   };
 
   const renderSummary = () => {
-    const { months, yearTarget } = getAggregated();
-    const forecastRev = months.reduce((s, m) => s + m.forecastRev, 0);
-    const forecastExp = months.reduce((s, m) => s + m.forecastExp, 0);
-    const actualRev   = months.reduce((s, m) => s + m.actualRev, 0);
-    const actualExp   = months.reduce((s, m) => s + m.actualExp, 0);
+    const years = getSelYears();
+    let forecastRev = 0, forecastExp = 0, actualRev = 0, actualExp = 0;
+    let yearTarget = { revenue: 0, expenses: 0 };
+    let allMonths = [];
+    for (const year of years) {
+      const agg = getAggregated(year);
+      forecastRev += agg.months.reduce((s, m) => s + m.forecastRev, 0);
+      forecastExp += agg.months.reduce((s, m) => s + m.forecastExp, 0);
+      actualRev   += agg.months.reduce((s, m) => s + m.actualRev, 0);
+      actualExp   += agg.months.reduce((s, m) => s + m.actualExp, 0);
+      yearTarget.revenue  += agg.yearTarget?.revenue  || 0;
+      yearTarget.expenses += agg.yearTarget?.expenses || 0;
+      allMonths = allMonths.concat(agg.months);
+    }
     const el2 = document.getElementById('fc-prop-summary');
     if (!el2) return;
     el2.innerHTML = '';
-    const insightItems = buildForecastInsightItems(months, yearTarget);
+    const insightItems = buildForecastInsightItems(allMonths, yearTarget);
     const items = [
       ...insightItems,
       summaryRow('Forecast Revenue',      formatEUR(forecastRev)),
@@ -326,7 +385,46 @@ function buildPropertySection(wrap) {
     el2.appendChild(el('div', { class: 'flex-col gap-8', style: 'padding:16px' }, ...items));
   };
 
-  yearSel.onchange = render;
+  // ── Controls assembly ─────────────────────────────────────────────────────
+  const resetBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => {
+    streamChks.forEach(c => { c.checked = true; });
+    allStreamChk.checked = true; allStreamChk.indeterminate = false;
+    syncStreamSel(); // → syncPropertyVisibility → syncPropSel + updateYearOptions
+    const curYear = String(new Date().getFullYear());
+    yearChks.forEach(c => { c.checked = c.dataset.year === curYear; });
+    if (yearChks.every(c => !c.checked) && yearChks.length > 0) yearChks[yearChks.length - 1].checked = true;
+    syncYearSel();
+    render();
+  }});
+
+  const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
+  controls.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
+  controls.appendChild(streamWrapper);
+  controls.appendChild(propWrapper);
+  controls.appendChild(yearWrapper);
+  controls.appendChild(resetBtn);
+  wrap.appendChild(controls);
+
+  const gridWrap = el('div', {});
+  wrap.appendChild(gridWrap);
+
+  const chartWrap = el('div', { class: 'grid grid-2 mt-16' },
+    el('div', { class: 'card' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Forecast vs Actual')),
+      el('div', { class: 'chart-wrap' }, el('canvas', { id: 'fc-prop-chart' }))
+    ),
+    el('div', { class: 'card' },
+      el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Annual Summary')),
+      el('div', { id: 'fc-prop-summary' })
+    )
+  );
+  wrap.appendChild(chartWrap);
+
+  const breakdownWrap = el('div', {});
+  wrap.appendChild(breakdownWrap);
+
+  // ── Initial render ────────────────────────────────────────────────────────
+  updateYearOptions();
   render();
 }
 
