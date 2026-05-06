@@ -426,6 +426,8 @@ function buildPropertySection(wrap) {
   // ── Initial render ────────────────────────────────────────────────────────
   updateYearOptions();
   render();
+  // Defer chart/summary render until elements are in the live DOM
+  requestAnimationFrame(() => { renderChart(); renderSummary(); });
 }
 
 // ===== SERVICE FORECAST =====
