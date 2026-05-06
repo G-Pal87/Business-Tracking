@@ -1343,9 +1343,9 @@
       "category": "maintenance",
       "amount": 200000,
       "currency": "EUR",
-      "date": "2026-05-06",
-      "vendor": "",
-      "vendorId": "",
+      "date": "2026-02-02",
+      "vendor": "Viktoria Paphos",
+      "vendorId": "vnd_mo8xfao7jy",
       "description": "",
       "stream": "short_term_rental",
       "inventoryItemId": "",
@@ -1355,7 +1355,7 @@
       "recurrence": "recurring",
       "createdAt": 1778051066375,
       "createdBy": "Giorgos",
-      "updatedAt": 1778051066375,
+      "updatedAt": 1778051310205,
       "updatedBy": "Giorgos"
     }
   ],
