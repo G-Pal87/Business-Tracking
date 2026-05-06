@@ -399,9 +399,9 @@ function buildPropertySection(wrap) {
 
   const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
   controls.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
+  controls.appendChild(yearWrapper);
   controls.appendChild(streamWrapper);
   controls.appendChild(propWrapper);
-  controls.appendChild(yearWrapper);
   controls.appendChild(resetBtn);
   wrap.appendChild(controls);
 
@@ -488,37 +488,100 @@ function buildServiceSection(wrap) {
   svcWrapper.appendChild(svcMenu);
   // -------------------------------------------------------------------------
 
-  const yearSel = el('select', { class: 'select' });
+  // ── Year multi-select (service forecast) ──────────────────────────────────
+  let svcYearChks = [];
+  let selectedSvcYears = new Set();
 
-  const updateYearOptions = () => {
-    const years = new Set(availableYears());
-    const sorted = [...years].sort();
-    const prev = yearSel.value;
-    yearSel.innerHTML = '';
-    sorted.forEach(y => {
-      const o = document.createElement('option');
-      o.value = y; o.textContent = y;
-      if (y === prev) o.selected = true;
-      yearSel.appendChild(o);
-    });
-    if (!yearSel.value && sorted.length) yearSel.value = sorted[sorted.length - 1];
+  const svcYearWrapper = el('div', { style: 'position:relative' });
+  const svcYearTrigLabel = el('span', {}, String(new Date().getFullYear()));
+  const svcYearTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:90px;user-select:none' }, svcYearTrigLabel);
+  const svcYearMenu = el('div', { style: 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:160px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0;max-height:320px;overflow-y:auto' });
+
+  const syncSvcYearSel = () => {
+    const sel = svcYearChks.filter(c => c.checked);
+    svcYearTrigLabel.textContent =
+      sel.length === 0 ? 'No Years'
+      : sel.length === svcYearChks.length && svcYearChks.length === 1 ? sel[0].dataset.year
+      : sel.length === svcYearChks.length ? 'All Years'
+      : sel.length === 1 ? sel[0].dataset.year
+      : `${sel.length} Years`;
+    selectedSvcYears = new Set(sel.map(c => c.dataset.year));
   };
 
-  updateYearOptions();
+  const updateSvcYearOptions = () => {
+    // Only years that have service forecast entries
+    const years = new Set();
+    const curYear = String(new Date().getFullYear());
+    for (const f of (state.db.forecasts || [])) {
+      if (f.type === 'service' && f.year) years.add(String(f.year));
+    }
+    // Also include years with actual paid invoices for these streams
+    for (const inv of listActive('invoices')) {
+      const id = inv.stream;
+      if (serviceEntities.some(s => s.id === id) && inv.issueDate) years.add(inv.issueDate.slice(0, 4));
+    }
+    if (years.size === 0) years.add(curYear);
+
+    const sorted = [...years].sort();
+    const prev = new Set([...selectedSvcYears]);
+
+    svcYearMenu.innerHTML = '';
+    svcYearChks = [];
+
+    const allYrChk = el('input', { type: 'checkbox' });
+    allYrChk.onchange = () => {
+      svcYearChks.forEach(c => { c.checked = allYrChk.checked; });
+      allYrChk.indeterminate = false;
+      syncSvcYearSel();
+      render();
+    };
+    svcYearMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px' }, allYrChk, el('span', {}, 'All Years')));
+
+    sorted.forEach(y => {
+      const chk = el('input', { type: 'checkbox' });
+      chk.dataset.year = y;
+      chk.checked = prev.size > 0 ? prev.has(y) : y === curYear;
+      chk.onchange = () => {
+        const sel = svcYearChks.filter(c => c.checked);
+        allYrChk.checked = svcYearChks.length > 0 && sel.length === svcYearChks.length;
+        allYrChk.indeterminate = sel.length > 0 && sel.length < svcYearChks.length;
+        syncSvcYearSel();
+        render();
+      };
+      svcYearMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px' }, chk, el('span', {}, y)));
+      svcYearChks.push(chk);
+    });
+
+    if (svcYearChks.every(c => !c.checked) && svcYearChks.length > 0) svcYearChks[svcYearChks.length - 1].checked = true;
+    const sel = svcYearChks.filter(c => c.checked);
+    allYrChk.checked = svcYearChks.length > 0 && sel.length === svcYearChks.length;
+    allYrChk.indeterminate = sel.length > 0 && sel.length < svcYearChks.length;
+    syncSvcYearSel();
+  };
+
+  svcYearTrigger.onclick = e => { e.stopPropagation(); svcYearMenu.style.display = svcYearMenu.style.display === 'none' ? '' : 'none'; };
+  svcYearMenu.onclick = e => e.stopPropagation();
+  document.addEventListener('click', () => { svcYearMenu.style.display = 'none'; });
+  svcYearWrapper.appendChild(svcYearTrigger);
+  svcYearWrapper.appendChild(svcYearMenu);
+
+  const getSelSvcYears = () => [...selectedSvcYears].sort().filter(Boolean);
 
   const svcResetBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => {
     svcChks.forEach(c => { c.checked = true; });
     allSvcChk.checked = true; allSvcChk.indeterminate = false;
     syncSvcSel();
-    const cy = String(new Date().getFullYear());
-    if ([...yearSel.options].some(o => o.value === cy)) yearSel.value = cy;
+    const curYear = String(new Date().getFullYear());
+    svcYearChks.forEach(c => { c.checked = c.dataset.year === curYear; });
+    if (svcYearChks.every(c => !c.checked) && svcYearChks.length > 0) svcYearChks[svcYearChks.length - 1].checked = true;
+    syncSvcYearSel();
     render();
   }});
 
   const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
   controls.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
   controls.appendChild(svcWrapper);
-  controls.appendChild(yearSel);
+  controls.appendChild(svcYearWrapper);
   controls.appendChild(svcResetBtn);
   wrap.appendChild(controls);
 
@@ -537,9 +600,8 @@ function buildServiceSection(wrap) {
   );
   wrap.appendChild(chartWrap);
 
-  const getAggregated = () => {
+  const getAggregated = (year) => {
     const streamIds = getSelIds();
-    const year = yearSel.value;
     const results = streamIds.map(id => getForecastVsActual('service', id, year));
     const months = results[0].months.map((_, i) => ({
       key: results[0].months[i].key,
@@ -554,37 +616,56 @@ function buildServiceSection(wrap) {
   };
 
   const render = () => {
-    updateYearOptions();
+    updateSvcYearOptions();
     const selIds = getSelIds();
+    const years = getSelSvcYears();
     gridWrap.innerHTML = '';
-    if (selIds.length === 1) {
-      gridWrap.appendChild(buildMonthlyGrid(selIds[0], yearSel.value, 'service', () => { renderChart(); renderSummary(); }));
-    } else {
-      gridWrap.appendChild(buildAggregatedGrid(selIds, yearSel.value, 'service'));
+    if (years.length === 0) return;
+    for (const year of years) {
+      if (years.length > 1) {
+        gridWrap.appendChild(el('div', {
+          style: 'font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);padding:16px 0 4px;border-top:2px solid var(--border);margin-top:8px'
+        }, year));
+      }
+      if (selIds.length === 1) {
+        gridWrap.appendChild(buildMonthlyGrid(selIds[0], year, 'service', () => { renderChart(); renderSummary(); }));
+      } else {
+        gridWrap.appendChild(buildAggregatedGrid(selIds, year, 'service'));
+      }
     }
     renderChart();
     renderSummary();
   };
 
   const renderChart = () => {
-    const { months } = getAggregated();
-    charts.bar('fc-svc-chart', {
-      labels: MONTHS,
-      datasets: [
-        { label: 'Forecast', data: months.map(m => Math.round(m.forecastRev)), backgroundColor: 'rgba(99,102,241,0.5)', borderColor: '#6366f1', borderWidth: 1 },
-        { label: 'Invoiced (paid)', data: months.map(m => Math.round(m.actualRev)), backgroundColor: '#10b981' }
-      ]
+    const years = getSelSvcYears();
+    const bgColors   = ['rgba(99,102,241,0.5)', 'rgba(245,158,11,0.45)', 'rgba(16,185,129,0.4)', 'rgba(239,68,68,0.4)'];
+    const lineColors = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
+    const datasets = [];
+    years.forEach((year, idx) => {
+      const { months } = getAggregated(year);
+      datasets.push({ label: `Forecast ${year}`, data: months.map(m => Math.round(m.forecastRev)), backgroundColor: bgColors[idx % bgColors.length], borderColor: lineColors[idx % lineColors.length], borderWidth: 1 });
+      datasets.push({ label: `Invoiced ${year}`,  data: months.map(m => Math.round(m.actualRev)),  backgroundColor: lineColors[idx % lineColors.length] });
     });
+    charts.bar('fc-svc-chart', { labels: MONTHS, datasets });
   };
 
   const renderSummary = () => {
-    const { months, yearTarget } = getAggregated();
-    const forecastRev = months.reduce((s, m) => s + m.forecastRev, 0);
-    const actualRev   = months.reduce((s, m) => s + m.actualRev,   0);
+    const years = getSelSvcYears();
+    let forecastRev = 0, actualRev = 0;
+    let yearTarget = { revenue: 0 };
+    let allMonths = [];
+    for (const year of years) {
+      const agg = getAggregated(year);
+      forecastRev += agg.months.reduce((s, m) => s + m.forecastRev, 0);
+      actualRev   += agg.months.reduce((s, m) => s + m.actualRev,   0);
+      yearTarget.revenue += agg.yearTarget?.revenue || 0;
+      allMonths = allMonths.concat(agg.months);
+    }
     const el2 = document.getElementById('fc-svc-summary');
     if (!el2) return;
     el2.innerHTML = '';
-    const insightItems = buildForecastInsightItems(months, yearTarget);
+    const insightItems = buildForecastInsightItems(allMonths, yearTarget);
     const items = [
       ...insightItems,
       summaryRow('Forecast Revenue', formatEUR(forecastRev)),
@@ -607,7 +688,7 @@ function buildServiceSection(wrap) {
     el2.appendChild(el('div', { class: 'flex-col gap-8', style: 'padding:16px' }, ...items));
   };
 
-  yearSel.onchange = render;
+  updateSvcYearOptions();
   render();
 }
 
