@@ -580,8 +580,8 @@ function buildServiceSection(wrap) {
 
   const controls = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
   controls.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
-  controls.appendChild(svcWrapper);
   controls.appendChild(svcYearWrapper);
+  controls.appendChild(svcWrapper);
   controls.appendChild(svcResetBtn);
   wrap.appendChild(controls);
 
