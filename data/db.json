@@ -7199,8 +7199,10 @@
       },
       "createdAt": 1778162866117,
       "createdBy": "Giorgos",
-      "updatedAt": 1778162866117,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778162898112,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778162898112,
+      "deletedBy": "Giorgos"
     }
   ],
   "tenants": [],
