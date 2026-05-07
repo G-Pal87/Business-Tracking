@@ -9888,8 +9888,9 @@
       "source": "pdf_import",
       "createdAt": 1777971918833,
       "createdBy": "Giorgos",
-      "updatedAt": 1778182249497,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778186810478,
+      "updatedBy": "Giorgos",
+      "pdfPath": "invoices/Invoice-M_WPrimeSolutions_2002-SWG.pdf"
     },
     {
       "id": "inv_mosellmfaz",
