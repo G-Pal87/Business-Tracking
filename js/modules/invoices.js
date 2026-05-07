@@ -489,14 +489,16 @@ function openBuilder(existing) {
 
     // Generate and persist PDF for builder-created invoices
     if (inv.source !== 'pdf_import') {
-      const pdfPath = `invoices/${inv.id}.pdf`;
+      const pdfPath = `invoices/${inv.id}.pdf`;   // always folder-prefixed, never repo root
+      const invLabel = inv.number || inv.id;
       try {
         const b64 = generateInvoicePDF(inv).output('datauristring').split(',')[1];
-        await uploadGithubFile(pdfPath, b64, `${existing ? 'Update' : 'Create'} PDF for invoice ${inv.number || inv.id}`);
+        await uploadGithubFile(pdfPath, b64, `${existing ? 'Update' : 'Create'} PDF for invoice ${invLabel}`);
         if (inv.pdfPath !== pdfPath) { inv.pdfPath = pdfPath; upsert('invoices', inv); }
+        toast(`Invoice ${invLabel} was successfully uploaded to the repo.`, 'success', 4000);
       } catch (err) {
-        console.warn('PDF upload to GitHub failed:', err);
-        toast(`Invoice saved. PDF not stored: ${err.message}`, 'warning', 5000);
+        console.error('Invoice PDF upload failed:', err);
+        toast(`Invoice ${invLabel} could not be uploaded to the repo.`, 'danger', 6000);
       }
     }
 
@@ -599,7 +601,9 @@ function previewInvoice(inv, clientId) {
         if (inv.pdfPath) {
           try { await deleteGithubFile(inv.pdfPath, null, `Replace PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
         }
-        const newPath = inv.pdfPath || `invoices/${inv.id}.pdf`;
+        // Always ensure the path is folder-prefixed; correct any legacy bare filenames.
+        const rawPath = inv.pdfPath || `invoices/${inv.id}.pdf`;
+        const newPath = rawPath.includes('/') ? rawPath : `invoices/${rawPath}`;
         await uploadGithubFile(newPath, b64, `Upload PDF for invoice ${inv.number || inv.id}`);
         const updated = { ...inv, pdfPath: newPath };
         delete updated.pdfData;

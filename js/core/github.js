@@ -390,27 +390,43 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
   const { owner, repo, branch, token } = state.github;
   if (!owner || !repo || !token) throw new Error('GitHub not configured — add owner/repo/token in Settings');
 
+  // Normalise path: strip any accidental leading slash so files always land
+  // inside their intended folder, not the repo root.
+  const cleanPath = path.replace(/^\/+/, '');
+
   const headers = {
     'Accept':        'application/vnd.github+json',
     'Authorization': `token ${token}`,
     'Content-Type':  'application/json'
   };
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}`;
 
-  // Check if the file already exists so we can include its SHA (required for updates).
+  // Check if the file already exists so we can include its SHA (required for
+  // updates). A 404 here means the file doesn't exist yet — that is expected
+  // for new files and handled by omitting the sha field from the PUT body.
+  // GitHub creates parent directories automatically, so a missing folder is
+  // never an error here.
   let existingSha = null;
   try {
     const check = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`, { headers, cache: 'no-store' });
-    if (check.ok) { const d = await check.json(); existingSha = d.sha; }
-  } catch { /* file doesn't exist yet — that's fine */ }
+    if (check.ok) {
+      const d = await check.json();
+      existingSha = d.sha;
+    }
+    // 404 → file does not exist yet; proceed to create without sha
+  } catch { /* network error during existence check — proceed anyway */ }
 
   const body = { message, content: b64Content, branch: branch || 'main' };
   if (existingSha) body.sha = existingSha;
 
   const res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
   if (!res.ok) {
+    let errBody = '';
+    try { errBody = await res.text(); } catch { /* ignore */ }
+    console.error(`GitHub file upload failed (${res.status}) for path "${cleanPath}":`, errBody);
     if (res.status === 401 || res.status === 403) throw new Error('Token lacks write access');
-    throw new Error(`File upload failed (${res.status})`);
+    if (res.status === 404) throw new Error(`Repository or branch not found (404). Check owner/repo/branch settings. Path: ${cleanPath}`);
+    throw new Error(`File upload failed (${res.status}): ${errBody}`);
   }
   const data = await res.json();
   return { sha: data.content.sha };
