@@ -10631,9 +10631,11 @@
       "notes": "",
       "createdAt": 1778176406098,
       "createdBy": "Giorgos",
-      "updatedAt": 1778176407829,
+      "updatedAt": 1778179892121,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/inv_movsbeg7br.pdf"
+      "pdfPath": "invoices/inv_movsbeg7br.pdf",
+      "deletedAt": 1778179892121,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "inv_movseowl8s",
@@ -10663,9 +10665,11 @@
       "notes": "",
       "createdAt": 1778176562951,
       "createdBy": "Giorgos",
-      "updatedAt": 1778176564567,
+      "updatedAt": 1778179893338,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/inv_movseowl8s.pdf"
+      "pdfPath": "invoices/inv_movseowl8s.pdf",
+      "deletedAt": 1778179893338,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "inv_movsfrvwlu",
@@ -10695,9 +10699,11 @@
       "notes": "",
       "createdAt": 1778176616538,
       "createdBy": "Giorgos",
-      "updatedAt": 1778176618163,
+      "updatedAt": 1778179894494,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/inv_movsfrvwlu.pdf"
+      "pdfPath": "invoices/inv_movsfrvwlu.pdf",
+      "deletedAt": 1778179894494,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "inv_movtc9pfpj",
@@ -10727,9 +10733,11 @@
       "notes": "",
       "createdAt": 1778178126893,
       "createdBy": "Giorgos",
-      "updatedAt": 1778178128584,
+      "updatedAt": 1778179895723,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/inv_movtc9pfpj.pdf"
+      "pdfPath": "invoices/inv_movtc9pfpj.pdf",
+      "deletedAt": 1778179895723,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "inv_movu3ufgbe",
