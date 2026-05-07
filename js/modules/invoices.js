@@ -31,6 +31,12 @@ export default {
   destroy() {}
 };
 
+async function deleteInvoiceFile(inv) {
+  if (inv.pdfPath) {
+    try { await deleteGithubFile(inv.pdfPath, null, `Delete PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
+  }
+}
+
 // ── One-time migration: move embedded pdfData → GitHub invoices/ folder ───────
 
 let migrationScheduled = false;
@@ -121,7 +127,11 @@ function build() {
     if (!count) return;
     const ok = await confirmDialog(`Delete ${count} invoice(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
-    for (const id of [...selected]) softDelete('invoices', id);
+    for (const id of [...selected]) {
+      const inv = byId('invoices', id);
+      if (inv) await deleteInvoiceFile(inv);
+      softDelete('invoices', id);
+    }
     selected.clear();
     toast(`Deleted ${count} invoice(s)`, 'success');
     renderTable();
@@ -229,7 +239,7 @@ function build() {
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async (e) => {
         e.stopPropagation();
         const ok = await confirmDialog(`Delete ${r.number}?`, { danger: true, okLabel: 'Delete' });
-        if (ok) { softDelete('invoices', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (ok) { await deleteInvoiceFile(r); softDelete('invoices', r.id); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
       tr.onclick = () => openPreview(r.id);
