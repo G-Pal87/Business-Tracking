@@ -7157,6 +7157,28 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777669591749,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "vnd_movk38b4gu",
+      "name": "Maria Hungary",
+      "role": "cleaner",
+      "phone": "",
+      "email": "",
+      "notes": "",
+      "rates": {},
+      "pricingMode": "apt_type",
+      "hourlyRate": 0,
+      "currency": "EUR",
+      "aptTypeRates": {
+        "studio": 10,
+        "one_bedroom": 20,
+        "two_bedroom": 30,
+        "three_bedroom_plus": 40
+      },
+      "createdAt": 1778162605012,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778162605012,
+      "updatedBy": "Giorgos"
     }
   ],
   "tenants": [],
