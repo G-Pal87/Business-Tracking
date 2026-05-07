@@ -10424,10 +10424,10 @@
       "total": 1000,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M&WPrimeSolutions_2015_24-VITAS.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions_2015_24-VITAS.pdf",
       "createdAt": 1777974729294,
       "createdBy": "Giorgos",
-      "updatedAt": 1778181017430,
+      "updatedAt": 1778185887323,
       "updatedBy": "Giorgos"
     },
     {
