@@ -10666,6 +10666,37 @@
       "updatedAt": 1778176564567,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/inv_movseowl8s.pdf"
+    },
+    {
+      "id": "inv_movsfrvwlu",
+      "number": "new",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2026-05-07",
+      "dueDate": "2026-06-06",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_movsg1x77x",
+          "serviceId": "svc_003",
+          "description": "CS Advisory Hour",
+          "quantity": 1,
+          "unit": "hour",
+          "rate": 120,
+          "total": 120
+        }
+      ],
+      "subtotal": 120,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 120,
+      "notes": "",
+      "createdAt": 1778176616538,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778176616538,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
