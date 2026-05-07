@@ -7203,6 +7203,20 @@
       "updatedBy": "Giorgos",
       "deletedAt": 1778162898112,
       "deletedBy": "Giorgos"
+    },
+    {
+      "id": "vnd_movoh2433l",
+      "name": "xxx",
+      "role": "cleaner",
+      "phone": "",
+      "email": "",
+      "notes": "",
+      "rates": {},
+      "cleaningPeriods": [],
+      "createdAt": 1778169946970,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778169946970,
+      "updatedBy": "Giorgos"
     }
   ],
   "tenants": [],
