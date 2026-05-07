@@ -3,6 +3,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, toEUR, formatEUR } from '../core/data.js';
 import { VENDOR_ROLES, PROPERTY_TYPES, CURRENCIES } from '../core/config.js';
+import { navigate } from '../core/router.js';
 
 export default {
   id: 'vendors',
@@ -240,7 +241,7 @@ function openDetail(id) {
       softDelete('vendors', v.id);
       toast('Vendor deleted', 'success');
       closeModal();
-      setTimeout(() => location.hash = 'vendors', 250);
+      setTimeout(() => navigate('vendors'), 250);
     }
   });
 
@@ -381,7 +382,7 @@ function openForm(existing) {
       upsert('vendors', v);
       toast(existing ? 'Vendor updated' : 'Vendor added', 'success');
       closeModal();
-      setTimeout(() => location.hash = 'vendors', 200);
+      setTimeout(() => navigate('vendors'), 200);
     }
   });
   const cancelBtn = button('Cancel', { onClick: closeModal });
