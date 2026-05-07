@@ -9856,8 +9856,9 @@
       "source": "pdf_import",
       "createdAt": 1777971869613,
       "createdBy": "Giorgos",
-      "updatedAt": 1778186641591,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778186721303,
+      "updatedBy": "Giorgos",
+      "pdfPath": "invoices/Invoice_-_M_WPrimeSolutions_1001.pdf"
     },
     {
       "id": "inv_mosekkn58w",
