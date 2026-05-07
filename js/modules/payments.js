@@ -24,7 +24,7 @@ function build() {
 
   const sections = [allSection, scheduleSection, upcomingSection];
   const tabEls = [
-    el('div', { class: 'tab active' }, 'All Payments'),
+    el('div', { class: 'tab active' }, 'Short term Payments'),
     el('div', { class: 'tab' }, 'Rent Schedule'),
     el('div', { class: 'tab' }, 'Upcoming')
   ];
@@ -47,13 +47,29 @@ function build() {
 
 function buildAllPayments(wrap) {
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
+  const yearFilter   = new Set();
+  const monthFilter  = new Set();
   const propFilter   = new Set();
+  const typeFilter   = new Set();
   const statusFilter = new Set();
-  const streamFilter = new Set();
 
+  const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const yearOpts = () => {
+    const ys = new Set();
+    for (const p of listActivePayments()) if (p.date) ys.add(p.date.slice(0, 4));
+    return [...ys].sort().reverse().map(y => ({ value: y, label: y }));
+  };
+  const typeOpts = () => {
+    const ts = new Set();
+    for (const p of listActivePayments()) ts.add(p.source === 'airbnb' ? (p.airbnbType || p.type || 'other') : (p.type || 'other'));
+    return [...ts].sort().map(t => ({ value: t, label: t }));
+  };
+
+  const yearMS   = buildMultiSelect(yearOpts(),   yearFilter,   'All Years',      () => renderTable(), 'pay_years');
+  const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), monthFilter, 'All Months', () => renderTable(), 'pay_months');
   const propMS   = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderTable(), 'pay_props');
+  const typeMS   = buildMultiSelect(typeOpts(),   typeFilter,   'All Types',      () => renderTable(), 'pay_types');
   const statusMS = buildMultiSelect(Object.entries(PAYMENT_STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable(), 'pay_statuses');
-  const streamMS = buildMultiSelect(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), streamFilter, 'All Streams', () => renderTable(), 'pay_streams');
 
   let selected = new Set();
 
@@ -82,10 +98,12 @@ function buildAllPayments(wrap) {
   }});
   deleteSelBtn.style.display = 'none';
 
-  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); statusMS.reset(); streamMS.reset(); renderTable(); } });
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); propMS.reset(); typeMS.reset(); statusMS.reset(); renderTable(); } });
+  filterBar.appendChild(yearMS);
+  filterBar.appendChild(monthMS);
   filterBar.appendChild(propMS);
+  filterBar.appendChild(typeMS);
   filterBar.appendChild(statusMS);
-  filterBar.appendChild(streamMS);
   filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(deleteSelBtn);
@@ -113,9 +131,11 @@ function buildAllPayments(wrap) {
     tableWrap.innerHTML = '';
 
     let rows = [...listActivePayments()];
+    if (yearFilter.size > 0)   rows = rows.filter(r => r.date && yearFilter.has(r.date.slice(0, 4)));
+    if (monthFilter.size > 0)  rows = rows.filter(r => r.date && monthFilter.has(r.date.slice(5, 7)));
     if (propFilter.size > 0)   rows = rows.filter(r => propFilter.has(r.propertyId));
+    if (typeFilter.size > 0)   rows = rows.filter(r => typeFilter.has(r.source === 'airbnb' ? (r.airbnbType || r.type || 'other') : (r.type || 'other')));
     if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(r.status));
-    if (streamFilter.size > 0) rows = rows.filter(r => streamFilter.has(r.stream));
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
     if (rows.length === 0) {
@@ -131,7 +151,7 @@ function buildAllPayments(wrap) {
     const chkTh = el('th', { style: 'width:36px' });
     chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    ['Date', 'Property', 'Type', 'Source', 'Status'].forEach(h => htr.appendChild(el('th', {}, h)));
+    ['Date', 'Property', 'Type', 'Source', 'Status', 'Conf. Code'].forEach(h => htr.appendChild(el('th', {}, h)));
     htr.appendChild(el('th', { class: 'right' }, 'Amount'));
     htr.appendChild(el('th', { class: 'right' }, 'EUR'));
     htr.appendChild(el('th', { class: 'right' }, 'Gross'));
@@ -164,6 +184,7 @@ function buildAllPayments(wrap) {
       tr.appendChild(el('td', {}, r.source === 'airbnb' ? (r.airbnbType || r.type || '-') : (r.type || '-')));
       tr.appendChild(el('td', {}, el('span', { class: 'badge' }, r.source || 'manual')));
       tr.appendChild(el('td', {}, el('span', { class: `badge ${sMeta.css}` }, sMeta.label)));
+      tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px' }, r.confirmationCode || r.airbnbRef || ''));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
       tr.appendChild(el('td', { class: 'right num muted' }, r.airbnbGrossEarnings != null ? formatMoney(r.airbnbGrossEarnings, r.currency, { maxFrac: 0 }) : ''));
@@ -854,6 +875,7 @@ function openCSVImport() {
           type: 'rental',
           status: 'paid',
           airbnbKey: row.airbnbKey,
+          confirmationCode: row.confirmationCode,
           airbnbRef: row.confirmationCode,
           airbnbType: row.type,
           airbnbBookingDate: row.bookingDate,
@@ -928,6 +950,7 @@ function openCSVImport() {
           type: 'rental',
           status: 'pending',
           airbnbKey: row.airbnbKey,
+          confirmationCode: row.confirmationCode,
           airbnbRef: row.confirmationCode,
           airbnbType: row.type,
           airbnbBookingDate: row.bookingDate,
