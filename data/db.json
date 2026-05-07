@@ -710,9 +710,11 @@
       "notes": "Ulrike Katharina Schrödl · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147826967,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222927,
+      "updatedAt": 1778161714528,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMWR9MN82K"
+      "confirmationCode": "HMWR9MN82K",
+      "deletedAt": 1778161714528,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb09lb",
@@ -741,9 +743,11 @@
       "notes": "Katrine Sonnenschein · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147826969,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222929,
+      "updatedAt": 1778161714531,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM2CWCZA2P"
+      "confirmationCode": "HM2CWCZA2P",
+      "deletedAt": 1778161714531,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb09mls",
@@ -804,9 +808,11 @@
       "notes": "Natalia Grześkowiak · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147826971,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222933,
+      "updatedAt": 1778161714537,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMZ2KPRD4K"
+      "confirmationCode": "HMZ2KPRD4K",
+      "deletedAt": 1778161714537,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb09p1b",
@@ -899,9 +905,11 @@
       "notes": "Christian Huber · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147826975,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222938,
+      "updatedAt": 1778161714542,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM4N4F4N42"
+      "confirmationCode": "HM4N4F4N42",
+      "deletedAt": 1778161714542,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb09s3r",
@@ -962,9 +970,11 @@
       "notes": "Dorota Palmer · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147826978,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222942,
+      "updatedAt": 1778161714549,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMQKXJF85Y"
+      "confirmationCode": "HMQKXJF85Y",
+      "deletedAt": 1778161714549,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb09vqw",
@@ -993,9 +1003,11 @@
       "notes": "Myriam Le Floch · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147826979,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222943,
+      "updatedAt": 1778161714552,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMNK45XRBH"
+      "confirmationCode": "HMNK45XRBH",
+      "deletedAt": 1778161714552,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb09w2y",
@@ -1024,9 +1036,11 @@
       "notes": "Katharina Bittner · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147826980,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222945,
+      "updatedAt": 1778161714554,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMDN22YN8B"
+      "confirmationCode": "HMDN22YN8B",
+      "deletedAt": 1778161714554,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb09ye9",
@@ -1087,9 +1101,11 @@
       "notes": "Nicole Pohlmann · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147826983,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222948,
+      "updatedAt": 1778161714559,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMDTTPNM9D"
+      "confirmationCode": "HMDTTPNM9D",
+      "deletedAt": 1778161714559,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0a1ce",
@@ -1118,9 +1134,11 @@
       "notes": "Sandra Plattner · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147826985,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222950,
+      "updatedAt": 1778161714562,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMMX3F2PKH"
+      "confirmationCode": "HMMX3F2PKH",
+      "deletedAt": 1778161714562,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0a2o2",
@@ -1149,9 +1167,11 @@
       "notes": "Guido Hack · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147826986,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222952,
+      "updatedAt": 1778161714564,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMX9AKBNAQ"
+      "confirmationCode": "HMX9AKBNAQ",
+      "deletedAt": 1778161714564,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0a3q5",
@@ -1212,9 +1232,11 @@
       "notes": "Rhiannon Brown · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147826989,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222955,
+      "updatedAt": 1778161714569,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMK33J4M9T"
+      "confirmationCode": "HMK33J4M9T",
+      "deletedAt": 1778161714569,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0a6h",
@@ -1243,9 +1265,11 @@
       "notes": "Louis Sims · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147826990,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222957,
+      "updatedAt": 1778161714572,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM5SRNHBHA"
+      "confirmationCode": "HM5SRNHBHA",
+      "deletedAt": 1778161714572,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0a7qy",
@@ -1274,9 +1298,11 @@
       "notes": "Lisa Dannebaum · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147826991,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222958,
+      "updatedAt": 1778161714575,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMBXC3AXKX"
+      "confirmationCode": "HMBXC3AXKX",
+      "deletedAt": 1778161714575,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0a9gq",
@@ -1337,9 +1363,11 @@
       "notes": "Lucas Richards · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147826994,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222963,
+      "updatedAt": 1778161714580,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM529DHF9W"
+      "confirmationCode": "HM529DHF9W",
+      "deletedAt": 1778161714580,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0abiv",
@@ -1432,9 +1460,11 @@
       "notes": "Dominika Stula-Nankiewicz · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147826998,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222969,
+      "updatedAt": 1778161714587,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMQ4R3T45F"
+      "confirmationCode": "HMQ4R3T45F",
+      "deletedAt": 1778161714587,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0af6e",
@@ -1463,9 +1493,11 @@
       "notes": "Caroline Waterton · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147826999,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222971,
+      "updatedAt": 1778161714589,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM5S3ERAZK"
+      "confirmationCode": "HM5S3ERAZK",
+      "deletedAt": 1778161714589,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0ahhe",
@@ -1494,9 +1526,11 @@
       "notes": "Mona Dörrer · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827001,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222972,
+      "updatedAt": 1778161714592,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMPKEPNMMY"
+      "confirmationCode": "HMPKEPNMMY",
+      "deletedAt": 1778161714592,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0aib2",
@@ -1621,9 +1655,11 @@
       "notes": "Sonia Hołyszewska · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827006,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222980,
+      "updatedAt": 1778161714597,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMJEZPP5JE"
+      "confirmationCode": "HMJEZPP5JE",
+      "deletedAt": 1778161714597,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0anok",
@@ -1652,9 +1688,11 @@
       "notes": "Carol Grindrod · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827007,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222982,
+      "updatedAt": 1778161714604,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM8EDCAY5W"
+      "confirmationCode": "HM8EDCAY5W",
+      "deletedAt": 1778161714604,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0aoje",
@@ -1683,9 +1721,11 @@
       "notes": "Giorgos Ioannou · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827008,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222984,
+      "updatedAt": 1778161714606,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM2BE4FB8M"
+      "confirmationCode": "HM2BE4FB8M",
+      "deletedAt": 1778161714606,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0aq92",
@@ -1714,9 +1754,11 @@
       "notes": "Roza Zakaryan · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827010,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222986,
+      "updatedAt": 1778161714609,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMSSRRENET"
+      "confirmationCode": "HMSSRRENET",
+      "deletedAt": 1778161714609,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0ardf",
@@ -1777,9 +1819,11 @@
       "notes": "Jan Klos · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827013,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222990,
+      "updatedAt": 1778161714614,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMQWED8P8B"
+      "confirmationCode": "HMQWED8P8B",
+      "deletedAt": 1778161714614,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0av83",
@@ -1808,9 +1852,11 @@
       "notes": "Stéphanie Lassale · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827015,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222992,
+      "updatedAt": 1778161714616,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMFANMMPMX"
+      "confirmationCode": "HMFANMMPMX",
+      "deletedAt": 1778161714616,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0awks",
@@ -1871,9 +1917,11 @@
       "notes": "Franziska Maibach · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827018,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222996,
+      "updatedAt": 1778161714621,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM5EWDKYE8"
+      "confirmationCode": "HM5EWDKYE8",
+      "deletedAt": 1778161714621,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0az3h",
@@ -1902,9 +1950,11 @@
       "notes": "Nina Javaux · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827019,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222999,
+      "updatedAt": 1778161714624,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMYBKWRR4Y"
+      "confirmationCode": "HMYBKWRR4Y",
+      "deletedAt": 1778161714624,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0b1cb",
@@ -1933,9 +1983,11 @@
       "notes": "Robin Haxel · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827021,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223001,
+      "updatedAt": 1778161714626,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM848YJKT2"
+      "confirmationCode": "HM848YJKT2",
+      "deletedAt": 1778161714626,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0b2og",
@@ -1964,9 +2016,11 @@
       "notes": "Charlotte Rose · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827022,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223003,
+      "updatedAt": 1778161714629,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMTWZ3W2RC"
+      "confirmationCode": "HMTWZ3W2RC",
+      "deletedAt": 1778161714629,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0b485",
@@ -1995,9 +2049,11 @@
       "notes": "Melanie Catineau · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827024,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223005,
+      "updatedAt": 1778161714631,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMCY4RYFDC"
+      "confirmationCode": "HMCY4RYFDC",
+      "deletedAt": 1778161714631,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0b542",
@@ -2090,9 +2146,11 @@
       "notes": "Katarzyna Gwóźdź · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827029,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223011,
+      "updatedAt": 1778161714639,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMCHJK48XR"
+      "confirmationCode": "HMCHJK48XR",
+      "deletedAt": 1778161714639,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0bbli",
@@ -2153,9 +2211,11 @@
       "notes": "Maryia Yakhnis · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827032,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223015,
+      "updatedAt": 1778161714641,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMJNWPYZ5Y"
+      "confirmationCode": "HMJNWPYZ5Y",
+      "deletedAt": 1778161714641,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0bear",
@@ -2248,9 +2308,11 @@
       "notes": "Alex Quentin · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827036,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223022,
+      "updatedAt": 1778161714651,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMXDFCN4CK"
+      "confirmationCode": "HMXDFCN4CK",
+      "deletedAt": 1778161714651,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0bhfc",
@@ -2279,9 +2341,11 @@
       "notes": "Lori Bryan · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827037,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223024,
+      "updatedAt": 1778161714653,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMRNE8C2NN"
+      "confirmationCode": "HMRNE8C2NN",
+      "deletedAt": 1778161714653,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0bjfu",
@@ -2310,9 +2374,11 @@
       "notes": "Stephanie Grivelet · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827039,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223026,
+      "updatedAt": 1778161714656,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM4C3W5FPT"
+      "confirmationCode": "HM4C3W5FPT",
+      "deletedAt": 1778161714656,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0bkpb",
@@ -2341,9 +2407,11 @@
       "notes": "Reece Coles · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827040,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223029,
+      "updatedAt": 1778161714658,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMRKW539WX"
+      "confirmationCode": "HMRKW539WX",
+      "deletedAt": 1778161714658,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0bmqt",
@@ -2372,9 +2440,11 @@
       "notes": "Bernadett Paluska · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827042,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223031,
+      "updatedAt": 1778161714661,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMA28Q9MMM"
+      "confirmationCode": "HMA28Q9MMM",
+      "deletedAt": 1778161714661,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0boph",
@@ -2403,9 +2473,11 @@
       "notes": "April Cabaniuc · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827044,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223033,
+      "updatedAt": 1778161714663,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMRWSNYQYB"
+      "confirmationCode": "HMRWSNYQYB",
+      "deletedAt": 1778161714663,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0bpdx",
@@ -2498,9 +2570,11 @@
       "notes": "Krystian Jońca · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827049,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223041,
+      "updatedAt": 1778161714671,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMYY2F34BY"
+      "confirmationCode": "HMYY2F34BY",
+      "deletedAt": 1778161714671,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0bu44",
@@ -2529,9 +2603,11 @@
       "notes": "Katia Barabash · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827050,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223044,
+      "updatedAt": 1778161714673,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMYKJJJREJ"
+      "confirmationCode": "HMYKJJJREJ",
+      "deletedAt": 1778161714673,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0bwee",
@@ -2656,9 +2732,11 @@
       "notes": "Loes Staal · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827057,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223053,
+      "updatedAt": 1778161714683,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM9YFYMKRS"
+      "confirmationCode": "HM9YFYMKRS",
+      "deletedAt": 1778161714683,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0c3dn",
@@ -2687,9 +2765,11 @@
       "notes": "Andreas Kallis · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827059,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223055,
+      "updatedAt": 1778161714686,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMXQ2DER8H"
+      "confirmationCode": "HMXQ2DER8H",
+      "deletedAt": 1778161714686,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0c5jt",
@@ -2750,9 +2830,11 @@
       "notes": "Alex Quentin · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827063,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223059,
+      "updatedAt": 1778161714691,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMXDFCN4CK"
+      "confirmationCode": "HMXDFCN4CK",
+      "deletedAt": 1778161714691,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0c919",
@@ -2909,9 +2991,11 @@
       "notes": "Giuseppe Cocchiara · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827071,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223071,
+      "updatedAt": 1778161714703,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMNFYKPM9B"
+      "confirmationCode": "HMNFYKPM9B",
+      "deletedAt": 1778161714703,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0cg32",
@@ -3004,9 +3088,11 @@
       "notes": "Michał Bojanowski · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827076,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223078,
+      "updatedAt": 1778161714708,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMWHTSEB3Z"
+      "confirmationCode": "HMWHTSEB3Z",
+      "deletedAt": 1778161714708,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0clib",
@@ -3035,9 +3121,11 @@
       "notes": "Reece P · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827077,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223080,
+      "updatedAt": 1778161714713,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HME4TX3WY4"
+      "confirmationCode": "HME4TX3WY4",
+      "deletedAt": 1778161714713,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0cohn",
@@ -3098,9 +3186,11 @@
       "notes": "Olga Dambaeva · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827082,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223111,
+      "updatedAt": 1778161714743,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMRR44AYZT"
+      "confirmationCode": "HMRR44AYZT",
+      "deletedAt": 1778161714743,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0csg4",
@@ -3129,9 +3219,11 @@
       "notes": "TravelCosmos Linaraki · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827084,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223086,
+      "updatedAt": 1778161714718,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMHCQ4EYMF"
+      "confirmationCode": "HMHCQ4EYMF",
+      "deletedAt": 1778161714718,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0cugo",
@@ -3160,9 +3252,11 @@
       "notes": "Jan Sadílek · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827086,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223089,
+      "updatedAt": 1778161714720,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMM82K2MSY"
+      "confirmationCode": "HMM82K2MSY",
+      "deletedAt": 1778161714720,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0cw8z",
@@ -3223,9 +3317,11 @@
       "notes": "Febe Laermans · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827090,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223093,
+      "updatedAt": 1778161714725,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMZ9S3MSTK"
+      "confirmationCode": "HMZ9S3MSTK",
+      "deletedAt": 1778161714725,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0d0ld",
@@ -3318,9 +3414,11 @@
       "notes": "Kirill Kolesnyk · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827097,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223100,
+      "updatedAt": 1778161714733,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMQR4BRTHP"
+      "confirmationCode": "HMQR4BRTHP",
+      "deletedAt": 1778161714733,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0d7fx",
@@ -3381,9 +3479,11 @@
       "notes": "Julia Giannakis · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827101,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223106,
+      "updatedAt": 1778161714735,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMWX9JADM4"
+      "confirmationCode": "HMWX9JADM4",
+      "deletedAt": 1778161714735,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0dbcd",
@@ -3476,9 +3576,11 @@
       "notes": "Marta Gąsiorek · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827109,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223115,
+      "updatedAt": 1778161714747,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMKT8YWSHT"
+      "confirmationCode": "HMKT8YWSHT",
+      "deletedAt": 1778161714747,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0dk63",
@@ -3507,9 +3609,11 @@
       "notes": "Márta Fischer · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827112,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223117,
+      "updatedAt": 1778161714750,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMQ95YPKCB"
+      "confirmationCode": "HMQ95YPKCB",
+      "deletedAt": 1778161714750,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0dmf4",
@@ -3538,9 +3642,11 @@
       "notes": "Alain Rudolf · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827114,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223120,
+      "updatedAt": 1778161714752,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMEEKAAJ2B"
+      "confirmationCode": "HMEEKAAJ2B",
+      "deletedAt": 1778161714752,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0doe1",
@@ -3569,9 +3675,11 @@
       "notes": "Natalie Kaminko · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827116,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223122,
+      "updatedAt": 1778161714755,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMD3YYPTXN"
+      "confirmationCode": "HMD3YYPTXN",
+      "deletedAt": 1778161714755,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0dr4p",
@@ -3600,9 +3708,11 @@
       "notes": "Vitali Arkhipenka · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827119,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223125,
+      "updatedAt": 1778161714758,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMNBJDCFM5"
+      "confirmationCode": "HMNBJDCFM5",
+      "deletedAt": 1778161714758,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0dtfx",
@@ -3631,9 +3741,11 @@
       "notes": "Tim Philippe · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827121,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223127,
+      "updatedAt": 1778161714760,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMM3FNWSN8"
+      "confirmationCode": "HMM3FNWSN8",
+      "deletedAt": 1778161714760,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0dvbi",
@@ -3694,9 +3806,11 @@
       "notes": "Hrvoje Basic · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827126,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223132,
+      "updatedAt": 1778161714765,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMT3MYQ2MF"
+      "confirmationCode": "HMT3MYQ2MF",
+      "deletedAt": 1778161714765,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0e0ms",
@@ -3757,9 +3871,11 @@
       "notes": "Diana-Andreea Barbulescu · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827131,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223137,
+      "updatedAt": 1778161714767,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMFFTBEMAC"
+      "confirmationCode": "HMFFTBEMAC",
+      "deletedAt": 1778161714767,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0e51x",
@@ -3788,9 +3904,11 @@
       "notes": "Kelly Gorton · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827133,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223139,
+      "updatedAt": 1778161714772,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM9AZDQMBR"
+      "confirmationCode": "HM9AZDQMBR",
+      "deletedAt": 1778161714772,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0e7nt",
@@ -3851,9 +3969,11 @@
       "notes": "Sandra Sobkowiak · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827136,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223144,
+      "updatedAt": 1778161714775,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMZJ2TNF43"
+      "confirmationCode": "HMZJ2TNF43",
+      "deletedAt": 1778161714775,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0ebmi",
@@ -3914,9 +4034,11 @@
       "notes": "Eddy Sawaya · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827141,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223149,
+      "updatedAt": 1778161714777,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMHK8HRFTR"
+      "confirmationCode": "HMHK8HRFTR",
+      "deletedAt": 1778161714777,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0egjm",
@@ -3977,9 +4099,11 @@
       "notes": "Cara Deacon · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827146,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223153,
+      "updatedAt": 1778161714787,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMT8MZYTDT"
+      "confirmationCode": "HMT8MZYTDT",
+      "deletedAt": 1778161714787,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0el34",
@@ -4040,9 +4164,11 @@
       "notes": "Tamar Blor · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827151,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223158,
+      "updatedAt": 1778161714789,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM25B8Z2EW"
+      "confirmationCode": "HM25B8Z2EW",
+      "deletedAt": 1778161714789,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0eqfl",
@@ -4103,9 +4229,11 @@
       "notes": "Meggie Van Assen · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827157,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223163,
+      "updatedAt": 1778161714797,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM3MEFKTCH"
+      "confirmationCode": "HM3MEFKTCH",
+      "deletedAt": 1778161714797,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0ew14",
@@ -4134,9 +4262,11 @@
       "notes": "Rafael Fourkas · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827160,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223167,
+      "updatedAt": 1778161714799,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMB4ASY9EP"
+      "confirmationCode": "HMB4ASY9EP",
+      "deletedAt": 1778161714799,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0ezqf",
@@ -4165,9 +4295,11 @@
       "notes": "Eda Gürsoy · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827163,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223170,
+      "updatedAt": 1778161714801,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMZQ23PBXK"
+      "confirmationCode": "HMZQ23PBXK",
+      "deletedAt": 1778161714801,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0f2rh",
@@ -4196,9 +4328,11 @@
       "notes": "Lydia Lamoury · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827166,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223173,
+      "updatedAt": 1778161714804,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMXMXRRQB8"
+      "confirmationCode": "HMXMXRRQB8",
+      "deletedAt": 1778161714804,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0f52g",
@@ -4291,9 +4425,11 @@
       "notes": "Madeline Lauf · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778147827174,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223181,
+      "updatedAt": 1778161714811,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMATRTDNE5"
+      "confirmationCode": "HMATRTDNE5",
+      "deletedAt": 1778161714811,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0fdb1",
@@ -4322,9 +4458,11 @@
       "notes": "Philipp Splettstößer · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827177,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223183,
+      "updatedAt": 1778161714813,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMSANFMDNE"
+      "confirmationCode": "HMSANFMDNE",
+      "deletedAt": 1778161714813,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0fg9i",
@@ -4353,9 +4491,11 @@
       "notes": "Fabrício Bruner · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827180,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223186,
+      "updatedAt": 1778161714816,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMRBTMJECW"
+      "confirmationCode": "HMRBTMJECW",
+      "deletedAt": 1778161714816,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0fj4r",
@@ -4448,9 +4588,11 @@
       "notes": "Ellie Van Mulukom Van Der Linden · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827188,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223193,
+      "updatedAt": 1778161714823,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMDR9BCQ8J"
+      "confirmationCode": "HMDR9BCQ8J",
+      "deletedAt": 1778161714823,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0frnd",
@@ -4511,9 +4653,11 @@
       "notes": "Gemma Simons · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827194,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223199,
+      "updatedAt": 1778161714828,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM88Z52J8K"
+      "confirmationCode": "HM88Z52J8K",
+      "deletedAt": 1778161714828,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0fxf2",
@@ -4574,9 +4718,11 @@
       "notes": "Philipp Gutsche · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827200,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223205,
+      "updatedAt": 1778161714833,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM9NQTMTFW"
+      "confirmationCode": "HM9NQTMTFW",
+      "deletedAt": 1778161714833,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0g3z",
@@ -4637,9 +4783,11 @@
       "notes": "Tom Coleman · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827206,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223210,
+      "updatedAt": 1778161714838,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM5SKWS9YT"
+      "confirmationCode": "HM5SKWS9YT",
+      "deletedAt": 1778161714838,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0g9lm",
@@ -4668,9 +4816,11 @@
       "notes": "Rafael Pavlou · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827209,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223212,
+      "updatedAt": 1778161714840,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMZ8SRHRQQ"
+      "confirmationCode": "HMZ8SRHRQQ",
+      "deletedAt": 1778161714840,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0gc5e",
@@ -4731,9 +4881,11 @@
       "notes": "Hannah Kuroll · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827215,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223217,
+      "updatedAt": 1778161714845,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMYAD3JEPA"
+      "confirmationCode": "HMYAD3JEPA",
+      "deletedAt": 1778161714845,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0giv",
@@ -4826,9 +4978,11 @@
       "notes": "Lea Poppeck · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827224,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223225,
+      "updatedAt": 1778161714853,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HMR8ZYDT5D"
+      "confirmationCode": "HMR8ZYDT5D",
+      "deletedAt": 1778161714853,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0gria",
@@ -4857,9 +5011,11 @@
       "notes": "Anja Repalust · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827227,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223227,
+      "updatedAt": 1778161714855,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM4C3B2TB4"
+      "confirmationCode": "HM4C3B2TB4",
+      "deletedAt": 1778161714855,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0guqx",
@@ -4888,9 +5044,11 @@
       "notes": "Nikoloz Tarielashvili · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827230,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223229,
+      "updatedAt": 1778161714857,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM4SMFWQSD"
+      "confirmationCode": "HM4SMFWQSD",
+      "deletedAt": 1778161714857,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movbb0gyax",
@@ -4919,9 +5077,11 @@
       "notes": "Rita Katona · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778147827234,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223232,
+      "updatedAt": 1778161714860,
       "updatedBy": "Giorgos",
-      "confirmationCode": "HM4FJBFMCJ"
+      "confirmationCode": "HM4FJBFMCJ",
+      "deletedAt": 1778161714860,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43f19n",
@@ -4951,8 +5111,10 @@
       "notes": "Alexander Angelin · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222925,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222925,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714525,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714525,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43f7hf",
@@ -4982,8 +5144,10 @@
       "notes": "Oskar Lukasiewitsch · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222931,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222931,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714534,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714534,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43fa5m",
@@ -5013,8 +5177,10 @@
       "notes": "Radu Muresan · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222935,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222935,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714539,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714539,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43fcjl",
@@ -5044,8 +5210,10 @@
       "notes": "Sarah Marie Maronier · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222936,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222936,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714544,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714544,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43fgix",
@@ -5075,8 +5243,10 @@
       "notes": "Sarah Marie Maronier · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222940,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222940,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714547,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714547,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43fn8",
@@ -5106,8 +5276,10 @@
       "notes": "Laura Häger · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222947,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222947,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714557,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714557,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43ft6v",
@@ -5137,8 +5309,10 @@
       "notes": "Luanne Mason · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222953,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222953,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714567,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714567,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43g1fd",
@@ -5168,8 +5342,10 @@
       "notes": "Kim Krause-Walker · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222961,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222961,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714577,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714577,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43g54x",
@@ -5199,8 +5375,10 @@
       "notes": "Katharina Singer · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222965,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222965,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714582,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714582,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43g719",
@@ -5230,8 +5408,10 @@
       "notes": "Chrysa Traikopoulou · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222967,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222967,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714584,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714584,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43geex",
@@ -5261,8 +5441,10 @@
       "notes": "Kim Kreis · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222974,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222974,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714594,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714594,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43gg82",
@@ -5292,8 +5474,10 @@
       "notes": "Nina Bayne · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222976,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222976,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714599,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714599,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43gicc",
@@ -5323,8 +5507,10 @@
       "notes": "Ludovic Houard · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222978,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222978,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714602,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714602,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43gsep",
@@ -5354,8 +5540,10 @@
       "notes": "Nina Bayne · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222988,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222988,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714612,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714612,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43gyk",
@@ -5385,8 +5573,10 @@
       "notes": "Lotte Witters · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154222994,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154222994,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714619,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714619,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43hbd6",
@@ -5416,8 +5606,10 @@
       "notes": "Ruth Steen · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223007,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223007,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714634,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714634,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43hds",
@@ -5447,8 +5639,10 @@
       "notes": "Luca Sangrigoli · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223009,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223009,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714636,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714636,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43hhi0",
@@ -5478,8 +5672,10 @@
       "notes": "Ike Albeniz Peral · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223013,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223013,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714644,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714644,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43hmaj",
@@ -5509,8 +5705,10 @@
       "notes": "Melissa Roddau · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223018,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223018,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714646,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714646,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43homt",
@@ -5540,8 +5738,10 @@
       "notes": "Edvinas Zaidenvurm · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223020,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223020,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714649,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714649,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43i4a7",
@@ -5571,8 +5771,10 @@
       "notes": "Melissa Roddau · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223036,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223036,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714666,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714666,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43i62i",
@@ -5602,8 +5804,10 @@
       "notes": "Natalie Roth · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223038,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223038,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714668,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714668,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43ie5g",
@@ -5633,8 +5837,10 @@
       "notes": "Pauline Maurais · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223046,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223046,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714676,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714676,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43ig7",
@@ -5664,8 +5870,10 @@
       "notes": "Evelin Karai · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223048,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223048,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714678,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714678,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43iieq",
@@ -5695,8 +5903,10 @@
       "notes": "Stéphane Doueihi · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223050,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223050,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714681,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714681,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43ip3b",
@@ -5726,8 +5936,10 @@
       "notes": "Brent Gibbs · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223057,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223057,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714688,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714688,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43iuhp",
@@ -5757,8 +5969,10 @@
       "notes": "Andy · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223062,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223062,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714693,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714693,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43iwqp",
@@ -5788,8 +6002,10 @@
       "notes": "Andy · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223064,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223064,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714696,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714696,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43iyf3",
@@ -5819,8 +6035,10 @@
       "notes": "Nicolas Nicolaou · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223066,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223066,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714698,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714698,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43j0jj",
@@ -5850,8 +6068,10 @@
       "notes": "Mark · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223068,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223068,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714700,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714700,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43j5qa",
@@ -5881,8 +6101,10 @@
       "notes": "Lennart Dick · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223073,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223073,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714705,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714705,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43j725",
@@ -5912,8 +6134,10 @@
       "notes": "Mordechai Keiserman · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223075,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223075,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714710,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714710,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43jee4",
@@ -5943,8 +6167,10 @@
       "notes": "Lennart Dick · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223082,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223082,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714715,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714715,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43jnmh",
@@ -5974,8 +6200,10 @@
       "notes": "Nadin Billing · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223091,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223091,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714723,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714723,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43js35",
@@ -6005,8 +6233,10 @@
       "notes": "Eva Saischegg · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223096,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223096,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714728,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714728,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43juq0",
@@ -6036,8 +6266,10 @@
       "notes": "Stephen Bertram · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223098,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223098,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714730,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714730,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43jzn1",
@@ -6067,8 +6299,10 @@
       "notes": "Tristan Baylard · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223103,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223103,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714738,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714738,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43k41f",
@@ -6098,8 +6332,10 @@
       "notes": "Marlijn Santegoets · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223108,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223108,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714740,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714740,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43k9ib",
@@ -6129,8 +6365,10 @@
       "notes": "Maria Deych · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223113,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223113,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714745,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714745,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43kp1v",
@@ -6160,8 +6398,10 @@
       "notes": "Sandy & Ardle MacMahon · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223129,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223129,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714762,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714762,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43ku9j",
@@ -6191,8 +6431,10 @@
       "notes": "Aleksandr Blinov · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223134,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223134,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714770,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714770,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43l2ks",
@@ -6222,8 +6464,10 @@
       "notes": "Sandra · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223142,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223142,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714780,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714780,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43l6ov",
@@ -6253,8 +6497,10 @@
       "notes": "Yulia Masis · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223146,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223146,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714782,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714782,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43lb8x",
@@ -6284,8 +6530,10 @@
       "notes": "Richard Papcun · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223151,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223151,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714784,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714784,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43lg2u",
@@ -6315,8 +6563,10 @@
       "notes": "Sandra · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223156,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223156,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714792,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714792,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43lkiq",
@@ -6346,8 +6596,10 @@
       "notes": "DeLisa Smith · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223160,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223160,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714794,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714794,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43lza",
@@ -6377,8 +6629,10 @@
       "notes": "Vanessa Röthlin · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223176,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223176,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714806,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714806,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43m25u",
@@ -6408,8 +6662,10 @@
       "notes": "Kenza Ghilas · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223178,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223178,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714809,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714809,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43mcbk",
@@ -6439,8 +6695,10 @@
       "notes": "Grace Lunn · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223188,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223188,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714818,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714818,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43mfhh",
@@ -6470,8 +6728,10 @@
       "notes": "Anika Lenz · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223191,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223191,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714821,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714821,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43ml4p",
@@ -6501,8 +6761,10 @@
       "notes": "Liam Brennan · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223197,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223197,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714826,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714826,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43mqhh",
@@ -6532,8 +6794,10 @@
       "notes": "Mel Ben · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223202,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223202,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714830,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714830,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43mvli",
@@ -6563,8 +6827,10 @@
       "notes": "Yvonne Knight · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223207,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223207,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714835,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714835,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43n2l9",
@@ -6594,8 +6860,10 @@
       "notes": "Rebecca Dawson · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223214,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223214,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714843,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714843,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43n7br",
@@ -6625,8 +6893,10 @@
       "notes": "Robert Rodgers · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223219,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223219,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714848,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714848,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_movf43na8y",
@@ -6656,8 +6926,10 @@
       "notes": "Tom Ismay · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778154223222,
       "createdBy": "Giorgos",
-      "updatedAt": 1778154223222,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778161714850,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778161714850,
+      "deletedBy": "Giorgos"
     }
   ],
   "expenses": [
