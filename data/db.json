@@ -7179,6 +7179,28 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778162605012,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "vnd_movk8wvi2y",
+      "name": "xxxx",
+      "role": "cleaner",
+      "phone": "",
+      "email": "",
+      "notes": "",
+      "rates": {},
+      "pricingMode": "apt_type",
+      "hourlyRate": 0,
+      "currency": "EUR",
+      "aptTypeRates": {
+        "studio": 10,
+        "one_bedroom": 20,
+        "two_bedroom": 30,
+        "three_bedroom_plus": 40
+      },
+      "createdAt": 1778162866117,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778162866117,
+      "updatedBy": "Giorgos"
     }
   ],
   "tenants": [],
