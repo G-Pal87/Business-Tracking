@@ -773,7 +773,7 @@ function openCSVImport() {
     const completedFile = completedFileI.files?.[0];
     if (completedFile) {
       const text = await completedFile.text();
-      const rows = parseAirbnbCSV(text);
+      const rows = mergeReservationRows(parseAirbnbCSV(text));
       let added = 0, updated = 0, skipped = 0;
       const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
       const toDelete = listActivePayments().filter(p => p.source === 'airbnb' && p.airbnbKey && !csvKeys.has(p.airbnbKey)).length;
@@ -829,7 +829,7 @@ function openCSVImport() {
     const completedFile = completedFileI.files?.[0];
     if (completedFile) {
       const text = await completedFile.text();
-      const rows = parseAirbnbCSV(text);
+      const rows = mergeReservationRows(parseAirbnbCSV(text));
 
       // Collect keys and confirmation codes present in the CSV
       const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
@@ -1119,6 +1119,45 @@ function parseAirbnbCSV(text) {
   }
 
   return results;
+}
+
+// Merge Reservation rows that share the same confirmation code + check-in + check-out
+// into a single row with summed monetary fields.  Non-Reservation rows pass through
+// unchanged.  The merged row uses a 3-field airbnbKey so it is unique per stay, not
+// just per confirmation code.
+function mergeReservationRows(rows) {
+  const out = [];
+  const groups = new Map(); // `${code}|${checkIn}|${checkOut}` → merged row
+
+  for (const row of rows) {
+    if (row.type.toLowerCase() === 'reservation' && row.confirmationCode) {
+      const gKey = `${row.confirmationCode}|${row.checkIn || ''}|${row.checkOut || ''}`;
+      if (groups.has(gKey)) {
+        const g = groups.get(gKey);
+        g.amount        += row.amount;
+        g.serviceFee    += row.serviceFee;
+        g.cleaningFee   += row.cleaningFee;
+        g.grossEarnings += row.grossEarnings;
+      } else {
+        const merged = { ...row, airbnbKey: gKey };
+        groups.set(gKey, merged);
+        out.push(merged);
+      }
+    } else {
+      out.push(row);
+    }
+  }
+
+  // Recompute per-night averages from the merged totals
+  for (const g of groups.values()) {
+    if (g.nights > 0) {
+      g.avgGross             = Math.round((g.grossEarnings / g.nights) * 100) / 100;
+      g.avgNightInclCleaning = Math.round((g.amount / g.nights) * 100) / 100;
+      g.avgNightExclCleaning = Math.round(((g.amount - g.cleaningFee) / g.nights) * 100) / 100;
+    }
+  }
+
+  return out;
 }
 
 function parseDateStr(raw) {
