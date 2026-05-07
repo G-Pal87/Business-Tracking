@@ -10552,10 +10552,10 @@
       "total": 2000,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M&WPrimeSolutions_2018_24-SWG-EMPOW.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions_2018_24-SWG-EMPOW.pdf",
       "createdAt": 1777974946726,
       "createdBy": "Giorgos",
-      "updatedAt": 1778181050324,
+      "updatedAt": 1778185919571,
       "updatedBy": "Giorgos"
     },
     {
