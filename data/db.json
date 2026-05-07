@@ -10655,8 +10655,10 @@
       "notes": "",
       "createdAt": 1778175049572,
       "createdBy": "Giorgos",
-      "updatedAt": 1778175049572,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778175717123,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778175717123,
+      "deletedBy": "Giorgos"
     }
   ],
   "users": [
