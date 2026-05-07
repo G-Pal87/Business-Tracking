@@ -26,10 +26,16 @@ export default {
   id: 'invoices',
   label: 'Invoices',
   icon: 'I',
-  render(container) { container.appendChild(build()); scheduleMigration(); },
+  render(container) { container.appendChild(build()); scheduleMigration(); schedulePathMigration(); },
   refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() {}
 };
+
+// Canonical repo path for an invoice PDF — always uses the UI invoice number as the filename.
+function invoicePdfPath(inv) {
+  const safe = (inv.number || inv.id).replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '_');
+  return `invoices/${safe}.pdf`;
+}
 
 async function deleteInvoiceFile(inv) {
   if (inv.pdfPath) {
@@ -45,34 +51,63 @@ function scheduleMigration() {
   const pending = (state.db.invoices || []).filter(i => i.pdfData && !i.pdfPath && !i.deletedAt);
   if (pending.length === 0) return;
   migrationScheduled = true;
-  // Run after a short delay so the UI renders first
   setTimeout(() => migrateEmbeddedPDFs(pending), 2000);
 }
 
 async function migrateEmbeddedPDFs(pending) {
   const { owner, repo, token } = state.github;
-  if (!owner || !repo || !token) {
-    // GitHub not configured — can't upload; the saveLocalCache fix already strips pdfData
-    // from localStorage so at least the quota error is gone. Nothing else to do here.
-    return;
-  }
+  if (!owner || !repo || !token) return;
 
   let done = 0;
   for (const inv of pending) {
     try {
-      const pdfPath = `invoices/${inv.id}.pdf`;
+      const pdfPath = invoicePdfPath(inv);
       await uploadGithubFile(pdfPath, inv.pdfData, `Migrate PDF for invoice ${inv.number || inv.id}`);
       const updated = { ...inv, pdfPath };
       delete updated.pdfData;
       upsert('invoices', updated);
       done++;
     } catch (err) {
-      console.warn(`Migration: could not upload PDF for invoice ${inv.id}:`, err);
+      console.warn(`[PDF migrate] could not upload PDF for invoice ${inv.id}:`, err);
     }
   }
 
+  if (done > 0) toast(`Migrated ${done} invoice PDF${done > 1 ? 's' : ''} to GitHub repository`, 'success', 5000);
+}
+
+// ── Retrospective migration: rename id-based paths → number-based paths ────────
+
+let pathMigrationScheduled = false;
+function schedulePathMigration() {
+  if (pathMigrationScheduled) return;
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) return;
+  const pending = (state.db.invoices || []).filter(i => !i.deletedAt && i.pdfPath && i.pdfPath !== invoicePdfPath(i));
+  if (pending.length === 0) return;
+  pathMigrationScheduled = true;
+  setTimeout(() => migrateInvoicePdfPaths(pending), 4000);
+}
+
+async function migrateInvoicePdfPaths(pending) {
+  let done = 0;
+  for (const inv of pending) {
+    const correctPath = invoicePdfPath(inv);
+    if (inv.pdfPath === correctPath) continue;
+    console.log(`[PDF rename] ${inv.pdfPath} → ${correctPath}`);
+    try {
+      const fileData = await fetchGithubFile(inv.pdfPath);
+      const b64 = fileData.content.replace(/\s/g, '');
+      await uploadGithubFile(correctPath, b64, `Rename PDF: ${inv.number || inv.id}`);
+      await deleteGithubFile(inv.pdfPath, fileData.sha, `Remove old path for invoice ${inv.number || inv.id}`);
+      upsert('invoices', { ...inv, pdfPath: correctPath });
+      done++;
+    } catch (err) {
+      console.warn(`[PDF rename] Could not rename ${inv.pdfPath} → ${correctPath}:`, err.message);
+    }
+  }
   if (done > 0) {
-    toast(`Migrated ${done} invoice PDF${done > 1 ? 's' : ''} to GitHub repository`, 'success', 5000);
+    toast(`Renamed ${done} invoice PDF${done > 1 ? 's' : ''} to use UI naming convention`, 'success', 5000);
+    console.log(`[PDF rename] Complete: ${done} renamed`);
   }
 }
 
@@ -491,7 +526,7 @@ function openBuilder(existing) {
     // branch cause GitHub to cancel one of them).
     let pdfUploadStatus = null;
     if (inv.source !== 'pdf_import') {
-      const pdfPath = `invoices/${inv.id}.pdf`;
+      const pdfPath = invoicePdfPath(inv);
       const invLabel = inv.number || inv.id;
       const origText = save.textContent;
       save.disabled = true;
@@ -617,9 +652,7 @@ function previewInvoice(inv, clientId) {
         if (inv.pdfPath) {
           try { await deleteGithubFile(inv.pdfPath, null, `Replace PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
         }
-        // Always ensure the path is folder-prefixed; correct any legacy bare filenames.
-        const rawPath = inv.pdfPath || `invoices/${inv.id}.pdf`;
-        const newPath = rawPath.includes('/') ? rawPath : `invoices/${rawPath}`;
+        const newPath = invoicePdfPath(inv);
         await uploadGithubFile(newPath, b64, `Upload PDF for invoice ${inv.number || inv.id}`);
         const updated = { ...inv, pdfPath: newPath };
         delete updated.pdfData;
@@ -889,8 +922,8 @@ function openPDFImport() {
           reader.onerror = reject;
           reader.readAsDataURL(file);
         });
-        const pdfPath = `invoices/${invId}.pdf`;
-        await uploadGithubFile(pdfPath, b64, `Upload invoice PDF ${inv.number || invId}`);
+        const pdfPath = invoicePdfPath(inv);
+        await uploadGithubFile(pdfPath, b64, `Upload invoice PDF ${inv.number || inv.id}`);
         inv.pdfPath = pdfPath;
       } catch (err) {
         // GitHub not configured or upload failed — warn but still save the record.
