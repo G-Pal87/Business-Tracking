@@ -10631,9 +10631,11 @@
       "notes": "",
       "createdAt": 1778176098961,
       "createdBy": "Giorgos",
-      "updatedAt": 1778176100529,
+      "updatedAt": 1778176148632,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/inv_movs4txo1t.pdf"
+      "pdfPath": "invoices/inv_movs4txo1t.pdf",
+      "deletedAt": 1778176148632,
+      "deletedBy": "Giorgos"
     }
   ],
   "users": [
