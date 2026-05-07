@@ -1,11 +1,12 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
-import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile } from '../core/github.js';
+import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, deleteGithubFile } from '../core/github.js';
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
+import { generateInvoicePDF } from '../core/pdf.js';
 
 export default {
   id: 'settings',
@@ -735,7 +736,7 @@ function buildInvoiceRepoCard() {
     )
   ));
 
-  const resultEl      = el('div', { style: 'margin-top:12px' });
+  const resultEl       = el('div', { style: 'margin-top:12px' });
   const backupStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
 
   const checkBtn  = button('Check Invoice Repository', { onClick: runCheck });
@@ -744,11 +745,13 @@ function buildInvoiceRepoCard() {
   card.appendChild(resultEl);
   card.appendChild(backupStatusEl);
 
-  // Mirrors invoicePdfPath() in invoices.js — derive canonical filename from invoice number
-  function canonicalFilename(inv) {
+  // Mirrors invoicePdfPath() in invoices.js — derive canonical repo path from invoice number
+  function canonicalPath(inv) {
     const safe = (inv.number || inv.id).replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '_');
-    return `${safe}.pdf`;
+    return `invoices/${safe}.pdf`;
   }
+
+  // ── Check ────────────────────────────────────────────────────────────────────
 
   async function runCheck() {
     const { owner, repo, token } = state.github;
@@ -774,71 +777,107 @@ function buildInvoiceRepoCard() {
     checkBtn.disabled = false;
     checkBtn.textContent = 'Check Invoice Repository';
 
-    // Only PDF files at the top level (backup/ is returned as type:'dir' and excluded by listGithubFolder)
-    const pdfFiles  = repoFiles.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    // Top-level PDFs only; backup/ subfolder is type:'dir' so filtered out by listGithubFolder
+    const pdfFiles   = repoFiles.filter(f => f.name.toLowerCase().endsWith('.pdf'));
     const repoByName = new Map(pdfFiles.map(f => [f.name.toLowerCase(), f]));
 
-    const invoices = listActive('invoices');
-    const discrepancies  = [];
-    const matchedNames   = new Set();
+    const invoices     = listActive('invoices');
+    const discrepancies = [];
+    const matchedNames  = new Set();
 
-    // Detect duplicate canonical names (two invoice records → same filename)
+    // Detect two invoice records that would produce the same canonical filename
     const canonicalCount = new Map();
     for (const inv of invoices) {
-      const cn = canonicalFilename(inv).toLowerCase();
+      const cn = canonicalPath(inv).toLowerCase();
       if (!canonicalCount.has(cn)) canonicalCount.set(cn, []);
       canonicalCount.get(cn).push(inv);
     }
-    for (const [cn, invs] of canonicalCount) {
+    for (const [, invs] of canonicalCount) {
       if (invs.length > 1) {
-        discrepancies.push({ type: 'duplicate',
-          detail: `Duplicate filename "${cn}" for records: ${invs.map(i => i.number || i.id).join(', ')}` });
+        discrepancies.push({
+          type: 'duplicate',
+          detail: `Invoice numbers ${invs.map(i => `"${i.number || i.id}"`).join(' and ')} resolve to the same filename — rename one invoice to fix`,
+          invs
+        });
       }
     }
 
     // Match each invoice to a repo file
     for (const inv of invoices) {
-      const expectedFile = canonicalFilename(inv);
-      const expectedPath = `invoices/${expectedFile}`;
-      const expectedLow  = expectedFile.toLowerCase();
+      const expPath  = canonicalPath(inv);
+      const expName  = expPath.split('/').pop();
+      const expLow   = expName.toLowerCase();
 
-      if (repoByName.has(expectedLow)) {
-        matchedNames.add(expectedLow);
-        if (inv.pdfPath && inv.pdfPath !== expectedPath) {
-          discrepancies.push({ type: 'filename_mismatch',
-            detail: `Invoice "${inv.number || inv.id}": stored path "${inv.pdfPath}" should be "${expectedPath}"` });
+      if (repoByName.has(expLow)) {
+        // File exists at the canonical name
+        matchedNames.add(expLow);
+        if (inv.pdfPath !== expPath) {
+          // pdfPath is wrong or missing, but the file itself is already correct
+          discrepancies.push({
+            type: 'filename_mismatch',
+            subtype: 'pdfpath_only',
+            detail: `Invoice "${inv.number || inv.id}": pdfPath "${inv.pdfPath || '(none)'}" should point to "${expPath}" (file already correctly named)`,
+            inv,
+            expPath
+          });
         }
       } else {
-        const storedName = (inv.pdfPath || '').split('/').pop().toLowerCase();
-        if (storedName && repoByName.has(storedName)) {
-          matchedNames.add(storedName);
-          discrepancies.push({ type: 'filename_mismatch',
-            detail: `Invoice "${inv.number || inv.id}": file exists as "${storedName}" but should be named "${expectedFile}"` });
+        const storedName = (inv.pdfPath || '').split('/').pop();
+        const storedLow  = storedName.toLowerCase();
+        if (storedLow && repoByName.has(storedLow)) {
+          // File exists but under the wrong name
+          matchedNames.add(storedLow);
+          discrepancies.push({
+            type: 'filename_mismatch',
+            subtype: 'wrong_name',
+            detail: `Invoice "${inv.number || inv.id}": file found as "${storedName}" but should be "${expName}"`,
+            inv,
+            expPath,
+            wrongPath: inv.pdfPath
+          });
         } else {
-          discrepancies.push({ type: 'missing_file',
-            detail: `Invoice "${inv.number || inv.id}": no PDF found in repository (expected "${expectedFile}")` });
+          // No file found anywhere for this invoice
+          const canRegen = inv.source !== 'pdf_import';
+          discrepancies.push({
+            type: 'missing_file',
+            detail: canRegen
+              ? `Invoice "${inv.number || inv.id}": PDF missing — can be regenerated`
+              : `Invoice "${inv.number || inv.id}": original PDF missing — re-import manually to re-attach${inv.pdfPath ? ` (stale link "${inv.pdfPath}" will be cleared)` : ''}`,
+            inv,
+            expPath,
+            canRegen
+          });
         }
       }
     }
 
-    // Orphaned repo files
+    // Files in the repo with no matching invoice record
     for (const [nameLow, file] of repoByName) {
       if (!matchedNames.has(nameLow)) {
-        discrepancies.push({ type: 'orphan_file',
-          detail: `Repository file "${file.name}" has no matching invoice record` });
+        discrepancies.push({
+          type: 'orphan_file',
+          detail: `"${file.name}" has no matching invoice record`,
+          file
+        });
       }
     }
 
-    // Render results
+    renderCheckResults(invoices.length, pdfFiles.length, discrepancies);
+  }
+
+  // ── Render results with per-row Resolve buttons ───────────────────────────────
+
+  function renderCheckResults(totalInvoices, totalPdfs, discrepancies) {
     resultEl.innerHTML = '';
 
-    const missing  = discrepancies.filter(d => d.type === 'missing_file').length;
-    const matched  = invoices.length - missing;
+    const missing = discrepancies.filter(d => d.type === 'missing_file').length;
+    const matched = totalInvoices - missing;
+
     const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px' });
     for (const [label, val, good] of [
-      ['Invoice records', invoices.length, true],
-      ['Repository PDFs', pdfFiles.length, true],
-      ['Matched',         matched,          matched === invoices.length],
+      ['Invoice records', totalInvoices, true],
+      ['Repository PDFs', totalPdfs,     true],
+      ['Matched',         matched,        matched === totalInvoices],
       ['Discrepancies',   discrepancies.length, discrepancies.length === 0]
     ]) {
       summaryGrid.appendChild(el('div', {
@@ -853,21 +892,117 @@ function buildInvoiceRepoCard() {
     if (discrepancies.length === 0) {
       resultEl.appendChild(el('div', { style: 'color:var(--success,#198754);font-size:13px' },
         'All invoice records match repository files.'));
-    } else {
-      const typeLabel = { missing_file: 'Missing file', orphan_file: 'Orphan file', filename_mismatch: 'Name mismatch', duplicate: 'Duplicate' };
-      const list = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
-      for (const d of discrepancies) {
-        const badgeCss = d.type === 'orphan_file' ? 'warning' : d.type === 'duplicate' ? 'warning' : 'danger';
-        list.appendChild(el('div', {
-          style: 'display:flex;align-items:flex-start;gap:6px;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)'
-        },
-          el('span', { class: `badge ${badgeCss}`, style: 'flex-shrink:0;margin-top:1px' }, typeLabel[d.type] || d.type),
-          el('span', {}, d.detail)
-        ));
-      }
-      resultEl.appendChild(list);
+      return;
     }
+
+    const TYPE_LABEL = { missing_file: 'Missing file', orphan_file: 'Orphan file', filename_mismatch: 'Name mismatch', duplicate: 'Duplicate' };
+    const TYPE_CSS   = { orphan_file: 'warning', duplicate: 'warning' };
+
+    const list = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
+    for (const d of discrepancies) {
+      const badgeCss = TYPE_CSS[d.type] || 'danger';
+      const row = el('div', {
+        style: 'display:flex;align-items:flex-start;gap:6px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)'
+      });
+      row.appendChild(el('span', { class: `badge ${badgeCss}`, style: 'flex-shrink:0;margin-top:1px' }, TYPE_LABEL[d.type] || d.type));
+      row.appendChild(el('span', { style: 'flex:1' }, d.detail));
+
+      const statusEl = el('span', { style: 'font-size:11px;white-space:nowrap;flex-shrink:0' });
+      const action   = resolveAction(d);
+
+      if (action) {
+        const btn = button('Resolve', { variant: 'sm primary' });
+        btn.onclick = async () => {
+          btn.disabled    = true;
+          btn.textContent = 'Resolving…';
+          statusEl.textContent = '';
+          statusEl.style.color = '';
+          try {
+            await action();
+            btn.textContent     = '✓ Done';
+            statusEl.textContent = 'Resolved';
+            statusEl.style.color = 'var(--success,#198754)';
+            row.style.opacity    = '0.55';
+          } catch (err) {
+            btn.disabled    = false;
+            btn.textContent = 'Resolve';
+            if (err.message !== 'cancelled') {
+              statusEl.textContent = err.message;
+              statusEl.style.color = 'var(--danger,#dc3545)';
+            }
+          }
+        };
+        row.appendChild(statusEl);
+        row.appendChild(btn);
+      }
+
+      list.appendChild(row);
+    }
+    resultEl.appendChild(list);
   }
+
+  // ── Resolve actions ───────────────────────────────────────────────────────────
+  // Returns an async thunk for auto-resolvable discrepancies, or null if not safe.
+
+  function resolveAction(d) {
+    if (d.type === 'filename_mismatch' && d.subtype === 'pdfpath_only') {
+      // File is already correctly named — just update the DB record's pdfPath
+      return async () => {
+        upsert('invoices', { ...d.inv, pdfPath: d.expPath });
+        markDirty();
+      };
+    }
+
+    if (d.type === 'filename_mismatch' && d.subtype === 'wrong_name') {
+      // File exists under the old/wrong name — rename it in GitHub and fix pdfPath
+      return async () => {
+        const fileData = await fetchGithubFile(d.wrongPath);
+        const b64      = fileData.content.replace(/\s/g, '');
+        await uploadGithubFile(d.expPath, b64, `Rename PDF: ${d.inv.number || d.inv.id}`);
+        await deleteGithubFile(d.wrongPath, fileData.sha, `Remove old path for invoice ${d.inv.number || d.inv.id}`);
+        upsert('invoices', { ...d.inv, pdfPath: d.expPath });
+        markDirty();
+      };
+    }
+
+    if (d.type === 'missing_file' && d.canRegen) {
+      // Builder invoice — regenerate the PDF and upload it
+      return async () => {
+        const b64 = generateInvoicePDF(d.inv).output('datauristring').split(',')[1];
+        if (!b64) throw new Error('PDF generation produced empty content');
+        await uploadGithubFile(d.expPath, b64, `Regenerate PDF for invoice ${d.inv.number || d.inv.id}`);
+        upsert('invoices', { ...d.inv, pdfPath: d.expPath });
+        markDirty();
+      };
+    }
+
+    if (d.type === 'missing_file' && !d.canRegen && d.inv.pdfPath) {
+      // Imported invoice with a stale pdfPath pointing to a file that no longer exists — clear the link
+      return async () => {
+        const updated = { ...d.inv };
+        delete updated.pdfPath;
+        upsert('invoices', updated);
+        markDirty();
+      };
+    }
+
+    if (d.type === 'orphan_file') {
+      // Repo file with no matching invoice — ask before deleting
+      return async () => {
+        const ok = await confirmDialog(
+          `Delete orphaned file "${d.file.name}" from the repository? This cannot be undone.`,
+          { danger: true, okLabel: 'Delete File' }
+        );
+        if (!ok) throw new Error('cancelled');
+        await deleteGithubFile(d.file.path, d.file.sha, `Delete orphan: ${d.file.name}`);
+      };
+    }
+
+    // duplicate: requires changing invoice numbers — no safe auto-resolve
+    return null;
+  }
+
+  // ── Backup ───────────────────────────────────────────────────────────────────
 
   async function runBackup() {
     const { owner, repo, token } = state.github;
