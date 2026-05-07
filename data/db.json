@@ -10698,6 +10698,37 @@
       "updatedAt": 1778176618163,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/inv_movsfrvwlu.pdf"
+    },
+    {
+      "id": "inv_movtc9pfpj",
+      "number": "gg",
+      "clientId": "cli_mo9sroqs7s",
+      "owner": "you",
+      "issueDate": "2026-05-07",
+      "dueDate": "2026-06-06",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_movtcf13nb",
+          "serviceId": "svc_001",
+          "description": "Customer Success Management",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 650,
+          "total": 650
+        }
+      ],
+      "subtotal": 650,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 650,
+      "notes": "",
+      "createdAt": 1778178126893,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778178126893,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
