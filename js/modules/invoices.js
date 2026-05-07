@@ -455,7 +455,7 @@ function openBuilder(existing) {
   drawLines();
 
   const preview = button('Preview', { onClick: () => previewInvoice(inv, clientS.value) });
-  const save = button('Save Invoice', { variant: 'primary', onClick: () => {
+  const save = button('Save Invoice', { variant: 'primary', onClick: async () => {
     if (inv.lineItems.length === 0) { toast('Add at least one line item', 'danger'); return; }
     inv.clientId = clientS.value;
     inv.owner = ownerS.value;
@@ -486,6 +486,20 @@ function openBuilder(existing) {
     }
     recalcInvoice();
     upsert('invoices', inv);
+
+    // Generate and persist PDF for builder-created invoices
+    if (inv.source !== 'pdf_import') {
+      const pdfPath = `invoices/${inv.id}.pdf`;
+      try {
+        const b64 = generateInvoicePDF(inv).output('datauristring').split(',')[1];
+        await uploadGithubFile(pdfPath, b64, `${existing ? 'Update' : 'Create'} PDF for invoice ${inv.number || inv.id}`);
+        if (inv.pdfPath !== pdfPath) { inv.pdfPath = pdfPath; upsert('invoices', inv); }
+      } catch (err) {
+        console.warn('PDF upload to GitHub failed:', err);
+        toast(`Invoice saved. PDF not stored: ${err.message}`, 'warning', 5000);
+      }
+    }
+
     toast(existing ? 'Invoice updated' : 'Invoice saved', 'success');
     closeModal();
     setTimeout(() => navigate('invoices'), 200);
