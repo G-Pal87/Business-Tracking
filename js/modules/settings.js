@@ -870,6 +870,14 @@ function buildInvoiceRepoCard() {
   function renderCheckResults(totalInvoices, totalPdfs, discrepancies) {
     resultEl.innerHTML = '';
 
+    // Refresh button — always visible once results are shown
+    const refreshRow = el('div', { style: 'display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:8px' });
+    const tsEl = el('span', { style: 'font-size:11px;color:var(--text-muted)' }, `Checked at ${new Date().toLocaleTimeString()}`);
+    const refreshBtn = button('Refresh', { variant: 'sm ghost', onClick: runCheck });
+    refreshRow.appendChild(tsEl);
+    refreshRow.appendChild(refreshBtn);
+    resultEl.appendChild(refreshRow);
+
     const missing = discrepancies.filter(d => d.type === 'missing_file').length;
     const matched = totalInvoices - missing;
 
@@ -919,10 +927,11 @@ function buildInvoiceRepoCard() {
           statusEl.style.color = '';
           try {
             await action();
-            btn.textContent     = '✓ Done';
-            statusEl.textContent = 'Resolved';
+            btn.textContent      = '✓ Done';
+            statusEl.textContent = 'Refreshing…';
             statusEl.style.color = 'var(--success,#198754)';
-            row.style.opacity    = '0.55';
+            await new Promise(r => setTimeout(r, 600));
+            await runCheck();
           } catch (err) {
             btn.disabled    = false;
             btn.textContent = 'Resolve';
