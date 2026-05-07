@@ -9884,10 +9884,9 @@
       "total": 500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/Invoice-M&WPrimeSolutions#2002-SWG.pdf",
       "createdAt": 1777971918833,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180865622,
+      "updatedAt": 1778182249497,
       "updatedBy": "Giorgos"
     },
     {
@@ -9916,10 +9915,9 @@
       "total": 2500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/Invoice-M&WPrimeSolutions#2003-VITAS.pdf",
       "createdAt": 1777971965760,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180877971,
+      "updatedAt": 1778182251302,
       "updatedBy": "Giorgos"
     },
     {
@@ -9948,10 +9946,9 @@
       "total": 90,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/Invoice-M&WPrimeSolutions#2004.pdf",
       "createdAt": 1777972021905,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180886865,
+      "updatedAt": 1778182252973,
       "updatedBy": "Giorgos"
     },
     {
