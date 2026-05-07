@@ -10768,8 +10768,10 @@
       "pdfPath": "invoices/inv_movu3ufgbe.pdf",
       "createdAt": 1778179422054,
       "createdBy": "Giorgos",
-      "updatedAt": 1778179422054,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778179897379,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778179897379,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "inv_movu69hz7z",
@@ -10800,8 +10802,10 @@
       "pdfPath": "invoices/inv_movu69hz7z.pdf",
       "createdAt": 1778179529756,
       "createdBy": "Giorgos",
-      "updatedAt": 1778179529756,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778179899062,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778179899062,
+      "deletedBy": "Giorgos"
     }
   ],
   "users": [
