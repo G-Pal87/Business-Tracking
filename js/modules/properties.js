@@ -211,17 +211,6 @@ function openDetail(id) {
     body.appendChild(vendorCard);
   }
 
-  // Configured expense rates (cleaning fee is ST-only)
-  const showCleaning = p.type === 'short_term' && p.cleaningFee;
-  if (showCleaning) {
-    const ratesCard = el('div', { class: 'card mb-16' });
-    ratesCard.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Configured Expense Rates')));
-    const rateGrid = el('div', { class: 'grid grid-3', style: 'padding:12px 16px' });
-    rateGrid.appendChild(smallStat('Cleaning Fee', formatMoney(p.cleaningFee, p.currency, { maxFrac: 0 }), 'per booking'));
-    ratesCard.appendChild(rateGrid);
-    body.appendChild(ratesCard);
-  }
-
   // Expense breakdown
   const expList = listActive('expenses').filter(e => e.propertyId === id).sort((a, b) => (b.date || '').localeCompare(a.date));
   const expTable = el('div', { class: 'card mb-16' });
@@ -306,7 +295,7 @@ function openForm(existing) {
     monthlyRent: 0, nightlyRate: 0,
     mortgageAmount: 0, mortgageMonthly: 0, mortgageRate: 0,
     owner: 'both', airbnbCalUrl: '', notes: '',
-    cleaningFee: 0, monthlyElectricity: 0, monthlyWater: 0
+    monthlyElectricity: 0, monthlyWater: 0
   };
 
   const body = el('div', {});
@@ -331,7 +320,6 @@ function openForm(existing) {
   const bedsI = input({ type: 'number', value: p.bedrooms, min: 0 });
   const bathsI = input({ type: 'number', value: p.bathrooms, min: 0 });
   const icalI = input({ value: p.airbnbCalUrl || '', placeholder: 'https://airbnb.com/calendar/ical/...' });
-  const cleaningFeeI = input({ type: 'number', value: p.cleaningFee || 0, min: 0, step: 0.01 });
   const tenantI = input({ value: p.tenantName || '', placeholder: 'Tenant full name' });
   const leaseStartI = input({ type: 'date', value: p.leaseStartDate || '' });
   const leaseEndI = input({ type: 'date', value: p.leaseEndDate || '' });
@@ -342,15 +330,12 @@ function openForm(existing) {
   const ltTenantRow = formRow('Tenant Name', tenantI);
   const ltLeaseRow = el('div', { class: 'form-row horizontal' }, formRow('Lease Start', leaseStartI), formRow('Lease End', leaseEndI));
   const icalRow = formRow('Airbnb iCal URL', icalI);
-  const stCleaningRow = formRow('Cleaning Fee (per booking)', cleaningFeeI);
-
   const updateTypeFields = () => {
     const isLT = typeS.value === 'long_term';
     ltRow.style.display = isLT ? '' : 'none';
     ltTenantRow.style.display = isLT ? '' : 'none';
     ltLeaseRow.style.display = isLT ? '' : 'none';
     icalRow.style.display = isLT ? 'none' : '';
-    stCleaningRow.style.display = isLT ? 'none' : '';
   };
   typeS.onchange = updateTypeFields;
 
@@ -374,7 +359,6 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Mortgage Amount', mAmtI), formRow('Monthly Payment', mMoI)));
   body.appendChild(formRow('Interest Rate %', mRateI));
   body.appendChild(icalRow);
-  body.appendChild(stCleaningRow);
 
   // Vacant periods editor
   let pendingVacantPeriods = [...(p.vacantPeriods || [])];
@@ -506,7 +490,6 @@ function openForm(existing) {
       mortgageRate: Number(mRateI.value) || 0,
       airbnbCalUrl: icalI.value.trim(),
       notes: notesT.value.trim(),
-      cleaningFee: Number(cleaningFeeI.value) || 0,
       tenantName: tenantI.value.trim(),
       leaseStartDate: leaseStartI.value,
       leaseEndDate: leaseEndI.value,

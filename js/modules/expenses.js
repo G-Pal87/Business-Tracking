@@ -289,6 +289,21 @@ function build() {
   return wrap;
 }
 
+function findCleaningRates(propertyId, date) {
+  const matches = [];
+  for (const v of listActive('vendors')) {
+    if (v.role !== 'cleaner') continue;
+    for (const period of (v.cleaningPeriods || [])) {
+      if (period.propertyId === propertyId &&
+          period.startDate && period.startDate <= date &&
+          (!period.endDate || period.endDate >= date)) {
+        matches.push({ vendor: v, period });
+      }
+    }
+  }
+  return matches;
+}
+
 export function openExpenseForm(defaults = {}) {
   openForm(null, defaults);
 }
@@ -354,7 +369,9 @@ function openForm(existing, defaults = {}) {
   body.appendChild(accountingTypeRow);
   body.appendChild(invRow);
   const vendorRow = formRow('Vendor', vendorS);
+  const cleaningHint = el('div', { style: 'font-size:12px;color:var(--text-muted);padding:2px 0 6px' });
   body.appendChild(vendorRow);
+  body.appendChild(cleaningHint);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', currencyS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI)));
   if (existing && resolved.recurrence === 'recurring') {
@@ -370,6 +387,37 @@ function openForm(existing, defaults = {}) {
 
   const autoFillAmount = () => {
     if (catS.value === 'inventory') return;
+    cleaningHint.textContent = '';
+
+    if (catS.value === 'cleaning') {
+      const propId = propS.value;
+      const date   = dateI.value;
+      if (!propId || !date) return;
+
+      const matches = findCleaningRates(propId, date);
+      if (matches.length === 0) {
+        cleaningHint.textContent = 'No cleaning rate configured for this property and date.';
+        return;
+      }
+      if (matches.length === 1) {
+        const { vendor, period } = matches[0];
+        if (!vendorS.value) vendorS.value = vendor.id;
+        if (Number(amountI.value) === 0) amountI.value = period.fee;
+        return;
+      }
+      // Multiple matches — require vendor selection
+      if (vendorS.value) {
+        const hit = matches.find(m => m.vendor.id === vendorS.value);
+        if (hit) {
+          if (Number(amountI.value) === 0) amountI.value = hit.period.fee;
+          return;
+        }
+      }
+      cleaningHint.textContent = 'Multiple cleaners available for this property and date. Please select a vendor.';
+      return;
+    }
+
+    // Non-cleaning: auto-fill from vendor flat rate or property utility defaults
     if (Number(amountI.value) > 0) return;
     const prop = byId('properties', propS.value);
     if (!prop) return;
@@ -377,10 +425,8 @@ function openForm(existing, defaults = {}) {
       const vendor = byId('vendors', vendorS.value);
       if (vendor?.rates?.[prop.id]) { amountI.value = vendor.rates[prop.id]; return; }
     }
-    const cat = catS.value;
-    if (cat === 'cleaning' && prop.cleaningFee) amountI.value = prop.cleaningFee;
-    else if (cat === 'electricity' && prop.monthlyElectricity) amountI.value = prop.monthlyElectricity;
-    else if (cat === 'water' && prop.monthlyWater) amountI.value = prop.monthlyWater;
+    if (catS.value === 'electricity' && prop.monthlyElectricity) amountI.value = prop.monthlyElectricity;
+    else if (catS.value === 'water' && prop.monthlyWater) amountI.value = prop.monthlyWater;
   };
 
   const syncInventoryAmount = () => {
@@ -415,6 +461,7 @@ function openForm(existing, defaults = {}) {
     else autoFillAmount();
   };
   vendorS.onchange = autoFillAmount;
+  dateI.onchange   = autoFillAmount;
   propS.onchange = () => {
     const p = byId('properties', propS.value);
     if (p) { currencyS.value = p.currency; autoFillAmount(); }
@@ -458,6 +505,7 @@ function openForm(existing, defaults = {}) {
     const autoStream = prop?.type === 'short_term' ? 'short_term_rental'
       : prop?.type === 'long_term' ? 'long_term_rental'
       : r.stream || 'short_term_rental';
+    const appliedFee = catS.value === 'cleaning' && Number(amountI.value) > 0 ? Number(amountI.value) : undefined;
     Object.assign(r, {
       propertyId:    propS.value,
       category:      catS.value,
@@ -470,7 +518,8 @@ function openForm(existing, defaults = {}) {
       vendorId:      vendorS.value || '',
       vendor:        selectedVendor?.name || r.vendor || '',
       description:   descT.value.trim(),
-      stream:        autoStream
+      stream:        autoStream,
+      ...(appliedFee !== undefined ? { appliedCleaningFee: appliedFee } : {})
     });
 
     if (!existing && recurChk.checked && catS.value !== 'inventory') {
