@@ -10392,10 +10392,10 @@
       "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M&WPrimeSolutions_2013_24_SWG.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions_2013_24_SWG.pdf",
       "createdAt": 1777974645871,
       "createdBy": "Giorgos",
-      "updatedAt": 1778181008795,
+      "updatedAt": 1778185879926,
       "updatedBy": "Giorgos"
     },
     {
