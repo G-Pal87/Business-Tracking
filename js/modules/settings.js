@@ -826,6 +826,7 @@ function buildInvoiceRepoCard() {
         const storedLow  = storedName.toLowerCase();
         if (storedLow && repoByName.has(storedLow)) {
           // File exists but under the wrong name
+          const repoFile = repoByName.get(storedLow);
           matchedNames.add(storedLow);
           discrepancies.push({
             type: 'filename_mismatch',
@@ -833,7 +834,8 @@ function buildInvoiceRepoCard() {
             detail: `Invoice "${inv.number || inv.id}": file found as "${storedName}" but should be "${expName}"`,
             inv,
             expPath,
-            wrongPath: inv.pdfPath
+            wrongPath: repoFile.path,
+            wrongSha:  repoFile.sha
           });
         } else {
           // No file found anywhere for this invoice
@@ -968,7 +970,7 @@ function buildInvoiceRepoCard() {
         const fileData = await fetchGithubFile(d.wrongPath);
         const b64      = fileData.content.replace(/\s/g, '');
         await uploadGithubFile(d.expPath, b64, `Rename PDF: ${d.inv.number || d.inv.id}`);
-        await deleteGithubFile(d.wrongPath, fileData.sha, `Remove old path for invoice ${d.inv.number || d.inv.id}`);
+        await deleteGithubFile(d.wrongPath, d.wrongSha || fileData.sha, `Remove old path for invoice ${d.inv.number || d.inv.id}`);
         upsert('invoices', { ...d.inv, pdfPath: d.expPath });
         markDirty();
       };
