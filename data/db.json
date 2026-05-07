@@ -7231,6 +7231,20 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778169979269,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "vnd_movp2ylqct",
+      "name": "new",
+      "role": "cleaner",
+      "phone": "",
+      "email": "",
+      "notes": "",
+      "rates": {},
+      "cleaningPeriods": [],
+      "createdAt": 1778170969697,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778170969697,
+      "updatedBy": "Giorgos"
     }
   ],
   "tenants": [],
