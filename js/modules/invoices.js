@@ -33,7 +33,7 @@ export default {
 
 // Canonical repo path for an invoice PDF — always uses the UI invoice number as the filename.
 function invoicePdfPath(inv) {
-  const safe = (inv.number || inv.id).replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '_');
+  const safe = (inv.number || inv.id).replace(/[/\\:*?"<>|#&%]/g, '_').replace(/\s+/g, '_');
   return `invoices/${safe}.pdf`;
 }
 

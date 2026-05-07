@@ -393,13 +393,14 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
   // Normalise path: strip any accidental leading slash so files always land
   // inside their intended folder, not the repo root.
   const cleanPath = path.replace(/^\/+/, '');
+  const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
 
   const headers = {
     'Accept':        'application/vnd.github+json',
     'Authorization': `token ${token}`,
     'Content-Type':  'application/json'
   };
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}`;
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
 
   // Check if the file already exists so we can include its SHA (required for
   // updates). A 404 here means the file doesn't exist yet — that is expected
@@ -447,8 +448,9 @@ export async function listGithubFolder(folderPath) {
   if (token) headers['Authorization'] = `token ${token}`;
 
   const cleanPath = folderPath.replace(/^\/+|\/+$/g, '');
+  const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
   const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}?ref=${encodeURIComponent(branch || 'main')}`,
+    `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`,
     { headers, cache: 'no-store' }
   );
   if (res.status === 404) return [];
@@ -469,8 +471,9 @@ export async function fetchGithubFile(path) {
   const headers = { 'Accept': 'application/vnd.github+json' };
   if (token) headers['Authorization'] = `token ${token}`;
 
+  const encodedPath = path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
   const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(branch || 'main')}`,
+    `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`,
     { headers, cache: 'no-store' }
   );
   if (!res.ok) {
@@ -497,7 +500,8 @@ export async function deleteGithubFile(path, sha = null, message = 'Delete file'
     'Authorization': `token ${token}`,
     'Content-Type':  'application/json'
   };
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  const encodedPath = path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
 
   // Resolve SHA if caller didn't provide one
   if (!sha) {

@@ -747,7 +747,7 @@ function buildInvoiceRepoCard() {
 
   // Mirrors invoicePdfPath() in invoices.js — derive canonical repo path from invoice number
   function canonicalPath(inv) {
-    const safe = (inv.number || inv.id).replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '_');
+    const safe = (inv.number || inv.id).replace(/[/\\:*?"<>|#&%]/g, '_').replace(/\s+/g, '_');
     return `invoices/${safe}.pdf`;
   }
 
