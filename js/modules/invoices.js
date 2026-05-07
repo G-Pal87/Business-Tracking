@@ -485,23 +485,39 @@ function openBuilder(existing) {
       }
     }
     recalcInvoice();
-    upsert('invoices', inv);
 
-    // Generate and persist PDF for builder-created invoices
+    // Generate and upload PDF BEFORE upsert so the doSave debounce doesn't
+    // race with the GitHub upload commit (two concurrent commits to the same
+    // branch cause GitHub to cancel one of them).
+    let pdfUploadStatus = null;
     if (inv.source !== 'pdf_import') {
-      const pdfPath = `invoices/${inv.id}.pdf`;   // always folder-prefixed, never repo root
+      const pdfPath = `invoices/${inv.id}.pdf`;
       const invLabel = inv.number || inv.id;
+      const origText = save.textContent;
+      save.disabled = true;
+      save.textContent = 'Uploading PDF…';
       try {
-        const b64 = generateInvoicePDF(inv).output('datauristring').split(',')[1];
+        const pdfDoc = generateInvoicePDF(inv);
+        const dataUri = pdfDoc.output('datauristring');
+        const b64 = dataUri.split(',')[1];
+        if (!b64) throw new Error('PDF generation produced empty content');
         await uploadGithubFile(pdfPath, b64, `${existing ? 'Update' : 'Create'} PDF for invoice ${invLabel}`);
-        if (inv.pdfPath !== pdfPath) { inv.pdfPath = pdfPath; upsert('invoices', inv); }
-        toast(`Invoice ${invLabel} was successfully uploaded to the repo.`, 'success', 4000);
+        inv.pdfPath = pdfPath;
+        pdfUploadStatus = 'success';
       } catch (err) {
         console.error('Invoice PDF upload failed:', err);
-        toast(`Invoice ${invLabel} could not be uploaded to the repo.`, 'danger', 6000);
+        pdfUploadStatus = err.message || 'unknown error';
+      } finally {
+        save.disabled = false;
+        save.textContent = origText;
       }
     }
 
+    // Single upsert — pdfPath is already set if upload succeeded
+    upsert('invoices', inv);
+
+    if (pdfUploadStatus === 'success') toast(`Invoice ${inv.number || inv.id} was successfully uploaded to the repo.`, 'success', 4000);
+    else if (pdfUploadStatus) toast(`Invoice ${inv.number || inv.id} could not be uploaded to the repo.`, 'danger', 6000);
     toast(existing ? 'Invoice updated' : 'Invoice saved', 'success');
     closeModal();
     setTimeout(() => navigate('invoices'), 200);
