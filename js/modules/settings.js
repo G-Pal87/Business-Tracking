@@ -1,7 +1,7 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
-import { saveConfig, clearConfig, fetchDb, saveLocalCache } from '../core/github.js';
+import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile } from '../core/github.js';
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords } from '../core/data.js';
 import { setDb } from '../core/state.js';
@@ -25,6 +25,7 @@ function build() {
   wrap.appendChild(buildVendorsCard());
   wrap.appendChild(buildServicesCard());
   wrap.appendChild(buildTeamCard());
+  wrap.appendChild(buildInvoiceRepoCard());
   wrap.appendChild(buildTrashCard());
   wrap.appendChild(buildDangerCard());
   return wrap;
@@ -722,6 +723,210 @@ function buildTrashCard() {
   };
 
   renderCard();
+  return card;
+}
+
+function buildInvoiceRepoCard() {
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Invoice Repository Maintenance'),
+      el('div', { class: 'card-subtitle' }, 'Audit and back up PDF files stored in the invoice repository')
+    )
+  ));
+
+  const resultEl      = el('div', { style: 'margin-top:12px' });
+  const backupStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+
+  const checkBtn  = button('Check Invoice Repository', { onClick: runCheck });
+  const backupBtn = button('Backup Invoices', { onClick: runBackup });
+  card.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn));
+  card.appendChild(resultEl);
+  card.appendChild(backupStatusEl);
+
+  // Mirrors invoicePdfPath() in invoices.js — derive canonical filename from invoice number
+  function canonicalFilename(inv) {
+    const safe = (inv.number || inv.id).replace(/[/\\:*?"<>|]/g, '_').replace(/\s+/g, '_');
+    return `${safe}.pdf`;
+  }
+
+  async function runCheck() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      resultEl.innerHTML = '<div style="color:var(--danger,#dc3545)">GitHub not configured — add owner/repo/token above.</div>';
+      return;
+    }
+
+    checkBtn.disabled = true;
+    checkBtn.textContent = 'Checking…';
+    resultEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Fetching repository file list…</div>';
+
+    let repoFiles;
+    try {
+      repoFiles = await listGithubFolder('invoices');
+    } catch (err) {
+      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not read repository: ${err.message}</div>`;
+      checkBtn.disabled = false;
+      checkBtn.textContent = 'Check Invoice Repository';
+      return;
+    }
+
+    checkBtn.disabled = false;
+    checkBtn.textContent = 'Check Invoice Repository';
+
+    // Only PDF files at the top level (backup/ is returned as type:'dir' and excluded by listGithubFolder)
+    const pdfFiles  = repoFiles.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    const repoByName = new Map(pdfFiles.map(f => [f.name.toLowerCase(), f]));
+
+    const invoices = listActive('invoices');
+    const discrepancies  = [];
+    const matchedNames   = new Set();
+
+    // Detect duplicate canonical names (two invoice records → same filename)
+    const canonicalCount = new Map();
+    for (const inv of invoices) {
+      const cn = canonicalFilename(inv).toLowerCase();
+      if (!canonicalCount.has(cn)) canonicalCount.set(cn, []);
+      canonicalCount.get(cn).push(inv);
+    }
+    for (const [cn, invs] of canonicalCount) {
+      if (invs.length > 1) {
+        discrepancies.push({ type: 'duplicate',
+          detail: `Duplicate filename "${cn}" for records: ${invs.map(i => i.number || i.id).join(', ')}` });
+      }
+    }
+
+    // Match each invoice to a repo file
+    for (const inv of invoices) {
+      const expectedFile = canonicalFilename(inv);
+      const expectedPath = `invoices/${expectedFile}`;
+      const expectedLow  = expectedFile.toLowerCase();
+
+      if (repoByName.has(expectedLow)) {
+        matchedNames.add(expectedLow);
+        if (inv.pdfPath && inv.pdfPath !== expectedPath) {
+          discrepancies.push({ type: 'filename_mismatch',
+            detail: `Invoice "${inv.number || inv.id}": stored path "${inv.pdfPath}" should be "${expectedPath}"` });
+        }
+      } else {
+        const storedName = (inv.pdfPath || '').split('/').pop().toLowerCase();
+        if (storedName && repoByName.has(storedName)) {
+          matchedNames.add(storedName);
+          discrepancies.push({ type: 'filename_mismatch',
+            detail: `Invoice "${inv.number || inv.id}": file exists as "${storedName}" but should be named "${expectedFile}"` });
+        } else {
+          discrepancies.push({ type: 'missing_file',
+            detail: `Invoice "${inv.number || inv.id}": no PDF found in repository (expected "${expectedFile}")` });
+        }
+      }
+    }
+
+    // Orphaned repo files
+    for (const [nameLow, file] of repoByName) {
+      if (!matchedNames.has(nameLow)) {
+        discrepancies.push({ type: 'orphan_file',
+          detail: `Repository file "${file.name}" has no matching invoice record` });
+      }
+    }
+
+    // Render results
+    resultEl.innerHTML = '';
+
+    const missing  = discrepancies.filter(d => d.type === 'missing_file').length;
+    const matched  = invoices.length - missing;
+    const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px' });
+    for (const [label, val, good] of [
+      ['Invoice records', invoices.length, true],
+      ['Repository PDFs', pdfFiles.length, true],
+      ['Matched',         matched,          matched === invoices.length],
+      ['Discrepancies',   discrepancies.length, discrepancies.length === 0]
+    ]) {
+      summaryGrid.appendChild(el('div', {
+        style: `background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;border-top:3px solid ${good ? 'var(--success,#198754)' : 'var(--danger,#dc3545)'}`
+      },
+        el('div', { style: 'font-size:1.4rem;font-weight:700' }, String(val)),
+        el('div', { style: 'font-size:11px;color:var(--text-muted)' }, label)
+      ));
+    }
+    resultEl.appendChild(summaryGrid);
+
+    if (discrepancies.length === 0) {
+      resultEl.appendChild(el('div', { style: 'color:var(--success,#198754);font-size:13px' },
+        'All invoice records match repository files.'));
+    } else {
+      const typeLabel = { missing_file: 'Missing file', orphan_file: 'Orphan file', filename_mismatch: 'Name mismatch', duplicate: 'Duplicate' };
+      const list = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
+      for (const d of discrepancies) {
+        const badgeCss = d.type === 'orphan_file' ? 'warning' : d.type === 'duplicate' ? 'warning' : 'danger';
+        list.appendChild(el('div', {
+          style: 'display:flex;align-items:flex-start;gap:6px;font-size:12px;padding:5px 0;border-bottom:1px solid var(--border)'
+        },
+          el('span', { class: `badge ${badgeCss}`, style: 'flex-shrink:0;margin-top:1px' }, typeLabel[d.type] || d.type),
+          el('span', {}, d.detail)
+        ));
+      }
+      resultEl.appendChild(list);
+    }
+  }
+
+  async function runBackup() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      backupStatusEl.textContent = 'GitHub not configured.';
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
+    backupBtn.disabled = true;
+    backupBtn.textContent = 'Backing up…';
+    backupStatusEl.style.color = 'var(--text-muted)';
+    backupStatusEl.textContent = 'Listing invoice files…';
+
+    let files;
+    try {
+      const all = await listGithubFolder('invoices');
+      files = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    } catch (err) {
+      backupStatusEl.textContent = `Failed to list files: ${err.message}`;
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+      backupBtn.disabled = false;
+      backupBtn.textContent = 'Backup Invoices';
+      return;
+    }
+
+    if (files.length === 0) {
+      backupStatusEl.textContent = 'No PDF files found in invoice repository.';
+      backupStatusEl.style.color = 'var(--text-muted)';
+      backupBtn.disabled = false;
+      backupBtn.textContent = 'Backup Invoices';
+      return;
+    }
+
+    let done = 0, failed = 0;
+    for (const file of files) {
+      backupStatusEl.textContent = `Copying ${done + failed + 1} / ${files.length}: ${file.name}…`;
+      try {
+        const fileData = await fetchGithubFile(file.path);
+        const b64 = fileData.content.replace(/\s/g, '');
+        await uploadGithubFile(`invoices/backup/${file.name}`, b64, `Backup: ${file.name}`);
+        done++;
+      } catch (err) {
+        console.warn(`[backup] Failed for ${file.name}:`, err.message);
+        failed++;
+      }
+    }
+
+    backupBtn.disabled = false;
+    backupBtn.textContent = 'Backup Invoices';
+    if (failed > 0) {
+      backupStatusEl.textContent = `Backup done: ${done} copied, ${failed} failed. Check browser console for details.`;
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+    } else {
+      backupStatusEl.textContent = `Backup complete: ${done} file${done !== 1 ? 's' : ''} copied to invoices/backup/.`;
+      backupStatusEl.style.color = 'var(--success,#198754)';
+    }
+  }
+
   return card;
 }
 
