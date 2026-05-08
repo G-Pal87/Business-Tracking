@@ -28,6 +28,8 @@ function build() {
   wrap.appendChild(buildReservationExpenseRulesCard());
   wrap.appendChild(buildTeamCard());
   wrap.appendChild(buildInvoiceRepoCard());
+  wrap.appendChild(buildPropertiesRepoCard());
+  wrap.appendChild(buildClientsRepoCard());
   wrap.appendChild(buildTrashCard());
   wrap.appendChild(buildDangerCard());
   return wrap;
@@ -1304,6 +1306,297 @@ function buildInvoiceRepoCard() {
   }
 
   return card;
+}
+
+// ── Shared helpers for document repo maintenance cards ────────────────────────
+
+async function listDocRepoFiles(rootFolder) {
+  // List root folder, then recurse one level into sub-folders (skip 'backup')
+  let topItems;
+  try {
+    topItems = await listGithubFolder(rootFolder);
+  } catch (err) {
+    if (err.message && (err.message.includes('404') || err.message.includes('Not Found'))) return [];
+    throw err;
+  }
+  const files = [];
+  for (const item of topItems) {
+    if (item.type === 'file') {
+      files.push(item);
+    } else if (item.type === 'dir' && item.name.toLowerCase() !== 'backup') {
+      try {
+        const subItems = await listGithubFolder(item.path);
+        for (const sub of subItems) { if (sub.type === 'file') files.push(sub); }
+      } catch { /* skip unreadable sub-folder */ }
+    }
+  }
+  return files;
+}
+
+function buildDocRepoCard({ title, subtitle, rootFolder, collection, entityLabel, checkBtnLabel, backupBtnLabel }) {
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', {},
+      el('div', { class: 'card-title' }, title),
+      el('div', { class: 'card-subtitle' }, subtitle)
+    )
+  ));
+
+  const resultEl       = el('div', { style: 'margin-top:12px' });
+  const backupStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+
+  const checkBtn  = button(checkBtnLabel,  { onClick: runCheck });
+  const backupBtn = button(backupBtnLabel, { onClick: runBackup });
+  card.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn));
+  card.appendChild(resultEl);
+  card.appendChild(backupStatusEl);
+
+  // ── Check ─────────────────────────────────────────────────────────────────
+
+  async function runCheck() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      resultEl.innerHTML = '<div style="color:var(--danger,#dc3545)">GitHub not configured — add owner/repo/token above.</div>';
+      return;
+    }
+    checkBtn.disabled = true;
+    checkBtn.textContent = 'Checking…';
+    resultEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Fetching repository file list…</div>';
+
+    let repoFiles;
+    try {
+      repoFiles = await listDocRepoFiles(rootFolder);
+    } catch (err) {
+      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not read repository: ${err.message}</div>`;
+      checkBtn.disabled = false;
+      checkBtn.textContent = checkBtnLabel;
+      return;
+    }
+    checkBtn.disabled = false;
+    checkBtn.textContent = checkBtnLabel;
+
+    const repoByPath = new Map(repoFiles.map(f => [f.path.toLowerCase(), f]));
+    const entities   = listActive(collection);
+
+    // Collect all doc records that have a repo path
+    const allDocs = [];
+    for (const entity of entities) {
+      for (const doc of (entity.documents || [])) {
+        if (doc.path) allDocs.push({ doc, entity });
+      }
+    }
+
+    const discrepancies = [];
+    const matchedPaths  = new Set();
+
+    for (const { doc, entity } of allDocs) {
+      const pathLow = doc.path.toLowerCase();
+      if (repoByPath.has(pathLow)) {
+        matchedPaths.add(pathLow);
+      } else {
+        discrepancies.push({
+          type:   'missing_file',
+          detail: `"${doc.name}" (${entityLabel}: "${entity.name}"): file at "${doc.path}" not found in repository — record will be removed`,
+          doc, entity
+        });
+      }
+    }
+
+    for (const [pathLow, file] of repoByPath) {
+      if (!matchedPaths.has(pathLow)) {
+        discrepancies.push({
+          type:   'orphan_file',
+          detail: `"${file.name}" (${file.path}) has no matching document record`,
+          file
+        });
+      }
+    }
+
+    renderCheckResults(entities.length, repoFiles.length, allDocs.length, discrepancies);
+  }
+
+  // ── Render results ─────────────────────────────────────────────────────────
+
+  function renderCheckResults(totalEntities, totalFiles, totalDocs, discrepancies) {
+    resultEl.innerHTML = '';
+
+    const refreshRow = el('div', { style: 'display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:8px' });
+    refreshRow.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted)' }, `Checked at ${new Date().toLocaleTimeString()}`));
+    refreshRow.appendChild(button('Refresh', { variant: 'sm ghost', onClick: runCheck }));
+    resultEl.appendChild(refreshRow);
+
+    const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px' });
+    for (const [label, val, good] of [
+      [`${entityLabel}s`,      totalEntities, true],
+      ['Repository files',     totalFiles,    true],
+      ['Document records',     totalDocs,     true],
+      ['Discrepancies',        discrepancies.length, discrepancies.length === 0]
+    ]) {
+      summaryGrid.appendChild(el('div', {
+        style: `background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;border-top:3px solid ${good ? 'var(--success,#198754)' : 'var(--danger,#dc3545)'}`
+      },
+        el('div', { style: 'font-size:1.4rem;font-weight:700' }, String(val)),
+        el('div', { style: 'font-size:11px;color:var(--text-muted)' }, label)
+      ));
+    }
+    resultEl.appendChild(summaryGrid);
+
+    if (discrepancies.length === 0) {
+      resultEl.appendChild(el('div', { style: 'color:var(--success,#198754);font-size:13px' },
+        `All ${entityLabel.toLowerCase()} document records match repository files.`));
+      return;
+    }
+
+    const TYPE_LABEL = { missing_file: 'Missing file', orphan_file: 'Orphan file' };
+    const TYPE_CSS   = { orphan_file: 'warning' };
+
+    const list = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
+    for (const d of discrepancies) {
+      const row = el('div', { style: 'display:flex;align-items:flex-start;gap:6px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)' });
+      row.appendChild(el('span', { class: `badge ${TYPE_CSS[d.type] || 'danger'}`, style: 'flex-shrink:0;margin-top:1px' }, TYPE_LABEL[d.type] || d.type));
+      row.appendChild(el('span', { style: 'flex:1' }, d.detail));
+
+      const statusEl = el('span', { style: 'font-size:11px;white-space:nowrap;flex-shrink:0' });
+      const action   = resolveAction(d);
+      if (action) {
+        const btn = button('Resolve', { variant: 'sm primary' });
+        btn.onclick = async () => {
+          btn.disabled    = true;
+          btn.textContent = 'Resolving…';
+          statusEl.textContent = '';
+          statusEl.style.color = '';
+          try {
+            await action();
+            btn.textContent      = '✓ Done';
+            statusEl.textContent = 'Refreshing…';
+            statusEl.style.color = 'var(--success,#198754)';
+            await new Promise(r => setTimeout(r, 600));
+            await runCheck();
+          } catch (err) {
+            btn.disabled    = false;
+            btn.textContent = 'Resolve';
+            if (err.message !== 'cancelled') {
+              statusEl.textContent = err.message;
+              statusEl.style.color = 'var(--danger,#dc3545)';
+            }
+          }
+        };
+        row.appendChild(statusEl);
+        row.appendChild(btn);
+      }
+      list.appendChild(row);
+    }
+    resultEl.appendChild(list);
+  }
+
+  // ── Resolve actions ────────────────────────────────────────────────────────
+
+  function resolveAction(d) {
+    if (d.type === 'missing_file') {
+      return async () => {
+        const updated = { ...d.entity, documents: (d.entity.documents || []).filter(doc => doc.id !== d.doc.id) };
+        upsert(collection, updated);
+        markDirty();
+      };
+    }
+    if (d.type === 'orphan_file') {
+      return async () => {
+        const ok = await confirmDialog(
+          `Delete orphaned file "${d.file.name}" from the repository? This cannot be undone.`,
+          { danger: true, okLabel: 'Delete File' }
+        );
+        if (!ok) throw new Error('cancelled');
+        await deleteGithubFile(d.file.path, d.file.sha, `Delete orphan: ${d.file.name}`);
+      };
+    }
+    return null;
+  }
+
+  // ── Backup ─────────────────────────────────────────────────────────────────
+
+  async function runBackup() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      backupStatusEl.textContent = 'GitHub not configured.';
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+    backupBtn.disabled = true;
+    backupBtn.textContent = 'Backing up…';
+    backupStatusEl.style.color = 'var(--text-muted)';
+    backupStatusEl.textContent = `Listing ${rootFolder}/ files…`;
+
+    let files;
+    try {
+      files = await listDocRepoFiles(rootFolder);
+    } catch (err) {
+      backupStatusEl.textContent = `Failed to list files: ${err.message}`;
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+      backupBtn.disabled = false;
+      backupBtn.textContent = backupBtnLabel;
+      return;
+    }
+
+    if (files.length === 0) {
+      backupStatusEl.textContent = `No files found under ${rootFolder}/.`;
+      backupStatusEl.style.color = 'var(--text-muted)';
+      backupBtn.disabled = false;
+      backupBtn.textContent = backupBtnLabel;
+      return;
+    }
+
+    let done = 0, failed = 0;
+    for (const file of files) {
+      backupStatusEl.textContent = `Copying ${done + failed + 1} / ${files.length}: ${file.name}…`;
+      try {
+        const fileData = await fetchGithubFile(file.path);
+        const b64      = fileData.content.replace(/\s/g, '');
+        // Preserve sub-folder: {Root}/{name}/file → {Root}/backup/{name}/file
+        const relative = file.path.replace(new RegExp(`^${rootFolder}/`), '');
+        await uploadGithubFile(`${rootFolder}/backup/${relative}`, b64, `Backup: ${file.name}`);
+        done++;
+      } catch (err) {
+        console.warn(`[backup] Failed for ${file.name}:`, err.message);
+        failed++;
+      }
+    }
+
+    backupBtn.disabled = false;
+    backupBtn.textContent = backupBtnLabel;
+    if (failed > 0) {
+      backupStatusEl.textContent = `Backup done: ${done} copied, ${failed} failed. Check console for details.`;
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+    } else {
+      backupStatusEl.textContent = `Backup complete: ${done} file${done !== 1 ? 's' : ''} copied to ${rootFolder}/backup/.`;
+      backupStatusEl.style.color = 'var(--success,#198754)';
+    }
+  }
+
+  return card;
+}
+
+function buildPropertiesRepoCard() {
+  return buildDocRepoCard({
+    title:          'Property Document Repository Maintenance',
+    subtitle:       'Audit and back up document files stored under Properties/ in the repository',
+    rootFolder:     'Properties',
+    collection:     'properties',
+    entityLabel:    'Property',
+    checkBtnLabel:  'Check Property Documents',
+    backupBtnLabel: 'Backup Property Documents'
+  });
+}
+
+function buildClientsRepoCard() {
+  return buildDocRepoCard({
+    title:          'Client Document Repository Maintenance',
+    subtitle:       'Audit and back up document files stored under Clients/ in the repository',
+    rootFolder:     'Clients',
+    collection:     'clients',
+    entityLabel:    'Client',
+    checkBtnLabel:  'Check Client Documents',
+    backupBtnLabel: 'Backup Client Documents'
+  });
 }
 
 function buildDangerCard() {
