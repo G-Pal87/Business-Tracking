@@ -8518,7 +8518,27 @@
       "updatedBy": "Giorgos"
     }
   ],
-  "tenants": [],
+  "tenants": [
+    {
+      "id": "ten_mowzo52ud6",
+      "name": "xxxxx",
+      "phone": "",
+      "email": "",
+      "propertyId": "prop_mo946nvbck",
+      "leaseStartDate": "2026-05-05",
+      "leaseEndDate": "2026-06-08",
+      "monthlyRent": 100,
+      "currency": "EUR",
+      "deposit": 0,
+      "paymentDayOfMonth": 1,
+      "notes": "",
+      "status": "active",
+      "createdAt": 1778249246427,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778249246427,
+      "updatedBy": "Giorgos"
+    }
+  ],
   "clients": [
     {
       "id": "cli_mo9sroqs7s",
