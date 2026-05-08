@@ -7191,8 +7191,10 @@
       "cleaningPeriods": [],
       "createdAt": 1778169946970,
       "createdBy": "Giorgos",
-      "updatedAt": 1778169946970,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778222115024,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778222115024,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "vnd_movohrc5b",
@@ -7205,8 +7207,10 @@
       "cleaningPeriods": [],
       "createdAt": 1778169979269,
       "createdBy": "Giorgos",
-      "updatedAt": 1778169979269,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778222112171,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778222112171,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "vnd_movp2ylqct",
