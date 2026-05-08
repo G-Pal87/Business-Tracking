@@ -3923,7 +3923,27 @@
       "deletedBy": "Giorgos"
     }
   ],
-  "tenants": [],
+  "tenants": [
+    {
+      "id": "ten_mox6y98b1u",
+      "name": "Reka Rita",
+      "phone": "",
+      "email": "",
+      "propertyId": "prop_mohgap08rl",
+      "leaseStartDate": "2025-12-01",
+      "leaseEndDate": "",
+      "monthlyRent": 165000,
+      "currency": "HUF",
+      "deposit": 165000,
+      "paymentDayOfMonth": 5,
+      "notes": "",
+      "status": "active",
+      "createdAt": 1778261503098,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778261503098,
+      "updatedBy": "Giorgos"
+    }
+  ],
   "clients": [
     {
       "id": "cli_mo9sroqs7s",
