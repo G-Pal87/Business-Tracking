@@ -682,10 +682,20 @@
       "leaseEndDate": "",
       "soldDate": "",
       "vacantPeriods": [],
-      "documents": [],
+      "documents": [
+        {
+          "id": "doc_mox95t04ic",
+          "name": "invoice-5469.pdf",
+          "type": "application/pdf",
+          "size": 107532,
+          "uploadedAt": "2026-05-08T18:32:37.396Z",
+          "path": "Properties/Danko u. 38 -2a/invoice-5469.pdf",
+          "propertyId": "prop_mox7t3wsd1"
+        }
+      ],
       "createdAt": 1778262898469,
       "createdBy": "Giorgos",
-      "updatedAt": 1778262898469,
+      "updatedAt": 1778265162436,
       "updatedBy": "Giorgos"
     }
   ],
