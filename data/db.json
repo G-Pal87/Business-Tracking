@@ -3983,6 +3983,24 @@
       "updatedBy": "Giorgos",
       "deletedAt": 1778257246803,
       "deletedBy": "Giorgos"
+    },
+    {
+      "id": "pay_mox4hb8bix",
+      "propertyId": "prop_mo946nvbck",
+      "amount": 100,
+      "currency": "EUR",
+      "date": "2026-05-08",
+      "type": "off_platform_reservation",
+      "status": "paid",
+      "source": "manual",
+      "stream": "short_term_rental",
+      "notes": "",
+      "checkIn": "",
+      "checkOut": "",
+      "createdAt": 1778257308754,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778257308754,
+      "updatedBy": "Giorgos"
     }
   ],
   "expenses": [
