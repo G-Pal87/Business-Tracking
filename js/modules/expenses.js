@@ -1,7 +1,7 @@
 // Expenses module
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -30,22 +30,6 @@ function addOneYear(dateStr) {
   return d.toISOString().slice(0, 10);
 }
 
-function restoreInventoryStock(expense) {
-  if (!expense.inventoryItemId || !expense.inventoryQty) return;
-  const item = byId('inventory', expense.inventoryItemId);
-  if (!item) return;
-  if (expense.inventoryBatches && item.batches) {
-    // Batched model: restore each consumed batch's remaining
-    const restoreMap = new Map(expense.inventoryBatches.map(c => [c.batchId, c.qty]));
-    const updatedBatches = item.batches.map(b =>
-      restoreMap.has(b.id) ? { ...b, remaining: (b.remaining ?? b.qty ?? 0) + restoreMap.get(b.id) } : b
-    );
-    upsert('inventory', { ...item, batches: updatedBatches });
-  } else {
-    // Legacy flat stock
-    upsert('inventory', { ...item, stock: (item.stock || 0) + expense.inventoryQty });
-  }
-}
 
 function build() {
   charts.destroyAll();
@@ -573,6 +557,7 @@ function openForm(existing, defaults = {}) {
       }
       toast(`${count} recurring expense(s) added`, 'success');
     } else {
+      if (existing?.isGenerated) r.manualOverride = true;
       upsert('expenses', r);
       toast(existing ? 'Expense updated' : 'Expense added', 'success');
     }

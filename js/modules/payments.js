@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth } from '../core/data.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth, applyReservationExpenseRules, removeReservationExpenses } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -87,7 +87,11 @@ function buildAllPayments(wrap) {
         if (mk) affectedForecast.add(`${p.propertyId}|${mk}`);
       }
     }
-    for (const id of [...selected]) softDelete('payments', id);
+    for (const id of [...selected]) {
+      const p = listActivePayments().find(p => p.id === id);
+      if (p) removeReservationExpenses(p);
+      softDelete('payments', id);
+    }
     for (const key of affectedForecast) {
       const [propId, monthKey] = key.split('|');
       recalcPendingAirbnbForecast(propId, monthKey);
@@ -201,6 +205,7 @@ function buildAllPayments(wrap) {
         const isAirbnbPending = r.source === 'airbnb' && r.status === 'pending';
         const propId = r.propertyId;
         const monthKey = (r.airbnbCheckIn || r.date || '').slice(0, 7);
+        removeReservationExpenses(r);
         softDelete('payments', r.id);
         if (isAirbnbPending && propId && monthKey) recalcPendingAirbnbForecast(propId, monthKey);
         toast('Deleted', 'success');
@@ -719,6 +724,7 @@ function openForm(existing) {
       notes: notesT.value.trim(), checkIn: checkInI.value, checkOut: checkOutI.value
     });
     upsert('payments', r);
+    if (r.stream === 'short_term_rental') applyReservationExpenseRules(r);
     toast(existing ? 'Payment updated' : 'Payment added', 'success');
     closeModal();
     setTimeout(() => navigate('payments'), 200);
@@ -843,15 +849,9 @@ function openCSVImport() {
       // in the completed export until after payout.
       for (const p of listActivePayments()) {
         if (p.source === 'airbnb' && p.status !== 'pending' && p.airbnbKey && !csvKeys.has(p.airbnbKey)) {
+          removeReservationExpenses(p);
           softDelete('payments', p.id);
           totalRemoved++;
-        }
-      }
-
-      // Remove orphaned cleaning expenses (airbnbRef not in reservation codes)
-      for (const e of (state.db.expenses || [])) {
-        if (e.airbnbRef && e.category === 'cleaning' && !e.deleted && !csvReservationCodes.has(e.airbnbRef)) {
-          softDelete('expenses', e.id);
         }
       }
 
@@ -895,28 +895,7 @@ function openCSVImport() {
         upsert('payments', pay);
         if (existing) totalUpdated++; else totalAdded++;
 
-        // Cleaning expense: only for Reservation type, once per confirmation code
-        if (row.type.toLowerCase() === 'reservation' && row.confirmationCode) {
-          const expDate = row.checkIn || row.date;
-          const existingExp = (state.db.expenses || []).find(e =>
-            e.airbnbRef === row.confirmationCode && e.category === 'cleaning' && !e.deleted
-          );
-          if (!existingExp) {
-            upsert('expenses', {
-              id: newId('exp'),
-              propertyId: matched.id,
-              category: 'cleaning',
-              amount: 0,
-              currency: matched.currency,
-              date: expDate,
-              airbnbRef: row.confirmationCode,
-              vendorId: '',
-              vendor: '',
-              description: '',
-              stream: 'short_term_rental'
-            });
-          }
-        }
+        if (row.type.toLowerCase() === 'reservation') applyReservationExpenseRules(pay);
       }
     }
 
@@ -968,21 +947,19 @@ function openCSVImport() {
           notes: [row.guest, row.listing].filter(Boolean).join(' · ')
         };
 
+        let pay;
         if (existing) {
           // Migrate old-format records (no airbnbKey) to new format
           Object.assign(existing, payFields);
-          upsert('payments', existing);
+          pay = existing;
           totalUpdated++;
         } else {
-          upsert('payments', {
-            id: newId('pay'),
-            propertyId: matched.id,
-            stream: 'short_term_rental',
-            source: 'airbnb',
-            ...payFields
-          });
+          pay = { id: newId('pay'), propertyId: matched.id, stream: 'short_term_rental', source: 'airbnb', ...payFields };
           totalAdded++;
         }
+        upsert('payments', pay);
+
+        if (row.type?.toLowerCase() === 'reservation') applyReservationExpenseRules(pay);
 
         // Accumulate forecast total for this property+month
         const refDate = row.checkIn || row.date;
