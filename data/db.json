@@ -11389,7 +11389,21 @@
       "updatedBy": "Giorgos"
     }
   ],
-  "inventory": [],
+  "inventory": [
+    {
+      "id": "ivt_mowjjlqglh",
+      "name": "Welcome Drinks",
+      "stock": 500,
+      "unitPrice": 1.5,
+      "currency": "EUR",
+      "dateBought": "2025-01-01",
+      "comments": "",
+      "createdAt": 1778222192269,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778222192269,
+      "updatedBy": "Giorgos"
+    }
+  ],
   "appConfig": {
     "github": {
       "owner": "",
