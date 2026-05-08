@@ -5879,6 +5879,22 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778244792131,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "pay_mowxhbr3bj",
+      "propertyId": "prop_mo946nvbck",
+      "amount": 536,
+      "currency": "EUR",
+      "date": "2026-05-08",
+      "type": "deposit",
+      "status": "paid",
+      "source": "bank",
+      "stream": "long_term_rental",
+      "notes": "",
+      "createdAt": 1778245552346,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778245552346,
+      "updatedBy": "Giorgos"
     }
   ],
   "expenses": [
