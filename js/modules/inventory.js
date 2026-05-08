@@ -18,7 +18,7 @@ function build() {
 
   const bar = el('div', { class: 'flex gap-8 mb-16' });
   bar.appendChild(el('div', { class: 'flex-1' }));
-  bar.appendChild(button('+ Add Item', { variant: 'primary', onClick: () => openForm() }));
+  bar.appendChild(button('+ Add Item', { variant: 'primary', onClick: () => openForm(null, render) }));
   wrap.appendChild(bar);
 
   const tableWrap = el('div', { class: 'table-wrap' });
@@ -44,7 +44,7 @@ function build() {
       tr.appendChild(el('td', {}, fmtDate(item.dateBought)));
       tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px;max-width:200px' }, item.comments || ''));
       const actions = el('td', { class: 'right' });
-      actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(item) }));
+      actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(item, render) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog(`Delete "${item.name}"?`, { danger: true, okLabel: 'Delete' });
         if (ok) { softDelete('inventory', item.id); toast('Deleted', 'success'); render(); }
@@ -60,7 +60,7 @@ function build() {
   return wrap;
 }
 
-function openForm(existing) {
+function openForm(existing, onSave) {
   const r = existing ? { ...existing } : {
     id: newId('ivt'),
     name: '', stock: 0, unitPrice: 0,
@@ -96,7 +96,7 @@ function openForm(existing) {
     upsert('inventory', r);
     toast(existing ? 'Item updated' : 'Item added', 'success');
     closeModal();
-    setTimeout(() => location.hash = 'inventory', 200);
+    onSave?.();
   }});
   const cancelBtn = button('Cancel', { onClick: closeModal });
   openModal({ title: existing ? 'Edit Item' : 'New Inventory Item', body, footer: [cancelBtn, saveBtn] });
