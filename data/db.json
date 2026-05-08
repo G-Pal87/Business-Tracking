@@ -4048,6 +4048,25 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778261503098,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "ten_mox72gnf6w",
+      "name": "Laszlo Kalucza",
+      "phone": "",
+      "email": "",
+      "propertyId": "prop_mohg6old31",
+      "leaseStartDate": "2026-04-15",
+      "leaseEndDate": "",
+      "monthlyRent": 150000,
+      "currency": "HUF",
+      "deposit": 150000,
+      "paymentDayOfMonth": 14,
+      "notes": "",
+      "status": "active",
+      "createdAt": 1778261731480,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778261731480,
+      "updatedBy": "Giorgos"
     }
   ],
   "clients": [
