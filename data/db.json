@@ -989,7 +989,7 @@
   "services": [
     {
       "id": "svc_001",
-      "name": "Customer Success Professional Services March",
+      "name": "Customer Success Professional Services",
       "description": "",
       "unit": "day",
       "defaultRate": 650,
@@ -997,7 +997,7 @@
       "stream": "customer_success",
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778232177674,
+      "updatedAt": 1778232219100,
       "updatedBy": "Giorgos"
     },
     {
