@@ -11376,11 +11376,20 @@
           "currency": "EUR",
           "dateBought": "2024-05-08",
           "comments": ""
+        },
+        {
+          "id": "btc_mowlq0b9hu",
+          "qty": 200,
+          "remaining": 200,
+          "unitPrice": 2,
+          "currency": "EUR",
+          "dateBought": "2026-05-08",
+          "comments": ""
         }
       ],
       "createdAt": 1778225776918,
       "createdBy": "Giorgos",
-      "updatedAt": 1778225776918,
+      "updatedAt": 1778225789205,
       "updatedBy": "Giorgos"
     }
   ],
