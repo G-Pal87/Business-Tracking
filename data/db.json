@@ -4317,8 +4317,10 @@
       "status": "active",
       "createdAt": 1778261731480,
       "createdBy": "Giorgos",
-      "updatedAt": 1778261731480,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778262326464,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778262326464,
+      "deletedBy": "Giorgos"
     }
   ],
   "clients": [
