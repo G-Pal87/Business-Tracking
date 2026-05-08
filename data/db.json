@@ -11341,7 +11341,21 @@
       "updatedBy": "Giorgos"
     }
   ],
-  "inventory": [],
+  "inventory": [
+    {
+      "id": "ivt_mowkjw038w",
+      "name": "Welcome Sweets",
+      "stock": 500,
+      "unitPrice": 1.2,
+      "currency": "EUR",
+      "dateBought": "2025-01-01",
+      "comments": "",
+      "createdAt": 1778223869793,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778223869793,
+      "updatedBy": "Giorgos"
+    }
+  ],
   "appConfig": {
     "github": {
       "owner": "",
