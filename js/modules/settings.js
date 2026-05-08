@@ -803,6 +803,13 @@ function buildTrashCard() {
             try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
             catch { pdfErrors++; }
           }
+        } else if (collection === 'clients') {
+          const cli = all.find(r => r.collection === 'clients' && r.item.id === id)?.item;
+          for (const doc of (cli?.documents || [])) {
+            if (!doc.path) continue;
+            try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+            catch { pdfErrors++; }
+          }
         }
       }
       const count = permanentlyDeleteRecords(targets);
@@ -824,7 +831,7 @@ function buildTrashCard() {
         if (collection === 'invoices' && item.pdfPath) {
           try { await deleteGithubFile(item.pdfPath, null, `Delete PDF for invoice ${item.number || item.id}`); }
           catch { pdfErrors++; }
-        } else if (collection === 'properties') {
+        } else if (collection === 'properties' || collection === 'clients') {
           for (const doc of (item.documents || [])) {
             if (!doc.path) continue;
             try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
@@ -921,6 +928,12 @@ function buildTrashCard() {
               return;
             }
           } else if (collection === 'properties') {
+            for (const doc of (item.documents || [])) {
+              if (!doc.path) continue;
+              try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+              catch { /* best-effort */ }
+            }
+          } else if (collection === 'clients') {
             for (const doc of (item.documents || [])) {
               if (!doc.path) continue;
               try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
