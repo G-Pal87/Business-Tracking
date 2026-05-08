@@ -5835,7 +5835,7 @@
     {
       "id": "pay_mowwtwdk1t",
       "propertyId": "prop_mo946nvbck",
-      "amount": 100,
+      "amount": 200,
       "currency": "EUR",
       "date": "2026-05-08",
       "type": "rental",
@@ -5845,7 +5845,7 @@
       "notes": "",
       "createdAt": 1778244480113,
       "createdBy": "Giorgos",
-      "updatedAt": 1778244480113,
+      "updatedAt": 1778244678302,
       "updatedBy": "Giorgos"
     },
     {
