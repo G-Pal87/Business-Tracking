@@ -446,10 +446,20 @@
       "paymentDayOfMonth": 1,
       "soldDate": "",
       "vacantPeriods": [],
-      "documents": [],
+      "documents": [
+        {
+          "id": "doc_moxhj64b82",
+          "name": "invoice-5469.pdf",
+          "type": "application/pdf",
+          "size": 107532,
+          "uploadedAt": "2026-05-08T22:26:57.851Z",
+          "path": "Properties/Karacsony 2/invoice-5469.pdf",
+          "propertyId": "prop_mohgf9k39v"
+        }
+      ],
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
+      "updatedAt": 1778279224603,
       "updatedBy": "Giorgos"
     },
     {
