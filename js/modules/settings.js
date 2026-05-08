@@ -3,9 +3,9 @@ import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, deleteGithubFile } from '../core/github.js';
 import { navigate } from '../core/router.js';
-import { upsert, softDelete, listActive, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
 import { setDb } from '../core/state.js';
-import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
+import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { generateInvoicePDF } from '../core/pdf.js';
 
 export default {
@@ -25,6 +25,7 @@ function build() {
   wrap.appendChild(buildBusinessCard());
   wrap.appendChild(buildVendorsCard());
   wrap.appendChild(buildServicesCard());
+  wrap.appendChild(buildReservationExpenseRulesCard());
   wrap.appendChild(buildTeamCard());
   wrap.appendChild(buildInvoiceRepoCard());
   wrap.appendChild(buildTrashCard());
@@ -499,6 +500,158 @@ function openServiceForm(existing, onSave) {
     onSave?.();
   }});
   openModal({ title: existing ? 'Edit Service' : 'New Service', body, footer: [button('Cancel', { onClick: closeModal }), save] });
+}
+
+function buildReservationExpenseRulesCard() {
+  const card = el('div', { class: 'card mb-16' });
+
+  const renderCard = () => {
+    card.innerHTML = '';
+    card.appendChild(el('div', { class: 'card-header' },
+      el('div', {},
+        el('div', { class: 'card-title' }, 'Reservation Expense Rules'),
+        el('div', { class: 'card-subtitle' }, 'Auto-generate expenses for each reservation (historical & future, imported & manual)')
+      ),
+      button('+ Add Rule', { variant: 'primary', onClick: () => openReservationExpenseRuleForm(null, renderCard) })
+    ));
+    const rules = listActive('reservationExpenseRules');
+    if (rules.length === 0) {
+      card.appendChild(el('div', { class: 'empty' }, 'No rules configured'));
+    } else {
+      const t = el('table', { class: 'table' });
+      t.innerHTML = `<thead><tr><th>Name</th><th>Property</th><th>Category</th><th>Amount Source</th><th>Enabled</th><th></th></tr></thead>`;
+      const tb = el('tbody');
+      for (const rule of rules) {
+        const prop = rule.propertyId ? byId('properties', rule.propertyId) : null;
+        const catLabel = EXPENSE_CATEGORIES[rule.category]?.label || rule.category;
+        const srcLabel = rule.amountSource === 'airbnb_cleaning_fee' ? 'Airbnb cleaning fee'
+          : rule.amountSource === 'inventory' ? 'Inventory (FIFO)'
+          : `Fixed ${rule.fixedAmount} ${rule.fixedCurrency || 'EUR'}`;
+        const tr = el('tr');
+        tr.appendChild(el('td', {}, rule.name));
+        tr.appendChild(el('td', {}, prop?.name || 'All properties'));
+        tr.appendChild(el('td', {}, catLabel));
+        tr.appendChild(el('td', {}, srcLabel));
+        tr.appendChild(el('td', {}, el('span', { class: `badge ${rule.enabled ? 'success' : ''}` }, rule.enabled ? 'On' : 'Off')));
+        const acts = el('td', { class: 'right' });
+        acts.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openReservationExpenseRuleForm(rule, renderCard) }));
+        acts.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
+          const ok = await confirmDialog(`Delete rule "${rule.name}"?`, { danger: true, okLabel: 'Delete' });
+          if (!ok) return;
+          softDelete('reservationExpenseRules', rule.id);
+          toast('Rule deleted', 'success');
+          renderCard();
+        }}));
+        tr.appendChild(acts);
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb);
+      const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+      card.appendChild(tw);
+    }
+  };
+
+  renderCard();
+  return card;
+}
+
+function openReservationExpenseRuleForm(existing, onSave) {
+  const rule = existing ? { ...existing } : {
+    id: newId('rer'),
+    name: '',
+    propertyId: '',
+    category: 'cleaning',
+    vendorId: '',
+    amountSource: 'airbnb_cleaning_fee',
+    fixedAmount: 0,
+    fixedCurrency: 'EUR',
+    inventoryItemId: '',
+    inventoryQty: 1,
+    description: '',
+    enabled: true
+  };
+
+  const body = el('div', {});
+  const stProps = listActive('properties').filter(p => p.type === 'short_term');
+  const vendors = listActive('vendors');
+  const invItems = listActive('inventory');
+
+  const nameI      = input({ value: rule.name, placeholder: 'e.g. Cleaning Fee' });
+  const propS      = select(
+    [{ value: '', label: 'All short-term properties' }, ...stProps.map(p => ({ value: p.id, label: p.name }))],
+    rule.propertyId || ''
+  );
+  const catS       = select(
+    Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })),
+    rule.category || 'cleaning'
+  );
+  const vendorS    = select(
+    [{ value: '', label: 'None' }, ...vendors.map(v => ({ value: v.id, label: v.name }))],
+    rule.vendorId || ''
+  );
+  const srcS       = select([
+    { value: 'airbnb_cleaning_fee', label: 'Airbnb cleaning fee (from import data)' },
+    { value: 'fixed',               label: 'Fixed amount' },
+    { value: 'inventory',           label: 'Inventory item (FIFO deduction)' }
+  ], rule.amountSource || 'airbnb_cleaning_fee');
+  const fixedAmtI  = input({ type: 'number', value: rule.fixedAmount || 0, min: 0, step: 0.01 });
+  const fixedCurrS = select(CURRENCIES, rule.fixedCurrency || 'EUR');
+  const invItemS   = select(
+    [{ value: '', label: 'Select item…' }, ...invItems.map(i => ({ value: i.id, label: i.name }))],
+    rule.inventoryItemId || ''
+  );
+  const invQtyI    = input({ type: 'number', value: rule.inventoryQty || 1, min: 1 });
+  const descI      = input({ value: rule.description || '', placeholder: 'Optional — prefills expense description' });
+  const enabledChk = el('input', { type: 'checkbox' });
+  enabledChk.checked = rule.enabled !== false;
+
+  const fixedRow = el('div', { class: 'form-row horizontal' }, formRow('Amount', fixedAmtI), formRow('Currency', fixedCurrS));
+  const invRow   = el('div', { class: 'form-row horizontal' }, formRow('Inventory Item', invItemS), formRow('Qty / Reservation', invQtyI));
+
+  const updateVis = () => {
+    fixedRow.style.display = srcS.value === 'fixed'     ? '' : 'none';
+    invRow.style.display   = srcS.value === 'inventory' ? '' : 'none';
+  };
+  srcS.onchange = updateVis;
+  updateVis();
+
+  body.appendChild(formRow('Rule Name', nameI));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Property', propS), formRow('Expense Category', catS)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Vendor', vendorS), formRow('Amount Source', srcS)));
+  body.appendChild(fixedRow);
+  body.appendChild(invRow);
+  body.appendChild(formRow('Description', descI));
+  body.appendChild(formRow('Enabled', el('label', { style: 'display:flex;align-items:center;gap:8px;cursor:pointer' }, enabledChk, el('span', {}, 'Active'))));
+
+  const saveBtn = button('Save', { variant: 'primary', onClick: () => {
+    if (!nameI.value.trim()) { toast('Rule name is required', 'danger'); return; }
+    if (srcS.value === 'inventory' && !invItemS.value) { toast('Select an inventory item', 'danger'); return; }
+    Object.assign(rule, {
+      name:            nameI.value.trim(),
+      propertyId:      propS.value,
+      category:        catS.value,
+      vendorId:        vendorS.value,
+      amountSource:    srcS.value,
+      fixedAmount:     Number(fixedAmtI.value) || 0,
+      fixedCurrency:   fixedCurrS.value,
+      inventoryItemId: invItemS.value,
+      inventoryQty:    Number(invQtyI.value) || 1,
+      description:     descI.value.trim(),
+      enabled:         enabledChk.checked
+    });
+    upsert('reservationExpenseRules', rule);
+    toast('Rule saved', 'success');
+    closeModal();
+    // Retroactively apply to existing payments (non-inventory sources only)
+    reapplyRuleToAllPayments(rule);
+    onSave?.();
+  }});
+
+  openModal({
+    title: existing ? 'Edit Reservation Expense Rule' : 'New Reservation Expense Rule',
+    body,
+    footer: [button('Cancel', { onClick: closeModal }), saveBtn]
+  });
 }
 
 function buildTeamCard() {

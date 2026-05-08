@@ -903,3 +903,108 @@ export function fifoDeduct(item, qty) {
   );
   return { updatedBatches, consumed, totalCost, deficit: need };
 }
+
+// ============== Reservation Expense Rules ==============
+
+export function restoreInventoryStock(expense) {
+  if (!expense.inventoryItemId || !expense.inventoryQty) return;
+  const item = byId('inventory', expense.inventoryItemId);
+  if (!item) return;
+  if (expense.inventoryBatches && item.batches) {
+    const restoreMap = new Map(expense.inventoryBatches.map(c => [c.batchId, c.qty]));
+    const updatedBatches = item.batches.map(b =>
+      restoreMap.has(b.id) ? { ...b, remaining: (b.remaining ?? b.qty ?? 0) + restoreMap.get(b.id) } : b
+    );
+    upsert('inventory', { ...item, batches: updatedBatches });
+  } else {
+    upsert('inventory', { ...item, stock: (item.stock || 0) + expense.inventoryQty });
+  }
+}
+
+export function applyReservationExpenseRules(payment) {
+  const reservationRef = payment.confirmationCode || payment.id;
+  if (!reservationRef || !payment.propertyId) return;
+  const rules = listActive('reservationExpenseRules').filter(r =>
+    r.enabled && (!r.propertyId || r.propertyId === payment.propertyId)
+  );
+  for (const rule of rules) _applyOneRule(rule, payment, reservationRef);
+}
+
+function _applyOneRule(rule, payment, reservationRef) {
+  const existing = (state.db.expenses || []).find(e =>
+    e.isGenerated && e.reservationRuleId === rule.id && e.reservationRef === reservationRef && !e.deletedAt
+  );
+  if (existing?.manualOverride) return;
+
+  let amount = 0, currency = rule.fixedCurrency || payment.currency || 'EUR';
+  let inventoryItemId, inventoryQty, inventoryBatches;
+
+  if (rule.amountSource === 'fixed') {
+    amount = rule.fixedAmount || 0;
+    currency = rule.fixedCurrency || payment.currency || 'EUR';
+  } else if (rule.amountSource === 'airbnb_cleaning_fee') {
+    amount = payment.airbnbCleaningFee || 0;
+    currency = payment.currency || 'EUR';
+  } else if (rule.amountSource === 'inventory' && rule.inventoryItemId) {
+    if (existing) {
+      // Don't re-deduct; only refresh metadata fields to stay in sync
+      upsert('expenses', {
+        ...existing,
+        date: payment.checkIn || payment.airbnbCheckIn || payment.date || existing.date,
+        vendorId: rule.vendorId || existing.vendorId || '',
+        description: rule.description || existing.description || ''
+      });
+      return;
+    }
+    const item = byId('inventory', rule.inventoryItemId);
+    if (!item) return;
+    const qty = rule.inventoryQty || 1;
+    const { updatedBatches, consumed, totalCost } = fifoDeduct(item, qty);
+    upsert('inventory', { ...item, batches: updatedBatches });
+    amount = totalCost;
+    currency = consumed[0]?.currency || item.batches?.[0]?.currency || 'EUR';
+    inventoryItemId = rule.inventoryItemId;
+    inventoryQty = qty;
+    inventoryBatches = consumed;
+  }
+
+  upsert('expenses', {
+    id: existing?.id || newId('exp'),
+    propertyId: payment.propertyId,
+    category: rule.category || 'cleaning',
+    amount,
+    currency,
+    date: payment.checkIn || payment.airbnbCheckIn || payment.date || '',
+    vendorId: rule.vendorId || '',
+    vendor: '',
+    description: rule.description || '',
+    stream: payment.stream || 'short_term_rental',
+    reservationRuleId: rule.id,
+    reservationRef,
+    isGenerated: true,
+    manualOverride: existing?.manualOverride || false,
+    ...(inventoryItemId ? { inventoryItemId, inventoryQty, inventoryBatches } : {})
+  });
+}
+
+export function removeReservationExpenses(payment) {
+  const reservationRef = payment.confirmationCode || payment.id;
+  if (!reservationRef) return;
+  for (const e of (state.db.expenses || [])) {
+    if (e.isGenerated && e.reservationRef === reservationRef && !e.deletedAt) {
+      restoreInventoryStock(e);
+      softDelete('expenses', e.id);
+    }
+  }
+}
+
+// Apply a rule to all existing short-term payments (skip inventory to avoid retroactive stock changes).
+export function reapplyRuleToAllPayments(rule) {
+  if (!rule.enabled || rule.amountSource === 'inventory') return;
+  const payments = listActive('payments').filter(p =>
+    p.stream === 'short_term_rental' &&
+    (!rule.propertyId || rule.propertyId === p.propertyId) &&
+    (p.confirmationCode || p.id)
+  );
+  for (const pay of payments) applyReservationExpenseRules(pay);
+}
