@@ -5831,6 +5831,22 @@
       "updatedBy": "Giorgos",
       "deletedAt": 1778244440558,
       "deletedBy": "Giorgos"
+    },
+    {
+      "id": "pay_mowwtwdk1t",
+      "propertyId": "prop_mo946nvbck",
+      "amount": 100,
+      "currency": "EUR",
+      "date": "2026-05-08",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "short_term_rental",
+      "notes": "",
+      "createdAt": 1778244480113,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778244480113,
+      "updatedBy": "Giorgos"
     }
   ],
   "expenses": [
