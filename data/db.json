@@ -11362,52 +11362,7 @@
       "updatedBy": "Giorgos"
     }
   ],
-  "inventory": [
-    {
-      "id": "ivt_mowkjw038w",
-      "name": "Welcome Sweets",
-      "createdAt": 1778223869793,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778225725470,
-      "updatedBy": "Giorgos",
-      "batches": [
-        {
-          "id": "btc_mowlojg08y",
-          "qty": 0,
-          "remaining": 0,
-          "unitPrice": 1.2,
-          "currency": "EUR",
-          "dateBought": "2025-01-01",
-          "comments": ""
-        }
-      ],
-      "propertyId": "",
-      "deletedAt": 1778225725470,
-      "deletedBy": "Giorgos"
-    },
-    {
-      "id": "ivt_mowkmlz77i",
-      "name": "Welcome Drinks",
-      "createdAt": 1778223961631,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778225723633,
-      "updatedBy": "Giorgos",
-      "batches": [
-        {
-          "id": "btc_mowlojg0a3",
-          "qty": 400,
-          "remaining": 400,
-          "unitPrice": 1,
-          "currency": "EUR",
-          "dateBought": "2026-05-08",
-          "comments": ""
-        }
-      ],
-      "propertyId": "",
-      "deletedAt": 1778225723633,
-      "deletedBy": "Giorgos"
-    }
-  ],
+  "inventory": [],
   "appConfig": {
     "github": {
       "owner": "",
