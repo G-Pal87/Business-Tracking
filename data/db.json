@@ -4298,8 +4298,10 @@
       "status": "active",
       "createdAt": 1778261503098,
       "createdBy": "Giorgos",
-      "updatedAt": 1778261503098,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778262328820,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778262328820,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ten_mox72gnf6w",
