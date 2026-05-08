@@ -70,8 +70,10 @@
       "documents": [],
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778262587609,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778262587609,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_mohfkihdlh",
