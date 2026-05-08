@@ -1074,8 +1074,19 @@
       "notes": "",
       "createdAt": 1777969609574,
       "createdBy": "Giorgos",
-      "updatedAt": 1777969609574,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778279785448,
+      "updatedBy": "Giorgos",
+      "documents": [
+        {
+          "id": "doc_moxhv8zxn6",
+          "name": "Pre-Project Performance Report.docx",
+          "type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "size": 50494,
+          "uploadedAt": "2026-05-08T22:36:21.454Z",
+          "path": "Clients/Avionas PL sp. zo.o./Pre-Project Performance Report.docx",
+          "clientId": "cli_mosd5z53ms"
+        }
+      ]
     }
   ],
   "services": [
