@@ -7120,6 +7120,27 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778161760890,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "exp_mowklitidi",
+      "propertyId": "prop_mo946nvbck",
+      "category": "inventory",
+      "amount": 240,
+      "currency": "EUR",
+      "date": "2026-05-08",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "short_term_rental",
+      "inventoryItemId": "ivt_mowkjw038w",
+      "inventoryQty": 200,
+      "accountingType": "opex",
+      "costCategory": "other",
+      "recurrence": "recurring",
+      "createdAt": 1778223914267,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778223914267,
+      "updatedBy": "Giorgos"
     }
   ],
   "vendors": [
@@ -11345,14 +11366,14 @@
     {
       "id": "ivt_mowkjw038w",
       "name": "Welcome Sweets",
-      "stock": 500,
+      "stock": 300,
       "unitPrice": 1.2,
       "currency": "EUR",
       "dateBought": "2025-01-01",
       "comments": "",
       "createdAt": 1778223869793,
       "createdBy": "Giorgos",
-      "updatedAt": 1778223869793,
+      "updatedAt": 1778223914264,
       "updatedBy": "Giorgos"
     }
   ],
