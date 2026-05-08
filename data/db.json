@@ -7219,8 +7219,10 @@
       "cleaningPeriods": [],
       "createdAt": 1778170969697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778170969697,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778222105235,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778222105235,
+      "deletedBy": "Giorgos"
     }
   ],
   "tenants": [],
