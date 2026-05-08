@@ -5600,8 +5600,10 @@
       "recurrence": "recurring",
       "createdAt": 1778232685062,
       "createdBy": "Giorgos",
-      "updatedAt": 1778232685062,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427756,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427756,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqfu7d",
@@ -5617,8 +5619,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692314,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692314,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427478,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427478,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqfvqv",
@@ -5634,8 +5638,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692315,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692315,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427481,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427481,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqfx7f",
@@ -5651,8 +5657,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692317,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692317,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427484,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427484,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqfydk",
@@ -5668,8 +5676,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692318,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692318,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427487,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427487,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqfzc5",
@@ -5685,8 +5695,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692319,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692319,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427489,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427489,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqg15i",
@@ -5702,8 +5714,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692321,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692321,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427491,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427491,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqg3gj",
@@ -5719,8 +5733,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692323,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692323,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427494,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427494,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqg4fe",
@@ -5736,8 +5752,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692324,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692324,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427496,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427496,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqg5hx",
@@ -5753,8 +5771,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692325,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692325,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427498,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427498,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqg71u",
@@ -5770,8 +5790,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692327,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692327,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427500,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427500,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqg83z",
@@ -5787,8 +5809,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692328,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692328,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427502,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427502,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqg9es",
@@ -5804,8 +5828,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692329,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692329,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427504,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427504,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgas",
@@ -5821,8 +5847,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692330,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692330,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427506,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427506,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgbrg",
@@ -5838,8 +5866,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692331,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692331,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427508,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427508,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgd6x",
@@ -5855,8 +5885,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692333,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692333,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427510,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427510,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgenz",
@@ -5872,8 +5904,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692334,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692334,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427512,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427512,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgffb",
@@ -5889,8 +5923,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692335,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692335,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427514,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427514,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgg9s",
@@ -5906,8 +5942,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692336,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692336,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427516,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427516,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgibx",
@@ -5923,8 +5961,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692338,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692338,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427518,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427518,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgjda",
@@ -5940,8 +5980,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692339,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692339,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427520,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427520,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgk8i",
@@ -5957,8 +5999,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692340,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692340,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427522,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427522,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgmec",
@@ -5974,8 +6018,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692342,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692342,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427524,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427524,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgn7g",
@@ -5991,8 +6037,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692343,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692343,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427526,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427526,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgoiv",
@@ -6008,8 +6056,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692344,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692344,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427528,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427528,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgqqw",
@@ -6025,8 +6075,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692346,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692346,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427530,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427530,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgsi7",
@@ -6042,8 +6094,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692348,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692348,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427532,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427532,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgt5h",
@@ -6059,8 +6113,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692349,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692349,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427534,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427534,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgv23",
@@ -6076,8 +6132,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692351,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692351,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427536,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427536,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgxip",
@@ -6093,8 +6151,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692353,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692353,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427538,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427538,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqgyjx",
@@ -6110,8 +6170,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692354,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692354,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427540,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427540,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqh0if",
@@ -6127,8 +6189,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692356,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692356,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427542,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427542,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqh1e6",
@@ -6144,8 +6208,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692357,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692357,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427544,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427544,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqh35y",
@@ -6161,8 +6227,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692359,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692359,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427546,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427546,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqh4rg",
@@ -6178,8 +6246,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692360,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692360,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427548,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427548,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqh5mw",
@@ -6195,8 +6265,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692361,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692361,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427550,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427550,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqh7bj",
@@ -6212,8 +6284,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692363,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692363,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427552,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427552,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqh9d7",
@@ -6229,8 +6303,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692365,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692365,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427554,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427554,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhad1",
@@ -6246,8 +6322,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692366,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692366,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427556,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427556,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhcdw",
@@ -6263,8 +6341,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692368,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692368,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427558,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427558,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhe4l",
@@ -6280,8 +6360,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692370,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692370,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427560,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427560,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhfgp",
@@ -6297,8 +6379,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692371,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692371,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427562,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427562,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhh52",
@@ -6314,8 +6398,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692373,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692373,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427564,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427564,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhjn6",
@@ -6331,8 +6417,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692375,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692375,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427566,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427566,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhlor",
@@ -6348,8 +6436,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692377,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692377,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427568,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427568,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhmec",
@@ -6365,8 +6455,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692378,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692378,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427570,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427570,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhog6",
@@ -6382,8 +6474,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692380,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692380,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427573,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427573,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhq27",
@@ -6399,8 +6493,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692382,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692382,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427575,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427575,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhtr2",
@@ -6416,8 +6512,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692385,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692385,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427577,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427577,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhufn",
@@ -6433,8 +6531,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692386,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692386,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427579,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427579,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhw1y",
@@ -6450,8 +6550,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692388,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692388,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427581,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427581,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhyrd",
@@ -6467,8 +6569,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692390,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692390,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427583,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427583,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqhzc2",
@@ -6484,8 +6588,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692391,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692391,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427585,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427585,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqi11m",
@@ -6501,8 +6607,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692393,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692393,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427587,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427587,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqi31o",
@@ -6518,8 +6626,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692395,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692395,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427589,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427589,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqi4ny",
@@ -6535,8 +6645,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692396,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692396,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427591,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427591,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqi6nz",
@@ -6552,8 +6664,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692398,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692398,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427593,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427593,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqi8nb",
@@ -6569,8 +6683,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692400,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692400,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427595,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427595,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqiaj1",
@@ -6586,8 +6702,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692402,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692402,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427597,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427597,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqicac",
@@ -6603,8 +6721,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692404,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692404,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427599,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427599,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqidms",
@@ -6620,8 +6740,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692405,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692405,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427601,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427601,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqifcr",
@@ -6637,8 +6759,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692407,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692407,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427603,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427603,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqih7s",
@@ -6654,8 +6778,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692409,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692409,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427605,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427605,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqijel",
@@ -6671,8 +6797,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692411,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692411,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427607,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427607,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqilit",
@@ -6688,8 +6816,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692413,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692413,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427610,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427610,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqinm3",
@@ -6705,8 +6835,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692415,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692415,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427612,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427612,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqip3f",
@@ -6722,8 +6854,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692417,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692417,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427614,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427614,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqis7a",
@@ -6739,8 +6873,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692420,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692420,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427616,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427616,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqivrh",
@@ -6756,8 +6892,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692423,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692423,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427618,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427618,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqixil",
@@ -6773,8 +6911,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692425,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692425,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427620,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427620,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqizmh",
@@ -6790,8 +6930,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692427,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692427,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427622,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427622,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqj1ft",
@@ -6807,8 +6949,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692429,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692429,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427625,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427625,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqj3of",
@@ -6824,8 +6968,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692431,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692431,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427650,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427650,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqj5g8",
@@ -6841,8 +6987,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692433,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692433,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427627,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427627,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqj7gi",
@@ -6858,8 +7006,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692435,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692435,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427629,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427629,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqj9ps",
@@ -6875,8 +7025,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692437,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692437,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427631,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427631,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqjbgq",
@@ -6892,8 +7044,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692439,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692439,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427633,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427633,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqje21",
@@ -6909,8 +7063,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692442,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692442,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427636,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427636,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqjgo3",
@@ -6926,8 +7082,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692444,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692444,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427638,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427638,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqjio",
@@ -6943,8 +7101,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692446,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692446,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427640,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427640,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqjkj8",
@@ -6960,8 +7120,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692448,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692448,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427642,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427642,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqjm9l",
@@ -6977,8 +7139,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692450,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692450,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427644,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427644,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqjon1",
@@ -6994,8 +7158,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692452,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692452,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427646,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427646,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqjqj8",
@@ -7011,8 +7177,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692454,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692454,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427648,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427648,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqjski",
@@ -7028,8 +7196,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692456,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692456,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427652,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427652,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqjvet",
@@ -7045,8 +7215,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692459,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692459,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427654,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427654,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqjxbs",
@@ -7062,8 +7234,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692461,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692461,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427656,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427656,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqk0g3",
@@ -7079,8 +7253,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692464,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692464,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427658,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427658,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqk29h",
@@ -7096,8 +7272,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692466,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692466,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427661,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427661,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqk453",
@@ -7113,8 +7291,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692468,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692468,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427663,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427663,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqk6ca",
@@ -7130,8 +7310,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692470,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692470,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427665,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427665,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqk89b",
@@ -7147,8 +7329,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692472,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692472,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427668,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427668,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqkb17",
@@ -7164,8 +7348,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692475,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692475,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427670,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427670,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqkefj",
@@ -7181,8 +7367,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692478,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692478,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427672,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427672,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqkghn",
@@ -7198,8 +7386,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692480,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692480,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427675,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427675,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqkk70",
@@ -7215,8 +7405,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692484,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692484,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427681,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427681,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqknrb",
@@ -7232,8 +7424,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692487,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692487,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427683,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427683,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqkpep",
@@ -7249,8 +7443,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692489,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692489,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427677,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427677,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqksla",
@@ -7266,8 +7462,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692492,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692492,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427679,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427679,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqkvnh",
@@ -7283,8 +7481,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692495,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692495,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427685,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427685,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqkykc",
@@ -7300,8 +7500,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692498,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692498,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427688,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427688,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdql12i",
@@ -7317,8 +7519,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692501,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692501,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427690,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427690,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdql56d",
@@ -7334,8 +7538,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692505,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692505,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427692,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427692,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdql8ge",
@@ -7351,8 +7557,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692508,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692508,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427694,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427694,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqlcqh",
@@ -7368,8 +7576,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692512,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692512,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427696,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427696,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqlg2o",
@@ -7385,8 +7595,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692516,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692516,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427699,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427699,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqljqi",
@@ -7402,8 +7614,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692519,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692519,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427701,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427701,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqlnow",
@@ -7419,8 +7633,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692523,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692523,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427703,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427703,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqlr49",
@@ -7436,8 +7652,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692527,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692527,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427705,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427705,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqlvb2",
@@ -7453,8 +7671,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692531,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692531,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427707,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427707,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqlz58",
@@ -7470,8 +7690,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692535,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692535,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427709,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427709,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqm3f7",
@@ -7487,8 +7709,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692539,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692539,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427712,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427712,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqm7az",
@@ -7504,8 +7728,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692543,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692543,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427714,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427714,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqmbkf",
@@ -7521,8 +7747,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692547,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692547,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427716,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427716,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqmf7n",
@@ -7538,8 +7766,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692551,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692551,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427718,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427718,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqmjfr",
@@ -7555,8 +7785,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692555,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692555,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427721,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427721,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqmnf1",
@@ -7572,8 +7804,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692559,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692559,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427723,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427723,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqmrhc",
@@ -7589,8 +7823,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692563,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692563,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427725,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427725,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqmv1f",
@@ -7606,8 +7842,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692567,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692567,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427727,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427727,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqmzey",
@@ -7623,8 +7861,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692571,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692571,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427729,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427729,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqn35z",
@@ -7640,8 +7880,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692575,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692575,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427732,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427732,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqn7gd",
@@ -7657,8 +7899,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692579,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692579,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427734,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427734,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqnbpa",
@@ -7674,8 +7918,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692583,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692583,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427736,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427736,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqnf7l",
@@ -7691,8 +7937,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692587,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692587,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427738,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427738,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqnj1j",
@@ -7708,8 +7956,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692591,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692591,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427740,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427740,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqnn13",
@@ -7725,8 +7975,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692595,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692595,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427742,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427742,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqns89",
@@ -7742,8 +7994,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692600,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692600,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427745,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427745,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqnw8i",
@@ -7759,8 +8013,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692604,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692604,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427747,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427747,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqo03h",
@@ -7776,8 +8032,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692608,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692608,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427749,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427749,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwdqo4g1",
@@ -7793,8 +8051,10 @@
       "stream": "short_term_rental",
       "createdAt": 1778243692612,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243692612,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427751,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427751,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowwho4gbu",
@@ -7815,8 +8075,10 @@
       "recurrence": "recurring",
       "createdAt": 1778243888778,
       "createdBy": "Giorgos",
-      "updatedAt": 1778243888778,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778244427758,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778244427758,
+      "deletedBy": "Giorgos"
     }
   ],
   "vendors": [
@@ -12047,7 +12309,7 @@
         {
           "id": "btc_mowps97zkd",
           "qty": 500,
-          "remaining": 0,
+          "remaining": 500,
           "unitPrice": 1,
           "currency": "EUR",
           "dateBought": "2026-05-08",
@@ -12056,7 +12318,7 @@
       ],
       "createdAt": 1778232612527,
       "createdBy": "Giorgos",
-      "updatedAt": 1778232685061,
+      "updatedAt": 1778244427754,
       "updatedBy": "Giorgos"
     }
   ],
