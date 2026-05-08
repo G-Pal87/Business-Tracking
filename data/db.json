@@ -34,8 +34,10 @@
       "vacantPeriods": [],
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778249212859,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778262398227,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778262398227,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_moheuw76co",
