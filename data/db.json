@@ -989,15 +989,15 @@
   "services": [
     {
       "id": "svc_001",
-      "name": "Customer Success Management",
-      "description": "CS strategy, QBRs, health scoring",
+      "name": "Customer Success Professional Services March",
+      "description": "",
       "unit": "day",
       "defaultRate": 650,
       "currency": "EUR",
       "stream": "customer_success",
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
+      "updatedAt": 1778232177674,
       "updatedBy": "Giorgos"
     },
     {
