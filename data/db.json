@@ -3866,6 +3866,23 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778261551761,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "pay_mox70ms8l1",
+      "propertyId": "prop_mohgap08rl",
+      "tenantId": "ten_mox6y98b1u",
+      "amount": 165000,
+      "currency": "HUF",
+      "date": "2026-05-05",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2026-05",
+      "createdAt": 1778261556824,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778261556824,
+      "updatedBy": "Giorgos"
     }
   ],
   "expenses": [
