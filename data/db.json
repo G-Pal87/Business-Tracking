@@ -4513,7 +4513,7 @@
       "dueDate": "2026-05-10",
       "stream": "customer_success",
       "currency": "EUR",
-      "status": "sent",
+      "status": "paid",
       "lineItems": [
         {
           "id": "li_mopgg8dgo2",
@@ -4548,7 +4548,7 @@
       "source": "pdf_import",
       "createdAt": 1777793671780,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180359236,
+      "updatedAt": 1778261242783,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/22_CTWO_290426.pdf"
     },
