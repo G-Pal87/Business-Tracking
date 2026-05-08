@@ -773,6 +773,20 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778162605012,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "vnd_mox56joiht",
+      "name": "aaaa",
+      "role": "plumber",
+      "phone": "",
+      "email": "",
+      "notes": "",
+      "rates": {},
+      "cleaningPeriods": [],
+      "createdAt": 1778258478461,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778258478461,
+      "updatedBy": "Giorgos"
     }
   ],
   "tenants": [],
