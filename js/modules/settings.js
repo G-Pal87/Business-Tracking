@@ -628,8 +628,19 @@ function buildTrashCard() {
         const i = key.indexOf(':');
         return { collection: key.slice(0, i), id: key.slice(i + 1) };
       });
+      let pdfErrors = 0;
+      for (const { collection, id } of targets) {
+        if (collection !== 'invoices') continue;
+        const inv = all.find(r => r.collection === 'invoices' && r.item.id === id)?.item;
+        if (!inv?.pdfPath) continue;
+        try { await deleteGithubFile(inv.pdfPath, null, `Delete PDF for invoice ${inv.number || inv.id}`); }
+        catch { pdfErrors++; }
+      }
       const count = permanentlyDeleteRecords(targets);
-      toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
+      if (pdfErrors > 0)
+        toast(`Permanently deleted ${count} record(s) — ${pdfErrors} PDF(s) could not be cleaned up`, 'warning', 6000);
+      else
+        toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
       renderCard(colSel.value);
     };
 
@@ -639,8 +650,17 @@ function buildTrashCard() {
         { danger: true, okLabel: 'Delete All Permanently' }
       );
       if (!ok) return;
+      let pdfErrors = 0;
+      for (const { collection, item } of all) {
+        if (collection !== 'invoices' || !item.pdfPath) continue;
+        try { await deleteGithubFile(item.pdfPath, null, `Delete PDF for invoice ${item.number || item.id}`); }
+        catch { pdfErrors++; }
+      }
       const count = purgeDeletedRecords();
-      toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
+      if (pdfErrors > 0)
+        toast(`Permanently deleted ${count} record(s) — ${pdfErrors} PDF(s) could not be cleaned up`, 'warning', 6000);
+      else
+        toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
       renderCard();
     };
 
@@ -710,6 +730,21 @@ function buildTrashCard() {
             { danger: true, okLabel: 'Delete Permanently' }
           );
           if (!ok) return;
+          if (collection === 'invoices' && item.pdfPath) {
+            try {
+              await deleteGithubFile(item.pdfPath, null, `Delete PDF for invoice ${item.number || item.id}`);
+            } catch (e) {
+              const proceed = await confirmDialog(
+                `PDF cleanup failed: ${e.message}\nDelete invoice record anyway?`,
+                { okLabel: 'Delete Record Only' }
+              );
+              if (!proceed) return;
+              toast('Invoice deleted — PDF cleanup failed', 'warning', 5000);
+              permanentlyDeleteRecord(collection, item.id);
+              renderCard(colSel.value);
+              return;
+            }
+          }
           permanentlyDeleteRecord(collection, item.id);
           toast('Permanently deleted', 'success');
           renderCard(colSel.value);
