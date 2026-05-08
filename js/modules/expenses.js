@@ -1,7 +1,7 @@
 // Expenses module
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -285,18 +285,7 @@ function build() {
 }
 
 function findCleaningRates(propertyId, date) {
-  const matches = [];
-  for (const v of listActive('vendors')) {
-    if (v.role !== 'cleaner') continue;
-    for (const period of (v.cleaningPeriods || [])) {
-      if (period.propertyId === propertyId &&
-          period.startDate && period.startDate <= date &&
-          (!period.endDate || period.endDate >= date)) {
-        matches.push({ vendor: v, period });
-      }
-    }
-  }
-  return matches;
+  return findVendorRateByPeriod(propertyId, date, '').filter(m => m.vendor.role === 'cleaner');
 }
 
 export function openExpenseForm(defaults = {}) {

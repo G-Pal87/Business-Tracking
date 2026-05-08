@@ -921,6 +921,22 @@ export function restoreInventoryStock(expense) {
   }
 }
 
+// Match vendor cleaningPeriods by property + date. vendorId='' means any vendor.
+export function findVendorRateByPeriod(propertyId, date, vendorId = '') {
+  const out = [];
+  for (const v of listActive('vendors')) {
+    if (vendorId && v.id !== vendorId) continue;
+    for (const period of (v.cleaningPeriods || [])) {
+      if (period.propertyId === propertyId &&
+          period.startDate && period.startDate <= date &&
+          (!period.endDate || period.endDate >= date)) {
+        out.push({ vendor: v, period });
+      }
+    }
+  }
+  return out;
+}
+
 export function applyReservationExpenseRules(payment) {
   const reservationRef = payment.confirmationCode || payment.id;
   if (!reservationRef || !payment.propertyId) return;
@@ -938,6 +954,8 @@ function _applyOneRule(rule, payment, reservationRef) {
 
   let amount = 0, currency = rule.fixedCurrency || payment.currency || 'EUR';
   let inventoryItemId, inventoryQty, inventoryBatches;
+  let overrideVendorId, overrideVendorName;
+  let reviewNeeded, reviewReason;
 
   if (rule.amountSource === 'fixed') {
     amount = rule.fixedAmount || 0;
@@ -966,6 +984,22 @@ function _applyOneRule(rule, payment, reservationRef) {
     inventoryItemId = rule.inventoryItemId;
     inventoryQty = qty;
     inventoryBatches = consumed;
+  } else if (rule.amountSource === 'vendor_rate') {
+    const refDate = payment.checkIn || payment.airbnbCheckIn || payment.date || '';
+    const matches = refDate ? findVendorRateByPeriod(payment.propertyId, refDate, rule.vendorId || '') : [];
+    if (matches.length === 0) {
+      reviewNeeded = true;
+      reviewReason = 'No vendor rate found for this property and date';
+    } else if (matches.length > 1 && !rule.vendorId) {
+      reviewNeeded = true;
+      reviewReason = 'Multiple vendor rates match — set a specific vendor on the rule';
+    } else {
+      const { vendor, period } = matches[0];
+      amount = period.fee;
+      currency = payment.currency || 'EUR';
+      overrideVendorId = vendor.id;
+      overrideVendorName = vendor.name;
+    }
   }
 
   upsert('expenses', {
@@ -975,15 +1009,16 @@ function _applyOneRule(rule, payment, reservationRef) {
     amount,
     currency,
     date: payment.checkIn || payment.airbnbCheckIn || payment.date || '',
-    vendorId: rule.vendorId || '',
-    vendor: '',
+    vendorId: overrideVendorId ?? (rule.vendorId || ''),
+    vendor: overrideVendorName ?? '',
     description: rule.description || '',
     stream: payment.stream || 'short_term_rental',
     reservationRuleId: rule.id,
     reservationRef,
     isGenerated: true,
     manualOverride: existing?.manualOverride || false,
-    ...(inventoryItemId ? { inventoryItemId, inventoryQty, inventoryBatches } : {})
+    ...(inventoryItemId ? { inventoryItemId, inventoryQty, inventoryBatches } : {}),
+    ...(reviewNeeded ? { reviewNeeded, reviewReason } : {})
   });
 }
 
