@@ -682,30 +682,31 @@ function buildUpcomingSection(wrap) {
 function openForm(existing) {
   const r = existing ? { ...existing } : {
     id: newId('pay'), propertyId: state.db.properties?.[0]?.id || '',
-    amount: 0, currency: 'EUR', date: today(), type: 'rental',
-    status: 'paid', source: 'manual', stream: 'short_term_rental', notes: ''
+    amount: 0, currency: 'EUR', date: today(), type: 'off_platform_reservation',
+    status: 'paid', source: 'manual', stream: 'short_term_rental', notes: '',
+    checkIn: '', checkOut: ''
   };
   const body = el('div', {});
   const propS = select((listActive('properties')).map(p => ({ value: p.id, label: p.name })), r.propertyId);
   const amountI = input({ type: 'number', value: r.amount, min: 0, step: 0.01 });
   const currencyS = select(CURRENCIES, r.currency);
   const dateI = input({ type: 'date', value: r.date });
-  const typeS = select(['rental', 'deposit', 'cleaning', 'other'], r.type);
+  const checkInI = input({ type: 'date', value: r.checkIn || '' });
+  const checkOutI = input({ type: 'date', value: r.checkOut || '' });
   const statusS = select(Object.keys(PAYMENT_STATUSES), r.status);
-  const sourceS = select(['manual', 'airbnb', 'bank'], r.source);
-  const streamS = select(Object.entries(STREAMS).filter(([k]) => k.includes('rental')).map(([v, m]) => ({ value: v, label: m.short })), r.stream);
+  const sourceS = select(['manual', 'airbnb'], r.source);
   const notesT = textarea(); notesT.value = r.notes || '';
 
   body.appendChild(formRow('Property', propS));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', currencyS)));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI), formRow('Type', typeS)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Check-in Date', checkInI), formRow('Check-out Date', checkOutI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Status', statusS), formRow('Source', sourceS)));
-  body.appendChild(formRow('Stream', streamS));
   body.appendChild(formRow('Notes', notesT));
 
   propS.onchange = () => {
     const p = byId('properties', propS.value);
-    if (p) { streamS.value = p.type === 'short_term' ? 'short_term_rental' : 'long_term_rental'; currencyS.value = p.currency; }
+    if (p) { currencyS.value = p.currency; }
   };
 
   const save = button('Save', { variant: 'primary', onClick: () => {
@@ -713,9 +714,9 @@ function openForm(existing) {
     if (Number(amountI.value) <= 0) { toast('Amount must be positive', 'danger'); return; }
     Object.assign(r, {
       propertyId: propS.value, amount: Number(amountI.value),
-      currency: currencyS.value, date: dateI.value, type: typeS.value,
-      status: statusS.value, source: sourceS.value, stream: streamS.value,
-      notes: notesT.value.trim()
+      currency: currencyS.value, date: dateI.value, type: 'off_platform_reservation',
+      status: statusS.value, source: sourceS.value, stream: 'short_term_rental',
+      notes: notesT.value.trim(), checkIn: checkInI.value, checkOut: checkOutI.value
     });
     upsert('payments', r);
     toast(existing ? 'Payment updated' : 'Payment added', 'success');
