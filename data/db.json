@@ -7174,8 +7174,10 @@
       "recurrence": "recurring",
       "createdAt": 1778225811473,
       "createdBy": "Giorgos",
-      "updatedAt": 1778225811473,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778225851337,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778225851337,
+      "deletedBy": "Giorgos"
     }
   ],
   "vendors": [
@@ -11406,7 +11408,7 @@
         {
           "id": "btc_mowlpqtyi6",
           "qty": 100,
-          "remaining": 0,
+          "remaining": 100,
           "unitPrice": 1,
           "currency": "EUR",
           "dateBought": "2024-05-08",
@@ -11415,7 +11417,7 @@
         {
           "id": "btc_mowlq0b9hu",
           "qty": 200,
-          "remaining": 150,
+          "remaining": 200,
           "unitPrice": 2,
           "currency": "EUR",
           "dateBought": "2026-05-08",
@@ -11424,7 +11426,7 @@
       ],
       "createdAt": 1778225776918,
       "createdBy": "Giorgos",
-      "updatedAt": 1778225811469,
+      "updatedAt": 1778225851334,
       "updatedBy": "Giorgos"
     }
   ],
