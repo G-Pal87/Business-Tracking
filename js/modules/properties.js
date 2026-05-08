@@ -1,6 +1,6 @@
 // Properties module
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect } from '../core/ui.js';
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI
@@ -12,6 +12,34 @@ import { navigate } from '../core/router.js';
 import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
 
 let selectedId = null;
+
+// ── Filter + sort state (persists across navigation via localStorage) ─────────
+const _pf = { years: new Set(), owners: new Set(), types: new Set(), countries: new Set() };
+let _pSortDir = 1; // 1 = A→Z, -1 = Z→A
+
+const PF_KEY = 'btf:prop_filters';
+
+function loadPropFilters() {
+  try {
+    const d = JSON.parse(localStorage.getItem(PF_KEY) || 'null');
+    if (!d) return;
+    ['years', 'owners', 'types', 'countries'].forEach(k => {
+      _pf[k].clear();
+      if (Array.isArray(d[k])) d[k].forEach(v => _pf[k].add(v));
+    });
+    if (d.sortDir) _pSortDir = d.sortDir;
+  } catch { /* ignore */ }
+}
+
+function savePropFilters() {
+  try {
+    localStorage.setItem(PF_KEY, JSON.stringify({
+      years: [..._pf.years], owners: [..._pf.owners],
+      types: [..._pf.types], countries: [..._pf.countries],
+      sortDir: _pSortDir
+    }));
+  } catch { /* ignore */ }
+}
 
 function fmtSize(bytes) {
   if (!bytes) return '';
@@ -76,6 +104,7 @@ export default {
 };
 
 function build() {
+  loadPropFilters();
   const wrap = el('div', { class: 'view active' });
 
   const header = el('div', { class: 'section-header' },
@@ -86,15 +115,101 @@ function build() {
   );
   wrap.appendChild(header);
 
+  const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
+  wrap.appendChild(filterBar);
+
   const grid = el('div', { class: 'prop-grid' });
-  const props = listActive('properties');
-  if (props.length === 0) {
-    grid.appendChild(el('div', { class: 'empty' }, el('div', { class: 'empty-icon' }, 'H'), 'No properties yet. Add your first one.'));
-  }
-  for (const p of props) grid.appendChild(card(p));
   wrap.appendChild(grid);
 
+  rebuildPropFilters(filterBar, grid);
+  renderPropGrid(grid);
+
   return wrap;
+}
+
+// Builds (or rebuilds) the filter bar with interdependent multi-selects.
+// Valid options for each filter are computed from properties that pass all
+// OTHER active filters, so selecting one filter narrows the others.
+function rebuildPropFilters(filterBar, grid) {
+  filterBar.innerHTML = '';
+  const all = listActive('properties');
+
+  // Returns true if property p passes all filters except the one named `skip`
+  const matchesExcept = (p, skip) => {
+    if (skip !== 'years'     && _pf.years.size     && !_pf.years.has(p.purchaseDate?.slice(0, 4) || ''))  return false;
+    if (skip !== 'owners'    && _pf.owners.size    && !_pf.owners.has(p.owner || ''))                       return false;
+    if (skip !== 'types'     && _pf.types.size     && !_pf.types.has(p.type || ''))                         return false;
+    if (skip !== 'countries' && _pf.countries.size && !_pf.countries.has(p.country || ''))                  return false;
+    return true;
+  };
+  const uniq = (arr) => [...new Set(arr)].sort();
+
+  const validYears     = uniq(all.filter(p => matchesExcept(p, 'years'    )).map(p => p.purchaseDate?.slice(0, 4)).filter(Boolean));
+  const validOwners    = uniq(all.filter(p => matchesExcept(p, 'owners'   )).map(p => p.owner).filter(Boolean));
+  const validTypes     = uniq(all.filter(p => matchesExcept(p, 'types'    )).map(p => p.type).filter(Boolean));
+  const validCountries = uniq(all.filter(p => matchesExcept(p, 'countries')).map(p => p.country).filter(Boolean));
+
+  // Prune selections that are no longer valid given other active filters
+  [..._pf.years    ].forEach(v => { if (!validYears.includes(v))     _pf.years.delete(v); });
+  [..._pf.owners   ].forEach(v => { if (!validOwners.includes(v))    _pf.owners.delete(v); });
+  [..._pf.types    ].forEach(v => { if (!validTypes.includes(v))     _pf.types.delete(v); });
+  [..._pf.countries].forEach(v => { if (!validCountries.includes(v)) _pf.countries.delete(v); });
+  savePropFilters();
+
+  const onChange = () => { savePropFilters(); rebuildPropFilters(filterBar, grid); renderPropGrid(grid); };
+
+  const yearMS    = buildMultiSelect(validYears.map(y => ({ value: y, label: y })), _pf.years, 'All Years', onChange);
+  const ownerMS   = buildMultiSelect(validOwners.map(v => ({ value: v, label: OWNERS[v] || v })), _pf.owners, 'All Owners', onChange);
+  const typeMS    = buildMultiSelect(validTypes.map(v => ({ value: v, label: PROPERTY_TYPES[v] || v })), _pf.types, 'All Types', onChange);
+  const countryMS = buildMultiSelect(validCountries.map(v => ({ value: v, label: v })), _pf.countries, 'All Countries', onChange);
+
+  const resetBtn = button('Reset Filters', {
+    variant: 'sm ghost',
+    onClick: () => {
+      yearMS.reset(); ownerMS.reset(); typeMS.reset(); countryMS.reset();
+      _pf.years.clear(); _pf.owners.clear(); _pf.types.clear(); _pf.countries.clear();
+      _pSortDir = 1;
+      savePropFilters();
+      rebuildPropFilters(filterBar, grid);
+      renderPropGrid(grid);
+    }
+  });
+
+  const sortBtn = button(`Name ${_pSortDir > 0 ? '▲' : '▼'}`, {
+    variant: 'sm ghost',
+    onClick: () => { _pSortDir *= -1; savePropFilters(); rebuildPropFilters(filterBar, grid); renderPropGrid(grid); }
+  });
+
+  filterBar.appendChild(yearMS);
+  filterBar.appendChild(ownerMS);
+  filterBar.appendChild(typeMS);
+  filterBar.appendChild(countryMS);
+  filterBar.appendChild(resetBtn);
+  filterBar.appendChild(el('div', { class: 'flex-1' }));
+  filterBar.appendChild(sortBtn);
+}
+
+// Applies active filters + sort to the property grid, replacing its contents.
+function renderPropGrid(grid) {
+  grid.innerHTML = '';
+  let props = listActive('properties');
+
+  if (_pf.years.size)     props = props.filter(p => _pf.years.has(p.purchaseDate?.slice(0, 4) || ''));
+  if (_pf.owners.size)    props = props.filter(p => _pf.owners.has(p.owner || ''));
+  if (_pf.types.size)     props = props.filter(p => _pf.types.has(p.type || ''));
+  if (_pf.countries.size) props = props.filter(p => _pf.countries.has(p.country || ''));
+
+  props = [...props].sort((a, b) => (a.name || '').localeCompare(b.name || '') * _pSortDir);
+
+  if (props.length === 0) {
+    const hasFilter = _pf.years.size || _pf.owners.size || _pf.types.size || _pf.countries.size;
+    grid.appendChild(el('div', { class: 'empty' },
+      el('div', { class: 'empty-icon' }, 'H'),
+      hasFilter ? 'No properties match your filters.' : 'No properties yet. Add your first one.'
+    ));
+    return;
+  }
+  for (const p of props) grid.appendChild(card(p));
 }
 
 function card(p) {
