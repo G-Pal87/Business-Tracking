@@ -60,6 +60,20 @@ function build() {
   return wrap;
 }
 
+const INVENTORY_ITEMS = [
+  'Welcome Drinks',
+  'Welcome Sweets',
+  'Hand soap cream',
+  'Shampoo',
+  'Chlorine',
+  'Toilet Paper',
+  'Detergent',
+  'Dish washer tablets',
+  'Coffee',
+  'Tea',
+  'Perfume',
+];
+
 function openForm(existing, onSave) {
   const r = existing ? { ...existing } : {
     id: newId('ivt'),
@@ -68,7 +82,7 @@ function openForm(existing, onSave) {
   };
 
   const body = el('div', {});
-  const nameI    = input({ value: r.name, placeholder: 'Item name' });
+  const nameS = select(INVENTORY_ITEMS, r.name || INVENTORY_ITEMS[0]);
   const stockI   = input({ type: 'number', value: r.stock, min: 0 });
   const priceI   = input({ type: 'number', value: r.unitPrice, min: 0, step: 0.01 });
   const currencyS = select(CURRENCIES, r.currency);
@@ -76,7 +90,7 @@ function openForm(existing, onSave) {
   const commentsT = textarea({ placeholder: 'Notes or comments' });
   commentsT.value = r.comments || '';
 
-  body.appendChild(formRow('Name', nameI));
+  body.appendChild(formRow('Item', nameS));
   body.appendChild(el('div', { class: 'form-row horizontal' },
     formRow('Stock Qty', stockI), formRow('Unit Price', priceI), formRow('Currency', currencyS)
   ));
@@ -84,9 +98,8 @@ function openForm(existing, onSave) {
   body.appendChild(formRow('Comments', commentsT));
 
   const saveBtn = button('Save', { variant: 'primary', onClick: () => {
-    if (!nameI.value.trim()) { toast('Name is required', 'danger'); return; }
     Object.assign(r, {
-      name: nameI.value.trim(),
+      name: nameS.value,
       stock: Number(stockI.value) || 0,
       unitPrice: Number(priceI.value) || 0,
       currency: currencyS.value,
