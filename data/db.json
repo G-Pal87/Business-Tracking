@@ -11415,8 +11415,10 @@
       "comments": "",
       "createdAt": 1778222464676,
       "createdBy": "Giorgos",
-      "updatedAt": 1778222464676,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778222512450,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778222512450,
+      "deletedBy": "Giorgos"
     }
   ],
   "appConfig": {
