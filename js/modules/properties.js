@@ -46,7 +46,8 @@ async function previewDoc(doc) {
 }
 
 function sanitizeName(str) {
-  return str.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim();
+  // Only strip path-separator characters; encodeURIComponent in uploadGithubFile handles the rest
+  return str.replace(/[/\\]/g, '-').trim();
 }
 
 function docIcon(type) {
