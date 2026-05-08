@@ -574,10 +574,20 @@
       "leaseEndDate": "",
       "soldDate": "",
       "vacantPeriods": [],
-      "documents": [],
+      "documents": [
+        {
+          "id": "doc_mox9djxiqw",
+          "name": "cyprus-pass-voucher-2026-05-05.pdf",
+          "type": "application/pdf",
+          "size": 15785,
+          "uploadedAt": "2026-05-08T18:38:38.887Z",
+          "path": "Properties/Poolside Central Studio Balcony & Beach Walk/cyprus-pass-voucher-2026-05-05.pdf",
+          "propertyId": "prop_mox7ipfiam"
+        }
+      ],
       "createdAt": 1778262534604,
       "createdBy": "Giorgos",
-      "updatedAt": 1778262534604,
+      "updatedAt": 1778265522596,
       "updatedBy": "Giorgos"
     },
     {
