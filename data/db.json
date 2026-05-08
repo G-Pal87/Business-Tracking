@@ -266,10 +266,20 @@
       "paymentDayOfMonth": 1,
       "soldDate": "",
       "vacantPeriods": [],
-      "documents": [],
+      "documents": [
+        {
+          "id": "doc_mox9e63hhc",
+          "name": "coupon.png",
+          "type": "image/png",
+          "size": 84891,
+          "uploadedAt": "2026-05-08T18:39:07.613Z",
+          "path": "Properties/Danko u. 36 -3 albetet/coupon.png",
+          "propertyId": "prop_mohg2xyol2"
+        }
+      ],
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
+      "updatedAt": 1778265550378,
       "updatedBy": "Giorgos"
     },
     {
