@@ -4956,5 +4956,25 @@
       "path": "data/db.json",
       "token": ""
     }
-  }
+  },
+  "reservationExpenseRules": [
+    {
+      "id": "rer_mox4yar3a5",
+      "name": "aaa",
+      "propertyId": "",
+      "category": "cleaning",
+      "vendorId": "vnd_mo8xfao7jy",
+      "amountSource": "fixed",
+      "fixedAmount": 13,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778258101014,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778258101014,
+      "updatedBy": "Giorgos"
+    }
+  ]
 }
