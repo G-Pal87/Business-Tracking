@@ -5863,6 +5863,22 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778244663775,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "pay_mowx10ljpu",
+      "propertyId": "prop_mo946nvbck",
+      "amount": 1000,
+      "currency": "EUR",
+      "date": "2026-05-08",
+      "type": "cleaning",
+      "status": "paid",
+      "source": "manual",
+      "stream": "short_term_rental",
+      "notes": "",
+      "createdAt": 1778244792131,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778244792131,
+      "updatedBy": "Giorgos"
     }
   ],
   "expenses": [
