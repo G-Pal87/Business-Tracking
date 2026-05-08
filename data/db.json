@@ -11362,7 +11362,28 @@
       "updatedBy": "Giorgos"
     }
   ],
-  "inventory": [],
+  "inventory": [
+    {
+      "id": "ivt_mowlpqtyq5",
+      "name": "Welcome Drinks",
+      "propertyId": "prop_mo946nvbck",
+      "batches": [
+        {
+          "id": "btc_mowlpqtyi6",
+          "qty": 100,
+          "remaining": 100,
+          "unitPrice": 1,
+          "currency": "EUR",
+          "dateBought": "2024-05-08",
+          "comments": ""
+        }
+      ],
+      "createdAt": 1778225776918,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778225776918,
+      "updatedBy": "Giorgos"
+    }
+  ],
   "appConfig": {
     "github": {
       "owner": "",
