@@ -11402,6 +11402,19 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778222192269,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "ivt_mowjq2pe1o",
+      "name": "Welcome Sweets",
+      "stock": 500,
+      "unitPrice": 0.3,
+      "currency": "EUR",
+      "dateBought": "2025-01-08",
+      "comments": "",
+      "createdAt": 1778222464676,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778222464676,
+      "updatedBy": "Giorgos"
     }
   ],
   "appConfig": {
