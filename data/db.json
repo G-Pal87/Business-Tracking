@@ -705,6 +705,35 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778013993531,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "exp_mowpsxw1jp",
+      "propertyId": "prop_mo946nvbck",
+      "category": "inventory",
+      "amount": 500,
+      "currency": "EUR",
+      "date": "2026-05-08",
+      "vendor": "",
+      "vendorId": "",
+      "description": "",
+      "stream": "short_term_rental",
+      "inventoryItemId": "ivt_mowps97zo7",
+      "inventoryQty": 500,
+      "inventoryBatches": [
+        {
+          "batchId": "btc_mowps97zkd",
+          "qty": 500,
+          "unitPrice": 1,
+          "currency": "EUR"
+        }
+      ],
+      "accountingType": "opex",
+      "costCategory": "other",
+      "recurrence": "recurring",
+      "createdAt": 1778232685062,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778232685062,
+      "updatedBy": "Giorgos"
     }
   ],
   "vendors": [
@@ -4935,7 +4964,7 @@
         {
           "id": "btc_mowps97zkd",
           "qty": 500,
-          "remaining": 500,
+          "remaining": 0,
           "unitPrice": 1,
           "currency": "EUR",
           "dateBought": "2026-05-08",
@@ -4944,7 +4973,7 @@
       ],
       "createdAt": 1778232612527,
       "createdBy": "Giorgos",
-      "updatedAt": 1778232612527,
+      "updatedAt": 1778232685061,
       "updatedBy": "Giorgos"
     }
   ],
