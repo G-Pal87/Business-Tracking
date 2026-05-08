@@ -4982,8 +4982,10 @@
       "enabled": true,
       "createdAt": 1778258101014,
       "createdBy": "Giorgos",
-      "updatedAt": 1778258101014,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778258279252,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778258279252,
+      "deletedBy": "Giorgos"
     }
   ]
 }
