@@ -15,7 +15,8 @@ let selectedId = null;
 
 // ── Filter + sort state (persists across navigation via localStorage) ─────────
 const _pf = { years: new Set(), owners: new Set(), types: new Set(), countries: new Set() };
-let _pSortDir = 1; // 1 = A→Z, -1 = Z→A
+let _pSortDir = 1; // 1 = asc, -1 = desc
+let _pSortKey = 'name'; // 'name' | 'type'
 
 const PF_KEY = 'btf:prop_filters';
 
@@ -28,6 +29,7 @@ function loadPropFilters() {
       if (Array.isArray(d[k])) d[k].forEach(v => _pf[k].add(v));
     });
     if (d.sortDir) _pSortDir = d.sortDir;
+    if (d.sortKey) _pSortKey = d.sortKey;
   } catch { /* ignore */ }
 }
 
@@ -36,7 +38,7 @@ function savePropFilters() {
     localStorage.setItem(PF_KEY, JSON.stringify({
       years: [..._pf.years], owners: [..._pf.owners],
       types: [..._pf.types], countries: [..._pf.countries],
-      sortDir: _pSortDir
+      sortDir: _pSortDir, sortKey: _pSortKey
     }));
   } catch { /* ignore */ }
 }
@@ -168,17 +170,27 @@ function rebuildPropFilters(filterBar, grid) {
     onClick: () => {
       yearMS.reset(); ownerMS.reset(); typeMS.reset(); countryMS.reset();
       _pf.years.clear(); _pf.owners.clear(); _pf.types.clear(); _pf.countries.clear();
-      _pSortDir = 1;
+      _pSortDir = 1; _pSortKey = 'name';
       savePropFilters();
       rebuildPropFilters(filterBar, grid);
       renderPropGrid(grid);
     }
   });
 
-  const sortBtn = button(`Name ${_pSortDir > 0 ? '▲' : '▼'}`, {
-    variant: 'sm ghost',
-    onClick: () => { _pSortDir *= -1; savePropFilters(); rebuildPropFilters(filterBar, grid); renderPropGrid(grid); }
-  });
+  const mkSortBtn = (key, label) => {
+    const active = _pSortKey === key;
+    const arrow  = active ? (_pSortDir > 0 ? ' ▲' : ' ▼') : ' ⇅';
+    return button(label + arrow, {
+      variant: active ? 'sm' : 'sm ghost',
+      onClick: () => {
+        if (_pSortKey === key) _pSortDir *= -1;
+        else { _pSortKey = key; _pSortDir = 1; }
+        savePropFilters();
+        rebuildPropFilters(filterBar, grid);
+        renderPropGrid(grid);
+      }
+    });
+  };
 
   filterBar.appendChild(yearMS);
   filterBar.appendChild(ownerMS);
@@ -186,7 +198,8 @@ function rebuildPropFilters(filterBar, grid) {
   filterBar.appendChild(countryMS);
   filterBar.appendChild(resetBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
-  filterBar.appendChild(sortBtn);
+  filterBar.appendChild(mkSortBtn('name', 'Name'));
+  filterBar.appendChild(mkSortBtn('type', 'Type'));
 }
 
 // Applies active filters + sort to the property grid, replacing its contents.
@@ -199,7 +212,11 @@ function renderPropGrid(grid) {
   if (_pf.types.size)     props = props.filter(p => _pf.types.has(p.type || ''));
   if (_pf.countries.size) props = props.filter(p => _pf.countries.has(p.country || ''));
 
-  props = [...props].sort((a, b) => (a.name || '').localeCompare(b.name || '') * _pSortDir);
+  props = [...props].sort((a, b) => {
+    const av = _pSortKey === 'type' ? (a.type || '') : (a.name || '');
+    const bv = _pSortKey === 'type' ? (b.type || '') : (b.name || '');
+    return av.localeCompare(bv) * _pSortDir;
+  });
 
   if (props.length === 0) {
     const hasFilter = _pf.years.size || _pf.owners.size || _pf.types.size || _pf.countries.size;
