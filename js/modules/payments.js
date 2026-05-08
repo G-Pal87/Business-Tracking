@@ -259,14 +259,16 @@ function buildScheduleSection(wrap) {
     return;
   }
 
-  const propSel = select(ltProps.map(p => ({ value: p.id, label: p.name })), ltProps[0].id);
+  const propFilter = new Set();
+  const propMS = buildMultiSelect(ltProps.map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => render(), 'sched_props');
+
   const showUnpaidOnly = el('label', { class: 'flex gap-8', style: 'align-items:center;cursor:pointer;font-size:13px' });
   const unpaidChk = el('input', { type: 'checkbox' });
   showUnpaidOnly.appendChild(unpaidChk);
   showUnpaidOnly.appendChild(document.createTextNode('Unpaid only'));
 
-  const bar = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center' });
-  bar.appendChild(propSel);
+  const bar = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
+  bar.appendChild(propMS);
   bar.appendChild(el('div', { class: 'flex-1' }));
   bar.appendChild(showUnpaidOnly);
   wrap.appendChild(bar);
@@ -292,23 +294,30 @@ function buildScheduleSection(wrap) {
   const render = () => {
     selected.clear();
     syncDeleteBtn();
-    const prop = byId('properties', propSel.value);
-    if (!prop) return;
-    const schedule = generatePaymentSchedule(prop);
+
+    const activeProps = propFilter.size ? ltProps.filter(p => propFilter.has(p.id)) : ltProps;
+    if (activeProps.length === 0) return;
+
+    // Build combined schedule across all selected properties, each entry tagged with its prop
+    const schedule = activeProps
+      .flatMap(p => generatePaymentSchedule(p).map(s => ({ ...s, prop: p })))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
     const now = new Date();
     const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     const paidThisYear = schedule.filter(s => s.paid && s.monthKey.startsWith(String(now.getFullYear())));
-    const overdue = schedule.filter(s => s.overdue);
-    const upcoming = schedule.filter(s => !s.paid && !s.overdue);
-    const next = upcoming[0];
-    const daysToNext = next ? Math.ceil((new Date(next.date) - now) / 86400000) : null;
+    const overdue      = schedule.filter(s => s.overdue);
+    const upcoming     = schedule.filter(s => !s.paid && !s.overdue);
+    const next         = upcoming[0];
+    const daysToNext   = next ? Math.ceil((new Date(next.date) - now) / 86400000) : null;
 
     const tenants = listActive('tenants');
     const toRows = entries => entries.map(e => {
       const t = tenants.find(t => t.id === e.tenantId);
       return {
-        tenant: t ? t.name : (prop.tenantName || prop.name),
+        property: e.prop.name,
+        tenant: t ? t.name : (e.prop.tenantName || e.prop.name),
         dueDate: e.date,
         amount: e.amount,
         currency: e.currency,
@@ -316,6 +325,7 @@ function buildScheduleSection(wrap) {
       };
     });
     const schedCols = [
+      { key: 'property', label: 'Property' },
       { key: 'tenant', label: 'Tenant' },
       { key: 'dueDate', label: 'Due Date', format: v => fmtDate(v) },
       { key: 'amount', label: 'Amount', right: true, format: (v, row) => formatMoney(v, row.currency, { maxFrac: 0 }) },
@@ -323,7 +333,7 @@ function buildScheduleSection(wrap) {
     ];
 
     kpiRow.innerHTML = '';
-    kpiRow.appendChild(kpiCard('Paid This Year', String(paidThisYear.length), `${formatEUR(paidThisYear.reduce((s, e) => s + e.amountEUR, 0))}`, 'success',
+    kpiRow.appendChild(kpiCard('Paid This Year', String(paidThisYear.length), formatEUR(paidThisYear.reduce((s, e) => s + e.amountEUR, 0)), 'success',
       () => drillDownModal('Paid This Year', toRows(paidThisYear), schedCols)));
     kpiRow.appendChild(kpiCard('Overdue', String(overdue.length), overdue.length ? formatEUR(overdue.reduce((s, e) => s + e.amountEUR, 0)) : '—', overdue.length ? 'danger' : '',
       overdue.length ? () => drillDownModal('Overdue Payments', toRows(overdue), schedCols) : null));
@@ -337,6 +347,7 @@ function buildScheduleSection(wrap) {
     if (unpaidChk.checked) rows = rows.filter(s => !s.paid);
     if (rows.length === 0) { tableWrap.appendChild(el('div', { class: 'empty' }, 'No entries')); return; }
 
+    const showPropCol = activeProps.length > 1;
     const t = el('table', { class: 'table' });
 
     const hasSelectable = rows.some(s => !!s.linkedPaymentId);
@@ -345,9 +356,10 @@ function buildScheduleSection(wrap) {
     const chkTh = el('th', { style: 'width:36px' });
     if (hasSelectable) chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    [['Due Date', ''], ['Month', ''], ['Amount', 'right'], ['Cur.', ''], ['Status', ''], ['', '']].forEach(([h, cls]) => {
-      htr.appendChild(el('th', cls ? { class: cls } : {}, h));
-    });
+    const headerCols = showPropCol
+      ? [['Property', ''], ['Due Date', ''], ['Month', ''], ['Amount', 'right'], ['Cur.', ''], ['Status', ''], ['', '']]
+      : [['Due Date', ''], ['Month', ''], ['Amount', 'right'], ['Cur.', ''], ['Status', ''], ['', '']];
+    headerCols.forEach(([h, cls]) => htr.appendChild(el('th', cls ? { class: cls } : {}, h)));
     const thead = el('thead'); thead.appendChild(htr); t.appendChild(thead);
 
     const tb = el('tbody');
@@ -381,6 +393,7 @@ function buildScheduleSection(wrap) {
         }
         tr.appendChild(chkTd);
 
+        if (showPropCol) tr.appendChild(el('td', { style: 'font-size:12px' }, s.prop.name));
         tr.appendChild(el('td', {}, fmtDate(s.date)));
         tr.appendChild(el('td', { class: 'muted' }, s.monthKey));
         tr.appendChild(el('td', { class: 'right num' }, formatMoney(s.amount, s.currency, { maxFrac: 0 })));
@@ -393,7 +406,7 @@ function buildScheduleSection(wrap) {
         ));
         const td = el('td', { class: 'right', style: 'white-space:nowrap' });
         if (!s.paid) {
-          td.appendChild(button('Mark Paid', { variant: 'sm primary', onClick: () => recordRentPayment(prop, s, render) }));
+          td.appendChild(button('Mark Paid', { variant: 'sm primary', onClick: () => recordRentPayment(s.prop, s, render) }));
         }
         td.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => { closeOtherEdits(); renderEditRow(); } }));
         if (s.linkedPaymentId) {
@@ -414,6 +427,7 @@ function buildScheduleSection(wrap) {
         tr.style.background = '';
 
         tr.appendChild(el('td', {})); // checkbox column placeholder
+        if (showPropCol) tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' }, s.prop.name));
 
         const linked = s.linkedPaymentId
           ? byId('payments', s.linkedPaymentId) || null
@@ -460,10 +474,10 @@ function buildScheduleSection(wrap) {
         tr.addEventListener('cancel-edit', renderViewRow);
 
         const saveBtn = button('Save', { variant: 'sm primary', onClick: () => {
-          const newDate = dateI.value;
-          const newAmt  = Number(amtI.value);
-          const newCur  = curS.value;
-          const newStat = statusS.value;
+          const newDate  = dateI.value;
+          const newAmt   = Number(amtI.value);
+          const newCur   = curS.value;
+          const newStat  = statusS.value;
           const newNotes = notesI.value.trim() || `Rent ${s.monthKey}`;
 
           if (!newDate) { toast('Date is required', 'danger'); return; }
@@ -475,7 +489,7 @@ function buildScheduleSection(wrap) {
           } else {
             const pay = linked ? { ...linked } : {
               id: newId('pay'),
-              propertyId: prop.id,
+              propertyId: s.prop.id,
               tenantId: s.tenantId || null,
               stream: 'long_term_rental',
               source: 'manual',
@@ -490,7 +504,6 @@ function buildScheduleSection(wrap) {
 
         const cancelBtn = button('Cancel', { variant: 'sm ghost', onClick: renderViewRow });
 
-        // Col 1: checkbox placeholder | Col 2: date | Col 3: month | Col 4: amount | Col 5: currency | Col 6: status | Col 7: notes + buttons
         tr.appendChild(el('td', {}, dateI));
         tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px;white-space:nowrap' }, s.monthKey));
         tr.appendChild(el('td', {}, amtI));
@@ -526,11 +539,12 @@ function buildScheduleSection(wrap) {
       };
     }
 
-    const activeTenant = (listActive('tenants')).find(t => t.propertyId === prop.id && t.status === 'active');
-    const tenantLabel = activeTenant?.name || prop.tenantName || '';
     const totalEUR = rows.reduce((s, e) => s + e.amountEUR, 0);
+    const propLabel = activeProps.length === 1
+      ? (() => { const at = (listActive('tenants')).find(t => t.propertyId === activeProps[0].id && t.status === 'active'); return at?.name || activeProps[0].tenantName || ''; })()
+      : `${activeProps.length} properties`;
     tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted' }, `${tenantLabel ? tenantLabel + ' · ' : ''}${rows.length} month(s) shown`),
+      el('span', { class: 'muted' }, `${propLabel ? propLabel + ' · ' : ''}${rows.length} month(s) shown`),
       el('strong', { class: 'num' }, `Total: ${formatEUR(totalEUR)}`)
     ));
   };
@@ -548,7 +562,6 @@ function buildScheduleSection(wrap) {
   deleteSelBtn.style.display = 'none';
   bar.insertBefore(deleteSelBtn, showUnpaidOnly);
 
-  propSel.onchange = render;
   unpaidChk.onchange = render;
   render();
 }
