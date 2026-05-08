@@ -11368,7 +11368,7 @@
       "name": "Welcome Sweets",
       "createdAt": 1778223869793,
       "createdBy": "Giorgos",
-      "updatedAt": 1778224074630,
+      "updatedAt": 1778225725470,
       "updatedBy": "Giorgos",
       "batches": [
         {
@@ -11381,7 +11381,9 @@
           "comments": ""
         }
       ],
-      "propertyId": ""
+      "propertyId": "",
+      "deletedAt": 1778225725470,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ivt_mowkmlz77i",
