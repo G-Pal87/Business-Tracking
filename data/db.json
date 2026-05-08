@@ -5895,6 +5895,23 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778245552346,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "pay_mowzt69s5f",
+      "propertyId": "prop_mo946nvbck",
+      "tenantId": "ten_mowzo52ud6",
+      "amount": 100,
+      "currency": "EUR",
+      "date": "2026-06-01",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "Rent 2026-06",
+      "createdAt": 1778249451520,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778249451520,
+      "updatedBy": "Giorgos"
     }
   ],
   "expenses": [
