@@ -11400,8 +11400,10 @@
       "comments": "",
       "createdAt": 1778222192269,
       "createdBy": "Giorgos",
-      "updatedAt": 1778222192269,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778222510580,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778222510580,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ivt_mowjq2pe1o",
