@@ -7120,103 +7120,6 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778161760890,
       "updatedBy": "Giorgos"
-    },
-    {
-      "id": "exp_mowklitidi",
-      "propertyId": "prop_mo946nvbck",
-      "category": "inventory",
-      "amount": 240,
-      "currency": "EUR",
-      "date": "2026-05-08",
-      "vendor": "",
-      "vendorId": "",
-      "description": "",
-      "stream": "short_term_rental",
-      "inventoryItemId": "ivt_mowkjw038w",
-      "inventoryQty": 200,
-      "accountingType": "opex",
-      "costCategory": "other",
-      "recurrence": "recurring",
-      "createdAt": 1778223914267,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778225853273,
-      "updatedBy": "Giorgos",
-      "deletedAt": 1778225853273,
-      "deletedBy": "Giorgos"
-    },
-    {
-      "id": "exp_mowlq8d1l0",
-      "propertyId": "prop_mo946nvbck",
-      "category": "inventory",
-      "amount": 200,
-      "currency": "EUR",
-      "date": "2026-05-08",
-      "vendor": "",
-      "vendorId": "",
-      "description": "",
-      "stream": "short_term_rental",
-      "inventoryItemId": "ivt_mowlpqtyq5",
-      "inventoryQty": 150,
-      "inventoryBatches": [
-        {
-          "batchId": "btc_mowlpqtyi6",
-          "qty": 100,
-          "unitPrice": 1,
-          "currency": "EUR"
-        },
-        {
-          "batchId": "btc_mowlq0b9hu",
-          "qty": 50,
-          "unitPrice": 2,
-          "currency": "EUR"
-        }
-      ],
-      "accountingType": "opex",
-      "costCategory": "other",
-      "recurrence": "recurring",
-      "createdAt": 1778225811473,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778225851337,
-      "updatedBy": "Giorgos",
-      "deletedAt": 1778225851337,
-      "deletedBy": "Giorgos"
-    },
-    {
-      "id": "exp_mowls088fi",
-      "propertyId": "prop_mo946nvbck",
-      "category": "inventory",
-      "amount": 200,
-      "currency": "EUR",
-      "date": "2026-05-08",
-      "vendor": "",
-      "vendorId": "",
-      "description": "",
-      "stream": "short_term_rental",
-      "inventoryItemId": "ivt_mowlpqtyq5",
-      "inventoryQty": 150,
-      "inventoryBatches": [
-        {
-          "batchId": "btc_mowlpqtyi6",
-          "qty": 100,
-          "unitPrice": 1,
-          "currency": "EUR"
-        },
-        {
-          "batchId": "btc_mowlq0b9hu",
-          "qty": 50,
-          "unitPrice": 2,
-          "currency": "EUR"
-        }
-      ],
-      "accountingType": "opex",
-      "costCategory": "other",
-      "recurrence": "recurring",
-      "createdAt": 1778225906979,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778225932550,
-      "updatedBy": "Giorgos",
-      "deletedAt": 1778225932550,
-      "deletedBy": "Giorgos"
     }
   ],
   "vendors": [
@@ -11438,39 +11341,7 @@
       "updatedBy": "Giorgos"
     }
   ],
-  "inventory": [
-    {
-      "id": "ivt_mowlpqtyq5",
-      "name": "Welcome Drinks",
-      "propertyId": "prop_mo946nvbck",
-      "batches": [
-        {
-          "id": "btc_mowlpqtyi6",
-          "qty": 100,
-          "remaining": 100,
-          "unitPrice": 1,
-          "currency": "EUR",
-          "dateBought": "2024-05-08",
-          "comments": ""
-        },
-        {
-          "id": "btc_mowlq0b9hu",
-          "qty": 200,
-          "remaining": 200,
-          "unitPrice": 2,
-          "currency": "EUR",
-          "dateBought": "2026-05-08",
-          "comments": ""
-        }
-      ],
-      "createdAt": 1778225776918,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778225938094,
-      "updatedBy": "Giorgos",
-      "deletedAt": 1778225938094,
-      "deletedBy": "Giorgos"
-    }
-  ],
+  "inventory": [],
   "appConfig": {
     "github": {
       "owner": "",
