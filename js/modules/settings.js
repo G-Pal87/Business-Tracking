@@ -526,6 +526,7 @@ function buildReservationExpenseRulesCard() {
         const catLabel = EXPENSE_CATEGORIES[rule.category]?.label || rule.category;
         const srcLabel = rule.amountSource === 'airbnb_cleaning_fee' ? 'Airbnb cleaning fee'
           : rule.amountSource === 'inventory' ? 'Inventory (FIFO)'
+          : rule.amountSource === 'vendor_rate' ? 'Vendor rate by period'
           : `Fixed ${rule.fixedAmount} ${rule.fixedCurrency || 'EUR'}`;
         const tr = el('tr');
         tr.appendChild(el('td', {}, rule.name));
@@ -592,7 +593,8 @@ function openReservationExpenseRuleForm(existing, onSave) {
   const srcS       = select([
     { value: 'airbnb_cleaning_fee', label: 'Airbnb cleaning fee (from import data)' },
     { value: 'fixed',               label: 'Fixed amount' },
-    { value: 'inventory',           label: 'Inventory item (FIFO deduction)' }
+    { value: 'inventory',           label: 'Inventory item (FIFO deduction)' },
+    { value: 'vendor_rate',         label: 'Vendor rate by property & period' }
   ], rule.amountSource || 'airbnb_cleaning_fee');
   const fixedAmtI  = input({ type: 'number', value: rule.fixedAmount || 0, min: 0, step: 0.01 });
   const fixedCurrS = select(CURRENCIES, rule.fixedCurrency || 'EUR');
