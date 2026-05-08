@@ -7179,54 +7179,6 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778162605012,
       "updatedBy": "Giorgos"
-    },
-    {
-      "id": "vnd_movoh2433l",
-      "name": "xxx",
-      "role": "cleaner",
-      "phone": "",
-      "email": "",
-      "notes": "",
-      "rates": {},
-      "cleaningPeriods": [],
-      "createdAt": 1778169946970,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778222115024,
-      "updatedBy": "Giorgos",
-      "deletedAt": 1778222115024,
-      "deletedBy": "Giorgos"
-    },
-    {
-      "id": "vnd_movohrc5b",
-      "name": "zzz",
-      "role": "cleaner",
-      "phone": "",
-      "email": "",
-      "notes": "",
-      "rates": {},
-      "cleaningPeriods": [],
-      "createdAt": 1778169979269,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778222112171,
-      "updatedBy": "Giorgos",
-      "deletedAt": 1778222112171,
-      "deletedBy": "Giorgos"
-    },
-    {
-      "id": "vnd_movp2ylqct",
-      "name": "new",
-      "role": "cleaner",
-      "phone": "",
-      "email": "",
-      "notes": "",
-      "rates": {},
-      "cleaningPeriods": [],
-      "createdAt": 1778170969697,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778222105235,
-      "updatedBy": "Giorgos",
-      "deletedAt": 1778222105235,
-      "deletedBy": "Giorgos"
     }
   ],
   "tenants": [],
@@ -11389,38 +11341,7 @@
       "updatedBy": "Giorgos"
     }
   ],
-  "inventory": [
-    {
-      "id": "ivt_mowjjlqglh",
-      "name": "Welcome Drinks",
-      "stock": 500,
-      "unitPrice": 1.5,
-      "currency": "EUR",
-      "dateBought": "2025-01-01",
-      "comments": "",
-      "createdAt": 1778222192269,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778222510580,
-      "updatedBy": "Giorgos",
-      "deletedAt": 1778222510580,
-      "deletedBy": "Giorgos"
-    },
-    {
-      "id": "ivt_mowjq2pe1o",
-      "name": "Welcome Sweets",
-      "stock": 500,
-      "unitPrice": 0.3,
-      "currency": "EUR",
-      "dateBought": "2025-01-08",
-      "comments": "",
-      "createdAt": 1778222464676,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778222512450,
-      "updatedBy": "Giorgos",
-      "deletedAt": 1778222512450,
-      "deletedBy": "Giorgos"
-    }
-  ],
+  "inventory": [],
   "appConfig": {
     "github": {
       "owner": "",
