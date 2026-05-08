@@ -5922,8 +5922,10 @@
       "status": "active",
       "createdAt": 1778249246427,
       "createdBy": "Giorgos",
-      "updatedAt": 1778249246427,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778256346845,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778256346845,
+      "deletedBy": "Giorgos"
     }
   ],
   "clients": [
