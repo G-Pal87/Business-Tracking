@@ -3929,16 +3929,20 @@
       "amount": 8333333,
       "currency": "HUF",
       "date": "2026-04-28",
-      "vendor": "",
-      "vendorId": "",
+      "vendor": "Csaba",
+      "vendorId": "vnd_moi9r96ng2",
       "description": "",
       "stream": "long_term_rental",
       "inventoryItemId": "",
       "inventoryQty": 0,
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778013993531,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778261602562,
+      "updatedBy": "Giorgos",
+      "inventoryBatches": [],
+      "accountingType": "capex",
+      "costCategory": "renovation",
+      "recurrence": "one_off"
     }
   ],
   "vendors": [
