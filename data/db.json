@@ -11375,6 +11375,19 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778223914264,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "ivt_mowkmlz77i",
+      "name": "Welcome Drinks",
+      "stock": 400,
+      "unitPrice": 1,
+      "currency": "EUR",
+      "dateBought": "2026-05-08",
+      "comments": "",
+      "createdAt": 1778223961631,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778223961631,
+      "updatedBy": "Giorgos"
     }
   ],
   "appConfig": {
