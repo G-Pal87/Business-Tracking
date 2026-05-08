@@ -36,7 +36,7 @@ function build() {
 
   const wrap = el('div', { class: 'view active' });
 
-  wrap.appendChild(el('div', { class: 'grid grid-2' },
+  const chartsGrid = el('div', { class: 'grid grid-2' },
     el('div', { class: 'card' },
       el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'By Category')),
       el('div', { class: 'chart-wrap' }, el('canvas', { id: 'chart-exp-cat' }))
@@ -45,9 +45,9 @@ function build() {
       el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'By Property')),
       el('div', { class: 'chart-wrap' }, el('canvas', { id: 'chart-exp-prop' }))
     )
-  ));
+  );
 
-  const filterBar = el('div', { class: 'flex gap-8 mb-16 mt-24', style: 'flex-wrap:wrap' });
+  const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
 
   const propFilter           = new Set();
   const catFilter            = new Set();
@@ -87,6 +87,7 @@ function build() {
   filterBar.appendChild(deleteSelBtn);
   filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
   wrap.appendChild(filterBar);
+  wrap.appendChild(chartsGrid);
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
