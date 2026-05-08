@@ -11366,14 +11366,14 @@
     {
       "id": "ivt_mowkjw038w",
       "name": "Welcome Sweets",
-      "stock": 300,
+      "stock": 0,
       "unitPrice": 1.2,
       "currency": "EUR",
       "dateBought": "2025-01-01",
       "comments": "",
       "createdAt": 1778223869793,
       "createdBy": "Giorgos",
-      "updatedAt": 1778223914264,
+      "updatedAt": 1778224074630,
       "updatedBy": "Giorgos"
     },
     {
