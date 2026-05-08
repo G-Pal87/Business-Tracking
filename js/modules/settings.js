@@ -430,43 +430,49 @@ function openVendorForm(existing) {
 
 function buildServicesCard() {
   const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
-    el('div', {},
-      el('div', { class: 'card-title' }, 'Service Catalog'),
-      el('div', { class: 'card-subtitle' }, 'Premade services used when building invoices')
-    ),
-    button('+ Add Service', { variant: 'primary', onClick: () => openServiceForm() })
-  ));
-  const services = listActive('services');
-  if (services.length === 0) {
-    card.appendChild(el('div', { class: 'empty' }, 'No services'));
-  } else {
-    const t = el('table', { class: 'table' });
-    t.innerHTML = `<thead><tr><th>Name</th><th>Stream</th><th>Unit</th><th class="right">Rate</th><th></th></tr></thead>`;
-    const tb = el('tbody');
-    for (const s of services) {
-      const tr = el('tr');
-      tr.appendChild(el('td', {}, s.name));
-      tr.appendChild(el('td', {}, el('span', { class: `badge ${STREAMS[s.stream]?.css || ''}` }, STREAMS[s.stream]?.short || s.stream)));
-      tr.appendChild(el('td', {}, s.unit));
-      tr.appendChild(el('td', { class: 'right num' }, formatMoney(s.defaultRate, s.currency)));
-      const actions = el('td', { class: 'right' });
-      actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openServiceForm(s) }));
-      actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
-        const ok = await confirmDialog(`Delete service ${s.name}?`, { danger: true, okLabel: 'Delete' });
-        if (ok) { softDelete('services', s.id); toast('Deleted', 'success'); setTimeout(() => location.hash = 'settings', 200); }
-      }}));
-      tr.appendChild(actions);
-      tb.appendChild(tr);
+
+  const renderCard = () => {
+    card.innerHTML = '';
+    card.appendChild(el('div', { class: 'card-header' },
+      el('div', {},
+        el('div', { class: 'card-title' }, 'Service Catalog'),
+        el('div', { class: 'card-subtitle' }, 'Premade services used when building invoices')
+      ),
+      button('+ Add Service', { variant: 'primary', onClick: () => openServiceForm(null, renderCard) })
+    ));
+    const services = listActive('services');
+    if (services.length === 0) {
+      card.appendChild(el('div', { class: 'empty' }, 'No services'));
+    } else {
+      const t = el('table', { class: 'table' });
+      t.innerHTML = `<thead><tr><th>Name</th><th>Stream</th><th>Unit</th><th class="right">Rate</th><th></th></tr></thead>`;
+      const tb = el('tbody');
+      for (const s of services) {
+        const tr = el('tr');
+        tr.appendChild(el('td', {}, s.name));
+        tr.appendChild(el('td', {}, el('span', { class: `badge ${STREAMS[s.stream]?.css || ''}` }, STREAMS[s.stream]?.short || s.stream)));
+        tr.appendChild(el('td', {}, s.unit));
+        tr.appendChild(el('td', { class: 'right num' }, formatMoney(s.defaultRate, s.currency)));
+        const actions = el('td', { class: 'right' });
+        actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openServiceForm(s, renderCard) }));
+        actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
+          const ok = await confirmDialog(`Delete service ${s.name}?`, { danger: true, okLabel: 'Delete' });
+          if (ok) { softDelete('services', s.id); toast('Deleted', 'success'); renderCard(); }
+        }}));
+        tr.appendChild(actions);
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb);
+      const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+      card.appendChild(tw);
     }
-    t.appendChild(tb);
-    const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
-    card.appendChild(tw);
-  }
+  };
+
+  renderCard();
   return card;
 }
 
-function openServiceForm(existing) {
+function openServiceForm(existing, onSave) {
   const s = existing ? { ...existing } : { id: newId('svc'), name: '', description: '', unit: 'day', defaultRate: 0, currency: 'EUR', stream: 'customer_success' };
   const body = el('div', {});
   const nameI = input({ value: s.name });
@@ -490,7 +496,7 @@ function openServiceForm(existing) {
     upsert('services', s);
     toast('Saved', 'success');
     closeModal();
-    setTimeout(() => location.hash = 'settings', 200);
+    onSave?.();
   }});
   openModal({ title: existing ? 'Edit Service' : 'New Service', body, footer: [button('Cancel', { onClick: closeModal }), save] });
 }
