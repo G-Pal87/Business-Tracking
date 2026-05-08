@@ -411,10 +411,20 @@
       "paymentDayOfMonth": 1,
       "soldDate": "",
       "vacantPeriods": [],
-      "documents": [],
+      "documents": [
+        {
+          "id": "doc_mox8z90w9v",
+          "name": "invoice-5469.pdf",
+          "type": "application/pdf",
+          "size": 107532,
+          "uploadedAt": "2026-05-08T18:27:31.568Z",
+          "path": "Properties/Reitter Ferenc utca 3./invoice-5469.pdf",
+          "propertyId": "prop_mohg4jrjb0"
+        }
+      ],
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
+      "updatedAt": 1778264858188,
       "updatedBy": "Giorgos"
     },
     {
