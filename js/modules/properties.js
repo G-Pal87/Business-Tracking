@@ -9,6 +9,7 @@ import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES } f
 import { fetchICal, parseICal, nights } from '../core/ical.js';
 import { openExpenseForm } from './expenses.js';
 import { navigate } from '../core/router.js';
+import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
 
 let selectedId = null;
 
@@ -28,13 +29,24 @@ function readFileAsBase64(file) {
   });
 }
 
-function previewDoc(doc) {
+async function previewDoc(doc) {
   const mime = doc.type || 'application/octet-stream';
-  const byteChars = atob(doc.data);
+  let b64;
+  if (doc.path) {
+    const file = await fetchGithubFile(doc.path);
+    b64 = file.content.replace(/\n/g, '');
+  } else {
+    b64 = doc.data;
+  }
+  const byteChars = atob(b64);
   const bytes = new Uint8Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
   const blob = new Blob([bytes], { type: mime });
   window.open(URL.createObjectURL(blob), '_blank');
+}
+
+function sanitizeName(str) {
+  return str.replace(/[<>:"/\\|?*\x00-\x1f]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function docIcon(type) {
@@ -241,27 +253,44 @@ function openDetail(id) {
   body.appendChild(expTable);
 
   // Documents
-  const docs = p.documents || [];
   const docsViewCard = el('div', { class: 'card mb-16' });
+  const docsTitleEl = el('div', { class: 'card-title' }, `Documents (${(p.documents || []).length})`);
   docsViewCard.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, `Documents (${docs.length})`),
+    docsTitleEl,
     button('Manage', { onClick: () => { closeModal(); setTimeout(() => openForm(p), 220); } })
   ));
-  if (docs.length === 0) {
-    docsViewCard.appendChild(el('div', { class: 'doc-empty' }, 'No documents attached. Use Manage to upload.'));
-  } else {
-    const dl = el('div', { class: 'doc-list' });
-    for (const d of docs) {
+  const dl = el('div', { class: 'doc-list' });
+  const renderDetailDocList = () => {
+    dl.innerHTML = '';
+    const currentDocs = p.documents || [];
+    docsTitleEl.textContent = `Documents (${currentDocs.length})`;
+    if (currentDocs.length === 0) {
+      dl.appendChild(el('div', { class: 'doc-empty' }, 'No documents attached. Use Manage to upload.'));
+      return;
+    }
+    for (const d of currentDocs) {
       const row = el('div', { class: 'doc-row' });
       row.appendChild(el('span', { class: 'doc-icon' }, docIcon(d.type)));
       row.appendChild(el('span', { class: 'doc-name', title: d.name }, d.name));
       row.appendChild(el('span', { class: 'doc-size' }, fmtSize(d.size)));
       if (d.uploadedAt) row.appendChild(el('span', { class: 'doc-date' }, fmtDate(d.uploadedAt.slice(0, 10))));
       row.appendChild(button('Preview', { variant: 'ghost', onClick: () => previewDoc(d) }));
+      if (d.path) {
+        row.appendChild(button('Delete', { variant: 'ghost', onClick: async () => {
+          const ok = await confirmDialog(`Delete document "${d.name}"?`, { danger: true, okLabel: 'Delete' });
+          if (!ok) return;
+          try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
+          catch (e) { toast(`Repo cleanup failed: ${e.message}`, 'warning', 5000); }
+          p.documents = (p.documents || []).filter(x => x.id !== d.id);
+          upsert('properties', p);
+          renderDetailDocList();
+        }}));
+      }
       dl.appendChild(row);
     }
-    docsViewCard.appendChild(dl);
-  }
+  };
+  renderDetailDocList();
+  docsViewCard.appendChild(dl);
   body.appendChild(docsViewCard);
 
   const editBtn = button('Edit', { onClick: () => { closeModal(); setTimeout(() => openForm(p), 220); } });
@@ -333,8 +362,8 @@ function openForm(existing) {
   const updateTypeFields = () => {
     const isLT = typeS.value === 'long_term';
     ltRow.style.display = isLT ? '' : 'none';
-    ltTenantRow.style.display = isLT ? '' : 'none';
-    ltLeaseRow.style.display = isLT ? '' : 'none';
+    ltTenantRow.style.display = 'none';
+    ltLeaseRow.style.display = 'none';
     icalRow.style.display = isLT ? 'none' : '';
   };
   typeS.onchange = updateTypeFields;
@@ -428,7 +457,14 @@ function openForm(existing) {
         class: 'btn ghost sm',
         type: 'button',
         title: 'Remove',
-        onClick: () => { pendingDocs = pendingDocs.filter(x => x.id !== d.id); renderDocList(); }
+        onClick: async () => {
+          if (d.path) {
+            try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
+            catch (e) { toast(`Repo cleanup failed: ${e.message}`, 'warning', 5000); }
+          }
+          pendingDocs = pendingDocs.filter(x => x.id !== d.id);
+          renderDocList();
+        }
       }, '✕'));
       docListEl.appendChild(row);
     }
@@ -438,17 +474,17 @@ function openForm(existing) {
   dropZone.onclick = () => fileInput.click();
   dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('dragover'); };
   dropZone.ondragleave = () => dropZone.classList.remove('dragover');
-  dropZone.ondrop = async e => {
+  dropZone.ondrop = e => {
     e.preventDefault();
     dropZone.classList.remove('dragover');
     for (const file of [...e.dataTransfer.files]) {
-      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, data: await readFileAsBase64(file), uploadedAt: new Date().toISOString() });
+      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), _file: file });
     }
     renderDocList();
   };
-  fileInput.onchange = async () => {
+  fileInput.onchange = () => {
     for (const file of [...fileInput.files]) {
-      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, data: await readFileAsBase64(file), uploadedAt: new Date().toISOString() });
+      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), _file: file });
     }
     renderDocList();
     fileInput.value = '';
@@ -467,10 +503,34 @@ function openForm(existing) {
   updateTypeFields();
   updateStatusFields();
 
-  const saveBtn = button('Save', { variant: 'primary', onClick: () => {
+  const saveBtn = button('Save', { variant: 'primary', onClick: async () => {
     if (!nameI.value.trim()) { toast('Name is required', 'danger'); return; }
+    const propName = nameI.value.trim();
+    const safePropName = sanitizeName(propName);
+
+    // Upload any pending new files to GitHub; keep metadata only in db.json
+    const docsToSave = [];
+    for (const d of pendingDocs) {
+      if (d._file) {
+        const safeFileName = sanitizeName(d.name);
+        const repoPath = `Properties/${safePropName}/${safeFileName}`;
+        try {
+          const b64 = await readFileAsBase64(d._file);
+          await uploadGithubFile(repoPath, b64, `Upload document: ${d.name}`);
+          docsToSave.push({ id: d.id, name: d.name, type: d.type, size: d.size, uploadedAt: d.uploadedAt, path: repoPath, propertyId: p.id });
+        } catch (e) {
+          toast(`Failed to upload ${d.name}: ${e.message}`, 'danger', 6000);
+          return;
+        }
+      } else {
+        // Already uploaded (or legacy base64 doc) — keep as-is, strip transient _file
+        const { _file, ...rest } = d;
+        docsToSave.push(rest);
+      }
+    }
+
     Object.assign(p, {
-      name: nameI.value.trim(),
+      name: propName,
       address: addressI.value.trim(),
       city: cityI.value.trim(),
       country: countryI.value.trim(),
@@ -490,12 +550,9 @@ function openForm(existing) {
       mortgageRate: Number(mRateI.value) || 0,
       airbnbCalUrl: icalI.value.trim(),
       notes: notesT.value.trim(),
-      tenantName: tenantI.value.trim(),
-      leaseStartDate: leaseStartI.value,
-      leaseEndDate: leaseEndI.value,
       soldDate: soldDateI.value,
       vacantPeriods: pendingVacantPeriods,
-      documents: pendingDocs
+      documents: docsToSave
     });
     // Soft-delete unpaid payments within vacant periods (keep paid history intact)
     if (pendingVacantPeriods.length > 0) {

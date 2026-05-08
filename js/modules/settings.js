@@ -791,15 +791,23 @@ function buildTrashCard() {
       });
       let pdfErrors = 0;
       for (const { collection, id } of targets) {
-        if (collection !== 'invoices') continue;
-        const inv = all.find(r => r.collection === 'invoices' && r.item.id === id)?.item;
-        if (!inv?.pdfPath) continue;
-        try { await deleteGithubFile(inv.pdfPath, null, `Delete PDF for invoice ${inv.number || inv.id}`); }
-        catch { pdfErrors++; }
+        if (collection === 'invoices') {
+          const inv = all.find(r => r.collection === 'invoices' && r.item.id === id)?.item;
+          if (!inv?.pdfPath) continue;
+          try { await deleteGithubFile(inv.pdfPath, null, `Delete PDF for invoice ${inv.number || inv.id}`); }
+          catch { pdfErrors++; }
+        } else if (collection === 'properties') {
+          const prop = all.find(r => r.collection === 'properties' && r.item.id === id)?.item;
+          for (const doc of (prop?.documents || [])) {
+            if (!doc.path) continue;
+            try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+            catch { pdfErrors++; }
+          }
+        }
       }
       const count = permanentlyDeleteRecords(targets);
       if (pdfErrors > 0)
-        toast(`Permanently deleted ${count} record(s) — ${pdfErrors} PDF(s) could not be cleaned up`, 'warning', 6000);
+        toast(`Permanently deleted ${count} record(s) — ${pdfErrors} file(s) could not be cleaned up`, 'warning', 6000);
       else
         toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
       renderCard(colSel.value);
@@ -813,13 +821,20 @@ function buildTrashCard() {
       if (!ok) return;
       let pdfErrors = 0;
       for (const { collection, item } of all) {
-        if (collection !== 'invoices' || !item.pdfPath) continue;
-        try { await deleteGithubFile(item.pdfPath, null, `Delete PDF for invoice ${item.number || item.id}`); }
-        catch { pdfErrors++; }
+        if (collection === 'invoices' && item.pdfPath) {
+          try { await deleteGithubFile(item.pdfPath, null, `Delete PDF for invoice ${item.number || item.id}`); }
+          catch { pdfErrors++; }
+        } else if (collection === 'properties') {
+          for (const doc of (item.documents || [])) {
+            if (!doc.path) continue;
+            try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+            catch { pdfErrors++; }
+          }
+        }
       }
       const count = purgeDeletedRecords();
       if (pdfErrors > 0)
-        toast(`Permanently deleted ${count} record(s) — ${pdfErrors} PDF(s) could not be cleaned up`, 'warning', 6000);
+        toast(`Permanently deleted ${count} record(s) — ${pdfErrors} file(s) could not be cleaned up`, 'warning', 6000);
       else
         toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
       renderCard();
@@ -904,6 +919,12 @@ function buildTrashCard() {
               permanentlyDeleteRecord(collection, item.id);
               renderCard(colSel.value);
               return;
+            }
+          } else if (collection === 'properties') {
+            for (const doc of (item.documents || [])) {
+              if (!doc.path) continue;
+              try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+              catch { /* best-effort */ }
             }
           }
           permanentlyDeleteRecord(collection, item.id);
