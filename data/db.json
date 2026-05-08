@@ -7139,8 +7139,10 @@
       "recurrence": "recurring",
       "createdAt": 1778223914267,
       "createdBy": "Giorgos",
-      "updatedAt": 1778223914267,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778225853273,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778225853273,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mowlq8d1l0",
