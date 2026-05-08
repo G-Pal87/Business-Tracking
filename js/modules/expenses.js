@@ -1,7 +1,7 @@
 // Expenses module
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -33,7 +33,18 @@ function addOneYear(dateStr) {
 function restoreInventoryStock(expense) {
   if (!expense.inventoryItemId || !expense.inventoryQty) return;
   const item = byId('inventory', expense.inventoryItemId);
-  if (item) { upsert('inventory', { ...item, stock: item.stock + expense.inventoryQty }); }
+  if (!item) return;
+  if (expense.inventoryBatches && item.batches) {
+    // Batched model: restore each consumed batch's remaining
+    const restoreMap = new Map(expense.inventoryBatches.map(c => [c.batchId, c.qty]));
+    const updatedBatches = item.batches.map(b =>
+      restoreMap.has(b.id) ? { ...b, remaining: (b.remaining ?? b.qty ?? 0) + restoreMap.get(b.id) } : b
+    );
+    upsert('inventory', { ...item, batches: updatedBatches });
+  } else {
+    // Legacy flat stock
+    upsert('inventory', { ...item, stock: (item.stock || 0) + expense.inventoryQty });
+  }
 }
 
 function build() {
@@ -335,16 +346,25 @@ function openForm(existing, defaults = {}) {
   const descT = textarea({ placeholder: 'Description' });
   descT.value = r.description || '';
 
-  const invItemOpts = [
-    { value: '', label: '— Select item —' },
-    ...(state.db.inventory || []).map(item => {
-      const avail = item.stock + (existing?.inventoryItemId === item.id ? (existing.inventoryQty || 0) : 0);
-      return { value: item.id, label: `${item.name} (avail: ${avail})` };
-    })
-  ];
-  const invItemS = select(invItemOpts, r.inventoryItemId || '');
+  const invItemS = el('select', { class: 'select' });
   const invQtyI  = input({ type: 'number', value: r.inventoryQty || 1, min: 1, step: 1 });
   const invRow   = el('div', { class: 'form-row horizontal' }, formRow('Item', invItemS), formRow('Qty', invQtyI));
+
+  const updateInvItemOpts = () => {
+    const pid   = propS.value;
+    const items = listActive('inventory').filter(i => !pid || i.propertyId === pid);
+    invItemS.innerHTML = '';
+    const placeholder = el('option', { value: '' }, '— Select item —');
+    invItemS.appendChild(placeholder);
+    for (const item of items) {
+      const alreadyConsumed = existing?.inventoryItemId === item.id ? (existing.inventoryQty || 0) : 0;
+      const avail = totalRemaining(item) + alreadyConsumed;
+      const opt = el('option', { value: item.id }, `${item.name} (${avail} avail)`);
+      if (item.id === (r.inventoryItemId || '')) opt.selected = true;
+      invItemS.appendChild(opt);
+    }
+  };
+  updateInvItemOpts();
 
   // Recurring — only shown for new expenses
   const recurChk = el('input', { type: 'checkbox' });
@@ -432,8 +452,16 @@ function openForm(existing, defaults = {}) {
   const syncInventoryAmount = () => {
     const item = byId('inventory', invItemS.value);
     if (!item) return;
-    amountI.value = (item.unitPrice * (Number(invQtyI.value) || 1)).toFixed(2);
-    currencyS.value = item.currency;
+    const qty = Number(invQtyI.value) || 1;
+    if (item.batches) {
+      const { totalCost } = fifoDeduct(item, qty);
+      amountI.value = totalCost.toFixed(2);
+      currencyS.value = item.batches.find(b => b.currency)?.currency || 'EUR';
+    } else {
+      // Legacy flat item
+      amountI.value = ((item.unitPrice || 0) * qty).toFixed(2);
+      currencyS.value = item.currency || 'EUR';
+    }
   };
 
   const syncInventoryRow = () => {
@@ -465,11 +493,12 @@ function openForm(existing, defaults = {}) {
   propS.onchange = () => {
     const p = byId('properties', propS.value);
     if (p) { currencyS.value = p.currency; autoFillAmount(); }
+    updateInvItemOpts();
   };
   invItemS.onchange = syncInventoryAmount;
   invQtyI.oninput   = syncInventoryAmount;
 
-  const save = button('Save', { variant: 'primary', onClick: () => {
+  const save = button('Save', { variant: 'primary', onClick: async () => {
     if (!propS.value) { toast('Select property', 'danger'); return; }
 
     if (catS.value === 'inventory') {
@@ -477,29 +506,37 @@ function openForm(existing, defaults = {}) {
       const qty    = Number(invQtyI.value) || 0;
       if (!itemId) { toast('Select an inventory item', 'danger'); return; }
       if (qty <= 0) { toast('Quantity must be > 0', 'danger'); return; }
+
+      // Restore previous consumption first (handles item switch or qty change)
+      if (existing?.inventoryItemId) restoreInventoryStock(existing);
+
       const item = byId('inventory', itemId);
       if (!item) { toast('Item not found', 'danger'); return; }
-      let available = item.stock;
-      if (existing?.inventoryItemId === itemId) available += (existing.inventoryQty || 0);
-      if (qty > available) { toast(`Insufficient stock. Available: ${available}`, 'danger'); return; }
-      if (existing?.inventoryItemId && existing.inventoryItemId !== itemId) {
-        const old = byId('inventory', existing.inventoryItemId);
-        if (old) { old.stock += (existing.inventoryQty || 0); upsert('inventory', old); }
+      const available = totalRemaining(item);
+
+      if (qty > available) {
+        const ok = await confirmDialog(
+          `Only ${available} in stock. Record expense anyway?`,
+          { okLabel: 'Override', danger: true }
+        );
+        if (!ok) return;
       }
-      item.stock = available - qty;
-      upsert('inventory', item);
-      r.inventoryItemId = itemId;
-      r.inventoryQty    = qty;
+
+      const { updatedBatches, consumed, totalCost } = fifoDeduct(item, qty);
+      upsert('inventory', { ...item, batches: updatedBatches });
+      amountI.value = totalCost.toFixed(2);
+      currencyS.value = consumed[0]?.currency || item.batches?.[0]?.currency || 'EUR';
+      r.inventoryItemId  = itemId;
+      r.inventoryQty     = qty;
+      r.inventoryBatches = consumed;
     } else {
-      if (existing?.inventoryItemId) {
-        const old = byId('inventory', existing.inventoryItemId);
-        if (old) { old.stock += (existing.inventoryQty || 0); upsert('inventory', old); }
-      }
-      r.inventoryItemId = '';
-      r.inventoryQty    = 0;
+      if (existing?.inventoryItemId) restoreInventoryStock(existing);
+      r.inventoryItemId  = '';
+      r.inventoryQty     = 0;
+      r.inventoryBatches = [];
     }
 
-    if (Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
+    if (catS.value !== 'inventory' && Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
     const selectedVendor = vendorS.value ? byId('vendors', vendorS.value) : null;
     const prop = byId('properties', propS.value);
     const autoStream = prop?.type === 'short_term' ? 'short_term_rental'

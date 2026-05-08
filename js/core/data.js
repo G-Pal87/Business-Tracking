@@ -865,3 +865,41 @@ export function purgeDeletedRecords() {
   if (count > 0) markDirty();
   return count;
 }
+
+// ============== Inventory FIFO helpers ==============
+
+export function totalRemaining(item) {
+  if (!item) return 0;
+  if (item.batches) return item.batches.reduce((s, b) => s + (b.remaining ?? b.qty ?? 0), 0);
+  return item.stock || 0; // legacy flat format
+}
+
+/**
+ * Compute FIFO deduction from oldest batches first (does NOT mutate item).
+ * Returns { updatedBatches, consumed: [{batchId, qty, unitPrice, currency}], totalCost, deficit }.
+ * deficit > 0 means available stock was less than requested qty.
+ */
+export function fifoDeduct(item, qty) {
+  if (!item?.batches?.length) return { updatedBatches: item?.batches || [], consumed: [], totalCost: 0, deficit: qty };
+  const sorted = [...item.batches].sort((a, b) => (a.dateBought || '').localeCompare(b.dateBought || ''));
+  let need = qty;
+  const consumed = [];
+  let totalCost = 0;
+  const patchMap = new Map();
+
+  for (const b of sorted) {
+    if (need <= 0) break;
+    const avail = b.remaining ?? b.qty ?? 0;
+    const take  = Math.min(avail, need);
+    if (take <= 0) continue;
+    consumed.push({ batchId: b.id, qty: take, unitPrice: b.unitPrice || 0, currency: b.currency || 'EUR' });
+    totalCost += take * (b.unitPrice || 0);
+    patchMap.set(b.id, avail - take);
+    need -= take;
+  }
+
+  const updatedBatches = item.batches.map(b =>
+    patchMap.has(b.id) ? { ...b, remaining: patchMap.get(b.id) } : b
+  );
+  return { updatedBatches, consumed, totalCost, deficit: need };
+}
