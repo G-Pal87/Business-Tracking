@@ -60,9 +60,22 @@ function githubStatusBadge(g) {
   return el('span', { class: 'badge' }, 'Configured');
 }
 
+async function pushBootstrapConfig({ owner, repo, branch, path }) {
+  const content = JSON.stringify({ owner, repo, branch, path }, null, 2);
+  const b64 = btoa(unescape(encodeURIComponent(content)));
+  await uploadGithubFile('data/github-config.json', b64, 'Update GitHub bootstrap config');
+}
+
 function buildGithubCard() {
   const card = el('div', { class: 'card mb-16' });
   const g = state.github;
+  // Merge runtime state with db config so new devices (no localStorage) still see values
+  const dbCfg    = state.db.appConfig?.github || {};
+  const effOwner  = g.owner  || dbCfg.owner  || '';
+  const effRepo   = g.repo   || dbCfg.repo   || '';
+  const effBranch = g.branch || dbCfg.branch || 'main';
+  const effPath   = g.dbPath || dbCfg.path   || 'data/db.json';
+  const effToken  = g.token  || dbCfg.token  || '';
   const isAdmin = state.session?.role === 'admin';
 
   card.appendChild(el('div', { class: 'card-header' },
@@ -83,11 +96,11 @@ function buildGithubCard() {
     // Read-only view for non-admins
     const infoGrid = el('div', { style: 'display:grid;grid-template-columns:120px 1fr;gap:8px 16px;font-size:13px;margin-bottom:8px' });
     for (const [label, value] of [
-      ['Owner',  g.owner  || '\u2014'],
-      ['Repo',   g.repo   || '\u2014'],
-      ['Branch', g.branch || 'main'],
-      ['Path',   g.dbPath || 'data/db.json'],
-      ['Token',  g.token  ? 'Configured' : 'Not configured'],
+      ['Owner',  effOwner  || '\u2014'],
+      ['Repo',   effRepo   || '\u2014'],
+      ['Branch', effBranch || 'main'],
+      ['Path',   effPath   || 'data/db.json'],
+      ['Token',  effToken  ? 'Configured' : 'Not configured'],
     ]) {
       infoGrid.appendChild(el('div', { style: 'color:var(--text-muted)' }, label));
       infoGrid.appendChild(el('div', {}, value));
@@ -97,16 +110,16 @@ function buildGithubCard() {
   }
 
   // Admin edit form
-  const ownerI  = input({ value: g.owner,  placeholder: 'github-username' });
-  const repoI   = input({ value: g.repo,   placeholder: 'business-tracking' });
-  const branchI = input({ value: g.branch || 'main', placeholder: 'main' });
-  const dbPathI = input({ value: g.dbPath || 'data/db.json', placeholder: 'data/db.json' });
-  const tokenI  = input({ type: 'password', placeholder: g.token ? 'Leave blank to keep current token' : 'ghp_\u2026' });
+  const ownerI  = input({ value: effOwner,  placeholder: 'github-username' });
+  const repoI   = input({ value: effRepo,   placeholder: 'business-tracking' });
+  const branchI = input({ value: effBranch, placeholder: 'main' });
+  const dbPathI = input({ value: effPath,   placeholder: 'data/db.json' });
+  const tokenI  = input({ type: 'password', placeholder: effToken ? 'Leave blank to keep current token' : 'ghp_\u2026' });
 
   card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Owner', ownerI), formRow('Repo', repoI)));
   card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Branch', branchI), formRow('Path', dbPathI)));
   card.appendChild(formRow(
-    g.token ? 'Token (configured)' : 'Token (PAT)',
+    effToken ? 'Token (configured)' : 'Token (PAT)',
     tokenI,
     'Stored in db.json and shared across all users/devices.'
   ));
@@ -116,7 +129,7 @@ function buildGithubCard() {
     const repo   = repoI.value.trim();
     const branch = branchI.value.trim() || 'main';
     const dbPath = dbPathI.value.trim() || 'data/db.json';
-    const token  = tokenI.value.trim() || g.token;
+    const token  = tokenI.value.trim() || effToken;
 
     if (!owner || !repo) { toast('Owner and repo are required', 'danger'); return; }
 
@@ -132,6 +145,8 @@ function buildGithubCard() {
       setDb(db);
       saveLocalCache(state.db);
       markDirty(); // push db.appConfig.github to GitHub
+      // Push bootstrap config (no token) so new devices can auto-configure
+      pushBootstrapConfig({ owner, repo, branch, path: dbPath }).catch(() => {});
       toast('Connected! Data loaded from GitHub.', 'success');
       setTimeout(() => navigate('settings'), 250);
     } catch (e) {
@@ -149,7 +164,7 @@ function buildGithubCard() {
   const btnRow = el('div', { class: 'flex gap-8', style: 'margin-top:8px' });
   btnRow.appendChild(saveBtn);
 
-  if (g.token) {
+  if (effToken) {
     const pushBtn = button('Push Now', { onClick: async () => {
       if (!state.github.syncNow) { toast('Not ready \u2014 reload the page', 'warning'); return; }
       pushBtn.disabled = true;
