@@ -1045,7 +1045,7 @@
       "name": "Alexis Papageorgioua",
       "email": "",
       "address": "",
-      "vatNumber": "",
+      "vatNumber": "Tax-ID: 50-133-09634",
       "registrationNumber": "",
       "currency": "EUR",
       "contractStart": "2026-05-09",
@@ -1053,7 +1053,7 @@
       "documents": [],
       "createdAt": 1778317153082,
       "createdBy": "Giorgos",
-      "updatedAt": 1778317153082,
+      "updatedAt": 1778317166485,
       "updatedBy": "Giorgos"
     }
   ],
