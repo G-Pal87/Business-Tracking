@@ -3463,7 +3463,7 @@
     {
       "id": "inv_mosejko4ps",
       "number": "Invoice - M&WPrimeSolutions#1001",
-      "clientId": "cli_mo9sroqs7s",
+      "clientId": "cli_moy4a82pn",
       "owner": "you",
       "issueDate": "2024-07-31",
       "dueDate": "2024-08-10",
@@ -3488,7 +3488,7 @@
       "source": "pdf_import",
       "createdAt": 1777971869613,
       "createdBy": "Giorgos",
-      "updatedAt": 1778186721303,
+      "updatedAt": 1778318055406,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/Invoice_-_M_WPrimeSolutions_1001.pdf"
     },
