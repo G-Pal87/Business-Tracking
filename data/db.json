@@ -1081,7 +1081,7 @@
       "name": "a",
       "email": "",
       "address": "Társaság 1112 Budapest, Sasadi str 134., Hungary",
-      "vatNumber": "",
+      "vatNumber": "12676785-2-43",
       "registrationNumber": "01-09-698048",
       "currency": "EUR",
       "contractStart": "2026-05-09",
@@ -1089,7 +1089,7 @@
       "documents": [],
       "createdAt": 1778319468610,
       "createdBy": "Giorgos",
-      "updatedAt": 1778319492760,
+      "updatedAt": 1778319506859,
       "updatedBy": "Giorgos"
     }
   ],
