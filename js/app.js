@@ -70,6 +70,23 @@ async function boot() {
     loaded = true;
   }
 
+  // ── Phase 1.5: if still no GitHub owner/repo, try bootstrap config file
+  // (written by the admin when they first save Settings → GitHub Storage)
+  if (!state.github.owner) {
+    try {
+      const res = await fetch('data/github-config.json', { cache: 'no-store' });
+      if (res.ok) {
+        const cfg = await res.json();
+        if (cfg.owner) {
+          if (!state.github.owner)  state.github.owner  = cfg.owner;
+          if (!state.github.repo)   state.github.repo   = cfg.repo   || '';
+          if (!state.github.branch) state.github.branch = cfg.branch || 'main';
+          if (!state.github.dbPath) state.github.dbPath = cfg.path   || 'data/db.json';
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
   // ── Phase 2: if no local cache, block on GitHub once (first-ever load)
   if (!loaded && state.github.owner && state.github.repo) {
     try {
