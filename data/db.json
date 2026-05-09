@@ -1905,7 +1905,7 @@
     {
       "id": "inv_mopvfsiqjb",
       "number": "19_Event&More_070426",
-      "clientId": "cli_mopvfxalho",
+      "clientId": "cli_moy5ht884h",
       "owner": "rita",
       "issueDate": "2026-04-07",
       "dueDate": "2026-05-02",
@@ -1930,7 +1930,7 @@
       "source": "pdf_import",
       "createdAt": 1777818845475,
       "createdBy": "RitaK",
-      "updatedAt": 1778185848805,
+      "updatedAt": 1778319536456,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/19_Event_More_070426.pdf"
     },
