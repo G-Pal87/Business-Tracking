@@ -539,3 +539,55 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
   0%   { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
 }
+
+/* ========== MOBILE: ≤ 768 px ========== */
+/* All rules are additive — desktop layout is completely unchanged.        */
+/* Tables scroll horizontally (no JS needed); modals go near-full-width;  */
+/* button rows wrap; forms stack. Going forward, new UI should be built   */
+/* mobile-first: use flex-wrap, min-width 0, and avoid fixed px widths.  */
+@media (max-width: 768px) {
+
+  /* ── Tables ──────────────────────────────────────────────────────────── */
+  /* Wide tables scroll instead of overflowing the viewport.               */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ── Modals ──────────────────────────────────────────────────────────── */
+  .modal,
+  .modal.lg     { max-width: 95vw; }
+  .modal-header { padding: 14px 16px; }
+  .modal-body   { padding: 16px; }
+  .modal-footer { padding: 12px 16px; flex-wrap: wrap; }
+
+  /* ── Button / action rows ────────────────────────────────────────────── */
+  /* flex + gap-8 is the standard action-bar pattern throughout the app.  */
+  .flex.gap-8 { flex-wrap: wrap; }
+
+  /* ── Forms ───────────────────────────────────────────────────────────── */
+  .form-row.horizontal { grid-template-columns: 1fr; }
+
+  /* ── Charts ──────────────────────────────────────────────────────────── */
+  .chart-wrap      { height: 220px; }
+  .chart-wrap.tall { height: 280px; }
+
+  /* ── Toasts ──────────────────────────────────────────────────────────── */
+  #toasts { right: 12px; left: 12px; top: 12px; }
+  .toast  { min-width: 0; }
+
+  /* ── Property detail hero ────────────────────────────────────────────── */
+  .prop-detail-hero { flex-direction: column; gap: 16px; }
+
+  /* ── Invoice line-item editor ────────────────────────────────────────── */
+  /* The 5-column grid is too wide for a phone; let it scroll.            */
+  .line-items    { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .line-item-row { min-width: 480px; }
+
+  /* ── KPI cards ───────────────────────────────────────────────────────── */
+  .kpi-value { font-size: 1.4rem; }
+
+  /* ── Setup / onboarding banner ───────────────────────────────────────── */
+  .setup-banner { flex-direction: column; gap: 10px; align-items: flex-start; }
+
+}

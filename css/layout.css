@@ -210,4 +210,15 @@
   body.nav-open #mobile-backdrop {
     display: block;
   }
+
+  /* Header & content spacing */
+  #header  { padding: 0 14px; }
+  #content { padding: 16px; }
+
+  /* Cards: slightly tighter padding */
+  .card { padding: 14px; }
+
+  /* Section headers: let title and action buttons wrap to separate rows */
+  .section-header { flex-wrap: wrap; gap: 8px; }
+  .section-header .actions { flex-wrap: wrap; }
 }
