@@ -2311,7 +2311,7 @@
     {
       "id": "inv_morkgp6dr2",
       "number": "11_CTWO_040325",
-      "clientId": "cli_mo9sroqs7s",
+      "clientId": "cli_moy4a82pn",
       "owner": "you",
       "issueDate": "2025-03-04",
       "dueDate": "2025-03-10",
@@ -2336,7 +2336,7 @@
       "source": "pdf_import",
       "createdAt": 1777921344373,
       "createdBy": "RitaK",
-      "updatedAt": 1778180573094,
+      "updatedAt": 1778317912951,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/11_CTWO_040325.pdf"
     },
