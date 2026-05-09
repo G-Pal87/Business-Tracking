@@ -374,7 +374,10 @@ function buildFilterBar() {
 
   // Custom year (only when custom)
   if (gF.period === 'custom') {
-    const years = availableYears();
+    // Include property purchaseDates — availableYears() only scans payments/expenses/invoices
+    const ySet = new Set(availableYears());
+    for (const p of listActive('properties')) if (p.purchaseDate) ySet.add(p.purchaseDate.slice(0, 4));
+    const years = [...ySet].sort().reverse();
     const yearSel = makeSelect(
       (years.length ? years : [String(new Date().getFullYear())]).map(y => [y, y]),
       gF.customYear,
@@ -398,8 +401,17 @@ function buildFilterBar() {
   const streamItems = Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, css: v.css }));
   bar.appendChild(buildMultiSelect(streamItems, gF.streams, 'All Streams', rebuildView, 'ana_exec_streams'));
 
-  // Property multi-select
-  const propItems = listActive('properties').map(p => ({ value: p.id, label: p.name }));
+  // Property multi-select — restricted to owners currently selected (leave-one-out faceting)
+  const allProps = listActive('properties');
+  const availableProps = gF.owners.size
+    ? allProps.filter(p => p.owner === 'both' || gF.owners.has(p.owner))
+    : allProps;
+  // Trim any previously selected properties that no longer match the owner filter
+  if (gF.owners.size) {
+    const validIds = new Set(availableProps.map(p => p.id));
+    for (const id of [...gF.properties]) if (!validIds.has(id)) gF.properties.delete(id);
+  }
+  const propItems = availableProps.map(p => ({ value: p.id, label: p.name }));
   bar.appendChild(buildMultiSelect(propItems, gF.properties, 'All Properties', rebuildView, 'ana_exec_props'));
 
   // Compare select
