@@ -403,13 +403,13 @@ function buildFilterBar() {
     bar.appendChild(monthMS);
   }
 
-  // Owner multi-select
-  const ownerItems = Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v }));
-  bar.appendChild(buildMultiSelect(ownerItems, gF.owners, 'All Owners', rebuildView, 'ana_exec_owners'));
-
   // Stream multi-select
   const streamItems = Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, css: v.css }));
   bar.appendChild(buildMultiSelect(streamItems, gF.streams, 'All Streams', rebuildView, 'ana_exec_streams'));
+
+  // Owner multi-select
+  const ownerItems = Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v }));
+  bar.appendChild(buildMultiSelect(ownerItems, gF.owners, 'All Owners', rebuildView, 'ana_exec_owners'));
 
   // Property multi-select — restricted to owners currently selected (leave-one-out faceting)
   const allProps = listActive('properties');
