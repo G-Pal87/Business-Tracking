@@ -67,7 +67,7 @@ const MIXED_COLS = [
   { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v) }
 ];
 
-function mixedRows(revPays, revInvs, expItems) {
+function mixedRows(revPays, revInvs, expItems, acqItems = []) {
   return [
     ...drillRevRows(revPays, revInvs).map(r => ({
       date: r.date, kind: 'Revenue',
@@ -76,6 +76,11 @@ function mixedRows(revPays, revInvs, expItems) {
     ...drillExpRows(expItems).map(r => ({
       date: r.date, kind: 'Expense',
       source: (r.source ? r.source + ' · ' : '') + r.category, eur: r.eur
+    })),
+    ...acqItems.map(a => ({
+      date: a.date, kind: 'CapEx',
+      source: (a._name || '') + ' · Property Acquisition',
+      eur: toEUR(a.amount, a.currency, a.date)
     }))
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
@@ -612,7 +617,7 @@ function buildKpiGrid(curMetrics, cmpMetrics, cmpRange) {
   grid.appendChild(kpiCard({
     label: 'Net Cash Flow', value: formatEUR(netCash),
     variant: netCash >= 0 ? 'success' : 'danger',
-    onClick: () => drillDownModal('Cash Flow', mixedRows(payments, invoices, [...opExpenses, ...capExExpenses]), MIXED_COLS),
+    onClick: () => drillDownModal('Cash Flow', mixedRows(payments, invoices, [...opExpenses, ...capExExpenses], acquisitions), MIXED_COLS),
     delta: cmpMetrics ? safePct(netCash, cmpMetrics.netCash) : null,
     invertDelta: false, compLabel: cmpLabel
   }));
@@ -810,7 +815,8 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
           drillDownModal(`${months[idx].label} — Cash Flow`,
             mixedRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
                       curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk),
-                      [...curData.opExpenses, ...curData.capExExpenses].filter(e => e.date?.slice(0,7) === mk)),
+                      [...curData.opExpenses, ...curData.capExExpenses].filter(e => e.date?.slice(0,7) === mk),
+                      curData.acquisitions.filter(a => a.date?.slice(0,7) === mk)),
             MIXED_COLS);
         }
       });
@@ -1188,7 +1194,7 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
             drillDownModal('Investments / CapEx', rows, EXP_COLS);
           } else {
             drillDownModal('All Cash Flow Transactions',
-              mixedRows(curData.payments, curData.invoices, [...curData.opExpenses, ...curData.capExExpenses]),
+              mixedRows(curData.payments, curData.invoices, [...curData.opExpenses, ...curData.capExExpenses], curData.acquisitions),
               MIXED_COLS);
           }
         }
