@@ -253,7 +253,7 @@ function getDataInRange(start, end) {
   };
   const matchProperty = (row) => {
     if (gF.properties.size === 0) return true;
-    if (!row.propertyId) return true;
+    if (!row.propertyId) return false;
     return gF.properties.has(row.propertyId);
   };
 
