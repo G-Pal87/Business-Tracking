@@ -1800,7 +1800,7 @@
       "id": "inv_mopv8v4hfs",
       "number": "17_Alexis_310326",
       "clientId": "cli_moy445if3m",
-      "owner": "",
+      "owner": "rita",
       "issueDate": "2026-03-31",
       "dueDate": "2026-04-25",
       "stream": "marketing_services",
@@ -1824,7 +1824,7 @@
       "source": "pdf_import",
       "createdAt": 1777818522257,
       "createdBy": "RitaK",
-      "updatedAt": 1778317220949,
+      "updatedAt": 1778317593490,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/17_Alexis_310326.pdf"
     },
