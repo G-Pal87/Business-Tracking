@@ -968,14 +968,17 @@ function buildInvoiceRepoCard() {
     )
   ));
 
-  const resultEl       = el('div', { style: 'margin-top:12px' });
-  const backupStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const resultEl        = el('div', { style: 'margin-top:12px' });
+  const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const deleteStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
 
-  const checkBtn  = button('Check Invoice Repository', { onClick: runCheck });
-  const backupBtn = button('Backup Invoices', { onClick: runBackup });
-  card.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn));
+  const checkBtn        = button('Check Invoice Repository', { onClick: runCheck });
+  const backupBtn       = button('Backup Invoices', { onClick: runBackup });
+  const deleteBackupBtn = button('Delete Invoice Backups', { variant: 'danger', onClick: runDeleteBackups });
+  card.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn));
   card.appendChild(resultEl);
   card.appendChild(backupStatusEl);
+  card.appendChild(deleteStatusEl);
 
   // Mirrors invoicePdfPath() in invoices.js — derive canonical repo path from invoice number
   function canonicalPath(inv) {
@@ -1305,10 +1308,113 @@ function buildInvoiceRepoCard() {
     }
   }
 
+  // ── Delete Backups ────────────────────────────────────────────────────────────
+
+  async function runDeleteBackups() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      deleteStatusEl.textContent = 'GitHub not configured.';
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
+    deleteBackupBtn.disabled = true;
+    deleteBackupBtn.textContent = 'Listing…';
+    deleteStatusEl.style.color = 'var(--text-muted)';
+    deleteStatusEl.textContent = 'Listing backup files…';
+
+    let files;
+    try {
+      files = await listBackupFiles('invoices/backup');
+    } catch (err) {
+      deleteStatusEl.textContent = `Failed to list backup files: ${err.message}`;
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+      deleteBackupBtn.disabled = false;
+      deleteBackupBtn.textContent = 'Delete Invoice Backups';
+      return;
+    }
+
+    deleteBackupBtn.disabled = false;
+    deleteBackupBtn.textContent = 'Delete Invoice Backups';
+
+    if (files.length === 0) {
+      deleteStatusEl.textContent = 'Backup folder is empty or does not exist — nothing to delete.';
+      deleteStatusEl.style.color = 'var(--text-muted)';
+      return;
+    }
+
+    const ok = await confirmDialog(
+      `Delete all ${files.length} file${files.length !== 1 ? 's' : ''} in invoices/backup/? This cannot be undone.`,
+      { danger: true, okLabel: 'Delete Backups' }
+    );
+    if (!ok) { deleteStatusEl.textContent = ''; return; }
+
+    deleteBackupBtn.disabled = true;
+    deleteBackupBtn.textContent = 'Deleting…';
+    let done = 0, failed = 0;
+    for (const file of files) {
+      deleteStatusEl.textContent = `Deleting ${done + failed + 1} / ${files.length}: ${file.name}…`;
+      try {
+        await deleteGithubFile(file.path, file.sha, `Delete invoice backup: ${file.name}`);
+        done++;
+      } catch (err) {
+        console.warn(`[delete-invoice-backup] Failed for ${file.name}:`, err.message);
+        failed++;
+      }
+    }
+
+    deleteBackupBtn.disabled = false;
+    deleteBackupBtn.textContent = 'Delete Invoice Backups';
+    if (failed > 0) {
+      deleteStatusEl.textContent = `Deleted ${done}, failed ${failed}. Check console for details.`;
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+    } else {
+      deleteStatusEl.textContent = `Deleted ${done} backup file${done !== 1 ? 's' : ''} from invoices/backup/.`;
+      deleteStatusEl.style.color = 'var(--success,#198754)';
+    }
+    if (resultEl.innerHTML) await runCheck();
+  }
+
   return card;
 }
 
 // ── Shared helpers for document repo maintenance cards ────────────────────────
+
+// List all files inside a backup folder, recursing one level into sub-folders.
+async function listBackupFiles(backupPath) {
+  const { owner, repo, branch, token } = state.github;
+  if (!owner || !repo) return [];
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (token) headers['Authorization'] = `token ${token}`;
+  const cleanPath = backupPath.replace(/^\/+|\/+$/g, '');
+  const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
+  let topItems;
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`,
+      { headers, cache: 'no-store' }
+    );
+    if (res.status === 404) return [];
+    if (!res.ok) throw new Error(`Backup folder listing failed (${res.status})`);
+    const data = await res.json();
+    topItems = Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (err.message && err.message.includes('404')) return [];
+    throw err;
+  }
+  const files = [];
+  for (const item of topItems) {
+    if (item.type === 'file') {
+      files.push(item);
+    } else if (item.type === 'dir') {
+      try {
+        const subFiles = await listGithubFolder(item.path);
+        files.push(...subFiles);
+      } catch { /* skip unreadable subfolder */ }
+    }
+  }
+  return files;
+}
 
 async function listDocRepoFiles(rootFolder) {
   // List root folder, then recurse one level into sub-folders (skip 'backup')
@@ -1333,7 +1439,7 @@ async function listDocRepoFiles(rootFolder) {
   return files;
 }
 
-function buildDocRepoCard({ title, subtitle, rootFolder, collection, entityLabel, checkBtnLabel, backupBtnLabel }) {
+function buildDocRepoCard({ title, subtitle, rootFolder, collection, entityLabel, checkBtnLabel, backupBtnLabel, deleteBackupBtnLabel }) {
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', {},
@@ -1342,14 +1448,17 @@ function buildDocRepoCard({ title, subtitle, rootFolder, collection, entityLabel
     )
   ));
 
-  const resultEl       = el('div', { style: 'margin-top:12px' });
-  const backupStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const resultEl        = el('div', { style: 'margin-top:12px' });
+  const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const deleteStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
 
-  const checkBtn  = button(checkBtnLabel,  { onClick: runCheck });
-  const backupBtn = button(backupBtnLabel, { onClick: runBackup });
-  card.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn));
+  const checkBtn        = button(checkBtnLabel,  { onClick: runCheck });
+  const backupBtn       = button(backupBtnLabel, { onClick: runBackup });
+  const deleteBackupBtn = button(deleteBackupBtnLabel, { variant: 'danger', onClick: runDeleteBackups });
+  card.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn));
   card.appendChild(resultEl);
   card.appendChild(backupStatusEl);
+  card.appendChild(deleteStatusEl);
 
   // ── Check ─────────────────────────────────────────────────────────────────
 
@@ -1572,30 +1681,99 @@ function buildDocRepoCard({ title, subtitle, rootFolder, collection, entityLabel
     }
   }
 
+  // ── Delete Backups ─────────────────────────────────────────────────────────
+
+  async function runDeleteBackups() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      deleteStatusEl.textContent = 'GitHub not configured.';
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
+    deleteBackupBtn.disabled = true;
+    deleteBackupBtn.textContent = 'Listing…';
+    deleteStatusEl.style.color = 'var(--text-muted)';
+    deleteStatusEl.textContent = `Listing ${rootFolder}/backup/ files…`;
+
+    let files;
+    try {
+      files = await listBackupFiles(`${rootFolder}/backup`);
+    } catch (err) {
+      deleteStatusEl.textContent = `Failed to list backup files: ${err.message}`;
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+      deleteBackupBtn.disabled = false;
+      deleteBackupBtn.textContent = deleteBackupBtnLabel;
+      return;
+    }
+
+    deleteBackupBtn.disabled = false;
+    deleteBackupBtn.textContent = deleteBackupBtnLabel;
+
+    if (files.length === 0) {
+      deleteStatusEl.textContent = `Backup folder is empty or does not exist — nothing to delete.`;
+      deleteStatusEl.style.color = 'var(--text-muted)';
+      return;
+    }
+
+    const ok = await confirmDialog(
+      `Delete all ${files.length} file${files.length !== 1 ? 's' : ''} in ${rootFolder}/backup/? This cannot be undone.`,
+      { danger: true, okLabel: 'Delete Backups' }
+    );
+    if (!ok) { deleteStatusEl.textContent = ''; return; }
+
+    deleteBackupBtn.disabled = true;
+    deleteBackupBtn.textContent = 'Deleting…';
+    let done = 0, failed = 0;
+    for (const file of files) {
+      deleteStatusEl.textContent = `Deleting ${done + failed + 1} / ${files.length}: ${file.name}…`;
+      try {
+        await deleteGithubFile(file.path, file.sha, `Delete ${rootFolder.toLowerCase()} backup: ${file.name}`);
+        done++;
+      } catch (err) {
+        console.warn(`[delete-backup] Failed for ${file.name}:`, err.message);
+        failed++;
+      }
+    }
+
+    deleteBackupBtn.disabled = false;
+    deleteBackupBtn.textContent = deleteBackupBtnLabel;
+    if (failed > 0) {
+      deleteStatusEl.textContent = `Deleted ${done}, failed ${failed}. Check console for details.`;
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+    } else {
+      deleteStatusEl.textContent = `Deleted ${done} backup file${done !== 1 ? 's' : ''} from ${rootFolder}/backup/.`;
+      deleteStatusEl.style.color = 'var(--success,#198754)';
+    }
+    if (resultEl.innerHTML) await runCheck();
+  }
+
   return card;
 }
 
 function buildPropertiesRepoCard() {
   return buildDocRepoCard({
-    title:          'Property Document Repository Maintenance',
-    subtitle:       'Audit and back up document files stored under Properties/ in the repository',
-    rootFolder:     'Properties',
-    collection:     'properties',
-    entityLabel:    'Property',
-    checkBtnLabel:  'Check Property Documents',
-    backupBtnLabel: 'Backup Property Documents'
+    title:                'Property Document Repository Maintenance',
+    subtitle:             'Audit and back up document files stored under Properties/ in the repository',
+    rootFolder:           'Properties',
+    collection:           'properties',
+    entityLabel:          'Property',
+    checkBtnLabel:        'Check Property Documents',
+    backupBtnLabel:       'Backup Property Documents',
+    deleteBackupBtnLabel: 'Delete Property Backups'
   });
 }
 
 function buildClientsRepoCard() {
   return buildDocRepoCard({
-    title:          'Client Document Repository Maintenance',
-    subtitle:       'Audit and back up document files stored under Clients/ in the repository',
-    rootFolder:     'Clients',
-    collection:     'clients',
-    entityLabel:    'Client',
-    checkBtnLabel:  'Check Client Documents',
-    backupBtnLabel: 'Backup Client Documents'
+    title:                'Client Document Repository Maintenance',
+    subtitle:             'Audit and back up document files stored under Clients/ in the repository',
+    rootFolder:           'Clients',
+    collection:           'clients',
+    entityLabel:          'Client',
+    checkBtnLabel:        'Check Client Documents',
+    backupBtnLabel:       'Backup Client Documents',
+    deleteBackupBtnLabel: 'Delete Client Backups'
   });
 }
 
