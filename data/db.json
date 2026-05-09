@@ -1831,8 +1831,8 @@
     {
       "id": "inv_mopvd2x49n",
       "number": "18_CTWO_310326",
-      "clientId": "cli_mo9sroqs7s",
-      "owner": "you",
+      "clientId": "cli_moy4a82pn",
+      "owner": "",
       "issueDate": "2026-03-31",
       "dueDate": "2026-04-10",
       "stream": "customer_success",
@@ -1880,7 +1880,7 @@
       "source": "pdf_import",
       "createdAt": 1777818718984,
       "createdBy": "RitaK",
-      "updatedAt": 1778180451605,
+      "updatedAt": 1778317537794,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/18_CTWO_310326.pdf"
     },
