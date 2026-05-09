@@ -1983,7 +1983,7 @@
     {
       "id": "inv_mopx8uxodh",
       "number": "1_CTWO_010125",
-      "clientId": "cli_mo9sroqs7s",
+      "clientId": "cli_moy4a82pn",
       "owner": "you",
       "issueDate": "2025-01-01",
       "dueDate": "2025-01-10",
@@ -2008,7 +2008,7 @@
       "source": "pdf_import",
       "createdAt": 1777821881245,
       "createdBy": "RitaK",
-      "updatedAt": 1778180487649,
+      "updatedAt": 1778317965383,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/1_CTWO_010125.pdf"
     },
