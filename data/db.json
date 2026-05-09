@@ -1439,8 +1439,8 @@
     {
       "id": "inv_mopgg8dgfn",
       "number": "22_CTWO_290426",
-      "clientId": "cli_mo9sroqs7s",
-      "owner": "you",
+      "clientId": "cli_moy4a82pn",
+      "owner": "",
       "issueDate": "2026-05-09",
       "dueDate": "2026-05-10",
       "stream": "customer_success",
@@ -1480,7 +1480,7 @@
       "source": "pdf_import",
       "createdAt": 1777793671780,
       "createdBy": "Giorgos",
-      "updatedAt": 1778261242783,
+      "updatedAt": 1778317511753,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/22_CTWO_290426.pdf"
     },
