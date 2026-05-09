@@ -659,7 +659,7 @@
       "city": "",
       "country": "a",
       "flag": "",
-      "type": "short_term",
+      "type": "long_term",
       "status": "active",
       "bedrooms": 1,
       "bathrooms": 1,
@@ -685,7 +685,7 @@
       "documents": [],
       "createdAt": 1778262898469,
       "createdBy": "Giorgos",
-      "updatedAt": 1778279860111,
+      "updatedAt": 1778316536141,
       "updatedBy": "Giorgos"
     }
   ],
