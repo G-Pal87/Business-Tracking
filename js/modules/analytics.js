@@ -214,7 +214,12 @@ function getVirtualAcquisitions() {
       if (gF.owners.size > 0) {
         const ow = p.owner || 'both';
         if (ow !== 'both' && !gF.owners.has(ow)) return false;
-        if (ow === 'both') { /* both = include always when any owner selected */ }
+      }
+      if (gF.streams.size > 0) {
+        const stream = p.type === 'short_term' ? 'short_term_rental'
+                     : p.type === 'long_term'  ? 'long_term_rental'
+                     : null;
+        if (!stream || !gF.streams.has(stream)) return false;
       }
       if (gF.properties.size > 0 && !gF.properties.has(p.id)) return false;
       return true;
@@ -246,10 +251,20 @@ function getDataInRange(start, end) {
     if (ow === 'both') return true;
     return gF.owners.has(ow);
   };
+  const resolveStream = (row) => {
+    if (row.stream) return row.stream;
+    if (row.propertyId) {
+      const prop = byId('properties', row.propertyId);
+      if (prop?.type === 'short_term') return 'short_term_rental';
+      if (prop?.type === 'long_term')  return 'long_term_rental';
+    }
+    return null;
+  };
   const matchStream = (row) => {
     if (gF.streams.size === 0) return true;
-    if (!row.stream) return true;
-    return gF.streams.has(row.stream);
+    const stream = resolveStream(row);
+    if (!stream) return true;
+    return gF.streams.has(stream);
   };
   const matchProperty = (row) => {
     if (gF.properties.size === 0) return true;
@@ -269,7 +284,7 @@ function getDataInRange(start, end) {
     inRange(e.date) && matchOwner(e) && matchProperty(e)
   );
   const opExpenses  = allExpenses.filter(e => !isCapEx(e) && matchStream(e));
-  const capExExpenses = allExpenses.filter(e => isCapEx(e));
+  const capExExpenses = allExpenses.filter(e => isCapEx(e) && matchStream(e));
 
   const allAcq = getVirtualAcquisitions();
   const acquisitions = allAcq.filter(a => inRange(a.date));
