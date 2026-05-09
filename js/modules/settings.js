@@ -197,6 +197,49 @@ function buildGithubCard() {
 
   card.appendChild(btnRow);
 
+  // Setup Link section — prominent, separate from action buttons
+  if (effOwner && effRepo) {
+    const setupSection = el('div', {
+      style: 'margin-top:16px;padding:12px 14px;background:var(--info-soft);border:1px solid var(--info);border-radius:var(--radius-sm)'
+    });
+    setupSection.appendChild(el('div', {
+      style: 'font-size:12px;font-weight:600;color:var(--info);margin-bottom:6px'
+    }, '🔗 Share Access with New Users'));
+    setupSection.appendChild(el('div', {
+      style: 'font-size:12px;color:var(--text-muted);margin-bottom:10px'
+    }, 'New browsers/devices see empty settings because the config lives in your localStorage. Generate a one-click setup link and share it — anyone who opens it gets auto-configured instantly.'));
+
+    const setupLinkInput = el('input', {
+      type: 'text',
+      readonly: true,
+      style: 'width:100%;font-size:11px;margin-bottom:8px',
+      value: ''
+    });
+
+    const params = new URLSearchParams({ owner: effOwner, repo: effRepo, branch: effBranch, path: effPath });
+    const setupUrl = `${window.location.origin}${window.location.pathname}#/setup?${params}`;
+    setupLinkInput.value = setupUrl;
+
+    const copyBtn = button('Copy Link', { variant: 'primary', onClick: () => {
+      setupLinkInput.select();
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(setupUrl)
+          .then(() => toast('Setup link copied — share it with any new user', 'success', 5000))
+          .catch(() => { document.execCommand('copy'); toast('Setup link copied', 'success', 5000); });
+      } else {
+        document.execCommand('copy');
+        toast('Setup link copied', 'success', 5000);
+      }
+    }});
+
+    const linkRow = el('div', { class: 'flex gap-8', style: 'align-items:center' });
+    linkRow.appendChild(setupLinkInput);
+    linkRow.appendChild(copyBtn);
+    setupSection.appendChild(linkRow);
+    card.appendChild(setupSection);
+  }
+
+
   if (g.lastSyncError && !g.usingCache) {
     const retryBtn = button('Retry Sync Now', { variant: 'primary', onClick: async () => {
       if (!state.github.syncNow) { toast('Not ready \u2014 reload the page', 'warning'); return; }
