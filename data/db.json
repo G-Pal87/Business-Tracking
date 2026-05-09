@@ -1080,7 +1080,7 @@
       "id": "cli_moy5ht884h",
       "name": "a",
       "email": "",
-      "address": "",
+      "address": "Társaság 1112 Budapest, Sasadi str 134., Hungary",
       "vatNumber": "",
       "registrationNumber": "",
       "currency": "EUR",
@@ -1089,7 +1089,7 @@
       "documents": [],
       "createdAt": 1778319468610,
       "createdBy": "Giorgos",
-      "updatedAt": 1778319468610,
+      "updatedAt": 1778319480056,
       "updatedBy": "Giorgos"
     }
   ],
