@@ -2015,7 +2015,7 @@
     {
       "id": "inv_mopxbd4o4s",
       "number": "2_CTWO_020125",
-      "clientId": "cli_mo9sroqs7s",
+      "clientId": "cli_moy4a82pn",
       "owner": "you",
       "issueDate": "2025-01-02",
       "dueDate": "2025-01-10",
@@ -2040,7 +2040,7 @@
       "source": "pdf_import",
       "createdAt": 1777821998136,
       "createdBy": "RitaK",
-      "updatedAt": 1778180495070,
+      "updatedAt": 1778317953256,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/2_CTWO_020125.pdf"
     },
