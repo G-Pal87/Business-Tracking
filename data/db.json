@@ -1064,14 +1064,14 @@
       "email": "",
       "address": "",
       "vatNumber": "921883463 MVA",
-      "registrationNumber": "",
+      "registrationNumber": "921883463",
       "currency": "EUR",
       "contractStart": "2026-05-09",
       "notes": "",
       "documents": [],
       "createdAt": 1778317440685,
       "createdBy": "Giorgos",
-      "updatedAt": 1778317457084,
+      "updatedAt": 1778317472186,
       "updatedBy": "Giorgos"
     }
   ],
