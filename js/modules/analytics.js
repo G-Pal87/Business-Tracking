@@ -802,7 +802,15 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
         datasets: [
           { label: 'Actual', data: revData, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', fill: true },
           { label: 'Forecast', data: fcArr, borderColor: '#6366f1', backgroundColor: 'transparent', borderDash: [4,4], fill: false }
-        ]
+        ],
+        onClickItem: (label, idx) => {
+          const mk = months[idx]?.key;
+          if (!mk) return;
+          drillDownModal(`${months[idx].label} — Revenue`,
+            drillRevRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
+                         curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk)),
+            REV_COLS);
+        }
       });
     }
   }
@@ -823,7 +831,15 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
           label: 'Forecast Variance %',
           data: varData.map(v => v ?? 0),
           backgroundColor: varData.map(v => v === null ? '#6b7280' : v >= 0 ? '#10b981' : '#ef4444')
-        }]
+        }],
+        onClickItem: (label, idx) => {
+          const mk = months[idx]?.key;
+          if (!mk) return;
+          drillDownModal(`${months[idx].label} — Revenue`,
+            drillRevRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
+                         curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk)),
+            REV_COLS);
+        }
       });
     }
   }
@@ -838,7 +854,18 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
       datasets.push({ label: `Margin (${cmpRange.label})`, data: cmpMarginArr, borderColor: '#6b7280', backgroundColor: 'transparent', borderDash: [4,4], fill: false });
     }
     if (marginData.some(v => v !== null)) {
-      charts.line('exec-margin-trend', { labels, datasets });
+      charts.line('exec-margin-trend', {
+        labels, datasets,
+        onClickItem: (label, idx) => {
+          const mk = months[idx]?.key;
+          if (!mk) return;
+          drillDownModal(`${months[idx].label} — Operating Profit`,
+            mixedRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
+                      curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk),
+                      curData.opExpenses.filter(e => e.date?.slice(0,7) === mk)),
+            MIXED_COLS);
+        }
+      });
     }
   }
 
@@ -893,7 +920,15 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
           label: 'YoY Revenue Growth %',
           data: growthData.map(v => v ?? 0),
           backgroundColor: growthData.map(v => v === null ? '#6b7280' : v >= 0 ? '#10b981' : '#ef4444')
-        }]
+        }],
+        onClickItem: (label, idx) => {
+          const mk = months[idx]?.key;
+          if (!mk) return;
+          drillDownModal(`${months[idx].label} — Revenue`,
+            drillRevRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
+                         curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk)),
+            REV_COLS);
+        }
       });
     }
   }
@@ -906,7 +941,25 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
       datasets: [
         { label: 'OpEx', data: opExData, backgroundColor: '#ef4444' },
         { label: 'CapEx', data: capExData, backgroundColor: '#f59e0b' }
-      ]
+      ],
+      onClickItem: (label, idx, dsIdx) => {
+        const mk = months[idx]?.key;
+        if (!mk) return;
+        const mLabel = months[idx].label;
+        if (dsIdx === 1) {
+          const mCapEx = curData.capExExpenses.filter(e => e.date?.slice(0,7) === mk);
+          const mAcq   = curData.acquisitions.filter(a => a.date?.slice(0,7) === mk);
+          const rows   = [
+            ...drillExpRows(mCapEx),
+            ...mAcq.map(a => ({ date: a.date, source: a._name || '', category: 'Acquisition', description: a.description, eur: toEUR(a.amount, a.currency, a.date) }))
+          ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+          drillDownModal(`${mLabel} — CapEx`, rows, EXP_COLS);
+        } else {
+          drillDownModal(`${mLabel} — OpEx`,
+            drillExpRows(curData.opExpenses.filter(e => e.date?.slice(0,7) === mk)),
+            EXP_COLS);
+        }
+      }
     });
   }
 
@@ -917,7 +970,24 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
       datasets: [
         { label: 'Revenue', data: revData, backgroundColor: '#10b981' },
         { label: 'Op. Profit', data: profData, backgroundColor: '#3b82f6' }
-      ]
+      ],
+      onClickItem: (label, idx, dsIdx) => {
+        const mk = months[idx]?.key;
+        if (!mk) return;
+        const mLabel = months[idx].label;
+        if (dsIdx === 0) {
+          drillDownModal(`${mLabel} — Revenue`,
+            drillRevRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
+                         curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk)),
+            REV_COLS);
+        } else {
+          drillDownModal(`${mLabel} — Operating Profit`,
+            mixedRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
+                      curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk),
+                      curData.opExpenses.filter(e => e.date?.slice(0,7) === mk)),
+            MIXED_COLS);
+        }
+      }
     });
   }
 
@@ -1047,14 +1117,24 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
       else buckets[3] += eur;
     });
     if (buckets.some(v => v > 0)) {
+      const agingRanges = [[0,30],[31,60],[61,90],[91,Infinity]];
+      const agingLabels = ['Current (0-30d)', '31-60 days', '61-90 days', '90+ days'];
       charts.bar('exec-outstanding-aging', {
-        labels: ['Current (0-30d)', '31-60 days', '61-90 days', '90+ days'],
+        labels: agingLabels,
         horizontal: true,
         datasets: [{
           label: 'Outstanding',
           data: buckets.map(v => Math.round(v)),
           backgroundColor: ['#3b82f6','#f59e0b','#f59e0b','#ef4444']
-        }]
+        }],
+        onClickItem: (label, idx) => {
+          const [minDays, maxDays] = agingRanges[idx];
+          const filtered = curMetrics.outstanding.filter(i => {
+            const days = Math.floor((Date.now() - new Date(i.issueDate).getTime()) / 86400000);
+            return days >= minDays && days <= maxDays;
+          });
+          drillDownModal(`Outstanding — ${agingLabels[idx]}`, drillRevRows([], filtered), REV_COLS);
+        }
       });
     }
   }
@@ -1069,7 +1149,24 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
           label: 'Amount',
           data: [Math.round(cRev), Math.round(-cOpEx), Math.round(-cCapEx), Math.round(cNet)],
           backgroundColor: ['#10b981', '#ef4444', '#f59e0b', cNet >= 0 ? '#3b82f6' : '#ef4444']
-        }]
+        }],
+        onClickItem: (label, idx) => {
+          if (idx === 0) {
+            drillDownModal('Revenue', drillRevRows(curData.payments, curData.invoices), REV_COLS);
+          } else if (idx === 1) {
+            drillDownModal('Operating Expenses', drillExpRows(curData.opExpenses), EXP_COLS);
+          } else if (idx === 2) {
+            const rows = [
+              ...drillExpRows(curData.capExExpenses),
+              ...curData.acquisitions.map(a => ({ date: a.date, source: a._name || '', category: 'Acquisition', description: a.description, eur: toEUR(a.amount, a.currency, a.date) }))
+            ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            drillDownModal('Investments / CapEx', rows, EXP_COLS);
+          } else {
+            drillDownModal('All Cash Flow Transactions',
+              mixedRows(curData.payments, curData.invoices, [...curData.opExpenses, ...curData.capExExpenses]),
+              MIXED_COLS);
+          }
+        }
       });
     }
   }
