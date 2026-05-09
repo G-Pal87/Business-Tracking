@@ -278,7 +278,7 @@ function getDataInRange(start, end) {
 }
 
 // ── Metrics calculator ───────────────────────────────────────────────────────
-function calcMetrics(data, periodYear = null) {
+function calcMetrics(data, range = null) {
   const { payments, invoices, opExpenses, capExExpenses, acquisitions } = data;
 
   const rev         = sumPaymentsEUR(payments) + sumInvoicesEUR(invoices);
@@ -304,10 +304,20 @@ function calcMetrics(data, periodYear = null) {
   });
   const outstandingTotal = sumInvoicesEUR(outstanding);
 
+  // Forecast: sum only the months that fall within this period's range so that
+  // a "Jan 2026" filter shows only the January forecast, not the full year.
   let fcRev = null;
-  if (periodYear) {
-    const raw = forecastedRevenueEUR(periodYear);
-    if (raw > 0) fcRev = raw;
+  if (range) {
+    const startY = range.start.slice(0, 4);
+    const endY   = range.end.slice(0, 4);
+    if (startY === endY) {
+      const fcMonthly = forecastMonthlyEUR(startY);
+      if (fcMonthly.size > 0) {
+        const { keys: months } = getMonthKeysForRange(range.start, range.end);
+        const sum = months.reduce((s, m) => s + (fcMonthly.get(m.key) || 0), 0);
+        if (sum > 0) fcRev = sum;
+      }
+    }
   }
 
   return {
@@ -1323,18 +1333,15 @@ function buildView() {
   // Compute ranges
   const curRange = getCurrentPeriodRange();
   const cmpRange = getComparisonRange(curRange);
-  const periodYear = getPeriodYear(curRange);
 
   // Fetch data
   const curData = getDataInRange(curRange.start, curRange.end);
-  const curMetrics = calcMetrics(curData, periodYear);
+  const curMetrics = calcMetrics(curData, curRange);
 
   let cmpData = null, cmpMetrics = null;
   if (cmpRange) {
-    const cmpPeriodYear = cmpRange.start.slice(0,4) === cmpRange.end.slice(0,4)
-      ? cmpRange.start.slice(0,4) : null;
     cmpData = getDataInRange(cmpRange.start, cmpRange.end);
-    cmpMetrics = calcMetrics(cmpData, cmpPeriodYear);
+    cmpMetrics = calcMetrics(cmpData, cmpRange);
   }
 
   // KPI grid
