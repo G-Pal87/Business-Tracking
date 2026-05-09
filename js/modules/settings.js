@@ -1778,34 +1778,184 @@ function buildClientsRepoCard() {
 }
 
 function buildDangerCard() {
+  const EXPORT_VERSION = 2;
+  const SCHEMA_VERSION = 1;
+
+  // Canonical collection list — order controls export/import summary display
+  const ALL_COLLECTIONS = [
+    'properties', 'payments', 'expenses', 'vendors', 'tenants',
+    'clients', 'services', 'invoices', 'users', 'forecasts',
+    'inventory', 'reservationExpenseRules'
+  ];
+
+  // Build a versioned snapshot of the full app state.
+  // GitHub token is intentionally excluded — it must not appear in exported files.
+  function buildSnapshot() {
+    const data = structuredClone(state.db);
+    if (data.appConfig?.github?.token) delete data.appConfig.github.token;
+    return {
+      exportVersion: EXPORT_VERSION,
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt:    new Date().toISOString(),
+      appVersion:    String(window._appV || ''),
+      exportedBy:    state.session?.username || null,
+      snapshotName:  null,
+      data
+    };
+  }
+
+  function triggerDownload(content, filename) {
+    const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
+    const a   = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  function doExport(filename) {
+    triggerDownload(JSON.stringify(buildSnapshot(), null, 2), filename);
+  }
+
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Data')));
+
+  const statusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+
+  // ── Export ──────────────────────────────────────────────────────────────────
+
   const exportBtn = button('Export JSON', { onClick: () => {
-    const blob = new Blob([JSON.stringify(state.db, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `db-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
+    doExport(`bt-snapshot-${new Date().toISOString().slice(0, 10)}.json`);
+    statusEl.textContent = `Full snapshot exported at ${new Date().toLocaleTimeString()}.`;
+    statusEl.style.color = 'var(--success,#198754)';
   }});
+
+  // ── Import ──────────────────────────────────────────────────────────────────
+
   const importInput = input({ type: 'file', accept: '.json', style: 'display:none' });
+
   importInput.onchange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const text = await file.text();
-    try {
-      const db = JSON.parse(text);
-      const ok = await confirmDialog('Replace all current data with this JSON file? (Local only until you push to GitHub.)', { danger: true, okLabel: 'Replace' });
-      if (ok) {
-        setDb(db);
-        saveLocalCache(db);
-        toast('Data replaced', 'success');
-        setTimeout(() => location.hash = 'analytics', 200);
-      }
-    } catch (e) {
-      toast('Invalid JSON', 'danger');
+    importInput.value = '';
+
+    // 1. Parse file
+    let raw;
+    try { raw = JSON.parse(await file.text()); }
+    catch {
+      statusEl.textContent = 'Import failed: file is not valid JSON.';
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
     }
+
+    // 2. Detect format: versioned snapshot vs legacy raw-db export
+    let importedData, meta;
+    if (typeof raw.exportVersion === 'number') {
+      if (raw.exportVersion > EXPORT_VERSION) {
+        statusEl.textContent = `Import failed: snapshot version ${raw.exportVersion} is newer than this app supports (max v${EXPORT_VERSION}). Update the app first.`;
+        statusEl.style.color = 'var(--danger,#dc3545)';
+        return;
+      }
+      if (!raw.data || typeof raw.data !== 'object' || Array.isArray(raw.data)) {
+        statusEl.textContent = 'Import failed: snapshot is missing the required "data" section.';
+        statusEl.style.color = 'var(--danger,#dc3545)';
+        return;
+      }
+      importedData = raw.data;
+      meta         = raw;
+    } else if (raw.properties !== undefined || raw.payments !== undefined || raw.settings !== undefined) {
+      // Legacy raw-db export — accept with a warning
+      importedData = raw;
+      meta         = null;
+    } else {
+      statusEl.textContent = 'Import failed: file does not appear to be a valid Business Tracking export.';
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
+    // 3. Build confirmation body with snapshot summary
+    const rows = ALL_COLLECTIONS
+      .filter(c => Array.isArray(importedData[c]))
+      .map(c => {
+        const total   = importedData[c].length;
+        const active  = importedData[c].filter(x => !x.deletedAt).length;
+        return { name: c, total, active, deleted: total - active };
+      });
+
+    const bodyEl = el('div', {});
+
+    if (meta) {
+      const parts = [
+        `Exported ${new Date(meta.exportedAt).toLocaleString()}`,
+        meta.exportedBy   ? `by ${meta.exportedBy}` : null,
+        meta.appVersion   ? `(app v${meta.appVersion})` : null
+      ].filter(Boolean);
+      bodyEl.appendChild(el('div', {
+        style: 'margin-bottom:12px;font-size:13px;color:var(--text-muted)'
+      }, parts.join(' · ')));
+    } else {
+      bodyEl.appendChild(el('div', {
+        style: 'margin-bottom:12px;padding:8px;background:var(--warning-bg,#fff3cd);border-radius:4px;font-size:12px'
+      }, 'Legacy export — no version metadata. Proceeding anyway.'));
+    }
+
+    const grid = el('div', {
+      style: 'display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px;margin-bottom:12px'
+    });
+    for (const { name, active, deleted } of rows) {
+      grid.appendChild(el('div', { style: 'color:var(--text-muted)' }, name));
+      grid.appendChild(el('div', {}, `${active} active${deleted > 0 ? ` + ${deleted} deleted` : ''}`));
+    }
+    if (rows.length === 0) {
+      grid.appendChild(el('div', { style: 'color:var(--text-muted);grid-column:1/-1' }, 'No data collections found in this file.'));
+    }
+    bodyEl.appendChild(grid);
+
+    bodyEl.appendChild(el('div', {
+      style: 'padding:8px;background:var(--danger-bg,#f8d7da);border-radius:4px;font-size:12px;color:var(--danger,#dc3545)'
+    }, 'This will replace ALL current app data. Your current state will be downloaded as an automatic backup before the restore proceeds.'));
+
+    // 4. Confirm via custom modal
+    const confirmed = await new Promise(resolve => {
+      let settled = false;
+      const settle = v => { if (!settled) { settled = true; resolve(v); } };
+      const okBtn     = button('Restore Snapshot', { variant: 'danger' });
+      const cancelBtn = button('Cancel');
+      const { close } = openModal({
+        title:   'Restore Snapshot',
+        body:    bodyEl,
+        footer:  [cancelBtn, okBtn],
+        onClose: () => settle(false)
+      });
+      okBtn.onclick     = () => { close(); settle(true); };
+      cancelBtn.onclick = () => { close(); settle(false); };
+    });
+
+    if (!confirmed) return;
+
+    // 5. Auto-backup current state before overwriting
+    doExport(`bt-pre-import-backup-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.json`);
+
+    // 6. Restore — preserve current GitHub token; take all other config from snapshot
+    const restoredDb   = structuredClone(importedData);
+    const currentToken = state.github.token || '';
+    if (!restoredDb.appConfig)         restoredDb.appConfig = {};
+    if (!restoredDb.appConfig.github)  restoredDb.appConfig.github = {};
+    if (currentToken)                  restoredDb.appConfig.github.token = currentToken;
+
+    setDb(restoredDb);          // triggers data-loaded → current view refreshes
+    saveLocalCache(restoredDb); // warm localStorage cache
+    markDirty();                // queue push to GitHub
+
+    const activeTotal = rows.reduce((s, r) => s + r.active, 0);
+    statusEl.textContent = `Snapshot restored: ${activeTotal} active records across ${rows.length} collection${rows.length !== 1 ? 's' : ''}. Syncing to GitHub…`;
+    statusEl.style.color = 'var(--success,#198754)';
+    toast('Snapshot restored successfully', 'success');
+    navigate('analytics');
   };
+
   const importBtn = button('Import JSON', { onClick: () => importInput.click() });
   card.appendChild(el('div', { class: 'flex gap-8' }, exportBtn, importBtn, importInput));
+  card.appendChild(statusEl);
   return card;
 }
