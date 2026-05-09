@@ -3776,7 +3776,7 @@
     {
       "id": "inv_mosf5sr7ht",
       "number": "Invoice - M&WPrimeSolutions#1003#24",
-      "clientId": "cli_mo9sroqs7s",
+      "clientId": "cli_moy4a82pn",
       "owner": "you",
       "issueDate": "2024-09-30",
       "dueDate": "2024-10-10",
@@ -3809,7 +3809,7 @@
       "source": "pdf_import",
       "createdAt": 1777972913515,
       "createdBy": "Giorgos",
-      "updatedAt": 1778182265293,
+      "updatedAt": 1778318028695,
       "updatedBy": "Giorgos"
     },
     {
