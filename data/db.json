@@ -2639,7 +2639,7 @@
     {
       "id": "inv_mort53hfk9",
       "number": "21_CTWO_010625",
-      "clientId": "cli_mo9sroqs7s",
+      "clientId": "cli_moy4a82pn",
       "owner": "you",
       "issueDate": "2025-06-01",
       "dueDate": "2025-06-10",
@@ -2665,7 +2665,7 @@
       "pdfPath": "invoices/21_CTWO_010625.pdf",
       "createdAt": 1777935922952,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180656263,
+      "updatedAt": 1778317829734,
       "updatedBy": "Giorgos"
     },
     {
