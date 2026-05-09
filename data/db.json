@@ -1039,6 +1039,22 @@
       "updatedAt": 1778279811280,
       "updatedBy": "Giorgos",
       "documents": []
+    },
+    {
+      "id": "cli_moy445if3m",
+      "name": "Alexis Papageorgioua",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "currency": "EUR",
+      "contractStart": "2026-05-09",
+      "notes": "",
+      "documents": [],
+      "createdAt": 1778317153082,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778317153082,
+      "updatedBy": "Giorgos"
     }
   ],
   "services": [
