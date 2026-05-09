@@ -1057,6 +1057,22 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778317238667,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "cli_moy4a82pn",
+      "name": "C TWO Automate ASxxxxx",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "currency": "EUR",
+      "contractStart": "2026-05-09",
+      "notes": "",
+      "documents": [],
+      "createdAt": 1778317440685,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778317440685,
+      "updatedBy": "Giorgos"
     }
   ],
   "services": [
