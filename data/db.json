@@ -2343,7 +2343,7 @@
     {
       "id": "inv_morkjrl13q",
       "number": "12_CTWO_Reimbursement_050325",
-      "clientId": "cli_mo9sroqs7s",
+      "clientId": "cli_moy4a82pn",
       "owner": "you",
       "issueDate": "2025-03-05",
       "dueDate": "2025-03-10",
@@ -2376,7 +2376,7 @@
       "source": "pdf_import",
       "createdAt": 1777921487461,
       "createdBy": "RitaK",
-      "updatedAt": 1778180580575,
+      "updatedAt": 1778317900891,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/12_CTWO_Reimbursement_050325.pdf"
     },
