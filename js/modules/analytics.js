@@ -67,7 +67,7 @@ const MIXED_COLS = [
   { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v) }
 ];
 
-function mixedRows(revPays, revInvs, expItems) {
+function mixedRows(revPays, revInvs, expItems, acqItems = []) {
   return [
     ...drillRevRows(revPays, revInvs).map(r => ({
       date: r.date, kind: 'Revenue',
@@ -76,6 +76,11 @@ function mixedRows(revPays, revInvs, expItems) {
     ...drillExpRows(expItems).map(r => ({
       date: r.date, kind: 'Expense',
       source: (r.source ? r.source + ' · ' : '') + r.category, eur: r.eur
+    })),
+    ...acqItems.map(a => ({
+      date: a.date, kind: 'CapEx',
+      source: (a._name || '') + ' · Property Acquisition',
+      eur: toEUR(a.amount, a.currency, a.date)
     }))
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
@@ -214,7 +219,12 @@ function getVirtualAcquisitions() {
       if (gF.owners.size > 0) {
         const ow = p.owner || 'both';
         if (ow !== 'both' && !gF.owners.has(ow)) return false;
-        if (ow === 'both') { /* both = include always when any owner selected */ }
+      }
+      if (gF.streams.size > 0) {
+        const stream = p.type === 'short_term' ? 'short_term_rental'
+                     : p.type === 'long_term'  ? 'long_term_rental'
+                     : null;
+        if (!stream || !gF.streams.has(stream)) return false;
       }
       if (gF.properties.size > 0 && !gF.properties.has(p.id)) return false;
       return true;
@@ -227,7 +237,7 @@ function getVirtualAcquisitions() {
       date: p.purchaseDate,
       amount: p.purchasePrice,
       currency: p.currency || 'EUR',
-      costCategory: 'acquisition',
+      costCategory: 'property_acquisition',
       accountingType: 'capex',
       description: `Property acquisition: ${p.name}`,
       _name: p.name
@@ -246,14 +256,25 @@ function getDataInRange(start, end) {
     if (ow === 'both') return true;
     return gF.owners.has(ow);
   };
+  // Resolve stream for any row: explicit field first, then derive from property type.
+  const resolveStream = (row) => {
+    if (row.stream) return row.stream;
+    if (row.propertyId) {
+      const prop = byId('properties', row.propertyId);
+      if (prop?.type === 'short_term') return 'short_term_rental';
+      if (prop?.type === 'long_term')  return 'long_term_rental';
+    }
+    return null;
+  };
   const matchStream = (row) => {
     if (gF.streams.size === 0) return true;
-    if (!row.stream) return true;
-    return gF.streams.has(row.stream);
+    const stream = resolveStream(row);
+    if (!stream) return true; // unclassifiable rows (e.g. unlinked invoices) pass through
+    return gF.streams.has(stream);
   };
   const matchProperty = (row) => {
     if (gF.properties.size === 0) return true;
-    if (!row.propertyId) return true;
+    if (!row.propertyId) return false; // no propertyId → never matches a specific property
     return gF.properties.has(row.propertyId);
   };
 
@@ -268,8 +289,8 @@ function getDataInRange(start, end) {
   const allExpenses = listActive('expenses').filter(e =>
     inRange(e.date) && matchOwner(e) && matchProperty(e)
   );
-  const opExpenses  = allExpenses.filter(e => !isCapEx(e) && matchStream(e));
-  const capExExpenses = allExpenses.filter(e => isCapEx(e));
+  const opExpenses    = allExpenses.filter(e => !isCapEx(e) && matchStream(e));
+  const capExExpenses = allExpenses.filter(e =>  isCapEx(e) && matchStream(e));
 
   const allAcq = getVirtualAcquisitions();
   const acquisitions = allAcq.filter(a => inRange(a.date));
@@ -580,7 +601,7 @@ function buildKpiGrid(curMetrics, cmpMetrics, cmpRange) {
     ...drillExpRows(capExExpenses),
     ...acquisitions.map(a => ({
       date: a.date, source: a._name || '',
-      category: 'Acquisition', description: a.description,
+      category: 'Property Acquisition', description: a.description,
       eur: toEUR(a.amount, a.currency, a.date)
     }))
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -597,7 +618,7 @@ function buildKpiGrid(curMetrics, cmpMetrics, cmpRange) {
   grid.appendChild(kpiCard({
     label: 'Net Cash Flow', value: formatEUR(netCash),
     variant: netCash >= 0 ? 'success' : 'danger',
-    onClick: () => drillDownModal('Cash Flow', mixedRows(payments, invoices, [...opExpenses, ...capExExpenses]), MIXED_COLS),
+    onClick: () => drillDownModal('Cash Flow', mixedRows(payments, invoices, [...opExpenses, ...capExExpenses], acquisitions), MIXED_COLS),
     delta: cmpMetrics ? safePct(netCash, cmpMetrics.netCash) : null,
     invertDelta: false, compLabel: cmpLabel
   }));
@@ -795,7 +816,8 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
           drillDownModal(`${months[idx].label} — Cash Flow`,
             mixedRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
                       curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk),
-                      [...curData.opExpenses, ...curData.capExExpenses].filter(e => e.date?.slice(0,7) === mk)),
+                      [...curData.opExpenses, ...curData.capExExpenses].filter(e => e.date?.slice(0,7) === mk),
+                      curData.acquisitions.filter(a => a.date?.slice(0,7) === mk)),
             MIXED_COLS);
         }
       });
@@ -961,7 +983,7 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
           const mAcq   = curData.acquisitions.filter(a => a.date?.slice(0,7) === mk);
           const rows   = [
             ...drillExpRows(mCapEx),
-            ...mAcq.map(a => ({ date: a.date, source: a._name || '', category: 'Acquisition', description: a.description, eur: toEUR(a.amount, a.currency, a.date) }))
+            ...mAcq.map(a => ({ date: a.date, source: a._name || '', category: 'Property Acquisition', description: a.description, eur: toEUR(a.amount, a.currency, a.date) }))
           ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
           drillDownModal(`${mLabel} — CapEx`, rows, EXP_COLS);
         } else {
@@ -1101,7 +1123,7 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
           const [, entry] = entries[idx];
           if (entry._isAcq) {
             const rows = entry.items.map(a => ({
-              date: a.date, source: a._name || '', category: 'Acquisition',
+              date: a.date, source: a._name || '', category: 'Property Acquisition',
               description: a.description, eur: toEUR(a.amount, a.currency, a.date)
             }));
             drillDownModal(`Investments — Acquisitions`, rows, EXP_COLS);
@@ -1168,12 +1190,12 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
           } else if (idx === 2) {
             const rows = [
               ...drillExpRows(curData.capExExpenses),
-              ...curData.acquisitions.map(a => ({ date: a.date, source: a._name || '', category: 'Acquisition', description: a.description, eur: toEUR(a.amount, a.currency, a.date) }))
+              ...curData.acquisitions.map(a => ({ date: a.date, source: a._name || '', category: 'Property Acquisition', description: a.description, eur: toEUR(a.amount, a.currency, a.date) }))
             ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
             drillDownModal('Investments / CapEx', rows, EXP_COLS);
           } else {
             drillDownModal('All Cash Flow Transactions',
-              mixedRows(curData.payments, curData.invoices, [...curData.opExpenses, ...curData.capExExpenses]),
+              mixedRows(curData.payments, curData.invoices, [...curData.opExpenses, ...curData.capExExpenses], curData.acquisitions),
               MIXED_COLS);
           }
         }
