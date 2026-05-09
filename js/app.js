@@ -62,6 +62,36 @@ async function boot() {
   let loaded = false;
   let needAutoSave = false;
 
+  // ── Phase 0: bootstrap from URL hash setup link (works for any hosting setup)
+  // Admin generates this link via Settings → GitHub Storage → "Copy Setup Link"
+  // and shares it with new users once. Format: #/setup?owner=…&repo=…&branch=…
+  {
+    const hash = window.location.hash;
+    if (hash.includes('/setup?') || hash.startsWith('#setup?')) {
+      try {
+        const qs = hash.slice(hash.indexOf('?') + 1);
+        const p  = new URLSearchParams(qs);
+        if (p.get('owner')) {
+          if (!state.github.owner)  state.github.owner  = p.get('owner');
+          if (!state.github.repo)   state.github.repo   = p.get('repo')   || '';
+          if (!state.github.branch) state.github.branch = p.get('branch') || 'main';
+          if (!state.github.dbPath) state.github.dbPath = p.get('path')   || 'data/db.json';
+          if (!state.github.token && p.get('token')) state.github.token = p.get('token');
+          // Save to localStorage so subsequent loads don't need the link again
+          github.saveConfig({
+            owner:  state.github.owner,
+            repo:   state.github.repo,
+            branch: state.github.branch,
+            dbPath: state.github.dbPath,
+            token:  state.github.token
+          });
+          // Remove setup params from the URL bar
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+      } catch { /* ignore malformed hash */ }
+    }
+  }
+
   // ── Phase 1: load from local cache instantly (< 1 ms if localStorage is warm)
   const localCache = await github.fetchLocalDb();
   if (localCache) {

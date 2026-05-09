@@ -195,6 +195,24 @@ function buildGithubCard() {
     btnRow.appendChild(disconnectBtn);
   }
 
+  // Copy Setup Link — lets admin share a one-click bootstrap URL with new users
+  if (effOwner && effRepo) {
+    const copyLinkBtn = button('Copy Setup Link', { onClick: () => {
+      const params = new URLSearchParams({
+        owner:  effOwner,
+        repo:   effRepo,
+        branch: effBranch,
+        path:   effPath
+      });
+      const url = `${window.location.origin}${window.location.pathname}#/setup?${params}`;
+      navigator.clipboard?.writeText(url).then(
+        () => toast('Setup link copied — share it with new users to auto-configure their app', 'success', 6000),
+        () => toast(`Setup link: ${url}`, 'info', 12000)
+      ) ?? toast(`Setup link: ${url}`, 'info', 12000);
+    }});
+    btnRow.appendChild(copyLinkBtn);
+  }
+
   card.appendChild(btnRow);
 
   if (g.lastSyncError && !g.usingCache) {
