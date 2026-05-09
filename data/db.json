@@ -836,8 +836,10 @@
       "notes": "",
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778318093907,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778318093907,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "cli_mohkf6ip14",
