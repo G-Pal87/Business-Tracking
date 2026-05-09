@@ -1075,6 +1075,22 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778318106715,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "cli_moy5ht884h",
+      "name": "a",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "currency": "EUR",
+      "contractStart": "2026-05-09",
+      "notes": "",
+      "documents": [],
+      "createdAt": 1778319468610,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778319468610,
+      "updatedBy": "Giorgos"
     }
   ],
   "services": [
