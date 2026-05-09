@@ -1487,7 +1487,7 @@
     {
       "id": "inv_mopuq8262b",
       "number": "8_CTWO_300126",
-      "clientId": "cli_mo9sroqs7s",
+      "clientId": "cli_moy4a82pn",
       "owner": "you",
       "issueDate": "2026-01-30",
       "dueDate": "2026-01-30",
@@ -1528,7 +1528,7 @@
       "source": "pdf_import",
       "createdAt": 1777817652558,
       "createdBy": "RitaK",
-      "updatedAt": 1778180367698,
+      "updatedAt": 1778317673595,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/8_CTWO_300126.pdf"
     },
