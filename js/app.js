@@ -60,62 +60,48 @@ async function boot() {
   github.loadConfig();
 
   let loaded = false;
-  let githubFailed = false;
   let needAutoSave = false;
 
-  if (state.github.owner && state.github.repo) {
-    try {
-      const remoteDb = await github.fetchDb();
-      const localCache = await github.fetchLocalDb();
-      const finalDb = localCache ? github.mergeLocalPending(remoteDb, localCache) : remoteDb;
-      setDb(finalDb);
-      github.applyDbConfig(finalDb.appConfig?.github);
-      github.saveLocalCache(finalDb);
-      loaded = true;
-      needAutoSave = (finalDb !== remoteDb);
-      updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
-    } catch (e) {
-      console.warn('GitHub load failed, falling back', e);
-      state.github.lastSyncError = normalizeNetworkError(e.message);
-      githubFailed = true;
-    }
+  // ── Phase 1: load from local cache instantly (< 1 ms if localStorage is warm)
+  const localCache = await github.fetchLocalDb();
+  if (localCache) {
+    setDb(localCache);
+    github.applyDbConfig(localCache.appConfig?.github);
+    loaded = true;
   }
 
-  if (!loaded) {
+  // ── Phase 2: if no local cache, block on GitHub once (first-ever load)
+  if (!loaded && state.github.owner && state.github.repo) {
     try {
-      const db = await github.fetchLocalDb();
-      if (db) {
-        setDb(db);
-        github.applyDbConfig(db.appConfig?.github);
-        loaded = true;
-      }
-    } catch (e) { console.warn(e); }
+      const remoteDb = await github.fetchDb();
+      setDb(remoteDb);
+      github.applyDbConfig(remoteDb.appConfig?.github);
+      github.saveLocalCache(remoteDb);
+      loaded = true;
+      updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+    } catch (e) {
+      console.warn('GitHub load failed, no local cache available', e);
+      state.github.lastSyncError = normalizeNetworkError(e.message);
+    }
   }
 
   if (!loaded) {
     setDb({});
-  }
-
-  // Set the correct initial status (only when GitHub fetch didn't already set 'online')
-  if (!state.github.connected) {
-    if (githubFailed) {
-      state.github.usingCache = loaded;
-      if (loaded) {
-        updateSyncStatus('offline', 'Using local cache — GitHub is currently unavailable');
-      } else {
-        updateSyncStatus('offline', 'GitHub unreachable — no local data available');
-      }
-    } else if (loaded) {
-      if (state.github.owner && state.github.repo) {
-        updateSyncStatus('offline', 'Local only — connect GitHub in Settings');
-      } else {
-        updateSyncStatus('offline', 'Local only — configure GitHub in Settings');
-      }
+    if (state.github.owner && state.github.repo) {
+      updateSyncStatus('offline', 'GitHub unreachable — no local data available');
     } else {
       updateSyncStatus('offline', 'Offline — configure GitHub in Settings');
     }
+  } else if (!state.github.connected) {
+    // Loaded from local cache — show a "syncing" hint until background fetch completes
+    if (state.github.owner && state.github.repo) {
+      updateSyncStatus('syncing', 'Syncing with GitHub…');
+    } else {
+      updateSyncStatus('offline', 'Local only — configure GitHub in Settings');
+    }
   }
 
+  // ── Phase 3: auth + render — runs immediately when local cache was available
   await requireAuth();
   buildUserFooter();
 
@@ -208,6 +194,30 @@ async function boot() {
       }
     }
   });
+
+  // ── Phase 4: background GitHub sync (only when we served from local cache)
+  // Runs after router.init so setDb() triggers a live refresh of the current view.
+  if (loaded && localCache && state.github.owner && state.github.repo) {
+    (async () => {
+      try {
+        const remoteDb = await github.fetchDb();
+        const merged = github.mergeLocalPending(remoteDb, localCache);
+        setDb(merged);                              // triggers data-loaded → view refresh
+        github.applyDbConfig(merged.appConfig?.github);
+        github.saveLocalCache(merged);
+        updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+        needAutoSave = (merged !== remoteDb);
+        if (needAutoSave && state.github.token && !pushPending) {
+          doSave().catch(() => {});
+        }
+      } catch (e) {
+        console.warn('Background GitHub sync failed', e);
+        state.github.lastSyncError = normalizeNetworkError(e.message);
+        state.github.usingCache = true;
+        updateSyncStatus('offline', 'Using local cache — GitHub is currently unavailable');
+      }
+    })();
+  }
 
   // Backfill metadata on legacy records so conflict detection has updatedAt
   // on every record. Called after subscribe so markDirty triggers a real save.
