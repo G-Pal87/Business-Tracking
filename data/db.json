@@ -9460,20 +9460,14 @@
               "amount": 600,
               "notes": "Votin-Certage",
               "id": "fce_mozfy4sp59"
-            },
-            {
-              "clientName": "Nexial",
-              "amount": 600,
-              "notes": "Votin-Certage",
-              "id": "fce_mozfyj5k9m"
             }
           ],
-          "revenue": 1200
+          "revenue": 600
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397521431,
+      "updatedAt": 1778397546207,
       "updatedBy": "Giorgos"
     },
     {
