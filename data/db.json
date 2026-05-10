@@ -9180,7 +9180,7 @@
             {
               "clientName": "VITAS",
               "amount": 2750,
-              "notes": "",
+              "notes": "Vitas",
               "id": "fce_mozgs1ynf4"
             }
           ]
@@ -9207,7 +9207,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398900333,
+      "updatedAt": 1778398907013,
       "updatedBy": "Giorgos"
     },
     {
