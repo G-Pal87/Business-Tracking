@@ -9207,6 +9207,12 @@
               "amount": 920,
               "notes": "",
               "id": "fce_mozgt7i8h5"
+            },
+            {
+              "clientName": "Wise Guys",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgti79au"
             }
           ]
         },
@@ -9227,7 +9233,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398948273,
+      "updatedAt": 1778398954300,
       "updatedBy": "Giorgos"
     },
     {
