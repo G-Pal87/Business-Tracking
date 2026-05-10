@@ -9327,8 +9327,14 @@
             {
               "clientName": "SWG",
               "amount": 250,
-              "notes": "",
+              "notes": "FC WS",
               "id": "fce_mozfr0rvpf"
+            },
+            {
+              "clientName": "Workshops Italy (Alexis)",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfrhp5e8"
             }
           ],
           "revenue": 6350
@@ -9336,7 +9342,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397169151,
+      "updatedAt": 1778397181156,
       "updatedBy": "Giorgos"
     },
     {
