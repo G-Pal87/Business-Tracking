@@ -10254,11 +10254,22 @@
             }
           ],
           "revenue": 3390
+        },
+        "2024-05": {
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozh644bhr"
+            }
+          ],
+          "revenue": 0
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399528311,
+      "updatedAt": 1778399541083,
       "updatedBy": "Giorgos"
     },
     {
