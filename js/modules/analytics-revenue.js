@@ -225,6 +225,140 @@ function buildKpiSection(cur, cmp, cmpRange) {
   return grid;
 }
 
+// ── Revenue Performance Insights ──────────────────────────────────────────────
+function buildRevenueInsights(curData, cmpData, cmpRange) {
+  const { payments, invoices, outstanding, propRev, svcRev, total, outstandingTotal } = curData;
+
+  const section = el('div', { class: 'card mb-16' });
+  section.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Revenue Performance Insights')
+  ));
+  const body = el('div', { style: 'padding:0 16px 16px;font-size:13px;line-height:1.8' });
+
+  if (total === 0 && outstandingTotal === 0) {
+    body.appendChild(el('div', { style: 'color:var(--text-muted)' }, 'No insights available for the selected period.'));
+    section.appendChild(body);
+    return section;
+  }
+
+  const row = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px' });
+
+  const makeBlock = (label, lines) => {
+    const block = el('div');
+    block.appendChild(el('div', {
+      style: 'font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px'
+    }, label));
+    lines.forEach(({ text, onClick }) => {
+      const p2 = el('p', { style: 'margin:0' }, text);
+      if (onClick) { p2.style.cursor = 'pointer'; p2.title = 'Click for breakdown'; p2.onclick = onClick; }
+      block.appendChild(p2);
+    });
+    return block;
+  };
+
+  // ── 1. Revenue concentration ───────────────────────────────────────────────
+  const entityMap = new Map();
+  payments.forEach(p => {
+    const key  = 'p:' + (p.propertyId || 'unknown');
+    const name = byId('properties', p.propertyId)?.name || 'Unknown Property';
+    const e    = entityMap.get(key) || { name, rev: 0, pays: [], invs: [] };
+    e.rev += toEUR(p.amount, p.currency, p.date);
+    e.pays.push(p);
+    entityMap.set(key, e);
+  });
+  invoices.forEach(i => {
+    const key  = 'c:' + (i.clientId || 'unknown');
+    const name = byId('clients', i.clientId)?.name || 'Unknown Client';
+    const e    = entityMap.get(key) || { name, rev: 0, pays: [], invs: [] };
+    e.rev += toEUR(i.total, i.currency, i.issueDate);
+    e.invs.push(i);
+    entityMap.set(key, e);
+  });
+  const topEntity = [...entityMap.values()].sort((a, b) => b.rev - a.rev)[0];
+  if (topEntity && total > 0) {
+    const pct = (topEntity.rev / total * 100).toFixed(0);
+    row.appendChild(makeBlock('Revenue concentration', [{
+      text: `Top contributor: ${topEntity.name} — ${formatEUR(topEntity.rev)} (${pct}% of total)`,
+      onClick: () => drillDownModal(`Revenue — ${topEntity.name}`,
+        drillRevRows(topEntity.pays, topEntity.invs), REV_COLS)
+    }]));
+  }
+
+  // ── 2. Revenue mix ─────────────────────────────────────────────────────────
+  if (total > 0) {
+    const rentalPct = (propRev / total * 100).toFixed(0);
+    const svcPct    = (svcRev   / total * 100).toFixed(0);
+    row.appendChild(makeBlock('Revenue mix', [
+      {
+        text: `Rental: ${rentalPct}% (${formatEUR(propRev)})`,
+        onClick: propRev > 0
+          ? () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS)
+          : null
+      },
+      {
+        text: `Service: ${svcPct}% (${formatEUR(svcRev)})`,
+        onClick: svcRev > 0
+          ? () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS)
+          : null
+      }
+    ]));
+  }
+
+  // ── 3. Growth signal ───────────────────────────────────────────────────────
+  {
+    const lines = [];
+    if (cmpData && cmpRange) {
+      const delta = safePct(total, cmpData.total);
+      if (delta === null) {
+        lines.push({ text: `No comparison revenue data for ${cmpRange.label}.` });
+      } else {
+        const word = delta > 1 ? 'up' : delta < -1 ? 'down' : 'stable';
+        const sign = delta > 0 ? '+' : '';
+        lines.push({
+          text: `Revenue ${word} ${sign}${delta.toFixed(1)}% vs ${cmpRange.label}`,
+          onClick: () => drillDownModal('All Revenue', drillRevRows(payments, invoices), REV_COLS)
+        });
+        lines.push({ text: `${formatEUR(cmpData.total)} → ${formatEUR(total)}` });
+      }
+    } else {
+      lines.push({ text: 'No comparison period selected.' });
+    }
+    row.appendChild(makeBlock('Growth signal', lines));
+  }
+
+  // ── 4. Outstanding revenue signal ──────────────────────────────────────────
+  {
+    const invoicedTotal = svcRev + outstandingTotal;
+    const lines = [];
+    if (outstandingTotal > 0 && invoicedTotal > 0) {
+      const pct    = (outstandingTotal / invoicedTotal * 100).toFixed(0);
+      const isRisk = outstandingTotal / invoicedTotal > 0.3;
+      lines.push({
+        text: `${formatEUR(outstandingTotal)} outstanding — ${pct}% of invoiced${isRisk ? ' · High risk' : ''}`,
+        onClick: () => drillDownModal('Outstanding Revenue',
+          outstanding.map(i => ({
+            date: i.issueDate, type: 'Invoice',
+            source: byId('clients', i.clientId)?.name || '',
+            ref: i.number || '',
+            eur: toEUR(i.total, i.currency, i.issueDate)
+          })).sort((a, b) => (b.date || '').localeCompare(a.date || '')),
+          REV_COLS)
+      });
+      if (svcRev === 0)
+        lines.push({ text: 'No service revenue collected yet for this period.' });
+    } else if (invoicedTotal > 0) {
+      lines.push({ text: 'All invoiced service revenue has been collected.' });
+    } else {
+      lines.push({ text: 'No service invoices for the selected period.' });
+    }
+    row.appendChild(makeBlock('Outstanding signal', lines));
+  }
+
+  body.appendChild(row);
+  section.appendChild(body);
+  return section;
+}
+
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -574,6 +708,7 @@ function buildView() {
   wrap.appendChild(buildComparisonLine(curRange, cmpRange));
 
   wrap.appendChild(buildKpiSection(curData, cmpData, cmpRange));
+  wrap.appendChild(buildRevenueInsights(curData, cmpData, cmpRange));
 
   const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
 
