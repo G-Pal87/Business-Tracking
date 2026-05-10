@@ -9193,8 +9193,14 @@
             {
               "clientName": "Wise Guys (Empowomen)",
               "amount": 4500,
-              "notes": "",
+              "notes": "Marketing services (EMPOWOMEN)",
               "id": "fce_mozgst673s"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgt1wqox"
             }
           ]
         },
@@ -9215,7 +9221,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398925834,
+      "updatedAt": 1778398931690,
       "updatedBy": "Giorgos"
     },
     {
