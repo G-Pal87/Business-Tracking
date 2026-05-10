@@ -9349,17 +9349,23 @@
             },
             {
               "clientName": "HUN - WS",
-              "amount": 0,
+              "amount": 512,
               "notes": "",
               "id": "fce_mozfs1t7ds"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfs8dwow"
             }
           ],
-          "revenue": 4200
+          "revenue": 4712
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397209952,
+      "updatedAt": 1778397213812,
       "updatedBy": "Giorgos"
     },
     {
