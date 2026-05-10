@@ -9366,17 +9366,23 @@
           "entries": [
             {
               "clientName": "Nexial",
-              "amount": 0,
+              "amount": 600,
               "notes": "",
               "id": "fce_mozfsgyr1m"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfsy3zbz"
             }
           ],
-          "revenue": 0
+          "revenue": 600
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397243289,
+      "updatedAt": 1778397247151,
       "updatedBy": "Giorgos"
     },
     {
