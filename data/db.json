@@ -9338,11 +9338,22 @@
             }
           ],
           "revenue": 6850
+        },
+        "2026-04": {
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfrx20kf"
+            }
+          ],
+          "revenue": 0
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397183574,
+      "updatedAt": 1778397199128,
       "updatedBy": "Giorgos"
     },
     {
