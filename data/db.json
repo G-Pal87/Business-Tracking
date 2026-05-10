@@ -10178,18 +10178,24 @@
         "2024-11": {
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "VITAS GmbH",
+              "amount": 1000,
               "notes": "",
               "id": "fce_mozh2by11d"
+            },
+            {
+              "clientName": "Startup Wise Guys",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozh2gzfg2"
             }
           ],
-          "revenue": 0
+          "revenue": 1000
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399364601,
+      "updatedAt": 1778399375009,
       "updatedBy": "Giorgos"
     },
     {
