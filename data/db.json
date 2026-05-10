@@ -10122,17 +10122,17 @@
           "entries": [
             {
               "clientName": "VITAS GmbH",
-              "amount": 0,
+              "amount": 2500,
               "notes": "",
               "id": "fce_mozgzpcana"
             }
           ],
-          "revenue": 0
+          "revenue": 2500
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399243493,
+      "updatedAt": 1778399248242,
       "updatedBy": "Giorgos"
     },
     {
