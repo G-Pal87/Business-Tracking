@@ -9307,18 +9307,24 @@
         "2026-03": {
           "entries": [
             {
+              "clientName": "Nexial",
+              "amount": 300,
+              "notes": "",
+              "id": "fce_mozfq7xb2p"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozfq7xb2p"
+              "id": "fce_mozfqcsqpk"
             }
           ],
-          "revenue": 0
+          "revenue": 300
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397119903,
+      "updatedAt": 1778397126218,
       "updatedBy": "Giorgos"
     },
     {
