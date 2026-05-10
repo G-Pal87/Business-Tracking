@@ -9810,13 +9810,19 @@
               "id": "fce_mozfy4sp59"
             },
             {
+              "clientName": "ZOLLHOFF",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozi9zag3k"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozi9zag3k"
+              "id": "fce_mozia8r52"
             }
           ],
-          "revenue": 600
+          "revenue": 2100
         },
         "2026-12": {
           "entries": [
@@ -9855,7 +9861,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401401064,
+      "updatedAt": 1778401413329,
       "updatedBy": "Giorgos"
     },
     {
