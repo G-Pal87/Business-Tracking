@@ -10231,17 +10231,17 @@
             },
             {
               "clientName": "Startup Wise Guys",
-              "amount": 0,
+              "amount": 1100,
               "notes": "",
               "id": "fce_mozh4isu20"
             }
           ],
-          "revenue": 5300
+          "revenue": 6400
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399471072,
+      "updatedAt": 1778399474075,
       "updatedBy": "Giorgos"
     },
     {
