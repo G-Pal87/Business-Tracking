@@ -9066,15 +9066,21 @@
           ]
         },
         "2025-04": {
-          "revenue": 0,
+          "revenue": 6200,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
             {
+              "clientName": "Wise Guys",
+              "amount": 6200,
+              "notes": "",
+              "id": "fce_mozgm2ho1r"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozgm2ho1r"
+              "id": "fce_mozgm5zj46"
             }
           ]
         },
@@ -9125,7 +9131,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398605852,
+      "updatedAt": 1778398610383,
       "updatedBy": "Giorgos"
     },
     {
