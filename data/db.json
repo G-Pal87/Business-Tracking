@@ -10932,7 +10932,7 @@
       },
       "createdAt": 1778162605012,
       "createdBy": "Giorgos",
-      "updatedAt": 1778402911648,
+      "updatedAt": 1778402933902,
       "updatedBy": "Giorgos",
       "cleaningPeriods": [
         {
@@ -10945,6 +10945,13 @@
         {
           "id": "cp_mozj5z0b2f",
           "propertyId": "prop_mox7mr8day",
+          "startDate": "2024-01-01",
+          "endDate": "2025-12-10",
+          "fee": 25
+        },
+        {
+          "id": "cp_mozj6u1ab4",
+          "propertyId": "prop_mox7p43s8o",
           "startDate": "2024-01-01",
           "endDate": "2025-12-10",
           "fee": 25
