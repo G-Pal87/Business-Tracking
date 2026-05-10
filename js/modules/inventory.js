@@ -146,7 +146,6 @@ function openBatchesModal(item, onUpdate) {
         tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, b.comments || ''));
         const bActs = el('td', { class: 'right' });
         bActs.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => {
-          closeModal();
           openBatchEditForm(it, b, () => { onUpdate?.(); });
         }}));
         bActs.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
@@ -172,7 +171,6 @@ function openBatchesModal(item, onUpdate) {
     body: bodyEl,
     footer: [
       button('Add Batch', { variant: 'primary', onClick: () => {
-        closeModal();
         openAddForm(item, () => { onUpdate?.(); });
       }}),
       button('Close', { onClick: closeModal })
