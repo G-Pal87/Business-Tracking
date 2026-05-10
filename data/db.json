@@ -9793,13 +9793,13 @@
               "id": "fce_mozi98ktrk"
             },
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "ZOLLHOFF",
+              "amount": 2000,
               "notes": "",
               "id": "fce_mozi9ex577"
             }
           ],
-          "revenue": 5100
+          "revenue": 7100
         },
         "2026-11": {
           "entries": [
@@ -9849,7 +9849,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401374665,
+      "updatedAt": 1778401380792,
       "updatedBy": "Giorgos"
     },
     {
