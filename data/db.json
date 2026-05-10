@@ -8979,9 +8979,17 @@
           ]
         },
         "2025-12": {
-          "revenue": 0,
+          "revenue": 12450,
           "expenses": 0,
-          "expenseEntries": []
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12450,
+              "notes": "",
+              "id": "fce_mozgjlh78d"
+            }
+          ]
         }
       },
       "yearTarget": {
@@ -8990,7 +8998,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398486341,
+      "updatedAt": 1778398494839,
       "updatedBy": "Giorgos"
     },
     {
