@@ -10138,18 +10138,24 @@
               "id": "fce_mozh0m3ff0"
             },
             {
+              "clientName": "VITAS GmbH",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozh0qvzne"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozh0qvzne"
+              "id": "fce_mozh0wfeaz"
             }
           ],
-          "revenue": 2000
+          "revenue": 3500
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399290655,
+      "updatedAt": 1778399297834,
       "updatedBy": "Giorgos"
     },
     {
