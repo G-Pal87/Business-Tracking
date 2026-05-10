@@ -10218,18 +10218,24 @@
         "2024-07": {
           "entries": [
             {
+              "clientName": "VITAS GmbH",
+              "amount": 3300,
+              "notes": "",
+              "id": "fce_mozh482zoi"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozh482zoi"
+              "id": "fce_mozh4dmnif"
             }
           ],
-          "revenue": 0
+          "revenue": 3300
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399452907,
+      "updatedAt": 1778399460095,
       "updatedBy": "Giorgos"
     },
     {
