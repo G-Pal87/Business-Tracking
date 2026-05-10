@@ -9109,7 +9109,7 @@
           "expenseEntries": [],
           "entries": [
             {
-              "clientName": "",
+              "clientName": "Wise Guys",
               "amount": 0,
               "notes": "",
               "id": "fce_mozgmxy5g0"
@@ -9153,7 +9153,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398646621,
+      "updatedAt": 1778398658530,
       "updatedBy": "Giorgos"
     },
     {
