@@ -9838,11 +9838,17 @@
             {
               "id": "expe_moziaivv50",
               "description": "Nexial",
+              "amount": 600,
+              "notes": ""
+            },
+            {
+              "id": "expe_moziar6imh",
+              "description": "",
               "amount": 0,
               "notes": ""
             }
           ],
-          "expenses": 0
+          "expenses": 600
         },
         "2026-06": {
           "entries": [
@@ -9870,7 +9876,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401433679,
+      "updatedAt": 1778401437210,
       "updatedBy": "Giorgos"
     },
     {
