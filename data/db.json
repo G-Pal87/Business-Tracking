@@ -9186,7 +9186,7 @@
           ]
         },
         "2025-10": {
-          "revenue": 4500,
+          "revenue": 6000,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
@@ -9197,10 +9197,16 @@
               "id": "fce_mozgst673s"
             },
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "VITAS",
+              "amount": 1500,
               "notes": "",
               "id": "fce_mozgt1wqox"
+            },
+            {
+              "clientName": "Nexial",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgt7i8h5"
             }
           ]
         },
@@ -9221,7 +9227,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398931690,
+      "updatedAt": 1778398943568,
       "updatedBy": "Giorgos"
     },
     {
