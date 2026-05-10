@@ -9817,12 +9817,12 @@
             },
             {
               "clientName": "HeyCare",
-              "amount": 0,
+              "amount": 4500,
               "notes": "",
               "id": "fce_mozia8r52"
             }
           ],
-          "revenue": 2100
+          "revenue": 6600
         },
         "2026-12": {
           "entries": [
@@ -9833,7 +9833,16 @@
               "id": "fce_mozfzh8a7u"
             }
           ],
-          "revenue": 600
+          "revenue": 600,
+          "expenseEntries": [
+            {
+              "id": "expe_moziaivv50",
+              "description": "",
+              "amount": 0,
+              "notes": ""
+            }
+          ],
+          "expenses": 0
         },
         "2026-06": {
           "entries": [
@@ -9861,7 +9870,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401416506,
+      "updatedAt": 1778401426459,
       "updatedBy": "Giorgos"
     },
     {
