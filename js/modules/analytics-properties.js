@@ -627,7 +627,7 @@ function buildView() {
   const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'prop_months');
   const propMS   = buildMultiSelect(listActiveProperties().filter(p => !opts.vPi.size || opts.vPi.has(p.id)).map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'prop_props');
   const streamMS = buildMultiSelect(PROPERTY_STREAMS.filter(k => !opts.vSt.size || opts.vSt.has(k)).map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })), gFilters.streams, 'All Streams', rebuildView, 'prop_streams');
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => !opts.vOw.size || opts.vOw.has(k)).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'prop_owners');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => k !== 'both' && (!opts.vOw.size || opts.vOw.has(k))).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'prop_owners');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));

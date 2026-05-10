@@ -405,7 +405,7 @@ export function buildFilterBar(gF, opts, onChange) {
   if (showOwner) {
     bar.appendChild(buildMultiSelect(
       Object.entries(OWNERS)
-        .filter(([k]) => availOwners.has(k))
+        .filter(([k]) => k !== 'both' && availOwners.has(k))
         .map(([k, v]) => ({ value: k, label: v })),
       gF.owners, 'All Owners', onChange, `${storagePrefix}_owners`
     ));

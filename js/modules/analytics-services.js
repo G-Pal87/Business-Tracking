@@ -194,7 +194,7 @@ function buildView() {
   const clientMS = buildMultiSelect(listActiveClients().filter(c => !opts.vCi.size || opts.vCi.has(c.id)).map(c => ({ value: c.id, label: c.name })), gFilters.clientIds, 'All Clients', rebuildView, 'svc_clients');
   const streamMS = buildMultiSelect(SERVICE_STREAMS.filter(k => !opts.vSt.size || opts.vSt.has(k)).map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })), gFilters.streams, 'All Streams', rebuildView, 'svc_streams');
   const statusMS = buildMultiSelect(Object.entries(INVOICE_STATUSES).filter(([k]) => !opts.vStat.size || opts.vStat.has(k)).map(([k, v]) => ({ value: k, label: v.label, css: v.css })), gFilters.statuses, 'All Statuses', rebuildView, 'svc_statuses');
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => !opts.vOw.size || opts.vOw.has(k)).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'svc_owners');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => k !== 'both' && (!opts.vOw.size || opts.vOw.has(k))).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'svc_owners');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
