@@ -9028,7 +9028,7 @@
           ]
         },
         "2025-02": {
-          "revenue": 6200,
+          "revenue": 7700,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
@@ -9040,7 +9040,7 @@
             },
             {
               "clientName": "VITAS",
-              "amount": 0,
+              "amount": 1500,
               "notes": "",
               "id": "fce_mozgl69mji"
             }
@@ -9049,7 +9049,15 @@
         "2025-03": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": []
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgldkxf5"
+            }
+          ]
         },
         "2025-04": {
           "revenue": 0,
@@ -9103,7 +9111,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398568143,
+      "updatedAt": 1778398573569,
       "updatedBy": "Giorgos"
     },
     {
