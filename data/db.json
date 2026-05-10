@@ -10151,11 +10151,22 @@
             }
           ],
           "revenue": 9700
+        },
+        "2024-09": {
+          "entries": [
+            {
+              "clientName": "Startup Wise Guys",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozh1jwmkg"
+            }
+          ],
+          "revenue": 0
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399305541,
+      "updatedAt": 1778399329672,
       "updatedBy": "Giorgos"
     },
     {
