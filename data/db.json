@@ -9469,7 +9469,7 @@
             {
               "clientName": "",
               "amount": 0,
-              "notes": "",
+              "notes": "Votin-Certage",
               "id": "fce_mozfzh8a7u"
             }
           ],
@@ -9478,7 +9478,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397551866,
+      "updatedAt": 1778397557131,
       "updatedBy": "Giorgos"
     },
     {
