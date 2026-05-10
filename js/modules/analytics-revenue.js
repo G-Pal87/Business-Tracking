@@ -750,14 +750,24 @@ function buildView() {
 
   // Row 4: Concentration + Owner
   const row4 = el('div', { class: 'grid grid-2 mb-16' });
-  row4.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue Concentration (Top 5)')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-concentration' }))
-  ));
-  row4.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue by Owner')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-owner-donut' }))
-  ));
+  {
+    const btn1 = el('button', { style: 'background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:11px;cursor:pointer;padding:2px 6px;line-height:1' }, '%');
+    btn1.onclick = () => { const sp = charts.toggleDoughnutPct('rev-concentration'); btn1.textContent = sp ? '€' : '%'; };
+    row4.appendChild(el('div', { class: 'card' },
+      el('div', { class: 'card-header', style: 'display:flex;align-items:center;justify-content:space-between' },
+        el('div', { class: 'card-title' }, 'Revenue Concentration (Top 5)'), btn1),
+      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-concentration' }))
+    ));
+  }
+  {
+    const btn2 = el('button', { style: 'background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:11px;cursor:pointer;padding:2px 6px;line-height:1' }, '%');
+    btn2.onclick = () => { const sp = charts.toggleDoughnutPct('rev-owner-donut'); btn2.textContent = sp ? '€' : '%'; };
+    row4.appendChild(el('div', { class: 'card' },
+      el('div', { class: 'card-header', style: 'display:flex;align-items:center;justify-content:space-between' },
+        el('div', { class: 'card-title' }, 'Revenue by Owner'), btn2),
+      el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-owner-donut' }))
+    ));
+  }
   wrap.appendChild(row4);
 
   // Row 5: Paid vs Outstanding + Aging
