@@ -227,7 +227,7 @@ export function resolveStream(row) {
 
 export function makeMatchers(gF) {
   return {
-    mStream:   row => { if (!gF.streams.size)     return true; const s = resolveStream(row); return !s || gF.streams.has(s); },
+    mStream:   row => { if (!gF.streams.size) return true; const s = resolveStream(row); return s !== null && gF.streams.has(s); },
     mOwner:    row => { if (!gF.owners.size)       return true; const ow = row.propertyId ? (byId('properties', row.propertyId)?.owner || 'both') : (row.owner || 'both'); return ow === 'both' || gF.owners.has(ow); },
     mProperty: row => { if (!gF.propertyIds.size)  return true; if (!row.propertyId) return false; return gF.propertyIds.has(row.propertyId); },
     mClient:   row => { if (!gF.clientIds.size)    return true; if (!row.clientId)   return false; return gF.clientIds.has(row.clientId); },
