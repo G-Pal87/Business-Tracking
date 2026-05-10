@@ -9790,18 +9790,24 @@
         "2026-06": {
           "entries": [
             {
+              "clientName": "Zollhof",
+              "amount": 4200,
+              "notes": "",
+              "id": "fce_mozi612erl"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozi612erl"
+              "id": "fce_mozi69sgci"
             }
           ],
-          "revenue": 0
+          "revenue": 4200
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401216742,
+      "updatedAt": 1778401228048,
       "updatedBy": "Giorgos"
     },
     {
