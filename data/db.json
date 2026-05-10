@@ -9463,17 +9463,17 @@
             },
             {
               "clientName": "Nexial",
-              "amount": 0,
+              "amount": 600,
               "notes": "Votin-Certage",
               "id": "fce_mozfyj5k9m"
             }
           ],
-          "revenue": 600
+          "revenue": 1200
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397517047,
+      "updatedAt": 1778397521431,
       "updatedBy": "Giorgos"
     },
     {
