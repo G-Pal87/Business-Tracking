@@ -9284,18 +9284,24 @@
         "2026-02": {
           "entries": [
             {
+              "clientName": "ZOLLHOF",
+              "amount": 4200,
+              "notes": "",
+              "id": "fce_mozfoypd6"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozfoypd6"
+              "id": "fce_mozfp38gfz"
             }
           ],
-          "revenue": 0
+          "revenue": 4200
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397061297,
+      "updatedAt": 1778397067168,
       "updatedBy": "Giorgos"
     },
     {
