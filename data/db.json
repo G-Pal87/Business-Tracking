@@ -9803,17 +9803,17 @@
             },
             {
               "clientName": "Plug n Play",
-              "amount": 0,
+              "amount": 1200,
               "notes": "",
               "id": "fce_mozi6dwj90"
             }
           ],
-          "revenue": 4800
+          "revenue": 6000
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401239153,
+      "updatedAt": 1778401242164,
       "updatedBy": "Giorgos"
     },
     {
