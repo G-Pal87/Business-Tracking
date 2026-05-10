@@ -10012,17 +10012,17 @@
           "entries": [
             {
               "clientName": "C TWO",
-              "amount": 0,
+              "amount": 12561,
               "notes": "",
               "id": "fce_mozgxhpyml"
             }
           ],
-          "revenue": 0
+          "revenue": 12561
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399140442,
+      "updatedAt": 1778399147304,
       "updatedBy": "Giorgos"
     },
     {
