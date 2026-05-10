@@ -10133,17 +10133,23 @@
           "entries": [
             {
               "clientName": "Startup Wise Guys",
-              "amount": 0,
+              "amount": 2000,
               "notes": "",
               "id": "fce_mozh0m3ff0"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozh0qvzne"
             }
           ],
-          "revenue": 0
+          "revenue": 2000
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399285912,
+      "updatedAt": 1778399290655,
       "updatedBy": "Giorgos"
     },
     {
