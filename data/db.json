@@ -10100,10 +10100,22 @@
         "revenue": 0,
         "expenses": 0
       },
-      "months": {},
+      "months": {
+        "2024-04": {
+          "entries": [
+            {
+              "clientName": "VITAS GmbH",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgz02vhy"
+            }
+          ],
+          "revenue": 0
+        }
+      },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778018556697,
+      "updatedAt": 1778399210628,
       "updatedBy": "Giorgos"
     },
     {
