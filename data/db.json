@@ -9044,11 +9044,11 @@
           ]
         },
         "2026-04": {
-          "revenue": 0,
+          "revenue": 125400,
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "C TWO",
+              "amount": 125400,
               "notes": "",
               "id": "fce_mozfhl57c1"
             }
@@ -9081,7 +9081,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396717131,
+      "updatedAt": 1778396722945,
       "updatedBy": "Giorgos"
     },
     {
