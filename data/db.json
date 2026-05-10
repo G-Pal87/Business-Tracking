@@ -9400,7 +9400,7 @@
         "2026-07": {
           "entries": [
             {
-              "clientName": "",
+              "clientName": "ZOLLHOF",
               "amount": 0,
               "notes": "",
               "id": "fce_mozfuntxp3"
@@ -9411,7 +9411,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397327141,
+      "updatedAt": 1778397332163,
       "updatedBy": "Giorgos"
     },
     {
