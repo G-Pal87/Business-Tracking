@@ -9132,12 +9132,20 @@
           ]
         },
         "2026-12": {
-          "revenue": 0
+          "revenue": 0,
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfjs0wes"
+            }
+          ]
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396815889,
+      "updatedAt": 1778396823046,
       "updatedBy": "Giorgos"
     },
     {
