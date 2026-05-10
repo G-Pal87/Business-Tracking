@@ -9458,13 +9458,13 @@
             {
               "clientName": "Nexial",
               "amount": 600,
-              "notes": "",
+              "notes": "Votin-Certage",
               "id": "fce_mozfy4sp59"
             },
             {
               "clientName": "Nexial",
               "amount": 0,
-              "notes": "",
+              "notes": "Votin-Certage",
               "id": "fce_mozfyj5k9m"
             }
           ],
@@ -9473,7 +9473,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397512222,
+      "updatedAt": 1778397517047,
       "updatedBy": "Giorgos"
     },
     {
