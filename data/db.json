@@ -9014,7 +9014,7 @@
             {
               "clientName": "C WO",
               "amount": 0,
-              "notes": "34560",
+              "notes": "34560.83",
               "id": "fce_mozffi0lny"
             }
           ],
@@ -9057,7 +9057,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396627932,
+      "updatedAt": 1778396639111,
       "updatedBy": "Giorgos"
     },
     {
