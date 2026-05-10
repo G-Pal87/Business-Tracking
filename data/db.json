@@ -10932,14 +10932,14 @@
       },
       "createdAt": 1778162605012,
       "createdBy": "Giorgos",
-      "updatedAt": 1778402893691,
+      "updatedAt": 1778402911648,
       "updatedBy": "Giorgos",
       "cleaningPeriods": [
         {
           "id": "cp_mozj53ro5b",
           "propertyId": "prop_mox7ipfiam",
           "startDate": "2024-10-01",
-          "endDate": "2025-10-01",
+          "endDate": "2025-12-10",
           "fee": 20
         },
         {
