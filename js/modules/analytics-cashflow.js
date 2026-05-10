@@ -310,7 +310,7 @@ function buildView() {
   const streamMS = buildMultiSelect(Object.entries(STREAMS).filter(([k]) => !opts.vSt.size || opts.vSt.has(k)).map(([k, v]) => ({ value: k, label: v.label, color: v.color })), gFilters.streams, 'All Streams', rebuildView, 'cf_streams');
   const propMS   = buildMultiSelect(listActiveProperties().filter(p => !opts.vPi.size || opts.vPi.has(p.id)).map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'cf_props');
   const clientMS = buildMultiSelect(listActiveClients().filter(c => !opts.vCi.size || opts.vCi.has(c.id)).map(c => ({ value: c.id, label: c.name })), gFilters.clientIds, 'All Clients', rebuildView, 'cf_clients');
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => !opts.vOw.size || opts.vOw.has(k)).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'cf_owners');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => k !== 'both' && (!opts.vOw.size || opts.vOw.has(k))).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'cf_owners');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));

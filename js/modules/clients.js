@@ -69,7 +69,7 @@ function build() {
   const streamFilter = new Set();
   const ownerFilter  = new Set();
   const streamMS = buildMultiSelect(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label, css: STREAMS[s].css })), streamFilter, 'All Streams', renderCards, 'cli_streams');
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), ownerFilter, 'All Owners', renderCards, 'cli_owners');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => k !== 'both').map(([v, l]) => ({ value: v, label: l })), ownerFilter, 'All Owners', renderCards, 'cli_owners');
   const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { streamMS.reset(); ownerMS.reset(); renderCards(); } });
   filterBar.appendChild(streamMS);
   filterBar.appendChild(ownerMS);
