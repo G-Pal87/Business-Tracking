@@ -9787,13 +9787,19 @@
               "id": "fce_mozfxg6qht"
             },
             {
+              "clientName": "heyCare",
+              "amount": 4500,
+              "notes": "",
+              "id": "fce_mozi98ktrk"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozi98ktrk"
+              "id": "fce_mozi9ex577"
             }
           ],
-          "revenue": 600
+          "revenue": 5100
         },
         "2026-11": {
           "entries": [
@@ -9843,7 +9849,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401366445,
+      "updatedAt": 1778401374665,
       "updatedBy": "Giorgos"
     },
     {
