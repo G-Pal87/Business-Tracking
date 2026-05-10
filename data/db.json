@@ -10236,13 +10236,13 @@
               "id": "fce_mozh4isu20"
             },
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "VITAS GmbH",
+              "amount": 3300,
               "notes": "",
               "id": "fce_mozhhmfjdc"
             }
           ],
-          "revenue": 6400
+          "revenue": 9700
         },
         "2024-06": {
           "entries": [
@@ -10281,7 +10281,7 @@
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778400078031,
+      "updatedAt": 1778400083677,
       "updatedBy": "Giorgos"
     },
     {
