@@ -9022,11 +9022,11 @@
           "expenses": 0
         },
         "2026-02": {
-          "revenue": 0,
+          "revenue": 13400,
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "C TWO",
+              "amount": 13400,
               "notes": "",
               "id": "fce_mozfg91tmi"
             }
@@ -9065,7 +9065,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396654801,
+      "updatedAt": 1778396659569,
       "updatedBy": "Giorgos"
     },
     {
