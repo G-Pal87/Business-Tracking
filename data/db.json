@@ -9068,7 +9068,15 @@
         "2025-04": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": []
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgm2ho1r"
+            }
+          ]
         },
         "2025-05": {
           "revenue": 0,
@@ -9117,7 +9125,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398595628,
+      "updatedAt": 1778398605852,
       "updatedBy": "Giorgos"
     },
     {
