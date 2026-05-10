@@ -10185,17 +10185,23 @@
             },
             {
               "clientName": "Startup Wise Guys",
-              "amount": 0,
+              "amount": 6200,
               "notes": "",
               "id": "fce_mozh2gzfg2"
+            },
+            {
+              "clientName": "Nexial",
+              "amount": 900,
+              "notes": "",
+              "id": "fce_mozh2n53h5"
             }
           ],
-          "revenue": 1000
+          "revenue": 8100
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399375009,
+      "updatedAt": 1778399386506,
       "updatedBy": "Giorgos"
     },
     {
