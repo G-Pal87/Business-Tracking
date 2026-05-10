@@ -9104,7 +9104,7 @@
           ]
         },
         "2025-06": {
-          "revenue": 6200,
+          "revenue": 7700,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
@@ -9116,9 +9116,15 @@
             },
             {
               "clientName": "VITAS",
-              "amount": 0,
+              "amount": 1500,
               "notes": "",
               "id": "fce_mozgn9038h"
+            },
+            {
+              "clientName": "Wise Guys (Empowomen)",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgneh5qc"
             }
           ]
         },
@@ -9159,7 +9165,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398665580,
+      "updatedAt": 1778398672650,
       "updatedBy": "Giorgos"
     },
     {
