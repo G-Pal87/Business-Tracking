@@ -9765,12 +9765,18 @@
             },
             {
               "clientName": "Zollhof",
-              "amount": 0,
+              "amount": 2000,
               "notes": "",
               "id": "fce_mozi87pb18"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozi8it8la"
             }
           ],
-          "revenue": 600
+          "revenue": 2600
         },
         "2026-10": {
           "entries": [
@@ -9831,7 +9837,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401328141,
+      "updatedAt": 1778401333052,
       "updatedBy": "Giorgos"
     },
     {
