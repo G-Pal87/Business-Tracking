@@ -9445,18 +9445,18 @@
         "2026-10": {
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "Nexial",
+              "amount": 600,
               "notes": "",
               "id": "fce_mozfxg6qht"
             }
           ],
-          "revenue": 0
+          "revenue": 600
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397457202,
+      "updatedAt": 1778397463555,
       "updatedBy": "Giorgos"
     },
     {
