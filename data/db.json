@@ -9375,6 +9375,12 @@
               "amount": 1600,
               "notes": "",
               "id": "fce_mozfsy3zbz"
+            },
+            {
+              "clientName": "ZOLLHOF",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozft7nj9z"
             }
           ],
           "revenue": 2200
@@ -9382,7 +9388,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397254476,
+      "updatedAt": 1778397261409,
       "updatedBy": "Giorgos"
     },
     {
