@@ -9013,12 +9013,12 @@
           "entries": [
             {
               "clientName": "C TWO",
-              "amount": 12540,
+              "amount": 34560,
               "notes": "34560.83",
               "id": "fce_mozffi0lny"
             }
           ],
-          "revenue": 12540,
+          "revenue": 34560,
           "expenses": 0
         },
         "2026-02": {
@@ -9145,7 +9145,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396837334,
+      "updatedAt": 1778396859510,
       "updatedBy": "Giorgos"
     },
     {
