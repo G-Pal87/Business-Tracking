@@ -9085,7 +9085,7 @@
           ]
         },
         "2025-05": {
-          "revenue": 6200,
+          "revenue": 7700,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
@@ -9097,7 +9097,7 @@
             },
             {
               "clientName": "VITAS",
-              "amount": 0,
+              "amount": 1500,
               "notes": "",
               "id": "fce_mozgmp5m5d"
             }
@@ -9145,7 +9145,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398639977,
+      "updatedAt": 1778398644316,
       "updatedBy": "Giorgos"
     },
     {
