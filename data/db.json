@@ -16479,8 +16479,10 @@
       ],
       "createdAt": 1778403801709,
       "createdBy": "Giorgos",
-      "updatedAt": 1778403801709,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778403974867,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778403974867,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ivt_mozjq9hqn0",
