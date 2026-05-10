@@ -10105,17 +10105,23 @@
           "entries": [
             {
               "clientName": "VITAS GmbH",
-              "amount": 0,
+              "amount": 2500,
               "notes": "",
               "id": "fce_mozgz02vhy"
+            },
+            {
+              "clientName": "Nordic Startup Ventures",
+              "amount": 480,
+              "notes": "",
+              "id": "fce_mozgz41p5l"
             }
           ],
-          "revenue": 0
+          "revenue": 2980
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399210628,
+      "updatedAt": 1778399220304,
       "updatedBy": "Giorgos"
     },
     {
