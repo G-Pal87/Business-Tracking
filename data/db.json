@@ -8942,7 +8942,15 @@
         "2025-09": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": []
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgj4magu"
+            }
+          ]
         },
         "2025-10": {
           "revenue": 0,
@@ -8966,7 +8974,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398466627,
+      "updatedAt": 1778398471039,
       "updatedBy": "Giorgos"
     },
     {
