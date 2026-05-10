@@ -9314,17 +9314,23 @@
             },
             {
               "clientName": "Plug n Play",
+              "amount": 1600,
+              "notes": "Georgia",
+              "id": "fce_mozfqcsqpk"
+            },
+            {
+              "clientName": "ZOLLHOF",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozfqcsqpk"
+              "id": "fce_mozfqquuhl"
             }
           ],
-          "revenue": 300
+          "revenue": 1900
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397136388,
+      "updatedAt": 1778397149315,
       "updatedBy": "Giorgos"
     },
     {
