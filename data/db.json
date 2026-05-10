@@ -9294,6 +9294,12 @@
               "amount": 1500,
               "notes": "",
               "id": "fce_mozfp38gfz"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfpafuim"
             }
           ],
           "revenue": 5700
@@ -9301,7 +9307,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397075046,
+      "updatedAt": 1778397076506,
       "updatedBy": "Giorgos"
     },
     {
