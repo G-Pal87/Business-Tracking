@@ -9088,7 +9088,15 @@
           ]
         },
         "2026-08": {
-          "revenue": 0
+          "revenue": 0.01,
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 0.01,
+              "notes": "",
+              "id": "fce_mozfil00fm"
+            }
+          ]
         },
         "2026-09": {
           "revenue": 0
@@ -9105,7 +9113,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396760831,
+      "updatedAt": 1778396767232,
       "updatedBy": "Giorgos"
     },
     {
