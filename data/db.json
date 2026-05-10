@@ -9434,18 +9434,18 @@
         "2026-09": {
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "Nexial",
+              "amount": 600,
               "notes": "",
               "id": "fce_mozfwya74r"
             }
           ],
-          "revenue": 0
+          "revenue": 600
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397433999,
+      "updatedAt": 1778397440396,
       "updatedBy": "Giorgos"
     },
     {
