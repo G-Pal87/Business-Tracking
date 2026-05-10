@@ -9104,7 +9104,7 @@
           ]
         },
         "2025-06": {
-          "revenue": 7700,
+          "revenue": 12200,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
@@ -9122,7 +9122,7 @@
             },
             {
               "clientName": "Wise Guys (Empowomen)",
-              "amount": 0,
+              "amount": 4500,
               "notes": "",
               "id": "fce_mozgneh5qc"
             }
@@ -9165,7 +9165,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398672650,
+      "updatedAt": 1778398716860,
       "updatedBy": "Giorgos"
     },
     {
