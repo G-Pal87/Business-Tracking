@@ -9332,17 +9332,17 @@
             },
             {
               "clientName": "Workshops Italy (Alexis)",
-              "amount": 0,
+              "amount": 500,
               "notes": "",
               "id": "fce_mozfrhp5e8"
             }
           ],
-          "revenue": 6350
+          "revenue": 6850
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397181156,
+      "updatedAt": 1778397183574,
       "updatedBy": "Giorgos"
     },
     {
