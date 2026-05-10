@@ -9390,17 +9390,17 @@
             },
             {
               "clientName": "Nexial",
-              "amount": 0,
+              "amount": 600,
               "notes": "Certage",
               "id": "fce_mozftj3pfb"
             }
           ],
-          "revenue": 6700
+          "revenue": 7300
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397286225,
+      "updatedAt": 1778397290532,
       "updatedBy": "Giorgos"
     },
     {
