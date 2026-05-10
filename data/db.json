@@ -10117,11 +10117,22 @@
             }
           ],
           "revenue": 2980
+        },
+        "2024-08": {
+          "entries": [
+            {
+              "clientName": "VITAS GmbH",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgzpcana"
+            }
+          ],
+          "revenue": 0
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399225078,
+      "updatedAt": 1778399243493,
       "updatedBy": "Giorgos"
     },
     {
