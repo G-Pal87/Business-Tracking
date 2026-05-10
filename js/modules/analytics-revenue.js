@@ -1,12 +1,16 @@
 // Revenue Analytics Dashboard — structure · growth · collections · contributors · dynamics
-import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS } from '../core/config.js';
 import {
-  availableYears, formatEUR, toEUR, byId,
-  listActive, listActivePayments, listActiveClients,
+  formatEUR, toEUR, byId,
+  listActive, listActivePayments,
   drillRevRows
 } from '../core/data.js';
+import {
+  createFilterState, getCurrentPeriodRange, getComparisonRange,
+  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
+} from './analytics-filters.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const OWNER_COLORS = { you: '#6366f1', rita: '#ec4899', both: '#14b8a6' };
@@ -22,19 +26,8 @@ const REV_COLS = [
   { key: 'ref',    label: 'Ref'    },
   { key: 'eur',    label: 'EUR',    right: true, format: v => formatEUR(v) }
 ];
-const SELECT_STYLE = 'background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer';
-
 // ── Filter state ──────────────────────────────────────────────────────────────
-let gF = {
-  period:       'ytd',
-  customYear:   String(new Date().getFullYear()),
-  customMonths: new Set(),
-  owners:       new Set(),
-  streams:      new Set(),
-  propertyIds:  new Set(),
-  clientIds:    new Set(),
-  compareTo:    'prev-year',
-};
+let gF = createFilterState();
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -44,129 +37,10 @@ export default {
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }
 };
 
-// ── Period range ──────────────────────────────────────────────────────────────
-function getCurrentPeriodRange() {
-  const now   = new Date();
-  const today = now.toISOString().slice(0, 10);
-  const y     = now.getFullYear();
-  const m     = now.getMonth(); // 0-based
-  const d     = now.getDate();
-
-  if (gF.period === 'ytd')
-    return { start: `${y}-01-01`, end: today, label: `YTD ${y}`, isIncomplete: true };
-
-  if (gF.period === 'this-month') {
-    const mm = String(m + 1).padStart(2, '0');
-    const lastDay = new Date(y, m + 1, 0).getDate();
-    return { start: `${y}-${mm}-01`, end: today, label: `${MONTH_LABELS[m]} ${y}`, isIncomplete: d < lastDay };
-  }
-  if (gF.period === 'this-quarter') {
-    const qs = Math.floor(m / 3) * 3;
-    return { start: `${y}-${String(qs + 1).padStart(2, '0')}-01`, end: today, label: `Q${Math.floor(m / 3) + 1} ${y}`, isIncomplete: true };
-  }
-  if (gF.period === 'this-year') {
-    const end = `${y}-12-31`;
-    return { start: `${y}-01-01`, end, label: String(y), isIncomplete: today < end };
-  }
-  if (gF.period === 'last-year') {
-    const ly = y - 1;
-    return { start: `${ly}-01-01`, end: `${ly}-12-31`, label: String(ly), isIncomplete: false };
-  }
-  if (gF.period === 'custom') {
-    const cy = gF.customYear;
-    if (gF.customMonths.size === 0) {
-      const isThisYear = cy === String(y);
-      return { start: `${cy}-01-01`, end: isThisYear ? today : `${cy}-12-31`, label: cy, isIncomplete: isThisYear };
-    }
-    const sorted  = [...gF.customMonths].map(Number).sort((a, b) => a - b);
-    const firstM  = sorted[0], lastM = sorted[sorted.length - 1];
-    const start   = `${cy}-${String(firstM).padStart(2, '0')}-01`;
-    const lastDay = new Date(Number(cy), lastM, 0).getDate();
-    const end     = `${cy}-${String(lastM).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-    return { start, end, label: sorted.map(n => MONTH_LABELS[n - 1]).join(', ') + ' ' + cy, isIncomplete: false };
-  }
-  return { start: `${y}-01-01`, end: today, label: `YTD ${y}`, isIncomplete: true };
-}
-
-function getComparisonRange(cur) {
-  if (gF.compareTo === 'none') return null;
-  const addYears = (s, n) => { const dt = new Date(s); dt.setFullYear(dt.getFullYear() + n); return dt.toISOString().slice(0, 10); };
-
-  if (gF.compareTo === 'prev-period') {
-    const durMs   = new Date(cur.end) - new Date(cur.start);
-    const newEnd  = new Date(new Date(cur.start) - 86400000);
-    const newStart= new Date(newEnd - durMs);
-    const fmt     = dt => dt.toISOString().slice(0, 10);
-    return { start: fmt(newStart), end: fmt(newEnd), label: 'Prev Period' };
-  }
-  if (gF.compareTo === 'last-month') {
-    const now = new Date();
-    const lm  = now.getMonth() === 0 ? 12 : now.getMonth();
-    const ly  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-    const lmStr = String(lm).padStart(2, '0');
-    return { start: `${ly}-${lmStr}-01`, end: `${ly}-${lmStr}-${new Date(ly, lm, 0).getDate()}`, label: `${MONTH_LABELS[lm - 1]} ${ly}` };
-  }
-  if (gF.compareTo === 'last-quarter') {
-    const now  = new Date();
-    const cq   = Math.floor(now.getMonth() / 3);
-    const pq   = cq === 0 ? 3 : cq - 1;
-    const py   = cq === 0 ? now.getFullYear() - 1 : now.getFullYear();
-    const qsm  = pq * 3 + 1, qem = qsm + 2;
-    const qsmS = String(qsm).padStart(2, '0'), qemS = String(qem).padStart(2, '0');
-    return { start: `${py}-${qsmS}-01`, end: `${py}-${qemS}-${new Date(py, qem, 0).getDate()}`, label: `Q${pq + 1} ${py}` };
-  }
-  if (gF.compareTo === 'same-period-last-year')
-    return { start: addYears(cur.start, -1), end: addYears(cur.end, -1), label: 'Same Period LY' };
-  if (gF.compareTo === 'prev-year') {
-    const py  = new Date(cur.start).getFullYear() - 1;
-    const end = cur.isIncomplete ? addYears(cur.end, -1) : `${py}-12-31`;
-    return { start: `${py}-01-01`, end, label: String(py) };
-  }
-  if (gF.compareTo === 'last-year') {
-    const ly = new Date().getFullYear() - 1;
-    return { start: `${ly}-01-01`, end: `${ly}-12-31`, label: String(ly) };
-  }
-  return null;
-}
-
-// ── Month keys for range ──────────────────────────────────────────────────────
-function getMonthKeysForRange(start, end) {
-  const sy = parseInt(start.slice(0, 4)), sm = parseInt(start.slice(5, 7));
-  const ey = parseInt(end.slice(0, 4)),   em = parseInt(end.slice(5, 7));
-  const isSingleYear = sy === ey;
-  const keys = [];
-  let y = sy, m = sm;
-  while (y < ey || (y === ey && m <= em)) {
-    const mm    = String(m).padStart(2, '0');
-    const label = isSingleYear ? MONTH_LABELS[m - 1] : `${MONTH_LABELS[m - 1]} '${String(y).slice(2)}`;
-    keys.push({ key: `${y}-${mm}`, label, y: String(y), m });
-    if (++m > 12) { m = 1; y++; }
-  }
-  return { keys, isSingleYear };
-}
-
-// ── Filter matchers ───────────────────────────────────────────────────────────
-function resolveStream(row) {
-  if (row.stream) return row.stream;
-  if (row.propertyId) {
-    const p = byId('properties', row.propertyId);
-    if (p?.type === 'short_term') return 'short_term_rental';
-    if (p?.type === 'long_term')  return 'long_term_rental';
-  }
-  return null;
-}
-const mStream   = row => { if (!gF.streams.size) return true; const s = resolveStream(row); return !s || gF.streams.has(s); };
-const mOwner    = row => {
-  if (!gF.owners.size) return true;
-  const ow = row.propertyId ? (byId('properties', row.propertyId)?.owner || 'both') : (row.owner || 'both');
-  return ow === 'both' || gF.owners.has(ow);
-};
-const mProperty = row => { if (!gF.propertyIds.size) return true; if (!row.propertyId) return false; return gF.propertyIds.has(row.propertyId); };
-const mClient   = row => { if (!gF.clientIds.size) return true; if (!row.clientId) return false; return gF.clientIds.has(row.clientId); };
-
 // ── Data ──────────────────────────────────────────────────────────────────────
 function getData(start, end) {
   const inRange = d => d && d >= start && d <= end;
+  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
 
   // Property filter → isolate rental revenue (exclude invoices entirely)
   // Client filter   → isolate service revenue (exclude payments entirely)
@@ -351,87 +225,6 @@ function buildKpiSection(cur, cmp, cmpRange) {
   return grid;
 }
 
-// ── Filter bar ────────────────────────────────────────────────────────────────
-function buildFilterBar() {
-  const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
-
-  // Period
-  const periodSel = el('select', { style: SELECT_STYLE });
-  [['ytd','YTD'],['this-month','This Month'],['this-quarter','This Quarter'],
-   ['this-year','This Year'],['last-year','Last Year'],['custom','Custom']
-  ].forEach(([v, lbl]) => {
-    const opt = el('option', { value: v }, lbl);
-    if (gF.period === v) opt.selected = true;
-    periodSel.appendChild(opt);
-  });
-  periodSel.onchange = () => { gF.period = periodSel.value; rebuildView(); };
-  bar.appendChild(periodSel);
-
-  // Custom year + months
-  if (gF.period === 'custom') {
-    const yearSel = el('select', { style: SELECT_STYLE });
-    availableYears().forEach(y => {
-      const opt = el('option', { value: y }, y);
-      if (gF.customYear === y) opt.selected = true;
-      yearSel.appendChild(opt);
-    });
-    yearSel.onchange = () => { gF.customYear = yearSel.value; rebuildView(); };
-    bar.appendChild(yearSel);
-    bar.appendChild(buildMultiSelect(
-      MONTH_LABELS.map((lbl, i) => ({ value: String(i + 1).padStart(2, '0'), label: lbl })),
-      gF.customMonths, 'All Months', rebuildView, 'rev_cust_months'
-    ));
-  }
-
-  // Owner
-  bar.appendChild(buildMultiSelect(
-    Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })),
-    gF.owners, 'All Owners', rebuildView, 'rev_owners'
-  ));
-
-  // Stream
-  bar.appendChild(buildMultiSelect(
-    Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, css: v.css })),
-    gF.streams, 'All Streams', rebuildView, 'rev_streams'
-  ));
-
-  // Property
-  bar.appendChild(buildMultiSelect(
-    listActive('properties').map(p => ({ value: p.id, label: p.name })),
-    gF.propertyIds, 'All Properties', rebuildView, 'rev_props'
-  ));
-
-  // Client
-  bar.appendChild(buildMultiSelect(
-    listActiveClients().map(c => ({ value: c.id, label: c.name })),
-    gF.clientIds, 'All Clients', rebuildView, 'rev_clients'
-  ));
-
-  // Compare To
-  const cmpSel = el('select', { style: SELECT_STYLE });
-  [['prev-year','vs Prev Year'],['same-period-last-year','vs Same Period LY'],
-   ['prev-period','vs Prev Period'],['last-month','vs Last Month'],
-   ['last-quarter','vs Last Quarter'],['last-year','vs Last Year'],['none','No Comparison']
-  ].forEach(([v, lbl]) => {
-    const opt = el('option', { value: v }, lbl);
-    if (gF.compareTo === v) opt.selected = true;
-    cmpSel.appendChild(opt);
-  });
-  cmpSel.onchange = () => { gF.compareTo = cmpSel.value; rebuildView(); };
-  bar.appendChild(cmpSel);
-
-  // Reset
-  bar.appendChild(button('Reset', {
-    variant: 'sm ghost',
-    onClick: () => {
-      gF = { period: 'ytd', customYear: String(new Date().getFullYear()), customMonths: new Set(), owners: new Set(), streams: new Set(), propertyIds: new Set(), clientIds: new Set(), compareTo: 'prev-year' };
-      rebuildView();
-    }
-  }));
-
-  return bar;
-}
-
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -589,6 +382,7 @@ function renderGrowthTrend({ payments, invoices }, months) {
 }
 
 function renderPaidOutstanding({ invoices }, months, start, end) {
+  const { mStream, mOwner, mClient } = makeMatchers(gF);
   const allOut = gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i =>
     !['paid', 'cancelled', 'void'].includes(i.status) &&
     i.issueDate && i.issueDate >= start && i.issueDate <= end &&
@@ -666,6 +460,7 @@ function renderAging({ outstanding }) {
 
 // ── Seasonality heatmap (DOM table, shows all available years for context) ────
 function buildSeasonalityHeatmap() {
+  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
   const pays = listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p));
   const invs = gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i => i.status === 'paid' && mStream(i) && mOwner(i) && mClient(i));
   const years = [...new Set([...pays.map(p => p.date?.slice(0, 4)), ...invs.map(i => i.issueDate?.slice(0, 4))].filter(Boolean))].sort();
@@ -769,16 +564,14 @@ function buildView() {
     el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' }, 'Structure · Growth · Collections · Contributors · Dynamics')
   ));
 
-  wrap.appendChild(buildFilterBar());
+  wrap.appendChild(buildFilterBar(gF, { showOwner: true, showStream: true, showProperty: true, showClient: true, storagePrefix: 'rev' }, (newGF) => { if (newGF) gF = newGF; rebuildView(); }));
 
-  const curRange = getCurrentPeriodRange();
-  const cmpRange = getComparisonRange(curRange);
+  const curRange = getCurrentPeriodRange(gF);
+  const cmpRange = getComparisonRange(gF, curRange);
   const curData  = getData(curRange.start, curRange.end);
   const cmpData  = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
 
-  wrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px' },
-    curRange.label + (curRange.isIncomplete ? ' (in progress)' : '') + (cmpRange ? ` · vs ${cmpRange.label}` : '')
-  ));
+  wrap.appendChild(buildComparisonLine(curRange, cmpRange));
 
   wrap.appendChild(buildKpiSection(curData, cmpData, cmpRange));
 
