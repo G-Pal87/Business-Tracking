@@ -92,6 +92,18 @@ function build() {
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
   attachSortFilter(tableWrap);
+  tableWrap.addEventListener('sf:filter', () => {
+    const countEl  = tableWrap.querySelector('.table-footer-count');
+    const capexEl  = tableWrap.querySelector('.table-footer-capex');
+    const totalEl  = tableWrap.querySelector('.table-footer-total');
+    if (!countEl || !totalEl) return;
+    const vis = [...tableWrap.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none');
+    const total = vis.reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0);
+    const capex = vis.filter(tr => tr.dataset.capex === '1').reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0);
+    countEl.textContent = `${vis.length} expense(s)`;
+    if (capexEl) capexEl.textContent = formatEUR(capex);
+    totalEl.textContent = formatEUR(total);
+  });
 
   const syncDeleteBtn = () => {
     if (selected.size > 0) {
@@ -149,6 +161,8 @@ function build() {
       };
 
       const tr = el('tr');
+      tr.dataset.eur = String(toEUR(r.amount, r.currency));
+      tr.dataset.capex = resolveExpenseFields(r).accountingType === 'capex' ? '1' : '0';
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       tr.appendChild(chkTd);
       tr.appendChild(el('td', {}, fmtDate(r.date)));
@@ -186,9 +200,9 @@ function build() {
 
     const totalEUR = rows.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
     const capexEUR = rows.filter(r => resolveExpenseFields(r).accountingType === 'capex').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
-    tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted' }, `${rows.length} expense(s) · CapEx: ${formatEUR(capexEUR)}`),
-      el('strong', { class: 'num' }, `Total: ${formatEUR(totalEUR)}`)
+    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
+      el('span', { class: 'muted' }, el('span', { class: 'table-footer-count' }, `${rows.length} expense(s)`), ' · CapEx: ', el('span', { class: 'table-footer-capex' }, formatEUR(capexEUR))),
+      el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
     ));
   };
 
