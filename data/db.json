@@ -9274,17 +9274,17 @@
             },
             {
               "clientName": "Nexial",
-              "amount": 0,
-              "notes": "",
+              "amount": 540,
+              "notes": "Votin",
               "id": "fce_mozfns587d"
             }
           ],
-          "revenue": 12140
+          "revenue": 12680
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397011455,
+      "updatedAt": 1778397021172,
       "updatedBy": "Giorgos"
     },
     {
