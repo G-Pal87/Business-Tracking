@@ -9467,18 +9467,18 @@
         "2026-12": {
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "Nexial",
+              "amount": 600,
               "notes": "Votin-Certage",
               "id": "fce_mozfzh8a7u"
             }
           ],
-          "revenue": 0
+          "revenue": 600
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397557131,
+      "updatedAt": 1778397561593,
       "updatedBy": "Giorgos"
     },
     {
