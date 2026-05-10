@@ -9110,11 +9110,11 @@
           ]
         },
         "2026-10": {
-          "revenue": 0,
+          "revenue": 12540,
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "C TWO",
+              "amount": 12540,
               "notes": "",
               "id": "fce_mozfiznc9f"
             }
@@ -9129,7 +9129,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396782584,
+      "updatedAt": 1778396788768,
       "updatedBy": "Giorgos"
     },
     {
