@@ -9268,17 +9268,23 @@
             },
             {
               "clientName": "Plug n Play",
-              "amount": 0,
+              "amount": 1740,
               "notes": "",
               "id": "fce_mozfnjbci2"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfns587d"
             }
           ],
-          "revenue": 10400
+          "revenue": 12140
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397000225,
+      "updatedAt": 1778397006140,
       "updatedBy": "Giorgos"
     },
     {
