@@ -9159,7 +9159,7 @@
           "expenseEntries": [],
           "entries": [
             {
-              "clientName": "",
+              "clientName": "Polish Startup",
               "amount": 0,
               "notes": "",
               "id": "fce_mozgr9x9fa"
@@ -9193,7 +9193,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398848765,
+      "updatedAt": 1778398858165,
       "updatedBy": "Giorgos"
     },
     {
