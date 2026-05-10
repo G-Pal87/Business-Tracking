@@ -7625,7 +7625,7 @@
     {
       "id": "exp_moioka9yih",
       "propertyId": "prop_mohgu7hc28",
-      "category": "management",
+      "category": "renovation",
       "amount": 8333333,
       "currency": "HUF",
       "date": "2026-04-28",
@@ -7637,11 +7637,11 @@
       "inventoryQty": 0,
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778446478515,
+      "updatedAt": 1778446484616,
       "updatedBy": "Giorgos",
       "inventoryBatches": [],
       "accountingType": "capex",
-      "costCategory": "property_management",
+      "costCategory": "renovation",
       "recurrence": "one_off"
     },
     {
