@@ -9796,18 +9796,24 @@
               "id": "fce_mozi612erl"
             },
             {
+              "clientName": "Nexial",
+              "amount": 600,
+              "notes": "",
+              "id": "fce_mozi69sgci"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozi69sgci"
+              "id": "fce_mozi6dwj90"
             }
           ],
-          "revenue": 4200
+          "revenue": 4800
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401228048,
+      "updatedAt": 1778401233379,
       "updatedBy": "Giorgos"
     },
     {
