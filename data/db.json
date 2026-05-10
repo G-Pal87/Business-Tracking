@@ -10018,11 +10018,22 @@
             }
           ],
           "revenue": 12561
+        },
+        "2024-10": {
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgxqym1m"
+            }
+          ],
+          "revenue": 0
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399147304,
+      "updatedAt": 1778399152836,
       "updatedBy": "Giorgos"
     },
     {
