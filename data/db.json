@@ -9850,11 +9850,11 @@
             {
               "id": "expe_moziay4t5z",
               "description": "Zollhoff",
-              "amount": 0,
+              "amount": 1500,
               "notes": ""
             }
           ],
-          "expenses": 5100
+          "expenses": 6600
         },
         "2026-06": {
           "entries": [
@@ -9882,7 +9882,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401454517,
+      "updatedAt": 1778401460169,
       "updatedBy": "Giorgos"
     },
     {
