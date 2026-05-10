@@ -9833,13 +9833,19 @@
               "id": "fce_mozfzh8a7u"
             },
             {
+              "clientName": "HeyCare",
+              "amount": 4500,
+              "notes": "",
+              "id": "fce_mozicdg46e"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozicdg46e"
+              "id": "fce_mozicifumd"
             }
           ],
-          "revenue": 600,
+          "revenue": 5100,
           "expenseEntries": [
             {
               "id": "expe_moziaivv50",
@@ -9888,7 +9894,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401512725,
+      "updatedAt": 1778401519194,
       "updatedBy": "Giorgos"
     },
     {
