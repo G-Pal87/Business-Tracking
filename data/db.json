@@ -8888,13 +8888,13 @@
           ]
         },
         "2025-05": {
-          "revenue": 0,
+          "revenue": 12450,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
             {
               "clientName": "C TWO",
-              "amount": 0,
+              "amount": 12450,
               "notes": "",
               "id": "fce_mozgigiqqt"
             }
@@ -8903,7 +8903,15 @@
         "2025-06": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": []
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgimjsjj"
+            }
+          ]
         },
         "2025-07": {
           "revenue": 0,
@@ -8942,7 +8950,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398439498,
+      "updatedAt": 1778398445224,
       "updatedBy": "Giorgos"
     },
     {
