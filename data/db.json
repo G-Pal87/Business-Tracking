@@ -9748,12 +9748,12 @@
             },
             {
               "clientName": "HeyCare",
-              "amount": 0,
+              "amount": 4500,
               "notes": "",
               "id": "fce_mozi7l2a2f"
             }
           ],
-          "revenue": 4800
+          "revenue": 9300
         },
         "2026-09": {
           "entries": [
@@ -9825,7 +9825,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401303067,
+      "updatedAt": 1778401313711,
       "updatedBy": "Giorgos"
     },
     {
