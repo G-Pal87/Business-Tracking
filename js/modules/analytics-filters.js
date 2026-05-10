@@ -234,6 +234,116 @@ export function makeMatchers(gF) {
   };
 }
 
+// ── Available filter options (leave-one-out faceting) ─────────────────────────
+// For each dimension, compute available options using ALL OTHER active filters
+// (not the dimension itself), then trim stale selections from gF.
+function computeAvailableOptions(gF) {
+  const allProps   = listActive('properties');
+  const allPays    = listActivePayments();
+  const allInvs    = listActive('invoices').filter(i => i.status !== 'cancelled' && i.status !== 'void');
+  const allClients = listActiveClients();
+
+  const propStreamKey = p => p.type === 'short_term' ? 'short_term_rental'
+                           : p.type === 'long_term'  ? 'long_term_rental' : null;
+  const ownerOf = propId => { const p = byId('properties', propId); return p?.owner || 'both'; };
+
+  // ── Available Properties ─────────────────────────────────────────────────
+  // Leave-one-out: NOT constrained by gF.propertyIds
+  // Constrained by: owners, streams
+  const availProps = allProps.filter(p => {
+    if (gF.owners.size > 0 && p.owner !== 'both' && !gF.owners.has(p.owner)) return false;
+    if (gF.streams.size > 0) {
+      const s = propStreamKey(p);
+      if (!s || !gF.streams.has(s)) return false;
+    }
+    return true;
+  });
+  const availPropIds = new Set(availProps.map(p => p.id));
+  for (const id of [...gF.propertyIds]) if (!availPropIds.has(id)) gF.propertyIds.delete(id);
+
+  // ── Available Owners ─────────────────────────────────────────────────────
+  // Leave-one-out: NOT constrained by gF.owners
+  // Constrained by: streams, propertyIds
+  const availOwners = new Set();
+  allProps.forEach(p => {
+    if (gF.streams.size > 0) {
+      const s = propStreamKey(p);
+      if (!s || !gF.streams.has(s)) return;
+    }
+    if (gF.propertyIds.size > 0 && !gF.propertyIds.has(p.id)) return;
+    availOwners.add(p.owner || 'both');
+  });
+  // Owners from invoices (service revenue)
+  allInvs.forEach(i => {
+    if (gF.streams.size > 0) {
+      const s = resolveStream(i);
+      if (!s || !gF.streams.has(s)) return;
+    }
+    if (gF.clientIds.size > 0 && !gF.clientIds.has(i.clientId)) return;
+    const ow = i.propertyId ? ownerOf(i.propertyId) : (i.owner || 'both');
+    availOwners.add(ow);
+  });
+  for (const o of [...gF.owners]) if (!availOwners.has(o)) gF.owners.delete(o);
+
+  // ── Available Streams ────────────────────────────────────────────────────
+  // Leave-one-out: NOT constrained by gF.streams
+  // Constrained by: owners, propertyIds, clientIds
+  const availStreams = new Set();
+  // From property types (rental streams)
+  allProps.forEach(p => {
+    if (gF.owners.size > 0 && p.owner !== 'both' && !gF.owners.has(p.owner)) return;
+    if (gF.propertyIds.size > 0 && !gF.propertyIds.has(p.id)) return;
+    const s = propStreamKey(p);
+    if (s) availStreams.add(s);
+  });
+  // From payments
+  allPays.forEach(pay => {
+    const s = resolveStream(pay);
+    if (!s) return;
+    if (gF.propertyIds.size > 0 && (!pay.propertyId || !gF.propertyIds.has(pay.propertyId))) return;
+    if (gF.owners.size > 0 && pay.propertyId) {
+      const ow = ownerOf(pay.propertyId);
+      if (ow !== 'both' && !gF.owners.has(ow)) return;
+    }
+    availStreams.add(s);
+  });
+  // From invoices
+  allInvs.forEach(i => {
+    const s = resolveStream(i);
+    if (!s) return;
+    if (gF.clientIds.size > 0 && !gF.clientIds.has(i.clientId)) return;
+    if (gF.owners.size > 0 && i.propertyId) {
+      const ow = ownerOf(i.propertyId);
+      if (ow !== 'both' && !gF.owners.has(ow)) return;
+    }
+    if (gF.propertyIds.size > 0 && i.propertyId && !gF.propertyIds.has(i.propertyId)) return;
+    availStreams.add(s);
+  });
+  for (const s of [...gF.streams]) if (!availStreams.has(s)) gF.streams.delete(s);
+
+  // ── Available Clients ────────────────────────────────────────────────────
+  // Leave-one-out: NOT constrained by gF.clientIds
+  // Constrained by: streams, owners, propertyIds
+  const availClientIds = new Set();
+  allInvs.forEach(i => {
+    if (!i.clientId) return;
+    if (gF.streams.size > 0) {
+      const s = resolveStream(i);
+      if (!s || !gF.streams.has(s)) return;
+    }
+    if (gF.owners.size > 0 && i.propertyId) {
+      const ow = ownerOf(i.propertyId);
+      if (ow !== 'both' && !gF.owners.has(ow)) return;
+    }
+    if (gF.propertyIds.size > 0 && i.propertyId && !gF.propertyIds.has(i.propertyId)) return;
+    availClientIds.add(i.clientId);
+  });
+  const availClients = allClients.filter(c => availClientIds.has(c.id));
+  for (const id of [...gF.clientIds]) if (!availClientIds.has(id)) gF.clientIds.delete(id);
+
+  return { availProps, availOwners, availStreams, availClients };
+}
+
 // ── Comparison explanation line ───────────────────────────────────────────────
 export function buildComparisonLine(curRange, cmpRange) {
   const fmtR = r => {
@@ -273,6 +383,9 @@ export function buildFilterBar(gF, opts, onChange) {
     storagePrefix = 'ana',
   } = opts || {};
 
+  // Compute available options using leave-one-out faceting & trim stale selections
+  const { availProps, availOwners, availStreams, availClients } = computeAvailableOptions(gF);
+
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
 
   // Period
@@ -288,40 +401,38 @@ export function buildFilterBar(gF, opts, onChange) {
     bar.appendChild(toIn);
   }
 
-  // Owner
+  // Owner — only show owners that exist in data given other filters
   if (showOwner) {
     bar.appendChild(buildMultiSelect(
-      Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })),
+      Object.entries(OWNERS)
+        .filter(([k]) => availOwners.has(k))
+        .map(([k, v]) => ({ value: k, label: v })),
       gF.owners, 'All Owners', onChange, `${storagePrefix}_owners`
     ));
   }
 
-  // Stream
+  // Stream — only show streams that exist in data given other filters
   if (showStream) {
     bar.appendChild(buildMultiSelect(
-      Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, css: v.css })),
+      Object.entries(STREAMS)
+        .filter(([k]) => availStreams.has(k))
+        .map(([k, v]) => ({ value: k, label: v.label, css: v.css })),
       gF.streams, 'All Streams', onChange, `${storagePrefix}_streams`
     ));
   }
 
-  // Property (with owner-faceting: restrict list to selected owners)
+  // Property — only show properties valid for selected owners & streams
   if (showProperty) {
-    const allProps = listActive('properties');
-    const avail    = gF.owners.size ? allProps.filter(p => p.owner === 'both' || gF.owners.has(p.owner)) : allProps;
-    if (gF.owners.size) {
-      const validIds = new Set(avail.map(p => p.id));
-      for (const id of [...gF.propertyIds]) if (!validIds.has(id)) gF.propertyIds.delete(id);
-    }
     bar.appendChild(buildMultiSelect(
-      avail.map(p => ({ value: p.id, label: p.name })),
+      availProps.map(p => ({ value: p.id, label: p.name })),
       gF.propertyIds, 'All Properties', onChange, `${storagePrefix}_props`
     ));
   }
 
-  // Client
+  // Client — only show clients reachable given selected streams, owners, properties
   if (showClient) {
     bar.appendChild(buildMultiSelect(
-      listActiveClients().map(c => ({ value: c.id, label: c.name })),
+      availClients.map(c => ({ value: c.id, label: c.name })),
       gF.clientIds, 'All Clients', onChange, `${storagePrefix}_clients`
     ));
   }
