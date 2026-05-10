@@ -5957,5 +5957,24 @@
       "token": ""
     }
   },
-  "reservationExpenseRules": []
+  "reservationExpenseRules": [
+    {
+      "id": "rer_mozixkjgnf",
+      "name": "Airbnb Cleaning Fee",
+      "propertyId": "",
+      "category": "cleaning",
+      "vendorId": "vnd_mo8xfao7jy",
+      "amountSource": "airbnb_cleaning_fee",
+      "fixedAmount": 0,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778402539492,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778402539492,
+      "updatedBy": "Giorgos"
+    }
+  ]
 }
