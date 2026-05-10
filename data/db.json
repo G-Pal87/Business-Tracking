@@ -16501,8 +16501,10 @@
       ],
       "createdAt": 1778403840398,
       "createdBy": "Giorgos",
-      "updatedAt": 1778403904626,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778403977033,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778403977033,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ivt_mozjsbu385",
@@ -16521,8 +16523,10 @@
       ],
       "createdAt": 1778403936747,
       "createdBy": "Giorgos",
-      "updatedAt": 1778403936747,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778403978645,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778403978645,
+      "deletedBy": "Giorgos"
     }
   ],
   "appConfig": {
