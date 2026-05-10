@@ -9044,7 +9044,15 @@
           ]
         },
         "2026-04": {
-          "revenue": 0
+          "revenue": 0,
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfhl57c1"
+            }
+          ]
         },
         "2026-05": {
           "revenue": 0
@@ -9073,7 +9081,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396699238,
+      "updatedAt": 1778396717131,
       "updatedBy": "Giorgos"
     },
     {
