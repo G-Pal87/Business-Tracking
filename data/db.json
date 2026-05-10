@@ -9167,13 +9167,13 @@
           ]
         },
         "2025-09": {
-          "revenue": 0,
+          "revenue": 650,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "Startup coaching",
+              "amount": 650,
               "notes": "",
               "id": "fce_mozgrspthi"
             }
@@ -9201,7 +9201,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398873121,
+      "updatedAt": 1778398880083,
       "updatedBy": "Giorgos"
     },
     {
