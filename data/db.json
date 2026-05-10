@@ -9323,6 +9323,12 @@
               "amount": 4200,
               "notes": "",
               "id": "fce_mozfqquuhl"
+            },
+            {
+              "clientName": "SQG",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfr0rvpf"
             }
           ],
           "revenue": 6100
@@ -9330,7 +9336,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397153593,
+      "updatedAt": 1778397159651,
       "updatedBy": "Giorgos"
     },
     {
