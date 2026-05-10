@@ -274,19 +274,14 @@ function buildKpiGrid(curMetrics, cmpMetrics, cmpRange) {
     invertDelta: false, compLabel: cmpLabel
   }));
 
-  // 2. Forecast Revenue
-  let fcDelta = null, fcDeltaLabel = cmpLabel;
-  if (cmpMetrics?.fcRev != null && fcRev != null) {
-    fcDelta = safePct(fcRev, cmpMetrics.fcRev);
-  } else if (fcRev != null) {
-    fcDelta = safePct(rev, fcRev);
-    fcDeltaLabel = 'forecast';
-  }
+  // 2. Forecast Revenue — variance: (actual − forecast) / forecast, always
+  const fcDelta = (fcRev != null && fcRev > 0) ? safePct(rev, fcRev) : null;
   grid.appendChild(kpiCard({
     label: 'Forecast Revenue', value: fcRev != null ? formatEUR(fcRev) : '—',
     variant: '',
     onClick: () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
-    delta: fcDelta, invertDelta: false, compLabel: fcDeltaLabel
+    delta: fcDelta, invertDelta: false,
+    compLabel: fcDelta !== null ? 'actual revenue' : '',
   }));
 
   // 3. Operating Expenses
