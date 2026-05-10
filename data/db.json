@@ -9069,7 +9069,7 @@
           "revenue": 12540,
           "entries": [
             {
-              "clientName": "",
+              "clientName": "C TWO",
               "amount": 12540,
               "notes": "",
               "id": "fce_mozfi1vrkj"
@@ -9077,7 +9077,15 @@
           ]
         },
         "2026-07": {
-          "revenue": 0
+          "revenue": 0,
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfidp2du"
+            }
+          ]
         },
         "2026-08": {
           "revenue": 0
@@ -9097,7 +9105,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396747357,
+      "updatedAt": 1778396754134,
       "updatedBy": "Giorgos"
     },
     {
