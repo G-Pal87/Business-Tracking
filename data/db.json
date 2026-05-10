@@ -9243,18 +9243,18 @@
         "2026-01": {
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "VITAS",
+              "amount": 3000,
               "notes": "",
               "id": "fce_mozfmc8pfp"
             }
           ],
-          "revenue": 0
+          "revenue": 3000
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396938873,
+      "updatedAt": 1778396945420,
       "updatedBy": "Giorgos"
     },
     {
