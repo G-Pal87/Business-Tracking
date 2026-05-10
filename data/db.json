@@ -7625,7 +7625,7 @@
     {
       "id": "exp_moioka9yih",
       "propertyId": "prop_mohgu7hc28",
-      "category": "mortgage",
+      "category": "maintenance",
       "amount": 8333333,
       "currency": "HUF",
       "date": "2026-04-28",
@@ -7637,11 +7637,11 @@
       "inventoryQty": 0,
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778446460467,
+      "updatedAt": 1778446469202,
       "updatedBy": "Giorgos",
       "inventoryBatches": [],
       "accountingType": "capex",
-      "costCategory": "financing",
+      "costCategory": "maintenance",
       "recurrence": "one_off"
     },
     {
