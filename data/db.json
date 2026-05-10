@@ -9066,11 +9066,11 @@
           ]
         },
         "2026-06": {
-          "revenue": 0,
+          "revenue": 12540,
           "entries": [
             {
               "clientName": "",
-              "amount": 0,
+              "amount": 12540,
               "notes": "",
               "id": "fce_mozfi1vrkj"
             }
@@ -9097,7 +9097,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396738823,
+      "updatedAt": 1778396747357,
       "updatedBy": "Giorgos"
     },
     {
