@@ -9421,6 +9421,12 @@
               "amount": 3500,
               "notes": "",
               "id": "fce_mozfw0qnie"
+            },
+            {
+              "clientName": "Nexial",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfwfdfio"
             }
           ],
           "revenue": 3500
@@ -9428,7 +9434,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397406263,
+      "updatedAt": 1778397411198,
       "updatedBy": "Giorgos"
     },
     {
