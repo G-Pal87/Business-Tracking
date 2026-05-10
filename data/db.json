@@ -9262,17 +9262,17 @@
             },
             {
               "clientName": "",
-              "amount": 0,
+              "amount": 400,
               "notes": "",
               "id": "fce_mozfnbny86"
             }
           ],
-          "revenue": 10000
+          "revenue": 10400
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396984782,
+      "updatedAt": 1778396987625,
       "updatedBy": "Giorgos"
     },
     {
