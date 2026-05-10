@@ -9154,13 +9154,13 @@
           ]
         },
         "2025-08": {
-          "revenue": 0,
+          "revenue": 170,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
             {
               "clientName": "Polish Startup",
-              "amount": 0,
+              "amount": 170,
               "notes": "",
               "id": "fce_mozgr9x9fa"
             }
@@ -9169,7 +9169,15 @@
         "2025-09": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": []
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgrspthi"
+            }
+          ]
         },
         "2025-10": {
           "revenue": 0,
@@ -9193,7 +9201,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398858165,
+      "updatedAt": 1778398873121,
       "updatedBy": "Giorgos"
     },
     {
