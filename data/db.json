@@ -9713,7 +9713,7 @@
           "entries": [
             {
               "clientName": "ZOLLHOF",
-              "amount": 3500,
+              "amount": 4200,
               "notes": "",
               "id": "fce_mozfuntxp3"
             },
@@ -9724,7 +9724,7 @@
               "id": "fce_mozfuut3no"
             }
           ],
-          "revenue": 4100
+          "revenue": 4800
         },
         "2026-08": {
           "entries": [
@@ -9813,7 +9813,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401242164,
+      "updatedAt": 1778401261552,
       "updatedBy": "Giorgos"
     },
     {
