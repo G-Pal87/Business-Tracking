@@ -9839,13 +9839,13 @@
               "id": "fce_mozicdg46e"
             },
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "Zolhoff",
+              "amount": 1500,
               "notes": "",
               "id": "fce_mozicifumd"
             }
           ],
-          "revenue": 5100,
+          "revenue": 6600,
           "expenseEntries": [
             {
               "id": "expe_moziaivv50",
@@ -9894,7 +9894,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401519194,
+      "updatedAt": 1778401526047,
       "updatedBy": "Giorgos"
     },
     {
