@@ -259,6 +259,7 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } =
     [...tbody.querySelectorAll('tr')].forEach(tr => {
       tr.style.display = !searchTerm || tr.textContent.toLowerCase().includes(searchTerm) ? '' : 'none';
     });
+    tableWrap.dispatchEvent(new CustomEvent('sf:filter'));
   };
 
   const updateArrows = ths => {

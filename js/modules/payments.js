@@ -119,6 +119,14 @@ function buildAllPayments(wrap) {
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
   attachSortFilter(tableWrap);
+  tableWrap.addEventListener('sf:filter', () => {
+    const countEl = tableWrap.querySelector('.table-footer-count');
+    const totalEl = tableWrap.querySelector('.table-footer-total');
+    if (!countEl || !totalEl) return;
+    const vis = [...tableWrap.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none');
+    countEl.textContent = `${vis.length} payment(s)`;
+    totalEl.textContent = formatEUR(vis.reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0));
+  });
 
   const syncDeleteBtn = () => {
     if (selected.size > 0) {
@@ -181,6 +189,7 @@ function buildAllPayments(wrap) {
       };
 
       const tr = el('tr');
+      tr.dataset.eur = String(toEUR(r.amount, r.currency));
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       tr.appendChild(chkTd);
       tr.appendChild(el('td', {}, fmtDate(r.date)));
@@ -225,9 +234,9 @@ function buildAllPayments(wrap) {
     };
 
     const totalEUR = rows.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
-    tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted' }, `${rows.length} payment(s)`),
-      el('strong', { class: 'num' }, `Total: ${formatEUR(totalEUR)}`)
+    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
+      el('span', { class: 'muted table-footer-count' }, `${rows.length} payment(s)`),
+      el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
     ));
   };
 

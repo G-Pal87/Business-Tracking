@@ -178,6 +178,18 @@ function build() {
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
   attachSortFilter(tableWrap);
+  tableWrap.addEventListener('sf:filter', () => {
+    const countEl = tableWrap.querySelector('.table-footer-count');
+    const paidEl  = tableWrap.querySelector('.table-footer-paid');
+    const totalEl = tableWrap.querySelector('.table-footer-total');
+    if (!countEl || !totalEl) return;
+    const vis = [...tableWrap.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none');
+    const total = vis.reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0);
+    const paid  = vis.filter(tr => tr.dataset.paid === '1').reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0);
+    countEl.textContent = `${vis.length} invoice(s)`;
+    if (paidEl) paidEl.textContent = formatEUR(paid);
+    totalEl.textContent = formatEUR(total);
+  });
 
   const syncDeleteBtn = () => {
     if (selected.size > 0) {
@@ -248,6 +260,8 @@ function build() {
       };
 
       const tr = el('tr');
+      tr.dataset.eur = String(toEUR(r.total, r.currency));
+      tr.dataset.paid = r.status === 'paid' ? '1' : '0';
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       chkTd.onclick = e => e.stopPropagation();
       tr.appendChild(chkTd);
@@ -290,14 +304,14 @@ function build() {
     const paidEUR = paidRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
     const paidSpan = el('span', { style: 'cursor:pointer', title: 'Drill down' });
     paidSpan.appendChild(document.createTextNode('Paid: '));
-    paidSpan.appendChild(el('strong', { class: 'num' }, formatEUR(paidEUR)));
+    paidSpan.appendChild(el('strong', { class: 'num table-footer-paid' }, formatEUR(paidEUR)));
     paidSpan.onclick = () => drillDownModal('Paid Invoices (filtered)', invDrillRows(paidRows), INV_COLS);
     const totalSpanEl = el('span', { style: 'cursor:pointer', title: 'Drill down' });
     totalSpanEl.appendChild(document.createTextNode('Total: '));
-    totalSpanEl.appendChild(el('strong', { class: 'num' }, formatEUR(totalEUR)));
+    totalSpanEl.appendChild(el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)));
     totalSpanEl.onclick = () => drillDownModal('All Invoices (filtered)', invDrillRows(rows), INV_COLS);
-    tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px;flex-wrap:wrap;gap:8px' },
-      el('span', { class: 'muted' }, `${rows.length} invoice(s)`),
+    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px;flex-wrap:wrap;gap:8px' },
+      el('span', { class: 'muted table-footer-count' }, `${rows.length} invoice(s)`),
       el('div', { class: 'flex gap-16' }, paidSpan, totalSpanEl)
     ));
   };
