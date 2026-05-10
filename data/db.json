@@ -9254,7 +9254,7 @@
           ]
         },
         "2025-12": {
-          "revenue": 500,
+          "revenue": 4000,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
@@ -9271,10 +9271,16 @@
               "id": "fce_mozgv6nvaf"
             },
             {
+              "clientName": "ZOLLHOF",
+              "amount": 3500,
+              "notes": "",
+              "id": "fce_mozgvg1xfo"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozgvg1xfo"
+              "id": "fce_mozgvkdhhx"
             }
           ]
         }
@@ -9285,7 +9291,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399043333,
+      "updatedAt": 1778399048933,
       "updatedBy": "Giorgos"
     },
     {
