@@ -10157,8 +10157,14 @@
             {
               "clientName": "Startup Wise Guys",
               "amount": 400,
-              "notes": "",
+              "notes": "Cyber Security Lead Coaching",
               "id": "fce_mozh1jwmkg"
+            },
+            {
+              "clientName": "VITAS GmbH",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozh1r0g94"
             }
           ],
           "revenue": 400
@@ -10166,7 +10172,7 @@
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399333237,
+      "updatedAt": 1778399340974,
       "updatedBy": "Giorgos"
     },
     {
