@@ -9831,6 +9831,12 @@
               "amount": 600,
               "notes": "Votin-Certage",
               "id": "fce_mozfzh8a7u"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozicdg46e"
             }
           ],
           "revenue": 600,
@@ -9882,7 +9888,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401460169,
+      "updatedAt": 1778401512725,
       "updatedBy": "Giorgos"
     },
     {
