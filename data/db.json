@@ -9725,12 +9725,12 @@
             },
             {
               "clientName": "Plug n Play",
-              "amount": 0,
+              "amount": 1200,
               "notes": "",
               "id": "fce_mozi70z4dd"
             }
           ],
-          "revenue": 4800
+          "revenue": 6000
         },
         "2026-08": {
           "entries": [
@@ -9819,7 +9819,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401267361,
+      "updatedAt": 1778401269937,
       "updatedBy": "Giorgos"
     },
     {
