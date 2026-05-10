@@ -9102,7 +9102,7 @@
           "revenue": 0,
           "entries": [
             {
-              "clientName": "",
+              "clientName": "C TWO",
               "amount": 0,
               "notes": "",
               "id": "fce_mozfis6jqq"
@@ -9121,7 +9121,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396772907,
+      "updatedAt": 1778396776381,
       "updatedBy": "Giorgos"
     },
     {
