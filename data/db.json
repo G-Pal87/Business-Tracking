@@ -9457,17 +9457,17 @@
           "entries": [
             {
               "clientName": "Nexial",
-              "amount": 0,
+              "amount": 600,
               "notes": "",
               "id": "fce_mozfy4sp59"
             }
           ],
-          "revenue": 0
+          "revenue": 600
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397495520,
+      "updatedAt": 1778397498835,
       "updatedBy": "Giorgos"
     },
     {
