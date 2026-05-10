@@ -9290,18 +9290,18 @@
               "id": "fce_mozfoypd6"
             },
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "VITAS",
+              "amount": 1500,
               "notes": "",
               "id": "fce_mozfp38gfz"
             }
           ],
-          "revenue": 4200
+          "revenue": 5700
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397067168,
+      "updatedAt": 1778397075046,
       "updatedBy": "Giorgos"
     },
     {
