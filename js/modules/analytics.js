@@ -1,18 +1,20 @@
 // Executive Analytics Dashboard
-import { el, buildMultiSelect, button, fmtDate, drillDownModal } from '../core/ui.js';
+import { el, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, COST_CATEGORIES, EXPENSE_CATEGORIES } from '../core/config.js';
 import {
-  availableYears, formatEUR, toEUR, byId,
+  formatEUR, toEUR, byId,
   listActive, listActivePayments,
   isCapEx, drillRevRows, drillExpRows,
-  forecastedRevenueEUR, forecastMonthlyEUR,
+  forecastMonthlyEUR,
   sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR
 } from '../core/data.js';
+import {
+  createFilterState, getCurrentPeriodRange, getComparisonRange,
+  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
+} from './analytics-filters.js';
 
 // ── Constants ────────────────────────────────────────────────────────────────
-const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
 const ALL_CHART_IDS = [
   'exec-trend-rev','exec-trend-profit','exec-trend-cashflow',
   'exec-kd-rev-stream','exec-kd-exp-cat',
@@ -22,20 +24,8 @@ const ALL_CHART_IDS = [
   'exec-margin-trend','exec-rev-growth'
 ];
 
-const SELECT_STYLE = 'background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer';
-
 // ── Filter State ─────────────────────────────────────────────────────────────
-let gF = {
-  period:       'ytd',
-  customYear:   String(new Date().getFullYear()),
-  customMonths: new Set(),
-  owners:       new Set(),
-  streams:      new Set(),
-  properties:   new Set(),
-  compareTo:    'prev-year',
-  cmpStart:     '',
-  cmpEnd:       '',
-};
+let gF = createFilterState();
 
 // ── Module export ────────────────────────────────────────────────────────────
 export default {
@@ -85,132 +75,6 @@ function mixedRows(revPays, revInvs, expItems, acqItems = []) {
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 
-// ── Period range calculation ─────────────────────────────────────────────────
-function getCurrentPeriodRange() {
-  const now = new Date();
-  const todayStr = now.toISOString().slice(0, 10);
-  const y = now.getFullYear();
-  const m = now.getMonth(); // 0-based
-  const d = now.getDate();
-
-  if (gF.period === 'ytd') {
-    return { start: `${y}-01-01`, end: todayStr, label: `YTD ${y}`, isIncomplete: true };
-  }
-  if (gF.period === 'this-month') {
-    const start = `${y}-${String(m+1).padStart(2,'0')}-01`;
-    const lastDay = new Date(y, m+1, 0).getDate();
-    return {
-      start, end: todayStr,
-      label: MONTH_LABELS[m] + ' ' + y,
-      isIncomplete: d < lastDay
-    };
-  }
-  if (gF.period === 'this-quarter') {
-    const qStart = Math.floor(m / 3) * 3;
-    const start = `${y}-${String(qStart+1).padStart(2,'0')}-01`;
-    return { start, end: todayStr, label: `Q${Math.floor(m/3)+1} ${y}`, isIncomplete: true };
-  }
-  if (gF.period === 'this-year') {
-    const end = `${y}-12-31`;
-    return { start: `${y}-01-01`, end, label: String(y), isIncomplete: todayStr < end };
-  }
-  if (gF.period === 'last-year') {
-    const ly = y - 1;
-    return { start: `${ly}-01-01`, end: `${ly}-12-31`, label: String(ly), isIncomplete: false };
-  }
-  if (gF.period === 'all') {
-    return { start: '2000-01-01', end: todayStr, label: 'All Time', isIncomplete: false };
-  }
-  if (gF.period === 'custom') {
-    const cy = gF.customYear;
-    if (gF.customMonths.size === 0) {
-      return { start: `${cy}-01-01`, end: `${cy}-12-31`, label: cy, isIncomplete: false };
-    }
-    const sorted = [...gF.customMonths].map(Number).sort((a,b)=>a-b);
-    const firstM = sorted[0];
-    const lastM  = sorted[sorted.length - 1];
-    const start  = `${cy}-${String(firstM).padStart(2,'0')}-01`;
-    const lastDay = new Date(Number(cy), lastM, 0).getDate();
-    const end    = `${cy}-${String(lastM).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
-    const mNames = sorted.map(m2 => MONTH_LABELS[m2-1]).join(', ');
-    return { start, end, label: `${mNames} ${cy}`, isIncomplete: false };
-  }
-  return { start: `${y}-01-01`, end: todayStr, label: `YTD ${y}`, isIncomplete: true };
-}
-
-// ── Comparison range ─────────────────────────────────────────────────────────
-function getComparisonRange(cur) {
-  if (gF.compareTo === 'none') return null;
-
-  const shiftYMD = (dateStr, dy, dm, dd) => {
-    const d = new Date(dateStr);
-    d.setFullYear(d.getFullYear() + dy, d.getMonth() + dm, d.getDate() + dd);
-    return d.toISOString().slice(0, 10);
-  };
-  const addYears = (dateStr, n) => {
-    const d = new Date(dateStr);
-    d.setFullYear(d.getFullYear() + n);
-    return d.toISOString().slice(0, 10);
-  };
-
-  if (gF.compareTo === 'prev-period') {
-    const startD = new Date(cur.start);
-    const endD   = new Date(cur.end);
-    const durMs  = endD - startD;
-    const durDays = Math.round(durMs / 86400000);
-    const newEnd  = new Date(startD - 86400000);
-    const newStart = new Date(newEnd - durMs);
-    const fmt = d => d.toISOString().slice(0, 10);
-    return { start: fmt(newStart), end: fmt(newEnd), label: 'Prev Period' };
-  }
-  if (gF.compareTo === 'last-month') {
-    const now = new Date();
-    const ly = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-    const lm = now.getMonth() === 0 ? 12 : now.getMonth();
-    const start = `${ly}-${String(lm).padStart(2,'0')}-01`;
-    const lastDay = new Date(ly, lm, 0).getDate();
-    const end = `${ly}-${String(lm).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
-    return { start, end, label: MONTH_LABELS[lm-1] + ' ' + ly };
-  }
-  if (gF.compareTo === 'last-quarter') {
-    const now = new Date();
-    const curQ = Math.floor(now.getMonth() / 3);
-    const prevQ = curQ === 0 ? 3 : curQ - 1;
-    const prevY = curQ === 0 ? now.getFullYear() - 1 : now.getFullYear();
-    const qStartM = prevQ * 3 + 1;
-    const qEndM = qStartM + 2;
-    const start = `${prevY}-${String(qStartM).padStart(2,'0')}-01`;
-    const lastDay = new Date(prevY, qEndM, 0).getDate();
-    const end = `${prevY}-${String(qEndM).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
-    return { start, end, label: `Q${prevQ+1} ${prevY}` };
-  }
-  if (gF.compareTo === 'same-period-last-year') {
-    return {
-      start: addYears(cur.start, -1),
-      end:   addYears(cur.end, -1),
-      label: 'Same Period Last Year'
-    };
-  }
-  if (gF.compareTo === 'prev-year') {
-    if (cur.isIncomplete) {
-      return {
-        start: addYears(cur.start, -1),
-        end:   addYears(cur.end, -1),
-        label: 'Prev Year'
-      };
-    } else {
-      const curY = new Date(cur.start).getFullYear();
-      const py = curY - 1;
-      return { start: `${py}-01-01`, end: `${py}-12-31`, label: String(py) };
-    }
-  }
-  if (gF.compareTo === 'custom-compare') {
-    if (!gF.cmpStart || !gF.cmpEnd) return null;
-    return { start: gF.cmpStart, end: gF.cmpEnd, label: `${gF.cmpStart} – ${gF.cmpEnd}` };
-  }
-  return null;
-}
-
 // ── Virtual property acquisitions ────────────────────────────────────────────
 function getVirtualAcquisitions() {
   return listActive('properties')
@@ -226,7 +90,7 @@ function getVirtualAcquisitions() {
                      : null;
         if (!stream || !gF.streams.has(stream)) return false;
       }
-      if (gF.properties.size > 0 && !gF.properties.has(p.id)) return false;
+      if (gF.propertyIds.size > 0 && !gF.propertyIds.has(p.id)) return false;
       return true;
     })
     .map(p => ({
@@ -247,49 +111,21 @@ function getVirtualAcquisitions() {
 // ── Data getter (range-based) ────────────────────────────────────────────────
 function getDataInRange(start, end) {
   const inRange = (date) => date && date >= start && date <= end;
-
-  const matchOwner = (row) => {
-    if (gF.owners.size === 0) return true;
-    if (!row.propertyId) return true;
-    const prop = byId('properties', row.propertyId);
-    const ow = prop?.owner || 'both';
-    if (ow === 'both') return true;
-    return gF.owners.has(ow);
-  };
-  const resolveStream = (row) => {
-    if (row.stream) return row.stream;
-    if (row.propertyId) {
-      const prop = byId('properties', row.propertyId);
-      if (prop?.type === 'short_term') return 'short_term_rental';
-      if (prop?.type === 'long_term')  return 'long_term_rental';
-    }
-    return null;
-  };
-  const matchStream = (row) => {
-    if (gF.streams.size === 0) return true;
-    const stream = resolveStream(row);
-    if (!stream) return true;
-    return gF.streams.has(stream);
-  };
-  const matchProperty = (row) => {
-    if (gF.properties.size === 0) return true;
-    if (!row.propertyId) return false;
-    return gF.properties.has(row.propertyId);
-  };
+  const { mStream, mOwner, mProperty } = makeMatchers(gF);
 
   const payments = listActivePayments().filter(p =>
     p.status === 'paid' && inRange(p.date) &&
-    matchStream(p) && matchOwner(p) && matchProperty(p)
+    mStream(p) && mOwner(p) && mProperty(p)
   );
   const invoices = listActive('invoices').filter(i =>
     i.status === 'paid' && inRange(i.issueDate) &&
-    matchStream(i) && matchOwner(i) && matchProperty(i)
+    mStream(i) && mOwner(i) && mProperty(i)
   );
   const allExpenses = listActive('expenses').filter(e =>
-    inRange(e.date) && matchOwner(e) && matchProperty(e)
+    inRange(e.date) && mOwner(e) && mProperty(e)
   );
-  const opExpenses  = allExpenses.filter(e => !isCapEx(e) && matchStream(e));
-  const capExExpenses = allExpenses.filter(e => isCapEx(e) && matchStream(e));
+  const opExpenses    = allExpenses.filter(e => !isCapEx(e) && mStream(e));
+  const capExExpenses = allExpenses.filter(e =>  isCapEx(e) && mStream(e));
 
   const allAcq = getVirtualAcquisitions();
   const acquisitions = allAcq.filter(a => inRange(a.date));
@@ -319,7 +155,7 @@ function calcMetrics(data, range = null) {
       const ow = prop?.owner || i.owner || 'both';
       if (ow !== 'both' && !gF.owners.has(ow)) return false;
     }
-    if (gF.properties.size > 0 && i.propertyId && !gF.properties.has(i.propertyId)) return false;
+    if (gF.propertyIds.size > 0 && i.propertyId && !gF.propertyIds.has(i.propertyId)) return false;
     return true;
   });
   const outstandingTotal = sumInvoicesEUR(outstanding);
@@ -378,120 +214,6 @@ function rebuildView() {
   c.appendChild(buildView());
 }
 
-// ── Filter bar ───────────────────────────────────────────────────────────────
-function makeSelect(options, value, onChange) {
-  const s = el('select', { style: SELECT_STYLE });
-  options.forEach(([val, label]) => s.appendChild(el('option', { value: val }, label)));
-  s.value = value;
-  s.addEventListener('change', () => onChange(s.value));
-  return s;
-}
-
-function buildFilterBar() {
-  const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
-
-  // Period select
-  const periodSel = makeSelect([
-    ['ytd',          'YTD'],
-    ['this-month',   'This Month'],
-    ['this-quarter', 'This Quarter'],
-    ['this-year',    'Full Year'],
-    ['last-year',    'Last Year'],
-    ['all',          'All Time'],
-    ['custom',       'Custom'],
-  ], gF.period, v => { gF.period = v; rebuildView(); });
-  bar.appendChild(periodSel);
-
-  // Custom year (only when custom)
-  if (gF.period === 'custom') {
-    // Include property purchaseDates — availableYears() only scans payments/expenses/invoices
-    const ySet = new Set(availableYears());
-    for (const p of listActive('properties')) if (p.purchaseDate) ySet.add(p.purchaseDate.slice(0, 4));
-    const years = [...ySet].sort().reverse();
-    const yearSel = makeSelect(
-      (years.length ? years : [String(new Date().getFullYear())]).map(y => [y, y]),
-      gF.customYear,
-      v => { gF.customYear = v; rebuildView(); }
-    );
-    bar.appendChild(yearSel);
-
-    // Month multi-select
-    const monthItems = MONTH_LABELS.map((label, i) => ({
-      value: String(i + 1).padStart(2, '0'), label
-    }));
-    const monthMS = buildMultiSelect(monthItems, gF.customMonths, 'All Months', rebuildView, 'ana_exec_months');
-    bar.appendChild(monthMS);
-  }
-
-  // Stream multi-select
-  const streamItems = Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, css: v.css }));
-  bar.appendChild(buildMultiSelect(streamItems, gF.streams, 'All Streams', rebuildView, 'ana_exec_streams'));
-
-  // Owner multi-select
-  const ownerItems = Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v }));
-  bar.appendChild(buildMultiSelect(ownerItems, gF.owners, 'All Owners', rebuildView, 'ana_exec_owners'));
-
-  // Property multi-select — restricted to owners currently selected (leave-one-out faceting)
-  const allProps = listActive('properties');
-  const availableProps = gF.owners.size
-    ? allProps.filter(p => p.owner === 'both' || gF.owners.has(p.owner))
-    : allProps;
-  // Trim any previously selected properties that no longer match the owner filter
-  if (gF.owners.size) {
-    const validIds = new Set(availableProps.map(p => p.id));
-    for (const id of [...gF.properties]) if (!validIds.has(id)) gF.properties.delete(id);
-  }
-  const propItems = availableProps.map(p => ({ value: p.id, label: p.name }));
-  bar.appendChild(buildMultiSelect(propItems, gF.properties, 'All Properties', rebuildView, 'ana_exec_props'));
-
-  // Compare select
-  const cmpSel = makeSelect([
-    ['none',                  'No Comparison'],
-    ['prev-period',           'Previous Period'],
-    ['last-month',            'Last Month'],
-    ['last-quarter',          'Last Quarter'],
-    ['same-period-last-year', 'Same Period Last Year'],
-    ['prev-year',             'Previous Year'],
-    ['custom-compare',        'Custom'],
-  ], gF.compareTo, v => { gF.compareTo = v; rebuildView(); });
-  bar.appendChild(cmpSel);
-
-  // Custom compare date inputs
-  if (gF.compareTo === 'custom-compare') {
-    const fromIn = el('input', {
-      type: 'date', value: gF.cmpStart, style: SELECT_STYLE, title: 'Compare from'
-    });
-    fromIn.addEventListener('change', () => { gF.cmpStart = fromIn.value; rebuildView(); });
-    bar.appendChild(fromIn);
-
-    const toIn = el('input', {
-      type: 'date', value: gF.cmpEnd, style: SELECT_STYLE, title: 'Compare to'
-    });
-    toIn.addEventListener('change', () => { gF.cmpEnd = toIn.value; rebuildView(); });
-    bar.appendChild(toIn);
-  }
-
-  // Reset
-  bar.appendChild(button('Reset', {
-    variant: 'sm ghost',
-    onClick: () => {
-      gF = {
-        period: 'ytd',
-        customYear: String(new Date().getFullYear()),
-        customMonths: new Set(),
-        owners: new Set(),
-        streams: new Set(),
-        properties: new Set(),
-        compareTo: 'prev-year',
-        cmpStart: '',
-        cmpEnd: '',
-      };
-      rebuildView();
-    }
-  }));
-
-  return bar;
-}
 
 // ── KPI card builder ──────────────────────────────────────────────────────────
 function kpiCard({ label, value, variant, onClick, delta, deltaIsPercent, deltaIsPp, invertDelta, compLabel }) {
@@ -651,26 +373,6 @@ function makeChartSection(title, panels) {
   }
   card.appendChild(grid);
   return card;
-}
-
-// ── Month key generation ─────────────────────────────────────────────────────
-function getMonthKeysForRange(start, end) {
-  const startY = parseInt(start.slice(0,4));
-  const startM = parseInt(start.slice(5,7));
-  const endY   = parseInt(end.slice(0,4));
-  const endM   = parseInt(end.slice(5,7));
-  const isSingleYear = startY === endY;
-  const keys = [];
-  let y = startY, m = startM;
-  while (y < endY || (y === endY && m <= endM)) {
-    const mm = String(m).padStart(2,'0');
-    const key = `${y}-${mm}`;
-    const label = isSingleYear ? MONTH_LABELS[m-1] : `${MONTH_LABELS[m-1]} '${String(y).slice(2)}`;
-    keys.push({ key, label, y: String(y), m });
-    m++;
-    if (m > 12) { m = 1; y++; }
-  }
-  return { keys, isSingleYear };
 }
 
 // ── Monthly data aggregation ─────────────────────────────────────────────────
@@ -913,7 +615,7 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
         const ow = prop?.owner || 'both';
         if (ow !== 'both' && !gF.owners.has(ow)) return false;
       }
-      if (gF.properties.size > 0 && p.propertyId && !gF.properties.has(p.propertyId)) return false;
+      if (gF.propertyIds.size > 0 && p.propertyId && !gF.propertyIds.has(p.propertyId)) return false;
       return true;
     }).forEach(p => {
       const mk = p.date?.slice(0,7);
@@ -927,7 +629,7 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
         const ow = prop?.owner || 'both';
         if (ow !== 'both' && !gF.owners.has(ow)) return false;
       }
-      if (gF.properties.size > 0 && i.propertyId && !gF.properties.has(i.propertyId)) return false;
+      if (gF.propertyIds.size > 0 && i.propertyId && !gF.propertyIds.has(i.propertyId)) return false;
       return true;
     }).forEach(i => {
       const mk = (i.issueDate || '').slice(0,7);
@@ -1349,11 +1051,12 @@ function buildView() {
   ));
 
   // Filter bar
-  wrap.appendChild(buildFilterBar());
+  wrap.appendChild(buildFilterBar(gF, { showOwner: true, showStream: true, showProperty: true, storagePrefix: 'ana_exec' }, (newGF) => { if (newGF) gF = newGF; rebuildView(); }));
 
   // Compute ranges
-  const curRange = getCurrentPeriodRange();
-  const cmpRange = getComparisonRange(curRange);
+  const curRange = getCurrentPeriodRange(gF);
+  const cmpRange = getComparisonRange(gF, curRange);
+  wrap.appendChild(buildComparisonLine(curRange, cmpRange));
 
   // Fetch data
   const curData = getDataInRange(curRange.start, curRange.end);
