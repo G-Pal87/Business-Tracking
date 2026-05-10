@@ -9129,15 +9129,21 @@
           ]
         },
         "2025-07": {
-          "revenue": 0,
+          "revenue": 1500,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
             {
+              "clientName": "VITAS",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozgqinrhy"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozgqinrhy"
+              "id": "fce_mozgqnszdu"
             }
           ]
         },
@@ -9173,7 +9179,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398813431,
+      "updatedAt": 1778398820099,
       "updatedBy": "Giorgos"
     },
     {
