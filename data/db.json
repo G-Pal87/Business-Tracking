@@ -9342,18 +9342,24 @@
         "2026-04": {
           "entries": [
             {
+              "clientName": "ZOLLHOF",
+              "amount": 4200,
+              "notes": "",
+              "id": "fce_mozfrx20kf"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozfrx20kf"
+              "id": "fce_mozfs1t7ds"
             }
           ],
-          "revenue": 0
+          "revenue": 4200
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397199128,
+      "updatedAt": 1778397205291,
       "updatedBy": "Giorgos"
     },
     {
