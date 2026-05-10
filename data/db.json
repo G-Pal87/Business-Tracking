@@ -8906,7 +8906,7 @@
           "expenseEntries": [],
           "entries": [
             {
-              "clientName": "",
+              "clientName": "C TWO",
               "amount": 0,
               "notes": "",
               "id": "fce_mozgimjsjj"
@@ -8950,7 +8950,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398445224,
+      "updatedAt": 1778398446766,
       "updatedBy": "Giorgos"
     },
     {
