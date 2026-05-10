@@ -8836,13 +8836,13 @@
       "taxRate": 15,
       "months": {
         "2025-01": {
-          "revenue": 0,
+          "revenue": 42996,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "C TWO",
+              "amount": 42996,
               "notes": "",
               "id": "fce_mozggerm7f"
             }
@@ -8910,7 +8910,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398341826,
+      "updatedAt": 1778398349125,
       "updatedBy": "Giorgos"
     },
     {
