@@ -9044,11 +9044,11 @@
           ]
         },
         "2026-04": {
-          "revenue": 125400,
+          "revenue": 12540,
           "entries": [
             {
               "clientName": "C TWO",
-              "amount": 125400,
+              "amount": 12540,
               "notes": "",
               "id": "fce_mozfhl57c1"
             }
@@ -9121,11 +9121,11 @@
           ]
         },
         "2026-11": {
-          "revenue": 0,
+          "revenue": 12540,
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "C TWO",
+              "amount": 12540,
               "notes": "",
               "id": "fce_mozfjcn8b4"
             }
@@ -9137,7 +9137,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396799428,
+      "updatedAt": 1778396815889,
       "updatedBy": "Giorgos"
     },
     {
