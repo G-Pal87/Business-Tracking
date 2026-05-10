@@ -9230,8 +9230,14 @@
             {
               "clientName": "Wise Guys",
               "amount": 250,
-              "notes": "",
+              "notes": "Workshop - Founders Club",
               "id": "fce_mozgu1nh6v"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgu94hbh"
             }
           ]
         },
@@ -9247,7 +9253,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398983639,
+      "updatedAt": 1778398987697,
       "updatedBy": "Giorgos"
     },
     {
