@@ -16495,20 +16495,11 @@
           "currency": "EUR",
           "dateBought": "2024-01-01",
           "comments": ""
-        },
-        {
-          "id": "btc_mozjrezlkt",
-          "qty": 136,
-          "remaining": 136,
-          "unitPrice": 4,
-          "currency": "EUR",
-          "dateBought": "2024-01-01",
-          "comments": ""
         }
       ],
       "createdAt": 1778403840398,
       "createdBy": "Giorgos",
-      "updatedAt": 1778403894177,
+      "updatedAt": 1778403904626,
       "updatedBy": "Giorgos"
     }
   ],
