@@ -6,6 +6,58 @@ import { listActive, listActivePayments, listActiveClients, byId } from '../core
 const ML = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const SS = 'background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer';
 
+// ── Data-driven year list (payments + invoices + expenses) ────────────────────
+function getDataYears() {
+  const y = new Set();
+  listActive('invoices').forEach(i => { const yr = (i.issueDate || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
+  listActivePayments().forEach(p => { const yr = (p.date || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
+  listActive('expenses').forEach(e => { const yr = (e.date || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
+  return [...y].sort().reverse(); // newest first
+}
+
+// ── Month/Year range picker ───────────────────────────────────────────────────
+function buildMonthYearRange(fromVal, toVal, onFrom, onTo) {
+  const years = getDataYears();
+
+  function mkYear(cur) {
+    const s = el('select', { style: SS });
+    s.appendChild(el('option', { value: '' }, 'Year'));
+    years.forEach(yr => { const o = el('option', { value: yr }, yr); if (yr === cur) o.selected = true; s.appendChild(o); });
+    return s;
+  }
+  function mkMonth(cur) {
+    const s = el('select', { style: SS });
+    s.appendChild(el('option', { value: '' }, 'Month'));
+    ML.forEach((m, i) => {
+      const v = String(i + 1).padStart(2, '0');
+      const o = el('option', { value: v }, m);
+      if (v === cur) o.selected = true;
+      s.appendChild(o);
+    });
+    return s;
+  }
+
+  const fy = fromVal?.slice(0, 4) || '', fm = fromVal?.slice(5, 7) || '';
+  const ty = toVal?.slice(0, 4) || '',   tm = toVal?.slice(5, 7) || '';
+
+  const fyS = mkYear(fy), fmS = mkMonth(fm);
+  const tyS = mkYear(ty), tmS = mkMonth(tm);
+
+  fyS.addEventListener('change', () => { if (fyS.value && fmS.value) onFrom(fyS.value, fmS.value); });
+  fmS.addEventListener('change', () => { if (fyS.value && fmS.value) onFrom(fyS.value, fmS.value); });
+  tyS.addEventListener('change', () => { if (tyS.value && tmS.value) onTo(tyS.value, tmS.value); });
+  tmS.addEventListener('change', () => { if (tyS.value && tmS.value) onTo(tyS.value, tmS.value); });
+
+  const lbl = txt => el('span', { style: 'font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap' }, txt);
+
+  return el('div', {
+    style: 'display:inline-flex;align-items:center;gap:4px;background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px 8px'
+  }, lbl('From'), fyS, fmS,
+     el('span', { style: 'color:var(--border);padding:0 4px' }, '→'),
+     lbl('To'), tyS, tmS
+  );
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 export const PERIOD_OPTIONS = [
   ['ytd',            'YTD'],
@@ -391,14 +443,13 @@ export function buildFilterBar(gF, opts, onChange) {
   // Period
   bar.appendChild(makeSelect(PERIOD_OPTIONS, gF.period, v => { gF.period = v; onChange(); }));
 
-  // Custom period: date pickers
+  // Custom period: month/year range picker
   if (gF.period === 'custom') {
-    const fromIn = el('input', { type: 'date', value: gF.customStart, style: SS, title: 'From' });
-    fromIn.addEventListener('change', () => { gF.customStart = fromIn.value; onChange(); });
-    bar.appendChild(fromIn);
-    const toIn = el('input', { type: 'date', value: gF.customEnd, style: SS, title: 'To' });
-    toIn.addEventListener('change', () => { gF.customEnd = toIn.value; onChange(); });
-    bar.appendChild(toIn);
+    bar.appendChild(buildMonthYearRange(
+      gF.customStart, gF.customEnd,
+      (y, m) => { gF.customStart = `${y}-${m}-01`; onChange(); },
+      (y, m) => { const d = new Date(+y, +m, 0).getDate(); gF.customEnd = `${y}-${m}-${String(d).padStart(2, '0')}`; onChange(); }
+    ));
   }
 
   // Owner — only show owners that exist in data given other filters
@@ -440,14 +491,13 @@ export function buildFilterBar(gF, opts, onChange) {
   // Compare To
   bar.appendChild(makeSelect(COMPARISON_OPTIONS, gF.compareTo, v => { gF.compareTo = v; onChange(); }));
 
-  // Custom comparison: date pickers
+  // Custom comparison: month/year range picker
   if (gF.compareTo === 'cmp-custom') {
-    const fromIn = el('input', { type: 'date', value: gF.cmpStart, style: SS, title: 'Compare from' });
-    fromIn.addEventListener('change', () => { gF.cmpStart = fromIn.value; onChange(); });
-    bar.appendChild(fromIn);
-    const toIn = el('input', { type: 'date', value: gF.cmpEnd, style: SS, title: 'Compare to' });
-    toIn.addEventListener('change', () => { gF.cmpEnd = toIn.value; onChange(); });
-    bar.appendChild(toIn);
+    bar.appendChild(buildMonthYearRange(
+      gF.cmpStart, gF.cmpEnd,
+      (y, m) => { gF.cmpStart = `${y}-${m}-01`; onChange(); },
+      (y, m) => { const d = new Date(+y, +m, 0).getDate(); gF.cmpEnd = `${y}-${m}-${String(d).padStart(2, '0')}`; onChange(); }
+    ));
   }
 
   // Reset
