@@ -9254,7 +9254,7 @@
           ]
         },
         "2025-12": {
-          "revenue": 300,
+          "revenue": 500,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
@@ -9266,9 +9266,15 @@
             },
             {
               "clientName": "LetsPling",
-              "amount": 0,
+              "amount": 200,
               "notes": "",
               "id": "fce_mozgv6nvaf"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgvg1xfo"
             }
           ]
         }
@@ -9279,7 +9285,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399035754,
+      "updatedAt": 1778399043333,
       "updatedBy": "Giorgos"
     },
     {
