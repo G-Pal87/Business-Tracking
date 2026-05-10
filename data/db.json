@@ -8862,13 +8862,13 @@
           ]
         },
         "2025-03": {
-          "revenue": 12545,
+          "revenue": 12450,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
             {
               "clientName": "C TWO",
-              "amount": 12545,
+              "amount": 12450,
               "notes": "",
               "id": "fce_mozghasqu"
             }
@@ -8934,7 +8934,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398395175,
+      "updatedAt": 1778398411245,
       "updatedBy": "Giorgos"
     },
     {
