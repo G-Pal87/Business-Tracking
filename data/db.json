@@ -9254,15 +9254,21 @@
           ]
         },
         "2025-12": {
-          "revenue": 0,
+          "revenue": 300,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
             {
+              "clientName": "Nexial",
+              "amount": 300,
+              "notes": "",
+              "id": "fce_mozgv2d03w"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozgv2d03w"
+              "id": "fce_mozgv6nvaf"
             }
           ]
         }
@@ -9273,7 +9279,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399025588,
+      "updatedAt": 1778399031163,
       "updatedBy": "Giorgos"
     },
     {
