@@ -9985,10 +9985,22 @@
         "revenue": 0,
         "expenses": 0
       },
-      "months": {},
+      "months": {
+        "2024-07": {
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgwwhmfg"
+            }
+          ],
+          "revenue": 0
+        }
+      },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
+      "updatedAt": 1778399111290,
       "updatedBy": "Giorgos"
     },
     {
