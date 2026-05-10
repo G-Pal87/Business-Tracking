@@ -316,7 +316,7 @@ function computeAvailableOptions(gF) {
       const ow = ownerOf(i.propertyId);
       if (ow !== 'both' && !gF.owners.has(ow)) return;
     }
-    if (gF.propertyIds.size > 0 && i.propertyId && !gF.propertyIds.has(i.propertyId)) return;
+    if (gF.propertyIds.size > 0 && (!i.propertyId || !gF.propertyIds.has(i.propertyId))) return;
     availStreams.add(s);
   });
   for (const s of [...gF.streams]) if (!availStreams.has(s)) gF.streams.delete(s);
@@ -335,7 +335,7 @@ function computeAvailableOptions(gF) {
       const ow = ownerOf(i.propertyId);
       if (ow !== 'both' && !gF.owners.has(ow)) return;
     }
-    if (gF.propertyIds.size > 0 && i.propertyId && !gF.propertyIds.has(i.propertyId)) return;
+    if (gF.propertyIds.size > 0 && (!i.propertyId || !gF.propertyIds.has(i.propertyId))) return;
     availClientIds.add(i.clientId);
   });
   const availClients = allClients.filter(c => availClientIds.has(c.id));
