@@ -9009,7 +9009,7 @@
       "taxRate": 15,
       "months": {
         "2025-01": {
-          "revenue": 6200,
+          "revenue": 7700,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
@@ -9020,8 +9020,8 @@
               "id": "fce_mozgkjahdc"
             },
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "VITAS",
+              "amount": 1500,
               "notes": "",
               "id": "fce_mozgko26dn"
             }
@@ -9030,7 +9030,15 @@
         "2025-02": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": []
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgkvib8e"
+            }
+          ]
         },
         "2025-03": {
           "revenue": 0,
@@ -9089,7 +9097,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398540494,
+      "updatedAt": 1778398550147,
       "updatedBy": "Giorgos"
     },
     {
