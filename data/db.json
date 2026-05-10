@@ -9261,10 +9261,16 @@
               "id": "fce_mozfn0gx6a"
             },
             {
-              "clientName": "",
+              "clientName": "Pling",
               "amount": 400,
               "notes": "",
               "id": "fce_mozfnbny86"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfnjbci2"
             }
           ],
           "revenue": 10400
@@ -9272,7 +9278,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396987625,
+      "updatedAt": 1778396994696,
       "updatedBy": "Giorgos"
     },
     {
