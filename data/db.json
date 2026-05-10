@@ -7603,7 +7603,7 @@
     {
       "id": "exp_moinvtjpmz",
       "propertyId": "prop_mohgxct7b6",
-      "category": "renovation",
+      "category": "maintenance",
       "amount": 8333333,
       "currency": "HUF",
       "date": "2026-04-28",
@@ -7615,8 +7615,12 @@
       "inventoryQty": 0,
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778013993531,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778446347999,
+      "updatedBy": "Giorgos",
+      "inventoryBatches": [],
+      "accountingType": "capex",
+      "costCategory": "maintenance",
+      "recurrence": "one_off"
     },
     {
       "id": "exp_moioka9yih",
