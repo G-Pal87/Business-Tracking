@@ -9174,8 +9174,14 @@
             {
               "clientName": "Startup coaching",
               "amount": 650,
-              "notes": "",
+              "notes": "Dutch Startup",
               "id": "fce_mozgrspthi"
+            },
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgs1ynf4"
             }
           ]
         },
@@ -9201,7 +9207,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398880083,
+      "updatedAt": 1778398885103,
       "updatedBy": "Giorgos"
     },
     {
