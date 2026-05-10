@@ -9010,7 +9010,14 @@
       },
       "months": {
         "2026-01": {
-          "entries": [],
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozffi0lny"
+            }
+          ],
           "revenue": 0,
           "expenses": 0
         },
@@ -9050,7 +9057,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396608318,
+      "updatedAt": 1778396619765,
       "updatedBy": "Giorgos"
     },
     {
