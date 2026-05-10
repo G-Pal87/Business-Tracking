@@ -9844,7 +9844,7 @@
             {
               "id": "expe_moziar6imh",
               "description": "HeyCare",
-              "amount": 1500,
+              "amount": 4500,
               "notes": ""
             },
             {
@@ -9854,7 +9854,7 @@
               "notes": ""
             }
           ],
-          "expenses": 2100
+          "expenses": 5100
         },
         "2026-06": {
           "entries": [
@@ -9882,7 +9882,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401446221,
+      "updatedAt": 1778401449689,
       "updatedBy": "Giorgos"
     },
     {
