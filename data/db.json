@@ -16388,8 +16388,10 @@
       ],
       "createdAt": 1778232612527,
       "createdBy": "Giorgos",
-      "updatedAt": 1778244427754,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778403429177,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778403429177,
+      "deletedBy": "Giorgos"
     }
   ],
   "appConfig": {
