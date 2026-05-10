@@ -9012,9 +9012,9 @@
         "2026-01": {
           "entries": [
             {
-              "clientName": "",
+              "clientName": "C WO",
               "amount": 0,
-              "notes": "",
+              "notes": "34560",
               "id": "fce_mozffi0lny"
             }
           ],
@@ -9057,7 +9057,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396619765,
+      "updatedAt": 1778396627932,
       "updatedBy": "Giorgos"
     },
     {
