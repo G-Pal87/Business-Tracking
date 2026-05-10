@@ -10265,17 +10265,17 @@
             },
             {
               "clientName": "",
-              "amount": 0,
+              "amount": 500,
               "notes": "",
               "id": "fce_mozh68xeb9"
             }
           ],
-          "revenue": 2500
+          "revenue": 3000
         }
       },
       "createdAt": 1778018556697,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399547314,
+      "updatedAt": 1778399549632,
       "updatedBy": "Giorgos"
     },
     {
