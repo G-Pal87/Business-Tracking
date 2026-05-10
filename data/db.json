@@ -9239,10 +9239,22 @@
         "revenue": 0,
         "expenses": 0
       },
-      "months": {},
+      "months": {
+        "2026-01": {
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfmc8pfp"
+            }
+          ],
+          "revenue": 0
+        }
+      },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
+      "updatedAt": 1778396938873,
       "updatedBy": "Giorgos"
     },
     {
