@@ -9326,17 +9326,17 @@
             },
             {
               "clientName": "SQG",
-              "amount": 0,
+              "amount": 250,
               "notes": "",
               "id": "fce_mozfr0rvpf"
             }
           ],
-          "revenue": 6100
+          "revenue": 6350
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397159651,
+      "updatedAt": 1778397163391,
       "updatedBy": "Giorgos"
     },
     {
