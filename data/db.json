@@ -9320,17 +9320,17 @@
             },
             {
               "clientName": "ZOLLHOF",
-              "amount": 0,
+              "amount": 4200,
               "notes": "",
               "id": "fce_mozfqquuhl"
             }
           ],
-          "revenue": 1900
+          "revenue": 6100
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397149315,
+      "updatedAt": 1778397153593,
       "updatedBy": "Giorgos"
     },
     {
