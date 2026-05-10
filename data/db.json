@@ -9009,15 +9009,21 @@
       "taxRate": 15,
       "months": {
         "2025-01": {
-          "revenue": 0,
+          "revenue": 6200,
           "expenses": 0,
           "expenseEntries": [],
           "entries": [
             {
+              "clientName": "Wise Guys",
+              "amount": 6200,
+              "notes": "",
+              "id": "fce_mozgkjahdc"
+            },
+            {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozgkjahdc"
+              "id": "fce_mozgko26dn"
             }
           ]
         },
@@ -9083,7 +9089,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398534313,
+      "updatedAt": 1778398540494,
       "updatedBy": "Giorgos"
     },
     {
