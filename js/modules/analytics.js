@@ -360,9 +360,17 @@ function makeChartSection(title, panels) {
   const grid = el('div', {
     style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:0 16px 16px'
   });
-  for (const [panelTitle, canvasId] of panels) {
+  for (const [panelTitle, canvasId, opts] of panels) {
     const panel = el('div');
-    panel.appendChild(el('div', { class: 'kpi-label', style: 'margin-bottom:8px' }, panelTitle));
+    const labelRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:8px' },
+      el('div', { class: 'kpi-label' }, panelTitle)
+    );
+    if (opts?.isDoughnut) {
+      const btn = el('button', { style: 'background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:11px;cursor:pointer;padding:2px 6px;line-height:1' }, '%');
+      btn.onclick = () => { const sp = charts.toggleDoughnutPct(canvasId); btn.textContent = sp ? '€' : '%'; };
+      labelRow.appendChild(btn);
+    }
+    panel.appendChild(labelRow);
     panel.appendChild(el('div', { class: 'chart-wrap' }, el('canvas', { id: canvasId })));
     grid.appendChild(panel);
   }
@@ -1086,15 +1094,15 @@ function buildView() {
   ]));
 
   wrap.appendChild(makeChartSection('Composition', [
-    ['Revenue by Stream',     'exec-kd-rev-stream'],
-    ['Revenue Concentration', 'exec-rev-conc'],
-    ['Investment Breakdown',  'exec-inv-breakdown'],
+    ['Revenue by Stream',     'exec-kd-rev-stream', { isDoughnut: true }],
+    ['Revenue Concentration', 'exec-rev-conc',      { isDoughnut: true }],
+    ['Investment Breakdown',  'exec-inv-breakdown', { isDoughnut: true }],
   ]));
 
   wrap.appendChild(makeChartSection('Outstanding & Cash', [
-    ['Outstanding Aging',  'exec-outstanding-aging'],
+    ['Outstanding Aging',   'exec-outstanding-aging'],
     ['Cash Flow Waterfall', 'exec-cashflow-wfall'],
-    ['Expenses by Category','exec-kd-exp-cat'],
+    ['Expenses by Category','exec-kd-exp-cat', { isDoughnut: true }],
   ]));
 
   // Performance Insights

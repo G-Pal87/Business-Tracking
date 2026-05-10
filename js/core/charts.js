@@ -93,6 +93,36 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
   registry.set(id, c);
 }
 
+export function toggleDoughnutPct(id) {
+  const c = registry.get(id);
+  if (!c) return false;
+  c._showPct = !c._showPct;
+  const sp = c._showPct;
+  c.options.plugins.tooltip.callbacks = {
+    label: ctx => {
+      const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+      return sp
+        ? ` ${total > 0 ? (ctx.parsed / total * 100).toFixed(1) : 0}%`
+        : ` €${Math.round(ctx.parsed).toLocaleString('de-DE')}`;
+    }
+  };
+  c.options.plugins.legend.labels.generateLabels = chart => {
+    const ds = chart.data.datasets[0];
+    const total = ds.data.reduce((a, b) => a + b, 0);
+    return chart.data.labels.map((lbl, i) => ({
+      text: lbl + (sp ? ` (${total > 0 ? (ds.data[i] / total * 100).toFixed(1) : 0}%)` : ''),
+      fillStyle: ds.backgroundColor[i],
+      strokeStyle: '#161a27',
+      lineWidth: 2,
+      hidden: false,
+      index: i,
+      fontColor: '#e4e8f1'
+    }));
+  };
+  c.update();
+  return sp;
+}
+
 export function doughnut(id, { labels, data, colors, onClickItem }) {
   destroy(id);
   const canvas = document.getElementById(id);
