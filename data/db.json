@@ -9256,7 +9256,15 @@
         "2025-12": {
           "revenue": 0,
           "expenses": 0,
-          "expenseEntries": []
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozgv2d03w"
+            }
+          ]
         }
       },
       "yearTarget": {
@@ -9265,7 +9273,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399014708,
+      "updatedAt": 1778399025588,
       "updatedBy": "Giorgos"
     },
     {
