@@ -9993,20 +9993,25 @@
               "amount": 12561,
               "notes": "",
               "id": "fce_mozgwwhmfg"
-            },
+            }
+          ],
+          "revenue": 12561
+        },
+        "2024-08": {
+          "entries": [
             {
               "clientName": "",
               "amount": 0,
               "notes": "",
-              "id": "fce_mozgx629le"
+              "id": "fce_mozgxa0s3i"
             }
           ],
-          "revenue": 12561
+          "revenue": 0
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778399123697,
+      "updatedAt": 1778399128828,
       "updatedBy": "Giorgos"
     },
     {
