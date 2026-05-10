@@ -11810,7 +11810,7 @@
       "number": "22_CTWO_290426",
       "clientId": "cli_moy4a82pn",
       "owner": "you",
-      "issueDate": "2026-05-09",
+      "issueDate": "2026-04-29",
       "dueDate": "2026-05-10",
       "stream": "customer_success",
       "currency": "EUR",
@@ -11849,7 +11849,7 @@
       "source": "pdf_import",
       "createdAt": 1777793671780,
       "createdBy": "Giorgos",
-      "updatedAt": 1778317583755,
+      "updatedAt": 1778411153314,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/22_CTWO_290426.pdf"
     },
