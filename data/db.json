@@ -9052,7 +9052,7 @@
           "expenseEntries": [],
           "entries": [
             {
-              "clientName": "",
+              "clientName": "Wise Guys",
               "amount": 0,
               "notes": "",
               "id": "fce_mozgldkxf5"
@@ -9111,7 +9111,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778398573569,
+      "updatedAt": 1778398583322,
       "updatedBy": "Giorgos"
     },
     {
