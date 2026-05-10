@@ -9297,17 +9297,17 @@
             },
             {
               "clientName": "Nexial",
-              "amount": 0,
+              "amount": 300,
               "notes": "",
               "id": "fce_mozfpafuim"
             }
           ],
-          "revenue": 5700
+          "revenue": 6000
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397100020,
+      "updatedAt": 1778397103326,
       "updatedBy": "Giorgos"
     },
     {
