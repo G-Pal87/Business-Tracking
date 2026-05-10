@@ -9463,11 +9463,22 @@
             }
           ],
           "revenue": 600
+        },
+        "2026-12": {
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfzh8a7u"
+            }
+          ],
+          "revenue": 0
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397546207,
+      "updatedAt": 1778397551866,
       "updatedBy": "Giorgos"
     },
     {
