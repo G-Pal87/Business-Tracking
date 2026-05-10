@@ -10879,7 +10879,7 @@
       "rates": {},
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778402977013,
+      "updatedAt": 1778402998452,
       "updatedBy": "Giorgos",
       "cleaningPeriods": [
         {
@@ -10895,6 +10895,13 @@
           "startDate": "2025-12-11",
           "endDate": "",
           "fee": 15
+        },
+        {
+          "id": "cp_mozj87uc7e",
+          "propertyId": "prop_mox7mr8day",
+          "startDate": "2025-12-11",
+          "endDate": "",
+          "fee": 20
         }
       ]
     },
