@@ -9255,18 +9255,18 @@
               "id": "fce_mozfmk4zmq"
             },
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "ZOLLHOF",
+              "amount": 3500,
               "notes": "",
               "id": "fce_mozfn0gx6a"
             }
           ],
-          "revenue": 6500
+          "revenue": 10000
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778396970273,
+      "updatedAt": 1778396976446,
       "updatedBy": "Giorgos"
     },
     {
