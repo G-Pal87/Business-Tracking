@@ -9396,11 +9396,22 @@
             }
           ],
           "revenue": 7300
+        },
+        "2026-07": {
+          "entries": [
+            {
+              "clientName": "",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfuntxp3"
+            }
+          ],
+          "revenue": 0
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397290532,
+      "updatedAt": 1778397327141,
       "updatedBy": "Giorgos"
     },
     {
