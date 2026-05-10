@@ -9371,18 +9371,18 @@
               "id": "fce_mozfsgyr1m"
             },
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "Plug n Play - Armenia",
+              "amount": 1600,
               "notes": "",
               "id": "fce_mozfsy3zbz"
             }
           ],
-          "revenue": 600
+          "revenue": 2200
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397247151,
+      "updatedAt": 1778397254476,
       "updatedBy": "Giorgos"
     },
     {
