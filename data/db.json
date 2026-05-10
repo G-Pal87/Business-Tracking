@@ -9417,18 +9417,18 @@
         "2026-08": {
           "entries": [
             {
-              "clientName": "",
-              "amount": 0,
+              "clientName": "ZOLLHOF",
+              "amount": 3500,
               "notes": "",
               "id": "fce_mozfw0qnie"
             }
           ],
-          "revenue": 0
+          "revenue": 3500
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397390527,
+      "updatedAt": 1778397406263,
       "updatedBy": "Giorgos"
     },
     {
