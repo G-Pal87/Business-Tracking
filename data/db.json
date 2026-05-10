@@ -9837,7 +9837,7 @@
           "expenseEntries": [
             {
               "id": "expe_moziaivv50",
-              "description": "",
+              "description": "Nexial",
               "amount": 0,
               "notes": ""
             }
@@ -9870,7 +9870,7 @@
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778401426459,
+      "updatedAt": 1778401433679,
       "updatedBy": "Giorgos"
     },
     {
