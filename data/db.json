@@ -9401,17 +9401,23 @@
           "entries": [
             {
               "clientName": "ZOLLHOF",
-              "amount": 0,
+              "amount": 3500,
               "notes": "",
               "id": "fce_mozfuntxp3"
+            },
+            {
+              "clientName": "Nexial",
+              "amount": 0,
+              "notes": "",
+              "id": "fce_mozfuut3no"
             }
           ],
-          "revenue": 0
+          "revenue": 3500
         }
       },
       "createdAt": 1777669591749,
       "createdBy": "Giorgos",
-      "updatedAt": 1778397332163,
+      "updatedAt": 1778397340708,
       "updatedBy": "Giorgos"
     },
     {
