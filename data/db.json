@@ -16419,6 +16419,24 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778403192583,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "rer_mozjfky9f1",
+      "name": "Welcome Drink",
+      "propertyId": "",
+      "category": "inventory",
+      "vendorId": "",
+      "amountSource": "inventory",
+      "fixedAmount": 0,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "ivt_mowps97zo7",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778403388407,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778403388407,
+      "updatedBy": "Giorgos"
     }
   ]
 }
