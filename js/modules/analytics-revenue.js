@@ -103,103 +103,176 @@ function kpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLa
   return card;
 }
 
+// ── Composite KPI card (wider, with breakdown lines) ─────────────────────────
+function compositeKpiCard({ label, value, delta, deltaIsPp, compLabel, onClick, lines }) {
+  const card = el('div', {
+    class: 'kpi',
+    style: 'cursor:pointer;transition:box-shadow 120ms',
+    title: 'Click for breakdown'
+  });
+  card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
+  card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
+  if (onClick) card.onclick = onClick;
+
+  card.appendChild(el('div', { class: 'kpi-label' }, label));
+  card.appendChild(el('div', { class: 'kpi-value' }, value));
+
+  const trend = el('div', { class: 'kpi-trend' });
+  if (delta === null || delta === undefined || !isFinite(delta)) {
+    if (compLabel) trend.appendChild(el('span', { style: 'color:var(--text-muted);font-size:11px' }, `N/A vs ${compLabel}`));
+  } else {
+    const sign = delta > 0 ? '+' : '';
+    const disp = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
+    const cls  = delta === 0 ? '' : delta > 0 ? 'up' : 'down';
+    trend.appendChild(el('span', { class: cls }, disp));
+    if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
+  }
+  card.appendChild(trend);
+
+  if (lines?.length) {
+    card.appendChild(el('div', { style: 'margin:8px 0 6px;border-top:1px solid rgba(255,255,255,0.06)' }));
+    for (const ln of lines) {
+      const row = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:2px 4px;margin:0 -4px;border-radius:3px' });
+      row.appendChild(el('span', { style: 'color:var(--text-muted)' }, ln.label));
+      const right = el('span', { style: 'color:var(--text);font-weight:500;white-space:nowrap' },
+        ln.value + (ln.pct !== undefined ? ` (${ln.pct})` : '')
+      );
+      row.appendChild(right);
+      if (ln.onClick) {
+        row.style.cursor = 'pointer';
+        row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.05)'; });
+        row.addEventListener('mouseleave', () => { row.style.background = ''; });
+        row.onclick = e => { e.stopPropagation(); ln.onClick(); };
+      }
+      card.appendChild(row);
+    }
+  }
+
+  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
+  return card;
+}
+
 // ── KPI section ───────────────────────────────────────────────────────────────
 function buildKpiSection(cur, cmp, cmpRange) {
   const { payments, invoices, outstanding, propRev, svcRev, total, outstandingTotal } = cur;
   const cl = cmpRange?.label || '';
 
-  const rentalPct  = total > 0 ? propRev / total * 100 : 0;
-  const servicePct = total > 0 ? svcRev  / total * 100 : 0;
-  const invoicedT  = svcRev + outstandingTotal;
-  const collRate   = invoicedT > 0 ? svcRev / invoicedT * 100 : null;
+  const invoicedT = svcRev + outstandingTotal;
+  const collRate  = invoicedT > 0 ? svcRev / invoicedT * 100 : null;
+
+  // Stream-level revenue
+  const strMap = new Map();
+  payments.forEach(p => { const s = p.stream || 'other'; strMap.set(s, (strMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date)); });
+  invoices.forEach(i => { const s = i.stream || 'other'; strMap.set(s, (strMap.get(s) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+  const stRev  = strMap.get('short_term_rental')  || 0;
+  const ltRev  = strMap.get('long_term_rental')   || 0;
+  const csRev  = strMap.get('customer_success')   || 0;
+  const mktRev = strMap.get('marketing_services') || 0;
 
   const activePropIds   = new Set(payments.map(p => p.propertyId).filter(Boolean));
   const activeClientIds = new Set(invoices.map(i => i.clientId).filter(Boolean));
   const avgPerProp      = activePropIds.size   > 0 ? propRev / activePropIds.size   : null;
   const avgPerClient    = activeClientIds.size > 0 ? svcRev  / activeClientIds.size : null;
 
-  // Top contributor (property or client)
-  let topC = null;
+  // Top contributors sorted by revenue
+  const contribs = [];
   {
     const pMap = new Map(), iMap = new Map();
     payments.forEach(p => pMap.set(p.propertyId, (pMap.get(p.propertyId) || 0) + toEUR(p.amount, p.currency, p.date)));
     invoices.forEach(i => iMap.set(i.clientId,   (iMap.get(i.clientId)   || 0) + toEUR(i.total, i.currency, i.issueDate)));
-    let best = { val: 0, name: '' };
-    pMap.forEach((v, id) => { if (v > best.val) best = { val: v, name: byId('properties', id)?.name || 'Unknown' }; });
-    iMap.forEach((v, id) => { if (v > best.val) best = { val: v, name: byId('clients',    id)?.name || 'Unknown' }; });
-    if (best.name && total > 0) topC = { name: best.name, pct: best.val / total * 100 };
+    pMap.forEach((v, id) => contribs.push({ name: byId('properties', id)?.name || 'Unknown', val: v, type: 'Property' }));
+    iMap.forEach((v, id) => contribs.push({ name: byId('clients',    id)?.name || 'Unknown', val: v, type: 'Client'   }));
+    contribs.sort((a, b) => b.val - a.val);
   }
 
   // Comparison deltas
-  let dTotal, dRental, dService, dMix, dOutstanding, dAvgProp, dAvgClient;
+  let dTotal, dRental, dService, dOutstanding, dAvgProp, dAvgClient;
   if (cmp) {
-    dTotal       = safePct(total,          cmp.total);
-    dRental      = safePct(propRev,        cmp.propRev);
-    dService     = safePct(svcRev,         cmp.svcRev);
-    dMix         = cmp.total > 0 ? rentalPct - (cmp.propRev / cmp.total * 100) : null;
-    dOutstanding = safePct(outstandingTotal, cmp.outstandingTotal);
+    dTotal       = safePct(total,             cmp.total);
+    dRental      = safePct(propRev,           cmp.propRev);
+    dService     = safePct(svcRev,            cmp.svcRev);
+    dOutstanding = safePct(outstandingTotal,  cmp.outstandingTotal);
     const cmpPropIds   = new Set(cmp.payments.map(p => p.propertyId).filter(Boolean));
     const cmpClientIds = new Set(cmp.invoices.map(i => i.clientId).filter(Boolean));
     dAvgProp   = safePct(avgPerProp,   cmpPropIds.size   > 0 ? cmp.propRev / cmpPropIds.size   : null);
     dAvgClient = safePct(avgPerClient, cmpClientIds.size > 0 ? cmp.svcRev  / cmpClientIds.size : null);
   }
 
-  const grid = el('div', { class: 'mb-16', style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px' });
+  const pct = (num, den) => den > 0 ? (num / den * 100).toFixed(0) + '%' : '—';
+  const outstandingRows = () => outstanding
+    .map(i => ({ date: i.issueDate, type: 'Invoice', source: byId('clients', i.clientId)?.name || '', ref: i.number || '', eur: toEUR(i.total, i.currency, i.issueDate) }))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-  grid.appendChild(kpiCard({
+  const wrapper = el('div', { class: 'mb-16' });
+
+  // ── Composite cards row ──────────────────────────────────────────────────────
+  const compGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:12px' });
+
+  compGrid.appendChild(compositeKpiCard({
     label: 'Total Revenue', value: formatEUR(total),
     delta: dTotal, compLabel: cl,
-    onClick: () => drillDownModal('All Revenue', drillRevRows(payments, invoices), REV_COLS)
+    onClick: () => drillDownModal('All Revenue', drillRevRows(payments, invoices), REV_COLS),
+    lines: [
+      { label: 'Rental',   value: formatEUR(propRev), pct: pct(propRev, total),
+        onClick: () => drillDownModal('Rental Revenue',  drillRevRows(payments, []), REV_COLS) },
+      { label: 'Services', value: formatEUR(svcRev),  pct: pct(svcRev,  total),
+        onClick: () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS) },
+    ]
   }));
-  grid.appendChild(kpiCard({
-    label: 'Service Revenue', value: formatEUR(svcRev),
-    delta: dService, compLabel: cl,
-    onClick: () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS)
-  }));
-  grid.appendChild(kpiCard({
+
+  compGrid.appendChild(compositeKpiCard({
     label: 'Rental Revenue', value: formatEUR(propRev),
     delta: dRental, compLabel: cl,
-    onClick: () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS)
+    onClick: () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS),
+    lines: [
+      { label: 'Short-term', value: formatEUR(stRev), pct: pct(stRev, propRev),
+        onClick: () => drillDownModal('Short-term Rental', drillRevRows(payments.filter(p => p.stream === 'short_term_rental'), []), REV_COLS) },
+      { label: 'Long-term',  value: formatEUR(ltRev), pct: pct(ltRev, propRev),
+        onClick: () => drillDownModal('Long-term Rental',  drillRevRows(payments.filter(p => p.stream === 'long_term_rental'),  []), REV_COLS) },
+    ]
   }));
-  grid.appendChild(kpiCard({
-    label: 'Revenue Mix', value: `${rentalPct.toFixed(0)}% / ${servicePct.toFixed(0)}%`,
-    subtitle: 'Rental / Service',
-    delta: dMix, deltaIsPp: true, compLabel: cl,
-    onClick: () => drillDownModal('Revenue Mix',
-      [{ seg: 'Rental',  amt: formatEUR(propRev), pct: rentalPct.toFixed(1)  + '%' },
-       { seg: 'Service', amt: formatEUR(svcRev),  pct: servicePct.toFixed(1) + '%' }],
-      [{ key: 'seg', label: 'Segment' }, { key: 'amt', label: 'Amount', right: true }, { key: 'pct', label: '%', right: true }])
+
+  compGrid.appendChild(compositeKpiCard({
+    label: 'Service Revenue', value: formatEUR(svcRev),
+    delta: dService, compLabel: cl,
+    onClick: () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS),
+    lines: [
+      { label: 'Customer Success',   value: formatEUR(csRev),  pct: pct(csRev,  svcRev),
+        onClick: () => drillDownModal('Customer Success',   drillRevRows([], invoices.filter(i => i.stream === 'customer_success')),   REV_COLS) },
+      { label: 'Marketing Services', value: formatEUR(mktRev), pct: pct(mktRev, svcRev),
+        onClick: () => drillDownModal('Marketing Services', drillRevRows([], invoices.filter(i => i.stream === 'marketing_services')), REV_COLS) },
+    ]
   }));
-  grid.appendChild(kpiCard({
+
+  compGrid.appendChild(compositeKpiCard({
+    label: 'Top Contributor', value: contribs[0]?.name || '—',
+    delta: null, compLabel: '',
+    onClick: () => drillDownModal('Revenue Concentration',
+      contribs.map(c => ({ type: c.type, name: c.name, eur: c.val })),
+      [{ key: 'type', label: 'Type' }, { key: 'name', label: 'Name' }, { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }]),
+    lines: contribs.slice(0, 3).map((c, i) => ({
+      label: `#${i + 1} ${c.type}`, value: c.name, pct: pct(c.val, total),
+    }))
+  }));
+
+  wrapper.appendChild(compGrid);
+
+  // ── Standard cards row ───────────────────────────────────────────────────────
+  const stdGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px' });
+
+  stdGrid.appendChild(kpiCard({
     label: 'Collection Rate', value: collRate !== null ? collRate.toFixed(1) + '%' : 'N/A',
     subtitle: 'Paid / (Paid + Outstanding)',
     variant: collRate !== null && collRate < 70 ? 'warning' : (collRate === 100 ? 'success' : ''),
-    onClick: () => drillDownModal('Outstanding Invoices',
-      outstanding.map(i => ({ date: i.issueDate, type: 'Invoice', source: byId('clients', i.clientId)?.name || '', ref: i.number || '', eur: toEUR(i.total, i.currency, i.issueDate) }))
-        .sort((a, b) => (b.date || '').localeCompare(a.date || '')),
-      REV_COLS)
+    onClick: () => drillDownModal('Outstanding Invoices', outstandingRows(), REV_COLS)
   }));
-  grid.appendChild(kpiCard({
+  stdGrid.appendChild(kpiCard({
     label: 'Outstanding Revenue', value: formatEUR(outstandingTotal),
     variant: outstandingTotal > 0 ? 'warning' : '',
     delta: dOutstanding, invertDelta: true, compLabel: cl,
-    onClick: () => drillDownModal('Outstanding Revenue',
-      outstanding.map(i => ({ date: i.issueDate, type: 'Invoice', source: byId('clients', i.clientId)?.name || '', ref: i.number || '', eur: toEUR(i.total, i.currency, i.issueDate) }))
-        .sort((a, b) => (b.date || '').localeCompare(a.date || '')),
-      REV_COLS)
+    onClick: () => drillDownModal('Outstanding Revenue', outstandingRows(), REV_COLS)
   }));
-  grid.appendChild(kpiCard({
-    label: 'Top Contributor', value: topC ? topC.name : '—',
-    subtitle: topC ? `${topC.pct.toFixed(0)}% of revenue` : 'No data',
-    onClick: () => {
-      const pMap = new Map(), iMap = new Map();
-      payments.forEach(p => pMap.set(p.propertyId, { name: byId('properties', p.propertyId)?.name || 'Unknown', eur: (pMap.get(p.propertyId)?.eur || 0) + toEUR(p.amount, p.currency, p.date), type: 'Property' }));
-      invoices.forEach(i => iMap.set(i.clientId, { name: byId('clients', i.clientId)?.name || 'Unknown', eur: (iMap.get(i.clientId)?.eur || 0) + toEUR(i.total, i.currency, i.issueDate), type: 'Client' }));
-      drillDownModal('Revenue Concentration', [...pMap.values(), ...iMap.values()].sort((a, b) => b.eur - a.eur),
-        [{ key: 'type', label: 'Type' }, { key: 'name', label: 'Name' }, { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }]);
-    }
-  }));
-  grid.appendChild(kpiCard({
+  stdGrid.appendChild(kpiCard({
     label: 'Avg / Property', value: avgPerProp !== null ? formatEUR(avgPerProp) : 'N/A',
     subtitle: activePropIds.size > 0 ? `${activePropIds.size} propert${activePropIds.size > 1 ? 'ies' : 'y'} active` : '',
     delta: dAvgProp, compLabel: cl,
@@ -210,7 +283,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
         [{ key: 'name', label: 'Property' }, { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }]);
     }
   }));
-  grid.appendChild(kpiCard({
+  stdGrid.appendChild(kpiCard({
     label: 'Avg / Client', value: avgPerClient !== null ? formatEUR(avgPerClient) : 'N/A',
     subtitle: activeClientIds.size > 0 ? `${activeClientIds.size} client${activeClientIds.size > 1 ? 's' : ''} active` : '',
     delta: dAvgClient, compLabel: cl,
@@ -222,7 +295,8 @@ function buildKpiSection(cur, cmp, cmpRange) {
     }
   }));
 
-  return grid;
+  wrapper.appendChild(stdGrid);
+  return wrapper;
 }
 
 // ── Revenue Performance Insights ──────────────────────────────────────────────
