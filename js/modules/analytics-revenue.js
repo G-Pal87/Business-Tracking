@@ -152,14 +152,14 @@ function buildKpiSection(cur, cmp, cmpRange) {
     onClick: () => drillDownModal('All Revenue', drillRevRows(payments, invoices), REV_COLS)
   }));
   grid.appendChild(kpiCard({
-    label: 'Rental Revenue', value: formatEUR(propRev),
-    delta: dRental, compLabel: cl,
-    onClick: () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS)
-  }));
-  grid.appendChild(kpiCard({
     label: 'Service Revenue', value: formatEUR(svcRev),
     delta: dService, compLabel: cl,
     onClick: () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS)
+  }));
+  grid.appendChild(kpiCard({
+    label: 'Rental Revenue', value: formatEUR(propRev),
+    delta: dRental, compLabel: cl,
+    onClick: () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS)
   }));
   grid.appendChild(kpiCard({
     label: 'Revenue Mix', value: `${rentalPct.toFixed(0)}% / ${servicePct.toFixed(0)}%`,
