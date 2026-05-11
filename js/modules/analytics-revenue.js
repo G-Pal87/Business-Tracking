@@ -278,17 +278,6 @@ function buildKpiSection(cur, cmp, cmpRange) {
         [{ key: 'name', label: 'Property' }, { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }]);
     }
   }));
-  compGrid.appendChild(kpiCard({
-    label: 'Avg / Client', value: avgPerClient !== null ? formatEUR(avgPerClient) : 'N/A',
-    subtitle: activeClientIds.size > 0 ? `${activeClientIds.size} client${activeClientIds.size > 1 ? 's' : ''} active` : '',
-    delta: dAvgClient, compLabel: cl,
-    onClick: () => {
-      const map = new Map();
-      invoices.forEach(i => map.set(i.clientId, { name: byId('clients', i.clientId)?.name || 'Unknown', eur: (map.get(i.clientId)?.eur || 0) + toEUR(i.total, i.currency, i.issueDate) }));
-      drillDownModal('Revenue per Client', [...map.values()].sort((a, b) => b.eur - a.eur),
-        [{ key: 'name', label: 'Client' }, { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }]);
-    }
-  }));
 
   wrapper.appendChild(compGrid);
   return wrapper;
