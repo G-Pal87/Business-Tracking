@@ -132,9 +132,9 @@ function compositeKpiCard({ label, value, delta, deltaIsPp, compLabel, onClick, 
   if (lines?.length) {
     card.appendChild(el('div', { style: 'margin:8px 0 6px;border-top:1px solid rgba(255,255,255,0.06)' }));
     for (const ln of lines) {
-      const row = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:2px 4px;margin:0 -4px;border-radius:3px' });
-      row.appendChild(el('span', { style: 'color:var(--text-muted)' }, ln.label));
-      const right = el('span', { style: 'color:var(--text);font-weight:500;white-space:nowrap' },
+      const row = el('div', { style: 'display:flex;justify-content:space-between;align-items:flex-start;gap:6px;font-size:11px;padding:2px 4px;margin:0 -4px;border-radius:3px' });
+      row.appendChild(el('span', { style: 'color:var(--text-muted);flex-shrink:0' }, ln.label));
+      const right = el('span', { style: 'color:var(--text);font-weight:500;min-width:0;word-break:break-word;text-align:right' },
         ln.value + (ln.pct !== undefined ? ` (${ln.pct})` : '')
       );
       row.appendChild(right);
@@ -221,18 +221,6 @@ function buildKpiSection(cur, cmp, cmpRange) {
   }));
 
   compGrid.appendChild(compositeKpiCard({
-    label: 'Rental Revenue', value: formatEUR(propRev),
-    delta: dRental, compLabel: cl,
-    onClick: () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS),
-    lines: [
-      { label: 'Short-term', value: formatEUR(stRev), pct: pct(stRev, propRev),
-        onClick: () => drillDownModal('Short-term Rental', drillRevRows(payments.filter(p => p.stream === 'short_term_rental'), []), REV_COLS) },
-      { label: 'Long-term',  value: formatEUR(ltRev), pct: pct(ltRev, propRev),
-        onClick: () => drillDownModal('Long-term Rental',  drillRevRows(payments.filter(p => p.stream === 'long_term_rental'),  []), REV_COLS) },
-    ]
-  }));
-
-  compGrid.appendChild(compositeKpiCard({
     label: 'Service Revenue', value: formatEUR(svcRev),
     delta: dService, compLabel: cl,
     onClick: () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS),
@@ -241,6 +229,18 @@ function buildKpiSection(cur, cmp, cmpRange) {
         onClick: () => drillDownModal('Customer Success',   drillRevRows([], invoices.filter(i => i.stream === 'customer_success')),   REV_COLS) },
       { label: 'Marketing Services', value: formatEUR(mktRev), pct: pct(mktRev, svcRev),
         onClick: () => drillDownModal('Marketing Services', drillRevRows([], invoices.filter(i => i.stream === 'marketing_services')), REV_COLS) },
+    ]
+  }));
+
+  compGrid.appendChild(compositeKpiCard({
+    label: 'Rental Revenue', value: formatEUR(propRev),
+    delta: dRental, compLabel: cl,
+    onClick: () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS),
+    lines: [
+      { label: 'Short-term', value: formatEUR(stRev), pct: pct(stRev, propRev),
+        onClick: () => drillDownModal('Short-term Rental', drillRevRows(payments.filter(p => p.stream === 'short_term_rental'), []), REV_COLS) },
+      { label: 'Long-term',  value: formatEUR(ltRev), pct: pct(ltRev, propRev),
+        onClick: () => drillDownModal('Long-term Rental',  drillRevRows(payments.filter(p => p.stream === 'long_term_rental'),  []), REV_COLS) },
     ]
   }));
 
@@ -255,24 +255,19 @@ function buildKpiSection(cur, cmp, cmpRange) {
     }))
   }));
 
-  wrapper.appendChild(compGrid);
-
-  // ── Standard cards row ───────────────────────────────────────────────────────
-  const stdGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px' });
-
-  stdGrid.appendChild(kpiCard({
+  compGrid.appendChild(kpiCard({
     label: 'Collection Rate', value: collRate !== null ? collRate.toFixed(1) + '%' : 'N/A',
     subtitle: 'Paid / (Paid + Outstanding)',
     variant: collRate !== null && collRate < 70 ? 'warning' : (collRate === 100 ? 'success' : ''),
     onClick: () => drillDownModal('Outstanding Invoices', outstandingRows(), REV_COLS)
   }));
-  stdGrid.appendChild(kpiCard({
+  compGrid.appendChild(kpiCard({
     label: 'Outstanding Revenue', value: formatEUR(outstandingTotal),
     variant: outstandingTotal > 0 ? 'warning' : '',
     delta: dOutstanding, invertDelta: true, compLabel: cl,
     onClick: () => drillDownModal('Outstanding Revenue', outstandingRows(), REV_COLS)
   }));
-  stdGrid.appendChild(kpiCard({
+  compGrid.appendChild(kpiCard({
     label: 'Avg / Property', value: avgPerProp !== null ? formatEUR(avgPerProp) : 'N/A',
     subtitle: activePropIds.size > 0 ? `${activePropIds.size} propert${activePropIds.size > 1 ? 'ies' : 'y'} active` : '',
     delta: dAvgProp, compLabel: cl,
@@ -283,7 +278,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
         [{ key: 'name', label: 'Property' }, { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }]);
     }
   }));
-  stdGrid.appendChild(kpiCard({
+  compGrid.appendChild(kpiCard({
     label: 'Avg / Client', value: avgPerClient !== null ? formatEUR(avgPerClient) : 'N/A',
     subtitle: activeClientIds.size > 0 ? `${activeClientIds.size} client${activeClientIds.size > 1 ? 's' : ''} active` : '',
     delta: dAvgClient, compLabel: cl,
@@ -295,7 +290,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
     }
   }));
 
-  wrapper.appendChild(stdGrid);
+  wrapper.appendChild(compGrid);
   return wrapper;
 }
 
