@@ -6427,7 +6427,7 @@
       "batches": [
         {
           "id": "btc_mp5v7bh6nw",
-          "qty": 32,
+          "qty": 55,
           "remaining": 32,
           "unitPrice": 0.24,
           "currency": "EUR",
@@ -6437,7 +6437,7 @@
       ],
       "createdAt": 1778785908954,
       "createdBy": "Giorgos",
-      "updatedAt": 1778785908954,
+      "updatedAt": 1778785922577,
       "updatedBy": "Giorgos"
     }
   ],
