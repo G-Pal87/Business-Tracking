@@ -24293,7 +24293,7 @@
     {
       "id": "rer_mp5tvsq1o3",
       "name": "Welcome Drink Studio",
-      "propertyId": "prop_mohfwhqrgj",
+      "propertyId": "prop_mox7ipfiam",
       "category": "inventory",
       "vendorId": "",
       "amountSource": "inventory",
@@ -24305,7 +24305,7 @@
       "enabled": true,
       "createdAt": 1778783744733,
       "createdBy": "Giorgos",
-      "updatedAt": 1778783744733,
+      "updatedAt": 1778783850260,
       "updatedBy": "Giorgos"
     }
   ]
