@@ -6554,13 +6554,13 @@
       "amountSource": "inventory",
       "fixedAmount": 0,
       "fixedCurrency": "EUR",
-      "inventoryItemId": "ivt_mp5vcecxqu",
+      "inventoryItemId": "ivt_mp5v8euq3l",
       "inventoryQty": 1,
       "description": "",
       "enabled": true,
       "createdAt": 1778786784354,
       "createdBy": "Giorgos",
-      "updatedAt": 1778786784354,
+      "updatedAt": 1778787255510,
       "updatedBy": "Giorgos"
     },
     {
