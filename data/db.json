@@ -6526,6 +6526,24 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778786696316,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "rer_mp5vogzwq8",
+      "name": "Toilet Paper Studio",
+      "propertyId": "prop_mox7ipfiam",
+      "category": "inventory",
+      "vendorId": "",
+      "amountSource": "inventory",
+      "fixedAmount": 0,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "ivt_mp5v7bh66b",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778786755164,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778786755164,
+      "updatedBy": "Giorgos"
     }
   ]
 }
