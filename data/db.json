@@ -28097,13 +28097,13 @@
       "amountSource": "inventory",
       "fixedAmount": 0,
       "fixedCurrency": "EUR",
-      "inventoryItemId": "ivt_mp5u51qw90",
+      "inventoryItemId": "ivt_mp5vaz4f1f",
       "inventoryQty": 1,
       "description": "",
       "enabled": true,
       "createdAt": 1778786585716,
       "createdBy": "Giorgos",
-      "updatedAt": 1778786662029,
+      "updatedAt": 1778787343050,
       "updatedBy": "Giorgos"
     },
     {
