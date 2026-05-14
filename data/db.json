@@ -6509,7 +6509,7 @@
           "id": "btc_mp5vcecw77",
           "qty": 63,
           "remaining": 63,
-          "unitPrice": 63,
+          "unitPrice": 0.59,
           "currency": "EUR",
           "dateBought": "2025-01-01",
           "comments": ""
@@ -6517,7 +6517,7 @@
       ],
       "createdAt": 1778786145969,
       "createdBy": "Giorgos",
-      "updatedAt": 1778786145969,
+      "updatedAt": 1778786255273,
       "updatedBy": "Giorgos"
     },
     {
