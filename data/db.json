@@ -6439,6 +6439,26 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778785922577,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "ivt_mp5v8euq3l",
+      "name": "Toilet Paper",
+      "propertyId": "prop_mox7mr8day",
+      "batches": [
+        {
+          "id": "btc_mp5v8euqnf",
+          "qty": 65,
+          "remaining": 65,
+          "unitPrice": 0.23,
+          "currency": "EUR",
+          "dateBought": "2025-01-01",
+          "comments": ""
+        }
+      ],
+      "createdAt": 1778785959986,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778785959986,
+      "updatedBy": "Giorgos"
     }
   ],
   "appConfig": {
