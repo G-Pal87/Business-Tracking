@@ -58,7 +58,7 @@ function buildAllPayments(wrap) {
     paid:         { label: 'Paid',         css: 'success' },
     pending:      { label: 'Pending',      css: 'warning' },
     overdue:      { label: 'Overdue',      css: 'danger'  },
-    materialized: { label: 'Materialized', css: 'info'    }
+    materialized: { label: 'Sold', css: 'info'    }
   };
 
   const yearOpts = () => {
@@ -206,7 +206,7 @@ function buildAllPayments(wrap) {
 
     for (const r of rows) {
       const prop  = byId('properties', r.propertyId);
-      const sMeta = PAYMENT_STATUSES[r.status] || { label: r.status, css: '' };
+      const sMeta = STATUS_META[r.status] || { label: r.status, css: '' };
 
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
       rowChks.push(chk);
