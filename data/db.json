@@ -6519,6 +6519,26 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778786145969,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "ivt_mp5vd17oho",
+      "name": "Welcome Sweets",
+      "propertyId": "prop_mox7p43s8o",
+      "batches": [
+        {
+          "id": "btc_mp5vd17og0",
+          "qty": 56,
+          "remaining": 56,
+          "unitPrice": 0.69,
+          "currency": "EUR",
+          "dateBought": "2025-01-01",
+          "comments": ""
+        }
+      ],
+      "createdAt": 1778786175588,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778786175588,
+      "updatedBy": "Giorgos"
     }
   ],
   "appConfig": {
