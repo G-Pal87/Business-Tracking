@@ -682,10 +682,12 @@
       "notes": "Mateusz Ochab · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750453249,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464351,
+      "updatedAt": 1778752337508,
       "updatedBy": "Giorgos",
       "materializedPaymentId": "pay_mp5a3m8t3j",
-      "materializedAt": "2026-05-14"
+      "materializedAt": "2026-05-14",
+      "deletedAt": 1778752337508,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3dojbu",
@@ -715,10 +717,12 @@
       "notes": "Kristyna Lhotanova · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750453251,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464345,
+      "updatedAt": 1778752337488,
       "updatedBy": "Giorgos",
       "materializedPaymentId": "pay_mp5a3m8nby",
-      "materializedAt": "2026-05-14"
+      "materializedAt": "2026-05-14",
+      "deletedAt": 1778752337488,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3domgy",
@@ -748,10 +752,12 @@
       "notes": "Jane Townsend · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750453254,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464341,
+      "updatedAt": 1778752337475,
       "updatedBy": "Giorgos",
       "materializedPaymentId": "pay_mp5a3m8i5r",
-      "materializedAt": "2026-05-14"
+      "materializedAt": "2026-05-14",
+      "deletedAt": 1778752337475,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3dopik",
@@ -781,10 +787,12 @@
       "notes": "Tanja Dolinar · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750453257,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464336,
+      "updatedAt": 1778752337464,
       "updatedBy": "Giorgos",
       "materializedPaymentId": "pay_mp5a3m8e28",
-      "materializedAt": "2026-05-14"
+      "materializedAt": "2026-05-14",
+      "deletedAt": 1778752337464,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3dorj8",
@@ -814,10 +822,12 @@
       "notes": "Bianca Bo · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750453259,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464332,
+      "updatedAt": 1778752337452,
       "updatedBy": "Giorgos",
       "materializedPaymentId": "pay_mp5a3m8agj",
-      "materializedAt": "2026-05-14"
+      "materializedAt": "2026-05-14",
+      "deletedAt": 1778752337452,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3dotqy",
@@ -847,10 +857,12 @@
       "notes": "Pete Isaac · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750453261,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464328,
+      "updatedAt": 1778752337439,
       "updatedBy": "Giorgos",
       "materializedPaymentId": "pay_mp5a3m86qi",
-      "materializedAt": "2026-05-14"
+      "materializedAt": "2026-05-14",
+      "deletedAt": 1778752337439,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3dov6m",
@@ -880,10 +892,12 @@
       "notes": "Julie Lay · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750453263,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464321,
+      "updatedAt": 1778752337419,
       "updatedBy": "Giorgos",
       "materializedPaymentId": "pay_mp5a3m7ymf",
-      "materializedAt": "2026-05-14"
+      "materializedAt": "2026-05-14",
+      "deletedAt": 1778752337419,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3doyqz",
@@ -1347,8 +1361,10 @@
       "notes": "Karolina Szymutko · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464314,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464314,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337401,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337401,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m7wgv",
@@ -1378,8 +1394,10 @@
       "notes": "Avin Khalaf · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464316,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464316,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337410,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337410,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m7ymf",
@@ -1409,8 +1427,10 @@
       "notes": "Julie Lay · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464318,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464318,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337423,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337423,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m83z",
@@ -1440,8 +1460,10 @@
       "notes": "Arianna Newth · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464323,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464323,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337431,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337431,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m86qi",
@@ -1471,8 +1493,10 @@
       "notes": "Pete Isaac · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464326,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464326,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337443,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337443,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m8agj",
@@ -1502,8 +1526,10 @@
       "notes": "Bianca Bo · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464330,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464330,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337456,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337456,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m8e28",
@@ -1533,8 +1559,10 @@
       "notes": "Tanja Dolinar · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464334,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464334,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337468,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337468,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m8i5r",
@@ -1564,8 +1592,10 @@
       "notes": "Jane Townsend · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464338,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464338,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337480,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337480,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m8nby",
@@ -1595,8 +1625,10 @@
       "notes": "Kristyna Lhotanova · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464343,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464343,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337491,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337491,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m8rju",
@@ -1626,8 +1658,10 @@
       "notes": "Ihor Chulei · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464347,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464347,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337500,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337500,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m8t3j",
@@ -1657,8 +1691,10 @@
       "notes": "Mateusz Ochab · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464349,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464349,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337512,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337512,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m8y2d",
@@ -1688,8 +1724,10 @@
       "notes": "Stella Thielbar · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464354,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464354,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337520,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337520,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m90g7",
@@ -1719,8 +1757,10 @@
       "notes": "Serena Entwistle · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464356,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464356,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337528,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337528,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m92kr",
@@ -1750,8 +1790,10 @@
       "notes": "James Saunders · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464358,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464358,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337536,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337536,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m94hh",
@@ -1781,8 +1823,10 @@
       "notes": "治均 段 · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464360,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464360,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337544,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337544,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m976q",
@@ -1812,8 +1856,10 @@
       "notes": "Melissa Brown · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464363,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464363,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337553,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337553,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m9aek",
@@ -1843,8 +1889,10 @@
       "notes": "Natalie Widegger · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464366,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464366,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337561,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337561,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m9ciq",
@@ -1874,8 +1922,10 @@
       "notes": "Mihai Maftei · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464368,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464368,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337569,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337569,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m9ee1",
@@ -1905,8 +1955,10 @@
       "notes": "Jordan Ajavon · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464370,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464370,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337578,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337578,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m9hdx",
@@ -1936,8 +1988,10 @@
       "notes": "Agnieszka Homel · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464373,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464373,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337587,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337587,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m9jef",
@@ -1967,8 +2021,10 @@
       "notes": "Charles Hine · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464375,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464375,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337594,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337594,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m9m66",
@@ -1998,8 +2054,10 @@
       "notes": "Wayne · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464378,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464378,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337603,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337603,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m9obc",
@@ -2029,8 +2087,10 @@
       "notes": "Maksym Hrytskiv · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464380,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464380,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337611,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337611,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m9r77",
@@ -2060,8 +2120,10 @@
       "notes": "Jonas Emil Kaihøj Sloth Nielsen · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464383,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464383,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337620,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337620,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m9ta5",
@@ -2091,8 +2153,10 @@
       "notes": "Mascha De Visser · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464386,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464386,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337628,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337628,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m9wok",
@@ -2122,8 +2186,10 @@
       "notes": "Lea Hennings · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464388,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464388,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337636,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337636,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3m9yn1",
@@ -2153,8 +2219,10 @@
       "notes": "Gary Miller · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464390,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464390,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337644,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337644,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3ma2c4",
@@ -2184,8 +2252,10 @@
       "notes": "Corey · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464394,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464394,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337652,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337652,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3ma5jg",
@@ -2215,8 +2285,10 @@
       "notes": "Paulina Smits · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464397,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464397,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337660,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337660,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3ma7fy",
@@ -2246,8 +2318,10 @@
       "notes": "Karl Budko · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464399,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464399,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337669,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337669,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3maack",
@@ -2277,8 +2351,10 @@
       "notes": "Armin Mokhtarian · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464402,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464402,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337677,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337677,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mab8m",
@@ -2308,8 +2384,10 @@
       "notes": "Hanna L. · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464403,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464403,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337686,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337686,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mad3i",
@@ -2339,8 +2417,10 @@
       "notes": "Brigitta Jaro · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464405,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464405,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337693,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337693,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mafic",
@@ -2370,8 +2450,10 @@
       "notes": "Rhodri · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464407,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464407,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337702,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337702,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3maif3",
@@ -2401,8 +2483,10 @@
       "notes": "Stephen Field · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464410,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464410,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337710,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337710,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mame8",
@@ -2432,8 +2516,10 @@
       "notes": "Filip Sordyl · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464414,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464414,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337718,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337718,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mao6u",
@@ -2463,8 +2549,10 @@
       "notes": "Mats Schmidt · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464416,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464416,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337726,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337726,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3marou",
@@ -2494,8 +2582,10 @@
       "notes": "Armin Mokhtarian · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464419,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464419,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337730,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337730,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mauna",
@@ -2525,8 +2615,10 @@
       "notes": "Henna · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464422,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464422,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337738,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337738,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3max6g",
@@ -2556,8 +2648,10 @@
       "notes": "Kitty Casey McLoone · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464425,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464425,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337747,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337747,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mb0f",
@@ -2587,8 +2681,10 @@
       "notes": "Lisa Mimra · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464428,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464428,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337756,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337756,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mb34o",
@@ -2618,8 +2714,10 @@
       "notes": "Hanna L. · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464431,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464431,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337761,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337761,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mb63o",
@@ -2649,8 +2747,10 @@
       "notes": "Alessandra Cardoso · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464434,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464434,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337770,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337770,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mb8rq",
@@ -2680,8 +2780,10 @@
       "notes": "Uisce Daley · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464436,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464436,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337778,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337778,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mbbky",
@@ -2711,8 +2813,10 @@
       "notes": "Tamara Cujic · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464440,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464440,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337786,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337786,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mbf0",
@@ -2742,8 +2846,10 @@
       "notes": "Connor Mcguire · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464443,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464443,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337794,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337794,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mbi93",
@@ -2773,8 +2879,10 @@
       "notes": "Mirjam Becker · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464446,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464446,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337802,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337802,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mblq5",
@@ -2804,8 +2912,10 @@
       "notes": "Shuang Xu · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464449,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464449,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337810,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337810,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mboqt",
@@ -2835,8 +2945,10 @@
       "notes": "אריה אלמוג · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464452,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464452,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337818,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337818,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mbr2d",
@@ -2866,8 +2978,10 @@
       "notes": "Trayton Curl · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464455,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464455,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337826,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337826,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mbu16",
@@ -2897,8 +3011,10 @@
       "notes": "Marlies Vriens · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464458,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464458,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337834,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337834,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mbydx",
@@ -2928,8 +3044,10 @@
       "notes": "Maximiliano Garcia · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464462,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464462,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337842,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337842,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mc1i1",
@@ -2959,8 +3077,10 @@
       "notes": "Adam Wielechowski · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464465,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464465,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337850,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337850,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mc4ao",
@@ -2990,8 +3110,10 @@
       "notes": "Ben Yusuf Jones · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464468,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464468,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337858,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337858,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mc8c3",
@@ -3021,8 +3143,10 @@
       "notes": "Lisa Beck · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464472,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464472,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337867,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337867,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mcbbn",
@@ -3052,8 +3176,10 @@
       "notes": "Dorota Bartnicka Bartnicka · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464475,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464475,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337875,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337875,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mcf4n",
@@ -3083,8 +3209,10 @@
       "notes": "Ludek Stavinoha · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464479,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464479,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337883,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337883,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mchmk",
@@ -3114,8 +3242,10 @@
       "notes": "Celina · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464481,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464481,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337892,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337892,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mclma",
@@ -3145,8 +3275,10 @@
       "notes": "Carl Evers · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464485,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464485,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337900,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337900,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mcocf",
@@ -3176,8 +3308,10 @@
       "notes": "Dhananjay · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464488,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464488,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337908,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337908,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mcqbq",
@@ -3207,8 +3341,10 @@
       "notes": "Lukas Krawielicki · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464490,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464490,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337918,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337918,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mcu7m",
@@ -3238,8 +3374,10 @@
       "notes": "Ewelina Murawska · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464494,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464494,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337926,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337926,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mcx3h",
@@ -3269,8 +3407,10 @@
       "notes": "Dhananjay · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464497,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464497,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337930,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337930,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3md1ah",
@@ -3300,8 +3440,10 @@
       "notes": "Julia Van Den Hout · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464501,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464501,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337938,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337938,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3md5d8",
@@ -3331,8 +3473,10 @@
       "notes": "Cassi Hamilton · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464505,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464505,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337946,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337946,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3md8pr",
@@ -3362,8 +3506,10 @@
       "notes": "Svenja Schölermann · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464508,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464508,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337954,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337954,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mdcmp",
@@ -3393,8 +3539,10 @@
       "notes": "Yevhenii Bilitiuk · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464512,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464512,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337962,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337962,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mdfm0",
@@ -3424,8 +3572,10 @@
       "notes": "Alexander Angelin · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464515,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464515,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337970,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337970,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mdjhs",
@@ -3455,8 +3605,10 @@
       "notes": "Ulrike Katharina Schrödl · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464519,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464519,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337979,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337979,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mdmgh",
@@ -3486,8 +3638,10 @@
       "notes": "Katrine Sonnenschein · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464522,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464522,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337987,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337987,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mdqp9",
@@ -3517,8 +3671,10 @@
       "notes": "Oskar Lukasiewitsch · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464526,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464526,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337995,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337995,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mdupn",
@@ -3548,8 +3704,10 @@
       "notes": "Natalia Grześkowiak · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464530,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464530,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338003,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338003,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mdya0",
@@ -3579,8 +3737,10 @@
       "notes": "Radu Muresan · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464534,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464534,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338011,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338011,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3me2lt",
@@ -3610,8 +3770,10 @@
       "notes": "Sarah Marie Maronier · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464538,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464538,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338020,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338020,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3me47f",
@@ -3641,8 +3803,10 @@
       "notes": "Christian Huber · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464540,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464540,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338028,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338028,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3me88b",
@@ -3672,8 +3836,10 @@
       "notes": "Sarah Marie Maronier · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464544,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464544,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338032,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338032,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mecf4",
@@ -3703,8 +3869,10 @@
       "notes": "Dorota Palmer · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464548,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464548,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338040,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338040,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3meg2w",
@@ -3734,8 +3902,10 @@
       "notes": "Myriam Le Floch · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464552,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464552,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338050,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338050,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mekpu",
@@ -3765,8 +3935,10 @@
       "notes": "Katharina Bittner · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464556,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464556,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338060,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338060,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3men5u",
@@ -3796,8 +3968,10 @@
       "notes": "Laura Häger · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464559,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464559,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338070,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338070,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3meson",
@@ -3827,8 +4001,10 @@
       "notes": "Nicole Pohlmann · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464564,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464564,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338078,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338078,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mewnj",
@@ -3858,8 +4034,10 @@
       "notes": "Sandra Plattner · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464568,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464568,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338086,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338086,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mf0e0",
@@ -3889,8 +4067,10 @@
       "notes": "Guido Hack · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464572,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464572,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338094,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338094,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mf4f7",
@@ -3920,8 +4100,10 @@
       "notes": "Luanne Mason · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464576,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464576,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338103,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338103,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mf8mg",
@@ -3951,8 +4133,10 @@
       "notes": "Rhiannon Brown · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464580,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464580,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338111,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338111,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mfci9",
@@ -3982,8 +4166,10 @@
       "notes": "Louis Sims · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464584,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464584,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338119,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338119,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mfham",
@@ -4013,8 +4199,10 @@
       "notes": "Lisa Dannebaum · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464589,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464589,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338127,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338127,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mfkke",
@@ -4044,8 +4232,10 @@
       "notes": "Kim Krause-Walker · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464592,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464592,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338135,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338135,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mfp5b",
@@ -4075,8 +4265,10 @@
       "notes": "Lucas Richards · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464597,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464597,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338143,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338143,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mft9t",
@@ -4106,8 +4298,10 @@
       "notes": "Katharina Singer · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464601,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464601,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338152,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338152,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mfyo5",
@@ -4137,8 +4331,10 @@
       "notes": "Chrysa Traikopoulou · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464606,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464606,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338160,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338160,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mg2as",
@@ -4168,8 +4364,10 @@
       "notes": "Dominika Stula-Nankiewicz · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464610,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464610,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338168,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338168,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mg75o",
@@ -4199,8 +4397,10 @@
       "notes": "Caroline Waterton · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464615,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464615,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338176,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338176,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mgbo7",
@@ -4230,8 +4430,10 @@
       "notes": "Mona Dörrer · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464619,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464619,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338185,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338185,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mggeg",
@@ -4261,8 +4463,10 @@
       "notes": "Kim Kreis · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464624,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464624,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338193,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338193,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mgllt",
@@ -4292,8 +4496,10 @@
       "notes": "Nina Bayne · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464629,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464629,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338202,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338202,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mgnqx",
@@ -4323,8 +4529,10 @@
       "notes": "Ludovic Houard · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464631,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464631,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338210,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338210,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mgrg7",
@@ -4354,8 +4562,10 @@
       "notes": "Sonia Hołyszewska · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464635,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464635,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338219,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338219,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mgvks",
@@ -4385,8 +4595,10 @@
       "notes": "Carol Grindrod · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464639,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464639,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338227,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338227,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mh0li",
@@ -4416,8 +4628,10 @@
       "notes": "Giorgos Ioannou · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464644,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464644,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338235,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338235,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mh48o",
@@ -4447,8 +4661,10 @@
       "notes": "Roza Zakaryan · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464648,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464648,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338243,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338243,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mhae9",
@@ -4478,8 +4694,10 @@
       "notes": "Nina Bayne · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464654,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464654,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338247,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338247,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mhf6d",
@@ -4509,8 +4727,10 @@
       "notes": "Jan Klos · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464659,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464659,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338255,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338255,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mhlft",
@@ -4540,8 +4760,10 @@
       "notes": "Stéphanie Lassale · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464665,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464665,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338264,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338264,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mhrbs",
@@ -4571,8 +4793,10 @@
       "notes": "Lotte Witters · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464671,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464671,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338272,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338272,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mhwci",
@@ -4602,8 +4826,10 @@
       "notes": "Franziska Maibach · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464676,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464676,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338280,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338280,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mi1gu",
@@ -4633,8 +4859,10 @@
       "notes": "Nina Javaux · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464681,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464681,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338289,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338289,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mi62n",
@@ -4664,8 +4892,10 @@
       "notes": "Robin Haxel · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464686,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464686,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338297,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338297,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mib9z",
@@ -4695,8 +4925,10 @@
       "notes": "Charlotte Rose · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464691,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464691,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338305,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338305,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mig76",
@@ -4726,8 +4958,10 @@
       "notes": "Melanie Catineau · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464696,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464696,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338314,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338314,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mil22",
@@ -4757,8 +4991,10 @@
       "notes": "Ruth Steen · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464701,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464701,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338323,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338323,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mir3p",
@@ -4788,8 +5024,10 @@
       "notes": "Luca Sangrigoli · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464707,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464707,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338331,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338331,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3miwjf",
@@ -4819,8 +5057,10 @@
       "notes": "Katarzyna Gwóźdź · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464712,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464712,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338339,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338339,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mj1aw",
@@ -4850,8 +5090,10 @@
       "notes": "Ike Albeniz Peral · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464717,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464717,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338348,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338348,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mj6y",
@@ -4881,8 +5123,10 @@
       "notes": "Maryia Yakhnis · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464722,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464722,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338356,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338356,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mjcde",
@@ -4912,8 +5156,10 @@
       "notes": "Melissa Roddau · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464728,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464728,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338364,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338364,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mjepk",
@@ -4943,8 +5189,10 @@
       "notes": "Edvinas Zaidenvurm · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464730,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464730,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338373,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338373,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mjk57",
@@ -4974,8 +5222,10 @@
       "notes": "Alex Quentin · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464736,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464736,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338381,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338381,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mjm4l",
@@ -5005,8 +5255,10 @@
       "notes": "Lori Bryan · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464738,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464738,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338389,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338389,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mjtgl",
@@ -5036,8 +5288,10 @@
       "notes": "Stephanie Grivelet · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464745,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464745,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338398,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338398,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mjy3x",
@@ -5067,8 +5321,10 @@
       "notes": "Reece Coles · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464750,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464750,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338406,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338406,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mk3h3",
@@ -5098,8 +5354,10 @@
       "notes": "Bernadett Paluska · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464755,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464755,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338414,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338414,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mk98o",
@@ -5129,8 +5387,10 @@
       "notes": "April Cabaniuc · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464761,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464761,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338422,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338422,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mkf7i",
@@ -5160,8 +5420,10 @@
       "notes": "Melissa Roddau · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464767,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464767,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338426,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338426,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mkke5",
@@ -5191,8 +5453,10 @@
       "notes": "Natalie Roth · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464772,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464772,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338435,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338435,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mkqef",
@@ -5222,8 +5486,10 @@
       "notes": "Krystian Jońca · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464778,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464778,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338443,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338443,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mkwki",
@@ -5253,8 +5519,10 @@
       "notes": "Katia Barabash · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464784,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464784,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338452,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338452,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3ml169",
@@ -5284,8 +5552,10 @@
       "notes": "Pauline Maurais · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464789,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464789,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338460,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338460,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3ml7qc",
@@ -5315,8 +5585,10 @@
       "notes": "Evelin Karai · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464795,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464795,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338468,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338468,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mldmj",
@@ -5346,8 +5618,10 @@
       "notes": "Stéphane Doueihi · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464801,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464801,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338477,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338477,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mlj8l",
@@ -5377,8 +5651,10 @@
       "notes": "Loes Staal · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464807,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464807,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338485,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338485,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mlo5b",
@@ -5408,8 +5684,10 @@
       "notes": "Andreas Kallis · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464812,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464812,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338494,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338494,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mlu1m",
@@ -5439,8 +5717,10 @@
       "notes": "Brent Gibbs · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464819,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464819,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338502,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338502,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mm0k3",
@@ -5470,8 +5750,10 @@
       "notes": "Alex Quentin · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464824,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464824,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338506,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338506,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mm6qh",
@@ -5501,8 +5783,10 @@
       "notes": "Andy · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464830,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464830,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338514,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338514,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mmc7z",
@@ -5532,8 +5816,10 @@
       "notes": "Andy · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464836,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464836,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338519,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338519,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mmfga",
@@ -5563,8 +5849,10 @@
       "notes": "Nicolas Nicolaou · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464839,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464839,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338527,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338527,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mmlj9",
@@ -5594,8 +5882,10 @@
       "notes": "Mark · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464845,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464845,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338535,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338535,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mmr3e",
@@ -5625,8 +5915,10 @@
       "notes": "Giuseppe Cocchiara · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464851,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464851,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338544,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338544,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mmxn3",
@@ -5656,8 +5948,10 @@
       "notes": "Lennart Dick · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464857,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464857,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338553,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338553,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mmz78",
@@ -5687,8 +5981,10 @@
       "notes": "Mordechai Keiserman · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464859,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464859,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338561,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338561,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mn6f",
@@ -5718,8 +6014,10 @@
       "notes": "Michał Bojanowski · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464866,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464866,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338570,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338570,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mnbq1",
@@ -5749,8 +6047,10 @@
       "notes": "Reece P · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464871,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464871,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338578,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338578,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mnh9m",
@@ -5780,8 +6080,10 @@
       "notes": "Lennart Dick · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464877,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464877,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338582,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338582,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mnnb",
@@ -5811,8 +6113,10 @@
       "notes": "Olga Dambaeva · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464883,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464883,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338591,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338591,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mntet",
@@ -5842,8 +6146,10 @@
       "notes": "TravelCosmos Linaraki · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464889,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464889,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338599,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338599,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mnzr5",
@@ -5873,8 +6179,10 @@
       "notes": "Jan Sadílek · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464896,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464896,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338608,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338608,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mo6gk",
@@ -5904,8 +6212,10 @@
       "notes": "Nadin Billing · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464902,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464902,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338616,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338616,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mocoh",
@@ -5935,8 +6245,10 @@
       "notes": "Febe Laermans · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464908,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464908,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338624,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338624,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3moiqt",
@@ -5966,8 +6278,10 @@
       "notes": "Eva Saischegg · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464914,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464914,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338633,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338633,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3moogp",
@@ -5997,8 +6311,10 @@
       "notes": "Stephen Bertram · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464920,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464920,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338642,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338642,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mougj",
@@ -6028,8 +6344,10 @@
       "notes": "Kirill Kolesnyk · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464926,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464926,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338650,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338650,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mp0ap",
@@ -6059,8 +6377,10 @@
       "notes": "Tristan Baylard · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464932,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464932,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338658,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338658,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mp6e4",
@@ -6090,8 +6410,10 @@
       "notes": "Julia Giannakis · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464938,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464938,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338666,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338666,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mpd7e",
@@ -6121,8 +6443,10 @@
       "notes": "Marlijn Santegoets · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464945,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464945,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338674,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338674,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mpi84",
@@ -6152,8 +6476,10 @@
       "notes": "Maria Deych · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464950,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464950,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338682,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338682,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mpp8f",
@@ -6183,8 +6509,10 @@
       "notes": "Marta Gąsiorek · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464957,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464957,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338690,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338690,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mpvn6",
@@ -6214,8 +6542,10 @@
       "notes": "Márta Fischer · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464963,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464963,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338698,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338698,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mq1cw",
@@ -6245,8 +6575,10 @@
       "notes": "Alain Rudolf · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464969,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464969,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338707,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338707,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mq8nx",
@@ -6276,8 +6608,10 @@
       "notes": "Natalie Kaminko · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750464976,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464976,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338715,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338715,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mqfl7",
@@ -6307,8 +6641,10 @@
       "notes": "Vitali Arkhipenka · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464983,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464983,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338723,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338723,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mqlf3",
@@ -6338,8 +6674,10 @@
       "notes": "Tim Philippe · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750464989,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464989,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338731,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338731,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mqsop",
@@ -6369,8 +6707,10 @@
       "notes": "Sandy & Ardle MacMahon · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750464996,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464996,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338739,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338739,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mqzlg",
@@ -6400,8 +6740,10 @@
       "notes": "Hrvoje Basic · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465003,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465003,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338747,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338747,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mr6dt",
@@ -6431,8 +6773,10 @@
       "notes": "Aleksandr Blinov · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465010,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465010,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338756,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338756,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mrdej",
@@ -6462,8 +6806,10 @@
       "notes": "Diana-Andreea Barbulescu · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750465017,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465017,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338765,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338765,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mrk5i",
@@ -6493,8 +6839,10 @@
       "notes": "Kelly Gorton · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465024,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465024,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338773,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338773,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mrqem",
@@ -6524,8 +6872,10 @@
       "notes": "Sandra · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465030,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465030,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338781,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338781,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mrule",
@@ -6555,8 +6905,10 @@
       "notes": "Sandra Sobkowiak · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750465034,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465034,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338790,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338790,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3ms02y",
@@ -6586,8 +6938,10 @@
       "notes": "Yulia Masis · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465040,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465040,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338799,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338799,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3ms81c",
@@ -6617,8 +6971,10 @@
       "notes": "Eddy Sawaya · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465048,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465048,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338808,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338808,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3msfr2",
@@ -6648,8 +7004,10 @@
       "notes": "Richard Papcun · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465055,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465055,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338816,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338816,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mslmh",
@@ -6679,8 +7037,10 @@
       "notes": "Cara Deacon · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465061,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465061,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338824,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338824,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mstbh",
@@ -6710,8 +7070,10 @@
       "notes": "Sandra · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465069,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465069,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338828,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338828,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mszf1",
@@ -6741,8 +7103,10 @@
       "notes": "Tamar Blor · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750465075,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465075,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338837,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338837,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mt7ig",
@@ -6772,8 +7136,10 @@
       "notes": "DeLisa Smith · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465083,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465083,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338846,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338846,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mtdba",
@@ -6803,8 +7169,10 @@
       "notes": "Meggie Van Assen · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465089,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465089,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338855,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338855,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mtlj",
@@ -6834,8 +7202,10 @@
       "notes": "Rafael Fourkas · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750465097,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465097,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338863,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338863,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mtrek",
@@ -6865,8 +7235,10 @@
       "notes": "Eda Gürsoy · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465103,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465103,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338872,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338872,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mty79",
@@ -6896,8 +7268,10 @@
       "notes": "Lydia Lamoury · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750465110,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465110,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338880,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338880,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mu5e4",
@@ -6927,8 +7301,10 @@
       "notes": "Vanessa Röthlin · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465117,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465117,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338888,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338888,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mubd6",
@@ -6958,8 +7334,10 @@
       "notes": "Kenza Ghilas · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465124,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465124,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338896,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338896,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3muj56",
@@ -6989,8 +7367,10 @@
       "notes": "Madeline Lauf · Poolside Central Studio | Balcony & Beach Walk",
       "createdAt": 1778750465131,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465131,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338905,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338905,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3muqio",
@@ -7020,8 +7400,10 @@
       "notes": "Philipp Splettstößer · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465138,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465138,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338914,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338914,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3muxhn",
@@ -7051,8 +7433,10 @@
       "notes": "Fabrício Bruner · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465145,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465145,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338922,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338922,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mv380",
@@ -7082,8 +7466,10 @@
       "notes": "Grace Lunn · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465151,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465151,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338931,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338931,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mvae4",
@@ -7113,8 +7499,10 @@
       "notes": "Anika Lenz · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465158,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465158,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338940,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338940,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mvh2i",
@@ -7144,8 +7532,10 @@
       "notes": "Ellie Van Mulukom Van Der Linden · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465165,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465165,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338948,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338948,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mvo34",
@@ -7175,8 +7565,10 @@
       "notes": "Liam Brennan · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465172,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465172,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338957,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338957,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mvwla",
@@ -7206,8 +7598,10 @@
       "notes": "Gemma Simons · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465180,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465180,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338966,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338966,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mw2mk",
@@ -7237,8 +7631,10 @@
       "notes": "Mel Ben · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465186,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465186,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338974,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338974,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mwalt",
@@ -7268,8 +7664,10 @@
       "notes": "Philipp Gutsche · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465194,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465194,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338983,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338983,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mwgid",
@@ -7299,8 +7697,10 @@
       "notes": "Yvonne Knight · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465200,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465200,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338992,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338992,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mwo8f",
@@ -7330,8 +7730,10 @@
       "notes": "Tom Coleman · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465208,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465208,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339000,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339000,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mwv3t",
@@ -7361,8 +7763,10 @@
       "notes": "Rafael Pavlou · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465215,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465215,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339008,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339008,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mx4k9",
@@ -7392,8 +7796,10 @@
       "notes": "Rebecca Dawson · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465224,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465224,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339017,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339017,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mxbgw",
@@ -7423,8 +7829,10 @@
       "notes": "Hannah Kuroll · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465231,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465231,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339025,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339025,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mxjij",
@@ -7454,8 +7862,10 @@
       "notes": "Robert Rodgers · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465239,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465239,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339033,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339033,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mxq29",
@@ -7485,8 +7895,10 @@
       "notes": "Tom Ismay · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778750465246,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465246,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339041,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339041,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mxxj0",
@@ -7516,8 +7928,10 @@
       "notes": "Lea Poppeck · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465253,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465253,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339050,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339050,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3my4lh",
@@ -7547,8 +7961,10 @@
       "notes": "Anja Repalust · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465260,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465260,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339058,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339058,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mycdw",
@@ -7578,8 +7994,10 @@
       "notes": "Nikoloz Tarielashvili · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465269,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465269,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339066,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339066,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "pay_mp5a3mykko",
@@ -7609,8 +8027,10 @@
       "notes": "Rita Katona · Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "createdAt": 1778750465276,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465276,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339074,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339074,
+      "deletedBy": "Giorgos"
     }
   ],
   "expenses": [
@@ -7695,10 +8115,12 @@
       "reservationRef": "HMK9F3P4BR",
       "isGenerated": true,
       "manualOverride": false,
-      "updatedAt": 1778750464350,
+      "updatedAt": 1778752337504,
       "updatedBy": "Giorgos",
       "createdAt": 1778750472961,
-      "createdBy": "Giorgos"
+      "createdBy": "Giorgos",
+      "deletedAt": 1778752337504,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3dol8g",
@@ -7715,10 +8137,12 @@
       "reservationRef": "HMME4SFACN",
       "isGenerated": true,
       "manualOverride": false,
-      "updatedAt": 1778750464344,
+      "updatedAt": 1778752337484,
       "updatedBy": "Giorgos",
       "createdAt": 1778750472961,
-      "createdBy": "Giorgos"
+      "createdBy": "Giorgos",
+      "deletedAt": 1778752337484,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3don2x",
@@ -7735,10 +8159,12 @@
       "reservationRef": "HMKMWXA3HC",
       "isGenerated": true,
       "manualOverride": false,
-      "updatedAt": 1778750464340,
+      "updatedAt": 1778752337472,
       "updatedBy": "Giorgos",
       "createdAt": 1778750472961,
-      "createdBy": "Giorgos"
+      "createdBy": "Giorgos",
+      "deletedAt": 1778752337472,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3doqnx",
@@ -7755,10 +8181,12 @@
       "reservationRef": "HM4XRPRMWZ",
       "isGenerated": true,
       "manualOverride": false,
-      "updatedAt": 1778750464335,
+      "updatedAt": 1778752337459,
       "updatedBy": "Giorgos",
       "createdAt": 1778750472961,
-      "createdBy": "Giorgos"
+      "createdBy": "Giorgos",
+      "deletedAt": 1778752337459,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3doslw",
@@ -7775,10 +8203,12 @@
       "reservationRef": "HM5E44923E",
       "isGenerated": true,
       "manualOverride": false,
-      "updatedAt": 1778750464331,
+      "updatedAt": 1778752337447,
       "updatedBy": "Giorgos",
       "createdAt": 1778750472961,
-      "createdBy": "Giorgos"
+      "createdBy": "Giorgos",
+      "deletedAt": 1778752337447,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3doum2",
@@ -7795,10 +8225,12 @@
       "reservationRef": "HMX28XH3DB",
       "isGenerated": true,
       "manualOverride": false,
-      "updatedAt": 1778750464327,
+      "updatedAt": 1778752337435,
       "updatedBy": "Giorgos",
       "createdAt": 1778750472961,
-      "createdBy": "Giorgos"
+      "createdBy": "Giorgos",
+      "deletedAt": 1778752337435,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3dowrn",
@@ -7815,10 +8247,12 @@
       "reservationRef": "HM3YQ8MMMD",
       "isGenerated": true,
       "manualOverride": false,
-      "updatedAt": 1778750464320,
+      "updatedAt": 1778752337413,
       "updatedBy": "Giorgos",
       "createdAt": 1778750472961,
-      "createdBy": "Giorgos"
+      "createdBy": "Giorgos",
+      "deletedAt": 1778752337413,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3dozrq",
@@ -8117,8 +8551,10 @@
       "manualOverride": false,
       "createdAt": 1778750464315,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464315,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337397,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337397,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m7xi",
@@ -8137,8 +8573,10 @@
       "manualOverride": false,
       "createdAt": 1778750464317,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464317,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337405,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337405,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m84i0",
@@ -8157,8 +8595,10 @@
       "manualOverride": false,
       "createdAt": 1778750464324,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464324,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337427,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337427,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m8s73",
@@ -8177,8 +8617,10 @@
       "manualOverride": false,
       "createdAt": 1778750464348,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464348,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337496,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337496,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m8zd",
@@ -8197,8 +8639,10 @@
       "manualOverride": false,
       "createdAt": 1778750464355,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464355,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337516,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337516,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9113",
@@ -8217,8 +8661,10 @@
       "manualOverride": false,
       "createdAt": 1778750464357,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464357,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337524,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337524,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m937a",
@@ -8237,8 +8683,10 @@
       "manualOverride": false,
       "createdAt": 1778750464359,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464359,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337532,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337532,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m96ae",
@@ -8257,8 +8705,10 @@
       "manualOverride": false,
       "createdAt": 1778750464362,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464362,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337540,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337540,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m99ju",
@@ -8277,8 +8727,10 @@
       "manualOverride": false,
       "createdAt": 1778750464365,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464365,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337549,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337549,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9br4",
@@ -8297,8 +8749,10 @@
       "manualOverride": false,
       "createdAt": 1778750464367,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464367,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337557,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337557,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9da4",
@@ -8317,8 +8771,10 @@
       "manualOverride": false,
       "createdAt": 1778750464369,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464369,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337565,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337565,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9fj1",
@@ -8337,8 +8793,10 @@
       "manualOverride": false,
       "createdAt": 1778750464371,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464371,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337574,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337574,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9irn",
@@ -8357,8 +8815,10 @@
       "manualOverride": false,
       "createdAt": 1778750464374,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464374,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337583,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337583,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9km1",
@@ -8377,8 +8837,10 @@
       "manualOverride": false,
       "createdAt": 1778750464376,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464376,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337591,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337591,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9nah",
@@ -8397,8 +8859,10 @@
       "manualOverride": false,
       "createdAt": 1778750464379,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464379,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337599,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337599,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9q54",
@@ -8417,8 +8881,10 @@
       "manualOverride": false,
       "createdAt": 1778750464382,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464382,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337607,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337607,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9sg2",
@@ -8437,8 +8903,10 @@
       "manualOverride": false,
       "createdAt": 1778750464384,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464384,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337615,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337615,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9v2z",
@@ -8457,8 +8925,10 @@
       "manualOverride": false,
       "createdAt": 1778750464387,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464387,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337624,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337624,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9xr8",
@@ -8477,8 +8947,10 @@
       "manualOverride": false,
       "createdAt": 1778750464389,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464389,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337632,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337632,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3m9zg3",
@@ -8497,8 +8969,10 @@
       "manualOverride": false,
       "createdAt": 1778750464391,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464391,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337640,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337640,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3ma33c",
@@ -8517,8 +8991,10 @@
       "manualOverride": false,
       "createdAt": 1778750464395,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464395,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337648,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337648,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3ma69f",
@@ -8537,8 +9013,10 @@
       "manualOverride": false,
       "createdAt": 1778750464398,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464398,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337656,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337656,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3ma9lu",
@@ -8557,8 +9035,10 @@
       "manualOverride": false,
       "createdAt": 1778750464401,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464401,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337664,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337664,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3maen1",
@@ -8577,8 +9057,10 @@
       "manualOverride": false,
       "createdAt": 1778750464406,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464406,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337690,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337690,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mahnu",
@@ -8597,8 +9079,10 @@
       "manualOverride": false,
       "createdAt": 1778750464409,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464409,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337698,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337698,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3makqu",
@@ -8617,8 +9101,10 @@
       "manualOverride": false,
       "createdAt": 1778750464412,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464412,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337706,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337706,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3man1y",
@@ -8637,8 +9123,10 @@
       "manualOverride": false,
       "createdAt": 1778750464415,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464415,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337714,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337714,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3maqb",
@@ -8657,8 +9145,10 @@
       "manualOverride": false,
       "createdAt": 1778750464418,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464418,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337722,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337722,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3masav",
@@ -8677,8 +9167,10 @@
       "manualOverride": false,
       "createdAt": 1778750464420,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464420,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337672,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337672,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mav9j",
@@ -8697,8 +9189,10 @@
       "manualOverride": false,
       "createdAt": 1778750464423,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464423,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337734,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337734,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3maykv",
@@ -8717,8 +9211,10 @@
       "manualOverride": false,
       "createdAt": 1778750464426,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464426,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337742,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337742,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mb1ac",
@@ -8737,8 +9233,10 @@
       "manualOverride": false,
       "createdAt": 1778750464429,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464429,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337752,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337752,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mb4gv",
@@ -8757,8 +9255,10 @@
       "manualOverride": false,
       "createdAt": 1778750464432,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464432,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337681,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337681,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mb7d8",
@@ -8777,8 +9277,10 @@
       "manualOverride": false,
       "createdAt": 1778750464435,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464435,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337765,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337765,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mba8z",
@@ -8797,8 +9299,10 @@
       "manualOverride": false,
       "createdAt": 1778750464438,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464438,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337774,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337774,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mbdl7",
@@ -8817,8 +9321,10 @@
       "manualOverride": false,
       "createdAt": 1778750464441,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464441,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337782,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337782,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mbgp0",
@@ -8837,8 +9343,10 @@
       "manualOverride": false,
       "createdAt": 1778750464444,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464444,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337790,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337790,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mbkof",
@@ -8857,8 +9365,10 @@
       "manualOverride": false,
       "createdAt": 1778750464448,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464448,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337798,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337798,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mbmmm",
@@ -8877,8 +9387,10 @@
       "manualOverride": false,
       "createdAt": 1778750464450,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464450,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337806,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337806,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mbq6r",
@@ -8897,8 +9409,10 @@
       "manualOverride": false,
       "createdAt": 1778750464454,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464454,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337814,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337814,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mbtfs",
@@ -8917,8 +9431,10 @@
       "manualOverride": false,
       "createdAt": 1778750464457,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464457,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337822,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337822,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mbw8g",
@@ -8937,8 +9453,10 @@
       "manualOverride": false,
       "createdAt": 1778750464460,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464460,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337830,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337830,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mbz66",
@@ -8957,8 +9475,10 @@
       "manualOverride": false,
       "createdAt": 1778750464463,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464463,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337838,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337838,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mc21k",
@@ -8977,8 +9497,10 @@
       "manualOverride": false,
       "createdAt": 1778750464466,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464466,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337846,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337846,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mc6ok",
@@ -8997,8 +9519,10 @@
       "manualOverride": false,
       "createdAt": 1778750464470,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464470,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337854,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337854,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mc95a",
@@ -9017,8 +9541,10 @@
       "manualOverride": false,
       "createdAt": 1778750464473,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464473,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337862,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337862,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mcdi3",
@@ -9037,8 +9563,10 @@
       "manualOverride": false,
       "createdAt": 1778750464477,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464477,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337870,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337870,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mcg1u",
@@ -9057,8 +9585,10 @@
       "manualOverride": false,
       "createdAt": 1778750464480,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464480,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337878,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337878,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mcj73",
@@ -9077,8 +9607,10 @@
       "manualOverride": false,
       "createdAt": 1778750464483,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464483,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337887,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337887,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mcncc",
@@ -9097,8 +9629,10 @@
       "manualOverride": false,
       "createdAt": 1778750464487,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464487,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337896,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337896,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mcslo",
@@ -9117,8 +9651,10 @@
       "manualOverride": false,
       "createdAt": 1778750464492,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464492,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337913,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337913,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mcw5n",
@@ -9137,8 +9673,10 @@
       "manualOverride": false,
       "createdAt": 1778750464496,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464496,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337921,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337921,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mcz57",
@@ -9157,8 +9695,10 @@
       "manualOverride": false,
       "createdAt": 1778750464499,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464499,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337904,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337904,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3md3nl",
@@ -9177,8 +9717,10 @@
       "manualOverride": false,
       "createdAt": 1778750464503,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464503,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337934,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337934,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3md6dd",
@@ -9197,8 +9739,10 @@
       "manualOverride": false,
       "createdAt": 1778750464506,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464506,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337942,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337942,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mdarr",
@@ -9217,8 +9761,10 @@
       "manualOverride": false,
       "createdAt": 1778750464510,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464510,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337950,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337950,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mdeni",
@@ -9237,8 +9783,10 @@
       "manualOverride": false,
       "createdAt": 1778750464514,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464514,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337958,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337958,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mdhrr",
@@ -9257,8 +9805,10 @@
       "manualOverride": false,
       "createdAt": 1778750464517,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464517,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337967,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337967,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mdlrj",
@@ -9277,8 +9827,10 @@
       "manualOverride": false,
       "createdAt": 1778750464521,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464521,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337975,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337975,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mdolx",
@@ -9297,8 +9849,10 @@
       "manualOverride": false,
       "createdAt": 1778750464524,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464524,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337983,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337983,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mdsfg",
@@ -9317,8 +9871,10 @@
       "manualOverride": false,
       "createdAt": 1778750464528,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464528,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337991,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337991,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mdwmc",
@@ -9337,8 +9893,10 @@
       "manualOverride": false,
       "createdAt": 1778750464532,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464532,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752337999,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752337999,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3me09t",
@@ -9357,8 +9915,10 @@
       "manualOverride": false,
       "createdAt": 1778750464536,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464536,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338007,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338007,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3me6jk",
@@ -9379,8 +9939,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464542,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464542,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338024,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338024,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3me9fe",
@@ -9401,8 +9963,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464545,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464545,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338016,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338016,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3meejh",
@@ -9423,8 +9987,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464550,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464550,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338036,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338036,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mehg9",
@@ -9445,8 +10011,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464553,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464553,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338045,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338045,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mele5",
@@ -9467,8 +10035,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464557,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464557,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338055,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338055,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mephs",
@@ -9489,8 +10059,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464561,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464561,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338065,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338065,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3meu6u",
@@ -9511,8 +10083,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464566,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464566,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338074,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338074,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mexf3",
@@ -9533,8 +10107,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464569,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464569,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338082,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338082,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mf29",
@@ -9555,8 +10131,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464574,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464574,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338090,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338090,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mf63q",
@@ -9577,8 +10155,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464578,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464578,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338098,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338098,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mfard",
@@ -9599,8 +10179,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464582,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464582,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338107,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338107,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mfer7",
@@ -9621,8 +10203,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464586,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464586,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338115,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338115,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mfiah",
@@ -9643,8 +10227,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464590,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464590,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338123,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338123,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mfn9f",
@@ -9665,8 +10251,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464595,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464595,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338131,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338131,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mfrah",
@@ -9687,8 +10275,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464599,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464599,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338139,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338139,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mfwha",
@@ -9709,8 +10299,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464604,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464604,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338147,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338147,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mg0o1",
@@ -9731,8 +10323,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464608,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464608,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338156,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338156,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mg46m",
@@ -9753,8 +10347,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464612,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464612,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338164,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338164,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mg983",
@@ -9775,8 +10371,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464617,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464617,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338172,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338172,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mgdi0",
@@ -9797,8 +10395,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464621,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464621,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338180,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338180,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mgir6",
@@ -9819,8 +10419,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464626,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464626,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338189,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338189,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mgpnw",
@@ -9841,8 +10443,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464633,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464633,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338206,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338206,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mgti6",
@@ -9863,8 +10467,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464637,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464637,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338214,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338214,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mgy9p",
@@ -9885,8 +10491,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464642,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464642,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338223,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338223,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mh2kq",
@@ -9907,8 +10515,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464646,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464646,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338231,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338231,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mh7aw",
@@ -9929,8 +10539,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464651,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464651,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338239,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338239,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mhcqb",
@@ -9951,8 +10563,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464656,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464656,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338197,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338197,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mhj44",
@@ -9973,8 +10587,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464663,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464663,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338252,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338252,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mhomf",
@@ -9995,8 +10611,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464668,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464668,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338260,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338260,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mhu3k",
@@ -10017,8 +10635,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464674,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464674,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338268,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338268,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mhzjs",
@@ -10039,8 +10659,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464679,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464679,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338277,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338277,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mi4n5",
@@ -10061,8 +10683,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464684,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464684,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338285,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338285,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mi8qx",
@@ -10083,8 +10707,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464688,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464688,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338293,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338293,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mieo4",
@@ -10105,8 +10731,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464694,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464694,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338301,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338301,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mijeb",
@@ -10127,8 +10755,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464699,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464699,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338310,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338310,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mio4r",
@@ -10149,8 +10779,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464704,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464704,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338319,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338319,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mit6d",
@@ -10171,8 +10803,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464709,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464709,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338327,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338327,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mizjc",
@@ -10193,8 +10827,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464715,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464715,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338336,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338336,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mj3a3",
@@ -10215,8 +10851,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464719,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464719,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338344,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338344,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mj9b3",
@@ -10237,8 +10875,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464725,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464725,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338352,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338352,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mjh32",
@@ -10259,8 +10899,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464733,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464733,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338369,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338369,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mjq18",
@@ -10281,8 +10923,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464742,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464742,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338386,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338386,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mjvjk",
@@ -10303,8 +10947,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464747,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464747,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338393,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338393,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mk1qs",
@@ -10325,8 +10971,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464753,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464753,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338402,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338402,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mk6az",
@@ -10347,8 +10995,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464758,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464758,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338410,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338410,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mkc3v",
@@ -10369,8 +11019,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464764,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464764,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338419,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338419,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mkhnd",
@@ -10391,8 +11043,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464769,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464769,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338360,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338360,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mknk1",
@@ -10413,8 +11067,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464775,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464775,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338431,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338431,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mktca",
@@ -10435,8 +11091,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464781,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464781,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338439,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338439,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mky4o",
@@ -10457,8 +11115,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464786,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464786,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338447,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338447,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3ml4hw",
@@ -10479,8 +11139,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464792,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464792,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338456,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338456,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3ml9f2",
@@ -10501,8 +11163,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464797,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464797,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338464,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338464,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mlgfo",
@@ -10523,8 +11187,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464804,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464804,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338472,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338472,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mlmfp",
@@ -10545,8 +11211,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464810,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464810,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338481,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338481,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mlr39",
@@ -10567,8 +11235,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464815,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464815,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338489,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338489,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mlxa0",
@@ -10589,8 +11259,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464821,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464821,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338498,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338498,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mm3oz",
@@ -10611,8 +11283,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464827,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464827,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338377,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338377,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mm92f",
@@ -10633,8 +11307,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464833,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464833,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338510,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338510,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mmh2e",
@@ -10655,8 +11331,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464841,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464841,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338523,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338523,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mmobb",
@@ -10677,8 +11355,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464848,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464848,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338531,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338531,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mmujz",
@@ -10699,8 +11379,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464854,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464854,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338540,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338540,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mn3f4",
@@ -10721,8 +11403,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464863,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464863,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338557,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338557,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mn8mq",
@@ -10743,8 +11427,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464868,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464868,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338565,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338565,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mne3m",
@@ -10765,8 +11451,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464874,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464874,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338574,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338574,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mnlld",
@@ -10787,8 +11475,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464881,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464881,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338548,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338548,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mnqkl",
@@ -10809,8 +11499,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464886,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464886,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338587,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338587,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mnwh",
@@ -10831,8 +11523,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464892,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464892,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338595,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338595,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mo338",
@@ -10853,8 +11547,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464899,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464899,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338604,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338604,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mo849",
@@ -10875,8 +11571,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464904,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464904,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338612,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338612,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mof73",
@@ -10897,8 +11595,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464911,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464911,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338620,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338620,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3molkz",
@@ -10919,8 +11619,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464917,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464917,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338628,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338628,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3morhk",
@@ -10941,8 +11643,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464923,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464923,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338637,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338637,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3moxqk",
@@ -10963,8 +11667,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464929,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464929,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338646,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338646,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mp34w",
@@ -10985,8 +11691,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464935,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464935,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338654,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338654,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mp9d1",
@@ -11007,8 +11715,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464941,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464941,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338662,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338662,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mpfe8",
@@ -11029,8 +11739,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464947,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464947,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338670,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338670,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mpmcu",
@@ -11051,8 +11763,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464954,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464954,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338678,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338678,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mps4j",
@@ -11073,8 +11787,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464960,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464960,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338686,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338686,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mpydb",
@@ -11095,8 +11811,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464966,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464966,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338694,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338694,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mq5bs",
@@ -11117,8 +11835,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464973,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464973,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338703,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338703,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mqcg4",
@@ -11139,8 +11859,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464980,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464980,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338711,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338711,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mqi60",
@@ -11161,8 +11883,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464986,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464986,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338719,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338719,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mqpan",
@@ -11183,8 +11907,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464993,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464993,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338727,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338727,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mqvo1",
@@ -11205,8 +11931,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750464999,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750464999,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338735,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338735,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mr2e7",
@@ -11227,8 +11955,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465006,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465006,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338743,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338743,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mr95u",
@@ -11249,8 +11979,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465013,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465013,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338751,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338751,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mrgci",
@@ -11271,8 +12003,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465020,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465020,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338760,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338760,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mrnp7",
@@ -11293,8 +12027,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465027,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465027,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338769,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338769,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mrxnj",
@@ -11315,8 +12051,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465037,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465037,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338786,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338786,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3ms4gr",
@@ -11337,8 +12075,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465044,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465044,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338794,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338794,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3msbpy",
@@ -11359,8 +12099,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465051,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465051,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338803,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338803,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3msin0",
@@ -11381,8 +12123,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465058,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465058,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338812,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338812,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3msp2c",
@@ -11403,8 +12147,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465065,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465065,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338820,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338820,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mswav",
@@ -11425,8 +12171,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465072,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465072,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338777,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338777,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mt38h",
@@ -11447,8 +12195,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465079,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465079,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338833,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338833,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mtaep",
@@ -11469,8 +12219,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465086,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465086,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338842,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338842,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mth49",
@@ -11491,8 +12243,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465093,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465093,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338851,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338851,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mto6c",
@@ -11513,8 +12267,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465100,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465100,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338859,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338859,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mtug",
@@ -11535,8 +12291,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465106,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465106,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338868,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338868,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mu18f",
@@ -11557,8 +12315,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465113,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465113,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338876,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338876,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mu8ae",
@@ -11579,8 +12339,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465120,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465120,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338884,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338884,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mugh1",
@@ -11601,8 +12363,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465128,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465128,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338892,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338892,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mum5z",
@@ -11623,8 +12387,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465134,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465134,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338901,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338901,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mutcf",
@@ -11645,8 +12411,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465141,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465141,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338909,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338909,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mv0h7",
@@ -11667,8 +12435,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465148,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465148,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338918,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338918,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mv698",
@@ -11689,8 +12459,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465154,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465154,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338927,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338927,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mve9s",
@@ -11711,8 +12483,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465162,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465162,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338935,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338935,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mvk8k",
@@ -11733,8 +12507,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465168,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465168,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338944,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338944,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mvsjx",
@@ -11755,8 +12531,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465176,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465176,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338952,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338952,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mvz4h",
@@ -11777,8 +12555,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465183,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465183,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338961,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338961,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mw65d",
@@ -11799,8 +12579,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465190,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465190,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338970,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338970,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mwd55",
@@ -11821,8 +12603,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465197,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465197,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338979,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338979,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mwk1u",
@@ -11843,8 +12627,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465204,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465204,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338987,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338987,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mwsoc",
@@ -11865,8 +12651,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465212,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465212,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752338996,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752338996,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mx01h",
@@ -11887,8 +12675,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465220,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465220,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339004,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339004,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mx7mx",
@@ -11909,8 +12699,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465227,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465227,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339013,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339013,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mxfr4",
@@ -11931,8 +12723,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465235,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465235,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339021,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339021,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mxmgz",
@@ -11953,8 +12747,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465242,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465242,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339029,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339029,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mxucj",
@@ -11975,8 +12771,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465250,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465250,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339037,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339037,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3my0c9",
@@ -11997,8 +12795,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465256,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465256,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339045,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339045,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3my8fg",
@@ -12019,8 +12819,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465264,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465264,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339054,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339054,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3mygd5",
@@ -12041,8 +12843,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465272,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465272,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339062,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339062,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp5a3myo6u",
@@ -12063,8 +12867,10 @@
       "reviewReason": "No vendor rate found for this property and date",
       "createdAt": 1778750465280,
       "createdBy": "Giorgos",
-      "updatedAt": 1778750465280,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778752339070,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778752339070,
+      "deletedBy": "Giorgos"
     }
   ],
   "vendors": [
