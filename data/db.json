@@ -6355,8 +6355,10 @@
       ],
       "createdAt": 1778783592567,
       "createdBy": "Giorgos",
-      "updatedAt": 1778783974602,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778784094153,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778784094153,
+      "deletedBy": "Giorgos"
     }
   ],
   "appConfig": {
