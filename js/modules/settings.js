@@ -659,7 +659,10 @@ function openReservationExpenseRuleForm(existing, onSave) {
   const fixedAmtI  = input({ type: 'number', value: rule.fixedAmount || 0, min: 0, step: 0.01 });
   const fixedCurrS = select(CURRENCIES, rule.fixedCurrency || 'EUR');
   const invItemS   = select(
-    [{ value: '', label: 'Select item…' }, ...invItems.map(i => ({ value: i.id, label: i.comment ? `${i.name} (${i.comment})` : i.name }))],
+    [{ value: '', label: 'Select item…' }, ...invItems.map(i => {
+      const prop = stProps.find(p => p.id === i.propertyId);
+      return { value: i.id, label: prop ? `${i.name} (${prop.name})` : i.name };
+    })],
     rule.inventoryItemId || ''
   );
   const invQtyI    = input({ type: 'number', value: rule.inventoryQty || 1, min: 1 });
