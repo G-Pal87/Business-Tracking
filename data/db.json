@@ -16635,7 +16635,7 @@
       "batches": [
         {
           "id": "btc_mozjkd3tgz",
-          "qty": 5,
+          "qty": 50,
           "remaining": 68,
           "unitPrice": 1.4,
           "currency": "EUR",
@@ -16645,7 +16645,7 @@
       ],
       "createdAt": 1778403565145,
       "createdBy": "Giorgos",
-      "updatedAt": 1778783412726,
+      "updatedAt": 1778783553003,
       "updatedBy": "Giorgos"
     },
     {
