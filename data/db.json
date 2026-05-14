@@ -6472,6 +6472,24 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778786560707,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "rer_mp5vld184o",
+      "name": "Welcome Sweets",
+      "propertyId": "prop_mohfwhqrgj",
+      "category": "inventory",
+      "vendorId": "",
+      "amountSource": "inventory",
+      "fixedAmount": 0,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "ivt_mp5u51qw90",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778786585716,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778786585716,
+      "updatedBy": "Giorgos"
     }
   ]
 }
