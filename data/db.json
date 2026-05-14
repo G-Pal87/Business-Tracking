@@ -13019,8 +13019,10 @@
       ],
       "createdAt": 1778403628881,
       "createdBy": "Giorgos",
-      "updatedAt": 1778403628881,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778781507491,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778781507491,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ivt_mozjtu4cmo",
