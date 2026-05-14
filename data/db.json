@@ -7575,8 +7575,8 @@
       "amount": 676.47,
       "currency": "EUR",
       "date": "2026-10-11",
-      "type": "rental",
-      "status": "pending",
+      "type": "off_platform_reservation",
+      "status": "paid",
       "airbnbKey": "HMHX4YZNMY|Reservation",
       "confirmationCode": "HMHX4YZNMY",
       "airbnbRef": "HMHX4YZNMY",
@@ -7595,8 +7595,10 @@
       "notes": "Colin Meldrum · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778746809181,
       "createdBy": "Giorgos",
-      "updatedAt": 1778746809181,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778748768763,
+      "updatedBy": "Giorgos",
+      "checkIn": "",
+      "checkOut": ""
     }
   ],
   "expenses": [
@@ -12033,9 +12035,7 @@
       "reservationRef": "HMHX4YZNMY",
       "isGenerated": true,
       "manualOverride": false,
-      "createdAt": 1778746809185,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778746809185,
+      "updatedAt": 1778748768767,
       "updatedBy": "Giorgos"
     }
   ],
