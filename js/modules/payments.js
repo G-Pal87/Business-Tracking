@@ -198,14 +198,19 @@ function buildAllPayments(wrap) {
       tr.appendChild(el('td', {}, el('span', { class: 'badge' }, r.source || 'manual')));
       tr.appendChild(el('td', {}, el('span', { class: `badge ${sMeta.css}` }, sMeta.label)));
       tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px' }, r.confirmationCode || r.airbnbRef || ''));
-      tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
-      tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
-      tr.appendChild(el('td', { class: 'right num muted' }, r.airbnbGrossEarnings != null ? formatMoney(r.airbnbGrossEarnings, r.currency, { maxFrac: 0 }) : ''));
+      const rType = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
+      const isNegDisplay = rType === 'resolution adjustment' || rType === 'adjustment';
+      const isReservation = rType === 'reservation';
+      const dispAmt   = isNegDisplay ? -Math.abs(r.amount) : r.amount;
+      const dispGross = r.airbnbGrossEarnings != null ? (isNegDisplay ? -Math.abs(r.airbnbGrossEarnings) : r.airbnbGrossEarnings) : null;
+      tr.appendChild(el('td', { class: 'right num' }, formatMoney(dispAmt, r.currency, { maxFrac: 0 })));
+      tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(dispAmt, r.currency))));
+      tr.appendChild(el('td', { class: 'right num muted' }, dispGross != null ? formatMoney(dispGross, r.currency, { maxFrac: 0 }) : ''));
       tr.appendChild(el('td', { class: 'right muted' }, r.airbnbCheckIn ? fmtDate(r.airbnbCheckIn) : ''));
       tr.appendChild(el('td', { class: 'right muted' }, r.airbnbCheckOut ? fmtDate(r.airbnbCheckOut) : ''));
-      tr.appendChild(el('td', { class: 'right muted' }, r.airbnbNights ? String(r.airbnbNights) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, r.avgNightExclCleaning != null ? formatMoney(r.avgNightExclCleaning, r.currency, { maxFrac: 0 }) : (r.avgNightlyRate ? formatMoney(r.avgNightlyRate, r.currency, { maxFrac: 0 }) : '')));
-      tr.appendChild(el('td', { class: 'right num muted' }, r.avgGross != null ? formatMoney(r.avgGross, r.currency, { maxFrac: 0 }) : ''));
+      tr.appendChild(el('td', { class: 'right muted' }, isReservation && r.airbnbNights ? String(r.airbnbNights) : ''));
+      tr.appendChild(el('td', { class: 'right num muted' }, isReservation ? (r.avgNightExclCleaning != null ? formatMoney(r.avgNightExclCleaning, r.currency, { maxFrac: 0 }) : (r.avgNightlyRate ? formatMoney(r.avgNightlyRate, r.currency, { maxFrac: 0 }) : '')) : ''));
+      tr.appendChild(el('td', { class: 'right num muted' }, isReservation && r.avgGross != null ? formatMoney(r.avgGross, r.currency, { maxFrac: 0 }) : ''));
       const actions = el('td', { class: 'right' });
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
