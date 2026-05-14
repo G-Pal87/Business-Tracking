@@ -6373,20 +6373,11 @@
           "currency": "EUR",
           "dateBought": "2025-01-01",
           "comments": ""
-        },
-        {
-          "id": "btc_mp5u634ook",
-          "qty": 63,
-          "remaining": 63,
-          "unitPrice": 1.4,
-          "currency": "EUR",
-          "dateBought": "2025-01-01",
-          "comments": ""
         }
       ],
       "createdAt": 1778784123416,
       "createdBy": "Giorgos",
-      "updatedAt": 1778784171864,
+      "updatedAt": 1778784178865,
       "updatedBy": "Giorgos"
     }
   ],
