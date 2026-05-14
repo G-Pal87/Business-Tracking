@@ -189,7 +189,6 @@ function buildAllPayments(wrap) {
       };
 
       const tr = el('tr');
-      tr.dataset.eur = String(toEUR(r.amount, r.currency));
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       tr.appendChild(chkTd);
       tr.appendChild(el('td', {}, fmtDate(r.date)));
@@ -203,6 +202,7 @@ function buildAllPayments(wrap) {
       const isReservation = rType === 'reservation';
       const dispAmt   = isNegDisplay ? -Math.abs(r.amount) : r.amount;
       const dispGross = r.airbnbGrossEarnings != null ? (isNegDisplay ? -Math.abs(r.airbnbGrossEarnings) : r.airbnbGrossEarnings) : null;
+      tr.dataset.eur = String(toEUR(dispAmt, r.currency));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(dispAmt, r.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(dispAmt, r.currency))));
       tr.appendChild(el('td', { class: 'right num muted' }, dispGross != null ? formatMoney(dispGross, r.currency, { maxFrac: 0 }) : ''));
@@ -238,7 +238,11 @@ function buildAllPayments(wrap) {
       syncDeleteBtn();
     };
 
-    const totalEUR = rows.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
+    const totalEUR = rows.reduce((s, r) => {
+      const t = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
+      const neg = t === 'resolution adjustment' || t === 'adjustment';
+      return s + toEUR(neg ? -Math.abs(r.amount) : r.amount, r.currency);
+    }, 0);
     tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
       el('span', { class: 'muted table-footer-count' }, `${rows.length} payment(s)`),
       el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
