@@ -6428,7 +6428,7 @@
         {
           "id": "btc_mp5v7bh6nw",
           "qty": 55,
-          "remaining": 32,
+          "remaining": 55,
           "unitPrice": 0.24,
           "currency": "EUR",
           "dateBought": "2025-01-01",
@@ -6437,7 +6437,7 @@
       ],
       "createdAt": 1778785908954,
       "createdBy": "Giorgos",
-      "updatedAt": 1778786023031,
+      "updatedAt": 1778786109069,
       "updatedBy": "Giorgos"
     },
     {
