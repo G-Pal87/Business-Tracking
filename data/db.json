@@ -6333,8 +6333,10 @@
       ],
       "createdAt": 1778404102143,
       "createdBy": "Giorgos",
-      "updatedAt": 1778404102143,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778784092582,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778784092582,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ivt_mp5tto534f",
