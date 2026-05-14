@@ -12975,8 +12975,10 @@
       ],
       "createdAt": 1778403565145,
       "createdBy": "Giorgos",
-      "updatedAt": 1778403565145,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778781500587,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778781500587,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ivt_mozjl0qnib",
