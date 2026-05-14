@@ -6267,8 +6267,10 @@
       ],
       "createdAt": 1778403628881,
       "createdBy": "Giorgos",
-      "updatedAt": 1778781522580,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778784086306,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778784086306,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ivt_mozjtu4cmo",
@@ -6287,8 +6289,10 @@
       ],
       "createdAt": 1778404007100,
       "createdBy": "Giorgos",
-      "updatedAt": 1778781522580,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778784087903,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778784087903,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ivt_mozjugi771",
