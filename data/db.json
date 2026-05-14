@@ -6562,6 +6562,24 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778786784354,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "rer_mp5vqj9z9l",
+      "name": "Toilet Paper D7",
+      "propertyId": "prop_mox7p43s8o",
+      "category": "inventory",
+      "vendorId": "",
+      "amountSource": "inventory",
+      "fixedAmount": 0,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "ivt_mp5v9jm1gv",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778786829295,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778786829295,
+      "updatedBy": "Giorgos"
     }
   ]
 }
