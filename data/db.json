@@ -16774,8 +16774,10 @@
       "enabled": true,
       "createdAt": 1778402539492,
       "createdBy": "Giorgos",
-      "updatedAt": 1778403192583,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778783677753,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778783677753,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "rer_mp5tn9wmns",
