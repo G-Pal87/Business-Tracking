@@ -13146,6 +13146,24 @@
       "updatedBy": "Giorgos",
       "deletedAt": 1778782293651,
       "deletedBy": "Giorgos"
+    },
+    {
+      "id": "rer_mp5tn9wmns",
+      "name": "Welcome Drink Studio",
+      "propertyId": "prop_mohfwhqrgj",
+      "category": "inventory",
+      "vendorId": "",
+      "amountSource": "inventory",
+      "fixedAmount": 0,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "ivt_mozjkd3t6i",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778783328360,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778783328360,
+      "updatedBy": "Giorgos"
     }
   ]
 }
