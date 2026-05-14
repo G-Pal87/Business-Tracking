@@ -54,22 +54,52 @@ function buildAllPayments(wrap) {
   const statusFilter = new Set();
 
   const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const STATUS_META = {
+    paid:         { label: 'Paid',         css: 'success' },
+    pending:      { label: 'Pending',      css: 'warning' },
+    overdue:      { label: 'Overdue',      css: 'danger'  },
+    materialized: { label: 'Materialized', css: 'muted'   }
+  };
+
   const yearOpts = () => {
     const ys = new Set();
     for (const p of listActivePayments()) if (p.date) ys.add(p.date.slice(0, 4));
     return [...ys].sort().reverse().map(y => ({ value: y, label: y }));
+  };
+  const monthOpts = () => {
+    const ms = new Set();
+    for (const p of listActivePayments()) if (p.date) ms.add(p.date.slice(5, 7));
+    return [...ms].sort().map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] }));
+  };
+  const propOpts = () => {
+    const ids = new Set();
+    for (const p of listActivePayments()) if (p.propertyId) ids.add(p.propertyId);
+    const allProps = listActive('properties');
+    return [...ids]
+      .map(id => allProps.find(pr => pr.id === id))
+      .filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(pr => ({ value: pr.id, label: pr.name }));
   };
   const typeOpts = () => {
     const ts = new Set();
     for (const p of listActivePayments()) ts.add(p.source === 'airbnb' ? (p.airbnbType || p.type || 'other') : (p.type || 'other'));
     return [...ts].sort().map(t => ({ value: t, label: t }));
   };
+  const statusOpts = () => {
+    const ss = new Set();
+    for (const p of listActivePayments()) if (p.status) ss.add(p.status);
+    return [...ss].sort().map(s => {
+      const m = STATUS_META[s] || { label: s, css: '' };
+      return { value: s, label: m.label, css: m.css };
+    });
+  };
 
   const yearMS   = buildMultiSelect(yearOpts(),   yearFilter,   'All Years',      () => renderTable(), 'pay_years');
-  const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), monthFilter, 'All Months', () => renderTable(), 'pay_months');
-  const propMS   = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderTable(), 'pay_props');
+  const monthMS  = buildMultiSelect(monthOpts(),  monthFilter,  'All Months',     () => renderTable(), 'pay_months');
+  const propMS   = buildMultiSelect(propOpts(),   propFilter,   'All Properties', () => renderTable(), 'pay_props');
   const typeMS   = buildMultiSelect(typeOpts(),   typeFilter,   'All Types',      () => renderTable(), 'pay_types');
-  const statusMS = buildMultiSelect(Object.entries(PAYMENT_STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable(), 'pay_statuses');
+  const statusMS = buildMultiSelect(statusOpts(), statusFilter, 'All Statuses',   () => renderTable(), 'pay_statuses');
 
   let selected = new Set();
 
