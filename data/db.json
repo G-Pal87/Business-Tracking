@@ -13142,8 +13142,10 @@
       "enabled": true,
       "createdAt": 1778782219131,
       "createdBy": "Giorgos",
-      "updatedAt": 1778782219131,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778782293651,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778782293651,
+      "deletedBy": "Giorgos"
     }
   ]
 }
