@@ -6399,6 +6399,26 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778784216159,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "ivt_mp5u8zdrrf",
+      "name": "Welcome Drinks",
+      "propertyId": "prop_mox7p43s8o",
+      "batches": [
+        {
+          "id": "btc_mp5u8zdrou",
+          "qty": 56,
+          "remaining": 56,
+          "unitPrice": 1.4,
+          "currency": "EUR",
+          "dateBought": "2025-01-01",
+          "comments": ""
+        }
+      ],
+      "createdAt": 1778784306975,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778784306975,
+      "updatedBy": "Giorgos"
     }
   ],
   "appConfig": {
