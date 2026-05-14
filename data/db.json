@@ -6436,6 +6436,24 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778783850260,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "rer_mp5vjsytri",
+      "name": "Welcome Drink D6",
+      "propertyId": "prop_mox7mr8day",
+      "category": "inventory",
+      "vendorId": "",
+      "amountSource": "inventory",
+      "fixedAmount": 0,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "ivt_mp5u71b3et",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778786523636,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778786523636,
+      "updatedBy": "Giorgos"
     }
   ]
 }
