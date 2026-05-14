@@ -58,7 +58,7 @@ function buildAllPayments(wrap) {
     paid:         { label: 'Paid',         css: 'success' },
     pending:      { label: 'Pending',      css: 'warning' },
     overdue:      { label: 'Overdue',      css: 'danger'  },
-    materialized: { label: 'Materialized', css: 'muted'   }
+    materialized: { label: 'Materialized', css: 'info'    }
   };
 
   const yearOpts = () => {
