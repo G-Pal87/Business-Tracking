@@ -748,6 +748,7 @@ function getActualRevRows(entityId, type, monthKey) {
       date:   i.issueDate,
       source: byId('clients', i.clientId)?.name || '—',
       ref:    i.invoiceNumber || '—',
+      code:   '',
       eur:    toEUR(i.total, i.currency, i.issueDate)
     })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }
@@ -756,7 +757,8 @@ function getActualRevRows(entityId, type, monthKey) {
   ).map(p => ({
     date:   p.date,
     source: byId('properties', p.propertyId)?.name || p.source || '—',
-    ref:    p.type || '—',
+    ref:    p.airbnbType || p.type || '—',
+    code:   p.confirmationCode || p.airbnbRef || '—',
     eur:    toEUR(p.amount, p.currency, p.date)
   })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
@@ -775,10 +777,11 @@ function getActualExpRows(entityId, type, monthKey) {
 }
 
 const FC_REV_COLS = [
-  { key: 'date',   label: 'Date',   format: v => fmtDate(v) },
+  { key: 'date',   label: 'Date',       format: v => fmtDate(v) },
   { key: 'source', label: 'Source' },
-  { key: 'ref',    label: 'Ref'    },
-  { key: 'eur',    label: 'EUR',    right: true, format: v => formatEUR(v) }
+  { key: 'ref',    label: 'Type' },
+  { key: 'code',   label: 'Conf. Code' },
+  { key: 'eur',    label: 'EUR',        right: true, format: v => formatEUR(v) }
 ];
 const FC_EXP_COLS = [
   { key: 'date',     label: 'Date',        format: v => fmtDate(v) },
@@ -793,10 +796,11 @@ const FC_VAR_COLS = [
   { key: 'pct',   label: '%',   right: true }
 ];
 const FC_PENDING_COLS = [
-  { key: 'date',   label: 'Check-in', format: v => fmtDate(v) },
+  { key: 'date',   label: 'Check-in',     format: v => fmtDate(v) },
   { key: 'guest',  label: 'Guest' },
-  { key: 'nights', label: 'Nights', right: true },
-  { key: 'eur',    label: 'Amount', right: true, format: v => formatEUR(v) }
+  { key: 'code',   label: 'Conf. Code' },
+  { key: 'nights', label: 'Nights',        right: true },
+  { key: 'eur',    label: 'Amount',        right: true, format: v => formatEUR(v) }
 ];
 
 function getPendingAirbnbRows(propertyId, monthKey) {
@@ -807,6 +811,7 @@ function getPendingAirbnbRows(propertyId, monthKey) {
     .map(p => ({
       date:   p.airbnbCheckIn || p.date,
       guest:  (p.notes || '').split(' · ')[0] || '—',
+      code:   p.confirmationCode || p.airbnbRef || '—',
       nights: p.airbnbNights || 0,
       eur:    toEUR(p.amount, p.currency || 'EUR', p.date)
     }))
