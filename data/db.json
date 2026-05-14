@@ -6544,6 +6544,24 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778786755164,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "rer_mp5vpif987",
+      "name": "Toilet Paper D6",
+      "propertyId": "prop_mox7mr8day",
+      "category": "inventory",
+      "vendorId": "",
+      "amountSource": "inventory",
+      "fixedAmount": 0,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "ivt_mp5vcecxqu",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778786784354,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778786784354,
+      "updatedBy": "Giorgos"
     }
   ]
 }
