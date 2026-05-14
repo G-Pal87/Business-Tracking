@@ -13126,6 +13126,24 @@
       "updatedBy": "Giorgos",
       "deletedAt": 1778782167848,
       "deletedBy": "Giorgos"
+    },
+    {
+      "id": "rer_mp5sz5nwho",
+      "name": "Welcome drink studio",
+      "propertyId": "prop_mox7ipfiam",
+      "category": "cleaning",
+      "vendorId": "",
+      "amountSource": "inventory",
+      "fixedAmount": 0,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "ivt_mozjkd3t6i",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778782219131,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778782219131,
+      "updatedBy": "Giorgos"
     }
   ]
 }
