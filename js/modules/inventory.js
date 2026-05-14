@@ -15,7 +15,7 @@ export default {
 
 export const INVENTORY_ITEMS = [
   'Welcome Drinks', 'Welcome Sweets', 'Hand soap cream', 'Shampoo', 'Chlorine',
-  'Toilet Paper', 'Detergent', 'Dish washer tablets', 'Coffee', 'Tea', 'Perfume',
+  'Toilet Paper', 'Detergent', 'Dish washer tablets', 'Coffee', 'Tea', 'Perfume', 'Olive Oil',
 ];
 
 // ── Migrate flat items → batched format (idempotent) ──────────────────────────
