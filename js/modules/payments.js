@@ -920,6 +920,27 @@ function openCSVImport() {
         if (existing) totalUpdated++; else totalAdded++;
 
         if (row.type.toLowerCase() === 'reservation') applyReservationExpenseRules(pay);
+
+        // Materialize any matching pending reservation so it no longer counts
+        // in active forecast calculations while remaining visible for history.
+        if (row.confirmationCode) {
+          const pending = listActivePayments().find(p =>
+            p.source === 'airbnb' && p.status === 'pending' &&
+            (p.confirmationCode === row.confirmationCode || p.airbnbRef === row.confirmationCode)
+          );
+          if (pending) {
+            const pendingMonthKey = (pending.airbnbCheckIn || pending.date || '').slice(0, 7);
+            upsert('payments', {
+              ...pending,
+              status: 'materialized',
+              materializedPaymentId: pay.id,
+              materializedAt: new Date().toISOString().slice(0, 10)
+            });
+            if (pending.propertyId && pendingMonthKey) {
+              recalcPendingAirbnbForecast(pending.propertyId, pendingMonthKey);
+            }
+          }
+        }
       }
     }
 
