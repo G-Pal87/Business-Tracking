@@ -7724,7 +7724,9 @@
       "isGenerated": true,
       "manualOverride": false,
       "updatedAt": 1778746809088,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "createdAt": 1778750382868,
+      "createdBy": "Giorgos"
     },
     {
       "id": "exp_mp57h5id7w",
@@ -7762,7 +7764,9 @@
       "isGenerated": true,
       "manualOverride": false,
       "updatedAt": 1778746809081,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "createdAt": 1778750382868,
+      "createdBy": "Giorgos"
     },
     {
       "id": "exp_mp57h5ihe5",
@@ -7780,7 +7784,9 @@
       "isGenerated": true,
       "manualOverride": false,
       "updatedAt": 1778746809074,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "createdAt": 1778750382868,
+      "createdBy": "Giorgos"
     },
     {
       "id": "exp_mp57h5ij47",
@@ -7798,7 +7804,9 @@
       "isGenerated": true,
       "manualOverride": false,
       "updatedAt": 1778746809067,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "createdAt": 1778750382868,
+      "createdBy": "Giorgos"
     },
     {
       "id": "exp_mp57h5ilar",
@@ -7816,7 +7824,9 @@
       "isGenerated": true,
       "manualOverride": false,
       "updatedAt": 1778746809061,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "createdAt": 1778750382868,
+      "createdBy": "Giorgos"
     },
     {
       "id": "exp_mp57h5iomh",
@@ -7834,7 +7844,9 @@
       "isGenerated": true,
       "manualOverride": false,
       "updatedAt": 1778746809054,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "createdAt": 1778750382868,
+      "createdBy": "Giorgos"
     },
     {
       "id": "exp_mp57h5iq3y",
@@ -7872,7 +7884,9 @@
       "isGenerated": true,
       "manualOverride": false,
       "updatedAt": 1778746809047,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "createdAt": 1778750382868,
+      "createdBy": "Giorgos"
     },
     {
       "id": "exp_mp57h5itb7",
@@ -12036,7 +12050,9 @@
       "isGenerated": true,
       "manualOverride": false,
       "updatedAt": 1778748786934,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "createdAt": 1778750382868,
+      "createdBy": "Giorgos"
     }
   ],
   "vendors": [
