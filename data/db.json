@@ -13041,8 +13041,10 @@
       ],
       "createdAt": 1778404007100,
       "createdBy": "Giorgos",
-      "updatedAt": 1778404007100,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778781509045,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778781509045,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ivt_mozjugi771",
@@ -13061,8 +13063,10 @@
       ],
       "createdAt": 1778404036111,
       "createdBy": "Giorgos",
-      "updatedAt": 1778404036111,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778781510946,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778781510946,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "ivt_mozjvvgfhx",
