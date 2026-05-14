@@ -3,7 +3,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod } from '../core/data.js';
 import * as charts from '../core/charts.js';
-import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES } from '../core/config.js';
+import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
 export default {
@@ -49,15 +49,13 @@ function build() {
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
 
-  const propFilter           = new Set();
-  const catFilter            = new Set();
+  const yearFilter       = new Set();
+  const monthFilter      = new Set();
+  const streamFilter     = new Set();
+  const propFilter       = new Set();
+  const catFilter        = new Set();
   const accountingTypeFilter = new Set();
-  const recurrenceFilter     = new Set();
-
-  const propMS           = buildMultiSelect(listActive('properties').map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderAll(), 'exp_props');
-  const catMS            = buildMultiSelect(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), catFilter, 'All Expenses', () => renderTable(), 'exp_cats');
-  const accountingTypeMS = buildMultiSelect(Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label })), accountingTypeFilter, 'All Types', () => renderAll(), 'exp_types');
-  const recurrenceMS     = buildMultiSelect(Object.entries(RECURRENCE_TYPES).map(([v, m]) => ({ value: v, label: m.label })), recurrenceFilter, 'All Recurrence', () => renderTable(), 'exp_recurrence');
+  const recurrenceFilter = new Set();
 
   let selected = new Set();
 
@@ -73,19 +71,75 @@ function build() {
     }
     selected.clear();
     toast(`Deleted ${count} expense(s)`, 'success');
-    renderTable();
+    rebuildFilters(); renderAll();
   }});
   deleteSelBtn.style.display = 'none';
 
-  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); catMS.reset(); accountingTypeMS.reset(); recurrenceMS.reset(); renderAll(); } });
-  filterBar.appendChild(propMS);
-  filterBar.appendChild(catMS);
-  filterBar.appendChild(accountingTypeMS);
-  filterBar.appendChild(recurrenceMS);
-  filterBar.appendChild(resetFiltersBtn);
-  filterBar.appendChild(el('div', { class: 'flex-1' }));
-  filterBar.appendChild(deleteSelBtn);
-  filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
+  const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function matchesAll(e, skip) {
+    const res = resolveExpenseFields(e);
+    const yr  = (e.date || '').slice(0, 4);
+    const mo  = (e.date || '').slice(5, 7);
+    return (
+      (skip === 'year'   || yearFilter.size === 0           || yearFilter.has(yr)) &&
+      (skip === 'month'  || monthFilter.size === 0          || monthFilter.has(mo)) &&
+      (skip === 'stream' || streamFilter.size === 0         || streamFilter.has(e.stream || '')) &&
+      (skip === 'prop'   || propFilter.size === 0           || propFilter.has(e.propertyId)) &&
+      (skip === 'cat'    || catFilter.size === 0            || catFilter.has(e.category)) &&
+      (skip === 'type'   || accountingTypeFilter.size === 0 || accountingTypeFilter.has(res.accountingType)) &&
+      (skip === 'rec'    || recurrenceFilter.size === 0     || recurrenceFilter.has(res.recurrence))
+    );
+  }
+
+  function rebuildFilters() {
+    const all = listActive('expenses');
+
+    const validYrs  = new Set(all.filter(e => matchesAll(e, 'year')).map(e => (e.date || '').slice(0, 4)).filter(Boolean));
+    const validMos  = new Set(all.filter(e => matchesAll(e, 'month')).map(e => (e.date || '').slice(5, 7)).filter(Boolean));
+    const validSts  = new Set(all.filter(e => matchesAll(e, 'stream')).map(e => e.stream || '').filter(Boolean));
+    const validPrs  = new Set(all.filter(e => matchesAll(e, 'prop')).map(e => e.propertyId).filter(Boolean));
+    const validCats = new Set(all.filter(e => matchesAll(e, 'cat')).map(e => e.category).filter(Boolean));
+    const validTps  = new Set(all.filter(e => matchesAll(e, 'type')).map(e => resolveExpenseFields(e).accountingType).filter(Boolean));
+    const validRecs = new Set(all.filter(e => matchesAll(e, 'rec')).map(e => resolveExpenseFields(e).recurrence).filter(Boolean));
+
+    // Prune stale selections
+    for (const v of [...yearFilter])           if (!validYrs.has(v))  yearFilter.delete(v);
+    for (const v of [...monthFilter])          if (!validMos.has(v))  monthFilter.delete(v);
+    for (const v of [...streamFilter])         if (!validSts.has(v))  streamFilter.delete(v);
+    for (const v of [...propFilter])           if (!validPrs.has(v))  propFilter.delete(v);
+    for (const v of [...catFilter])            if (!validCats.has(v)) catFilter.delete(v);
+    for (const v of [...accountingTypeFilter]) if (!validTps.has(v))  accountingTypeFilter.delete(v);
+    for (const v of [...recurrenceFilter])     if (!validRecs.has(v)) recurrenceFilter.delete(v);
+
+    const onFilter = () => { rebuildFilters(); renderAll(); };
+
+    const yearOpts   = [...validYrs].sort().reverse().map(y => ({ value: y, label: y }));
+    const monthOpts  = [...validMos].sort().map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] }));
+    const streamOpts = [...validSts].sort().map(s => ({ value: s, label: STREAMS[s]?.label || s }));
+    const propOpts   = [...validPrs].map(id => byId('properties', id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name }));
+    const catOpts    = [...validCats].sort().map(c => ({ value: c, label: EXPENSE_CATEGORIES[c]?.label || c }));
+    const typeOpts   = [...validTps].sort().map(t => ({ value: t, label: ACCOUNTING_TYPES[t]?.label || t }));
+    const recOpts    = [...validRecs].sort().map(r => ({ value: r, label: RECURRENCE_TYPES[r]?.label || r }));
+
+    filterBar.innerHTML = '';
+    filterBar.appendChild(buildMultiSelect(yearOpts,   yearFilter,           'All Years',      onFilter, 'exp_years'));
+    filterBar.appendChild(buildMultiSelect(monthOpts,  monthFilter,          'All Months',     onFilter, 'exp_months'));
+    filterBar.appendChild(buildMultiSelect(streamOpts, streamFilter,         'All Streams',    onFilter, 'exp_streams'));
+    filterBar.appendChild(buildMultiSelect(propOpts,   propFilter,           'All Properties', onFilter, 'exp_props'));
+    filterBar.appendChild(buildMultiSelect(catOpts,    catFilter,            'All Expenses',   onFilter, 'exp_cats'));
+    filterBar.appendChild(buildMultiSelect(typeOpts,   accountingTypeFilter, 'All Types',      onFilter, 'exp_types'));
+    filterBar.appendChild(buildMultiSelect(recOpts,    recurrenceFilter,     'All Recurrence', onFilter, 'exp_recurrence'));
+    filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => {
+      yearFilter.clear(); monthFilter.clear(); streamFilter.clear(); propFilter.clear();
+      catFilter.clear(); accountingTypeFilter.clear(); recurrenceFilter.clear();
+      rebuildFilters(); renderAll();
+    }}));
+    filterBar.appendChild(el('div', { class: 'flex-1' }));
+    filterBar.appendChild(deleteSelBtn);
+    filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
+  }
+
   wrap.appendChild(filterBar);
   wrap.appendChild(chartsGrid);
 
@@ -120,6 +174,9 @@ function build() {
     tableWrap.innerHTML = '';
 
     let rows = [...listActive('expenses')];
+    if (yearFilter.size > 0)           rows = rows.filter(r => yearFilter.has((r.date || '').slice(0, 4)));
+    if (monthFilter.size > 0)          rows = rows.filter(r => monthFilter.has((r.date || '').slice(5, 7)));
+    if (streamFilter.size > 0)         rows = rows.filter(r => streamFilter.has(r.stream || ''));
     if (propFilter.size > 0)           rows = rows.filter(r => propFilter.has(r.propertyId));
     if (catFilter.size > 0)            rows = rows.filter(r => catFilter.has(r.category));
     if (accountingTypeFilter.size > 0) rows = rows.filter(r => accountingTypeFilter.has(resolveExpenseFields(r).accountingType));
@@ -233,11 +290,15 @@ function build() {
     })
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-  // Dashboard: respects property + accountingType filters; category/recurrence stay for table only
   const renderDash = () => {
     let bkRows = listActive('expenses');
+    if (yearFilter.size > 0)           bkRows = bkRows.filter(r => yearFilter.has((r.date || '').slice(0, 4)));
+    if (monthFilter.size > 0)          bkRows = bkRows.filter(r => monthFilter.has((r.date || '').slice(5, 7)));
+    if (streamFilter.size > 0)         bkRows = bkRows.filter(r => streamFilter.has(r.stream || ''));
     if (propFilter.size > 0)           bkRows = bkRows.filter(r => propFilter.has(r.propertyId));
+    if (catFilter.size > 0)            bkRows = bkRows.filter(r => catFilter.has(r.category));
     if (accountingTypeFilter.size > 0) bkRows = bkRows.filter(r => accountingTypeFilter.has(resolveExpenseFields(r).accountingType));
+    if (recurrenceFilter.size > 0)     bkRows = bkRows.filter(r => recurrenceFilter.has(resolveExpenseFields(r).recurrence));
 
     // By Cost Category doughnut (groups by resolved costCategory for correct OpEx/CapEx separation)
     const byCostCat = new Map();
@@ -292,8 +353,8 @@ function build() {
 
   const renderAll = () => { renderTable(); renderDash(); };
 
+  rebuildFilters();
   renderTable();
-  // Defer chart render until canvas elements are in the DOM
   requestAnimationFrame(() => renderDash());
 
   return wrap;
