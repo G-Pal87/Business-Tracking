@@ -6454,6 +6454,24 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778786523636,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "rer_mp5vkjbtok",
+      "name": "Welcome Drinks D7",
+      "propertyId": "prop_mox7p43s8o",
+      "category": "inventory",
+      "vendorId": "",
+      "amountSource": "inventory",
+      "fixedAmount": 0,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "ivt_mp5u8zdrrf",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778786560707,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778786560707,
+      "updatedBy": "Giorgos"
     }
   ]
 }
