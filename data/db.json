@@ -6475,7 +6475,7 @@
     },
     {
       "id": "rer_mp5vld184o",
-      "name": "Welcome Sweets",
+      "name": "Welcome Sweets Studio",
       "propertyId": "prop_mohfwhqrgj",
       "category": "inventory",
       "vendorId": "",
@@ -6488,7 +6488,7 @@
       "enabled": true,
       "createdAt": 1778786585716,
       "createdBy": "Giorgos",
-      "updatedAt": 1778786585716,
+      "updatedAt": 1778786593132,
       "updatedBy": "Giorgos"
     }
   ]
