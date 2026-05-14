@@ -6529,7 +6529,7 @@
           "id": "btc_mp5vd17og0",
           "qty": 56,
           "remaining": 56,
-          "unitPrice": 0.69,
+          "unitPrice": 0.59,
           "currency": "EUR",
           "dateBought": "2025-01-01",
           "comments": ""
@@ -6537,7 +6537,7 @@
       ],
       "createdAt": 1778786175588,
       "createdBy": "Giorgos",
-      "updatedAt": 1778786175588,
+      "updatedAt": 1778786265198,
       "updatedBy": "Giorgos"
     }
   ],
