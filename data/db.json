@@ -6508,6 +6508,24 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778786632581,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "rer_mp5vnil94z",
+      "name": "Welcome Sweets D7",
+      "propertyId": "prop_mox7p43s8o",
+      "category": "inventory",
+      "vendorId": "",
+      "amountSource": "inventory",
+      "fixedAmount": 0,
+      "fixedCurrency": "EUR",
+      "inventoryItemId": "ivt_mp5vd17oho",
+      "inventoryQty": 1,
+      "description": "",
+      "enabled": true,
+      "createdAt": 1778786696316,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778786696316,
+      "updatedBy": "Giorgos"
     }
   ]
 }
