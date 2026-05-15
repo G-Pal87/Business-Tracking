@@ -170,46 +170,51 @@ function compositeKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelt
   return card;
 }
 
-// ── Inline insights ───────────────────────────────────────────────────────────
-function buildInsightsBanner(insights) {
-  if (!insights.length) return null;
-  const wrap = el('div', { style: 'display:flex;flex-direction:column;gap:8px;margin-bottom:16px' });
-  const STYLES = {
-    danger:  { bg: 'rgba(239,68,68,0.08)',  border: '#ef4444', icon: '⚠' },
-    warning: { bg: 'rgba(245,158,11,0.08)', border: '#f59e0b', icon: '⚡' },
-    info:    { bg: 'rgba(99,102,241,0.08)', border: '#6366f1', icon: 'ℹ' }
-  };
-  for (const { level, text } of insights) {
-    const s = STYLES[level] || STYLES.info;
-    wrap.appendChild(el('div', {
-      style: `display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:${s.bg};border-left:3px solid ${s.border};border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13px`
-    },
-      el('span', { style: `color:${s.border};flex-shrink:0` }, s.icon),
-      el('span', { style: 'color:var(--text);line-height:1.4' }, text)
-    ));
-  }
-  return wrap;
-}
-
+// ── Expense Insights (same card-grid format as Executive Insights) ────────────
 function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }) {
-  const items = [];
-  if (total === 0) {
-    items.push({ level: 'info', text: 'No expenses recorded for the selected period.' });
-    return items;
-  }
-  // Cost pressure: OpEx / Revenue (not total / revenue)
+  const signals = []; // { title, text, severity: 'At Risk'|'Watch'|'Note', inspect, onClick }
+  if (total === 0) return signals;
+
+  // Cost pressure: OpEx / Revenue
   const opRatio = revenue > 0 ? (opTotal / revenue) * 100 : null;
   if (opRatio !== null && opRatio > 100) {
-    items.push({ level: 'danger', text: `Operating cost ratio is ${opRatio.toFixed(0)}% — OpEx exceeds revenue. Portfolio is unprofitable for this period.` });
+    signals.push({
+      title:    'Cost Pressure',
+      text:     `Operating cost ratio is ${opRatio.toFixed(0)}% — OpEx exceeds revenue. Portfolio is unprofitable for this period.`,
+      severity: 'At Risk',
+      inspect:  'Expense Records',
+      onClick:  () => drillDownModal('Operating Expenses', toExpDrillRows(allExp.filter(e => !isCapEx(e))), DRILL_COLS)
+    });
   } else if (opRatio !== null && opRatio > 80) {
-    items.push({ level: 'warning', text: `Operating cost ratio is ${opRatio.toFixed(0)}% — OpEx consumes over 80% of revenue. Margins are thin.` });
+    signals.push({
+      title:    'Cost Pressure',
+      text:     `Operating cost ratio is ${opRatio.toFixed(0)}% — OpEx consumes over 80% of revenue. Margins are thin.`,
+      severity: 'Watch',
+      inspect:  'Expense Records',
+      onClick:  () => drillDownModal('Operating Expenses', toExpDrillRows(allExp.filter(e => !isCapEx(e))), DRILL_COLS)
+    });
   }
-  const capPct = total > 0 ? (capTotal / total) * 100 : 0;
+
+  // CapEx concentration
+  const capPct = (capTotal / total) * 100;
   if (capPct > 50) {
-    items.push({ level: 'warning', text: `CapEx is ${capPct.toFixed(0)}% of total expenses — major capital expenditure activity. Verify this is planned.` });
+    signals.push({
+      title:    'Capital Expenditure',
+      text:     `CapEx is ${capPct.toFixed(0)}% of total expenses — major capital investment activity. Verify this is planned.`,
+      severity: 'Watch',
+      inspect:  'CapEx Detail',
+      onClick:  () => drillDownModal('CapEx', toExpDrillRows(allExp.filter(e => isCapEx(e))), DRILL_COLS)
+    });
   } else if (capPct > 30) {
-    items.push({ level: 'info', text: `CapEx is ${capPct.toFixed(0)}% of total expenses — elevated capital investment activity.` });
+    signals.push({
+      title:    'Capital Expenditure',
+      text:     `CapEx is ${capPct.toFixed(0)}% of total expenses — elevated capital investment activity.`,
+      severity: 'Note',
+      inspect:  'CapEx Detail',
+      onClick:  () => drillDownModal('CapEx', toExpDrillRows(allExp.filter(e => isCapEx(e))), DRILL_COLS)
+    });
   }
+
   // Category concentration
   const catMap = new Map();
   allExp.forEach(e => {
@@ -218,10 +223,17 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }) {
   });
   const topCat = [...catMap.entries()].sort((a, b) => b[1] - a[1])[0];
   if (topCat && topCat[1] / total > 0.55) {
-    const pct   = Math.round(topCat[1] / total * 100);
-    const lbl   = COST_CATEGORIES[topCat[0]]?.label || topCat[0];
-    items.push({ level: 'info', text: `"${lbl}" is the dominant cost category at ${pct}% of total spend.` });
+    const pct = Math.round(topCat[1] / total * 100);
+    const lbl = COST_CATEGORIES[topCat[0]]?.label || topCat[0];
+    signals.push({
+      title:    'Cost Concentration',
+      text:     `"${lbl}" is the dominant cost category at ${pct}% of total spend.`,
+      severity: 'Note',
+      inspect:  'Category Breakdown',
+      onClick:  () => drillDownModal(`Expenses — ${lbl}`, toExpDrillRows(allExp.filter(e => resolveExpenseFields(e).costCategory === topCat[0])), DRILL_COLS)
+    });
   }
+
   // Vendor concentration
   const vendMap = new Map();
   allExp.forEach(e => {
@@ -232,9 +244,52 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }) {
   const topVend = [...vendMap.entries()].sort((a, b) => b[1] - a[1])[0];
   if (topVend && topVend[1] / total > 0.5) {
     const pct = Math.round(topVend[1] / total * 100);
-    items.push({ level: 'warning', text: `"${topVend[0]}" accounts for ${pct}% of total expenses — high vendor concentration. Consider diversifying suppliers.` });
+    signals.push({
+      title:    'Vendor Concentration',
+      text:     `"${topVend[0]}" accounts for ${pct}% of total expenses — high dependency on a single vendor.`,
+      severity: 'Watch',
+      inspect:  'Vendor Breakdown',
+      onClick:  () => drillDownModal(`Expenses — ${topVend[0]}`, toExpDrillRows(allExp.filter(e => vendorLabel(e) === topVend[0])), DRILL_COLS)
+    });
   }
-  return items;
+
+  return signals;
+}
+
+function buildInsightsBanner(signals) {
+  if (!signals.length) return null;
+
+  const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b', 'Note': '#6366f1' };
+  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)', 'Note': 'rgba(99,102,241,0.06)' };
+
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Expense Insights')
+  ));
+  const body = el('div', { style: 'padding:0 16px 16px' });
+  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px' });
+
+  for (const sig of signals) {
+    const color = SEV_COLOR[sig.severity] || '#6b7280';
+    const bg    = SEV_BG[sig.severity]    || 'transparent';
+    const block = el('div', { style: `padding:10px 12px;border-radius:4px;border-left:3px solid ${color};background:${bg}` });
+
+    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px' });
+    titleRow.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)' }, sig.title));
+    titleRow.appendChild(el('span', { style: `font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;color:${color};border:1px solid ${color}` }, sig.severity));
+    block.appendChild(titleRow);
+
+    const p = el('p', { style: 'margin:0 0 5px;font-size:12px;line-height:1.5;color:var(--text)' }, sig.text);
+    if (sig.onClick) { p.style.cursor = 'pointer'; p.title = 'Click for breakdown'; p.onclick = sig.onClick; }
+    block.appendChild(p);
+    if (sig.inspect) block.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted)' }, `→ Inspect: ${sig.inspect}`));
+
+    grid.appendChild(block);
+  }
+
+  body.appendChild(grid);
+  card.appendChild(body);
+  return card;
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
