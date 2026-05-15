@@ -6975,8 +6975,10 @@
       "notes": "Colin Meldrum · Luxe Poolside Escape | Beach walk & 2 Terraces",
       "createdAt": 1778883110117,
       "createdBy": "Giorgos",
-      "updatedAt": 1778883110117,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778883621530,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778883621530,
+      "deletedBy": "Giorgos"
     }
   ],
   "expenses": [
@@ -24037,8 +24039,10 @@
       "inventoryBatches": [],
       "createdAt": 1778883110137,
       "createdBy": "Giorgos",
-      "updatedAt": 1778883110137,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778883621491,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778883621491,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp7h2oemro",
@@ -24060,8 +24064,10 @@
       "inventoryBatches": [],
       "createdAt": 1778883110158,
       "createdBy": "Giorgos",
-      "updatedAt": 1778883110158,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778883621506,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778883621506,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_mp7h2of893",
@@ -24083,8 +24089,10 @@
       "inventoryBatches": [],
       "createdAt": 1778883110180,
       "createdBy": "Giorgos",
-      "updatedAt": 1778883110180,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1778883621523,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1778883621523,
+      "deletedBy": "Giorgos"
     }
   ],
   "vendors": [
@@ -29407,7 +29415,7 @@
           "revenue": 0
         },
         "2026-10": {
-          "revenue": 676.47
+          "revenue": 0
         },
         "2026-03": {
           "revenue": 0
@@ -29421,7 +29429,7 @@
       },
       "createdAt": 1778431125527,
       "createdBy": "Giorgos",
-      "updatedAt": 1778883110193,
+      "updatedAt": 1778883621539,
       "updatedBy": "Giorgos"
     },
     {
@@ -29646,7 +29654,7 @@
       ],
       "createdAt": 1778784216159,
       "createdBy": "Giorgos",
-      "updatedAt": 1778883110127,
+      "updatedAt": 1778883621483,
       "updatedBy": "Giorgos"
     },
     {
@@ -29706,7 +29714,7 @@
       ],
       "createdAt": 1778785959986,
       "createdBy": "Giorgos",
-      "updatedAt": 1778883110169,
+      "updatedAt": 1778883621514,
       "updatedBy": "Giorgos"
     },
     {
@@ -29766,7 +29774,7 @@
       ],
       "createdAt": 1778786145969,
       "createdBy": "Giorgos",
-      "updatedAt": 1778883110148,
+      "updatedAt": 1778883621498,
       "updatedBy": "Giorgos"
     },
     {
