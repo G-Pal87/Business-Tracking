@@ -35,6 +35,21 @@ const EXP_COLS = [
   { key: 'description', label: 'Description' },
   { key: 'eur',         label: 'EUR', right: true, format: v => formatEUR(v) }
 ];
+const EXP_MO_COLS = [
+  { key: 'month',  label: 'Month' },
+  { key: 'fcExp',  label: 'Forecast OpEx', right: true },
+  { key: 'actExp', label: 'Actual OpEx',   right: true },
+  { key: 'varStr', label: 'Variance',      right: true },
+  { key: 'pctStr', label: 'Var %',         right: true }
+];
+const NET_MO_COLS = [
+  { key: 'month',  label: 'Month' },
+  { key: 'actRev', label: 'Actual Revenue', right: true },
+  { key: 'actExp', label: 'Actual OpEx',    right: true },
+  { key: 'actNet', label: 'Actual Net',     right: true },
+  { key: 'fcNet',  label: 'Forecast Net',   right: true },
+  { key: 'varStr', label: 'Variance',       right: true }
+];
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -157,9 +172,11 @@ function calculateDashboardData(range) {
   const variance    = actualRev - forecastRev;
   const variancePct = safeVariancePct(actualRev, forecastRev);
 
-  // Pending pipeline — not range-limited, entity-filtered
+  // Pending pipeline — period scoped by airbnbCheckIn (fallback: date)
   const pendingReservations = listActivePayments().filter(p => {
     if (p.source !== 'airbnb' || p.status !== 'pending') return false;
+    const checkDate = p.airbnbCheckIn || p.date;
+    if (!checkDate || checkDate < range.start || checkDate > range.end) return false;
     if (gF.propertyIds.size > 0 && !gF.propertyIds.has(p.propertyId)) return false;
     if (gF.streams.size > 0 && !gF.streams.has('short_term_rental')) return false;
     if (gF.owners.size > 0 && p.propertyId) {
@@ -198,7 +215,7 @@ function calculateDashboardData(range) {
     };
   });
 
-  const streamBreakdown  = computeStreamBreakdown(actPayments, actInvoices, months);
+  const streamBreakdown   = computeStreamBreakdown(actPayments, actInvoices, months);
   const propertyBreakdown = computePropertyBreakdown(actPayments, months, pendingReservations);
 
   return {
@@ -223,7 +240,6 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
     actByStream.set(s, (actByStream.get(s) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date));
   });
 
-  // Pre-group forecasts by year
   const fcsByYear = new Map();
   listActive('forecasts').forEach(fc => {
     const arr = fcsByYear.get(fc.year) || [];
@@ -303,17 +319,19 @@ function computePropertyBreakdown(actPayments, months, pendingReservations) {
     pendingByProp.set(p.propertyId, (pendingByProp.get(p.propertyId) || 0) + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date));
   });
 
-  const allPropIds = new Set([...actByProp.keys(), ...fcByProp.keys()]);
+  // Include properties with actual revenue, forecast revenue, or pending pipeline
+  const allPropIds = new Set([...actByProp.keys(), ...fcByProp.keys(), ...pendingByProp.keys()]);
   return [...allPropIds].map(propId => {
     const prop = byId('properties', propId);
-    const act  = actByProp.get(propId) || 0;
-    const fc   = fcByProp.get(propId)  || 0;
-    return { propId, label: prop?.name || propId, actRev: act, fcRev: fc, variance: act - fc, variancePct: safeVariancePct(act, fc), pending: pendingByProp.get(propId) || 0 };
+    const act  = actByProp.get(propId)     || 0;
+    const fc   = fcByProp.get(propId)      || 0;
+    const pend = pendingByProp.get(propId) || 0;
+    return { propId, label: prop?.name || propId, actRev: act, fcRev: fc, variance: act - fc, variancePct: safeVariancePct(act, fc), pending: pend };
   }).sort((a, b) => b.actRev - a.actRev);
 }
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
-function kpiCard({ label, value, variant, onClick, delta, deltaIsPp, invertDelta, compLabel }) {
+function kpiCard({ label, subtitle, value, variant, onClick, delta, deltaIsPp, invertDelta, compLabel }) {
   const card = el('div', {
     class: 'kpi' + (variant ? ' ' + variant : ''),
     style: 'cursor:pointer;transition:box-shadow 120ms',
@@ -323,26 +341,32 @@ function kpiCard({ label, value, variant, onClick, delta, deltaIsPp, invertDelta
   card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
   card.onclick = onClick;
   card.appendChild(el('div', { class: 'kpi-label' }, label));
+  if (subtitle) card.appendChild(el('div', { style: 'font-size:10px;color:var(--text-muted);margin-top:-2px;margin-bottom:2px' }, subtitle));
   card.appendChild(el('div', { class: 'kpi-value' }, value));
-  const trendDiv = el('div', { class: 'kpi-trend' });
-  if (delta === null || delta === undefined || !isFinite(delta)) {
-    trendDiv.appendChild(el('span', { style: 'color:var(--text-muted);font-size:11px' }, 'N/A'));
-    if (compLabel) trendDiv.appendChild(document.createTextNode(` vs ${compLabel}`));
-  } else {
-    const sign = delta > 0 ? '+' : '';
-    const display = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
-    let cls = '';
-    if (delta > 0) cls = invertDelta ? 'down' : 'up';
-    else if (delta < 0) cls = invertDelta ? 'up' : 'down';
-    trendDiv.appendChild(el('span', { class: cls }, display));
-    if (compLabel) trendDiv.appendChild(document.createTextNode(` vs ${compLabel}`));
+
+  // Only render trend row when there is a meaningful delta or comparison context
+  const hasValidDelta = delta !== null && delta !== undefined && isFinite(delta);
+  const hasContext    = !!compLabel;
+  if (hasValidDelta || hasContext) {
+    const trendDiv = el('div', { class: 'kpi-trend' });
+    if (!hasValidDelta) {
+      trendDiv.appendChild(el('span', { style: 'color:var(--text-muted);font-size:11px' }, compLabel));
+    } else {
+      const sign = delta > 0 ? '+' : '';
+      const display = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
+      let cls = '';
+      if (delta > 0) cls = invertDelta ? 'down' : 'up';
+      else if (delta < 0) cls = invertDelta ? 'up' : 'down';
+      trendDiv.appendChild(el('span', { class: cls }, display));
+      if (compLabel) trendDiv.appendChild(document.createTextNode(` vs ${compLabel}`));
+    }
+    card.appendChild(trendDiv);
   }
-  card.appendChild(trendDiv);
   card.appendChild(el('div', { class: 'kpi-accent-bar' }));
   return card;
 }
 
-// ── Drill columns for monthly modal ──────────────────────────────────────────
+// ── Drill row helpers ─────────────────────────────────────────────────────────
 const MO_COLS = [
   { key: 'month', label: 'Month' },
   { key: 'fcRev', label: 'Forecast',  right: true },
@@ -359,6 +383,31 @@ function monthDrillRows(monthlyBreakdown) {
       actRev: formatEUR(m.actRev),
       var:    fmtVar(m.actRev, m.fcRev),
       pct:    fmtVarPct(m.actRev, m.fcRev)
+    }));
+}
+
+function expMoDrillRows(monthlyBreakdown) {
+  return monthlyBreakdown
+    .filter(m => m.fcExp > 0 || m.actExp > 0)
+    .map(m => ({
+      month:  m.label,
+      fcExp:  formatEUR(m.fcExp),
+      actExp: formatEUR(m.actExp),
+      varStr: fmtVar(m.actExp, m.fcExp),
+      pctStr: fmtVarPct(m.actExp, m.fcExp)
+    }));
+}
+
+function netMoDrillRows(monthlyBreakdown) {
+  return monthlyBreakdown
+    .filter(m => m.actRev > 0 || m.actExp > 0 || m.fcNet !== 0 || m.actNet !== 0)
+    .map(m => ({
+      month:  m.label,
+      actRev: formatEUR(m.actRev),
+      actExp: formatEUR(m.actExp),
+      actNet: formatEUR(m.actNet),
+      fcNet:  formatEUR(m.fcNet),
+      varStr: fmtVar(m.actNet, m.fcNet)
     }));
 }
 
@@ -418,20 +467,22 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     delta: null, compLabel: ''
   }));
 
-  // 5. Forecast Expenses
+  // 5. Forecast OpEx — drilldown shows forecast vs actual expense breakdown
   grid.appendChild(kpiCard({
-    label: 'Forecast Expenses',
+    label: 'Forecast OpEx',
+    subtitle: 'Excl. CapEx',
     value: forecastExp > 0 ? formatEUR(forecastExp) : '—',
-    onClick: () => drillDownModal('Actual Expenses', drillExpRows(actOpExpenses), EXP_COLS),
+    onClick: () => drillDownModal('Forecast vs Actual OpEx', expMoDrillRows(monthlyBreakdown), EXP_MO_COLS),
     delta: cmpData ? safePct(forecastExp, cmpData.forecastExp) : null,
     invertDelta: true, compLabel: cmpLabel
   }));
 
-  // 6. Actual Expenses
+  // 6. Actual OpEx
   grid.appendChild(kpiCard({
-    label: 'Actual Expenses',
+    label: 'Actual OpEx',
+    subtitle: 'Excl. CapEx',
     value: formatEUR(actualExp),
-    onClick: () => drillDownModal('Actual Expenses', drillExpRows(actOpExpenses), EXP_COLS),
+    onClick: () => drillDownModal('Actual OpEx', drillExpRows(actOpExpenses), EXP_COLS),
     delta: cmpData ? safePct(actualExp, cmpData.actualExp) : null,
     invertDelta: true, compLabel: cmpLabel
   }));
@@ -446,17 +497,17 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     invertDelta: false, compLabel: cmpLabel
   }));
 
-  // 8. Actual Net
+  // 8. Actual Net — drilldown shows monthly net breakdown vs forecast
   grid.appendChild(kpiCard({
     label: 'Actual Net',
     value: formatEUR(actualNet),
     variant: actualNet >= 0 ? 'success' : 'danger',
-    onClick: () => drillDownModal('Actual Revenue', drillRevRows(actPayments, actInvoices), REV_COLS),
+    onClick: () => drillDownModal('Actual Net Breakdown', netMoDrillRows(monthlyBreakdown), NET_MO_COLS),
     delta: cmpData ? safePct(actualNet, cmpData.actualNet) : null,
     invertDelta: false, compLabel: cmpLabel
   }));
 
-  // 9. Pending Pipeline
+  // 9. Pending Pipeline — period scoped
   grid.appendChild(kpiCard({
     label: 'Pending Pipeline',
     value: pendingPipeline > 0 ? formatEUR(pendingPipeline) : '—',
@@ -486,7 +537,170 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   return grid;
 }
 
-// ── Chart section builder (matches Executive Dashboard pattern) ───────────────
+// ── Forecast Performance Insights ─────────────────────────────────────────────
+function buildForecastInsights(data, cmpData) {
+  const { actualRev, forecastRev, variancePct, pendingPipeline,
+          streamBreakdown, propertyBreakdown } = data;
+
+  const signals = [];
+
+  // Forecast gap / missing forecast / forecast without actuals
+  if (forecastRev > 0 && actualRev > 0 && variancePct !== null) {
+    if (variancePct < -25) {
+      signals.push({
+        title: 'Forecast Gap',
+        text: `Actual revenue is ${Math.abs(variancePct).toFixed(0)}% below forecast (${fmtVar(actualRev, forecastRev)} variance).`,
+        severity: 'At Risk',
+        inspect: 'Monthly Forecast Breakdown'
+      });
+    } else if (variancePct < -10) {
+      signals.push({
+        title: 'Forecast Gap',
+        text: `Actual revenue is ${Math.abs(variancePct).toFixed(0)}% below forecast (${fmtVar(actualRev, forecastRev)} variance).`,
+        severity: 'Watch',
+        inspect: 'Monthly Forecast Breakdown'
+      });
+    }
+  } else if (actualRev > 0 && forecastRev === 0) {
+    signals.push({
+      title: 'Missing Forecast',
+      text: `Actual revenue of ${formatEUR(actualRev)} exists but no forecast was set for the selected period.`,
+      severity: 'Watch',
+      inspect: 'Monthly Forecast Breakdown'
+    });
+  } else if (forecastRev > 0 && actualRev === 0) {
+    signals.push({
+      title: 'Forecast Without Actuals',
+      text: `Forecast revenue of ${formatEUR(forecastRev)} exists but no actual revenue has been recorded yet.`,
+      severity: 'Watch',
+      inspect: 'Stream Breakdown'
+    });
+  }
+
+  // Worst negative stream variance
+  if (streamBreakdown.length > 0) {
+    const worst = streamBreakdown
+      .filter(s => s.variance < 0 && s.fcRev > 0)
+      .sort((a, b) => a.variance - b.variance)[0];
+    if (worst && Math.abs(worst.variance) > 500) {
+      const pct = worst.variancePct !== null ? ` (${Math.abs(worst.variancePct).toFixed(0)}% gap)` : '';
+      signals.push({
+        title: 'Stream Variance',
+        text: `${worst.label} is ${formatEUR(Math.abs(worst.variance))} below forecast${pct}.`,
+        severity: 'Watch',
+        inspect: 'Stream Breakdown'
+      });
+    }
+  }
+
+  // Worst negative property variance
+  if (propertyBreakdown.length > 0) {
+    const worst = propertyBreakdown
+      .filter(p => p.variance < 0 && p.fcRev > 0)
+      .sort((a, b) => a.variance - b.variance)[0];
+    if (worst && Math.abs(worst.variance) > 500) {
+      signals.push({
+        title: 'Property Variance',
+        text: `${worst.label} is the largest negative variance (${formatEUR(Math.abs(worst.variance))} below forecast).`,
+        severity: 'Watch',
+        inspect: 'Property Breakdown'
+      });
+    }
+  }
+
+  // Pending pipeline visibility
+  if (pendingPipeline > 0) {
+    signals.push({
+      title: 'Pending Pipeline',
+      text: `${formatEUR(pendingPipeline)} in pending Airbnb reservations for the selected period.`,
+      severity: 'info',
+      inspect: 'Pending Airbnb Reservations'
+    });
+  }
+
+  const section = el('div', { class: 'card mb-16' });
+  section.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Forecast Performance Insights')
+  ));
+  const body = el('div', { style: 'padding:0 16px 16px' });
+
+  if (signals.length === 0) {
+    body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' },
+      `No major forecast risks detected for the selected period. Forecast: ${forecastRev > 0 ? formatEUR(forecastRev) : '—'}, Actual: ${formatEUR(actualRev)}.`
+    ));
+    section.appendChild(body);
+    return section;
+  }
+
+  const SEV_COLOR = { 'At Risk': '#ef4444', Watch: '#f59e0b', info: '#3b82f6' };
+  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', Watch: 'rgba(245,158,11,0.06)', info: 'rgba(59,130,246,0.06)' };
+  const row = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px' });
+
+  for (const sig of signals) {
+    const color = SEV_COLOR[sig.severity] || '#6b7280';
+    const bg    = SEV_BG[sig.severity]    || 'transparent';
+    const block = el('div', { style: `padding:10px 12px;border-radius:4px;border-left:3px solid ${color};background:${bg}` });
+    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px' });
+    titleRow.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)' }, sig.title));
+    if (sig.severity !== 'info') {
+      titleRow.appendChild(el('span', { style: `font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;color:${color};border:1px solid ${color}` }, sig.severity));
+    }
+    block.appendChild(titleRow);
+    block.appendChild(el('p', { style: 'margin:0 0 5px;font-size:12px;line-height:1.5;color:var(--text)' }, sig.text));
+    block.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted)' }, `→ Inspect: ${sig.inspect}`));
+    row.appendChild(block);
+  }
+
+  body.appendChild(row);
+  section.appendChild(body);
+  return section;
+}
+
+// ── Forecast Data Quality ─────────────────────────────────────────────────────
+function buildDataQualityWarnings() {
+  const allFcs = listActive('forecasts');
+  const warnings = [];
+
+  // Property forecasts referencing non-existent properties
+  const orphans = allFcs.filter(fc => fc.type === 'property' && !byId('properties', fc.entityId));
+  if (orphans.length > 0) {
+    const ids = [...new Set(orphans.map(f => f.entityId))].slice(0, 5).join(', ');
+    warnings.push({
+      title: 'Orphan Property Forecasts',
+      text: `${orphans.length} forecast record${orphans.length > 1 ? 's' : ''} reference propert${orphans.length > 1 ? 'ies' : 'y'} that no longer exist. Affected IDs: ${ids}${orphans.length > 5 ? ', …' : ''}`
+    });
+  }
+
+  // Records with no monthly data
+  const noMonths = allFcs.filter(fc => !fc.months || Object.keys(fc.months).length === 0);
+  if (noMonths.length > 0) {
+    warnings.push({
+      title: 'Empty Forecast Records',
+      text: `${noMonths.length} forecast record${noMonths.length > 1 ? 's' : ''} have no monthly data and will not appear in any forecast totals.`
+    });
+  }
+
+  if (warnings.length === 0) return null;
+
+  const section = el('div', { class: 'card mb-16', style: 'border-left:4px solid #f59e0b' });
+  section.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Forecast Data Quality')
+  ));
+  const body = el('div', { style: 'padding:0 16px 12px;display:flex;flex-direction:column;gap:10px' });
+  for (const w of warnings) {
+    const wRow = el('div', { style: 'display:flex;gap:8px;align-items:flex-start' });
+    wRow.appendChild(el('span', { style: 'flex-shrink:0;color:#f59e0b;font-weight:700;font-size:13px' }, '⚠'));
+    const txt = el('div');
+    txt.appendChild(el('div', { style: 'font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px' }, w.title));
+    txt.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, w.text));
+    wRow.appendChild(txt);
+    body.appendChild(wRow);
+  }
+  section.appendChild(body);
+  return section;
+}
+
+// ── Chart section builder ─────────────────────────────────────────────────────
 function makeChartSection(title, panels) {
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, title)));
@@ -564,8 +778,8 @@ function buildMonthlyTable(data) {
     { key: 'actRev', label: 'Actual Rev',  right: true },
     { key: 'varStr', label: 'Variance',    right: true },
     { key: 'pctStr', label: 'Var %',       right: true },
-    { key: 'fcExp',  label: 'Fc Expenses', right: true },
-    { key: 'actExp', label: 'Actual Exp',  right: true },
+    { key: 'fcExp',  label: 'Fc OpEx',     right: true },
+    { key: 'actExp', label: 'Actual OpEx', right: true },
     { key: 'fcNet',  label: 'Fc Net',      right: true },
     { key: 'actNet', label: 'Actual Net',  right: true }
   ];
@@ -630,18 +844,16 @@ function buildPendingTable(data) {
     { key: 'nights',   label: 'Nights',  right: true },
     { key: 'amount',   label: 'Amount',  right: true }
   ];
-  return makeTable(cols, rows, 'No pending Airbnb reservations found.');
+  return makeTable(cols, rows, 'No pending Airbnb reservations found for the selected period.');
 }
 
 // ── Chart rendering ───────────────────────────────────────────────────────────
 function renderCharts(data) {
   const { months, fcMonthlyRev, fcMonthlyExp,
-          actPayments, actInvoices, actOpExpenses,
           streamBreakdown, propertyBreakdown, pendingReservations } = data;
 
   const labels = months.map(m => m.label);
 
-  // Build per-month arrays
   const revData    = data.monthlyBreakdown.map(m => Math.round(m.actRev));
   const fcRevData  = months.map(m => Math.round(fcMonthlyRev.get(m.key) || 0));
   const expData    = data.monthlyBreakdown.map(m => Math.round(m.actExp));
@@ -669,8 +881,8 @@ function renderCharts(data) {
     });
   }
 
-  // 2. Forecast Variance %
-  if (varPctData.some(v => v !== 0)) {
+  // 2. Forecast Variance % — render whenever forecast or actual data exists (zero variance is meaningful)
+  if (fcRevData.some(v => v > 0) || revData.some(v => v > 0)) {
     charts.bar('anf-fc-var-pct', {
       labels,
       datasets: [{
@@ -731,7 +943,7 @@ function renderCharts(data) {
     });
   }
 
-  // 7. Pending Pipeline by Check-in Month
+  // 7. Pending Pipeline by Check-in Month (period scoped)
   const pendingMap = new Map();
   pendingReservations.forEach(p => {
     const mk = (p.airbnbCheckIn || p.date || '').slice(0, 7);
@@ -750,7 +962,7 @@ function renderCharts(data) {
     });
   }
 
-  // 8. Pending by Property (horizontal bar)
+  // 8. Pending by Property (horizontal bar, period scoped)
   const propPending = propertyBreakdown.filter(p => p.pending > 0);
   if (propPending.length > 0) {
     charts.bar('anf-pending-by-prop', {
@@ -771,9 +983,10 @@ function buildView() {
       'Forecast vs actual performance, variance analysis, and pipeline visibility.')
   ));
 
+  // TODO: re-enable showClient once service forecast entries support clientId
   wrap.appendChild(buildFilterBar(
     gF,
-    { showOwner: true, showStream: true, showProperty: true, showClient: true, storagePrefix: 'ana_fc' },
+    { showOwner: true, showStream: true, showProperty: true, storagePrefix: 'ana_fc' },
     newGF => { if (newGF) gF = newGF; rebuildView(); }
   ));
 
@@ -792,6 +1005,10 @@ function buildView() {
   const hasAnyData = data.forecastRev > 0 || data.actualRev > 0 || data.pendingPipeline > 0;
 
   wrap.appendChild(buildKpiGrid(data, cmpData, cmpRange));
+  wrap.appendChild(buildForecastInsights(data, cmpData));
+
+  const dqSection = buildDataQualityWarnings();
+  if (dqSection) wrap.appendChild(dqSection);
 
   if (!hasAnyData) {
     wrap.appendChild(el('div', { class: 'card mb-16', style: 'padding:32px;text-align:center;color:var(--text-muted)' },
@@ -818,8 +1035,8 @@ function buildView() {
   ]));
 
   wrap.appendChild(cardSection('Monthly Forecast Breakdown', buildMonthlyTable(data)));
-  wrap.appendChild(cardSection('Stream Breakdown',           buildStreamTable(data)));
-  wrap.appendChild(cardSection('Property Breakdown',         buildPropertyTable(data)));
+  wrap.appendChild(cardSection('Stream Breakdown',            buildStreamTable(data)));
+  wrap.appendChild(cardSection('Property Breakdown',          buildPropertyTable(data)));
   wrap.appendChild(cardSection('Pending Airbnb Reservations', buildPendingTable(data)));
 
   setTimeout(() => renderCharts(data), 0);
