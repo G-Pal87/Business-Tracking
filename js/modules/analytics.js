@@ -158,7 +158,7 @@ function mixedRows(revPays, revInvs, expItems, acqItems = []) {
 
 // ── Filtered active properties (respects gF filters) ────────────────────────
 function getFilteredProperties() {
-  return applyPropertyFilters(listActive('properties'));
+  return applyPropertyFilters(listActive('properties').filter(p => p.status === 'active'));
 }
 
 // ── Virtual property acquisitions ────────────────────────────────────────────
