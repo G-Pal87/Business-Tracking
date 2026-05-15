@@ -1,22 +1,17 @@
 // Property Performance Analytics Dashboard
 import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { STREAMS, OWNERS, PROPERTY_STREAMS } from '../core/config.js';
+import { STREAMS, OWNERS, PROPERTY_STREAMS, PROPERTY_STATUSES } from '../core/config.js';
 import {
-  availableYears, formatEUR, toEUR, byId,
-  listActive, listActivePayments, listActiveProperties,
-  isCapEx,
+  formatEUR, toEUR, byId,
+  listActive, listActivePayments, isCapEx,
   simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
+import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
-let gFilters = {
-  years:       new Set([String(new Date().getFullYear())]),
-  months:      new Set(),
-  propertyIds: new Set(),
-  streams:     new Set(),
-  owners:      new Set()
-};
+let gF = createFilterState();
+let gStatusFilter = new Set(); // 'active' | 'renovation' | 'vacant' | 'sold'
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-rev-donut', 'prop-value-hbar', 'prop-value-owner-donut', 'prop-value-stream-donut', 'prop-acq-bar', 'prop-growth-line', 'prop-capital-line'];
@@ -38,31 +33,29 @@ function propStream(p) {
   return 'other';
 }
 
-// ── Filtering ─────────────────────────────────────────────────────────────────
-function matchDate(row) {
-  const d = row.date || '';
-  if (gFilters.years.size > 0 && !gFilters.years.has(d.slice(0, 4))) return false;
-  if (gFilters.months.size > 0 && !gFilters.months.has(d.slice(5, 7))) return false;
-  return true;
-}
-function matchOwner(prop) {
-  if (gFilters.owners.size === 0) return true;
-  return prop.owner === 'both' || gFilters.owners.has(prop.owner);
-}
-function matchPropStream(prop) {
-  if (gFilters.streams.size === 0) return true;
-  return gFilters.streams.has(propStream(prop));
-}
-function matchPropId(prop) {
-  return gFilters.propertyIds.size === 0 || gFilters.propertyIds.has(prop.id);
+function safePct(cur, cmp) {
+  if (cmp == null || !isFinite(cmp) || cmp === 0) return null;
+  return (cur - cmp) / Math.abs(cmp) * 100;
 }
 
 // ── Data aggregation ──────────────────────────────────────────────────────────
-function getData() {
-  const allProps = listActiveProperties().filter(p =>
-    matchOwner(p) && matchPropStream(p) && matchPropId(p)
+function getData(start, end) {
+  const { mOwner } = makeMatchers(gF);
+
+  // Custom matchers for property objects (p.id / p.type, not p.propertyId / p.stream)
+  const mPropStream = p => !gF.streams.size || gF.streams.has(propStream(p));
+  const mPropId     = p => !gF.propertyIds.size || gF.propertyIds.has(p.id);
+  const mStatus     = p => !gStatusFilter.size || gStatusFilter.has(p.status || 'active');
+
+  const allProps = listActive('properties').filter(p =>
+    mOwner(p) && mPropStream(p) && mPropId(p) && mStatus(p)
   );
   const propIds = new Set(allProps.map(p => p.id));
+
+  const matchDate = row => {
+    const mk = (row.date || '').slice(0, 7);
+    return mk >= start && mk <= end;
+  };
 
   const payments    = listActivePayments().filter(p =>
     p.status === 'paid' && matchDate(p) && propIds.has(p.propertyId)
@@ -73,6 +66,7 @@ function getData() {
   const capExpenses = listActive('expenses').filter(e =>
     isCapEx(e) && matchDate(e) && propIds.has(e.propertyId)
   );
+  // All-time CapEx is never filtered by current period date range
   const allCapExpenses = listActive('expenses').filter(e => isCapEx(e));
 
   const propData = allProps.map(prop => {
@@ -121,7 +115,7 @@ function getData() {
   const avgROI   = roiItems.length > 0
     ? roiItems.reduce((s, d) => s + d.simpleROI, 0) / roiItems.length : null;
 
-  const active = [...propData]
+  const ranked = [...propData]
     .filter(d => d.rev > 0 || d.opEx > 0)
     .sort((a, b) => {
       if (a.simpleROI !== null && b.simpleROI !== null) return b.simpleROI - a.simpleROI;
@@ -129,40 +123,10 @@ function getData() {
       if (b.simpleROI !== null) return 1;
       return b.profit - a.profit;
     });
-  const best  = active.length > 0 ? active[0] : null;
-  const worst = active.length > 1 ? active[active.length - 1] : null;
+  const best  = ranked.length > 0 ? ranked[0] : null;
+  const worst = ranked.length > 1 ? ranked[ranked.length - 1] : null;
 
   return { allProps, propData, payments, opExpenses, capExpenses, totals, avgROI, best, worst };
-}
-
-// ── Valid filter options (leave-one-out faceting) ─────────────────────────────
-function getValidOpts() {
-  const allProps = listActiveProperties();
-  const pays     = listActivePayments().filter(p => p.status === 'paid');
-  const exps     = listActive('expenses');
-  const vY = new Set(), vSt = new Set(), vPi = new Set(), vOw = new Set();
-  const psk = p => p.type === 'short_term' ? 'short_term_rental' : p.type === 'long_term' ? 'long_term_rental' : 'other';
-  const yrOk = yr => !gFilters.years.size       || gFilters.years.has(yr);
-  const stOk = st => !gFilters.streams.size     || gFilters.streams.has(st);
-  const owOk = ow => !gFilters.owners.size      || ow === 'both' || gFilters.owners.has(ow);
-  const piOk = pi => !gFilters.propertyIds.size || gFilters.propertyIds.has(pi);
-  const addOw = ow => { if (ow === 'both') { vOw.add('you'); vOw.add('rita'); vOw.add('both'); } else if (ow) vOw.add(ow); };
-  for (const p of allProps) {
-    const st = psk(p), ow = p.owner || 'both', pi = p.id;
-    if (stOk(st) && owOk(ow)) vPi.add(pi);
-    if (piOk(pi) && owOk(ow)) vSt.add(st);
-    if (piOk(pi) && stOk(st)) addOw(ow);
-  }
-  const scanDate = (date, propId) => {
-    if (!propId) return;
-    const prop = byId('properties', propId);
-    if (!prop) return;
-    const yr = (date || '').slice(0, 4);
-    if (yr && stOk(psk(prop)) && owOk(prop.owner || 'both') && piOk(propId)) vY.add(yr);
-  };
-  pays.forEach(p => scanDate(p.date, p.propertyId));
-  exps.forEach(e => scanDate(e.date, e.propertyId));
-  return { vY, vSt, vPi, vOw };
 }
 
 // ── Rebuild ───────────────────────────────────────────────────────────────────
@@ -240,7 +204,7 @@ const PROP_VALUE_COLS = [
   { key: 'owner',    label: 'Owner'           },
   { key: 'pdate',    label: 'Purchase Date',   format: v => fmtDate(v) },
   { key: 'purchase', label: 'Purchase (EUR)',  right: true, format: v => formatEUR(v) },
-  { key: 'reno',     label: 'All-time CapEx',  right: true, format: v => formatEUR(v) },
+  { key: 'reno',     label: 'All-Time CapEx',  right: true, format: v => formatEUR(v) },
   { key: 'invested', label: 'Total Invested',  right: true, format: v => formatEUR(v) }
 ];
 
@@ -260,9 +224,9 @@ const ROI_DRILL_COLS = [
   { key: 'name',     label: 'Property'                                           },
   { key: 'rev',      label: 'Revenue',    right: true, format: v => formatEUR(v) },
   { key: 'expenses', label: 'Expenses',   right: true, format: v => formatEUR(v) },
-  { key: 'net',      label: 'Net Profit', right: true, format: v => formatEUR(v) },
+  { key: 'net',      label: 'Op. Profit', right: true, format: v => formatEUR(v) },
   { key: 'invested', label: 'Invested',   right: true, format: v => formatEUR(v) },
-  { key: 'roi',      label: 'ROI %',      right: true, format: v => v != null ? v.toFixed(1) + '%' : '—' },
+  { key: 'roi',      label: 'Simple ROI', right: true, format: v => v != null ? v.toFixed(1) + '%' : '—' },
   { key: 'annRoi',   label: 'Ann. ROI',   right: true, format: v => v != null ? v.toFixed(1) + '%' : '—' },
   { key: 'cocRoi',   label: 'CoC ROI',    right: true, format: v => v != null ? v.toFixed(1) + '%' : '—' }
 ];
@@ -280,16 +244,13 @@ function formatMonthKey(mk) {
   return `${MONTH_LABELS[parseInt(mm, 10) - 1]} ${year}`;
 }
 
-// Accepts the already-filtered allProps list from getData() to avoid re-filtering.
-// Ignores gFilters.year / gFilters.months — acquisition is always plotted across all time.
 function getAcquisitionData(allProps) {
   const propIds    = new Set(allProps.map(p => p.id));
   const allCapEx   = listActive('expenses').filter(e => isCapEx(e) && propIds.has(e.propertyId));
   const withDate   = allProps.filter(p => p.purchaseDate);
   const withoutDate = allProps.filter(p => !p.purchaseDate);
 
-  // Build per-month buckets for acquisitions
-  const bucketMap = new Map(); // 'YYYY-MM' → { count, props[] }
+  const bucketMap = new Map();
   withDate.forEach(p => {
     const mk = p.purchaseDate.slice(0, 7);
     if (!bucketMap.has(mk)) bucketMap.set(mk, { count: 0, props: [] });
@@ -298,8 +259,7 @@ function getAcquisitionData(allProps) {
     b.props.push(p);
   });
 
-  // Capital events map: purchase prices + CapEx per month
-  const capitalMap = new Map(); // 'YYYY-MM' → { purchaseEUR, capExEUR, capExItems[] }
+  const capitalMap = new Map();
   withDate.forEach(p => {
     const mk = p.purchaseDate.slice(0, 7);
     if (!capitalMap.has(mk)) capitalMap.set(mk, { purchaseEUR: 0, capExEUR: 0, capExItems: [] });
@@ -315,7 +275,6 @@ function getAcquisitionData(allProps) {
     c.capExItems.push(e);
   });
 
-  // All months in chronological order (union of both maps)
   const allMonths = [...new Set([...bucketMap.keys(), ...capitalMap.keys()])].sort();
 
   let cumCount = 0, cumCapital = 0;
@@ -331,15 +290,14 @@ function getAcquisitionData(allProps) {
       cumCount,
       capital:     c.purchaseEUR + c.capExEUR,
       cumCapital,
-      props:       b ? b.props : [],      // properties acquired this month
-      capExItems:  c.capExItems           // CapEx expenses this month
+      props:       b ? b.props : [],
+      capExItems:  c.capExItems
     };
   });
 
   return { timeline, withoutDate };
 }
 
-// Drill-down: properties acquired in a given period
 function toPropAcqRows(props) {
   return props.map(p => ({
     name:   p.name,
@@ -359,7 +317,6 @@ const PROP_ACQ_COLS = [
   { key: 'price',  label: 'Price (EUR)',   right: true, format: v => formatEUR(v) }
 ];
 
-// Drill-down: capital events (purchases + CapEx) for a given month
 function toCapitalDrillRows(monthProps, capExItems) {
   const purchaseRows = monthProps.map(p => ({
     date:    p.purchaseDate || '—',
@@ -386,9 +343,6 @@ const CAPITAL_DRILL_COLS = [
 ];
 
 // ── Mortgage estimation ───────────────────────────────────────────────────────
-// Uses standard amortization: B = P(1+r)^n − PMT·((1+r)^n − 1)/r
-// Falls back to simple subtraction when rate = 0.
-// Returns null for yearsLeft / dtvRatio when inputs are insufficient.
 function computeMortgageEstimate(prop) {
   const principalRaw = prop.mortgageAmount  || 0;
   if (!principalRaw) {
@@ -400,7 +354,7 @@ function computeMortgageEstimate(prop) {
   const principalEUR = toEUR(principalRaw,          cur, rateDate);
   const monthlyEUR   = toEUR(prop.mortgageMonthly || 0, cur, rateDate);
   const purchaseEUR  = prop.purchasePrice ? toEUR(prop.purchasePrice, cur, rateDate) : 0;
-  const r            = (prop.mortgageRate || 0) / 100 / 12; // monthly rate
+  const r            = (prop.mortgageRate || 0) / 100 / 12;
 
   let remaining = principalEUR;
   let yearsLeft = null;
@@ -471,7 +425,6 @@ function getFinancingData(allProps) {
   };
 }
 
-// Drill-down rows for KPI modals
 function toFinancingDrillRows(finData) {
   return [...finData].sort((a, b) => b.remaining - a.remaining).map(d => ({
     name:      d.prop.name,
@@ -497,7 +450,6 @@ const FINANCING_DRILL_COLS = [
   { key: 'status',    label: 'Status'                                                        }
 ];
 
-// Per-property amortization detail for row click modal
 function toMortgageDetailRows(d) {
   if (!d.financed) {
     return [
@@ -522,55 +474,15 @@ const MORTGAGE_DETAIL_COLS = [
   { key: 'value',  label: 'Value'  }
 ];
 
-// ── Inline insights ───────────────────────────────────────────────────────────
-function buildInsightsBanner(insights) {
-  if (!insights.length) return null;
-  const wrap = el('div', { style: 'display:flex;flex-direction:column;gap:8px;margin-bottom:16px' });
-  const STYLES = {
-    danger:  { bg: 'rgba(239,68,68,0.08)',  border: '#ef4444', icon: '⚠' },
-    warning: { bg: 'rgba(245,158,11,0.08)', border: '#f59e0b', icon: '⚡' },
-    info:    { bg: 'rgba(99,102,241,0.08)', border: '#6366f1', icon: 'ℹ' }
-  };
-  for (const { level, text } of insights) {
-    const s = STYLES[level] || STYLES.info;
-    wrap.appendChild(el('div', {
-      style: `display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:${s.bg};border-left:3px solid ${s.border};border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13px`
-    },
-      el('span', { style: `color:${s.border};flex-shrink:0` }, s.icon),
-      el('span', { style: 'color:var(--text);line-height:1.4' }, text)
-    ));
-  }
-  return wrap;
-}
-
-function computePropertyInsights({ totals, propData, avgROI, best, worst }) {
-  const items = [];
-  if (totals.rev === 0 && totals.opEx === 0) {
-    items.push({ level: 'info', text: 'No revenue or expenses recorded for the selected period and filters.' });
-    return items;
-  }
-  if (totals.profit < 0) {
-    items.push({ level: 'danger', text: `Portfolio is operating at a loss: ${formatEUR(totals.profit)} net operating profit for the period.` });
-  }
-  if (totals.rev > 0 && totals.opEx / totals.rev > 0.80) {
-    const pct = Math.round(totals.opEx / totals.rev * 100);
-    items.push({ level: 'warning', text: `Operating expense ratio is ${pct}% — high relative to revenue. Consider reviewing recurring costs.` });
-  }
-  if (avgROI !== null && avgROI < 0) {
-    items.push({ level: 'danger', text: `Portfolio average ROI is negative (${avgROI.toFixed(1)}%). Net losses exceed investment value.` });
-  } else if (worst && avgROI !== null && worst.simpleROI !== null && worst.simpleROI < avgROI - 15) {
-    items.push({ level: 'warning', text: `"${worst.prop.name}" has ROI of ${worst.simpleROI.toFixed(1)}% vs portfolio average ${avgROI.toFixed(1)}% — underperforming by more than 15 pp.` });
-  }
-  if (totals.net < 0 && totals.capEx > 0) {
-    items.push({ level: 'info', text: `Net income is negative after CapEx (${formatEUR(totals.net)}). This may reflect an active renovation period.` });
-  }
-  return items;
-}
-
-
-
 // ── KPI card ──────────────────────────────────────────────────────────────────
-function kpiCard(label, value, variant, onClick) {
+function kpiCard(labelOrOpts, value, variant, onClick) {
+  let label, subtitle, delta, deltaIsPp, invertDelta, compLabel;
+  if (typeof labelOrOpts === 'object' && labelOrOpts !== null) {
+    ({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick } = labelOrOpts);
+  } else {
+    label = labelOrOpts;
+  }
+
   const card = el('div', {
     class: 'kpi' + (variant ? ' ' + variant : ''),
     style: 'cursor:pointer;transition:box-shadow 120ms',
@@ -581,30 +493,133 @@ function kpiCard(label, value, variant, onClick) {
   card.onclick = onClick;
   card.appendChild(el('div', { class: 'kpi-label' }, label));
   card.appendChild(el('div', { class: 'kpi-value' }, value));
+
+  if (delta !== null && delta !== undefined && isFinite(delta)) {
+    const up     = invertDelta ? delta < 0 : delta >= 0;
+    const sign   = delta >= 0 ? '+' : '';
+    const suffix = deltaIsPp ? ' pp' : '%';
+    const trendEl = el('div', { class: 'kpi-trend ' + (up ? 'up' : 'down') });
+    trendEl.appendChild(el('span', { class: 'kpi-arrow' }, up ? '▲' : '▼'));
+    trendEl.append(` ${sign}${delta.toFixed(1)}${suffix}`);
+    if (compLabel) trendEl.appendChild(el('span', { class: 'kpi-comp-label' }, ` vs ${compLabel}`));
+    card.appendChild(trendEl);
+  }
+
+  if (subtitle) {
+    card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
+  }
+
   card.appendChild(el('div', { class: 'kpi-accent-bar' }));
   return card;
 }
 
-// ── Month key helper ──────────────────────────────────────────────────────────
-function getMonthKeys() {
-  const selectedYears = gFilters.years.size > 0 ? [...gFilters.years].sort() : availableYears();
-  if (selectedYears.length === 1) {
-    const year = selectedYears[0];
-    return MONTH_LABELS.map((label, i) => {
-      const mm = String(i + 1).padStart(2, '0');
-      return { label, key: `${year}-${mm}`, mm };
-    }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+// ── Insights ──────────────────────────────────────────────────────────────────
+function computePropertyInsights({ totals, propData, avgROI, best, worst }) {
+  const signals = [];
+  if (totals.rev === 0 && totals.opEx === 0) {
+    signals.push({
+      severity: 'Note',
+      title: 'NO ACTIVITY',
+      text: 'No revenue or expenses recorded for the selected period and filters.',
+      inspect: null
+    });
+    return signals;
   }
-  const keys = [];
-  for (const year of selectedYears) {
-    MONTH_LABELS.forEach((label, i) => {
-      const mm = String(i + 1).padStart(2, '0');
-      if (gFilters.months.size === 0 || gFilters.months.has(mm)) {
-        keys.push({ label: `${label} '${year.slice(2)}`, key: `${year}-${mm}`, mm });
-      }
+
+  if (totals.profit < 0) {
+    signals.push({
+      severity: 'At Risk',
+      title: 'OPERATING LOSS',
+      text: `Portfolio is operating at a loss: ${formatEUR(totals.profit)} operating profit for the period.`,
+      inspect: 'Operating Profit'
     });
   }
-  return keys;
+
+  if (totals.rev > 0 && totals.opEx / totals.rev > 0.80) {
+    const pct = Math.round(totals.opEx / totals.rev * 100);
+    signals.push({
+      severity: 'Watch',
+      title: 'HIGH EXPENSE RATIO',
+      text: `Operating expenses are ${pct}% of revenue — high overhead. Review recurring costs.`,
+      inspect: 'Operating Expenses'
+    });
+  }
+
+  if (avgROI !== null && avgROI < 0) {
+    signals.push({
+      severity: 'At Risk',
+      title: 'NEGATIVE ROI',
+      text: `Portfolio average Simple ROI is ${avgROI.toFixed(1)}% — net losses exceed invested capital.`,
+      inspect: 'ROI Overview'
+    });
+  } else if (worst && avgROI !== null && worst.simpleROI !== null && worst.simpleROI < avgROI - 15) {
+    signals.push({
+      severity: 'Watch',
+      title: 'UNDERPERFORMER',
+      text: `"${worst.prop.name}" has ROI of ${worst.simpleROI.toFixed(1)}% vs portfolio avg ${avgROI.toFixed(1)}% — lagging by more than 15 pp.`,
+      inspect: worst.prop.name
+    });
+  }
+
+  if (totals.net < 0 && totals.capEx > 0) {
+    signals.push({
+      severity: 'Note',
+      title: 'CAPEX DRAG',
+      text: `Net income after CapEx is ${formatEUR(totals.net)}. This may reflect an active renovation period.`,
+      inspect: 'Property CapEx'
+    });
+  }
+
+  if (best && worst && best !== worst) {
+    const spread = (best.simpleROI ?? 0) - (worst.simpleROI ?? 0);
+    if (spread > 20) {
+      signals.push({
+        severity: 'Note',
+        title: 'ROI SPREAD',
+        text: `${spread.toFixed(0)} pp spread between best ("${best.prop.name}") and weakest ("${worst.prop.name}") performer. Review allocation.`,
+        inspect: 'Property Comparison'
+      });
+    }
+  }
+
+  return signals;
+}
+
+function buildInsightsBanner(signals) {
+  if (!signals.length) return null;
+  const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b', 'Note': '#6366f1' };
+  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)', 'Note': 'rgba(99,102,241,0.06)' };
+
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Property Insights')
+  ));
+
+  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:16px' });
+
+  for (const sig of signals) {
+    const color = SEV_COLOR[sig.severity] || SEV_COLOR['Note'];
+    const bg    = SEV_BG[sig.severity]    || SEV_BG['Note'];
+    const block = el('div', {
+      style: `background:${bg};border-left:3px solid ${color};border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:12px 14px`
+    });
+
+    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:6px' });
+    titleRow.appendChild(el('span', { style: `font-size:11px;font-weight:700;letter-spacing:0.5px;color:${color}` }, sig.title));
+    titleRow.appendChild(el('span', { style: `font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;background:${color};color:#fff` }, sig.severity));
+    block.appendChild(titleRow);
+
+    block.appendChild(el('p', { style: 'margin:0 0 6px;font-size:12px;color:var(--text);line-height:1.4' }, sig.text));
+
+    if (sig.inspect) {
+      block.appendChild(el('div', { style: `font-size:11px;color:${color};font-weight:600` }, `→ Inspect: ${sig.inspect}`));
+    }
+
+    grid.appendChild(block);
+  }
+
+  card.appendChild(grid);
+  return card;
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
@@ -618,81 +633,107 @@ function buildView() {
       'Revenue, expenses, and profitability evaluated per property')
   ));
 
-  // Filter bar
-  const opts = getValidOpts();
-  const trim = (set, valid) => { if (valid.size) for (const v of [...set]) if (!valid.has(v)) set.delete(v); };
-  trim(gFilters.years, opts.vY); trim(gFilters.streams, opts.vSt);
-  trim(gFilters.propertyIds, opts.vPi); trim(gFilters.owners, opts.vOw);
-  const yearMS   = buildMultiSelect(availableYears().filter(y => !opts.vY.size || opts.vY.has(y)).map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'prop_years');
-  const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'prop_months');
-  const propMS   = buildMultiSelect(listActiveProperties().filter(p => !opts.vPi.size || opts.vPi.has(p.id)).map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'prop_props');
-  const streamMS = buildMultiSelect(PROPERTY_STREAMS.filter(k => !opts.vSt.size || opts.vSt.has(k)).map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })), gFilters.streams, 'All Streams', rebuildView, 'prop_streams');
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => k !== 'both' && (!opts.vOw.size || opts.vOw.has(k))).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'prop_owners');
+  // Shared filter bar
+  const filterBarEl = buildFilterBar(gF, {
+    showOwner: true, showStream: true, showProperty: true, showClient: false,
+    storagePrefix: 'prop'
+  }, newState => {
+    if (newState) Object.assign(gF, newState);
+    rebuildView();
+  });
+  wrap.appendChild(filterBarEl);
 
-  const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
-  filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
-  filterBar.appendChild(yearMS);
-  filterBar.appendChild(monthMS);
-  filterBar.appendChild(propMS);
-  filterBar.appendChild(streamMS);
-  filterBar.appendChild(ownerMS);
-  filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); propMS.reset(); streamMS.reset(); ownerMS.reset(); rebuildView(); } }));
-  wrap.appendChild(filterBar);
+  // Local property status filter
+  const statusWrap = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap' });
+  statusWrap.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Status:'));
+  const statusOpts = Object.entries(PROPERTY_STATUSES).map(([k, v]) => ({ value: k, label: v.label }));
+  const statusMS = buildMultiSelect(statusOpts, gStatusFilter, 'All Statuses', rebuildView, 'prop_status');
+  statusWrap.appendChild(statusMS);
+  wrap.appendChild(statusWrap);
 
-  // Data
-  const data = getData();
-  const { allProps, propData, payments, opExpenses, capExpenses, totals, avgROI, best, worst } = data;
+  // Date ranges
+  const curRange = getCurrentPeriodRange(gF);
+  const cmpRange = getComparisonRange(gF, curRange);
+  const { start, end } = curRange;
 
-  // ── Investment KPI row ─────────────────────────────────────────────────────
+  const curData = getData(start, end);
+  const cmpData = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
+
+  const { allProps, propData, payments, opExpenses, capExpenses, totals, avgROI, best, worst } = curData;
+
+  // Comparison line
+  const compLine = buildComparisonLine(curRange, cmpRange);
+  if (compLine) wrap.appendChild(compLine);
+
+  // ── Section 1: Portfolio Units ─────────────────────────────────────────────
+  const activeCount = allProps.filter(p => (p.status || 'active') === 'active').length;
   const invKpiRow = el('div', { class: 'grid grid-4 mb-16' });
-  invKpiRow.appendChild(kpiCard(
-    'Total Properties', String(allProps.length), '',
-    () => drillDownModal('Portfolio Properties', toPropValueRows(propData), PROP_VALUE_COLS)
-  ));
-  invKpiRow.appendChild(kpiCard(
-    'Portfolio Value', formatEUR(totals.purchaseValue), '',
-    () => drillDownModal('Portfolio Value by Property', toPropValueRows(propData), PROP_VALUE_COLS)
-  ));
-  invKpiRow.appendChild(kpiCard(
-    'Total Invested', formatEUR(totals.totalInvested), '',
-    () => drillDownModal('Total Invested Capital', toPropValueRows(propData), PROP_VALUE_COLS)
-  ));
-  invKpiRow.appendChild(kpiCard(
-    'Average ROI', avgROI != null ? avgROI.toFixed(1) + '%' : '—',
-    avgROI != null ? (avgROI >= 0 ? 'success' : 'danger') : '',
-    () => drillDownModal('Property ROI Overview', toROIDrillRows(propData), ROI_DRILL_COLS)
-  ));
+  invKpiRow.appendChild(kpiCard({
+    label: 'Portfolio Units',
+    value: String(allProps.length),
+    onClick: () => drillDownModal('Portfolio Properties', toPropValueRows(propData), PROP_VALUE_COLS)
+  }));
+  invKpiRow.appendChild(kpiCard({
+    label: 'Active Properties',
+    value: String(activeCount),
+    subtitle: allProps.length > activeCount ? `${allProps.length - activeCount} other status` : null,
+    onClick: () => drillDownModal('Portfolio Properties', toPropValueRows(propData), PROP_VALUE_COLS)
+  }));
+  invKpiRow.appendChild(kpiCard({
+    label: 'Portfolio Book Value',
+    value: formatEUR(totals.purchaseValue),
+    subtitle: 'Purchase prices only',
+    onClick: () => drillDownModal('Portfolio Book Value', toPropValueRows(propData), PROP_VALUE_COLS)
+  }));
+  invKpiRow.appendChild(kpiCard({
+    label: 'Total Invested',
+    value: formatEUR(totals.totalInvested),
+    subtitle: 'Purchase + all-time CapEx',
+    onClick: () => drillDownModal('Total Invested Capital', toPropValueRows(propData), PROP_VALUE_COLS)
+  }));
   wrap.appendChild(invKpiRow);
 
-  // ── Period KPI row ─────────────────────────────────────────────────────────
+  // ── Section 2: Period Performance ─────────────────────────────────────────
+  const deltaRev    = safePct(totals.rev,    cmpData?.totals.rev);
+  const deltaOpEx   = safePct(totals.opEx,   cmpData?.totals.opEx);
+  const deltaProfit = safePct(totals.profit, cmpData?.totals.profit);
+  const deltaCapEx  = safePct(totals.capEx,  cmpData?.totals.capEx);
+
   const kpiRow = el('div', { class: 'grid grid-4 mb-16' });
-  kpiRow.appendChild(kpiCard(
-    'Total Revenue', formatEUR(totals.rev), '',
-    () => drillDownModal('Revenue — All Properties', toRevDrillRows(payments), REV_DRILL_COLS)
-  ));
-  kpiRow.appendChild(kpiCard(
-    'Operating Expenses', formatEUR(totals.opEx), '',
-    () => drillDownModal('Operating Expenses — All Properties', toExpDrillRows(opExpenses), EXP_DRILL_COLS)
-  ));
-  kpiRow.appendChild(kpiCard(
-    'Operating Profit', formatEUR(totals.profit),
-    totals.profit >= 0 ? 'success' : 'danger',
-    () => drillDownModal('Operating Profit Breakdown',
-      mixedRows(payments, opExpenses),
-      MIXED_DRILL_COLS
-    )
-  ));
-  kpiRow.appendChild(kpiCard(
-    'Renovation CapEx', formatEUR(totals.capEx),
-    totals.capEx > 0 ? 'warning' : '',
-    () => drillDownModal('Renovation CapEx — All Properties', toExpDrillRows(capExpenses), EXP_DRILL_COLS)
-  ));
+  kpiRow.appendChild(kpiCard({
+    label:      'Rental Revenue',
+    value:      formatEUR(totals.rev),
+    delta:      deltaRev,
+    onClick:    () => drillDownModal('Revenue — All Properties', toRevDrillRows(payments), REV_DRILL_COLS)
+  }));
+  kpiRow.appendChild(kpiCard({
+    label:       'Operating Expenses',
+    value:       formatEUR(totals.opEx),
+    delta:       deltaOpEx,
+    invertDelta: true,
+    onClick:     () => drillDownModal('Operating Expenses — All Properties', toExpDrillRows(opExpenses), EXP_DRILL_COLS)
+  }));
+  kpiRow.appendChild(kpiCard({
+    label:   'Operating Profit',
+    value:   formatEUR(totals.profit),
+    variant: totals.profit >= 0 ? 'success' : 'danger',
+    delta:   deltaProfit,
+    onClick: () => drillDownModal('Operating Profit Breakdown', mixedRows(payments, opExpenses), MIXED_DRILL_COLS)
+  }));
+  kpiRow.appendChild(kpiCard({
+    label:       'Property CapEx',
+    value:       formatEUR(totals.capEx),
+    variant:     totals.capEx > 0 ? 'warning' : '',
+    delta:       deltaCapEx,
+    invertDelta: true,
+    onClick:     () => drillDownModal('Property CapEx — All Properties', toExpDrillRows(capExpenses), EXP_DRILL_COLS)
+  }));
   wrap.appendChild(kpiRow);
 
-  // Inline insights
-  const propInsights = computePropertyInsights(data);
-  const propBanner = buildInsightsBanner(propInsights);
-  if (propBanner) wrap.appendChild(propBanner);
+  // Property insights
+  const signals = computePropertyInsights(curData);
+  const banner  = buildInsightsBanner(signals);
+  if (banner) wrap.appendChild(banner);
 
   // ── Chart row 1: profit hbar (2/3) + revenue donut (1/3) ──────────────────
   const row1 = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px' });
@@ -706,24 +747,24 @@ function buildView() {
   ));
   wrap.appendChild(row1);
 
-  // ── Chart row 2: monthly grouped bar (full width) ─────────────────────────
+  // ── Chart row 2: monthly grouped bar ──────────────────────────────────────
   wrap.appendChild(el('div', { class: 'card mb-16' },
     el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Monthly Revenue vs Operating Expenses')),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-month-bar' }))
   ));
 
-  // ── Portfolio value breakdown ──────────────────────────────────────────────
+  // ── Total investment breakdown ─────────────────────────────────────────────
   wrap.appendChild(el('div', { class: 'card mb-16' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Investment by Property (Purchase + Renovation CapEx)')),
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Total Investment by Property (Purchase + All-Time CapEx)')),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-value-hbar' }))
   ));
   const valueRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
   valueRow.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Portfolio Value by Owner')),
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Invested Capital by Owner')),
     el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-value-owner-donut' }))
   ));
   valueRow.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Portfolio Value by Stream')),
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Invested Capital by Stream')),
     el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-value-stream-donut' }))
   ));
   wrap.appendChild(valueRow);
@@ -732,7 +773,7 @@ function buildView() {
   const compSection = buildComparisonSection({ propData, avgROI, best, worst });
   if (compSection) wrap.appendChild(compSection);
 
-  // ── Summary table ──────────────────────────────────────────────────────────
+  // ── Property summary table ─────────────────────────────────────────────────
   const tableCard = el('div', { class: 'card' });
   tableCard.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Property Summary'),
@@ -741,13 +782,13 @@ function buildView() {
   buildSummaryTable(tableCard, propData);
   wrap.appendChild(tableCard);
 
-  // ── Acquisition & Growth ───────────────────────────────────────────────────
+  // ── Portfolio Acquisition & Growth ─────────────────────────────────────────
   const acqData = getAcquisitionData(allProps);
 
   wrap.appendChild(el('div', { style: 'margin:28px 0 12px' },
     el('h3', { style: 'margin:0 0 4px;font-size:16px;font-weight:700' }, 'Portfolio Acquisition & Growth'),
     el('p',  { style: 'margin:0;font-size:12px;color:var(--text-muted)' },
-      'Based on purchase dates. Property / Stream / Owner filters apply; Year / Month filter does not.' +
+      'Based on purchase dates. Property / Stream / Owner / Status filters apply; Current Period and Comparison Period filters do not.' +
       (acqData.withoutDate.length ? ` ${acqData.withoutDate.length} propert${acqData.withoutDate.length > 1 ? 'ies' : 'y'} excluded (no purchase date).` : '')
     )
   ));
@@ -771,7 +812,7 @@ function buildView() {
   acqGrowthRow.appendChild(el('div', { class: 'card' },
     el('div', { class: 'card-header' },
       el('div', { class: 'card-title' }, 'Cumulative Capital Deployed'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Purchase prices + Renovation CapEx')
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Purchase prices + All-Time CapEx')
     ),
     el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-capital-line' }))
   ));
@@ -780,13 +821,14 @@ function buildView() {
   // ── Financing & Payoff ─────────────────────────────────────────────────────
   wrap.appendChild(buildFinancingSection(getFinancingData(allProps)));
 
+  const monthKeys = getMonthKeysForRange(start, end);
   setTimeout(() => {
-    renderProfitHBar(data);
-    renderRevDonut(data);
-    renderMonthBar(data);
-    renderValueHBar(data);
-    renderValueOwnerDonut(data);
-    renderValueStreamDonut(data);
+    renderProfitHBar(curData);
+    renderRevDonut(curData);
+    renderMonthBar(curData, monthKeys);
+    renderValueHBar(curData);
+    renderValueOwnerDonut(curData);
+    renderValueStreamDonut(curData);
     renderAcqBar(acqData);
     renderGrowthLine(acqData);
     renderCapitalLine(acqData);
@@ -820,34 +862,33 @@ function renderProfitHBar({ propData }) {
 }
 
 // ── Chart 2: Grouped bar — Month × (Revenue, Expenses) ───────────────────────
-function renderMonthBar({ payments, opExpenses }) {
-  const months = getMonthKeys();
-  if (!months.length) return;
+function renderMonthBar({ payments, opExpenses }, monthKeys) {
+  if (!monthKeys.length) return;
 
   const revByMonth = new Map();
   const expByMonth = new Map();
   payments  .forEach(p => { const mk = p.date?.slice(0, 7); if (mk) revByMonth.set(mk, (revByMonth.get(mk) || 0) + toEUR(p.amount, p.currency, p.date)); });
   opExpenses.forEach(e => { const mk = e.date?.slice(0, 7); if (mk) expByMonth.set(mk, (expByMonth.get(mk) || 0) + toEUR(e.amount, e.currency, e.date)); });
 
-  if (!months.some(m => revByMonth.has(m.key) || expByMonth.has(m.key))) return;
+  if (!monthKeys.some(m => revByMonth.has(m.key) || expByMonth.has(m.key))) return;
 
   charts.bar('prop-month-bar', {
-    labels: months.map(m => m.label),
+    labels: monthKeys.map(m => m.label),
     datasets: [
       {
         label:           'Revenue',
-        data:            months.map(m => Math.round(revByMonth.get(m.key) || 0)),
+        data:            monthKeys.map(m => Math.round(revByMonth.get(m.key) || 0)),
         backgroundColor: 'rgba(99,102,241,0.8)'
       },
       {
-        label:           'Expenses (OpEx)',
-        data:            months.map(m => Math.round(expByMonth.get(m.key) || 0)),
+        label:           'Operating Expenses',
+        data:            monthKeys.map(m => Math.round(expByMonth.get(m.key) || 0)),
         backgroundColor: 'rgba(239,68,68,0.8)'
       }
     ],
     stacked: false,
     onClickItem: (label, idx) => {
-      const mk   = months[idx]?.key;
+      const mk   = monthKeys[idx]?.key;
       if (!mk) return;
       const mPay = payments  .filter(p => p.date?.slice(0, 7) === mk);
       const mExp = opExpenses.filter(e => e.date?.slice(0, 7) === mk);
@@ -873,7 +914,7 @@ function renderRevDonut({ propData }) {
   });
 }
 
-// ── Chart 4: Stacked hbar — Investment by property ────────────────────────────
+// ── Chart 4: Stacked hbar — Total investment by property ─────────────────────
 function renderValueHBar({ propData }) {
   const sorted = [...propData]
     .filter(d => d.totalInvested > 0)
@@ -889,7 +930,7 @@ function renderValueHBar({ propData }) {
         backgroundColor: 'rgba(99,102,241,0.8)'
       },
       {
-        label:           'Renovation CapEx',
+        label:           'All-Time CapEx',
         data:            sorted.map(d => Math.round(d.allTimeCapEx)),
         backgroundColor: 'rgba(245,158,11,0.8)'
       }
@@ -903,7 +944,7 @@ function renderValueHBar({ propData }) {
   });
 }
 
-// ── Chart 5: Donut — Portfolio value by owner ─────────────────────────────────
+// ── Chart 5: Donut — Invested capital by owner ────────────────────────────────
 function renderValueOwnerDonut({ propData }) {
   const byOwner = new Map();
   propData.forEach(d => {
@@ -924,12 +965,12 @@ function renderValueOwnerDonut({ propData }) {
       const ownProps = propData.filter(d =>
         (OWNERS[d.prop.owner] || d.prop.owner || 'Unknown') === ownerLabel
       );
-      drillDownModal(`Portfolio Value — ${ownerLabel}`, toPropValueRows(ownProps), PROP_VALUE_COLS);
+      drillDownModal(`Invested Capital — ${ownerLabel}`, toPropValueRows(ownProps), PROP_VALUE_COLS);
     }
   });
 }
 
-// ── Chart 6: Donut — Portfolio value by stream ────────────────────────────────
+// ── Chart 6: Donut — Invested capital by stream ───────────────────────────────
 function renderValueStreamDonut({ propData }) {
   const byStream = new Map();
   propData.forEach(d => {
@@ -951,7 +992,7 @@ function renderValueStreamDonut({ propData }) {
       const ownProps = propData.filter(d =>
         (STREAMS[propStream(d.prop)]?.short || propStream(d.prop)) === streamLabel
       );
-      drillDownModal(`Portfolio Value — ${streamLabel}`, toPropValueRows(ownProps), PROP_VALUE_COLS);
+      drillDownModal(`Invested Capital — ${streamLabel}`, toPropValueRows(ownProps), PROP_VALUE_COLS);
     }
   });
 }
@@ -961,7 +1002,7 @@ function buildComparisonSection({ propData, avgROI, best, worst }) {
   if (!best) return null;
   const section = el('div', { class: 'card mb-16' });
   section.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Portfolio Comparison'),
+    el('div', { class: 'card-title' }, 'Property Comparison'),
     el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click tiles for transactions')
   ));
   const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:16px' });
@@ -988,11 +1029,11 @@ function comparisonTile(title, d, accentColor) {
   tile.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px' }, title));
   tile.appendChild(el('div', { style: 'font-size:15px;font-weight:700;margin-bottom:8px;color:var(--text)' }, d.prop.name));
   [
-    ['Revenue',    formatEUR(d.rev)],
-    ['Expenses',   formatEUR(d.opEx)],
-    ['Net Profit', formatEUR(d.profit)],
-    ['ROI',        d.simpleROI != null ? d.simpleROI.toFixed(1) + '%' : '—'],
-    ['Cost Ratio', costRatio != null ? costRatio.toFixed(0) + '%' : '—']
+    ['Revenue',        formatEUR(d.rev)],
+    ['Expenses',       formatEUR(d.opEx)],
+    ['Operating Profit', formatEUR(d.profit)],
+    ['Simple ROI',     d.simpleROI != null ? d.simpleROI.toFixed(1) + '%' : '—'],
+    ['Cost Ratio',     costRatio != null ? costRatio.toFixed(0) + '%' : '—']
   ].forEach(([label, value]) => {
     tile.appendChild(el('div', { style: 'display:flex;justify-content:space-between;font-size:12px;padding:2px 0;border-bottom:1px solid var(--border)' },
       el('span', { style: 'color:var(--text-muted)' }, label),
@@ -1018,11 +1059,11 @@ function portfolioAvgTile(propData, avgROI) {
     `${n} Propert${n === 1 ? 'y' : 'ies'}`
   ));
   [
-    ['Avg Revenue',    formatEUR(avgRev)],
-    ['Avg Expenses',   formatEUR(avgOpEx)],
-    ['Avg Net Profit', formatEUR(avgProfit)],
-    ['Avg ROI',        avgROI != null ? avgROI.toFixed(1) + '%' : '—'],
-    ['Avg Cost Ratio', avgCostRatio != null ? avgCostRatio.toFixed(0) + '%' : '—']
+    ['Avg Revenue',     formatEUR(avgRev)],
+    ['Avg Expenses',    formatEUR(avgOpEx)],
+    ['Avg Op. Profit',  formatEUR(avgProfit)],
+    ['Avg Simple ROI',  avgROI != null ? avgROI.toFixed(1) + '%' : '—'],
+    ['Avg Cost Ratio',  avgCostRatio != null ? avgCostRatio.toFixed(0) + '%' : '—']
   ].forEach(([label, value]) => {
     tile.appendChild(el('div', { style: 'display:flex;justify-content:space-between;font-size:12px;padding:2px 0;border-bottom:1px solid var(--border)' },
       el('span', { style: 'color:var(--text-muted)' }, label),
@@ -1110,7 +1151,6 @@ function buildFinancingSection(finData) {
     )
   ));
 
-  // KPIs
   const kpiRow = el('div', { class: 'grid grid-4 mb-16' });
   kpiRow.appendChild(kpiCard(
     'Total Outstanding Debt', formatEUR(t.totalDebt), '',
@@ -1133,7 +1173,6 @@ function buildFinancingSection(finData) {
   ));
   section.appendChild(kpiRow);
 
-  // Count summary
   const statsWrap = el('div', { style: 'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px' });
   [
     [String(t.nFinanced), 'Mortgaged Properties', `${t.nActive} active · ${t.nFinanced - t.nActive} paid off`],
@@ -1150,7 +1189,6 @@ function buildFinancingSection(finData) {
   });
   section.appendChild(statsWrap);
 
-  // Table
   const card = el('div', { class: 'card' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Property Financing Details'),
@@ -1263,18 +1301,19 @@ function buildSummaryTable(container, propData) {
   const hasCoCROI    = propData.some(d => d.cashOnCashROI   !== null);
 
   const COLS = [
-    { key: 'name',      label: 'Property'   },
-    { key: 'stream',    label: 'Stream'     },
-    { key: 'owner',     label: 'Owner'      },
-    { key: 'rev',       label: 'Revenue',    right: true, fmt: formatEUR },
-    { key: 'opEx',      label: 'Expenses',   right: true, fmt: formatEUR },
-    { key: 'profit',    label: 'Net Profit', right: true, fmt: formatEUR, colored: true },
-    { key: 'capEx',     label: 'Reno CapEx', right: true, fmt: formatEUR },
-    { key: 'net',       label: 'Net (all)',  right: true, fmt: formatEUR, colored: true },
-    { key: 'costRatio', label: 'Cost %',     right: true, fmt: v => v != null ? v.toFixed(0) + '%' : '—' },
-    ...(hasSimpleROI ? [{ key: 'simpleROI',    label: 'ROI %',    right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
-    ...(hasAnnROI    ? [{ key: 'annualizedROI', label: 'Ann. ROI', right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
-    ...(hasCoCROI    ? [{ key: 'cashOnCashROI', label: 'CoC ROI',  right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : [])
+    { key: 'name',      label: 'Property'          },
+    { key: 'stream',    label: 'Stream'            },
+    { key: 'owner',     label: 'Owner'             },
+    { key: 'status',    label: 'Status'            },
+    { key: 'rev',       label: 'Revenue',           right: true, fmt: formatEUR },
+    { key: 'opEx',      label: 'Operating Exp.',    right: true, fmt: formatEUR },
+    { key: 'profit',    label: 'Op. Profit',        right: true, fmt: formatEUR, colored: true },
+    { key: 'capEx',     label: 'CapEx',             right: true, fmt: formatEUR },
+    { key: 'net',       label: 'Net (after CapEx)', right: true, fmt: formatEUR, colored: true },
+    { key: 'costRatio', label: 'Cost %',            right: true, fmt: v => v != null ? v.toFixed(0) + '%' : '—' },
+    ...(hasSimpleROI ? [{ key: 'simpleROI',    label: 'Simple ROI', right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
+    ...(hasAnnROI    ? [{ key: 'annualizedROI', label: 'Ann. ROI',  right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
+    ...(hasCoCROI    ? [{ key: 'cashOnCashROI', label: 'CoC ROI',   right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : [])
   ];
 
   const sorted = [...propData]
@@ -1303,6 +1342,10 @@ function buildSummaryTable(container, propData) {
         td.appendChild(el('span', { class: `badge ${sm?.css || ''}` }, sm?.short || propStream(d.prop)));
       } else if (col.key === 'owner') {
         td.textContent = OWNERS[d.prop.owner] || d.prop.owner || '—';
+      } else if (col.key === 'status') {
+        const st  = d.prop.status || 'active';
+        const def = PROPERTY_STATUSES[st] || { label: st, css: '' };
+        td.appendChild(el('span', { class: `badge ${def.css}` }, def.label));
       } else if (col.colored) {
         const v = d[col.key];
         if (v != null) td.style.color = v >= 0 ? 'var(--success)' : 'var(--danger)';
