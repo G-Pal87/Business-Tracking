@@ -84,27 +84,22 @@ function kpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLa
   card.appendChild(el('div', { class: 'kpi-label' }, label));
   card.appendChild(el('div', { class: 'kpi-value' }, value));
 
-  const trend = el('div', { class: 'kpi-trend' });
-  if (delta === null || delta === undefined || !isFinite(delta)) {
-    if (compLabel) {
-      trend.appendChild(el('span', { style: 'color:var(--text-muted);font-size:11px' }, 'N/A'));
-      trend.appendChild(document.createTextNode(` vs ${compLabel}`));
-    }
-  } else {
+  if (delta !== null && delta !== undefined && isFinite(delta)) {
+    const trend = el('div', { class: 'kpi-trend' });
     const sign = delta > 0 ? '+' : '';
     const disp = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
     const cls  = delta === 0 ? '' : delta > 0 ? (invertDelta ? 'down' : 'up') : (invertDelta ? 'up' : 'down');
     trend.appendChild(el('span', { class: cls }, disp));
     if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
+    card.appendChild(trend);
   }
-  card.appendChild(trend);
   if (subtitle) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
   card.appendChild(el('div', { class: 'kpi-accent-bar' }));
   return card;
 }
 
 // ── Composite KPI card (wider, with breakdown lines) ─────────────────────────
-function compositeKpiCard({ label, value, delta, deltaIsPp, compLabel, onClick, lines }) {
+function compositeKpiCard({ label, value, subtitle, delta, deltaIsPp, compLabel, onClick, lines }) {
   const card = el('div', {
     class: 'kpi',
     style: 'cursor:pointer;transition:box-shadow 120ms',
@@ -117,17 +112,15 @@ function compositeKpiCard({ label, value, delta, deltaIsPp, compLabel, onClick, 
   card.appendChild(el('div', { class: 'kpi-label' }, label));
   card.appendChild(el('div', { class: 'kpi-value' }, value));
 
-  const trend = el('div', { class: 'kpi-trend' });
-  if (delta === null || delta === undefined || !isFinite(delta)) {
-    if (compLabel) trend.appendChild(el('span', { style: 'color:var(--text-muted);font-size:11px' }, `N/A vs ${compLabel}`));
-  } else {
+  if (delta !== null && delta !== undefined && isFinite(delta)) {
+    const trend = el('div', { class: 'kpi-trend' });
     const sign = delta > 0 ? '+' : '';
     const disp = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
     const cls  = delta === 0 ? '' : delta > 0 ? 'up' : 'down';
     trend.appendChild(el('span', { class: cls }, disp));
     if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
+    card.appendChild(trend);
   }
-  card.appendChild(trend);
 
   if (lines?.length) {
     card.appendChild(el('div', { style: 'margin:8px 0 6px;border-top:1px solid rgba(255,255,255,0.06)' }));
@@ -148,6 +141,7 @@ function compositeKpiCard({ label, value, delta, deltaIsPp, compLabel, onClick, 
     }
   }
 
+  if (subtitle) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
   card.appendChild(el('div', { class: 'kpi-accent-bar' }));
   return card;
 }
@@ -171,8 +165,14 @@ function buildKpiSection(cur, cmp, cmpRange) {
 
   const activePropIds   = new Set(payments.map(p => p.propertyId).filter(Boolean));
   const activeClientIds = new Set(invoices.map(i => i.clientId).filter(Boolean));
-  const avgPerProp      = activePropIds.size   > 0 ? propRev / activePropIds.size   : null;
-  const avgPerClient    = activeClientIds.size > 0 ? svcRev  / activeClientIds.size : null;
+
+  // STR / LTR revenue-generating property sets (denominator = only props with paid revenue)
+  const strPropIds = new Set(payments.filter(p => p.stream === 'short_term_rental' && p.propertyId).map(p => p.propertyId));
+  const ltrPropIds = new Set(payments.filter(p => p.stream === 'long_term_rental'  && p.propertyId).map(p => p.propertyId));
+  const avgStr     = strPropIds.size > 0 ? stRev / strPropIds.size : 0;
+  const avgLtr     = ltrPropIds.size > 0 ? ltRev / ltrPropIds.size : 0;
+  const allRentalPropIds = new Set([...strPropIds, ...ltrPropIds]);
+  const avgRental  = allRentalPropIds.size > 0 ? (stRev + ltRev) / allRentalPropIds.size : null;
 
   // Top contributors sorted by revenue
   const contribs = [];
@@ -186,16 +186,12 @@ function buildKpiSection(cur, cmp, cmpRange) {
   }
 
   // Comparison deltas
-  let dTotal, dRental, dService, dOutstanding, dAvgProp, dAvgClient;
+  let dTotal, dRental, dService, dOutstanding;
   if (cmp) {
-    dTotal       = safePct(total,             cmp.total);
-    dRental      = safePct(propRev,           cmp.propRev);
-    dService     = safePct(svcRev,            cmp.svcRev);
-    dOutstanding = safePct(outstandingTotal,  cmp.outstandingTotal);
-    const cmpPropIds   = new Set(cmp.payments.map(p => p.propertyId).filter(Boolean));
-    const cmpClientIds = new Set(cmp.invoices.map(i => i.clientId).filter(Boolean));
-    dAvgProp   = safePct(avgPerProp,   cmpPropIds.size   > 0 ? cmp.propRev / cmpPropIds.size   : null);
-    dAvgClient = safePct(avgPerClient, cmpClientIds.size > 0 ? cmp.svcRev  / cmpClientIds.size : null);
+    dTotal       = safePct(total,            cmp.total);
+    dRental      = safePct(propRev,          cmp.propRev);
+    dService     = safePct(svcRev,           cmp.svcRev);
+    dOutstanding = safePct(outstandingTotal, cmp.outstandingTotal);
   }
 
   const pct = (num, den) => den > 0 ? (num / den * 100).toFixed(0) + '%' : '—';
@@ -248,35 +244,76 @@ function buildKpiSection(cur, cmp, cmpRange) {
     label: 'Top Contributor', value: contribs[0]?.name || '—',
     delta: null, compLabel: '',
     onClick: () => drillDownModal('Revenue Concentration',
-      contribs.map(c => ({ type: c.type, name: c.name, eur: c.val })),
-      [{ key: 'type', label: 'Type' }, { key: 'name', label: 'Name' }, { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }]),
+      contribs.map(c => ({ type: c.type, name: c.name, eur: c.val, share: total > 0 ? (c.val / total * 100).toFixed(1) + '%' : '0%' })),
+      [{ key: 'type', label: 'Type' }, { key: 'name', label: 'Name' }, { key: 'eur', label: 'Revenue EUR', right: true, format: v => formatEUR(v) }, { key: 'share', label: 'Share', right: true }]),
     lines: contribs.slice(0, 3).map((c, i) => ({
       label: `#${i + 1} ${c.type}`, value: c.name, pct: pct(c.val, total),
     }))
   }));
 
+  // Revenue Concentration KPI
+  {
+    const topC    = contribs[0];
+    const concPct = total > 0 && topC ? topC.val / total * 100 : 0;
+    const concVariant  = concPct < 40 ? 'success' : concPct >= 60 ? 'warning' : '';
+    const concStatus   = concPct < 40 ? 'Healthy' : concPct < 60 ? 'Watch' : 'Risk';
+    const concTypeLbl  = topC?.type === 'Property' ? 'property' : topC?.type === 'Client' ? 'client' : 'contributor';
+    compGrid.appendChild(kpiCard({
+      label:    'Revenue Concentration',
+      value:    total > 0 ? `${concPct.toFixed(1)}%` : '0%',
+      subtitle: `Top ${concTypeLbl} share · ${concStatus}`,
+      variant:  concVariant,
+      onClick:  () => drillDownModal('Revenue Concentration',
+        contribs.map(c => ({ type: c.type, name: c.name, eur: c.val, share: total > 0 ? (c.val / total * 100).toFixed(1) + '%' : '0%' })),
+        [{ key: 'type', label: 'Type' }, { key: 'name', label: 'Name' }, { key: 'eur', label: 'Revenue EUR', right: true, format: v => formatEUR(v) }, { key: 'share', label: 'Share', right: true }])
+    }));
+  }
+
   compGrid.appendChild(kpiCard({
-    label: 'Collection Rate', value: collRate !== null ? collRate.toFixed(1) + '%' : 'N/A',
-    subtitle: 'Paid / (Paid + Outstanding)',
-    variant: collRate !== null && collRate < 70 ? 'warning' : (collRate === 100 ? 'success' : ''),
+    label:   'Collection Rate',
+    value:   collRate !== null ? collRate.toFixed(1) + '%' : 'N/A',
+    subtitle: 'Paid service invoices / paid plus outstanding',
+    variant: collRate !== null && collRate < 70 ? 'warning' : (collRate !== null && collRate >= 100 ? 'success' : ''),
     onClick: () => drillDownModal('Outstanding Invoices', outstandingRows(), REV_COLS)
   }));
   compGrid.appendChild(kpiCard({
-    label: 'Outstanding Revenue', value: formatEUR(outstandingTotal),
-    variant: outstandingTotal > 0 ? 'warning' : '',
-    delta: dOutstanding, invertDelta: true, compLabel: cl,
-    onClick: () => drillDownModal('Outstanding Revenue', outstandingRows(), REV_COLS)
+    label:       'Outstanding Revenue',
+    value:       formatEUR(outstandingTotal),
+    variant:     outstandingTotal > 0 ? 'warning' : '',
+    delta:       dOutstanding,
+    invertDelta: true,
+    compLabel:   cl,
+    onClick:     () => drillDownModal('Outstanding Revenue', outstandingRows(), REV_COLS)
   }));
-  compGrid.appendChild(kpiCard({
-    label: 'Avg / Property', value: avgPerProp !== null ? formatEUR(avgPerProp) : 'N/A',
-    subtitle: activePropIds.size > 0 ? `${activePropIds.size} propert${activePropIds.size > 1 ? 'ies' : 'y'} active` : '',
-    delta: dAvgProp, compLabel: cl,
-    onClick: () => {
-      const map = new Map();
-      payments.forEach(p => map.set(p.propertyId, { name: byId('properties', p.propertyId)?.name || 'Unknown', eur: (map.get(p.propertyId)?.eur || 0) + toEUR(p.amount, p.currency, p.date) }));
-      drillDownModal('Revenue per Property', [...map.values()].sort((a, b) => b.eur - a.eur),
-        [{ key: 'name', label: 'Property' }, { key: 'eur', label: 'EUR', right: true, format: v => formatEUR(v) }]);
-    }
+
+  // Average Rental Revenue / Property (composite, STR and LTR separately)
+  compGrid.appendChild(compositeKpiCard({
+    label:   'Avg Rental Revenue / Property',
+    value:   avgRental !== null ? formatEUR(avgRental) : '—',
+    delta:   null,
+    compLabel: '',
+    subtitle: allRentalPropIds.size > 0 ? `${allRentalPropIds.size} revenue-generating propert${allRentalPropIds.size > 1 ? 'ies' : 'y'}` : 'No rental revenue',
+    onClick: () => drillDownModal('Avg Rental Revenue / Property', [
+      { type: 'Short-term', revenue: stRev, props: strPropIds.size, avg: strPropIds.size > 0 ? avgStr : 0 },
+      { type: 'Long-term',  revenue: ltRev, props: ltrPropIds.size, avg: ltrPropIds.size > 0 ? avgLtr : 0 }
+    ], [
+      { key: 'type',    label: 'Rental Type' },
+      { key: 'revenue', label: 'Revenue',              right: true, format: v => formatEUR(v) },
+      { key: 'props',   label: 'Revenue Properties',   right: true },
+      { key: 'avg',     label: 'Avg / Property',       right: true, format: v => formatEUR(v) }
+    ]),
+    lines: [
+      {
+        label: 'Short-term',
+        value: strPropIds.size > 0 ? formatEUR(avgStr) : '€0',
+        pct:   strPropIds.size > 0 ? `${strPropIds.size} prop${strPropIds.size > 1 ? 's' : ''}` : 'no revenue'
+      },
+      {
+        label: 'Long-term',
+        value: ltrPropIds.size > 0 ? formatEUR(avgLtr) : '€0',
+        pct:   ltrPropIds.size > 0 ? `${ltrPropIds.size} prop${ltrPropIds.size > 1 ? 's' : ''}` : 'no revenue'
+      }
+    ]
   }));
 
   wrapper.appendChild(compGrid);
@@ -294,14 +331,16 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
   const body = el('div', { style: 'padding:0 16px 16px;font-size:13px;line-height:1.8' });
 
   if (total === 0 && outstandingTotal === 0) {
-    body.appendChild(el('div', { style: 'color:var(--text-muted)' }, 'No insights available for the selected period.'));
+    body.appendChild(el('div', { style: 'color:var(--text-muted)' }, 'No major revenue risks detected for the selected period.'));
     section.appendChild(body);
     return section;
   }
 
   const row = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px' });
+  let blockCount = 0;
 
   const makeBlock = (label, lines) => {
+    blockCount++;
     const block = el('div');
     block.appendChild(el('div', {
       style: 'font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px'
@@ -335,8 +374,9 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
   const topEntity = [...entityMap.values()].sort((a, b) => b.rev - a.rev)[0];
   if (topEntity && total > 0) {
     const pct = (topEntity.rev / total * 100).toFixed(0);
+    const risk = Number(pct) >= 60;
     row.appendChild(makeBlock('Revenue concentration', [{
-      text: `Top contributor: ${topEntity.name} — ${formatEUR(topEntity.rev)} (${pct}% of total)`,
+      text: `Top contributor: ${topEntity.name} — ${formatEUR(topEntity.rev)} (${pct}% of total).${risk ? ' Concentration risk — inspect Revenue Dashboard.' : ''}`,
       onClick: () => drillDownModal(`Revenue — ${topEntity.name}`,
         drillRevRows(topEntity.pays, topEntity.invs), REV_COLS)
     }]));
@@ -345,21 +385,25 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
   // ── 2. Revenue mix ─────────────────────────────────────────────────────────
   if (total > 0) {
     const rentalPct = (propRev / total * 100).toFixed(0);
-    const svcPct    = (svcRev   / total * 100).toFixed(0);
-    row.appendChild(makeBlock('Revenue mix', [
-      {
-        text: `Rental: ${rentalPct}% (${formatEUR(propRev)})`,
-        onClick: propRev > 0
-          ? () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS)
-          : null
-      },
-      {
-        text: `Service: ${svcPct}% (${formatEUR(svcRev)})`,
-        onClick: svcRev > 0
-          ? () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS)
-          : null
-      }
-    ]));
+    const svcPct    = (svcRev  / total * 100).toFixed(0);
+    const mixLines  = [];
+    if (propRev > 0) {
+      mixLines.push({
+        text:    `Rental: ${rentalPct}% (${formatEUR(propRev)})`,
+        onClick: () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS)
+      });
+    } else {
+      mixLines.push({ text: 'No rental revenue in the selected period. Inspect: Payments or Properties.' });
+    }
+    if (svcRev > 0) {
+      mixLines.push({
+        text:    `Service: ${svcPct}% (${formatEUR(svcRev)})`,
+        onClick: () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS)
+      });
+    } else {
+      mixLines.push({ text: 'No service revenue in the selected period. Inspect: Services Dashboard.' });
+    }
+    row.appendChild(makeBlock('Revenue mix', mixLines));
   }
 
   // ── 3. Growth signal ───────────────────────────────────────────────────────
@@ -373,10 +417,9 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
         const word = delta > 1 ? 'up' : delta < -1 ? 'down' : 'stable';
         const sign = delta > 0 ? '+' : '';
         lines.push({
-          text: `Revenue ${word} ${sign}${delta.toFixed(1)}% vs ${cmpRange.label}`,
+          text: `Revenue ${word} ${sign}${delta.toFixed(1)}% vs ${cmpRange.label} (${formatEUR(cmpData.total)} → ${formatEUR(total)}).`,
           onClick: () => drillDownModal('All Revenue', drillRevRows(payments, invoices), REV_COLS)
         });
-        lines.push({ text: `${formatEUR(cmpData.total)} → ${formatEUR(total)}` });
       }
     } else {
       lines.push({ text: 'No comparison period selected.' });
@@ -392,7 +435,7 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
       const pct    = (outstandingTotal / invoicedTotal * 100).toFixed(0);
       const isRisk = outstandingTotal / invoicedTotal > 0.3;
       lines.push({
-        text: `${formatEUR(outstandingTotal)} outstanding — ${pct}% of invoiced${isRisk ? ' · High risk' : ''}`,
+        text: `${formatEUR(outstandingTotal)} outstanding — ${pct}% of invoiced service revenue.${isRisk ? ' High collection risk. Inspect: Services Dashboard.' : ''}`,
         onClick: () => drillDownModal('Outstanding Revenue',
           outstanding.map(i => ({
             date: i.issueDate, type: 'Invoice',
@@ -402,10 +445,8 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
           })).sort((a, b) => (b.date || '').localeCompare(a.date || '')),
           REV_COLS)
       });
-      if (svcRev === 0)
-        lines.push({ text: 'No service revenue collected yet for this period.' });
     } else if (invoicedTotal > 0) {
-      lines.push({ text: 'All invoiced service revenue has been collected.' });
+      lines.push({ text: 'All invoiced service revenue collected.' });
     } else {
       lines.push({ text: 'No service invoices for the selected period.' });
     }
@@ -413,6 +454,11 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
   }
 
   body.appendChild(row);
+
+  if (blockCount === 0) {
+    body.appendChild(el('div', { style: 'color:var(--text-muted)' }, 'No major revenue risks detected for the selected period.'));
+  }
+
   section.appendChild(body);
   return section;
 }
@@ -634,7 +680,9 @@ function renderAging({ outstanding }) {
   const buckets = [0, 0, 0, 0];
   const items   = [[], [], [], []];
   outstanding.forEach(i => {
-    const days = Math.floor((new Date(today) - new Date(i.issueDate || today)) / 86400000);
+    // dueDate first, issueDate as fallback
+    const ref  = i.dueDate || i.issueDate || today;
+    const days = Math.max(0, Math.floor((new Date(today) - new Date(ref)) / 86400000));
     const b    = days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3;
     buckets[b] += toEUR(i.total, i.currency, i.issueDate);
     items[b].push(i);
@@ -644,8 +692,19 @@ function renderAging({ outstanding }) {
     labels:   ['0–30 days', '31–60 days', '61–90 days', '90+ days'],
     datasets: [{ label: 'Outstanding (EUR)', data: buckets.map(Math.round), backgroundColor: ['#10b981', '#f59e0b', '#f97316', '#ef4444'] }],
     onClickItem: (label, idx) => {
-      const rows = items[idx].map(i => ({ date: i.issueDate, type: 'Invoice', source: byId('clients', i.clientId)?.name || '', ref: i.number || '', eur: toEUR(i.total, i.currency, i.issueDate) }));
-      drillDownModal(`Outstanding — ${label}`, rows, REV_COLS);
+      const AGING_COLS = [
+        { key: 'source', label: 'Client'    },
+        { key: 'date',   label: 'Issued'    },
+        { key: 'due',    label: 'Due Date'  },
+        { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v) }
+      ];
+      const rows = items[idx].map(i => ({
+        source: byId('clients', i.clientId)?.name || '',
+        date:   i.issueDate || '',
+        due:    i.dueDate   || '—',
+        eur:    toEUR(i.total, i.currency, i.issueDate)
+      }));
+      drillDownModal(`Outstanding — ${label}`, rows, AGING_COLS);
     }
   });
 }
