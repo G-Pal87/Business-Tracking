@@ -21,6 +21,14 @@ const ALL_CHART_IDS = [
   'exec-opex-capex', 'exec-outstanding-aging'
 ];
 
+// ── Executive decision thresholds (deterministic, adjust here) ───────────────
+const EXEC_T = {
+  collectionRate: { healthy: 90, watch: 75 },  // % — below watch = At Risk
+  opMargin:       { healthy: 20, watch: 5  },  // % — below watch = At Risk; negative = At Risk
+  expenseRatio:   { watch: 50, atRisk: 75  },  // % — above atRisk = At Risk; above watch = Watch
+  revConc:        { watch: 40, atRisk: 60  },  // % top-source share — above atRisk = At Risk
+};
+
 // ── Filter State ─────────────────────────────────────────────────────────────
 let gF = createFilterState();
 
@@ -162,9 +170,11 @@ function calcMetrics(data, range = null) {
     if (totalInvoiced > 0) collectionRate = (sumInvoicesEUR(invoices) / totalInvoiced) * 100;
   }
 
-  // Pending pipeline (all pending Airbnb reservations, not range-limited)
+  // Pending pipeline — scoped to selected period via airbnbCheckIn (fallback: date)
   const pendingReservations = listActivePayments().filter(p => {
     if (p.source !== 'airbnb' || p.status !== 'pending') return false;
+    const checkDate = p.airbnbCheckIn || p.date;
+    if (range && (!checkDate || checkDate < range.start || checkDate > range.end)) return false;
     if (gF.propertyIds.size > 0 && !gF.propertyIds.has(p.propertyId)) return false;
     if (gF.streams.size > 0 && !gF.streams.has('short_term_rental')) return false;
     if (gF.owners.size > 0 && p.propertyId) {
@@ -249,8 +259,131 @@ function rebuildView() {
 }
 
 
+// ── Executive Health Snapshot ─────────────────────────────────────────────────
+function buildHealthSnapshot(curMetrics, cmpMetrics, curRange) {
+  const { rev, opProfit, opMargin, netCash, collectionRate, expenseRatio,
+          fcRev, outstandingTotal, outstanding } = curMetrics;
+
+  const issues = []; // { severity: 'watch'|'risk', text, inspect }
+
+  // Revenue growth vs comparison
+  const revGrowth = cmpMetrics ? safePct(rev, cmpMetrics.rev) : null;
+  if (revGrowth !== null && revGrowth < -10) {
+    issues.push({ severity: 'watch', text: `Revenue down ${Math.abs(revGrowth).toFixed(0)}% vs comparison period`, inspect: 'Revenue Dashboard' });
+  }
+
+  // Operating margin
+  if (opMargin !== null) {
+    if (opMargin < 0) {
+      issues.push({ severity: 'risk', text: `Operating margin is negative (${opMargin.toFixed(1)}%)`, inspect: 'Expenses Dashboard' });
+    } else if (opMargin < EXEC_T.opMargin.watch) {
+      issues.push({ severity: 'watch', text: `Operating margin is low (${opMargin.toFixed(1)}%)`, inspect: 'Expenses Dashboard' });
+    }
+  }
+
+  // Net cash flow
+  if (netCash < 0) {
+    issues.push({ severity: 'risk', text: `Net cash flow negative (${formatEUR(netCash)})`, inspect: 'Cash Flow Dashboard' });
+  }
+
+  // Expense ratio
+  if (expenseRatio !== null) {
+    if (expenseRatio > EXEC_T.expenseRatio.atRisk) {
+      issues.push({ severity: 'risk', text: `Expense ratio high (${expenseRatio.toFixed(1)}% — OpEx/Revenue)`, inspect: 'Expenses Dashboard' });
+    } else if (expenseRatio > EXEC_T.expenseRatio.watch) {
+      issues.push({ severity: 'watch', text: `Expense ratio elevated (${expenseRatio.toFixed(1)}% — OpEx/Revenue)`, inspect: 'Expenses Dashboard' });
+    }
+  }
+
+  // Collection rate
+  if (collectionRate !== null) {
+    if (collectionRate < EXEC_T.collectionRate.watch) {
+      issues.push({ severity: 'risk', text: `Collection rate low (${collectionRate.toFixed(1)}%)`, inspect: 'Services Dashboard' });
+    } else if (collectionRate < EXEC_T.collectionRate.healthy) {
+      issues.push({ severity: 'watch', text: `Collection rate below target (${collectionRate.toFixed(1)}%)`, inspect: 'Services Dashboard' });
+    }
+  }
+
+  // Outstanding — overdue invoices
+  const overdueCount = outstanding.filter(i => {
+    const days = Math.floor((Date.now() - new Date(i.issueDate).getTime()) / 86400000);
+    return days > 60;
+  }).length;
+  if (overdueCount > 0) {
+    issues.push({ severity: 'risk', text: `${overdueCount} invoice${overdueCount > 1 ? 's' : ''} overdue 60+ days (${formatEUR(outstandingTotal)} total outstanding)`, inspect: 'Services Dashboard' });
+  } else if (outstandingTotal > 5000) {
+    issues.push({ severity: 'watch', text: `${formatEUR(outstandingTotal)} outstanding (unpaid invoices)`, inspect: 'Services Dashboard' });
+  }
+
+  // Forecast gap
+  if (fcRev != null && fcRev > 0 && rev < fcRev * 0.85) {
+    const pct = ((rev / fcRev) * 100).toFixed(0);
+    issues.push({ severity: 'watch', text: `Revenue at ${pct}% of forecast (${formatEUR(fcRev - rev)} gap)`, inspect: 'Forecast Dashboard' });
+  }
+
+  // Overall score
+  const hasRisk  = issues.some(i => i.severity === 'risk');
+  const hasWatch = issues.some(i => i.severity === 'watch');
+  const score    = hasRisk ? 'At Risk' : hasWatch ? 'Watch' : 'Healthy';
+  const SCORE_COLOR = { Healthy: '#10b981', Watch: '#f59e0b', 'At Risk': '#ef4444' };
+  const SCORE_BG    = { Healthy: 'rgba(16,185,129,0.06)', Watch: 'rgba(245,158,11,0.06)', 'At Risk': 'rgba(239,68,68,0.06)' };
+
+  // Executive summary sentence
+  let summary;
+  if (score === 'Healthy') {
+    const parts = [];
+    if (revGrowth !== null && revGrowth > 0) parts.push(`revenue up ${revGrowth.toFixed(0)}%`);
+    if (opMargin !== null && opMargin >= EXEC_T.opMargin.healthy) parts.push('margins healthy');
+    if (collectionRate !== null && collectionRate >= EXEC_T.collectionRate.healthy) parts.push('collections on track');
+    if (netCash >= 0) parts.push('cash flow positive');
+    summary = parts.length > 0
+      ? parts.join(', ').replace(/^./, c => c.toUpperCase()) + '.'
+      : 'All key metrics within healthy ranges.';
+  } else {
+    const topIssue = issues.find(i => i.severity === 'risk') || issues[0];
+    const rest = issues.length - 1;
+    summary = topIssue.text.charAt(0).toUpperCase() + topIssue.text.slice(1) +
+      (rest > 0 ? `, plus ${rest} other item${rest > 1 ? 's' : ''} need attention.` : '.');
+  }
+
+  // Build card
+  const card = el('div', {
+    class: 'card mb-16',
+    style: `border-left:4px solid ${SCORE_COLOR[score]};background:${SCORE_BG[score]}`
+  });
+  const header = el('div', { class: 'card-header', style: 'padding-bottom:8px' });
+  const titleRow = el('div', { style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap' });
+  titleRow.appendChild(el('div', { class: 'card-title' }, 'Executive Health Snapshot'));
+  titleRow.appendChild(el('span', {
+    style: `display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;color:${SCORE_COLOR[score]};border:1px solid ${SCORE_COLOR[score]}`
+  }, score));
+  header.appendChild(titleRow);
+  header.appendChild(el('p', { style: 'margin:6px 0 0;font-size:13px;color:var(--text-muted)' }, summary));
+  card.appendChild(header);
+
+  const top3 = issues.slice(0, 3);
+  if (top3.length > 0) {
+    const body = el('div', { style: 'padding:0 16px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px' });
+    for (const item of top3) {
+      const sColor = item.severity === 'risk' ? '#ef4444' : '#f59e0b';
+      const row = el('div', {
+        style: `display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:6px;background:var(--bg-elev-1);border:1px solid var(--border)`
+      });
+      row.appendChild(el('span', { style: `flex-shrink:0;width:8px;height:8px;border-radius:50%;background:${sColor};margin-top:4px` }));
+      const txt = el('div');
+      txt.appendChild(el('div', { style: 'font-size:12px;color:var(--text);line-height:1.4' }, item.text));
+      txt.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, `→ ${item.inspect}`));
+      row.appendChild(txt);
+      body.appendChild(row);
+    }
+    card.appendChild(body);
+  }
+
+  return card;
+}
+
 // ── KPI card builder ──────────────────────────────────────────────────────────
-function kpiCard({ label, value, variant, onClick, delta, deltaIsPercent, deltaIsPp, invertDelta, compLabel }) {
+function kpiCard({ label, subtitle, value, variant, onClick, delta, deltaIsPercent, deltaIsPp, invertDelta, compLabel }) {
   const card = el('div', {
     class: 'kpi' + (variant ? ' ' + variant : ''),
     style: 'cursor:pointer;transition:box-shadow 120ms',
@@ -261,6 +394,7 @@ function kpiCard({ label, value, variant, onClick, delta, deltaIsPercent, deltaI
   card.onclick = onClick;
 
   card.appendChild(el('div', { class: 'kpi-label' }, label));
+  if (subtitle) card.appendChild(el('div', { style: 'font-size:10px;color:var(--text-muted);margin-top:-2px;margin-bottom:2px' }, subtitle));
   card.appendChild(el('div', { class: 'kpi-value' }, value));
 
   // Trend row
@@ -290,7 +424,7 @@ function kpiCard({ label, value, variant, onClick, delta, deltaIsPercent, deltaI
 
 // ── KPI cards ─────────────────────────────────────────────────────────────────
 function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
-  const { rev, opEx, capEx, opProfit, opMargin, netCash, outstandingTotal, fcRev,
+  const { rev, capEx, opProfit, opMargin, netCash, outstandingTotal, fcRev,
           expenseRatio, collectionRate, pendingPipeline,
           payments, invoices, opExpenses, capExExpenses, acquisitions, outstanding } = curMetrics;
   const cmpLabel = cmpRange?.label || '';
@@ -311,7 +445,9 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
   // 2. Forecast Revenue
   const fcDelta = (fcRev != null && fcRev > 0) ? safePct(rev, fcRev) : null;
   grid.appendChild(kpiCard({
-    label: 'Forecast Revenue', value: fcRev != null ? formatEUR(fcRev) : '—',
+    label: 'Forecast Revenue',
+    subtitle: 'Forecast for selected period',
+    value: fcRev != null ? formatEUR(fcRev) : '—',
     onClick: () => {
       const startY = parseInt(curRange.start.slice(0, 4));
       const endY   = parseInt(curRange.end.slice(0, 4));
@@ -322,52 +458,112 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
       const { keys: fcMonths } = getMonthKeysForRange(curRange.start, curRange.end);
       const fcRows = fcMonths.filter(m => (fcMerged.get(m.key) || 0) > 0)
         .map(m => ({ month: m.label, eur: fcMerged.get(m.key) || 0 }));
-      const fcCols = [
+      drillDownModal('Forecast Revenue — Monthly Breakdown', fcRows, [
         { key: 'month', label: 'Month' },
         { key: 'eur', label: 'Forecast Revenue', right: true, format: v => formatEUR(v) }
-      ];
-      drillDownModal('Forecast Revenue — Monthly Breakdown', fcRows, fcCols);
+      ]);
     },
     delta: fcDelta, invertDelta: false,
     compLabel: fcDelta !== null ? 'actual revenue' : '',
   }));
 
-  // 3. Operating Expenses
+  // 3. Operating Profit
   grid.appendChild(kpiCard({
-    label: 'Operating Expenses', value: formatEUR(opEx),
-    onClick: () => drillDownModal('Operating Expenses', drillExpRows(opExpenses), EXP_COLS),
-    delta: cmpMetrics ? safePct(opEx, cmpMetrics.opEx) : null,
-    invertDelta: true, compLabel: cmpLabel
-  }));
-
-  // 4. Operating Profit
-  grid.appendChild(kpiCard({
-    label: 'Operating Profit', value: formatEUR(opProfit),
-    variant: opProfit >= 0 ? 'success' : 'danger',
+    label: 'Operating Profit',
+    value: formatEUR(opProfit),
+    variant: opProfit < 0 ? 'danger' :
+      (opMargin !== null && opMargin >= EXEC_T.opMargin.healthy) ? 'success' : '',
     onClick: () => drillDownModal('Operating Profit', mixedRows(payments, invoices, opExpenses), MIXED_COLS),
     delta: cmpMetrics ? safePct(opProfit, cmpMetrics.opProfit) : null,
     invertDelta: false, compLabel: cmpLabel
   }));
 
-  // 5. Operating Margin
+  // 4. Operating Margin
   grid.appendChild(kpiCard({
-    label: 'Operating Margin %',
+    label: 'Operating Margin',
+    subtitle: 'Op Profit / Revenue',
     value: opMargin != null ? `${opMargin.toFixed(1)}%` : '—',
+    variant: opMargin === null ? '' :
+      opMargin >= EXEC_T.opMargin.healthy ? 'success' :
+      opMargin >= EXEC_T.opMargin.watch   ? 'warning' : 'danger',
     onClick: () => drillDownModal('Operating Profit', mixedRows(payments, invoices, opExpenses), MIXED_COLS),
     delta: (cmpMetrics && opMargin != null) ? safePp(opMargin, cmpMetrics.opMargin) : null,
     deltaIsPp: true, invertDelta: false, compLabel: cmpLabel
   }));
 
-  // 6. Expense Ratio
+  // 5. Net Cash Flow
+  grid.appendChild(kpiCard({
+    label: 'Net Cash Flow',
+    value: formatEUR(netCash),
+    variant: netCash >= 0 ? 'success' : 'danger',
+    onClick: () => drillDownModal('Cash Flow', mixedRows(payments, invoices, [...opExpenses, ...capExExpenses], acquisitions), MIXED_COLS),
+    delta: cmpMetrics ? safePct(netCash, cmpMetrics.netCash) : null,
+    invertDelta: false, compLabel: cmpLabel
+  }));
+
+  // 6. Outstanding
+  grid.appendChild(kpiCard({
+    label: 'Outstanding',
+    subtitle: 'Unpaid service invoices',
+    value: formatEUR(outstandingTotal),
+    variant: outstandingTotal > 0 ? 'warning' : '',
+    onClick: () => drillDownModal('Outstanding Invoices', drillRevRows([], outstanding), REV_COLS),
+    delta: cmpMetrics ? safePct(outstandingTotal, cmpMetrics.outstandingTotal) : null,
+    invertDelta: true, compLabel: cmpLabel
+  }));
+
+  // 7. Collection Rate
+  grid.appendChild(kpiCard({
+    label: 'Collection Rate',
+    subtitle: 'Paid / (Paid + Outstanding)',
+    value: collectionRate != null ? `${collectionRate.toFixed(1)}%` : '—',
+    variant: collectionRate === null ? '' :
+      collectionRate >= EXEC_T.collectionRate.healthy ? 'success' :
+      collectionRate >= EXEC_T.collectionRate.watch   ? 'warning' : 'danger',
+    onClick: () => drillDownModal('Collected Invoices', drillRevRows([], invoices), REV_COLS),
+    delta: (cmpMetrics && collectionRate != null && cmpMetrics.collectionRate != null)
+      ? safePp(collectionRate, cmpMetrics.collectionRate) : null,
+    deltaIsPp: true, invertDelta: false, compLabel: cmpLabel
+  }));
+
+  // 8. Expense Ratio
   grid.appendChild(kpiCard({
     label: 'Expense Ratio',
+    subtitle: 'OpEx / Revenue',
     value: expenseRatio != null ? `${expenseRatio.toFixed(1)}%` : '—',
+    variant: expenseRatio === null ? '' :
+      expenseRatio < EXEC_T.expenseRatio.watch  ? 'success' :
+      expenseRatio < EXEC_T.expenseRatio.atRisk ? 'warning' : 'danger',
     onClick: () => drillDownModal('Operating Expenses', drillExpRows(opExpenses), EXP_COLS),
     delta: (cmpMetrics && expenseRatio != null) ? safePp(expenseRatio, cmpMetrics.expenseRatio) : null,
     deltaIsPp: true, invertDelta: true, compLabel: cmpLabel
   }));
 
-  // 7. CapEx
+  // 9. Pending Pipeline
+  grid.appendChild(kpiCard({
+    label: 'Pending Pipeline',
+    subtitle: 'Pending Airbnb reservations',
+    value: formatEUR(pendingPipeline),
+    variant: pendingPipeline > 0 ? 'info' : '',
+    onClick: () => {
+      const cols = [
+        { key: 'date',     label: 'Check-in', format: v => v ? v.slice(0,10) : '—' },
+        { key: 'property', label: 'Property' },
+        { key: 'nights',   label: 'Nights', right: true },
+        { key: 'eur',      label: 'Amount', right: true, format: v => formatEUR(v) }
+      ];
+      const rows = curMetrics.pendingReservations.map(p => ({
+        date:     p.airbnbCheckIn || p.date,
+        property: byId('properties', p.propertyId)?.name || '—',
+        nights:   p.airbnbNights || 0,
+        eur:      toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date)
+      })).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      drillDownModal('Pending Pipeline — Airbnb Reservations', rows, cols);
+    },
+    delta: null, compLabel: ''
+  }));
+
+  // 10. Investments / CapEx
   const capExDrillRows = [
     ...drillExpRows(capExExpenses),
     ...acquisitions.map(a => ({
@@ -377,60 +573,11 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     }))
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   grid.appendChild(kpiCard({
-    label: 'Investments / CapEx', value: formatEUR(capEx),
+    label: 'Investments / CapEx',
+    value: formatEUR(capEx),
     onClick: () => drillDownModal('Investments / CapEx', capExDrillRows, EXP_COLS),
     delta: (cmpMetrics && (capEx > 0 || cmpMetrics.capEx > 0)) ? safePct(capEx, cmpMetrics.capEx) : null,
     invertDelta: false, compLabel: cmpLabel
-  }));
-
-  // 8. Net Cash Flow
-  grid.appendChild(kpiCard({
-    label: 'Net Cash Flow', value: formatEUR(netCash),
-    variant: netCash >= 0 ? 'success' : 'danger',
-    onClick: () => drillDownModal('Cash Flow', mixedRows(payments, invoices, [...opExpenses, ...capExExpenses], acquisitions), MIXED_COLS),
-    delta: cmpMetrics ? safePct(netCash, cmpMetrics.netCash) : null,
-    invertDelta: false, compLabel: cmpLabel
-  }));
-
-  // 9. Outstanding
-  grid.appendChild(kpiCard({
-    label: 'Outstanding', value: formatEUR(outstandingTotal),
-    variant: outstandingTotal > 0 ? 'warning' : '',
-    onClick: () => drillDownModal('Outstanding Invoices', drillRevRows([], outstanding), REV_COLS),
-    delta: cmpMetrics ? safePct(outstandingTotal, cmpMetrics.outstandingTotal) : null,
-    invertDelta: true, compLabel: cmpLabel
-  }));
-
-  // 10. Pending Pipeline
-  grid.appendChild(kpiCard({
-    label: 'Pending Pipeline', value: formatEUR(pendingPipeline),
-    variant: pendingPipeline > 0 ? 'info' : '',
-    onClick: () => {
-      const cols = [
-        { key: 'date', label: 'Check-in', format: v => v ? v.slice(0,10) : '—' },
-        { key: 'guest', label: 'Guest' },
-        { key: 'nights', label: 'Nights', right: true },
-        { key: 'eur', label: 'Amount', right: true, format: v => formatEUR(v) }
-      ];
-      const rows = curMetrics.pendingReservations.map(p => ({
-        date: p.airbnbCheckIn || p.date,
-        guest: (p.notes || '').split(' · ')[0] || '—',
-        nights: p.airbnbNights || 0,
-        eur: toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date)
-      })).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      drillDownModal('Pending Pipeline — Upcoming Reservations', rows, cols);
-    },
-    delta: null, compLabel: ''
-  }));
-
-  // 11. Collection Rate
-  grid.appendChild(kpiCard({
-    label: 'Collection Rate', value: collectionRate != null ? `${collectionRate.toFixed(1)}%` : '—',
-    variant: collectionRate != null ? (collectionRate >= 90 ? 'success' : collectionRate >= 70 ? '' : 'warning') : '',
-    onClick: () => drillDownModal('Collected Invoices', drillRevRows([], invoices), REV_COLS),
-    delta: (cmpMetrics && collectionRate != null && cmpMetrics.collectionRate != null)
-      ? safePp(collectionRate, cmpMetrics.collectionRate) : null,
-    deltaIsPp: true, invertDelta: false, compLabel: cmpLabel
   }));
 
   return grid;
@@ -828,16 +975,16 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
 }
 
 // ── Executive Insights ────────────────────────────────────────────────────────
-function buildPerformanceInsights(curData, curMetrics) {
+function buildPerformanceInsights(curData, curMetrics, cmpMetrics, curRange) {
   const section = el('div', { class: 'card mb-16' });
   section.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Executive Insights')
   ));
-  const body = el('div', { style: 'padding:0 16px 16px;font-size:13px;line-height:1.8' });
+  const body = el('div', { style: 'padding:0 16px 16px' });
 
-  const signals = [];
+  const signals = []; // { title, text, severity: 'At Risk'|'Watch', inspect, onClick }
 
-  // Revenue concentration risk
+  // Revenue concentration
   const entityMap = new Map();
   curData.payments.forEach(p => {
     const prop = p.propertyId ? byId('properties', p.propertyId) : null;
@@ -860,71 +1007,128 @@ function buildPerformanceInsights(curData, curMetrics) {
   if (entities.length > 0 && totalRev > 0) {
     const top = entities[0];
     const topPct = (top.rev / totalRev) * 100;
-    const label = topPct >= 60 ? 'HIGH' : topPct >= 40 ? 'MEDIUM' : null;
-    if (label) {
+    if (topPct >= EXEC_T.revConc.atRisk) {
       signals.push({
         title: 'Revenue Concentration Risk',
-        severity: label,
-        text: `${top.name} accounts for ${topPct.toFixed(0)}% of revenue (${formatEUR(top.rev)})`,
+        text: `Top revenue source (${top.name}) contributes ${topPct.toFixed(0)}% of revenue — high dependency on a single source.`,
+        severity: 'At Risk',
+        inspect: 'Revenue Dashboard',
+        onClick: () => drillDownModal(`${top.name} — Revenue`, drillRevRows(top.pays, top.invs), REV_COLS)
+      });
+    } else if (topPct >= EXEC_T.revConc.watch) {
+      signals.push({
+        title: 'Revenue Concentration',
+        text: `${top.name} contributes ${topPct.toFixed(0)}% of revenue (${formatEUR(top.rev)}).`,
+        severity: 'Watch',
+        inspect: 'Revenue Dashboard',
         onClick: () => drillDownModal(`${top.name} — Revenue`, drillRevRows(top.pays, top.invs), REV_COLS)
       });
     }
   }
 
-  // Expense ratio warning
-  if (curMetrics.expenseRatio != null && curMetrics.expenseRatio > 80) {
+  // Cost pressure
+  if (curMetrics.expenseRatio != null && curMetrics.expenseRatio > EXEC_T.expenseRatio.watch) {
     signals.push({
-      title: 'Expense Ratio Warning',
-      severity: curMetrics.expenseRatio > 95 ? 'HIGH' : 'MEDIUM',
-      text: `Operating expenses consume ${curMetrics.expenseRatio.toFixed(1)}% of revenue`,
+      title: 'Cost Pressure',
+      text: `Expense ratio is ${curMetrics.expenseRatio.toFixed(1)}% (OpEx/Revenue).${curMetrics.expenseRatio > EXEC_T.expenseRatio.atRisk ? ' Costs are consuming most of revenue.' : ' Costs are elevated.'}`,
+      severity: curMetrics.expenseRatio > EXEC_T.expenseRatio.atRisk ? 'At Risk' : 'Watch',
+      inspect: 'Expenses Dashboard',
       onClick: () => drillDownModal('Operating Expenses', drillExpRows(curData.opExpenses), EXP_COLS)
     });
   }
 
-  // Outstanding invoice risk
+  // Outstanding risk
   if (curMetrics.outstandingTotal > 0) {
     const overdueCount = curMetrics.outstanding.filter(i => {
       const days = Math.floor((Date.now() - new Date(i.issueDate).getTime()) / 86400000);
       return days > 60;
     }).length;
-    if (overdueCount > 0 || curMetrics.outstandingTotal > 5000) {
+    if (overdueCount > 0) {
       signals.push({
-        title: 'Outstanding Invoice Risk',
-        severity: overdueCount > 0 ? 'HIGH' : 'MEDIUM',
-        text: `${formatEUR(curMetrics.outstandingTotal)} outstanding${overdueCount > 0 ? ` — ${overdueCount} invoice${overdueCount > 1 ? 's' : ''} overdue 60+ days` : ''}`,
+        title: 'Outstanding Risk',
+        text: `${overdueCount} invoice${overdueCount > 1 ? 's' : ''} overdue 60+ days. Total outstanding: ${formatEUR(curMetrics.outstandingTotal)}.`,
+        severity: 'At Risk',
+        inspect: 'Services Dashboard',
+        onClick: () => drillDownModal('Outstanding Invoices', drillRevRows([], curMetrics.outstanding), REV_COLS)
+      });
+    } else if (curMetrics.outstandingTotal > 5000) {
+      signals.push({
+        title: 'Outstanding Invoices',
+        text: `${formatEUR(curMetrics.outstandingTotal)} in unpaid invoices awaiting collection.`,
+        severity: 'Watch',
+        inspect: 'Services Dashboard',
         onClick: () => drillDownModal('Outstanding Invoices', drillRevRows([], curMetrics.outstanding), REV_COLS)
       });
     }
   }
 
+  // Forecast gap
+  if (curMetrics.fcRev != null && curMetrics.fcRev > 0 && curMetrics.rev < curMetrics.fcRev * 0.9) {
+    const pct = ((curMetrics.rev / curMetrics.fcRev) * 100).toFixed(0);
+    const gap = curMetrics.fcRev - curMetrics.rev;
+    signals.push({
+      title: 'Forecast Gap',
+      text: `Actual revenue is below forecast for the selected period (${pct}% of forecast achieved, ${formatEUR(gap)} gap).`,
+      severity: curMetrics.rev < curMetrics.fcRev * 0.75 ? 'At Risk' : 'Watch',
+      inspect: 'Forecast Dashboard'
+    });
+  }
+
   // Cash flow warning
   if (curMetrics.netCash < 0) {
     signals.push({
-      title: 'Negative Cash Flow',
-      severity: 'HIGH',
-      text: `Net cash flow is ${formatEUR(curMetrics.netCash)} for the selected period`,
+      title: 'Cash Flow Warning',
+      text: `Net cash flow is ${formatEUR(curMetrics.netCash)} for the selected period.`,
+      severity: 'At Risk',
+      inspect: 'Cash Flow Dashboard',
       onClick: () => drillDownModal('Cash Flow',
         mixedRows(curData.payments, curData.invoices, [...curData.opExpenses, ...curData.capExExpenses], curData.acquisitions),
         MIXED_COLS)
     });
   }
 
+  // Margin declining vs comparison
+  if (cmpMetrics && curMetrics.opMargin != null && cmpMetrics.opMargin != null) {
+    const drop = cmpMetrics.opMargin - curMetrics.opMargin;
+    if (drop > 10) {
+      signals.push({
+        title: 'Margin Declining',
+        text: `Operating margin dropped ${drop.toFixed(1)} pp vs comparison period (now ${curMetrics.opMargin.toFixed(1)}%).`,
+        severity: drop > 20 ? 'At Risk' : 'Watch',
+        inspect: 'Expenses Dashboard'
+      });
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────
   if (signals.length === 0) {
-    body.appendChild(el('div', { style: 'color:var(--text-muted)' }, 'No significant risk signals detected for the selected period.'));
+    body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' },
+      `No major executive risks detected for the selected period. Revenue: ${formatEUR(curMetrics.rev)}, margin: ${curMetrics.opMargin != null ? curMetrics.opMargin.toFixed(1) + '%' : '—'}.`
+    ));
     section.appendChild(body);
     return section;
   }
 
-  const SEVERITY_COLOR = { HIGH: '#ef4444', MEDIUM: '#f59e0b' };
-  const row = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px' });
+  const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b' };
+  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)' };
+  const row = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px' });
+
   for (const sig of signals) {
-    const block = el('div', { style: `border-left:3px solid ${SEVERITY_COLOR[sig.severity] || '#6b7280'};padding-left:10px` });
-    block.appendChild(el('div', {
-      style: 'font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:4px'
+    const block = el('div', {
+      style: `padding:10px 12px;border-radius:4px;border-left:3px solid ${SEV_COLOR[sig.severity] || '#6b7280'};background:${SEV_BG[sig.severity] || 'transparent'}`
+    });
+    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px' });
+    titleRow.appendChild(el('span', {
+      style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)'
     }, sig.title));
-    const p2 = el('p', { style: 'margin:0' }, sig.text);
+    titleRow.appendChild(el('span', {
+      style: `font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;color:${SEV_COLOR[sig.severity]};border:1px solid ${SEV_COLOR[sig.severity]}`
+    }, sig.severity));
+    block.appendChild(titleRow);
+    const p2 = el('p', { style: 'margin:0 0 5px;font-size:12px;line-height:1.5;color:var(--text)' }, sig.text);
     if (sig.onClick) { p2.style.cursor = 'pointer'; p2.title = 'Click for breakdown'; p2.onclick = sig.onClick; }
     block.appendChild(p2);
+    block.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted)' }, `→ Inspect: ${sig.inspect}`));
     row.appendChild(block);
   }
 
@@ -941,7 +1145,7 @@ function buildView() {
   wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
     el('h2', { style: 'margin:0 0 4px;font-size:20px;font-weight:700' }, 'Executive Dashboard'),
     el('p', { style: 'margin:0;font-size:13px;color:var(--text-muted)' },
-      'Consolidated overview — revenue, expenses and cash flow')
+      'Strategic control tower — health, performance and risk at a glance')
   ));
 
   // Filter bar
@@ -962,29 +1166,33 @@ function buildView() {
     cmpMetrics = calcMetrics(cmpData, cmpRange);
   }
 
-  // KPI grid
+  // Section 1: Executive Health Snapshot
+  wrap.appendChild(buildHealthSnapshot(curMetrics, cmpMetrics, curRange));
+
+  // Section 2: Core KPI Cards
   wrap.appendChild(buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange));
 
-  // Chart sections
-  wrap.appendChild(makeChartSection('Business Performance', [
-    ['Revenue',           'exec-trend-rev'],
-    ['Operating Profit',  'exec-trend-profit'],
-    ['Revenue vs Profit', 'exec-rev-vs-profit'],
+  // Section 3: Performance Trends
+  wrap.appendChild(makeChartSection('Performance Trends', [
+    ['Revenue Trend',          'exec-trend-rev'],
+    ['Operating Profit Trend', 'exec-trend-profit'],
+    ['Revenue vs Profit',      'exec-rev-vs-profit'],
   ]));
 
-  wrap.appendChild(makeChartSection('Growth & Risk', [
-    ['YoY Revenue Growth %',  'exec-rev-growth'],
+  // Section 4: Risk and Control
+  wrap.appendChild(makeChartSection('Risk and Control', [
+    ['YoY Revenue Growth',    'exec-rev-growth'],
     ['Revenue by Stream',     'exec-kd-rev-stream', { isDoughnut: true }],
     ['Revenue Concentration', 'exec-rev-conc',      { isDoughnut: true }],
   ]));
 
-  wrap.appendChild(makeChartSection('Control & Cash', [
+  wrap.appendChild(makeChartSection('Cost and Collections', [
     ['OpEx vs CapEx',     'exec-opex-capex'],
     ['Outstanding Aging', 'exec-outstanding-aging'],
   ]));
 
-  // Performance Insights
-  wrap.appendChild(buildPerformanceInsights(curData, curMetrics));
+  // Section 5: Executive Insights
+  wrap.appendChild(buildPerformanceInsights(curData, curMetrics, cmpMetrics, curRange));
 
   // Render all charts async
   setTimeout(() => {
