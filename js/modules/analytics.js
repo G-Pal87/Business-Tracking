@@ -16,12 +16,9 @@ import {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const ALL_CHART_IDS = [
-  'exec-trend-rev','exec-trend-profit','exec-rev-per-prop',
-  'exec-kd-rev-stream','exec-kd-exp-cat',
-  'exec-fc-actual','exec-fc-var-pct','exec-opex-capex',
-  'exec-rev-vs-profit','exec-rev-conc','exec-pending-pipeline',
-  'exec-inv-breakdown','exec-outstanding-aging',
-  'exec-booking-activity','exec-rev-growth'
+  'exec-trend-rev', 'exec-trend-profit', 'exec-rev-vs-profit',
+  'exec-rev-growth', 'exec-kd-rev-stream', 'exec-rev-conc',
+  'exec-opex-capex', 'exec-outstanding-aging'
 ];
 
 // ── Filter State ─────────────────────────────────────────────────────────────
@@ -292,9 +289,9 @@ function kpiCard({ label, value, variant, onClick, delta, deltaIsPercent, deltaI
 }
 
 // ── KPI cards ─────────────────────────────────────────────────────────────────
-function buildKpiGrid(curMetrics, cmpMetrics, cmpRange) {
+function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
   const { rev, opEx, capEx, opProfit, opMargin, netCash, outstandingTotal, fcRev,
-          expenseRatio, nightsBooked, avgBookingValue, collectionRate, pendingPipeline,
+          expenseRatio, collectionRate, pendingPipeline,
           payments, invoices, opExpenses, capExExpenses, acquisitions, outstanding } = curMetrics;
   const cmpLabel = cmpRange?.label || '';
 
@@ -315,7 +312,22 @@ function buildKpiGrid(curMetrics, cmpMetrics, cmpRange) {
   const fcDelta = (fcRev != null && fcRev > 0) ? safePct(rev, fcRev) : null;
   grid.appendChild(kpiCard({
     label: 'Forecast Revenue', value: fcRev != null ? formatEUR(fcRev) : '—',
-    onClick: () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
+    onClick: () => {
+      const startY = parseInt(curRange.start.slice(0, 4));
+      const endY   = parseInt(curRange.end.slice(0, 4));
+      const fcMerged = new Map();
+      for (let y = startY; y <= endY; y++) {
+        forecastMonthlyEUR(String(y)).forEach((v, k) => fcMerged.set(k, (fcMerged.get(k) || 0) + v));
+      }
+      const { keys: fcMonths } = getMonthKeysForRange(curRange.start, curRange.end);
+      const fcRows = fcMonths.filter(m => (fcMerged.get(m.key) || 0) > 0)
+        .map(m => ({ month: m.label, eur: fcMerged.get(m.key) || 0 }));
+      const fcCols = [
+        { key: 'month', label: 'Month' },
+        { key: 'eur', label: 'Forecast Revenue', right: true, format: v => formatEUR(v) }
+      ];
+      drillDownModal('Forecast Revenue — Monthly Breakdown', fcRows, fcCols);
+    },
     delta: fcDelta, invertDelta: false,
     compLabel: fcDelta !== null ? 'actual revenue' : '',
   }));
@@ -411,30 +423,7 @@ function buildKpiGrid(curMetrics, cmpMetrics, cmpRange) {
     delta: null, compLabel: ''
   }));
 
-  // 11. Nights Booked
-  grid.appendChild(kpiCard({
-    label: 'Nights Booked', value: nightsBooked > 0 ? String(nightsBooked) : '—',
-    onClick: () => {
-      const res = payments.filter(p => p.source === 'airbnb' && (p.airbnbType || '').toLowerCase() === 'reservation');
-      drillDownModal('Nights Booked', drillRevRows(res, []), REV_COLS);
-    },
-    delta: cmpMetrics && nightsBooked > 0 ? safePct(nightsBooked, cmpMetrics.nightsBooked) : null,
-    invertDelta: false, compLabel: cmpLabel
-  }));
-
-  // 12. Avg Booking Value
-  grid.appendChild(kpiCard({
-    label: 'Avg Booking Value', value: avgBookingValue != null ? formatEUR(avgBookingValue) : '—',
-    onClick: () => {
-      const res = payments.filter(p => p.source === 'airbnb' && (p.airbnbType || '').toLowerCase() === 'reservation');
-      drillDownModal('Airbnb Reservations', drillRevRows(res, []), REV_COLS);
-    },
-    delta: (cmpMetrics && avgBookingValue != null && cmpMetrics.avgBookingValue != null)
-      ? safePct(avgBookingValue, cmpMetrics.avgBookingValue) : null,
-    invertDelta: false, compLabel: cmpLabel
-  }));
-
-  // 13. Collection Rate
+  // 11. Collection Rate
   grid.appendChild(kpiCard({
     label: 'Collection Rate', value: collectionRate != null ? `${collectionRate.toFixed(1)}%` : '—',
     variant: collectionRate != null ? (collectionRate >= 90 ? 'success' : collectionRate >= 70 ? '' : 'warning') : '',
@@ -603,111 +592,7 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
     }
   }
 
-  // exec-rev-per-prop (Revenue per Property — horizontal bar)
-  {
-    const propMap = new Map();
-    curData.payments.forEach(p => {
-      const prop = byId('properties', p.propertyId);
-      const key = p.propertyId || 'unknown';
-      if (!propMap.has(key)) propMap.set(key, { name: prop?.name || 'Unknown', rev: 0, pays: [] });
-      const e = propMap.get(key);
-      e.rev += toEUR(p.amount, p.currency, p.date);
-      e.pays.push(p);
-    });
-    const propEntries = [...propMap.values()].sort((a, b) => b.rev - a.rev);
-    if (propEntries.length) {
-      const propColors = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ec4899','#14b8a6','#ef4444','#6366f1'];
-      charts.bar('exec-rev-per-prop', {
-        labels: propEntries.map(e => e.name),
-        horizontal: true,
-        datasets: [{ label: 'Revenue', data: propEntries.map(e => Math.round(e.rev)), backgroundColor: propEntries.map((_, i) => propColors[i % propColors.length]) }],
-        onClickItem: (_label, idx) => {
-          const entity = propEntries[idx];
-          drillDownModal(`Revenue — ${entity.name}`, drillRevRows(entity.pays, []), REV_COLS);
-        }
-      });
-    }
-  }
-
-  // ── Section 2: Forecast & Margins ───────────────────────────────────────
-  // exec-fc-actual
-  if (fcMap) {
-    const fcArr = months.map(m => Math.round(fcMap.get(m.key) || 0));
-    if (fcArr.some(v => v > 0) || revData.some(v => v > 0)) {
-      charts.line('exec-fc-actual', {
-        labels,
-        datasets: [
-          { label: 'Actual', data: revData, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', fill: true },
-          { label: 'Forecast', data: fcArr, borderColor: '#6366f1', backgroundColor: 'transparent', borderDash: [4,4], fill: false }
-        ],
-        onClickItem: (label, idx) => {
-          const mk = months[idx]?.key;
-          if (!mk) return;
-          drillDownModal(`${months[idx].label} — Revenue`,
-            drillRevRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
-                         curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk)),
-            REV_COLS);
-        }
-      });
-    }
-  }
-
-  // exec-fc-var-pct
-  if (fcMap) {
-    const fcArr = months.map(m => fcMap.get(m.key) || 0);
-    const varData  = months.map((m, i) => {
-      const fc = fcArr[i];
-      if (!fc) return null;
-      const pct = ((revData[i] - fc) / Math.abs(fc)) * 100;
-      return isFinite(pct) ? Math.round(pct * 10) / 10 : null;
-    });
-    if (varData.some(v => v !== null)) {
-      charts.bar('exec-fc-var-pct', {
-        labels,
-        datasets: [{
-          label: 'Forecast Variance %',
-          data: varData.map(v => v ?? 0),
-          backgroundColor: varData.map(v => v === null ? '#6b7280' : v >= 0 ? '#10b981' : '#ef4444')
-        }],
-        onClickItem: (label, idx) => {
-          const mk = months[idx]?.key;
-          if (!mk) return;
-          drillDownModal(`${months[idx].label} — Revenue`,
-            drillRevRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
-                         curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk)),
-            REV_COLS);
-        }
-      });
-    }
-  }
-
-  // exec-booking-activity (Nights Booked per Month)
-  {
-    const bookingMap = new Map();
-    curData.payments.filter(p => p.source === 'airbnb' && (p.airbnbType || '').toLowerCase() === 'reservation').forEach(p => {
-      const mk = p.date?.slice(0, 7);
-      if (!mk) return;
-      const e = bookingMap.get(mk) || { nights: 0, pays: [] };
-      e.nights += p.airbnbNights || 0;
-      e.pays.push(p);
-      bookingMap.set(mk, e);
-    });
-    const bookingData = months.map(m => bookingMap.get(m.key)?.nights || 0);
-    if (bookingData.some(v => v > 0)) {
-      charts.bar('exec-booking-activity', {
-        labels,
-        datasets: [{ label: 'Nights Booked', data: bookingData, backgroundColor: '#8b5cf6' }],
-        onClickItem: (_label, idx) => {
-          const mk = months[idx]?.key;
-          const entry = bookingMap.get(mk);
-          if (!entry?.pays.length) return;
-          drillDownModal(`${months[idx].label} — Bookings`, drillRevRows(entry.pays, []), REV_COLS);
-        }
-      });
-    }
-  }
-
-  // ── Section 3: Growth & Mix ──────────────────────────────────────────────
+  // ── Section 2: Growth & Mix ──────────────────────────────────────────────
   // exec-rev-growth (YoY monthly growth %)
   {
     // Build all-time revenue map (no date filter, but stream/owner/property filtered)
@@ -904,44 +789,7 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
     }
   }
 
-  // exec-inv-breakdown
-  {
-    const catMap = new Map();
-    curData.capExExpenses.forEach(e => {
-      const cat = e.costCategory || 'other';
-      const entry = catMap.get(cat) || { items: [], total: 0 };
-      entry.total += toEUR(e.amount, e.currency, e.date);
-      entry.items.push(e);
-      catMap.set(cat, entry);
-    });
-    // Acquisitions as group
-    if (curData.acquisitions.length > 0) {
-      const total = curData.acquisitions.reduce((s,a) => s + toEUR(a.amount, a.currency, a.date), 0);
-      catMap.set('__acq__', { items: curData.acquisitions, total, _isAcq: true });
-    }
-    const entries = [...catMap.entries()].filter(([,v]) => v.total > 0);
-    if (entries.length) {
-      charts.doughnut('exec-inv-breakdown', {
-        labels: entries.map(([k, v]) => v._isAcq ? 'Acquisitions' : (COST_CATEGORIES[k]?.label || k)),
-        data:   entries.map(([,v]) => Math.round(v.total)),
-        colors: entries.map(([k, v]) => v._isAcq ? '#6366f1' : (COST_CATEGORIES[k]?.color || '#8b93b0')),
-        onClickItem: (label, idx) => {
-          const [, entry] = entries[idx];
-          if (entry._isAcq) {
-            const rows = entry.items.map(a => ({
-              date: a.date, source: a._name || '', category: 'Acquisition',
-              description: a.description, eur: toEUR(a.amount, a.currency, a.date)
-            }));
-            drillDownModal(`Investments — Acquisitions`, rows, EXP_COLS);
-          } else {
-            drillDownModal(`Investments — ${label}`, drillExpRows(entry.items), EXP_COLS);
-          }
-        }
-      });
-    }
-  }
-
-  // ── Section 5: Outstanding & Cash ────────────────────────────────────────
+  // ── Section 3: Outstanding & Cash ────────────────────────────────────────
   // exec-outstanding-aging
   {
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -977,81 +825,24 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
     }
   }
 
-  // exec-pending-pipeline (upcoming pending reservations by check-in month)
-  {
-    const todayMk = new Date().toISOString().slice(0, 7);
-    const futureMonths = [];
-    const fd = new Date();
-    const MONTH_NAMES_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    for (let i = 0; i < 9; i++) {
-      futureMonths.push({
-        key: `${fd.getFullYear()}-${String(fd.getMonth() + 1).padStart(2, '0')}`,
-        label: `${MONTH_NAMES_SHORT[fd.getMonth()]} ${fd.getFullYear()}`
-      });
-      fd.setMonth(fd.getMonth() + 1);
-    }
-    const pipeMap = new Map();
-    curMetrics.pendingReservations.forEach(p => {
-      const mk = (p.airbnbCheckIn || p.date || '').slice(0, 7);
-      if (!mk) return;
-      const e = pipeMap.get(mk) || { total: 0, pays: [] };
-      e.total += toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date);
-      e.pays.push(p);
-      pipeMap.set(mk, e);
-    });
-    const pipeData = futureMonths.map(m => Math.round(pipeMap.get(m.key)?.total || 0));
-    if (pipeData.some(v => v > 0)) {
-      charts.bar('exec-pending-pipeline', {
-        labels: futureMonths.map(m => m.label),
-        datasets: [{ label: 'Pending Revenue', data: pipeData, backgroundColor: '#6366f1' }],
-        onClickItem: (_label, idx) => {
-          const entry = pipeMap.get(futureMonths[idx].key);
-          if (!entry?.pays.length) return;
-          drillDownModal(`Pending Pipeline — ${futureMonths[idx].label}`, drillRevRows(entry.pays, []), REV_COLS);
-        }
-      });
-    }
-  }
-
-  // exec-kd-exp-cat
-  {
-    const catMap = new Map();
-    const catItems = new Map();
-    [...curData.opExpenses, ...curData.capExExpenses].forEach(e => {
-      const cat = e.costCategory || e.category || 'other';
-      catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
-      if (!catItems.has(cat)) catItems.set(cat, []);
-      catItems.get(cat).push(e);
-    });
-    const entries = [...catMap.entries()].filter(([,v]) => v > 0).sort((a,b) => b[1]-a[1]);
-    if (entries.length) {
-      charts.doughnut('exec-kd-exp-cat', {
-        labels: entries.map(([k]) => COST_CATEGORIES[k]?.label || EXPENSE_CATEGORIES[k]?.label || k),
-        data:   entries.map(([,v]) => Math.round(v)),
-        colors: entries.map(([k]) => COST_CATEGORIES[k]?.color || EXPENSE_CATEGORIES[k]?.color || '#8b93b0'),
-        onClickItem: (label, idx) => {
-          const [cat] = entries[idx];
-          drillDownModal(`Expenses — ${label}`, drillExpRows(catItems.get(cat) || []), EXP_COLS);
-        }
-      });
-    }
-  }
 }
 
-// ── Performance Insights ─────────────────────────────────────────────────────
+// ── Executive Insights ────────────────────────────────────────────────────────
 function buildPerformanceInsights(curData, curMetrics) {
   const section = el('div', { class: 'card mb-16' });
   section.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Performance Insights')
+    el('div', { class: 'card-title' }, 'Executive Insights')
   ));
   const body = el('div', { style: 'padding:0 16px 16px;font-size:13px;line-height:1.8' });
 
-  // Build entity map for revenue concentration
+  const signals = [];
+
+  // Revenue concentration risk
   const entityMap = new Map();
   curData.payments.forEach(p => {
     const prop = p.propertyId ? byId('properties', p.propertyId) : null;
     const key = p.propertyId || 'unknown';
-    const e = entityMap.get(key) || { name: prop?.name || key, type: 'property', rev: 0, pays: [], invs: [] };
+    const e = entityMap.get(key) || { name: prop?.name || key, rev: 0, pays: [], invs: [] };
     e.rev += toEUR(p.amount, p.currency, p.date);
     e.pays.push(p);
     entityMap.set(key, e);
@@ -1059,88 +850,82 @@ function buildPerformanceInsights(curData, curMetrics) {
   curData.invoices.forEach(i => {
     const client = i.clientId ? byId('clients', i.clientId) : null;
     const key = i.clientId || 'unknown-client';
-    const e = entityMap.get(key) || { name: client?.name || key, type: 'client', rev: 0, pays: [], invs: [] };
+    const e = entityMap.get(key) || { name: client?.name || key, rev: 0, pays: [], invs: [] };
     e.rev += toEUR(i.total, i.currency, i.issueDate);
     e.invs.push(i);
     entityMap.set(key, e);
   });
   const entities = [...entityMap.values()].sort((a,b) => b.rev - a.rev);
+  const totalRev = entities.reduce((s, e) => s + e.rev, 0);
+  if (entities.length > 0 && totalRev > 0) {
+    const top = entities[0];
+    const topPct = (top.rev / totalRev) * 100;
+    const label = topPct >= 60 ? 'HIGH' : topPct >= 40 ? 'MEDIUM' : null;
+    if (label) {
+      signals.push({
+        title: 'Revenue Concentration Risk',
+        severity: label,
+        text: `${top.name} accounts for ${topPct.toFixed(0)}% of revenue (${formatEUR(top.rev)})`,
+        onClick: () => drillDownModal(`${top.name} — Revenue`, drillRevRows(top.pays, top.invs), REV_COLS)
+      });
+    }
+  }
 
-  // Build expense by category map
-  const expByCat = new Map();
-  [...curData.opExpenses, ...curData.capExExpenses].forEach(e => {
-    const cat = e.costCategory || e.category || 'other';
-    const entry = expByCat.get(cat) || { exp: 0, items: [] };
-    entry.exp += toEUR(e.amount, e.currency, e.date);
-    entry.items.push(e);
-    expByCat.set(cat, entry);
-  });
-  const topExpCat = [...expByCat.entries()].sort((a,b) => b[1].exp - a[1].exp)[0];
+  // Expense ratio warning
+  if (curMetrics.expenseRatio != null && curMetrics.expenseRatio > 80) {
+    signals.push({
+      title: 'Expense Ratio Warning',
+      severity: curMetrics.expenseRatio > 95 ? 'HIGH' : 'MEDIUM',
+      text: `Operating expenses consume ${curMetrics.expenseRatio.toFixed(1)}% of revenue`,
+      onClick: () => drillDownModal('Operating Expenses', drillExpRows(curData.opExpenses), EXP_COLS)
+    });
+  }
 
-  if (!entities.length && !topExpCat) {
-    body.appendChild(el('div', { style: 'color:var(--text-muted)' }, 'No insights available for the selected period.'));
+  // Outstanding invoice risk
+  if (curMetrics.outstandingTotal > 0) {
+    const overdueCount = curMetrics.outstanding.filter(i => {
+      const days = Math.floor((Date.now() - new Date(i.issueDate).getTime()) / 86400000);
+      return days > 60;
+    }).length;
+    if (overdueCount > 0 || curMetrics.outstandingTotal > 5000) {
+      signals.push({
+        title: 'Outstanding Invoice Risk',
+        severity: overdueCount > 0 ? 'HIGH' : 'MEDIUM',
+        text: `${formatEUR(curMetrics.outstandingTotal)} outstanding${overdueCount > 0 ? ` — ${overdueCount} invoice${overdueCount > 1 ? 's' : ''} overdue 60+ days` : ''}`,
+        onClick: () => drillDownModal('Outstanding Invoices', drillRevRows([], curMetrics.outstanding), REV_COLS)
+      });
+    }
+  }
+
+  // Cash flow warning
+  if (curMetrics.netCash < 0) {
+    signals.push({
+      title: 'Negative Cash Flow',
+      severity: 'HIGH',
+      text: `Net cash flow is ${formatEUR(curMetrics.netCash)} for the selected period`,
+      onClick: () => drillDownModal('Cash Flow',
+        mixedRows(curData.payments, curData.invoices, [...curData.opExpenses, ...curData.capExExpenses], curData.acquisitions),
+        MIXED_COLS)
+    });
+  }
+
+  if (signals.length === 0) {
+    body.appendChild(el('div', { style: 'color:var(--text-muted)' }, 'No significant risk signals detected for the selected period.'));
     section.appendChild(body);
     return section;
   }
 
+  const SEVERITY_COLOR = { HIGH: '#ef4444', MEDIUM: '#f59e0b' };
   const row = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px' });
-
-  const makeBlock = (label, lines) => {
-    const block = el('div');
+  for (const sig of signals) {
+    const block = el('div', { style: `border-left:3px solid ${SEVERITY_COLOR[sig.severity] || '#6b7280'};padding-left:10px` });
     block.appendChild(el('div', {
-      style: 'font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px'
-    }, label));
-    lines.forEach(({ text, onClick }) => {
-      const p2 = el('p', { style: 'margin:0' }, text);
-      if (onClick) { p2.style.cursor = 'pointer'; p2.title = 'Click for breakdown'; p2.onclick = onClick; }
-      block.appendChild(p2);
-    });
-    return block;
-  };
-
-  // Revenue concentration
-  const topEntities = entities.slice(0, 2);
-  if (topEntities.length) {
-    const lines = topEntities.map((e, i) => ({
-      text: `${i === 0 ? 'Top' : 'Second'}: ${e.name} (${formatEUR(e.rev)})`,
-      onClick: () => drillDownModal(`${e.name} — Revenue`, drillRevRows(e.pays, e.invs), REV_COLS)
-    }));
-    row.appendChild(makeBlock('Revenue concentration', lines));
-  }
-
-  // Cost concentration
-  if (topExpCat) {
-    const [ck, cd] = topExpCat;
-    const catLabel = COST_CATEGORIES[ck]?.label || EXPENSE_CATEGORIES[ck]?.label || ck;
-    row.appendChild(makeBlock('Cost concentration', [{
-      text: `Main cost driver: ${catLabel} (${formatEUR(cd.exp)})`,
-      onClick: () => drillDownModal(`Expenses — ${catLabel}`, drillExpRows(cd.items), EXP_COLS)
-    }]));
-  }
-
-  // Risk signal
-  if (topEntities[0]) {
-    const e = topEntities[0];
-    row.appendChild(makeBlock('Risk signal', [{
-      text: `High dependency on a single contributor (${e.name})`,
-      onClick: () => drillDownModal(`${e.name} — Revenue`, drillRevRows(e.pays, e.invs), REV_COLS)
-    }]));
-  }
-
-  // Investment signal
-  const capExCat = [...expByCat.entries()]
-    .filter(([k]) => {
-      const l = (COST_CATEGORIES[k]?.label || EXPENSE_CATEGORIES[k]?.label || '').toLowerCase();
-      return l.includes('capex') || l.includes('renovation') || k === 'capex' || k === 'renovation';
-    })
-    .sort((a,b) => b[1].exp - a[1].exp)[0];
-  if (capExCat) {
-    const [ck, cd] = capExCat;
-    const catLabel = COST_CATEGORIES[ck]?.label || EXPENSE_CATEGORIES[ck]?.label || ck;
-    row.appendChild(makeBlock('Investment signal', [{
-      text: `High CapEx driven by ${catLabel} (${formatEUR(cd.exp)})`,
-      onClick: () => drillDownModal(`Expenses — ${catLabel}`, drillExpRows(cd.items), EXP_COLS)
-    }]));
+      style: 'font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:4px'
+    }, sig.title));
+    const p2 = el('p', { style: 'margin:0' }, sig.text);
+    if (sig.onClick) { p2.style.cursor = 'pointer'; p2.title = 'Click for breakdown'; p2.onclick = sig.onClick; }
+    block.appendChild(p2);
+    row.appendChild(block);
   }
 
   body.appendChild(row);
@@ -1178,37 +963,24 @@ function buildView() {
   }
 
   // KPI grid
-  wrap.appendChild(buildKpiGrid(curMetrics, cmpMetrics, cmpRange));
+  wrap.appendChild(buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange));
 
   // Chart sections
-  wrap.appendChild(makeChartSection('Business Trends', [
-    ['Revenue',            'exec-trend-rev'],
-    ['Operating Profit',   'exec-trend-profit'],
-    ['Revenue per Property', 'exec-rev-per-prop'],
+  wrap.appendChild(makeChartSection('Business Performance', [
+    ['Revenue',           'exec-trend-rev'],
+    ['Operating Profit',  'exec-trend-profit'],
+    ['Revenue vs Profit', 'exec-rev-vs-profit'],
   ]));
 
-  wrap.appendChild(makeChartSection('Forecast & Margins', [
-    ['Actual vs Forecast',  'exec-fc-actual'],
-    ['Forecast Variance %', 'exec-fc-var-pct'],
-    ['Booking Activity (Nights)', 'exec-booking-activity'],
-  ]));
-
-  wrap.appendChild(makeChartSection('Growth & Mix', [
-    ['YoY Revenue Growth %', 'exec-rev-growth'],
-    ['OpEx vs CapEx',        'exec-opex-capex'],
-    ['Revenue vs Profit',    'exec-rev-vs-profit'],
-  ]));
-
-  wrap.appendChild(makeChartSection('Composition', [
+  wrap.appendChild(makeChartSection('Growth & Risk', [
+    ['YoY Revenue Growth %',  'exec-rev-growth'],
     ['Revenue by Stream',     'exec-kd-rev-stream', { isDoughnut: true }],
     ['Revenue Concentration', 'exec-rev-conc',      { isDoughnut: true }],
-    ['Investment Breakdown',  'exec-inv-breakdown', { isDoughnut: true }],
   ]));
 
-  wrap.appendChild(makeChartSection('Outstanding & Cash', [
-    ['Outstanding Aging',     'exec-outstanding-aging'],
-    ['Pending Pipeline',      'exec-pending-pipeline'],
-    ['Expenses by Category',  'exec-kd-exp-cat', { isDoughnut: true }],
+  wrap.appendChild(makeChartSection('Control & Cash', [
+    ['OpEx vs CapEx',     'exec-opex-capex'],
+    ['Outstanding Aging', 'exec-outstanding-aging'],
   ]));
 
   // Performance Insights
