@@ -704,6 +704,7 @@ function buildSeasonalityHeatmap() {
 
 // ── Revenue table (collapsed) ─────────────────────────────────────────────────
 const TX_COLS = [
+  { key: 'type',      label: 'Type'        },
   { key: 'date',      label: 'Date'        },
   { key: 'stream',    label: 'Stream'      },
   { key: 'entity',    label: 'Entity'      },
@@ -716,11 +717,11 @@ function buildRevenueTable(container, { payments, invoices }) {
   const rows = [];
   payments.forEach(p => {
     const prop = byId('properties', p.propertyId);
-    rows.push({ _date: p.date, _eur: toEUR(p.amount, p.currency, p.date), date: fmtDate(p.date), stream: STREAMS[p.stream]?.short || p.stream || '—', entity: prop?.name || '—', owner: OWNERS[prop?.owner] || prop?.owner || '—', status: p.status || '—', amountEUR: formatEUR(toEUR(p.amount, p.currency, p.date)) });
+    rows.push({ _date: p.date, _eur: toEUR(p.amount, p.currency, p.date), type: 'Payment', date: fmtDate(p.date), stream: STREAMS[p.stream]?.short || p.stream || '—', entity: prop?.name || '—', owner: OWNERS[prop?.owner] || prop?.owner || '—', status: p.status || '—', amountEUR: formatEUR(toEUR(p.amount, p.currency, p.date)) });
   });
   invoices.forEach(i => {
     const client = byId('clients', i.clientId);
-    rows.push({ _date: i.issueDate, _eur: toEUR(i.total, i.currency, i.issueDate), date: fmtDate(i.issueDate), stream: STREAMS[i.stream]?.short || i.stream || '—', entity: client?.name || '—', owner: OWNERS[client?.owner] || client?.owner || '—', status: i.status || '—', amountEUR: formatEUR(toEUR(i.total, i.currency, i.issueDate)) });
+    rows.push({ _date: i.issueDate, _eur: toEUR(i.total, i.currency, i.issueDate), type: 'Invoice', date: fmtDate(i.issueDate), stream: STREAMS[i.stream]?.short || i.stream || '—', entity: client?.name || '—', owner: OWNERS[client?.owner] || client?.owner || '—', status: i.status || '—', amountEUR: formatEUR(toEUR(i.total, i.currency, i.issueDate)) });
   });
   rows.sort((a, b) => (b._date || '').localeCompare(a._date || ''));
 
