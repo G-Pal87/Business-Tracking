@@ -193,20 +193,22 @@ function calcMetrics(data, range = null) {
   });
   const outstandingTotal = sumInvoicesEUR(outstanding);
 
-  // Forecast: sum only the months that fall within this period's range so that
-  // a "Jan 2026" filter shows only the January forecast, not the full year.
+  // Forecast: sum months in range across all years (supports multi-year ranges).
   let fcRev = null;
   if (range) {
-    const startY = range.start.slice(0, 4);
-    const endY   = range.end.slice(0, 4);
-    if (startY === endY) {
-      const fcMonthly = forecastMonthlyEUR(startY);
+    const startY = parseInt(range.start.slice(0, 4));
+    const endY   = parseInt(range.end.slice(0, 4));
+    let total = 0;
+    for (let y = startY; y <= endY; y++) {
+      const fcMonthly = forecastMonthlyEUR(String(y));
       if (fcMonthly.size > 0) {
-        const { keys: months } = getMonthKeysForRange(range.start, range.end);
-        const sum = months.reduce((s, m) => s + (fcMonthly.get(m.key) || 0), 0);
-        if (sum > 0) fcRev = sum;
+        const segStart = y === startY ? range.start : `${y}-01-01`;
+        const segEnd   = y === endY   ? range.end   : `${y}-12-31`;
+        const { keys: months } = getMonthKeysForRange(segStart, segEnd);
+        total += months.reduce((s, m) => s + (fcMonthly.get(m.key) || 0), 0);
       }
     }
+    if (total > 0) fcRev = total;
   }
 
   return {
@@ -532,13 +534,18 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
     cmpMarginArr = months.map((_, i) => cmpRevArr[i] > 0 ? (cmpProfArr[i] / cmpRevArr[i]) * 100 : null);
   }
 
-  // Forecast monthly map
+  // Forecast monthly map — merge all years covered by the range
   let fcMap = null;
-  const periodYear = getPeriodYear(curRange);
-  if (periodYear && isSingleYear) {
-    const raw = forecastMonthlyEUR(periodYear);
-    if (raw.size > 0) fcMap = raw;
+  {
+    const sy = parseInt(curRange.start.slice(0, 4));
+    const ey = parseInt(curRange.end.slice(0, 4));
+    const merged = new Map();
+    for (let y = sy; y <= ey; y++) {
+      forecastMonthlyEUR(String(y)).forEach((v, k) => merged.set(k, (merged.get(k) || 0) + v));
+    }
+    if (merged.size > 0) fcMap = merged;
   }
+  const periodYear = getPeriodYear(curRange);
 
   // ── Section 1: Business Trends ───────────────────────────────────────────
   // exec-trend-rev
@@ -624,7 +631,7 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
 
   // ── Section 2: Forecast & Margins ───────────────────────────────────────
   // exec-fc-actual
-  if (fcMap && isSingleYear) {
+  if (fcMap) {
     const fcArr = months.map(m => Math.round(fcMap.get(m.key) || 0));
     if (fcArr.some(v => v > 0) || revData.some(v => v > 0)) {
       charts.line('exec-fc-actual', {
@@ -646,7 +653,7 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
   }
 
   // exec-fc-var-pct
-  if (fcMap && isSingleYear) {
+  if (fcMap) {
     const fcArr = months.map(m => fcMap.get(m.key) || 0);
     const varData  = months.map((m, i) => {
       const fc = fcArr[i];
