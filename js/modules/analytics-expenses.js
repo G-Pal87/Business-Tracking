@@ -551,25 +551,36 @@ function buildView() {
   ));
   wrap.appendChild(row3);
 
-  // ── Expense table ──────────────────────────────────────────────────────────
-  const tableCard = el('div', { class: 'card' });
-  tableCard.appendChild(el('div', { class: 'card-header' },
+  // ── Expense table (collapsible) ───────────────────────────────────────────
+  const tableCard   = el('div', { class: 'card' });
+  const tableBody   = el('div', { style: 'display:none' });
+  const tableToggle = el('button', { style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0' }, 'Show Records');
+  tableToggle.onclick = () => {
+    const hidden = tableBody.style.display === 'none';
+    tableBody.style.display = hidden ? '' : 'none';
+    tableToggle.textContent = hidden ? 'Hide Records' : 'Show Records';
+  };
+  tableCard.appendChild(el('div', { class: 'card-header', style: 'display:flex;align-items:center;justify-content:space-between' },
     el('div', { class: 'card-title' }, 'Expense Records'),
-    el('div', { style: 'display:flex;gap:12px;font-size:11px;color:var(--text-muted);align-items:center' },
-      el('span', { style: 'display:flex;align-items:center;gap:4px' },
-        el('span', { style: 'width:10px;height:10px;border-left:3px solid #ef4444;display:inline-block' }),
-        'OpEx'
+    el('div', { style: 'display:flex;align-items:center;gap:16px' },
+      el('div', { style: 'display:flex;gap:12px;font-size:11px;color:var(--text-muted);align-items:center' },
+        el('span', { style: 'display:flex;align-items:center;gap:4px' },
+          el('span', { style: 'width:10px;height:10px;border-left:3px solid #ef4444;display:inline-block' }),
+          'OpEx'
+        ),
+        el('span', { style: 'display:flex;align-items:center;gap:4px' },
+          el('span', { style: 'width:10px;height:10px;border-left:3px solid #f59e0b;display:inline-block' }),
+          'CapEx'
+        )
       ),
-      el('span', { style: 'display:flex;align-items:center;gap:4px' },
-        el('span', { style: 'width:10px;height:10px;border-left:3px solid #f59e0b;display:inline-block' }),
-        'CapEx'
-      )
+      tableToggle
     )
   ));
-  buildExpenseTable(tableCard, cur);
+  buildExpenseTable(tableBody, cur);
+  tableCard.appendChild(tableBody);
   wrap.appendChild(tableCard);
 
-  // ── CapEx Detail section ───────────────────────────────────────────────────
+  // ── CapEx Detail section (collapsible) ────────────────────────────────────
   if (capEx.length > 0) buildCapExDetailSection(wrap, cur);
 
   setTimeout(() => {
@@ -771,14 +782,24 @@ function renderPropHBar({ allExp }) {
   });
 }
 
-// ── CapEx Detail section ──────────────────────────────────────────────────────
+// ── CapEx Detail section (collapsible) ───────────────────────────────────────
 function buildCapExDetailSection(container, { capEx, total }) {
-  const card = el('div', { class: 'card', style: 'margin-top:16px' });
+  const card     = el('div', { class: 'card', style: 'margin-top:16px' });
   const capTotal = capEx.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-  card.appendChild(el('div', { class: 'card-header' },
+  const body     = el('div', { style: 'display:none' });
+  const toggle   = el('button', { style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0' }, 'Show Records');
+  toggle.onclick = () => {
+    const hidden = body.style.display === 'none';
+    body.style.display = hidden ? '' : 'none';
+    toggle.textContent = hidden ? 'Hide Records' : 'Show Records';
+  };
+  card.appendChild(el('div', { class: 'card-header', style: 'display:flex;align-items:center;justify-content:space-between' },
     el('div', { class: 'card-title' }, 'CapEx Detail'),
-    el('div', { style: 'font-size:11px;color:var(--text-muted)' },
-      `${capEx.length} record(s) · ${total > 0 ? ((capTotal / total) * 100).toFixed(1) : '0'}% of total spend`
+    el('div', { style: 'display:flex;align-items:center;gap:16px' },
+      el('div', { style: 'font-size:11px;color:var(--text-muted)' },
+        `${capEx.length} record(s) · ${total > 0 ? ((capTotal / total) * 100).toFixed(1) : '0'}% of total spend`
+      ),
+      toggle
     )
   ));
 
@@ -824,7 +845,8 @@ function buildCapExDetailSection(container, { capEx, total }) {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   tableWrap.appendChild(table);
-  card.appendChild(tableWrap);
+  body.appendChild(tableWrap);
+  card.appendChild(body);
   container.appendChild(card);
   attachSortFilter(tableWrap);
 }
