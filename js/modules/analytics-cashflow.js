@@ -433,20 +433,32 @@ function buildView() {
 
   // ── Cash flow table ────────────────────────────────────────────────────────
   const tableCard = el('div', { class: 'card' });
-  tableCard.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Transactions'),
-    el('div', { style: 'display:flex;gap:12px;font-size:11px;color:var(--text-muted);align-items:center' },
-      el('span', { style: 'display:flex;align-items:center;gap:4px' },
-        el('span', { style: 'width:10px;height:10px;border-left:3px solid #10b981;display:inline-block' }),
-        'Cash In'
-      ),
-      el('span', { style: 'display:flex;align-items:center;gap:4px' },
-        el('span', { style: 'width:10px;height:10px;border-left:3px solid #ef4444;display:inline-block' }),
-        'Cash Out'
-      )
+  const cfTableHeader = el('div', { class: 'card-header', style: 'cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between' });
+  const cfHeaderLeft = el('div', { style: 'display:flex;align-items:center;gap:16px' });
+  cfHeaderLeft.appendChild(el('div', { class: 'card-title' }, 'Transactions'));
+  cfHeaderLeft.appendChild(el('div', { style: 'display:flex;gap:12px;font-size:11px;color:var(--text-muted);align-items:center' },
+    el('span', { style: 'display:flex;align-items:center;gap:4px' },
+      el('span', { style: 'width:10px;height:10px;border-left:3px solid #10b981;display:inline-block' }),
+      'Cash In'
+    ),
+    el('span', { style: 'display:flex;align-items:center;gap:4px' },
+      el('span', { style: 'width:10px;height:10px;border-left:3px solid #ef4444;display:inline-block' }),
+      'Cash Out'
     )
   ));
-  buildCashFlowTable(tableCard, data);
+  cfTableHeader.appendChild(cfHeaderLeft);
+  const cfChevron = el('span', { style: 'font-size:11px;color:var(--text-muted);display:inline-block;transition:transform 200ms' }, '▼');
+  cfTableHeader.appendChild(cfChevron);
+  tableCard.appendChild(cfTableHeader);
+  const cfTableBody = el('div');
+  buildCashFlowTable(cfTableBody, data);
+  tableCard.appendChild(cfTableBody);
+  let cfCollapsed = false;
+  cfTableHeader.onclick = () => {
+    cfCollapsed = !cfCollapsed;
+    cfTableBody.style.display = cfCollapsed ? 'none' : '';
+    cfChevron.style.transform = cfCollapsed ? 'rotate(-90deg)' : '';
+  };
   wrap.appendChild(tableCard);
 
   setTimeout(() => {

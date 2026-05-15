@@ -709,7 +709,7 @@ function buildView() {
   // ── Chart row 2: monthly grouped bar (full width) ─────────────────────────
   wrap.appendChild(el('div', { class: 'card mb-16' },
     el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Monthly Revenue vs Operating Expenses')),
-    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-month-bar' }))
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-month-bar' }))
   ));
 
   // ── Portfolio value breakdown ──────────────────────────────────────────────
