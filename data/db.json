@@ -29590,6 +29590,22 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778752390828,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "fcs_mp7hcmon8l",
+      "type": "property",
+      "entityId": "prop_mohfv8np89",
+      "year": 2026,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {},
+      "createdAt": 1778883574487,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778883574487,
+      "updatedBy": "Giorgos"
     }
   ],
   "inventory": [
