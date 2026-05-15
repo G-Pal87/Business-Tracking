@@ -1,12 +1,11 @@
 // Executive Analytics Dashboard
 import { el, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { STREAMS, OWNERS, COST_CATEGORIES, EXPENSE_CATEGORIES } from '../core/config.js';
+import { STREAMS } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
   isCapEx, drillRevRows, drillExpRows,
-  forecastMonthlyEUR,
   sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR
 } from '../core/data.js';
 import {
@@ -20,6 +19,43 @@ const ALL_CHART_IDS = [
   'exec-rev-growth', 'exec-kd-rev-stream', 'exec-rev-conc',
   'exec-opex-capex', 'exec-outstanding-aging'
 ];
+
+// ── Filtered forecast map builder ────────────────────────────────────────────
+// Returns Map<YYYY-MM, EUR> for forecast revenue, respecting gF filters.
+// Mirrors the logic in analytics-forecast.js buildFcMaps() — kept in sync.
+function buildFilteredFcMap(startY, endY) {
+  const fcMonthlyRev = new Map();
+  const allFcs = listActive('forecasts');
+  for (let y = startY; y <= endY; y++) {
+    allFcs.filter(fc => fc.year === y).forEach(fc => {
+      if (gF.propertyIds.size > 0 && fc.type === 'property' && !gF.propertyIds.has(fc.entityId)) return;
+      if (gF.streams.size > 0) {
+        let stream = null;
+        if (fc.type === 'service') {
+          stream = fc.entityId;
+        } else {
+          const p = byId('properties', fc.entityId);
+          stream = p?.type === 'short_term' ? 'short_term_rental'
+                 : p?.type === 'long_term'  ? 'long_term_rental' : null;
+        }
+        if (!stream || !gF.streams.has(stream)) return;
+      }
+      if (gF.owners.size > 0 && fc.type === 'property') {
+        const prop = byId('properties', fc.entityId);
+        const ow = prop?.owner || 'both';
+        if (ow !== 'both' && !gF.owners.has(ow)) return;
+      }
+      Object.entries(fc.months || {}).forEach(([mk, md]) => {
+        const entries = Array.isArray(md.entries) ? md.entries : [];
+        const rev = entries.length > 0
+          ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+          : Number(md.revenue) || 0;
+        if (rev > 0) fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
+      });
+    });
+  }
+  return fcMonthlyRev;
+}
 
 // ── Executive decision thresholds (deterministic, adjust here) ───────────────
 const EXEC_T = {
@@ -152,12 +188,6 @@ function calcMetrics(data, range = null) {
   const netCash      = opProfit - capEx;
   const expenseRatio = rev > 0 ? (opEx / rev) * 100 : null;
 
-  // Airbnb booking stats (paid reservations in range)
-  const airbnbRes = payments.filter(p => p.source === 'airbnb' && (p.airbnbType || '').toLowerCase() === 'reservation');
-  const nightsBooked = airbnbRes.reduce((s, p) => s + (p.airbnbNights || 0), 0);
-  const airbnbRevEUR = airbnbRes.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-  const avgBookingValue = airbnbRes.length > 0 ? airbnbRevEUR / airbnbRes.length : null;
-
   // Collection rate: paid invoices / all invoices (any status) issued in range
   let collectionRate = null;
   if (range) {
@@ -200,30 +230,24 @@ function calcMetrics(data, range = null) {
   });
   const outstandingTotal = sumInvoicesEUR(outstanding);
 
-  // Forecast: sum months in range across all years (supports multi-year ranges).
+  // Forecast: filtered forecast revenue for the selected period and active filters.
   let fcRev = null;
+  let fcMonthlyRev = null; // retained for KPI drilldown and chart overlay
   if (range) {
     const startY = parseInt(range.start.slice(0, 4));
     const endY   = parseInt(range.end.slice(0, 4));
-    let total = 0;
-    for (let y = startY; y <= endY; y++) {
-      const fcMonthly = forecastMonthlyEUR(String(y));
-      if (fcMonthly.size > 0) {
-        const segStart = y === startY ? range.start : `${y}-01-01`;
-        const segEnd   = y === endY   ? range.end   : `${y}-12-31`;
-        const { keys: months } = getMonthKeysForRange(segStart, segEnd);
-        total += months.reduce((s, m) => s + (fcMonthly.get(m.key) || 0), 0);
-      }
-    }
+    fcMonthlyRev = buildFilteredFcMap(startY, endY);
+    const { keys: months } = getMonthKeysForRange(range.start, range.end);
+    const total = months.reduce((s, m) => s + (fcMonthlyRev.get(m.key) || 0), 0);
     if (total > 0) fcRev = total;
   }
 
   return {
     rev, opEx, capExFromExp, capExFromAcq, capEx,
     opProfit, opMargin, netCash, expenseRatio,
-    nightsBooked, avgBookingValue, collectionRate,
+    collectionRate,
     pendingReservations, pendingPipeline,
-    outstanding, outstandingTotal, fcRev,
+    outstanding, outstandingTotal, fcRev, fcMonthlyRev,
     payments, invoices, opExpenses, capExExpenses, acquisitions
   };
 }
@@ -240,13 +264,6 @@ function safePp(current, prev) {
   if (current === null || prev === null || current === undefined || prev === undefined) return null;
   if (!isFinite(current) || !isFinite(prev)) return null;
   return current - prev;
-}
-
-// ── Period year helper ───────────────────────────────────────────────────────
-function getPeriodYear(curRange) {
-  const sy = curRange.start.slice(0, 4);
-  const ey = curRange.end.slice(0, 4);
-  return sy === ey ? sy : null;
 }
 
 // ── Rebuild ──────────────────────────────────────────────────────────────────
@@ -304,15 +321,24 @@ function buildHealthSnapshot(curMetrics, cmpMetrics, curRange) {
     }
   }
 
-  // Outstanding — overdue invoices
+  // Outstanding — overdue check then ratio-based watch
   const overdueCount = outstanding.filter(i => {
     const days = Math.floor((Date.now() - new Date(i.issueDate).getTime()) / 86400000);
     return days > 60;
   }).length;
   if (overdueCount > 0) {
     issues.push({ severity: 'risk', text: `${overdueCount} invoice${overdueCount > 1 ? 's' : ''} overdue 60+ days (${formatEUR(outstandingTotal)} total outstanding)`, inspect: 'Services Dashboard' });
-  } else if (outstandingTotal > 5000) {
-    issues.push({ severity: 'watch', text: `${formatEUR(outstandingTotal)} outstanding (unpaid invoices)`, inspect: 'Services Dashboard' });
+  } else if (outstandingTotal > 0) {
+    if (rev > 0) {
+      const outRatio = (outstandingTotal / rev) * 100;
+      if (outRatio >= 50) {
+        issues.push({ severity: 'risk', text: `Outstanding is ${outRatio.toFixed(0)}% of revenue (${formatEUR(outstandingTotal)})`, inspect: 'Services Dashboard' });
+      } else if (outRatio >= 25) {
+        issues.push({ severity: 'watch', text: `Outstanding is ${outRatio.toFixed(0)}% of revenue (${formatEUR(outstandingTotal)})`, inspect: 'Services Dashboard' });
+      }
+    } else if (outstandingTotal > 5000) {
+      issues.push({ severity: 'watch', text: `${formatEUR(outstandingTotal)} in unpaid invoices (no revenue in period)`, inspect: 'Services Dashboard' });
+    }
   }
 
   // Forecast gap
@@ -397,34 +423,32 @@ function kpiCard({ label, subtitle, value, variant, onClick, delta, deltaIsPerce
   if (subtitle) card.appendChild(el('div', { style: 'font-size:10px;color:var(--text-muted);margin-top:-2px;margin-bottom:2px' }, subtitle));
   card.appendChild(el('div', { class: 'kpi-value' }, value));
 
-  // Trend row
-  const trendDiv = el('div', { class: 'kpi-trend' });
-  if (delta === null || delta === undefined || !isFinite(delta)) {
-    trendDiv.appendChild(el('span', { style: 'color:var(--text-muted);font-size:11px' }, 'N/A'));
-    if (compLabel) trendDiv.appendChild(document.createTextNode(` vs ${compLabel}`));
-  } else {
-    const sign = delta > 0 ? '+' : '';
-    let display;
-    if (deltaIsPp) {
-      display = `${sign}${delta.toFixed(1)} pp`;
+  // Trend row — only rendered when there is meaningful content
+  const hasValidDelta = delta !== null && delta !== undefined && isFinite(delta);
+  const hasContext    = !!compLabel;
+  if (hasValidDelta || hasContext) {
+    const trendDiv = el('div', { class: 'kpi-trend' });
+    if (!hasValidDelta) {
+      // Show context label only (e.g. "Selected period")
+      trendDiv.appendChild(el('span', { style: 'color:var(--text-muted);font-size:11px' }, compLabel));
     } else {
-      display = `${sign}${delta.toFixed(1)}%`;
+      const sign = delta > 0 ? '+' : '';
+      const display = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
+      let cls = '';
+      if (delta > 0) cls = invertDelta ? 'down' : 'up';
+      else if (delta < 0) cls = invertDelta ? 'up' : 'down';
+      trendDiv.appendChild(el('span', { class: cls }, display));
+      if (compLabel) trendDiv.appendChild(document.createTextNode(` vs ${compLabel}`));
     }
-    // Positive-is-good: up=good if !invertDelta; up=bad if invertDelta
-    let cls = '';
-    if (delta > 0) cls = invertDelta ? 'down' : 'up';
-    else if (delta < 0) cls = invertDelta ? 'up' : 'down';
-    trendDiv.appendChild(el('span', { class: cls }, display));
-    if (compLabel) trendDiv.appendChild(document.createTextNode(` vs ${compLabel}`));
+    card.appendChild(trendDiv);
   }
-  card.appendChild(trendDiv);
   card.appendChild(el('div', { class: 'kpi-accent-bar' }));
   return card;
 }
 
 // ── KPI cards ─────────────────────────────────────────────────────────────────
 function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
-  const { rev, capEx, opProfit, opMargin, netCash, outstandingTotal, fcRev,
+  const { rev, capEx, opProfit, opMargin, netCash, outstandingTotal, fcRev, fcMonthlyRev,
           expenseRatio, collectionRate, pendingPipeline,
           payments, invoices, opExpenses, capExExpenses, acquisitions, outstanding } = curMetrics;
   const cmpLabel = cmpRange?.label || '';
@@ -442,25 +466,39 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     invertDelta: false, compLabel: cmpLabel
   }));
 
-  // 2. Forecast Revenue
+  // 2. Forecast Revenue — uses filtered forecast data matching active filters
   const fcDelta = (fcRev != null && fcRev > 0) ? safePct(rev, fcRev) : null;
+  // Build monthly actual revenue map for drilldown comparison
+  const actualRevMap = new Map();
+  payments.forEach(p => { const mk = p.date?.slice(0,7); if (mk) actualRevMap.set(mk, (actualRevMap.get(mk) || 0) + toEUR(p.amount, p.currency, p.date)); });
+  invoices.forEach(i => { const mk = (i.issueDate||'').slice(0,7); if (mk) actualRevMap.set(mk, (actualRevMap.get(mk) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
   grid.appendChild(kpiCard({
     label: 'Forecast Revenue',
     subtitle: 'Forecast for selected period',
     value: fcRev != null ? formatEUR(fcRev) : '—',
     onClick: () => {
-      const startY = parseInt(curRange.start.slice(0, 4));
-      const endY   = parseInt(curRange.end.slice(0, 4));
-      const fcMerged = new Map();
-      for (let y = startY; y <= endY; y++) {
-        forecastMonthlyEUR(String(y)).forEach((v, k) => fcMerged.set(k, (fcMerged.get(k) || 0) + v));
-      }
       const { keys: fcMonths } = getMonthKeysForRange(curRange.start, curRange.end);
-      const fcRows = fcMonths.filter(m => (fcMerged.get(m.key) || 0) > 0)
-        .map(m => ({ month: m.label, eur: fcMerged.get(m.key) || 0 }));
-      drillDownModal('Forecast Revenue — Monthly Breakdown', fcRows, [
+      const fcMap = fcMonthlyRev || new Map();
+      const fcRows = fcMonths
+        .filter(m => (fcMap.get(m.key) || 0) > 0 || (actualRevMap.get(m.key) || 0) > 0)
+        .map(m => {
+          const fc  = fcMap.get(m.key) || 0;
+          const act = actualRevMap.get(m.key) || 0;
+          const vari = act - fc;
+          const varPct = fc === 0 ? null : ((act - fc) / Math.abs(fc)) * 100;
+          return {
+            month: m.label, fc, act, vari,
+            varPctStr: fc === 0
+              ? (act > 0 ? 'N/A' : '—')
+              : (varPct >= 0 ? '+' : '') + varPct.toFixed(1) + '%'
+          };
+        });
+      drillDownModal('Forecast Revenue — Actual vs Forecast', fcRows, [
         { key: 'month', label: 'Month' },
-        { key: 'eur', label: 'Forecast Revenue', right: true, format: v => formatEUR(v) }
+        { key: 'fc',   label: 'Forecast',   right: true, format: v => formatEUR(v) },
+        { key: 'act',  label: 'Actual',     right: true, format: v => formatEUR(v) },
+        { key: 'vari', label: 'Variance',   right: true, format: v => (v >= 0 ? '+' : '') + formatEUR(v) },
+        { key: 'varPctStr', label: 'Var %', right: true }
       ]);
     },
     delta: fcDelta, invertDelta: false,
@@ -494,6 +532,7 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
   // 5. Net Cash Flow
   grid.appendChild(kpiCard({
     label: 'Net Cash Flow',
+    subtitle: 'Revenue minus OpEx and CapEx',
     value: formatEUR(netCash),
     variant: netCash >= 0 ? 'success' : 'danger',
     onClick: () => drillDownModal('Cash Flow', mixedRows(payments, invoices, [...opExpenses, ...capExExpenses], acquisitions), MIXED_COLS),
@@ -501,21 +540,20 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     invertDelta: false, compLabel: cmpLabel
   }));
 
-  // 6. Outstanding
+  // 6. Outstanding — current open invoices, no comparison delta (not range-limited)
   grid.appendChild(kpiCard({
     label: 'Outstanding',
     subtitle: 'Unpaid service invoices',
     value: formatEUR(outstandingTotal),
     variant: outstandingTotal > 0 ? 'warning' : '',
     onClick: () => drillDownModal('Outstanding Invoices', drillRevRows([], outstanding), REV_COLS),
-    delta: cmpMetrics ? safePct(outstandingTotal, cmpMetrics.outstandingTotal) : null,
-    invertDelta: true, compLabel: cmpLabel
+    delta: null, compLabel: ''
   }));
 
   // 7. Collection Rate
   grid.appendChild(kpiCard({
     label: 'Collection Rate',
-    subtitle: 'Paid / (Paid + Outstanding)',
+    subtitle: 'Paid invoices / total invoiced',
     value: collectionRate != null ? `${collectionRate.toFixed(1)}%` : '—',
     variant: collectionRate === null ? '' :
       collectionRate >= EXEC_T.collectionRate.healthy ? 'success' :
@@ -560,7 +598,7 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
       })).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
       drillDownModal('Pending Pipeline — Airbnb Reservations', rows, cols);
     },
-    delta: null, compLabel: ''
+    delta: null, compLabel: curRange.label || ''
   }));
 
   // 10. Investments / CapEx
@@ -641,47 +679,30 @@ function buildMonthlyMaps(data) {
 
 // ── All chart renderers ───────────────────────────────────────────────────────
 function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmpRange) {
-  const { keys: months, isSingleYear } = getMonthKeysForRange(curRange.start, curRange.end);
+  const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
   if (!months.length) return;
 
   const labels = months.map(m => m.label);
   const { revMap, opExMap, capExMap } = buildMonthlyMaps(curData);
 
-  const revData    = months.map(m => Math.round(revMap.get(m.key)   || 0));
-  const opExData   = months.map(m => Math.round(opExMap.get(m.key)  || 0));
-  const capExData  = months.map(m => Math.round(capExMap.get(m.key) || 0));
-  const profData   = months.map((m, i) => revData[i] - opExData[i]);
-  const cashData   = months.map((m, i) => profData[i] - capExData[i]);
-  const marginData = months.map((m, i) => revData[i] > 0 ? (profData[i] / revData[i]) * 100 : null);
+  const revData  = months.map(m => Math.round(revMap.get(m.key)  || 0));
+  const opExData = months.map(m => Math.round(opExMap.get(m.key) || 0));
+  const capExData= months.map(m => Math.round(capExMap.get(m.key)|| 0));
+  const profData = months.map((m, i) => revData[i] - opExData[i]);
 
   // Comparison monthly maps
-  let cmpRevMap = new Map(), cmpOpExMap = new Map(), cmpCapExMap = new Map();
-  let cmpRevArr = null, cmpProfArr = null, cmpCashArr = null, cmpMarginArr = null;
+  let cmpRevArr = null, cmpProfArr = null;
   if (cmpData && cmpRange) {
     const cm = buildMonthlyMaps(cmpData);
-    cmpRevMap = cm.revMap; cmpOpExMap = cm.opExMap; cmpCapExMap = cm.capExMap;
     const { keys: cmpMonths } = getMonthKeysForRange(cmpRange.start, cmpRange.end);
-    // Align to current period positions
-    cmpRevArr    = months.map((_, i) => Math.round(cmpRevMap.get(cmpMonths[i]?.key) || 0));
-    const cmpOpEx = months.map((_, i) => Math.round(cmpOpExMap.get(cmpMonths[i]?.key) || 0));
-    cmpProfArr   = months.map((_, i) => cmpRevArr[i] - cmpOpEx[i]);
-    const cmpCap  = months.map((_, i) => Math.round(cmpCapExMap.get(cmpMonths[i]?.key) || 0));
-    cmpCashArr   = months.map((_, i) => cmpProfArr[i] - cmpCap[i]);
-    cmpMarginArr = months.map((_, i) => cmpRevArr[i] > 0 ? (cmpProfArr[i] / cmpRevArr[i]) * 100 : null);
+    cmpRevArr  = months.map((_, i) => Math.round(cm.revMap.get(cmpMonths[i]?.key) || 0));
+    const cmpOpEx = months.map((_, i) => Math.round(cm.opExMap.get(cmpMonths[i]?.key) || 0));
+    cmpProfArr = months.map((_, i) => cmpRevArr[i] - cmpOpEx[i]);
   }
 
-  // Forecast monthly map — merge all years covered by the range
-  let fcMap = null;
-  {
-    const sy = parseInt(curRange.start.slice(0, 4));
-    const ey = parseInt(curRange.end.slice(0, 4));
-    const merged = new Map();
-    for (let y = sy; y <= ey; y++) {
-      forecastMonthlyEUR(String(y)).forEach((v, k) => merged.set(k, (merged.get(k) || 0) + v));
-    }
-    if (merged.size > 0) fcMap = merged;
-  }
-  const periodYear = getPeriodYear(curRange);
+  // Forecast monthly map — filtered, matches active Executive filters
+  const fcMap = curMetrics.fcMonthlyRev && curMetrics.fcMonthlyRev.size > 0
+    ? curMetrics.fcMonthlyRev : null;
 
   // ── Section 1: Business Trends ───────────────────────────────────────────
   // exec-trend-rev
@@ -939,7 +960,6 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
   // ── Section 3: Outstanding & Cash ────────────────────────────────────────
   // exec-outstanding-aging
   {
-    const todayStr = new Date().toISOString().slice(0, 10);
     const buckets = [0, 0, 0, 0];
     curMetrics.outstanding.forEach(i => {
       const days = Math.floor((Date.now() - new Date(i.issueDate).getTime()) / 86400000);
@@ -1037,28 +1057,30 @@ function buildPerformanceInsights(curData, curMetrics, cmpMetrics, curRange) {
     });
   }
 
-  // Outstanding risk
+  // Outstanding risk — overdue then ratio-based
   if (curMetrics.outstandingTotal > 0) {
     const overdueCount = curMetrics.outstanding.filter(i => {
       const days = Math.floor((Date.now() - new Date(i.issueDate).getTime()) / 86400000);
       return days > 60;
     }).length;
+    const onClickOutstanding = () => drillDownModal('Outstanding Invoices', drillRevRows([], curMetrics.outstanding), REV_COLS);
     if (overdueCount > 0) {
       signals.push({
         title: 'Outstanding Risk',
         text: `${overdueCount} invoice${overdueCount > 1 ? 's' : ''} overdue 60+ days. Total outstanding: ${formatEUR(curMetrics.outstandingTotal)}.`,
         severity: 'At Risk',
         inspect: 'Services Dashboard',
-        onClick: () => drillDownModal('Outstanding Invoices', drillRevRows([], curMetrics.outstanding), REV_COLS)
+        onClick: onClickOutstanding
       });
+    } else if (curMetrics.rev > 0) {
+      const outRatio = (curMetrics.outstandingTotal / curMetrics.rev) * 100;
+      if (outRatio >= 50) {
+        signals.push({ title: 'Outstanding Risk', text: `Outstanding invoices are ${outRatio.toFixed(0)}% of revenue (${formatEUR(curMetrics.outstandingTotal)}).`, severity: 'At Risk', inspect: 'Services Dashboard', onClick: onClickOutstanding });
+      } else if (outRatio >= 25) {
+        signals.push({ title: 'Outstanding Invoices', text: `Outstanding invoices are ${outRatio.toFixed(0)}% of revenue (${formatEUR(curMetrics.outstandingTotal)}).`, severity: 'Watch', inspect: 'Services Dashboard', onClick: onClickOutstanding });
+      }
     } else if (curMetrics.outstandingTotal > 5000) {
-      signals.push({
-        title: 'Outstanding Invoices',
-        text: `${formatEUR(curMetrics.outstandingTotal)} in unpaid invoices awaiting collection.`,
-        severity: 'Watch',
-        inspect: 'Services Dashboard',
-        onClick: () => drillDownModal('Outstanding Invoices', drillRevRows([], curMetrics.outstanding), REV_COLS)
-      });
+      signals.push({ title: 'Outstanding Invoices', text: `${formatEUR(curMetrics.outstandingTotal)} in unpaid invoices awaiting collection.`, severity: 'Watch', inspect: 'Services Dashboard', onClick: onClickOutstanding });
     }
   }
 
