@@ -1,6 +1,6 @@
 // Tenants module – CRUD for long-term rental tenants
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
 
@@ -24,17 +24,16 @@ function build() {
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   const ltProps = listActive('properties').filter(p => p.type === 'long_term');
-  const propSel = select([
-    { value: 'all', label: 'All Properties' },
-    ...ltProps.map(p => ({ value: p.id, label: p.name }))
-  ], 'all');
-  const statusSel = select([
-    { value: 'all', label: 'All Statuses' },
-    ...Object.entries(STATUSES).map(([v, m]) => ({ value: v, label: m.label }))
-  ], 'all');
+  const propFilter   = new Set();
+  const statusFilter = new Set();
 
-  filterBar.appendChild(propSel);
-  filterBar.appendChild(statusSel);
+  const propMS   = buildMultiSelect(ltProps.map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderTable(), 'ten_props');
+  const statusMS = buildMultiSelect(Object.entries(STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable(), 'ten_statuses');
+
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); statusMS.reset(); renderTable(); } });
+  filterBar.appendChild(propMS);
+  filterBar.appendChild(statusMS);
+  filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(button('+ Add Tenant', { variant: 'primary', onClick: () => openForm(null, renderTable) }));
   wrap.appendChild(filterBar);
@@ -46,8 +45,8 @@ function build() {
   const renderTable = () => {
     tableWrap.innerHTML = '';
     let rows = [...listActive('tenants')];
-    if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
-    if (statusSel.value !== 'all') rows = rows.filter(r => r.status === statusSel.value);
+    if (propFilter.size > 0)   rows = rows.filter(r => propFilter.has(r.propertyId));
+    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(r.status));
     rows.sort((a, b) => (b.leaseStartDate || '').localeCompare(a.leaseStartDate || ''));
 
     if (rows.length === 0) {
@@ -92,8 +91,6 @@ function build() {
     ));
   };
 
-  propSel.onchange = renderTable;
-  statusSel.onchange = renderTable;
   renderTable();
   return wrap;
 }

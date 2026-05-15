@@ -1,6 +1,6 @@
 // Properties module
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect } from '../core/ui.js';
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI
@@ -9,8 +9,39 @@ import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES } f
 import { fetchICal, parseICal, nights } from '../core/ical.js';
 import { openExpenseForm } from './expenses.js';
 import { navigate } from '../core/router.js';
+import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
 
 let selectedId = null;
+
+// ── Filter + sort state (persists across navigation via localStorage) ─────────
+const _pf = { years: new Set(), owners: new Set(), types: new Set(), countries: new Set() };
+let _pSortDir = 1; // 1 = asc, -1 = desc
+let _pSortKey = 'name'; // 'name' | 'type'
+
+const PF_KEY = 'btf:prop_filters';
+
+function loadPropFilters() {
+  try {
+    const d = JSON.parse(localStorage.getItem(PF_KEY) || 'null');
+    if (!d) return;
+    ['years', 'owners', 'types', 'countries'].forEach(k => {
+      _pf[k].clear();
+      if (Array.isArray(d[k])) d[k].forEach(v => _pf[k].add(v));
+    });
+    if (d.sortDir) _pSortDir = d.sortDir;
+    if (d.sortKey) _pSortKey = d.sortKey;
+  } catch { /* ignore */ }
+}
+
+function savePropFilters() {
+  try {
+    localStorage.setItem(PF_KEY, JSON.stringify({
+      years: [..._pf.years], owners: [..._pf.owners],
+      types: [..._pf.types], countries: [..._pf.countries],
+      sortDir: _pSortDir, sortKey: _pSortKey
+    }));
+  } catch { /* ignore */ }
+}
 
 function fmtSize(bytes) {
   if (!bytes) return '';
@@ -28,13 +59,25 @@ function readFileAsBase64(file) {
   });
 }
 
-function previewDoc(doc) {
+async function previewDoc(doc) {
   const mime = doc.type || 'application/octet-stream';
-  const byteChars = atob(doc.data);
+  let b64;
+  if (doc.path) {
+    const file = await fetchGithubFile(doc.path);
+    b64 = file.content.replace(/\n/g, '');
+  } else {
+    b64 = doc.data;
+  }
+  const byteChars = atob(b64);
   const bytes = new Uint8Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
   const blob = new Blob([bytes], { type: mime });
   window.open(URL.createObjectURL(blob), '_blank');
+}
+
+function sanitizeName(str) {
+  // Only strip path-separator characters; encodeURIComponent in uploadGithubFile handles the rest
+  return str.replace(/[/\\]/g, '-').trim();
 }
 
 function docIcon(type) {
@@ -63,6 +106,7 @@ export default {
 };
 
 function build() {
+  loadPropFilters();
   const wrap = el('div', { class: 'view active' });
 
   const header = el('div', { class: 'section-header' },
@@ -73,15 +117,116 @@ function build() {
   );
   wrap.appendChild(header);
 
+  const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
+  wrap.appendChild(filterBar);
+
   const grid = el('div', { class: 'prop-grid' });
-  const props = listActive('properties');
-  if (props.length === 0) {
-    grid.appendChild(el('div', { class: 'empty' }, el('div', { class: 'empty-icon' }, 'H'), 'No properties yet. Add your first one.'));
-  }
-  for (const p of props) grid.appendChild(card(p));
   wrap.appendChild(grid);
 
+  rebuildPropFilters(filterBar, grid);
+  renderPropGrid(grid);
+
   return wrap;
+}
+
+// Builds (or rebuilds) the filter bar with interdependent multi-selects.
+// Valid options for each filter are computed from properties that pass all
+// OTHER active filters, so selecting one filter narrows the others.
+function rebuildPropFilters(filterBar, grid) {
+  filterBar.innerHTML = '';
+  const all = listActive('properties');
+
+  // Returns true if property p passes all filters except the one named `skip`
+  const matchesExcept = (p, skip) => {
+    if (skip !== 'years'     && _pf.years.size     && !_pf.years.has(p.purchaseDate?.slice(0, 4) || ''))  return false;
+    if (skip !== 'owners'    && _pf.owners.size    && !_pf.owners.has(p.owner || ''))                       return false;
+    if (skip !== 'types'     && _pf.types.size     && !_pf.types.has(p.type || ''))                         return false;
+    if (skip !== 'countries' && _pf.countries.size && !_pf.countries.has(p.country || ''))                  return false;
+    return true;
+  };
+  const uniq = (arr) => [...new Set(arr)].sort();
+
+  const validYears     = uniq(all.filter(p => matchesExcept(p, 'years'    )).map(p => p.purchaseDate?.slice(0, 4)).filter(Boolean));
+  const validOwners    = uniq(all.filter(p => matchesExcept(p, 'owners'   )).map(p => p.owner).filter(Boolean));
+  const validTypes     = uniq(all.filter(p => matchesExcept(p, 'types'    )).map(p => p.type).filter(Boolean));
+  const validCountries = uniq(all.filter(p => matchesExcept(p, 'countries')).map(p => p.country).filter(Boolean));
+
+  // Prune selections that are no longer valid given other active filters
+  [..._pf.years    ].forEach(v => { if (!validYears.includes(v))     _pf.years.delete(v); });
+  [..._pf.owners   ].forEach(v => { if (!validOwners.includes(v))    _pf.owners.delete(v); });
+  [..._pf.types    ].forEach(v => { if (!validTypes.includes(v))     _pf.types.delete(v); });
+  [..._pf.countries].forEach(v => { if (!validCountries.includes(v)) _pf.countries.delete(v); });
+  savePropFilters();
+
+  const onChange = () => { savePropFilters(); rebuildPropFilters(filterBar, grid); renderPropGrid(grid); };
+
+  const yearMS    = buildMultiSelect(validYears.map(y => ({ value: y, label: y })), _pf.years, 'All Years', onChange);
+  const ownerMS   = buildMultiSelect(validOwners.map(v => ({ value: v, label: OWNERS[v] || v })), _pf.owners, 'All Owners', onChange);
+  const typeMS    = buildMultiSelect(validTypes.map(v => ({ value: v, label: PROPERTY_TYPES[v] || v })), _pf.types, 'All Types', onChange);
+  const countryMS = buildMultiSelect(validCountries.map(v => ({ value: v, label: v })), _pf.countries, 'All Countries', onChange);
+
+  const resetBtn = button('Reset Filters', {
+    variant: 'sm ghost',
+    onClick: () => {
+      yearMS.reset(); ownerMS.reset(); typeMS.reset(); countryMS.reset();
+      _pf.years.clear(); _pf.owners.clear(); _pf.types.clear(); _pf.countries.clear();
+      _pSortDir = 1; _pSortKey = 'name';
+      savePropFilters();
+      rebuildPropFilters(filterBar, grid);
+      renderPropGrid(grid);
+    }
+  });
+
+  const mkSortBtn = (key, label) => {
+    const active = _pSortKey === key;
+    const arrow  = active ? (_pSortDir > 0 ? ' ▲' : ' ▼') : ' ⇅';
+    return button(label + arrow, {
+      variant: active ? 'sm' : 'sm ghost',
+      onClick: () => {
+        if (_pSortKey === key) _pSortDir *= -1;
+        else { _pSortKey = key; _pSortDir = 1; }
+        savePropFilters();
+        rebuildPropFilters(filterBar, grid);
+        renderPropGrid(grid);
+      }
+    });
+  };
+
+  filterBar.appendChild(yearMS);
+  filterBar.appendChild(ownerMS);
+  filterBar.appendChild(typeMS);
+  filterBar.appendChild(countryMS);
+  filterBar.appendChild(resetBtn);
+  filterBar.appendChild(el('div', { class: 'flex-1' }));
+  filterBar.appendChild(mkSortBtn('name', 'Name'));
+  filterBar.appendChild(mkSortBtn('type', 'Type'));
+}
+
+// Applies active filters + sort to the property grid, replacing its contents.
+function renderPropGrid(grid) {
+  grid.innerHTML = '';
+  let props = listActive('properties');
+
+  if (_pf.years.size)     props = props.filter(p => _pf.years.has(p.purchaseDate?.slice(0, 4) || ''));
+  if (_pf.owners.size)    props = props.filter(p => _pf.owners.has(p.owner || ''));
+  if (_pf.types.size)     props = props.filter(p => _pf.types.has(p.type || ''));
+  if (_pf.countries.size) props = props.filter(p => _pf.countries.has(p.country || ''));
+
+  props = [...props].sort((a, b) => {
+    const av = _pSortKey === 'type' ? (a.type || '') : (a.name || '');
+    const bv = _pSortKey === 'type' ? (b.type || '') : (b.name || '');
+    return av.localeCompare(bv) * _pSortDir;
+  });
+
+  if (props.length === 0) {
+    const hasFilter = _pf.years.size || _pf.owners.size || _pf.types.size || _pf.countries.size;
+    grid.appendChild(el('div', { class: 'empty' },
+      el('div', { class: 'empty-icon' }, 'H'),
+      hasFilter ? 'No properties match your filters.' : 'No properties yet. Add your first one.'
+    ));
+    return;
+  }
+  for (const p of props) grid.appendChild(card(p));
 }
 
 function card(p) {
@@ -211,17 +356,6 @@ function openDetail(id) {
     body.appendChild(vendorCard);
   }
 
-  // Configured expense rates (cleaning fee is ST-only)
-  const showCleaning = p.type === 'short_term' && p.cleaningFee;
-  if (showCleaning) {
-    const ratesCard = el('div', { class: 'card mb-16' });
-    ratesCard.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Configured Expense Rates')));
-    const rateGrid = el('div', { class: 'grid grid-3', style: 'padding:12px 16px' });
-    rateGrid.appendChild(smallStat('Cleaning Fee', formatMoney(p.cleaningFee, p.currency, { maxFrac: 0 }), 'per booking'));
-    ratesCard.appendChild(rateGrid);
-    body.appendChild(ratesCard);
-  }
-
   // Expense breakdown
   const expList = listActive('expenses').filter(e => e.propertyId === id).sort((a, b) => (b.date || '').localeCompare(a.date));
   const expTable = el('div', { class: 'card mb-16' });
@@ -252,27 +386,44 @@ function openDetail(id) {
   body.appendChild(expTable);
 
   // Documents
-  const docs = p.documents || [];
   const docsViewCard = el('div', { class: 'card mb-16' });
+  const docsTitleEl = el('div', { class: 'card-title' }, `Documents (${(p.documents || []).length})`);
   docsViewCard.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, `Documents (${docs.length})`),
+    docsTitleEl,
     button('Manage', { onClick: () => { closeModal(); setTimeout(() => openForm(p), 220); } })
   ));
-  if (docs.length === 0) {
-    docsViewCard.appendChild(el('div', { class: 'doc-empty' }, 'No documents attached. Use Manage to upload.'));
-  } else {
-    const dl = el('div', { class: 'doc-list' });
-    for (const d of docs) {
+  const dl = el('div', { class: 'doc-list' });
+  const renderDetailDocList = () => {
+    dl.innerHTML = '';
+    const currentDocs = p.documents || [];
+    docsTitleEl.textContent = `Documents (${currentDocs.length})`;
+    if (currentDocs.length === 0) {
+      dl.appendChild(el('div', { class: 'doc-empty' }, 'No documents attached. Use Manage to upload.'));
+      return;
+    }
+    for (const d of currentDocs) {
       const row = el('div', { class: 'doc-row' });
       row.appendChild(el('span', { class: 'doc-icon' }, docIcon(d.type)));
       row.appendChild(el('span', { class: 'doc-name', title: d.name }, d.name));
       row.appendChild(el('span', { class: 'doc-size' }, fmtSize(d.size)));
       if (d.uploadedAt) row.appendChild(el('span', { class: 'doc-date' }, fmtDate(d.uploadedAt.slice(0, 10))));
       row.appendChild(button('Preview', { variant: 'ghost', onClick: () => previewDoc(d) }));
+      if (d.path) {
+        row.appendChild(button('Delete', { variant: 'ghost', onClick: async () => {
+          const ok = await confirmDialog(`Delete document "${d.name}"?`, { danger: true, okLabel: 'Delete' });
+          if (!ok) return;
+          try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
+          catch (e) { toast(`Repo cleanup failed: ${e.message}`, 'warning', 5000); }
+          p.documents = (p.documents || []).filter(x => x.id !== d.id);
+          upsert('properties', p);
+          renderDetailDocList();
+        }}));
+      }
       dl.appendChild(row);
     }
-    docsViewCard.appendChild(dl);
-  }
+  };
+  renderDetailDocList();
+  docsViewCard.appendChild(dl);
   body.appendChild(docsViewCard);
 
   const editBtn = button('Edit', { onClick: () => { closeModal(); setTimeout(() => openForm(p), 220); } });
@@ -306,7 +457,7 @@ function openForm(existing) {
     monthlyRent: 0, nightlyRate: 0,
     mortgageAmount: 0, mortgageMonthly: 0, mortgageRate: 0,
     owner: 'both', airbnbCalUrl: '', notes: '',
-    cleaningFee: 0, monthlyElectricity: 0, monthlyWater: 0
+    monthlyElectricity: 0, monthlyWater: 0
   };
 
   const body = el('div', {});
@@ -331,7 +482,6 @@ function openForm(existing) {
   const bedsI = input({ type: 'number', value: p.bedrooms, min: 0 });
   const bathsI = input({ type: 'number', value: p.bathrooms, min: 0 });
   const icalI = input({ value: p.airbnbCalUrl || '', placeholder: 'https://airbnb.com/calendar/ical/...' });
-  const cleaningFeeI = input({ type: 'number', value: p.cleaningFee || 0, min: 0, step: 0.01 });
   const tenantI = input({ value: p.tenantName || '', placeholder: 'Tenant full name' });
   const leaseStartI = input({ type: 'date', value: p.leaseStartDate || '' });
   const leaseEndI = input({ type: 'date', value: p.leaseEndDate || '' });
@@ -342,15 +492,12 @@ function openForm(existing) {
   const ltTenantRow = formRow('Tenant Name', tenantI);
   const ltLeaseRow = el('div', { class: 'form-row horizontal' }, formRow('Lease Start', leaseStartI), formRow('Lease End', leaseEndI));
   const icalRow = formRow('Airbnb iCal URL', icalI);
-  const stCleaningRow = formRow('Cleaning Fee (per booking)', cleaningFeeI);
-
   const updateTypeFields = () => {
     const isLT = typeS.value === 'long_term';
     ltRow.style.display = isLT ? '' : 'none';
-    ltTenantRow.style.display = isLT ? '' : 'none';
-    ltLeaseRow.style.display = isLT ? '' : 'none';
+    ltTenantRow.style.display = 'none';
+    ltLeaseRow.style.display = 'none';
     icalRow.style.display = isLT ? 'none' : '';
-    stCleaningRow.style.display = isLT ? 'none' : '';
   };
   typeS.onchange = updateTypeFields;
 
@@ -374,7 +521,6 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Mortgage Amount', mAmtI), formRow('Monthly Payment', mMoI)));
   body.appendChild(formRow('Interest Rate %', mRateI));
   body.appendChild(icalRow);
-  body.appendChild(stCleaningRow);
 
   // Vacant periods editor
   let pendingVacantPeriods = [...(p.vacantPeriods || [])];
@@ -444,7 +590,14 @@ function openForm(existing) {
         class: 'btn ghost sm',
         type: 'button',
         title: 'Remove',
-        onClick: () => { pendingDocs = pendingDocs.filter(x => x.id !== d.id); renderDocList(); }
+        onClick: async () => {
+          if (d.path) {
+            try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
+            catch (e) { toast(`Repo cleanup failed: ${e.message}`, 'warning', 5000); }
+          }
+          pendingDocs = pendingDocs.filter(x => x.id !== d.id);
+          renderDocList();
+        }
       }, '✕'));
       docListEl.appendChild(row);
     }
@@ -454,17 +607,17 @@ function openForm(existing) {
   dropZone.onclick = () => fileInput.click();
   dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('dragover'); };
   dropZone.ondragleave = () => dropZone.classList.remove('dragover');
-  dropZone.ondrop = async e => {
+  dropZone.ondrop = e => {
     e.preventDefault();
     dropZone.classList.remove('dragover');
     for (const file of [...e.dataTransfer.files]) {
-      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, data: await readFileAsBase64(file), uploadedAt: new Date().toISOString() });
+      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), _file: file });
     }
     renderDocList();
   };
-  fileInput.onchange = async () => {
+  fileInput.onchange = () => {
     for (const file of [...fileInput.files]) {
-      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, data: await readFileAsBase64(file), uploadedAt: new Date().toISOString() });
+      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), _file: file });
     }
     renderDocList();
     fileInput.value = '';
@@ -483,10 +636,34 @@ function openForm(existing) {
   updateTypeFields();
   updateStatusFields();
 
-  const saveBtn = button('Save', { variant: 'primary', onClick: () => {
+  const saveBtn = button('Save', { variant: 'primary', onClick: async () => {
     if (!nameI.value.trim()) { toast('Name is required', 'danger'); return; }
+    const propName = nameI.value.trim();
+    const safePropName = sanitizeName(propName);
+
+    // Upload any pending new files to GitHub; keep metadata only in db.json
+    const docsToSave = [];
+    for (const d of pendingDocs) {
+      if (d._file) {
+        const safeFileName = sanitizeName(d.name);
+        const repoPath = `Properties/${safePropName}/${safeFileName}`;
+        try {
+          const b64 = await readFileAsBase64(d._file);
+          await uploadGithubFile(repoPath, b64, `Upload document: ${d.name}`);
+          docsToSave.push({ id: d.id, name: d.name, type: d.type, size: d.size, uploadedAt: d.uploadedAt, path: repoPath, propertyId: p.id });
+        } catch (e) {
+          toast(`Failed to upload ${d.name}: ${e.message}`, 'danger', 6000);
+          return;
+        }
+      } else {
+        // Already uploaded (or legacy base64 doc) — keep as-is, strip transient _file
+        const { _file, ...rest } = d;
+        docsToSave.push(rest);
+      }
+    }
+
     Object.assign(p, {
-      name: nameI.value.trim(),
+      name: propName,
       address: addressI.value.trim(),
       city: cityI.value.trim(),
       country: countryI.value.trim(),
@@ -506,13 +683,9 @@ function openForm(existing) {
       mortgageRate: Number(mRateI.value) || 0,
       airbnbCalUrl: icalI.value.trim(),
       notes: notesT.value.trim(),
-      cleaningFee: Number(cleaningFeeI.value) || 0,
-      tenantName: tenantI.value.trim(),
-      leaseStartDate: leaseStartI.value,
-      leaseEndDate: leaseEndI.value,
       soldDate: soldDateI.value,
       vacantPeriods: pendingVacantPeriods,
-      documents: pendingDocs
+      documents: docsToSave
     });
     // Soft-delete unpaid payments within vacant periods (keep paid history intact)
     if (pendingVacantPeriods.length > 0) {

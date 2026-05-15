@@ -364,8 +364,163 @@ export function mergeLocalPending(remoteDb, localCache) {
 }
 
 export function saveLocalCache(db) {
-  try { localStorage.setItem(DB_LS_KEY, JSON.stringify(db)); }
-  catch (e) { console.warn(e); }
+  try {
+    // Strip embedded PDF data before caching — prevents QuotaExceededError.
+    // Invoices imported after the migration store only pdfPath, but older records
+    // may still have pdfData until the one-time migration runs.
+    const safe = { ...db };
+    if (Array.isArray(safe.invoices)) {
+      safe.invoices = safe.invoices.map(({ pdfData, ...rest }) => rest);
+    }
+    localStorage.setItem(DB_LS_KEY, JSON.stringify(safe));
+  }
+  catch (e) { console.warn('saveLocalCache:', e); }
+}
+
+// ── File storage (invoice PDFs, etc.) ────────────────────────────────────────
+
+/**
+ * Upload or replace a file in the GitHub repo.
+ * @param {string} path       - repo-relative path, e.g. "invoices/inv_abc.pdf"
+ * @param {string} b64Content - base64-encoded file content (no data-URL prefix)
+ * @param {string} message    - commit message
+ * @returns {Promise<{sha: string}>}
+ */
+export async function uploadGithubFile(path, b64Content, message = 'Upload file') {
+  const { owner, repo, branch, token } = state.github;
+  if (!owner || !repo || !token) throw new Error('GitHub not configured — add owner/repo/token in Settings');
+
+  // Normalise path: strip any accidental leading slash so files always land
+  // inside their intended folder, not the repo root.
+  const cleanPath = path.replace(/^\/+/, '');
+  const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
+
+  const headers = {
+    'Accept':        'application/vnd.github+json',
+    'Authorization': `token ${token}`,
+    'Content-Type':  'application/json'
+  };
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
+
+  // Check if the file already exists so we can include its SHA (required for
+  // updates). A 404 here means the file doesn't exist yet — that is expected
+  // for new files and handled by omitting the sha field from the PUT body.
+  // GitHub creates parent directories automatically, so a missing folder is
+  // never an error here.
+  let existingSha = null;
+  try {
+    const check = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`, { headers, cache: 'no-store' });
+    if (check.ok) {
+      const d = await check.json();
+      existingSha = d.sha;
+    }
+    // 404 → file does not exist yet; proceed to create without sha
+  } catch { /* network error during existence check — proceed anyway */ }
+
+  const body = { message, content: b64Content, branch: branch || 'main' };
+  if (existingSha) body.sha = existingSha;
+
+  const res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+  if (!res.ok) {
+    let errBody = '';
+    try { errBody = await res.text(); } catch { /* ignore */ }
+    console.error(`GitHub file upload failed (${res.status}) for path "${cleanPath}":`, errBody);
+    if (res.status === 401 || res.status === 403) throw new Error('Token lacks write access');
+    if (res.status === 404) throw new Error(`Repository or branch not found (404). Check owner/repo/branch settings. Path: ${cleanPath}`);
+    throw new Error(`File upload failed (${res.status}): ${errBody}`);
+  }
+  const data = await res.json();
+  return { sha: data.content.sha };
+}
+
+/**
+ * List files directly inside a folder in the GitHub repo.
+ * Returns an empty array if the folder does not exist (404).
+ * Subdirectories are excluded; only immediate file children are returned.
+ * @param {string} folderPath - repo-relative path, e.g. "invoices"
+ * @returns {Promise<Array<{name: string, path: string, sha: string, size: number}>>}
+ */
+export async function listGithubFolder(folderPath) {
+  const { owner, repo, branch, token } = state.github;
+  if (!owner || !repo) throw new Error('GitHub not configured');
+
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (token) headers['Authorization'] = `token ${token}`;
+
+  const cleanPath = folderPath.replace(/^\/+|\/+$/g, '');
+  const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`,
+    { headers, cache: 'no-store' }
+  );
+  if (res.status === 404) return [];
+  if (!res.ok) throw new Error(`Folder listing failed (${res.status})`);
+  const data = await res.json();
+  return Array.isArray(data) ? data.filter(f => f.type === 'file') : [];
+}
+
+/**
+ * Fetch metadata + base64 content of a file from the GitHub repo.
+ * @param {string} path - repo-relative path
+ * @returns {Promise<{content: string, sha: string, download_url: string}>}
+ */
+export async function fetchGithubFile(path) {
+  const { owner, repo, branch, token } = state.github;
+  if (!owner || !repo) throw new Error('GitHub not configured');
+
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (token) headers['Authorization'] = `token ${token}`;
+
+  const encodedPath = path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`,
+    { headers, cache: 'no-store' }
+  );
+  if (!res.ok) {
+    if (res.status === 404) throw new Error('File not found in repository');
+    if (res.status === 401 || res.status === 403) throw new Error('GitHub auth failed — check your token');
+    throw new Error(`File fetch failed (${res.status})`);
+  }
+  return res.json(); // { content (b64), sha, download_url, ... }
+}
+
+/**
+ * Delete a file from the GitHub repo.
+ * Silently succeeds if the file is already gone (404).
+ * @param {string} path    - repo-relative path
+ * @param {string} sha     - blob SHA (from a prior fetchGithubFile call); if unknown pass null and we'll look it up
+ * @param {string} message - commit message
+ */
+export async function deleteGithubFile(path, sha = null, message = 'Delete file') {
+  const { owner, repo, branch, token } = state.github;
+  if (!owner || !repo || !token) throw new Error('GitHub not configured');
+
+  const headers = {
+    'Accept':        'application/vnd.github+json',
+    'Authorization': `token ${token}`,
+    'Content-Type':  'application/json'
+  };
+  const encodedPath = path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
+
+  // Resolve SHA if caller didn't provide one
+  if (!sha) {
+    try {
+      const check = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`, { headers, cache: 'no-store' });
+      if (!check.ok) return; // already gone
+      const d = await check.json();
+      sha = d.sha;
+    } catch { return; }
+  }
+
+  const res = await fetch(apiUrl, {
+    method:  'DELETE',
+    headers,
+    body:    JSON.stringify({ message, sha, branch: branch || 'main' })
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`File delete failed (${res.status})`);
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

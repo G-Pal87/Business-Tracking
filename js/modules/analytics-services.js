@@ -1,5 +1,5 @@
 // Services Analytics Dashboard — track CS + Marketing invoice revenue
-import { el, select, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, INVOICE_STATUSES, SERVICE_STREAMS } from '../core/config.js';
 import {
@@ -9,7 +9,7 @@ import {
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gFilters = {
-  year:      String(new Date().getFullYear()),
+  years:     new Set([String(new Date().getFullYear())]),
   months:    new Set(),
   clientIds: new Set(),
   streams:   new Set(),
@@ -34,7 +34,7 @@ export default {
 // ── Filtering ─────────────────────────────────────────────────────────────────
 function matchDate(inv) {
   const d = inv.issueDate || inv.date || '';
-  if (gFilters.year && gFilters.year !== 'all' && !d.startsWith(gFilters.year)) return false;
+  if (gFilters.years.size > 0 && !gFilters.years.has(d.slice(0, 4))) return false;
   if (gFilters.months.size > 0 && !gFilters.months.has(d.slice(5, 7))) return false;
   return true;
 }
@@ -43,7 +43,7 @@ function matchStream(inv) {
 }
 function matchOwner(inv) {
   if (gFilters.owners.size === 0) return true;
-  const owner = byId('clients', inv.clientId)?.owner || 'both';
+  const owner = inv.owner || 'both';
   return owner === 'both' || gFilters.owners.has(owner);
 }
 function matchClient(inv) {
@@ -80,6 +80,29 @@ function getData() {
   };
 }
 
+// ── Valid filter options (leave-one-out faceting) ─────────────────────────────
+function getValidOpts() {
+  const invs = listActive('invoices').filter(i => SERVICE_STREAMS.includes(i.stream));
+  const vY = new Set(), vSt = new Set(), vCi = new Set(), vOw = new Set(), vStat = new Set();
+  const yrOk   = yr  => !gFilters.years.size     || gFilters.years.has(yr);
+  const stOk   = st  => !gFilters.streams.size   || gFilters.streams.has(st);
+  const ciOk   = ci  => !gFilters.clientIds.size || gFilters.clientIds.has(ci);
+  const owOk   = ow  => !gFilters.owners.size    || ow === 'both' || gFilters.owners.has(ow);
+  const statOk = s   => !gFilters.statuses.size  || gFilters.statuses.has(s);
+  const addOw  = (vSet, ow) => { if (ow === 'both') { vSet.add('you'); vSet.add('rita'); vSet.add('both'); } else if (ow) vSet.add(ow); };
+  for (const i of invs) {
+    const ow   = i.owner || 'both', st = i.stream || 'other';
+    const yr   = (i.issueDate || '').slice(0, 4);
+    const ci   = i.clientId, stat = i.status || 'draft';
+    if (yr && stOk(st) && ciOk(ci) && owOk(ow) && statOk(stat)) vY.add(yr);
+    if (yrOk(yr) && ciOk(ci) && owOk(ow) && statOk(stat)) vSt.add(st);
+    if (ci && yrOk(yr) && stOk(st) && owOk(ow) && statOk(stat)) vCi.add(ci);
+    if (yrOk(yr) && stOk(st) && ciOk(ci) && statOk(stat)) addOw(vOw, ow);
+    if (yrOk(yr) && stOk(st) && ciOk(ci) && owOk(ow)) vStat.add(stat);
+  }
+  return { vY, vSt, vCi, vOw, vStat };
+}
+
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -110,79 +133,6 @@ const INV_DRILL_COLS = [
   { key: 'eur',    label: 'EUR',      right: true, format: v => formatEUR(v) }
 ];
 
-// ── Multi-select — supports color dots (streams/owners) and css badges (statuses)
-function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
-  const wrapper   = el('div', { style: 'position:relative' });
-  const trigLabel = el('span');
-  const trigger   = el('div', {
-    class: 'select',
-    style: 'cursor:pointer;display:flex;align-items:center;gap:6px;width:auto;min-width:130px;user-select:none'
-  }, trigLabel);
-  const menu = el('div', {
-    style: [
-      'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300',
-      'background:var(--bg-elev-2);border:1px solid var(--border)',
-      'border-radius:var(--radius-sm);min-width:190px',
-      'box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0;max-height:260px;overflow-y:auto'
-    ].join(';')
-  });
-
-  const allChk = el('input', { type: 'checkbox' });
-  menu.appendChild(el('label', {
-    style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px'
-  }, allChk, el('span', {}, allLabel)));
-
-  const chks = items.map(({ value, label, color, css }) => {
-    const chk = el('input', { type: 'checkbox' });
-    chk.dataset.value = value;
-    chk.checked = filterSet.size === 0 || filterSet.has(value);
-    let content;
-    if (css) {
-      content = el('span', { class: `badge ${css}`, style: 'font-size:11px' }, label);
-    } else if (color) {
-      const dot = el('span', { style: `display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0` });
-      content = el('span', { style: 'display:flex;align-items:center;gap:6px' }, dot, el('span', {}, label));
-    } else {
-      content = el('span', {}, label);
-    }
-    menu.appendChild(el('label', {
-      style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px'
-    }, chk, content));
-    return chk;
-  });
-
-  const sync = () => {
-    const sel = chks.filter(c => c.checked);
-    const n   = sel.length;
-    allChk.checked       = n === chks.length;
-    allChk.indeterminate = n > 0 && n < chks.length;
-    trigLabel.textContent =
-      n === chks.length || n === 0 ? allLabel
-      : n === 1 ? (items.find(i => i.value === sel[0].dataset.value)?.label || '')
-      : `${n} selected`;
-    filterSet.clear();
-    if (n > 0 && n < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
-  };
-
-  allChk.checked = filterSet.size === 0;
-  allChk.onchange = () => {
-    chks.forEach(c => { c.checked = allChk.checked; });
-    allChk.indeterminate = false;
-    sync(); onRefresh();
-  };
-  chks.forEach(chk => { chk.onchange = () => { sync(); onRefresh(); }; });
-  trigger.onclick = e => {
-    e.stopPropagation();
-    menu.style.display = menu.style.display === 'none' ? '' : 'none';
-  };
-  menu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { menu.style.display = 'none'; });
-  wrapper.appendChild(trigger);
-  wrapper.appendChild(menu);
-  sync();
-  return wrapper;
-}
-
 // ── KPI card ──────────────────────────────────────────────────────────────────
 function kpiCard(label, value, variant, onClick) {
   const card = el('div', {
@@ -201,11 +151,26 @@ function kpiCard(label, value, variant, onClick) {
 
 // ── Month key helper ──────────────────────────────────────────────────────────
 function getMonthKeys() {
-  const year = gFilters.year !== 'all' ? gFilters.year : String(new Date().getFullYear());
-  return MONTH_LABELS.map((label, i) => {
-    const mm = String(i + 1).padStart(2, '0');
-    return { label, key: `${year}-${mm}`, mm };
-  }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+  const selectedYears = gFilters.years.size > 0
+    ? [...gFilters.years].sort()
+    : availableYears();
+  if (selectedYears.length === 1) {
+    const year = selectedYears[0];
+    return MONTH_LABELS.map((label, i) => {
+      const mm = String(i + 1).padStart(2, '0');
+      return { label, key: `${year}-${mm}`, mm };
+    }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+  }
+  const keys = [];
+  for (const year of selectedYears) {
+    MONTH_LABELS.forEach((label, i) => {
+      const mm = String(i + 1).padStart(2, '0');
+      if (gFilters.months.size === 0 || gFilters.months.has(mm)) {
+        keys.push({ label: `${label} '${year.slice(2)}`, key: `${year}-${mm}`, mm });
+      }
+    });
+  }
+  return keys;
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
@@ -220,36 +185,26 @@ function buildView() {
   ));
 
   // Filter bar
-  const years   = availableYears();
-  const yearSel = select(
-    [{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))],
-    gFilters.year
-  );
-  yearSel.onchange = () => { gFilters.year = yearSel.value; rebuildView(); };
+  const opts = getValidOpts();
+  const trim = (set, valid) => { if (valid.size) for (const v of [...set]) if (!valid.has(v)) set.delete(v); };
+  trim(gFilters.years, opts.vY); trim(gFilters.streams, opts.vSt);
+  trim(gFilters.clientIds, opts.vCi); trim(gFilters.owners, opts.vOw); trim(gFilters.statuses, opts.vStat);
+  const yearMS   = buildMultiSelect(availableYears().filter(y => !opts.vY.size || opts.vY.has(y)).map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'svc_years');
+  const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'svc_months');
+  const clientMS = buildMultiSelect(listActiveClients().filter(c => !opts.vCi.size || opts.vCi.has(c.id)).map(c => ({ value: c.id, label: c.name })), gFilters.clientIds, 'All Clients', rebuildView, 'svc_clients');
+  const streamMS = buildMultiSelect(SERVICE_STREAMS.filter(k => !opts.vSt.size || opts.vSt.has(k)).map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })), gFilters.streams, 'All Streams', rebuildView, 'svc_streams');
+  const statusMS = buildMultiSelect(Object.entries(INVOICE_STATUSES).filter(([k]) => !opts.vStat.size || opts.vStat.has(k)).map(([k, v]) => ({ value: k, label: v.label, css: v.css })), gFilters.statuses, 'All Statuses', rebuildView, 'svc_statuses');
+  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => k !== 'both' && (!opts.vOw.size || opts.vOw.has(k))).map(([k, v]) => ({ value: k, label: v })), gFilters.owners, 'All Owners', rebuildView, 'svc_owners');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
-  filterBar.appendChild(yearSel);
-  filterBar.appendChild(buildMultiSelect(
-    MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })),
-    gFilters.months, 'All Months', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    listActiveClients().map(c => ({ value: c.id, label: c.name })),
-    gFilters.clientIds, 'All Clients', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    SERVICE_STREAMS.map(k => ({ value: k, label: STREAMS[k].label, color: STREAMS[k].color })),
-    gFilters.streams, 'All Streams', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(INVOICE_STATUSES).map(([k, v]) => ({ value: k, label: v.label, css: v.css })),
-    gFilters.statuses, 'All Statuses', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(OWNERS).map(([k, v]) => ({ value: k, label: v })),
-    gFilters.owners, 'All Owners', rebuildView
-  ));
+  filterBar.appendChild(yearMS);
+  filterBar.appendChild(monthMS);
+  filterBar.appendChild(clientMS);
+  filterBar.appendChild(streamMS);
+  filterBar.appendChild(statusMS);
+  filterBar.appendChild(ownerMS);
+  filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); clientMS.reset(); streamMS.reset(); statusMS.reset(); ownerMS.reset(); rebuildView(); } }));
   wrap.appendChild(filterBar);
 
   // Data

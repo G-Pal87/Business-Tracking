@@ -1,9 +1,9 @@
 // Expenses module
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields } from '../core/data.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal, buildMultiSelect } from '../core/ui.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod } from '../core/data.js';
 import * as charts from '../core/charts.js';
-import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES } from '../core/config.js';
+import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
 export default {
@@ -30,18 +30,13 @@ function addOneYear(dateStr) {
   return d.toISOString().slice(0, 10);
 }
 
-function restoreInventoryStock(expense) {
-  if (!expense.inventoryItemId || !expense.inventoryQty) return;
-  const item = byId('inventory', expense.inventoryItemId);
-  if (item) { upsert('inventory', { ...item, stock: item.stock + expense.inventoryQty }); }
-}
 
 function build() {
   charts.destroyAll();
 
   const wrap = el('div', { class: 'view active' });
 
-  wrap.appendChild(el('div', { class: 'grid grid-2' },
+  const chartsGrid = el('div', { class: 'grid grid-2' },
     el('div', { class: 'card' },
       el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'By Category')),
       el('div', { class: 'chart-wrap' }, el('canvas', { id: 'chart-exp-cat' }))
@@ -50,29 +45,17 @@ function build() {
       el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'By Property')),
       el('div', { class: 'chart-wrap' }, el('canvas', { id: 'chart-exp-prop' }))
     )
-  ));
+  );
 
-  const filterBar = el('div', { class: 'flex gap-8 mb-16 mt-24', style: 'flex-wrap:wrap' });
+  const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
 
-  const propSel = select([
-    { value: 'all', label: 'All Properties' },
-    ...listActive('properties').map(p => ({ value: p.id, label: p.name }))
-  ], 'all');
-
-  const catSel = select([
-    { value: 'all', label: 'All expenses' },
-    ...Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label }))
-  ], 'all');
-
-  const accountingTypeSel = select([
-    { value: 'all', label: 'All Types' },
-    ...Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label }))
-  ], 'all');
-
-  const recurrenceSel = select([
-    { value: 'all', label: 'All Recurrence' },
-    ...Object.entries(RECURRENCE_TYPES).map(([v, m]) => ({ value: v, label: m.label }))
-  ], 'all');
+  const yearFilter       = new Set();
+  const monthFilter      = new Set();
+  const streamFilter     = new Set();
+  const propFilter       = new Set();
+  const catFilter        = new Set();
+  const accountingTypeFilter = new Set();
+  const recurrenceFilter = new Set();
 
   let selected = new Set();
 
@@ -88,22 +71,93 @@ function build() {
     }
     selected.clear();
     toast(`Deleted ${count} expense(s)`, 'success');
-    renderTable();
+    rebuildFilters(); renderAll();
   }});
   deleteSelBtn.style.display = 'none';
 
-  filterBar.appendChild(propSel);
-  filterBar.appendChild(catSel);
-  filterBar.appendChild(accountingTypeSel);
-  filterBar.appendChild(recurrenceSel);
-  filterBar.appendChild(el('div', { class: 'flex-1' }));
-  filterBar.appendChild(deleteSelBtn);
-  filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
+  const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  function matchesAll(e, skip) {
+    const res = resolveExpenseFields(e);
+    const yr  = (e.date || '').slice(0, 4);
+    const mo  = (e.date || '').slice(5, 7);
+    return (
+      (skip === 'year'   || yearFilter.size === 0           || yearFilter.has(yr)) &&
+      (skip === 'month'  || monthFilter.size === 0          || monthFilter.has(mo)) &&
+      (skip === 'stream' || streamFilter.size === 0         || streamFilter.has(e.stream || '')) &&
+      (skip === 'prop'   || propFilter.size === 0           || propFilter.has(e.propertyId)) &&
+      (skip === 'cat'    || catFilter.size === 0            || catFilter.has(e.category)) &&
+      (skip === 'type'   || accountingTypeFilter.size === 0 || accountingTypeFilter.has(res.accountingType)) &&
+      (skip === 'rec'    || recurrenceFilter.size === 0     || recurrenceFilter.has(res.recurrence))
+    );
+  }
+
+  function rebuildFilters() {
+    const all = listActive('expenses');
+
+    const validYrs  = new Set(all.filter(e => matchesAll(e, 'year')).map(e => (e.date || '').slice(0, 4)).filter(Boolean));
+    const validMos  = new Set(all.filter(e => matchesAll(e, 'month')).map(e => (e.date || '').slice(5, 7)).filter(Boolean));
+    const validSts  = new Set(all.filter(e => matchesAll(e, 'stream')).map(e => e.stream || '').filter(Boolean));
+    const validPrs  = new Set(all.filter(e => matchesAll(e, 'prop')).map(e => e.propertyId).filter(Boolean));
+    const validCats = new Set(all.filter(e => matchesAll(e, 'cat')).map(e => e.category).filter(Boolean));
+    const validTps  = new Set(all.filter(e => matchesAll(e, 'type')).map(e => resolveExpenseFields(e).accountingType).filter(Boolean));
+    const validRecs = new Set(all.filter(e => matchesAll(e, 'rec')).map(e => resolveExpenseFields(e).recurrence).filter(Boolean));
+
+    // Prune stale selections
+    for (const v of [...yearFilter])           if (!validYrs.has(v))  yearFilter.delete(v);
+    for (const v of [...monthFilter])          if (!validMos.has(v))  monthFilter.delete(v);
+    for (const v of [...streamFilter])         if (!validSts.has(v))  streamFilter.delete(v);
+    for (const v of [...propFilter])           if (!validPrs.has(v))  propFilter.delete(v);
+    for (const v of [...catFilter])            if (!validCats.has(v)) catFilter.delete(v);
+    for (const v of [...accountingTypeFilter]) if (!validTps.has(v))  accountingTypeFilter.delete(v);
+    for (const v of [...recurrenceFilter])     if (!validRecs.has(v)) recurrenceFilter.delete(v);
+
+    const onFilter = () => { rebuildFilters(); renderAll(); };
+
+    const yearOpts   = [...validYrs].sort().reverse().map(y => ({ value: y, label: y }));
+    const monthOpts  = [...validMos].sort().map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] }));
+    const streamOpts = [...validSts].sort().map(s => ({ value: s, label: STREAMS[s]?.label || s }));
+    const propOpts   = [...validPrs].map(id => byId('properties', id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name }));
+    const catOpts    = [...validCats].sort().map(c => ({ value: c, label: EXPENSE_CATEGORIES[c]?.label || c }));
+    const typeOpts   = [...validTps].sort().map(t => ({ value: t, label: ACCOUNTING_TYPES[t]?.label || t }));
+    const recOpts    = [...validRecs].sort().map(r => ({ value: r, label: RECURRENCE_TYPES[r]?.label || r }));
+
+    filterBar.innerHTML = '';
+    filterBar.appendChild(buildMultiSelect(yearOpts,   yearFilter,           'All Years',      onFilter, 'exp_years'));
+    filterBar.appendChild(buildMultiSelect(monthOpts,  monthFilter,          'All Months',     onFilter, 'exp_months'));
+    filterBar.appendChild(buildMultiSelect(streamOpts, streamFilter,         'All Streams',    onFilter, 'exp_streams'));
+    filterBar.appendChild(buildMultiSelect(propOpts,   propFilter,           'All Properties', onFilter, 'exp_props'));
+    filterBar.appendChild(buildMultiSelect(catOpts,    catFilter,            'All Expenses',   onFilter, 'exp_cats'));
+    filterBar.appendChild(buildMultiSelect(typeOpts,   accountingTypeFilter, 'All Types',      onFilter, 'exp_types'));
+    filterBar.appendChild(buildMultiSelect(recOpts,    recurrenceFilter,     'All Recurrence', onFilter, 'exp_recurrence'));
+    filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => {
+      yearFilter.clear(); monthFilter.clear(); streamFilter.clear(); propFilter.clear();
+      catFilter.clear(); accountingTypeFilter.clear(); recurrenceFilter.clear();
+      rebuildFilters(); renderAll();
+    }}));
+    filterBar.appendChild(el('div', { class: 'flex-1' }));
+    filterBar.appendChild(deleteSelBtn);
+    filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
+  }
+
   wrap.appendChild(filterBar);
+  wrap.appendChild(chartsGrid);
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
   attachSortFilter(tableWrap);
+  tableWrap.addEventListener('sf:filter', () => {
+    const countEl  = tableWrap.querySelector('.table-footer-count');
+    const capexEl  = tableWrap.querySelector('.table-footer-capex');
+    const totalEl  = tableWrap.querySelector('.table-footer-total');
+    if (!countEl || !totalEl) return;
+    const vis = [...tableWrap.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none');
+    const total = vis.reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0);
+    const capex = vis.filter(tr => tr.dataset.capex === '1').reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0);
+    countEl.textContent = `${vis.length} expense(s)`;
+    if (capexEl) capexEl.textContent = formatEUR(capex);
+    totalEl.textContent = formatEUR(total);
+  });
 
   const syncDeleteBtn = () => {
     if (selected.size > 0) {
@@ -120,10 +174,13 @@ function build() {
     tableWrap.innerHTML = '';
 
     let rows = [...listActive('expenses')];
-    if (propSel.value !== 'all') rows = rows.filter(r => r.propertyId === propSel.value);
-    if (catSel.value !== 'all')  rows = rows.filter(r => r.category === catSel.value);
-    if (accountingTypeSel.value !== 'all') rows = rows.filter(r => resolveExpenseFields(r).accountingType === accountingTypeSel.value);
-    if (recurrenceSel.value !== 'all')     rows = rows.filter(r => resolveExpenseFields(r).recurrence === recurrenceSel.value);
+    if (yearFilter.size > 0)           rows = rows.filter(r => yearFilter.has((r.date || '').slice(0, 4)));
+    if (monthFilter.size > 0)          rows = rows.filter(r => monthFilter.has((r.date || '').slice(5, 7)));
+    if (streamFilter.size > 0)         rows = rows.filter(r => streamFilter.has(r.stream || ''));
+    if (propFilter.size > 0)           rows = rows.filter(r => propFilter.has(r.propertyId));
+    if (catFilter.size > 0)            rows = rows.filter(r => catFilter.has(r.category));
+    if (accountingTypeFilter.size > 0) rows = rows.filter(r => accountingTypeFilter.has(resolveExpenseFields(r).accountingType));
+    if (recurrenceFilter.size > 0)     rows = rows.filter(r => recurrenceFilter.has(resolveExpenseFields(r).recurrence));
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
     if (rows.length === 0) {
@@ -161,6 +218,8 @@ function build() {
       };
 
       const tr = el('tr');
+      tr.dataset.eur = String(toEUR(r.amount, r.currency));
+      tr.dataset.capex = resolveExpenseFields(r).accountingType === 'capex' ? '1' : '0';
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       tr.appendChild(chkTd);
       tr.appendChild(el('td', {}, fmtDate(r.date)));
@@ -198,9 +257,9 @@ function build() {
 
     const totalEUR = rows.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
     const capexEUR = rows.filter(r => resolveExpenseFields(r).accountingType === 'capex').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
-    tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted' }, `${rows.length} expense(s) · CapEx: ${formatEUR(capexEUR)}`),
-      el('strong', { class: 'num' }, `Total: ${formatEUR(totalEUR)}`)
+    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
+      el('span', { class: 'muted' }, el('span', { class: 'table-footer-count' }, `${rows.length} expense(s)`), ' · CapEx: ', el('span', { class: 'table-footer-capex' }, formatEUR(capexEUR))),
+      el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
     ));
   };
 
@@ -231,11 +290,15 @@ function build() {
     })
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-  // Dashboard: respects property + accountingType filters; category/recurrence stay for table only
   const renderDash = () => {
     let bkRows = listActive('expenses');
-    if (propSel.value !== 'all')           bkRows = bkRows.filter(r => r.propertyId === propSel.value);
-    if (accountingTypeSel.value !== 'all') bkRows = bkRows.filter(r => resolveExpenseFields(r).accountingType === accountingTypeSel.value);
+    if (yearFilter.size > 0)           bkRows = bkRows.filter(r => yearFilter.has((r.date || '').slice(0, 4)));
+    if (monthFilter.size > 0)          bkRows = bkRows.filter(r => monthFilter.has((r.date || '').slice(5, 7)));
+    if (streamFilter.size > 0)         bkRows = bkRows.filter(r => streamFilter.has(r.stream || ''));
+    if (propFilter.size > 0)           bkRows = bkRows.filter(r => propFilter.has(r.propertyId));
+    if (catFilter.size > 0)            bkRows = bkRows.filter(r => catFilter.has(r.category));
+    if (accountingTypeFilter.size > 0) bkRows = bkRows.filter(r => accountingTypeFilter.has(resolveExpenseFields(r).accountingType));
+    if (recurrenceFilter.size > 0)     bkRows = bkRows.filter(r => recurrenceFilter.has(resolveExpenseFields(r).recurrence));
 
     // By Cost Category doughnut (groups by resolved costCategory for correct OpEx/CapEx separation)
     const byCostCat = new Map();
@@ -290,16 +353,15 @@ function build() {
 
   const renderAll = () => { renderTable(); renderDash(); };
 
-  propSel.onchange          = renderAll;
-  accountingTypeSel.onchange = renderAll;
-  catSel.onchange           = renderTable;
-  recurrenceSel.onchange    = renderTable;
-
+  rebuildFilters();
   renderTable();
-  // Defer chart render until canvas elements are in the DOM
   requestAnimationFrame(() => renderDash());
 
   return wrap;
+}
+
+function findCleaningRates(propertyId, date) {
+  return findVendorRateByPeriod(propertyId, date, '').filter(m => m.vendor.role === 'cleaner');
 }
 
 export function openExpenseForm(defaults = {}) {
@@ -333,16 +395,25 @@ function openForm(existing, defaults = {}) {
   const descT = textarea({ placeholder: 'Description' });
   descT.value = r.description || '';
 
-  const invItemOpts = [
-    { value: '', label: '— Select item —' },
-    ...(state.db.inventory || []).map(item => {
-      const avail = item.stock + (existing?.inventoryItemId === item.id ? (existing.inventoryQty || 0) : 0);
-      return { value: item.id, label: `${item.name} (avail: ${avail})` };
-    })
-  ];
-  const invItemS = select(invItemOpts, r.inventoryItemId || '');
+  const invItemS = el('select', { class: 'select' });
   const invQtyI  = input({ type: 'number', value: r.inventoryQty || 1, min: 1, step: 1 });
   const invRow   = el('div', { class: 'form-row horizontal' }, formRow('Item', invItemS), formRow('Qty', invQtyI));
+
+  const updateInvItemOpts = () => {
+    const pid   = propS.value;
+    const items = listActive('inventory').filter(i => !pid || i.propertyId === pid);
+    invItemS.innerHTML = '';
+    const placeholder = el('option', { value: '' }, '— Select item —');
+    invItemS.appendChild(placeholder);
+    for (const item of items) {
+      const alreadyConsumed = existing?.inventoryItemId === item.id ? (existing.inventoryQty || 0) : 0;
+      const avail = totalRemaining(item) + alreadyConsumed;
+      const opt = el('option', { value: item.id }, `${item.name} (${avail} avail)`);
+      if (item.id === (r.inventoryItemId || '')) opt.selected = true;
+      invItemS.appendChild(opt);
+    }
+  };
+  updateInvItemOpts();
 
   // Recurring — only shown for new expenses
   const recurChk = el('input', { type: 'checkbox' });
@@ -355,17 +426,26 @@ function openForm(existing, defaults = {}) {
   const recurEndI = input({ type: 'date', value: addOneYear(r.date || today()) });
   const recurOptsRow = el('div', { class: 'form-row horizontal' }, formRow('Period', recurPeriodS), formRow('Repeat Until', recurEndI));
   recurOptsRow.style.display = 'none';
-  recurChk.onchange = () => { recurOptsRow.style.display = recurChk.checked ? '' : 'none'; };
+  recurChk.onchange = () => {
+    recurOptsRow.style.display = recurChk.checked ? '' : 'none';
+    recurrenceS.value = recurChk.checked ? 'recurring' : 'one_off';
+  };
+
+  const accountingTypeRow = el('div', { class: 'form-row horizontal' }, formRow('Expense Type', accountingTypeS));
 
   body.appendChild(formRow('Property', propS));
   body.appendChild(formRow('Category', catS));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Accounting Type', accountingTypeS), formRow('Recurrence', recurrenceS)));
-  body.appendChild(formRow('Cost Category', costCategoryS));
+  body.appendChild(accountingTypeRow);
   body.appendChild(invRow);
   const vendorRow = formRow('Vendor', vendorS);
+  const cleaningHint = el('div', { style: 'font-size:12px;color:var(--text-muted);padding:2px 0 6px' });
   body.appendChild(vendorRow);
+  body.appendChild(cleaningHint);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', currencyS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI)));
+  if (existing && resolved.recurrence === 'recurring') {
+    body.appendChild(el('div', { style: 'padding:4px 0 2px;font-size:12px;color:var(--text-muted)' }, '↻ Recurring expense'));
+  }
   if (!existing) {
     body.appendChild(el('div', { style: 'padding:8px 0 2px' },
       el('label', { style: 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px' }, recurChk, ' Recurring'),
@@ -376,6 +456,37 @@ function openForm(existing, defaults = {}) {
 
   const autoFillAmount = () => {
     if (catS.value === 'inventory') return;
+    cleaningHint.textContent = '';
+
+    if (catS.value === 'cleaning') {
+      const propId = propS.value;
+      const date   = dateI.value;
+      if (!propId || !date) return;
+
+      const matches = findCleaningRates(propId, date);
+      if (matches.length === 0) {
+        cleaningHint.textContent = 'No cleaning rate configured for this property and date.';
+        return;
+      }
+      if (matches.length === 1) {
+        const { vendor, period } = matches[0];
+        if (!vendorS.value) vendorS.value = vendor.id;
+        if (Number(amountI.value) === 0) amountI.value = period.fee;
+        return;
+      }
+      // Multiple matches — require vendor selection
+      if (vendorS.value) {
+        const hit = matches.find(m => m.vendor.id === vendorS.value);
+        if (hit) {
+          if (Number(amountI.value) === 0) amountI.value = hit.period.fee;
+          return;
+        }
+      }
+      cleaningHint.textContent = 'Multiple cleaners available for this property and date. Please select a vendor.';
+      return;
+    }
+
+    // Non-cleaning: auto-fill from vendor flat rate or property utility defaults
     if (Number(amountI.value) > 0) return;
     const prop = byId('properties', propS.value);
     if (!prop) return;
@@ -383,17 +494,23 @@ function openForm(existing, defaults = {}) {
       const vendor = byId('vendors', vendorS.value);
       if (vendor?.rates?.[prop.id]) { amountI.value = vendor.rates[prop.id]; return; }
     }
-    const cat = catS.value;
-    if (cat === 'cleaning' && prop.cleaningFee) amountI.value = prop.cleaningFee;
-    else if (cat === 'electricity' && prop.monthlyElectricity) amountI.value = prop.monthlyElectricity;
-    else if (cat === 'water' && prop.monthlyWater) amountI.value = prop.monthlyWater;
+    if (catS.value === 'electricity' && prop.monthlyElectricity) amountI.value = prop.monthlyElectricity;
+    else if (catS.value === 'water' && prop.monthlyWater) amountI.value = prop.monthlyWater;
   };
 
   const syncInventoryAmount = () => {
     const item = byId('inventory', invItemS.value);
     if (!item) return;
-    amountI.value = (item.unitPrice * (Number(invQtyI.value) || 1)).toFixed(2);
-    currencyS.value = item.currency;
+    const qty = Number(invQtyI.value) || 1;
+    if (item.batches) {
+      const { totalCost } = fifoDeduct(item, qty);
+      amountI.value = totalCost.toFixed(2);
+      currencyS.value = item.batches.find(b => b.currency)?.currency || 'EUR';
+    } else {
+      // Legacy flat item
+      amountI.value = ((item.unitPrice || 0) * qty).toFixed(2);
+      currencyS.value = item.currency || 'EUR';
+    }
   };
 
   const syncInventoryRow = () => {
@@ -403,27 +520,34 @@ function openForm(existing, defaults = {}) {
   };
   syncInventoryRow();
 
+  const syncAccountingTypeRow = () => {
+    accountingTypeRow.style.display = catS.value === 'other' ? '' : 'none';
+  };
+  syncAccountingTypeRow();
+
   catS.onchange = () => {
-    // Renovation always forces CapEx; all categories auto-suggest costCategory
     if (catS.value === 'renovation') {
       accountingTypeS.value = 'capex';
       costCategoryS.value   = 'renovation';
     } else {
       costCategoryS.value = resolveExpenseFields({ category: catS.value }).costCategory;
     }
+    syncAccountingTypeRow();
     syncInventoryRow();
     if (catS.value === 'inventory') syncInventoryAmount();
     else autoFillAmount();
   };
   vendorS.onchange = autoFillAmount;
+  dateI.onchange   = autoFillAmount;
   propS.onchange = () => {
     const p = byId('properties', propS.value);
     if (p) { currencyS.value = p.currency; autoFillAmount(); }
+    updateInvItemOpts();
   };
   invItemS.onchange = syncInventoryAmount;
   invQtyI.oninput   = syncInventoryAmount;
 
-  const save = button('Save', { variant: 'primary', onClick: () => {
+  const save = button('Save', { variant: 'primary', onClick: async () => {
     if (!propS.value) { toast('Select property', 'danger'); return; }
 
     if (catS.value === 'inventory') {
@@ -431,34 +555,43 @@ function openForm(existing, defaults = {}) {
       const qty    = Number(invQtyI.value) || 0;
       if (!itemId) { toast('Select an inventory item', 'danger'); return; }
       if (qty <= 0) { toast('Quantity must be > 0', 'danger'); return; }
+
+      // Restore previous consumption first (handles item switch or qty change)
+      if (existing?.inventoryItemId) restoreInventoryStock(existing);
+
       const item = byId('inventory', itemId);
       if (!item) { toast('Item not found', 'danger'); return; }
-      let available = item.stock;
-      if (existing?.inventoryItemId === itemId) available += (existing.inventoryQty || 0);
-      if (qty > available) { toast(`Insufficient stock. Available: ${available}`, 'danger'); return; }
-      if (existing?.inventoryItemId && existing.inventoryItemId !== itemId) {
-        const old = byId('inventory', existing.inventoryItemId);
-        if (old) { old.stock += (existing.inventoryQty || 0); upsert('inventory', old); }
+      const available = totalRemaining(item);
+
+      if (qty > available) {
+        const ok = await confirmDialog(
+          `Only ${available} in stock. Record expense anyway?`,
+          { okLabel: 'Override', danger: true }
+        );
+        if (!ok) return;
       }
-      item.stock = available - qty;
-      upsert('inventory', item);
-      r.inventoryItemId = itemId;
-      r.inventoryQty    = qty;
+
+      const { updatedBatches, consumed, totalCost } = fifoDeduct(item, qty);
+      upsert('inventory', { ...item, batches: updatedBatches });
+      amountI.value = totalCost.toFixed(2);
+      currencyS.value = consumed[0]?.currency || item.batches?.[0]?.currency || 'EUR';
+      r.inventoryItemId  = itemId;
+      r.inventoryQty     = qty;
+      r.inventoryBatches = consumed;
     } else {
-      if (existing?.inventoryItemId) {
-        const old = byId('inventory', existing.inventoryItemId);
-        if (old) { old.stock += (existing.inventoryQty || 0); upsert('inventory', old); }
-      }
-      r.inventoryItemId = '';
-      r.inventoryQty    = 0;
+      if (existing?.inventoryItemId) restoreInventoryStock(existing);
+      r.inventoryItemId  = '';
+      r.inventoryQty     = 0;
+      r.inventoryBatches = [];
     }
 
-    if (Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
+    if (catS.value !== 'inventory' && Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
     const selectedVendor = vendorS.value ? byId('vendors', vendorS.value) : null;
     const prop = byId('properties', propS.value);
     const autoStream = prop?.type === 'short_term' ? 'short_term_rental'
       : prop?.type === 'long_term' ? 'long_term_rental'
       : r.stream || 'short_term_rental';
+    const appliedFee = catS.value === 'cleaning' && Number(amountI.value) > 0 ? Number(amountI.value) : undefined;
     Object.assign(r, {
       propertyId:    propS.value,
       category:      catS.value,
@@ -471,7 +604,8 @@ function openForm(existing, defaults = {}) {
       vendorId:      vendorS.value || '',
       vendor:        selectedVendor?.name || r.vendor || '',
       description:   descT.value.trim(),
-      stream:        autoStream
+      stream:        autoStream,
+      ...(appliedFee !== undefined ? { appliedCleaningFee: appliedFee } : {})
     });
 
     if (!existing && recurChk.checked && catS.value !== 'inventory') {
@@ -488,6 +622,7 @@ function openForm(existing, defaults = {}) {
       }
       toast(`${count} recurring expense(s) added`, 'success');
     } else {
+      if (existing?.isGenerated) r.manualOverride = true;
       upsert('expenses', r);
       toast(existing ? 'Expense updated' : 'Expense added', 'success');
     }

@@ -1,5 +1,5 @@
 // Expense Analytics Dashboard — understand cost structure
-import { el, select, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, COST_CATEGORIES, ACCOUNTING_TYPES } from '../core/config.js';
 import {
@@ -10,7 +10,7 @@ import {
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gFilters = {
-  year:            String(new Date().getFullYear()),
+  years:           new Set([String(new Date().getFullYear())]),
   months:          new Set(),   // empty = all
   categories:      new Set(),   // costCategory keys
   propertyIds:     new Set(),
@@ -38,7 +38,7 @@ export default {
 // ── Filtering ─────────────────────────────────────────────────────────────────
 function matchDate(row) {
   const d = row.date || '';
-  if (gFilters.year && gFilters.year !== 'all' && !d.startsWith(gFilters.year)) return false;
+  if (gFilters.years.size > 0 && !gFilters.years.has(d.slice(0, 4))) return false;
   if (gFilters.months.size > 0 && !gFilters.months.has(d.slice(5, 7))) return false;
   return true;
 }
@@ -155,6 +155,34 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }) {
   return items;
 }
 
+// ── Valid filter options (leave-one-out faceting) ─────────────────────────────
+function getValidOpts() {
+  const exps    = listActive('expenses');
+  const vendors = listActiveVendors();
+  const vMap    = new Map(vendors.map(v => [v.name, v.id]));
+  const vY = new Set(), vSt = new Set(), vPi = new Set(), vCat = new Set(), vVi = new Set();
+  const yrOk  = yr  => !gFilters.years.size           || gFilters.years.has(yr);
+  const stOk  = st  => !gFilters.streams.size         || gFilters.streams.has(st);
+  const piOk  = pi  => !gFilters.propertyIds.size     || gFilters.propertyIds.has(pi);
+  const catOk = cat => !gFilters.categories.size      || gFilters.categories.has(cat);
+  const viOk  = vi  => !gFilters.vendorIds.size       || gFilters.vendorIds.has(vi);
+  const accOk = e   => !gFilters.accountingTypes.size || gFilters.accountingTypes.has(isCapEx(e) ? 'capex' : 'opex');
+  for (const e of exps) {
+    const prop = e.propertyId ? byId('properties', e.propertyId) : null;
+    const st  = e.stream || (prop?.type === 'short_term' ? 'short_term_rental' : prop?.type === 'long_term' ? 'long_term_rental' : 'other');
+    const yr  = (e.date || '').slice(0, 4);
+    const pi  = e.propertyId;
+    const cat = resolveExpenseFields(e).costCategory;
+    const vi  = e.vendorId || (e.vendor ? vMap.get(e.vendor) : null);
+    if (yr && stOk(st) && piOk(pi) && catOk(cat) && viOk(vi) && accOk(e)) vY.add(yr);
+    if (yrOk(yr) && piOk(pi) && catOk(cat) && viOk(vi) && accOk(e)) vSt.add(st);
+    if (pi && yrOk(yr) && stOk(st) && catOk(cat) && viOk(vi) && accOk(e)) vPi.add(pi);
+    if (yrOk(yr) && stOk(st) && piOk(pi) && viOk(vi) && accOk(e)) vCat.add(cat);
+    if (vi && yrOk(yr) && stOk(st) && piOk(pi) && catOk(cat) && accOk(e)) vVi.add(vi);
+  }
+  return { vY, vSt, vPi, vCat, vVi };
+}
+
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -190,73 +218,6 @@ const DRILL_COLS = [
   { key: 'eur',         label: 'EUR',          right: true, format: v => formatEUR(v) }
 ];
 
-// ── Multi-select dropdown ─────────────────────────────────────────────────────
-function buildMultiSelect(items, filterSet, allLabel, onRefresh) {
-  const wrapper   = el('div', { style: 'position:relative' });
-  const trigLabel = el('span');
-  const trigger   = el('div', {
-    class: 'select',
-    style: 'cursor:pointer;display:flex;align-items:center;gap:6px;width:auto;min-width:130px;user-select:none'
-  }, trigLabel);
-  const menu = el('div', {
-    style: [
-      'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300',
-      'background:var(--bg-elev-2);border:1px solid var(--border)',
-      'border-radius:var(--radius-sm);min-width:190px',
-      'box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0;max-height:260px;overflow-y:auto'
-    ].join(';')
-  });
-
-  const allChk = el('input', { type: 'checkbox' });
-  menu.appendChild(el('label', {
-    style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px'
-  }, allChk, el('span', {}, allLabel)));
-
-  const chks = items.map(({ value, label, color }) => {
-    const chk = el('input', { type: 'checkbox' });
-    chk.dataset.value = value;
-    chk.checked = filterSet.size === 0 || filterSet.has(value);
-    const dot     = color ? el('span', { style: `display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0` }) : null;
-    const txt     = el('span', {}, label);
-    const content = el('span', { style: 'display:flex;align-items:center;gap:6px' }, ...(dot ? [dot] : []), txt);
-    menu.appendChild(el('label', {
-      style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px'
-    }, chk, content));
-    return chk;
-  });
-
-  const sync = () => {
-    const sel = chks.filter(c => c.checked);
-    const n   = sel.length;
-    allChk.checked       = n === chks.length;
-    allChk.indeterminate = n > 0 && n < chks.length;
-    trigLabel.textContent =
-      n === chks.length || n === 0 ? allLabel
-      : n === 1 ? (items.find(i => i.value === sel[0].dataset.value)?.label || '')
-      : `${n} selected`;
-    filterSet.clear();
-    if (n > 0 && n < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
-  };
-
-  allChk.checked = filterSet.size === 0;
-  allChk.onchange = () => {
-    chks.forEach(c => { c.checked = allChk.checked; });
-    allChk.indeterminate = false;
-    sync(); onRefresh();
-  };
-  chks.forEach(chk => { chk.onchange = () => { sync(); onRefresh(); }; });
-  trigger.onclick = e => {
-    e.stopPropagation();
-    menu.style.display = menu.style.display === 'none' ? '' : 'none';
-  };
-  menu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { menu.style.display = 'none'; });
-  wrapper.appendChild(trigger);
-  wrapper.appendChild(menu);
-  sync();
-  return wrapper;
-}
-
 // ── KPI card ──────────────────────────────────────────────────────────────────
 function kpiCard(label, value, variant, onClick) {
   const card = el('div', {
@@ -275,11 +236,26 @@ function kpiCard(label, value, variant, onClick) {
 
 // ── Month key helpers ─────────────────────────────────────────────────────────
 function getMonthKeys() {
-  const year = gFilters.year !== 'all' ? gFilters.year : String(new Date().getFullYear());
-  return MONTH_LABELS.map((label, i) => {
-    const mm = String(i + 1).padStart(2, '0');
-    return { label, key: `${year}-${mm}`, mm };
-  }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+  const selectedYears = gFilters.years.size > 0
+    ? [...gFilters.years].sort()
+    : availableYears();
+  if (selectedYears.length === 1) {
+    const year = selectedYears[0];
+    return MONTH_LABELS.map((label, i) => {
+      const mm = String(i + 1).padStart(2, '0');
+      return { label, key: `${year}-${mm}`, mm };
+    }).filter(m => gFilters.months.size === 0 || gFilters.months.has(m.mm));
+  }
+  const keys = [];
+  for (const year of selectedYears) {
+    MONTH_LABELS.forEach((label, i) => {
+      const mm = String(i + 1).padStart(2, '0');
+      if (gFilters.months.size === 0 || gFilters.months.has(mm)) {
+        keys.push({ label: `${label} '${year.slice(2)}`, key: `${year}-${mm}`, mm });
+      }
+    });
+  }
+  return keys;
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
@@ -294,43 +270,28 @@ function buildView() {
   ));
 
   // Filter bar
-  const years   = availableYears();
-  const yearSel = select(
-    [{ value: 'all', label: 'All Years' }, ...years.map(y => ({ value: y, label: y }))],
-    gFilters.year
-  );
-  yearSel.onchange = () => { gFilters.year = yearSel.value; rebuildView(); };
+  const opts = getValidOpts();
+  const trim = (set, valid) => { if (valid.size) for (const v of [...set]) if (!valid.has(v)) set.delete(v); };
+  trim(gFilters.years, opts.vY); trim(gFilters.streams, opts.vSt);
+  trim(gFilters.propertyIds, opts.vPi); trim(gFilters.categories, opts.vCat); trim(gFilters.vendorIds, opts.vVi);
+  const yearMS   = buildMultiSelect(availableYears().filter(y => !opts.vY.size || opts.vY.has(y)).map(y => ({ value: y, label: y })), gFilters.years, 'All Years', rebuildView, 'aexp_years');
+  const monthMS  = buildMultiSelect(MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })), gFilters.months, 'All Months', rebuildView, 'aexp_months');
+  const catMS    = buildMultiSelect(Object.entries(COST_CATEGORIES).filter(([k]) => !opts.vCat.size || opts.vCat.has(k)).map(([k, v]) => ({ value: k, label: v.label, color: v.color })), gFilters.categories, 'All Categories', rebuildView, 'aexp_cats');
+  const propMS   = buildMultiSelect(listActive('properties').filter(p => !opts.vPi.size || opts.vPi.has(p.id)).map(p => ({ value: p.id, label: p.name })), gFilters.propertyIds, 'All Properties', rebuildView, 'aexp_props');
+  const vendorMS = buildMultiSelect(listActiveVendors().filter(v => !opts.vVi.size || opts.vVi.has(v.id)).map(v => ({ value: v.id, label: v.name })), gFilters.vendorIds, 'All Vendors', rebuildView, 'aexp_vendors');
+  const streamMS = buildMultiSelect(Object.entries(STREAMS).filter(([k]) => !opts.vSt.size || opts.vSt.has(k)).map(([k, v]) => ({ value: k, label: v.label, color: v.color })), gFilters.streams, 'All Streams', rebuildView, 'aexp_streams');
+  const typeMS   = buildMultiSelect(Object.entries(ACCOUNTING_TYPES).map(([k, v]) => ({ value: k, label: v.label, color: k === 'capex' ? '#f59e0b' : '#ef4444' })), gFilters.accountingTypes, 'OpEx + CapEx', rebuildView, 'aexp_types');
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
   filterBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, 'Filters:'));
-  filterBar.appendChild(yearSel);
-  filterBar.appendChild(buildMultiSelect(
-    MONTH_LABELS.map((m, i) => ({ value: String(i + 1).padStart(2, '0'), label: m })),
-    gFilters.months, 'All Months', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(COST_CATEGORIES).map(([k, v]) => ({ value: k, label: v.label, color: v.color })),
-    gFilters.categories, 'All Categories', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    listActive('properties').map(p => ({ value: p.id, label: p.name })),
-    gFilters.propertyIds, 'All Properties', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    listActiveVendors().map(v => ({ value: v.id, label: v.name })),
-    gFilters.vendorIds, 'All Vendors', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(STREAMS).map(([k, v]) => ({ value: k, label: v.label, color: v.color })),
-    gFilters.streams, 'All Streams', rebuildView
-  ));
-  filterBar.appendChild(buildMultiSelect(
-    Object.entries(ACCOUNTING_TYPES).map(([k, v]) => ({
-      value: k, label: v.label,
-      color: k === 'capex' ? '#f59e0b' : '#ef4444'
-    })),
-    gFilters.accountingTypes, 'OpEx + CapEx', rebuildView
-  ));
+  filterBar.appendChild(yearMS);
+  filterBar.appendChild(monthMS);
+  filterBar.appendChild(catMS);
+  filterBar.appendChild(propMS);
+  filterBar.appendChild(vendorMS);
+  filterBar.appendChild(streamMS);
+  filterBar.appendChild(typeMS);
+  filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); catMS.reset(); propMS.reset(); vendorMS.reset(); streamMS.reset(); typeMS.reset(); rebuildView(); } }));
   wrap.appendChild(filterBar);
 
   // Data

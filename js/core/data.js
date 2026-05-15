@@ -144,14 +144,16 @@ export function byId(collection, id) {
 }
 
 // ============== Filtering ==============
-export function applyFilters(rows, { year, stream, owner, propertyId, clientId } = {}) {
+export function applyFilters(rows, { year, years, stream, owner, propertyId, clientId } = {}) {
   const f = state.ui.filters;
   const y = year ?? f.year;
   const s = stream ?? f.stream;
   const o = owner ?? f.owner;
 
   return rows.filter(r => {
-    if (y && y !== 'all' && r.date) {
+    if (years instanceof Set && years.size > 0 && r.date) {
+      if (![...years].some(yr => r.date.startsWith(String(yr)))) return false;
+    } else if (y && y !== 'all' && r.date) {
       if (!r.date.startsWith(String(y))) return false;
     }
     if (s && s !== 'all' && r.stream && r.stream !== s) return false;
@@ -219,6 +221,29 @@ export function renovationCapexEUR(filters) {
   let total = 0;
   for (const e of rows) total += toEUR(e.amount, e.currency, e.date);
   return total;
+}
+
+// ── Sum helpers — operate on already-filtered arrays ─────────────────────────
+export function sumPaymentsEUR(payments) {
+  return payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+}
+export function sumInvoicesEUR(invoices) {
+  return invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+}
+export function sumExpensesEUR(expenses) {
+  return expenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+}
+
+// Unfiltered yearly totals — used for period-over-period comparisons
+export function yearTotalsEUR(year) {
+  const pays  = listActivePayments().filter(p => p.status === 'paid'    && (p.date      || '').startsWith(year));
+  const invs  = listActive('invoices').filter(i => i.status === 'paid'  && (i.issueDate || '').startsWith(year));
+  const opEx  = listActive('expenses').filter(e => !isCapEx(e)          && (e.date      || '').startsWith(year));
+  const capEx = listActive('expenses').filter(e =>  isCapEx(e)          && (e.date      || '').startsWith(year));
+  const rev   = sumPaymentsEUR(pays) + sumInvoicesEUR(invs);
+  const exp   = sumExpensesEUR(opEx);
+  const reno  = sumExpensesEUR(capEx);
+  return { rev, exp, reno, net: rev - exp, netCash: rev - exp - reno };
 }
 
 export function netIncomeEUR(filters) {
@@ -386,6 +411,8 @@ export function availableYears() {
   for (const p of listActivePayments()) if (p.date) years.add(p.date.slice(0, 4));
   for (const e of listActive('expenses')) if (e.date) years.add(e.date.slice(0, 4));
   for (const i of listActive('invoices')) if (i.issueDate) years.add(i.issueDate.slice(0, 4));
+  // Include years that have forecast records (e.g. from pending Airbnb import)
+  for (const f of (state.db.forecasts || [])) if (f.year) years.add(String(f.year));
   return [...years].sort().reverse();
 }
 
@@ -464,6 +491,22 @@ export function saveForecastYear(forecastId, data) {
 
 export function getForecastVsActual(type, entityId, year) {
   const fc = (state.db.forecasts || []).find(f => f.type === type && f.entityId === entityId && f.year === Number(year));
+
+  // For LT rental properties: build a monthKey→amountEUR map from the rent schedule
+  // so months with no manual forecast entry still show projected rent.
+  let ltRentByMonth = null;
+  if (type === 'property') {
+    const prop = byId('properties', entityId);
+    if (prop?.type === 'long_term') {
+      ltRentByMonth = {};
+      for (const entry of generatePaymentSchedule(prop)) {
+        if (entry.monthKey?.startsWith(String(year))) {
+          ltRentByMonth[entry.monthKey] = toEUR(entry.amount, entry.currency, year);
+        }
+      }
+    }
+  }
+
   const months = [];
   for (let m = 1; m <= 12; m++) {
     const key = `${year}-${String(m).padStart(2, '0')}`;
@@ -477,7 +520,10 @@ export function getForecastVsActual(type, entityId, year) {
       actualRev = listActive('invoices').filter(i => i.stream === entityId && i.status === 'paid' && i.issueDate >= start && i.issueDate <= end).reduce((s, i) => s + toEUR(i.total, i.currency, year), 0);
     }
     const fd = fc?.months?.[key] || {};
-    months.push({ key, forecastRev: fd.revenue || 0, forecastExp: fd.expenses || 0, actualRev, actualExp, revVariance: actualRev - (fd.revenue || 0), expVariance: actualExp - (fd.expenses || 0) });
+    // Fall back to scheduled LT rent when no manual forecast entry exists for this month
+    const forecastRev = fd.revenue || (ltRentByMonth?.[key] ?? 0);
+    const forecastExp = fd.expenses || 0;
+    months.push({ key, forecastRev, forecastExp, actualRev, actualExp, revVariance: actualRev - forecastRev, expVariance: actualExp - forecastExp });
   }
   return { forecast: fc, months, yearTarget: fc?.yearTarget || { revenue: 0, expenses: 0 } };
 }
@@ -691,6 +737,11 @@ export function buildReconciliationData(year) {
 export function buildReportData(filters = {}) {
   const f = { ...state.ui.filters, ...filters };
   const matchDate = row => {
+    if (f.years instanceof Set) {
+      if (f.years.size === 0) return true;
+      const d = row.date || row.issueDate || '';
+      return [...f.years].some(y => d.startsWith(String(y)));
+    }
     if (!f.year || f.year === 'all') return true;
     const d = row.date || row.issueDate || '';
     return d.startsWith(String(f.year));
@@ -699,7 +750,10 @@ export function buildReportData(filters = {}) {
     if (f.streams instanceof Set) return f.streams.size === 0 || !row.stream || f.streams.has(row.stream);
     return !f.stream || f.stream === 'all' || !row.stream || row.stream === f.stream;
   };
-  const matchProperty = row => !f.propertyId || f.propertyId === 'all' || row.propertyId === f.propertyId;
+  const matchProperty = row => {
+    if (f.propertyIds instanceof Set) return f.propertyIds.size === 0 || f.propertyIds.has(row.propertyId);
+    return !f.propertyId || f.propertyId === 'all' || row.propertyId === f.propertyId;
+  };
 
   const payments = listActivePayments().filter(p => p.status === 'paid' && matchDate(p) && matchStream(p) && matchProperty(p));
   const invoices = listActive('invoices').filter(i => i.status === 'paid' && matchDate({ date: i.issueDate }) && matchStream(i) && matchProperty(i));
@@ -810,4 +864,182 @@ export function purgeDeletedRecords() {
   });
   if (count > 0) markDirty();
   return count;
+}
+
+// ============== Inventory FIFO helpers ==============
+
+export function totalRemaining(item) {
+  if (!item) return 0;
+  if (item.batches) return item.batches.reduce((s, b) => s + (b.remaining ?? b.qty ?? 0), 0);
+  return item.stock || 0; // legacy flat format
+}
+
+/**
+ * Compute FIFO deduction from oldest batches first (does NOT mutate item).
+ * Returns { updatedBatches, consumed: [{batchId, qty, unitPrice, currency}], totalCost, deficit }.
+ * deficit > 0 means available stock was less than requested qty.
+ */
+export function fifoDeduct(item, qty) {
+  if (!item?.batches?.length) return { updatedBatches: item?.batches || [], consumed: [], totalCost: 0, deficit: qty };
+  const sorted = [...item.batches].sort((a, b) => (a.dateBought || '').localeCompare(b.dateBought || ''));
+  let need = qty;
+  const consumed = [];
+  let totalCost = 0;
+  const patchMap = new Map();
+
+  for (const b of sorted) {
+    if (need <= 0) break;
+    const avail = b.remaining ?? b.qty ?? 0;
+    const take  = Math.min(avail, need);
+    if (take <= 0) continue;
+    consumed.push({ batchId: b.id, qty: take, unitPrice: b.unitPrice || 0, currency: b.currency || 'EUR' });
+    totalCost += take * (b.unitPrice || 0);
+    patchMap.set(b.id, avail - take);
+    need -= take;
+  }
+
+  const updatedBatches = item.batches.map(b =>
+    patchMap.has(b.id) ? { ...b, remaining: patchMap.get(b.id) } : b
+  );
+  return { updatedBatches, consumed, totalCost, deficit: need };
+}
+
+// ============== Reservation Expense Rules ==============
+
+export function restoreInventoryStock(expense) {
+  if (!expense.inventoryItemId || !expense.inventoryQty) return;
+  const item = byId('inventory', expense.inventoryItemId);
+  if (!item) return;
+  if (expense.inventoryBatches && item.batches) {
+    const restoreMap = new Map(expense.inventoryBatches.map(c => [c.batchId, c.qty]));
+    const updatedBatches = item.batches.map(b =>
+      restoreMap.has(b.id) ? { ...b, remaining: (b.remaining ?? b.qty ?? 0) + restoreMap.get(b.id) } : b
+    );
+    upsert('inventory', { ...item, batches: updatedBatches });
+  } else {
+    upsert('inventory', { ...item, stock: (item.stock || 0) + expense.inventoryQty });
+  }
+}
+
+// Match vendor cleaningPeriods by property + date. vendorId='' means any vendor.
+export function findVendorRateByPeriod(propertyId, date, vendorId = '') {
+  const out = [];
+  for (const v of listActive('vendors')) {
+    if (vendorId && v.id !== vendorId) continue;
+    for (const period of (v.cleaningPeriods || [])) {
+      if (period.propertyId === propertyId &&
+          period.startDate && period.startDate <= date &&
+          (!period.endDate || period.endDate >= date)) {
+        out.push({ vendor: v, period });
+      }
+    }
+  }
+  return out;
+}
+
+export function applyReservationExpenseRules(payment) {
+  const reservationRef = payment.confirmationCode || payment.id;
+  if (!reservationRef || !payment.propertyId) return;
+  const rules = listActive('reservationExpenseRules').filter(r =>
+    r.enabled && (!r.propertyId || r.propertyId === payment.propertyId)
+  );
+  for (const rule of rules) _applyOneRule(rule, payment, reservationRef);
+}
+
+function _applyOneRule(rule, payment, reservationRef) {
+  const existing = (state.db.expenses || []).find(e =>
+    e.isGenerated && e.reservationRuleId === rule.id && e.reservationRef === reservationRef && !e.deletedAt
+  );
+  if (existing?.manualOverride) return;
+
+  let amount = 0, currency = rule.fixedCurrency || payment.currency || 'EUR';
+  let inventoryItemId, inventoryQty, inventoryBatches;
+  let overrideVendorId, overrideVendorName;
+  let reviewNeeded, reviewReason;
+
+  if (rule.amountSource === 'fixed') {
+    amount = rule.fixedAmount || 0;
+    currency = rule.fixedCurrency || payment.currency || 'EUR';
+  } else if (rule.amountSource === 'airbnb_cleaning_fee') {
+    amount = payment.airbnbCleaningFee || 0;
+    currency = payment.currency || 'EUR';
+  } else if (rule.amountSource === 'inventory' && rule.inventoryItemId) {
+    if (existing) {
+      // Don't re-deduct; only refresh metadata fields to stay in sync
+      upsert('expenses', {
+        ...existing,
+        date: payment.checkIn || payment.airbnbCheckIn || payment.date || existing.date,
+        vendorId: rule.vendorId || existing.vendorId || '',
+        description: rule.description || existing.description || ''
+      });
+      return;
+    }
+    const item = byId('inventory', rule.inventoryItemId);
+    if (!item) return;
+    const qty = rule.inventoryQty || 1;
+    const { updatedBatches, consumed, totalCost } = fifoDeduct(item, qty);
+    upsert('inventory', { ...item, batches: updatedBatches });
+    amount = totalCost;
+    currency = consumed[0]?.currency || item.batches?.[0]?.currency || 'EUR';
+    inventoryItemId = rule.inventoryItemId;
+    inventoryQty = qty;
+    inventoryBatches = consumed;
+  } else if (rule.amountSource === 'vendor_rate') {
+    const refDate = payment.checkIn || payment.airbnbCheckIn || payment.date || '';
+    const matches = refDate ? findVendorRateByPeriod(payment.propertyId, refDate, rule.vendorId || '') : [];
+    if (matches.length === 0) {
+      reviewNeeded = true;
+      reviewReason = 'No vendor rate found for this property and date';
+    } else if (matches.length > 1 && !rule.vendorId) {
+      reviewNeeded = true;
+      reviewReason = 'Multiple vendor rates match — set a specific vendor on the rule';
+    } else {
+      const { vendor, period } = matches[0];
+      amount = period.fee;
+      currency = payment.currency || 'EUR';
+      overrideVendorId = vendor.id;
+      overrideVendorName = vendor.name;
+    }
+  }
+
+  upsert('expenses', {
+    id: existing?.id || newId('exp'),
+    propertyId: payment.propertyId,
+    category: rule.category || 'cleaning',
+    amount,
+    currency,
+    date: payment.checkIn || payment.airbnbCheckIn || payment.date || '',
+    vendorId: overrideVendorId ?? (rule.vendorId || ''),
+    vendor: overrideVendorName ?? '',
+    description: rule.description || '',
+    stream: payment.stream || 'short_term_rental',
+    reservationRuleId: rule.id,
+    reservationRef,
+    isGenerated: true,
+    manualOverride: existing?.manualOverride || false,
+    ...(inventoryItemId ? { inventoryItemId, inventoryQty, inventoryBatches } : {}),
+    ...(reviewNeeded ? { reviewNeeded, reviewReason } : {})
+  });
+}
+
+export function removeReservationExpenses(payment) {
+  const reservationRef = payment.confirmationCode || payment.id;
+  if (!reservationRef) return;
+  for (const e of (state.db.expenses || [])) {
+    if (e.isGenerated && e.reservationRef === reservationRef && !e.deletedAt) {
+      restoreInventoryStock(e);
+      softDelete('expenses', e.id);
+    }
+  }
+}
+
+// Apply a rule to all existing short-term payments (skip inventory to avoid retroactive stock changes).
+export function reapplyRuleToAllPayments(rule) {
+  if (!rule.enabled || rule.amountSource === 'inventory') return;
+  const payments = listActive('payments').filter(p =>
+    p.stream === 'short_term_rental' &&
+    (!rule.propertyId || rule.propertyId === p.propertyId) &&
+    (p.confirmationCode || p.id)
+  );
+  for (const pay of payments) applyReservationExpenseRules(pay);
 }

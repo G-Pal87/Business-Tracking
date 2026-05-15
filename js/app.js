@@ -20,6 +20,7 @@ async function boot() {
     { default: analyticsProperties },
     { default: analyticsServices },
     { default: analyticsCashflow },
+    { default: analyticsForecast },
     { default: clients },
     { default: invoices },
     { default: settings },
@@ -39,6 +40,7 @@ async function boot() {
     import(`./modules/analytics-properties.js?v=${VERSION}`),
     import(`./modules/analytics-services.js?v=${VERSION}`),
     import(`./modules/analytics-cashflow.js?v=${VERSION}`),
+    import(`./modules/analytics-forecast.js?v=${VERSION}`),
     import(`./modules/clients.js?v=${VERSION}`),
     import(`./modules/invoices.js?v=${VERSION}`),
     import(`./modules/settings.js?v=${VERSION}`),
@@ -50,7 +52,7 @@ async function boot() {
 
   const MODULES = [
     properties, payments, expenses, tenants, vendors, inventory,
-    reports, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, clients, invoices, settings, users
+    reports, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, clients, invoices, settings, users
   ];
 
   MODULES.forEach(router.registerModule);
@@ -60,62 +62,95 @@ async function boot() {
   github.loadConfig();
 
   let loaded = false;
-  let githubFailed = false;
   let needAutoSave = false;
 
-  if (state.github.owner && state.github.repo) {
-    try {
-      const remoteDb = await github.fetchDb();
-      const localCache = await github.fetchLocalDb();
-      const finalDb = localCache ? github.mergeLocalPending(remoteDb, localCache) : remoteDb;
-      setDb(finalDb);
-      github.applyDbConfig(finalDb.appConfig?.github);
-      github.saveLocalCache(finalDb);
-      loaded = true;
-      needAutoSave = (finalDb !== remoteDb);
-      updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
-    } catch (e) {
-      console.warn('GitHub load failed, falling back', e);
-      state.github.lastSyncError = normalizeNetworkError(e.message);
-      githubFailed = true;
+  // ── Phase 0: bootstrap from URL hash setup link (works for any hosting setup)
+  // Admin generates this link via Settings → GitHub Storage → "Copy Setup Link"
+  // and shares it with new users once. Format: #/setup?owner=…&repo=…&branch=…
+  {
+    const hash = window.location.hash;
+    if (hash.includes('/setup?') || hash.startsWith('#setup?')) {
+      try {
+        const qs = hash.slice(hash.indexOf('?') + 1);
+        const p  = new URLSearchParams(qs);
+        if (p.get('owner')) {
+          if (!state.github.owner)  state.github.owner  = p.get('owner');
+          if (!state.github.repo)   state.github.repo   = p.get('repo')   || '';
+          if (!state.github.branch) state.github.branch = p.get('branch') || 'main';
+          if (!state.github.dbPath) state.github.dbPath = p.get('path')   || 'data/db.json';
+          if (!state.github.token && p.get('token')) state.github.token = p.get('token');
+          // Save to localStorage so subsequent loads don't need the link again
+          github.saveConfig({
+            owner:  state.github.owner,
+            repo:   state.github.repo,
+            branch: state.github.branch,
+            dbPath: state.github.dbPath,
+            token:  state.github.token
+          });
+          // Remove setup params from the URL bar
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+      } catch { /* ignore malformed hash */ }
     }
   }
 
-  if (!loaded) {
+  // ── Phase 1: load from local cache instantly (< 1 ms if localStorage is warm)
+  const localCache = await github.fetchLocalDb();
+  if (localCache) {
+    setDb(localCache);
+    github.applyDbConfig(localCache.appConfig?.github);
+    loaded = true;
+  }
+
+  // ── Phase 1.5: if still no GitHub owner/repo, try bootstrap config file
+  // (written by the admin when they first save Settings → GitHub Storage)
+  if (!state.github.owner) {
     try {
-      const db = await github.fetchLocalDb();
-      if (db) {
-        setDb(db);
-        github.applyDbConfig(db.appConfig?.github);
-        loaded = true;
+      const res = await fetch('data/github-config.json', { cache: 'no-store' });
+      if (res.ok) {
+        const cfg = await res.json();
+        if (cfg.owner) {
+          if (!state.github.owner)  state.github.owner  = cfg.owner;
+          if (!state.github.repo)   state.github.repo   = cfg.repo   || '';
+          if (!state.github.branch) state.github.branch = cfg.branch || 'main';
+          if (!state.github.dbPath) state.github.dbPath = cfg.path   || 'data/db.json';
+        }
       }
-    } catch (e) { console.warn(e); }
+    } catch { /* ignore */ }
+  }
+
+  // ── Phase 2: if no local cache, block on GitHub once (first-ever load)
+  if (!loaded && state.github.owner && state.github.repo) {
+    try {
+      const remoteDb = await github.fetchDb();
+      setDb(remoteDb);
+      github.applyDbConfig(remoteDb.appConfig?.github);
+      github.saveLocalCache(remoteDb);
+      loaded = true;
+      updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+    } catch (e) {
+      console.warn('GitHub load failed, no local cache available', e);
+      state.github.lastSyncError = normalizeNetworkError(e.message);
+    }
   }
 
   if (!loaded) {
     setDb({});
-  }
-
-  // Set the correct initial status (only when GitHub fetch didn't already set 'online')
-  if (!state.github.connected) {
-    if (githubFailed) {
-      state.github.usingCache = loaded;
-      if (loaded) {
-        updateSyncStatus('offline', 'Using local cache — GitHub is currently unavailable');
-      } else {
-        updateSyncStatus('offline', 'GitHub unreachable — no local data available');
-      }
-    } else if (loaded) {
-      if (state.github.owner && state.github.repo) {
-        updateSyncStatus('offline', 'Local only — connect GitHub in Settings');
-      } else {
-        updateSyncStatus('offline', 'Local only — configure GitHub in Settings');
-      }
+    if (state.github.owner && state.github.repo) {
+      updateSyncStatus('offline', 'GitHub unreachable — no local data available');
     } else {
       updateSyncStatus('offline', 'Offline — configure GitHub in Settings');
     }
+  } else if (!state.github.connected) {
+    // Loaded from local cache — show a "syncing" hint until background fetch completes
+    if (state.github.owner && state.github.repo) {
+      updateSyncStatus('syncing', 'Syncing with GitHub…');
+    } else {
+      updateSyncStatus('offline', 'Local only — configure GitHub in Settings');
+    }
   }
 
+  // ── Phase 3: auth + render — runs immediately when local cache was available
   await requireAuth();
   buildUserFooter();
 
@@ -209,6 +244,30 @@ async function boot() {
     }
   });
 
+  // ── Phase 4: background GitHub sync (only when we served from local cache)
+  // Runs after router.init so setDb() triggers a live refresh of the current view.
+  if (loaded && localCache && state.github.owner && state.github.repo) {
+    (async () => {
+      try {
+        const remoteDb = await github.fetchDb();
+        const merged = github.mergeLocalPending(remoteDb, localCache);
+        setDb(merged);                              // triggers data-loaded → view refresh
+        github.applyDbConfig(merged.appConfig?.github);
+        github.saveLocalCache(merged);
+        updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+        needAutoSave = (merged !== remoteDb);
+        if (needAutoSave && state.github.token && !pushPending) {
+          doSave().catch(() => {});
+        }
+      } catch (e) {
+        console.warn('Background GitHub sync failed', e);
+        state.github.lastSyncError = normalizeNetworkError(e.message);
+        state.github.usingCache = true;
+        updateSyncStatus('offline', 'Using local cache — GitHub is currently unavailable');
+      }
+    })();
+  }
+
   // Backfill metadata on legacy records so conflict detection has updatedAt
   // on every record. Called after subscribe so markDirty triggers a real save.
   migrateDb();
@@ -267,7 +326,7 @@ function buildUserFooter() {
 
 function buildSidebar(MODULES) {
   const navGroups = [
-    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow'] },
+    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'analytics-forecast'] },
     { title: 'Operations', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'forecast'] },
     { title: 'Reports', items: ['reports'] },
     { title: 'System', items: ['settings', 'users'] }

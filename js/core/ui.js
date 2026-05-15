@@ -230,18 +230,27 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } =
     return { t: 's', v: txt };
   };
 
+  // obs is declared below; applySort references it via closure — safe because
+  // applySort is only ever called after obs is initialised.
+  let obs;
+
   const applySort = () => {
     if (sortCol < 0) return;
     const tbody = tableWrap.querySelector('tbody');
     if (!tbody || tbody.querySelector('.row-editing')) return;
+    // Disconnect while re-ordering rows to prevent MutationObserver from
+    // triggering enhance() → applySort() in an infinite loop.
+    obs?.disconnect();
     const rows = [...tbody.querySelectorAll('tr')];
     rows.sort((a, b) => {
-      const ap = parseCell(a.cells[sortCol]?.textContent?.trim() || '');
-      const bp = parseCell(b.cells[sortCol]?.textContent?.trim() || '');
+      const getText = cell => cell?.dataset?.sort ?? cell?.textContent?.trim() ?? '';
+      const ap = parseCell(getText(a.cells[sortCol]));
+      const bp = parseCell(getText(b.cells[sortCol]));
       if (ap.t === bp.t && ap.t !== 's') return (ap.v - bp.v) * sortDir;
       return String(ap.v).localeCompare(String(bp.v)) * sortDir;
     });
     rows.forEach(r => tbody.appendChild(r));
+    obs?.observe(tableWrap, { childList: true });
   };
 
   const applyFilter = () => {
@@ -250,6 +259,7 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } =
     [...tbody.querySelectorAll('tr')].forEach(tr => {
       tr.style.display = !searchTerm || tr.textContent.toLowerCase().includes(searchTerm) ? '' : 'none';
     });
+    tableWrap.dispatchEvent(new CustomEvent('sf:filter'));
   };
 
   const updateArrows = ths => {
@@ -290,7 +300,116 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } =
   });
 
   let debounce;
-  const observer = new MutationObserver(() => { clearTimeout(debounce); debounce = setTimeout(enhance, 0); });
-  observer.observe(tableWrap, { childList: true, subtree: true });
+  obs = new MutationObserver(() => { clearTimeout(debounce); debounce = setTimeout(enhance, 0); });
+  obs.observe(tableWrap, { childList: true });
   enhance();
+}
+
+// ── Shared multi-select dropdown ──────────────────────────────────────────────
+// items:      [{ value, label, css?, color? }]
+// filterSet:  a Set that is mutated to hold selected values (empty = all)
+// onRefresh:  called once when the menu closes after a change was made
+// storageKey: optional localStorage key for filter persistence
+//
+// The returned element has a .reset() method that restores the "show all" state.
+export function buildMultiSelect(items, filterSet, allLabel, onRefresh, storageKey = null) {
+  // ── Restore persisted state into the Set before building the UI ────────────
+  if (storageKey) {
+    try {
+      const raw = localStorage.getItem(`btf:${storageKey}`);
+      if (raw !== null) {
+        const vals = JSON.parse(raw);
+        filterSet.clear();
+        if (Array.isArray(vals)) vals.forEach(v => filterSet.add(v));
+      }
+    } catch { /* ignore corrupt data */ }
+  }
+
+  const wrapper   = el('div', { style: 'position:relative' });
+  const trigLabel = el('span');
+  const trigger   = el('div', {
+    class: 'select',
+    style: 'cursor:pointer;display:flex;align-items:center;gap:6px;width:auto;min-width:130px;user-select:none'
+  }, trigLabel);
+
+  const menu = el('div', {
+    style: [
+      'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300',
+      'background:var(--bg-elev-2);border:1px solid var(--border)',
+      'border-radius:var(--radius-sm);min-width:190px',
+      'box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0;max-height:260px;overflow-y:auto'
+    ].join(';')
+  });
+
+  const allChk = el('input', { type: 'checkbox' });
+  menu.appendChild(el('label', {
+    style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px'
+  }, allChk, el('span', {}, allLabel)));
+
+  const chks = items.map(({ value, label, css, color }) => {
+    const chk         = el('input', { type: 'checkbox' });
+    chk.dataset.value = value;
+    chk.checked       = filterSet.size === 0 || filterSet.has(value);
+    let content;
+    if (css) {
+      content = el('span', { class: `badge ${css}` }, label);
+    } else if (color) {
+      const dot = el('span', { style: `display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0` });
+      content = el('span', { style: 'display:flex;align-items:center;gap:6px' }, dot, el('span', {}, label));
+    } else {
+      content = el('span', {}, label);
+    }
+    menu.appendChild(el('label', {
+      style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px'
+    }, chk, content));
+    return chk;
+  });
+
+  const persist = () => {
+    if (!storageKey) return;
+    try { localStorage.setItem(`btf:${storageKey}`, JSON.stringify([...filterSet])); }
+    catch { /* quota exceeded — ignore */ }
+  };
+
+  const sync = () => {
+    const sel = chks.filter(c => c.checked);
+    const n   = sel.length;
+    allChk.checked       = n === chks.length;
+    allChk.indeterminate = n > 0 && n < chks.length;
+    trigLabel.textContent =
+      n === chks.length || n === 0 ? allLabel
+      : n === 1 ? (items.find(i => i.value === sel[0].dataset.value)?.label || '')
+      : `${n} selected`;
+    filterSet.clear();
+    if (n > 0 && n < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
+  };
+
+  const closeMenu = () => {
+    if (menu.style.display === 'none') return;
+    menu.style.display = 'none';
+    persist();
+    onRefresh();
+  };
+
+  allChk.checked  = filterSet.size === 0;
+  allChk.onchange = () => { chks.forEach(c => { c.checked = allChk.checked; }); allChk.indeterminate = false; sync(); };
+  chks.forEach(chk => { chk.onchange = () => sync(); });
+  trigger.onclick = e => { e.stopPropagation(); menu.style.display === 'none' ? (menu.style.display = '') : closeMenu(); };
+  menu.onclick    = e => e.stopPropagation();
+  document.addEventListener('click', closeMenu);
+
+  wrapper.appendChild(trigger);
+  wrapper.appendChild(menu);
+  sync();
+
+  // ── Public reset method — restores "show all" without triggering onRefresh ─
+  wrapper.reset = () => {
+    chks.forEach(c => { c.checked = true; });
+    allChk.checked = true;
+    allChk.indeterminate = false;
+    sync(); // clears filterSet and updates label
+    persist();
+  };
+
+  return wrapper;
 }
