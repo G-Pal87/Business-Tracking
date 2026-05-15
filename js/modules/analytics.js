@@ -116,6 +116,24 @@ function mixedRows(revPays, revInvs, expItems, acqItems = []) {
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 
+// ── Filtered active properties (respects gF filters) ────────────────────────
+function getFilteredProperties() {
+  return listActive('properties').filter(p => {
+    if (gF.owners.size > 0) {
+      const ow = p.owner || 'both';
+      if (ow !== 'both' && !gF.owners.has(ow)) return false;
+    }
+    if (gF.streams.size > 0) {
+      const stream = p.type === 'short_term' ? 'short_term_rental'
+                   : p.type === 'long_term'  ? 'long_term_rental'
+                   : null;
+      if (!stream || !gF.streams.has(stream)) return false;
+    }
+    if (gF.propertyIds.size > 0 && !gF.propertyIds.has(p.id)) return false;
+    return true;
+  });
+}
+
 // ── Virtual property acquisitions ────────────────────────────────────────────
 function getVirtualAcquisitions() {
   return listActive('properties')
@@ -242,13 +260,18 @@ function calcMetrics(data, range = null) {
     if (total > 0) fcRev = total;
   }
 
+  const filteredProperties = getFilteredProperties();
+  const portfolioValueEUR = filteredProperties.reduce((s, p) =>
+    s + (p.purchasePrice > 0 ? toEUR(p.purchasePrice, p.currency || 'EUR', p.purchaseDate) : 0), 0);
+
   return {
     rev, opEx, capExFromExp, capExFromAcq, capEx,
     opProfit, opMargin, netCash, expenseRatio,
     collectionRate,
     pendingReservations, pendingPipeline,
     outstanding, outstandingTotal, fcRev, fcMonthlyRev,
-    payments, invoices, opExpenses, capExExpenses, acquisitions
+    payments, invoices, opExpenses, capExExpenses, acquisitions,
+    filteredProperties, portfolioValueEUR
   };
 }
 
@@ -279,7 +302,7 @@ function rebuildView() {
 // ── Executive Health Snapshot ─────────────────────────────────────────────────
 function buildHealthSnapshot(curMetrics, cmpMetrics, curRange) {
   const { rev, opProfit, opMargin, netCash, collectionRate, expenseRatio,
-          fcRev, outstandingTotal, outstanding } = curMetrics;
+          fcRev, outstandingTotal, outstanding, filteredProperties, portfolioValueEUR } = curMetrics;
 
   const issues = []; // { severity: 'watch'|'risk', text, inspect }
 
@@ -385,6 +408,15 @@ function buildHealthSnapshot(curMetrics, cmpMetrics, curRange) {
   }, score));
   header.appendChild(titleRow);
   header.appendChild(el('p', { style: 'margin:6px 0 0;font-size:13px;color:var(--text-muted)' }, summary));
+
+  // Portfolio context line
+  const propCount = (filteredProperties || []).length;
+  if (propCount > 0) {
+    const pvLine = `Portfolio: ${propCount} active propert${propCount === 1 ? 'y' : 'ies'}` +
+      ((portfolioValueEUR || 0) > 0 ? `, approx. ${formatEUR(portfolioValueEUR)} book value.` : '.');
+    header.appendChild(el('p', { style: 'margin:3px 0 0;font-size:12px;color:var(--text-muted)' }, pvLine));
+  }
+
   card.appendChild(header);
 
   const top3 = issues.slice(0, 3);
@@ -601,21 +633,66 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     delta: null, compLabel: curRange.label || ''
   }));
 
-  // 10. Investments / CapEx
-  const capExDrillRows = [
-    ...drillExpRows(capExExpenses),
-    ...acquisitions.map(a => ({
-      date: a.date, source: a._name || '',
-      category: 'Acquisition', description: a.description,
-      eur: toEUR(a.amount, a.currency, a.date)
-    }))
-  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  // 10. Properties
+  const { filteredProperties, portfolioValueEUR } = curMetrics;
+  const PROP_COLS = [
+    { key: 'name',    label: 'Property' },
+    { key: 'type',    label: 'Type' },
+    { key: 'status',  label: 'Status' },
+    { key: 'owner',   label: 'Owner' },
+    { key: 'city',    label: 'City' },
+    { key: 'country', label: 'Country' },
+    { key: 'eur',     label: 'Purchase Value EUR', right: true, format: v => v > 0 ? formatEUR(v) : '—' }
+  ];
   grid.appendChild(kpiCard({
-    label: 'Investments / CapEx',
-    value: formatEUR(capEx),
-    onClick: () => drillDownModal('Investments / CapEx', capExDrillRows, EXP_COLS),
-    delta: (cmpMetrics && (capEx > 0 || cmpMetrics.capEx > 0)) ? safePct(capEx, cmpMetrics.capEx) : null,
-    invertDelta: false, compLabel: cmpLabel
+    label: 'Properties',
+    subtitle: 'Active portfolio units',
+    value: String(filteredProperties.length),
+    onClick: () => drillDownModal('Portfolio — Properties',
+      filteredProperties.map(p => ({
+        name:    p.name || '—',
+        type:    p.type === 'short_term' ? 'Short-term' : p.type === 'long_term' ? 'Long-term' : p.type || '—',
+        status:  p.status || '—',
+        owner:   p.owner || 'both',
+        city:    p.city || '—',
+        country: p.country || '—',
+        eur:     p.purchasePrice > 0 ? toEUR(p.purchasePrice, p.currency || 'EUR', p.purchaseDate) : 0
+      })),
+      PROP_COLS),
+    delta: null, compLabel: ''
+  }));
+
+  // 11. Portfolio Value
+  const PORTVAL_COLS = [
+    { key: 'name',      label: 'Property' },
+    { key: 'type',      label: 'Type' },
+    { key: 'status',    label: 'Status' },
+    { key: 'owner',     label: 'Owner' },
+    { key: 'purchDate', label: 'Purchase Date', format: v => fmtDate(v) },
+    { key: 'price',     label: 'Purchase Price', right: true, format: v => v > 0 ? formatEUR(v) : '—' },
+    { key: 'currency',  label: 'Currency' },
+    { key: 'eur',       label: 'EUR Value', right: true, format: v => v > 0 ? formatEUR(v) : '—' }
+  ];
+  grid.appendChild(kpiCard({
+    label: 'Portfolio Value',
+    subtitle: 'Purchase value / book value',
+    value: portfolioValueEUR > 0 ? formatEUR(portfolioValueEUR) : '—',
+    onClick: () => drillDownModal('Portfolio Value',
+      filteredProperties
+        .filter(p => p.purchasePrice > 0)
+        .map(p => ({
+          name:      p.name || '—',
+          type:      p.type === 'short_term' ? 'Short-term' : p.type === 'long_term' ? 'Long-term' : p.type || '—',
+          status:    p.status || '—',
+          owner:     p.owner || 'both',
+          purchDate: p.purchaseDate || '—',
+          price:     p.purchasePrice,
+          currency:  p.currency || 'EUR',
+          eur:       toEUR(p.purchasePrice, p.currency || 'EUR', p.purchaseDate)
+        }))
+        .sort((a, b) => (b.eur || 0) - (a.eur || 0)),
+      PORTVAL_COLS),
+    delta: null, compLabel: ''
   }));
 
   return grid;
@@ -1107,6 +1184,50 @@ function buildPerformanceInsights(curData, curMetrics, cmpMetrics, curRange) {
         mixedRows(curData.payments, curData.invoices, [...curData.opExpenses, ...curData.capExExpenses], curData.acquisitions),
         MIXED_COLS)
     });
+  }
+
+  // Investment Pressure (CapEx relative to revenue)
+  {
+    const capExAmt = curMetrics.capEx;
+    if (capExAmt > 0) {
+      const capExDrillRows = () => [
+        ...drillExpRows(curData.capExExpenses),
+        ...curData.acquisitions.map(a => ({
+          date: a.date, source: a._name || '',
+          category: 'Acquisition', description: a.description,
+          eur: toEUR(a.amount, a.currency, a.date)
+        }))
+      ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+      if (curMetrics.rev > 0) {
+        const capExRatio = (capExAmt / curMetrics.rev) * 100;
+        if (capExRatio > 100) {
+          signals.push({
+            title: 'Investment Pressure',
+            text: `CapEx is ${capExRatio.toFixed(0)}% of revenue (${formatEUR(capExAmt)}) — investments exceed revenue for the period. Monitor cash position closely.`,
+            severity: 'At Risk',
+            inspect: 'Cash Flow Dashboard',
+            onClick: () => drillDownModal('Investments / CapEx', capExDrillRows(), EXP_COLS)
+          });
+        } else if (capExRatio > 50) {
+          signals.push({
+            title: 'Investment Pressure',
+            text: `CapEx is ${capExRatio.toFixed(0)}% of revenue (${formatEUR(capExAmt)}) — significant investment activity relative to revenue.`,
+            severity: 'Watch',
+            inspect: 'Cash Flow Dashboard',
+            onClick: () => drillDownModal('Investments / CapEx', capExDrillRows(), EXP_COLS)
+          });
+        }
+      } else if (capExAmt > 10000) {
+        signals.push({
+          title: 'Investment Pressure',
+          text: `${formatEUR(capExAmt)} in CapEx and investments recorded with no revenue in this period.`,
+          severity: 'Watch',
+          inspect: 'Cash Flow Dashboard',
+          onClick: () => drillDownModal('Investments / CapEx', capExDrillRows(), EXP_COLS)
+        });
+      }
+    }
   }
 
   // Margin declining vs comparison
