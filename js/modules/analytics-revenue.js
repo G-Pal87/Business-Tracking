@@ -328,30 +328,9 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
   section.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Revenue Performance Insights')
   ));
-  const body = el('div', { style: 'padding:0 16px 16px;font-size:13px;line-height:1.8' });
+  const body = el('div', { style: 'padding:0 16px 16px' });
 
-  if (total === 0 && outstandingTotal === 0) {
-    body.appendChild(el('div', { style: 'color:var(--text-muted)' }, 'No major revenue risks detected for the selected period.'));
-    section.appendChild(body);
-    return section;
-  }
-
-  const row = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px' });
-  let blockCount = 0;
-
-  const makeBlock = (label, lines) => {
-    blockCount++;
-    const block = el('div');
-    block.appendChild(el('div', {
-      style: 'font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:6px'
-    }, label));
-    lines.forEach(({ text, onClick }) => {
-      const p2 = el('p', { style: 'margin:0' }, text);
-      if (onClick) { p2.style.cursor = 'pointer'; p2.title = 'Click for breakdown'; p2.onclick = onClick; }
-      block.appendChild(p2);
-    });
-    return block;
-  };
+  const signals = []; // { title, text, severity: 'At Risk'|'Watch'|'Note', inspect, onClick }
 
   // ── 1. Revenue concentration ───────────────────────────────────────────────
   const entityMap = new Map();
@@ -373,92 +352,114 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
   });
   const topEntity = [...entityMap.values()].sort((a, b) => b.rev - a.rev)[0];
   if (topEntity && total > 0) {
-    const pct = (topEntity.rev / total * 100).toFixed(0);
-    const risk = Number(pct) >= 60;
-    row.appendChild(makeBlock('Revenue concentration', [{
-      text: `Top contributor: ${topEntity.name} — ${formatEUR(topEntity.rev)} (${pct}% of total).${risk ? ' Concentration risk — inspect Revenue Dashboard.' : ''}`,
-      onClick: () => drillDownModal(`Revenue — ${topEntity.name}`,
-        drillRevRows(topEntity.pays, topEntity.invs), REV_COLS)
-    }]));
+    const pct      = topEntity.rev / total * 100;
+    const severity = pct >= 60 ? 'At Risk' : pct >= 40 ? 'Watch' : 'Note';
+    signals.push({
+      title:   'Revenue Concentration',
+      text:    `Top contributor: ${topEntity.name} — ${formatEUR(topEntity.rev)} (${pct.toFixed(0)}% of total).${pct >= 60 ? ' High concentration — consider diversifying revenue sources.' : ''}`,
+      severity,
+      inspect: 'Revenue Dashboard',
+      onClick: () => drillDownModal(`Revenue — ${topEntity.name}`, drillRevRows(topEntity.pays, topEntity.invs), REV_COLS)
+    });
   }
 
   // ── 2. Revenue mix ─────────────────────────────────────────────────────────
   if (total > 0) {
-    const rentalPct = (propRev / total * 100).toFixed(0);
-    const svcPct    = (svcRev  / total * 100).toFixed(0);
-    const mixLines  = [];
-    if (propRev > 0) {
-      mixLines.push({
-        text:    `Rental: ${rentalPct}% (${formatEUR(propRev)})`,
-        onClick: () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS)
+    if (propRev === 0) {
+      signals.push({
+        title:   'Revenue Mix',
+        text:    `No rental revenue this period — 100% from services (${formatEUR(svcRev)}).`,
+        severity: 'Watch',
+        inspect: 'Payments / Properties'
+      });
+    } else if (svcRev === 0) {
+      signals.push({
+        title:   'Revenue Mix',
+        text:    `No service revenue this period — 100% from rentals (${formatEUR(propRev)}).`,
+        severity: 'Note',
+        inspect: 'Services Dashboard'
       });
     } else {
-      mixLines.push({ text: 'No rental revenue in the selected period. Inspect: Payments or Properties.' });
-    }
-    if (svcRev > 0) {
-      mixLines.push({
-        text:    `Service: ${svcPct}% (${formatEUR(svcRev)})`,
-        onClick: () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS)
+      const rentalPct = (propRev / total * 100).toFixed(0);
+      const svcPct    = (svcRev  / total * 100).toFixed(0);
+      signals.push({
+        title:   'Revenue Mix',
+        text:    `Rental ${rentalPct}% (${formatEUR(propRev)}) · Service ${svcPct}% (${formatEUR(svcRev)}).`,
+        severity: 'Note',
+        inspect: 'Revenue Dashboard',
+        onClick: () => drillDownModal('All Revenue', drillRevRows(payments, invoices), REV_COLS)
       });
-    } else {
-      mixLines.push({ text: 'No service revenue in the selected period. Inspect: Services Dashboard.' });
     }
-    row.appendChild(makeBlock('Revenue mix', mixLines));
   }
 
   // ── 3. Growth signal ───────────────────────────────────────────────────────
-  {
-    const lines = [];
-    if (cmpData && cmpRange) {
-      const delta = safePct(total, cmpData.total);
-      if (delta === null) {
-        lines.push({ text: `No comparison revenue data for ${cmpRange.label}.` });
-      } else {
-        const word = delta > 1 ? 'up' : delta < -1 ? 'down' : 'stable';
-        const sign = delta > 0 ? '+' : '';
-        lines.push({
-          text: `Revenue ${word} ${sign}${delta.toFixed(1)}% vs ${cmpRange.label} (${formatEUR(cmpData.total)} → ${formatEUR(total)}).`,
-          onClick: () => drillDownModal('All Revenue', drillRevRows(payments, invoices), REV_COLS)
-        });
-      }
-    } else {
-      lines.push({ text: 'No comparison period selected.' });
-    }
-    row.appendChild(makeBlock('Growth signal', lines));
-  }
-
-  // ── 4. Outstanding revenue signal ──────────────────────────────────────────
-  {
-    const invoicedTotal = svcRev + outstandingTotal;
-    const lines = [];
-    if (outstandingTotal > 0 && invoicedTotal > 0) {
-      const pct    = (outstandingTotal / invoicedTotal * 100).toFixed(0);
-      const isRisk = outstandingTotal / invoicedTotal > 0.3;
-      lines.push({
-        text: `${formatEUR(outstandingTotal)} outstanding — ${pct}% of invoiced service revenue.${isRisk ? ' High collection risk. Inspect: Services Dashboard.' : ''}`,
-        onClick: () => drillDownModal('Outstanding Revenue',
-          outstanding.map(i => ({
-            date: i.issueDate, type: 'Invoice',
-            source: byId('clients', i.clientId)?.name || '',
-            ref: i.number || '',
-            eur: toEUR(i.total, i.currency, i.issueDate)
-          })).sort((a, b) => (b.date || '').localeCompare(a.date || '')),
-          REV_COLS)
+  if (cmpData && cmpRange) {
+    const delta = safePct(total, cmpData.total);
+    if (delta !== null) {
+      const sign     = delta > 0 ? '+' : '';
+      const word     = delta > 1 ? 'up' : delta < -1 ? 'down' : 'stable';
+      const severity = delta <= -20 ? 'At Risk' : delta < 0 ? 'Watch' : 'Note';
+      signals.push({
+        title:   'Growth Signal',
+        text:    `Revenue ${word} ${sign}${delta.toFixed(1)}% vs ${cmpRange.label} (${formatEUR(cmpData.total)} → ${formatEUR(total)}).`,
+        severity,
+        inspect: 'Revenue Dashboard',
+        onClick: () => drillDownModal('All Revenue', drillRevRows(payments, invoices), REV_COLS)
       });
-    } else if (invoicedTotal > 0) {
-      lines.push({ text: 'All invoiced service revenue collected.' });
-    } else {
-      lines.push({ text: 'No service invoices for the selected period.' });
     }
-    row.appendChild(makeBlock('Outstanding signal', lines));
   }
 
-  body.appendChild(row);
-
-  if (blockCount === 0) {
-    body.appendChild(el('div', { style: 'color:var(--text-muted)' }, 'No major revenue risks detected for the selected period.'));
+  // ── 4. Outstanding signal ──────────────────────────────────────────────────
+  const invoicedTotal = svcRev + outstandingTotal;
+  if (outstandingTotal > 0 && invoicedTotal > 0) {
+    const pct = outstandingTotal / invoicedTotal * 100;
+    signals.push({
+      title:   'Outstanding Revenue',
+      text:    `${formatEUR(outstandingTotal)} outstanding — ${pct.toFixed(0)}% of invoiced service revenue.${pct > 30 ? ' High collection risk.' : ''}`,
+      severity: pct > 50 ? 'At Risk' : 'Watch',
+      inspect: 'Services Dashboard',
+      onClick: () => drillDownModal('Outstanding Revenue',
+        outstanding.map(i => ({
+          date:   i.issueDate, type: 'Invoice',
+          source: byId('clients', i.clientId)?.name || '',
+          ref:    i.number || '',
+          eur:    toEUR(i.total, i.currency, i.issueDate)
+        })).sort((a, b) => (b.date || '').localeCompare(a.date || '')),
+        REV_COLS)
+    });
   }
 
+  // ── Render ─────────────────────────────────────────────────────────────────
+  if (!signals.length) {
+    body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' },
+      `No major revenue risks detected for the selected period. Total revenue: ${formatEUR(total)}.`));
+    section.appendChild(body);
+    return section;
+  }
+
+  const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b', 'Note': '#6366f1' };
+  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)', 'Note': 'rgba(99,102,241,0.06)' };
+  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px' });
+
+  for (const sig of signals) {
+    const color = SEV_COLOR[sig.severity] || '#6b7280';
+    const bg    = SEV_BG[sig.severity]    || 'transparent';
+    const block = el('div', { style: `padding:10px 12px;border-radius:4px;border-left:3px solid ${color};background:${bg}` });
+
+    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px' });
+    titleRow.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)' }, sig.title));
+    titleRow.appendChild(el('span', { style: `font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;color:${color};border:1px solid ${color}` }, sig.severity));
+    block.appendChild(titleRow);
+
+    const p = el('p', { style: 'margin:0 0 5px;font-size:12px;line-height:1.5;color:var(--text)' }, sig.text);
+    if (sig.onClick) { p.style.cursor = 'pointer'; p.title = 'Click for breakdown'; p.onclick = sig.onClick; }
+    block.appendChild(p);
+    if (sig.inspect) block.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted)' }, `→ Inspect: ${sig.inspect}`));
+
+    grid.appendChild(block);
+  }
+
+  body.appendChild(grid);
   section.appendChild(body);
   return section;
 }
