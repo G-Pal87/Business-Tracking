@@ -172,7 +172,7 @@ function calculateDashboardData(range) {
   const variance    = actualRev - forecastRev;
   const variancePct = safeVariancePct(actualRev, forecastRev);
 
-  // Pending pipeline — period scoped by airbnbCheckIn (fallback: date)
+  // Pending pipeline — period scoped by airbnbCheckIn (fallback: date) — used for KPI, table, insights
   const pendingReservations = listActivePayments().filter(p => {
     if (p.source !== 'airbnb' || p.status !== 'pending') return false;
     const checkDate = p.airbnbCheckIn || p.date;
@@ -189,6 +189,19 @@ function calculateDashboardData(range) {
   const pendingPipeline = pendingReservations.reduce(
     (s, p) => s + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date), 0
   );
+
+  // All entity-filtered pending — not date-clamped, used for forward-looking charts
+  const allPendingReservations = listActivePayments().filter(p => {
+    if (p.source !== 'airbnb' || p.status !== 'pending') return false;
+    if (gF.propertyIds.size > 0 && !gF.propertyIds.has(p.propertyId)) return false;
+    if (gF.streams.size > 0 && !gF.streams.has('short_term_rental')) return false;
+    if (gF.owners.size > 0 && p.propertyId) {
+      const prop = byId('properties', p.propertyId);
+      const ow = prop?.owner || 'both';
+      if (ow !== 'both' && !gF.owners.has(ow)) return false;
+    }
+    return true;
+  });
 
   // Pre-group payments/invoices/expenses by month key for efficiency
   const paysByMk = new Map(), invsByMk = new Map(), expsByMk = new Map();
@@ -222,7 +235,7 @@ function calculateDashboardData(range) {
     actualRev, actualExp, actualNet,
     forecastRev, forecastExp, forecastNet,
     variance, variancePct,
-    pendingPipeline, pendingReservations,
+    pendingPipeline, pendingReservations, allPendingReservations,
     actPayments, actInvoices, actOpExpenses,
     months, fcMonthlyRev, fcMonthlyExp,
     monthlyBreakdown, streamBreakdown, propertyBreakdown
@@ -750,9 +763,25 @@ function makeTable(cols, rows, emptyMsg) {
 
 function cardSection(title, content) {
   const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, title)));
   const body = el('div', { style: 'padding:0 16px 16px' });
   body.appendChild(content);
+
+  const header = el('div', {
+    class: 'card-header',
+    style: 'cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between'
+  });
+  header.appendChild(el('div', { class: 'card-title' }, title));
+  const chevron = el('span', { style: 'font-size:11px;color:var(--text-muted);display:inline-block;transition:transform 200ms' }, '▼');
+  header.appendChild(chevron);
+
+  let collapsed = false;
+  header.onclick = () => {
+    collapsed = !collapsed;
+    body.style.display = collapsed ? 'none' : '';
+    chevron.style.transform = collapsed ? 'rotate(-90deg)' : '';
+  };
+
+  card.appendChild(header);
   card.appendChild(body);
   return card;
 }
@@ -850,7 +879,7 @@ function buildPendingTable(data) {
 // ── Chart rendering ───────────────────────────────────────────────────────────
 function renderCharts(data) {
   const { months, fcMonthlyRev, fcMonthlyExp,
-          streamBreakdown, propertyBreakdown, pendingReservations } = data;
+          streamBreakdown, propertyBreakdown } = data;
 
   const labels = months.map(m => m.label);
 
@@ -943,9 +972,9 @@ function renderCharts(data) {
     });
   }
 
-  // 7. Pending Pipeline by Check-in Month (period scoped)
+  // 7. Pending Pipeline by Check-in Month — all entity-filtered pending (forward-looking)
   const pendingMap = new Map();
-  pendingReservations.forEach(p => {
+  data.allPendingReservations.forEach(p => {
     const mk = (p.airbnbCheckIn || p.date || '').slice(0, 7);
     if (!mk) return;
     pendingMap.set(mk, (pendingMap.get(mk) || 0) + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date));
@@ -962,12 +991,18 @@ function renderCharts(data) {
     });
   }
 
-  // 8. Pending by Property (horizontal bar, period scoped)
-  const propPending = propertyBreakdown.filter(p => p.pending > 0);
-  if (propPending.length > 0) {
+  // 8. Pending by Property — all entity-filtered pending (forward-looking)
+  const propPendingMap = new Map();
+  data.allPendingReservations.forEach(p => {
+    if (!p.propertyId) return;
+    const label = byId('properties', p.propertyId)?.name || p.propertyId;
+    propPendingMap.set(label, (propPendingMap.get(label) || 0) + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date));
+  });
+  const propPendingEntries = [...propPendingMap.entries()].sort((a, b) => b[1] - a[1]);
+  if (propPendingEntries.length > 0) {
     charts.bar('anf-pending-by-prop', {
-      labels: propPending.map(p => p.label),
-      datasets: [{ label: 'Pending Pipeline', data: propPending.map(p => Math.round(p.pending)), backgroundColor: '#3b82f6' }],
+      labels: propPendingEntries.map(([label]) => label),
+      datasets: [{ label: 'Pending Pipeline', data: propPendingEntries.map(([, v]) => Math.round(v)), backgroundColor: '#3b82f6' }],
       horizontal: true
     });
   }
