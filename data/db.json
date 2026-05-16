@@ -25824,7 +25824,27 @@
       ]
     }
   ],
-  "tenants": [],
+  "tenants": [
+    {
+      "id": "ten_mp7xu3bdkk",
+      "name": "a",
+      "phone": "",
+      "email": "",
+      "propertyId": "prop_mohfnur5bi",
+      "leaseStartDate": "2026-05-16",
+      "leaseEndDate": "2026-06-16",
+      "monthlyRent": 1,
+      "currency": "EUR",
+      "deposit": 1,
+      "paymentDayOfMonth": 1,
+      "notes": "",
+      "status": "active",
+      "createdAt": 1778911294920,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778911294920,
+      "updatedBy": "Giorgos"
+    }
+  ],
   "clients": [
     {
       "id": "cli_mohkf6ip14",
