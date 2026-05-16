@@ -48,7 +48,7 @@ function applyPropertyFilters(props) {
   });
 }
 
-// ── Filtered forecast map builder ────────────────────────────────────────────
+// ── Filtered forecast map builders ───────────────────────────────────────────
 // Returns Map<YYYY-MM, EUR> for forecast revenue, respecting gF filters.
 // Mirrors the logic in analytics-forecast.js buildFcMaps() — kept in sync.
 function buildFilteredFcMap(startY, endY) {
@@ -76,6 +76,35 @@ function buildFilteredFcMap(startY, endY) {
     });
   }
   return fcMonthlyRev;
+}
+
+// Returns Map<stream, EUR> for forecast revenue grouped by stream, respecting gF filters.
+// monthKeySet: Set of 'YYYY-MM' strings for the selected period — keeps sums in-range.
+function buildFilteredFcByStream(startY, endY, monthKeySet) {
+  const fcByStream = new Map();
+  const allFcs = listActive('forecasts');
+  for (let y = startY; y <= endY; y++) {
+    allFcs.filter(fc => fc.year === y).forEach(fc => {
+      if (gF.propertyIds.size > 0 && fc.type === 'property' && !gF.propertyIds.has(fc.entityId)) return;
+      const stream = fc.type === 'service' ? fc.entityId : propStream(byId('properties', fc.entityId));
+      if (gF.streams.size > 0 && (!stream || !gF.streams.has(stream))) return;
+      if (!stream) return;
+      if (gF.owners.size > 0 && fc.type === 'property') {
+        const prop = byId('properties', fc.entityId);
+        const ow = prop?.owner || 'both';
+        if (ow !== 'both' && !gF.owners.has(ow)) return;
+      }
+      Object.entries(fc.months || {}).forEach(([mk, md]) => {
+        if (!monthKeySet.has(mk)) return;
+        const entries = Array.isArray(md.entries) ? md.entries : [];
+        const rev = entries.length > 0
+          ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+          : Number(md.revenue) || 0;
+        if (rev > 0) fcByStream.set(stream, (fcByStream.get(stream) || 0) + rev);
+      });
+    });
+  }
+  return fcByStream;
 }
 
 // ── Executive decision thresholds (deterministic, adjust here) ───────────────
@@ -136,6 +165,14 @@ const PORTVAL_COLS = [
   { key: 'price',     label: 'Purchase Price', right: true, format: v => v > 0 ? formatEUR(v) : '—' },
   { key: 'currency',  label: 'Currency' },
   { key: 'eur',       label: 'EUR Value', right: true, format: v => v > 0 ? formatEUR(v) : '—' }
+];
+const OPEN_FC_COLS = [
+  { key: 'stream',    label: 'Stream' },
+  { key: 'fcRev',    label: 'Forecast Revenue', right: true, format: v => formatEUR(v) },
+  { key: 'actRev',   label: 'Actual Revenue',   right: true, format: v => formatEUR(v) },
+  { key: 'pipeline', label: 'Open Pipeline',    right: true, format: v => formatEUR(v) },
+  { key: 'varStr',   label: 'Variance',         right: true },
+  { key: 'varPctStr',label: 'Variance %',       right: true }
 ];
 
 function mixedRows(revPays, revInvs, expItems, acqItems = []) {
@@ -230,22 +267,6 @@ function calcMetrics(data, range = null) {
     if (totalInvoiced > 0) collectionRate = (sumInvoicesEUR(invoices) / totalInvoiced) * 100;
   }
 
-  // Pending pipeline — scoped to selected period via airbnbCheckIn (fallback: date)
-  const pendingReservations = listActivePayments().filter(p => {
-    if (p.source !== 'airbnb' || p.status !== 'pending') return false;
-    const checkDate = p.airbnbCheckIn || p.date;
-    if (range && (!checkDate || checkDate < range.start || checkDate > range.end)) return false;
-    if (gF.propertyIds.size > 0 && !gF.propertyIds.has(p.propertyId)) return false;
-    if (gF.streams.size > 0 && !gF.streams.has('short_term_rental')) return false;
-    if (gF.owners.size > 0 && p.propertyId) {
-      const prop = byId('properties', p.propertyId);
-      const ow = prop?.owner || 'both';
-      if (ow !== 'both' && !gF.owners.has(ow)) return false;
-    }
-    return true;
-  });
-  const pendingPipeline = pendingReservations.reduce((s, p) => s + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date), 0);
-
   // Outstanding = all currently open invoices (not range-limited), stream/owner/property filtered
   const outstanding = listActive('invoices').filter(i => {
     if (i.status !== 'sent' && i.status !== 'overdue') return false;
@@ -280,7 +301,6 @@ function calcMetrics(data, range = null) {
     rev, opEx, capExFromExp, capExFromAcq, capEx,
     opProfit, opMargin, netCash, expenseRatio,
     collectionRate,
-    pendingReservations, pendingPipeline,
     outstanding, outstandingTotal, fcRev, fcMonthlyRev,
     payments, invoices, opExpenses, capExExpenses, acquisitions,
     filteredProperties, portfolioValueEUR
@@ -493,7 +513,7 @@ function kpiCard({ label, subtitle, value, variant, onClick, delta, deltaIsPerce
 // ── KPI cards ─────────────────────────────────────────────────────────────────
 function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
   const { rev, capEx, opProfit, opMargin, netCash, outstandingTotal, fcRev, fcMonthlyRev,
-          expenseRatio, collectionRate, pendingPipeline,
+          expenseRatio, collectionRate,
           payments, invoices, opExpenses, capExExpenses, acquisitions, outstanding } = curMetrics;
   const cmpLabel = cmpRange?.label || '';
 
@@ -621,26 +641,64 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     deltaIsPp: true, invertDelta: true, compLabel: cmpLabel
   }));
 
-  // 9. Pending Pipeline
+  // 9. Open Forecast Pipeline — max(forecastRevenue − actualRevenue, 0)
+  const openFcPipeline = (fcRev != null && fcRev > 0) ? Math.max(fcRev - rev, 0) : 0;
   grid.appendChild(kpiCard({
-    label: 'Pending Pipeline',
-    subtitle: 'Pending Airbnb reservations',
-    value: formatEUR(pendingPipeline),
-    variant: pendingPipeline > 0 ? 'info' : '',
+    label: 'Open Forecast Pipeline',
+    subtitle: 'Forecast not yet realized',
+    value: formatEUR(openFcPipeline),
+    variant: openFcPipeline > 0 ? 'info' : '',
     onClick: () => {
-      const cols = [
-        { key: 'date',     label: 'Check-in', format: v => v ? v.slice(0,10) : '—' },
-        { key: 'property', label: 'Property' },
-        { key: 'nights',   label: 'Nights', right: true },
-        { key: 'eur',      label: 'Amount', right: true, format: v => formatEUR(v) }
-      ];
-      const rows = curMetrics.pendingReservations.map(p => ({
-        date:     p.airbnbCheckIn || p.date,
-        property: byId('properties', p.propertyId)?.name || '—',
-        nights:   p.airbnbNights || 0,
-        eur:      toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date)
-      })).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      drillDownModal('Pending Pipeline — Airbnb Reservations', rows, cols);
+      const { keys: fcMonths } = getMonthKeysForRange(curRange.start, curRange.end);
+      const monthKeySet = new Set(fcMonths.map(m => m.key));
+      const startY = parseInt(curRange.start.slice(0, 4));
+      const endY   = parseInt(curRange.end.slice(0, 4));
+
+      // Actual revenue by stream
+      const actByStream = new Map();
+      payments.forEach(p => {
+        const s = p.stream; if (!s) return;
+        actByStream.set(s, (actByStream.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
+      });
+      invoices.forEach(i => {
+        const s = i.stream; if (!s) return;
+        actByStream.set(s, (actByStream.get(s) || 0) + toEUR(i.total, i.currency, i.issueDate));
+      });
+
+      // Forecast revenue by stream (same filters as Executive)
+      const fcByStream = buildFilteredFcByStream(startY, endY, monthKeySet);
+
+      // All streams present in either actual or forecast data
+      const KNOWN_STREAMS = ['short_term_rental', 'long_term_rental', 'customer_success', 'marketing'];
+      const allStreams = new Set([...KNOWN_STREAMS, ...actByStream.keys(), ...fcByStream.keys()]);
+      const streamList = gF.streams.size > 0
+        ? [...allStreams].filter(s => gF.streams.has(s))
+        : [...allStreams];
+
+      const rows = streamList
+        .map(s => {
+          const fc  = fcByStream.get(s) || 0;
+          const act = actByStream.get(s) || 0;
+          if (fc === 0 && act === 0) return null;
+          const pipeline = Math.max(fc - act, 0);
+          const vari     = act - fc;
+          const varPct   = fc > 0 ? (vari / fc) * 100 : null;
+          const varSign  = vari >= 0 ? '+' : '-';
+          return {
+            stream:    STREAMS[s]?.label || s,
+            fcRev:     fc,
+            actRev:    act,
+            pipeline,
+            varStr:    varSign + formatEUR(Math.abs(vari)),
+            varPctStr: varPct === null
+              ? (act > 0 ? 'N/A' : '—')
+              : (varPct >= 0 ? '+' : '') + varPct.toFixed(1) + '%'
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.fcRev - a.fcRev);
+
+      drillDownModal('Open Forecast Pipeline — by Stream', rows, OPEN_FC_COLS);
     },
     delta: null, compLabel: curRange.label || ''
   }));
@@ -1154,16 +1212,19 @@ function buildPerformanceInsights(curData, curMetrics, cmpMetrics, curRange) {
     }
   }
 
-  // Forecast gap
-  if (curMetrics.fcRev != null && curMetrics.fcRev > 0 && curMetrics.rev < curMetrics.fcRev * 0.9) {
-    const pct = ((curMetrics.rev / curMetrics.fcRev) * 100).toFixed(0);
-    const gap = curMetrics.fcRev - curMetrics.rev;
-    signals.push({
-      title: 'Forecast Gap',
-      text: `Actual revenue is below forecast for the selected period (${pct}% of forecast achieved, ${formatEUR(gap)} gap).`,
-      severity: curMetrics.rev < curMetrics.fcRev * 0.75 ? 'At Risk' : 'Watch',
-      inspect: 'Forecast Dashboard'
-    });
+  // Open Forecast Pipeline — forecast not yet realized
+  if (curMetrics.fcRev != null && curMetrics.fcRev > 0) {
+    const openPipeline = Math.max(curMetrics.fcRev - curMetrics.rev, 0);
+    const pipelinePct  = (openPipeline / curMetrics.fcRev) * 100;
+    if (pipelinePct > 10) {
+      const pct = ((curMetrics.rev / curMetrics.fcRev) * 100).toFixed(0);
+      signals.push({
+        title: 'Open Forecast Pipeline',
+        text: `A significant part of forecasted revenue has not yet materialized as actual revenue (${pct}% achieved, ${formatEUR(openPipeline)} remaining).`,
+        severity: pipelinePct > 40 ? 'At Risk' : 'Watch',
+        inspect: 'Forecast Dashboard'
+      });
+    }
   }
 
   // Cash flow warning
