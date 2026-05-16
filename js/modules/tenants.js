@@ -77,6 +77,11 @@ function build() {
       tr.appendChild(el('td', {}, el('span', { class: `badge ${sm.css}` }, sm.label)));
       const actions = el('td', { class: 'right' });
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r, renderTable) }));
+      if (r.status !== 'past') {
+        const tBtn = button('Terminate', { variant: 'sm ghost', onClick: () => openTerminationModal(r, renderTable) });
+        tBtn.style.color = '#ef4444';
+        actions.appendChild(tBtn);
+      }
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog(`Delete tenant "${r.name}"? This will not affect recorded payments.`, { danger: true, okLabel: 'Delete' });
         if (ok) { softDelete('tenants', r.id); toast('Deleted', 'success'); renderTable(); }
@@ -191,6 +196,150 @@ function openForm(existing, onSave) {
     title: existing ? 'Edit Tenant' : 'New Tenant',
     body,
     footer: [button('Cancel', { onClick: closeModal }), save],
+    large: true
+  });
+}
+
+function openTerminationModal(tenant, onSave) {
+  const prop       = byId('properties', tenant.propertyId);
+  const currency   = tenant.currency || 'EUR';
+  const hasDeposit = (tenant.deposit || 0) > 0;
+
+  const body = el('div');
+
+  // Context strip
+  body.appendChild(el('div', {
+    style: 'margin-bottom:16px;padding:10px 12px;background:var(--bg-elev-1);border-radius:6px;border:1px solid var(--border);font-size:13px'
+  },
+    el('strong', {}, tenant.name),
+    el('span', { style: 'color:var(--text-muted);margin-left:8px' },
+      `${prop?.name || '—'}  ·  lease from ${tenant.leaseStartDate ? fmtDate(tenant.leaseStartDate) : '—'}`
+    )
+  ));
+
+  // Termination date — defaults to today
+  const termDateI = input({ type: 'date', value: today() });
+  body.appendChild(formRow('Termination Date', termDateI));
+
+  // Deposit handling — only shown when a deposit amount exists on the tenant record
+  let depositAction = 'withheld';
+  if (hasDeposit) {
+    const rWithheld = el('input', { type: 'radio', name: 'ten-dep-action', value: 'withheld' });
+    const rReturned = el('input', { type: 'radio', name: 'ten-dep-action', value: 'returned' });
+    rWithheld.checked = true;
+    rWithheld.addEventListener('change', () => { depositAction = 'withheld'; });
+    rReturned.addEventListener('change', () => { depositAction = 'returned'; });
+
+    const depWrap = el('div', { style: 'display:flex;flex-direction:column;gap:8px' });
+    depWrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:2px' },
+      `Deposit on record: ${formatMoney(tenant.deposit, currency, { maxFrac: 0 })}`
+    ));
+    const lW = el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' });
+    lW.appendChild(rWithheld);
+    lW.appendChild(document.createTextNode('Withheld — record as revenue'));
+    const lR = el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' });
+    lR.appendChild(rReturned);
+    lR.appendChild(document.createTextNode('Returned to tenant — deduct from revenue'));
+    depWrap.appendChild(lW);
+    depWrap.appendChild(lR);
+    body.appendChild(formRow('Deposit', depWrap));
+  }
+
+  // Additional payment (e.g. unpaid rent, damage, early-termination fee)
+  const addPayI = input({ type: 'number', value: 0, min: 0, step: 0.01 });
+  body.appendChild(formRow('Additional Payment', addPayI));
+
+  // Comments
+  const commentsT = textarea({ placeholder: 'Reason for termination, notes…' });
+  commentsT.value = '';
+  body.appendChild(formRow('Comments', commentsT));
+
+  const terminateBtn = button('Terminate Lease', { variant: 'primary', onClick: async () => {
+    const termDate    = termDateI.value || today();
+    const addPay      = Number(addPayI.value) || 0;
+    const comments    = commentsT.value.trim();
+    const finalAction = hasDeposit ? depositAction : 'none';
+
+    const ok = await confirmDialog(
+      `Terminate the lease for "${tenant.name}" effective ${fmtDate(termDate)}?\nStatus will be set to Past and payments recorded accordingly.`,
+      { danger: true, okLabel: 'Confirm Termination' }
+    );
+    if (!ok) return;
+
+    // Append termination note to existing notes
+    let updatedNotes = tenant.notes || '';
+    if (comments) {
+      updatedNotes = (updatedNotes ? updatedNotes + '\n\n' : '') + `[Terminated ${termDate}] ${comments}`;
+    }
+
+    // Update tenant record
+    upsert('tenants', {
+      ...tenant,
+      status:                    'past',
+      leaseEndDate:              termDate,
+      terminationDate:           termDate,
+      terminationDepositAction:  finalAction,
+      terminationComments:       comments || null,
+      notes:                     updatedNotes
+    });
+
+    // Deposit: withheld → revenue payment; returned → expense deduction
+    if (hasDeposit && finalAction === 'withheld') {
+      upsert('payments', {
+        id:         newId('pay'),
+        propertyId: tenant.propertyId,
+        tenantId:   tenant.id,
+        amount:     tenant.deposit,
+        currency,
+        date:       termDate,
+        type:       'rental',
+        status:     'paid',
+        source:     'manual',
+        stream:     'long_term_rental',
+        notes:      `Deposit withheld — lease termination (${tenant.name})`
+      });
+    } else if (hasDeposit && finalAction === 'returned') {
+      upsert('expenses', {
+        id:             newId('exp'),
+        propertyId:     tenant.propertyId,
+        amount:         tenant.deposit,
+        currency,
+        date:           termDate,
+        category:       'deposit_return',
+        accountingType: 'opex',
+        description:    `Deposit returned — lease termination (${tenant.name})`,
+        notes:          comments || null
+      });
+    }
+
+    // Additional payment → revenue
+    if (addPay > 0) {
+      upsert('payments', {
+        id:         newId('pay'),
+        propertyId: tenant.propertyId,
+        tenantId:   tenant.id,
+        amount:     addPay,
+        currency,
+        date:       termDate,
+        type:       'rental',
+        status:     'paid',
+        source:     'manual',
+        stream:     'long_term_rental',
+        notes:      `Additional payment — lease termination (${tenant.name})${comments ? ': ' + comments : ''}`
+      });
+    }
+
+    toast(`Lease terminated for ${tenant.name}`, 'success');
+    closeModal();
+    if (onSave) onSave();
+  }});
+  terminateBtn.style.background = '#ef4444';
+  terminateBtn.style.borderColor = '#ef4444';
+
+  openModal({
+    title: `Terminate Lease — ${tenant.name}`,
+    body,
+    footer: [button('Cancel', { onClick: closeModal }), terminateBtn],
     large: true
   });
 }
