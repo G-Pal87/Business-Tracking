@@ -36,6 +36,26 @@
 .card-title { font-size: 13px; font-weight: 600; color: var(--text); }
 .card-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
+/* Collapsible card */
+.card-header--toggle {
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 0;
+  border-radius: var(--radius-sm, 4px);
+  transition: background 120ms;
+}
+.card-header--toggle:hover { background: var(--bg-elev-2, rgba(0,0,0,0.04)); }
+.card-toggle-chevron {
+  font-size: 11px;
+  color: var(--text-muted);
+  transition: transform 200ms ease;
+  flex-shrink: 0;
+  margin-left: 10px;
+  line-height: 1;
+}
+.card-toggle-chevron.open { transform: rotate(90deg); }
+.card-collapsible-body { padding-top: 16px; }
+
 /* KPI */
 .kpi {
   background: var(--bg-elev-1);
