@@ -78,16 +78,32 @@ function buildGithubCard() {
   const effToken  = g.token  || dbCfg.token  || '';
   const isAdmin = state.session?.role === 'admin';
 
-  card.appendChild(el('div', { class: 'card-header' },
+  // \u2500\u2500 Collapsible header \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '\u25b6');
+  const header  = el('div', { class: 'card-header card-header--toggle' },
     el('div', {},
       el('div', { class: 'card-title' }, 'GitHub Storage'),
       el('div', { class: 'card-subtitle' }, 'Sync data to a repo so it is accessible to everyone')
     ),
-    githubStatusBadge(g)
-  ));
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      githubStatusBadge(g),
+      chevron
+    )
+  );
+  card.appendChild(header);
 
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
+
+  // \u2500\u2500 Error banner \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   if (g.lastSyncError) {
-    card.appendChild(el('div', {
+    body.appendChild(el('div', {
       style: 'background:var(--danger-light,#fff0f0);border-left:3px solid var(--danger,#dc3545);padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--danger,#dc3545);border-radius:4px'
     }, `Last sync error: ${g.lastSyncError}`));
   }
@@ -105,7 +121,7 @@ function buildGithubCard() {
       infoGrid.appendChild(el('div', { style: 'color:var(--text-muted)' }, label));
       infoGrid.appendChild(el('div', {}, value));
     }
-    card.appendChild(infoGrid);
+    body.appendChild(infoGrid);
     return card;
   }
 
@@ -116,9 +132,9 @@ function buildGithubCard() {
   const dbPathI = input({ value: effPath,   placeholder: 'data/db.json' });
   const tokenI  = input({ type: 'password', placeholder: effToken ? 'Leave blank to keep current token' : 'ghp_\u2026' });
 
-  card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Owner', ownerI), formRow('Repo', repoI)));
-  card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Branch', branchI), formRow('Path', dbPathI)));
-  card.appendChild(formRow(
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Owner', ownerI), formRow('Repo', repoI)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Branch', branchI), formRow('Path', dbPathI)));
+  body.appendChild(formRow(
     effToken ? 'Token (configured)' : 'Token (PAT)',
     tokenI,
     'Stored in db.json and shared across all users/devices.'
@@ -195,7 +211,7 @@ function buildGithubCard() {
     btnRow.appendChild(disconnectBtn);
   }
 
-  card.appendChild(btnRow);
+  body.appendChild(btnRow);
 
   // Setup Link section — prominent, separate from action buttons
   if (effOwner && effRepo) {
@@ -236,9 +252,8 @@ function buildGithubCard() {
     linkRow.appendChild(setupLinkInput);
     linkRow.appendChild(copyBtn);
     setupSection.appendChild(linkRow);
-    card.appendChild(setupSection);
+    body.appendChild(setupSection);
   }
-
 
   if (g.lastSyncError && !g.usingCache) {
     const retryBtn = button('Retry Sync Now', { variant: 'primary', onClick: async () => {
@@ -258,7 +273,7 @@ function buildGithubCard() {
     }});
     const retryRow = el('div', { style: 'margin-top:8px' });
     retryRow.appendChild(retryBtn);
-    card.appendChild(retryRow);
+    body.appendChild(retryRow);
   }
 
   return card;
