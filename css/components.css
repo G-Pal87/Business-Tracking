@@ -56,6 +56,24 @@
 .card-toggle-chevron.open { transform: rotate(90deg); }
 .card-collapsible-body { padding-top: 16px; }
 
+/* Sub-sections (nested inside a collapsible card body) */
+.sub-section { border-top: 1px solid var(--border); }
+.sub-section:first-child { border-top: none; margin-top: 0; }
+.sub-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 4px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--radius-sm, 4px);
+  transition: background 120ms;
+}
+.sub-section-header:hover { background: var(--bg-elev-2, rgba(0,0,0,0.04)); }
+.sub-section-title { font-size: 12px; font-weight: 600; color: var(--text); }
+.sub-section-subtitle { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.sub-section-body { padding-bottom: 16px; }
+
 /* KPI */
 .kpi {
   background: var(--bg-elev-1);
