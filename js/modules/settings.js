@@ -282,21 +282,37 @@ function buildGithubCard() {
 function buildCurrencyCard() {
   const card = el('div', { class: 'card mb-16' });
 
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const addYearBtn = button('+ Add Year', { variant: 'primary', onClick: (e) => { e.stopPropagation(); openAddYearForm(renderCard); } });
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'HUF/EUR Annual Rates'),
+      el('div', { class: 'card-subtitle' }, 'Fixed yearly conversion rate: 1 HUF = X EUR')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      addYearBtn,
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
+
   const renderCard = () => {
-    card.innerHTML = '';
-    card.appendChild(el('div', { class: 'card-header' },
-      el('div', {},
-        el('div', { class: 'card-title' }, 'HUF/EUR Annual Rates'),
-        el('div', { class: 'card-subtitle' }, 'Fixed yearly conversion rate: 1 HUF = X EUR')
-      ),
-      button('+ Add Year', { variant: 'primary', onClick: () => openAddYearForm(renderCard) })
-    ));
+    body.innerHTML = '';
 
     const yearRates = state.db.settings?.fxRates?.yearRates || {};
     const years = Object.keys(yearRates).sort().reverse();
 
     if (years.length === 0) {
-      card.appendChild(el('div', { class: 'empty' }, 'No rates defined. Add a year to get started.'));
+      body.appendChild(el('div', { class: 'empty' }, 'No rates defined. Add a year to get started.'));
     } else {
       const t = el('table', { class: 'table' });
       t.innerHTML = `<thead><tr><th>Year</th><th>1 HUF = EUR</th><th></th></tr></thead>`;
@@ -327,14 +343,14 @@ function buildCurrencyCard() {
         tb.appendChild(tr);
       }
       t.appendChild(tb);
-      card.appendChild(el('div', { class: 'table-wrap' }, t));
+      body.appendChild(el('div', { class: 'table-wrap' }, t));
     }
 
     const taxI = input({ type: 'number', value: state.db.settings?.defaultTaxRate || 0, min: 0, max: 100, step: 0.1 });
-    card.appendChild(el('div', { class: 'form-row horizontal', style: 'margin-top:16px' },
+    body.appendChild(el('div', { class: 'form-row horizontal', style: 'margin-top:16px' },
       formRow('Default invoice tax %', taxI)
     ));
-    card.appendChild(button('Save Tax Rate', { variant: 'primary', onClick: () => {
+    body.appendChild(button('Save Tax Rate', { variant: 'primary', onClick: () => {
       state.db.settings.defaultTaxRate = Number(taxI.value) || 0;
       markDirty();
       toast('Saved', 'success');
@@ -369,7 +385,27 @@ function openAddYearForm(onDone) {
 function buildBusinessCard() {
   const card = el('div', { class: 'card mb-16' });
   const b = state.db.settings?.business || {};
-  card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Business Info (on invoices)')));
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Business Info (on invoices)')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
+
   const nameI = input({ value: b.name });
   const emailI = input({ value: b.email });
   const addressI = input({ value: b.address });
@@ -380,11 +416,11 @@ function buildBusinessCard() {
   const swiftI = input({ value: b.swift, placeholder: 'Same as BIC or separate SWIFT code' });
   bicI.oninput  = () => { bicI.value  = bicI.value.toUpperCase(); };
   swiftI.oninput = () => { swiftI.value = swiftI.value.toUpperCase(); };
-  card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Business Name', nameI), formRow('Email', emailI)));
-  card.appendChild(formRow('Address', addressI));
-  card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI), formRow('VAT Number', vatI)));
-  card.appendChild(el('div', { class: 'form-row horizontal' }, formRow('IBAN', ibanI), formRow('BIC', bicI)));
-  card.appendChild(formRow('SWIFT', swiftI, 'Used on invoice payment details. BIC and SWIFT are often identical.'));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Business Name', nameI), formRow('Email', emailI)));
+  body.appendChild(formRow('Address', addressI));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI), formRow('VAT Number', vatI)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('IBAN', ibanI), formRow('BIC', bicI)));
+  body.appendChild(formRow('SWIFT', swiftI, 'Used on invoice payment details. BIC and SWIFT are often identical.'));
   const save = button('Save', { variant: 'primary', onClick: () => {
     const iban  = ibanI.value.trim().replace(/\s/g, '').toUpperCase();
     const bic   = bicI.value.trim().toUpperCase();
@@ -409,19 +445,36 @@ function buildBusinessCard() {
     markDirty();
     toast('Saved', 'success');
   }});
-  card.appendChild(save);
+  body.appendChild(save);
   return card;
 }
 
 function buildVendorsCard() {
   const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const addVendorBtn = button('+ Add Vendor', { variant: 'primary', onClick: (e) => { e.stopPropagation(); openVendorForm(); } });
+  const header = el('div', { class: 'card-header card-header--toggle' },
     el('div', {}, el('div', { class: 'card-title' }, 'Vendors'), el('div', { class: 'card-subtitle' }, 'Cleaners, maintenance, management companies')),
-    button('+ Add Vendor', { variant: 'primary', onClick: () => openVendorForm() })
-  ));
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      addVendorBtn,
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
+
   const vendors = listActive('vendors');
   if (vendors.length === 0) {
-    card.appendChild(el('div', { class: 'empty' }, 'No vendors'));
+    body.appendChild(el('div', { class: 'empty' }, 'No vendors'));
     return card;
   }
   const t = el('table', { class: 'table' });
@@ -445,7 +498,7 @@ function buildVendorsCard() {
   }
   t.appendChild(tb);
   const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
-  card.appendChild(tw);
+  body.appendChild(tw);
   return card;
 }
 
@@ -507,18 +560,34 @@ function openVendorForm(existing) {
 function buildServicesCard() {
   const card = el('div', { class: 'card mb-16' });
 
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const addServiceBtn = button('+ Add Service', { variant: 'primary', onClick: (e) => { e.stopPropagation(); openServiceForm(null, renderCard); } });
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Service Catalog'),
+      el('div', { class: 'card-subtitle' }, 'Premade services used when building invoices')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      addServiceBtn,
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
+
   const renderCard = () => {
-    card.innerHTML = '';
-    card.appendChild(el('div', { class: 'card-header' },
-      el('div', {},
-        el('div', { class: 'card-title' }, 'Service Catalog'),
-        el('div', { class: 'card-subtitle' }, 'Premade services used when building invoices')
-      ),
-      button('+ Add Service', { variant: 'primary', onClick: () => openServiceForm(null, renderCard) })
-    ));
+    body.innerHTML = '';
     const services = listActive('services');
     if (services.length === 0) {
-      card.appendChild(el('div', { class: 'empty' }, 'No services'));
+      body.appendChild(el('div', { class: 'empty' }, 'No services'));
     } else {
       const t = el('table', { class: 'table' });
       t.innerHTML = `<thead><tr><th>Name</th><th>Stream</th><th>Unit</th><th class="right">Rate</th><th></th></tr></thead>`;
@@ -540,7 +609,7 @@ function buildServicesCard() {
       }
       t.appendChild(tb);
       const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
-      card.appendChild(tw);
+      body.appendChild(tw);
     }
   };
 
@@ -580,18 +649,34 @@ function openServiceForm(existing, onSave) {
 function buildReservationExpenseRulesCard() {
   const card = el('div', { class: 'card mb-16' });
 
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const addRuleBtn = button('+ Add Rule', { variant: 'primary', onClick: (e) => { e.stopPropagation(); openReservationExpenseRuleForm(null, renderCard); } });
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Reservation Expense Rules'),
+      el('div', { class: 'card-subtitle' }, 'Auto-generate expenses for each reservation (historical & future, imported & manual)')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      addRuleBtn,
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
+
   const renderCard = () => {
-    card.innerHTML = '';
-    card.appendChild(el('div', { class: 'card-header' },
-      el('div', {},
-        el('div', { class: 'card-title' }, 'Reservation Expense Rules'),
-        el('div', { class: 'card-subtitle' }, 'Auto-generate expenses for each reservation (historical & future, imported & manual)')
-      ),
-      button('+ Add Rule', { variant: 'primary', onClick: () => openReservationExpenseRuleForm(null, renderCard) })
-    ));
+    body.innerHTML = '';
     const rules = listActive('reservationExpenseRules');
     if (rules.length === 0) {
-      card.appendChild(el('div', { class: 'empty' }, 'No rules configured'));
+      body.appendChild(el('div', { class: 'empty' }, 'No rules configured'));
     } else {
       const t = el('table', { class: 'table' });
       t.innerHTML = `<thead><tr><th>Name</th><th>Property</th><th>Category</th><th>Amount Source</th><th>Enabled</th><th></th></tr></thead>`;
@@ -623,7 +708,7 @@ function buildReservationExpenseRulesCard() {
       }
       t.appendChild(tb);
       const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
-      card.appendChild(tw);
+      body.appendChild(tw);
     }
   };
 
@@ -736,9 +821,27 @@ function openReservationExpenseRuleForm(existing, onSave) {
 
 function buildTeamCard() {
   const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Team')
-  ));
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Team')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
+
   const team = state.db.settings?.team || [];
   const rows = el('div', {});
   for (const t of team) {
@@ -752,7 +855,7 @@ function buildTeamCard() {
     nameI.onchange = () => { t.name = nameI.value.trim(); markDirty(); };
     roleI.onchange = () => { t.role = roleI.value.trim(); markDirty(); };
   }
-  card.appendChild(rows);
+  body.appendChild(rows);
   return card;
 }
 
@@ -771,21 +874,38 @@ function capitalizeFirst(str) {
 function buildTrashCard() {
   const card = el('div', { class: 'card mb-16' });
 
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const subtitleEl = el('div', { class: 'card-subtitle' }, '');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Trash'),
+      subtitleEl
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
+
   const renderCard = (activeCol = 'all') => {
-    card.innerHTML = '';
+    body.innerHTML = '';
 
     const all = listDeletedRecords().sort((a, b) => (b.item.deletedAt || 0) - (a.item.deletedAt || 0));
     const colNames = [...new Set(all.map(r => r.collection))].sort();
 
-    card.appendChild(el('div', { class: 'card-header' },
-      el('div', {},
-        el('div', { class: 'card-title' }, 'Trash'),
-        el('div', { class: 'card-subtitle' }, `${all.length} soft-deleted record${all.length !== 1 ? 's' : ''}`)
-      )
-    ));
+    subtitleEl.textContent = `${all.length} soft-deleted record${all.length !== 1 ? 's' : ''}`;
 
     if (all.length === 0) {
-      card.appendChild(el('div', { class: 'empty' }, 'Trash is empty'));
+      body.appendChild(el('div', { class: 'empty' }, 'Trash is empty'));
       return;
     }
 
@@ -926,7 +1046,7 @@ function buildTrashCard() {
     };
 
     // --- Filter + bulk action bar ---
-    card.appendChild(el('div', {
+    body.appendChild(el('div', {
       class: 'flex gap-8 mb-16',
       style: 'align-items:center;flex-wrap:wrap;padding-top:12px'
     }, colSel, el('div', { class: 'flex-1' }), selCountEl, restoreSelBtn, deleteSelBtn, deleteAllBtn));
@@ -934,7 +1054,7 @@ function buildTrashCard() {
     // --- Table ---
     const vis = getVisible();
     if (vis.length === 0) {
-      card.appendChild(el('div', { class: 'empty' }, 'No deleted records in this collection'));
+      body.appendChild(el('div', { class: 'empty' }, 'No deleted records in this collection'));
       return;
     }
 
@@ -1028,7 +1148,7 @@ function buildTrashCard() {
     }
     t.appendChild(tb);
     tw.appendChild(t);
-    card.appendChild(tw);
+    body.appendChild(tw);
   };
 
   renderCard();
@@ -1037,12 +1157,27 @@ function buildTrashCard() {
 
 function buildInvoiceRepoCard() {
   const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
     el('div', {},
       el('div', { class: 'card-title' }, 'Invoice Repository Maintenance'),
       el('div', { class: 'card-subtitle' }, 'Audit and back up PDF files stored in the invoice repository')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      chevron
     )
-  ));
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
 
   const resultEl        = el('div', { style: 'margin-top:12px' });
   const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
@@ -1051,10 +1186,10 @@ function buildInvoiceRepoCard() {
   const checkBtn        = button('Check Invoice Repository', { onClick: runCheck });
   const backupBtn       = button('Backup Invoices', { onClick: runBackup });
   const deleteBackupBtn = button('Delete Invoice Backups', { variant: 'danger', onClick: runDeleteBackups });
-  card.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn));
-  card.appendChild(resultEl);
-  card.appendChild(backupStatusEl);
-  card.appendChild(deleteStatusEl);
+  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn));
+  body.appendChild(resultEl);
+  body.appendChild(backupStatusEl);
+  body.appendChild(deleteStatusEl);
 
   // Mirrors invoicePdfPath() in invoices.js — derive canonical repo path from invoice number
   function canonicalPath(inv) {
@@ -1517,12 +1652,27 @@ async function listDocRepoFiles(rootFolder) {
 
 function buildDocRepoCard({ title, subtitle, rootFolder, collection, entityLabel, checkBtnLabel, backupBtnLabel, deleteBackupBtnLabel }) {
   const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
     el('div', {},
       el('div', { class: 'card-title' }, title),
       el('div', { class: 'card-subtitle' }, subtitle)
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      chevron
     )
-  ));
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
 
   const resultEl        = el('div', { style: 'margin-top:12px' });
   const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
@@ -1531,10 +1681,10 @@ function buildDocRepoCard({ title, subtitle, rootFolder, collection, entityLabel
   const checkBtn        = button(checkBtnLabel,  { onClick: runCheck });
   const backupBtn       = button(backupBtnLabel, { onClick: runBackup });
   const deleteBackupBtn = button(deleteBackupBtnLabel, { variant: 'danger', onClick: runDeleteBackups });
-  card.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn));
-  card.appendChild(resultEl);
-  card.appendChild(backupStatusEl);
-  card.appendChild(deleteStatusEl);
+  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn));
+  body.appendChild(resultEl);
+  body.appendChild(backupStatusEl);
+  body.appendChild(deleteStatusEl);
 
   // ── Check ─────────────────────────────────────────────────────────────────
 
@@ -1894,7 +2044,26 @@ function buildDangerCard() {
   }
 
   const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Data')));
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Data')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
 
   const statusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
 
@@ -2031,7 +2200,7 @@ function buildDangerCard() {
   };
 
   const importBtn = button('Import JSON', { onClick: () => importInput.click() });
-  card.appendChild(el('div', { class: 'flex gap-8' }, exportBtn, importBtn, importInput));
-  card.appendChild(statusEl);
+  body.appendChild(el('div', { class: 'flex gap-8' }, exportBtn, importBtn, importInput));
+  body.appendChild(statusEl);
   return card;
 }
