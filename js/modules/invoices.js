@@ -113,6 +113,63 @@ async function migrateInvoicePdfPaths(pending) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ── ZIP helpers ───────────────────────────────────────────────────────────────
+function buildZipFilename(yearFilter, monthFilter, clientFilter, ownerFilter, statusFilter) {
+  const parts = ['invoices'];
+  if (yearFilter.size)   parts.push([...yearFilter].sort().join('-'));
+  if (monthFilter.size)  parts.push('m' + [...monthFilter].sort().join('-'));
+  if (statusFilter.size) parts.push([...statusFilter].sort().join('-'));
+  if (ownerFilter.size)  parts.push([...ownerFilter].sort().join('-'));
+  if (clientFilter.size) {
+    const names = [...clientFilter]
+      .map(id => byId('clients', id)?.name || id)
+      .map(n => n.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12));
+    parts.push(names.join('-'));
+  }
+  const now = new Date();
+  const ts = now.getFullYear().toString()
+    + String(now.getMonth() + 1).padStart(2, '0')
+    + String(now.getDate()).padStart(2, '0')
+    + 'T'
+    + String(now.getHours()).padStart(2, '0')
+    + String(now.getMinutes()).padStart(2, '0')
+    + String(now.getSeconds()).padStart(2, '0');
+  parts.push(ts);
+  return parts.join('_') + '.zip';
+}
+
+async function downloadInvoicesAsZip(invoices, zipFilename) {
+  const JSZip = window.JSZip;
+  if (!JSZip) { toast('ZIP library not loaded — refresh and try again', 'danger'); return; }
+
+  const zip = new JSZip();
+  let ok = 0, failed = 0;
+
+  for (const inv of invoices) {
+    const filename = `${(inv.number || inv.id).replace(/[/\\:*?"<>|]/g, '_')}.pdf`;
+    try {
+      const blob = await resolveInvoiceBlob(inv);
+      zip.file(filename, blob);
+      ok++;
+    } catch (err) {
+      console.warn(`[ZIP] Could not resolve PDF for ${inv.number || inv.id}:`, err.message);
+      failed++;
+    }
+  }
+
+  if (ok === 0) { toast('Could not generate any PDFs for the selected invoices', 'danger'); return; }
+  if (failed > 0) toast(`${failed} invoice(s) could not be included — check the console for details`, 'warning', 5000);
+
+  const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  const url = URL.createObjectURL(content);
+  const a   = document.createElement('a');
+  a.href     = url;
+  a.download = zipFilename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast(`Downloaded ${ok} invoice PDF(s) as ${zipFilename}`, 'success', 4000);
+}
+
 function makeKpiCard(label, variant, onClick) {
   const valEl = el('div', { class: 'kpi-value', style: 'font-size:1.4rem' }, '—');
   const subEl = el('div', { class: 'kpi-trend' }, '');
@@ -169,7 +226,24 @@ function build() {
   }});
   deleteSelBtn.style.display = 'none';
 
+  const downloadZipBtn = button('', { variant: 'ghost', onClick: async () => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    const invoicesToZip = ids.map(id => byId('invoices', id)).filter(Boolean);
+    const zipName = buildZipFilename(yearFilter, monthFilter, clientFilter, ownerFilter, statusFilter);
+    downloadZipBtn.disabled = true;
+    downloadZipBtn.textContent = 'Preparing…';
+    try {
+      await downloadInvoicesAsZip(invoicesToZip, zipName);
+    } finally {
+      downloadZipBtn.disabled = false;
+      syncBulkActions();
+    }
+  }});
+  downloadZipBtn.style.display = 'none';
+
   bar.appendChild(el('div', { class: 'flex-1' }));
+  bar.appendChild(downloadZipBtn);
   bar.appendChild(deleteSelBtn);
   bar.appendChild(button('Import PDF', { onClick: () => openPDFImport() }));
   bar.appendChild(button('+ New Invoice', { variant: 'primary', onClick: () => openBuilder() }));
@@ -191,18 +265,21 @@ function build() {
     totalEl.textContent = formatEUR(total);
   });
 
-  const syncDeleteBtn = () => {
+  const syncBulkActions = () => {
     if (selected.size > 0) {
       deleteSelBtn.textContent = `Delete ${selected.size} Selected`;
       deleteSelBtn.style.display = '';
+      downloadZipBtn.textContent = `Download ${selected.size} as ZIP`;
+      downloadZipBtn.style.display = '';
     } else {
       deleteSelBtn.style.display = 'none';
+      downloadZipBtn.style.display = 'none';
     }
   };
 
   const renderTable = () => {
     selected.clear();
-    syncDeleteBtn();
+    syncBulkActions();
     tableWrap.innerHTML = '';
     let rows = [...listActive('invoices')];
     if (yearFilter.size > 0)   rows = rows.filter(r => yearFilter.has(r.issueDate?.slice(0, 4)));
@@ -256,7 +333,7 @@ function build() {
         const n = rowChks.filter(c => c.checked).length;
         selectAllChk.indeterminate = n > 0 && n < rows.length;
         selectAllChk.checked = n === rows.length;
-        syncDeleteBtn();
+        syncBulkActions();
       };
 
       const tr = el('tr');
@@ -297,7 +374,7 @@ function build() {
       rowChks.forEach(c => { c.checked = selectAllChk.checked; });
       selectAllChk.indeterminate = false;
       if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
-      syncDeleteBtn();
+      syncBulkActions();
     };
     // Totals footer
     const totalEUR = rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
