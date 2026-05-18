@@ -544,13 +544,25 @@ function buildView() {
 
   // ── Invoice Records ────────────────────────────────────────────────────────
   const tableCard = el('div', { class: 'card' });
-  tableCard.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Invoice Records'),
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' },
-      gStatusFilter.size > 0 ? 'Status filter active' : 'All statuses'
-    )
+  const svcTableHeader = el('div', { class: 'card-header', style: 'cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between' });
+  const svcHeaderLeft = el('div', { style: 'display:flex;align-items:center;gap:16px' });
+  svcHeaderLeft.appendChild(el('div', { class: 'card-title' }, 'Invoice Records'));
+  svcHeaderLeft.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
+    gStatusFilter.size > 0 ? 'Status filter active' : 'All statuses'
   ));
-  buildInvoiceTable(tableCard, curData);
+  svcTableHeader.appendChild(svcHeaderLeft);
+  const svcChevron = el('span', { style: 'font-size:11px;color:var(--text-muted);display:inline-block;transition:transform 200ms' }, '▼');
+  svcTableHeader.appendChild(svcChevron);
+  tableCard.appendChild(svcTableHeader);
+  const svcTableBody = el('div');
+  buildInvoiceTable(svcTableBody, curData);
+  tableCard.appendChild(svcTableBody);
+  let svcCollapsed = false;
+  svcTableHeader.onclick = () => {
+    svcCollapsed = !svcCollapsed;
+    svcTableBody.style.display = svcCollapsed ? 'none' : '';
+    svcChevron.style.transform = svcCollapsed ? 'rotate(-90deg)' : '';
+  };
   wrap.appendChild(tableCard);
 
   const { keys: monthKeys } = getMonthKeysForRange(start, end);
