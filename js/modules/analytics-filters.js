@@ -12,6 +12,8 @@ function getDataYears() {
   listActive('invoices').forEach(i => { const yr = (i.issueDate || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
   listActivePayments().forEach(p => { const yr = (p.date || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
   listActive('expenses').forEach(e => { const yr = (e.date || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
+  listActive('properties').forEach(p => { const yr = (p.purchaseDate || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
+  listActive('forecasts').forEach(f => { if (f.year >= 2000) y.add(String(f.year)); });
   return [...y].sort().reverse(); // newest first
 }
 
