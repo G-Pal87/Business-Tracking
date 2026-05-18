@@ -183,7 +183,7 @@ export function getCurrentPeriodRange(gF) {
 // ── Comparison range ──────────────────────────────────────────────────────────
 export function getComparisonRange(gF, cur) {
   if (gF.compareTo === 'none') return null;
-  if (gF.period === 'all-time') return null;
+  if (gF.period === 'all') return null;
 
   const durMs = new Date(cur.end) - new Date(cur.start);
 
