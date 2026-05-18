@@ -11,7 +11,7 @@ import {
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
-} from './analytics-filters.js';
+} from './analytics-filters.js?v=20260518';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const ALL_CHART_IDS = [
