@@ -516,7 +516,7 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
   const { rev, capEx, opProfit, opMargin, netCash, outstandingTotal, fcRev, fcMonthlyRev,
           expenseRatio, collectionRate,
           payments, invoices, opExpenses, capExExpenses, acquisitions, outstanding } = curMetrics;
-  const cmpLabel = cmpRange?.label || '';
+  const cmpLabel = cmpRange?.label || (curRange.label === 'All Time' ? 'All Time' : '');
 
   const grid = el('div', {
     class: 'mb-16',
