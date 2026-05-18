@@ -216,7 +216,7 @@ function calcMetrics(data, range = null) {
   const capEx       = capExFromExp + capExFromAcq;
   const opProfit    = rev - opEx;
   const opMargin    = rev > 0 ? (opProfit / rev) * 100 : null;
-  const netCash      = opProfit - capExFromExp;
+  const netCash      = opProfit - capEx;
   const expenseRatio = rev > 0 ? (opEx / rev) * 100 : null;
 
   // Collection rate: paid invoices / all invoices (any status) issued in range
