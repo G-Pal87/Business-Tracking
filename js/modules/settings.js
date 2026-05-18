@@ -27,9 +27,7 @@ function build() {
   wrap.appendChild(buildServicesCard());
   wrap.appendChild(buildReservationExpenseRulesCard());
   wrap.appendChild(buildTeamCard());
-  wrap.appendChild(buildInvoiceRepoCard());
-  wrap.appendChild(buildPropertiesRepoCard());
-  wrap.appendChild(buildClientsRepoCard());
+  wrap.appendChild(buildRepositoryMaintenanceCard());
   wrap.appendChild(buildTrashCard());
   wrap.appendChild(buildDangerCard());
   return wrap;
@@ -1155,30 +1153,7 @@ function buildTrashCard() {
   return card;
 }
 
-function buildInvoiceRepoCard() {
-  const card = el('div', { class: 'card mb-16' });
-
-  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
-  const header = el('div', { class: 'card-header card-header--toggle' },
-    el('div', {},
-      el('div', { class: 'card-title' }, 'Invoice Repository Maintenance'),
-      el('div', { class: 'card-subtitle' }, 'Audit and back up PDF files stored in the invoice repository')
-    ),
-    el('div', { style: 'display:flex;align-items:center;gap:8px' },
-      chevron
-    )
-  );
-  card.appendChild(header);
-
-  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
-  card.appendChild(body);
-
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
-
+function fillInvoiceRepoBody(body) {
   const resultEl        = el('div', { style: 'margin-top:12px' });
   const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
   const deleteStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
@@ -1585,8 +1560,6 @@ function buildInvoiceRepoCard() {
     }
     if (resultEl.innerHTML) await runCheck();
   }
-
-  return card;
 }
 
 // ── Shared helpers for document repo maintenance cards ────────────────────────
@@ -1650,30 +1623,7 @@ async function listDocRepoFiles(rootFolder) {
   return files;
 }
 
-function buildDocRepoCard({ title, subtitle, rootFolder, collection, entityLabel, checkBtnLabel, backupBtnLabel, deleteBackupBtnLabel }) {
-  const card = el('div', { class: 'card mb-16' });
-
-  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
-  const header = el('div', { class: 'card-header card-header--toggle' },
-    el('div', {},
-      el('div', { class: 'card-title' }, title),
-      el('div', { class: 'card-subtitle' }, subtitle)
-    ),
-    el('div', { style: 'display:flex;align-items:center;gap:8px' },
-      chevron
-    )
-  );
-  card.appendChild(header);
-
-  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
-  card.appendChild(body);
-
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
-
+function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLabel, backupBtnLabel, deleteBackupBtnLabel }) {
   const resultEl        = el('div', { style: 'margin-top:12px' });
   const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
   const deleteStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
@@ -1973,14 +1923,54 @@ function buildDocRepoCard({ title, subtitle, rootFolder, collection, entityLabel
     }
     if (resultEl.innerHTML) await runCheck();
   }
-
-  return card;
 }
 
-function buildPropertiesRepoCard() {
-  return buildDocRepoCard({
-    title:                'Property Document Repository Maintenance',
-    subtitle:             'Audit and back up document files stored under Properties/ in the repository',
+function makeSubSection(title, subtitle) {
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'sub-section-header' },
+    el('div', {},
+      el('div', { class: 'sub-section-title' }, title),
+      el('div', { class: 'sub-section-subtitle' }, subtitle)
+    ),
+    chevron
+  );
+  const body = el('div', { class: 'sub-section-body', style: 'display:none' });
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
+  const wrap = el('div', { class: 'sub-section' });
+  wrap.appendChild(header);
+  wrap.appendChild(body);
+  return { wrap, body };
+}
+
+function buildRepositoryMaintenanceCard() {
+  const card = el('div', { class: 'card mb-16' });
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Repository Maintenance'),
+      el('div', { class: 'card-subtitle' }, 'Audit and manage PDF and document files stored in GitHub')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
+  );
+  card.appendChild(header);
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
+
+  const invSub  = makeSubSection('Invoices',   'PDF files stored in the invoice repository');
+  const propSub = makeSubSection('Properties', 'Document files stored under Properties/');
+  const cliSub  = makeSubSection('Clients',    'Document files stored under Clients/');
+
+  fillInvoiceRepoBody(invSub.body);
+  fillDocRepoBody(propSub.body, {
     rootFolder:           'Properties',
     collection:           'properties',
     entityLabel:          'Property',
@@ -1988,12 +1978,7 @@ function buildPropertiesRepoCard() {
     backupBtnLabel:       'Backup Property Documents',
     deleteBackupBtnLabel: 'Delete Property Backups'
   });
-}
-
-function buildClientsRepoCard() {
-  return buildDocRepoCard({
-    title:                'Client Document Repository Maintenance',
-    subtitle:             'Audit and back up document files stored under Clients/ in the repository',
+  fillDocRepoBody(cliSub.body, {
     rootFolder:           'Clients',
     collection:           'clients',
     entityLabel:          'Client',
@@ -2001,6 +1986,12 @@ function buildClientsRepoCard() {
     backupBtnLabel:       'Backup Client Documents',
     deleteBackupBtnLabel: 'Delete Client Backups'
   });
+
+  body.appendChild(invSub.wrap);
+  body.appendChild(propSub.wrap);
+  body.appendChild(cliSub.wrap);
+
+  return card;
 }
 
 function buildDangerCard() {
