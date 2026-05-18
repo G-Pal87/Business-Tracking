@@ -493,7 +493,7 @@ function kpiCard({ label, subtitle, value, variant, onClick, delta, deltaIsPerce
 
 // ── KPI cards ─────────────────────────────────────────────────────────────────
 function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
-  const { rev, capEx, opProfit, opMargin, netCash, outstandingTotal, fcRev, fcMonthlyRev,
+  const { rev, capEx, capExFromExp, capExFromAcq, opProfit, opMargin, netCash, outstandingTotal, fcRev, fcMonthlyRev,
           expenseRatio, collectionRate, pendingPipeline,
           payments, invoices, opExpenses, capExExpenses, acquisitions, outstanding } = curMetrics;
   const cmpLabel = cmpRange?.label || (curRange.label === 'All Time' ? 'All Time' : '');
@@ -577,12 +577,42 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
   // 5. Net Cash Flow
   grid.appendChild(kpiCard({
     label: 'Net Cash Flow',
-    subtitle: 'Revenue minus OpEx and CapEx',
+    subtitle: 'Op Cash Flow minus Capital Deployed',
     value: formatEUR(netCash),
     variant: netCash >= 0 ? 'success' : 'danger',
     onClick: () => drillDownModal('Cash Flow', mixedRows(payments, invoices, [...opExpenses, ...capExExpenses], acquisitions), MIXED_COLS),
     delta: cmpMetrics ? safePct(netCash, cmpMetrics.netCash) : null,
     invertDelta: false, compLabel: cmpLabel
+  }));
+
+  // 5a. Operating Cash Flow (Revenue − OpEx, before capital expenditure)
+  grid.appendChild(kpiCard({
+    label: 'Operating Cash Flow',
+    subtitle: 'Revenue minus operating expenses',
+    value: formatEUR(opProfit),
+    variant: opProfit >= 0 ? 'success' : 'danger',
+    onClick: () => drillDownModal('Operating Cash Flow', mixedRows(payments, invoices, opExpenses), MIXED_COLS),
+    delta: cmpMetrics ? safePct(opProfit, cmpMetrics.opProfit) : null,
+    invertDelta: false, compLabel: cmpLabel
+  }));
+
+  // 5b. Capital Deployed (CapEx expenses + property acquisitions)
+  const capDeployedRows = [
+    ...drillExpRows(capExExpenses),
+    ...acquisitions.map(a => ({
+      date: a.date, source: a._name || '',
+      category: 'Acquisition', description: a.description,
+      eur: toEUR(a.amount, a.currency, a.date)
+    }))
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  grid.appendChild(kpiCard({
+    label: 'Capital Deployed',
+    subtitle: `CapEx ${formatEUR(capExFromExp)} · Acquisitions ${formatEUR(capExFromAcq)}`,
+    value: formatEUR(capEx),
+    variant: capEx > 0 ? 'info' : '',
+    onClick: () => drillDownModal('Capital Deployed — CapEx & Acquisitions', capDeployedRows, EXP_COLS),
+    delta: cmpMetrics ? safePct(capEx, cmpMetrics.capEx) : null,
+    invertDelta: true, compLabel: cmpLabel
   }));
 
   // 6. Outstanding — current open invoices, no comparison delta (not range-limited)
