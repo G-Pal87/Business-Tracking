@@ -175,8 +175,13 @@ export function getCurrentPeriodRange(gF) {
         return { start: gF.customStart, end: gF.customEnd, label: `${gF.customStart} – ${gF.customEnd}`, isIncomplete: false };
       return { start: `${y}-01-01`, end: today, label: `YTD ${y}`, isIncomplete: true };
 
-    default:
+    default: {
+      if (gF.period?.startsWith('year-')) {
+        const yr = gF.period.slice(5);
+        return { start: `${yr}-01-01`, end: `${yr}-12-31`, label: yr, isIncomplete: false };
+      }
       return { start: `${y}-01-01`, end: today, label: `YTD ${y}`, isIncomplete: true };
+    }
   }
 }
 
@@ -441,8 +446,27 @@ export function buildFilterBar(gF, opts, onChange) {
 
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
 
-  // Period
-  bar.appendChild(makeSelect(PERIOD_OPTIONS, gF.period, v => { gF.period = v; onChange(); }));
+  // Period — static options + dynamic past-year shortcuts
+  {
+    const s = el('select', { style: SS });
+    PERIOD_OPTIONS.forEach(([v, lbl]) => {
+      const o = el('option', { value: v }, lbl);
+      if (v === gF.period) o.selected = true;
+      s.appendChild(o);
+    });
+    const pastYears = getDataYears().filter(yr => yr < String(new Date().getFullYear()));
+    if (pastYears.length) {
+      const sep = el('option', { disabled: 'true' }, '──────────');
+      s.appendChild(sep);
+      pastYears.forEach(yr => {
+        const o = el('option', { value: `year-${yr}` }, yr);
+        if (`year-${yr}` === gF.period) o.selected = true;
+        s.appendChild(o);
+      });
+    }
+    s.addEventListener('change', () => { gF.period = s.value; onChange(); });
+    bar.appendChild(s);
+  }
 
   // Custom period: month/year range picker
   if (gF.period === 'custom') {
