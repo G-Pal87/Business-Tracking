@@ -22,6 +22,7 @@ const ALL_CHART_IDS = [
 
 // ── Property helpers ─────────────────────────────────────────────────────────
 function propStream(p) {
+  if (!p) return null;
   return p.type === 'short_term' ? 'short_term_rental'
        : p.type === 'long_term'  ? 'long_term_rental'
        : null;
