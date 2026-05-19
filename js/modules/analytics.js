@@ -1,5 +1,5 @@
 // Executive Analytics Dashboard
-import { el, fmtDate, drillDownModal } from '../core/ui.js';
+import { el, fmtDate, drillDownModal, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS } from '../core/config.js';
 import {
@@ -590,13 +590,65 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     compLabel: fcDelta !== null ? 'actual revenue' : '',
   }));
 
-  // 3. Operating Profit
+  // 3. Operating Profit — P&L summary + OpEx by category
+  const opProfitDrill = () => {
+    // Category breakdown
+    const catMap = new Map();
+    opExpenses.forEach(e => {
+      const cat = e.costCategory || e.category || 'Other';
+      const eur = toEUR(e.amount, e.currency, e.date);
+      catMap.set(cat, (catMap.get(cat) || 0) + eur);
+    });
+    const catRows = [...catMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, eur]) => ({ cat, eur, pct: opEx > 0 ? (eur / opEx) * 100 : 0 }));
+
+    // Summary header
+    const summaryStyle = 'display:grid;grid-template-columns:1fr auto;gap:4px 24px;padding:12px 16px;background:var(--bg-elev-1);border-radius:var(--radius-sm);margin-bottom:16px;font-size:13px';
+    const row = (label, value, bold, color) => {
+      const lEl = el('span', { style: bold ? 'font-weight:600' : 'color:var(--text-muted)' }, label);
+      const vEl = el('span', { style: `text-align:right;font-weight:${bold?'600':'400'};${color?'color:'+color:''}` }, value);
+      return [lEl, vEl];
+    };
+    const summary = el('div', { style: summaryStyle });
+    row('Revenue', formatEUR(rev), false).forEach(n => summary.appendChild(n));
+    row('Operating Expenses', '− ' + formatEUR(opEx), false).forEach(n => summary.appendChild(n));
+    const marginColor = opProfit >= 0 ? 'var(--success)' : 'var(--danger)';
+    row(`Operating Profit (${opMargin != null ? opMargin.toFixed(1) + '% margin' : '—'})`, formatEUR(opProfit), true, marginColor).forEach(n => summary.appendChild(n));
+
+    // Category table
+    const table = el('table', { class: 'table' });
+    table.appendChild(el('thead', {}, el('tr', {},
+      el('th', {}, 'Expense Category'),
+      el('th', { class: 'right' }, 'Amount'),
+      el('th', { class: 'right' }, '% of OpEx'),
+    )));
+    const tbody = el('tbody');
+    if (!catRows.length) {
+      const tr = el('tr');
+      tr.appendChild(el('td', { colspan: '3', style: 'text-align:center;padding:24px;color:var(--text-muted)' }, 'No expenses'));
+      tbody.appendChild(tr);
+    }
+    catRows.forEach(({ cat, eur, pct }) => {
+      tbody.appendChild(el('tr', {},
+        el('td', {}, cat),
+        el('td', { class: 'right num' }, formatEUR(eur)),
+        el('td', { class: 'right num' }, pct.toFixed(1) + '%'),
+      ));
+    });
+    table.appendChild(tbody);
+
+    const body = el('div');
+    body.appendChild(summary);
+    body.appendChild(el('div', { class: 'table-wrap' }, table));
+    openModal({ title: 'Operating Profit', body, large: true });
+  };
   grid.appendChild(kpiCard({
     label: 'Operating Profit',
     value: formatEUR(opProfit),
     variant: opProfit < 0 ? 'danger' :
       (opMargin !== null && opMargin >= EXEC_T.opMargin.healthy) ? 'success' : '',
-    onClick: () => drillDownModal('Operating Profit', mixedRows(payments, invoices, opExpenses), MIXED_COLS),
+    onClick: opProfitDrill,
     delta: cmpMetrics ? safePct(opProfit, cmpMetrics.opProfit) : null,
     invertDelta: false, compLabel: cmpLabel
   }));
