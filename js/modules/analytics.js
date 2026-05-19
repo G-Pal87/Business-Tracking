@@ -513,7 +513,7 @@ function kpiCard({ label, subtitle, value, variant, onClick, delta, deltaIsPerce
 
 // ── KPI cards ─────────────────────────────────────────────────────────────────
 function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
-  const { rev, capEx, capExFromExp, capExFromAcq, opProfit, opMargin, netCash, outstandingTotal, fcRev, fcMonthlyRev,
+  const { rev, opEx, capEx, capExFromExp, capExFromAcq, opProfit, opMargin, netCash, outstandingTotal, fcRev, fcMonthlyRev,
           expenseRatio, collectionRate, pendingPipeline,
           payments, invoices, opExpenses, capExExpenses, acquisitions, outstanding } = curMetrics;
   const cmpLabel = cmpRange?.label || (curRange.label === 'All Time' ? 'All Time' : '');
