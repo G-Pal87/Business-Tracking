@@ -1,5 +1,5 @@
 // Analysis Forecast Dashboard — forecast vs actual performance reporting
-import { el, fmtDate, drillDownModal } from '../core/ui.js';
+import { el, fmtDate, drillDownModal, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS } from '../core/config.js';
 import {
@@ -50,6 +50,40 @@ const NET_MO_COLS = [
   { key: 'fcNet',  label: 'Forecast Net',   right: true },
   { key: 'varStr', label: 'Variance',       right: true }
 ];
+
+// ── Modal UI helpers ──────────────────────────────────────────────────────────
+function mkSectionLabel(text) {
+  return el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:0 0 8px' }, text);
+}
+function mkSummaryBox(label, value, sub) {
+  const box = el('div', { style: 'padding:12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)' });
+  box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, label));
+  box.appendChild(el('div', { style: 'font-size:17px;font-weight:700;color:var(--text)' }, value));
+  if (sub) box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
+  return box;
+}
+function mkModalTable(headers, rows) {
+  const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
+  const thead = el('thead');
+  const hr = el('tr');
+  headers.forEach((h, i) => {
+    const th = el('th', { style: `padding:6px 8px;text-align:${i===0?'left':'right'};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08)` }, h);
+    hr.appendChild(th);
+  });
+  thead.appendChild(hr);
+  tbl.appendChild(thead);
+  const tbody = el('tbody');
+  rows.forEach((row, ri) => {
+    const tr = el('tr', { style: ri % 2 === 0 ? '' : 'background:rgba(255,255,255,0.02)' });
+    row.forEach((cell, ci) => {
+      const td = el('td', { style: `padding:6px 8px;text-align:${ci===0?'left':'right'};border-bottom:1px solid rgba(255,255,255,0.04)` }, String(cell ?? ''));
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  tbl.appendChild(tbody);
+  return tbl;
+}
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -454,7 +488,53 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   grid.appendChild(kpiCard({
     label: 'Actual Revenue',
     value: formatEUR(actualRev),
-    onClick: () => drillDownModal('Actual Revenue', drillRevRows(actPayments, actInvoices), REV_COLS),
+    onClick: () => {
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+      // Stream summary boxes
+      const streamBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px' });
+      const streamGroups = { service: 0, short_term_rental: 0, long_term_rental: 0, other: 0 };
+      actPayments.forEach(p => {
+        const s = resolveStream(p) || 'other';
+        const key = s === 'service' ? 'service' : (s === 'short_term_rental' ? 'short_term_rental' : (s === 'long_term_rental' ? 'long_term_rental' : 'other'));
+        streamGroups[key] = (streamGroups[key] || 0) + toEUR(p.amount, p.currency, p.date);
+      });
+      actInvoices.forEach(i => {
+        const s = resolveStream(i) || 'other';
+        const key = s === 'service' ? 'service' : (s === 'short_term_rental' ? 'short_term_rental' : (s === 'long_term_rental' ? 'long_term_rental' : 'other'));
+        streamGroups[key] = (streamGroups[key] || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date);
+      });
+      const streamLabels = { service: 'Service Revenue', short_term_rental: 'Short-Term Rental', long_term_rental: 'Long-Term Rental', other: 'Other' };
+      Object.entries(streamGroups).filter(([, v]) => v > 0).forEach(([key, val]) => {
+        const pct = actualRev > 0 ? ((val / actualRev) * 100).toFixed(0) + '% of total' : null;
+        streamBoxes.appendChild(mkSummaryBox(streamLabels[key] || key, formatEUR(val), pct));
+      });
+
+      if (streamBoxes.children.length > 0) {
+        body.appendChild(mkSectionLabel('By Stream'));
+        body.appendChild(streamBoxes);
+      }
+
+      // Client / property breakdown table
+      const clientMap = new Map();
+      actPayments.forEach(p => {
+        const propName = byId('properties', p.propertyId)?.name || '—';
+        clientMap.set(propName, (clientMap.get(propName) || 0) + toEUR(p.amount, p.currency, p.date));
+      });
+      actInvoices.forEach(i => {
+        const clientName = byId('clients', i.clientId)?.name || byId('clients', i.clientId)?.company || i.clientId || '—';
+        clientMap.set(clientName, (clientMap.get(clientName) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date));
+      });
+      const clientRows = [...clientMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, val]) => [name, formatEUR(val)]);
+      if (clientRows.length > 0) {
+        body.appendChild(mkSectionLabel('By Client / Property'));
+        body.appendChild(mkModalTable(['Client / Property', 'Amount'], clientRows));
+      }
+
+      openModal({ title: 'Actual Revenue Breakdown', body, large: true });
+    },
     delta: cmpData ? safePct(actualRev, cmpData.actualRev) : null,
     invertDelta: false, compLabel: cmpLabel
   }));
@@ -495,7 +575,42 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     label: 'Actual OpEx',
     subtitle: 'Excl. CapEx',
     value: formatEUR(actualExp),
-    onClick: () => drillDownModal('Actual OpEx', drillExpRows(actOpExpenses), EXP_COLS),
+    onClick: () => {
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+      // Category summary boxes
+      const catMap = new Map();
+      actOpExpenses.forEach(e => {
+        const cat = e.category || 'Uncategorised';
+        catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
+      });
+      const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+      if (catEntries.length > 0) {
+        const catBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px' });
+        catEntries.slice(0, 6).forEach(([cat, val]) => {
+          const pct = actualExp > 0 ? ((val / actualExp) * 100).toFixed(0) + '% of total' : null;
+          catBoxes.appendChild(mkSummaryBox(cat, formatEUR(val), pct));
+        });
+        body.appendChild(mkSectionLabel('By Category'));
+        body.appendChild(catBoxes);
+      }
+
+      // Property breakdown table
+      const propMap = new Map();
+      actOpExpenses.forEach(e => {
+        const propName = e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.source || '—');
+        propMap.set(propName, (propMap.get(propName) || 0) + toEUR(e.amount, e.currency, e.date));
+      });
+      const propRows = [...propMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, val]) => [name, formatEUR(val)]);
+      if (propRows.length > 0) {
+        body.appendChild(mkSectionLabel('By Property'));
+        body.appendChild(mkModalTable(['Property', 'Amount'], propRows));
+      }
+
+      openModal({ title: 'Actual OpEx Breakdown', body, large: true });
+    },
     delta: cmpData ? safePct(actualExp, cmpData.actualExp) : null,
     invertDelta: true, compLabel: cmpLabel
   }));
@@ -905,7 +1020,35 @@ function renderCharts(data) {
       onClickItem: (_lbl, idx) => {
         const m = data.monthlyBreakdown[idx];
         if (!m) return;
-        drillDownModal(`${m.label} — Revenue`, drillRevRows(m.payments, m.invoices), REV_COLS);
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        // Actual vs Budget summary
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(m.actRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(m.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(m.actRev, m.fcRev), fmtVarPct(m.actRev, m.fcRev)));
+        body.appendChild(mkSectionLabel('Actual vs Budget'));
+        body.appendChild(summaryBoxes);
+
+        // Stream breakdown for this month
+        const streamMap = new Map();
+        m.payments.forEach(p => {
+          const s = resolveStream(p) || 'other';
+          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
+        });
+        m.invoices.forEach(i => {
+          const s = resolveStream(i) || 'other';
+          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date));
+        });
+        const streamRows = [...streamMap.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([key, val]) => [STREAMS[key]?.label || key, formatEUR(val)]);
+        if (streamRows.length > 0) {
+          body.appendChild(mkSectionLabel('Breakdown by Stream'));
+          body.appendChild(mkModalTable(['Stream', 'Actual Revenue'], streamRows));
+        }
+
+        openModal({ title: `${m.label} — Revenue Detail`, body, large: true });
       }
     });
   }
@@ -922,7 +1065,35 @@ function renderCharts(data) {
       onClickItem: (_lbl, idx) => {
         const m = data.monthlyBreakdown[idx];
         if (!m) return;
-        drillDownModal(`${m.label} — Revenue`, drillRevRows(m.payments, m.invoices), REV_COLS);
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        // Variance detail summary
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(m.actRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(m.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(m.actRev, m.fcRev), fmtVarPct(m.actRev, m.fcRev)));
+        body.appendChild(mkSectionLabel('Variance Detail'));
+        body.appendChild(summaryBoxes);
+
+        // Stream breakdown for this month
+        const streamMap = new Map();
+        m.payments.forEach(p => {
+          const s = resolveStream(p) || 'other';
+          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
+        });
+        m.invoices.forEach(i => {
+          const s = resolveStream(i) || 'other';
+          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date));
+        });
+        const streamRows = [...streamMap.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([key, val]) => [STREAMS[key]?.label || key, formatEUR(val)]);
+        if (streamRows.length > 0) {
+          body.appendChild(mkSectionLabel('Breakdown by Stream'));
+          body.appendChild(mkModalTable(['Stream', 'Actual Revenue'], streamRows));
+        }
+
+        openModal({ title: `${m.label} — Variance Detail`, body, large: true });
       }
     });
   }
@@ -955,7 +1126,34 @@ function renderCharts(data) {
       datasets: [
         { label: 'Actual',   data: streamBreakdown.map(s => Math.round(s.actRev)), backgroundColor: '#10b981' },
         { label: 'Forecast', data: streamBreakdown.map(s => Math.round(s.fcRev)),  backgroundColor: '#6366f1' }
-      ]
+      ],
+      onClickItem: (_lbl, idx) => {
+        const s = streamBreakdown[idx];
+        if (!s) return;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        // Actual vs Budget summary
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(s.actRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(s.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(s.actRev, s.fcRev), fmtVarPct(s.actRev, s.fcRev)));
+        body.appendChild(mkSectionLabel('Actual vs Budget'));
+        body.appendChild(summaryBoxes);
+
+        // Monthly trend for this stream
+        const monthlyRows = data.monthlyBreakdown.map(m => {
+          let mAct = 0;
+          m.payments.forEach(p => { if ((resolveStream(p) || 'other') === s.key) mAct += toEUR(p.amount, p.currency, p.date); });
+          m.invoices.forEach(i => { if ((resolveStream(i) || 'other') === s.key) mAct += toEUR(i.total || i.amount, i.currency, i.issueDate || i.date); });
+          return [m.label, formatEUR(mAct)];
+        }).filter(([, val]) => val !== formatEUR(0));
+        if (monthlyRows.length > 0) {
+          body.appendChild(mkSectionLabel('Monthly Trend'));
+          body.appendChild(mkModalTable(['Month', 'Actual Revenue'], monthlyRows));
+        }
+
+        openModal({ title: `${s.label} — Stream Detail`, body, large: true });
+      }
     });
   }
 
@@ -968,7 +1166,35 @@ function renderCharts(data) {
         { label: 'Actual',   data: topProps.map(p => Math.round(p.actRev)), backgroundColor: '#10b981' },
         { label: 'Forecast', data: topProps.map(p => Math.round(p.fcRev)),  backgroundColor: '#6366f1' }
       ],
-      horizontal: true
+      horizontal: true,
+      onClickItem: (_lbl, idx) => {
+        const prop = topProps[idx];
+        if (!prop) return;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        // Actual vs Budget summary
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(prop.actRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(prop.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(prop.actRev, prop.fcRev), fmtVarPct(prop.actRev, prop.fcRev)));
+        body.appendChild(mkSectionLabel('Actual vs Budget'));
+        body.appendChild(summaryBoxes);
+
+        // Monthly revenue breakdown for this property
+        const monthlyRows = data.monthlyBreakdown.map(m => {
+          const mAct = m.payments
+            .filter(p => p.propertyId === prop.propId)
+            .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+          const mFc = data.fcMonthlyRev.get(m.key + '_' + prop.propId) || 0;
+          return [m.label, formatEUR(mAct), formatEUR(mFc || 0), fmtVar(mAct, mFc || 0)];
+        }).filter(([, act]) => act !== formatEUR(0));
+        if (monthlyRows.length > 0) {
+          body.appendChild(mkSectionLabel('Monthly Revenue Breakdown'));
+          body.appendChild(mkModalTable(['Month', 'Actual', 'Forecast', 'Variance'], monthlyRows));
+        }
+
+        openModal({ title: `${prop.label} — Property Detail`, body, large: true });
+      }
     });
   }
 
@@ -987,23 +1213,84 @@ function renderCharts(data) {
         const [y, m] = mk.split('-');
         return `${ML9[parseInt(m) - 1]} '${y.slice(2)}`;
       }),
-      datasets: [{ label: 'Pending', data: sortedPendingKeys.map(mk => Math.round(pendingMap.get(mk) || 0)), backgroundColor: '#3b82f6' }]
+      datasets: [{ label: 'Pending', data: sortedPendingKeys.map(mk => Math.round(pendingMap.get(mk) || 0)), backgroundColor: '#3b82f6' }],
+      onClickItem: (_lbl, idx) => {
+        const mk = sortedPendingKeys[idx];
+        if (!mk) return;
+        const monthPending = data.allPendingReservations.filter(p => (p.airbnbCheckIn || p.date || '').slice(0, 7) === mk);
+        const [y, m] = mk.split('-');
+        const monthLabel = `${ML9[parseInt(m) - 1]} ${y}`;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        const total = monthPending.reduce((s, p) => s + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date), 0);
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Total Pending', formatEUR(total)));
+        summaryBoxes.appendChild(mkSummaryBox('Reservations', String(monthPending.length)));
+        body.appendChild(mkSectionLabel('Pipeline Summary'));
+        body.appendChild(summaryBoxes);
+
+        const pendingRows = monthPending
+          .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
+          .map(p => [
+            byId('properties', p.propertyId)?.name || '—',
+            p.confirmationCode || p.airbnbRef || '—',
+            p.airbnbCheckIn || '—',
+            String(p.airbnbNights || '—'),
+            formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
+          ]);
+        if (pendingRows.length > 0) {
+          body.appendChild(mkSectionLabel('Pending Invoices'));
+          body.appendChild(mkModalTable(['Property', 'Confirmation', 'Check-in', 'Nights', 'Amount'], pendingRows));
+        }
+
+        openModal({ title: `Pending Pipeline — ${monthLabel}`, body, large: true });
+      }
     });
   }
 
   // 8. Pending by Property — all entity-filtered pending (forward-looking)
-  const propPendingMap = new Map();
+  const propPendingMap = new Map(); // propId -> { label, total, reservations[] }
   data.allPendingReservations.forEach(p => {
     if (!p.propertyId) return;
     const label = byId('properties', p.propertyId)?.name || p.propertyId;
-    propPendingMap.set(label, (propPendingMap.get(label) || 0) + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date));
+    const entry = propPendingMap.get(p.propertyId) || { label, total: 0, reservations: [] };
+    entry.total += toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date);
+    entry.reservations.push(p);
+    propPendingMap.set(p.propertyId, entry);
   });
-  const propPendingEntries = [...propPendingMap.entries()].sort((a, b) => b[1] - a[1]);
+  const propPendingEntries = [...propPendingMap.entries()].sort((a, b) => b[1].total - a[1].total);
   if (propPendingEntries.length > 0) {
     charts.bar('anf-pending-by-prop', {
-      labels: propPendingEntries.map(([label]) => label),
-      datasets: [{ label: 'Pending Pipeline', data: propPendingEntries.map(([, v]) => Math.round(v)), backgroundColor: '#3b82f6' }],
-      horizontal: true
+      labels: propPendingEntries.map(([, e]) => e.label),
+      datasets: [{ label: 'Pending Pipeline', data: propPendingEntries.map(([, e]) => Math.round(e.total)), backgroundColor: '#3b82f6' }],
+      horizontal: true,
+      onClickItem: (_lbl, idx) => {
+        const [, entry] = propPendingEntries[idx];
+        if (!entry) return;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Total Pending', formatEUR(entry.total)));
+        summaryBoxes.appendChild(mkSummaryBox('Reservations', String(entry.reservations.length)));
+        body.appendChild(mkSectionLabel('Pipeline Summary'));
+        body.appendChild(summaryBoxes);
+
+        const pendingRows = entry.reservations
+          .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
+          .map(p => [
+            p.confirmationCode || p.airbnbRef || '—',
+            p.airbnbCheckIn || '—',
+            p.airbnbCheckOut || '—',
+            String(p.airbnbNights || '—'),
+            formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
+          ]);
+        if (pendingRows.length > 0) {
+          body.appendChild(mkSectionLabel('Pending Invoices'));
+          body.appendChild(mkModalTable(['Confirmation', 'Check-in', 'Check-out', 'Nights', 'Amount'], pendingRows));
+        }
+
+        openModal({ title: `${entry.label} — Pending Pipeline`, body, large: true });
+      }
     });
   }
 }
