@@ -12,7 +12,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
-} from './analytics-filters.js?v=20260518';
+} from './analytics-filters.js?v=20260519';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = [
