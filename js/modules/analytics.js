@@ -1048,6 +1048,58 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
   const fcMap = curMetrics.fcMonthlyRev && curMetrics.fcMonthlyRev.size > 0
     ? curMetrics.fcMonthlyRev : null;
 
+  // ── Chart click helpers ───────────────────────────────────────────────────
+  // Revenue stream breakdown for a given month key
+  const monthStreamDrill = (mk, mLabel) => {
+    const mPays = curData.payments.filter(p => p.date?.slice(0,7) === mk);
+    const mInvs = curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk);
+    const mRev  = mPays.reduce((s,p) => s + toEUR(p.amount, p.currency, p.date), 0)
+                + mInvs.reduce((s,i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+    const sMap = new Map();
+    mPays.forEach(p => { const s = resolveStream(p)||'__other'; sMap.set(s, (sMap.get(s)||0) + toEUR(p.amount, p.currency, p.date)); });
+    mInvs.forEach(i => { const s = resolveStream(i)||'__other'; sMap.set(s, (sMap.get(s)||0) + toEUR(i.total, i.currency, i.issueDate)); });
+    const rows = [...sMap.entries()].sort((a,b) => b[1]-a[1])
+      .map(([k,eur]) => ({ stream: STREAMS[k]?.label||(k==='__other'?'Unclassified':k), eur, pct: mRev>0?(eur/mRev)*100:0 }));
+    drillDownModal(`${mLabel} — Revenue by Stream`, rows, [
+      { key: 'stream', label: 'Stream' },
+      { key: 'eur',    label: 'Amount',     right: true, format: v => formatEUR(v) },
+      { key: 'pct',    label: '% of Total', right: true, format: v => v.toFixed(1)+'%' },
+    ]);
+  };
+
+  // Mini P&L modal for a given month key
+  const monthProfitDrill = (mk, mLabel) => {
+    const mPays = curData.payments.filter(p => p.date?.slice(0,7) === mk);
+    const mInvs = curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk);
+    const mExp  = curData.opExpenses.filter(e => e.date?.slice(0,7) === mk);
+    const mRev    = mPays.reduce((s,p) => s + toEUR(p.amount, p.currency, p.date), 0)
+                  + mInvs.reduce((s,i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+    const mOpEx   = mExp.reduce((s,e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    const mProfit = mRev - mOpEx;
+    const mMargin = mRev > 0 ? (mProfit / mRev) * 100 : null;
+    const catMap  = new Map();
+    mExp.forEach(e => { const c = e.costCategory||e.category||'Other'; catMap.set(c, (catMap.get(c)||0) + toEUR(e.amount, e.currency, e.date)); });
+    const catRows = [...catMap.entries()].sort((a,b) => b[1]-a[1])
+      .map(([cat,eur]) => ({ cat, eur, pct: mOpEx>0?(eur/mOpEx)*100:0 }));
+    const SS = 'display:grid;grid-template-columns:1fr auto;gap:4px 24px;padding:12px 16px;background:var(--bg-elev-1);border-radius:var(--radius-sm);margin-bottom:16px;font-size:13px';
+    const mkR = (label, value, bold, color) => [
+      el('span', { style: bold ? 'font-weight:600' : 'color:var(--text-muted)' }, label),
+      el('span', { style: `text-align:right;font-weight:${bold?'600':'400'};${color?'color:'+color:''}` }, value),
+    ];
+    const summary = el('div', { style: SS });
+    mkR('Revenue', formatEUR(mRev)).forEach(n => summary.appendChild(n));
+    mkR('Operating Expenses', '− ' + formatEUR(mOpEx)).forEach(n => summary.appendChild(n));
+    mkR(`Operating Profit${mMargin!=null?' ('+mMargin.toFixed(1)+'%)':''}`, formatEUR(mProfit), true, mProfit>=0?'var(--success)':'var(--danger)').forEach(n => summary.appendChild(n));
+    const table = el('table', { class: 'table' });
+    table.appendChild(el('thead', {}, el('tr', {}, el('th',{},'Category'), el('th',{class:'right'},'Amount'), el('th',{class:'right'},'% OpEx'))));
+    const tbody = el('tbody');
+    catRows.forEach(({cat,eur,pct}) => tbody.appendChild(el('tr',{}, el('td',{},cat), el('td',{class:'right num'},formatEUR(eur)), el('td',{class:'right num'},pct.toFixed(1)+'%'))));
+    if (!catRows.length) tbody.appendChild(el('tr',{},el('td',{colspan:'3',style:'text-align:center;padding:24px;color:var(--text-muted)'},'No expenses')));
+    table.appendChild(tbody);
+    const body = el('div'); body.appendChild(summary); body.appendChild(el('div',{class:'table-wrap'},table));
+    openModal({ title: `${mLabel} — Operating Profit`, body, large: true });
+  };
+
   // ── Section 1: Business Trends ───────────────────────────────────────────
   // exec-trend-rev
   {
@@ -1068,12 +1120,8 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
       charts.line('exec-trend-rev', {
         labels, datasets,
         onClickItem: (label, idx) => {
-          const mk = months[idx]?.key;
-          if (!mk) return;
-          drillDownModal(`${months[idx].label} — Revenue`,
-            drillRevRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
-                         curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk)),
-            REV_COLS);
+          const mk = months[idx]?.key; if (!mk) return;
+          monthStreamDrill(mk, months[idx].label);
         }
       });
     }
@@ -1092,13 +1140,8 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
       charts.line('exec-trend-profit', {
         labels, datasets,
         onClickItem: (label, idx) => {
-          const mk = months[idx]?.key;
-          if (!mk) return;
-          drillDownModal(`${months[idx].label} — Operating Profit`,
-            mixedRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
-                      curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk),
-                      curData.opExpenses.filter(e => e.date?.slice(0,7) === mk)),
-            MIXED_COLS);
+          const mk = months[idx]?.key; if (!mk) return;
+          monthProfitDrill(mk, months[idx].label);
         }
       });
     }
@@ -1157,12 +1200,21 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
           backgroundColor: growthData.map(v => v === null ? '#6b7280' : v >= 0 ? '#10b981' : '#ef4444')
         }],
         onClickItem: (label, idx) => {
-          const mk = months[idx]?.key;
-          if (!mk) return;
-          drillDownModal(`${months[idx].label} — Revenue`,
-            drillRevRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
-                         curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk)),
-            REV_COLS);
+          const mk = months[idx]?.key; if (!mk) return;
+          const curRev  = allRevMap.get(mk) || 0;
+          const prevKey = `${String(parseInt(mk.slice(0,4))-1)}-${mk.slice(5,7)}`;
+          const prevRev = allRevMap.get(prevKey);
+          const delta   = (prevRev != null && prevRev > 0) ? ((curRev-prevRev)/prevRev)*100 : null;
+          const rows = [
+            { period: months[idx].label,                                 eur: curRev },
+            { period: `${months[idx].label.slice(0,-4)}${parseInt(mk.slice(0,4))-1} (prior year)`, eur: prevRev ?? null },
+          ];
+          if (delta !== null) rows.push({ period: 'YoY Growth', eur: null, growthStr: (delta>=0?'+':'')+delta.toFixed(1)+'%' });
+          drillDownModal(`${months[idx].label} — YoY Comparison`, rows, [
+            { key: 'period',    label: 'Period' },
+            { key: 'eur',       label: 'Revenue', right: true, format: v => v != null ? formatEUR(v) : '—' },
+            { key: 'growthStr', label: 'Growth',  right: true, format: v => v || '' },
+          ]);
         }
       });
     }
@@ -1178,21 +1230,30 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
         { label: 'CapEx', data: capExData, backgroundColor: '#f59e0b' }
       ],
       onClickItem: (label, idx, dsIdx) => {
-        const mk = months[idx]?.key;
-        if (!mk) return;
+        const mk = months[idx]?.key; if (!mk) return;
         const mLabel = months[idx].label;
         if (dsIdx === 1) {
+          // CapEx: waterfall (CapEx expenses + acquisitions)
           const mCapEx = curData.capExExpenses.filter(e => e.date?.slice(0,7) === mk);
           const mAcq   = curData.acquisitions.filter(a => a.date?.slice(0,7) === mk);
           const rows   = [
             ...drillExpRows(mCapEx),
-            ...mAcq.map(a => ({ date: a.date, source: a._name || '', category: 'Acquisition', description: a.description, eur: toEUR(a.amount, a.currency, a.date) }))
-          ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-          drillDownModal(`${mLabel} — CapEx`, rows, EXP_COLS);
+            ...mAcq.map(a => ({ date: a.date, source: a._name||'', category: 'Acquisition', description: a.description, eur: toEUR(a.amount, a.currency, a.date) }))
+          ].sort((a,b) => b.eur - a.eur);
+          drillDownModal(`${mLabel} — CapEx & Acquisitions`, rows, EXP_COLS);
         } else {
-          drillDownModal(`${mLabel} — OpEx`,
-            drillExpRows(curData.opExpenses.filter(e => e.date?.slice(0,7) === mk)),
-            EXP_COLS);
+          // OpEx: category breakdown
+          const mExp  = curData.opExpenses.filter(e => e.date?.slice(0,7) === mk);
+          const mOpEx = mExp.reduce((s,e) => s + toEUR(e.amount, e.currency, e.date), 0);
+          const catMap = new Map();
+          mExp.forEach(e => { const c = e.costCategory||e.category||'Other'; catMap.set(c, (catMap.get(c)||0) + toEUR(e.amount, e.currency, e.date)); });
+          const rows = [...catMap.entries()].sort((a,b) => b[1]-a[1])
+            .map(([cat,eur]) => ({ cat, eur, pct: mOpEx>0?(eur/mOpEx)*100:0 }));
+          drillDownModal(`${mLabel} — OpEx by Category`, rows, [
+            { key: 'cat', label: 'Category' },
+            { key: 'eur', label: 'Amount',    right: true, format: v => formatEUR(v) },
+            { key: 'pct', label: '% of OpEx', right: true, format: v => v.toFixed(1)+'%' },
+          ]);
         }
       }
     });
@@ -1207,21 +1268,9 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
         { label: 'Op. Profit', data: profData, backgroundColor: '#3b82f6' }
       ],
       onClickItem: (label, idx, dsIdx) => {
-        const mk = months[idx]?.key;
-        if (!mk) return;
-        const mLabel = months[idx].label;
-        if (dsIdx === 0) {
-          drillDownModal(`${mLabel} — Revenue`,
-            drillRevRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
-                         curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk)),
-            REV_COLS);
-        } else {
-          drillDownModal(`${mLabel} — Operating Profit`,
-            mixedRows(curData.payments.filter(p => p.date?.slice(0,7) === mk),
-                      curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk),
-                      curData.opExpenses.filter(e => e.date?.slice(0,7) === mk)),
-            MIXED_COLS);
-        }
+        const mk = months[idx]?.key; if (!mk) return;
+        if (dsIdx === 0) monthStreamDrill(mk, months[idx].label);
+        else             monthProfitDrill(mk, months[idx].label);
       }
     });
   }
@@ -1252,9 +1301,29 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
         colors: entries.map(([k]) => STREAMS[k]?.color || '#8b93b0'),
         onClickItem: (label, idx) => {
           const [sk] = entries[idx];
-          drillDownModal(`Revenue — ${label}`,
-            drillRevRows(streamPays.get(sk) || [], streamInvs.get(sk) || []),
-            REV_COLS);
+          const sPays = streamPays.get(sk) || [], sInvs = streamInvs.get(sk) || [];
+          const streamTotal = sPays.reduce((s,p) => s + toEUR(p.amount, p.currency, p.date), 0)
+                            + sInvs.reduce((s,i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+          const entityMap = new Map();
+          sPays.forEach(p => {
+            const key = p.propertyId || '__unknown';
+            const e = entityMap.get(key) || { name: byId('properties', p.propertyId)?.name || 'Unknown Property', eur: 0 };
+            e.eur += toEUR(p.amount, p.currency, p.date);
+            entityMap.set(key, e);
+          });
+          sInvs.forEach(i => {
+            const key = 'c_' + (i.clientId || '__unknown');
+            const e = entityMap.get(key) || { name: byId('clients', i.clientId)?.name || 'Unknown Client', eur: 0 };
+            e.eur += toEUR(i.total, i.currency, i.issueDate);
+            entityMap.set(key, e);
+          });
+          const rows = [...entityMap.values()].sort((a,b) => b.eur-a.eur)
+            .map(e => ({ ...e, pct: streamTotal>0?(e.eur/streamTotal)*100:0 }));
+          drillDownModal(`${label} — Revenue by Source`, rows, [
+            { key: 'name', label: 'Property / Client' },
+            { key: 'eur',  label: 'Amount',      right: true, format: v => formatEUR(v) },
+            { key: 'pct',  label: '% of Stream',  right: true, format: v => v.toFixed(1)+'%' },
+          ]);
         }
       });
     }
@@ -1292,10 +1361,17 @@ function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmp
       charts.doughnut('exec-rev-conc', {
         labels: dLabels, data: dData, colors: dColors,
         onClickItem: (label, idx) => {
-          if (idx < top5.length) {
-            const entity = top5[idx];
-            drillDownModal(`Revenue — ${label}`, drillRevRows(entity.pays, entity.invs), REV_COLS);
-          }
+          if (idx >= top5.length) return;
+          const entity = top5[idx];
+          const monthlyRows = months.map(m => {
+            const eur = entity.pays.filter(p => p.date?.slice(0,7) === m.key).reduce((s,p) => s + toEUR(p.amount, p.currency, p.date), 0)
+                      + entity.invs.filter(i => (i.issueDate||'').slice(0,7) === m.key).reduce((s,i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+            return { month: m.label, eur };
+          }).filter(r => r.eur > 0);
+          drillDownModal(`${label} — Monthly Revenue`, monthlyRows, [
+            { key: 'month', label: 'Month' },
+            { key: 'eur',   label: 'Revenue', right: true, format: v => formatEUR(v) },
+          ]);
         }
       });
     }
