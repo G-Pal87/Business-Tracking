@@ -1,5 +1,5 @@
 // Expense Analytics Dashboard — understand cost structure
-import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, COST_CATEGORIES, ACCOUNTING_TYPES } from '../core/config.js';
 import {
@@ -128,6 +128,38 @@ const DRILL_COLS = [
   { key: 'description', label: 'Description'  },
   { key: 'eur',         label: 'EUR',          right: true, format: v => formatEUR(v) }
 ];
+
+// ── Modal helpers ─────────────────────────────────────────────────────────────
+function mkExpSectionLabel(text) {
+  return el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:0 0 8px' }, text);
+}
+
+function mkExpSummaryBox(label, value, sub) {
+  const box = el('div', { style: 'padding:12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)' });
+  box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, label));
+  box.appendChild(el('div', { style: 'font-size:17px;font-weight:700;color:var(--text)' }, value));
+  if (sub) box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
+  return box;
+}
+
+function mkExpTable(headers, rows) {
+  const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
+  const hrow = el('tr');
+  headers.forEach(h => hrow.appendChild(el('th', {
+    style: `padding:4px 8px;text-align:${h.right ? 'right' : 'left'};color:var(--text-muted);font-size:11px;border-bottom:1px solid rgba(255,255,255,0.08)`
+  }, h.label)));
+  tbl.appendChild(el('thead', {}, hrow));
+  const tbody = el('tbody');
+  rows.forEach(cells => {
+    const tr = el('tr');
+    cells.forEach((cell, ci) => tr.appendChild(el('td', {
+      style: `padding:6px 8px;text-align:${headers[ci]?.right ? 'right' : 'left'};color:${headers[ci]?.muted ? 'var(--text-muted)' : 'var(--text)'}`
+    }, cell)));
+    tbody.appendChild(tr);
+  });
+  tbl.appendChild(tbody);
+  return tbl;
+}
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
 function kpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick }) {
@@ -362,6 +394,84 @@ function buildView() {
   // ── KPI row 1: Total Expenses | Operating Expenses | CapEx | Expense Ratio ──
   const kpiRow1 = el('div', { class: 'grid grid-4 mb-16' });
 
+  // ── Shared KPI drill helpers (close over cur data) ─────────────────────────
+  const totalExpDrill = () => {
+    const body = el('div');
+    const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
+    sgrid.appendChild(mkExpSummaryBox('Operating Expenses', formatEUR(opTotal),
+      total > 0 ? `${(opTotal / total * 100).toFixed(0)}% of total · ${opEx.length} record${opEx.length !== 1 ? 's' : ''}` : null));
+    sgrid.appendChild(mkExpSummaryBox('Capital Expenditure', formatEUR(capTotal),
+      total > 0 ? `${(capTotal / total * 100).toFixed(0)}% of total · ${capEx.length} record${capEx.length !== 1 ? 's' : ''}` : null));
+    body.appendChild(sgrid);
+    const catMap = new Map();
+    allExp.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+    const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+    if (cats.length) {
+      body.appendChild(mkExpSectionLabel('By Category'));
+      body.appendChild(mkExpTable(
+        [{ label: 'Category' }, { label: 'Type', muted: true }, { label: 'Amount', right: true }, { label: '% of Total', right: true, muted: true }],
+        cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, CAPEX_CATS.has(k) ? 'CapEx' : 'OpEx', formatEUR(v), total > 0 ? (v / total * 100).toFixed(1) + '%' : '—'])
+      ));
+    }
+    openModal({ title: `Total Expenses — ${formatEUR(total)}`, body, large: true });
+  };
+
+  const opExDrill = () => {
+    const body = el('div');
+    const catMap = new Map();
+    opEx.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+    const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+    if (cats.length) {
+      body.appendChild(mkExpSectionLabel('By Category'));
+      body.appendChild(mkExpTable(
+        [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of OpEx', right: true, muted: true }],
+        cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—'])
+      ));
+    }
+    const propMap = new Map();
+    opEx.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
+    const props = [...propMap.values()].sort((a, b) => b.v - a.v);
+    if (props.length) {
+      body.appendChild(el('div', { style: 'margin-top:20px' }));
+      body.appendChild(mkExpSectionLabel('By Property'));
+      body.appendChild(mkExpTable(
+        [{ label: 'Property' }, { label: 'Amount', right: true }, { label: '% of OpEx', right: true, muted: true }],
+        props.map(p => [p.n, formatEUR(p.v), opTotal > 0 ? (p.v / opTotal * 100).toFixed(1) + '%' : '—'])
+      ));
+    }
+    openModal({ title: `Operating Expenses — ${formatEUR(opTotal)}`, body, large: true });
+  };
+
+  const capExDrill = () => {
+    const body = el('div');
+    const propMap = new Map();
+    capEx.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0, cnt: 0 }; x.v += toEUR(e.amount, e.currency, e.date); x.cnt++; propMap.set(e.propertyId, x); });
+    const props = [...propMap.values()].sort((a, b) => b.v - a.v);
+    if (props.length) {
+      const top = props.slice(0, 3);
+      const pgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${top.length},1fr);gap:12px;margin-bottom:20px` });
+      top.forEach(p => pgrid.appendChild(mkExpSummaryBox(p.n, formatEUR(p.v), `${p.cnt} record${p.cnt !== 1 ? 's' : ''} · ${capTotal > 0 ? (p.v / capTotal * 100).toFixed(0) : 0}% of CapEx`)));
+      body.appendChild(pgrid);
+      body.appendChild(mkExpSectionLabel('All Properties'));
+      body.appendChild(mkExpTable(
+        [{ label: 'Property' }, { label: 'Records', right: true, muted: true }, { label: 'Amount', right: true }, { label: '% of CapEx', right: true, muted: true }],
+        props.map(p => [p.n, String(p.cnt), formatEUR(p.v), capTotal > 0 ? (p.v / capTotal * 100).toFixed(1) + '%' : '—'])
+      ));
+    }
+    const catMap = new Map();
+    capEx.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+    const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+    if (cats.length) {
+      body.appendChild(el('div', { style: 'margin-top:20px' }));
+      body.appendChild(mkExpSectionLabel('By Category'));
+      body.appendChild(mkExpTable(
+        [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of CapEx', right: true, muted: true }],
+        cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), capTotal > 0 ? (v / capTotal * 100).toFixed(1) + '%' : '—'])
+      ));
+    }
+    openModal({ title: `CapEx — ${formatEUR(capTotal)}`, body, large: true });
+  };
+
   // 1. Total Expenses
   kpiRow1.appendChild(compositeKpiCard({
     label:       'Total Expenses',
@@ -369,7 +479,7 @@ function buildView() {
     delta:       safePct(total, cmp?.total),
     invertDelta: true,
     compLabel:   cmpLabel,
-    onClick:     () => drillDownModal('All Expenses', toExpDrillRows(allExp), DRILL_COLS),
+    onClick:     totalExpDrill,
     lines: [
       { label: 'OpEx',  value: formatEUR(opTotal),  color: '#ef4444' },
       { label: 'CapEx', value: formatEUR(capTotal),  color: '#f59e0b' }
@@ -383,7 +493,7 @@ function buildView() {
     delta:       safePct(opTotal, cmp?.opTotal),
     invertDelta: true,
     compLabel:   cmpLabel,
-    onClick:     () => drillDownModal('Operating Expenses', toExpDrillRows(opEx), DRILL_COLS)
+    onClick:     opExDrill
   }));
 
   // 3. CapEx
@@ -394,7 +504,7 @@ function buildView() {
     invertDelta: true,
     compLabel:   cmpLabel,
     variant:     capTotal > 0 ? 'warning' : '',
-    onClick:     () => drillDownModal('CapEx', toExpDrillRows(capEx), DRILL_COLS)
+    onClick:     capExDrill
   }));
 
   // 4. Expense Ratio (OpEx / Revenue)
@@ -628,15 +738,23 @@ function renderCatBar({ allExp }, curRange) {
     onClickItem: (label, idx, dsIdx) => {
       const mk = months[idx]?.key;
       if (!mk) return;
-      const cat  = orderedKeys[dsIdx];
-      const rows = allExp.filter(e =>
-        e.date?.slice(0, 7) === mk && resolveExpenseFields(e).costCategory === cat
-      );
-      drillDownModal(
-        `${label} — ${COST_CATEGORIES[cat]?.label || cat}`,
-        toExpDrillRows(rows),
-        DRILL_COLS
-      );
+      const clickedCat = orderedKeys[dsIdx];
+      const monthExp   = allExp.filter(e => e.date?.slice(0, 7) === mk);
+      const monthTotal = monthExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+      const catMap = new Map();
+      monthExp.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+      const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+      const body = el('div');
+      body.appendChild(mkExpSectionLabel(`Expense Breakdown — ${label}`));
+      body.appendChild(mkExpTable(
+        [{ label: 'Category' }, { label: 'Type', muted: true }, { label: 'Amount', right: true }, { label: '% of Month', right: true, muted: true }],
+        cats.map(([k, v]) => {
+          const row = [COST_CATEGORIES[k]?.label || k, CAPEX_CATS.has(k) ? 'CapEx' : 'OpEx', formatEUR(v), monthTotal > 0 ? (v / monthTotal * 100).toFixed(1) + '%' : '—'];
+          if (k === clickedCat) row[0] = `▶ ${row[0]}`;
+          return row;
+        })
+      ));
+      openModal({ title: `${label} — ${formatEUR(monthTotal)}`, body, large: true });
     }
   });
 }
@@ -658,9 +776,32 @@ function renderStreamDonut({ allExp }) {
     data:   entries.map(([, v]) => Math.round(v)),
     colors: streamKeys.map(k => STREAMS[k]?.color || '#8b93b0'),
     onClickItem: (_label, idx) => {
-      const sk   = streamKeys[idx];
-      const rows = allExp.filter(e => expStream(e) === sk);
-      drillDownModal(`Expenses — ${STREAMS[sk]?.label || sk}`, toExpDrillRows(rows), DRILL_COLS);
+      const sk       = streamKeys[idx];
+      const streamExp   = allExp.filter(e => expStream(e) === sk);
+      const streamTotal = streamExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+      const body = el('div');
+      const catMap = new Map();
+      streamExp.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+      const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+      if (cats.length) {
+        body.appendChild(mkExpSectionLabel('By Category'));
+        body.appendChild(mkExpTable(
+          [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Stream', right: true, muted: true }],
+          cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), streamTotal > 0 ? (v / streamTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      const propMap = new Map();
+      streamExp.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
+      const props = [...propMap.values()].sort((a, b) => b.v - a.v);
+      if (props.length) {
+        body.appendChild(el('div', { style: 'margin-top:20px' }));
+        body.appendChild(mkExpSectionLabel('By Property'));
+        body.appendChild(mkExpTable(
+          [{ label: 'Property' }, { label: 'Amount', right: true }, { label: '% of Stream', right: true, muted: true }],
+          props.map(p => [p.n, formatEUR(p.v), streamTotal > 0 ? (p.v / streamTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      openModal({ title: `${STREAMS[sk]?.label || sk} Expenses — ${formatEUR(streamTotal)}`, body, large: true });
     }
   });
 }
@@ -690,13 +831,40 @@ function renderCatHBar({ allExp }) {
     }],
     horizontal: true,
     onClickItem: (_label, idx) => {
-      const cat  = catKeys[idx];
-      const rows = allExp.filter(e => resolveExpenseFields(e).costCategory === cat);
-      drillDownModal(
-        `Expenses — ${COST_CATEGORIES[cat]?.label || cat}`,
-        toExpDrillRows(rows),
-        DRILL_COLS
-      );
+      const cat    = catKeys[idx];
+      const catExp = allExp.filter(e => resolveExpenseFields(e).costCategory === cat);
+      const catTotal = catExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+      const catOpEx  = catExp.filter(e => !isCapEx(e)).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+      const catCapEx = catTotal - catOpEx;
+      const body = el('div');
+      if (catOpEx > 0 || catCapEx > 0) {
+        const sgrid = el('div', { style: `display:grid;grid-template-columns:${catOpEx > 0 && catCapEx > 0 ? '1fr 1fr' : '1fr'};gap:12px;margin-bottom:20px` });
+        if (catOpEx  > 0) sgrid.appendChild(mkExpSummaryBox('OpEx',  formatEUR(catOpEx),  `${(catOpEx  / catTotal * 100).toFixed(0)}% of category`));
+        if (catCapEx > 0) sgrid.appendChild(mkExpSummaryBox('CapEx', formatEUR(catCapEx), `${(catCapEx / catTotal * 100).toFixed(0)}% of category`));
+        body.appendChild(sgrid);
+      }
+      const vendMap = new Map();
+      catExp.forEach(e => { const n = vendorLabel(e); if (n === '—') return; vendMap.set(n, (vendMap.get(n) || 0) + toEUR(e.amount, e.currency, e.date)); });
+      const vends = [...vendMap.entries()].sort((a, b) => b[1] - a[1]);
+      if (vends.length) {
+        body.appendChild(mkExpSectionLabel('By Vendor'));
+        body.appendChild(mkExpTable(
+          [{ label: 'Vendor' }, { label: 'Amount', right: true }, { label: '% of Category', right: true, muted: true }],
+          vends.map(([n, v]) => [n, formatEUR(v), catTotal > 0 ? (v / catTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      const propMap = new Map();
+      catExp.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
+      const props = [...propMap.values()].sort((a, b) => b.v - a.v);
+      if (props.length) {
+        body.appendChild(el('div', { style: 'margin-top:20px' }));
+        body.appendChild(mkExpSectionLabel('By Property'));
+        body.appendChild(mkExpTable(
+          [{ label: 'Property' }, { label: 'Amount', right: true }, { label: '% of Category', right: true, muted: true }],
+          props.map(p => [p.n, formatEUR(p.v), catTotal > 0 ? (p.v / catTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      openModal({ title: `${COST_CATEGORIES[cat]?.label || cat} — ${formatEUR(catTotal)}`, body, large: true });
     }
   });
 }
@@ -724,13 +892,33 @@ function renderVendorBar({ allExp }) {
     }],
     horizontal: true,
     onClickItem: (_label, idx) => {
-      const vid  = vendIds[idx];
-      const name = sorted[idx][1].name;
-      const rows = allExp.filter(e => {
-        const en = vendorLabel(e) === '—' ? 'No Vendor' : vendorLabel(e);
-        return (e.vendorId || en) === vid;
-      });
-      drillDownModal(`Expenses — ${name}`, toExpDrillRows(rows), DRILL_COLS);
+      const vid     = vendIds[idx];
+      const name    = sorted[idx][1].name;
+      const vendExp = allExp.filter(e => { const en = vendorLabel(e) === '—' ? 'No Vendor' : vendorLabel(e); return (e.vendorId || en) === vid; });
+      const vendTotal = vendExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+      const body = el('div');
+      const catMap = new Map();
+      vendExp.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+      const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+      if (cats.length) {
+        body.appendChild(mkExpSectionLabel('By Category'));
+        body.appendChild(mkExpTable(
+          [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Vendor Total', right: true, muted: true }],
+          cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), vendTotal > 0 ? (v / vendTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      const propMap = new Map();
+      vendExp.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
+      const props = [...propMap.values()].sort((a, b) => b.v - a.v);
+      if (props.length) {
+        body.appendChild(el('div', { style: 'margin-top:20px' }));
+        body.appendChild(mkExpSectionLabel('By Property'));
+        body.appendChild(mkExpTable(
+          [{ label: 'Property' }, { label: 'Amount', right: true }, { label: '% of Vendor Total', right: true, muted: true }],
+          props.map(p => [p.n, formatEUR(p.v), vendTotal > 0 ? (p.v / vendTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      openModal({ title: `${name} — ${formatEUR(vendTotal)}`, body, large: true });
     }
   });
 }
@@ -743,9 +931,33 @@ function renderTypeDonut({ opTotal, capTotal, opEx, capEx }) {
     data:   [Math.round(opTotal), Math.round(capTotal)],
     colors: ['#ef4444', '#f59e0b'],
     onClickItem: (_label, idx) => {
-      const rows = idx === 0 ? opEx : capEx;
-      const name = idx === 0 ? 'Operating Expenses' : 'CapEx';
-      drillDownModal(name, toExpDrillRows(rows), DRILL_COLS);
+      const expenses = idx === 0 ? opEx : capEx;
+      const expTotal = idx === 0 ? opTotal : capTotal;
+      const typeName = idx === 0 ? 'Operating Expenses' : 'Capital Expenditure';
+      const typeShort = idx === 0 ? 'OpEx' : 'CapEx';
+      const body = el('div');
+      const catMap = new Map();
+      expenses.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+      const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+      if (cats.length) {
+        body.appendChild(mkExpSectionLabel('By Category'));
+        body.appendChild(mkExpTable(
+          [{ label: 'Category' }, { label: 'Amount', right: true }, { label: `% of ${typeShort}`, right: true, muted: true }],
+          cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), expTotal > 0 ? (v / expTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      const propMap = new Map();
+      expenses.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
+      const props = [...propMap.values()].sort((a, b) => b.v - a.v);
+      if (props.length) {
+        body.appendChild(el('div', { style: 'margin-top:20px' }));
+        body.appendChild(mkExpSectionLabel('By Property'));
+        body.appendChild(mkExpTable(
+          [{ label: 'Property' }, { label: 'Amount', right: true }, { label: `% of ${typeShort}`, right: true, muted: true }],
+          props.map(p => [p.n, formatEUR(p.v), expTotal > 0 ? (p.v / expTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      openModal({ title: `${typeName} — ${formatEUR(expTotal)}`, body, large: true });
     }
   });
 }
@@ -774,10 +986,41 @@ function renderPropHBar({ allExp }) {
     }],
     horizontal: true,
     onClickItem: (_label, idx) => {
-      const pid  = propIds[idx];
-      const name = sorted[idx][1].name;
-      const rows = allExp.filter(e => e.propertyId === pid);
-      drillDownModal(`Expenses — ${name}`, toExpDrillRows(rows), DRILL_COLS);
+      const pid     = propIds[idx];
+      const name    = sorted[idx][1].name;
+      const propExp = allExp.filter(e => e.propertyId === pid);
+      const propTotal  = propExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+      const propOpEx   = propExp.filter(e => !isCapEx(e)).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+      const propCapEx  = propTotal - propOpEx;
+      const body = el('div');
+      if (propOpEx > 0 || propCapEx > 0) {
+        const sgrid = el('div', { style: `display:grid;grid-template-columns:${propOpEx > 0 && propCapEx > 0 ? '1fr 1fr' : '1fr'};gap:12px;margin-bottom:20px` });
+        if (propOpEx  > 0) sgrid.appendChild(mkExpSummaryBox('OpEx',  formatEUR(propOpEx),  `${(propOpEx  / propTotal * 100).toFixed(0)}% of property costs`));
+        if (propCapEx > 0) sgrid.appendChild(mkExpSummaryBox('CapEx', formatEUR(propCapEx), `${(propCapEx / propTotal * 100).toFixed(0)}% of property costs`));
+        body.appendChild(sgrid);
+      }
+      const catMap = new Map();
+      propExp.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+      const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+      if (cats.length) {
+        body.appendChild(mkExpSectionLabel('By Category'));
+        body.appendChild(mkExpTable(
+          [{ label: 'Category' }, { label: 'Type', muted: true }, { label: 'Amount', right: true }, { label: '% of Property', right: true, muted: true }],
+          cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, CAPEX_CATS.has(k) ? 'CapEx' : 'OpEx', formatEUR(v), propTotal > 0 ? (v / propTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      const vendMap = new Map();
+      propExp.forEach(e => { const n = vendorLabel(e); if (n === '—') return; vendMap.set(n, (vendMap.get(n) || 0) + toEUR(e.amount, e.currency, e.date)); });
+      const vends = [...vendMap.entries()].sort((a, b) => b[1] - a[1]);
+      if (vends.length) {
+        body.appendChild(el('div', { style: 'margin-top:20px' }));
+        body.appendChild(mkExpSectionLabel('By Vendor'));
+        body.appendChild(mkExpTable(
+          [{ label: 'Vendor' }, { label: 'Amount', right: true }, { label: '% of Property', right: true, muted: true }],
+          vends.map(([n, v]) => [n, formatEUR(v), propTotal > 0 ? (v / propTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      openModal({ title: `${name} — ${formatEUR(propTotal)}`, body, large: true });
     }
   });
 }
