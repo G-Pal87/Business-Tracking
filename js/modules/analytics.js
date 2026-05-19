@@ -694,24 +694,76 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     deltaIsPp: true, invertDelta: false, compLabel: cmpLabel
   }));
 
-  // 5. Net Cash Flow
+  // 5. Net Cash Flow — waterfall summary + capital outflows table
+  const netCashDrill = () => {
+    const summaryStyle = 'display:grid;grid-template-columns:1fr auto;gap:4px 24px;padding:12px 16px;background:var(--bg-elev-1);border-radius:var(--radius-sm);margin-bottom:16px;font-size:13px';
+    const mkRow = (label, value, bold, color) => [
+      el('span', { style: bold ? 'font-weight:600' : 'color:var(--text-muted)' }, label),
+      el('span', { style: `text-align:right;font-weight:${bold?'600':'400'};${color?'color:'+color:''}` }, value),
+    ];
+    const summary = el('div', { style: summaryStyle });
+    mkRow('Operating Cash Flow', formatEUR(opProfit)).forEach(n => summary.appendChild(n));
+    mkRow('CapEx Expenses', '− ' + formatEUR(capExFromExp)).forEach(n => summary.appendChild(n));
+    mkRow('Acquisitions', '− ' + formatEUR(capExFromAcq)).forEach(n => summary.appendChild(n));
+    mkRow('Net Cash Flow', formatEUR(netCash), true, netCash >= 0 ? 'var(--success)' : 'var(--danger)').forEach(n => summary.appendChild(n));
+
+    const outflowRows = [
+      ...drillExpRows(capExExpenses),
+      ...acquisitions.map(a => ({ date: a.date, source: a._name || '', category: 'Acquisition', description: a.description, eur: toEUR(a.amount, a.currency, a.date) })),
+    ].sort((a, b) => b.eur - a.eur);
+
+    const table = el('table', { class: 'table' });
+    table.appendChild(el('thead', {}, el('tr', {},
+      el('th', {}, 'Date'), el('th', {}, 'Category'), el('th', {}, 'Description'), el('th', { class: 'right' }, 'Amount'),
+    )));
+    const tbody = el('tbody');
+    outflowRows.length
+      ? outflowRows.forEach(r => tbody.appendChild(el('tr', {},
+          el('td', {}, fmtDate(r.date)), el('td', {}, r.category),
+          el('td', {}, r.description || r.source || '—'), el('td', { class: 'right num' }, formatEUR(r.eur)),
+        )))
+      : tbody.appendChild(el('tr', {}, el('td', { colspan: '4', style: 'text-align:center;padding:24px;color:var(--text-muted)' }, 'No capital outflows')));
+    table.appendChild(tbody);
+
+    const body = el('div');
+    body.appendChild(summary);
+    if (outflowRows.length) body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px' }, `${outflowRows.length} capital outflow${outflowRows.length !== 1 ? 's' : ''}`));
+    body.appendChild(el('div', { class: 'table-wrap' }, table));
+    openModal({ title: 'Net Cash Flow', body, large: true });
+  };
   grid.appendChild(kpiCard({
     label: 'Net Cash Flow',
     subtitle: 'Op Cash Flow minus Capital Deployed',
     value: formatEUR(netCash),
     variant: netCash >= 0 ? 'success' : 'danger',
-    onClick: () => drillDownModal('Cash Flow', mixedRows(payments, invoices, [...opExpenses, ...capExExpenses], acquisitions), MIXED_COLS),
+    onClick: netCashDrill,
     delta: cmpMetrics ? safePct(netCash, cmpMetrics.netCash) : null,
     invertDelta: false, compLabel: cmpLabel
   }));
 
-  // 5a. Operating Cash Flow (Revenue − OpEx, before capital expenditure)
+  // 5a. Operating Cash Flow — monthly trend
+  const opCashFlowDrill = () => {
+    const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
+    const revByMonth = new Map(), opExByMonth = new Map();
+    payments.forEach(p  => { const mk = p.date?.slice(0,7);          if (mk) revByMonth.set(mk,  (revByMonth.get(mk)  || 0) + toEUR(p.amount, p.currency, p.date)); });
+    invoices.forEach(i  => { const mk = (i.issueDate||'').slice(0,7); if (mk) revByMonth.set(mk,  (revByMonth.get(mk)  || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+    opExpenses.forEach(e => { const mk = e.date?.slice(0,7);          if (mk) opExByMonth.set(mk, (opExByMonth.get(mk) || 0) + toEUR(e.amount, e.currency, e.date)); });
+    const rows = months
+      .map(m => { const mRev = revByMonth.get(m.key)||0, mOpEx = opExByMonth.get(m.key)||0; return { month: m.label, mRev, mOpEx, mCF: mRev - mOpEx }; })
+      .filter(r => r.mRev > 0 || r.mOpEx > 0);
+    drillDownModal('Operating Cash Flow by Month', rows, [
+      { key: 'month', label: 'Month' },
+      { key: 'mRev',  label: 'Revenue',        right: true, format: v => formatEUR(v) },
+      { key: 'mOpEx', label: 'OpEx',           right: true, format: v => formatEUR(v) },
+      { key: 'mCF',   label: 'Op Cash Flow',   right: true, format: v => formatEUR(v) },
+    ]);
+  };
   grid.appendChild(kpiCard({
     label: 'Operating Cash Flow',
     subtitle: 'Revenue minus operating expenses',
     value: formatEUR(opProfit),
     variant: opProfit >= 0 ? 'success' : 'danger',
-    onClick: () => drillDownModal('Operating Cash Flow', mixedRows(payments, invoices, opExpenses), MIXED_COLS),
+    onClick: opCashFlowDrill,
     delta: cmpMetrics ? safePct(opProfit, cmpMetrics.opProfit) : null,
     invertDelta: false, compLabel: cmpLabel
   }));
@@ -745,7 +797,40 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     delta: null, compLabel: ''
   }));
 
-  // 7. Collection Rate
+  // 7. Collection Rate — by client, worst collectors first
+  const collectionRateDrill = () => {
+    const { mStream, mOwner, mProperty } = makeMatchers(gF);
+    const allRangeInvs = listActive('invoices').filter(i =>
+      (i.issueDate || '') >= curRange.start && (i.issueDate || '') <= curRange.end &&
+      i.status !== 'cancelled' && i.status !== 'void' &&
+      mStream(i) && mOwner(i) && mProperty(i)
+    );
+    const clientMap = new Map();
+    allRangeInvs.forEach(i => {
+      const key = i.clientId || '__none';
+      const e = clientMap.get(key) || { invoiced: 0, collected: 0 };
+      const amt = toEUR(i.total, i.currency, i.issueDate);
+      e.invoiced += amt;
+      if (i.status === 'paid') e.collected += amt;
+      clientMap.set(key, e);
+    });
+    const rows = [...clientMap.entries()]
+      .map(([key, { invoiced, collected }]) => ({
+        client:      byId('clients', key)?.name || (key === '__none' ? 'No Client' : key),
+        invoiced,
+        collected,
+        outstanding: invoiced - collected,
+        rate:        invoiced > 0 ? (collected / invoiced) * 100 : null,
+      }))
+      .sort((a, b) => (a.rate ?? 101) - (b.rate ?? 101));
+    drillDownModal('Collection Rate by Client', rows, [
+      { key: 'client',      label: 'Client' },
+      { key: 'invoiced',    label: 'Invoiced',    right: true, format: v => formatEUR(v) },
+      { key: 'collected',   label: 'Collected',   right: true, format: v => formatEUR(v) },
+      { key: 'outstanding', label: 'Outstanding', right: true, format: v => formatEUR(v) },
+      { key: 'rate',        label: 'Rate',        right: true, format: v => v != null ? v.toFixed(1) + '%' : '—' },
+    ]);
+  };
   grid.appendChild(kpiCard({
     label: 'Collection Rate',
     subtitle: 'Paid invoices / total invoiced',
@@ -753,7 +838,7 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     variant: collectionRate === null ? '' :
       collectionRate >= EXEC_T.collectionRate.healthy ? 'success' :
       collectionRate >= EXEC_T.collectionRate.watch   ? 'warning' : 'danger',
-    onClick: () => drillDownModal('Collected Invoices', drillRevRows([], invoices), REV_COLS),
+    onClick: collectionRateDrill,
     delta: (cmpMetrics && collectionRate != null && cmpMetrics.collectionRate != null)
       ? safePp(collectionRate, cmpMetrics.collectionRate) : null,
     deltaIsPp: true, invertDelta: false, compLabel: cmpLabel
