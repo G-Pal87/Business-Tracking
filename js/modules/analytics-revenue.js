@@ -1,5 +1,5 @@
 // Revenue Analytics Dashboard — structure · growth · collections · contributors · dynamics
-import { el, fmtDate, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, fmtDate, drillDownModal, attachSortFilter, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS } from '../core/config.js';
 import {
@@ -199,6 +199,162 @@ function buildKpiSection(cur, cmp, cmpRange) {
     .map(i => ({ date: i.issueDate, type: 'Invoice', source: byId('clients', i.clientId)?.name || '', ref: i.number || '', eur: toEUR(i.total, i.currency, i.issueDate) }))
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
+  // ── Shared modal helpers ────────────────────────────────────────────────────
+  const mkSectionLabel = text => el('div', {
+    style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:0 0 8px'
+  }, text);
+
+  const mkSummaryBox = (label, value, sub) => {
+    const box = el('div', { style: 'padding:12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)' });
+    box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, label));
+    box.appendChild(el('div', { style: 'font-size:17px;font-weight:700;color:var(--text)' }, value));
+    if (sub) box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
+    return box;
+  };
+
+  const mkTable = (headers, rows) => {
+    const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
+    const hrow = el('tr');
+    headers.forEach(h => hrow.appendChild(el('th', {
+      style: `padding:4px 8px;text-align:${h.right ? 'right' : 'left'};color:var(--text-muted);font-size:11px;border-bottom:1px solid rgba(255,255,255,0.08)`
+    }, h.label)));
+    tbl.appendChild(el('thead', {}, hrow));
+    const tbody = el('tbody');
+    rows.forEach(cells => {
+      const tr = el('tr');
+      cells.forEach((cell, ci) => tr.appendChild(el('td', {
+        style: `padding:6px 8px;text-align:${headers[ci]?.right ? 'right' : 'left'};color:${headers[ci]?.muted ? 'var(--text-muted)' : (headers[ci]?.right ? 'var(--text)' : 'var(--text)')};font-weight:${headers[ci]?.right && ci > 0 ? '500' : '400'}`
+      }, cell)));
+      tbody.appendChild(tr);
+    });
+    tbl.appendChild(tbody);
+    return tbl;
+  };
+
+  // ── Total Revenue drill-down ────────────────────────────────────────────────
+  const totalRevDrill = () => {
+    const body = el('div');
+
+    // Rental vs Service summary boxes
+    const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
+    sgrid.appendChild(mkSummaryBox('Rental Revenue', formatEUR(propRev),
+      total > 0 ? `${(propRev / total * 100).toFixed(0)}% of total · ${activePropIds.size} propert${activePropIds.size !== 1 ? 'ies' : 'y'}` : null));
+    sgrid.appendChild(mkSummaryBox('Service Revenue', formatEUR(svcRev),
+      total > 0 ? `${(svcRev / total * 100).toFixed(0)}% of total · ${activeClientIds.size} client${activeClientIds.size !== 1 ? 's' : ''}` : null));
+    body.appendChild(sgrid);
+
+    // Stream breakdown table
+    const streamRows = [
+      ['Short-term Rental', formatEUR(stRev), total > 0 ? (stRev / total * 100).toFixed(1) + '%' : '—'],
+      ['Long-term Rental',  formatEUR(ltRev), total > 0 ? (ltRev / total * 100).toFixed(1) + '%' : '—'],
+      ['Customer Success',  formatEUR(csRev), total > 0 ? (csRev / total * 100).toFixed(1) + '%' : '—'],
+      ['Marketing Services', formatEUR(mktRev), total > 0 ? (mktRev / total * 100).toFixed(1) + '%' : '—'],
+    ].filter(r => r[1] !== formatEUR(0));
+    if (streamRows.length) {
+      body.appendChild(mkSectionLabel('Revenue by Stream'));
+      const hdrs = [{ label: 'Stream' }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }];
+      body.appendChild(mkTable(hdrs, streamRows));
+    }
+
+    // Top contributors
+    if (contribs.length) {
+      body.appendChild(el('div', { style: 'margin-top:20px' }));
+      body.appendChild(mkSectionLabel('Top Contributors'));
+      const hdrs = [{ label: '#', muted: true }, { label: 'Name' }, { label: 'Type', muted: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }];
+      const rows = contribs.slice(0, 8).map((c, i) => [
+        String(i + 1), c.name, c.type, formatEUR(c.val),
+        total > 0 ? (c.val / total * 100).toFixed(1) + '%' : '—'
+      ]);
+      body.appendChild(mkTable(hdrs, rows));
+    }
+
+    openModal({ title: `Total Revenue — ${formatEUR(total)}`, body, large: true });
+  };
+
+  // ── Service Revenue drill-down ──────────────────────────────────────────────
+  const serviceRevDrill = () => {
+    const body = el('div');
+
+    // CS vs Marketing boxes
+    const streamData = [
+      { label: 'Customer Success',   eur: csRev  },
+      { label: 'Marketing Services', eur: mktRev },
+    ].filter(s => s.eur > 0);
+    if (streamData.length) {
+      const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${streamData.length},1fr);gap:12px;margin-bottom:20px` });
+      streamData.forEach(s => sgrid.appendChild(mkSummaryBox(s.label, formatEUR(s.eur),
+        svcRev > 0 ? `${(s.eur / svcRev * 100).toFixed(0)}% of service revenue` : null)));
+      body.appendChild(sgrid);
+    }
+
+    // Clients table
+    const clientMap = new Map();
+    invoices.forEach(i => {
+      const id   = i.clientId;
+      const name = byId('clients', id)?.name || 'Unknown';
+      const eur  = toEUR(i.total, i.currency, i.issueDate);
+      const e    = clientMap.get(id) || { name, eur: 0, count: 0 };
+      e.eur  += eur;
+      e.count++;
+      clientMap.set(id, e);
+    });
+    const clients = [...clientMap.values()].sort((a, b) => b.eur - a.eur);
+    if (clients.length) {
+      body.appendChild(mkSectionLabel('By Client'));
+      const hdrs = [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Service', right: true, muted: true }];
+      const rows = clients.map(c => [
+        c.name, String(c.count), formatEUR(c.eur),
+        svcRev > 0 ? (c.eur / svcRev * 100).toFixed(1) + '%' : '—'
+      ]);
+      body.appendChild(mkTable(hdrs, rows));
+    }
+
+    openModal({ title: `Service Revenue — ${formatEUR(svcRev)}`, body, large: true });
+  };
+
+  // ── Rental Revenue drill-down ───────────────────────────────────────────────
+  const rentalRevDrill = () => {
+    const body = el('div');
+
+    // STR vs LTR summary boxes
+    const typeData = [
+      { label: 'Short-term Rental', eur: stRev, props: strPropIds.size },
+      { label: 'Long-term Rental',  eur: ltRev, props: ltrPropIds.size },
+    ].filter(t => t.eur > 0);
+    if (typeData.length) {
+      const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${typeData.length},1fr);gap:12px;margin-bottom:20px` });
+      typeData.forEach(t => sgrid.appendChild(mkSummaryBox(t.label, formatEUR(t.eur),
+        `${t.props} prop${t.props !== 1 ? 's' : ''} · ${propRev > 0 ? (t.eur / propRev * 100).toFixed(0) : 0}% of rental`)));
+      body.appendChild(sgrid);
+    }
+
+    // Per-property table
+    const propRevMap = new Map();
+    payments.forEach(p => {
+      const id   = p.propertyId;
+      const prop = byId('properties', id);
+      const name = prop?.name || 'Unknown';
+      const type = p.stream === 'short_term_rental' ? 'STR' : p.stream === 'long_term_rental' ? 'LTR' : 'Other';
+      const eur  = toEUR(p.amount, p.currency, p.date);
+      const e    = propRevMap.get(id) || { name, type, eur: 0, count: 0 };
+      e.eur  += eur;
+      e.count++;
+      propRevMap.set(id, e);
+    });
+    const props = [...propRevMap.values()].sort((a, b) => b.eur - a.eur);
+    if (props.length) {
+      body.appendChild(mkSectionLabel('By Property'));
+      const hdrs = [{ label: 'Property' }, { label: 'Type', muted: true }, { label: 'Payments', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Rental', right: true, muted: true }];
+      const rows = props.map(p => [
+        p.name, p.type, String(p.count), formatEUR(p.eur),
+        propRev > 0 ? (p.eur / propRev * 100).toFixed(1) + '%' : '—'
+      ]);
+      body.appendChild(mkTable(hdrs, rows));
+    }
+
+    openModal({ title: `Rental Revenue — ${formatEUR(propRev)}`, body, large: true });
+  };
+
   const wrapper = el('div', { class: 'mb-16' });
 
   // ── Composite cards row ──────────────────────────────────────────────────────
@@ -207,19 +363,17 @@ function buildKpiSection(cur, cmp, cmpRange) {
   compGrid.appendChild(compositeKpiCard({
     label: 'Total Revenue', value: formatEUR(total),
     delta: dTotal, compLabel: cl,
-    onClick: () => drillDownModal('All Revenue', drillRevRows(payments, invoices), REV_COLS),
+    onClick: totalRevDrill,
     lines: [
-      { label: 'Rental',   value: formatEUR(propRev), pct: pct(propRev, total),
-        onClick: () => drillDownModal('Rental Revenue',  drillRevRows(payments, []), REV_COLS) },
-      { label: 'Services', value: formatEUR(svcRev),  pct: pct(svcRev,  total),
-        onClick: () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS) },
+      { label: 'Rental',   value: formatEUR(propRev), pct: pct(propRev, total), onClick: rentalRevDrill },
+      { label: 'Services', value: formatEUR(svcRev),  pct: pct(svcRev,  total), onClick: serviceRevDrill },
     ]
   }));
 
   compGrid.appendChild(compositeKpiCard({
     label: 'Service Revenue', value: formatEUR(svcRev),
     delta: dService, compLabel: cl,
-    onClick: () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS),
+    onClick: serviceRevDrill,
     lines: [
       { label: 'Customer Success',   value: formatEUR(csRev),  pct: pct(csRev,  svcRev),
         onClick: () => drillDownModal('Customer Success',   drillRevRows([], invoices.filter(i => i.stream === 'customer_success')),   REV_COLS) },
@@ -231,7 +385,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
   compGrid.appendChild(compositeKpiCard({
     label: 'Rental Revenue', value: formatEUR(propRev),
     delta: dRental, compLabel: cl,
-    onClick: () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS),
+    onClick: rentalRevDrill,
     lines: [
       { label: 'Short-term', value: formatEUR(stRev), pct: pct(stRev, propRev),
         onClick: () => drillDownModal('Short-term Rental', drillRevRows(payments.filter(p => p.stream === 'short_term_rental'), []), REV_COLS) },
