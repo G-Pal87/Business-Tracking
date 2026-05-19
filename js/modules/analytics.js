@@ -653,7 +653,35 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     invertDelta: false, compLabel: cmpLabel
   }));
 
-  // 4. Operating Margin
+  // 4. Operating Margin — margin by stream
+  const opMarginDrill = () => {
+    const streamRev = new Map();
+    const streamOpEx = new Map();
+    const add = (map, key, val) => map.set(key, (map.get(key) || 0) + val);
+
+    payments.forEach(p  => add(streamRev,  resolveStream(p)  || '__other', toEUR(p.amount, p.currency, p.date)));
+    invoices.forEach(i  => add(streamRev,  resolveStream(i)  || '__other', toEUR(i.total, i.currency, i.issueDate)));
+    opExpenses.forEach(e => add(streamOpEx, resolveStream(e) || '__other', toEUR(e.amount, e.currency, e.date)));
+
+    const allKeys = new Set([...streamRev.keys(), ...streamOpEx.keys()]);
+    const rows = [...allKeys]
+      .map(key => {
+        const sRev    = streamRev.get(key)  || 0;
+        const sOpEx   = streamOpEx.get(key) || 0;
+        const sProfit = sRev - sOpEx;
+        const sMargin = sRev > 0 ? (sProfit / sRev) * 100 : null;
+        return { key, label: STREAMS[key]?.label || (key === '__other' ? 'Unclassified' : key), sRev, sOpEx, sProfit, sMargin };
+      })
+      .sort((a, b) => b.sRev - a.sRev);
+
+    drillDownModal('Operating Margin by Stream', rows, [
+      { key: 'label',   label: 'Stream' },
+      { key: 'sRev',    label: 'Revenue',  right: true, format: v => formatEUR(v) },
+      { key: 'sOpEx',   label: 'OpEx',     right: true, format: v => formatEUR(v) },
+      { key: 'sProfit', label: 'Profit',   right: true, format: v => formatEUR(v) },
+      { key: 'sMargin', label: 'Margin',   right: true, format: v => v != null ? v.toFixed(1) + '%' : '—' },
+    ]);
+  };
   grid.appendChild(kpiCard({
     label: 'Operating Margin',
     subtitle: 'Op Profit / Revenue',
@@ -661,7 +689,7 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     variant: opMargin === null ? '' :
       opMargin >= EXEC_T.opMargin.healthy ? 'success' :
       opMargin >= EXEC_T.opMargin.watch   ? 'warning' : 'danger',
-    onClick: () => drillDownModal('Operating Profit', mixedRows(payments, invoices, opExpenses), MIXED_COLS),
+    onClick: opMarginDrill,
     delta: (cmpMetrics && opMargin != null) ? safePp(opMargin, cmpMetrics.opMargin) : null,
     deltaIsPp: true, invertDelta: false, compLabel: cmpLabel
   }));
