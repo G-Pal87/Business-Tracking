@@ -10,8 +10,8 @@ import {
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
-  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
-} from './analytics-filters.js';
+  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
+} from './analytics-filters.js?v=20260519';
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const ALL_CHART_IDS = [
@@ -523,10 +523,30 @@ function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
     style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px'
   });
 
-  // 1. Revenue
+  // 1. Revenue — stream breakdown on click
+  const revenueByStream = () => {
+    const map = new Map();
+    const add = (key, eur) => { const e = map.get(key) || { eur: 0, count: 0 }; e.eur += eur; e.count++; map.set(key, e); };
+    payments.forEach(p => add(resolveStream(p) || '__other', toEUR(p.amount, p.currency, p.date)));
+    invoices.forEach(i => add(resolveStream(i) || '__other', toEUR(i.total, i.currency, i.issueDate)));
+    const rows = [...map.entries()]
+      .sort((a, b) => b[1].eur - a[1].eur)
+      .map(([key, { eur, count }]) => ({
+        stream: STREAMS[key]?.label || (key === '__other' ? 'Unclassified' : key),
+        eur,
+        pct:   rev > 0 ? (eur / rev) * 100 : 0,
+        count,
+      }));
+    drillDownModal('Revenue by Stream', rows, [
+      { key: 'stream', label: 'Stream' },
+      { key: 'eur',    label: 'Amount',       right: true, format: v => formatEUR(v) },
+      { key: 'pct',    label: '% of Total',   right: true, format: v => v.toFixed(1) + '%' },
+      { key: 'count',  label: 'Transactions', right: true },
+    ]);
+  };
   grid.appendChild(kpiCard({
     label: 'Revenue', value: formatEUR(rev),
-    onClick: () => drillDownModal('Revenue Breakdown', drillRevRows(payments, invoices), REV_COLS),
+    onClick: revenueByStream,
     delta: cmpMetrics ? safePct(rev, cmpMetrics.rev) : null,
     invertDelta: false, compLabel: cmpLabel
   }));

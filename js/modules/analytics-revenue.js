@@ -10,7 +10,7 @@ import {
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
-} from './analytics-filters.js';
+} from './analytics-filters.js?v=20260519';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const OWNER_COLORS = { you: '#6366f1', rita: '#ec4899', both: '#14b8a6' };

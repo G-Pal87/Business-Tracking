@@ -7,7 +7,7 @@ import {
   listActive, listActivePayments, isCapEx,
   simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
-import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js';
+import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js?v=20260519';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
