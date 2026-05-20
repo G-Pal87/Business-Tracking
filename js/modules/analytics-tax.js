@@ -476,11 +476,10 @@ function buildKpiCards(data, year) {
     const actualNet  = opProfit;
     const variance   = actualNet - forecastNet;
     const variantStr = variance >= 0 ? 'success' : 'danger';
-    grid.appendChild(mkKpi(
+    const forecastCard = mkKpi(
       'Year vs Forecast',
       formatEUR(actualNet),
-      mkVarianceBadge(variance, formatEUR(Math.abs(variance))).outerHTML
-        + ' vs forecast net',
+      null,
       variantStr,
       () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -503,7 +502,14 @@ function buildKpiCards(data, year) {
         ));
         openModal({ title: `${year} Actual vs Forecast`, body, large: true });
       }
-    ));
+    );
+    // Safely insert variance badge + label as DOM nodes before the accent bar (avoids outerHTML injection)
+    const subtitleEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px;display:flex;align-items:center;gap:4px' });
+    subtitleEl.appendChild(mkVarianceBadge(variance, formatEUR(Math.abs(variance))));
+    subtitleEl.appendChild(document.createTextNode(' vs forecast net'));
+    const accentBar = forecastCard.querySelector('.kpi-accent-bar');
+    forecastCard.insertBefore(subtitleEl, accentBar);
+    grid.appendChild(forecastCard);
   } else {
     grid.appendChild(mkKpi(
       'Year vs Forecast',

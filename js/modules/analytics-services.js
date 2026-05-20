@@ -10,6 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -178,36 +179,6 @@ const ACTIVE_CLIENT_DRILL_COLS = [
   { key: 'overdue',     label: 'Overdue',          right: true, format: v => formatEUR(v) },
   { key: 'count',       label: 'Invoice Count',    right: true }
 ];
-
-// ── Modal helpers ─────────────────────────────────────────────────────────────
-function mkSectionLabel(text) {
-  return el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:0 0 8px' }, text);
-}
-function mkSummaryBox(label, value, sub) {
-  const box = el('div', { style: 'padding:12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)' });
-  box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, label));
-  box.appendChild(el('div', { style: 'font-size:17px;font-weight:700;color:var(--text)' }, value));
-  if (sub) box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
-  return box;
-}
-function mkModalTable(headers, rows) {
-  const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
-  const hrow = el('tr');
-  headers.forEach(h => hrow.appendChild(el('th', {
-    style: `padding:4px 8px;text-align:${h.right ? 'right' : 'left'};color:var(--text-muted);font-size:11px;border-bottom:1px solid rgba(255,255,255,0.08)`
-  }, h.label)));
-  tbl.appendChild(el('thead', {}, hrow));
-  const tbody = el('tbody');
-  rows.forEach(cells => {
-    const tr = el('tr');
-    cells.forEach((cell, ci) => tr.appendChild(el('td', {
-      style: `padding:6px 8px;text-align:${headers[ci]?.right ? 'right' : 'left'};color:${headers[ci]?.muted ? 'var(--text-muted)' : 'var(--text)'}`
-    }, cell)));
-    tbody.appendChild(tr);
-  });
-  tbl.appendChild(tbody);
-  return tbl;
-}
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
 function kpiCard(labelOrOpts, value, variant, onClick) {
@@ -667,7 +638,7 @@ function buildView() {
     label:   'Days Sales Outstanding',
     value:   dso !== null ? `${dso.toFixed(0)} days` : '—',
     variant: dsoVariant,
-    subtitle: 'Outstanding ÷ invoiced × 30',
+    subtitle: 'Outstanding ÷ Invoiced × 30 (proxy)',
     onClick: () => {
       const body = el('div');
       const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });

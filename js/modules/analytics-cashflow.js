@@ -10,6 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -185,40 +186,6 @@ const CF_DRILL_COLS = [
   { key: 'description', label: 'Description'                          },
   { key: 'amountEUR',   label: 'Amount EUR',  right: true             }
 ];
-
-// ── Rich modal helpers ────────────────────────────────────────────────────────
-function mkSectionLabel(text) {
-  return el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:0 0 8px' }, text);
-}
-function mkSummaryBox(label, value, sub) {
-  const box = el('div', { style: 'padding:12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)' });
-  box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, label));
-  box.appendChild(el('div', { style: 'font-size:17px;font-weight:700;color:var(--text)' }, value));
-  if (sub) box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
-  return box;
-}
-function mkModalTable(headers, rows) {
-  const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
-  const thead = el('thead');
-  const hr = el('tr');
-  headers.forEach((h, i) => {
-    const th = el('th', { style: `padding:6px 8px;text-align:${i === 0 ? 'left' : 'right'};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08)` }, h);
-    hr.appendChild(th);
-  });
-  thead.appendChild(hr);
-  tbl.appendChild(thead);
-  const tbody = el('tbody');
-  rows.forEach((row, ri) => {
-    const tr = el('tr', { style: ri % 2 === 0 ? '' : 'background:rgba(255,255,255,0.02)' });
-    row.forEach((cell, ci) => {
-      const td = el('td', { style: `padding:6px 8px;text-align:${ci === 0 ? 'left' : 'right'};border-bottom:1px solid rgba(255,255,255,0.04)` }, String(cell ?? ''));
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-  tbl.appendChild(tbody);
-  return tbl;
-}
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
 function kpiCard(labelOrOpts, value, variant, onClick) {
@@ -898,9 +865,9 @@ function buildView() {
 
     const dohVariant = daysOnHand === null ? '' : daysOnHand >= 90 ? 'success' : daysOnHand >= 30 ? 'warning' : 'danger';
     kpiRow3.appendChild(kpiCard({
-      label:    'Days Cash on Hand',
+      label:    'Net Coverage Days',
       value:    daysOnHand !== null ? `${daysOnHand} days` : 'N/A',
-      subtitle: 'How many days of OpEx current cash covers',
+      subtitle: 'Period net ÷ avg monthly OpEx',
       variant:  dohVariant,
       onClick:  () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -909,13 +876,13 @@ function buildView() {
         const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
         summaryGrid.appendChild(mkSummaryBox('Cumulative Cash Balance', formatEUR(Math.max(0, running)), 'net positive balance'));
         summaryGrid.appendChild(mkSummaryBox('Avg Monthly OpEx', formatEUR(avgMonthlyOpex), `${curData.activeMonthCount} active month${curData.activeMonthCount !== 1 ? 's' : ''}`));
-        summaryGrid.appendChild(mkSummaryBox('Days Cash on Hand', daysOnHand !== null ? `${daysOnHand} days` : 'N/A', '(Balance ÷ Avg Monthly OpEx) × 30'));
+        summaryGrid.appendChild(mkSummaryBox('Net Coverage Days', daysOnHand !== null ? `${daysOnHand} days` : 'N/A', '(Period Net ÷ Avg Monthly OpEx) × 30'));
         body.appendChild(summaryGrid);
 
         // Formula explanation
         const formulaBox = el('div', { style: 'padding:10px 12px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);font-size:12px;color:var(--text-muted);line-height:1.6' });
-        formulaBox.appendChild(el('strong', { style: 'color:var(--text)' }, 'Formula: '));
-        formulaBox.appendChild(document.createTextNode('(Net cumulative cash balance) ÷ (Average monthly operating cash out) × 30. A result ≥90 days is healthy, ≥30 days is a watch, <30 days is at risk.'));
+        formulaBox.appendChild(el('strong', { style: 'color:var(--text)' }, 'Note: '));
+        formulaBox.appendChild(document.createTextNode('Measures how many days of operating expenses are covered by this period\'s net cash flow. Not a cash balance or runway metric.'));
         body.appendChild(formulaBox);
 
         // Monthly cash position table
@@ -936,7 +903,7 @@ function buildView() {
           body.appendChild(posSection);
         }
 
-        openModal({ title: 'Days Cash on Hand — Breakdown', body, large: true });
+        openModal({ title: 'Net Coverage Days — Breakdown', body, large: true });
       }
     }));
   }
