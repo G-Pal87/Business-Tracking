@@ -72,12 +72,14 @@ async function previewDoc(doc) {
   const bytes = new Uint8Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
   const blob = new Blob([bytes], { type: mime });
-  window.open(URL.createObjectURL(blob), '_blank');
+  const blobUrl = URL.createObjectURL(blob);
+  window.open(blobUrl, '_blank');
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
 }
 
 function sanitizeName(str) {
   // Only strip path-separator characters; encodeURIComponent in uploadGithubFile handles the rest
-  return str.replace(/[/\\]/g, '-').trim();
+  return str.replace(/[/\\:*?"<>|]/g, '-').trim();
 }
 
 function docIcon(type) {
@@ -124,7 +126,6 @@ function build() {
   wrap.appendChild(grid);
 
   rebuildPropFilters(filterBar, grid);
-  renderPropGrid(grid);
 
   return wrap;
 }
@@ -158,7 +159,7 @@ function rebuildPropFilters(filterBar, grid) {
   [..._pf.countries].forEach(v => { if (!validCountries.includes(v)) _pf.countries.delete(v); });
   savePropFilters();
 
-  const onChange = () => { savePropFilters(); rebuildPropFilters(filterBar, grid); renderPropGrid(grid); };
+  const onChange = () => { savePropFilters(); rebuildPropFilters(filterBar, grid); };
 
   const yearMS    = buildMultiSelect(validYears.map(y => ({ value: y, label: y })), _pf.years, 'All Years', onChange);
   const ownerMS   = buildMultiSelect(validOwners.map(v => ({ value: v, label: OWNERS[v] || v })), _pf.owners, 'All Owners', onChange);
@@ -173,7 +174,6 @@ function rebuildPropFilters(filterBar, grid) {
       _pSortDir = 1; _pSortKey = 'name';
       savePropFilters();
       rebuildPropFilters(filterBar, grid);
-      renderPropGrid(grid);
     }
   });
 
@@ -187,7 +187,6 @@ function rebuildPropFilters(filterBar, grid) {
         else { _pSortKey = key; _pSortDir = 1; }
         savePropFilters();
         rebuildPropFilters(filterBar, grid);
-        renderPropGrid(grid);
       }
     });
   };
@@ -200,19 +199,34 @@ function rebuildPropFilters(filterBar, grid) {
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(mkSortBtn('name', 'Name'));
   filterBar.appendChild(mkSortBtn('type', 'Type'));
+  filterBar.appendChild(mkSortBtn('revenue', 'Revenue'));
+  filterBar.appendChild(mkSortBtn('roi', 'ROI'));
+  renderPropGrid(grid, all);
 }
 
 // Applies active filters + sort to the property grid, replacing its contents.
-function renderPropGrid(grid) {
+function renderPropGrid(grid, preloaded) {
   grid.innerHTML = '';
-  let props = listActive('properties');
+  let props = preloaded || listActive('properties');
 
   if (_pf.years.size)     props = props.filter(p => _pf.years.has(p.purchaseDate?.slice(0, 4) || ''));
   if (_pf.owners.size)    props = props.filter(p => _pf.owners.has(p.owner || ''));
   if (_pf.types.size)     props = props.filter(p => _pf.types.has(p.type || ''));
   if (_pf.countries.size) props = props.filter(p => _pf.countries.has(p.country || ''));
 
+  const year = new Date().getFullYear();
+  const statsMap = new Map();
+  for (const p of props) {
+    statsMap.set(p.id, {
+      rev: propertyRevenueEUR(p.id, { year }),
+      exp: propertyExpensesEUR(p.id, { year }, { includeRenovation: false }),
+      roi: propertyROI(p.id)
+    });
+  }
+
   props = [...props].sort((a, b) => {
+    if (_pSortKey === 'revenue') return ((statsMap.get(a.id)?.rev ?? 0) - (statsMap.get(b.id)?.rev ?? 0)) * _pSortDir;
+    if (_pSortKey === 'roi')     return ((statsMap.get(a.id)?.roi ?? 0) - (statsMap.get(b.id)?.roi ?? 0)) * _pSortDir;
     const av = _pSortKey === 'type' ? (a.type || '') : (a.name || '');
     const bv = _pSortKey === 'type' ? (b.type || '') : (b.name || '');
     return av.localeCompare(bv) * _pSortDir;
@@ -226,17 +240,15 @@ function renderPropGrid(grid) {
     ));
     return;
   }
-  for (const p of props) grid.appendChild(card(p));
+  for (const p of props) grid.appendChild(card(p, statsMap.get(p.id)));
 }
 
-function card(p) {
+function card(p, stats) {
   const statusCss = PROPERTY_STATUSES[p.status]?.css || 'vacant';
-  const year = new Date().getFullYear();
-  const rev = propertyRevenueEUR(p.id, { year });
-  const exp = propertyExpensesEUR(p.id, { year }, { includeRenovation: false });
-  const roi = propertyROI(p.id);
+  const rev = stats?.rev ?? propertyRevenueEUR(p.id, { year: new Date().getFullYear() });
+  const roi = stats?.roi ?? propertyROI(p.id);
   const c = el('div', { class: 'prop-card' });
-  c.onclick = () => openDetail(p.id);
+  c.onclick = () => openDetail(p.id, stats);
   c.appendChild(el('div', { class: 'prop-card-header' },
     el('div', {},
       el('div', { class: 'prop-card-name' }, p.name),
@@ -266,15 +278,15 @@ function statBox(label, value) {
   );
 }
 
-function openDetail(id) {
+function openDetail(id, preStats) {
   selectedId = id;
   const p = byId('properties', id);
   if (!p) return;
   const year = new Date().getFullYear();
-  const rev = propertyRevenueEUR(id, { year });
-  const exp = propertyExpensesEUR(id, { year }, { includeRenovation: false });
+  const rev  = preStats?.rev ?? propertyRevenueEUR(id, { year });
+  const exp  = preStats?.exp ?? propertyExpensesEUR(id, { year }, { includeRenovation: false });
   const reno = renovationCapexEUR({ propertyId: id });
-  const roi = propertyROI(id);
+  const roi  = preStats?.roi ?? propertyROI(id);
   const net = rev - exp;
 
   const body = el('div', {});
@@ -291,18 +303,42 @@ function openDetail(id) {
     )
   ));
 
-  body.appendChild(el('div', { class: 'grid grid-4 mb-16' },
-    smallStat('Purchase Price', formatMoney(p.purchasePrice, p.currency, { maxFrac: 0 }), p.currency !== 'EUR' ? `${formatEUR(toEUR(p.purchasePrice, p.currency))} EUR` : null),
-    smallStat('Revenue YTD', formatEUR(rev)),
-    smallStat('Expenses YTD', formatEUR(exp)),
-    smallStat('Net YTD', formatEUR(net))
-  ));
+  // Build year options from payment history for this property
+  const propYears = [...new Set(
+    listActivePayments().filter(pmt => pmt.propertyId === id && pmt.date).map(pmt => pmt.date.slice(0, 4))
+  )].sort().reverse();
+  if (!propYears.includes(String(year))) propYears.unshift(String(year));
 
-  body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
-    smallStat('Mortgage Balance', formatMoney(p.mortgageAmount, p.currency, { maxFrac: 0 }), `Monthly ${formatMoney(p.mortgageMonthly, p.currency, { maxFrac: 0 })} @ ${p.mortgageRate}%`),
-    smallStat('Renovation CapEx', formatEUR(reno)),
-    smallStat('Annual ROI', `${roi.toFixed(2)}%`)
+  const yearSel = select(propYears.map(y => ({ value: y, label: y })), String(year));
+  const statsGrid = el('div', { class: 'grid grid-4 mb-16' });
+  const statsGrid2 = el('div', { class: 'grid grid-3 mb-16' });
+
+  const updateStats = () => {
+    const y = Number(yearSel.value);
+    const r  = propertyRevenueEUR(id, { year: y });
+    const ex = propertyExpensesEUR(id, { year: y }, { includeRenovation: false });
+    const re = renovationCapexEUR({ propertyId: id });
+    const ri = propertyROI(id);
+    const n  = r - ex;
+    statsGrid.innerHTML = '';
+    statsGrid.appendChild(smallStat('Purchase Price', formatMoney(p.purchasePrice, p.currency, { maxFrac: 0 }), p.currency !== 'EUR' ? `${formatEUR(toEUR(p.purchasePrice, p.currency))} EUR` : null));
+    statsGrid.appendChild(smallStat(`Revenue ${y}`, formatEUR(r)));
+    statsGrid.appendChild(smallStat(`Expenses ${y}`, formatEUR(ex)));
+    statsGrid.appendChild(smallStat(`Net ${y}`, formatEUR(n)));
+    statsGrid2.innerHTML = '';
+    statsGrid2.appendChild(smallStat('Mortgage Balance', formatMoney(p.mortgageAmount, p.currency, { maxFrac: 0 }), `Monthly ${formatMoney(p.mortgageMonthly, p.currency, { maxFrac: 0 })} @ ${p.mortgageRate}%`));
+    statsGrid2.appendChild(smallStat('Renovation CapEx', formatEUR(re)));
+    statsGrid2.appendChild(smallStat('Annual ROI', `${ri.toFixed(2)}%`));
+  };
+  yearSel.onchange = updateStats;
+  updateStats();
+
+  body.appendChild(el('div', { class: 'flex gap-8 mb-8', style: 'align-items:center' },
+    el('span', { style: 'font-size:13px;color:var(--text-muted)' }, 'Year:'),
+    yearSel
   ));
+  body.appendChild(statsGrid);
+  body.appendChild(statsGrid2);
 
   if (p.status === 'sold' && p.soldDate) {
     body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
@@ -364,14 +400,33 @@ function openDetail(id) {
     const defaults = { propertyId: id, stream: p.type === 'short_term' ? 'short_term_rental' : 'long_term_rental', currency: p.currency };
     setTimeout(() => openExpenseForm(defaults), 220);
   }});
-  expTable.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Recent Expenses'), el('div', { class: 'actions' }, addExpBtn)));
-  if (expList.length === 0) expTable.appendChild(el('div', { class: 'empty' }, 'No expenses recorded'));
-  else {
+  let expShowAll = false;
+  const expTitleEl = el('div', { class: 'card-title' }, 'Recent Expenses');
+  const expActions = el('div', { class: 'actions' });
+  expActions.appendChild(addExpBtn);
+  expTable.appendChild(el('div', { class: 'card-header' }, expTitleEl, expActions));
+
+  const renderExpenses = () => {
+    // remove old table-wrap / empty if present
+    const old = expTable.querySelector('.table-wrap, .empty');
+    if (old) old.remove();
+    const shown = expList.slice(0, expShowAll ? expList.length : 10);
+    expTitleEl.textContent = `Recent Expenses${expList.length > 10 ? ` (${shown.length}/${expList.length})` : ''}`;
+    // remove any existing show-all button
+    const oldBtn = expActions.querySelector('.exp-show-all');
+    if (oldBtn) oldBtn.remove();
+    if (!expShowAll && expList.length > 10) {
+      const saBtn = button(`Show all ${expList.length}`, { variant: 'sm ghost' });
+      saBtn.className += ' exp-show-all';
+      saBtn.onclick = () => { expShowAll = true; renderExpenses(); };
+      expActions.insertBefore(saBtn, addExpBtn);
+    }
+    if (expList.length === 0) { expTable.appendChild(el('div', { class: 'empty' }, 'No expenses recorded')); return; }
     const tw = el('div', { class: 'table-wrap' });
     const t = el('table', { class: 'table' });
     t.innerHTML = '<thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="right">Amount</th></tr></thead>';
     const tb = el('tbody');
-    for (const e of expList.slice(0, 10)) {
+    for (const e of shown) {
       const tr = el('tr');
       tr.appendChild(el('td', {}, fmtDate(e.date)));
       tr.appendChild(el('td', {}, el('span', { class: 'badge' }, e.category)));
@@ -379,10 +434,9 @@ function openDetail(id) {
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(e.amount, e.currency, { maxFrac: 0 })));
       tb.appendChild(tr);
     }
-    t.appendChild(tb);
-    tw.appendChild(t);
-    expTable.appendChild(tw);
-  }
+    t.appendChild(tb); tw.appendChild(t); expTable.appendChild(tw);
+  };
+  renderExpenses();
   body.appendChild(expTable);
 
   // Documents
@@ -456,8 +510,7 @@ function openForm(existing) {
     purchasePrice: 0, currency: 'EUR', purchaseDate: new Date().toISOString().slice(0, 10),
     monthlyRent: 0, nightlyRate: 0,
     mortgageAmount: 0, mortgageMonthly: 0, mortgageRate: 0,
-    owner: 'both', airbnbCalUrl: '', notes: '',
-    monthlyElectricity: 0, monthlyWater: 0
+    owner: 'both', airbnbCalUrl: '', notes: ''
   };
 
   const body = el('div', {});
@@ -482,21 +535,14 @@ function openForm(existing) {
   const bedsI = input({ type: 'number', value: p.bedrooms, min: 0 });
   const bathsI = input({ type: 'number', value: p.bathrooms, min: 0 });
   const icalI = input({ value: p.airbnbCalUrl || '', placeholder: 'https://airbnb.com/calendar/ical/...' });
-  const tenantI = input({ value: p.tenantName || '', placeholder: 'Tenant full name' });
-  const leaseStartI = input({ type: 'date', value: p.leaseStartDate || '' });
-  const leaseEndI = input({ type: 'date', value: p.leaseEndDate || '' });
   const soldDateI = input({ type: 'date', value: p.soldDate || '' });
 
   // Rows that toggle based on type
   const ltRow = el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Payment Due Day (1–28)', payDayI));
-  const ltTenantRow = formRow('Tenant Name', tenantI);
-  const ltLeaseRow = el('div', { class: 'form-row horizontal' }, formRow('Lease Start', leaseStartI), formRow('Lease End', leaseEndI));
   const icalRow = formRow('Airbnb iCal URL', icalI);
   const updateTypeFields = () => {
     const isLT = typeS.value === 'long_term';
     ltRow.style.display = isLT ? '' : 'none';
-    ltTenantRow.style.display = 'none';
-    ltLeaseRow.style.display = 'none';
     icalRow.style.display = isLT ? 'none' : '';
   };
   typeS.onchange = updateTypeFields;
@@ -516,8 +562,6 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Purchase Price', purchaseI), formRow('Purchase Date', dateI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Bedrooms', bedsI), formRow('Bathrooms', bathsI)));
   body.appendChild(ltRow);
-  body.appendChild(ltTenantRow);
-  body.appendChild(ltLeaseRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Mortgage Amount', mAmtI), formRow('Monthly Payment', mMoI)));
   body.appendChild(formRow('Interest Rate %', mRateI));
   body.appendChild(icalRow);
@@ -716,14 +760,14 @@ async function doImportICal(prop) {
     const text = await fetchICal(url);
     const events = parseICal(text);
     let added = 0;
+    const existingIcal = listActivePayments().filter(p => p.propertyId === prop.id && p.source === 'airbnb');
     for (const ev of events) {
       if (!ev.start || !ev.end) continue;
       const n = nights(ev.start, ev.end);
       if (n <= 0) continue;
       const amount = n * (prop.nightlyRate || 0);
       // avoid duplicates
-      const dupe = listActivePayments().some(p => p.propertyId === prop.id && p.date === ev.start && p.source === 'airbnb' && p.notes?.includes(ev.uid || ''));
-      if (dupe) continue;
+      if (existingIcal.some(p => p.date === ev.start && p.notes?.includes(ev.uid || ''))) continue;
       const pay = {
         id: newId('pay'),
         propertyId: prop.id,
@@ -731,7 +775,7 @@ async function doImportICal(prop) {
         currency: prop.currency,
         date: ev.start,
         type: 'rental',
-        status: 'paid',
+        status: ev.start > new Date().toISOString().slice(0, 10) ? 'pending' : 'paid',
         source: 'airbnb',
         stream: 'short_term_rental',
         notes: `iCal: ${n} nights${ev.uid ? ' / ' + ev.uid : ''}`
