@@ -1411,6 +1411,89 @@ function renderCharts(data) {
       }
     });
   }
+
+  // 9. Forecast Accuracy Trend — line chart of per-month absolute % error
+  const accuracyTrendMonths = data.monthlyBreakdown.filter(m => m.fcRev > 0);
+  if (accuracyTrendMonths.length > 0) {
+    const accLabels = accuracyTrendMonths.map(m => m.label);
+    const accData   = accuracyTrendMonths.map(m => {
+      const pct = (Math.abs(m.actRev - m.fcRev) / m.fcRev) * 100;
+      return Math.round(pct * 10) / 10;
+    });
+
+    // Reference lines at 10% (good) and 25% (poor) as constant-value datasets
+    const goodLine = accuracyTrendMonths.map(() => 10);
+    const poorLine = accuracyTrendMonths.map(() => 25);
+
+    charts.line('anf-accuracy-trend', {
+      labels: accLabels,
+      datasets: [
+        {
+          label: 'Error %',
+          data: accData,
+          borderColor: '#6366f1',
+          backgroundColor: 'rgba(99,102,241,0.08)',
+          fill: true,
+          tension: 0.3
+        },
+        {
+          label: 'Good threshold (10%)',
+          data: goodLine,
+          borderColor: '#10b981',
+          borderDash: [6, 3],
+          borderWidth: 1.5,
+          backgroundColor: 'transparent',
+          pointRadius: 0,
+          fill: false
+        },
+        {
+          label: 'Poor threshold (25%)',
+          data: poorLine,
+          borderColor: '#ef4444',
+          borderDash: [6, 3],
+          borderWidth: 1.5,
+          backgroundColor: 'transparent',
+          pointRadius: 0,
+          fill: false
+        }
+      ],
+      onClickItem: (_lbl, idx) => {
+        const m = accuracyTrendMonths[idx];
+        if (!m) return;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        const absErr = Math.abs(m.actRev - m.fcRev);
+        const pctErr = m.fcRev > 0 ? (absErr / m.fcRev) * 100 : null;
+
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Forecast', formatEUR(m.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Actual', formatEUR(m.actRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Abs Error', formatEUR(absErr), pctErr !== null ? pctErr.toFixed(1) + '% error' : ''));
+        body.appendChild(mkSectionLabel(`${m.label} — Accuracy Detail`));
+        body.appendChild(summaryBoxes);
+
+        // Stream breakdown for this month
+        const streamMap = new Map();
+        m.payments.forEach(p => {
+          const s = resolveStream(p) || 'other';
+          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
+        });
+        m.invoices.forEach(i => {
+          const s = resolveStream(i) || 'other';
+          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date));
+        });
+        const streamRows = [...streamMap.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .map(([key, val]) => [STREAMS[key]?.label || key, formatEUR(val)]);
+        if (streamRows.length > 0) {
+          body.appendChild(mkSectionLabel('Actual Revenue by Stream'));
+          body.appendChild(mkModalTable(['Stream', 'Actual Revenue'], streamRows));
+        }
+
+        openModal({ title: `${m.label} — Forecast Accuracy`, body, large: true });
+      }
+    });
+  }
 }
 
 // ── Main view builder ─────────────────────────────────────────────────────────
@@ -1472,6 +1555,10 @@ function buildView() {
   wrap.appendChild(makeChartSection('Pending Pipeline', [
     ['Pending Pipeline by Month', 'anf-pending-pipeline'],
     ['Pending by Property',       'anf-pending-by-prop']
+  ]));
+
+  wrap.appendChild(makeChartSection('Forecast Accuracy', [
+    ['Forecast Accuracy Trend', 'anf-accuracy-trend']
   ]));
 
   wrap.appendChild(cardSection('Monthly Forecast Breakdown', buildMonthlyTable(data)));
