@@ -15,6 +15,8 @@ import {
 let gF = createFilterState();
 
 const CHART_IDS = ['cf-cumulative-line', 'cf-month-bar', 'cf-net-donut', 'cf-net-month-bar', 'cf-prop-hbar', 'cf-stream-bar'];
+const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtK = v => v >= 10000 ? `€${(v / 1000).toFixed(0)}k` : v >= 1000 ? `€${(v / 1000).toFixed(1)}k` : formatEUR(v, { maxFrac: 0 });
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -391,6 +393,143 @@ function buildInsightsBanner(signals) {
   return card;
 }
 
+// ── Cash Seasonality Heatmap ──────────────────────────────────────────────────
+function buildCashSeasonalityHeatmap(payments, invoices, opExpenses, capExpenses) {
+  // Collect all years across all transaction types
+  const years = [...new Set([
+    ...payments   .map(p => p.date?.slice(0, 4)),
+    ...invoices   .map(i => (i.issueDate || '').slice(0, 4)),
+    ...opExpenses .map(e => e.date?.slice(0, 4)),
+    ...capExpenses.map(e => e.date?.slice(0, 4))
+  ].filter(Boolean))].sort();
+  if (!years.length) return null;
+
+  // Build net cash flow per month-key across ALL available years (not just filtered period)
+  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const mExpStream = e => !gF.streams.size || gF.streams.has(expStream(e));
+  const mInvOwner = inv => {
+    if (!gF.owners.size) return true;
+    let ow = inv.owner;
+    if (!ow && inv.clientId) ow = byId('clients', inv.clientId)?.owner;
+    ow = ow || 'both';
+    return ow === 'both' || gF.owners.has(ow);
+  };
+
+  // For the heatmap we pull ALL data (no date filter) so all years are visible
+  const allPays = listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p));
+  const allInvs = listActive('invoices').filter(i => i.status === 'paid' && mStream(i) && mInvOwner(i) && mClient(i));
+  const allOpEx = listActive('expenses').filter(e => !isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e));
+  const allCapEx = listActive('expenses').filter(e => isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e));
+
+  const allYears = [...new Set([
+    ...allPays .map(p => p.date?.slice(0, 4)),
+    ...allInvs .map(i => (i.issueDate || '').slice(0, 4)),
+    ...allOpEx .map(e => e.date?.slice(0, 4)),
+    ...allCapEx.map(e => e.date?.slice(0, 4))
+  ].filter(Boolean))].sort();
+  if (!allYears.length) return null;
+
+  const grid = new Map(); // key: 'YYYY-MM' → net EUR
+  allPays .forEach(p => { const k = p.date?.slice(0, 7);              if (k) grid.set(k, (grid.get(k) || 0) + toEUR(p.amount, p.currency, p.date)); });
+  allInvs .forEach(i => { const k = (i.issueDate || '').slice(0, 7); if (k) grid.set(k, (grid.get(k) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+  allOpEx .forEach(e => { const k = e.date?.slice(0, 7);              if (k) grid.set(k, (grid.get(k) || 0) - toEUR(e.amount, e.currency, e.date)); });
+  allCapEx.forEach(e => { const k = e.date?.slice(0, 7);              if (k) grid.set(k, (grid.get(k) || 0) - toEUR(e.amount, e.currency, e.date)); });
+
+  const allVals = [...grid.values()];
+  const maxAbs = Math.max(...allVals.map(Math.abs), 1);
+
+  const wrap = el('div', { class: 'card mb-16', style: 'overflow-x:auto' });
+  wrap.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Cash Seasonality'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Net cash flow by month · Green = surplus · Red = deficit · Click for detail')
+  ));
+
+  const table = el('table', { id: 'cf-seasonality-heatmap', style: 'border-collapse:collapse;width:100%;font-size:12px' });
+  const htr = el('tr');
+  htr.appendChild(el('th', { style: 'text-align:left;padding:4px 8px;color:var(--text-muted);white-space:nowrap' }, 'Year'));
+  MONTH_LABELS.forEach(ml => htr.appendChild(el('th', { style: 'padding:4px 6px;text-align:right;color:var(--text-muted)' }, ml)));
+  table.appendChild(el('thead', {}, htr));
+
+  const tbody = el('tbody');
+  allYears.forEach(y => {
+    const tr = el('tr');
+    tr.appendChild(el('td', { style: 'padding:4px 8px;font-weight:600;color:var(--text-muted);white-space:nowrap' }, y));
+    MONTH_LABELS.forEach((_, mi) => {
+      const mm  = String(mi + 1).padStart(2, '0');
+      const key = `${y}-${mm}`;
+      const v   = grid.get(key) || 0;
+      const isPos = v >= 0;
+      const alpha = v !== 0 ? Math.max(0.08, Math.abs(v) / maxAbs * 0.75) : 0;
+      const bgColor = v > 0
+        ? `rgba(16,185,129,${alpha.toFixed(2)})`
+        : v < 0
+          ? `rgba(239,68,68,${alpha.toFixed(2)})`
+          : 'transparent';
+
+      const td = el('td', {
+        style: `padding:4px 6px;text-align:right;background:${bgColor};border-radius:3px;cursor:${v !== 0 ? 'pointer' : 'default'}`,
+        title: v !== 0 ? `${MONTH_LABELS[mi]} ${y}: ${formatEUR(v)}` : ''
+      });
+
+      if (v !== 0) {
+        td.appendChild(el('span', { style: `color:${isPos ? '#10b981' : '#ef4444'};font-weight:${Math.abs(v) / maxAbs > 0.4 ? '600' : '400'}` }, fmtK(Math.abs(v))));
+        const capturedKey = key;
+        td.onclick = () => {
+          // Drill into this month's transactions
+          const mPay = allPays .filter(p => p.date?.slice(0, 7) === capturedKey);
+          const mInv = allInvs .filter(i => (i.issueDate || '').slice(0, 7) === capturedKey);
+          const mOp  = allOpEx .filter(e => e.date?.slice(0, 7) === capturedKey);
+          const mCap = allCapEx.filter(e => e.date?.slice(0, 7) === capturedKey);
+          const mIn     = mPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
+                        + mInv.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+          const mOpOut  = mOp .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+          const mCapOut = mCap.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+          const mNet = mIn - mOpOut - mCapOut;
+
+          const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+          const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px' });
+          summaryGrid.appendChild(mkSummaryBox('Cash In', formatEUR(mIn), `${mPay.length + mInv.length} items`));
+          summaryGrid.appendChild(mkSummaryBox('Op. Cash Out', formatEUR(mOpOut), `${mOp.length} expenses`));
+          summaryGrid.appendChild(mkSummaryBox('Invest. Cash Out', formatEUR(mCapOut), `${mCap.length} items`));
+          summaryGrid.appendChild(mkSummaryBox('Net Cash Flow', formatEUR(mNet), mNet >= 0 ? 'Surplus' : 'Deficit'));
+          body.appendChild(summaryGrid);
+
+          // Stream breakdown
+          const streamMap = new Map();
+          const addS = (sk, inV, opV, capV) => {
+            const c = streamMap.get(sk) || { in: 0, opOut: 0, capOut: 0 };
+            c.in += inV; c.opOut += opV; c.capOut += capV;
+            streamMap.set(sk, c);
+          };
+          mPay.forEach(p => addS(p.stream || 'other', toEUR(p.amount, p.currency, p.date), 0, 0));
+          mInv.forEach(i => addS(i.stream || 'other', toEUR(i.total, i.currency, i.issueDate), 0, 0));
+          mOp .forEach(e => addS(expStream(e), 0, toEUR(e.amount, e.currency, e.date), 0));
+          mCap.forEach(e => addS(expStream(e), 0, 0, toEUR(e.amount, e.currency, e.date)));
+          const streamEntries = [...streamMap.entries()].sort((a, b) => (b[1].in - b[1].opOut - b[1].capOut) - (a[1].in - a[1].opOut - a[1].capOut));
+          if (streamEntries.length > 0) {
+            const streamSection = el('div');
+            streamSection.appendChild(mkSectionLabel('Breakdown by Stream'));
+            streamSection.appendChild(mkModalTable(
+              ['Stream', 'Cash In', 'Op. Out', 'Invest. Out', 'Net'],
+              streamEntries.map(([sk, d]) => [STREAMS[sk]?.label || sk, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
+            ));
+            body.appendChild(streamSection);
+          }
+
+          openModal({ title: `${MONTH_LABELS[mi]} ${y} — Cash Flow`, body, large: true });
+        };
+      } else {
+        td.appendChild(el('span', { style: 'color:var(--text-muted);opacity:0.4' }, '—'));
+      }
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 function buildView() {
   const wrap = el('div', { class: 'view active' });
@@ -746,6 +885,140 @@ function buildView() {
   }));
   wrap.appendChild(kpiRow2);
 
+  // ── KPI row 3: Days Cash on Hand, Cash Conversion Cycle ───────────────────
+  const kpiRow3 = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
+
+  // Days Cash on Hand: cumulative positive balance / avg monthly opex × 30
+  {
+    // Build monthly net to find cumulative running balance
+    const netByMk = new Map();
+    payments   .forEach(p => { const mk = p.date?.slice(0, 7);              if (mk) netByMk.set(mk, (netByMk.get(mk) || 0) + toEUR(p.amount, p.currency, p.date)); });
+    invoices   .forEach(i => { const mk = (i.issueDate || '').slice(0, 7); if (mk) netByMk.set(mk, (netByMk.get(mk) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+    opExpenses .forEach(e => { const mk = e.date?.slice(0, 7);              if (mk) netByMk.set(mk, (netByMk.get(mk) || 0) - toEUR(e.amount, e.currency, e.date)); });
+    capExpenses.forEach(e => { const mk = e.date?.slice(0, 7);              if (mk) netByMk.set(mk, (netByMk.get(mk) || 0) - toEUR(e.amount, e.currency, e.date)); });
+
+    const sortedMks = [...netByMk.keys()].sort();
+    let running = 0;
+    const monthlyPositions = sortedMks.map(mk => { running += netByMk.get(mk); return { mk, balance: running }; });
+    // Current cash balance is the final cumulative value (clamp to 0 if negative for the formula)
+    const currentBalance = Math.max(0, running);
+    const avgMonthlyOpex = curData.activeMonthCount > 0 ? opExCashOut / curData.activeMonthCount : 0;
+    const daysOnHand = avgMonthlyOpex > 0 ? Math.round(currentBalance / avgMonthlyOpex * 30) : null;
+
+    const dohVariant = daysOnHand === null ? '' : daysOnHand >= 90 ? 'success' : daysOnHand >= 30 ? 'warning' : 'danger';
+    kpiRow3.appendChild(kpiCard({
+      label:    'Days Cash on Hand',
+      value:    daysOnHand !== null ? `${daysOnHand} days` : 'N/A',
+      subtitle: 'How many days of OpEx current cash covers',
+      variant:  dohVariant,
+      onClick:  () => {
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        // Summary boxes
+        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
+        summaryGrid.appendChild(mkSummaryBox('Cumulative Cash Balance', formatEUR(Math.max(0, running)), 'net positive balance'));
+        summaryGrid.appendChild(mkSummaryBox('Avg Monthly OpEx', formatEUR(avgMonthlyOpex), `${curData.activeMonthCount} active month${curData.activeMonthCount !== 1 ? 's' : ''}`));
+        summaryGrid.appendChild(mkSummaryBox('Days Cash on Hand', daysOnHand !== null ? `${daysOnHand} days` : 'N/A', '(Balance ÷ Avg Monthly OpEx) × 30'));
+        body.appendChild(summaryGrid);
+
+        // Formula explanation
+        const formulaBox = el('div', { style: 'padding:10px 12px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);font-size:12px;color:var(--text-muted);line-height:1.6' });
+        formulaBox.appendChild(el('strong', { style: 'color:var(--text)' }, 'Formula: '));
+        formulaBox.appendChild(document.createTextNode('(Net cumulative cash balance) ÷ (Average monthly operating cash out) × 30. A result ≥90 days is healthy, ≥30 days is a watch, <30 days is at risk.'));
+        body.appendChild(formulaBox);
+
+        // Monthly cash position table
+        if (monthlyPositions.length > 0) {
+          const posSection = el('div');
+          posSection.appendChild(mkSectionLabel('Monthly Cash Position'));
+          let cum = 0;
+          const tableRows = sortedMks.map(mk => {
+            const net = netByMk.get(mk);
+            cum += net;
+            const opMk = opExpenses.filter(e => e.date?.slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+            return [mk, formatEUR(net >= 0 ? net : 0), formatEUR(net < 0 ? Math.abs(net) : 0), formatEUR(opMk), formatEUR(cum)];
+          });
+          posSection.appendChild(mkModalTable(
+            ['Month', 'Net In', 'Net Out', 'OpEx Out', 'Running Balance'],
+            tableRows
+          ));
+          body.appendChild(posSection);
+        }
+
+        openModal({ title: 'Days Cash on Hand — Breakdown', body, large: true });
+      }
+    }));
+  }
+
+  // Cash Conversion Cycle (simplified): (Outstanding service invoices ÷ Total service invoiced) × 30
+  {
+    const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+    const inRange = d => !!d && d >= start && d <= end;
+    const allInvoices = listActive('invoices').filter(i => inRange(i.issueDate || i.date) && mStream(i) && mOwner(i) && mClient(i));
+    const svcInvoiced = allInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+    const outstandingSvc = allInvoices.filter(i => !['paid', 'cancelled', 'void'].includes(i.status))
+      .reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+    const ccc = svcInvoiced > 0 ? Math.round(outstandingSvc / svcInvoiced * 30) : null;
+
+    const cccVariant = ccc === null ? '' : ccc <= 15 ? 'success' : ccc <= 30 ? 'warning' : 'danger';
+    kpiRow3.appendChild(kpiCard({
+      label:    'Cash Conversion Cycle',
+      value:    ccc !== null ? `${ccc} days` : 'N/A',
+      subtitle: 'avg days expense → collection',
+      variant:  cccVariant,
+      onClick:  () => {
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        // Summary boxes
+        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
+        const paidSvc = allInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+        summaryGrid.appendChild(mkSummaryBox('Total Service Invoiced', formatEUR(svcInvoiced), `${allInvoices.length} invoice${allInvoices.length !== 1 ? 's' : ''}`));
+        summaryGrid.appendChild(mkSummaryBox('Outstanding Service', formatEUR(outstandingSvc), `${allInvoices.filter(i => !['paid','cancelled','void'].includes(i.status)).length} unpaid`));
+        summaryGrid.appendChild(mkSummaryBox('CCC (simplified)', ccc !== null ? `${ccc} days` : 'N/A', '(Outstanding ÷ Invoiced) × 30'));
+        body.appendChild(summaryGrid);
+
+        // Formula explanation
+        const formulaBox = el('div', { style: 'padding:10px 12px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);font-size:12px;color:var(--text-muted);line-height:1.6' });
+        formulaBox.appendChild(el('strong', { style: 'color:var(--text)' }, 'Formula (simplified): '));
+        formulaBox.appendChild(document.createTextNode('(Outstanding service invoices ÷ Total service invoiced in period) × 30. Represents the average days from expense incurred to revenue collected. Lower is better.'));
+        body.appendChild(formulaBox);
+
+        // Monthly breakdown
+        const monthMap2 = new Map();
+        allInvoices.forEach(i => {
+          const mk = (i.issueDate || '').slice(0, 7);
+          if (!mk) return;
+          const c = monthMap2.get(mk) || { invoiced: 0, outstanding: 0, paid: 0 };
+          const v = toEUR(i.total, i.currency, i.issueDate);
+          c.invoiced += v;
+          if (['paid','cancelled','void'].includes(i.status)) c.paid += v;
+          else c.outstanding += v;
+          monthMap2.set(mk, c);
+        });
+        const monthEntries2 = [...monthMap2.entries()].sort(([a], [b]) => a.localeCompare(b));
+        if (monthEntries2.length > 0) {
+          const monthSection = el('div');
+          monthSection.appendChild(mkSectionLabel('Monthly Breakdown'));
+          monthSection.appendChild(mkModalTable(
+            ['Month', 'Total Invoiced', 'Paid', 'Outstanding', 'CCC (days)'],
+            monthEntries2.map(([mk, d]) => [
+              mk,
+              formatEUR(d.invoiced),
+              formatEUR(d.paid),
+              formatEUR(d.outstanding),
+              d.invoiced > 0 ? Math.round(d.outstanding / d.invoiced * 30) + ' days' : '—'
+            ])
+          ));
+          body.appendChild(monthSection);
+        }
+
+        openModal({ title: 'Cash Conversion Cycle — Breakdown', body, large: true });
+      }
+    }));
+  }
+
+  wrap.appendChild(kpiRow3);
+
   // ── Cash Flow Insights ─────────────────────────────────────────────────────
   wrap.appendChild(buildInsightsBanner(computeCashFlowInsights(curData)));
 
@@ -802,6 +1075,10 @@ function buildView() {
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-stream-bar' }))
   ));
   wrap.appendChild(row4);
+
+  // ── Cash Seasonality Heatmap ───────────────────────────────────────────────
+  const heatmap = buildCashSeasonalityHeatmap(payments, invoices, opExpenses, capExpenses);
+  if (heatmap) wrap.appendChild(heatmap);
 
   // ── Transactions ───────────────────────────────────────────────────────────
   const tableCard = el('div', { class: 'card' });

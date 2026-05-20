@@ -18,7 +18,8 @@ import {
 const CHART_IDS = [
   'anf-fc-actual', 'anf-fc-var-pct', 'anf-net-compare',
   'anf-stream-rev', 'anf-stream-compare', 'anf-prop-compare',
-  'anf-pending-pipeline', 'anf-pending-by-prop'
+  'anf-pending-pipeline', 'anf-pending-by-prop',
+  'anf-accuracy-trend'
 ];
 
 const REV_COLS = [
@@ -186,11 +187,13 @@ function calculateDashboardData(range) {
     i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mOwner(i) && mProperty(i) && mClient(i)
   );
   const allExpenses = listActive('expenses').filter(e => inRange(e.date) && mOwner(e) && mProperty(e));
-  const actOpExpenses = allExpenses.filter(e => !isCapEx(e) && mStream(e));
+  const actOpExpenses  = allExpenses.filter(e => !isCapEx(e) && mStream(e));
+  const actCapExpenses = allExpenses.filter(e => isCapEx(e));
 
-  const actualRev = sumPaymentsEUR(actPayments) + sumInvoicesEUR(actInvoices);
-  const actualExp = sumExpensesEUR(actOpExpenses);
-  const actualNet = actualRev - actualExp;
+  const actualRev    = sumPaymentsEUR(actPayments) + sumInvoicesEUR(actInvoices);
+  const actualExp    = sumExpensesEUR(actOpExpenses);
+  const actualCapEx  = sumExpensesEUR(actCapExpenses);
+  const actualNet    = actualRev - actualExp;
 
   const { keys: months } = getMonthKeysForRange(range.start, range.end);
   const startY = parseInt(range.start.slice(0, 4));
@@ -238,10 +241,11 @@ function calculateDashboardData(range) {
   });
 
   // Pre-group payments/invoices/expenses by month key for efficiency
-  const paysByMk = new Map(), invsByMk = new Map(), expsByMk = new Map();
+  const paysByMk = new Map(), invsByMk = new Map(), expsByMk = new Map(), capexByMk = new Map();
   actPayments.forEach(p => { const mk = (p.date || '').slice(0,7); paysByMk.set(mk, [...(paysByMk.get(mk)||[]), p]); });
   actInvoices.forEach(i => { const mk = (i.issueDate||'').slice(0,7); invsByMk.set(mk, [...(invsByMk.get(mk)||[]), i]); });
   actOpExpenses.forEach(e => { const mk = (e.date||'').slice(0,7); expsByMk.set(mk, [...(expsByMk.get(mk)||[]), e]); });
+  actCapExpenses.forEach(e => { const mk = (e.date||'').slice(0,7); capexByMk.set(mk, [...(capexByMk.get(mk)||[]), e]); });
 
   const monthlyBreakdown = months.map(m => {
     const mk = m.key;
@@ -258,21 +262,31 @@ function calculateDashboardData(range) {
       variance: mActRev - mFcRev, variancePct: safeVariancePct(mActRev, mFcRev),
       fcExp: mFcExp, actExp: mActExp,
       fcNet: mFcRev - mFcExp, actNet: mActRev - mActExp,
-      payments: mPays, invoices: mInvs, expenses: mExps
+      payments: mPays, invoices: mInvs, expenses: mExps,
+      capexExpenses: capexByMk.get(mk) || []
     };
   });
+
+  // MAPE — mean absolute percentage error over months with a forecast value
+  const mapeValidMonths = monthlyBreakdown.filter(m => m.fcRev > 0);
+  let mape = null;
+  if (mapeValidMonths.length > 0) {
+    const sumAbsPct = mapeValidMonths.reduce((s, m) => s + Math.abs(m.actRev - m.fcRev) / m.fcRev, 0);
+    mape = (sumAbsPct / mapeValidMonths.length) * 100;
+  }
 
   const streamBreakdown   = computeStreamBreakdown(actPayments, actInvoices, months);
   const propertyBreakdown = computePropertyBreakdown(actPayments, months, pendingReservations);
 
   return {
-    actualRev, actualExp, actualNet,
+    actualRev, actualExp, actualCapEx, actualNet,
     forecastRev, forecastExp, forecastNet,
     variance, variancePct,
     pendingPipeline, pendingReservations, allPendingReservations,
-    actPayments, actInvoices, actOpExpenses,
+    actPayments, actInvoices, actOpExpenses, actCapExpenses,
     months, fcMonthlyRev, fcMonthlyExp,
-    monthlyBreakdown, streamBreakdown, propertyBreakdown
+    monthlyBreakdown, streamBreakdown, propertyBreakdown,
+    mape, mapeMonthCount: mapeValidMonths.length
   };
 }
 
@@ -461,10 +475,11 @@ function netMoDrillRows(monthlyBreakdown) {
 // ── KPI grid ──────────────────────────────────────────────────────────────────
 function buildKpiGrid(data, cmpData, cmpRange) {
   const {
-    actualRev, actualExp, actualNet,
+    actualRev, actualExp, actualCapEx, actualNet,
     forecastRev, forecastExp, forecastNet,
     variance, pendingPipeline, pendingReservations,
-    actPayments, actInvoices, actOpExpenses, monthlyBreakdown
+    actPayments, actInvoices, actOpExpenses, actCapExpenses,
+    monthlyBreakdown, mape, mapeMonthCount
   } = data;
   const cmpLabel = cmpRange?.label || '';
 
@@ -660,6 +675,109 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     },
     delta: cmpData ? safePct(pendingPipeline, cmpData.pendingPipeline) : null,
     invertDelta: false, compLabel: cmpLabel
+  }));
+
+  // 10. CapEx Budget vs Actual — forecast model has no CapEx field; show actuals with explanatory subtitle
+  grid.appendChild(kpiCard({
+    label: 'Actual CapEx',
+    subtitle: 'No CapEx forecast data',
+    value: actualCapEx > 0 ? formatEUR(actualCapEx) : '—',
+    variant: actualCapEx > 0 ? 'warning' : '',
+    onClick: () => {
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+      // Summary box
+      const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px' });
+      summaryBoxes.appendChild(mkSummaryBox('Total CapEx', formatEUR(actualCapEx)));
+      summaryBoxes.appendChild(mkSummaryBox('Transactions', String(actCapExpenses.length)));
+      body.appendChild(mkSectionLabel('CapEx Summary'));
+      body.appendChild(summaryBoxes);
+
+      // Note about forecast availability
+      const note = el('div', { style: 'padding:8px 12px;border-radius:4px;background:rgba(245,158,11,0.06);border-left:3px solid #f59e0b;font-size:12px;color:var(--text-muted)' },
+        'CapEx forecast is not yet modelled in the forecast data. Only actual CapEx is shown here as a reference number alongside other forecast KPIs.'
+      );
+      body.appendChild(note);
+
+      // Per-property breakdown
+      const propMap = new Map();
+      actCapExpenses.forEach(e => {
+        const propName = e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.source || '—');
+        propMap.set(propName, (propMap.get(propName) || 0) + toEUR(e.amount, e.currency, e.date));
+      });
+      const propRows = [...propMap.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, val]) => [name, formatEUR(val)]);
+      if (propRows.length > 0) {
+        body.appendChild(mkSectionLabel('By Property'));
+        body.appendChild(mkModalTable(['Property', 'CapEx Amount'], propRows));
+      }
+
+      // Detailed transaction rows
+      if (actCapExpenses.length > 0) {
+        const txRows = actCapExpenses
+          .slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+          .map(e => [
+            fmtDate(e.date),
+            e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.source || '—'),
+            e.category || '—',
+            e.description || '—',
+            formatEUR(toEUR(e.amount, e.currency, e.date))
+          ]);
+        body.appendChild(mkSectionLabel('Transactions'));
+        body.appendChild(mkModalTable(['Date', 'Property', 'Category', 'Description', 'Amount'], txRows));
+      }
+
+      openModal({ title: 'CapEx Actual Breakdown', body, large: true });
+    },
+    delta: cmpData ? safePct(actualCapEx, cmpData.actualCapEx) : null,
+    invertDelta: true, compLabel: cmpLabel
+  }));
+
+  // 11. Forecast Accuracy (MAPE)
+  const mapeVariant = mape === null ? '' : mape < 10 ? 'success' : mape < 25 ? 'warning' : 'danger';
+  const mapeValue   = mape === null ? '—' : mape.toFixed(1) + '%';
+  const mapeSubtitle = mapeMonthCount > 0 ? `avg error over ${mapeMonthCount} month${mapeMonthCount !== 1 ? 's' : ''}` : 'no forecast months';
+  grid.appendChild(kpiCard({
+    label: 'Forecast Accuracy (MAPE)',
+    subtitle: mapeSubtitle,
+    value: mapeValue,
+    variant: mapeVariant,
+    onClick: () => {
+      const mapeRows = monthlyBreakdown
+        .filter(m => m.fcRev > 0)
+        .map(m => {
+          const absErr = Math.abs(m.actRev - m.fcRev);
+          const pctErr = (absErr / m.fcRev) * 100;
+          return { month: m.label, fcRev: formatEUR(m.fcRev), actRev: formatEUR(m.actRev), absErr: formatEUR(absErr), pctErr: pctErr.toFixed(1) + '%', _pctErr: pctErr };
+        })
+        .sort((a, b) => b._pctErr - a._pctErr);
+
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+      const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+      summaryBoxes.appendChild(mkSummaryBox('MAPE', mapeValue, 'lower is better'));
+      summaryBoxes.appendChild(mkSummaryBox('Months Measured', String(mapeMonthCount)));
+      if (mape !== null) {
+        const accuracy = Math.max(0, 100 - mape).toFixed(1) + '%';
+        summaryBoxes.appendChild(mkSummaryBox('Avg Accuracy', accuracy, 'of forecast'));
+      }
+      body.appendChild(mkSectionLabel('Accuracy Summary'));
+      body.appendChild(summaryBoxes);
+
+      if (mapeRows.length > 0) {
+        body.appendChild(mkSectionLabel('Per-Month Error (worst first)'));
+        body.appendChild(mkModalTable(
+          ['Month', 'Forecast', 'Actual', 'Abs Error', '% Error'],
+          mapeRows.map(r => [r.month, r.fcRev, r.actRev, r.absErr, r.pctErr])
+        ));
+      } else {
+        body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' }, 'No months with forecast data in the selected period.'));
+      }
+
+      openModal({ title: 'Forecast Accuracy Detail (MAPE)', body, large: true });
+    },
+    delta: null, compLabel: ''
   }));
 
   return grid;

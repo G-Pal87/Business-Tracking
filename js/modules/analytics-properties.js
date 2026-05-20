@@ -14,7 +14,7 @@ let gF = createFilterState();
 let gStatusFilter = new Set(); // 'active' | 'renovation' | 'vacant' | 'sold'
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-rev-donut', 'prop-value-hbar', 'prop-value-owner-donut', 'prop-value-stream-donut', 'prop-acq-bar', 'prop-growth-line', 'prop-capital-line'];
+const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-rev-donut', 'prop-value-hbar', 'prop-value-owner-donut', 'prop-value-stream-donut', 'prop-acq-bar', 'prop-growth-line', 'prop-capital-line', 'prop-single-trend'];
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -127,6 +127,137 @@ function getData(start, end) {
   const worst = ranked.length > 1 ? ranked[ranked.length - 1] : null;
 
   return { allProps, propData, payments, opExpenses, capExpenses, totals, avgROI, best, worst };
+}
+
+// ── Operational metrics helpers ───────────────────────────────────────────────
+
+/**
+ * Extract nights from a payment record.
+ * Returns null if the record doesn't carry enough date/nights info.
+ */
+function paymentNights(p) {
+  if (p.airbnbNights > 0) return p.airbnbNights;
+  const ci = p.airbnbCheckIn  || p.checkIn;
+  const co = p.airbnbCheckOut || p.checkOut;
+  if (ci && co) {
+    const diff = (new Date(co) - new Date(ci)) / (1000 * 60 * 60 * 24);
+    if (diff > 0) return diff;
+  }
+  return null;
+}
+
+/**
+ * Compute operational KPI data for the selected period.
+ * Returns: { occupancy, adr, rentalYield, vacancy }
+ */
+function getOperationalData({ propData, payments, start, end }) {
+  // ── STR nights: Occupancy & ADR ───────────────────────────────────────────
+  const strPropIds = new Set(
+    propData.filter(d => d.prop.type === 'short_term').map(d => d.prop.id)
+  );
+  const strPayments = payments.filter(p => strPropIds.has(p.propertyId));
+
+  // Count nights booked
+  let totalNightsBooked = 0;
+  let nightsDataAvail   = false;
+  let strRevenue        = 0;
+
+  for (const p of strPayments) {
+    const n = paymentNights(p);
+    if (n !== null) {
+      totalNightsBooked += n;
+      nightsDataAvail    = true;
+    }
+    strRevenue += toEUR(p.amount, p.currency, p.date);
+  }
+
+  // Available nights in period: number of months × days_per_month × number of STR properties
+  // We count calendar days in [start, end]
+  const daysBetween = (() => {
+    const s = new Date(start + '-01');
+    const eParts = end.split('-');
+    const eDate  = new Date(parseInt(eParts[0]), parseInt(eParts[1]), 0); // last day of end month
+    return Math.round((eDate - s) / (1000 * 60 * 60 * 24)) + 1;
+  })();
+  const totalAvailNights = daysBetween * strPropIds.size;
+
+  const occupancyRate = (nightsDataAvail && totalAvailNights > 0)
+    ? (totalNightsBooked / totalAvailNights) * 100 : null;
+  const adr = (nightsDataAvail && totalNightsBooked > 0)
+    ? strRevenue / totalNightsBooked : null;
+
+  // Per-property occupancy breakdown
+  const perPropOccupancy = [...strPropIds].map(pid => {
+    const prop     = propData.find(d => d.prop.id === pid)?.prop;
+    const propPays = strPayments.filter(p => p.propertyId === pid);
+    let booked = 0;
+    let hasData = false;
+    for (const p of propPays) {
+      const n = paymentNights(p);
+      if (n !== null) { booked += n; hasData = true; }
+    }
+    const pRev = propPays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+    return {
+      name:      prop?.name || pid,
+      booked,
+      available: daysBetween,
+      pct:       (hasData && daysBetween > 0) ? (booked / daysBetween) * 100 : null,
+      rev:       pRev,
+      adr:       (hasData && booked > 0) ? pRev / booked : null,
+      hasData
+    };
+  });
+
+  // ── Rental Yield ─────────────────────────────────────────────────────────
+  // Annualize revenue for the current period length
+  const periodMonths = (() => {
+    const s = start.split('-'), e = end.split('-');
+    return (parseInt(e[0]) - parseInt(s[0])) * 12 + (parseInt(e[1]) - parseInt(s[1])) + 1;
+  })();
+
+  const yieldData = propData
+    .filter(d => d.purchaseEUR > 0)
+    .map(d => {
+      const annualRev = periodMonths > 0 ? (d.rev / periodMonths) * 12 : 0;
+      return {
+        name:      d.prop.name,
+        annualRev,
+        purchase:  d.purchaseEUR,
+        yieldPct:  (d.purchaseEUR > 0) ? (annualRev / d.purchaseEUR) * 100 : null
+      };
+    });
+
+  const yieldItems   = yieldData.filter(y => y.yieldPct !== null && y.annualRev > 0);
+  const avgYield     = yieldItems.length > 0
+    ? yieldItems.reduce((s, y) => s + y.yieldPct, 0) / yieldItems.length : null;
+
+  // ── Vacancy: property-months with zero revenue ────────────────────────────
+  const monthKeys = [];
+  const [sy, sm] = start.split('-').map(Number);
+  const [ey, em] = end.split('-').map(Number);
+  let cy = sy, cm = sm;
+  while (cy < ey || (cy === ey && cm <= em)) {
+    monthKeys.push(`${cy}-${String(cm).padStart(2, '0')}`);
+    cm++;
+    if (cm > 12) { cm = 1; cy++; }
+  }
+
+  const vacancyDetails = [];
+  for (const d of propData) {
+    for (const mk of monthKeys) {
+      const hasRev = payments.some(p => p.propertyId === d.prop.id && p.date?.slice(0, 7) === mk);
+      if (!hasRev) {
+        vacancyDetails.push({ property: d.prop.name, month: mk });
+      }
+    }
+  }
+
+  return {
+    occupancy: { rate: occupancyRate, nightsBooked: totalNightsBooked, availNights: totalAvailNights, nightsDataAvail, perProp: perPropOccupancy, strCount: strPropIds.size },
+    adr:       { value: adr, nightsDataAvail, strRevenue, totalNightsBooked, perProp: perPropOccupancy },
+    rentalYield: { avg: avgYield, perProp: yieldData },
+    vacancy:   { details: vacancyDetails, count: vacancyDetails.length }
+  };
 }
 
 // ── Rebuild ───────────────────────────────────────────────────────────────────
@@ -835,6 +966,139 @@ function buildView() {
   }));
   wrap.appendChild(kpiRow);
 
+  // ── Section 3: Operational KPIs ───────────────────────────────────────────
+  const opData  = getOperationalData({ propData, payments, start, end });
+  const opKpiRow = el('div', { class: 'grid grid-4 mb-16' });
+
+  // 1. Occupancy Rate
+  const occ = opData.occupancy;
+  opKpiRow.appendChild(kpiCard({
+    label:   'Occupancy Rate',
+    value:   occ.nightsDataAvail && occ.rate !== null ? occ.rate.toFixed(1) + '%' : 'N/A',
+    subtitle: occ.nightsDataAvail
+      ? `${Math.round(occ.nightsBooked)} / ${occ.availNights} nights · ${occ.strCount} STR prop${occ.strCount !== 1 ? 's' : ''}`
+      : 'Nights data unavailable',
+    variant: occ.nightsDataAvail && occ.rate !== null
+      ? (occ.rate >= 70 ? 'success' : occ.rate >= 50 ? 'warning' : 'danger') : '',
+    onClick: () => {
+      const body = el('div');
+      if (!occ.nightsDataAvail) {
+        body.appendChild(el('p', { style: 'color:var(--text-muted);font-size:13px' },
+          'Nights data is unavailable. To track occupancy, import Airbnb CSV exports or enter check-in / check-out dates on STR payments.'
+        ));
+      } else {
+        body.appendChild(mkSummaryBox('Portfolio Occupancy', occ.rate !== null ? occ.rate.toFixed(1) + '%' : '—', `${Math.round(occ.nightsBooked)} booked of ${occ.availNights} available nights`));
+        body.appendChild(el('div', { style: 'margin-top:16px' }));
+        body.appendChild(mkSectionLabel('Per Property'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Property' }, { label: 'Nights Booked', right: true }, { label: 'Available', right: true }, { label: 'Occupancy %', right: true }],
+          occ.perProp.map(p => [
+            p.name,
+            p.hasData ? String(Math.round(p.booked)) : '—',
+            String(p.available),
+            p.pct !== null ? p.pct.toFixed(1) + '%' : '—'
+          ])
+        ));
+      }
+      openModal({ title: 'Occupancy Rate — STR Properties', body, large: true });
+    }
+  }));
+
+  // 2. Average Daily Rate (ADR)
+  const adrData = opData.adr;
+  opKpiRow.appendChild(kpiCard({
+    label:    'Avg Nightly Rate (ADR)',
+    value:    adrData.nightsDataAvail && adrData.value !== null ? formatEUR(adrData.value) : 'N/A',
+    subtitle: adrData.nightsDataAvail
+      ? `${formatEUR(adrData.strRevenue)} STR revenue ÷ ${Math.round(adrData.totalNightsBooked)} nights`
+      : 'Nights data unavailable',
+    onClick: () => {
+      const body = el('div');
+      if (!adrData.nightsDataAvail) {
+        body.appendChild(el('p', { style: 'color:var(--text-muted);font-size:13px' },
+          'Nights data is unavailable. ADR requires check-in / check-out dates or Airbnb CSV imports.'
+        ));
+      } else {
+        const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
+        sgrid.appendChild(mkSummaryBox('STR Revenue', formatEUR(adrData.strRevenue), null));
+        sgrid.appendChild(mkSummaryBox('Total Nights', String(Math.round(adrData.totalNightsBooked)), null));
+        sgrid.appendChild(mkSummaryBox('Portfolio ADR', adrData.value !== null ? formatEUR(adrData.value) : '—', null));
+        body.appendChild(sgrid);
+        body.appendChild(mkSectionLabel('Per Property ADR'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Property' }, { label: 'Revenue', right: true }, { label: 'Nights', right: true }, { label: 'ADR', right: true }],
+          adrData.perProp.map(p => [
+            p.name,
+            formatEUR(p.rev),
+            p.hasData ? String(Math.round(p.booked)) : '—',
+            p.adr !== null ? formatEUR(p.adr) : '—'
+          ])
+        ));
+      }
+      openModal({ title: 'Average Nightly Rate (ADR) — STR Properties', body, large: true });
+    }
+  }));
+
+  // 3. Rental Yield
+  const ryData = opData.rentalYield;
+  opKpiRow.appendChild(kpiCard({
+    label:   'Rental Yield',
+    value:   ryData.avg !== null ? ryData.avg.toFixed(1) + '%' : '—',
+    subtitle: 'Annualized · portfolio avg',
+    variant: ryData.avg !== null ? (ryData.avg >= 5 ? 'success' : ryData.avg >= 3 ? 'warning' : 'danger') : '',
+    onClick: () => {
+      const body = el('div');
+      if (ryData.perProp.length === 0) {
+        body.appendChild(el('p', { style: 'color:var(--text-muted);font-size:13px' },
+          'No properties have a purchase price recorded. Enter purchase prices to calculate rental yield.'
+        ));
+      } else {
+        const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:20px' });
+        sgrid.appendChild(mkSummaryBox('Portfolio Avg Yield', ryData.avg !== null ? ryData.avg.toFixed(1) + '%' : '—', 'Annualized, averaged across properties with purchase price'));
+        body.appendChild(sgrid);
+        body.appendChild(mkSectionLabel('Per Property'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Property' }, { label: 'Annual Revenue (est.)', right: true }, { label: 'Purchase Price', right: true }, { label: 'Yield %', right: true }],
+          [...ryData.perProp].sort((a, b) => (b.yieldPct ?? -Infinity) - (a.yieldPct ?? -Infinity)).map(y => [
+            y.name,
+            formatEUR(y.annualRev),
+            formatEUR(y.purchase),
+            y.yieldPct !== null ? y.yieldPct.toFixed(1) + '%' : '—'
+          ])
+        ));
+      }
+      openModal({ title: 'Rental Yield by Property', body, large: true });
+    }
+  }));
+
+  // 4. Vacancy / Dead Months
+  const vacData = opData.vacancy;
+  opKpiRow.appendChild(kpiCard({
+    label:   'Vacancy / Dead Months',
+    value:   `${vacData.count} property-month${vacData.count !== 1 ? 's' : ''}`,
+    subtitle: vacData.count > 0 ? 'Months with zero revenue' : 'No zero-revenue months',
+    variant: vacData.count === 0 ? 'success' : vacData.count <= 2 ? 'warning' : 'danger',
+    onClick: () => {
+      const body = el('div');
+      if (vacData.count === 0) {
+        body.appendChild(el('p', { style: 'color:var(--text-muted);font-size:13px' },
+          'All properties had revenue in every month of the selected period.'
+        ));
+      } else {
+        body.appendChild(mkSectionLabel('Zero-Revenue Property-Months'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Property' }, { label: 'Month' }],
+          [...vacData.details]
+            .sort((a, b) => a.month.localeCompare(b.month) || a.property.localeCompare(b.property))
+            .map(v => [v.property, formatMonthKey(v.month)])
+        ));
+      }
+      openModal({ title: `Vacancy — ${vacData.count} Dead Property-Month${vacData.count !== 1 ? 's' : ''}`, body, large: true });
+    }
+  }));
+
+  wrap.appendChild(opKpiRow);
+
   // Property insights
   const signals = computePropertyInsights(curData);
   const banner  = buildInsightsBanner(signals);
@@ -856,6 +1120,15 @@ function buildView() {
   wrap.appendChild(el('div', { class: 'card mb-16' },
     el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Monthly Revenue vs Operating Expenses')),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-month-bar' }))
+  ));
+
+  // ── Chart row 3: per-property monthly P&L trend ───────────────────────────
+  wrap.appendChild(el('div', { class: 'card mb-16' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Per-Property Monthly P&L Trend'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Top 5 by revenue · Click a point for that month\'s breakdown')
+    ),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'prop-single-trend' }))
   ));
 
   // ── Total investment breakdown ─────────────────────────────────────────────
@@ -931,6 +1204,7 @@ function buildView() {
     renderProfitHBar(curData);
     renderRevDonut(curData);
     renderMonthBar(curData, monthKeys);
+    renderSingleTrend(curData, monthKeys);
     renderValueHBar(curData);
     renderValueOwnerDonut(curData);
     renderValueStreamDonut(curData);
@@ -1448,6 +1722,82 @@ function buildFinancingTable(container, finData) {
   tableWrap.appendChild(table);
   container.appendChild(tableWrap);
   attachSortFilter(tableWrap);
+}
+
+// ── Chart: Per-property Monthly P&L Trend ────────────────────────────────────
+function renderSingleTrend({ propData, payments, opExpenses }, monthKeys) {
+  if (!monthKeys.length || !propData.length) return;
+
+  // Top 5 by revenue
+  const TOP_N   = 5;
+  const topData = [...propData]
+    .filter(d => d.rev > 0 || d.opEx > 0)
+    .sort((a, b) => b.rev - a.rev)
+    .slice(0, TOP_N);
+
+  if (!topData.length) return;
+
+  const PALETTE = ['#6366f1', '#14b8a6', '#f59e0b', '#ec4899', '#3b82f6'];
+
+  // Build per-property per-month net profit
+  const datasets = topData.map((d, i) => {
+    const revByMonth = new Map();
+    const expByMonth = new Map();
+    payments   .filter(p => p.propertyId === d.prop.id).forEach(p => { const mk = p.date?.slice(0, 7); if (mk) revByMonth.set(mk, (revByMonth.get(mk) || 0) + toEUR(p.amount, p.currency, p.date)); });
+    opExpenses .filter(e => e.propertyId === d.prop.id).forEach(e => { const mk = e.date?.slice(0, 7); if (mk) expByMonth.set(mk, (expByMonth.get(mk) || 0) + toEUR(e.amount, e.currency, e.date)); });
+
+    const color = PALETTE[i % PALETTE.length];
+    return {
+      label:           d.prop.name,
+      data:            monthKeys.map(m => {
+        const rev  = revByMonth.get(m.key) || 0;
+        const opEx = expByMonth.get(m.key) || 0;
+        return Math.round(rev - opEx);
+      }),
+      borderColor:     color,
+      backgroundColor: color + '22',
+      fill:            false,
+      tension:         0.3
+    };
+  });
+
+  charts.line('prop-single-trend', {
+    labels:   monthKeys.map(m => m.label),
+    datasets,
+    onClickItem: (_label, idx) => {
+      const mk = monthKeys[idx]?.key;
+      if (!mk) return;
+      const body = el('div');
+      const allRevByProp  = new Map();
+      const allOpExByProp = new Map();
+      payments   .filter(p => p.date?.slice(0, 7) === mk).forEach(p => { const n = byId('properties', p.propertyId)?.name || 'Unknown'; allRevByProp .set(n, (allRevByProp .get(n) || 0) + toEUR(p.amount,   p.currency, p.date)); });
+      opExpenses .filter(e => e.date?.slice(0, 7) === mk).forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; allOpExByProp.set(n, (allOpExByProp.get(n) || 0) + toEUR(e.amount, e.currency, e.date)); });
+
+      const propNames = new Set([...allRevByProp.keys(), ...allOpExByProp.keys()]);
+      const rows = [...propNames].map(n => {
+        const rev  = allRevByProp .get(n) || 0;
+        const opEx = allOpExByProp.get(n) || 0;
+        return { name: n, rev, opEx, net: rev - opEx };
+      }).sort((a, b) => b.net - a.net);
+
+      const mRev   = rows.reduce((s, r) => s + r.rev,  0);
+      const mOpEx  = rows.reduce((s, r) => s + r.opEx, 0);
+      const sgrid  = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
+      sgrid.appendChild(mkSummaryBox('Revenue',        formatEUR(mRev),  null));
+      sgrid.appendChild(mkSummaryBox('Operating Exp.', formatEUR(mOpEx), null));
+      sgrid.appendChild(mkSummaryBox('Net Profit',     formatEUR(mRev - mOpEx), mRev > 0 ? `Margin: ${((mRev - mOpEx) / mRev * 100).toFixed(0)}%` : null));
+      body.appendChild(sgrid);
+
+      if (rows.length) {
+        body.appendChild(mkSectionLabel('All Properties'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Property' }, { label: 'Revenue', right: true }, { label: 'OpEx', right: true }, { label: 'Net', right: true }],
+          rows.map(r => [r.name, formatEUR(r.rev), formatEUR(r.opEx), formatEUR(r.net)])
+        ));
+      }
+      openModal({ title: `${formatMonthKey(mk)} — Property P&L Breakdown`, body, large: true });
+    }
+  });
 }
 
 // ── Summary table — one row per property ──────────────────────────────────────
