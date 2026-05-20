@@ -949,7 +949,7 @@ function renderPropHBar({ allExp }) {
         body.appendChild(mkSectionLabel('By Category'));
         body.appendChild(mkModalTable(
           [{ label: 'Category' }, { label: 'Type', muted: true }, { label: 'Amount', right: true }, { label: '% of Property', right: true, muted: true }],
-          cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, capExCats.has(k) ? 'CapEx' : 'OpEx', formatEUR(v), propTotal > 0 ? (v / propTotal * 100).toFixed(1) + '%' : '—'])
+          cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, getCapExCatKeys(allExp).has(k) ? 'CapEx' : 'OpEx', formatEUR(v), propTotal > 0 ? (v / propTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
       const vendMap = new Map();

@@ -161,7 +161,7 @@ function calculateDashboardData(range) {
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p)
   );
   const actInvoices = listActive('invoices').filter(i =>
-    i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mOwner(i) && mProperty(i) && mClient(i)
+    i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
   );
   const allExpenses = listActive('expenses').filter(e => inRange(e.date) && mOwner(e) && mProperty(e));
   const actOpExpenses  = allExpenses.filter(e => !isCapEx(e) && mStream(e));
@@ -1170,7 +1170,29 @@ function renderCharts(data) {
       datasets: [
         { label: 'Actual Net',   data: netData,   borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', fill: true },
         { label: 'Forecast Net', data: fcNetData, borderColor: '#6366f1', backgroundColor: 'transparent', borderDash: [4,4], fill: false }
-      ]
+      ],
+      onClickItem: (_lbl, idx) => {
+        const m = data.monthlyBreakdown[idx];
+        if (!m) return;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        // Revenue, expenses, net for actual and forecast
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Actual Revenue',  formatEUR(m.actRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Actual OpEx',     formatEUR(m.actExp)));
+        summaryBoxes.appendChild(mkSummaryBox('Actual Net',      formatEUR(m.actNet), m.actNet >= 0 ? 'positive' : 'negative'));
+        body.appendChild(mkSectionLabel('Actual'));
+        body.appendChild(summaryBoxes);
+
+        const fcBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+        fcBoxes.appendChild(mkSummaryBox('Forecast Revenue', formatEUR(m.fcRev)));
+        fcBoxes.appendChild(mkSummaryBox('Forecast OpEx',    formatEUR(m.fcExp)));
+        fcBoxes.appendChild(mkSummaryBox('Forecast Net',     formatEUR(m.fcNet), fmtVar(m.actNet, m.fcNet) + ' vs forecast'));
+        body.appendChild(mkSectionLabel('Forecast'));
+        body.appendChild(fcBoxes);
+
+        openModal({ title: `${m.label} — Net Comparison`, body, large: true });
+      }
     });
   }
 
@@ -1180,7 +1202,42 @@ function renderCharts(data) {
     charts.doughnut('anf-stream-rev', {
       labels: fcStreams.map(s => s.label),
       data:   fcStreams.map(s => Math.round(s.fcRev)),
-      colors: fcStreams.map(s => STREAMS[s.key]?.color || '#6366f1')
+      colors: fcStreams.map(s => STREAMS[s.key]?.color || '#6366f1'),
+      onClickItem: (_lbl, idx) => {
+        const s = fcStreams[idx];
+        if (!s) return;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+        // Forecast vs actual summary for this stream
+        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+        summaryBoxes.appendChild(mkSummaryBox('Forecast Revenue', formatEUR(s.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Actual Revenue',   formatEUR(s.actRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Variance',         fmtVar(s.actRev, s.fcRev), fmtVarPct(s.actRev, s.fcRev)));
+        body.appendChild(mkSectionLabel('Forecast vs Actual'));
+        body.appendChild(summaryBoxes);
+
+        // Payments for this stream in the current period
+        const streamPayments = data.actPayments.filter(p => (resolveStream(p) || 'other') === s.key);
+        const streamInvoices = data.actInvoices.filter(i => (resolveStream(i) || 'other') === s.key);
+
+        if (streamPayments.length > 0) {
+          const payRows = streamPayments
+            .slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+            .map(p => [fmtDate(p.date), byId('properties', p.propertyId)?.name || '—', p.confirmationCode || p.airbnbRef || '—', formatEUR(toEUR(p.amount, p.currency, p.date))]);
+          body.appendChild(mkSectionLabel('Payments'));
+          body.appendChild(mkModalTable(['Date', 'Property', 'Reference', 'Amount'], payRows));
+        }
+
+        if (streamInvoices.length > 0) {
+          const invRows = streamInvoices
+            .slice().sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''))
+            .map(i => [fmtDate(i.issueDate), byId('clients', i.clientId)?.name || i.clientId || '—', i.ref || i.number || '—', formatEUR(toEUR(i.total || i.amount, i.currency, i.issueDate))]);
+          body.appendChild(mkSectionLabel('Invoices'));
+          body.appendChild(mkModalTable(['Date', 'Client', 'Reference', 'Amount'], invRows));
+        }
+
+        openModal({ title: `${s.label} — Stream Detail`, body, large: true });
+      }
     });
   }
 
