@@ -8,7 +8,7 @@ import {
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
-} from './analytics-filters.js';
+} from './analytics-filters.js?v=20260519';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState
 } from './analytics-helpers.js';
@@ -738,7 +738,7 @@ function buildView() {
   // Filter bar (owner + period only)
   wrap.appendChild(buildFilterBar(
     gF,
-    { showOwner: true, showStream: false, showProperty: false, showPeriod: true, storagePrefix: 'ana_exec_sum' },
+    { showOwner: true, showStream: false, showProperty: false, storagePrefix: 'ana_exec_sum' },
     newGF => { if (newGF) gF = newGF; rebuildView(); }
   ));
 
