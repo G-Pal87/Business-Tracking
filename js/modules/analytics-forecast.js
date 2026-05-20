@@ -13,7 +13,7 @@ import {
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = [
@@ -368,42 +368,6 @@ function computePropertyBreakdown(actPayments, months, pendingReservations) {
   }).sort((a, b) => b.actRev - a.actRev);
 }
 
-// ── KPI card ──────────────────────────────────────────────────────────────────
-function kpiCard({ label, subtitle, value, variant, onClick, delta, deltaIsPp, invertDelta, compLabel }) {
-  const card = el('div', {
-    class: 'kpi' + (variant ? ' ' + variant : ''),
-    style: 'cursor:pointer;transition:box-shadow 120ms',
-    title: 'Click for breakdown'
-  });
-  card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
-  card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
-  card.onclick = onClick;
-  card.appendChild(el('div', { class: 'kpi-label' }, label));
-  if (subtitle) card.appendChild(el('div', { style: 'font-size:10px;color:var(--text-muted);margin-top:-2px;margin-bottom:2px' }, subtitle));
-  card.appendChild(el('div', { class: 'kpi-value' }, value));
-
-  // Only render trend row when there is a meaningful delta or comparison context
-  const hasValidDelta = delta !== null && delta !== undefined && isFinite(delta);
-  const hasContext    = !!compLabel;
-  if (hasValidDelta || hasContext) {
-    const trendDiv = el('div', { class: 'kpi-trend' });
-    if (!hasValidDelta) {
-      trendDiv.appendChild(el('span', { style: 'color:var(--text-muted);font-size:11px' }, compLabel));
-    } else {
-      const sign = delta > 0 ? '+' : '';
-      const display = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
-      let cls = '';
-      if (delta > 0) cls = invertDelta ? 'down' : 'up';
-      else if (delta < 0) cls = invertDelta ? 'up' : 'down';
-      trendDiv.appendChild(el('span', { class: cls }, display));
-      if (compLabel) trendDiv.appendChild(document.createTextNode(` vs ${compLabel}`));
-    }
-    card.appendChild(trendDiv);
-  }
-  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
-  return card;
-}
-
 // ── Drill row helpers ─────────────────────────────────────────────────────────
 const MO_COLS = [
   { key: 'month', label: 'Month' },
@@ -468,7 +432,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   const varVariant = variance > 0 ? 'success' : variance < 0 ? 'danger' : '';
 
   // 1. Forecast Revenue
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label: 'Forecast Revenue',
     value: forecastRev > 0 ? formatEUR(forecastRev) : '—',
     onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS),
@@ -477,7 +441,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   }));
 
   // 2. Actual Revenue
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label: 'Actual Revenue',
     value: formatEUR(actualRev),
     onClick: () => {
@@ -532,7 +496,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   }));
 
   // 3. Forecast Variance
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label: 'Forecast Variance',
     value: forecastRev > 0 ? fmtVar(actualRev, forecastRev) : '—',
     variant: varVariant,
@@ -544,7 +508,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   const varPctStr = forecastRev > 0
     ? fmtVarPct(actualRev, forecastRev)
     : (actualRev > 0 ? 'No forecast' : '—');
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label: 'Forecast Variance %',
     value: varPctStr,
     variant: varVariant,
@@ -553,7 +517,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   }));
 
   // 5. Forecast OpEx — drilldown shows forecast vs actual expense breakdown
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label: 'Forecast OpEx',
     subtitle: 'Excl. CapEx',
     value: forecastExp > 0 ? formatEUR(forecastExp) : '—',
@@ -563,7 +527,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   }));
 
   // 6. Actual OpEx
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label: 'Actual OpEx',
     subtitle: 'Excl. CapEx',
     value: formatEUR(actualExp),
@@ -614,7 +578,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   }));
 
   // 7. Forecast Net
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label: 'Forecast Net',
     value: forecastNet !== 0 || forecastRev > 0 ? formatEUR(forecastNet) : '—',
     variant: forecastNet >= 0 ? 'success' : 'danger',
@@ -624,7 +588,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   }));
 
   // 8. Actual Net — drilldown shows monthly net breakdown vs forecast
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label: 'Actual Net',
     value: formatEUR(actualNet),
     variant: actualNet >= 0 ? 'success' : 'danger',
@@ -634,7 +598,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   }));
 
   // 9. Pending Pipeline — period scoped
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label: 'Pending Pipeline',
     value: pendingPipeline > 0 ? formatEUR(pendingPipeline) : '—',
     variant: pendingPipeline > 0 ? 'info' : '',
@@ -661,7 +625,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   }));
 
   // 10. CapEx Budget vs Actual — forecast model has no CapEx field; show actuals with explanatory subtitle
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label: 'Actual CapEx',
     subtitle: 'No CapEx forecast data',
     value: actualCapEx > 0 ? formatEUR(actualCapEx) : '—',
@@ -721,7 +685,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   const mapeVariant = mape === null ? '' : mape < 10 ? 'success' : mape < 25 ? 'warning' : 'danger';
   const mapeValue   = mape === null ? '—' : mape.toFixed(1) + '%';
   const mapeSubtitle = mapeMonthCount > 0 ? `avg error over ${mapeMonthCount} month${mapeMonthCount !== 1 ? 's' : ''}` : 'no forecast months';
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label: 'Forecast Accuracy (MAPE)',
     subtitle: mapeSubtitle,
     value: mapeValue,

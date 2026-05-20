@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkKpiCard } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -141,47 +141,6 @@ const DRILL_COLS = [
   { key: 'description', label: 'Description'  },
   { key: 'eur',         label: 'EUR',          right: true, format: v => formatEUR(v) }
 ];
-
-// ── KPI card ──────────────────────────────────────────────────────────────────
-function kpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick }) {
-  const card = el('div', {
-    class: 'kpi' + (variant ? ' ' + variant : ''),
-    style: 'cursor:pointer;transition:box-shadow 120ms',
-    title: 'Click for breakdown'
-  });
-  card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
-  card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
-  card.onclick = onClick;
-  card.appendChild(el('div', { class: 'kpi-label' }, label));
-  card.appendChild(el('div', { class: 'kpi-value' }, value));
-  if (subtitle) card.appendChild(el('div', { class: 'kpi-sub' }, subtitle));
-  if (delta !== null && delta !== undefined && isFinite(delta)) {
-    const trend = el('div', { class: 'kpi-trend' });
-    const sign  = delta > 0 ? '+' : '';
-    const disp  = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
-    const cls   = delta === 0 ? '' : delta > 0 ? (invertDelta ? 'down' : 'up') : (invertDelta ? 'up' : 'down');
-    trend.appendChild(el('span', { class: cls }, disp));
-    if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
-    card.appendChild(trend);
-  }
-  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
-  return card;
-}
-
-function compositeKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick, lines }) {
-  const card = kpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick });
-  if (lines?.length) {
-    const bd = el('div', { style: 'margin-top:6px;display:flex;flex-direction:column;gap:2px' });
-    for (const { label: ll, value: lv, color } of lines) {
-      bd.appendChild(el('div', { style: 'display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted)' },
-        el('span', { style: color ? `color:${color}` : '' }, ll),
-        el('span', { class: 'num' }, lv)
-      ));
-    }
-    card.appendChild(bd);
-  }
-  return card;
-}
 
 // ── Expense Insights (same card-grid format as Executive Insights) ────────────
 function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }) {
@@ -455,7 +414,7 @@ function buildView() {
   };
 
   // 1. Total Expenses
-  kpiRow1.appendChild(compositeKpiCard({
+  kpiRow1.appendChild(mkKpiCard({
     label:       'Total Expenses',
     value:       formatEUR(total),
     delta:       safePct(total, cmp?.total),
@@ -469,7 +428,7 @@ function buildView() {
   }));
 
   // 2. Operating Expenses
-  kpiRow1.appendChild(kpiCard({
+  kpiRow1.appendChild(mkKpiCard({
     label:       'Operating Expenses',
     value:       formatEUR(opTotal),
     delta:       safePct(opTotal, cmp?.opTotal),
@@ -479,7 +438,7 @@ function buildView() {
   }));
 
   // 3. CapEx
-  kpiRow1.appendChild(kpiCard({
+  kpiRow1.appendChild(mkKpiCard({
     label:       'CapEx',
     value:       formatEUR(capTotal),
     delta:       safePct(capTotal, cmp?.capTotal),
@@ -493,7 +452,7 @@ function buildView() {
   const expRatio    = revenue > 0 ? (opTotal / revenue) * 100 : null;
   const cmpExpRatio = cmpRevenue > 0 ? ((cmp?.opTotal ?? 0) / cmpRevenue) * 100 : null;
   const ratioDelta  = expRatio !== null && cmpExpRatio !== null ? expRatio - cmpExpRatio : null;
-  kpiRow1.appendChild(kpiCard({
+  kpiRow1.appendChild(mkKpiCard({
     label:       'Expense Ratio',
     value:       expRatio !== null ? `${expRatio.toFixed(1)}%` : '—',
     subtitle:    'OpEx / Revenue',
@@ -521,7 +480,7 @@ function buildView() {
   const capSharePct    = total > 0 ? (capTotal / total) * 100 : null;
   const cmpCapSharePct = cmp && cmp.total > 0 ? (cmp.capTotal / cmp.total) * 100 : null;
   const capShareDelta  = capSharePct !== null && cmpCapSharePct !== null ? capSharePct - cmpCapSharePct : null;
-  kpiRow2.appendChild(kpiCard({
+  kpiRow2.appendChild(mkKpiCard({
     label:     'CapEx Share',
     value:     capSharePct !== null ? `${capSharePct.toFixed(1)}%` : '—',
     subtitle:  'of total expenses',
@@ -539,7 +498,7 @@ function buildView() {
     vendMap2.set(name, (vendMap2.get(name) || 0) + toEUR(e.amount, e.currency, e.date));
   });
   const topVendEntry = [...vendMap2.entries()].sort((a, b) => b[1] - a[1])[0];
-  kpiRow2.appendChild(kpiCard({
+  kpiRow2.appendChild(mkKpiCard({
     label:   'Top Vendor',
     value:   topVendEntry ? topVendEntry[0] : '—',
     subtitle: topVendEntry ? formatEUR(topVendEntry[1]) : 'No vendors recorded',
@@ -561,7 +520,7 @@ function buildView() {
     catMap2.set(cat, (catMap2.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
   });
   const topCatEntry = [...catMap2.entries()].sort((a, b) => b[1] - a[1])[0];
-  kpiRow2.appendChild(kpiCard({
+  kpiRow2.appendChild(mkKpiCard({
     label:   'Top Cost Category',
     value:   topCatEntry ? (COST_CATEGORIES[topCatEntry[0]]?.label || topCatEntry[0]) : '—',
     subtitle: topCatEntry ? formatEUR(topCatEntry[1]) : 'No categories',
@@ -579,7 +538,7 @@ function buildView() {
   // 8. Properties with Costs
   const propWithCosts    = new Set(allExp.map(e => e.propertyId).filter(Boolean));
   const cmpPropWithCosts = cmp ? new Set(cmp.allExp.map(e => e.propertyId).filter(Boolean)) : null;
-  kpiRow2.appendChild(kpiCard({
+  kpiRow2.appendChild(mkKpiCard({
     label:     'Properties with Costs',
     value:     String(propWithCosts.size),
     delta:     cmpPropWithCosts !== null ? safePct(propWithCosts.size, cmpPropWithCosts.size) : null,
