@@ -856,20 +856,23 @@ function openCSVImport() {
     if (pendingFile) {
       const text = await pendingFile.text();
       const rows = parseAirbnbCSV(text);
-      let added = 0, skipped = 0;
+      const allPays = listActivePayments();
+      const existingKeySet = new Set(allPays.filter(p => p.airbnbKey).map(p => p.airbnbKey));
+      const paidCodeSet = new Set(allPays.filter(p => p.status === 'paid' && p.confirmationCode).map(p => p.confirmationCode));
+      let added = 0, skipped = 0, willMaterialize = 0;
       for (const row of rows) {
         const pmatch = findProp(row.listing);
         if (!pmatch) { skipped++; continue; }
-        const exists = row.airbnbKey
-          ? listActivePayments().some(p => p.airbnbKey === row.airbnbKey)
-          : false;
+        if (row.confirmationCode && paidCodeSet.has(row.confirmationCode)) { willMaterialize++; continue; }
+        const exists = row.airbnbKey ? existingKeySet.has(row.airbnbKey) : false;
         if (!exists) added++;
       }
       const badge = el('span', { class: 'badge warning' }, 'Pending');
+      const matText = willMaterialize ? ` · ${willMaterialize} already paid → materialized` : '';
       preview.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center;margin-bottom:6px' },
         badge,
         el('span', { style: 'font-weight:500' }, pendingFile.name),
-        el('span', { class: 'muted' }, `— ${rows.length} rows · ${added} new · forecast updated${skipped ? ` · ${skipped} skipped` : ''}`)
+        el('span', { class: 'muted' }, `— ${rows.length} rows · ${added} new · forecast updated${skipped ? ` · ${skipped} skipped` : ''}${matText}`)
       ));
     }
   };
@@ -998,6 +1001,11 @@ function openCSVImport() {
           .filter(p => p.source === 'airbnb' && p.status === 'pending' && p.airbnbRef)
           .map(p => [p.airbnbRef, p])
       );
+      const paidByCodeP = new Map(
+        listActivePayments()
+          .filter(p => p.status === 'paid' && p.confirmationCode)
+          .map(p => [p.confirmationCode, p])
+      );
 
       for (const row of rows) {
         const matched = findProp(row.listing);
@@ -1008,6 +1016,24 @@ function openCSVImport() {
         const existingByKey = row.airbnbKey ? (byAirbnbKeyP.get(row.airbnbKey) ?? null) : null;
         const existingByRef = !existingByKey && row.confirmationCode ? (pendingByRefP.get(row.confirmationCode) ?? null) : null;
         const existing = existingByKey || existingByRef;
+
+        // If a paid payment already exists for this confirmation code, record as materialized
+        // (mirrors the completed-CSV logic that materializes a pending when its paid counterpart arrives)
+        const paidMatch = !existing && row.confirmationCode ? (paidByCodeP.get(row.confirmationCode) ?? null) : null;
+        if (paidMatch) {
+          upsert('payments', {
+            id: newId('pay'), propertyId: matched.id, stream: 'short_term_rental', source: 'airbnb',
+            amount: row.amount, currency: row.currency || matched.currency, date: row.date,
+            type: 'rental', status: 'materialized',
+            airbnbKey: row.airbnbKey, confirmationCode: row.confirmationCode, airbnbRef: row.confirmationCode,
+            airbnbType: row.type, airbnbCheckIn: row.checkIn, airbnbCheckOut: row.checkOut,
+            airbnbNights: row.nights, airbnbGrossEarnings: row.grossEarnings,
+            notes: [row.guest, row.listing].filter(Boolean).join(' · '),
+            materializedPaymentId: paidMatch.id, materializedAt: new Date().toISOString().slice(0, 10)
+          });
+          totalAdded++;
+          continue;
+        }
 
         const payFields = {
           amount: row.amount,
