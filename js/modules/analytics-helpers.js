@@ -60,27 +60,42 @@ export function mkSummaryGrid(boxes, cols = 2) {
 /**
  * mkModalTable(headers, rows, opts={}) — styled table for use inside modals.
  *
- * @param {string[]} headers - Column header strings.
+ * Headers may be plain strings or descriptor objects:
+ *   { label: string, right?: boolean, muted?: boolean }
+ * When objects are supplied, `right` controls text alignment and `muted`
+ * renders cell text in `var(--text-muted)` instead of `var(--text)`.
+ * Plain-string headers fall back to the legacy behaviour (first col left,
+ * all others right-aligned).
+ *
+ * @param {Array<string|{label:string, right?:boolean, muted?:boolean}>} headers
  * @param {Array<Array<string|HTMLElement>>} rows - 2-D array of cell contents.
  * @param {object} [opts]
  * @param {number} [opts.highlight]      - Column index to render in bold (default: none).
- * @param {boolean} [opts.firstColLeft]  - Keep first column left-aligned (default: true).
+ * @param {boolean} [opts.firstColLeft]  - Keep first column left-aligned when using
+ *                                         plain-string headers (default: true).
  */
 export function mkModalTable(headers, rows, opts = {}) {
   const { highlight, firstColLeft = true } = opts;
+
+  // Normalise headers — accept plain strings or {label, right, muted} objects.
+  const useObjects = headers.length > 0 && typeof headers[0] === 'object' && headers[0] !== null;
+  const cols = headers.map((h, hi) => {
+    if (useObjects) {
+      return { label: h.label ?? '', right: !!h.right, muted: !!h.muted };
+    }
+    // Legacy plain-string mode: first column left, rest right.
+    return { label: String(h), right: !(hi === 0 && firstColLeft), muted: false };
+  });
 
   const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
 
   // Header row
   const hrow = el('tr');
-  headers.forEach((h, hi) => {
-    const isFirst = hi === 0;
-    const align   = (isFirst && firstColLeft) ? 'left' : 'right';
+  cols.forEach(col => {
     hrow.appendChild(el('th', {
-      style: `padding:4px 8px;text-align:${align};color:var(--text-muted);font-size:11px;` +
-             `text-transform:uppercase;letter-spacing:0.04em;` +
+      style: `padding:4px 8px;text-align:${col.right ? 'right' : 'left'};color:var(--text-muted);font-size:11px;` +
              `border-bottom:1px solid rgba(255,255,255,0.08)`
-    }, h));
+    }, col.label));
   });
   tbl.appendChild(el('thead', {}, hrow));
 
@@ -91,11 +106,11 @@ export function mkModalTable(headers, rows, opts = {}) {
       style: ri % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : ''
     });
     cells.forEach((cell, ci) => {
-      const isFirst    = ci === 0;
-      const align      = (isFirst && firstColLeft) ? 'left' : 'right';
-      const bold       = ci === highlight ? 'font-weight:700;' : '';
+      const col   = cols[ci] || { right: false, muted: false };
+      const color = col.muted ? 'var(--text-muted)' : 'var(--text)';
+      const bold  = ci === highlight ? 'font-weight:700;' : '';
       const td = el('td', {
-        style: `padding:6px 8px;text-align:${align};${bold}color:var(--text)`
+        style: `padding:6px 8px;text-align:${col.right ? 'right' : 'left'};${bold}color:${color}`
       });
       if (cell instanceof Node) {
         td.appendChild(cell);

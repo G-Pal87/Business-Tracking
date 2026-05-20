@@ -8,6 +8,7 @@ import {
   simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
 import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js?v=20260519';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -367,36 +368,6 @@ function mixedRows(pays, exps) {
     ...toRevDrillRows(pays) .map(r => ({ ...r, kind: 'Revenue', category: '—' })),
     ...toExpDrillRows(exps) .map(r => ({ ...r, kind: r.type,   status:   '—' }))
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-}
-
-// ── Modal helpers ─────────────────────────────────────────────────────────────
-function mkSectionLabel(text) {
-  return el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:0 0 8px' }, text);
-}
-function mkSummaryBox(label, value, sub) {
-  const box = el('div', { style: 'padding:12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)' });
-  box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, label));
-  box.appendChild(el('div', { style: 'font-size:17px;font-weight:700;color:var(--text)' }, value));
-  if (sub) box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
-  return box;
-}
-function mkModalTable(headers, rows) {
-  const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
-  const hrow = el('tr');
-  headers.forEach(h => hrow.appendChild(el('th', {
-    style: `padding:4px 8px;text-align:${h.right ? 'right' : 'left'};color:var(--text-muted);font-size:11px;border-bottom:1px solid rgba(255,255,255,0.08)`
-  }, h.label)));
-  tbl.appendChild(el('thead', {}, hrow));
-  const tbody = el('tbody');
-  rows.forEach(cells => {
-    const tr = el('tr');
-    cells.forEach((cell, ci) => tr.appendChild(el('td', {
-      style: `padding:6px 8px;text-align:${headers[ci]?.right ? 'right' : 'left'};color:${headers[ci]?.muted ? 'var(--text-muted)' : 'var(--text)'}`
-    }, cell)));
-    tbody.appendChild(tr);
-  });
-  tbl.appendChild(tbody);
-  return tbl;
 }
 
 // ── Acquisition & growth data ─────────────────────────────────────────────────
@@ -871,7 +842,7 @@ function buildView() {
       if (sorted.length) {
         body.appendChild(mkSectionLabel('Revenue by Property'));
         body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }],
+          ['Property', 'Revenue', '% of Total'],
           sorted.map(d => [d.prop.name, formatEUR(d.rev), totals.rev > 0 ? (d.rev / totals.rev * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -891,7 +862,7 @@ function buildView() {
       if (cats.length) {
         body.appendChild(mkSectionLabel('By Category'));
         body.appendChild(mkModalTable(
-          [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of OpEx', right: true, muted: true }],
+          ['Category', 'Amount', '% of OpEx'],
           cats.map(([c, v]) => [c, formatEUR(v), totals.opEx > 0 ? (v / totals.opEx * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -902,7 +873,7 @@ function buildView() {
         body.appendChild(el('div', { style: 'margin-top:20px' }));
         body.appendChild(mkSectionLabel('By Property'));
         body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Amount', right: true }, { label: '% of OpEx', right: true, muted: true }],
+          ['Property', 'Amount', '% of OpEx'],
           props.map(p => [p.n, formatEUR(p.v), totals.opEx > 0 ? (p.v / totals.opEx * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -925,7 +896,7 @@ function buildView() {
       if (sorted.length) {
         body.appendChild(mkSectionLabel('P&L by Property'));
         body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Revenue', right: true }, { label: 'OpEx', right: true }, { label: 'Profit', right: true }, { label: 'Margin', right: true, muted: true }],
+          ['Property', 'Revenue', 'OpEx', 'Profit', 'Margin'],
           sorted.map(d => [d.prop.name, formatEUR(d.rev), formatEUR(d.opEx), formatEUR(d.profit), d.rev > 0 ? (d.profit / d.rev * 100).toFixed(0) + '%' : '—'])
         ));
       }
@@ -946,7 +917,7 @@ function buildView() {
       if (props.length) {
         body.appendChild(mkSectionLabel('CapEx by Property'));
         body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Records', right: true, muted: true }, { label: 'Amount', right: true }, { label: '% of Total', right: true, muted: true }],
+          ['Property', 'Records', 'Amount', '% of Total'],
           props.map(p => [p.n, String(p.cnt), formatEUR(p.v), totals.capEx > 0 ? (p.v / totals.capEx * 100).toFixed(1) + '%' : '—'])
         ));
       }

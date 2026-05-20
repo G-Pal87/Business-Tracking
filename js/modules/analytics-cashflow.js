@@ -843,10 +843,10 @@ function buildView() {
   }));
   wrap.appendChild(kpiRow2);
 
-  // ── KPI row 3: Days Cash on Hand, Cash Conversion Cycle ───────────────────
+  // ── KPI row 3: Net Coverage Days, Invoice Collection Lag ─────────────────
   const kpiRow3 = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
 
-  // Days Cash on Hand: cumulative positive balance / avg monthly opex × 30
+  // Net Coverage Days: (periodNetCashFlow / avgMonthlyOpEx) × 30
   {
     // Build monthly net to find cumulative running balance
     const netByMk = new Map();
@@ -908,7 +908,7 @@ function buildView() {
     }));
   }
 
-  // Cash Conversion Cycle (simplified): (Outstanding service invoices ÷ Total service invoiced) × 30
+  // Invoice Collection Lag: (Outstanding service invoices ÷ Total service invoiced) × 30 (DSO proxy)
   {
     const { mStream: mStreamCCC, mOwner: mOwnerCCC, mClient: mClientCCC } = makeMatchers(gF);
     const inRange = d => !!d && d >= start && d <= end;
@@ -920,9 +920,9 @@ function buildView() {
 
     const cccVariant = ccc === null ? '' : ccc <= 15 ? 'success' : ccc <= 30 ? 'warning' : 'danger';
     kpiRow3.appendChild(kpiCard({
-      label:    'Cash Conversion Cycle',
+      label:    'Invoice Collection Lag',
       value:    ccc !== null ? `${ccc} days` : 'N/A',
-      subtitle: 'avg days expense → collection',
+      subtitle: 'Outstanding ÷ Invoiced × 30 (proxy)',
       variant:  cccVariant,
       onClick:  () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -932,13 +932,13 @@ function buildView() {
         const paidSvc = allInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
         summaryGrid.appendChild(mkSummaryBox('Total Service Invoiced', formatEUR(svcInvoiced), `${allInvoices.length} invoice${allInvoices.length !== 1 ? 's' : ''}`));
         summaryGrid.appendChild(mkSummaryBox('Outstanding Service', formatEUR(outstandingSvc), `${allInvoices.filter(i => !['paid','cancelled','void'].includes(i.status)).length} unpaid`));
-        summaryGrid.appendChild(mkSummaryBox('CCC (simplified)', ccc !== null ? `${ccc} days` : 'N/A', '(Outstanding ÷ Invoiced) × 30'));
+        summaryGrid.appendChild(mkSummaryBox('Collection Lag (proxy)', ccc !== null ? `${ccc} days` : 'N/A', '(Outstanding ÷ Invoiced) × 30'));
         body.appendChild(summaryGrid);
 
         // Formula explanation
         const formulaBox = el('div', { style: 'padding:10px 12px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);font-size:12px;color:var(--text-muted);line-height:1.6' });
-        formulaBox.appendChild(el('strong', { style: 'color:var(--text)' }, 'Formula (simplified): '));
-        formulaBox.appendChild(document.createTextNode('(Outstanding service invoices ÷ Total service invoiced in period) × 30. Represents the average days from expense incurred to revenue collected. Lower is better.'));
+        formulaBox.appendChild(el('strong', { style: 'color:var(--text)' }, 'Note: '));
+        formulaBox.appendChild(document.createTextNode('Estimates the average days service invoices remain unpaid. A simplified DSO proxy — true CCC requires expense payable timing.'));
         body.appendChild(formulaBox);
 
         // Monthly breakdown
@@ -958,7 +958,7 @@ function buildView() {
           const monthSection = el('div');
           monthSection.appendChild(mkSectionLabel('Monthly Breakdown'));
           monthSection.appendChild(mkModalTable(
-            ['Month', 'Total Invoiced', 'Paid', 'Outstanding', 'CCC (days)'],
+            ['Month', 'Total Invoiced', 'Paid', 'Outstanding', 'Lag (days)'],
             monthEntries2.map(([mk, d]) => [
               mk,
               formatEUR(d.invoiced),
@@ -970,7 +970,7 @@ function buildView() {
           body.appendChild(monthSection);
         }
 
-        openModal({ title: 'Cash Conversion Cycle — Breakdown', body, large: true });
+        openModal({ title: 'Invoice Collection Lag — Breakdown', body, large: true });
       }
     }));
   }

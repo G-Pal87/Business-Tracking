@@ -771,6 +771,25 @@ function renderCharts(data, year, ownerFilter) {
   });
 }
 
+// ── Tax CSV Download ──────────────────────────────────────────────────────────
+function downloadTaxCsv(year, catData, totalOpEx, totalCapEx, totalRevenue) {
+  const rows = [['Category', 'Type', 'Count', 'Amount EUR', '% of OpEx']];
+  catData.opex.forEach(c => rows.push([c.label, 'OpEx', c.count, c.total.toFixed(2), (c.total / totalOpEx * 100).toFixed(1) + '%']));
+  catData.capex.forEach(c => rows.push([c.label, 'CapEx', c.count, c.total.toFixed(2), '—']));
+  rows.push(['TOTAL OpEx', '', '', totalOpEx.toFixed(2), '100%']);
+  rows.push(['TOTAL CapEx', '', '', totalCapEx.toFixed(2), '—']);
+  rows.push(['TOTAL Revenue', '', '', totalRevenue.toFixed(2), '—']);
+
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `tax-summary-${year}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Tax Export Section ────────────────────────────────────────────────────────
 function buildTaxExportSection(data, year) {
   const wrap = el('div', { class: 'card mb-16' });
@@ -832,7 +851,45 @@ function buildTaxExportSection(data, year) {
     });
   });
 
+  // Build catData for CSV export
+  const buildCatData = () => {
+    const opex = [...data.catMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, total]) => ({
+        label: COST_CATEGORIES[k]?.label || k,
+        count: data.opExpenses.filter(e => resolvedCatKey(e) === k).length,
+        total
+      }));
+
+    const capCatMap = new Map();
+    for (const e of data.capExpenses) {
+      const key = resolvedCatKey(e);
+      const amt = toEUR(e.amount, e.currency, e.date);
+      capCatMap.set(key, (capCatMap.get(key) || 0) + amt);
+    }
+    const capex = [...capCatMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, total]) => ({
+        label: COST_CATEGORIES[k]?.label || k,
+        count: data.capExpenses.filter(e => resolvedCatKey(e) === k).length,
+        total
+      }));
+
+    return { opex, capex };
+  };
+
+  const csvBtn = el('button', {
+    class: 'btn btn-secondary',
+    style: 'display:flex;align-items:center;gap:8px;font-size:13px'
+  });
+  csvBtn.appendChild(el('span', {}, '⬇'));
+  csvBtn.appendChild(document.createTextNode('Download CSV'));
+  csvBtn.addEventListener('click', () => {
+    downloadTaxCsv(year, buildCatData(), data.totalOpEx, data.totalCapEx, data.totalRevenue);
+  });
+
   inner.appendChild(btn);
+  inner.appendChild(csvBtn);
   inner.appendChild(toast);
   inner.appendChild(el('div', {
     style: 'font-size:12px;color:var(--text-muted);line-height:1.5'

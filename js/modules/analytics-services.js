@@ -448,7 +448,7 @@ function buildView() {
       if (clients.length) {
         body.appendChild(mkSectionLabel('By Client'));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Paid', right: true, muted: true }],
+          ['Client', 'Invoices', 'Revenue', '% of Paid'],
           clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), paidTotal > 0 ? (c.v / paidTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -476,7 +476,7 @@ function buildView() {
       if (clients.length) {
         body.appendChild(mkSectionLabel('By Client'));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Invoiced', right: true }, { label: '% of Total', right: true, muted: true }],
+          ['Client', 'Invoices', 'Invoiced', '% of Total'],
           clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), invoicedTotal > 0 ? (c.v / invoicedTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -504,7 +504,7 @@ function buildView() {
       if (clients.length) {
         body.appendChild(mkSectionLabel('Collection by Client'));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoiced', right: true }, { label: 'Paid', right: true }, { label: 'Rate', right: true, muted: true }],
+          ['Client', 'Invoiced', 'Paid', 'Rate'],
           clients.map(c => [c.n, formatEUR(c.total), formatEUR(c.paid), c.total > 0 ? (c.paid / c.total * 100).toFixed(0) + '%' : '—'])
         ));
       }
@@ -526,7 +526,7 @@ function buildView() {
       if (clients.length) {
         body.appendChild(mkSectionLabel('Outstanding by Client'));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Outstanding', right: true }, { label: 'Overdue', right: true, muted: true }],
+          ['Client', 'Invoices', 'Outstanding', 'Overdue'],
           clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), c.overdue > 0 ? formatEUR(c.overdue) : '—'])
         ));
       }
@@ -550,7 +550,7 @@ function buildView() {
       if (clients.length) {
         body.appendChild(mkSectionLabel('Overdue by Client'));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Overdue Amount', right: true }, { label: '% of Total Overdue', right: true, muted: true }],
+          ['Client', 'Invoices', 'Overdue Amount', '% of Total Overdue'],
           clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), overdueTotal > 0 ? (c.v / overdueTotal * 100).toFixed(1) + '%' : '—'])
         ));
       } else {
@@ -588,7 +588,7 @@ function buildView() {
       if (streams.length) {
         body.appendChild(mkSectionLabel('By Stream'));
         body.appendChild(mkModalTable(
-          [{ label: 'Stream' }, { label: 'Invoiced', right: true }],
+          ['Stream', 'Invoiced'],
           streams.map(([s, v]) => [STREAMS[s]?.label || s, formatEUR(v)])
         ));
       }
@@ -664,12 +664,14 @@ function buildView() {
         .filter(r => r.outstanding > 0)
         .sort((a, b) => b.dso - a.dso);
 
-      // fastest/slowest from non-zero DSO rows
+      // sorted worst-first (highest DSO at top); best = lowest DSO (fastest payer)
       const worst  = clientDsoRows[0];
       const best   = clientDsoRows[clientDsoRows.length - 1];
-      sgrid.appendChild(mkSummaryBox('Worst Client DSO', worst  ? `${worst.dso.toFixed(0)} days`  : '—', worst  ? worst.client  : null));
       sgrid.appendChild(mkSummaryBox('Best Client DSO',  best   ? `${best.dso.toFixed(0)} days`   : '—', best   ? best.client   : null));
+      sgrid.appendChild(mkSummaryBox('Worst Client DSO', worst  ? `${worst.dso.toFixed(0)} days`  : '—', worst  ? worst.client  : null));
       body.appendChild(sgrid);
+
+      body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:8px' }, 'Note: Uses outstanding balance ratio as a DSO proxy. True DSO requires per-invoice payment dates.'));
 
       if (clientDsoRows.length) {
         body.appendChild(mkSectionLabel('Per-Client DSO (worst first)'));
