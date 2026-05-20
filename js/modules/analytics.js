@@ -1,1690 +1,801 @@
-// Executive Analytics Dashboard
-import { el, fmtDate, drillDownModal, openModal } from '../core/ui.js';
+// Executive Analytics Dashboard — morning-briefing single-glance overview
+import { el, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { STREAMS } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
-  listActive, listActivePayments,
-  isCapEx, drillRevRows, drillExpRows,
-  sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR
+  listActive, listActivePayments, isCapEx
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
-  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
+  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
+import {
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState
+} from './analytics-helpers.js';
 
-// ── Constants ────────────────────────────────────────────────────────────────
-const ALL_CHART_IDS = [
-  'exec-trend-rev', 'exec-trend-profit', 'exec-rev-vs-profit',
-  'exec-rev-growth', 'exec-kd-rev-stream', 'exec-rev-conc',
-  'exec-opex-capex', 'exec-outstanding-aging'
-];
+// ── Constants ─────────────────────────────────────────────────────────────────
+const CHART_IDS = ['exec-rev-exp-bar', 'exec-mix-donut', 'exec-net-line'];
 
-// ── Property helpers ─────────────────────────────────────────────────────────
-function propStream(p) {
-  if (!p) return null;
-  return p.type === 'short_term' ? 'short_term_rental'
-       : p.type === 'long_term'  ? 'long_term_rental'
-       : null;
-}
-
-function propTypeLabel(type) {
-  return type === 'short_term' ? 'Short-term'
-       : type === 'long_term'  ? 'Long-term'
-       : type || '—';
-}
-
-function applyPropertyFilters(props) {
-  return props.filter(p => {
-    if (gF.owners.size > 0) {
-      const ow = p.owner || 'both';
-      if (ow !== 'both' && !gF.owners.has(ow)) return false;
-    }
-    if (gF.streams.size > 0) {
-      const s = propStream(p);
-      if (!s || !gF.streams.has(s)) return false;
-    }
-    if (gF.propertyIds.size > 0 && !gF.propertyIds.has(p.id)) return false;
-    return true;
-  });
-}
-
-// ── Filtered forecast map builders ───────────────────────────────────────────
-// Returns Map<YYYY-MM, EUR> for forecast revenue, respecting gF filters.
-// Mirrors the logic in analytics-forecast.js buildFcMaps() — kept in sync.
-function buildFilteredFcMap(startY, endY) {
-  const fcMonthlyRev = new Map();
-  const allFcs = listActive('forecasts');
-  for (let y = startY; y <= endY; y++) {
-    allFcs.filter(fc => fc.year === y).forEach(fc => {
-      if (gF.propertyIds.size > 0 && fc.type === 'property' && !gF.propertyIds.has(fc.entityId)) return;
-      if (gF.streams.size > 0) {
-        const stream = fc.type === 'service' ? fc.entityId : propStream(byId('properties', fc.entityId));
-        if (!stream || !gF.streams.has(stream)) return;
-      }
-      if (gF.owners.size > 0 && fc.type === 'property') {
-        const prop = byId('properties', fc.entityId);
-        const ow = prop?.owner || 'both';
-        if (ow !== 'both' && !gF.owners.has(ow)) return;
-      }
-      Object.entries(fc.months || {}).forEach(([mk, md]) => {
-        const entries = Array.isArray(md.entries) ? md.entries : [];
-        const rev = entries.length > 0
-          ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-          : Number(md.revenue) || 0;
-        if (rev > 0) fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
-      });
-    });
-  }
-  return fcMonthlyRev;
-}
-
-// Returns Map<stream, EUR> for forecast revenue grouped by stream, respecting gF filters.
-// monthKeySet: Set of 'YYYY-MM' strings for the selected period — keeps sums in-range.
-function buildFilteredFcByStream(startY, endY, monthKeySet) {
-  const fcByStream = new Map();
-  const allFcs = listActive('forecasts');
-  for (let y = startY; y <= endY; y++) {
-    allFcs.filter(fc => fc.year === y).forEach(fc => {
-      if (gF.propertyIds.size > 0 && fc.type === 'property' && !gF.propertyIds.has(fc.entityId)) return;
-      const stream = fc.type === 'service' ? fc.entityId : propStream(byId('properties', fc.entityId));
-      if (gF.streams.size > 0 && (!stream || !gF.streams.has(stream))) return;
-      if (!stream) return;
-      if (gF.owners.size > 0 && fc.type === 'property') {
-        const prop = byId('properties', fc.entityId);
-        const ow = prop?.owner || 'both';
-        if (ow !== 'both' && !gF.owners.has(ow)) return;
-      }
-      Object.entries(fc.months || {}).forEach(([mk, md]) => {
-        if (!monthKeySet.has(mk)) return;
-        const entries = Array.isArray(md.entries) ? md.entries : [];
-        const rev = entries.length > 0
-          ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-          : Number(md.revenue) || 0;
-        if (rev > 0) fcByStream.set(stream, (fcByStream.get(stream) || 0) + rev);
-      });
-    });
-  }
-  return fcByStream;
-}
-
-// ── Executive decision thresholds (deterministic, adjust here) ───────────────
-const EXEC_T = {
-  collectionRate: { healthy: 90, watch: 75 },  // % — below watch = At Risk
-  opMargin:       { healthy: 20, watch: 5  },  // % — below watch = At Risk; negative = At Risk
-  expenseRatio:   { watch: 50, atRisk: 75  },  // % — above atRisk = At Risk; above watch = Watch
-  revConc:        { watch: 40, atRisk: 60  },  // % top-source share — above atRisk = At Risk
-};
-
-// ── Filter State ─────────────────────────────────────────────────────────────
+// ── Module-level state ────────────────────────────────────────────────────────
 let gF = createFilterState();
 
-// ── Module export ────────────────────────────────────────────────────────────
+// ── Module export ─────────────────────────────────────────────────────────────
 export default {
-  id: 'analytics', label: 'Executive', icon: 'A',
+  id: 'analytics',
+  label: 'Executive',
+  icon: 'A',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
-  destroy() { ALL_CHART_IDS.forEach(id => charts.destroy(id)); }
+  destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }
 };
 
-// ── Drill-down column definitions ────────────────────────────────────────────
-const REV_COLS = [
-  { key: 'date',   label: 'Date',        format: v => fmtDate(v) },
-  { key: 'type',   label: 'Type' },
-  { key: 'source', label: 'Entity' },
-  { key: 'ref',    label: 'Ref' },
-  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v) }
-];
-const EXP_COLS = [
-  { key: 'date',        label: 'Date',        format: v => fmtDate(v) },
-  { key: 'source',      label: 'Property' },
-  { key: 'category',    label: 'Category' },
-  { key: 'description', label: 'Description' },
-  { key: 'eur',         label: 'EUR', right: true, format: v => formatEUR(v) }
-];
-const MIXED_COLS = [
-  { key: 'date',   label: 'Date',           format: v => fmtDate(v) },
-  { key: 'kind',   label: 'Kind' },
-  { key: 'source', label: 'Entity / Source' },
-  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v) }
-];
-const PROP_COLS = [
-  { key: 'name',    label: 'Property' },
-  { key: 'type',    label: 'Type' },
-  { key: 'status',  label: 'Status' },
-  { key: 'owner',   label: 'Owner' },
-  { key: 'city',    label: 'City' },
-  { key: 'country', label: 'Country' },
-  { key: 'eur',     label: 'Purchase Value EUR', right: true, format: v => v > 0 ? formatEUR(v) : '—' }
-];
-const PORTVAL_COLS = [
-  { key: 'name',      label: 'Property' },
-  { key: 'type',      label: 'Type' },
-  { key: 'status',    label: 'Status' },
-  { key: 'owner',     label: 'Owner' },
-  { key: 'purchDate', label: 'Purchase Date', format: v => fmtDate(v) },
-  { key: 'price',     label: 'Purchase Price', right: true, format: v => v > 0 ? formatEUR(v) : '—' },
-  { key: 'currency',  label: 'Currency' },
-  { key: 'eur',       label: 'EUR Value', right: true, format: v => v > 0 ? formatEUR(v) : '—' }
-];
-const OPEN_FC_COLS = [
-  { key: 'stream',    label: 'Stream' },
-  { key: 'fcRev',    label: 'Forecast Revenue', right: true, format: v => formatEUR(v) },
-  { key: 'actRev',   label: 'Actual Revenue',   right: true, format: v => formatEUR(v) },
-  { key: 'pipeline', label: 'Open Pipeline',    right: true, format: v => formatEUR(v) },
-  { key: 'varStr',   label: 'Variance',         right: true },
-  { key: 'varPctStr',label: 'Variance %',       right: true }
-];
-
-function mixedRows(revPays, revInvs, expItems, acqItems = []) {
-  return [
-    ...drillRevRows(revPays, revInvs).map(r => ({
-      date: r.date, kind: 'Revenue',
-      source: r.source + (r.ref ? ' · ' + r.ref : ''), eur: r.eur
-    })),
-    ...drillExpRows(expItems).map(r => ({
-      date: r.date, kind: 'Expense',
-      source: (r.source ? r.source + ' · ' : '') + r.category, eur: r.eur
-    })),
-    ...acqItems.map(a => ({
-      date: a.date, kind: 'CapEx',
-      source: (a._name || '') + ' · Property Acquisition',
-      eur: toEUR(a.amount, a.currency, a.date)
-    }))
-  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function safePct(cur, cmp) {
+  if (cmp == null || !isFinite(cmp) || cmp === 0) return null;
+  const v = (cur - cmp) / Math.abs(cmp) * 100;
+  return isFinite(v) ? v : null;
 }
 
-// ── Filtered active properties (respects gF filters) ────────────────────────
-function getFilteredProperties() {
-  return applyPropertyFilters(listActive('properties'));
-}
+const fmtK = v =>
+  v >= 10000 ? `€${(v / 1000).toFixed(0)}k`
+  : v >= 1000 ? `€${(v / 1000).toFixed(1)}k`
+  : formatEUR(v, { maxFrac: 0 });
 
-// ── Virtual property acquisitions ────────────────────────────────────────────
-function getVirtualAcquisitions() {
-  return applyPropertyFilters(listActive('properties').filter(p => p.purchasePrice > 0 && p.purchaseDate))
-    .map(p => ({
-      _virtual: true,
-      _acquisitionOf: p.id,
-      id: `__acq_${p.id}`,
-      propertyId: p.id,
-      date: p.purchaseDate,
-      amount: p.purchasePrice,
-      currency: p.currency || 'EUR',
-      costCategory: 'acquisition',
-      accountingType: 'capex',
-      description: `Property acquisition: ${p.name}`,
-      _name: p.name
-    }));
-}
+// ── Data aggregation ──────────────────────────────────────────────────────────
+function getData(start, end) {
+  const inRange = d => !!d && d >= start && d <= end;
+  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
 
-// ── Data getter (range-based) ────────────────────────────────────────────────
-function getDataInRange(start, end) {
-  const inRange = (date) => date && date >= start && date <= end;
-  const { mStream, mOwner, mProperty } = makeMatchers(gF);
-
+  // Paid rental income
   const payments = listActivePayments().filter(p =>
-    p.status === 'paid' && inRange(p.date) &&
-    mStream(p) && mOwner(p) && mProperty(p)
+    p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p)
   );
+
+  // Paid service invoices
   const invoices = listActive('invoices').filter(i =>
-    i.status === 'paid' && inRange(i.issueDate) &&
-    mStream(i) && mOwner(i) && mProperty(i)
+    i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
   );
-  const allExpenses = listActive('expenses').filter(e =>
-    inRange(e.date) && mOwner(e) && mProperty(e)
+
+  // Pending payments (pipeline)
+  const pendingPayments = listActivePayments().filter(p =>
+    p.status === 'pending' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p)
   );
-  const opExpenses    = allExpenses.filter(e => !isCapEx(e) && mStream(e));
-  const capExExpenses = allExpenses.filter(e =>  isCapEx(e) && mStream(e));
 
-  const allAcq = getVirtualAcquisitions();
-  const acquisitions = allAcq.filter(a => inRange(a.date));
+  // Outstanding invoices (not paid, not cancelled/void)
+  const outstandingInvoices = listActive('invoices').filter(i =>
+    !['paid', 'cancelled', 'void'].includes(i.status) &&
+    inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
+  );
 
-  return { payments, invoices, opExpenses, capExExpenses, acquisitions };
-}
+  // Overdue invoices
+  const today = new Date().toISOString().slice(0, 10);
+  const overdueInvoices = outstandingInvoices.filter(i =>
+    i.dueDate && i.dueDate < today
+  );
 
-// ── Metrics calculator ───────────────────────────────────────────────────────
-function calcMetrics(data, range = null) {
-  const { payments, invoices, opExpenses, capExExpenses, acquisitions } = data;
+  // Expenses: split OpEx / CapEx
+  const allExp    = listActive('expenses');
+  const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mOwner(e) && mProperty(e));
+  const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mOwner(e) && mProperty(e));
 
-  const rev         = sumPaymentsEUR(payments) + sumInvoicesEUR(invoices);
-  const opEx        = sumExpensesEUR(opExpenses);
-  const capExFromExp = sumExpensesEUR(capExExpenses);
-  const capExFromAcq = acquisitions.reduce((s, a) => s + toEUR(a.amount, a.currency, a.date), 0);
-  const capEx       = capExFromExp + capExFromAcq;
-  const opProfit    = rev - opEx;
-  const opMargin    = rev > 0 ? (opProfit / rev) * 100 : null;
-  const netCash      = opProfit - capEx;
-  const expenseRatio = rev > 0 ? (opEx / rev) * 100 : null;
+  // Revenue totals
+  const propRev  = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+  const svcRev   = invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const totalRev = propRev + svcRev;
 
-  // Collection rate: paid invoices / all invoices (any status) issued in range
-  let collectionRate = null;
-  if (range) {
-    const { mStream, mOwner, mProperty } = makeMatchers(gF);
-    const allRangeInvs = listActive('invoices').filter(i =>
-      (i.issueDate || '') >= range.start && (i.issueDate || '') <= range.end &&
-      mStream(i) && mOwner(i) && mProperty(i)
-    );
-    const totalInvoiced = allRangeInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-    if (totalInvoiced > 0) collectionRate = (sumInvoicesEUR(invoices) / totalInvoiced) * 100;
-  }
+  // Expense totals
+  const opEx  = opExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const capEx = capExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const totalExp = opEx + capEx;
 
-  // Outstanding = all currently open invoices (not range-limited), stream/owner/property filtered
-  const outstanding = listActive('invoices').filter(i => {
-    if (i.status !== 'sent' && i.status !== 'overdue') return false;
-    if (gF.streams.size > 0 && i.stream && !gF.streams.has(i.stream)) return false;
-    if (gF.owners.size > 0) {
-      const prop = i.propertyId ? byId('properties', i.propertyId) : null;
-      const ow = prop?.owner || i.owner || 'both';
-      if (ow !== 'both' && !gF.owners.has(ow)) return false;
-    }
-    if (gF.propertyIds.size > 0 && i.propertyId && !gF.propertyIds.has(i.propertyId)) return false;
-    return true;
+  // Derived
+  const netOpProfit = totalRev - opEx;
+  const cashPos     = totalRev - totalExp;
+  const pipeline    = pendingPayments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+
+  // Collection rate: paid invoices / (paid + outstanding)
+  const paidInvTotal = svcRev;
+  const outTotal     = outstandingInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const invoicedTotal = paidInvTotal + outTotal;
+  const collectionRate = invoicedTotal > 0 ? (paidInvTotal / invoicedTotal) * 100 : null;
+
+  // Expense ratio
+  const expenseRatio = totalRev > 0 ? (opEx / totalRev) * 100 : null;
+
+  // Top contributors
+  const contribMap = new Map();
+  payments.forEach(p => {
+    const id   = p.propertyId;
+    const name = byId('properties', id)?.name || 'Unknown Property';
+    const eur  = toEUR(p.amount, p.currency, p.date);
+    const e    = contribMap.get('p:' + id) || { name, eur: 0, type: 'Property' };
+    e.eur += eur;
+    contribMap.set('p:' + id, e);
   });
-  const outstandingTotal = sumInvoicesEUR(outstanding);
+  invoices.forEach(i => {
+    const id   = i.clientId;
+    const name = byId('clients', id)?.name || 'Unknown Client';
+    const eur  = toEUR(i.total, i.currency, i.issueDate);
+    const e    = contribMap.get('c:' + id) || { name, eur: 0, type: 'Client' };
+    e.eur += eur;
+    contribMap.set('c:' + id, e);
+  });
+  const topContribs = [...contribMap.values()].sort((a, b) => b.eur - a.eur);
 
-  // Forecast: filtered forecast revenue for the selected period and active filters.
-  let fcRev = null;
-  let fcMonthlyRev = null; // retained for KPI drilldown and chart overlay
-  if (range) {
-    const startY = parseInt(range.start.slice(0, 4));
-    const endY   = parseInt(range.end.slice(0, 4));
-    fcMonthlyRev = buildFilteredFcMap(startY, endY);
-    const { keys: months } = getMonthKeysForRange(range.start, range.end);
-    const total = months.reduce((s, m) => s + (fcMonthlyRev.get(m.key) || 0), 0);
-    if (total > 0) fcRev = total;
-  }
+  // Overdue totals
+  const overdueCount = overdueInvoices.length;
+  const overdueEur   = overdueInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
 
-  const filteredProperties = getFilteredProperties();
-  const portfolioValueEUR = filteredProperties.reduce((s, p) =>
-    s + (p.purchasePrice > 0 ? toEUR(p.purchasePrice, p.currency || 'EUR', p.purchaseDate) : 0), 0);
+  // Revenue by stream
+  const streamMap = new Map();
+  payments.forEach(p => { const s = p.stream || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date)); });
+  invoices.forEach(i => { const s = i.stream || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
 
   return {
-    rev, opEx, capExFromExp, capExFromAcq, capEx,
-    opProfit, opMargin, netCash, expenseRatio,
-    collectionRate,
-    outstanding, outstandingTotal, fcRev, fcMonthlyRev,
-    payments, invoices, opExpenses, capExExpenses, acquisitions,
-    filteredProperties, portfolioValueEUR
+    payments, invoices, pendingPayments, outstandingInvoices, overdueInvoices,
+    opExpenses, capExpenses,
+    propRev, svcRev, totalRev,
+    opEx, capEx, totalExp,
+    netOpProfit, cashPos, pipeline,
+    collectionRate, expenseRatio,
+    topContribs, streamMap,
+    overdueCount, overdueEur,
+    paidInvTotal, outTotal, invoicedTotal
   };
 }
 
-// ── Safe math ────────────────────────────────────────────────────────────────
-function safePct(current, prev) {
-  if (prev === null || prev === undefined || !isFinite(prev) || prev === 0) return null;
-  const pct = ((current - prev) / Math.abs(prev)) * 100;
-  if (!isFinite(pct)) return null;
-  return pct;
-}
-
-function safePp(current, prev) {
-  if (current === null || prev === null || current === undefined || prev === undefined) return null;
-  if (!isFinite(current) || !isFinite(prev)) return null;
-  return current - prev;
-}
-
-// ── Rebuild ──────────────────────────────────────────────────────────────────
-function rebuildView() {
-  ALL_CHART_IDS.forEach(id => charts.destroy(id));
-  const c = document.getElementById('content');
-  if (!c) return;
-  c.innerHTML = '';
-  c.appendChild(buildView());
-}
-
-
-// ── Executive Health Snapshot ─────────────────────────────────────────────────
-function buildHealthSnapshot(curMetrics, cmpMetrics, curRange) {
-  const { rev, opProfit, opMargin, netCash, collectionRate, expenseRatio,
-          fcRev, outstandingTotal, outstanding, filteredProperties, portfolioValueEUR } = curMetrics;
-
-  const issues = []; // { severity: 'watch'|'risk', text, inspect }
-
-  // Revenue growth vs comparison
-  const revGrowth = cmpMetrics ? safePct(rev, cmpMetrics.rev) : null;
-  if (revGrowth !== null && revGrowth < -10) {
-    issues.push({ severity: 'watch', text: `Revenue down ${Math.abs(revGrowth).toFixed(0)}% vs comparison period`, inspect: 'Revenue Dashboard' });
-  }
-
-  // Operating margin
-  if (opMargin !== null) {
-    if (opMargin < 0) {
-      issues.push({ severity: 'risk', text: `Operating margin is negative (${opMargin.toFixed(1)}%)`, inspect: 'Expenses Dashboard' });
-    } else if (opMargin < EXEC_T.opMargin.watch) {
-      issues.push({ severity: 'watch', text: `Operating margin is low (${opMargin.toFixed(1)}%)`, inspect: 'Expenses Dashboard' });
-    }
-  }
-
-  // Net cash flow
-  if (netCash < 0) {
-    issues.push({ severity: 'risk', text: `Net cash flow negative (${formatEUR(netCash)})`, inspect: 'Cash Flow Dashboard' });
-  }
-
-  // Expense ratio
-  if (expenseRatio !== null) {
-    if (expenseRatio > EXEC_T.expenseRatio.atRisk) {
-      issues.push({ severity: 'risk', text: `Expense ratio high (${expenseRatio.toFixed(1)}% — OpEx/Revenue)`, inspect: 'Expenses Dashboard' });
-    } else if (expenseRatio > EXEC_T.expenseRatio.watch) {
-      issues.push({ severity: 'watch', text: `Expense ratio elevated (${expenseRatio.toFixed(1)}% — OpEx/Revenue)`, inspect: 'Expenses Dashboard' });
-    }
-  }
-
-  // Collection rate
-  if (collectionRate !== null) {
-    if (collectionRate < EXEC_T.collectionRate.watch) {
-      issues.push({ severity: 'risk', text: `Collection rate low (${collectionRate.toFixed(1)}%)`, inspect: 'Services Dashboard' });
-    } else if (collectionRate < EXEC_T.collectionRate.healthy) {
-      issues.push({ severity: 'watch', text: `Collection rate below target (${collectionRate.toFixed(1)}%)`, inspect: 'Services Dashboard' });
-    }
-  }
-
-  // Outstanding — overdue check then ratio-based watch
-  const overdueCount = outstanding.filter(i => {
-    const days = Math.floor((Date.now() - new Date(i.issueDate).getTime()) / 86400000);
-    return days > 60;
-  }).length;
-  if (overdueCount > 0) {
-    issues.push({ severity: 'risk', text: `${overdueCount} invoice${overdueCount > 1 ? 's' : ''} overdue 60+ days (${formatEUR(outstandingTotal)} total outstanding)`, inspect: 'Services Dashboard' });
-  } else if (outstandingTotal > 0) {
-    if (rev > 0) {
-      const outRatio = (outstandingTotal / rev) * 100;
-      if (outRatio >= 50) {
-        issues.push({ severity: 'risk', text: `Outstanding is ${outRatio.toFixed(0)}% of revenue (${formatEUR(outstandingTotal)})`, inspect: 'Services Dashboard' });
-      } else if (outRatio >= 25) {
-        issues.push({ severity: 'watch', text: `Outstanding is ${outRatio.toFixed(0)}% of revenue (${formatEUR(outstandingTotal)})`, inspect: 'Services Dashboard' });
-      }
-    } else if (outstandingTotal > 5000) {
-      issues.push({ severity: 'watch', text: `${formatEUR(outstandingTotal)} in unpaid invoices (no revenue in period)`, inspect: 'Services Dashboard' });
-    }
-  }
-
-  // Forecast gap
-  if (fcRev != null && fcRev > 0 && rev < fcRev * 0.85) {
-    const pct = ((rev / fcRev) * 100).toFixed(0);
-    issues.push({ severity: 'watch', text: `Revenue at ${pct}% of forecast (${formatEUR(fcRev - rev)} gap)`, inspect: 'Forecast Dashboard' });
-  }
-
-  // Overall score
-  const hasRisk  = issues.some(i => i.severity === 'risk');
-  const hasWatch = issues.some(i => i.severity === 'watch');
-  const score    = hasRisk ? 'At Risk' : hasWatch ? 'Watch' : 'Healthy';
-  const SCORE_COLOR = { Healthy: '#10b981', Watch: '#f59e0b', 'At Risk': '#ef4444' };
-  const SCORE_BG    = { Healthy: 'rgba(16,185,129,0.06)', Watch: 'rgba(245,158,11,0.06)', 'At Risk': 'rgba(239,68,68,0.06)' };
-
-  // Executive summary sentence
-  let summary;
-  if (score === 'Healthy') {
-    const parts = [];
-    if (revGrowth !== null && revGrowth > 0) parts.push(`revenue up ${revGrowth.toFixed(0)}%`);
-    if (opMargin !== null && opMargin >= EXEC_T.opMargin.healthy) parts.push('margins healthy');
-    if (collectionRate !== null && collectionRate >= EXEC_T.collectionRate.healthy) parts.push('collections on track');
-    if (netCash >= 0) parts.push('cash flow positive');
-    summary = parts.length > 0
-      ? parts.join(', ').replace(/^./, c => c.toUpperCase()) + '.'
-      : 'All key metrics within healthy ranges.';
-  } else {
-    const topIssue = issues.find(i => i.severity === 'risk') || issues[0];
-    const rest = issues.length - 1;
-    summary = topIssue.text.charAt(0).toUpperCase() + topIssue.text.slice(1) +
-      (rest > 0 ? `, plus ${rest} other item${rest > 1 ? 's' : ''} need attention.` : '.');
-  }
-
-  // Build card
-  const card = el('div', {
-    class: 'card mb-16',
-    style: `border-left:4px solid ${SCORE_COLOR[score]};background:${SCORE_BG[score]}`
-  });
-  const header = el('div', { class: 'card-header', style: 'padding-bottom:8px' });
-  const titleRow = el('div', { style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap' });
-  titleRow.appendChild(el('div', { class: 'card-title' }, 'Executive Health Snapshot'));
-  titleRow.appendChild(el('span', {
-    style: `display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700;color:${SCORE_COLOR[score]};border:1px solid ${SCORE_COLOR[score]}`
-  }, score));
-  header.appendChild(titleRow);
-  header.appendChild(el('p', { style: 'margin:6px 0 0;font-size:13px;color:var(--text-muted)' }, summary));
-
-  // Portfolio context line
-  const propCount = filteredProperties.length;
-  if (propCount > 0) {
-    const pvLine = `Portfolio: ${propCount} active propert${propCount === 1 ? 'y' : 'ies'}` +
-      ((portfolioValueEUR || 0) > 0 ? `, approx. ${formatEUR(portfolioValueEUR)} book value.` : '.');
-    header.appendChild(el('p', { style: 'margin:3px 0 0;font-size:12px;color:var(--text-muted)' }, pvLine));
-  }
-
-  card.appendChild(header);
-
-  const top3 = issues.slice(0, 3);
-  if (top3.length > 0) {
-    const body = el('div', { style: 'padding:0 16px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px' });
-    for (const item of top3) {
-      const sColor = item.severity === 'risk' ? '#ef4444' : '#f59e0b';
-      const row = el('div', {
-        style: `display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:6px;background:var(--bg-elev-1);border:1px solid var(--border)`
-      });
-      row.appendChild(el('span', { style: `flex-shrink:0;width:8px;height:8px;border-radius:50%;background:${sColor};margin-top:4px` }));
-      const txt = el('div');
-      txt.appendChild(el('div', { style: 'font-size:12px;color:var(--text);line-height:1.4' }, item.text));
-      txt.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, `→ ${item.inspect}`));
-      row.appendChild(txt);
-      body.appendChild(row);
-    }
-    card.appendChild(body);
-  }
-
-  return card;
-}
-
 // ── KPI card builder ──────────────────────────────────────────────────────────
-function kpiCard({ label, subtitle, value, variant, onClick, delta, deltaIsPercent, deltaIsPp, invertDelta, compLabel }) {
+function kpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick }) {
   const card = el('div', {
     class: 'kpi' + (variant ? ' ' + variant : ''),
-    style: 'cursor:pointer;transition:box-shadow 120ms',
-    title: 'Click for breakdown'
+    style: onClick ? 'cursor:pointer;transition:box-shadow 120ms' : '',
+    title: onClick ? 'Click for breakdown' : ''
   });
-  card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
-  card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
-  card.onclick = onClick;
+  if (onClick) {
+    card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
+    card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
+    card.onclick = onClick;
+  }
 
   card.appendChild(el('div', { class: 'kpi-label' }, label));
-  if (subtitle) card.appendChild(el('div', { style: 'font-size:10px;color:var(--text-muted);margin-top:-2px;margin-bottom:2px' }, subtitle));
   card.appendChild(el('div', { class: 'kpi-value' }, value));
 
-  // Trend row — only rendered when there is meaningful content
-  const hasValidDelta = delta !== null && delta !== undefined && isFinite(delta);
-  const hasContext    = !!compLabel;
-  if (hasValidDelta || hasContext) {
-    const trendDiv = el('div', { class: 'kpi-trend' });
-    if (!hasValidDelta) {
-      // Show context label only (e.g. "Selected period")
-      trendDiv.appendChild(el('span', { style: 'color:var(--text-muted);font-size:11px' }, compLabel));
-    } else {
-      const sign = delta > 0 ? '+' : '';
-      const display = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
-      let cls = '';
-      if (delta > 0) cls = invertDelta ? 'down' : 'up';
-      else if (delta < 0) cls = invertDelta ? 'up' : 'down';
-      trendDiv.appendChild(el('span', { class: cls }, display));
-      if (compLabel) trendDiv.appendChild(document.createTextNode(` vs ${compLabel}`));
-    }
-    card.appendChild(trendDiv);
+  if (delta !== null && delta !== undefined && isFinite(delta)) {
+    const trend = el('div', { class: 'kpi-trend' });
+    const sign  = delta > 0 ? '+' : '';
+    const disp  = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
+    const cls   = delta === 0 ? '' : delta > 0 ? (invertDelta ? 'down' : 'up') : (invertDelta ? 'up' : 'down');
+    trend.appendChild(el('span', { class: cls }, disp));
+    if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
+    card.appendChild(trend);
   }
+  if (subtitle) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
   card.appendChild(el('div', { class: 'kpi-accent-bar' }));
   return card;
 }
 
-// ── KPI cards ─────────────────────────────────────────────────────────────────
-function buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange) {
-  const { rev, opEx, capEx, capExFromExp, capExFromAcq, opProfit, opMargin, netCash, outstandingTotal, fcRev, fcMonthlyRev,
-          expenseRatio, collectionRate, pendingPipeline,
-          payments, invoices, opExpenses, capExExpenses, acquisitions, outstanding } = curMetrics;
-  const cmpLabel = cmpRange?.label || (curRange.label === 'All Time' ? 'All Time' : '');
-
-  const grid = el('div', {
-    class: 'mb-16',
-    style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px'
+// ── Composite KPI card (wider, with breakdown lines) ─────────────────────────
+function compositeKpiCard({ label, value, subtitle, delta, deltaIsPp, compLabel, variant, onClick, lines }) {
+  const card = el('div', {
+    class: 'kpi' + (variant ? ' ' + variant : ''),
+    style: onClick ? 'cursor:pointer;transition:box-shadow 120ms' : '',
+    title: onClick ? 'Click for breakdown' : ''
   });
+  if (onClick) {
+    card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
+    card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
+    card.onclick = onClick;
+  }
 
-  // 1. Revenue — stream breakdown on click
-  const revenueByStream = () => {
-    const map = new Map();
-    const add = (key, eur) => { const e = map.get(key) || { eur: 0, count: 0 }; e.eur += eur; e.count++; map.set(key, e); };
-    payments.forEach(p => add(resolveStream(p) || '__other', toEUR(p.amount, p.currency, p.date)));
-    invoices.forEach(i => add(resolveStream(i) || '__other', toEUR(i.total, i.currency, i.issueDate)));
-    const rows = [...map.entries()]
-      .sort((a, b) => b[1].eur - a[1].eur)
-      .map(([key, { eur, count }]) => ({
-        stream: STREAMS[key]?.label || (key === '__other' ? 'Unclassified' : key),
-        eur,
-        pct:   rev > 0 ? (eur / rev) * 100 : 0,
-        count,
-      }));
-    drillDownModal('Revenue by Stream', rows, [
-      { key: 'stream', label: 'Stream' },
-      { key: 'eur',    label: 'Amount',       right: true, format: v => formatEUR(v) },
-      { key: 'pct',    label: '% of Total',   right: true, format: v => v.toFixed(1) + '%' },
-      { key: 'count',  label: 'Transactions', right: true },
-    ]);
-  };
-  grid.appendChild(kpiCard({
-    label: 'Revenue', value: formatEUR(rev),
-    onClick: revenueByStream,
-    delta: cmpMetrics ? safePct(rev, cmpMetrics.rev) : null,
-    invertDelta: false, compLabel: cmpLabel
-  }));
+  card.appendChild(el('div', { class: 'kpi-label' }, label));
+  card.appendChild(el('div', { class: 'kpi-value' }, value));
 
-  // 2. Forecast Revenue — uses filtered forecast data matching active filters
-  const fcDelta = (fcRev != null && fcRev > 0) ? safePct(rev, fcRev) : null;
-  // Build monthly actual revenue map for drilldown comparison
-  const actualRevMap = new Map();
-  payments.forEach(p => { const mk = p.date?.slice(0,7); if (mk) actualRevMap.set(mk, (actualRevMap.get(mk) || 0) + toEUR(p.amount, p.currency, p.date)); });
-  invoices.forEach(i => { const mk = (i.issueDate||'').slice(0,7); if (mk) actualRevMap.set(mk, (actualRevMap.get(mk) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
-  grid.appendChild(kpiCard({
-    label: 'Forecast Revenue',
-    subtitle: 'Forecast for selected period',
-    value: fcRev != null ? formatEUR(fcRev) : '—',
-    onClick: () => {
-      const { keys: fcMonths } = getMonthKeysForRange(curRange.start, curRange.end);
-      const fcMap = fcMonthlyRev || new Map();
-      const fcRows = fcMonths
-        .filter(m => (fcMap.get(m.key) || 0) > 0 || (actualRevMap.get(m.key) || 0) > 0)
-        .map(m => {
-          const fc  = fcMap.get(m.key) || 0;
-          const act = actualRevMap.get(m.key) || 0;
-          const vari = act - fc;
-          const varPct = fc === 0 ? null : ((act - fc) / Math.abs(fc)) * 100;
-          return {
-            month: m.label, fc, act, vari,
-            varPctStr: fc === 0
-              ? (act > 0 ? 'N/A' : '—')
-              : (varPct >= 0 ? '+' : '') + varPct.toFixed(1) + '%'
-          };
-        });
-      drillDownModal('Forecast Revenue — Actual vs Forecast', fcRows, [
-        { key: 'month', label: 'Month' },
-        { key: 'fc',   label: 'Forecast',   right: true, format: v => formatEUR(v) },
-        { key: 'act',  label: 'Actual',     right: true, format: v => formatEUR(v) },
-        { key: 'vari', label: 'Variance',   right: true, format: v => (v >= 0 ? '+' : '') + formatEUR(v) },
-        { key: 'varPctStr', label: 'Var %', right: true }
-      ]);
-    },
-    delta: fcDelta, invertDelta: false,
-    compLabel: fcDelta !== null ? 'actual revenue' : '',
-  }));
+  if (delta !== null && delta !== undefined && isFinite(delta)) {
+    const trend = el('div', { class: 'kpi-trend' });
+    const sign  = delta > 0 ? '+' : '';
+    const disp  = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
+    const cls   = delta === 0 ? '' : delta > 0 ? 'up' : 'down';
+    trend.appendChild(el('span', { class: cls }, disp));
+    if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
+    card.appendChild(trend);
+  }
 
-  // 3. Operating Profit — P&L summary + OpEx by category
-  const opProfitDrill = () => {
-    // Category breakdown
-    const catMap = new Map();
-    opExpenses.forEach(e => {
-      const cat = e.costCategory || e.category || 'Other';
-      const eur = toEUR(e.amount, e.currency, e.date);
-      catMap.set(cat, (catMap.get(cat) || 0) + eur);
-    });
-    const catRows = [...catMap.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([cat, eur]) => ({ cat, eur, pct: opEx > 0 ? (eur / opEx) * 100 : 0 }));
-
-    // Summary header
-    const summaryStyle = 'display:grid;grid-template-columns:1fr auto;gap:4px 24px;padding:12px 16px;background:var(--bg-elev-1);border-radius:var(--radius-sm);margin-bottom:16px;font-size:13px';
-    const row = (label, value, bold, color) => {
-      const lEl = el('span', { style: bold ? 'font-weight:600' : 'color:var(--text-muted)' }, label);
-      const vEl = el('span', { style: `text-align:right;font-weight:${bold?'600':'400'};${color?'color:'+color:''}` }, value);
-      return [lEl, vEl];
-    };
-    const summary = el('div', { style: summaryStyle });
-    row('Revenue', formatEUR(rev), false).forEach(n => summary.appendChild(n));
-    row('Operating Expenses', '− ' + formatEUR(opEx), false).forEach(n => summary.appendChild(n));
-    const marginColor = opProfit >= 0 ? 'var(--success)' : 'var(--danger)';
-    row(`Operating Profit (${opMargin != null ? opMargin.toFixed(1) + '% margin' : '—'})`, formatEUR(opProfit), true, marginColor).forEach(n => summary.appendChild(n));
-
-    // Category table
-    const table = el('table', { class: 'table' });
-    table.appendChild(el('thead', {}, el('tr', {},
-      el('th', {}, 'Expense Category'),
-      el('th', { class: 'right' }, 'Amount'),
-      el('th', { class: 'right' }, '% of OpEx'),
-    )));
-    const tbody = el('tbody');
-    if (!catRows.length) {
-      const tr = el('tr');
-      tr.appendChild(el('td', { colspan: '3', style: 'text-align:center;padding:24px;color:var(--text-muted)' }, 'No expenses'));
-      tbody.appendChild(tr);
+  if (lines?.length) {
+    card.appendChild(el('div', { style: 'margin:8px 0 6px;border-top:1px solid rgba(255,255,255,0.06)' }));
+    for (const ln of lines) {
+      const row = el('div', { style: 'display:flex;justify-content:space-between;align-items:flex-start;gap:6px;font-size:11px;padding:2px 4px;margin:0 -4px;border-radius:3px' });
+      row.appendChild(el('span', { style: 'color:var(--text-muted);flex-shrink:0' }, ln.label));
+      const right = el('span', { style: 'color:var(--text);font-weight:500;min-width:0;word-break:break-word;text-align:right' },
+        ln.value + (ln.pct !== undefined ? ` (${ln.pct})` : '')
+      );
+      row.appendChild(right);
+      if (ln.onClick) {
+        row.style.cursor = 'pointer';
+        row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.05)'; });
+        row.addEventListener('mouseleave', () => { row.style.background = ''; });
+        row.onclick = e => { e.stopPropagation(); ln.onClick(); };
+      }
+      card.appendChild(row);
     }
-    catRows.forEach(({ cat, eur, pct }) => {
-      tbody.appendChild(el('tr', {},
-        el('td', {}, cat),
-        el('td', { class: 'right num' }, formatEUR(eur)),
-        el('td', { class: 'right num' }, pct.toFixed(1) + '%'),
-      ));
-    });
-    table.appendChild(tbody);
+  }
 
+  if (subtitle) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
+  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
+  return card;
+}
+
+// ── KPI Grid ──────────────────────────────────────────────────────────────────
+function buildKpiGrid(cur, cmp, cmpRange) {
+  const {
+    totalRev, netOpProfit, cashPos, pipeline,
+    collectionRate, expenseRatio, topContribs,
+    overdueCount, overdueEur,
+    opEx, propRev, svcRev, streamMap
+  } = cur;
+
+  const cl = cmpRange?.label || '';
+  const pct = (num, den) => den > 0 ? (num / den * 100).toFixed(0) + '%' : '—';
+
+  // Comparison deltas
+  const dRev     = cmp ? safePct(totalRev,    cmp.totalRev)    : null;
+  const dProfit  = cmp ? safePct(netOpProfit, cmp.netOpProfit) : null;
+  const dCash    = cmp ? safePct(cashPos,     cmp.cashPos)     : null;
+  const dCollect = cmp ? (collectionRate != null && cmp.collectionRate != null
+    ? collectionRate - cmp.collectionRate : null) : null;
+  const dExpR    = cmp ? (expenseRatio != null && cmp.expenseRatio != null
+    ? expenseRatio - cmp.expenseRatio : null) : null;
+
+  // Overdue modal
+  const overdrueDrill = () => {
     const body = el('div');
-    body.appendChild(summary);
-    body.appendChild(el('div', { class: 'table-wrap' }, table));
-    openModal({ title: 'Operating Profit', body, large: true });
+    if (!cur.overdueInvoices.length) {
+      body.appendChild(mkEmptyState('No overdue invoices for this period.'));
+    } else {
+      body.appendChild(mkSummaryGrid([
+        { label: 'Overdue Count',  value: String(overdueCount) },
+        { label: 'Overdue Amount', value: formatEUR(overdueEur) }
+      ]));
+      body.appendChild(mkSectionLabel('Overdue Invoices'));
+      const rows = cur.overdueInvoices.map(i => [
+        i.issueDate || '—',
+        byId('clients', i.clientId)?.name || '—',
+        i.dueDate || '—',
+        formatEUR(toEUR(i.total, i.currency, i.issueDate))
+      ]);
+      body.appendChild(mkModalTable(['Issued', 'Client', 'Due', 'Amount'], rows));
+    }
+    openModal({ title: 'Overdue Invoices', body, large: false });
   };
-  grid.appendChild(kpiCard({
-    label: 'Operating Profit',
-    value: formatEUR(opProfit),
-    variant: opProfit < 0 ? 'danger' :
-      (opMargin !== null && opMargin >= EXEC_T.opMargin.healthy) ? 'success' : '',
-    onClick: opProfitDrill,
-    delta: cmpMetrics ? safePct(opProfit, cmpMetrics.opProfit) : null,
-    invertDelta: false, compLabel: cmpLabel
-  }));
 
-  // 4. Operating Margin — margin by stream
-  const opMarginDrill = () => {
-    const streamRev = new Map();
-    const streamOpEx = new Map();
-    const add = (map, key, val) => map.set(key, (map.get(key) || 0) + val);
-
-    payments.forEach(p  => add(streamRev,  resolveStream(p)  || '__other', toEUR(p.amount, p.currency, p.date)));
-    invoices.forEach(i  => add(streamRev,  resolveStream(i)  || '__other', toEUR(i.total, i.currency, i.issueDate)));
-    opExpenses.forEach(e => add(streamOpEx, resolveStream(e) || '__other', toEUR(e.amount, e.currency, e.date)));
-
-    const allKeys = new Set([...streamRev.keys(), ...streamOpEx.keys()]);
-    const rows = [...allKeys]
-      .map(key => {
-        const sRev    = streamRev.get(key)  || 0;
-        const sOpEx   = streamOpEx.get(key) || 0;
-        const sProfit = sRev - sOpEx;
-        const sMargin = sRev > 0 ? (sProfit / sRev) * 100 : null;
-        return { key, label: STREAMS[key]?.label || (key === '__other' ? 'Unclassified' : key), sRev, sOpEx, sProfit, sMargin };
-      })
-      .sort((a, b) => b.sRev - a.sRev);
-
-    drillDownModal('Operating Margin by Stream', rows, [
-      { key: 'label',   label: 'Stream' },
-      { key: 'sRev',    label: 'Revenue',  right: true, format: v => formatEUR(v) },
-      { key: 'sOpEx',   label: 'OpEx',     right: true, format: v => formatEUR(v) },
-      { key: 'sProfit', label: 'Profit',   right: true, format: v => formatEUR(v) },
-      { key: 'sMargin', label: 'Margin',   right: true, format: v => v != null ? v.toFixed(1) + '%' : '—' },
-    ]);
-  };
-  grid.appendChild(kpiCard({
-    label: 'Operating Margin',
-    subtitle: 'Op Profit / Revenue',
-    value: opMargin != null ? `${opMargin.toFixed(1)}%` : '—',
-    variant: opMargin === null ? '' :
-      opMargin >= EXEC_T.opMargin.healthy ? 'success' :
-      opMargin >= EXEC_T.opMargin.watch   ? 'warning' : 'danger',
-    onClick: opMarginDrill,
-    delta: (cmpMetrics && opMargin != null) ? safePp(opMargin, cmpMetrics.opMargin) : null,
-    deltaIsPp: true, invertDelta: false, compLabel: cmpLabel
-  }));
-
-  // 5. Net Cash Flow — waterfall summary + capital outflows table
-  const netCashDrill = () => {
-    const summaryStyle = 'display:grid;grid-template-columns:1fr auto;gap:4px 24px;padding:12px 16px;background:var(--bg-elev-1);border-radius:var(--radius-sm);margin-bottom:16px;font-size:13px';
-    const mkRow = (label, value, bold, color) => [
-      el('span', { style: bold ? 'font-weight:600' : 'color:var(--text-muted)' }, label),
-      el('span', { style: `text-align:right;font-weight:${bold?'600':'400'};${color?'color:'+color:''}` }, value),
-    ];
-    const summary = el('div', { style: summaryStyle });
-    mkRow('Operating Cash Flow', formatEUR(opProfit)).forEach(n => summary.appendChild(n));
-    mkRow('CapEx Expenses', '− ' + formatEUR(capExFromExp)).forEach(n => summary.appendChild(n));
-    mkRow('Acquisitions', '− ' + formatEUR(capExFromAcq)).forEach(n => summary.appendChild(n));
-    mkRow('Net Cash Flow', formatEUR(netCash), true, netCash >= 0 ? 'var(--success)' : 'var(--danger)').forEach(n => summary.appendChild(n));
-
-    const outflowRows = [
-      ...drillExpRows(capExExpenses),
-      ...acquisitions.map(a => ({ date: a.date, source: a._name || '', category: 'Acquisition', description: a.description, eur: toEUR(a.amount, a.currency, a.date) })),
-    ].sort((a, b) => b.eur - a.eur);
-
-    const table = el('table', { class: 'table' });
-    table.appendChild(el('thead', {}, el('tr', {},
-      el('th', {}, 'Date'), el('th', {}, 'Category'), el('th', {}, 'Description'), el('th', { class: 'right' }, 'Amount'),
-    )));
-    const tbody = el('tbody');
-    outflowRows.length
-      ? outflowRows.forEach(r => tbody.appendChild(el('tr', {},
-          el('td', {}, fmtDate(r.date)), el('td', {}, r.category),
-          el('td', {}, r.description || r.source || '—'), el('td', { class: 'right num' }, formatEUR(r.eur)),
-        )))
-      : tbody.appendChild(el('tr', {}, el('td', { colspan: '4', style: 'text-align:center;padding:24px;color:var(--text-muted)' }, 'No capital outflows')));
-    table.appendChild(tbody);
-
+  // Total Revenue drill
+  const revDrill = () => {
     const body = el('div');
-    body.appendChild(summary);
-    if (outflowRows.length) body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px' }, `${outflowRows.length} capital outflow${outflowRows.length !== 1 ? 's' : ''}`));
-    body.appendChild(el('div', { class: 'table-wrap' }, table));
-    openModal({ title: 'Net Cash Flow', body, large: true });
+    body.appendChild(mkSummaryGrid([
+      { label: 'Rental Income',   value: formatEUR(propRev), sub: pct(propRev, totalRev) + ' of total' },
+      { label: 'Service Income',  value: formatEUR(svcRev),  sub: pct(svcRev,  totalRev) + ' of total' }
+    ]));
+    body.appendChild(mkSectionLabel('Revenue by Stream'));
+    const streamLabels = {
+      short_term_rental:  'Short-term Rental',
+      long_term_rental:   'Long-term Rental',
+      customer_success:   'Customer Success',
+      marketing_services: 'Marketing Services',
+    };
+    const streamRows = [...streamMap.entries()]
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => [
+        streamLabels[k] || k,
+        formatEUR(v),
+        pct(v, totalRev)
+      ]);
+    if (streamRows.length) {
+      body.appendChild(mkModalTable(['Stream', 'Revenue', '% of Total'], streamRows));
+    } else {
+      body.appendChild(mkEmptyState('No stream data available.'));
+    }
+    openModal({ title: `Total Revenue — ${formatEUR(totalRev)}`, body, large: true });
   };
-  grid.appendChild(kpiCard({
-    label: 'Net Cash Flow',
-    subtitle: 'Op Cash Flow minus Capital Deployed',
-    value: formatEUR(netCash),
-    variant: netCash >= 0 ? 'success' : 'danger',
-    onClick: netCashDrill,
-    delta: cmpMetrics ? safePct(netCash, cmpMetrics.netCash) : null,
-    invertDelta: false, compLabel: cmpLabel
-  }));
 
-  // 5a. Operating Cash Flow — monthly trend
-  const opCashFlowDrill = () => {
-    const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
-    const revByMonth = new Map(), opExByMonth = new Map();
-    payments.forEach(p  => { const mk = p.date?.slice(0,7);          if (mk) revByMonth.set(mk,  (revByMonth.get(mk)  || 0) + toEUR(p.amount, p.currency, p.date)); });
-    invoices.forEach(i  => { const mk = (i.issueDate||'').slice(0,7); if (mk) revByMonth.set(mk,  (revByMonth.get(mk)  || 0) + toEUR(i.total, i.currency, i.issueDate)); });
-    opExpenses.forEach(e => { const mk = e.date?.slice(0,7);          if (mk) opExByMonth.set(mk, (opExByMonth.get(mk) || 0) + toEUR(e.amount, e.currency, e.date)); });
-    const rows = months
-      .map(m => { const mRev = revByMonth.get(m.key)||0, mOpEx = opExByMonth.get(m.key)||0; return { month: m.label, mRev, mOpEx, mCF: mRev - mOpEx }; })
-      .filter(r => r.mRev > 0 || r.mOpEx > 0);
-    drillDownModal('Operating Cash Flow by Month', rows, [
-      { key: 'month', label: 'Month' },
-      { key: 'mRev',  label: 'Revenue',        right: true, format: v => formatEUR(v) },
-      { key: 'mOpEx', label: 'OpEx',           right: true, format: v => formatEUR(v) },
-      { key: 'mCF',   label: 'Op Cash Flow',   right: true, format: v => formatEUR(v) },
-    ]);
+  // P&L drill (cash position)
+  const cashDrill = () => {
+    const body = el('div');
+    body.appendChild(mkSummaryGrid([
+      { label: 'Total Revenue',   value: formatEUR(totalRev) },
+      { label: 'OpEx',            value: formatEUR(cur.opEx),    sub: 'Operating expenses' },
+      { label: 'CapEx',           value: formatEUR(cur.capEx),   sub: 'Capital expenses' },
+      { label: 'Net Cash Flow',   value: formatEUR(cashPos),     sub: cashPos >= 0 ? 'Positive' : 'Negative' }
+    ], 2));
+    openModal({ title: 'Cash Position Breakdown', body, large: false });
   };
-  grid.appendChild(kpiCard({
-    label: 'Operating Cash Flow',
-    subtitle: 'Revenue minus operating expenses',
-    value: formatEUR(opProfit),
-    variant: opProfit >= 0 ? 'success' : 'danger',
-    onClick: opCashFlowDrill,
-    delta: cmpMetrics ? safePct(opProfit, cmpMetrics.opProfit) : null,
-    invertDelta: false, compLabel: cmpLabel
-  }));
 
-  // 5b. Capital Deployed (CapEx expenses + property acquisitions)
-  const capDeployedRows = [
-    ...drillExpRows(capExExpenses),
-    ...acquisitions.map(a => ({
-      date: a.date, source: a._name || '',
-      category: 'Acquisition', description: a.description,
-      eur: toEUR(a.amount, a.currency, a.date)
-    }))
-  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  grid.appendChild(kpiCard({
-    label: 'Capital Deployed',
-    subtitle: `CapEx ${formatEUR(capExFromExp)} · Acquisitions ${formatEUR(capExFromAcq)}`,
-    value: formatEUR(capEx),
-    variant: capEx > 0 ? 'info' : '',
-    onClick: () => drillDownModal('Capital Deployed — CapEx & Acquisitions', capDeployedRows, EXP_COLS),
-    delta: cmpMetrics ? safePct(capEx, cmpMetrics.capEx) : null,
-    invertDelta: true, compLabel: cmpLabel
-  }));
-
-  // 6. Outstanding — current open invoices, no comparison delta (not range-limited)
-  grid.appendChild(kpiCard({
-    label: 'Outstanding',
-    subtitle: 'Unpaid service invoices',
-    value: formatEUR(outstandingTotal),
-    variant: outstandingTotal > 0 ? 'warning' : '',
-    onClick: () => drillDownModal('Outstanding Invoices', drillRevRows([], outstanding), REV_COLS),
-    delta: null, compLabel: ''
-  }));
-
-  // 7. Collection Rate — by client, worst collectors first
-  const collectionRateDrill = () => {
-    const { mStream, mOwner, mProperty } = makeMatchers(gF);
-    const allRangeInvs = listActive('invoices').filter(i =>
-      (i.issueDate || '') >= curRange.start && (i.issueDate || '') <= curRange.end &&
-      i.status !== 'cancelled' && i.status !== 'void' &&
-      mStream(i) && mOwner(i) && mProperty(i)
-    );
-    const clientMap = new Map();
-    allRangeInvs.forEach(i => {
-      const key = i.clientId || '__none';
-      const e = clientMap.get(key) || { invoiced: 0, collected: 0 };
-      const amt = toEUR(i.total, i.currency, i.issueDate);
-      e.invoiced += amt;
-      if (i.status === 'paid') e.collected += amt;
-      clientMap.set(key, e);
-    });
-    const rows = [...clientMap.entries()]
-      .map(([key, { invoiced, collected }]) => ({
-        client:      byId('clients', key)?.name || (key === '__none' ? 'No Client' : key),
-        invoiced,
-        collected,
-        outstanding: invoiced - collected,
-        rate:        invoiced > 0 ? (collected / invoiced) * 100 : null,
-      }))
-      .sort((a, b) => (a.rate ?? 101) - (b.rate ?? 101));
-    drillDownModal('Collection Rate by Client', rows, [
-      { key: 'client',      label: 'Client' },
-      { key: 'invoiced',    label: 'Invoiced',    right: true, format: v => formatEUR(v) },
-      { key: 'collected',   label: 'Collected',   right: true, format: v => formatEUR(v) },
-      { key: 'outstanding', label: 'Outstanding', right: true, format: v => formatEUR(v) },
-      { key: 'rate',        label: 'Rate',        right: true, format: v => v != null ? v.toFixed(1) + '%' : '—' },
-    ]);
+  // Top contributors drill
+  const contribDrill = () => {
+    const body = el('div');
+    if (!topContribs.length) {
+      body.appendChild(mkEmptyState('No revenue contributors found.'));
+    } else {
+      const rows = topContribs.slice(0, 10).map((c, i) => [
+        `#${i + 1}`,
+        c.name,
+        c.type,
+        formatEUR(c.eur),
+        pct(c.eur, totalRev)
+      ]);
+      body.appendChild(mkModalTable(['#', 'Name', 'Type', 'Revenue', 'Share'], rows));
+    }
+    openModal({ title: 'Top Revenue Contributors', body, large: true });
   };
+
+  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:16px' });
+
+  // ── Row 1: Revenue & Profit ────────────────────────────────────────────────
+
+  // 1. Total Revenue
   grid.appendChild(kpiCard({
-    label: 'Collection Rate',
-    subtitle: 'Paid invoices / total invoiced',
-    value: collectionRate != null ? `${collectionRate.toFixed(1)}%` : '—',
-    variant: collectionRate === null ? '' :
-      collectionRate >= EXEC_T.collectionRate.healthy ? 'success' :
-      collectionRate >= EXEC_T.collectionRate.watch   ? 'warning' : 'danger',
-    onClick: collectionRateDrill,
-    delta: (cmpMetrics && collectionRate != null && cmpMetrics.collectionRate != null)
-      ? safePp(collectionRate, cmpMetrics.collectionRate) : null,
-    deltaIsPp: true, invertDelta: false, compLabel: cmpLabel
+    label:    'Total Revenue',
+    value:    formatEUR(totalRev),
+    subtitle: `Rental ${pct(propRev, totalRev)} · Service ${pct(svcRev, totalRev)}`,
+    delta:    dRev,
+    compLabel: cl,
+    onClick:  revDrill
   }));
 
-  // 8. Expense Ratio
-  grid.appendChild(kpiCard({
-    label: 'Expense Ratio',
-    subtitle: 'OpEx / Revenue',
-    value: expenseRatio != null ? `${expenseRatio.toFixed(1)}%` : '—',
-    variant: expenseRatio === null ? '' :
-      expenseRatio < EXEC_T.expenseRatio.watch  ? 'success' :
-      expenseRatio < EXEC_T.expenseRatio.atRisk ? 'warning' : 'danger',
-    onClick: () => drillDownModal('Operating Expenses', drillExpRows(opExpenses), EXP_COLS),
-    delta: (cmpMetrics && expenseRatio != null) ? safePp(expenseRatio, cmpMetrics.expenseRatio) : null,
-    deltaIsPp: true, invertDelta: true, compLabel: cmpLabel
-  }));
+  // 2. Net Operating Profit
+  {
+    const margin = totalRev > 0 ? (netOpProfit / totalRev * 100) : null;
+    const variant = netOpProfit < 0 ? 'danger' : netOpProfit < totalRev * 0.1 ? 'warning' : '';
+    grid.appendChild(kpiCard({
+      label:    'Net Operating Profit',
+      value:    formatEUR(netOpProfit),
+      subtitle: margin !== null ? `Margin: ${margin.toFixed(1)}%` : 'No revenue',
+      delta:    dProfit,
+      compLabel: cl,
+      variant,
+      onClick: () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Revenue',         value: formatEUR(totalRev) },
+          { label: 'OpEx',            value: formatEUR(opEx) },
+          { label: 'Net Op. Profit',  value: formatEUR(netOpProfit), sub: margin !== null ? `${margin.toFixed(1)}% margin` : '' }
+        ], 1));
+        openModal({ title: 'Net Operating Profit', body, large: false });
+      }
+    }));
+  }
 
-  // 9. Open Forecast Pipeline — max(forecastRevenue − actualRevenue, 0)
-  const openFcPipeline = (fcRev != null && fcRev > 0) ? Math.max(fcRev - rev, 0) : 0;
+  // 3. Cash Position
+  {
+    const variant = cashPos < 0 ? 'danger' : cashPos < totalRev * 0.05 ? 'warning' : '';
+    grid.appendChild(kpiCard({
+      label:    'Cash Position',
+      value:    formatEUR(cashPos),
+      subtitle: `Net Cash Flow (Rev − All Exp)`,
+      delta:    dCash,
+      compLabel: cl,
+      variant,
+      onClick:  cashDrill
+    }));
+  }
+
+  // 4. Pending Pipeline
   grid.appendChild(kpiCard({
-    label: 'Open Forecast Pipeline',
-    subtitle: 'Forecast not yet realized',
-    value: formatEUR(openFcPipeline),
-    variant: openFcPipeline > 0 ? 'info' : '',
+    label:    'Pending Pipeline',
+    value:    formatEUR(pipeline),
+    subtitle: `${cur.pendingPayments.length} pending payment${cur.pendingPayments.length !== 1 ? 's' : ''}`,
+    variant:  'info',
     onClick: () => {
-      const { keys: fcMonths } = getMonthKeysForRange(curRange.start, curRange.end);
-      const monthKeySet = new Set(fcMonths.map(m => m.key));
-      const startY = parseInt(curRange.start.slice(0, 4));
-      const endY   = parseInt(curRange.end.slice(0, 4));
-
-      // Actual revenue by stream
-      const actByStream = new Map();
-      payments.forEach(p => {
-        const s = p.stream; if (!s) return;
-        actByStream.set(s, (actByStream.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
-      });
-      invoices.forEach(i => {
-        const s = i.stream; if (!s) return;
-        actByStream.set(s, (actByStream.get(s) || 0) + toEUR(i.total, i.currency, i.issueDate));
-      });
-
-      // Forecast revenue by stream (same filters as Executive)
-      const fcByStream = buildFilteredFcByStream(startY, endY, monthKeySet);
-
-      // All streams present in either actual or forecast data
-      const KNOWN_STREAMS = ['short_term_rental', 'long_term_rental', 'customer_success', 'marketing'];
-      const allStreams = new Set([...KNOWN_STREAMS, ...actByStream.keys(), ...fcByStream.keys()]);
-      const streamList = gF.streams.size > 0
-        ? [...allStreams].filter(s => gF.streams.has(s))
-        : [...allStreams];
-
-      const rows = streamList
-        .map(s => {
-          const fc  = fcByStream.get(s) || 0;
-          const act = actByStream.get(s) || 0;
-          if (fc === 0 && act === 0) return null;
-          const pipeline = Math.max(fc - act, 0);
-          const vari     = act - fc;
-          const varPct   = fc > 0 ? (vari / fc) * 100 : null;
-          const varSign  = vari >= 0 ? '+' : '-';
-          return {
-            stream:    STREAMS[s]?.label || s,
-            fcRev:     fc,
-            actRev:    act,
-            pipeline,
-            varStr:    varSign + formatEUR(Math.abs(vari)),
-            varPctStr: varPct === null
-              ? (act > 0 ? 'N/A' : '—')
-              : (varPct >= 0 ? '+' : '') + varPct.toFixed(1) + '%'
-          };
-        })
-        .filter(Boolean)
-        .sort((a, b) => b.fcRev - a.fcRev);
-
-      drillDownModal('Open Forecast Pipeline — by Stream', rows, OPEN_FC_COLS);
-    },
-    delta: null, compLabel: curRange.label || ''
+      const body = el('div');
+      if (!cur.pendingPayments.length) {
+        body.appendChild(mkEmptyState('No pending payments in this period.'));
+      } else {
+        const rows = cur.pendingPayments
+          .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+          .map(p => [
+            p.date || '—',
+            byId('properties', p.propertyId)?.name || '—',
+            formatEUR(toEUR(p.amount, p.currency, p.date))
+          ]);
+        body.appendChild(mkModalTable(['Date', 'Property', 'Amount'], rows));
+      }
+      openModal({ title: `Pending Pipeline — ${formatEUR(pipeline)}`, body, large: false });
+    }
   }));
 
-  // 10. Properties
-  const { filteredProperties, portfolioValueEUR } = curMetrics;
-  grid.appendChild(kpiCard({
-    label: 'Properties',
-    subtitle: 'Active portfolio units',
-    value: String(filteredProperties.length),
-    onClick: () => drillDownModal('Portfolio — Properties',
-      filteredProperties.map(p => ({
-        name:    p.name || '—',
-        type:    propTypeLabel(p.type),
-        status:  p.status || '—',
-        owner:   p.owner || 'both',
-        city:    p.city || '—',
-        country: p.country || '—',
-        eur:     p.purchasePrice > 0 ? toEUR(p.purchasePrice, p.currency || 'EUR', p.purchaseDate) : 0
-      })),
-      PROP_COLS),
-    delta: null, compLabel: ''
-  }));
+  // ── Row 2: Operations Health ───────────────────────────────────────────────
 
-  // 11. Portfolio Value
-  grid.appendChild(kpiCard({
-    label: 'Portfolio Value',
-    subtitle: 'Purchase value / book value',
-    value: portfolioValueEUR > 0 ? formatEUR(portfolioValueEUR) : '—',
-    onClick: () => drillDownModal('Portfolio Value',
-      filteredProperties
-        .filter(p => p.purchasePrice > 0)
-        .map(p => ({
-          name:      p.name || '—',
-          type:      propTypeLabel(p.type),
-          status:    p.status || '—',
-          owner:     p.owner || 'both',
-          purchDate: p.purchaseDate || '—',
-          price:     p.purchasePrice,
-          currency:  p.currency || 'EUR',
-          eur:       toEUR(p.purchasePrice, p.currency || 'EUR', p.purchaseDate)
-        }))
-        .sort((a, b) => (b.eur || 0) - (a.eur || 0)),
-      PORTVAL_COLS),
-    delta: null, compLabel: ''
-  }));
+  // 5. Collection Rate
+  {
+    let variant = '';
+    if (collectionRate !== null) {
+      variant = collectionRate < 60 ? 'danger' : collectionRate < 80 ? 'warning' : 'success';
+    }
+    grid.appendChild(kpiCard({
+      label:    'Collection Rate',
+      value:    collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—',
+      subtitle: cur.invoicedTotal > 0 ? `${formatEUR(cur.paidInvTotal)} paid of ${formatEUR(cur.invoicedTotal)} invoiced` : 'No invoices',
+      delta:    dCollect,
+      deltaIsPp: true,
+      compLabel: cl,
+      variant,
+      onClick: () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Paid',        value: formatEUR(cur.paidInvTotal) },
+          { label: 'Outstanding', value: formatEUR(cur.outTotal) },
+          { label: 'Invoiced',    value: formatEUR(cur.invoicedTotal) },
+          { label: 'Rate',        value: collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—' }
+        ]));
+        openModal({ title: 'Collection Rate', body, large: false });
+      }
+    }));
+  }
+
+  // 6. Expense Ratio
+  {
+    let variant = '';
+    if (expenseRatio !== null) {
+      variant = expenseRatio > 80 ? 'danger' : expenseRatio > 60 ? 'warning' : 'success';
+    }
+    grid.appendChild(kpiCard({
+      label:    'Expense Ratio',
+      value:    expenseRatio !== null ? `${expenseRatio.toFixed(1)}%` : '—',
+      subtitle: `OpEx ÷ Revenue`,
+      delta:    dExpR,
+      deltaIsPp: true,
+      invertDelta: true,
+      compLabel: cl,
+      variant,
+      onClick: () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Total Revenue', value: formatEUR(totalRev) },
+          { label: 'OpEx',          value: formatEUR(opEx) },
+          { label: 'CapEx',         value: formatEUR(cur.capEx) },
+          { label: 'Expense Ratio', value: expenseRatio !== null ? `${expenseRatio.toFixed(1)}%` : '—' }
+        ]));
+        openModal({ title: 'Expense Ratio', body, large: false });
+      }
+    }));
+  }
+
+  // 7. Top Revenue Source (composite)
+  {
+    const top3 = topContribs.slice(0, 3);
+    grid.appendChild(compositeKpiCard({
+      label:  'Top Revenue Source',
+      value:  topContribs[0]?.name || '—',
+      subtitle: topContribs[0] ? `${pct(topContribs[0].eur, totalRev)} of total revenue` : 'No data',
+      onClick: contribDrill,
+      lines: top3.map((c, i) => ({
+        label: `#${i + 1} ${c.type}`,
+        value: c.name,
+        pct:   pct(c.eur, totalRev)
+      }))
+    }));
+  }
+
+  // 8. Overdue Invoices
+  {
+    const variant = overdueCount > 0 ? 'danger' : 'success';
+    grid.appendChild(kpiCard({
+      label:    'Overdue Invoices',
+      value:    overdueCount > 0 ? formatEUR(overdueEur) : '€0',
+      subtitle: overdueCount > 0 ? `${overdueCount} invoice${overdueCount !== 1 ? 's' : ''} overdue` : 'All clear',
+      variant,
+      onClick:  overdrueDrill
+    }));
+  }
 
   return grid;
 }
 
-// ── Chart section builder helpers ────────────────────────────────────────────
-function makeChartSection(title, panels) {
-  const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, title)
-  ));
-  const grid = el('div', {
-    style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:0 16px 16px'
-  });
-  for (const [panelTitle, canvasId, opts] of panels) {
-    const panel = el('div');
-    const labelRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:8px' },
-      el('div', { class: 'kpi-label' }, panelTitle)
-    );
-    if (opts?.isDoughnut) {
-      const btn = el('button', { style: 'background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:11px;cursor:pointer;padding:2px 6px;line-height:1' }, '%');
-      btn.onclick = () => { const sp = charts.toggleDoughnutPct(canvasId); btn.textContent = sp ? '€' : '%'; };
-      labelRow.appendChild(btn);
-    }
-    panel.appendChild(labelRow);
-    panel.appendChild(el('div', { class: 'chart-wrap' }, el('canvas', { id: canvasId })));
-    grid.appendChild(panel);
-  }
-  card.appendChild(grid);
-  return card;
-}
+// ── Insights Banner ───────────────────────────────────────────────────────────
+function buildInsights(cur, cmp, cmpRange, start, end) {
+  const { totalRev, expenseRatio, overdueCount, overdueEur } = cur;
 
-// ── Monthly data aggregation ─────────────────────────────────────────────────
-function buildMonthlyMaps(data) {
-  const revMap = new Map();
-  const opExMap = new Map();
-  const capExMap = new Map();
-
-  data.payments.forEach(p => {
-    const mk = p.date?.slice(0,7);
-    if (mk) revMap.set(mk, (revMap.get(mk) || 0) + toEUR(p.amount, p.currency, p.date));
-  });
-  data.invoices.forEach(i => {
-    const mk = (i.issueDate || '').slice(0,7);
-    if (mk) revMap.set(mk, (revMap.get(mk) || 0) + toEUR(i.total, i.currency, i.issueDate));
-  });
-  data.opExpenses.forEach(e => {
-    const mk = e.date?.slice(0,7);
-    if (mk) opExMap.set(mk, (opExMap.get(mk) || 0) + toEUR(e.amount, e.currency, e.date));
-  });
-  data.capExExpenses.forEach(e => {
-    const mk = e.date?.slice(0,7);
-    if (mk) capExMap.set(mk, (capExMap.get(mk) || 0) + toEUR(e.amount, e.currency, e.date));
-  });
-  data.acquisitions.forEach(a => {
-    const mk = a.date?.slice(0,7);
-    if (mk) capExMap.set(mk, (capExMap.get(mk) || 0) + toEUR(a.amount, a.currency, a.date));
-  });
-  return { revMap, opExMap, capExMap };
-}
-
-// ── All chart renderers ───────────────────────────────────────────────────────
-function renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmpRange) {
-  const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
-  if (!months.length) return;
-
-  const labels = months.map(m => m.label);
-  const { revMap, opExMap, capExMap } = buildMonthlyMaps(curData);
-
-  const revData  = months.map(m => Math.round(revMap.get(m.key)  || 0));
-  const opExData = months.map(m => Math.round(opExMap.get(m.key) || 0));
-  const capExData= months.map(m => Math.round(capExMap.get(m.key)|| 0));
-  const profData = months.map((m, i) => revData[i] - opExData[i]);
-
-  // Comparison monthly maps
-  let cmpRevArr = null, cmpProfArr = null;
-  if (cmpData && cmpRange) {
-    const cm = buildMonthlyMaps(cmpData);
-    const { keys: cmpMonths } = getMonthKeysForRange(cmpRange.start, cmpRange.end);
-    cmpRevArr  = months.map((_, i) => Math.round(cm.revMap.get(cmpMonths[i]?.key) || 0));
-    const cmpOpEx = months.map((_, i) => Math.round(cm.opExMap.get(cmpMonths[i]?.key) || 0));
-    cmpProfArr = months.map((_, i) => cmpRevArr[i] - cmpOpEx[i]);
-  }
-
-  // Forecast monthly map — filtered, matches active Executive filters
-  const fcMap = curMetrics.fcMonthlyRev && curMetrics.fcMonthlyRev.size > 0
-    ? curMetrics.fcMonthlyRev : null;
-
-  // ── Chart click helpers ───────────────────────────────────────────────────
-  // Revenue stream breakdown for a given month key
-  const monthStreamDrill = (mk, mLabel) => {
-    const mPays = curData.payments.filter(p => p.date?.slice(0,7) === mk);
-    const mInvs = curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk);
-    const mRev  = mPays.reduce((s,p) => s + toEUR(p.amount, p.currency, p.date), 0)
-                + mInvs.reduce((s,i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-    const sMap = new Map();
-    mPays.forEach(p => { const s = resolveStream(p)||'__other'; sMap.set(s, (sMap.get(s)||0) + toEUR(p.amount, p.currency, p.date)); });
-    mInvs.forEach(i => { const s = resolveStream(i)||'__other'; sMap.set(s, (sMap.get(s)||0) + toEUR(i.total, i.currency, i.issueDate)); });
-    const rows = [...sMap.entries()].sort((a,b) => b[1]-a[1])
-      .map(([k,eur]) => ({ stream: STREAMS[k]?.label||(k==='__other'?'Unclassified':k), eur, pct: mRev>0?(eur/mRev)*100:0 }));
-    drillDownModal(`${mLabel} — Revenue by Stream`, rows, [
-      { key: 'stream', label: 'Stream' },
-      { key: 'eur',    label: 'Amount',     right: true, format: v => formatEUR(v) },
-      { key: 'pct',    label: '% of Total', right: true, format: v => v.toFixed(1)+'%' },
-    ]);
-  };
-
-  // Mini P&L modal for a given month key
-  const monthProfitDrill = (mk, mLabel) => {
-    const mPays = curData.payments.filter(p => p.date?.slice(0,7) === mk);
-    const mInvs = curData.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk);
-    const mExp  = curData.opExpenses.filter(e => e.date?.slice(0,7) === mk);
-    const mRev    = mPays.reduce((s,p) => s + toEUR(p.amount, p.currency, p.date), 0)
-                  + mInvs.reduce((s,i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-    const mOpEx   = mExp.reduce((s,e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    const mProfit = mRev - mOpEx;
-    const mMargin = mRev > 0 ? (mProfit / mRev) * 100 : null;
-    const catMap  = new Map();
-    mExp.forEach(e => { const c = e.costCategory||e.category||'Other'; catMap.set(c, (catMap.get(c)||0) + toEUR(e.amount, e.currency, e.date)); });
-    const catRows = [...catMap.entries()].sort((a,b) => b[1]-a[1])
-      .map(([cat,eur]) => ({ cat, eur, pct: mOpEx>0?(eur/mOpEx)*100:0 }));
-    const SS = 'display:grid;grid-template-columns:1fr auto;gap:4px 24px;padding:12px 16px;background:var(--bg-elev-1);border-radius:var(--radius-sm);margin-bottom:16px;font-size:13px';
-    const mkR = (label, value, bold, color) => [
-      el('span', { style: bold ? 'font-weight:600' : 'color:var(--text-muted)' }, label),
-      el('span', { style: `text-align:right;font-weight:${bold?'600':'400'};${color?'color:'+color:''}` }, value),
-    ];
-    const summary = el('div', { style: SS });
-    mkR('Revenue', formatEUR(mRev)).forEach(n => summary.appendChild(n));
-    mkR('Operating Expenses', '− ' + formatEUR(mOpEx)).forEach(n => summary.appendChild(n));
-    mkR(`Operating Profit${mMargin!=null?' ('+mMargin.toFixed(1)+'%)':''}`, formatEUR(mProfit), true, mProfit>=0?'var(--success)':'var(--danger)').forEach(n => summary.appendChild(n));
-    const table = el('table', { class: 'table' });
-    table.appendChild(el('thead', {}, el('tr', {}, el('th',{},'Category'), el('th',{class:'right'},'Amount'), el('th',{class:'right'},'% OpEx'))));
-    const tbody = el('tbody');
-    catRows.forEach(({cat,eur,pct}) => tbody.appendChild(el('tr',{}, el('td',{},cat), el('td',{class:'right num'},formatEUR(eur)), el('td',{class:'right num'},pct.toFixed(1)+'%'))));
-    if (!catRows.length) tbody.appendChild(el('tr',{},el('td',{colspan:'3',style:'text-align:center;padding:24px;color:var(--text-muted)'},'No expenses')));
-    table.appendChild(tbody);
-    const body = el('div'); body.appendChild(summary); body.appendChild(el('div',{class:'table-wrap'},table));
-    openModal({ title: `${mLabel} — Operating Profit`, body, large: true });
-  };
-
-  // ── Section 1: Business Trends ───────────────────────────────────────────
-  // exec-trend-rev
-  {
-    const datasets = [{
-      label: 'Revenue', data: revData,
-      borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.08)', fill: true
-    }];
-    if (fcMap) {
-      const fcArr = months.map(m => Math.round(fcMap.get(m.key) || 0));
-      if (fcArr.some(v => v > 0)) {
-        datasets.push({ label: 'Forecast', data: fcArr, borderColor: '#6366f1', backgroundColor: 'transparent', borderDash: [4,4], fill: false });
-      }
-    }
-    if (cmpRevArr) {
-      datasets.push({ label: `Rev (${cmpRange.label})`, data: cmpRevArr, borderColor: '#6b7280', backgroundColor: 'transparent', borderDash: [4,4], fill: false });
-    }
-    if (datasets[0].data.some(v => v > 0) || datasets.length > 1) {
-      charts.line('exec-trend-rev', {
-        labels, datasets,
-        onClickItem: (label, idx) => {
-          const mk = months[idx]?.key; if (!mk) return;
-          monthStreamDrill(mk, months[idx].label);
-        }
-      });
-    }
-  }
-
-  // exec-trend-profit
-  {
-    const datasets = [{
-      label: 'Op. Profit', data: profData,
-      borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.08)', fill: true
-    }];
-    if (cmpProfArr) {
-      datasets.push({ label: `Profit (${cmpRange.label})`, data: cmpProfArr, borderColor: '#6b7280', backgroundColor: 'transparent', borderDash: [4,4], fill: false });
-    }
-    if (datasets[0].data.some(v => v !== 0)) {
-      charts.line('exec-trend-profit', {
-        labels, datasets,
-        onClickItem: (label, idx) => {
-          const mk = months[idx]?.key; if (!mk) return;
-          monthProfitDrill(mk, months[idx].label);
-        }
-      });
-    }
-  }
-
-  // ── Section 2: Growth & Mix ──────────────────────────────────────────────
-  // exec-rev-growth (YoY monthly growth %)
-  {
-    // Build all-time revenue map (no date filter, but stream/owner/property filtered)
-    const allRevMap = new Map();
-    listActivePayments().filter(p => {
-      if (p.status !== 'paid') return false;
-      if (gF.streams.size > 0 && p.stream && !gF.streams.has(p.stream)) return false;
-      if (gF.owners.size > 0 && p.propertyId) {
-        const prop = byId('properties', p.propertyId);
-        const ow = prop?.owner || 'both';
-        if (ow !== 'both' && !gF.owners.has(ow)) return false;
-      }
-      if (gF.propertyIds.size > 0 && p.propertyId && !gF.propertyIds.has(p.propertyId)) return false;
-      return true;
-    }).forEach(p => {
-      const mk = p.date?.slice(0,7);
-      if (mk) allRevMap.set(mk, (allRevMap.get(mk) || 0) + toEUR(p.amount, p.currency, p.date));
-    });
-    listActive('invoices').filter(i => {
-      if (i.status !== 'paid') return false;
-      if (gF.streams.size > 0 && i.stream && !gF.streams.has(i.stream)) return false;
-      if (gF.owners.size > 0 && i.propertyId) {
-        const prop = byId('properties', i.propertyId);
-        const ow = prop?.owner || 'both';
-        if (ow !== 'both' && !gF.owners.has(ow)) return false;
-      }
-      if (gF.propertyIds.size > 0 && i.propertyId && !gF.propertyIds.has(i.propertyId)) return false;
-      return true;
-    }).forEach(i => {
-      const mk = (i.issueDate || '').slice(0,7);
-      if (mk) allRevMap.set(mk, (allRevMap.get(mk) || 0) + toEUR(i.total, i.currency, i.issueDate));
-    });
-
-    const growthData = months.map(m => {
-      const curRev = allRevMap.get(m.key) || 0;
-      const prevKey = `${String(parseInt(m.key.slice(0,4)) - 1)}-${m.key.slice(5,7)}`;
-      const prevRev = allRevMap.get(prevKey);
-      if (prevRev === undefined || prevRev === null) return null;
-      if (prevRev === 0) return null;
-      const g = ((curRev - prevRev) / Math.abs(prevRev)) * 100;
-      return isFinite(g) ? Math.round(g * 10) / 10 : null;
-    });
-
-    if (growthData.some(v => v !== null)) {
-      charts.bar('exec-rev-growth', {
-        labels,
-        datasets: [{
-          label: 'YoY Revenue Growth %',
-          data: growthData.map(v => v ?? 0),
-          backgroundColor: growthData.map(v => v === null ? '#6b7280' : v >= 0 ? '#10b981' : '#ef4444')
-        }],
-        onClickItem: (label, idx) => {
-          const mk = months[idx]?.key; if (!mk) return;
-          const curRev  = allRevMap.get(mk) || 0;
-          const prevKey = `${String(parseInt(mk.slice(0,4))-1)}-${mk.slice(5,7)}`;
-          const prevRev = allRevMap.get(prevKey);
-          const delta   = (prevRev != null && prevRev > 0) ? ((curRev-prevRev)/prevRev)*100 : null;
-          const rows = [
-            { period: months[idx].label,                                 eur: curRev },
-            { period: `${months[idx].label.slice(0,-4)}${parseInt(mk.slice(0,4))-1} (prior year)`, eur: prevRev ?? null },
-          ];
-          if (delta !== null) rows.push({ period: 'YoY Growth', eur: null, growthStr: (delta>=0?'+':'')+delta.toFixed(1)+'%' });
-          drillDownModal(`${months[idx].label} — YoY Comparison`, rows, [
-            { key: 'period',    label: 'Period' },
-            { key: 'eur',       label: 'Revenue', right: true, format: v => v != null ? formatEUR(v) : '—' },
-            { key: 'growthStr', label: 'Growth',  right: true, format: v => v || '' },
-          ]);
-        }
-      });
-    }
-  }
-
-  // exec-opex-capex (stacked bar)
-  if (opExData.some(v => v > 0) || capExData.some(v => v > 0)) {
-    charts.bar('exec-opex-capex', {
-      labels,
-      stacked: true,
-      datasets: [
-        { label: 'OpEx', data: opExData, backgroundColor: '#ef4444' },
-        { label: 'CapEx', data: capExData, backgroundColor: '#f59e0b' }
-      ],
-      onClickItem: (label, idx, dsIdx) => {
-        const mk = months[idx]?.key; if (!mk) return;
-        const mLabel = months[idx].label;
-        if (dsIdx === 1) {
-          // CapEx: waterfall (CapEx expenses + acquisitions)
-          const mCapEx = curData.capExExpenses.filter(e => e.date?.slice(0,7) === mk);
-          const mAcq   = curData.acquisitions.filter(a => a.date?.slice(0,7) === mk);
-          const rows   = [
-            ...drillExpRows(mCapEx),
-            ...mAcq.map(a => ({ date: a.date, source: a._name||'', category: 'Acquisition', description: a.description, eur: toEUR(a.amount, a.currency, a.date) }))
-          ].sort((a,b) => b.eur - a.eur);
-          drillDownModal(`${mLabel} — CapEx & Acquisitions`, rows, EXP_COLS);
-        } else {
-          // OpEx: category breakdown
-          const mExp  = curData.opExpenses.filter(e => e.date?.slice(0,7) === mk);
-          const mOpEx = mExp.reduce((s,e) => s + toEUR(e.amount, e.currency, e.date), 0);
-          const catMap = new Map();
-          mExp.forEach(e => { const c = e.costCategory||e.category||'Other'; catMap.set(c, (catMap.get(c)||0) + toEUR(e.amount, e.currency, e.date)); });
-          const rows = [...catMap.entries()].sort((a,b) => b[1]-a[1])
-            .map(([cat,eur]) => ({ cat, eur, pct: mOpEx>0?(eur/mOpEx)*100:0 }));
-          drillDownModal(`${mLabel} — OpEx by Category`, rows, [
-            { key: 'cat', label: 'Category' },
-            { key: 'eur', label: 'Amount',    right: true, format: v => formatEUR(v) },
-            { key: 'pct', label: '% of OpEx', right: true, format: v => v.toFixed(1)+'%' },
-          ]);
-        }
-      }
-    });
-  }
-
-  // exec-rev-vs-profit (grouped bar)
-  if (revData.some(v => v > 0) || profData.some(v => v !== 0)) {
-    charts.bar('exec-rev-vs-profit', {
-      labels,
-      datasets: [
-        { label: 'Revenue', data: revData, backgroundColor: '#10b981' },
-        { label: 'Op. Profit', data: profData, backgroundColor: '#3b82f6' }
-      ],
-      onClickItem: (label, idx, dsIdx) => {
-        const mk = months[idx]?.key; if (!mk) return;
-        if (dsIdx === 0) monthStreamDrill(mk, months[idx].label);
-        else             monthProfitDrill(mk, months[idx].label);
-      }
-    });
-  }
-
-  // ── Section 4: Composition ───────────────────────────────────────────────
-  // exec-kd-rev-stream
-  {
-    const revByStream = new Map();
-    const streamPays = new Map();
-    const streamInvs = new Map();
-    curData.payments.forEach(p => {
-      const s = p.stream || 'other';
-      revByStream.set(s, (revByStream.get(s) || 0) + toEUR(p.amount, p.currency, p.date));
-      if (!streamPays.has(s)) streamPays.set(s, []);
-      streamPays.get(s).push(p);
-    });
-    curData.invoices.forEach(i => {
-      const s = i.stream || 'other';
-      revByStream.set(s, (revByStream.get(s) || 0) + toEUR(i.total, i.currency, i.issueDate));
-      if (!streamInvs.has(s)) streamInvs.set(s, []);
-      streamInvs.get(s).push(i);
-    });
-    const entries = [...revByStream.entries()].filter(([,v]) => v > 0);
-    if (entries.length) {
-      charts.doughnut('exec-kd-rev-stream', {
-        labels: entries.map(([k]) => STREAMS[k]?.label || k),
-        data:   entries.map(([,v]) => Math.round(v)),
-        colors: entries.map(([k]) => STREAMS[k]?.color || '#8b93b0'),
-        onClickItem: (label, idx) => {
-          const [sk] = entries[idx];
-          const sPays = streamPays.get(sk) || [], sInvs = streamInvs.get(sk) || [];
-          const streamTotal = sPays.reduce((s,p) => s + toEUR(p.amount, p.currency, p.date), 0)
-                            + sInvs.reduce((s,i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-          const entityMap = new Map();
-          sPays.forEach(p => {
-            const key = p.propertyId || '__unknown';
-            const e = entityMap.get(key) || { name: byId('properties', p.propertyId)?.name || 'Unknown Property', eur: 0 };
-            e.eur += toEUR(p.amount, p.currency, p.date);
-            entityMap.set(key, e);
-          });
-          sInvs.forEach(i => {
-            const key = 'c_' + (i.clientId || '__unknown');
-            const e = entityMap.get(key) || { name: byId('clients', i.clientId)?.name || 'Unknown Client', eur: 0 };
-            e.eur += toEUR(i.total, i.currency, i.issueDate);
-            entityMap.set(key, e);
-          });
-          const rows = [...entityMap.values()].sort((a,b) => b.eur-a.eur)
-            .map(e => ({ ...e, pct: streamTotal>0?(e.eur/streamTotal)*100:0 }));
-          drillDownModal(`${label} — Revenue by Source`, rows, [
-            { key: 'name', label: 'Property / Client' },
-            { key: 'eur',  label: 'Amount',      right: true, format: v => formatEUR(v) },
-            { key: 'pct',  label: '% of Stream',  right: true, format: v => v.toFixed(1)+'%' },
-          ]);
-        }
-      });
-    }
-  }
-
-  // exec-rev-conc (top entities by revenue)
-  {
-    const entityMap = new Map();
-    curData.payments.forEach(p => {
-      const prop = p.propertyId ? byId('properties', p.propertyId) : null;
-      const key = p.propertyId || 'unknown';
-      const name = prop?.name || p.propertyId || 'Unknown';
-      const e = entityMap.get(key) || { name, pays: [], invs: [], rev: 0 };
-      e.rev += toEUR(p.amount, p.currency, p.date);
-      e.pays.push(p);
-      entityMap.set(key, e);
-    });
-    curData.invoices.forEach(i => {
-      const client = i.clientId ? byId('clients', i.clientId) : null;
-      const key = i.clientId || 'unknown';
-      const name = client?.name || i.clientId || 'Unknown';
-      const e = entityMap.get(key) || { name, pays: [], invs: [], rev: 0 };
-      e.rev += toEUR(i.total, i.currency, i.issueDate);
-      e.invs.push(i);
-      entityMap.set(key, e);
-    });
-    const sorted = [...entityMap.values()].sort((a,b) => b.rev - a.rev);
-    const top5 = sorted.slice(0, 5);
-    const other = sorted.slice(5).reduce((s,e) => s + e.rev, 0);
-    const dLabels = top5.map(e => e.name);
-    const dData   = top5.map(e => Math.round(e.rev));
-    const dColors = ['#8b5cf6','#10b981','#3b82f6','#f59e0b','#ec4899'];
-    if (other > 0) { dLabels.push('Other'); dData.push(Math.round(other)); dColors.push('#8b93b0'); }
-    if (dData.some(v => v > 0)) {
-      charts.doughnut('exec-rev-conc', {
-        labels: dLabels, data: dData, colors: dColors,
-        onClickItem: (label, idx) => {
-          if (idx >= top5.length) return;
-          const entity = top5[idx];
-          const monthlyRows = months.map(m => {
-            const eur = entity.pays.filter(p => p.date?.slice(0,7) === m.key).reduce((s,p) => s + toEUR(p.amount, p.currency, p.date), 0)
-                      + entity.invs.filter(i => (i.issueDate||'').slice(0,7) === m.key).reduce((s,i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-            return { month: m.label, eur };
-          }).filter(r => r.eur > 0);
-          drillDownModal(`${label} — Monthly Revenue`, monthlyRows, [
-            { key: 'month', label: 'Month' },
-            { key: 'eur',   label: 'Revenue', right: true, format: v => formatEUR(v) },
-          ]);
-        }
-      });
-    }
-  }
-
-  // ── Section 3: Outstanding & Cash ────────────────────────────────────────
-  // exec-outstanding-aging
-  {
-    const buckets = [0, 0, 0, 0];
-    curMetrics.outstanding.forEach(i => {
-      const days = Math.floor((Date.now() - new Date(i.issueDate).getTime()) / 86400000);
-      const eur  = toEUR(i.total, i.currency, i.issueDate);
-      if (days <= 30) buckets[0] += eur;
-      else if (days <= 60) buckets[1] += eur;
-      else if (days <= 90) buckets[2] += eur;
-      else buckets[3] += eur;
-    });
-    if (buckets.some(v => v > 0)) {
-      const agingRanges = [[0,30],[31,60],[61,90],[91,Infinity]];
-      const agingLabels = ['Current (0-30d)', '31-60 days', '61-90 days', '90+ days'];
-      charts.bar('exec-outstanding-aging', {
-        labels: agingLabels,
-        horizontal: true,
-        datasets: [{
-          label: 'Outstanding',
-          data: buckets.map(v => Math.round(v)),
-          backgroundColor: ['#3b82f6','#f59e0b','#f59e0b','#ef4444']
-        }],
-        onClickItem: (label, idx) => {
-          const [minDays, maxDays] = agingRanges[idx];
-          const filtered = curMetrics.outstanding.filter(i => {
-            const days = Math.floor((Date.now() - new Date(i.issueDate).getTime()) / 86400000);
-            return days >= minDays && days <= maxDays;
-          });
-          drillDownModal(`Outstanding — ${agingLabels[idx]}`, drillRevRows([], filtered), REV_COLS);
-        }
-      });
-    }
-  }
-
-}
-
-// ── Executive Insights ────────────────────────────────────────────────────────
-function buildPerformanceInsights(curData, curMetrics, cmpMetrics, curRange) {
   const section = el('div', { class: 'card mb-16' });
   section.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Executive Insights')
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
 
-  const signals = []; // { title, text, severity: 'At Risk'|'Watch', inspect, onClick }
+  const insights = [];
 
-  // Revenue concentration
-  const entityMap = new Map();
-  curData.payments.forEach(p => {
-    const prop = p.propertyId ? byId('properties', p.propertyId) : null;
-    const key = p.propertyId || 'unknown';
-    const e = entityMap.get(key) || { name: prop?.name || key, rev: 0, pays: [], invs: [] };
-    e.rev += toEUR(p.amount, p.currency, p.date);
-    e.pays.push(p);
-    entityMap.set(key, e);
-  });
-  curData.invoices.forEach(i => {
-    const client = i.clientId ? byId('clients', i.clientId) : null;
-    const key = i.clientId || 'unknown-client';
-    const e = entityMap.get(key) || { name: client?.name || key, rev: 0, pays: [], invs: [] };
-    e.rev += toEUR(i.total, i.currency, i.issueDate);
-    e.invs.push(i);
-    entityMap.set(key, e);
-  });
-  const entities = [...entityMap.values()].sort((a,b) => b.rev - a.rev);
-  const totalRev = entities.reduce((s, e) => s + e.rev, 0);
-  if (entities.length > 0 && totalRev > 0) {
-    const top = entities[0];
-    const topPct = (top.rev / totalRev) * 100;
-    if (topPct >= EXEC_T.revConc.atRisk) {
-      signals.push({
-        title: 'Revenue Concentration Risk',
-        text: `Top revenue source (${top.name}) contributes ${topPct.toFixed(0)}% of revenue — high dependency on a single source.`,
-        severity: 'At Risk',
-        inspect: 'Revenue Dashboard',
-        onClick: () => drillDownModal(`${top.name} — Revenue`, drillRevRows(top.pays, top.invs), REV_COLS)
-      });
-    } else if (topPct >= EXEC_T.revConc.watch) {
-      signals.push({
-        title: 'Revenue Concentration',
-        text: `${top.name} contributes ${topPct.toFixed(0)}% of revenue (${formatEUR(top.rev)}).`,
-        severity: 'Watch',
-        inspect: 'Revenue Dashboard',
-        onClick: () => drillDownModal(`${top.name} — Revenue`, drillRevRows(top.pays, top.invs), REV_COLS)
+  // 1. Revenue vs prior period
+  if (cmp && cmpRange) {
+    const delta = safePct(totalRev, cmp.totalRev);
+    if (delta !== null) {
+      const sign = delta > 0 ? '+' : '';
+      const icon = delta > 5 ? '📈' : delta < -5 ? '📉' : '➡️';
+      const color = delta > 0 ? 'var(--success, #22c55e)' : delta < 0 ? 'var(--danger, #ef4444)' : 'var(--text-muted)';
+      const bg    = delta > 0 ? 'rgba(34,197,94,0.06)' : delta < 0 ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.04)';
+      insights.push({ icon, color, bg,
+        title: 'Revenue vs Prior Period',
+        body: `Revenue ${sign}${delta.toFixed(1)}% vs ${cmpRange.label} — ${formatEUR(cmp.totalRev)} → ${formatEUR(totalRev)}.`
       });
     }
   }
 
-  // Cost pressure
-  if (curMetrics.expenseRatio != null && curMetrics.expenseRatio > EXEC_T.expenseRatio.watch) {
-    signals.push({
-      title: 'Cost Pressure',
-      text: `Expense ratio is ${curMetrics.expenseRatio.toFixed(1)}% (OpEx/Revenue).${curMetrics.expenseRatio > EXEC_T.expenseRatio.atRisk ? ' Costs are consuming most of revenue.' : ' Costs are elevated.'}`,
-      severity: curMetrics.expenseRatio > EXEC_T.expenseRatio.atRisk ? 'At Risk' : 'Watch',
-      inspect: 'Expenses Dashboard',
-      onClick: () => drillDownModal('Operating Expenses', drillExpRows(curData.opExpenses), EXP_COLS)
+  // 2. Expense Ratio trend
+  if (expenseRatio !== null) {
+    const trend = cmp?.expenseRatio != null
+      ? expenseRatio - cmp.expenseRatio
+      : null;
+    const color = expenseRatio > 80 ? 'var(--danger, #ef4444)' : expenseRatio > 60 ? 'var(--warning, #f59e0b)' : 'var(--success, #22c55e)';
+    const bg    = expenseRatio > 80 ? 'rgba(239,68,68,0.06)' : expenseRatio > 60 ? 'rgba(245,158,11,0.06)' : 'rgba(34,197,94,0.06)';
+    const icon  = expenseRatio > 80 ? '🔴' : expenseRatio > 60 ? '🟡' : '🟢';
+    let trendStr = '';
+    if (trend !== null) {
+      const improving = trend < 0;
+      trendStr = ` ${improving ? '(improving)' : '(worsening)'} by ${Math.abs(trend).toFixed(1)} pp vs ${cmpRange?.label || 'prior period'}.`;
+    }
+    insights.push({ icon, color, bg,
+      title: 'Expense Ratio',
+      body: `OpEx is ${expenseRatio.toFixed(1)}% of revenue.${trendStr} ${expenseRatio > 80 ? 'High expense burden — review costs.' : expenseRatio > 60 ? 'Moderate expenses — monitor trend.' : 'Healthy expense level.'}`
     });
   }
 
-  // Outstanding risk — overdue then ratio-based
-  if (curMetrics.outstandingTotal > 0) {
-    const overdueCount = curMetrics.outstanding.filter(i => {
-      const days = Math.floor((Date.now() - new Date(i.issueDate).getTime()) / 86400000);
-      return days > 60;
-    }).length;
-    const onClickOutstanding = () => drillDownModal('Outstanding Invoices', drillRevRows([], curMetrics.outstanding), REV_COLS);
-    if (overdueCount > 0) {
-      signals.push({
-        title: 'Outstanding Risk',
-        text: `${overdueCount} invoice${overdueCount > 1 ? 's' : ''} overdue 60+ days. Total outstanding: ${formatEUR(curMetrics.outstandingTotal)}.`,
-        severity: 'At Risk',
-        inspect: 'Services Dashboard',
-        onClick: onClickOutstanding
-      });
-    } else if (curMetrics.rev > 0) {
-      const outRatio = (curMetrics.outstandingTotal / curMetrics.rev) * 100;
-      if (outRatio >= 50) {
-        signals.push({ title: 'Outstanding Risk', text: `Outstanding invoices are ${outRatio.toFixed(0)}% of revenue (${formatEUR(curMetrics.outstandingTotal)}).`, severity: 'At Risk', inspect: 'Services Dashboard', onClick: onClickOutstanding });
-      } else if (outRatio >= 25) {
-        signals.push({ title: 'Outstanding Invoices', text: `Outstanding invoices are ${outRatio.toFixed(0)}% of revenue (${formatEUR(curMetrics.outstandingTotal)}).`, severity: 'Watch', inspect: 'Services Dashboard', onClick: onClickOutstanding });
-      }
-    } else if (curMetrics.outstandingTotal > 5000) {
-      signals.push({ title: 'Outstanding Invoices', text: `${formatEUR(curMetrics.outstandingTotal)} in unpaid invoices awaiting collection.`, severity: 'Watch', inspect: 'Services Dashboard', onClick: onClickOutstanding });
-    }
-  }
-
-  // Open Forecast Pipeline — forecast not yet realized
-  if (curMetrics.fcRev != null && curMetrics.fcRev > 0) {
-    const openPipeline = Math.max(curMetrics.fcRev - curMetrics.rev, 0);
-    const pipelinePct  = (openPipeline / curMetrics.fcRev) * 100;
-    if (pipelinePct > 10) {
-      const pct = ((curMetrics.rev / curMetrics.fcRev) * 100).toFixed(0);
-      signals.push({
-        title: 'Open Forecast Pipeline',
-        text: `A significant part of forecasted revenue has not yet materialized as actual revenue (${pct}% achieved, ${formatEUR(openPipeline)} remaining).`,
-        severity: pipelinePct > 40 ? 'At Risk' : 'Watch',
-        inspect: 'Forecast Dashboard'
-      });
-    }
-  }
-
-  // Cash flow warning
-  if (curMetrics.netCash < 0) {
-    signals.push({
-      title: 'Cash Flow Warning',
-      text: `Net cash flow is ${formatEUR(curMetrics.netCash)} for the selected period.`,
-      severity: 'At Risk',
-      inspect: 'Cash Flow Dashboard',
-      onClick: () => drillDownModal('Cash Flow',
-        mixedRows(curData.payments, curData.invoices, [...curData.opExpenses, ...curData.capExExpenses], curData.acquisitions),
-        MIXED_COLS)
+  // 3. Overdue alert
+  if (overdueCount > 0) {
+    insights.push({
+      icon:  '⚠️',
+      color: 'var(--danger, #ef4444)',
+      bg:    'rgba(239,68,68,0.06)',
+      title: 'Overdue Invoices',
+      body:  `${overdueCount} overdue invoice${overdueCount !== 1 ? 's' : ''} totalling ${formatEUR(overdueEur)}. Follow up with clients to improve cash flow.`
+    });
+  } else if (cur.outTotal > 0) {
+    insights.push({
+      icon:  '✅',
+      color: 'var(--success, #22c55e)',
+      bg:    'rgba(34,197,94,0.06)',
+      title: 'Overdue Status',
+      body:  `No overdue invoices. ${formatEUR(cur.outTotal)} outstanding invoices are all within due dates.`
     });
   }
 
-  // Investment Pressure (CapEx relative to revenue)
-  const capExAmt = curMetrics.capEx;
-  if (capExAmt > 0) {
-    const capExDrillRows = [
-      ...drillExpRows(curData.capExExpenses),
-      ...curData.acquisitions.map(a => ({
-        date: a.date, source: a._name || '',
-        category: 'Acquisition', description: a.description,
-        eur: toEUR(a.amount, a.currency, a.date)
-      }))
-    ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    const openCapEx = () => drillDownModal('Investments / CapEx', capExDrillRows, EXP_COLS);
-
-    if (curMetrics.rev > 0) {
-      const capExRatio = (capExAmt / curMetrics.rev) * 100;
-      if (capExRatio > 100) {
-        signals.push({
-          title: 'Investment Pressure',
-          text: `CapEx is ${capExRatio.toFixed(0)}% of revenue (${formatEUR(capExAmt)}) — investments exceed revenue for the period. Monitor cash position closely.`,
-          severity: 'At Risk',
-          inspect: 'Cash Flow Dashboard',
-          onClick: openCapEx
-        });
-      } else if (capExRatio > 50) {
-        signals.push({
-          title: 'Investment Pressure',
-          text: `CapEx is ${capExRatio.toFixed(0)}% of revenue (${formatEUR(capExAmt)}) — significant investment activity relative to revenue.`,
-          severity: 'Watch',
-          inspect: 'Cash Flow Dashboard',
-          onClick: openCapEx
+  // 4. Forecast accuracy (if forecast data exists)
+  {
+    const allForecasts = listActive('forecasts');
+    const year = new Date(start).getFullYear();
+    const relevantFc = allForecasts.find(fc => fc.year === year);
+    if (relevantFc) {
+      const fcRevTarget = relevantFc.yearTarget || 0;
+      if (fcRevTarget > 0) {
+        const accuracy = (cur.totalRev / fcRevTarget) * 100;
+        const icon  = accuracy >= 90 ? '🎯' : accuracy >= 70 ? '📊' : '❗';
+        const color = accuracy >= 90 ? 'var(--success, #22c55e)' : accuracy >= 70 ? 'var(--warning, #f59e0b)' : 'var(--danger, #ef4444)';
+        const bg    = accuracy >= 90 ? 'rgba(34,197,94,0.06)' : accuracy >= 70 ? 'rgba(245,158,11,0.06)' : 'rgba(239,68,68,0.06)';
+        insights.push({ icon, color, bg,
+          title: 'Forecast Accuracy',
+          body:  `Revenue is at ${accuracy.toFixed(0)}% of the ${year} annual target (${formatEUR(cur.totalRev)} of ${formatEUR(fcRevTarget)}).`
         });
       }
-    } else if (capExAmt > 10000) {
-      signals.push({
-        title: 'Investment Pressure',
-        text: `${formatEUR(capExAmt)} in CapEx and investments recorded with no revenue in this period.`,
-        severity: 'Watch',
-        inspect: 'Cash Flow Dashboard',
-        onClick: openCapEx
-      });
     }
   }
 
-  // Margin declining vs comparison
-  if (cmpMetrics && curMetrics.opMargin != null && cmpMetrics.opMargin != null) {
-    const drop = cmpMetrics.opMargin - curMetrics.opMargin;
-    if (drop > 10) {
-      signals.push({
-        title: 'Margin Declining',
-        text: `Operating margin dropped ${drop.toFixed(1)} pp vs comparison period (now ${curMetrics.opMargin.toFixed(1)}%).`,
-        severity: drop > 20 ? 'At Risk' : 'Watch',
-        inspect: 'Expenses Dashboard'
-      });
-    }
-  }
-
-  // ── Render ───────────────────────────────────────────────────────────────
-  if (signals.length === 0) {
+  if (!insights.length) {
     body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' },
-      `No major executive risks detected for the selected period. Revenue: ${formatEUR(curMetrics.rev)}, margin: ${curMetrics.opMargin != null ? curMetrics.opMargin.toFixed(1) + '%' : '—'}.`
-    ));
+      'No major insights for this period. Adjust the filter to see more data.'));
     section.appendChild(body);
     return section;
   }
 
-  const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b' };
-  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)' };
-  const row = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px' });
+  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px' });
 
-  for (const sig of signals) {
+  for (const ins of insights) {
     const block = el('div', {
-      style: `padding:10px 12px;border-radius:4px;border-left:3px solid ${SEV_COLOR[sig.severity] || '#6b7280'};background:${SEV_BG[sig.severity] || 'transparent'}`
+      style: `padding:10px 12px;border-radius:4px;border-left:3px solid ${ins.color};background:${ins.bg}`
     });
-    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px' });
-    titleRow.appendChild(el('span', {
-      style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)'
-    }, sig.title));
-    titleRow.appendChild(el('span', {
-      style: `font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;color:${SEV_COLOR[sig.severity]};border:1px solid ${SEV_COLOR[sig.severity]}`
-    }, sig.severity));
+    const titleRow = el('div', { style: 'display:flex;align-items:center;gap:6px;margin-bottom:4px' });
+    titleRow.appendChild(el('span', { style: 'font-size:14px' }, ins.icon));
+    titleRow.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)' }, ins.title));
     block.appendChild(titleRow);
-    const p2 = el('p', { style: 'margin:0 0 5px;font-size:12px;line-height:1.5;color:var(--text)' }, sig.text);
-    if (sig.onClick) { p2.style.cursor = 'pointer'; p2.title = 'Click for breakdown'; p2.onclick = sig.onClick; }
-    block.appendChild(p2);
-    block.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted)' }, `→ Inspect: ${sig.inspect}`));
-    row.appendChild(block);
+    block.appendChild(el('p', { style: 'margin:0;font-size:12px;line-height:1.5;color:var(--text)' }, ins.body));
+    grid.appendChild(block);
   }
 
-  body.appendChild(row);
+  body.appendChild(grid);
   section.appendChild(body);
   return section;
 }
 
-// ── Main view builder ────────────────────────────────────────────────────────
+// ── Chart: Revenue vs Expenses Monthly Bar ────────────────────────────────────
+function renderRevExpBar(cur, months) {
+  const { payments, invoices, opExpenses, capExpenses } = cur;
+
+  const revData = months.map(m => {
+    const p = payments.filter(x => x.date?.slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0);
+    const i = invoices.filter(x => (x.issueDate || '').slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.total, x.currency, x.issueDate), 0);
+    return Math.round(p + i);
+  });
+
+  const expData = months.map(m => {
+    const opE  = opExpenses.filter(e => (e.date || '').slice(0, 7) === m.key).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    const capE = capExpenses.filter(e => (e.date || '').slice(0, 7) === m.key).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    return Math.round(opE + capE);
+  });
+
+  if (!revData.some(v => v > 0) && !expData.some(v => v > 0)) return;
+
+  charts.bar('exec-rev-exp-bar', {
+    labels: months.map(m => m.label),
+    datasets: [
+      { label: 'Revenue',   data: revData, backgroundColor: 'rgba(16,185,129,0.75)' },
+      { label: 'Expenses',  data: expData, backgroundColor: 'rgba(239,68,68,0.65)'  }
+    ],
+    stacked: false,
+    onClickItem: (_label, idx) => {
+      const mk = months[idx]?.key;
+      if (!mk) return;
+      const mRev = revData[idx] || 0;
+      const mOpEx = Math.round(opExpenses.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0));
+      const mCapEx = Math.round(capExpenses.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0));
+      const mNet  = mRev - mOpEx - mCapEx;
+      const body  = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: 'Revenue',   value: formatEUR(mRev) },
+        { label: 'OpEx',      value: formatEUR(mOpEx) },
+        { label: 'CapEx',     value: formatEUR(mCapEx) },
+        { label: 'Net',       value: formatEUR(mNet), sub: mNet >= 0 ? 'Profitable' : 'Loss' }
+      ]));
+      openModal({ title: `${months[idx].label} — P&L Summary`, body, large: false });
+    }
+  });
+}
+
+// ── Chart: Business Mix Donut ─────────────────────────────────────────────────
+function renderMixDonut(cur) {
+  const { streamMap } = cur;
+  const STREAM_LABELS = {
+    short_term_rental:  'STR',
+    long_term_rental:   'LTR',
+    customer_success:   'Customer Success',
+    marketing_services: 'Marketing',
+    other:              'Other'
+  };
+  const STREAM_COLORS = {
+    short_term_rental:  '#6366f1',
+    long_term_rental:   '#10b981',
+    customer_success:   '#f59e0b',
+    marketing_services: '#ec4899',
+    other:              '#8b93b0'
+  };
+
+  const entries = [...streamMap.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return;
+
+  charts.doughnut('exec-mix-donut', {
+    labels: entries.map(([k]) => STREAM_LABELS[k] || k),
+    data:   entries.map(([, v]) => Math.round(v)),
+    colors: entries.map(([k]) => STREAM_COLORS[k] || '#8b93b0')
+  });
+}
+
+// ── Chart: Net Cash Flow Trend Line ──────────────────────────────────────────
+function renderNetLine(cur, months) {
+  const { payments, invoices, opExpenses, capExpenses } = cur;
+
+  const netData = months.map(m => {
+    const rev = payments.filter(x => x.date?.slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0)
+              + invoices.filter(x => (x.issueDate || '').slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.total, x.currency, x.issueDate), 0);
+    const exp = opExpenses.filter(e => (e.date || '').slice(0, 7) === m.key).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
+              + capExpenses.filter(e => (e.date || '').slice(0, 7) === m.key).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    return Math.round(rev - exp);
+  });
+
+  if (!netData.some(v => v !== 0)) return;
+
+  const positiveMonths = netData.filter(v => v > 0).length;
+  const lineColor = positiveMonths >= netData.length / 2 ? '#10b981' : '#ef4444';
+
+  charts.line('exec-net-line', {
+    labels: months.map(m => m.label),
+    datasets: [{
+      label: 'Net Cash Flow',
+      data: netData,
+      borderColor: lineColor,
+      backgroundColor: positiveMonths >= netData.length / 2
+        ? 'rgba(16,185,129,0.08)'
+        : 'rgba(239,68,68,0.08)',
+      fill: true
+    }],
+    onClickItem: (_label, idx) => {
+      const mk = months[idx]?.key;
+      if (!mk) return;
+      const mNet = netData[idx];
+      const body = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: 'Month',         value: months[idx].label },
+        { label: 'Net Cash Flow', value: formatEUR(mNet), sub: mNet >= 0 ? 'Positive' : 'Negative' }
+      ], 1));
+      openModal({ title: `${months[idx].label} — Net Cash Flow`, body, large: false });
+    }
+  });
+}
+
+// ── Rebuild ───────────────────────────────────────────────────────────────────
+function rebuildView() {
+  CHART_IDS.forEach(id => charts.destroy(id));
+  const c = document.getElementById('content');
+  if (!c) return;
+  c.innerHTML = '';
+  c.appendChild(buildView());
+}
+
+// ── Main view ─────────────────────────────────────────────────────────────────
 function buildView() {
   const wrap = el('div', { class: 'view active' });
 
-  // Page header
+  // Header
   wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
-    el('h2', { style: 'margin:0 0 4px;font-size:20px;font-weight:700' }, 'Executive Dashboard'),
-    el('p', { style: 'margin:0;font-size:13px;color:var(--text-muted)' },
-      'Strategic control tower — health, performance and risk at a glance')
+    el('h2', { style: 'margin:0 0 4px;font-size:20px;font-weight:700' }, 'Executive Summary'),
+    el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' }, 'Morning briefing · All business lines at a glance')
   ));
 
-  // Filter bar
-  wrap.appendChild(buildFilterBar(gF, { showOwner: true, showStream: true, showProperty: true, storagePrefix: 'ana_exec' }, (newGF) => { if (newGF) gF = newGF; rebuildView(); }));
+  // Filter bar (owner + period only)
+  wrap.appendChild(buildFilterBar(
+    gF,
+    { showOwner: true, showStream: false, showProperty: false, storagePrefix: 'ana_exec_sum' },
+    newGF => { if (newGF) gF = newGF; rebuildView(); }
+  ));
 
-  // Compute ranges
   const curRange = getCurrentPeriodRange(gF);
   const cmpRange = getComparisonRange(gF, curRange);
+  const curData  = getData(curRange.start, curRange.end);
+  const cmpData  = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
+
   wrap.appendChild(buildComparisonLine(curRange, cmpRange));
 
-  // Fetch data
-  const curData = getDataInRange(curRange.start, curRange.end);
-  const curMetrics = calcMetrics(curData, curRange);
+  // KPI Grid (2 rows of 4)
+  wrap.appendChild(buildKpiGrid(curData, cmpData, cmpRange));
 
-  let cmpData = null, cmpMetrics = null;
-  if (cmpRange) {
-    cmpData = getDataInRange(cmpRange.start, cmpRange.end);
-    cmpMetrics = calcMetrics(cmpData, cmpRange);
+  // Insights Banner
+  wrap.appendChild(buildInsights(curData, cmpData, cmpRange, curRange.start, curRange.end));
+
+  const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
+
+  // Chart row 1: Revenue vs Expenses Bar + Business Mix Donut
+  const row1 = el('div', { class: 'grid grid-2 mb-16' });
+
+  row1.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue vs Expenses (Monthly)')),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-rev-exp-bar' }))
+  ));
+
+  {
+    const donutCard = el('div', { class: 'card' });
+    const btnToggle = el('button', {
+      style: 'background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:11px;cursor:pointer;padding:2px 6px;line-height:1'
+    }, '%');
+    btnToggle.onclick = () => {
+      const showing = charts.toggleDoughnutPct('exec-mix-donut');
+      btnToggle.textContent = showing ? '€' : '%';
+    };
+    donutCard.appendChild(el('div', {
+      class: 'card-header',
+      style: 'display:flex;align-items:center;justify-content:space-between'
+    },
+      el('div', { class: 'card-title' }, 'Revenue by Business Line'),
+      btnToggle
+    ));
+    donutCard.appendChild(el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-mix-donut' })));
+    row1.appendChild(donutCard);
   }
 
-  // Section 1: Executive Health Snapshot
-  wrap.appendChild(buildHealthSnapshot(curMetrics, cmpMetrics, curRange));
+  wrap.appendChild(row1);
 
-  // Section 2: Core KPI Cards
-  wrap.appendChild(buildKpiGrid(curMetrics, cmpMetrics, curRange, cmpRange));
+  // Chart row 2: Net Cash Flow Line (full width)
+  wrap.appendChild(el('div', { class: 'card mb-16' },
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Net Cash Flow Trend')),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-net-line' }))
+  ));
 
-  // Section 3: Performance Trends
-  wrap.appendChild(makeChartSection('Performance Trends', [
-    ['Revenue Trend',          'exec-trend-rev'],
-    ['Operating Profit Trend', 'exec-trend-profit'],
-    ['Revenue vs Profit',      'exec-rev-vs-profit'],
-  ]));
-
-  // Section 4: Risk and Control
-  wrap.appendChild(makeChartSection('Risk and Control', [
-    ['YoY Revenue Growth',    'exec-rev-growth'],
-    ['Revenue by Stream',     'exec-kd-rev-stream', { isDoughnut: true }],
-    ['Revenue Concentration', 'exec-rev-conc',      { isDoughnut: true }],
-  ]));
-
-  wrap.appendChild(makeChartSection('Cost and Collections', [
-    ['OpEx vs CapEx',     'exec-opex-capex'],
-    ['Outstanding Aging', 'exec-outstanding-aging'],
-  ]));
-
-  // Section 5: Executive Insights
-  wrap.appendChild(buildPerformanceInsights(curData, curMetrics, cmpMetrics, curRange));
-
-  // Render all charts async
   setTimeout(() => {
-    renderAllCharts(curData, curMetrics, cmpData, cmpMetrics, curRange, cmpRange);
+    renderRevExpBar(curData, months);
+    renderMixDonut(curData);
+    renderNetLine(curData, months);
   }, 0);
 
   return wrap;
