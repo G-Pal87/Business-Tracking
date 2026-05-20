@@ -966,7 +966,7 @@ function buildView() {
 }
 
 // ── Chart 1: Horizontal bar — Client revenue (paid, from kpiBase) ─────────────
-function renderClientBar({ paid }) {
+function renderClientBar({ paid, kpiBase }) {
   const map = new Map();
   paid.forEach(i => {
     if (!i.clientId) return;

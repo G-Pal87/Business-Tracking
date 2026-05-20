@@ -808,6 +808,11 @@ function buildRevenueTable(container, { payments, invoices }) {
   });
   rows.sort((a, b) => (b._date || '').localeCompare(a._date || ''));
 
+  if (rows.length === 0) {
+    container.appendChild(mkEmptyState('No revenue records match the selected filters.'));
+    return;
+  }
+
   const table = el('table', { class: 'table' });
   const htr   = el('tr');
   TX_COLS.forEach(col => htr.appendChild(el('th', { class: col.right ? 'right' : '' }, col.label)));

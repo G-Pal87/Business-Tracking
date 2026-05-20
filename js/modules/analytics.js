@@ -174,7 +174,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     ? expenseRatio - cmp.expenseRatio : null) : null;
 
   // Overdue modal
-  const overdrueDrill = () => {
+  const overdueDrill = () => {
     const body = el('div');
     if (!cur.overdueInvoices.length) {
       body.appendChild(mkEmptyState('No overdue invoices for this period.'));
@@ -363,7 +363,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       variant = collectionRate < 60 ? 'danger' : collectionRate < 80 ? 'warning' : 'success';
     }
     grid.appendChild(mkKpiCard({
-      label:    'Collection Rate',
+      label:    'Invoice Collection Rate',
       value:    collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—',
       subtitle: cur.invoicedTotal > 0 ? `${formatEUR(cur.paidInvTotal)} paid of ${formatEUR(cur.invoicedTotal)} invoiced` : 'No invoices',
       delta:    dCollect,
@@ -378,7 +378,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
           { label: 'Invoiced',    value: formatEUR(cur.invoicedTotal) },
           { label: 'Rate',        value: collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—' }
         ]));
-        openModal({ title: 'Collection Rate', body, large: false });
+        openModal({ title: 'Invoice Collection Rate', body, large: false });
       }
     }));
   }
@@ -435,7 +435,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       value:    overdueCount > 0 ? formatEUR(overdueEur) : '€0',
       subtitle: overdueCount > 0 ? `${overdueCount} invoice${overdueCount !== 1 ? 's' : ''} overdue` : 'All clear',
       variant,
-      onClick:  overdrueDrill
+      onClick:  overdueDrill
     }));
   }
 
