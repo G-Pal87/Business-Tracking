@@ -61,45 +61,29 @@ function buildAllPayments(wrap) {
     materialized: { label: 'Sold', css: 'info'    }
   };
 
-  const yearOpts = () => {
-    const ys = new Set();
-    for (const p of listActivePayments()) if (p.date) ys.add(p.date.slice(0, 4));
-    return [...ys].sort().reverse().map(y => ({ value: y, label: y }));
-  };
-  const monthOpts = () => {
-    const ms = new Set();
-    for (const p of listActivePayments()) if (p.date) ms.add(p.date.slice(5, 7));
-    return [...ms].sort().map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] }));
-  };
-  const propOpts = () => {
-    const ids = new Set();
-    for (const p of listActivePayments()) if (p.propertyId) ids.add(p.propertyId);
+  const buildFilterOpts = () => {
+    const ys = new Set(), ms = new Set(), propIds = new Set(), ts = new Set(), ss = new Set();
+    for (const p of listActivePayments()) {
+      if (p.date) { ys.add(p.date.slice(0, 4)); ms.add(p.date.slice(5, 7)); }
+      if (p.propertyId) propIds.add(p.propertyId);
+      ts.add(p.source === 'airbnb' ? (p.airbnbType || p.type || 'other') : (p.type || 'other'));
+      if (p.status) ss.add(p.status);
+    }
     const allProps = listActive('properties');
-    return [...ids]
-      .map(id => allProps.find(pr => pr.id === id))
-      .filter(Boolean)
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map(pr => ({ value: pr.id, label: pr.name }));
+    return {
+      years:    [...ys].sort().reverse().map(y => ({ value: y, label: y })),
+      months:   [...ms].sort().map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] })),
+      props:    [...propIds].map(id => allProps.find(pr => pr.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(pr => ({ value: pr.id, label: pr.name })),
+      types:    [...ts].sort().map(t => ({ value: t, label: t })),
+      statuses: [...ss].sort().map(s => { const m = STATUS_META[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; })
+    };
   };
-  const typeOpts = () => {
-    const ts = new Set();
-    for (const p of listActivePayments()) ts.add(p.source === 'airbnb' ? (p.airbnbType || p.type || 'other') : (p.type || 'other'));
-    return [...ts].sort().map(t => ({ value: t, label: t }));
-  };
-  const statusOpts = () => {
-    const ss = new Set();
-    for (const p of listActivePayments()) if (p.status) ss.add(p.status);
-    return [...ss].sort().map(s => {
-      const m = STATUS_META[s] || { label: s, css: '' };
-      return { value: s, label: m.label, css: m.css };
-    });
-  };
-
-  const yearMS   = buildMultiSelect(yearOpts(),   yearFilter,   'All Years',      () => renderTable(), 'pay_years');
-  const monthMS  = buildMultiSelect(monthOpts(),  monthFilter,  'All Months',     () => renderTable(), 'pay_months');
-  const propMS   = buildMultiSelect(propOpts(),   propFilter,   'All Properties', () => renderTable(), 'pay_props');
-  const typeMS   = buildMultiSelect(typeOpts(),   typeFilter,   'All Types',      () => renderTable(), 'pay_types');
-  const statusMS = buildMultiSelect(statusOpts(), statusFilter, 'All Statuses',   () => renderTable(), 'pay_statuses');
+  const fo = buildFilterOpts();
+  const yearMS   = buildMultiSelect(fo.years,    yearFilter,   'All Years',      () => renderTable(), 'pay_years');
+  const monthMS  = buildMultiSelect(fo.months,   monthFilter,  'All Months',     () => renderTable(), 'pay_months');
+  const propMS   = buildMultiSelect(fo.props,    propFilter,   'All Properties', () => renderTable(), 'pay_props');
+  const typeMS   = buildMultiSelect(fo.types,    typeFilter,   'All Types',      () => renderTable(), 'pay_types');
+  const statusMS = buildMultiSelect(fo.statuses, statusFilter, 'All Statuses',   () => renderTable(), 'pay_statuses');
 
   let selected = new Set();
 
@@ -110,15 +94,16 @@ function buildAllPayments(wrap) {
     if (!ok) return;
     // Collect affected pending Airbnb months before deleting
     const affectedForecast = new Set();
+    const payMap = new Map(listActivePayments().map(p => [p.id, p]));
     for (const id of [...selected]) {
-      const p = listActivePayments().find(p => p.id === id);
+      const p = payMap.get(id);
       if (p?.source === 'airbnb' && p?.status === 'pending') {
         const mk = (p.airbnbCheckIn || p.date || '').slice(0, 7);
         if (mk) affectedForecast.add(`${p.propertyId}|${mk}`);
       }
     }
     for (const id of [...selected]) {
-      const p = listActivePayments().find(p => p.id === id);
+      const p = payMap.get(id);
       if (p) removeReservationExpenses(p);
       softDelete('payments', id);
     }
@@ -193,7 +178,7 @@ function buildAllPayments(wrap) {
     const chkTh = el('th', { style: 'width:36px' });
     chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    ['Date', 'Property', 'Type', 'Source', 'Status', 'Conf. Code'].forEach(h => htr.appendChild(el('th', {}, h)));
+    ['Date', 'Property', 'Type', 'Source', 'Status', 'Conf. Code', 'Guest'].forEach(h => htr.appendChild(el('th', {}, h)));
     htr.appendChild(el('th', { class: 'right' }, 'Amount'));
     htr.appendChild(el('th', { class: 'right' }, 'EUR'));
     htr.appendChild(el('th', { class: 'right' }, 'Gross'));
@@ -227,6 +212,8 @@ function buildAllPayments(wrap) {
       tr.appendChild(el('td', {}, el('span', { class: 'badge' }, r.source || 'manual')));
       tr.appendChild(el('td', {}, el('span', { class: `badge ${sMeta.css}` }, sMeta.label)));
       tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px' }, r.confirmationCode || r.airbnbRef || ''));
+      const guestName = r.source === 'airbnb' ? (r.notes || '').split(' · ')[0] : (r.notes || '');
+      tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, guestName));
       const rType = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
       const isNegDisplay = rType === 'resolution adjustment' || rType === 'adjustment';
       const isReservation = rType === 'reservation';
@@ -307,10 +294,8 @@ function buildScheduleSection(wrap) {
     return;
   }
 
-  // Pre-populate with first property so first-load mirrors the old single-select default.
-  // buildMultiSelect will override this from localStorage if the user previously saved a selection.
-  const propFilter = new Set([ltProps[0].id]);
-  const propMS = buildMultiSelect(ltProps.map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => render(), 'sched_props');
+  const propSel = select(ltProps.map(p => ({ value: p.id, label: p.name })), ltProps[0].id);
+  propSel.onchange = () => render();
 
   const showUnpaidOnly = el('label', { class: 'flex gap-8', style: 'align-items:center;cursor:pointer;font-size:13px' });
   const unpaidChk = el('input', { type: 'checkbox' });
@@ -318,7 +303,7 @@ function buildScheduleSection(wrap) {
   showUnpaidOnly.appendChild(document.createTextNode('Unpaid only'));
 
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
-  bar.appendChild(propMS);
+  bar.appendChild(propSel);
   bar.appendChild(el('div', { class: 'flex-1' }));
   bar.appendChild(showUnpaidOnly);
   wrap.appendChild(bar);
@@ -345,8 +330,8 @@ function buildScheduleSection(wrap) {
     selected.clear();
     syncDeleteBtn();
 
-    // Resolve which property to show: first explicitly selected, else first ltProp
-    const propId = propFilter.size ? [...propFilter][0] : ltProps[0].id;
+    // Resolve which property to show: selected value, else first ltProp
+    const propId = propSel.value || ltProps[0].id;
     const prop = byId('properties', propId);
     if (!prop) return;
     const schedule = generatePaymentSchedule(prop);
@@ -768,9 +753,22 @@ function openForm(existing) {
     if (p) { currencyS.value = p.currency; }
   };
 
-  const save = button('Save', { variant: 'primary', onClick: () => {
+  const save = button('Save', { variant: 'primary', onClick: async () => {
     if (!propS.value) { toast('Select a property', 'danger'); return; }
     if (Number(amountI.value) <= 0) { toast('Amount must be positive', 'danger'); return; }
+    if (!existing) {
+      const dupe = listActivePayments().find(p =>
+        p.propertyId === propS.value && p.date === dateI.value &&
+        Number(p.amount) === Number(amountI.value)
+      );
+      if (dupe) {
+        const ok = await confirmDialog(
+          `A ${dupe.status} payment of ${formatMoney(dupe.amount, dupe.currency)} already exists for this property on ${fmtDate(dupe.date)}. Save anyway?`,
+          { okLabel: 'Save Anyway' }
+        );
+        if (!ok) return;
+      }
+    }
     Object.assign(r, {
       propertyId: propS.value, amount: Number(amountI.value),
       currency: currencyS.value, date: dateI.value, type: 'off_platform_reservation',
@@ -909,14 +907,23 @@ function openCSVImport() {
         }
       }
 
+      const byAirbnbKey = new Map(
+        listActivePayments().filter(p => p.airbnbKey).map(p => [p.airbnbKey, p])
+      );
+      const pendingByCode = new Map();
+      for (const p of listActivePayments()) {
+        if (p.source === 'airbnb' && p.status === 'pending') {
+          if (p.confirmationCode) pendingByCode.set(p.confirmationCode, p);
+          if (p.airbnbRef && p.airbnbRef !== p.confirmationCode) pendingByCode.set(p.airbnbRef, p);
+        }
+      }
+
       // Upsert each row as a separate payment line item (one per type per code)
       for (const row of rows) {
         const matched = findProp(row.listing);
         if (!matched) continue;
 
-        const existing = row.airbnbKey
-          ? listActivePayments().find(p => p.airbnbKey === row.airbnbKey)
-          : null;
+        const existing = row.airbnbKey ? (byAirbnbKey.get(row.airbnbKey) ?? null) : null;
         const pay = existing ? { ...existing } : {
           id: newId('pay'),
           propertyId: matched.id,
@@ -954,10 +961,7 @@ function openCSVImport() {
         // Materialize any matching pending reservation so it no longer counts
         // in active forecast calculations while remaining visible for history.
         if (row.confirmationCode) {
-          const pending = listActivePayments().find(p =>
-            p.source === 'airbnb' && p.status === 'pending' &&
-            (p.confirmationCode === row.confirmationCode || p.airbnbRef === row.confirmationCode)
-          );
+          const pending = row.confirmationCode ? (pendingByCode.get(row.confirmationCode) ?? null) : null;
           if (pending) {
             const pendingMonthKey = (pending.airbnbCheckIn || pending.date || '').slice(0, 7);
             upsert('payments', {
@@ -966,6 +970,8 @@ function openCSVImport() {
               materializedPaymentId: pay.id,
               materializedAt: new Date().toISOString().slice(0, 10)
             });
+            if (pending.confirmationCode) pendingByCode.delete(pending.confirmationCode);
+            if (pending.airbnbRef) pendingByCode.delete(pending.airbnbRef);
             if (pending.propertyId && pendingMonthKey) {
               recalcPendingAirbnbForecast(pending.propertyId, pendingMonthKey);
             }
@@ -984,18 +990,23 @@ function openCSVImport() {
       // one pass — prevents double-counting when the same CSV is re-imported.
       const forecastMap = new Map(); // "propertyId|monthKey" → { year, propertyId, monthKey, total }
 
+      const byAirbnbKeyP = new Map(
+        listActivePayments().filter(p => p.airbnbKey).map(p => [p.airbnbKey, p])
+      );
+      const pendingByRefP = new Map(
+        listActivePayments()
+          .filter(p => p.source === 'airbnb' && p.status === 'pending' && p.airbnbRef)
+          .map(p => [p.airbnbRef, p])
+      );
+
       for (const row of rows) {
         const matched = findProp(row.listing);
         if (!matched) continue;
 
         // Dedup: prefer airbnbKey match; fall back to confirmationCode (airbnbRef)
         // for payments imported before the airbnbKey field was introduced.
-        const existingByKey = row.airbnbKey
-          ? listActivePayments().find(p => p.airbnbKey === row.airbnbKey)
-          : null;
-        const existingByRef = !existingByKey && row.confirmationCode
-          ? listActivePayments().find(p => p.airbnbRef === row.confirmationCode && p.source === 'airbnb' && p.status === 'pending')
-          : null;
+        const existingByKey = row.airbnbKey ? (byAirbnbKeyP.get(row.airbnbKey) ?? null) : null;
+        const existingByRef = !existingByKey && row.confirmationCode ? (pendingByRefP.get(row.confirmationCode) ?? null) : null;
         const existing = existingByKey || existingByRef;
 
         const payFields = {
@@ -1045,7 +1056,7 @@ function openCSVImport() {
           if (!forecastMap.has(fKey)) {
             forecastMap.set(fKey, { year, propertyId: matched.id, monthKey, total: 0 });
           }
-          forecastMap.get(fKey).total += row.amount;
+          forecastMap.get(fKey).total += toEUR(row.amount, row.currency, refDate);
         }
       }
 
@@ -1106,10 +1117,14 @@ function parseAirbnbCSV(text) {
   );
 
   // Flexible column lookup — tries each name until a match is found
+  const headerIdx = new Map(headers.map((h, i) => [h, i]));
   const col = (row, ...candidates) => {
     for (const name of candidates) {
-      const i = headers.findIndex(h => h === name || h.startsWith(name));
-      if (i >= 0 && i < row.length) return (row[i] ?? '').trim();
+      const exact = headerIdx.get(name);
+      if (exact != null && exact < row.length) return (row[exact] ?? '').trim();
+      for (const [h, i] of headerIdx) {
+        if (h.startsWith(name) && i < row.length) return (row[i] ?? '').trim();
+      }
     }
     return '';
   };
@@ -1241,7 +1256,11 @@ function recalcPendingAirbnbForecast(propertyId, monthKey) {
 
 function exportCSV() {
   const rows = listActivePayments();
-  const headers = ['id', 'date', 'propertyId', 'amount', 'currency', 'type', 'status', 'source', 'stream', 'notes'];
+  const headers = [
+    'id', 'date', 'propertyId', 'amount', 'currency', 'type', 'status', 'source', 'stream',
+    'confirmationCode', 'notes', 'airbnbCheckIn', 'airbnbCheckOut', 'airbnbNights',
+    'airbnbGrossEarnings', 'airbnbServiceFee', 'airbnbCleaningFee', 'avgNightExclCleaning', 'avgGross'
+  ];
   const lines = [headers.join(',')];
   for (const r of rows) lines.push(headers.map(h => JSON.stringify(r[h] ?? '')).join(','));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
