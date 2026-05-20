@@ -390,7 +390,7 @@ function buildKpiCards(data, year) {
       }, 'Operating Margin = (Revenue − OpEx) ÷ Revenue × 100. Excludes CapEx as it is a balance-sheet item.'));
       openModal({ title: 'Operating Margin — Breakdown', body });
     }
-  ));
+  }));
 
   // 2. Total Tax-Deductible
   grid.appendChild(mkKpiCard({
