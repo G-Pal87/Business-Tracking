@@ -1,10 +1,10 @@
 // Tax & Annual Summary Analytics Dashboard — year-end accounting and tax filing support
 import { el, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { STREAMS, OWNERS, COST_CATEGORIES } from '../core/config.js';
+import { COST_CATEGORIES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
-  listActive, listActivePayments, listActiveInvoices, listActiveExpenses,
+  listActive, listActivePayments,
   resolveExpenseFields, isCapEx
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
