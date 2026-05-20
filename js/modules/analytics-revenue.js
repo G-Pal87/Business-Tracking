@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const OWNER_COLORS = { you: '#6366f1', rita: '#ec4899', both: '#14b8a6' };
@@ -70,82 +70,6 @@ function safePct(cur, cmp) {
 }
 
 const fmtK = v => v >= 10000 ? `€${(v / 1000).toFixed(0)}k` : v >= 1000 ? `€${(v / 1000).toFixed(1)}k` : formatEUR(v, { maxFrac: 0 });
-
-// ── KPI card ──────────────────────────────────────────────────────────────────
-function kpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick }) {
-  const card = el('div', {
-    class: 'kpi' + (variant ? ' ' + variant : ''),
-    style: 'cursor:pointer;transition:box-shadow 120ms',
-    title: 'Click for breakdown'
-  });
-  card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
-  card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
-  if (onClick) card.onclick = onClick;
-
-  card.appendChild(el('div', { class: 'kpi-label' }, label));
-  card.appendChild(el('div', { class: 'kpi-value' }, value));
-
-  if (delta !== null && delta !== undefined && isFinite(delta)) {
-    const trend = el('div', { class: 'kpi-trend' });
-    const sign = delta > 0 ? '+' : '';
-    const disp = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
-    const cls  = delta === 0 ? '' : delta > 0 ? (invertDelta ? 'down' : 'up') : (invertDelta ? 'up' : 'down');
-    trend.appendChild(el('span', { class: cls }, disp));
-    if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
-    card.appendChild(trend);
-  }
-  if (subtitle) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
-  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
-  return card;
-}
-
-// ── Composite KPI card (wider, with breakdown lines) ─────────────────────────
-function compositeKpiCard({ label, value, subtitle, delta, deltaIsPp, compLabel, onClick, lines }) {
-  const card = el('div', {
-    class: 'kpi',
-    style: 'cursor:pointer;transition:box-shadow 120ms',
-    title: 'Click for breakdown'
-  });
-  card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
-  card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
-  if (onClick) card.onclick = onClick;
-
-  card.appendChild(el('div', { class: 'kpi-label' }, label));
-  card.appendChild(el('div', { class: 'kpi-value' }, value));
-
-  if (delta !== null && delta !== undefined && isFinite(delta)) {
-    const trend = el('div', { class: 'kpi-trend' });
-    const sign = delta > 0 ? '+' : '';
-    const disp = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
-    const cls  = delta === 0 ? '' : delta > 0 ? 'up' : 'down';
-    trend.appendChild(el('span', { class: cls }, disp));
-    if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
-    card.appendChild(trend);
-  }
-
-  if (lines?.length) {
-    card.appendChild(el('div', { style: 'margin:8px 0 6px;border-top:1px solid rgba(255,255,255,0.06)' }));
-    for (const ln of lines) {
-      const row = el('div', { style: 'display:flex;justify-content:space-between;align-items:flex-start;gap:6px;font-size:11px;padding:2px 4px;margin:0 -4px;border-radius:3px' });
-      row.appendChild(el('span', { style: 'color:var(--text-muted);flex-shrink:0' }, ln.label));
-      const right = el('span', { style: 'color:var(--text);font-weight:500;min-width:0;word-break:break-word;text-align:right' },
-        ln.value + (ln.pct !== undefined ? ` (${ln.pct})` : '')
-      );
-      row.appendChild(right);
-      if (ln.onClick) {
-        row.style.cursor = 'pointer';
-        row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.05)'; });
-        row.addEventListener('mouseleave', () => { row.style.background = ''; });
-        row.onclick = e => { e.stopPropagation(); ln.onClick(); };
-      }
-      card.appendChild(row);
-    }
-  }
-
-  if (subtitle) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
-  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
-  return card;
-}
 
 // ── KPI section ───────────────────────────────────────────────────────────────
 function buildKpiSection(cur, cmp, cmpRange) {
@@ -322,7 +246,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
   // ── Composite cards row ──────────────────────────────────────────────────────
   const compGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:12px' });
 
-  compGrid.appendChild(compositeKpiCard({
+  compGrid.appendChild(mkKpiCard({
     label: 'Total Revenue', value: formatEUR(total),
     delta: dTotal, compLabel: cl,
     onClick: totalRevDrill,
@@ -332,7 +256,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
     ]
   }));
 
-  compGrid.appendChild(compositeKpiCard({
+  compGrid.appendChild(mkKpiCard({
     label: 'Service Revenue', value: formatEUR(svcRev),
     delta: dService, compLabel: cl,
     onClick: serviceRevDrill,
@@ -344,7 +268,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
     ]
   }));
 
-  compGrid.appendChild(compositeKpiCard({
+  compGrid.appendChild(mkKpiCard({
     label: 'Rental Revenue', value: formatEUR(propRev),
     delta: dRental, compLabel: cl,
     onClick: rentalRevDrill,
@@ -356,7 +280,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
     ]
   }));
 
-  compGrid.appendChild(compositeKpiCard({
+  compGrid.appendChild(mkKpiCard({
     label: 'Top Contributor', value: contribs[0]?.name || '—',
     delta: null, compLabel: '',
     onClick: () => drillDownModal('Revenue Concentration',
@@ -374,7 +298,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
     const concVariant  = concPct < 40 ? 'success' : concPct >= 60 ? 'warning' : '';
     const concStatus   = concPct < 40 ? 'Healthy' : concPct < 60 ? 'Watch' : 'Risk';
     const concTypeLbl  = topC?.type === 'Property' ? 'property' : topC?.type === 'Client' ? 'client' : 'contributor';
-    compGrid.appendChild(kpiCard({
+    compGrid.appendChild(mkKpiCard({
       label:    'Revenue Concentration',
       value:    total > 0 ? `${concPct.toFixed(1)}%` : '0%',
       subtitle: `Top ${concTypeLbl} share · ${concStatus}`,
@@ -386,7 +310,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
   }
 
   // Average Rental Revenue / Property (composite, STR and LTR separately)
-  compGrid.appendChild(compositeKpiCard({
+  compGrid.appendChild(mkKpiCard({
     label:   'Avg Rental Revenue / Property',
     value:   avgRental !== null ? formatEUR(avgRental) : '—',
     delta:   null,

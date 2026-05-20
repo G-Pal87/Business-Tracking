@@ -10,7 +10,7 @@ import {
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
 import {
-  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -151,86 +151,6 @@ function getData(start, end) {
   };
 }
 
-// ── KPI card builder ──────────────────────────────────────────────────────────
-function kpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick }) {
-  const card = el('div', {
-    class: 'kpi' + (variant ? ' ' + variant : ''),
-    style: onClick ? 'cursor:pointer;transition:box-shadow 120ms' : '',
-    title: onClick ? 'Click for breakdown' : ''
-  });
-  if (onClick) {
-    card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
-    card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
-    card.onclick = onClick;
-  }
-
-  card.appendChild(el('div', { class: 'kpi-label' }, label));
-  card.appendChild(el('div', { class: 'kpi-value' }, value));
-
-  if (delta !== null && delta !== undefined && isFinite(delta)) {
-    const trend = el('div', { class: 'kpi-trend' });
-    const sign  = delta > 0 ? '+' : '';
-    const disp  = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
-    const cls   = delta === 0 ? '' : delta > 0 ? (invertDelta ? 'down' : 'up') : (invertDelta ? 'up' : 'down');
-    trend.appendChild(el('span', { class: cls }, disp));
-    if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
-    card.appendChild(trend);
-  }
-  if (subtitle) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
-  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
-  return card;
-}
-
-// ── Composite KPI card (wider, with breakdown lines) ─────────────────────────
-function compositeKpiCard({ label, value, subtitle, delta, deltaIsPp, compLabel, variant, onClick, lines }) {
-  const card = el('div', {
-    class: 'kpi' + (variant ? ' ' + variant : ''),
-    style: onClick ? 'cursor:pointer;transition:box-shadow 120ms' : '',
-    title: onClick ? 'Click for breakdown' : ''
-  });
-  if (onClick) {
-    card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
-    card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
-    card.onclick = onClick;
-  }
-
-  card.appendChild(el('div', { class: 'kpi-label' }, label));
-  card.appendChild(el('div', { class: 'kpi-value' }, value));
-
-  if (delta !== null && delta !== undefined && isFinite(delta)) {
-    const trend = el('div', { class: 'kpi-trend' });
-    const sign  = delta > 0 ? '+' : '';
-    const disp  = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
-    const cls   = delta === 0 ? '' : delta > 0 ? 'up' : 'down';
-    trend.appendChild(el('span', { class: cls }, disp));
-    if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
-    card.appendChild(trend);
-  }
-
-  if (lines?.length) {
-    card.appendChild(el('div', { style: 'margin:8px 0 6px;border-top:1px solid rgba(255,255,255,0.06)' }));
-    for (const ln of lines) {
-      const row = el('div', { style: 'display:flex;justify-content:space-between;align-items:flex-start;gap:6px;font-size:11px;padding:2px 4px;margin:0 -4px;border-radius:3px' });
-      row.appendChild(el('span', { style: 'color:var(--text-muted);flex-shrink:0' }, ln.label));
-      const right = el('span', { style: 'color:var(--text);font-weight:500;min-width:0;word-break:break-word;text-align:right' },
-        ln.value + (ln.pct !== undefined ? ` (${ln.pct})` : '')
-      );
-      row.appendChild(right);
-      if (ln.onClick) {
-        row.style.cursor = 'pointer';
-        row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.05)'; });
-        row.addEventListener('mouseleave', () => { row.style.background = ''; });
-        row.onclick = e => { e.stopPropagation(); ln.onClick(); };
-      }
-      card.appendChild(row);
-    }
-  }
-
-  if (subtitle) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
-  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
-  return card;
-}
-
 // ── KPI Grid ──────────────────────────────────────────────────────────────────
 function buildKpiGrid(cur, cmp, cmpRange) {
   const {
@@ -340,7 +260,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   // ── Row 1: Revenue & Profit ────────────────────────────────────────────────
 
   // 1. Total Revenue
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label:    'Total Revenue',
     value:    formatEUR(totalRev),
     subtitle: `Rental ${pct(propRev, totalRev)} · Service ${pct(svcRev, totalRev)}`,
@@ -353,7 +273,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   {
     const margin = totalRev > 0 ? (netOpProfit / totalRev * 100) : null;
     const variant = netOpProfit < 0 ? 'danger' : netOpProfit < totalRev * 0.1 ? 'warning' : '';
-    grid.appendChild(kpiCard({
+    grid.appendChild(mkKpiCard({
       label:    'Net Operating Profit',
       value:    formatEUR(netOpProfit),
       subtitle: margin !== null ? `Margin: ${margin.toFixed(1)}%` : 'No revenue',
@@ -375,7 +295,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   // 3. Cash Position
   {
     const variant = cashPos < 0 ? 'danger' : cashPos < totalRev * 0.05 ? 'warning' : '';
-    grid.appendChild(kpiCard({
+    grid.appendChild(mkKpiCard({
       label:    'Cash Position',
       value:    formatEUR(cashPos),
       subtitle: `Net Cash Flow (Rev − All Exp)`,
@@ -390,7 +310,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   {
     const months = burnCoverage !== null ? Math.round(burnCoverage * 10) / 10 : null;
     const variant = burnCoverage === null ? '' : burnCoverage < 1 ? 'danger' : burnCoverage < 3 ? 'warning' : 'success';
-    grid.appendChild(kpiCard({
+    grid.appendChild(mkKpiCard({
       label:    'Burn Coverage',
       value:    months !== null ? `${months.toFixed(1)} mo` : '—',
       subtitle: 'Period net ÷ avg monthly OpEx',
@@ -411,7 +331,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   }
 
   // 5. Pending Pipeline
-  grid.appendChild(kpiCard({
+  grid.appendChild(mkKpiCard({
     label:    'Pending Pipeline',
     value:    formatEUR(pipeline),
     subtitle: `${cur.pendingPayments.length} pending payment${cur.pendingPayments.length !== 1 ? 's' : ''}`,
@@ -442,7 +362,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     if (collectionRate !== null) {
       variant = collectionRate < 60 ? 'danger' : collectionRate < 80 ? 'warning' : 'success';
     }
-    grid.appendChild(kpiCard({
+    grid.appendChild(mkKpiCard({
       label:    'Collection Rate',
       value:    collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—',
       subtitle: cur.invoicedTotal > 0 ? `${formatEUR(cur.paidInvTotal)} paid of ${formatEUR(cur.invoicedTotal)} invoiced` : 'No invoices',
@@ -469,7 +389,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     if (expenseRatio !== null) {
       variant = expenseRatio > 80 ? 'danger' : expenseRatio > 60 ? 'warning' : 'success';
     }
-    grid.appendChild(kpiCard({
+    grid.appendChild(mkKpiCard({
       label:    'Expense Ratio',
       value:    expenseRatio !== null ? `${expenseRatio.toFixed(1)}%` : '—',
       subtitle: `OpEx ÷ Revenue`,
@@ -494,7 +414,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   // 7. Top Revenue Source (composite)
   {
     const top3 = topContribs.slice(0, 3);
-    grid.appendChild(compositeKpiCard({
+    grid.appendChild(mkKpiCard({
       label:  'Top Revenue Source',
       value:  topContribs[0]?.name || '—',
       subtitle: topContribs[0] ? `${pct(topContribs[0].eur, totalRev)} of total revenue` : 'No data',
@@ -510,7 +430,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   // 8. Overdue Invoices
   {
     const variant = overdueCount > 0 ? 'danger' : 'success';
-    grid.appendChild(kpiCard({
+    grid.appendChild(mkKpiCard({
       label:    'Overdue Invoices',
       value:    overdueCount > 0 ? formatEUR(overdueEur) : '€0',
       subtitle: overdueCount > 0 ? `${overdueCount} invoice${overdueCount !== 1 ? 's' : ''} overdue` : 'All clear',
