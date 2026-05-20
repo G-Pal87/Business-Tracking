@@ -10,14 +10,13 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, expStream, safePct, fmtK } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
 
 const CHART_IDS = ['cf-cumulative-line', 'cf-month-bar', 'cf-net-donut', 'cf-net-month-bar', 'cf-prop-hbar', 'cf-stream-bar'];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const fmtK = v => v >= 10000 ? `€${(v / 1000).toFixed(0)}k` : v >= 1000 ? `€${(v / 1000).toFixed(1)}k` : formatEUR(v, { maxFrac: 0 });
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -28,22 +27,6 @@ export default {
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }
 };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function expStream(e) {
-  if (e.stream) return e.stream;
-  if (e.propertyId) {
-    const p = byId('properties', e.propertyId);
-    if (p?.type === 'short_term') return 'short_term_rental';
-    if (p?.type === 'long_term')  return 'long_term_rental';
-  }
-  return 'other';
-}
-
-function safePct(cur, cmp) {
-  if (cmp == null || !isFinite(cmp) || cmp === 0) return null;
-  return (cur - cmp) / Math.abs(cmp) * 100;
-}
 
 // ── Data aggregation ──────────────────────────────────────────────────────────
 function getData(start, end) {
@@ -684,7 +667,8 @@ function buildView() {
       // Breakdown by category
       const catMap = new Map();
       capExpenses.forEach(e => {
-        const cat = e.category || 'Uncategorized';
+        const key = resolveExpenseFields(e).costCategory;
+        const cat = COST_CATEGORIES[key]?.label || key || 'Uncategorized';
         catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
       });
       const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);

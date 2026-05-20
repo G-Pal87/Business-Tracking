@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkKpiCard } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkKpiCard, mkEmptyState, expStream, safePct } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -45,24 +45,9 @@ export default {
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function expStream(e) {
-  if (e.stream) return e.stream;
-  if (e.propertyId) {
-    const p = byId('properties', e.propertyId);
-    if (p?.type === 'short_term') return 'short_term_rental';
-    if (p?.type === 'long_term')  return 'long_term_rental';
-  }
-  return 'other';
-}
-
 function vendorLabel(e) {
   if (e.vendorId) return byId('vendors', e.vendorId)?.name || e.vendor || '—';
   return e.vendor || '—';
-}
-
-function safePct(cur, cmp) {
-  if (cmp == null || !isFinite(cmp) || cmp === 0) return null;
-  return (cur - cmp) / Math.abs(cmp) * 100;
 }
 
 // ── Data fetching ─────────────────────────────────────────────────────────────
@@ -308,6 +293,12 @@ function buildView() {
   const { allExp, opEx, capEx, opTotal, capTotal, total } = cur;
   const capExCats = getCapExCatKeys(allExp);
   const cmpLabel = cmpRange?.label;
+
+  // ── Empty state ───────────────────────────────────────────────────────────
+  if (opTotal === 0 && capTotal === 0 && allExp.length === 0) {
+    wrap.appendChild(mkEmptyState('No expense records match the selected filters.'));
+    return wrap;
+  }
 
   // ── CapEx/OpEx split banner ────────────────────────────────────────────────
   if (total > 0) {
