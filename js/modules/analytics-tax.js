@@ -317,7 +317,7 @@ function buildPnLTable(data) {
   if (revLTR   > 0) tbody.appendChild(mkRow('Rental Revenue (LTR)',         revLTR,   { indent: 1 }));
   if (revCS    > 0) tbody.appendChild(mkRow('Service Revenue (CS)',          revCS,    { indent: 1 }));
   if (revMkt   > 0) tbody.appendChild(mkRow('Service Revenue (Marketing)',   revMkt,   { indent: 1 }));
-  if (revOther > 0) tbody.appendChild(mkRow('Other Service Revenue',         revOther, { indent: 1 }));
+  if (revOther > 0) tbody.appendChild(mkRow('Other Services',                revOther, { indent: 1 }));
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
   tbody.appendChild(mkRow('Total Revenue', totalRevenue, {
     isSectionTotal: true, isPositive: totalRevenue >= 0

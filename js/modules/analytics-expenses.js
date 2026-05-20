@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkKpiCard, mkEmptyState, expStream, safePct } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkKpiCard, mkEmptyState, expStream, safePct, mkInsightsBanner } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -211,42 +211,6 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }) {
   }
 
   return signals;
-}
-
-function buildInsightsBanner(signals) {
-  if (!signals.length) return null;
-
-  const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b', 'Note': '#6366f1' };
-  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)', 'Note': 'rgba(99,102,241,0.06)' };
-
-  const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Expense Insights')
-  ));
-  const body = el('div', { style: 'padding:0 16px 16px' });
-  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px' });
-
-  for (const sig of signals) {
-    const color = SEV_COLOR[sig.severity] || '#6b7280';
-    const bg    = SEV_BG[sig.severity]    || 'transparent';
-    const block = el('div', { style: `padding:10px 12px;border-radius:4px;border-left:3px solid ${color};background:${bg}` });
-
-    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px' });
-    titleRow.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)' }, sig.title));
-    titleRow.appendChild(el('span', { style: `font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;color:${color};border:1px solid ${color}` }, sig.severity));
-    block.appendChild(titleRow);
-
-    const p = el('p', { style: 'margin:0 0 5px;font-size:12px;line-height:1.5;color:var(--text)' }, sig.text);
-    if (sig.onClick) { p.style.cursor = 'pointer'; p.title = 'Click for breakdown'; p.onclick = sig.onClick; }
-    block.appendChild(p);
-    if (sig.inspect) block.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted)' }, `→ Inspect: ${sig.inspect}`));
-
-    grid.appendChild(block);
-  }
-
-  body.appendChild(grid);
-  card.appendChild(body);
-  return card;
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
@@ -551,7 +515,7 @@ function buildView() {
   wrap.appendChild(kpiRow2);
 
   // Inline insights
-  const expBanner = buildInsightsBanner(computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }));
+  const expBanner = mkInsightsBanner(computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }), 'Expense Insights');
   if (expBanner) wrap.appendChild(expBanner);
 
   // ── Chart row 1: Stacked bar (2/3) + Stream donut (1/3) ───────────────────

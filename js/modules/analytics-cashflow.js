@@ -10,7 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, expStream, safePct, fmtK } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, expStream, safePct, fmtK, mkInsightsBanner } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -266,42 +266,6 @@ function computeCashFlowInsights({ payments, invoices, opExpenses, capExpenses, 
   }
 
   return signals;
-}
-
-function buildInsightsBanner(signals) {
-  const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b', 'Note': '#6366f1' };
-  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)', 'Note': 'rgba(99,102,241,0.06)' };
-
-  const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Cash Flow Insights')
-  ));
-
-  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:16px' });
-
-  for (const sig of signals) {
-    const color = SEV_COLOR[sig.severity] || SEV_COLOR['Note'];
-    const bg    = SEV_BG[sig.severity]    || SEV_BG['Note'];
-    const block = el('div', {
-      style: `background:${bg};border-left:3px solid ${color};border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:12px 14px`
-    });
-
-    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:6px' });
-    titleRow.appendChild(el('span', { style: `font-size:11px;font-weight:700;letter-spacing:0.5px;color:${color}` }, sig.title));
-    titleRow.appendChild(el('span', { style: `font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;background:${color};color:#fff` }, sig.severity));
-    block.appendChild(titleRow);
-
-    block.appendChild(el('p', { style: 'margin:0 0 6px;font-size:12px;color:var(--text);line-height:1.4' }, sig.text));
-
-    if (sig.inspect) {
-      block.appendChild(el('div', { style: `font-size:11px;color:${color};font-weight:600` }, `→ Inspect: ${sig.inspect}`));
-    }
-
-    grid.appendChild(block);
-  }
-
-  card.appendChild(grid);
-  return card;
 }
 
 // ── Cash Seasonality Heatmap ──────────────────────────────────────────────────
@@ -924,7 +888,7 @@ function buildView() {
   wrap.appendChild(kpiRow3);
 
   // ── Cash Flow Insights ─────────────────────────────────────────────────────
-  wrap.appendChild(buildInsightsBanner(computeCashFlowInsights(curData)));
+  wrap.appendChild(mkInsightsBanner(computeCashFlowInsights(curData), 'Cash Flow Insights'));
 
   // ── Cash Movement Trends ───────────────────────────────────────────────────
   wrap.appendChild(el('div', { style: 'margin:8px 0 12px' },

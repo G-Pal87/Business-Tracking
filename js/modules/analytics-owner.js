@@ -211,7 +211,7 @@ function buildPartnerColumn(label, color, data, propsData, isYou) {
 }
 
 // ── KPI section ───────────────────────────────────────────────────────────────
-function buildKpiSection(data, cmpData, propsData) {
+function buildKpiSection(data, cmpData, propsData, cmpRange) {
   const { total, revSplit, annotatedPayments, annotatedInvoices } = data;
   const youPct  = total > 0 ? revSplit.you  / total * 100 : 0;
   const ritaPct = total > 0 ? revSplit.rita / total * 100 : 0;
@@ -693,7 +693,7 @@ function buildView() {
   if (compLine) wrap.appendChild(compLine);
 
   // KPI cards
-  wrap.appendChild(buildKpiSection(data, cmpData, propsData));
+  wrap.appendChild(buildKpiSection(data, cmpData, propsData, cmpRange));
 
   // Partner side-by-side columns
   wrap.appendChild(buildPartnerComparison(data, propsData));

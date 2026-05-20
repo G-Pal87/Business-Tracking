@@ -330,7 +330,9 @@ export function mkInsightsBanner(signals, title) {
     titleRow.appendChild(el('span', { style: `font-size:11px;font-weight:700;letter-spacing:0.5px;color:${color}` }, sig.title));
     titleRow.appendChild(el('span', { style: `font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;background:${color};color:#fff` }, sig.severity));
     block.appendChild(titleRow);
-    block.appendChild(el('p', { style: 'margin:0 0 6px;font-size:12px;color:var(--text);line-height:1.4' }, sig.text));
+    const p = el('p', { style: 'margin:0 0 6px;font-size:12px;color:var(--text);line-height:1.4' }, sig.text);
+    if (sig.onClick) { p.style.cursor = 'pointer'; p.title = 'Click for breakdown'; p.onclick = sig.onClick; }
+    block.appendChild(p);
     if (sig.inspect) {
       block.appendChild(el('div', { style: `font-size:11px;color:${color};font-weight:600` }, `→ Inspect: ${sig.inspect}`));
     }
