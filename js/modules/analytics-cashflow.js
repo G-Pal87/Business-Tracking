@@ -394,17 +394,8 @@ function buildInsightsBanner(signals) {
 }
 
 // ── Cash Seasonality Heatmap ──────────────────────────────────────────────────
-function buildCashSeasonalityHeatmap(payments, invoices, opExpenses, capExpenses) {
-  // Collect all years across all transaction types
-  const years = [...new Set([
-    ...payments   .map(p => p.date?.slice(0, 4)),
-    ...invoices   .map(i => (i.issueDate || '').slice(0, 4)),
-    ...opExpenses .map(e => e.date?.slice(0, 4)),
-    ...capExpenses.map(e => e.date?.slice(0, 4))
-  ].filter(Boolean))].sort();
-  if (!years.length) return null;
-
-  // Build net cash flow per month-key across ALL available years (not just filtered period)
+function buildCashSeasonalityHeatmap() {
+  // Build net cash flow heatmap across ALL available years (not just filtered period)
   const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
   const mExpStream = e => !gF.streams.size || gF.streams.has(expStream(e));
   const mInvOwner = inv => {
@@ -952,9 +943,9 @@ function buildView() {
 
   // Cash Conversion Cycle (simplified): (Outstanding service invoices ÷ Total service invoiced) × 30
   {
-    const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+    const { mStream: mStreamCCC, mOwner: mOwnerCCC, mClient: mClientCCC } = makeMatchers(gF);
     const inRange = d => !!d && d >= start && d <= end;
-    const allInvoices = listActive('invoices').filter(i => inRange(i.issueDate || i.date) && mStream(i) && mOwner(i) && mClient(i));
+    const allInvoices = listActive('invoices').filter(i => inRange(i.issueDate || i.date) && mStreamCCC(i) && mOwnerCCC(i) && mClientCCC(i));
     const svcInvoiced = allInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
     const outstandingSvc = allInvoices.filter(i => !['paid', 'cancelled', 'void'].includes(i.status))
       .reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
@@ -1077,7 +1068,7 @@ function buildView() {
   wrap.appendChild(row4);
 
   // ── Cash Seasonality Heatmap ───────────────────────────────────────────────
-  const heatmap = buildCashSeasonalityHeatmap(payments, invoices, opExpenses, capExpenses);
+  const heatmap = buildCashSeasonalityHeatmap();
   if (heatmap) wrap.appendChild(heatmap);
 
   // ── Transactions ───────────────────────────────────────────────────────────
