@@ -324,6 +324,94 @@ function computeServiceInsights({ paidTotal, invoicedTotal, outstandingTotal, ov
   return signals;
 }
 
+// ── Stream Performance Card ───────────────────────────────────────────────────
+function buildStreamPerformanceCard(kpiBase) {
+  const sum = arr => arr.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+
+  const streamData = SERVICE_STREAMS.map(k => {
+    const streamInvs    = kpiBase.filter(i => i.stream === k);
+    const streamPaidInv = streamInvs.filter(i => i.status === 'paid');
+    const streamNonDraft = streamInvs.filter(i => i.status !== 'draft');
+    const streamOutInv  = streamInvs.filter(i => i.status === 'sent' || i.status === 'overdue');
+
+    const streamPaid         = sum(streamPaidInv);
+    const streamInvoiced     = sum(streamNonDraft);
+    const streamOutstanding  = sum(streamOutInv);
+    const streamCollectionRate = streamInvoiced > 0 ? streamPaid / streamInvoiced * 100 : null;
+    const invoiceCount       = streamNonDraft.length;
+
+    // Top client by paid revenue
+    const clientRevMap = new Map();
+    streamPaidInv.forEach(i => {
+      if (!i.clientId) return;
+      clientRevMap.set(i.clientId, (clientRevMap.get(i.clientId) || 0) + toEUR(i.total, i.currency, i.issueDate));
+    });
+    let topClient = null, topClientRev = 0;
+    for (const [cid, rev] of clientRevMap.entries()) {
+      if (rev > topClientRev) {
+        topClientRev = rev;
+        topClient = byId('clients', cid)?.name || '—';
+      }
+    }
+
+    return { k, streamPaid, streamInvoiced, streamOutstanding, streamCollectionRate, topClient, invoiceCount };
+  });
+
+  // Skip if both streams have zero invoiced revenue
+  const totalInvoiced = streamData.reduce((s, d) => s + d.streamInvoiced, 0);
+  if (totalInvoiced === 0) {
+    return mkEmptyState('No stream invoice activity for the selected period.');
+  }
+
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Stream Performance')
+  ));
+
+  const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px' });
+
+  for (const d of streamData) {
+    const cfg   = STREAMS[d.k] || {};
+    const color = cfg.color || '#8b93b0';
+    const label = cfg.label || d.k;
+
+    const col = el('div', { style: 'display:flex;flex-direction:column;gap:10px' });
+
+    // Stream label header
+    col.appendChild(el('div', {
+      style: `font-size:12px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:${color};padding-bottom:4px;border-bottom:2px solid ${color}`
+    }, label));
+
+    // Summary boxes grid
+    const boxGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px' });
+
+    boxGrid.appendChild(mkSummaryBox('Paid Revenue', formatEUR(d.streamPaid),
+      d.invoiceCount > 0 ? `${d.invoiceCount} invoice${d.invoiceCount !== 1 ? 's' : ''}` : null));
+
+    const rateVariant = d.streamCollectionRate === null ? '' :
+      d.streamCollectionRate >= 80 ? 'good' :
+      d.streamCollectionRate >= 60 ? 'warn' : 'danger';
+    const rateLabel = d.streamCollectionRate !== null ? d.streamCollectionRate.toFixed(0) + '%' : '—';
+    boxGrid.appendChild(mkSummaryBox('Collection Rate', rateLabel, 'Paid / invoiced', rateVariant));
+
+    boxGrid.appendChild(mkSummaryBox('Invoiced', formatEUR(d.streamInvoiced), null));
+    boxGrid.appendChild(mkSummaryBox('Outstanding', formatEUR(d.streamOutstanding), null));
+
+    col.appendChild(boxGrid);
+
+    // Top client line
+    const topClientEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' });
+    topClientEl.appendChild(el('span', { style: 'font-weight:600' }, 'Top client: '));
+    topClientEl.appendChild(document.createTextNode(d.topClient || '—'));
+    col.appendChild(topClientEl);
+
+    grid.appendChild(col);
+  }
+
+  card.appendChild(grid);
+  return card;
+}
+
 function buildInsightsBanner(signals) {
   const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b', 'Note': '#6366f1' };
   const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)', 'Note': 'rgba(99,102,241,0.06)' };
@@ -827,6 +915,10 @@ function buildView() {
   kpiRow3.appendChild(el('div'));
 
   wrap.appendChild(kpiRow3);
+
+  // ── Stream Performance ────────────────────────────────────────────────────
+  const streamPerfCard = buildStreamPerformanceCard(kpiBase);
+  if (streamPerfCard) wrap.appendChild(streamPerfCard);
 
   // ── Service Performance Insights ──────────────────────────────────────────
   const signals = computeServiceInsights({
