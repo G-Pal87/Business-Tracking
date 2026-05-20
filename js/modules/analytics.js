@@ -93,6 +93,12 @@ function getData(start, end) {
   const cashPos     = totalRev - totalExp;
   const pipeline    = pendingPayments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
 
+  // Burn coverage: how many months of OpEx does this period's net cash cover?
+  const startD = new Date(start), endD = new Date(end);
+  const periodMonths = Math.max(1, (endD.getFullYear() - startD.getFullYear()) * 12 + endD.getMonth() - startD.getMonth() + 1);
+  const avgMonthlyOpEx  = opEx / periodMonths;
+  const burnCoverage    = avgMonthlyOpEx > 0 ? cashPos / avgMonthlyOpEx : null;
+
   // Collection rate: paid invoices / (paid + outstanding)
   const paidInvTotal = svcRev;
   const outTotal     = outstandingInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
@@ -138,6 +144,7 @@ function getData(start, end) {
     opEx, capEx, totalExp,
     netOpProfit, cashPos, pipeline,
     collectionRate, expenseRatio,
+    burnCoverage, avgMonthlyOpEx, periodMonths,
     topContribs, streamMap,
     overdueCount, overdueEur,
     paidInvTotal, outTotal, invoicedTotal
@@ -230,7 +237,8 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     totalRev, netOpProfit, cashPos, pipeline,
     collectionRate, expenseRatio, topContribs,
     overdueCount, overdueEur,
-    opEx, propRev, svcRev, streamMap
+    opEx, propRev, svcRev, streamMap,
+    burnCoverage, avgMonthlyOpEx, periodMonths
   } = cur;
 
   const cl = cmpRange?.label || '';
@@ -378,7 +386,31 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     }));
   }
 
-  // 4. Pending Pipeline
+  // 4. Burn Coverage
+  {
+    const months = burnCoverage !== null ? Math.round(burnCoverage * 10) / 10 : null;
+    const variant = burnCoverage === null ? '' : burnCoverage < 1 ? 'danger' : burnCoverage < 3 ? 'warning' : 'success';
+    grid.appendChild(kpiCard({
+      label:    'Burn Coverage',
+      value:    months !== null ? `${months.toFixed(1)} mo` : '—',
+      subtitle: 'Period net ÷ avg monthly OpEx',
+      variant,
+      onClick: () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Period Net Cash',    value: formatEUR(cashPos),       sub: cashPos >= 0 ? 'Positive' : 'Negative' },
+          { label: 'Avg Monthly OpEx',  value: formatEUR(avgMonthlyOpEx), sub: `over ${periodMonths} month${periodMonths !== 1 ? 's' : ''}` },
+          { label: 'Burn Coverage',      value: months !== null ? `${months.toFixed(1)} months` : '—', sub: months !== null && months < 3 ? 'Low — review spending' : null }
+        ], 1));
+        body.appendChild(el('div', {
+          style: 'font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.6;padding:8px 10px;border-radius:6px;background:rgba(255,255,255,0.03)'
+        }, 'Measures how many months of operating expenses are covered by this period\'s net cash flow. Uses period-level data — not a balance-sheet cash runway figure.'));
+        openModal({ title: 'Burn Coverage — Breakdown', body, large: false });
+      }
+    }));
+  }
+
+  // 5. Pending Pipeline
   grid.appendChild(kpiCard({
     label:    'Pending Pipeline',
     value:    formatEUR(pipeline),

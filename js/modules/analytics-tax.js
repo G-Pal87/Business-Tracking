@@ -251,7 +251,7 @@ function buildPnLTable(data) {
 
   wrap.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Annual Profit & Loss Statement'),
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Accrual basis · EUR')
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Cash basis · EUR')
   ));
 
   const tbl = el('table', {
@@ -365,7 +365,7 @@ function buildKpiCards(data, year) {
     hasForecast, forecastNet
   } = data;
 
-  const grossMargin = totalRevenue > 0 ? ((totalRevenue - totalOpEx) / totalRevenue * 100) : 0;
+  const operatingMargin = totalRevenue > 0 ? ((totalRevenue - totalOpEx) / totalRevenue * 100) : 0;
 
   const grid = el('div', {
     style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px'
@@ -389,24 +389,24 @@ function buildKpiCards(data, year) {
     return card;
   };
 
-  // 1. Gross Margin
+  // 1. Operating Margin
   grid.appendChild(mkKpi(
-    'Gross Margin',
-    `${grossMargin.toFixed(1)}%`,
+    'Operating Margin',
+    `${operatingMargin.toFixed(1)}%`,
     'Revenue minus OpEx',
-    grossMargin >= 50 ? 'success' : grossMargin >= 20 ? 'warning' : 'danger',
+    operatingMargin >= 50 ? 'success' : operatingMargin >= 20 ? 'warning' : 'danger',
     () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       body.appendChild(mkSummaryGrid([
         { label: 'Total Revenue',     value: formatEUR(totalRevenue) },
         { label: 'Total OpEx',        value: formatEUR(totalOpEx) },
         { label: 'Operating Profit',  value: formatEUR(opProfit) },
-        { label: 'Gross Margin',      value: `${grossMargin.toFixed(2)}%` }
+        { label: 'Operating Margin',      value: `${operatingMargin.toFixed(2)}%` }
       ], 2));
       body.appendChild(el('div', {
         style: 'font-size:12px;color:var(--text-muted);line-height:1.5'
-      }, 'Gross Margin = (Revenue − OpEx) ÷ Revenue × 100. Excludes CapEx as it is a balance-sheet item.'));
-      openModal({ title: 'Gross Margin — Breakdown', body });
+      }, 'Operating Margin = (Revenue − OpEx) ÷ Revenue × 100. Excludes CapEx as it is a balance-sheet item.'));
+      openModal({ title: 'Operating Margin — Breakdown', body });
     }
   ));
 
@@ -752,7 +752,7 @@ function renderCharts(data, year, ownerFilter) {
         { label: 'Operating Profit',     value: formatEUR(d.opProfit)      },
         { label: 'CapEx',                value: formatEUR(d.totalCapEx)    },
         { label: 'Net Cash Used',        value: formatEUR(d.netCash)       },
-        { label: 'Gross Margin',         value: d.totalRevenue > 0 ? (d.opProfit / d.totalRevenue * 100).toFixed(1) + '%' : '—' }
+        { label: 'Operating Margin',         value: d.totalRevenue > 0 ? (d.opProfit / d.totalRevenue * 100).toFixed(1) + '%' : '—' }
       ], 3));
       const catEnt = [...d.catMap.entries()].sort((a, b) => b[1] - a[1]);
       if (catEnt.length > 0) {

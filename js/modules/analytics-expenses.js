@@ -96,10 +96,15 @@ function getData(start, end) {
 }
 
 function getRevenue(start, end) {
-  const { mStream, mOwner, mProperty } = makeMatchers(gF);
-  return listActivePayments()
+  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const rentals = listActivePayments()
     .filter(p => p.status === 'paid' && (p.date || '') >= start && (p.date || '') <= end && mStream(p) && mOwner(p) && mProperty(p))
     .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+  // Include paid service invoices so expense ratio reflects total revenue, not rental-only
+  const services = listActive('invoices')
+    .filter(i => i.status === 'paid' && (i.issueDate || '') >= start && (i.issueDate || '') <= end && mStream(i) && mOwner(i) && mClient(i))
+    .reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  return rentals + services;
 }
 
 // ── Rebuild ───────────────────────────────────────────────────────────────────

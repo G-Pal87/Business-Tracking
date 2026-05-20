@@ -109,10 +109,14 @@ function resolveFcStream(fc) {
 }
 
 // ── Forecast map builder (filtered, multi-year) ───────────────────────────────
-// Returns Map<YYYY-MM, EUR> for revenue and expenses, respecting gF filters.
+// Returns:
+//   fcMonthlyRev    Map<"YYYY-MM",        EUR>  — total portfolio forecast revenue per month
+//   fcPropMonthlyRev Map<"YYYY-MM_propId", EUR>  — per-property forecast revenue per month
+//   fcMonthlyExp    Map<"YYYY-MM",        EUR>  — total forecast expenses per month
 function buildFcMaps(startY, endY) {
-  const fcMonthlyRev = new Map();
-  const fcMonthlyExp = new Map();
+  const fcMonthlyRev     = new Map();
+  const fcPropMonthlyRev = new Map();
+  const fcMonthlyExp     = new Map();
   const allFcs = listActive('forecasts');
 
   for (let y = startY; y <= endY; y++) {
@@ -132,13 +136,19 @@ function buildFcMaps(startY, endY) {
         const rev = entries.length > 0
           ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
           : Number(md.revenue) || 0;
-        if (rev > 0) fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
+        if (rev > 0) {
+          fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
+          if (fc.type === 'property') {
+            const propKey = mk + '_' + fc.entityId;
+            fcPropMonthlyRev.set(propKey, (fcPropMonthlyRev.get(propKey) || 0) + rev);
+          }
+        }
         const exp = Number(md.expenses) || 0;
         if (exp > 0) fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
       });
     });
   }
-  return { fcMonthlyRev, fcMonthlyExp };
+  return { fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp };
 }
 
 // ── Core data calculation ─────────────────────────────────────────────────────
@@ -165,7 +175,7 @@ function calculateDashboardData(range) {
   const { keys: months } = getMonthKeysForRange(range.start, range.end);
   const startY = parseInt(range.start.slice(0, 4));
   const endY   = parseInt(range.end.slice(0, 4));
-  const { fcMonthlyRev, fcMonthlyExp } = buildFcMaps(startY, endY);
+  const { fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp } = buildFcMaps(startY, endY);
 
   let forecastRev = 0, forecastExp = 0;
   months.forEach(m => {
@@ -251,7 +261,7 @@ function calculateDashboardData(range) {
     variance, variancePct,
     pendingPipeline, pendingReservations, allPendingReservations,
     actPayments, actInvoices, actOpExpenses, actCapExpenses,
-    months, fcMonthlyRev, fcMonthlyExp,
+    months, fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp,
     monthlyBreakdown, streamBreakdown, propertyBreakdown,
     mape, mapeMonthCount: mapeValidMonths.length
   };
@@ -1276,7 +1286,7 @@ function renderCharts(data) {
           const mAct = m.payments
             .filter(p => p.propertyId === prop.propId)
             .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-          const mFc = data.fcMonthlyRev.get(m.key + '_' + prop.propId) || 0;
+          const mFc = data.fcPropMonthlyRev.get(m.key + '_' + prop.propId) || 0;
           return [m.label, formatEUR(mAct), formatEUR(mFc || 0), fmtVar(mAct, mFc || 0)];
         }).filter(([, act]) => act !== formatEUR(0));
         if (monthlyRows.length > 0) {
