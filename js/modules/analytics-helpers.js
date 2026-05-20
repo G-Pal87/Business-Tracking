@@ -179,6 +179,74 @@ export function mkProgressBar(pct, color) {
   return outer;
 }
 
+// ── KPI card ──────────────────────────────────────────────────────────────────
+
+/**
+ * mkKpiCard(opts) — standard KPI card used across all analytics dashboards.
+ *
+ * Replaces local kpiCard / compositeKpiCard definitions in every module.
+ *
+ * @param {object} opts
+ * @param {string}   opts.label        - Small muted label above the value.
+ * @param {string}   opts.value        - Primary large value text.
+ * @param {string}   [opts.subtitle]   - Small muted text below the value / lines.
+ * @param {number}   [opts.delta]      - Period-over-period change percentage.
+ * @param {boolean}  [opts.deltaIsPp]  - Treat delta as percentage points (pp).
+ * @param {boolean}  [opts.invertDelta]- Flip green/red (e.g. expenses: lower is better).
+ * @param {string}   [opts.compLabel]  - Label shown after "vs " in the trend line.
+ * @param {string}   [opts.variant]    - CSS class suffix: 'danger' | 'warning' | 'success'.
+ * @param {Function} [opts.onClick]    - Click handler; adds hover highlight when provided.
+ * @param {Array}    [opts.lines]      - Breakdown lines for composite cards.
+ *   Each line: { label, value, pct?, onClick? }
+ */
+export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick, lines } = {}) {
+  const card = el('div', {
+    class: 'kpi' + (variant ? ' ' + variant : ''),
+    style: onClick ? 'cursor:pointer;transition:box-shadow 120ms' : '',
+    title: onClick ? 'Click for breakdown' : ''
+  });
+  if (onClick) {
+    card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
+    card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
+    card.onclick = onClick;
+  }
+
+  card.appendChild(el('div', { class: 'kpi-label' }, label));
+  card.appendChild(el('div', { class: 'kpi-value' }, value));
+
+  if (delta !== null && delta !== undefined && isFinite(delta)) {
+    const trend = el('div', { class: 'kpi-trend' });
+    const sign  = delta > 0 ? '+' : '';
+    const disp  = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
+    const cls   = delta === 0 ? '' : delta > 0 ? (invertDelta ? 'down' : 'up') : (invertDelta ? 'up' : 'down');
+    trend.appendChild(el('span', { class: cls }, disp));
+    if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
+    card.appendChild(trend);
+  }
+
+  if (lines?.length) {
+    card.appendChild(el('div', { style: 'margin:8px 0 6px;border-top:1px solid rgba(255,255,255,0.06)' }));
+    for (const ln of lines) {
+      const row = el('div', { style: 'display:flex;justify-content:space-between;align-items:flex-start;gap:6px;font-size:11px;padding:2px 4px;margin:0 -4px;border-radius:3px' });
+      row.appendChild(el('span', { style: 'color:var(--text-muted);flex-shrink:0' }, ln.label));
+      row.appendChild(el('span', { style: 'color:var(--text);font-weight:500;min-width:0;word-break:break-word;text-align:right' },
+        ln.value + (ln.pct !== undefined ? ` (${ln.pct})` : '')
+      ));
+      if (ln.onClick) {
+        row.style.cursor = 'pointer';
+        row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.05)'; });
+        row.addEventListener('mouseleave', () => { row.style.background = ''; });
+        row.onclick = e => { e.stopPropagation(); ln.onClick(); };
+      }
+      card.appendChild(row);
+    }
+  }
+
+  if (subtitle) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
+  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
+  return card;
+}
+
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 /**
