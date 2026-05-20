@@ -1,5 +1,4 @@
 // Vendors module
-import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, toEUR, formatEUR } from '../core/data.js';
 import { VENDOR_ROLES, PROPERTY_TYPES, CURRENCIES } from '../core/config.js';
@@ -17,7 +16,7 @@ export default {
 function build() {
   const wrap = el('div', { class: 'view active' });
 
-  const filterBar = el('div', { class: 'flex gap-8 mb-16' });
+  const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   const roleFilter = new Set();
   const roleMS = buildMultiSelect(Object.entries(VENDOR_ROLES).map(([v, m]) => ({ value: v, label: m.label })), roleFilter, 'All Roles', () => renderCards(), 'vnd_roles');
   const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { roleMS.reset(); renderCards(); } });

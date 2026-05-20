@@ -1,5 +1,4 @@
 // Tenants module – CRUD for long-term rental tenants
-import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
@@ -23,7 +22,9 @@ function build() {
   const wrap = el('div', { class: 'view active' });
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
-  const ltProps = listActive('properties').filter(p => p.type === 'long_term');
+  const allProps = listActive('properties');
+  const ltProps = allProps.filter(p => p.type === 'long_term');
+  const propMap = new Map(allProps.map(p => [p.id, p]));
   const propFilter   = new Set();
   const statusFilter = new Set();
 
@@ -63,7 +64,7 @@ function build() {
 
     const tb = el('tbody');
     for (const r of rows) {
-      const prop = byId('properties', r.propertyId);
+      const prop = propMap.get(r.propertyId);
       const sm = STATUSES[r.status] || { label: r.status, css: '' };
       const tr = el('tr');
       tr.appendChild(el('td', { style: 'font-weight:500' }, r.name));
@@ -165,9 +166,20 @@ function openForm(existing, onSave) {
       status: statusS.value
     };
 
+    // Duplicate-name guard
+    if (!existing) {
+      const dupe = listActive('tenants').find(t =>
+        t.name.trim().toLowerCase() === updated.name.toLowerCase() && t.propertyId === updated.propertyId
+      );
+      if (dupe) {
+        const ok = await confirmDialog(`A tenant named "${dupe.name}" already exists for this property. Save anyway?`, { okLabel: 'Save Anyway' });
+        if (!ok) return;
+      }
+    }
+
     // Warn on overlapping active leases for the same property
     if (updated.status === 'active') {
-      const others = (state.db.tenants || []).filter(t =>
+      const others = listActive('tenants').filter(t =>
         t.id !== updated.id && t.propertyId === updated.propertyId && t.status === 'active'
       );
       const s1 = updated.leaseStartDate || '0000-01-01';

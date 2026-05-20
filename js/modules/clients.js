@@ -1,5 +1,4 @@
 // Clients module
-import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, newId, formatMoney, formatEUR, toEUR, byId } from '../core/data.js';
 import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
@@ -37,7 +36,9 @@ async function previewDoc(doc) {
   const bytes = new Uint8Array(byteChars.length);
   for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
   const blob = new Blob([bytes], { type: mime });
-  window.open(URL.createObjectURL(blob), '_blank');
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function docIcon(type) {
@@ -50,7 +51,7 @@ function docIcon(type) {
 }
 
 function sanitizeName(str) {
-  return str.replace(/[/\\]/g, '-').trim();
+  return str.replace(/[/\\:*?"<>|]/g, '-').trim();
 }
 
 export default {
@@ -90,14 +91,18 @@ function build() {
       grid.appendChild(el('div', { class: 'empty' }, 'No clients'));
       return;
     }
-    for (const c of rows) grid.appendChild(card(c));
+    const invsByClient = new Map();
+    for (const inv of listActive('invoices')) {
+      if (!invsByClient.has(inv.clientId)) invsByClient.set(inv.clientId, []);
+      invsByClient.get(inv.clientId).push(inv);
+    }
+    for (const c of rows) grid.appendChild(card(c, invsByClient.get(c.id) || []));
   }
   renderCards();
   return wrap;
 }
 
-function card(c) {
-  const invs = listActive('invoices').filter(i => i.clientId === c.id);
+function card(c, invs = []) {
   const paid = invs.filter(i => i.status === 'paid');
   const totalPaidEUR = paid.reduce((s, i) => s + toEUR(i.total, i.currency), 0);
   const totalOutEUR = invs.filter(i => i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + toEUR(i.total, i.currency), 0);
@@ -134,7 +139,7 @@ function stat(label, value) {
 function openDetail(id) {
   const c = byId('clients', id);
   if (!c) return;
-  const invs = listActive('invoices').filter(i => i.clientId === id).sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate));
+  const invs = listActive('invoices').filter(i => i.clientId === id).sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''));
   const body = el('div', {});
   body.appendChild(el('div', { class: 'mb-16' },
     el('h2', {}, c.name),
@@ -225,12 +230,16 @@ function openForm(existing) {
     id: newId('cli'),
     name: '', email: '', address: '', vatNumber: '', registrationNumber: '',
     currency: 'EUR',
+    stream: SERVICE_STREAMS[0] || '',
+    owner: Object.keys(OWNERS).find(k => k !== 'both') || '',
     contractStart: new Date().toISOString().slice(0, 10),
     notes: ''
   };
   const body = el('div', {});
-  const nameI = input({ value: c.name });
-  const emailI = input({ value: c.email, type: 'email' });
+  const nameI   = input({ value: c.name });
+  const emailI  = input({ value: c.email, type: 'email' });
+  const streamS = select(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label })), c.stream || SERVICE_STREAMS[0]);
+  const ownerS  = select(Object.entries(OWNERS).filter(([k]) => k !== 'both').map(([v, l]) => ({ value: v, label: l })), c.owner || '');
   const addressI = input({ value: c.address });
   const vatI = input({ value: c.vatNumber, placeholder: 'e.g. HU12345678' });
   const regI = input({ value: c.registrationNumber, placeholder: 'e.g. 01-09-123456' });
@@ -239,6 +248,7 @@ function openForm(existing) {
   const notesT = textarea(); notesT.value = c.notes || '';
 
   body.appendChild(formRow('Name', nameI));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Stream', streamS), formRow('Owner', ownerS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Email', emailI), formRow('VAT Number', vatI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI)));
   body.appendChild(formRow('Address', addressI));
@@ -341,6 +351,8 @@ function openForm(existing) {
       vatNumber: vatI.value.trim(),
       registrationNumber: regI.value.trim(),
       currency: currencyS.value,
+      stream: streamS.value,
+      owner: ownerS.value,
       contractStart: dateI.value,
       notes: notesT.value.trim(),
       documents: docsToSave
