@@ -7,7 +7,7 @@ import {
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers
 } from './analytics-filters.js?v=20260519';
 import {
-  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard
 } from './analytics-helpers.js';
 import { SERVICE_STREAMS, STREAMS } from '../core/config.js';
 
@@ -203,7 +203,7 @@ function buildPartnerColumn(label, color, data, propsData, isYou) {
 
 // ── KPI section ───────────────────────────────────────────────────────────────
 function buildKpiSection(data, propsData) {
-  const { total, revSplit } = data;
+  const { total, revSplit, annotatedPayments, annotatedInvoices } = data;
   const youPct  = total > 0 ? revSplit.you  / total * 100 : 0;
   const ritaPct = total > 0 ? revSplit.rita / total * 100 : 0;
   const sharedCount = propsData.bothProps.length;
@@ -212,21 +212,128 @@ function buildKpiSection(data, propsData) {
     style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px'
   });
 
-  const kpi = (label, value, sub, accentColor) => {
-    const card = el('div', { class: 'kpi' });
-    card.appendChild(el('div', { class: 'kpi-label' }, label));
-    card.appendChild(el('div', { class: 'kpi-value' }, value));
-    if (sub) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
-    const bar = el('div', { class: 'kpi-accent-bar' });
-    if (accentColor) bar.style.background = accentColor;
-    card.appendChild(bar);
-    return card;
-  };
+  // 1. Total Portfolio Revenue
+  grid.appendChild(mkKpiCard({
+    label: 'Total Portfolio Revenue',
+    value: formatEUR(total),
+    subtitle: 'All partners combined',
+    onClick: () => {
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+      body.appendChild(mkSummaryGrid([
+        { label: YOU_LABEL,  value: formatEUR(revSplit.you),  sub: youPct.toFixed(1) + '%' },
+        { label: RITA_LABEL, value: formatEUR(revSplit.rita), sub: ritaPct.toFixed(1) + '%' },
+        { label: 'Total',    value: formatEUR(total) }
+      ], 3));
+      body.appendChild(mkSectionLabel('Revenue Split'));
+      body.appendChild(mkModalTable(
+        ['Partner', 'Revenue', '% of Total'],
+        [
+          [YOU_LABEL,  formatEUR(revSplit.you),  youPct.toFixed(1)  + '%'],
+          [RITA_LABEL, formatEUR(revSplit.rita), ritaPct.toFixed(1) + '%'],
+          ['Total',    formatEUR(total),          '100%']
+        ],
+        { highlight: 1 }
+      ));
+      openModal({ title: 'Total Portfolio Revenue — Breakdown', body, large: true });
+    }
+  }));
 
-  grid.appendChild(kpi('Total Portfolio Revenue', formatEUR(total), 'All partners combined', null));
-  grid.appendChild(kpi('Giorgos Share', youPct.toFixed(1) + '%', formatEUR(revSplit.you), YOU_HEX));
-  grid.appendChild(kpi('Rita Share', ritaPct.toFixed(1) + '%', formatEUR(revSplit.rita), RITA_HEX));
-  grid.appendChild(kpi('Shared Properties', String(sharedCount), 'owner = both', '#14b8a6'));
+  // 2. Giorgos Share
+  grid.appendChild(mkKpiCard({
+    label: 'Giorgos Share',
+    value: youPct.toFixed(1) + '%',
+    subtitle: formatEUR(revSplit.you),
+    onClick: () => {
+      const youItems = [...annotatedPayments, ...annotatedInvoices]
+        .filter(r => r._resolvedOwner === 'you' || r._resolvedOwner === 'both')
+        .map(r => ({
+          ...r,
+          _shareEur: r._resolvedOwner === 'both' ? r._eur * 0.5 : r._eur
+        }))
+        .sort((a, b) => b._shareEur - a._shareEur)
+        .slice(0, 5);
+
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+      body.appendChild(mkSummaryGrid([
+        { label: 'Giorgos Revenue', value: formatEUR(revSplit.you) },
+        { label: '% of Portfolio',  value: youPct.toFixed(1) + '%' }
+      ], 2));
+      if (youItems.length > 0) {
+        body.appendChild(mkSectionLabel('Top 5 Records by Amount'));
+        body.appendChild(mkModalTable(
+          ['Date', 'Entity', 'Attribution', 'EUR'],
+          youItems.map(r => {
+            const date   = r.date || r.issueDate || '—';
+            const entity = r.propertyId ? (byId('properties', r.propertyId)?.name || '—')
+                         : r.clientId   ? (byId('clients',    r.clientId)?.name   || '—') : '—';
+            return [date, entity, r._resolvedOwner === 'both' ? 'Shared (50%)' : 'Giorgos', formatEUR(r._shareEur)];
+          }),
+          { highlight: 3 }
+        ));
+      }
+      openModal({ title: 'Giorgos Share — Detail', body, large: true });
+    }
+  }));
+
+  // 3. Rita Share
+  grid.appendChild(mkKpiCard({
+    label: 'Rita Share',
+    value: ritaPct.toFixed(1) + '%',
+    subtitle: formatEUR(revSplit.rita),
+    onClick: () => {
+      const ritaItems = [...annotatedPayments, ...annotatedInvoices]
+        .filter(r => r._resolvedOwner === 'rita' || r._resolvedOwner === 'both')
+        .map(r => ({
+          ...r,
+          _shareEur: r._resolvedOwner === 'both' ? r._eur * 0.5 : r._eur
+        }))
+        .sort((a, b) => b._shareEur - a._shareEur)
+        .slice(0, 5);
+
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+      body.appendChild(mkSummaryGrid([
+        { label: 'Rita Revenue',   value: formatEUR(revSplit.rita) },
+        { label: '% of Portfolio', value: ritaPct.toFixed(1) + '%' }
+      ], 2));
+      if (ritaItems.length > 0) {
+        body.appendChild(mkSectionLabel('Top 5 Records by Amount'));
+        body.appendChild(mkModalTable(
+          ['Date', 'Entity', 'Attribution', 'EUR'],
+          ritaItems.map(r => {
+            const date   = r.date || r.issueDate || '—';
+            const entity = r.propertyId ? (byId('properties', r.propertyId)?.name || '—')
+                         : r.clientId   ? (byId('clients',    r.clientId)?.name   || '—') : '—';
+            return [date, entity, r._resolvedOwner === 'both' ? 'Shared (50%)' : 'Rita', formatEUR(r._shareEur)];
+          }),
+          { highlight: 3 }
+        ));
+      }
+      openModal({ title: 'Rita Share — Detail', body, large: true });
+    }
+  }));
+
+  // 4. Shared Properties
+  grid.appendChild(mkKpiCard({
+    label: 'Shared Properties',
+    value: String(sharedCount),
+    subtitle: 'owner = both',
+    onClick: () => {
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+      if (propsData.bothProps.length > 0) {
+        body.appendChild(mkModalTable(
+          ['Property', 'Book Value (EUR)'],
+          propsData.bothProps.map(p => {
+            const eur = toEUR(p.purchasePrice || 0, p.currency || 'EUR', p.purchaseDate || null);
+            return [p.name, formatEUR(eur)];
+          }),
+          { highlight: 1 }
+        ));
+      } else {
+        body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' }, 'No shared properties found.'));
+      }
+      openModal({ title: 'Shared Properties', body, large: true });
+    }
+  }));
 
   return grid;
 }
@@ -557,7 +664,8 @@ function buildView() {
   const data      = getData(curRange.start, curRange.end);
   const propsData = getPropertiesData();
 
-  wrap.appendChild(buildComparisonLine(curRange, cmpRange));
+  const compLine = buildComparisonLine(curRange, cmpRange);
+  if (compLine) wrap.appendChild(compLine);
 
   // KPI cards
   wrap.appendChild(buildKpiSection(data, propsData));
