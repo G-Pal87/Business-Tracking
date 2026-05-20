@@ -10,7 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -186,45 +186,6 @@ const CF_DRILL_COLS = [
   { key: 'description', label: 'Description'                          },
   { key: 'amountEUR',   label: 'Amount EUR',  right: true             }
 ];
-
-// ── KPI card ──────────────────────────────────────────────────────────────────
-function kpiCard(labelOrOpts, value, variant, onClick) {
-  let label, subtitle, delta, deltaIsPp, invertDelta, compLabel;
-  if (typeof labelOrOpts === 'object' && labelOrOpts !== null) {
-    ({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick } = labelOrOpts);
-  } else {
-    label = labelOrOpts;
-  }
-
-  const card = el('div', {
-    class: 'kpi' + (variant ? ' ' + variant : ''),
-    style: 'cursor:pointer;transition:box-shadow 120ms',
-    title: 'Click for breakdown'
-  });
-  card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
-  card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
-  card.onclick = onClick;
-  card.appendChild(el('div', { class: 'kpi-label' }, label));
-  card.appendChild(el('div', { class: 'kpi-value' }, value));
-
-  if (delta !== null && delta !== undefined && isFinite(delta)) {
-    const up     = invertDelta ? delta < 0 : delta >= 0;
-    const sign   = delta >= 0 ? '+' : '';
-    const suffix = deltaIsPp ? ' pp' : '%';
-    const trendEl = el('div', { class: 'kpi-trend ' + (up ? 'up' : 'down') });
-    trendEl.appendChild(el('span', { class: 'kpi-arrow' }, up ? '▲' : '▼'));
-    trendEl.append(` ${sign}${delta.toFixed(1)}${suffix}`);
-    if (compLabel) trendEl.appendChild(el('span', { class: 'kpi-comp-label' }, ` vs ${compLabel}`));
-    card.appendChild(trendEl);
-  }
-
-  if (subtitle) {
-    card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
-  }
-
-  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
-  return card;
-}
 
 // ── Cash Flow Insights ────────────────────────────────────────────────────────
 function computeCashFlowInsights({ payments, invoices, opExpenses, capExpenses, cashIn, opExCashOut, investCashOut, cashOut, opCashFlow, net }) {
@@ -536,7 +497,7 @@ function buildView() {
 
   // ── KPI row 1: Cash In, Operating Cash Out, Operating Cash Flow ───────────
   const kpiRow1 = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px' });
-  kpiRow1.appendChild(kpiCard({
+  kpiRow1.appendChild(mkKpiCard({
     label:     'Cash In',
     value:     formatEUR(cashIn),
     variant:   'success',
@@ -572,7 +533,7 @@ function buildView() {
       openModal({ title: 'Cash In — Breakdown', body, large: true });
     }
   }));
-  kpiRow1.appendChild(kpiCard({
+  kpiRow1.appendChild(mkKpiCard({
     label:       'Operating Cash Out',
     value:       formatEUR(opExCashOut),
     subtitle:    'OpEx cash out',
@@ -628,7 +589,7 @@ function buildView() {
       openModal({ title: 'Operating Cash Out — Breakdown', body, large: true });
     }
   }));
-  kpiRow1.appendChild(kpiCard({
+  kpiRow1.appendChild(mkKpiCard({
     label:     'Operating Cash Flow',
     value:     formatEUR(opCashFlow),
     variant:   opCashFlow >= 0 ? 'success' : 'danger',
@@ -685,7 +646,7 @@ function buildView() {
 
   // ── KPI row 2: Investment Cash Out, Net Cash Flow, Avg Monthly Net ─────────
   const kpiRow2 = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px' });
-  kpiRow2.appendChild(kpiCard({
+  kpiRow2.appendChild(mkKpiCard({
     label:       'Investment Cash Out',
     value:       formatEUR(investCashOut),
     variant:     investCashOut > 0 ? 'warning' : '',
@@ -737,7 +698,7 @@ function buildView() {
       openModal({ title: 'Investment Cash Out — Breakdown', body, large: true });
     }
   }));
-  kpiRow2.appendChild(kpiCard({
+  kpiRow2.appendChild(mkKpiCard({
     label:     'Net Cash Flow',
     value:     formatEUR(net),
     variant:   net >= 0 ? 'success' : 'danger',
@@ -797,7 +758,7 @@ function buildView() {
       openModal({ title: 'Net Cash Flow — Breakdown', body, large: true });
     }
   }));
-  kpiRow2.appendChild(kpiCard({
+  kpiRow2.appendChild(mkKpiCard({
     label:     'Avg Monthly Net',
     value:     formatEUR(avgMonthlyNet),
     variant:   avgMonthlyNet >= 0 ? '' : 'warning',
@@ -864,7 +825,7 @@ function buildView() {
     const daysOnHand = isNegativeBalance ? 0 : (avgMonthlyOpex > 0 ? Math.round(running / avgMonthlyOpex * 30) : null);
 
     const dohVariant = isNegativeBalance ? 'danger' : (daysOnHand === null ? '' : daysOnHand >= 90 ? 'success' : daysOnHand >= 30 ? 'warning' : 'danger');
-    kpiRow3.appendChild(kpiCard({
+    kpiRow3.appendChild(mkKpiCard({
       label:    'Net Coverage Days',
       value:    isNegativeBalance ? '0 days' : (daysOnHand !== null ? `${daysOnHand} days` : 'N/A'),
       subtitle: isNegativeBalance ? 'Negative period net — cash shortfall' : 'Period net ÷ avg monthly OpEx',
@@ -919,7 +880,7 @@ function buildView() {
     const ccc = svcInvoiced > 0 ? Math.round(outstandingSvc / svcInvoiced * 30) : null;
 
     const cccVariant = ccc === null ? '' : ccc <= 15 ? 'success' : ccc <= 30 ? 'warning' : 'danger';
-    kpiRow3.appendChild(kpiCard({
+    kpiRow3.appendChild(mkKpiCard({
       label:    'Invoice Collection Lag',
       value:    ccc !== null ? `${ccc} days` : 'N/A',
       subtitle: 'Outstanding ÷ Invoiced × 30 (proxy)',

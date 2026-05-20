@@ -10,7 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -179,45 +179,6 @@ const ACTIVE_CLIENT_DRILL_COLS = [
   { key: 'overdue',     label: 'Overdue',          right: true, format: v => formatEUR(v) },
   { key: 'count',       label: 'Invoice Count',    right: true }
 ];
-
-// ── KPI card ──────────────────────────────────────────────────────────────────
-function kpiCard(labelOrOpts, value, variant, onClick) {
-  let label, subtitle, delta, deltaIsPp, invertDelta, compLabel;
-  if (typeof labelOrOpts === 'object' && labelOrOpts !== null) {
-    ({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick } = labelOrOpts);
-  } else {
-    label = labelOrOpts;
-  }
-
-  const card = el('div', {
-    class: 'kpi' + (variant ? ' ' + variant : ''),
-    style: 'cursor:pointer;transition:box-shadow 120ms',
-    title: 'Click for breakdown'
-  });
-  card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
-  card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
-  card.onclick = onClick;
-  card.appendChild(el('div', { class: 'kpi-label' }, label));
-  card.appendChild(el('div', { class: 'kpi-value' }, value));
-
-  if (delta !== null && delta !== undefined && isFinite(delta)) {
-    const up     = invertDelta ? delta < 0 : delta >= 0;
-    const sign   = delta >= 0 ? '+' : '';
-    const suffix = deltaIsPp ? ' pp' : '%';
-    const trendEl = el('div', { class: 'kpi-trend ' + (up ? 'up' : 'down') });
-    trendEl.appendChild(el('span', { class: 'kpi-arrow' }, up ? '▲' : '▼'));
-    trendEl.append(` ${sign}${delta.toFixed(1)}${suffix}`);
-    if (compLabel) trendEl.appendChild(el('span', { class: 'kpi-comp-label' }, ` vs ${compLabel}`));
-    card.appendChild(trendEl);
-  }
-
-  if (subtitle) {
-    card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
-  }
-
-  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
-  return card;
-}
 
 // ── Service Performance Insights ──────────────────────────────────────────────
 function computeServiceInsights({ paidTotal, invoicedTotal, outstandingTotal, overdueTotal, concentration, topClient, collectionRate, nonDraft, cmpData, cmpRange }) {
@@ -514,7 +475,7 @@ function buildView() {
 
   // ── KPI row 1: Paid Revenue, Invoiced Revenue, Collection Rate, Outstanding ─
   const kpiRow1 = el('div', { class: 'grid grid-4 mb-16' });
-  kpiRow1.appendChild(kpiCard({
+  kpiRow1.appendChild(mkKpiCard({
     label:     'Paid Revenue',
     value:     formatEUR(paidTotal),
     variant:   'success',
@@ -543,7 +504,7 @@ function buildView() {
       openModal({ title: `Paid Revenue — ${formatEUR(paidTotal)}`, body, large: true });
     }
   }));
-  kpiRow1.appendChild(kpiCard({
+  kpiRow1.appendChild(mkKpiCard({
     label:     'Invoiced Revenue',
     value:     formatEUR(invoicedTotal),
     delta:     deltaInvoiced,
@@ -571,7 +532,7 @@ function buildView() {
       openModal({ title: `Invoiced Revenue — ${formatEUR(invoicedTotal)}`, body, large: true });
     }
   }));
-  kpiRow1.appendChild(kpiCard({
+  kpiRow1.appendChild(mkKpiCard({
     label:     'Collection Rate',
     value:     collectionRate !== null ? collectionRate.toFixed(0) + '%' : '—',
     variant:   collectionRate !== null && collectionRate < 60 ? 'danger' : collectionRate !== null && collectionRate < 80 ? 'warning' : '',
@@ -599,7 +560,7 @@ function buildView() {
       openModal({ title: `Collection Rate — ${collectionRate != null ? collectionRate.toFixed(0) + '%' : 'N/A'}`, body, large: true });
     }
   }));
-  kpiRow1.appendChild(kpiCard({
+  kpiRow1.appendChild(mkKpiCard({
     label:       'Outstanding',
     value:       formatEUR(outstandingTotal),
     variant:     outstandingTotal > 0 ? 'warning' : '',
@@ -626,7 +587,7 @@ function buildView() {
   // ── KPI row 2: Overdue, Client Concentration, Top Client, Active Clients ───
   const concVariant = concentration === null ? '' : concentration > 60 ? 'danger' : concentration > 40 ? 'warning' : 'success';
   const kpiRow2 = el('div', { class: 'grid grid-4 mb-16' });
-  kpiRow2.appendChild(kpiCard({
+  kpiRow2.appendChild(mkKpiCard({
     label:   'Overdue',
     value:   formatEUR(overdueTotal),
     variant: overdueTotal > 0 ? 'danger' : '',
@@ -647,14 +608,14 @@ function buildView() {
       openModal({ title: `Overdue — ${formatEUR(overdueTotal)}`, body, large: true });
     }
   }));
-  kpiRow2.appendChild(kpiCard({
+  kpiRow2.appendChild(mkKpiCard({
     label:   'Client Concentration',
     value:   concentration !== null ? concentration.toFixed(0) + '%' : '—',
     variant: concVariant,
     subtitle: 'Top client share of paid revenue',
     onClick: () => drillDownModal('Revenue by Client', toClientConcentrationRows(clientRevMap, paidTotal), CONCENTRATION_DRILL_COLS)
   }));
-  kpiRow2.appendChild(kpiCard({
+  kpiRow2.appendChild(mkKpiCard({
     label:   'Top Client',
     value:   topClient ? topClient.name : '—',
     subtitle: topClient ? `${formatEUR(topClient.rev)} · ${concentration !== null ? concentration.toFixed(0) + '%' : '—'} of paid` : null,
@@ -683,7 +644,7 @@ function buildView() {
       openModal({ title: `${topClient.name} — Client Profile`, body, large: true });
     }
   }));
-  kpiRow2.appendChild(kpiCard({
+  kpiRow2.appendChild(mkKpiCard({
     label:   'Active Clients',
     value:   String(activeClientIds.size),
     subtitle: 'Clients with invoiced activity',
@@ -722,7 +683,7 @@ function buildView() {
   const kpiRow3 = el('div', { class: 'grid grid-4 mb-16' });
 
   // DSO KPI
-  kpiRow3.appendChild(kpiCard({
+  kpiRow3.appendChild(mkKpiCard({
     label:   'Days Sales Outstanding',
     value:   dso !== null ? `${dso.toFixed(0)} days` : '—',
     variant: dsoVariant,
@@ -785,7 +746,7 @@ function buildView() {
   }));
 
   // Average Invoice Value KPI
-  kpiRow3.appendChild(kpiCard({
+  kpiRow3.appendChild(mkKpiCard({
     label:    'Avg Invoice Value',
     value:    avgInvValue !== null ? formatEUR(avgInvValue) : '—',
     subtitle: avgInvValue !== null ? `per invoice, ${nonDraft.length} invoices` : 'No invoices',
@@ -861,7 +822,7 @@ function buildView() {
   }));
 
   // New vs Recurring Clients KPI
-  kpiRow3.appendChild(kpiCard({
+  kpiRow3.appendChild(mkKpiCard({
     label:   'New vs Recurring',
     value:   `${newClientIds.length} new / ${recurringClientIds.length} recurring`,
     variant: 'info',

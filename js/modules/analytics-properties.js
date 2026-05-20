@@ -8,7 +8,7 @@ import {
   simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
 import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -687,45 +687,6 @@ const MORTGAGE_DETAIL_COLS = [
   { key: 'value',  label: 'Value'  }
 ];
 
-// ── KPI card ──────────────────────────────────────────────────────────────────
-function kpiCard(labelOrOpts, value, variant, onClick) {
-  let label, subtitle, delta, deltaIsPp, invertDelta, compLabel;
-  if (typeof labelOrOpts === 'object' && labelOrOpts !== null) {
-    ({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick } = labelOrOpts);
-  } else {
-    label = labelOrOpts;
-  }
-
-  const card = el('div', {
-    class: 'kpi' + (variant ? ' ' + variant : ''),
-    style: 'cursor:pointer;transition:box-shadow 120ms',
-    title: 'Click for breakdown'
-  });
-  card.addEventListener('mouseenter', () => { card.style.boxShadow = '0 0 0 2px var(--accent)'; });
-  card.addEventListener('mouseleave', () => { card.style.boxShadow = ''; });
-  card.onclick = onClick;
-  card.appendChild(el('div', { class: 'kpi-label' }, label));
-  card.appendChild(el('div', { class: 'kpi-value' }, value));
-
-  if (delta !== null && delta !== undefined && isFinite(delta)) {
-    const up     = invertDelta ? delta < 0 : delta >= 0;
-    const sign   = delta >= 0 ? '+' : '';
-    const suffix = deltaIsPp ? ' pp' : '%';
-    const trendEl = el('div', { class: 'kpi-trend ' + (up ? 'up' : 'down') });
-    trendEl.appendChild(el('span', { class: 'kpi-arrow' }, up ? '▲' : '▼'));
-    trendEl.append(` ${sign}${delta.toFixed(1)}${suffix}`);
-    if (compLabel) trendEl.appendChild(el('span', { class: 'kpi-comp-label' }, ` vs ${compLabel}`));
-    card.appendChild(trendEl);
-  }
-
-  if (subtitle) {
-    card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
-  }
-
-  card.appendChild(el('div', { class: 'kpi-accent-bar' }));
-  return card;
-}
-
 // ── Insights ──────────────────────────────────────────────────────────────────
 function computePropertyInsights({ totals, propData, avgROI, best, worst }) {
   const signals = [];
@@ -881,24 +842,24 @@ function buildView() {
   // ── Section 1: Portfolio Units ─────────────────────────────────────────────
   const activeCount = allProps.filter(p => (p.status || 'active') === 'active').length;
   const invKpiRow = el('div', { class: 'grid grid-4 mb-16' });
-  invKpiRow.appendChild(kpiCard({
+  invKpiRow.appendChild(mkKpiCard({
     label: 'Portfolio Units',
     value: String(allProps.length),
     onClick: () => drillDownModal('Portfolio Properties', toPropValueRows(propData), PROP_VALUE_COLS)
   }));
-  invKpiRow.appendChild(kpiCard({
+  invKpiRow.appendChild(mkKpiCard({
     label: 'Active Properties',
     value: String(activeCount),
     subtitle: allProps.length > activeCount ? `${allProps.length - activeCount} other status` : null,
     onClick: () => drillDownModal('Portfolio Properties', toPropValueRows(propData), PROP_VALUE_COLS)
   }));
-  invKpiRow.appendChild(kpiCard({
+  invKpiRow.appendChild(mkKpiCard({
     label: 'Portfolio Book Value',
     value: formatEUR(totals.purchaseValue),
     subtitle: 'Purchase prices only',
     onClick: () => drillDownModal('Portfolio Book Value', toPropValueRows(propData), PROP_VALUE_COLS)
   }));
-  invKpiRow.appendChild(kpiCard({
+  invKpiRow.appendChild(mkKpiCard({
     label: 'Total Invested',
     value: formatEUR(totals.totalInvested),
     subtitle: 'Purchase + all-time CapEx',
@@ -913,7 +874,7 @@ function buildView() {
   const deltaCapEx  = safePct(totals.capEx,  cmpData?.totals.capEx);
 
   const kpiRow = el('div', { class: 'grid grid-4 mb-16' });
-  kpiRow.appendChild(kpiCard({
+  kpiRow.appendChild(mkKpiCard({
     label:   'Rental Revenue',
     value:   formatEUR(totals.rev),
     delta:   deltaRev,
@@ -930,7 +891,7 @@ function buildView() {
       openModal({ title: `Rental Revenue — ${formatEUR(totals.rev)}`, body, large: true });
     }
   }));
-  kpiRow.appendChild(kpiCard({
+  kpiRow.appendChild(mkKpiCard({
     label:       'Operating Expenses',
     value:       formatEUR(totals.opEx),
     delta:       deltaOpEx,
@@ -961,7 +922,7 @@ function buildView() {
       openModal({ title: `Operating Expenses — ${formatEUR(totals.opEx)}`, body, large: true });
     }
   }));
-  kpiRow.appendChild(kpiCard({
+  kpiRow.appendChild(mkKpiCard({
     label:   'Operating Profit',
     value:   formatEUR(totals.profit),
     variant: totals.profit >= 0 ? 'success' : 'danger',
@@ -984,7 +945,7 @@ function buildView() {
       openModal({ title: `Operating Profit — ${formatEUR(totals.profit)}`, body, large: true });
     }
   }));
-  kpiRow.appendChild(kpiCard({
+  kpiRow.appendChild(mkKpiCard({
     label:       'Property CapEx',
     value:       formatEUR(totals.capEx),
     variant:     totals.capEx > 0 ? 'warning' : '',
@@ -1024,7 +985,7 @@ function buildView() {
 
   // 1. Occupancy Rate
   const occ = opData.occupancy;
-  opKpiRow.appendChild(kpiCard({
+  opKpiRow.appendChild(mkKpiCard({
     label:   'Occupancy Rate',
     value:   occ.nightsDataAvail && occ.rate !== null ? occ.rate.toFixed(1) + '%' : 'N/A',
     subtitle: occ.nightsDataAvail
@@ -1058,7 +1019,7 @@ function buildView() {
 
   // 2. Average Daily Rate (ADR)
   const adrData = opData.adr;
-  opKpiRow.appendChild(kpiCard({
+  opKpiRow.appendChild(mkKpiCard({
     label:    'Avg Nightly Rate (ADR)',
     value:    adrData.nightsDataAvail && adrData.value !== null ? formatEUR(adrData.value) : 'N/A',
     subtitle: adrData.nightsDataAvail
@@ -1093,7 +1054,7 @@ function buildView() {
 
   // 3. Rental Yield
   const ryData = opData.rentalYield;
-  opKpiRow.appendChild(kpiCard({
+  opKpiRow.appendChild(mkKpiCard({
     label:   'Rental Yield',
     value:   ryData.avg !== null ? ryData.avg.toFixed(1) + '%' : '—',
     subtitle: 'Annualized · portfolio avg',
@@ -1125,7 +1086,7 @@ function buildView() {
 
   // 4. Vacancy / Dead Months
   const vacData = opData.vacancy;
-  opKpiRow.appendChild(kpiCard({
+  opKpiRow.appendChild(mkKpiCard({
     label:   'Vacancy / Dead Months',
     value:   `${vacData.count} property-month${vacData.count !== 1 ? 's' : ''}`,
     subtitle: vacData.count > 0 ? 'Months with zero revenue' : 'No zero-revenue months',
@@ -1643,25 +1604,25 @@ function buildFinancingSection(finData) {
   ));
 
   const kpiRow = el('div', { class: 'grid grid-4 mb-16' });
-  kpiRow.appendChild(kpiCard(
-    'Total Outstanding Debt', formatEUR(t.totalDebt), '',
-    () => drillDownModal('Debt by Property', toFinancingDrillRows(finData.finData), FINANCING_DRILL_COLS)
-  ));
-  kpiRow.appendChild(kpiCard(
-    'Leverage Ratio',
-    t.leverageRatio != null ? t.leverageRatio.toFixed(1) + '%' : '—',
-    t.leverageRatio != null && t.leverageRatio > 60 ? 'danger' : t.leverageRatio != null && t.leverageRatio > 30 ? 'warning' : '',
-    () => drillDownModal('Portfolio Leverage', toFinancingDrillRows(finData.finData), FINANCING_DRILL_COLS)
-  ));
-  kpiRow.appendChild(kpiCard(
-    'Monthly Debt Burden', formatEUR(t.totalMonthly), '',
-    () => drillDownModal('Active Mortgages', toFinancingDrillRows(active), FINANCING_DRILL_COLS)
-  ));
-  kpiRow.appendChild(kpiCard(
-    'Avg Years to Payoff',
-    t.avgYearsLeft != null ? t.avgYearsLeft.toFixed(1) + ' yrs' : '—', '',
-    () => drillDownModal('Years to Payoff', toFinancingDrillRows(active), FINANCING_DRILL_COLS)
-  ));
+  kpiRow.appendChild(mkKpiCard({
+    label: 'Total Outstanding Debt', value: formatEUR(t.totalDebt),
+    onClick: () => drillDownModal('Debt by Property', toFinancingDrillRows(finData.finData), FINANCING_DRILL_COLS)
+  }));
+  kpiRow.appendChild(mkKpiCard({
+    label: 'Leverage Ratio',
+    value: t.leverageRatio != null ? t.leverageRatio.toFixed(1) + '%' : '—',
+    variant: t.leverageRatio != null && t.leverageRatio > 60 ? 'danger' : t.leverageRatio != null && t.leverageRatio > 30 ? 'warning' : undefined,
+    onClick: () => drillDownModal('Portfolio Leverage', toFinancingDrillRows(finData.finData), FINANCING_DRILL_COLS)
+  }));
+  kpiRow.appendChild(mkKpiCard({
+    label: 'Monthly Debt Burden', value: formatEUR(t.totalMonthly),
+    onClick: () => drillDownModal('Active Mortgages', toFinancingDrillRows(active), FINANCING_DRILL_COLS)
+  }));
+  kpiRow.appendChild(mkKpiCard({
+    label: 'Avg Years to Payoff',
+    value: t.avgYearsLeft != null ? t.avgYearsLeft.toFixed(1) + ' yrs' : '—',
+    onClick: () => drillDownModal('Years to Payoff', toFinancingDrillRows(active), FINANCING_DRILL_COLS)
+  }));
   section.appendChild(kpiRow);
 
   const statsWrap = el('div', { style: 'display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px' });
