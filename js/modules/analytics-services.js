@@ -692,7 +692,7 @@ function buildView() {
       } else {
         body.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px' }, 'No outstanding invoices — DSO is 0.'));
       }
-      openModal({ title: `Days Sales Outstanding — ${dso !== null ? dso.toFixed(0) + ' days' : 'N/A'}`, body, large: true });
+      openModal({ title: `Invoice Collection Lag (DSO proxy) — ${dso !== null ? dso.toFixed(0) + ' days' : 'N/A'}`, body, large: true });
     }
   }));
 

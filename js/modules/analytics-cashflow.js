@@ -858,25 +858,25 @@ function buildView() {
     const sortedMks = [...netByMk.keys()].sort();
     let running = 0;
     const monthlyPositions = sortedMks.map(mk => { running += netByMk.get(mk); return { mk, balance: running }; });
-    // Current cash balance is the final cumulative value (clamp to 0 if negative for the formula)
-    const currentBalance = Math.max(0, running);
+    const isNegativeBalance = running < 0;
     const avgMonthlyOpex = curData.activeMonthCount > 0 ? opExCashOut / curData.activeMonthCount : 0;
-    const daysOnHand = avgMonthlyOpex > 0 ? Math.round(currentBalance / avgMonthlyOpex * 30) : null;
+    // When period net is negative, coverage is 0 — do not clamp silently, surface it as danger
+    const daysOnHand = isNegativeBalance ? 0 : (avgMonthlyOpex > 0 ? Math.round(running / avgMonthlyOpex * 30) : null);
 
-    const dohVariant = daysOnHand === null ? '' : daysOnHand >= 90 ? 'success' : daysOnHand >= 30 ? 'warning' : 'danger';
+    const dohVariant = isNegativeBalance ? 'danger' : (daysOnHand === null ? '' : daysOnHand >= 90 ? 'success' : daysOnHand >= 30 ? 'warning' : 'danger');
     kpiRow3.appendChild(kpiCard({
       label:    'Net Coverage Days',
-      value:    daysOnHand !== null ? `${daysOnHand} days` : 'N/A',
-      subtitle: 'Period net ÷ avg monthly OpEx',
+      value:    isNegativeBalance ? '0 days' : (daysOnHand !== null ? `${daysOnHand} days` : 'N/A'),
+      subtitle: isNegativeBalance ? 'Negative period net — cash shortfall' : 'Period net ÷ avg monthly OpEx',
       variant:  dohVariant,
       onClick:  () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
         // Summary boxes
         const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
-        summaryGrid.appendChild(mkSummaryBox('Cumulative Cash Balance', formatEUR(Math.max(0, running)), 'net positive balance'));
+        summaryGrid.appendChild(mkSummaryBox('Cumulative Cash Balance', formatEUR(running), running >= 0 ? 'net positive' : 'net shortfall'));
         summaryGrid.appendChild(mkSummaryBox('Avg Monthly OpEx', formatEUR(avgMonthlyOpex), `${curData.activeMonthCount} active month${curData.activeMonthCount !== 1 ? 's' : ''}`));
-        summaryGrid.appendChild(mkSummaryBox('Net Coverage Days', daysOnHand !== null ? `${daysOnHand} days` : 'N/A', '(Period Net ÷ Avg Monthly OpEx) × 30'));
+        summaryGrid.appendChild(mkSummaryBox('Net Coverage Days', isNegativeBalance ? '0 days (shortfall)' : (daysOnHand !== null ? `${daysOnHand} days` : 'N/A'), '(Period Net ÷ Avg Monthly OpEx) × 30'));
         body.appendChild(summaryGrid);
 
         // Formula explanation
@@ -914,7 +914,7 @@ function buildView() {
     const inRange = d => !!d && d >= start && d <= end;
     const allInvoices = listActive('invoices').filter(i => inRange(i.issueDate || i.date) && mStreamCCC(i) && mOwnerCCC(i) && mClientCCC(i));
     const svcInvoiced = allInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-    const outstandingSvc = allInvoices.filter(i => !['paid', 'cancelled', 'void'].includes(i.status))
+    const outstandingSvc = allInvoices.filter(i => !['paid', 'cancelled', 'void', 'draft'].includes(i.status))
       .reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
     const ccc = svcInvoiced > 0 ? Math.round(outstandingSvc / svcInvoiced * 30) : null;
 
