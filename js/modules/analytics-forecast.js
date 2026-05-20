@@ -13,6 +13,7 @@ import {
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = [
@@ -51,40 +52,6 @@ const NET_MO_COLS = [
   { key: 'fcNet',  label: 'Forecast Net',   right: true },
   { key: 'varStr', label: 'Variance',       right: true }
 ];
-
-// ── Modal UI helpers ──────────────────────────────────────────────────────────
-function mkSectionLabel(text) {
-  return el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:0 0 8px' }, text);
-}
-function mkSummaryBox(label, value, sub) {
-  const box = el('div', { style: 'padding:12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)' });
-  box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, label));
-  box.appendChild(el('div', { style: 'font-size:17px;font-weight:700;color:var(--text)' }, value));
-  if (sub) box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
-  return box;
-}
-function mkModalTable(headers, rows) {
-  const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
-  const thead = el('thead');
-  const hr = el('tr');
-  headers.forEach((h, i) => {
-    const th = el('th', { style: `padding:6px 8px;text-align:${i===0?'left':'right'};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08)` }, h);
-    hr.appendChild(th);
-  });
-  thead.appendChild(hr);
-  tbl.appendChild(thead);
-  const tbody = el('tbody');
-  rows.forEach((row, ri) => {
-    const tr = el('tr', { style: ri % 2 === 0 ? '' : 'background:rgba(255,255,255,0.02)' });
-    row.forEach((cell, ci) => {
-      const td = el('td', { style: `padding:6px 8px;text-align:${ci===0?'left':'right'};border-bottom:1px solid rgba(255,255,255,0.04)` }, String(cell ?? ''));
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-  tbl.appendChild(tbody);
-  return tbl;
-}
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -608,6 +575,12 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         });
         body.appendChild(mkSectionLabel('By Category'));
         body.appendChild(catBoxes);
+        const hidden = catEntries.length - 6;
+        if (hidden > 0) {
+          body.appendChild(el('div', {
+            style: 'font-size:11px;color:var(--text-muted);margin-top:8px;text-align:center'
+          }, `+ ${hidden} more categor${hidden === 1 ? 'y' : 'ies'} not shown`));
+        }
       }
 
       // Property breakdown table

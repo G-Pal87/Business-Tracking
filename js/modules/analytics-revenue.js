@@ -11,6 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const OWNER_COLORS = { you: '#6366f1', rita: '#ec4899', both: '#14b8a6' };
@@ -192,38 +193,6 @@ function buildKpiSection(cur, cmp, cmpRange) {
 
   const pct = (num, den) => den > 0 ? (num / den * 100).toFixed(0) + '%' : '—';
 
-  // ── Shared modal helpers ────────────────────────────────────────────────────
-  const mkSectionLabel = text => el('div', {
-    style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:0 0 8px'
-  }, text);
-
-  const mkSummaryBox = (label, value, sub) => {
-    const box = el('div', { style: 'padding:12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)' });
-    box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, label));
-    box.appendChild(el('div', { style: 'font-size:17px;font-weight:700;color:var(--text)' }, value));
-    if (sub) box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
-    return box;
-  };
-
-  const mkTable = (headers, rows) => {
-    const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
-    const hrow = el('tr');
-    headers.forEach(h => hrow.appendChild(el('th', {
-      style: `padding:4px 8px;text-align:${h.right ? 'right' : 'left'};color:var(--text-muted);font-size:11px;border-bottom:1px solid rgba(255,255,255,0.08)`
-    }, h.label)));
-    tbl.appendChild(el('thead', {}, hrow));
-    const tbody = el('tbody');
-    rows.forEach(cells => {
-      const tr = el('tr');
-      cells.forEach((cell, ci) => tr.appendChild(el('td', {
-        style: `padding:6px 8px;text-align:${headers[ci]?.right ? 'right' : 'left'};color:${headers[ci]?.muted ? 'var(--text-muted)' : (headers[ci]?.right ? 'var(--text)' : 'var(--text)')};font-weight:${headers[ci]?.right && ci > 0 ? '500' : '400'}`
-      }, cell)));
-      tbody.appendChild(tr);
-    });
-    tbl.appendChild(tbody);
-    return tbl;
-  };
-
   // ── Total Revenue drill-down ────────────────────────────────────────────────
   const totalRevDrill = () => {
     const body = el('div');
@@ -246,7 +215,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
     if (streamRows.length) {
       body.appendChild(mkSectionLabel('Revenue by Stream'));
       const hdrs = [{ label: 'Stream' }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }];
-      body.appendChild(mkTable(hdrs, streamRows));
+      body.appendChild(mkModalTable(hdrs, streamRows));
     }
 
     // Top contributors
@@ -258,7 +227,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
         String(i + 1), c.name, c.type, formatEUR(c.val),
         total > 0 ? (c.val / total * 100).toFixed(1) + '%' : '—'
       ]);
-      body.appendChild(mkTable(hdrs, rows));
+      body.appendChild(mkModalTable(hdrs, rows));
     }
 
     openModal({ title: `Total Revenue — ${formatEUR(total)}`, body, large: true });
@@ -299,7 +268,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
         c.name, String(c.count), formatEUR(c.eur),
         svcRev > 0 ? (c.eur / svcRev * 100).toFixed(1) + '%' : '—'
       ]);
-      body.appendChild(mkTable(hdrs, rows));
+      body.appendChild(mkModalTable(hdrs, rows));
     }
 
     openModal({ title: `Service Revenue — ${formatEUR(svcRev)}`, body, large: true });
@@ -342,7 +311,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
         p.name, p.type, String(p.count), formatEUR(p.eur),
         propRev > 0 ? (p.eur / propRev * 100).toFixed(1) + '%' : '—'
       ]);
-      body.appendChild(mkTable(hdrs, rows));
+      body.appendChild(mkModalTable(hdrs, rows));
     }
 
     openModal({ title: `Rental Revenue — ${formatEUR(propRev)}`, body, large: true });

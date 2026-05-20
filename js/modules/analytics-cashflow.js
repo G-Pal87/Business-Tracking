@@ -10,6 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -185,40 +186,6 @@ const CF_DRILL_COLS = [
   { key: 'description', label: 'Description'                          },
   { key: 'amountEUR',   label: 'Amount EUR',  right: true             }
 ];
-
-// ── Rich modal helpers ────────────────────────────────────────────────────────
-function mkSectionLabel(text) {
-  return el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:0 0 8px' }, text);
-}
-function mkSummaryBox(label, value, sub) {
-  const box = el('div', { style: 'padding:12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)' });
-  box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, label));
-  box.appendChild(el('div', { style: 'font-size:17px;font-weight:700;color:var(--text)' }, value));
-  if (sub) box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
-  return box;
-}
-function mkModalTable(headers, rows) {
-  const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
-  const thead = el('thead');
-  const hr = el('tr');
-  headers.forEach((h, i) => {
-    const th = el('th', { style: `padding:6px 8px;text-align:${i === 0 ? 'left' : 'right'};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08)` }, h);
-    hr.appendChild(th);
-  });
-  thead.appendChild(hr);
-  tbl.appendChild(thead);
-  const tbody = el('tbody');
-  rows.forEach((row, ri) => {
-    const tr = el('tr', { style: ri % 2 === 0 ? '' : 'background:rgba(255,255,255,0.02)' });
-    row.forEach((cell, ci) => {
-      const td = el('td', { style: `padding:6px 8px;text-align:${ci === 0 ? 'left' : 'right'};border-bottom:1px solid rgba(255,255,255,0.04)` }, String(cell ?? ''));
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-  tbl.appendChild(tbody);
-  return tbl;
-}
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
 function kpiCard(labelOrOpts, value, variant, onClick) {
@@ -876,10 +843,10 @@ function buildView() {
   }));
   wrap.appendChild(kpiRow2);
 
-  // ── KPI row 3: Days Cash on Hand, Cash Conversion Cycle ───────────────────
+  // ── KPI row 3: Net Coverage Days, Invoice Collection Lag ─────────────────
   const kpiRow3 = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
 
-  // Days Cash on Hand: cumulative positive balance / avg monthly opex × 30
+  // Net Coverage Days: (periodNetCashFlow / avgMonthlyOpEx) × 30
   {
     // Build monthly net to find cumulative running balance
     const netByMk = new Map();
@@ -898,9 +865,9 @@ function buildView() {
 
     const dohVariant = daysOnHand === null ? '' : daysOnHand >= 90 ? 'success' : daysOnHand >= 30 ? 'warning' : 'danger';
     kpiRow3.appendChild(kpiCard({
-      label:    'Days Cash on Hand',
+      label:    'Net Coverage Days',
       value:    daysOnHand !== null ? `${daysOnHand} days` : 'N/A',
-      subtitle: 'How many days of OpEx current cash covers',
+      subtitle: 'Period net ÷ avg monthly OpEx',
       variant:  dohVariant,
       onClick:  () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -909,13 +876,13 @@ function buildView() {
         const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
         summaryGrid.appendChild(mkSummaryBox('Cumulative Cash Balance', formatEUR(Math.max(0, running)), 'net positive balance'));
         summaryGrid.appendChild(mkSummaryBox('Avg Monthly OpEx', formatEUR(avgMonthlyOpex), `${curData.activeMonthCount} active month${curData.activeMonthCount !== 1 ? 's' : ''}`));
-        summaryGrid.appendChild(mkSummaryBox('Days Cash on Hand', daysOnHand !== null ? `${daysOnHand} days` : 'N/A', '(Balance ÷ Avg Monthly OpEx) × 30'));
+        summaryGrid.appendChild(mkSummaryBox('Net Coverage Days', daysOnHand !== null ? `${daysOnHand} days` : 'N/A', '(Period Net ÷ Avg Monthly OpEx) × 30'));
         body.appendChild(summaryGrid);
 
         // Formula explanation
         const formulaBox = el('div', { style: 'padding:10px 12px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);font-size:12px;color:var(--text-muted);line-height:1.6' });
-        formulaBox.appendChild(el('strong', { style: 'color:var(--text)' }, 'Formula: '));
-        formulaBox.appendChild(document.createTextNode('(Net cumulative cash balance) ÷ (Average monthly operating cash out) × 30. A result ≥90 days is healthy, ≥30 days is a watch, <30 days is at risk.'));
+        formulaBox.appendChild(el('strong', { style: 'color:var(--text)' }, 'Note: '));
+        formulaBox.appendChild(document.createTextNode('Measures how many days of operating expenses are covered by this period\'s net cash flow. Not a cash balance or runway metric.'));
         body.appendChild(formulaBox);
 
         // Monthly cash position table
@@ -936,12 +903,12 @@ function buildView() {
           body.appendChild(posSection);
         }
 
-        openModal({ title: 'Days Cash on Hand — Breakdown', body, large: true });
+        openModal({ title: 'Net Coverage Days — Breakdown', body, large: true });
       }
     }));
   }
 
-  // Cash Conversion Cycle (simplified): (Outstanding service invoices ÷ Total service invoiced) × 30
+  // Invoice Collection Lag: (Outstanding service invoices ÷ Total service invoiced) × 30 (DSO proxy)
   {
     const { mStream: mStreamCCC, mOwner: mOwnerCCC, mClient: mClientCCC } = makeMatchers(gF);
     const inRange = d => !!d && d >= start && d <= end;
@@ -953,9 +920,9 @@ function buildView() {
 
     const cccVariant = ccc === null ? '' : ccc <= 15 ? 'success' : ccc <= 30 ? 'warning' : 'danger';
     kpiRow3.appendChild(kpiCard({
-      label:    'Cash Conversion Cycle',
+      label:    'Invoice Collection Lag',
       value:    ccc !== null ? `${ccc} days` : 'N/A',
-      subtitle: 'avg days expense → collection',
+      subtitle: 'Outstanding ÷ Invoiced × 30 (proxy)',
       variant:  cccVariant,
       onClick:  () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -965,13 +932,13 @@ function buildView() {
         const paidSvc = allInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
         summaryGrid.appendChild(mkSummaryBox('Total Service Invoiced', formatEUR(svcInvoiced), `${allInvoices.length} invoice${allInvoices.length !== 1 ? 's' : ''}`));
         summaryGrid.appendChild(mkSummaryBox('Outstanding Service', formatEUR(outstandingSvc), `${allInvoices.filter(i => !['paid','cancelled','void'].includes(i.status)).length} unpaid`));
-        summaryGrid.appendChild(mkSummaryBox('CCC (simplified)', ccc !== null ? `${ccc} days` : 'N/A', '(Outstanding ÷ Invoiced) × 30'));
+        summaryGrid.appendChild(mkSummaryBox('Collection Lag (proxy)', ccc !== null ? `${ccc} days` : 'N/A', '(Outstanding ÷ Invoiced) × 30'));
         body.appendChild(summaryGrid);
 
         // Formula explanation
         const formulaBox = el('div', { style: 'padding:10px 12px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);font-size:12px;color:var(--text-muted);line-height:1.6' });
-        formulaBox.appendChild(el('strong', { style: 'color:var(--text)' }, 'Formula (simplified): '));
-        formulaBox.appendChild(document.createTextNode('(Outstanding service invoices ÷ Total service invoiced in period) × 30. Represents the average days from expense incurred to revenue collected. Lower is better.'));
+        formulaBox.appendChild(el('strong', { style: 'color:var(--text)' }, 'Note: '));
+        formulaBox.appendChild(document.createTextNode('Estimates the average days service invoices remain unpaid. A simplified DSO proxy — true CCC requires expense payable timing.'));
         body.appendChild(formulaBox);
 
         // Monthly breakdown
@@ -991,7 +958,7 @@ function buildView() {
           const monthSection = el('div');
           monthSection.appendChild(mkSectionLabel('Monthly Breakdown'));
           monthSection.appendChild(mkModalTable(
-            ['Month', 'Total Invoiced', 'Paid', 'Outstanding', 'CCC (days)'],
+            ['Month', 'Total Invoiced', 'Paid', 'Outstanding', 'Lag (days)'],
             monthEntries2.map(([mk, d]) => [
               mk,
               formatEUR(d.invoiced),
@@ -1003,7 +970,7 @@ function buildView() {
           body.appendChild(monthSection);
         }
 
-        openModal({ title: 'Cash Conversion Cycle — Breakdown', body, large: true });
+        openModal({ title: 'Invoice Collection Lag — Breakdown', body, large: true });
       }
     }));
   }

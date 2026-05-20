@@ -10,6 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -178,36 +179,6 @@ const ACTIVE_CLIENT_DRILL_COLS = [
   { key: 'overdue',     label: 'Overdue',          right: true, format: v => formatEUR(v) },
   { key: 'count',       label: 'Invoice Count',    right: true }
 ];
-
-// ── Modal helpers ─────────────────────────────────────────────────────────────
-function mkSectionLabel(text) {
-  return el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin:0 0 8px' }, text);
-}
-function mkSummaryBox(label, value, sub) {
-  const box = el('div', { style: 'padding:12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)' });
-  box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, label));
-  box.appendChild(el('div', { style: 'font-size:17px;font-weight:700;color:var(--text)' }, value));
-  if (sub) box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
-  return box;
-}
-function mkModalTable(headers, rows) {
-  const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
-  const hrow = el('tr');
-  headers.forEach(h => hrow.appendChild(el('th', {
-    style: `padding:4px 8px;text-align:${h.right ? 'right' : 'left'};color:var(--text-muted);font-size:11px;border-bottom:1px solid rgba(255,255,255,0.08)`
-  }, h.label)));
-  tbl.appendChild(el('thead', {}, hrow));
-  const tbody = el('tbody');
-  rows.forEach(cells => {
-    const tr = el('tr');
-    cells.forEach((cell, ci) => tr.appendChild(el('td', {
-      style: `padding:6px 8px;text-align:${headers[ci]?.right ? 'right' : 'left'};color:${headers[ci]?.muted ? 'var(--text-muted)' : 'var(--text)'}`
-    }, cell)));
-    tbody.appendChild(tr);
-  });
-  tbl.appendChild(tbody);
-  return tbl;
-}
 
 // ── KPI card ──────────────────────────────────────────────────────────────────
 function kpiCard(labelOrOpts, value, variant, onClick) {
@@ -477,7 +448,7 @@ function buildView() {
       if (clients.length) {
         body.appendChild(mkSectionLabel('By Client'));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Paid', right: true, muted: true }],
+          ['Client', 'Invoices', 'Revenue', '% of Paid'],
           clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), paidTotal > 0 ? (c.v / paidTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -505,7 +476,7 @@ function buildView() {
       if (clients.length) {
         body.appendChild(mkSectionLabel('By Client'));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Invoiced', right: true }, { label: '% of Total', right: true, muted: true }],
+          ['Client', 'Invoices', 'Invoiced', '% of Total'],
           clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), invoicedTotal > 0 ? (c.v / invoicedTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -533,7 +504,7 @@ function buildView() {
       if (clients.length) {
         body.appendChild(mkSectionLabel('Collection by Client'));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoiced', right: true }, { label: 'Paid', right: true }, { label: 'Rate', right: true, muted: true }],
+          ['Client', 'Invoiced', 'Paid', 'Rate'],
           clients.map(c => [c.n, formatEUR(c.total), formatEUR(c.paid), c.total > 0 ? (c.paid / c.total * 100).toFixed(0) + '%' : '—'])
         ));
       }
@@ -555,7 +526,7 @@ function buildView() {
       if (clients.length) {
         body.appendChild(mkSectionLabel('Outstanding by Client'));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Outstanding', right: true }, { label: 'Overdue', right: true, muted: true }],
+          ['Client', 'Invoices', 'Outstanding', 'Overdue'],
           clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), c.overdue > 0 ? formatEUR(c.overdue) : '—'])
         ));
       }
@@ -579,7 +550,7 @@ function buildView() {
       if (clients.length) {
         body.appendChild(mkSectionLabel('Overdue by Client'));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Overdue Amount', right: true }, { label: '% of Total Overdue', right: true, muted: true }],
+          ['Client', 'Invoices', 'Overdue Amount', '% of Total Overdue'],
           clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), overdueTotal > 0 ? (c.v / overdueTotal * 100).toFixed(1) + '%' : '—'])
         ));
       } else {
@@ -617,7 +588,7 @@ function buildView() {
       if (streams.length) {
         body.appendChild(mkSectionLabel('By Stream'));
         body.appendChild(mkModalTable(
-          [{ label: 'Stream' }, { label: 'Invoiced', right: true }],
+          ['Stream', 'Invoiced'],
           streams.map(([s, v]) => [STREAMS[s]?.label || s, formatEUR(v)])
         ));
       }
@@ -667,7 +638,7 @@ function buildView() {
     label:   'Days Sales Outstanding',
     value:   dso !== null ? `${dso.toFixed(0)} days` : '—',
     variant: dsoVariant,
-    subtitle: 'Outstanding ÷ invoiced × 30',
+    subtitle: 'Outstanding ÷ Invoiced × 30 (proxy)',
     onClick: () => {
       const body = el('div');
       const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
@@ -693,12 +664,14 @@ function buildView() {
         .filter(r => r.outstanding > 0)
         .sort((a, b) => b.dso - a.dso);
 
-      // fastest/slowest from non-zero DSO rows
+      // sorted worst-first (highest DSO at top); best = lowest DSO (fastest payer)
       const worst  = clientDsoRows[0];
       const best   = clientDsoRows[clientDsoRows.length - 1];
-      sgrid.appendChild(mkSummaryBox('Worst Client DSO', worst  ? `${worst.dso.toFixed(0)} days`  : '—', worst  ? worst.client  : null));
       sgrid.appendChild(mkSummaryBox('Best Client DSO',  best   ? `${best.dso.toFixed(0)} days`   : '—', best   ? best.client   : null));
+      sgrid.appendChild(mkSummaryBox('Worst Client DSO', worst  ? `${worst.dso.toFixed(0)} days`  : '—', worst  ? worst.client  : null));
       body.appendChild(sgrid);
+
+      body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:8px' }, 'Note: Uses outstanding balance ratio as a DSO proxy. True DSO requires per-invoice payment dates.'));
 
       if (clientDsoRows.length) {
         body.appendChild(mkSectionLabel('Per-Client DSO (worst first)'));
