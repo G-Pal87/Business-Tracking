@@ -9,7 +9,7 @@ import {
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard
 } from './analytics-helpers.js';
-import { SERVICE_STREAMS, STREAMS } from '../core/config.js';
+import { SERVICE_STREAMS, STREAMS, PROPERTY_STREAMS } from '../core/config.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS    = ['own-rev-bar', 'own-profit-hbar', 'own-value-donut'];
@@ -127,9 +127,18 @@ function getData(start, end) {
   };
 }
 
+// ── Property stream resolver ──────────────────────────────────────────────────
+function propStream(p) {
+  if (p.type === 'short_term') return 'short_term_rental';
+  if (p.type === 'long_term')  return 'long_term_rental';
+  return 'other';
+}
+
 // ── Properties data ───────────────────────────────────────────────────────────
-function getPropertiesData() {
-  const allProps = listActive('properties');
+function getPropertiesData(filterState) {
+  const mPropStream = p => !filterState.streams.size || filterState.streams.has(propStream(p));
+  const mPropId     = p => !filterState.propertyIds.size || filterState.propertyIds.has(p.id);
+  const allProps = listActive('properties').filter(p => mPropStream(p) && mPropId(p));
   const youProps  = allProps.filter(p => p.owner === 'you');
   const ritaProps = allProps.filter(p => p.owner === 'rita');
   const bothProps = allProps.filter(p => !p.owner || p.owner === 'both');
@@ -532,7 +541,16 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
 
   for (const r of [...annotatedPayments, ...annotatedInvoices]) {
     const propId = r.propertyId;
-    if (!propId) continue;
+    if (!propId) {
+      // Service invoices have no propertyId — bucket under a virtual 'Services' entry
+      const svcKey = '__services__';
+      const e = propRevs.get(svcKey) || { name: 'Services', owner: r._resolvedOwner || 'both', youRev: 0, ritaRev: 0 };
+      const split = splitByOwner([r], x => x._eur);
+      e.youRev  += split.you;
+      e.ritaRev += split.rita;
+      propRevs.set(svcKey, e);
+      continue;
+    }
     const prop  = byId('properties', propId);
     if (!prop)  continue;
     const owner = prop.owner || 'both';
@@ -560,7 +578,7 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
   if (!propIds.size) return;
 
   const items = [...propIds].map(id => {
-    const rev = propRevs.get(id) || { name: byId('properties', id)?.name || 'Unknown', owner: 'both', youRev: 0, ritaRev: 0 };
+    const rev = propRevs.get(id) || { name: id === '__services__' ? 'Services' : (byId('properties', id)?.name || 'Unknown'), owner: 'both', youRev: 0, ritaRev: 0 };
     const exp = propExps.get(id) || { youExp: 0, ritaExp: 0 };
     return {
       id,
@@ -662,7 +680,7 @@ function buildView() {
   const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
 
   const data      = getData(curRange.start, curRange.end);
-  const propsData = getPropertiesData();
+  const propsData = getPropertiesData(gF);
 
   const compLine = buildComparisonLine(curRange, cmpRange);
   if (compLine) wrap.appendChild(compLine);

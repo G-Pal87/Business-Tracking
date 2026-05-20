@@ -1,10 +1,10 @@
 // Cash Flow Analytics Dashboard — track liquidity
 import { el, buildMultiSelect, button, fmtDate, attachSortFilter, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { STREAMS, OWNERS } from '../core/config.js';
+import { STREAMS, OWNERS, COST_CATEGORIES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
-  listActive, listActivePayments, isCapEx
+  listActive, listActivePayments, isCapEx, resolveExpenseFields
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -559,8 +559,9 @@ function buildView() {
       // Breakdown by category
       const catMap = new Map();
       opExpenses.forEach(e => {
-        const cat = e.category || 'Uncategorized';
-        catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
+        const key   = resolveExpenseFields(e).costCategory;
+        const label = COST_CATEGORIES[key]?.label || key || 'Uncategorized';
+        catMap.set(label, (catMap.get(label) || 0) + toEUR(e.amount, e.currency, e.date));
       });
       const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
       const catSection = el('div');
