@@ -21,6 +21,9 @@ async function boot() {
     { default: analyticsServices },
     { default: analyticsCashflow },
     { default: analyticsForecast },
+    { default: analyticsExecutive },
+    { default: analyticsOwner },
+    { default: analyticsTax },
     { default: clients },
     { default: invoices },
     { default: settings },
@@ -41,6 +44,9 @@ async function boot() {
     import(`./modules/analytics-services.js?v=${VERSION}`),
     import(`./modules/analytics-cashflow.js?v=${VERSION}`),
     import(`./modules/analytics-forecast.js?v=${VERSION}`),
+    import(`./modules/analytics-executive.js?v=${VERSION}`),
+    import(`./modules/analytics-owner.js?v=${VERSION}`),
+    import(`./modules/analytics-tax.js?v=${VERSION}`),
     import(`./modules/clients.js?v=${VERSION}`),
     import(`./modules/invoices.js?v=${VERSION}`),
     import(`./modules/settings.js?v=${VERSION}`),
@@ -52,7 +58,7 @@ async function boot() {
 
   const MODULES = [
     properties, payments, expenses, tenants, vendors, inventory,
-    reports, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, clients, invoices, settings, users
+    reports, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsExecutive, analyticsOwner, analyticsTax, clients, invoices, settings, users
   ];
 
   MODULES.forEach(router.registerModule);
@@ -326,7 +332,7 @@ function buildUserFooter() {
 
 function buildSidebar(MODULES) {
   const navGroups = [
-    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'analytics-forecast'] },
+    { title: 'Analysis', items: ['analytics', 'analytics-executive', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'analytics-forecast', 'analytics-owner', 'analytics-tax'] },
     { title: 'Operations', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'forecast'] },
     { title: 'Reports', items: ['reports'] },
     { title: 'System', items: ['settings', 'users'] }

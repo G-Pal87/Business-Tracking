@@ -632,6 +632,229 @@ function buildView() {
   }));
   wrap.appendChild(kpiRow2);
 
+  // ── KPI row 3: DSO, Avg Invoice Value, New vs Recurring Clients ───────────
+  // Days Sales Outstanding: (outstanding balance ÷ total invoiced) × 30
+  const dso = invoicedTotal > 0 ? (outstandingTotal / invoicedTotal) * 30 : null;
+  const dsoVariant = dso === null ? '' : dso <= 30 ? 'success' : dso <= 60 ? 'warning' : 'danger';
+
+  // Average Invoice Value: total invoiced ÷ count of non-draft invoices
+  const avgInvValue = nonDraft.length > 0 ? invoicedTotal / nonDraft.length : null;
+
+  // New vs Recurring Clients: compare clientIds in kpiBase against ALL historical invoices
+  const allHistoricalInvs = listActive('invoices').filter(i => SERVICE_STREAMS.includes(i.stream));
+  const periodStart = start;
+  const clientsBeforePeriod = new Set(
+    allHistoricalInvs
+      .filter(i => (i.issueDate || i.date || '').slice(0, 10) < periodStart)
+      .map(i => i.clientId)
+      .filter(Boolean)
+  );
+  const periodClientIds = new Set(nonDraft.map(i => i.clientId).filter(Boolean));
+  const newClientIds       = [...periodClientIds].filter(id => !clientsBeforePeriod.has(id));
+  const recurringClientIds = [...periodClientIds].filter(id =>  clientsBeforePeriod.has(id));
+
+  const newClientRevenue = nonDraft
+    .filter(i => newClientIds.includes(i.clientId))
+    .reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const recurringClientRevenue = nonDraft
+    .filter(i => recurringClientIds.includes(i.clientId))
+    .reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+
+  const kpiRow3 = el('div', { class: 'grid grid-4 mb-16' });
+
+  // DSO KPI
+  kpiRow3.appendChild(kpiCard({
+    label:   'Days Sales Outstanding',
+    value:   dso !== null ? `${dso.toFixed(0)} days` : '—',
+    variant: dsoVariant,
+    subtitle: 'Outstanding ÷ invoiced × 30',
+    onClick: () => {
+      const body = el('div');
+      const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
+      sgrid.appendChild(mkSummaryBox('Avg DSO', dso !== null ? `${dso.toFixed(0)} days` : '—', null));
+      // Per-client DSO: (client outstanding ÷ client invoiced) × 30
+      const clientDsoMap = new Map();
+      nonDraft.forEach(i => {
+        if (!i.clientId) return;
+        const id = i.clientId;
+        const eur = toEUR(i.total, i.currency, i.issueDate);
+        const rec = clientDsoMap.get(id) || { invoiced: 0, outstanding: 0 };
+        rec.invoiced += eur;
+        if (i.status === 'sent' || i.status === 'overdue') rec.outstanding += eur;
+        clientDsoMap.set(id, rec);
+      });
+      const clientDsoRows = [...clientDsoMap.entries()]
+        .map(([cid, d]) => ({
+          client: byId('clients', cid)?.name || '—',
+          dso: d.invoiced > 0 ? (d.outstanding / d.invoiced) * 30 : 0,
+          outstanding: d.outstanding,
+          invoiced: d.invoiced
+        }))
+        .filter(r => r.outstanding > 0)
+        .sort((a, b) => b.dso - a.dso);
+
+      // fastest/slowest from non-zero DSO rows
+      const worst  = clientDsoRows[0];
+      const best   = clientDsoRows[clientDsoRows.length - 1];
+      sgrid.appendChild(mkSummaryBox('Worst Client DSO', worst  ? `${worst.dso.toFixed(0)} days`  : '—', worst  ? worst.client  : null));
+      sgrid.appendChild(mkSummaryBox('Best Client DSO',  best   ? `${best.dso.toFixed(0)} days`   : '—', best   ? best.client   : null));
+      body.appendChild(sgrid);
+
+      if (clientDsoRows.length) {
+        body.appendChild(mkSectionLabel('Per-Client DSO (worst first)'));
+        body.appendChild(mkModalTable(
+          [
+            { label: 'Client' },
+            { label: 'DSO (days)', right: true },
+            { label: 'Outstanding', right: true },
+            { label: 'Invoiced', right: true, muted: true }
+          ],
+          clientDsoRows.map(r => [
+            r.client,
+            r.dso.toFixed(0),
+            formatEUR(r.outstanding),
+            formatEUR(r.invoiced)
+          ])
+        ));
+      } else {
+        body.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px' }, 'No outstanding invoices — DSO is 0.'));
+      }
+      openModal({ title: `Days Sales Outstanding — ${dso !== null ? dso.toFixed(0) + ' days' : 'N/A'}`, body, large: true });
+    }
+  }));
+
+  // Average Invoice Value KPI
+  kpiRow3.appendChild(kpiCard({
+    label:    'Avg Invoice Value',
+    value:    avgInvValue !== null ? formatEUR(avgInvValue) : '—',
+    subtitle: avgInvValue !== null ? `per invoice, ${nonDraft.length} invoices` : 'No invoices',
+    onClick:  () => {
+      const body = el('div');
+
+      // Distribution buckets
+      const DIST_BUCKETS = [
+        { label: '0 – 500',   min: 0,    max: 500,      items: [] },
+        { label: '500 – 1k',  min: 500,  max: 1000,     items: [] },
+        { label: '1k – 5k',   min: 1000, max: 5000,     items: [] },
+        { label: '5k+',       min: 5000, max: Infinity,  items: [] }
+      ];
+      nonDraft.forEach(i => {
+        const eur = toEUR(i.total, i.currency, i.issueDate);
+        for (const b of DIST_BUCKETS) {
+          if (eur >= b.min && eur < b.max) { b.items.push({ i, eur }); break; }
+        }
+      });
+
+      body.appendChild(mkSectionLabel('Invoice Distribution'));
+      body.appendChild(mkModalTable(
+        [
+          { label: 'Range' },
+          { label: 'Count', right: true },
+          { label: 'Total', right: true },
+          { label: '% of Invoiced', right: true, muted: true }
+        ],
+        DIST_BUCKETS.map(b => {
+          const total = b.items.reduce((s, x) => s + x.eur, 0);
+          return [
+            b.label,
+            String(b.items.length),
+            b.items.length ? formatEUR(total) : '—',
+            invoicedTotal > 0 && b.items.length ? (total / invoicedTotal * 100).toFixed(1) + '%' : '—'
+          ];
+        })
+      ));
+
+      // Per-client average
+      const clientAvgMap = new Map();
+      nonDraft.forEach(i => {
+        if (!i.clientId) return;
+        const rec = clientAvgMap.get(i.clientId) || { total: 0, count: 0 };
+        rec.total += toEUR(i.total, i.currency, i.issueDate);
+        rec.count++;
+        clientAvgMap.set(i.clientId, rec);
+      });
+      const clientAvgRows = [...clientAvgMap.entries()]
+        .map(([cid, d]) => ({
+          client: byId('clients', cid)?.name || '—',
+          avg:    d.count > 0 ? d.total / d.count : 0,
+          total:  d.total,
+          count:  d.count
+        }))
+        .sort((a, b) => b.avg - a.avg);
+
+      if (clientAvgRows.length) {
+        body.appendChild(mkSectionLabel('Avg Invoice Value by Client'));
+        body.appendChild(mkModalTable(
+          [
+            { label: 'Client' },
+            { label: 'Avg Value', right: true },
+            { label: 'Invoices', right: true, muted: true },
+            { label: 'Total', right: true, muted: true }
+          ],
+          clientAvgRows.map(r => [r.client, formatEUR(r.avg), String(r.count), formatEUR(r.total)])
+        ));
+      }
+
+      openModal({ title: `Avg Invoice Value — ${avgInvValue !== null ? formatEUR(avgInvValue) : 'N/A'}`, body, large: true });
+    }
+  }));
+
+  // New vs Recurring Clients KPI
+  kpiRow3.appendChild(kpiCard({
+    label:   'New vs Recurring',
+    value:   `${newClientIds.length} new / ${recurringClientIds.length} recurring`,
+    variant: 'info',
+    subtitle: 'Clients in selected period',
+    onClick: () => {
+      const body = el('div');
+      const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px' });
+      sgrid.appendChild(mkSummaryBox('New Client Revenue',       formatEUR(newClientRevenue),       `${newClientIds.length} client(s)`));
+      sgrid.appendChild(mkSummaryBox('Recurring Client Revenue', formatEUR(recurringClientRevenue), `${recurringClientIds.length} client(s)`));
+      body.appendChild(sgrid);
+
+      if (newClientIds.length) {
+        body.appendChild(mkSectionLabel('New Clients (first invoice in period)'));
+        const newRows = newClientIds.map(id => {
+          const name = byId('clients', id)?.name || '—';
+          const invs = nonDraft.filter(i => i.clientId === id);
+          const rev  = invs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+          return { name, rev, count: invs.length };
+        }).sort((a, b) => b.rev - a.rev);
+        body.appendChild(mkModalTable(
+          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Revenue', right: true }],
+          newRows.map(r => [r.name, String(r.count), formatEUR(r.rev)])
+        ));
+      }
+
+      if (recurringClientIds.length) {
+        body.appendChild(mkSectionLabel('Recurring Clients (with historical revenue)'));
+        const recurRows = recurringClientIds.map(id => {
+          const name = byId('clients', id)?.name || '—';
+          const periodInvs = nonDraft.filter(i => i.clientId === id);
+          const periodRev  = periodInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+          const allInvs    = allHistoricalInvs.filter(i => i.clientId === id && i.status !== 'draft');
+          const histRev    = allInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+          return { name, periodRev, histRev, count: periodInvs.length };
+        }).sort((a, b) => b.histRev - a.histRev);
+        body.appendChild(mkModalTable(
+          [
+            { label: 'Client' },
+            { label: 'Period Revenue', right: true },
+            { label: 'Historical Revenue', right: true, muted: true }
+          ],
+          recurRows.map(r => [r.name, formatEUR(r.periodRev), formatEUR(r.histRev)])
+        ));
+      }
+
+      openModal({ title: 'New vs Recurring Clients', body, large: true });
+    }
+  }));
+
+  // 4th slot — leave empty (grid-4 still looks balanced with 3)
+  kpiRow3.appendChild(el('div'));
+
+  wrap.appendChild(kpiRow3);
+
   // ── Service Performance Insights ──────────────────────────────────────────
   const signals = computeServiceInsights({
     paidTotal, invoicedTotal, outstandingTotal, overdueTotal,
@@ -920,7 +1143,47 @@ function renderAgingBar({ outstanding }) {
     onClickItem: (_label, idx) => {
       const b = BUCKETS[idx];
       if (!b.items.length) return;
-      drillDownModal(`Outstanding — ${b.label}`, toInvDrillRows(b.items), INV_DRILL_COLS);
+
+      const bucketTotal = b.items.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+
+      // Build client-level aggregation
+      const clientMap = new Map();
+      b.items.forEach(i => {
+        const id = i.clientId;
+        const name = byId('clients', id)?.name || 'Unknown';
+        const eur = toEUR(i.total, i.currency, i.issueDate);
+        const due = i.dueDate || i.issueDate || i.date || '';
+        const existing = clientMap.get(id) || { name, total: 0, count: 0, oldestDue: '' };
+        existing.total += eur;
+        existing.count++;
+        if (!existing.oldestDue || due < existing.oldestDue) existing.oldestDue = due;
+        clientMap.set(id, existing);
+      });
+      const clientRows = [...clientMap.values()].sort((a, b2) => b2.total - a.total);
+
+      const body = el('div');
+      const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px' });
+      sgrid.appendChild(mkSummaryBox('Invoices in Bucket', String(b.items.length), null));
+      sgrid.appendChild(mkSummaryBox('Total Outstanding', formatEUR(bucketTotal), null));
+      body.appendChild(sgrid);
+
+      body.appendChild(mkSectionLabel('By Client (worst first)'));
+      body.appendChild(mkModalTable(
+        [
+          { label: 'Client' },
+          { label: 'Invoices', right: true, muted: true },
+          { label: 'Outstanding', right: true },
+          { label: 'Oldest Due Date', right: true, muted: true }
+        ],
+        clientRows.map(c => [
+          c.name,
+          String(c.count),
+          formatEUR(c.total),
+          c.oldestDue ? fmtDate(c.oldestDue) : '—'
+        ])
+      ));
+
+      openModal({ title: `Aging — ${b.label}`, body, large: true });
     }
   });
 }

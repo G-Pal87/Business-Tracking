@@ -151,9 +151,6 @@ function buildKpiSection(cur, cmp, cmpRange) {
   const { payments, invoices, outstanding, propRev, svcRev, total, outstandingTotal } = cur;
   const cl = cmpRange?.label || '';
 
-  const invoicedT = svcRev + outstandingTotal;
-  const collRate  = invoicedT > 0 ? svcRev / invoicedT * 100 : null;
-
   // Stream-level revenue
   const strMap = new Map();
   payments.forEach(p => { const s = p.stream || 'other'; strMap.set(s, (strMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date)); });
@@ -186,18 +183,14 @@ function buildKpiSection(cur, cmp, cmpRange) {
   }
 
   // Comparison deltas
-  let dTotal, dRental, dService, dOutstanding;
+  let dTotal, dRental, dService;
   if (cmp) {
-    dTotal       = safePct(total,            cmp.total);
-    dRental      = safePct(propRev,          cmp.propRev);
-    dService     = safePct(svcRev,           cmp.svcRev);
-    dOutstanding = safePct(outstandingTotal, cmp.outstandingTotal);
+    dTotal   = safePct(total,   cmp.total);
+    dRental  = safePct(propRev, cmp.propRev);
+    dService = safePct(svcRev,  cmp.svcRev);
   }
 
   const pct = (num, den) => den > 0 ? (num / den * 100).toFixed(0) + '%' : '—';
-  const outstandingRows = () => outstanding
-    .map(i => ({ date: i.issueDate, type: 'Invoice', source: byId('clients', i.clientId)?.name || '', ref: i.number || '', eur: toEUR(i.total, i.currency, i.issueDate) }))
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   // ── Shared modal helpers ────────────────────────────────────────────────────
   const mkSectionLabel = text => el('div', {
@@ -422,23 +415,6 @@ function buildKpiSection(cur, cmp, cmpRange) {
         [{ key: 'type', label: 'Type' }, { key: 'name', label: 'Name' }, { key: 'eur', label: 'Revenue EUR', right: true, format: v => formatEUR(v) }, { key: 'share', label: 'Share', right: true }])
     }));
   }
-
-  compGrid.appendChild(kpiCard({
-    label:   'Collection Rate',
-    value:   collRate !== null ? collRate.toFixed(1) + '%' : 'N/A',
-    subtitle: 'Paid service invoices / paid plus outstanding',
-    variant: collRate !== null && collRate < 70 ? 'warning' : (collRate !== null && collRate >= 100 ? 'success' : ''),
-    onClick: () => drillDownModal('Outstanding Invoices', outstandingRows(), REV_COLS)
-  }));
-  compGrid.appendChild(kpiCard({
-    label:       'Outstanding Revenue',
-    value:       formatEUR(outstandingTotal),
-    variant:     outstandingTotal > 0 ? 'warning' : '',
-    delta:       dOutstanding,
-    invertDelta: true,
-    compLabel:   cl,
-    onClick:     () => drillDownModal('Outstanding Revenue', outstandingRows(), REV_COLS)
-  }));
 
   // Average Rental Revenue / Property (composite, STR and LTR separately)
   compGrid.appendChild(compositeKpiCard({
