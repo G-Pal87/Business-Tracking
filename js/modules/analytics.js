@@ -10,7 +10,8 @@ import {
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
 import {
-  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard,
+  safePct, fmtK
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -28,18 +29,6 @@ export default {
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }
 };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function safePct(cur, cmp) {
-  if (cmp == null || !isFinite(cmp) || cmp === 0) return null;
-  const v = (cur - cmp) / Math.abs(cmp) * 100;
-  return isFinite(v) ? v : null;
-}
-
-const fmtK = v =>
-  v >= 10000 ? `€${(v / 1000).toFixed(0)}k`
-  : v >= 1000 ? `€${(v / 1000).toFixed(1)}k`
-  : formatEUR(v, { maxFrac: 0 });
 
 // ── Data aggregation ──────────────────────────────────────────────────────────
 function getData(start, end) {
@@ -296,9 +285,9 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   {
     const variant = cashPos < 0 ? 'danger' : cashPos < totalRev * 0.05 ? 'warning' : '';
     grid.appendChild(mkKpiCard({
-      label:    'Cash Position',
+      label:    'Period Net Cash',
       value:    formatEUR(cashPos),
-      subtitle: `Net Cash Flow (Rev − All Exp)`,
+      subtitle: `Revenue minus all expenses`,
       delta:    dCash,
       compLabel: cl,
       variant,

@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, safePct, fmtK } from './analytics-helpers.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const OWNER_COLORS = { you: '#6366f1', rita: '#ec4899', both: '#14b8a6' };
@@ -61,15 +61,6 @@ function getData(start, end) {
   const outTotal = outstanding.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
   return { payments, invoices, outstanding, propRev, svcRev, total: propRev + svcRev, outstandingTotal: outTotal };
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function safePct(cur, cmp) {
-  if (cmp === null || cmp === undefined || !isFinite(cmp) || cmp === 0) return null;
-  const v = (cur - cmp) / Math.abs(cmp) * 100;
-  return isFinite(v) ? v : null;
-}
-
-const fmtK = v => v >= 10000 ? `€${(v / 1000).toFixed(0)}k` : v >= 1000 ? `€${(v / 1000).toFixed(1)}k` : formatEUR(v, { maxFrac: 0 });
 
 // ── KPI section ───────────────────────────────────────────────────────────────
 function buildKpiSection(cur, cmp, cmpRange) {
