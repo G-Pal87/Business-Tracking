@@ -7,7 +7,7 @@ import {
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers
 } from './analytics-filters.js?v=20260519';
 import {
-  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, safePct
 } from './analytics-helpers.js';
 import { SERVICE_STREAMS, STREAMS, PROPERTY_STREAMS } from '../core/config.js';
 
@@ -163,7 +163,7 @@ function getPropertiesData(filterState) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function safePct(val, total) {
+function safePctStr(val, total) {
   if (!total || !isFinite(total)) return '—';
   return (val / total * 100).toFixed(1) + '%';
 }
@@ -190,8 +190,8 @@ function buildPartnerColumn(label, color, data, propsData, isYou) {
   }, label));
 
   const rows = [
-    { label: 'Revenue',             value: formatEUR(rev),   sub: null },
-    { label: 'Operating Expenses',  value: formatEUR(exp),   sub: null },
+    { label: 'Revenue',                        value: formatEUR(rev),   sub: null },
+    { label: 'Operating Expenses (excl. CapEx)', value: formatEUR(exp),   sub: null },
     { label: 'Net Profit',          value: formatEUR(net),   sub: null, netVal: net },
     { label: 'Portfolio Properties',value: String(count),    sub: null },
     { label: 'Portfolio Book Value', value: formatEUR(value), sub: null },
@@ -211,7 +211,7 @@ function buildPartnerColumn(label, color, data, propsData, isYou) {
 }
 
 // ── KPI section ───────────────────────────────────────────────────────────────
-function buildKpiSection(data, propsData) {
+function buildKpiSection(data, cmpData, propsData) {
   const { total, revSplit, annotatedPayments, annotatedInvoices } = data;
   const youPct  = total > 0 ? revSplit.you  / total * 100 : 0;
   const ritaPct = total > 0 ? revSplit.rita / total * 100 : 0;
@@ -226,6 +226,8 @@ function buildKpiSection(data, propsData) {
     label: 'Total Portfolio Revenue',
     value: formatEUR(total),
     subtitle: 'All partners combined',
+    delta: safePct(total, cmpData?.total),
+    compLabel: cmpRange?.label,
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       body.appendChild(mkSummaryGrid([
@@ -252,6 +254,8 @@ function buildKpiSection(data, propsData) {
     label: 'Giorgos Share',
     value: youPct.toFixed(1) + '%',
     subtitle: formatEUR(revSplit.you),
+    delta: safePct(revSplit.you, cmpData?.revSplit.you),
+    compLabel: cmpRange?.label,
     onClick: () => {
       const youItems = [...annotatedPayments, ...annotatedInvoices]
         .filter(r => r._resolvedOwner === 'you' || r._resolvedOwner === 'both')
@@ -289,6 +293,8 @@ function buildKpiSection(data, propsData) {
     label: 'Rita Share',
     value: ritaPct.toFixed(1) + '%',
     subtitle: formatEUR(revSplit.rita),
+    delta: safePct(revSplit.rita, cmpData?.revSplit.rita),
+    compLabel: cmpRange?.label,
     onClick: () => {
       const ritaItems = [...annotatedPayments, ...annotatedInvoices]
         .filter(r => r._resolvedOwner === 'rita' || r._resolvedOwner === 'both')
@@ -680,13 +686,14 @@ function buildView() {
   const { keys: months } = getMonthKeysForRange(curRange.start, curRange.end);
 
   const data      = getData(curRange.start, curRange.end);
+  const cmpData   = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
   const propsData = getPropertiesData(gF);
 
   const compLine = buildComparisonLine(curRange, cmpRange);
   if (compLine) wrap.appendChild(compLine);
 
   // KPI cards
-  wrap.appendChild(buildKpiSection(data, propsData));
+  wrap.appendChild(buildKpiSection(data, cmpData, propsData));
 
   // Partner side-by-side columns
   wrap.appendChild(buildPartnerComparison(data, propsData));

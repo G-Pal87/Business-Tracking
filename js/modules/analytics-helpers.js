@@ -2,6 +2,7 @@
 // Import these instead of copy-pasting the equivalent mkExp* functions
 // into every analytics module.
 import { el } from '../core/ui.js';
+import { formatEUR, byId } from '../core/data.js';
 
 // ── Section label ─────────────────────────────────────────────────────────────
 
@@ -260,4 +261,82 @@ export function mkEmptyState(message) {
   return el('div', {
     style: 'padding:32px 16px;text-align:center;color:var(--text-muted);font-style:italic;font-size:13px'
   }, message);
+}
+
+// ── Shared numeric utilities ──────────────────────────────────────────────────
+
+/**
+ * safePct(cur, cmp) — safe period-over-period percentage change.
+ * Returns null when cmp is zero, null, or non-finite.
+ */
+export function safePct(cur, cmp) {
+  if (cmp == null || !isFinite(cmp) || cmp === 0) return null;
+  const v = (cur - cmp) / Math.abs(cmp) * 100;
+  return isFinite(v) ? v : null;
+}
+
+/**
+ * fmtK(v) — compact EUR formatter for chart axis labels.
+ * ≥10 000 → "€12k", ≥1 000 → "€1.2k", otherwise formatEUR.
+ */
+export const fmtK = v =>
+  v >= 10000 ? `€${(v / 1000).toFixed(0)}k`
+  : v >= 1000 ? `€${(v / 1000).toFixed(1)}k`
+  : formatEUR(v, { maxFrac: 0 });
+
+/**
+ * expStream(e) — resolve the business stream for an expense record.
+ * Checks e.stream first, then infers from the linked property type.
+ */
+export function expStream(e) {
+  if (e.stream) return e.stream;
+  if (e.propertyId) {
+    const p = byId('properties', e.propertyId);
+    if (p?.type === 'short_term') return 'short_term_rental';
+    if (p?.type === 'long_term')  return 'long_term_rental';
+  }
+  return 'other';
+}
+
+// ── Insights banner ───────────────────────────────────────────────────────────
+
+/**
+ * mkInsightsBanner(signals, title) — severity-coded insight cards.
+ * Used by Services and Properties dashboards.
+ *
+ * @param {Array<{severity:string, title:string, text:string, inspect?:string}>} signals
+ * @param {string} title - Card header title.
+ * @returns {HTMLElement|null} null when signals is empty.
+ */
+export function mkInsightsBanner(signals, title) {
+  if (!signals.length) return null;
+  const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b', 'Note': '#6366f1' };
+  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)', 'Note': 'rgba(99,102,241,0.06)' };
+
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, title)
+  ));
+
+  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:16px' });
+
+  for (const sig of signals) {
+    const color = SEV_COLOR[sig.severity] || SEV_COLOR['Note'];
+    const bg    = SEV_BG[sig.severity]    || SEV_BG['Note'];
+    const block = el('div', {
+      style: `background:${bg};border-left:3px solid ${color};border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:12px 14px`
+    });
+    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:6px' });
+    titleRow.appendChild(el('span', { style: `font-size:11px;font-weight:700;letter-spacing:0.5px;color:${color}` }, sig.title));
+    titleRow.appendChild(el('span', { style: `font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;background:${color};color:#fff` }, sig.severity));
+    block.appendChild(titleRow);
+    block.appendChild(el('p', { style: 'margin:0 0 6px;font-size:12px;color:var(--text);line-height:1.4' }, sig.text));
+    if (sig.inspect) {
+      block.appendChild(el('div', { style: `font-size:11px;color:${color};font-weight:600` }, `→ Inspect: ${sig.inspect}`));
+    }
+    grid.appendChild(block);
+  }
+
+  card.appendChild(grid);
+  return card;
 }

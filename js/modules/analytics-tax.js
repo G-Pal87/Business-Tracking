@@ -118,7 +118,11 @@ function getYearData(year, ownerFilter) {
   });
   const invoicesCS  = invoices.filter(i => i.stream === 'customer_success');
   const invoicesMkt = invoices.filter(i => i.stream === 'marketing_services');
+  // DEV: warn when invoices fall into the catch-all bucket so unrecognised streams are visible during development
   const invoicesOther = invoices.filter(i => !['customer_success','marketing_services'].includes(i.stream));
+  if (invoicesOther.length > 0) {
+    console.warn('[analytics-tax] invoicesOther catch-all bucket has', invoicesOther.length, 'record(s). Streams:', [...new Set(invoicesOther.map(i => i.stream || '(none)'))]);
+  }
 
   const sum = (arr, getAmt, getDate) => arr.reduce((s, x) => s + toEUR(getAmt(x), x.currency, getDate(x)), 0);
 
@@ -370,6 +374,10 @@ function buildKpiCards(data, year) {
   const grid = el('div', {
     style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px'
   });
+
+  if (totalRevenue === 0 && totalOpEx === 0 && totalCapEx === 0) {
+    return mkEmptyState('No activity recorded for ' + year + '. Select a different year or add data.');
+  }
 
   // 1. Operating Margin
   grid.appendChild(mkKpiCard({
