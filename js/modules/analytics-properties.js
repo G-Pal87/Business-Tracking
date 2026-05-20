@@ -529,6 +529,87 @@ function computeMortgageEstimate(prop) {
 }
 
 // ── Financing data aggregation ────────────────────────────────────────────────
+// ── CapEx Impact — Revenue Before vs After ────────────────────────────────────
+function buildCapExImpactSection({ propData, curRange }) {
+  // Only properties that had CapEx in the current period
+  const capExProps = propData.filter(d => d.propCapExpenses.length > 0);
+  if (capExProps.length === 0) return null;
+
+  const rows = capExProps.map(d => {
+    const capExTotal = d.capEx;
+    const curRev     = d.rev;
+    const curNet     = d.profit;
+
+    // Find earliest CapEx date in this period — use it as "renovation start"
+    const sortedCapEx = [...d.propCapExpenses].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const firstCapExDate = sortedCapEx[0]?.date;
+
+    // Look back 6 months from first CapEx date for a pre-period baseline
+    let preRev = null;
+    if (firstCapExDate) {
+      const preEnd   = firstCapExDate;
+      const preStart = new Date(firstCapExDate);
+      preStart.setMonth(preStart.getMonth() - 6);
+      const preStartStr = preStart.toISOString().slice(0, 10);
+
+      const allPropPay = listActivePayments().filter(p =>
+        p.status === 'paid' && p.propertyId === d.prop.id &&
+        p.date >= preStartStr && p.date < preEnd
+      );
+      preRev = allPropPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+    }
+
+    const revChange = preRev !== null && preRev > 0
+      ? ((curRev - preRev) / preRev * 100).toFixed(1)
+      : null;
+
+    return {
+      name:      d.prop.name,
+      capEx:     capExTotal,
+      preRev,
+      curRev,
+      curNet,
+      revChange,
+      firstDate: firstCapExDate || null
+    };
+  });
+
+  const section = el('div', { class: 'card mb-16' });
+  section.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, `CapEx Impact — ${curRange.label}`),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Properties with CapEx this period')
+  ));
+
+  const body = el('div', { style: 'padding:0 16px 16px' });
+
+  const tableRows = rows.map(r => {
+    const changeStr = r.revChange !== null
+      ? (parseFloat(r.revChange) >= 0 ? '+' : '') + r.revChange + '% vs 6mo pre'
+      : '—';
+    return [
+      r.name,
+      formatEUR(r.capEx),
+      r.preRev !== null ? formatEUR(r.preRev) : '—',
+      formatEUR(r.curRev),
+      changeStr,
+      formatEUR(r.curNet)
+    ];
+  });
+
+  body.appendChild(mkModalTable(
+    ['Property', 'CapEx Spent', 'Pre-CapEx Rev (6mo)', 'Current Rev', 'Rev Change', 'Current Net'],
+    tableRows,
+    { highlight: 5 }
+  ));
+
+  body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:8px' },
+    'Pre-CapEx Rev: paid rental payments in the 6 months before first CapEx date · Current Rev: this period'
+  ));
+
+  section.appendChild(body);
+  return section;
+}
+
 function getFinancingData(allProps) {
   const finData    = allProps.map(prop => ({ prop, ...computeMortgageEstimate(prop) }));
   const withMortgage = finData.filter(d => d.financed);
@@ -1166,6 +1247,10 @@ function buildView() {
     el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-capital-line' }))
   ));
   wrap.appendChild(acqGrowthRow);
+
+  // ── CapEx Impact — Revenue Before vs After ────────────────────────────────
+  const capExImpactSection = buildCapExImpactSection({ propData, curRange });
+  if (capExImpactSection) wrap.appendChild(capExImpactSection);
 
   // ── Financing & Payoff ─────────────────────────────────────────────────────
   wrap.appendChild(buildFinancingSection(getFinancingData(allProps)));

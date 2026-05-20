@@ -9,6 +9,7 @@ import {
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState
 } from './analytics-helpers.js';
+import { SERVICE_STREAMS, STREAMS } from '../core/config.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS    = ['own-rev-bar', 'own-profit-hbar', 'own-value-donut'];
@@ -239,6 +240,56 @@ function buildPartnerComparison(data, propsData) {
   grid.appendChild(buildPartnerColumn(YOU_LABEL, YOU_COLOR, data, propsData, true));
   grid.appendChild(buildPartnerColumn(RITA_LABEL, RITA_COLOR, data, propsData, false));
   section.appendChild(grid);
+  return section;
+}
+
+// ── Service Revenue by Stream section ────────────────────────────────────────
+function buildServiceStreamSection(annotatedInvoices, curRange) {
+  const streamTotals = SERVICE_STREAMS.map(stream => {
+    const invoices = annotatedInvoices.filter(i => i.stream === stream);
+    let you = 0, rita = 0;
+    for (const i of invoices) {
+      const o = i._resolvedOwner;
+      if (o === 'you')  { you  += i._eur; }
+      else if (o === 'rita') { rita += i._eur; }
+      else { you += i._eur * 0.5; rita += i._eur * 0.5; }
+    }
+    return { stream, you, rita, total: you + rita, count: invoices.length };
+  }).filter(r => r.total > 0);
+
+  if (streamTotals.length === 0) return null;
+
+  const grandYou   = streamTotals.reduce((s, r) => s + r.you,   0);
+  const grandRita  = streamTotals.reduce((s, r) => s + r.rita,  0);
+  const grandTotal = grandYou + grandRita;
+
+  const section = el('div', { class: 'card mb-16' });
+  section.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, `Service Revenue by Stream — ${curRange.label}`)
+  ));
+
+  const body = el('div', { style: 'padding:0 16px 16px' });
+
+  const streamLabel = s => s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const rows = streamTotals.map(r => [
+    streamLabel(r.stream),
+    formatEUR(r.you),
+    formatEUR(r.rita),
+    formatEUR(r.total)
+  ]);
+  rows.push(['Total', formatEUR(grandYou), formatEUR(grandRita), formatEUR(grandTotal)]);
+
+  body.appendChild(mkModalTable(
+    ['Stream', 'Giorgos', 'Rita', 'Total'],
+    rows,
+    { highlight: 3 }
+  ));
+
+  body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:8px' },
+    `Paid invoices only · ${curRange.label} · "both" owner = 50/50 split`
+  ));
+
+  section.appendChild(body);
   return section;
 }
 
@@ -578,6 +629,10 @@ function buildView() {
   }
 
   wrap.appendChild(row2);
+
+  // ── Service Revenue by Stream ─────────────────────────────────────────────
+  const svcStreamSection = buildServiceStreamSection(data.annotatedInvoices, curRange);
+  if (svcStreamSection) wrap.appendChild(svcStreamSection);
 
   // ── Settlement section ────────────────────────────────────────────────────
   wrap.appendChild(buildSettlementSection(data, curRange));
