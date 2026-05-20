@@ -165,7 +165,7 @@ function calculateDashboardData(range) {
   );
   const allExpenses = listActive('expenses').filter(e => inRange(e.date) && mOwner(e) && mProperty(e));
   const actOpExpenses  = allExpenses.filter(e => !isCapEx(e) && mStream(e));
-  const actCapExpenses = allExpenses.filter(e => isCapEx(e));
+  const actCapExpenses = allExpenses.filter(e => isCapEx(e) && mStream(e));
 
   const actualRev    = sumPaymentsEUR(actPayments) + sumInvoicesEUR(actInvoices);
   const actualExp    = sumExpensesEUR(actOpExpenses);
@@ -449,18 +449,16 @@ function buildKpiGrid(data, cmpData, cmpRange) {
 
       // Stream summary boxes
       const streamBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px' });
-      const streamGroups = { service: 0, short_term_rental: 0, long_term_rental: 0, other: 0 };
+      const streamGroups = {};
       actPayments.forEach(p => {
-        const s = resolveStream(p) || 'other';
-        const key = s === 'service' ? 'service' : (s === 'short_term_rental' ? 'short_term_rental' : (s === 'long_term_rental' ? 'long_term_rental' : 'other'));
+        const key = resolveStream(p) || 'other';
         streamGroups[key] = (streamGroups[key] || 0) + toEUR(p.amount, p.currency, p.date);
       });
       actInvoices.forEach(i => {
-        const s = resolveStream(i) || 'other';
-        const key = s === 'service' ? 'service' : (s === 'short_term_rental' ? 'short_term_rental' : (s === 'long_term_rental' ? 'long_term_rental' : 'other'));
+        const key = resolveStream(i) || 'other';
         streamGroups[key] = (streamGroups[key] || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date);
       });
-      const streamLabels = { service: 'Service Revenue', short_term_rental: 'Short-Term Rental', long_term_rental: 'Long-Term Rental', other: 'Other' };
+      const streamLabels = { customer_success: 'Customer Success', marketing_services: 'Marketing Services', short_term_rental: 'Short-Term Rental', long_term_rental: 'Long-Term Rental', other: 'Other' };
       Object.entries(streamGroups).filter(([, v]) => v > 0).forEach(([key, val]) => {
         const pct = actualRev > 0 ? ((val / actualRev) * 100).toFixed(0) + '% of total' : null;
         streamBoxes.appendChild(mkSummaryBox(streamLabels[key] || key, formatEUR(val), pct));

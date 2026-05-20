@@ -1216,7 +1216,7 @@ function buildView() {
   // ── Financing & Payoff ─────────────────────────────────────────────────────
   wrap.appendChild(buildFinancingSection(getFinancingData(allProps)));
 
-  const monthKeys = getMonthKeysForRange(start, end);
+  const { keys: monthKeys } = getMonthKeysForRange(start, end);
   setTimeout(() => {
     renderProfitHBar(curData);
     renderRevDonut(curData);
