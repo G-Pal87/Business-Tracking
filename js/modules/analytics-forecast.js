@@ -13,7 +13,7 @@ import {
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, safePct } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = [
@@ -91,12 +91,6 @@ function fmtVarPct(actual, forecast) {
 function fmtVar(actual, forecast) {
   const v = actual - forecast;
   return (v >= 0 ? '+' : '') + formatEUR(v);
-}
-
-function safePct(cur, prev) {
-  if (!isFinite(prev) || prev === 0) return null;
-  const p = ((cur - prev) / Math.abs(prev)) * 100;
-  return isFinite(p) ? p : null;
 }
 
 // ── Forecast stream resolver ──────────────────────────────────────────────────
@@ -914,31 +908,6 @@ function makeChartSection(title, panels) {
   return card;
 }
 
-// ── Table helpers ─────────────────────────────────────────────────────────────
-function makeTable(cols, rows, emptyMsg) {
-  if (!rows.length) {
-    return el('p', { style: 'color:var(--text-muted);padding:12px 0;margin:0' }, emptyMsg || 'No data.');
-  }
-  const tbl = el('table', { class: 'table', style: 'width:100%' });
-  const thead = el('thead');
-  const hr = el('tr');
-  cols.forEach(c => hr.appendChild(el('th', { class: c.right ? 'right' : '' }, c.label)));
-  thead.appendChild(hr);
-  tbl.appendChild(thead);
-  const tbody = el('tbody');
-  rows.forEach(row => {
-    const tr = el('tr');
-    cols.forEach(c => {
-      const val = row[c.key];
-      const disp = c.format ? c.format(val) : (val === null || val === undefined ? '—' : String(val));
-      tr.appendChild(el('td', { class: c.right ? 'right' : '' }, disp));
-    });
-    tbody.appendChild(tr);
-  });
-  tbl.appendChild(tbody);
-  return tbl;
-}
-
 function cardSection(title, content) {
   const card = el('div', { class: 'card mb-16' });
   const body = el('div', { style: 'padding:0 16px 16px' });
@@ -966,92 +935,107 @@ function cardSection(title, content) {
 
 // ── Breakdown tables ──────────────────────────────────────────────────────────
 function buildMonthlyTable(data) {
-  const rows = data.monthlyBreakdown
-    .filter(m => m.fcRev > 0 || m.actRev > 0 || m.fcExp > 0 || m.actExp > 0)
-    .map(m => ({
-      label:   m.label,
-      fcRev:   formatEUR(m.fcRev),
-      actRev:  formatEUR(m.actRev),
-      varStr:  fmtVar(m.actRev, m.fcRev),
-      pctStr:  fmtVarPct(m.actRev, m.fcRev),
-      fcExp:   formatEUR(m.fcExp),
-      actExp:  formatEUR(m.actExp),
-      fcNet:   formatEUR(m.fcNet),
-      actNet:  formatEUR(m.actNet)
-    }));
-  const cols = [
-    { key: 'label',  label: 'Month' },
-    { key: 'fcRev',  label: 'Fc Revenue',  right: true },
-    { key: 'actRev', label: 'Actual Rev',  right: true },
-    { key: 'varStr', label: 'Variance',    right: true },
-    { key: 'pctStr', label: 'Var %',       right: true },
-    { key: 'fcExp',  label: 'Fc OpEx',     right: true },
-    { key: 'actExp', label: 'Actual OpEx', right: true },
-    { key: 'fcNet',  label: 'Fc Net',      right: true },
-    { key: 'actNet', label: 'Actual Net',  right: true }
+  const filtered = data.monthlyBreakdown
+    .filter(m => m.fcRev > 0 || m.actRev > 0 || m.fcExp > 0 || m.actExp > 0);
+  if (!filtered.length) {
+    return el('p', { style: 'color:var(--text-muted);padding:12px 0;margin:0' }, 'No forecast data found for the selected period.');
+  }
+  const headers = [
+    { label: 'Month' },
+    { label: 'Fc Revenue',  right: true },
+    { label: 'Actual Rev',  right: true },
+    { label: 'Variance',    right: true },
+    { label: 'Var %',       right: true },
+    { label: 'Fc OpEx',     right: true },
+    { label: 'Actual OpEx', right: true },
+    { label: 'Fc Net',      right: true },
+    { label: 'Actual Net',  right: true }
   ];
-  return makeTable(cols, rows, 'No forecast data found for the selected period.');
+  const rows = filtered.map(m => [
+    m.label,
+    formatEUR(m.fcRev),
+    formatEUR(m.actRev),
+    fmtVar(m.actRev, m.fcRev),
+    fmtVarPct(m.actRev, m.fcRev),
+    formatEUR(m.fcExp),
+    formatEUR(m.actExp),
+    formatEUR(m.fcNet),
+    formatEUR(m.actNet)
+  ]);
+  return mkModalTable(headers, rows);
 }
 
 function buildStreamTable(data) {
-  const rows = data.streamBreakdown.map(s => ({
-    label:  s.label,
-    fcRev:  formatEUR(s.fcRev),
-    actRev: formatEUR(s.actRev),
-    varStr: fmtVar(s.actRev, s.fcRev),
-    pctStr: fmtVarPct(s.actRev, s.fcRev)
-  }));
-  const cols = [
-    { key: 'label',  label: 'Stream' },
-    { key: 'fcRev',  label: 'Forecast', right: true },
-    { key: 'actRev', label: 'Actual',   right: true },
-    { key: 'varStr', label: 'Variance', right: true },
-    { key: 'pctStr', label: 'Var %',    right: true }
+  if (!data.streamBreakdown.length) {
+    return el('p', { style: 'color:var(--text-muted);padding:12px 0;margin:0' }, 'No stream data available.');
+  }
+  const headers = [
+    { label: 'Stream' },
+    { label: 'Forecast', right: true },
+    { label: 'Actual',   right: true },
+    { label: 'Variance', right: true },
+    { label: 'Var %',    right: true }
   ];
-  return makeTable(cols, rows, 'No stream data available.');
+  const rows = data.streamBreakdown.map(s => [
+    s.label,
+    formatEUR(s.fcRev),
+    formatEUR(s.actRev),
+    fmtVar(s.actRev, s.fcRev),
+    fmtVarPct(s.actRev, s.fcRev)
+  ]);
+  return mkModalTable(headers, rows);
 }
 
 function buildPropertyTable(data) {
+  if (!data.propertyBreakdown.length) {
+    return el('p', { style: 'color:var(--text-muted);padding:12px 0;margin:0' }, 'No property data available.');
+  }
   const hasPending = data.propertyBreakdown.some(r => r.pending > 0);
-  const rows = data.propertyBreakdown.map(r => ({
-    label:   r.label,
-    fcRev:   formatEUR(r.fcRev),
-    actRev:  formatEUR(r.actRev),
-    varStr:  fmtVar(r.actRev, r.fcRev),
-    pctStr:  fmtVarPct(r.actRev, r.fcRev),
-    pending: r.pending > 0 ? formatEUR(r.pending) : '—'
-  }));
-  const cols = [
-    { key: 'label',  label: 'Property' },
-    { key: 'fcRev',  label: 'Forecast', right: true },
-    { key: 'actRev', label: 'Actual',   right: true },
-    { key: 'varStr', label: 'Variance', right: true },
-    { key: 'pctStr', label: 'Var %',    right: true },
-    ...(hasPending ? [{ key: 'pending', label: 'Pending', right: true }] : [])
+  const headers = [
+    { label: 'Property' },
+    { label: 'Forecast', right: true },
+    { label: 'Actual',   right: true },
+    { label: 'Variance', right: true },
+    { label: 'Var %',    right: true },
+    ...(hasPending ? [{ label: 'Pending', right: true }] : [])
   ];
-  return makeTable(cols, rows, 'No property data available.');
+  const rows = data.propertyBreakdown.map(r => [
+    r.label,
+    formatEUR(r.fcRev),
+    formatEUR(r.actRev),
+    fmtVar(r.actRev, r.fcRev),
+    fmtVarPct(r.actRev, r.fcRev),
+    ...(hasPending ? [r.pending > 0 ? formatEUR(r.pending) : '—'] : [])
+  ]);
+  return mkModalTable(headers, rows);
 }
 
 function buildPendingTable(data) {
-  const rows = data.pendingReservations.map(p => ({
-    prop:     byId('properties', p.propertyId)?.name || '—',
-    code:     p.confirmationCode || p.airbnbRef || '—',
-    guest:    (p.notes || '').split(' · ')[0] || '—',
-    checkIn:  p.airbnbCheckIn || '—',
-    checkOut: p.airbnbCheckOut || '—',
-    nights:   String(p.airbnbNights || '—'),
-    amount:   formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
-  })).sort((a, b) => (a.checkIn || '').localeCompare(b.checkIn || ''));
-  const cols = [
-    { key: 'prop',     label: 'Property' },
-    { key: 'code',     label: 'Confirmation' },
-    { key: 'guest',    label: 'Guest' },
-    { key: 'checkIn',  label: 'Check-in' },
-    { key: 'checkOut', label: 'Check-out' },
-    { key: 'nights',   label: 'Nights',  right: true },
-    { key: 'amount',   label: 'Amount',  right: true }
+  if (!data.pendingReservations.length) {
+    return el('p', { style: 'color:var(--text-muted);padding:12px 0;margin:0' }, 'No pending Airbnb reservations found for the selected period.');
+  }
+  const headers = [
+    { label: 'Property' },
+    { label: 'Confirmation' },
+    { label: 'Guest' },
+    { label: 'Check-in' },
+    { label: 'Check-out' },
+    { label: 'Nights',  right: true },
+    { label: 'Amount',  right: true }
   ];
-  return makeTable(cols, rows, 'No pending Airbnb reservations found for the selected period.');
+  const rows = data.pendingReservations
+    .map(p => ({
+      prop:     byId('properties', p.propertyId)?.name || '—',
+      code:     p.confirmationCode || p.airbnbRef || '—',
+      guest:    (p.notes || '').split(' · ')[0] || '—',
+      checkIn:  p.airbnbCheckIn || '—',
+      checkOut: p.airbnbCheckOut || '—',
+      nights:   String(p.airbnbNights || '—'),
+      amount:   formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
+    }))
+    .sort((a, b) => (a.checkIn || '').localeCompare(b.checkIn || ''))
+    .map(r => [r.prop, r.code, r.guest, r.checkIn, r.checkOut, r.nights, r.amount]);
+  return mkModalTable(headers, rows);
 }
 
 // ── Chart rendering ───────────────────────────────────────────────────────────

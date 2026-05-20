@@ -10,7 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -36,11 +36,6 @@ function matchOwnerSvc(inv) {
   if (!ow && inv.clientId) ow = byId('clients', inv.clientId)?.owner;
   ow = ow || 'both';
   return ow === 'both' || gF.owners.has(ow);
-}
-
-function safePct(cur, cmp) {
-  if (cmp == null || !isFinite(cmp) || cmp === 0) return null;
-  return (cur - cmp) / Math.abs(cmp) * 100;
 }
 
 // ── Data aggregation ──────────────────────────────────────────────────────────
@@ -373,42 +368,6 @@ function buildStreamPerformanceCard(kpiBase) {
   return card;
 }
 
-function buildInsightsBanner(signals) {
-  const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b', 'Note': '#6366f1' };
-  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)', 'Note': 'rgba(99,102,241,0.06)' };
-
-  const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Service Performance Insights')
-  ));
-
-  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:16px' });
-
-  for (const sig of signals) {
-    const color = SEV_COLOR[sig.severity] || SEV_COLOR['Note'];
-    const bg    = SEV_BG[sig.severity]    || SEV_BG['Note'];
-    const block = el('div', {
-      style: `background:${bg};border-left:3px solid ${color};border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:12px 14px`
-    });
-
-    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:6px' });
-    titleRow.appendChild(el('span', { style: `font-size:11px;font-weight:700;letter-spacing:0.5px;color:${color}` }, sig.title));
-    titleRow.appendChild(el('span', { style: `font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;background:${color};color:#fff` }, sig.severity));
-    block.appendChild(titleRow);
-
-    block.appendChild(el('p', { style: 'margin:0 0 6px;font-size:12px;color:var(--text);line-height:1.4' }, sig.text));
-
-    if (sig.inspect) {
-      block.appendChild(el('div', { style: `font-size:11px;color:${color};font-weight:600` }, `→ Inspect: ${sig.inspect}`));
-    }
-
-    grid.appendChild(block);
-  }
-
-  card.appendChild(grid);
-  return card;
-}
-
 // ── Main view ─────────────────────────────────────────────────────────────────
 function buildView() {
   const wrap = el('div', { class: 'view active' });
@@ -684,7 +643,7 @@ function buildView() {
 
   // DSO KPI
   kpiRow3.appendChild(mkKpiCard({
-    label:   'Days Sales Outstanding',
+    label:   'Invoice Collection Lag (DSO proxy)',
     value:   dso !== null ? `${dso.toFixed(0)} days` : '—',
     variant: dsoVariant,
     subtitle: 'Outstanding ÷ Invoiced × 30 (proxy)',
@@ -886,7 +845,7 @@ function buildView() {
     paidTotal, invoicedTotal, outstandingTotal, overdueTotal,
     concentration, topClient, collectionRate, nonDraft, cmpData, cmpRange
   });
-  wrap.appendChild(buildInsightsBanner(signals));
+  wrap.appendChild(mkInsightsBanner(signals, 'Service Performance Insights'));
 
   // ── Service Revenue Trends ─────────────────────────────────────────────────
   wrap.appendChild(el('div', { style: 'margin:8px 0 12px' },
