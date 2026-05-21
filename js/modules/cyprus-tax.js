@@ -209,46 +209,55 @@ function modalExpenseCategory(cat) {
   openModal({ title: `${cat} — ${year}`, body, large: true });
 }
 
-function modalForecastProperties(forRevenue) {
+function modalForecastEntities(forRevenue) {
   const s        = cfg();
   const year     = s.year || String(new Date().getFullYear());
   const today    = new Date().toISOString().slice(0, 10);
   const cutoff   = today < `${year}-12-31` ? today : `${year}-12-31`;
   const curMonth = cutoff.slice(0, 7);
   const propMap  = Object.fromEntries((state.db.properties || []).map(p => [p.id, p]));
-  const fcData   = {};
+  const humanize = id => id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  const fcData = {};
   for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
-    const pid = fc.entityId || fc.propertyId || fc.id;
-    if (!fcData[pid]) fcData[pid] = { rev: 0, exp: 0, months: 0 };
+    const eid = fc.entityId || fc.propertyId || fc.id;
+    if (!fcData[eid]) fcData[eid] = { rev: 0, exp: 0, months: 0, type: fc.type };
     for (const [mk, md] of Object.entries(fc.months || {})) {
       if (mk > curMonth) {
         const rev = Number(md.revenue) || 0, exp = Number(md.expenses) || 0;
-        if (rev > 0 || exp > 0) { fcData[pid].rev += rev; fcData[pid].exp += exp; fcData[pid].months++; }
+        if (rev > 0 || exp > 0) { fcData[eid].rev += rev; fcData[eid].exp += exp; fcData[eid].months++; }
       }
     }
   }
+
   const rows = Object.entries(fcData)
     .filter(([, d]) => forRevenue ? d.rev > 0 : d.exp > 0)
     .sort(([, a], [, b]) => forRevenue ? b.rev - a.rev : b.exp - a.exp);
   if (!rows.length) { emptyModal('Forecast', 'No forecast data found for remaining months.'); return; }
 
-  const total = rows.reduce((a, [, d]) => a + (forRevenue ? d.rev : d.exp), 0);
-  const body  = el('div');
+  const total    = rows.reduce((a, [, d]) => a + (forRevenue ? d.rev : d.exp), 0);
+  const propCount = rows.filter(([id, d]) => d.type === 'property' || !!propMap[id]).length;
+  const svcCount  = rows.length - propCount;
+
+  const body = el('div');
   body.appendChild(mkSummaryGrid([
     { label: forRevenue ? 'Forecast Revenue' : 'Forecast Expenses', value: fmtE(total) },
-    { label: 'Properties', value: String(rows.length) },
-    { label: 'Avg / Property', value: fmtE(total / rows.length) },
+    { label: 'Properties', value: String(propCount) },
+    { label: 'Services', value: String(svcCount) },
     { label: 'From Month', value: `> ${curMonth}` },
   ], 4));
-  body.appendChild(mkSectionLabel(`${forRevenue ? 'Revenue' : 'Expense'} Forecast by Property`));
+  body.appendChild(mkSectionLabel(`${forRevenue ? 'Revenue' : 'Expense'} Forecast by Entity`));
   body.appendChild(mkModalTable(
-    [{ label: 'Property' }, { label: 'Months', right: true }, { label: forRevenue ? 'Revenue' : 'Expenses', right: true }, { label: 'Share', right: true, muted: true }],
+    [{ label: 'Entity' }, { label: 'Type' }, { label: 'Months', right: true }, { label: forRevenue ? 'Revenue' : 'Expenses', right: true }, { label: 'Share', right: true, muted: true }],
     rows.map(([id, d]) => {
-      const p = propMap[id]; const val = forRevenue ? d.rev : d.exp;
-      return [p?.name || p?.address || id, String(d.months), fmtE(val), pct(val, total)];
+      const prop = propMap[id];
+      const isProperty = d.type === 'property' || !!prop;
+      const name = prop ? (prop.name || prop.address || id) : humanize(id);
+      const val  = forRevenue ? d.rev : d.exp;
+      return [name, isProperty ? 'Property' : 'Service', String(d.months), fmtE(val), pct(val, total)];
     })
   ));
-  openModal({ title: `Forecast ${forRevenue ? 'Revenue' : 'Expenses'} by Property — ${year}`, body, large: true });
+  openModal({ title: `Forecast ${forRevenue ? 'Revenue' : 'Expenses'} — ${year}`, body, large: true });
 }
 
 // ── Provisional Tax Result KPI modals ────────────────────────────────────────
@@ -720,7 +729,7 @@ function buildEstimateCard(onChange) {
       if (bd.invsCount > 0) revEl.appendChild(subRow(`↳ Invoices (${bd.invsCount})`, bd.invsRevenue, modalInvoiceRevenue));
     }
     revEl.appendChild(row('Forecast (remaining months)', safeN(s2.forecastRevenue)));
-    if (bd && bd.fcPropCount > 0) revEl.appendChild(subRow(`↳ ${bd.fcPropCount} propert${bd.fcPropCount === 1 ? 'y' : 'ies'} in forecast`, safeN(s2.forecastRevenue), () => modalForecastProperties(true)));
+    if (bd && bd.fcRevCount > 0) revEl.appendChild(subRow(`↳ ${bd.fcRevLabel} in forecast`, safeN(s2.forecastRevenue), () => modalForecastEntities(true)));
     if (safeN(s2.nonDeductibleExpenses) > 0) revEl.appendChild(row('Non-deductible add-back', safeN(s2.nonDeductibleExpenses)));
     if (safeN(s2.taxAllowances) > 0) {
       revEl.appendChild(el('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding:4px 0' },
@@ -743,7 +752,7 @@ function buildEstimateCard(onChange) {
       }
     }
     expEl.appendChild(row('Forecast (remaining months)', safeN(s2.forecastExpenses)));
-    if (bd && bd.fcPropCount > 0 && safeN(s2.forecastExpenses) > 0) expEl.appendChild(subRow(`↳ ${bd.fcPropCount} propert${bd.fcPropCount === 1 ? 'y' : 'ies'} in forecast`, safeN(s2.forecastExpenses), () => modalForecastProperties(false)));
+    if (bd && bd.fcExpCount > 0 && safeN(s2.forecastExpenses) > 0) expEl.appendChild(subRow(`↳ ${bd.fcExpLabel} in forecast`, safeN(s2.forecastExpenses), () => modalForecastEntities(false)));
     expEl.appendChild(row('Total deductible expenses', totalExp, true));
 
     breakdownEl.appendChild(el('div', {
@@ -812,18 +821,27 @@ function prefillFromActuals(onChange) {
   }
 
   let forecastRevenue = 0, forecastExpenses = 0;
-  const fcPropIds = new Set();
+  const fcRevIds = new Set(), fcExpIds = new Set();
+  const propIds  = new Set((state.db.properties || []).map(p => p.id));
   for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
+    const eid = fc.entityId || fc.propertyId || fc.id;
     for (const [mk, md] of Object.entries(fc.months || {})) {
       if (mk > curMonth) {
         const rev = Number(md.revenue) || 0;
         const exp = Number(md.expenses) || 0;
-        if (rev > 0 || exp > 0) fcPropIds.add(fc.entityId || fc.propertyId || fc.id);
-        forecastRevenue  += rev;
-        forecastExpenses += exp;
+        if (rev > 0) { fcRevIds.add(eid); forecastRevenue  += rev; }
+        if (exp > 0) { fcExpIds.add(eid); forecastExpenses += exp; }
       }
     }
   }
+
+  const fcLabel = ids => {
+    const pCount = [...ids].filter(id => propIds.has(id)).length;
+    const sCount = ids.size - pCount;
+    if (pCount && sCount) return `${pCount} propert${pCount === 1 ? 'y' : 'ies'} + ${sCount} service${sCount === 1 ? '' : 's'}`;
+    if (pCount) return `${pCount} propert${pCount === 1 ? 'y' : 'ies'}`;
+    return `${sCount} service${sCount === 1 ? '' : 's'}`;
+  };
 
   persist({
     actualRevenue:    rnd(actualRevenue),
@@ -835,7 +853,8 @@ function prefillFromActuals(onChange) {
       invsRevenue: rnd(invsRevenue), invsCount: invs.length,
       expsByCat: Object.fromEntries(Object.entries(expsByCat).sort(([, a], [, b]) => b - a).map(([k, v]) => [k, rnd(v)])),
       expsCount: exps.length,
-      fcPropCount: fcPropIds.size,
+      fcRevLabel: fcLabel(fcRevIds), fcRevCount: fcRevIds.size,
+      fcExpLabel: fcLabel(fcExpIds), fcExpCount: fcExpIds.size,
       cutoff,
     }
   });
