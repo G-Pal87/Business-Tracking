@@ -263,23 +263,27 @@ function buildEstimateCard(onChange) {
       el('span', { style: `font-size:12px;color:${isTot ? 'var(--text)' : 'var(--text-muted)'}` }, label),
       el('span', { style: `font-size:12px;color:${isTot ? 'var(--text)' : 'var(--text-muted)'};font-weight:${isTot ? '700' : '400'}` }, fmtE(value))
     );
-    const subRow = (label, value) => el('div', {
-      style: 'display:flex;justify-content:space-between;align-items:center;padding:2px 0 2px 14px'
-    },
-      el('span', { style: 'font-size:11px;color:var(--text-muted);opacity:.75' }, label),
-      el('span', { style: 'font-size:11px;color:var(--text-muted);opacity:.75' }, fmtE(value))
-    );
+    const subRow = (label, value, href) => {
+      const d = el('div', {
+        style: `display:flex;justify-content:space-between;align-items:center;padding:2px 0 2px 14px${href ? ';cursor:pointer' : ''}`
+      },
+        el('span', { style: `font-size:11px;color:var(--text-muted);opacity:.75${href ? ';text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px' : ''}` }, label),
+        el('span', { style: 'font-size:11px;color:var(--text-muted);opacity:.75' }, fmtE(value))
+      );
+      if (href) d.onclick = () => { location.hash = href; };
+      return d;
+    };
 
     // Revenue column
     const revEl = el('div');
     revEl.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px' }, 'Revenue breakdown'));
     revEl.appendChild(row('Actual (paid to date)', safeN(s2.actualRevenue)));
     if (bd) {
-      if (bd.paysCount > 0) revEl.appendChild(subRow(`↳ Rental payments (${bd.paysCount})`, bd.paysRevenue));
-      if (bd.invsCount > 0) revEl.appendChild(subRow(`↳ Invoices (${bd.invsCount})`, bd.invsRevenue));
+      if (bd.paysCount > 0) revEl.appendChild(subRow(`↳ Rental payments (${bd.paysCount})`, bd.paysRevenue, 'payments'));
+      if (bd.invsCount > 0) revEl.appendChild(subRow(`↳ Invoices (${bd.invsCount})`, bd.invsRevenue, 'invoices'));
     }
     revEl.appendChild(row('Forecast (remaining months)', safeN(s2.forecastRevenue)));
-    if (bd && bd.fcPropCount > 0) revEl.appendChild(subRow(`↳ ${bd.fcPropCount} propert${bd.fcPropCount === 1 ? 'y' : 'ies'} in forecast`, safeN(s2.forecastRevenue)));
+    if (bd && bd.fcPropCount > 0) revEl.appendChild(subRow(`↳ ${bd.fcPropCount} propert${bd.fcPropCount === 1 ? 'y' : 'ies'} in forecast`, safeN(s2.forecastRevenue), 'forecast'));
     if (safeN(s2.nonDeductibleExpenses) > 0) revEl.appendChild(row('Non-deductible add-back', safeN(s2.nonDeductibleExpenses)));
     if (safeN(s2.taxAllowances) > 0) {
       revEl.appendChild(el('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding:4px 0' },
@@ -295,14 +299,14 @@ function buildEstimateCard(onChange) {
     expEl.appendChild(row('Actual (to date)', safeN(s2.actualExpenses)));
     if (bd && bd.expsByCat) {
       const cats = Object.entries(bd.expsByCat);
-      for (const [cat, amt] of cats.slice(0, 5)) expEl.appendChild(subRow(`↳ ${cat}`, amt));
+      for (const [cat, amt] of cats.slice(0, 5)) expEl.appendChild(subRow(`↳ ${cat}`, amt, 'expenses'));
       if (cats.length > 5) {
         const rest = cats.slice(5).reduce((a, [, v]) => a + v, 0);
-        expEl.appendChild(subRow(`↳ ${cats.length - 5} more categor${cats.length - 5 === 1 ? 'y' : 'ies'}`, rest));
+        expEl.appendChild(subRow(`↳ ${cats.length - 5} more categor${cats.length - 5 === 1 ? 'y' : 'ies'}`, rest, 'expenses'));
       }
     }
     expEl.appendChild(row('Forecast (remaining months)', safeN(s2.forecastExpenses)));
-    if (bd && bd.fcPropCount > 0 && safeN(s2.forecastExpenses) > 0) expEl.appendChild(subRow(`↳ ${bd.fcPropCount} propert${bd.fcPropCount === 1 ? 'y' : 'ies'} in forecast`, safeN(s2.forecastExpenses)));
+    if (bd && bd.fcPropCount > 0 && safeN(s2.forecastExpenses) > 0) expEl.appendChild(subRow(`↳ ${bd.fcPropCount} propert${bd.fcPropCount === 1 ? 'y' : 'ies'} in forecast`, safeN(s2.forecastExpenses), 'forecast'));
     expEl.appendChild(row('Total deductible expenses', totalExp, true));
 
     breakdownEl.appendChild(el('div', {
