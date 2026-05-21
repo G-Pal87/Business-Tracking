@@ -217,8 +217,8 @@ function modalForecastProperties(forRevenue) {
   const curMonth = cutoff.slice(0, 7);
   const propMap  = Object.fromEntries((state.db.properties || []).map(p => [p.id, p]));
   const fcData   = {};
-  for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year) && f.type === 'property')) {
-    const pid = fc.entityId;
+  for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
+    const pid = fc.entityId || fc.propertyId || fc.id;
     if (!fcData[pid]) fcData[pid] = { rev: 0, exp: 0, months: 0 };
     for (const [mk, md] of Object.entries(fc.months || {})) {
       if (mk > curMonth) {
@@ -818,7 +818,7 @@ function prefillFromActuals(onChange) {
       if (mk > curMonth) {
         const rev = Number(md.revenue) || 0;
         const exp = Number(md.expenses) || 0;
-        if (rev > 0 || exp > 0) fcPropIds.add(fc.propertyId || fc.id);
+        if (rev > 0 || exp > 0) fcPropIds.add(fc.entityId || fc.propertyId || fc.id);
         forecastRevenue  += rev;
         forecastExpenses += exp;
       }
