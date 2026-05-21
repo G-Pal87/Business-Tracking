@@ -29166,7 +29166,19 @@
       "decRevRevenue": 0,
       "decRevExpenses": 0,
       "decRevNonDeductible": 0,
-      "decRevAllowances": 0
+      "decRevAllowances": 0,
+      "_prefillBreakdown": {
+        "paysRevenue": 20107.78,
+        "paysCount": 68,
+        "invsRevenue": 109849.56,
+        "invsCount": 22,
+        "expsByCat": {
+          "inventory": 142.51
+        },
+        "expsCount": 198,
+        "fcPropCount": 5,
+        "cutoff": "2026-05-21"
+      }
     }
   },
   "forecasts": [
