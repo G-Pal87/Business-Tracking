@@ -286,6 +286,7 @@ function buildPropertySection(wrap) {
   const render = () => {
     const selIds = getSelIds();
     const years = getSelYears();
+    const aggCache = new Map(years.map(y => [y, getAggregated(y)]));
     gridWrap.innerHTML = '';
     if (years.length === 0) return;
     for (const year of years) {
@@ -295,13 +296,16 @@ function buildPropertySection(wrap) {
         }, year));
       }
       if (selIds.length === 1) {
-        gridWrap.appendChild(buildMonthlyGrid(selIds[0], year, 'property', () => { renderChart(); renderSummary(); }));
+        gridWrap.appendChild(buildMonthlyGrid(selIds[0], year, 'property', () => {
+          const fc = new Map(getSelYears().map(y => [y, getAggregated(y)]));
+          renderChart(fc); renderSummary(fc);
+        }));
       } else {
         gridWrap.appendChild(buildAggregatedGrid(selIds, year));
       }
     }
-    renderChart();
-    renderSummary();
+    renderChart(aggCache);
+    renderSummary(aggCache);
     renderBreakdown(selIds);
   };
 
@@ -309,11 +313,12 @@ function buildPropertySection(wrap) {
     breakdownWrap.innerHTML = '';
     const years = getSelYears();
     const year = years[years.length - 1] || String(new Date().getFullYear());
-    const bCard = buildPropertyBreakdownCard(selIds, year);
+    const fcCache = new Map(selIds.map(id => [id, getForecastVsActual('property', id, year)]));
+    const bCard = buildPropertyBreakdownCard(selIds, year, fcCache);
     breakdownWrap.appendChild(bCard);
     const bTw = bCard.querySelector('.table-wrap');
     if (bTw) attachSortFilter(bTw);
-    const sCard = buildStreamBreakdownCard(selIds, year);
+    const sCard = buildStreamBreakdownCard(selIds, year, fcCache);
     if (sCard) {
       breakdownWrap.appendChild(sCard);
       const sTw = sCard.querySelector('.table-wrap');
@@ -321,13 +326,13 @@ function buildPropertySection(wrap) {
     }
   };
 
-  const renderChart = () => {
+  const renderChart = (aggCache) => {
     const years = getSelYears();
     const bgColors  = ['rgba(99,102,241,0.5)', 'rgba(245,158,11,0.45)', 'rgba(16,185,129,0.4)', 'rgba(239,68,68,0.4)'];
     const lineColors = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
     const datasets = [];
     years.forEach((year, idx) => {
-      const { months } = getAggregated(year);
+      const { months } = aggCache?.get(year) ?? getAggregated(year);
       const bg = bgColors[idx % bgColors.length];
       const ln = lineColors[idx % lineColors.length];
       datasets.push({ label: `Forecast ${year}`, data: months.map(m => Math.round(m.forecastRev)), backgroundColor: bg, borderColor: ln, borderWidth: 1 });
@@ -339,13 +344,13 @@ function buildPropertySection(wrap) {
     charts.bar('fc-prop-chart', { labels: MONTHS, datasets });
   };
 
-  const renderSummary = () => {
+  const renderSummary = (aggCache) => {
     const years = getSelYears();
     let forecastRev = 0, forecastExp = 0, actualRev = 0, actualExp = 0;
     let yearTarget = { revenue: 0, expenses: 0 };
     let allMonths = [];
     for (const year of years) {
-      const agg = getAggregated(year);
+      const agg = aggCache?.get(year) ?? getAggregated(year);
       forecastRev += agg.months.reduce((s, m) => s + m.forecastRev, 0);
       forecastExp += agg.months.reduce((s, m) => s + m.forecastExp, 0);
       actualRev   += agg.months.reduce((s, m) => s + m.actualRev, 0);
@@ -427,7 +432,10 @@ function buildPropertySection(wrap) {
   updateYearOptions();
   render();
   // Defer chart/summary render until elements are in the live DOM
-  requestAnimationFrame(() => { renderChart(); renderSummary(); });
+  requestAnimationFrame(() => {
+    const fc = new Map(getSelYears().map(y => [y, getAggregated(y)]));
+    renderChart(fc); renderSummary(fc);
+  });
 }
 
 // ===== SERVICE FORECAST =====
@@ -484,7 +492,6 @@ function buildServiceSection(wrap) {
 
   svcTrigger.onclick = e => { e.stopPropagation(); svcMenu.style.display = svcMenu.style.display === 'none' ? '' : 'none'; };
   svcMenu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { svcMenu.style.display = 'none'; });
 
   svcWrapper.appendChild(svcTrigger);
   svcWrapper.appendChild(svcMenu);
@@ -563,7 +570,7 @@ function buildServiceSection(wrap) {
 
   svcYearTrigger.onclick = e => { e.stopPropagation(); svcYearMenu.style.display = svcYearMenu.style.display === 'none' ? '' : 'none'; };
   svcYearMenu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { svcYearMenu.style.display = 'none'; });
+  document.addEventListener('click', () => { svcMenu.style.display = 'none'; svcYearMenu.style.display = 'none'; });
   svcYearWrapper.appendChild(svcYearTrigger);
   svcYearWrapper.appendChild(svcYearMenu);
 
@@ -621,6 +628,7 @@ function buildServiceSection(wrap) {
     updateSvcYearOptions();
     const selIds = getSelIds();
     const years = getSelSvcYears();
+    const aggCache = new Map(years.map(y => [y, getAggregated(y)]));
     gridWrap.innerHTML = '';
     if (years.length === 0) return;
     for (const year of years) {
@@ -630,35 +638,38 @@ function buildServiceSection(wrap) {
         }, year));
       }
       if (selIds.length === 1) {
-        gridWrap.appendChild(buildMonthlyGrid(selIds[0], year, 'service', () => { renderChart(); renderSummary(); }));
+        gridWrap.appendChild(buildMonthlyGrid(selIds[0], year, 'service', () => {
+          const fc = new Map(getSelSvcYears().map(y => [y, getAggregated(y)]));
+          renderChart(fc); renderSummary(fc);
+        }));
       } else {
         gridWrap.appendChild(buildAggregatedGrid(selIds, year, 'service'));
       }
     }
-    renderChart();
-    renderSummary();
+    renderChart(aggCache);
+    renderSummary(aggCache);
   };
 
-  const renderChart = () => {
+  const renderChart = (aggCache) => {
     const years = getSelSvcYears();
     const bgColors   = ['rgba(99,102,241,0.5)', 'rgba(245,158,11,0.45)', 'rgba(16,185,129,0.4)', 'rgba(239,68,68,0.4)'];
     const lineColors = ['#6366f1', '#f59e0b', '#10b981', '#ef4444'];
     const datasets = [];
     years.forEach((year, idx) => {
-      const { months } = getAggregated(year);
+      const { months } = aggCache?.get(year) ?? getAggregated(year);
       datasets.push({ label: `Forecast ${year}`, data: months.map(m => Math.round(m.forecastRev)), backgroundColor: bgColors[idx % bgColors.length], borderColor: lineColors[idx % lineColors.length], borderWidth: 1 });
       datasets.push({ label: `Invoiced ${year}`,  data: months.map(m => Math.round(m.actualRev)),  backgroundColor: lineColors[idx % lineColors.length] });
     });
     charts.bar('fc-svc-chart', { labels: MONTHS, datasets });
   };
 
-  const renderSummary = () => {
+  const renderSummary = (aggCache) => {
     const years = getSelSvcYears();
     let forecastRev = 0, actualRev = 0;
     let yearTarget = { revenue: 0 };
     let allMonths = [];
     for (const year of years) {
-      const agg = getAggregated(year);
+      const agg = aggCache?.get(year) ?? getAggregated(year);
       forecastRev += agg.months.reduce((s, m) => s + m.forecastRev, 0);
       actualRev   += agg.months.reduce((s, m) => s + m.actualRev,   0);
       yearTarget.revenue += agg.yearTarget?.revenue || 0;
@@ -1418,10 +1429,10 @@ function buildAggregatedGrid(entityIds, year, type = 'property') {
 }
 
 // ===== PROPERTY BREAKDOWN CARD =====
-function buildPropertyBreakdownCard(selIds, year) {
+function buildPropertyBreakdownCard(selIds, year, fcCache) {
   const rows = selIds.map(id => {
     const prop = byId('properties', id);
-    const { months } = getForecastVsActual('property', id, year);
+    const { months } = fcCache?.get(id) ?? getForecastVsActual('property', id, year);
     const fcRev  = months.reduce((s, m) => s + m.forecastRev, 0);
     const fcExp  = months.reduce((s, m) => s + m.forecastExp, 0);
     const actRev = months.reduce((s, m) => s + m.actualRev, 0);
@@ -1513,12 +1524,12 @@ function buildPropertyBreakdownCard(selIds, year) {
 }
 
 // ===== STREAM BREAKDOWN CARD =====
-function buildStreamBreakdownCard(selIds, year) {
+function buildStreamBreakdownCard(selIds, year, fcCache) {
   const streamMap = new Map();
   selIds.forEach(id => {
     const prop = byId('properties', id);
     const sk   = prop?.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
-    const { months } = getForecastVsActual('property', id, year);
+    const { months } = fcCache?.get(id) ?? getForecastVsActual('property', id, year);
     const fcRev  = months.reduce((s, m) => s + m.forecastRev, 0);
     const fcExp  = months.reduce((s, m) => s + m.forecastExp, 0);
     const actRev = months.reduce((s, m) => s + m.actualRev, 0);
@@ -1635,7 +1646,6 @@ function buildTaxSection(wrap) {
   strChks.forEach(chk => { chk.onchange = () => { syncStrSel(); updatePropOptions(); render(); }; });
   strTrigger.onclick = e => { e.stopPropagation(); strMenu.style.display = strMenu.style.display === 'none' ? '' : 'none'; };
   strMenu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { strMenu.style.display = 'none'; });
   strWrapper.appendChild(strTrigger); strWrapper.appendChild(strMenu);
 
   // --- Property filter — checklist (updates based on selected streams) ---
@@ -1693,7 +1703,7 @@ function buildTaxSection(wrap) {
 
   propTrigger.onclick = e => { e.stopPropagation(); propMenu.style.display = propMenu.style.display === 'none' ? '' : 'none'; };
   propMenu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { propMenu.style.display = 'none'; });
+  document.addEventListener('click', () => { strMenu.style.display = 'none'; propMenu.style.display = 'none'; });
   propWrapper.appendChild(propTrigger); propWrapper.appendChild(propMenu);
 
   const controls = el('div', { class: 'flex gap-8 mb-16 items-center', style: 'flex-wrap:wrap' });
@@ -1815,7 +1825,7 @@ function buildTaxSection(wrap) {
   })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   const render = () => {
-    if (state.db.settings) state.db.settings.globalTaxRate = Number(rateI.value) || 0;
+    setForecastTaxRate(Number(rateI.value) || 0);
     const d = getFiltered();
     const y = yearSel.value;
 

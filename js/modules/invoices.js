@@ -320,9 +320,10 @@ function build() {
 
     const tb = el('tbody');
     const rowChks = [];
+    const clientMap = new Map(listActive('clients').map(c => [c.id, c]));
 
     for (const r of rows) {
-      const client = byId('clients', r.clientId);
+      const client = clientMap.get(r.clientId);
       const st = INVOICE_STATUSES[r.status] || { label: r.status, css: '' };
 
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
@@ -405,7 +406,7 @@ function sanitizeClientName(name) {
 
 function nextInvoiceSequence(year, excludeId) {
   let max = 0;
-  for (const inv of (state.db.invoices || [])) {
+  for (const inv of listActive('invoices')) {
     if (inv.id === excludeId) continue;
     if ((inv.issueDate || '').startsWith(year) && inv.number) {
       const n = parseInt(inv.number.split('_')[0], 10);
@@ -594,14 +595,14 @@ function openBuilder(existing) {
       const seq = nextInvoiceSequence(year, inv.id);
       const dateFmt = inv.issueDate.split('-').reverse().join('');
       const candidate = `${seq}_${clientPart}_${dateFmt}`;
-      if ((state.db.invoices || []).some(i => i.id !== inv.id && i.number === candidate)) {
+      if (listActive('invoices').some(i => i.id !== inv.id && i.number === candidate)) {
         toast(`Auto-generated number ${candidate} conflicts with an existing invoice`, 'danger');
         return;
       }
       inv.number = candidate;
     } else {
       inv.number = numberI.value.trim();
-      if ((state.db.invoices || []).some(i => i.id !== inv.id && i.number === inv.number)) {
+      if (listActive('invoices').some(i => i.id !== inv.id && i.number === inv.number)) {
         toast(`Invoice number ${inv.number} is already in use`, 'danger');
         return;
       }
