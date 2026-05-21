@@ -236,7 +236,7 @@ function buildEstimateCard(onChange) {
   const s    = cfg();
   const card = el('div', { class: 'card mb-16' });
 
-  const prefillBtn = button('↓ Prefill from actuals', { variant: 'sm ghost', onClick: () => prefillFromActuals(onChange) });
+  const prefillBtn = button('↓ Prefill from actuals & forecast', { variant: 'sm ghost', onClick: () => prefillFromActuals(onChange) });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', {},
       el('div', { class: 'card-title' }, 'Annual Estimate'),
@@ -246,9 +246,45 @@ function buildEstimateCard(onChange) {
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
 
+  // breakdown re-renders whenever an input changes
+  const breakdownEl = el('div');
+  const renderBreakdown = () => {
+    const s2 = cfg();
+    breakdownEl.innerHTML = '';
+    const totalRev = safeN(s2.actualRevenue) + safeN(s2.forecastRevenue);
+    const totalExp = safeN(s2.actualExpenses) + safeN(s2.forecastExpenses);
+    if (totalRev === 0 && totalExp === 0) return;
+
+    const row = (label, value, isTot) => el('div', {
+      style: `display:flex;justify-content:space-between;align-items:center;padding:${isTot ? '6px 0 2px' : '4px 0'};${isTot ? 'border-top:1px solid var(--border);margin-top:2px;font-weight:600' : ''}`
+    },
+      el('span', { style: `font-size:12px;color:${isTot ? 'var(--text)' : 'var(--text-muted)'}` }, label),
+      el('span', { style: `font-size:12px;color:${isTot ? 'var(--text)' : 'var(--text-muted)'};font-weight:${isTot ? '700' : '400'}` }, fmtE(value))
+    );
+
+    breakdownEl.appendChild(el('div', {
+      style: 'margin-top:16px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);display:grid;grid-template-columns:1fr 1fr;gap:16px 24px'
+    },
+      el('div', {},
+        el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px' }, 'Revenue breakdown'),
+        row('Actual (paid to date)',        safeN(s2.actualRevenue)),
+        row('Forecast (remaining months)',  safeN(s2.forecastRevenue)),
+        safeN(s2.nonDeductibleExpenses) > 0 && row('Non-deductible add-back', safeN(s2.nonDeductibleExpenses)),
+        safeN(s2.taxAllowances) > 0 && row('Tax allowances', -safeN(s2.taxAllowances)),
+        row('Est. taxable revenue', totalRev + safeN(s2.nonDeductibleExpenses) - safeN(s2.taxAllowances), true)
+      ),
+      el('div', {},
+        el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px' }, 'Expenses breakdown'),
+        row('Actual (to date)',             safeN(s2.actualExpenses)),
+        row('Forecast (remaining months)',  safeN(s2.forecastExpenses)),
+        row('Total deductible expenses',    totalExp, true)
+      )
+    ));
+  };
+
   const fi = (key, val, label, hint) => {
     const i = input({ type: 'number', value: val || '', min: 0, step: 0.01, style: 'width:100%', placeholder: '0.00' });
-    i.oninput = () => { persist({ [key]: safeN(i.value) }); onChange(); };
+    i.oninput = () => { persist({ [key]: safeN(i.value) }); onChange(); renderBreakdown(); };
     return formRow(label, i, hint);
   };
 
@@ -268,6 +304,9 @@ function buildEstimateCard(onChange) {
     fi('nonDeductibleExpenses', s.nonDeductibleExpenses, 'Non-deductible expenses (€)', 'Entertainment, fines, etc. — added back to taxable profit'),
     fi('taxAllowances',         s.taxAllowances,         'Tax allowances / deductions (€)', 'Depreciation, R&D credits, etc. — reduces taxable profit')
   ));
+
+  body.appendChild(breakdownEl);
+  renderBreakdown();
 
   card.appendChild(body);
   return card;
@@ -326,10 +365,19 @@ function buildResultsCard(c, s) {
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
 
+  const revSub = [
+    safeN(s.actualRevenue)   > 0 ? `Actual ${fmtE(safeN(s.actualRevenue))}`   : null,
+    safeN(s.forecastRevenue) > 0 ? `Forecast ${fmtE(safeN(s.forecastRevenue))}` : null,
+  ].filter(Boolean).join(' + ') || null;
+  const expSub = [
+    safeN(s.actualExpenses)   > 0 ? `Actual ${fmtE(safeN(s.actualExpenses))}`   : null,
+    safeN(s.forecastExpenses) > 0 ? `Forecast ${fmtE(safeN(s.forecastExpenses))}` : null,
+  ].filter(Boolean).join(' + ') || null;
+
   body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
-    mkKpiCard({ label: 'Est. Annual Revenue',       value: fmtE(c.totalRevenue) }),
-    mkKpiCard({ label: 'Est. Deductible Expenses',  value: fmtE(c.totalDeductible) }),
-    mkKpiCard({ label: 'Est. Taxable Profit',        value: fmtE(c.estProfit) })
+    mkKpiCard({ label: 'Est. Annual Revenue',      value: fmtE(c.totalRevenue),    subtitle: revSub }),
+    mkKpiCard({ label: 'Est. Deductible Expenses', value: fmtE(c.totalDeductible), subtitle: expSub }),
+    mkKpiCard({ label: 'Est. Taxable Profit',      value: fmtE(c.estProfit) })
   ));
 
   const taxRow = [];
