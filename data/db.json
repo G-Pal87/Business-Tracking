@@ -29149,7 +29149,25 @@
       "you_2026": 0
     },
     "globalTaxRate": 15,
-    "taxExcludedPropertyIds": []
+    "taxExcludedPropertyIds": [],
+    "cyprusTax": {
+      "year": "2026",
+      "corpTaxRate": 12.5,
+      "bufferEnabled": true,
+      "bufferPct": 10,
+      "actualRevenue": 0,
+      "forecastRevenue": 0,
+      "actualExpenses": 0,
+      "forecastExpenses": 0,
+      "nonDeductibleExpenses": 0,
+      "taxAllowances": 0,
+      "estimatedFinalTax": 0,
+      "julPayment": 0,
+      "decRevRevenue": 0,
+      "decRevExpenses": 0,
+      "decRevNonDeductible": 0,
+      "decRevAllowances": 0
+    }
   },
   "forecasts": [
     {
