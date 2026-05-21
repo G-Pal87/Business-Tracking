@@ -276,7 +276,8 @@ function buildEstimateCard(onChange) {
 function prefillFromActuals(onChange) {
   const s      = cfg();
   const year   = s.year || String(new Date().getFullYear());
-  const cutoff = new Date().toISOString().slice(0, 10);
+  const today  = new Date().toISOString().slice(0, 10);
+  const cutoff = today < `${year}-12-31` ? today : `${year}-12-31`;
   const s1     = `${year}-01-01`;
 
   const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff);
@@ -291,7 +292,7 @@ function prefillFromActuals(onChange) {
   // Full rebuild to refresh the input values
   const c = document.getElementById('content');
   if (c) { c.innerHTML = ''; c.appendChild(build()); }
-  toast(`Prefilled from ${year} actuals up to ${cutoff}`, 'success');
+  toast(`Prefilled: ${year} actuals up to ${cutoff}`, 'success');
 }
 
 // ── Section 3 ────────────────────────────────────────────────────────────────
