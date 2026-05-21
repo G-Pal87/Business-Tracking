@@ -24,7 +24,6 @@ async function boot() {
 
     { default: analyticsOwner },
     { default: analyticsTax },
-    { default: cyprusTax },
     { default: clients },
     { default: invoices },
     { default: settings },
@@ -59,7 +58,7 @@ async function boot() {
 
   const MODULES = [
     properties, payments, expenses, tenants, vendors, inventory,
-    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsTax, cyprusTax, clients, invoices, settings, users
+    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsTax, clients, invoices, settings, users
   ];
 
   MODULES.forEach(router.registerModule);
