@@ -209,21 +209,36 @@ function build() {
             const isExpected = datasetIndex === 0;
             const { start, end } = monthRange(m.mk);
             const title = `${ent.label} — ${MON[m.m - 1]} ${yearSel.value}: ${isExpected ? 'Expected' : 'Received'}`;
-            let rows;
-            if (ent.kind === 'service') {
+            if (ent.kind === 'lt' && isExpected) {
+              const mk01 = `${m.mk}-01`;
+              const tenants = listActive('tenants').filter(t => {
+                if (t.propertyId !== ent.id || !t.monthlyRent) return false;
+                const ls = t.leaseStartDate ? t.leaseStartDate.slice(0, 7) + '-01' : null;
+                const le = t.leaseEndDate   ? t.leaseEndDate.slice(0, 7)   + '-01' : null;
+                return (!ls || mk01 >= ls) && (!le || mk01 <= le);
+              });
+              drillDownModal(title, tenants.map(t => ({
+                tenant: t.name,
+                lease:  `${t.leaseStartDate ? fmtDate(t.leaseStartDate) : '—'} → ${t.leaseEndDate ? fmtDate(t.leaseEndDate) : 'open-ended'}`,
+                eur:    toEUR(t.monthlyRent, t.currency || 'EUR', Number(yearSel.value))
+              })), [
+                { key: 'tenant', label: 'Tenant' },
+                { key: 'lease',  label: 'Lease Period' },
+                { key: 'eur',    label: 'Monthly Rent', right: true, format: v => formatEUR(v) }
+              ]);
+            } else if (ent.kind === 'service') {
               const invs = listActive('invoices').filter(i =>
                 i.stream === ent.id && i.issueDate >= start && i.issueDate <= end &&
                 i.status !== 'draft' && (isExpected || i.status === 'paid')
               );
-              rows = byDate(invs.map(i => invRow(i, ent.label)));
+              drillDownModal(title, byDate(invs.map(i => invRow(i, ent.label))), REC_COLS);
             } else {
               const pays = listActivePayments().filter(p =>
                 p.propertyId === ent.id && p.date >= start && p.date <= end &&
                 (isExpected || p.status === 'paid')
               );
-              rows = byDate(pays.map(p => payRow(p, ent.label)));
+              drillDownModal(title, byDate(pays.map(p => payRow(p, ent.label))), REC_COLS);
             }
-            if (rows.length) drillDownModal(title, rows, REC_COLS);
           }
         });
       }, 0);
@@ -292,21 +307,36 @@ function build() {
           const isExpected = datasetIndex === 0;
           const yr = yearSel.value;
           const title = `${ent.label} — ${yr}: ${isExpected ? 'Expected' : 'Received'}`;
-          let rows;
-          if (ent.kind === 'service') {
+          if (ent.kind === 'lt' && isExpected) {
+            const yStart = `${yr}-01-01`, yEnd = `${yr}-12-31`;
+            const tenants = listActive('tenants').filter(t => {
+              if (t.propertyId !== ent.id || !t.monthlyRent) return false;
+              const ls = t.leaseStartDate || '0000-01-01';
+              const le = t.leaseEndDate   || '9999-12-31';
+              return ls <= yEnd && le >= yStart;
+            });
+            drillDownModal(title, tenants.map(t => ({
+              tenant: t.name,
+              lease:  `${t.leaseStartDate ? fmtDate(t.leaseStartDate) : '—'} → ${t.leaseEndDate ? fmtDate(t.leaseEndDate) : 'open-ended'}`,
+              eur:    toEUR(t.monthlyRent, t.currency || 'EUR', Number(yr))
+            })), [
+              { key: 'tenant', label: 'Tenant' },
+              { key: 'lease',  label: 'Lease Period' },
+              { key: 'eur',    label: 'Monthly Rent', right: true, format: v => formatEUR(v) }
+            ]);
+          } else if (ent.kind === 'service') {
             const invs = listActive('invoices').filter(i =>
               i.stream === ent.id && (i.issueDate || '').startsWith(yr) &&
               i.status !== 'draft' && (isExpected || i.status === 'paid')
             );
-            rows = byDate(invs.map(i => invRow(i, ent.label)));
+            drillDownModal(title, byDate(invs.map(i => invRow(i, ent.label))), REC_COLS);
           } else {
             const pays = listActivePayments().filter(p =>
               p.propertyId === ent.id && (p.date || '').startsWith(yr) &&
               (isExpected || p.status === 'paid')
             );
-            rows = byDate(pays.map(p => payRow(p, ent.label)));
+            drillDownModal(title, byDate(pays.map(p => payRow(p, ent.label))), REC_COLS);
           }
-          if (rows.length) drillDownModal(title, rows, REC_COLS);
         }
       });
     }, 0);
