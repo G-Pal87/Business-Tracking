@@ -29154,7 +29154,7 @@
       "year": "2026",
       "corpTaxRate": 15,
       "bufferEnabled": true,
-      "bufferPct": 0,
+      "bufferPct": 10,
       "actualRevenue": 129957.34,
       "forecastRevenue": 145843.33,
       "actualExpenses": 142.51,
