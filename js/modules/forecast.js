@@ -1730,12 +1730,14 @@ function buildTaxSection(wrap) {
     const y = yearSel.value;
     const s = `${y}-01-01`, e2 = `${y}-12-31`;
     const r = Number(rateI.value) || 0;
+    const taxExcluded = new Set(state.db.settings?.taxExcludedPropertyIds || []);
     const propOk = id => selPropIds.size === 0 || selPropIds.has(id);
 
     const pays = listActivePayments().filter(p =>
       p.status === 'paid' && p.date >= s && p.date <= e2 &&
       selStreams.has(p.stream) &&
-      propOk(p.propertyId)
+      propOk(p.propertyId) &&
+      !taxExcluded.has(p.propertyId)
     );
     // Invoices are service-based (no propertyId); include only when no property filter
     const invs = listActive('invoices').filter(i =>
@@ -1745,7 +1747,8 @@ function buildTaxSection(wrap) {
     );
     const exps = listActive('expenses').filter(ex =>
       ex.date >= s && ex.date <= e2 &&
-      propOk(ex.propertyId)
+      propOk(ex.propertyId) &&
+      !taxExcluded.has(ex.propertyId)
     );
 
     // Map selected streams → forecast entityIds
@@ -1753,7 +1756,7 @@ function buildTaxSection(wrap) {
     for (const k of selStreams) {
       if (k === 'short_term_rental' || k === 'long_term_rental') {
         const ptype = k === 'short_term_rental' ? 'short_term' : 'long_term';
-        allProps.filter(p => p.type === ptype && propOk(p.id)).forEach(p => fcEntityIds.push(p.id));
+        allProps.filter(p => p.type === ptype && propOk(p.id) && !taxExcluded.has(p.id)).forEach(p => fcEntityIds.push(p.id));
       } else if (selPropIds.size === 0) {
         fcEntityIds.push(k); // 'customer_success' | 'marketing_services'
       }
@@ -1835,6 +1838,16 @@ function buildTaxSection(wrap) {
     const y = yearSel.value;
 
     resultsWrap.innerHTML = '';
+
+    const taxExcluded = new Set(state.db.settings?.taxExcludedPropertyIds || []);
+    if (taxExcluded.size > 0) {
+      const names = [...taxExcluded].map(id => byId('properties', id)?.name || id).join(', ');
+      resultsWrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px;display:flex;align-items:center;gap:6px' },
+        el('span', { style: 'color:#f59e0b' }, '⚠'),
+        `Excluding ${taxExcluded.size} propert${taxExcluded.size === 1 ? 'y' : 'ies'} from tax calculations: ${names}`
+      ));
+    }
+
     resultsWrap.appendChild(el('div', { class: 'grid grid-4 mb-16' },
       kpi('Actual Revenue', formatEUR(d.rev), null,
         () => drillDownModal('Actual Revenue', toRevRows(d.pays, d.invs, y), revCols)),
