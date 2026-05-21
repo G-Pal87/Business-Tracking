@@ -6,7 +6,7 @@ import { COST_CATEGORIES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
-  resolveExpenseFields, isCapEx, availableYears
+  resolveExpenseFields, isCapEx
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
@@ -1088,9 +1088,10 @@ function ptBuildSettingsCard(onChange) {
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
 
-  const curYear = String(new Date().getFullYear());
-  const years   = [...new Set([curYear, ...availableYears()])].sort().reverse();
-  const yearSel = select(years.map(y => ({ value: y, label: y })), s.year || curYear);
+  const dataYears    = getDataYears(); // only years with actual payments/invoices/expenses
+  const selectedYear = dataYears.includes(s.year) ? s.year : (dataYears[0] || String(new Date().getFullYear()));
+  if (selectedYear !== s.year) persist({ year: selectedYear });
+  const yearSel = select(dataYears.map(y => ({ value: y, label: y })), selectedYear);
   yearSel.onchange = () => { persist({ year: yearSel.value }); onChange(); };
 
   const rateI = input({ type: 'number', value: s.corpTaxRate ?? 12.5, min: 0, max: 100, step: 0.1, style: 'width:110px' });
