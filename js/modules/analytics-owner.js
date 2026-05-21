@@ -58,17 +58,13 @@ function splitByOwner(records, amountFn) {
   return { you, rita };
 }
 
-// Resolve owner for a payment (via propertyId → property.owner)
-function resolvePaymentOwner(p) {
-  if (p.owner) return p.owner;
-  const prop = byId('properties', p.propertyId);
-  return prop?.owner || 'both';
-}
-
 // ── Data fetching ─────────────────────────────────────────────────────────────
 function getData(start, end) {
   const inRange = d => d && d >= start && d <= end;
   const { mStream, mProperty } = makeMatchers(gF);
+
+  // Build Map once so annotation loops use O(1) lookups instead of O(n) byId scans
+  const propMap = new Map(listActive('properties').map(p => [p.id, p]));
 
   // Payments — rental income (no owner filter, we split manually)
   const payments = listActivePayments().filter(p =>
@@ -76,11 +72,10 @@ function getData(start, end) {
   );
 
   // Annotate payments with resolved owner
-  const annotatedPayments = payments.map(p => ({
-    ...p,
-    _resolvedOwner: resolvePaymentOwner(p),
-    _eur: toEUR(p.amount, p.currency, p.date)
-  }));
+  const annotatedPayments = payments.map(p => {
+    const prop = p.propertyId ? propMap.get(p.propertyId) : null;
+    return { ...p, _resolvedOwner: p.owner || prop?.owner || 'both', _eur: toEUR(p.amount, p.currency, p.date) };
+  });
 
   // Invoices — service income
   const invoices = listActive('invoices').filter(i =>
@@ -98,12 +93,8 @@ function getData(start, end) {
     return d >= start && d <= end && !isCapEx(e) && mProperty(e) && mStream(e);
   });
   const annotatedExpenses = expenses.map(e => {
-    const prop = e.propertyId ? byId('properties', e.propertyId) : null;
-    return {
-      ...e,
-      _resolvedOwner: prop?.owner || e.owner || 'both',
-      _eur: toEUR(e.amount, e.currency, e.date)
-    };
+    const prop = e.propertyId ? propMap.get(e.propertyId) : null;
+    return { ...e, _resolvedOwner: prop?.owner || e.owner || 'both', _eur: toEUR(e.amount, e.currency, e.date) };
   });
 
   // Revenue split
@@ -160,6 +151,35 @@ function getPropertiesData(filterState) {
     ritaCount: ritaProps.length + bothProps.length,
     youValue, ritaValue, totalValue
   };
+}
+
+// ── Shared KPI modal body builder (Giorgos / Rita — avoids duplication) ──────
+function buildShareKpiModal(owner, partnerLabel, revenue, pct, allRecords) {
+  const relevant = allRecords
+    .filter(r => r._resolvedOwner === owner || r._resolvedOwner === 'both')
+    .map(r => ({ ...r, _shareEur: r._resolvedOwner === 'both' ? r._eur * 0.5 : r._eur }))
+    .sort((a, b) => b._shareEur - a._shareEur)
+    .slice(0, 5);
+
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  body.appendChild(mkSummaryGrid([
+    { label: `${partnerLabel} Revenue`, value: formatEUR(revenue) },
+    { label: '% of Portfolio',          value: pct.toFixed(1) + '%' }
+  ], 2));
+  if (relevant.length > 0) {
+    body.appendChild(mkSectionLabel('Top 5 Records by Amount'));
+    body.appendChild(mkModalTable(
+      ['Date', 'Entity', 'Attribution', 'EUR'],
+      relevant.map(r => {
+        const date   = r.date || r.issueDate || '—';
+        const entity = r.propertyId ? (byId('properties', r.propertyId)?.name || '—')
+                     : r.clientId   ? (byId('clients',    r.clientId)?.name   || '—') : '—';
+        return [date, entity, r._resolvedOwner === 'both' ? 'Shared (50%)' : partnerLabel, formatEUR(r._shareEur)];
+      }),
+      { highlight: 3 }
+    ));
+  }
+  return body;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -257,33 +277,7 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     delta: safePct(revSplit.you, cmpData?.revSplit.you),
     compLabel: cmpRange?.label,
     onClick: () => {
-      const youItems = [...annotatedPayments, ...annotatedInvoices]
-        .filter(r => r._resolvedOwner === 'you' || r._resolvedOwner === 'both')
-        .map(r => ({
-          ...r,
-          _shareEur: r._resolvedOwner === 'both' ? r._eur * 0.5 : r._eur
-        }))
-        .sort((a, b) => b._shareEur - a._shareEur)
-        .slice(0, 5);
-
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      body.appendChild(mkSummaryGrid([
-        { label: 'Giorgos Revenue', value: formatEUR(revSplit.you) },
-        { label: '% of Portfolio',  value: youPct.toFixed(1) + '%' }
-      ], 2));
-      if (youItems.length > 0) {
-        body.appendChild(mkSectionLabel('Top 5 Records by Amount'));
-        body.appendChild(mkModalTable(
-          ['Date', 'Entity', 'Attribution', 'EUR'],
-          youItems.map(r => {
-            const date   = r.date || r.issueDate || '—';
-            const entity = r.propertyId ? (byId('properties', r.propertyId)?.name || '—')
-                         : r.clientId   ? (byId('clients',    r.clientId)?.name   || '—') : '—';
-            return [date, entity, r._resolvedOwner === 'both' ? 'Shared (50%)' : 'Giorgos', formatEUR(r._shareEur)];
-          }),
-          { highlight: 3 }
-        ));
-      }
+      const body = buildShareKpiModal('you', 'Giorgos', revSplit.you, youPct, [...annotatedPayments, ...annotatedInvoices]);
       openModal({ title: 'Giorgos Share — Detail', body, large: true });
     }
   }));
@@ -296,33 +290,7 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     delta: safePct(revSplit.rita, cmpData?.revSplit.rita),
     compLabel: cmpRange?.label,
     onClick: () => {
-      const ritaItems = [...annotatedPayments, ...annotatedInvoices]
-        .filter(r => r._resolvedOwner === 'rita' || r._resolvedOwner === 'both')
-        .map(r => ({
-          ...r,
-          _shareEur: r._resolvedOwner === 'both' ? r._eur * 0.5 : r._eur
-        }))
-        .sort((a, b) => b._shareEur - a._shareEur)
-        .slice(0, 5);
-
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      body.appendChild(mkSummaryGrid([
-        { label: 'Rita Revenue',   value: formatEUR(revSplit.rita) },
-        { label: '% of Portfolio', value: ritaPct.toFixed(1) + '%' }
-      ], 2));
-      if (ritaItems.length > 0) {
-        body.appendChild(mkSectionLabel('Top 5 Records by Amount'));
-        body.appendChild(mkModalTable(
-          ['Date', 'Entity', 'Attribution', 'EUR'],
-          ritaItems.map(r => {
-            const date   = r.date || r.issueDate || '—';
-            const entity = r.propertyId ? (byId('properties', r.propertyId)?.name || '—')
-                         : r.clientId   ? (byId('clients',    r.clientId)?.name   || '—') : '—';
-            return [date, entity, r._resolvedOwner === 'both' ? 'Shared (50%)' : 'Rita', formatEUR(r._shareEur)];
-          }),
-          { highlight: 3 }
-        ));
-      }
+      const body = buildShareKpiModal('rita', 'Rita', revSplit.rita, ritaPct, [...annotatedPayments, ...annotatedInvoices]);
       openModal({ title: 'Rita Share — Detail', body, large: true });
     }
   }));
@@ -485,15 +453,13 @@ function buildSettlementSection(data, curRange) {
 function renderRevBar(annotatedPayments, annotatedInvoices, months) {
   if (!months.length) return;
 
+  const allRecords = [...annotatedPayments, ...annotatedInvoices];
   const youData  = [];
   const ritaData = [];
 
   for (const m of months) {
     const mk = m.key;
-    const pays = [...annotatedPayments, ...annotatedInvoices].filter(r => {
-      const d = r.date || r.issueDate || '';
-      return d.slice(0, 7) === mk;
-    });
+    const pays = allRecords.filter(r => (r.date || r.issueDate || '').slice(0, 7) === mk);
     const split = splitByOwner(pays, r => r._eur);
     youData.push(Math.round(split.you));
     ritaData.push(Math.round(split.rita));
@@ -510,10 +476,7 @@ function renderRevBar(annotatedPayments, annotatedInvoices, months) {
     onClickItem: (_, idx) => {
       const mk = months[idx]?.key;
       if (!mk) return;
-      const items = [...annotatedPayments, ...annotatedInvoices].filter(r => {
-        const d = r.date || r.issueDate || '';
-        return d.slice(0, 7) === mk;
-      });
+      const items = allRecords.filter(r => (r.date || r.issueDate || '').slice(0, 7) === mk);
       if (!items.length) { openModal({ title: `${months[idx].label} — No Data`, body: mkEmptyState('No revenue this month.') }); return; }
 
       const split = splitByOwner(items, r => r._eur);
@@ -542,6 +505,8 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
   const allProps = listActive('properties');
   if (!allProps.length) return;
 
+  // Pre-build Map for O(1) property lookups instead of O(n) byId scans per record
+  const propMap  = new Map(allProps.map(p => [p.id, p]));
   const propRevs = new Map();
   const propExps = new Map();
 
@@ -551,32 +516,29 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
       // Service invoices have no propertyId — bucket under a virtual 'Services' entry
       const svcKey = '__services__';
       const e = propRevs.get(svcKey) || { name: 'Services', owner: r._resolvedOwner || 'both', youRev: 0, ritaRev: 0 };
-      const split = splitByOwner([r], x => x._eur);
-      e.youRev  += split.you;
-      e.ritaRev += split.rita;
+      const o = r._resolvedOwner; const half = r._eur * 0.5;
+      if (o === 'you') { e.youRev += r._eur; } else if (o === 'rita') { e.ritaRev += r._eur; } else { e.youRev += half; e.ritaRev += half; }
       propRevs.set(svcKey, e);
       continue;
     }
-    const prop  = byId('properties', propId);
+    const prop  = propMap.get(propId);
     if (!prop)  continue;
     const owner = prop.owner || 'both';
     const e     = propRevs.get(propId) || { name: prop.name, owner, youRev: 0, ritaRev: 0 };
-    const split = splitByOwner([{ ...r, _resolvedOwner: owner }], x => x._eur);
-    e.youRev  += split.you;
-    e.ritaRev += split.rita;
+    const half  = r._eur * 0.5;
+    if (owner === 'you') { e.youRev += r._eur; } else if (owner === 'rita') { e.ritaRev += r._eur; } else { e.youRev += half; e.ritaRev += half; }
     propRevs.set(propId, e);
   }
 
   for (const e of annotatedExpenses) {
     const propId = e.propertyId;
     if (!propId) continue;
-    const prop  = byId('properties', propId);
+    const prop  = propMap.get(propId);
     if (!prop)  continue;
     const owner = prop.owner || 'both';
     const entry = propExps.get(propId) || { youExp: 0, ritaExp: 0 };
-    const split = splitByOwner([{ ...e, _resolvedOwner: owner }], x => x._eur);
-    entry.youExp  += split.you;
-    entry.ritaExp += split.rita;
+    const half  = e._eur * 0.5;
+    if (owner === 'you') { entry.youExp += e._eur; } else if (owner === 'rita') { entry.ritaExp += e._eur; } else { entry.youExp += half; entry.ritaExp += half; }
     propExps.set(propId, entry);
   }
 
@@ -584,7 +546,7 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
   if (!propIds.size) return;
 
   const items = [...propIds].map(id => {
-    const rev = propRevs.get(id) || { name: id === '__services__' ? 'Services' : (byId('properties', id)?.name || 'Unknown'), owner: 'both', youRev: 0, ritaRev: 0 };
+    const rev = propRevs.get(id) || { name: id === '__services__' ? 'Services' : (propMap.get(id)?.name || 'Unknown'), owner: 'both', youRev: 0, ritaRev: 0 };
     const exp = propExps.get(id) || { youExp: 0, ritaExp: 0 };
     return {
       id,
