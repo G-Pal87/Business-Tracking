@@ -29164,9 +29164,9 @@
       "estimatedFinalTax": 0,
       "julPayment": 0,
       "decRevRevenue": 300000,
-      "decRevExpenses": 0,
-      "decRevNonDeductible": 0,
-      "decRevAllowances": 0,
+      "decRevExpenses": 5000,
+      "decRevNonDeductible": 2000,
+      "decRevAllowances": 3000,
       "_prefillBreakdown": {
         "paysRevenue": 20107.78,
         "paysCount": 68,
