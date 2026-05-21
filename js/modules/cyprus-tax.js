@@ -255,36 +255,71 @@ function buildEstimateCard(onChange) {
     const totalExp = safeN(s2.actualExpenses) + safeN(s2.forecastExpenses);
     if (totalRev === 0 && totalExp === 0) return;
 
+    const bd = s2._prefillBreakdown || null;
+
     const row = (label, value, isTot) => el('div', {
-      style: `display:flex;justify-content:space-between;align-items:center;padding:${isTot ? '6px 0 2px' : '4px 0'};${isTot ? 'border-top:1px solid var(--border);margin-top:2px;font-weight:600' : ''}`
+      style: `display:flex;justify-content:space-between;align-items:center;padding:${isTot ? '6px 0 2px' : '4px 0'};${isTot ? 'border-top:1px solid var(--border);margin-top:4px;font-weight:600' : ''}`
     },
       el('span', { style: `font-size:12px;color:${isTot ? 'var(--text)' : 'var(--text-muted)'}` }, label),
       el('span', { style: `font-size:12px;color:${isTot ? 'var(--text)' : 'var(--text-muted)'};font-weight:${isTot ? '700' : '400'}` }, fmtE(value))
     );
+    const subRow = (label, value) => el('div', {
+      style: 'display:flex;justify-content:space-between;align-items:center;padding:2px 0 2px 14px'
+    },
+      el('span', { style: 'font-size:11px;color:var(--text-muted);opacity:.75' }, label),
+      el('span', { style: 'font-size:11px;color:var(--text-muted);opacity:.75' }, fmtE(value))
+    );
+
+    // Revenue column
+    const revEl = el('div');
+    revEl.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px' }, 'Revenue breakdown'));
+    revEl.appendChild(row('Actual (paid to date)', safeN(s2.actualRevenue)));
+    if (bd) {
+      if (bd.paysCount > 0) revEl.appendChild(subRow(`↳ Rental payments (${bd.paysCount})`, bd.paysRevenue));
+      if (bd.invsCount > 0) revEl.appendChild(subRow(`↳ Invoices (${bd.invsCount})`, bd.invsRevenue));
+    }
+    revEl.appendChild(row('Forecast (remaining months)', safeN(s2.forecastRevenue)));
+    if (bd && bd.fcPropCount > 0) revEl.appendChild(subRow(`↳ ${bd.fcPropCount} propert${bd.fcPropCount === 1 ? 'y' : 'ies'} in forecast`, safeN(s2.forecastRevenue)));
+    if (safeN(s2.nonDeductibleExpenses) > 0) revEl.appendChild(row('Non-deductible add-back', safeN(s2.nonDeductibleExpenses)));
+    if (safeN(s2.taxAllowances) > 0) {
+      revEl.appendChild(el('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding:4px 0' },
+        el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Tax allowances'),
+        el('span', { style: 'font-size:12px;color:var(--text-muted)' }, `−${fmtE(safeN(s2.taxAllowances))}`)
+      ));
+    }
+    revEl.appendChild(row('Est. taxable revenue', totalRev + safeN(s2.nonDeductibleExpenses) - safeN(s2.taxAllowances), true));
+
+    // Expenses column
+    const expEl = el('div');
+    expEl.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px' }, 'Expenses breakdown'));
+    expEl.appendChild(row('Actual (to date)', safeN(s2.actualExpenses)));
+    if (bd && bd.expsByCat) {
+      const cats = Object.entries(bd.expsByCat);
+      for (const [cat, amt] of cats.slice(0, 5)) expEl.appendChild(subRow(`↳ ${cat}`, amt));
+      if (cats.length > 5) {
+        const rest = cats.slice(5).reduce((a, [, v]) => a + v, 0);
+        expEl.appendChild(subRow(`↳ ${cats.length - 5} more categor${cats.length - 5 === 1 ? 'y' : 'ies'}`, rest));
+      }
+    }
+    expEl.appendChild(row('Forecast (remaining months)', safeN(s2.forecastExpenses)));
+    if (bd && bd.fcPropCount > 0 && safeN(s2.forecastExpenses) > 0) expEl.appendChild(subRow(`↳ ${bd.fcPropCount} propert${bd.fcPropCount === 1 ? 'y' : 'ies'} in forecast`, safeN(s2.forecastExpenses)));
+    expEl.appendChild(row('Total deductible expenses', totalExp, true));
 
     breakdownEl.appendChild(el('div', {
       style: 'margin-top:16px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);display:grid;grid-template-columns:1fr 1fr;gap:16px 24px'
-    },
-      el('div', {},
-        el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px' }, 'Revenue breakdown'),
-        row('Actual (paid to date)',        safeN(s2.actualRevenue)),
-        row('Forecast (remaining months)',  safeN(s2.forecastRevenue)),
-        safeN(s2.nonDeductibleExpenses) > 0 && row('Non-deductible add-back', safeN(s2.nonDeductibleExpenses)),
-        safeN(s2.taxAllowances) > 0 && row('Tax allowances', -safeN(s2.taxAllowances)),
-        row('Est. taxable revenue', totalRev + safeN(s2.nonDeductibleExpenses) - safeN(s2.taxAllowances), true)
-      ),
-      el('div', {},
-        el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px' }, 'Expenses breakdown'),
-        row('Actual (to date)',             safeN(s2.actualExpenses)),
-        row('Forecast (remaining months)',  safeN(s2.forecastExpenses)),
-        row('Total deductible expenses',    totalExp, true)
-      )
-    ));
+    }, revEl, expEl));
   };
 
+  const MAIN_FIELDS = new Set(['actualRevenue', 'forecastRevenue', 'actualExpenses', 'forecastExpenses']);
   const fi = (key, val, label, hint) => {
     const i = input({ type: 'number', value: val || '', min: 0, step: 0.01, style: 'width:100%', placeholder: '0.00' });
-    i.oninput = () => { persist({ [key]: safeN(i.value) }); onChange(); renderBreakdown(); };
+    i.oninput = () => {
+      const patch = { [key]: safeN(i.value) };
+      if (MAIN_FIELDS.has(key)) patch._prefillBreakdown = null;
+      persist(patch);
+      onChange();
+      renderBreakdown();
+    };
     return formRow(label, i, hint);
   };
 
@@ -317,33 +352,56 @@ function prefillFromActuals(onChange) {
   const year     = s.year || String(new Date().getFullYear());
   const today    = new Date().toISOString().slice(0, 10);
   const cutoff   = today < `${year}-12-31` ? today : `${year}-12-31`;
-  const curMonth = cutoff.slice(0, 7); // YYYY-MM — forecast starts after this
+  const curMonth = cutoff.slice(0, 7);
   const s1       = `${year}-01-01`;
 
-  // Actuals: paid records up to cutoff
   const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff);
   const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff);
   const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff);
 
-  const actualRevenue  = [...pays.map(p => toEUR(p.amount, p.currency, year)), ...invs.map(i => toEUR(i.total, i.currency, year))].reduce((a, b) => a + b, 0);
+  const rnd = v => Math.round(v * 100) / 100;
+  const paysRevenue = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
+  const invsRevenue = invs.reduce((a, i) => a + toEUR(i.total, i.currency, year), 0);
+  const actualRevenue  = paysRevenue + invsRevenue;
   const actualExpenses = exps.reduce((a, e) => a + toEUR(e.amount, e.currency, year), 0);
 
-  // Forecast: pull remaining months from the forecast module (months after curMonth)
+  // Expense breakdown by category
+  const expsByCat = {};
+  for (const e of exps) {
+    const cat = e.category || 'Other';
+    expsByCat[cat] = (expsByCat[cat] || 0) + toEUR(e.amount, e.currency, year);
+  }
+
+  // Forecast: remaining months + count contributing properties
   let forecastRevenue = 0, forecastExpenses = 0;
+  const fcPropIds = new Set();
   for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
     for (const [mk, md] of Object.entries(fc.months || {})) {
       if (mk > curMonth) {
-        forecastRevenue  += Number(md.revenue)  || 0;
-        forecastExpenses += Number(md.expenses) || 0;
+        const rev = Number(md.revenue) || 0;
+        const exp = Number(md.expenses) || 0;
+        if (rev > 0 || exp > 0) fcPropIds.add(fc.propertyId || fc.id);
+        forecastRevenue  += rev;
+        forecastExpenses += exp;
       }
     }
   }
 
   persist({
-    actualRevenue:   Math.round(actualRevenue  * 100) / 100,
-    actualExpenses:  Math.round(actualExpenses * 100) / 100,
-    forecastRevenue: Math.round(forecastRevenue  * 100) / 100,
-    forecastExpenses: Math.round(forecastExpenses * 100) / 100,
+    actualRevenue:    rnd(actualRevenue),
+    actualExpenses:   rnd(actualExpenses),
+    forecastRevenue:  rnd(forecastRevenue),
+    forecastExpenses: rnd(forecastExpenses),
+    _prefillBreakdown: {
+      paysRevenue: rnd(paysRevenue), paysCount: pays.length,
+      invsRevenue: rnd(invsRevenue), invsCount: invs.length,
+      expsByCat: Object.fromEntries(
+        Object.entries(expsByCat).sort(([, a], [, b]) => b - a).map(([k, v]) => [k, rnd(v)])
+      ),
+      expsCount: exps.length,
+      fcPropCount: fcPropIds.size,
+      cutoff,
+    }
   });
 
   const c = document.getElementById('content');
