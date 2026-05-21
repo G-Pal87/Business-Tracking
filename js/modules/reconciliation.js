@@ -1,7 +1,7 @@
 // Reconciliation module – expected vs actual payment collection
-import { el, select, button } from '../core/ui.js';
+import { el, select, button, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { availableYears, formatEUR, buildReconciliationData } from '../core/data.js';
+import { availableYears, formatEUR, buildReconciliationData, listActivePayments, listActive, toEUR } from '../core/data.js';
 
 export default {
   id: 'reconciliation',
@@ -13,6 +13,40 @@ export default {
 };
 
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// ── Drill-down helpers ──────────────────────────────────────────────────────
+const ENT_COLS = [
+  { key: 'entity',      label: 'Entity' },
+  { key: 'type',        label: 'Type' },
+  { key: 'expected',    label: 'Expected',    right: true, format: v => formatEUR(v) },
+  { key: 'received',    label: 'Received',    right: true, format: v => formatEUR(v) },
+  { key: 'outstanding', label: 'Outstanding', right: true, format: v => formatEUR(v) }
+];
+const REC_COLS = [
+  { key: 'date',   label: 'Date',   format: v => fmtDate(v) },
+  { key: 'entity', label: 'Entity' },
+  { key: 'ref',    label: 'Ref' },
+  { key: 'status', label: 'Status' },
+  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v) }
+];
+const payRow = (p, name) => ({ date: p.date,      entity: name, ref: p.confirmationCode || p.type || '', status: p.status, eur: toEUR(p.amount, p.currency, p.date) });
+const invRow = (i, name) => ({ date: i.issueDate, entity: name, ref: i.number || '',                    status: i.status, eur: toEUR(i.total,  i.currency, i.issueDate) });
+const byDate = rows => [...rows].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+function monthRange(mk) {
+  const yr = Number(mk.slice(0, 4)), mo = Number(mk.slice(5, 7));
+  return { start: `${mk}-01`, end: `${mk}-${new Date(yr, mo, 0).getDate().toString().padStart(2, '0')}` };
+}
+
+function entRows(entities) {
+  return entities.filter(e => e.totExp > 0 || e.totAct > 0).map(e => ({
+    entity: e.label,
+    type: e.kind === 'lt' ? 'LT Rental' : e.kind === 'st' ? 'ST Rental' : 'Service',
+    expected: e.totExp,
+    received: e.totAct,
+    outstanding: Math.max(0, e.totExp - e.totAct)
+  }));
+}
 
 function build() {
   const wrap = el('div', { class: 'view active' });
@@ -77,10 +111,31 @@ function build() {
     const outstanding = entities.reduce((s, e) => s + Math.max(0, e.totExp - e.totAct), 0);
     const cr = rate(totAct, totExp);
 
-    kpiRow.appendChild(kpi('Expected',        formatEUR(totExp),     ''));
-    kpiRow.appendChild(kpi('Received',         formatEUR(totAct),     ''));
-    kpiRow.appendChild(kpi('Outstanding',      formatEUR(outstanding), outstanding > 0 ? 'danger' : 'success'));
-    kpiRow.appendChild(kpi('Collection Rate',  cr !== null ? `${cr}%` : '—', cr === null ? '' : cr >= 100 ? 'success' : cr >= 75 ? 'warning' : 'danger'));
+    const yr = yearSel.value;
+
+    const onExpected = () =>
+      drillDownModal(`Expected — ${yr}`, entRows(entities), ENT_COLS);
+
+    const onReceived = () => {
+      const propNames = new Map(entities.filter(e => e.kind !== 'service').map(e => [e.id, e.label]));
+      const svcNames  = new Map(entities.filter(e => e.kind === 'service').map(e => [e.id, e.label]));
+      const pays = listActivePayments().filter(p => p.status === 'paid' && (p.date || '').startsWith(yr) && propNames.has(p.propertyId));
+      const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '').startsWith(yr) && svcNames.has(i.stream));
+      drillDownModal(`Received — ${yr}`, byDate([
+        ...pays.map(p => payRow(p, propNames.get(p.propertyId) || '')),
+        ...invs.map(i => invRow(i, svcNames.get(i.stream) || ''))
+      ]), REC_COLS);
+    };
+
+    const onOutstanding = () => {
+      const rows = entRows(entities).filter(r => r.outstanding > 0);
+      drillDownModal(`Outstanding — ${yr}`, rows.length ? rows : entRows(entities), ENT_COLS);
+    };
+
+    kpiRow.appendChild(kpi('Expected',       formatEUR(totExp),      '',                          onExpected));
+    kpiRow.appendChild(kpi('Received',        formatEUR(totAct),      '',                          onReceived));
+    kpiRow.appendChild(kpi('Outstanding',     formatEUR(outstanding), outstanding > 0 ? 'danger' : 'success', onOutstanding));
+    kpiRow.appendChild(kpi('Collection Rate', cr !== null ? `${cr}%` : '—', cr === null ? '' : cr >= 100 ? 'success' : cr >= 75 ? 'warning' : 'danger', onOutstanding));
 
     if (currentView === 'monthly') renderMonthly(entities);
     else renderYearly(entities);
@@ -147,7 +202,29 @@ function build() {
             { label: 'Received', data: visMonths.map(m => Math.round(m.actual)), backgroundColor: visMonths.map(m =>
                 !m.isPast ? '#94a3b8' : m.actual >= m.expected ? '#10b981' : m.actual > 0 ? '#f59e0b' : '#ef4444'
             )}
-          ]
+          ],
+          onClickItem: (label, index, datasetIndex) => {
+            const m = visMonths[index];
+            if (!m) return;
+            const isExpected = datasetIndex === 0;
+            const { start, end } = monthRange(m.mk);
+            const title = `${ent.label} — ${MON[m.m - 1]} ${yearSel.value}: ${isExpected ? 'Expected' : 'Received'}`;
+            let rows;
+            if (ent.kind === 'service') {
+              const invs = listActive('invoices').filter(i =>
+                i.stream === ent.id && i.issueDate >= start && i.issueDate <= end &&
+                i.status !== 'draft' && (isExpected || i.status === 'paid')
+              );
+              rows = byDate(invs.map(i => invRow(i, ent.label)));
+            } else {
+              const pays = listActivePayments().filter(p =>
+                p.propertyId === ent.id && p.date >= start && p.date <= end &&
+                (isExpected || p.status === 'paid')
+              );
+              rows = byDate(pays.map(p => payRow(p, ent.label)));
+            }
+            if (rows.length) drillDownModal(title, rows, REC_COLS);
+          }
         });
       }, 0);
     };
@@ -208,7 +285,29 @@ function build() {
               e.totAct >= e.totExp ? '#10b981' : e.totAct > 0 ? '#f59e0b' : '#ef4444'
           )}
         ],
-        horizontal: true
+        horizontal: true,
+        onClickItem: (label, index, datasetIndex) => {
+          const ent = hasData[index];
+          if (!ent) return;
+          const isExpected = datasetIndex === 0;
+          const yr = yearSel.value;
+          const title = `${ent.label} — ${yr}: ${isExpected ? 'Expected' : 'Received'}`;
+          let rows;
+          if (ent.kind === 'service') {
+            const invs = listActive('invoices').filter(i =>
+              i.stream === ent.id && (i.issueDate || '').startsWith(yr) &&
+              i.status !== 'draft' && (isExpected || i.status === 'paid')
+            );
+            rows = byDate(invs.map(i => invRow(i, ent.label)));
+          } else {
+            const pays = listActivePayments().filter(p =>
+              p.propertyId === ent.id && (p.date || '').startsWith(yr) &&
+              (isExpected || p.status === 'paid')
+            );
+            rows = byDate(pays.map(p => payRow(p, ent.label)));
+          }
+          if (rows.length) drillDownModal(title, rows, REC_COLS);
+        }
       });
     }, 0);
   };
@@ -228,8 +327,10 @@ function build() {
   return wrap;
 }
 
-function kpi(label, value, variant) {
-  return el('div', { class: 'kpi' + (variant ? ' ' + variant : '') },
+function kpi(label, value, variant, onClick) {
+  const attrs = { class: 'kpi' + (variant ? ' ' + variant : '') };
+  if (onClick) { attrs.style = 'cursor:pointer'; attrs.onclick = onClick; }
+  return el('div', attrs,
     el('div', { class: 'kpi-label' }, label),
     el('div', { class: 'kpi-value' }, value),
     el('div', { class: 'kpi-accent-bar' })
