@@ -157,8 +157,8 @@ function openEntityModal(ent, yr) {
 function build() {
   const wrap = el('div', { class: 'view active' });
   const curYear = String(new Date().getFullYear());
-  const years = availableYears();
-  const yearOpts = [...new Set([String(Number(curYear) - 1), curYear, String(Number(curYear) + 1), ...years])].sort().reverse();
+  // Only show years with actual data, capped at current year (future years have nothing to reconcile)
+  const yearOpts = [...new Set([curYear, ...availableYears().filter(y => y <= curYear)])].sort().reverse();
 
   const yearSel = document.createElement('select');
   yearSel.className = 'form-control';
