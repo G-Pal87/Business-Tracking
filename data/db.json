@@ -29148,7 +29148,11 @@
       "rita_2025": 3,
       "you_2026": 0
     },
-    "globalTaxRate": 15
+    "globalTaxRate": 15,
+    "taxExcludedPropertyIds": [
+      "prop_mohg2xyol2",
+      "prop_mohfnur5bi"
+    ]
   },
   "forecasts": [
     {
