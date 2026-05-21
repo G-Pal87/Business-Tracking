@@ -29151,7 +29151,7 @@
     "globalTaxRate": 15,
     "taxExcludedPropertyIds": [],
     "cyprusTax": {
-      "year": "2025",
+      "year": "2026",
       "corpTaxRate": 15,
       "bufferEnabled": true,
       "bufferPct": 10,
