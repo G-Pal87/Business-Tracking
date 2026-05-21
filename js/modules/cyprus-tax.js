@@ -127,12 +127,12 @@ function modalRentalPayments() {
   ], 4));
   body.appendChild(mkSectionLabel('Revenue by Property'));
   body.appendChild(mkModalTable(
-    ['Property', { label: 'Pmts', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
+    [{ label: 'Property' }, { label: 'Pmts', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
     propRows.map(([id, d]) => { const p = propMap[id]; return [p?.name || p?.address || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })
   ));
   body.appendChild(mkSectionLabel('Monthly Collections'));
   body.appendChild(mkModalTable(
-    ['Month', { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
+    [{ label: 'Month' }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
     moRows.map(([mo, v]) => [mo, fmtE(v), pct(v, total)])
   ));
   openModal({ title: `Rental Payments — ${year}`, body, large: true });
@@ -163,7 +163,7 @@ function modalInvoiceRevenue() {
   ], 4));
   body.appendChild(mkSectionLabel('Revenue by Client'));
   body.appendChild(mkModalTable(
-    ['Client', { label: 'Invoices', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
+    [{ label: 'Client' }, { label: 'Invoices', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
     clRows.map(([id, d]) => { const c = clientMap[id]; return [c?.name || c?.company || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })
   ));
   openModal({ title: `Invoice Revenue — ${year}`, body, large: true });
@@ -194,12 +194,12 @@ function modalExpenseCategory(cat) {
   ], 4));
   body.appendChild(mkSectionLabel('Monthly Distribution'));
   body.appendChild(mkModalTable(
-    ['Month', { label: 'Amount', right: true }, { label: '% of Category', right: true, muted: true }],
+    [{ label: 'Month' }, { label: 'Amount', right: true }, { label: '% of Category', right: true, muted: true }],
     moRows.map(([mo, v]) => [mo, fmtE(v), pct(v, total)])
   ));
   body.appendChild(mkSectionLabel(`Top Records (${topRecs.length} of ${catExps.length})`));
   body.appendChild(mkModalTable(
-    ['Description / Vendor', 'Date', { label: 'Amount', right: true }],
+    [{ label: 'Description / Vendor' }, { label: 'Date' }, { label: 'Amount', right: true }],
     topRecs.map(e => [e.description || e.vendor || '—', e.date || '', fmtE(toEUR(e.amount, e.currency, year))])
   ));
   openModal({ title: `${cat} — ${year}`, body, large: true });
@@ -213,8 +213,8 @@ function modalForecastProperties(forRevenue) {
   const curMonth = cutoff.slice(0, 7);
   const propMap  = Object.fromEntries((state.db.properties || []).map(p => [p.id, p]));
   const fcData   = {};
-  for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
-    const pid = fc.propertyId || fc.id;
+  for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year) && f.type === 'property')) {
+    const pid = fc.entityId;
     if (!fcData[pid]) fcData[pid] = { rev: 0, exp: 0, months: 0 };
     for (const [mk, md] of Object.entries(fc.months || {})) {
       if (mk > curMonth) {
@@ -238,10 +238,10 @@ function modalForecastProperties(forRevenue) {
   ], 4));
   body.appendChild(mkSectionLabel(`${forRevenue ? 'Revenue' : 'Expense'} Forecast by Property`));
   body.appendChild(mkModalTable(
-    ['Property', { label: 'Months', right: true }, { label: forRevenue ? 'Revenue' : 'Expenses', right: true }, { label: 'Share', right: true, muted: true }],
+    [{ label: 'Property' }, { label: 'Months', right: true }, { label: forRevenue ? 'Revenue' : 'Expenses', right: true }, { label: 'Share', right: true, muted: true }],
     rows.map(([id, d]) => {
       const p = propMap[id]; const val = forRevenue ? d.rev : d.exp;
-      return [p?.name || p?.address || 'Unknown', String(d.months), fmtE(val), pct(val, total)];
+      return [p?.name || p?.address || id, String(d.months), fmtE(val), pct(val, total)];
     })
   ));
   openModal({ title: `Forecast ${forRevenue ? 'Revenue' : 'Expenses'} by Property — ${year}`, body, large: true });
@@ -272,7 +272,7 @@ function modalRevenueDetail() {
     body.appendChild(mkSectionLabel('Month-by-Month Actual Collections'));
     let cum = 0;
     body.appendChild(mkModalTable(
-      ['Month', { label: 'Revenue', right: true }, { label: 'Cumulative', right: true, muted: true }],
+      [{ label: 'Month' }, { label: 'Revenue', right: true }, { label: 'Cumulative', right: true, muted: true }],
       moRows.map(([mo, v]) => { cum += v; return [mo, fmtE(v), fmtE(cum)]; })
     ));
   }
@@ -298,7 +298,7 @@ function modalExpensesDetail() {
   if (catRows.length) {
     body.appendChild(mkSectionLabel('All Categories — Actual to Date'));
     body.appendChild(mkModalTable(
-      ['Category', { label: 'Amount', right: true }, { label: '% of Actual', right: true, muted: true }],
+      [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Actual', right: true, muted: true }],
       catRows.map(([cat, v]) => [cat, fmtE(v), pct(v, actTotal)])
     ));
   }
@@ -325,7 +325,7 @@ function modalTaxableProfit() {
     { label: 'Profit Margin',   value: margin ? `${margin}%` : '—', sub: 'Profit ÷ Revenue' },
   ], 4));
   body.appendChild(mkSectionLabel('Calculation'));
-  body.appendChild(mkModalTable(['Item', { label: '', right: false, muted: true }, { label: 'Amount', right: true }], rows));
+  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], rows));
   openModal({ title: 'Taxable Profit — Calculation', body, large: false });
 }
 
@@ -366,7 +366,7 @@ function modalCorpTax() {
   ], 4));
   body.appendChild(mkSectionLabel('Payment Schedule'));
   body.appendChild(mkModalTable(
-    ['Instalment', 'Due Date', { label: 'Amount', right: true }, { label: 'Status', right: true, muted: true }],
+    [{ label: 'Instalment' }, { label: 'Due Date' }, { label: 'Amount', right: true }, { label: 'Status', right: true, muted: true }],
     [
       ['1st — 50%',     `31 Jul ${year}`,       fmtE(c.julyPayment), daysLabel(`${year}-07-31`)],
       ['2nd — 50%',     `31 Dec ${year}`,        fmtE(c.decPayment),  daysLabel(`${year}-12-31`)],
@@ -441,7 +441,7 @@ function modalDecRevProfit() {
     { label: 'Tax Impact',        value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta) * c.rate / 100), sub: `At ${c.rate}% rate` },
   ], 4));
   body.appendChild(mkSectionLabel('Revised Calculation'));
-  body.appendChild(mkModalTable(['Item', { label: '', right: false, muted: true }, { label: 'Amount', right: true }], rows));
+  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], rows));
   openModal({ title: 'Revised Taxable Profit vs Original', body, large: false });
 }
 
