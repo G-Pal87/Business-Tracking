@@ -12,7 +12,7 @@ async function boot() {
     { default: properties },
     { default: payments },
     { default: expenses },
-    { default: reports },
+    { default: reconciliation },
     { default: forecast },
     { default: analytics },
     { default: analyticsRevenue },
@@ -35,7 +35,7 @@ async function boot() {
     import(`./modules/properties.js?v=${VERSION}`),
     import(`./modules/payments.js?v=${VERSION}`),
     import(`./modules/expenses.js?v=${VERSION}`),
-    import(`./modules/reports.js?v=${VERSION}`),
+    import(`./modules/reconciliation.js?v=${VERSION}`),
     import(`./modules/forecast.js?v=${VERSION}`),
     import(`./modules/analytics.js?v=${VERSION}`),
     import(`./modules/analytics-revenue.js?v=${VERSION}`),
@@ -58,7 +58,7 @@ async function boot() {
 
   const MODULES = [
     properties, payments, expenses, tenants, vendors, inventory,
-    reports, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsTax, clients, invoices, settings, users
+    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsTax, clients, invoices, settings, users
   ];
 
   MODULES.forEach(router.registerModule);
@@ -333,8 +333,7 @@ function buildUserFooter() {
 function buildSidebar(MODULES) {
   const navGroups = [
     { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'analytics-forecast', 'analytics-owner', 'analytics-tax'] },
-    { title: 'Operations', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'forecast'] },
-    { title: 'Reports', items: ['reports'] },
+    { title: 'Operations', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'reconciliation', 'forecast'] },
     { title: 'System', items: ['settings', 'users'] }
   ];
   const nav = document.getElementById('nav');
