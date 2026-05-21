@@ -29152,7 +29152,7 @@
     "taxExcludedPropertyIds": [],
     "cyprusTax": {
       "year": "2026",
-      "corpTaxRate": 13.9,
+      "corpTaxRate": 15,
       "bufferEnabled": true,
       "bufferPct": 10,
       "actualRevenue": 129957.34,
