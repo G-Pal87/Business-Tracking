@@ -274,25 +274,42 @@ function buildEstimateCard(onChange) {
 }
 
 function prefillFromActuals(onChange) {
-  const s      = cfg();
-  const year   = s.year || String(new Date().getFullYear());
-  const today  = new Date().toISOString().slice(0, 10);
-  const cutoff = today < `${year}-12-31` ? today : `${year}-12-31`;
-  const s1     = `${year}-01-01`;
+  const s        = cfg();
+  const year     = s.year || String(new Date().getFullYear());
+  const today    = new Date().toISOString().slice(0, 10);
+  const cutoff   = today < `${year}-12-31` ? today : `${year}-12-31`;
+  const curMonth = cutoff.slice(0, 7); // YYYY-MM — forecast starts after this
+  const s1       = `${year}-01-01`;
 
+  // Actuals: paid records up to cutoff
   const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff);
   const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff);
   const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff);
 
-  const rev = [...pays.map(p => toEUR(p.amount, p.currency, year)), ...invs.map(i => toEUR(i.total, i.currency, year))].reduce((a, b) => a + b, 0);
-  const exp = exps.reduce((a, e) => a + toEUR(e.amount, e.currency, year), 0);
+  const actualRevenue  = [...pays.map(p => toEUR(p.amount, p.currency, year)), ...invs.map(i => toEUR(i.total, i.currency, year))].reduce((a, b) => a + b, 0);
+  const actualExpenses = exps.reduce((a, e) => a + toEUR(e.amount, e.currency, year), 0);
 
-  persist({ actualRevenue: Math.round(rev * 100) / 100, actualExpenses: Math.round(exp * 100) / 100 });
+  // Forecast: pull remaining months from the forecast module (months after curMonth)
+  let forecastRevenue = 0, forecastExpenses = 0;
+  for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
+    for (const [mk, md] of Object.entries(fc.months || {})) {
+      if (mk > curMonth) {
+        forecastRevenue  += Number(md.revenue)  || 0;
+        forecastExpenses += Number(md.expenses) || 0;
+      }
+    }
+  }
 
-  // Full rebuild to refresh the input values
+  persist({
+    actualRevenue:   Math.round(actualRevenue  * 100) / 100,
+    actualExpenses:  Math.round(actualExpenses * 100) / 100,
+    forecastRevenue: Math.round(forecastRevenue  * 100) / 100,
+    forecastExpenses: Math.round(forecastExpenses * 100) / 100,
+  });
+
   const c = document.getElementById('content');
   if (c) { c.innerHTML = ''; c.appendChild(build()); }
-  toast(`Prefilled: ${year} actuals up to ${cutoff}`, 'success');
+  toast(`Prefilled: actuals to ${cutoff}, forecast from ${curMonth} onwards`, 'success');
 }
 
 // ── Section 3 ────────────────────────────────────────────────────────────────
