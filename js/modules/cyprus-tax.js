@@ -9,8 +9,9 @@ const DEFAULTS = {
   corpTaxRate: 12.5,
   bufferEnabled: true,
   bufferPct: 10,
-  // Manual adjustments only — actuals and forecast revenue are always live from data
-  extraRevenue: 0,
+  actualRevenue: 0,
+  forecastRevenue: 0,
+  actualExpenses: 0,
   forecastExpenses: 0,
   nonDeductibleExpenses: 0,
   taxAllowances: 0,
@@ -36,58 +37,14 @@ function persist(patch) {
 const safeN = v => (isFinite(Number(v)) ? Math.max(0, Number(v)) : 0);
 const fmtE  = v => formatEUR(Math.max(0, v));
 
-// ── Live data from existing app records ──────────────────────────────────────
-function getLiveData(year) {
-  const today    = new Date().toISOString().slice(0, 10);
-  const curMonth = today.slice(0, 7);
-  const s1       = `${year}-01-01`;
-
-  // Actual revenue: paid payments + invoices up to today
-  const pays = listActivePayments().filter(p =>
-    p.status === 'paid' && p.date >= s1 && p.date <= today
-  );
-  const invs = listActive('invoices').filter(i =>
-    i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= today
-  );
-  const actualRevenue = [
-    ...pays.map(p => toEUR(p.amount, p.currency, year)),
-    ...invs.map(i => toEUR(i.total || i.amount, i.currency, year))
-  ].reduce((a, b) => a + b, 0);
-
-  // Actual deductible expenses up to today
-  const exps = listActive('expenses').filter(e =>
-    !isCapEx(e) && e.date >= s1 && e.date <= today
-  );
-  const actualExpenses = exps.reduce((a, e) => a + toEUR(e.amount, e.currency, year), 0);
-
-  // Forecast revenue: forecast module entries for months after the current month
-  const forecasts = (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year));
-  let forecastRevenue = 0;
-  for (const fc of forecasts) {
-    for (const [mk, md] of Object.entries(fc.months || {})) {
-      if (mk > curMonth) {
-        // md.revenue is kept in sync with entries sum by saveForecastMonth/upsertForecastEntry
-        forecastRevenue += Number(md.revenue) || 0;
-      }
-    }
-  }
-
-  return { actualRevenue, actualExpenses, forecastRevenue, today, curMonth };
-}
-
 function calcAll(s) {
   const rate       = safeN(s.corpTaxRate);
   const bufPct     = safeN(s.bufferPct);
   const bufEnabled = !!s.bufferEnabled;
-  const year       = s.year || String(new Date().getFullYear());
 
-  const live = getLiveData(year);
-
-  const totalRevenue    = live.actualRevenue + live.forecastRevenue + safeN(s.extraRevenue);
-  const totalDeductible = live.actualExpenses + safeN(s.forecastExpenses);
-  const estProfit       = Math.max(0,
-    totalRevenue - totalDeductible + safeN(s.nonDeductibleExpenses) - safeN(s.taxAllowances)
-  );
+  const totalRevenue    = safeN(s.actualRevenue) + safeN(s.forecastRevenue);
+  const totalDeductible = safeN(s.actualExpenses) + safeN(s.forecastExpenses);
+  const estProfit       = Math.max(0, totalRevenue - totalDeductible + safeN(s.nonDeductibleExpenses) - safeN(s.taxAllowances));
   const bufferedProfit  = bufEnabled ? estProfit * (1 + bufPct / 100) : estProfit;
   const taxableProfit   = Math.max(0, bufferedProfit);
   const corpTax         = taxableProfit * (rate / 100);
@@ -100,7 +57,7 @@ function calcAll(s) {
   const shortfall     = Math.max(0, minRequired75 - corpTax);
 
   // December revision
-  const revProfit = Math.max(0,
+  const revProfit        = Math.max(0,
     safeN(s.decRevRevenue) - safeN(s.decRevExpenses)
     + safeN(s.decRevNonDeductible) - safeN(s.decRevAllowances)
   );
@@ -111,7 +68,7 @@ function calcAll(s) {
   const overpayment      = addDecRaw < 0 ? Math.abs(addDecRaw) : 0;
 
   return {
-    rate, bufPct, bufEnabled, live,
+    rate, bufPct, bufEnabled,
     totalRevenue, totalDeductible, estProfit, bufferedProfit, taxableProfit, corpTax,
     julyPayment, decPayment,
     finalTax, minRequired75, shortfall, safe: minRequired75 - corpTax <= 0,
@@ -142,25 +99,26 @@ function build() {
       'Estimate corporate income tax instalments and avoid the 10% additional charge for underestimation.')
   ));
 
-  const resultsEl    = el('div');
-  const safetyDispEl = el('div');
-  const decDispEl    = el('div', { style: 'margin-top:16px' });
+  // Results section (3) — rebuilt on any settings/estimate change
+  const resultsEl = el('div');
 
+  // Safety check display area — only the KPI/status area is refreshed, not the input
+  const safetyDisplayEl = el('div');
   const renderSafetyDisplay = () => {
-    safetyDispEl.innerHTML = '';
+    safetyDisplayEl.innerHTML = '';
     const c = calcAll(cfg());
     if (c.finalTax === 0) {
-      safetyDispEl.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px;font-style:italic' },
+      safetyDisplayEl.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px;font-style:italic' },
         'Enter an estimated final tax liability above to see the safety check.'));
       return;
     }
-    safetyDispEl.appendChild(el('div', { class: 'grid grid-3', style: 'margin-bottom:12px' },
-      mkKpiCard({ label: 'Planned Provisional Tax', value: fmtE(c.corpTax) }),
-      mkKpiCard({ label: 'Minimum Required (75%)',  value: fmtE(c.minRequired75), subtitle: `75% of ${fmtE(c.finalTax)}` }),
-      mkKpiCard({ label: 'Shortfall',               value: fmtE(c.shortfall), variant: c.shortfall > 0 ? 'danger' : 'success' })
+    safetyDisplayEl.appendChild(el('div', { class: 'grid grid-3', style: 'margin-bottom:12px' },
+      mkKpiCard({ label: 'Planned Provisional Tax',  value: fmtE(c.corpTax) }),
+      mkKpiCard({ label: 'Minimum Required (75%)',   value: fmtE(c.minRequired75), subtitle: `75% of ${fmtE(c.finalTax)}` }),
+      mkKpiCard({ label: 'Shortfall',                value: fmtE(c.shortfall), variant: c.shortfall > 0 ? 'danger' : 'success' })
     ));
     const safe = c.safe;
-    safetyDispEl.appendChild(el('div', {
+    safetyDisplayEl.appendChild(el('div', {
       style: `padding:12px 14px;border-radius:var(--radius-sm);border-left:4px solid var(--${safe ? 'success' : 'danger'});background:rgba(${safe ? '16,185,129' : '239,68,68'},0.07)`
     },
       el('span', { class: `badge ${safe ? 'success' : 'danger'}` },
@@ -173,22 +131,24 @@ function build() {
     ));
   };
 
+  // December revision display area
+  const decDisplayEl = el('div', { style: 'margin-top:16px' });
   const renderDecDisplay = () => {
-    decDispEl.innerHTML = '';
-    const c    = calcAll(cfg());
-    const s    = cfg();
+    decDisplayEl.innerHTML = '';
+    const c = calcAll(cfg());
+    const s = cfg();
     const year = s.year || String(new Date().getFullYear());
-    if (safeN(s.decRevRevenue) === 0 && safeN(s.decRevExpenses) === 0) {
-      decDispEl.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px;font-style:italic' },
+    if (c.revProfit === 0 && safeN(s.decRevRevenue) === 0) {
+      decDisplayEl.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px;font-style:italic' },
         'Enter revised year-end estimates above to see the required December payment.'));
       return;
     }
-    decDispEl.appendChild(el('div', { class: 'grid grid-3 mb-16' },
-      mkKpiCard({ label: 'Revised Taxable Profit',           value: fmtE(c.revProfit) }),
-      mkKpiCard({ label: `Revised Corp Tax (${c.rate}%)`,    value: fmtE(c.revisedAnnualTax) }),
-      mkKpiCard({ label: 'Already Paid in July',             value: fmtE(c.alreadyPaid) })
+    decDisplayEl.appendChild(el('div', { class: 'grid grid-3 mb-16' },
+      mkKpiCard({ label: 'Revised Taxable Profit',              value: fmtE(c.revProfit) }),
+      mkKpiCard({ label: `Revised Corp Tax (${c.rate}%)`,       value: fmtE(c.revisedAnnualTax) }),
+      mkKpiCard({ label: 'Already Paid in July',                value: fmtE(c.alreadyPaid) })
     ));
-    decDispEl.appendChild(el('div', { class: 'grid grid-2' },
+    decDisplayEl.appendChild(el('div', { class: 'grid grid-2' },
       mkKpiCard({
         label:    `Required 2nd Instalment — 31 Dec ${year}`,
         value:    fmtE(c.reqDecPayment),
@@ -208,17 +168,26 @@ function build() {
     renderDecDisplay();
   };
 
+  // ── Section 1: Tax settings ─────────────────────────────────────────────
   wrap.appendChild(buildSettingsCard(recalc));
+
+  // ── Section 2: Annual estimate ──────────────────────────────────────────
   wrap.appendChild(buildEstimateCard(recalc));
+
+  // ── Section 3: Provisional tax result ──────────────────────────────────
   wrap.appendChild(resultsEl);
-  wrap.appendChild(buildSafetyCard(safetyDispEl, renderSafetyDisplay, recalc));
-  wrap.appendChild(buildDecRevisionCard(decDispEl, renderDecDisplay));
+
+  // ── Section 4: 75% safety check ────────────────────────────────────────
+  wrap.appendChild(buildSafetyCard(safetyDisplayEl, renderSafetyDisplay, recalc));
+
+  // ── Section 5: December revision ───────────────────────────────────────
+  wrap.appendChild(buildDecRevisionCard(decDisplayEl, renderDecDisplay, recalc));
 
   recalc();
   return wrap;
 }
 
-// ── Section 1: Tax Settings ───────────────────────────────────────────────────
+// ── Section 1 ────────────────────────────────────────────────────────────────
 function buildSettingsCard(onChange) {
   const s    = cfg();
   const card = el('div', { class: 'card mb-16' });
@@ -241,8 +210,8 @@ function buildSettingsCard(onChange) {
   const bufChk = el('input', { type: 'checkbox' });
   bufChk.checked = !!s.bufferEnabled;
   const bufPctI = input({ type: 'number', value: s.bufferPct ?? 10, min: 0, max: 100, step: 0.1, style: 'width:80px' });
-  bufPctI.oninput  = () => { persist({ bufferPct: safeN(bufPctI.value) }); onChange(); };
-  bufChk.onchange  = () => { persist({ bufferEnabled: bufChk.checked }); onChange(); };
+  bufPctI.oninput = () => { persist({ bufferPct: safeN(bufPctI.value) }); onChange(); };
+  bufChk.onchange = () => { persist({ bufferEnabled: bufChk.checked }); onChange(); };
 
   body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px' },
     formRow('Tax Year', yearSel),
@@ -253,7 +222,8 @@ function buildSettingsCard(onChange) {
     formRow('Safety Buffer',
       el('div', { style: 'display:flex;align-items:center;gap:10px' },
         el('label', { style: 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap' }, bufChk, 'Enable'),
-        bufPctI, el('span', { style: 'color:var(--text-muted);font-size:13px' }, '%')),
+        bufPctI,
+        el('span', { style: 'color:var(--text-muted);font-size:13px' }, '%')),
       'Inflates estimate to reduce underpayment risk')
   ));
 
@@ -261,50 +231,40 @@ function buildSettingsCard(onChange) {
   return card;
 }
 
-// ── Section 2: Annual Estimate ────────────────────────────────────────────────
+// ── Section 2 ────────────────────────────────────────────────────────────────
 function buildEstimateCard(onChange) {
   const s    = cfg();
-  const year = s.year || String(new Date().getFullYear());
-  const live = getLiveData(year);
   const card = el('div', { class: 'card mb-16' });
 
+  const prefillBtn = button('↓ Prefill from actuals', { variant: 'sm ghost', onClick: () => prefillFromActuals(onChange) });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', {},
       el('div', { class: 'card-title' }, 'Annual Estimate'),
-      el('div', { class: 'card-subtitle' }, `Live actuals + forecast from your data for ${year}`)
-    )
+      el('div', { class: 'card-subtitle' }, 'Expected full-year revenue and expenses')
+    ),
+    prefillBtn
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
 
-  // ── Live data rows (read-only) ──
-  const liveRow = (label, value, note) => el('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)' },
-    el('div', {},
-      el('span', { style: 'font-size:13px;color:var(--text)' }, label),
-      note ? el('span', { style: 'font-size:11px;color:var(--text-muted);margin-left:8px' }, note) : null
-    ),
-    el('span', { style: 'font-size:13px;font-weight:600;color:var(--text)' }, fmtE(value))
-  );
-
-  body.appendChild(el('div', { style: 'margin-bottom:16px' },
-    el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px' }, 'From Your Data (auto)'),
-    liveRow('Actual revenue to date',              live.actualRevenue,  `paid payments & invoices up to ${live.today}`),
-    liveRow('Forecast revenue — remaining months', live.forecastRevenue, `from forecast module, months after ${live.curMonth}`),
-    liveRow('Actual deductible expenses to date',  live.actualExpenses,  `non-capex expenses up to ${live.today}`)
-  ));
-
-  // ── Manual adjustments ──
   const fi = (key, val, label, hint) => {
     const i = input({ type: 'number', value: val || '', min: 0, step: 0.01, style: 'width:100%', placeholder: '0.00' });
     i.oninput = () => { persist({ [key]: safeN(i.value) }); onChange(); };
     return formRow(label, i, hint);
   };
 
-  body.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px' }, 'Manual Adjustments'));
-  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
-    fi('extraRevenue',          s.extraRevenue,          'Additional revenue not in system (€)', 'Income not tracked as payments/invoices'),
-    fi('forecastExpenses',      s.forecastExpenses,      'Forecast deductible expenses, rest of year (€)', 'Expected future costs not yet recorded')
+  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px' },
+    el('div', {},
+      el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)' }, 'Revenue (€)'),
+      fi('actualRevenue',   s.actualRevenue,   'Actual revenue to date'),
+      fi('forecastRevenue', s.forecastRevenue, 'Forecast revenue, rest of year')
+    ),
+    el('div', {},
+      el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)' }, 'Expenses (€)'),
+      fi('actualExpenses',   s.actualExpenses,   'Actual deductible expenses to date'),
+      fi('forecastExpenses', s.forecastExpenses, 'Forecast deductible expenses, rest of year')
+    )
   ));
-  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
+  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px' },
     fi('nonDeductibleExpenses', s.nonDeductibleExpenses, 'Non-deductible expenses (€)', 'Entertainment, fines, etc. — added back to taxable profit'),
     fi('taxAllowances',         s.taxAllowances,         'Tax allowances / deductions (€)', 'Depreciation, R&D credits, etc. — reduces taxable profit')
   ));
@@ -313,7 +273,28 @@ function buildEstimateCard(onChange) {
   return card;
 }
 
-// ── Section 3: Provisional Tax Result ────────────────────────────────────────
+function prefillFromActuals(onChange) {
+  const s      = cfg();
+  const year   = s.year || String(new Date().getFullYear());
+  const cutoff = new Date().toISOString().slice(0, 10);
+  const s1     = `${year}-01-01`;
+
+  const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff);
+  const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff);
+  const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff);
+
+  const rev = [...pays.map(p => toEUR(p.amount, p.currency, year)), ...invs.map(i => toEUR(i.total, i.currency, year))].reduce((a, b) => a + b, 0);
+  const exp = exps.reduce((a, e) => a + toEUR(e.amount, e.currency, year), 0);
+
+  persist({ actualRevenue: Math.round(rev * 100) / 100, actualExpenses: Math.round(exp * 100) / 100 });
+
+  // Full rebuild to refresh the input values
+  const c = document.getElementById('content');
+  if (c) { c.innerHTML = ''; c.appendChild(build()); }
+  toast(`Prefilled from ${year} actuals up to ${cutoff}`, 'success');
+}
+
+// ── Section 3 ────────────────────────────────────────────────────────────────
 function buildResultsCard(c, s) {
   const year     = s.year || String(new Date().getFullYear());
   const nextYear = String(Number(year) + 1);
@@ -328,9 +309,9 @@ function buildResultsCard(c, s) {
   const body = el('div', { style: 'padding:0 16px 16px' });
 
   body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
-    mkKpiCard({ label: 'Est. Annual Revenue',      value: fmtE(c.totalRevenue),    subtitle: `Actuals ${fmtE(c.live.actualRevenue)} + Forecast ${fmtE(c.live.forecastRevenue)}${c.live.forecastRevenue < c.totalRevenue - c.live.actualRevenue ? ' + manual' : ''}` }),
-    mkKpiCard({ label: 'Est. Deductible Expenses', value: fmtE(c.totalDeductible), subtitle: `Actuals ${fmtE(c.live.actualExpenses)} + forecast manual` }),
-    mkKpiCard({ label: 'Est. Taxable Profit',      value: fmtE(c.estProfit) })
+    mkKpiCard({ label: 'Est. Annual Revenue',       value: fmtE(c.totalRevenue) }),
+    mkKpiCard({ label: 'Est. Deductible Expenses',  value: fmtE(c.totalDeductible) }),
+    mkKpiCard({ label: 'Est. Taxable Profit',        value: fmtE(c.estProfit) })
   ));
 
   const taxRow = [];
@@ -352,16 +333,16 @@ function buildResultsCard(c, s) {
 
   body.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px' }, 'Payment Schedule'));
   body.appendChild(el('div', { class: 'grid grid-3' },
-    mkKpiCard({ label: `1st Instalment — 31 Jul ${year}`,   value: fmtE(c.julyPayment), subtitle: '50% of estimated corporation tax' }),
-    mkKpiCard({ label: `2nd Instalment — 31 Dec ${year}`,   value: fmtE(c.decPayment),  subtitle: '50% of estimated corporation tax' }),
-    mkKpiCard({ label: `Final Balance — 1 Aug ${nextYear}`, value: '—',                 subtitle: 'Based on actual audited profit' })
+    mkKpiCard({ label: `1st Instalment — 31 Jul ${year}`,    value: fmtE(c.julyPayment),  subtitle: '50% of estimated corporation tax' }),
+    mkKpiCard({ label: `2nd Instalment — 31 Dec ${year}`,    value: fmtE(c.decPayment),   subtitle: '50% of estimated corporation tax' }),
+    mkKpiCard({ label: `Final Balance — 1 Aug ${nextYear}`,  value: '—',                  subtitle: 'Based on actual audited profit' })
   ));
 
   card.appendChild(body);
   return card;
 }
 
-// ── Section 4: 75% Safety Check ──────────────────────────────────────────────
+// ── Section 4 ────────────────────────────────────────────────────────────────
 function buildSafetyCard(displayEl, renderDisplay, onChange) {
   const s    = cfg();
   const card = el('div', { class: 'card mb-16' });
@@ -374,11 +355,7 @@ function buildSafetyCard(displayEl, renderDisplay, onChange) {
   const body = el('div', { style: 'padding:0 16px 16px' });
 
   const finalTaxI = input({ type: 'number', value: s.estimatedFinalTax || '', min: 0, step: 0.01, style: 'width:220px', placeholder: '0.00' });
-  finalTaxI.oninput = () => {
-    persist({ estimatedFinalTax: safeN(finalTaxI.value) });
-    renderDisplay();
-    onChange();
-  };
+  finalTaxI.oninput = () => { persist({ estimatedFinalTax: safeN(finalTaxI.value) }); renderDisplay(); onChange(); };
 
   body.appendChild(formRow(
     'Estimated final actual tax liability (€)',
@@ -390,8 +367,8 @@ function buildSafetyCard(displayEl, renderDisplay, onChange) {
   return card;
 }
 
-// ── Section 5: December Revision ─────────────────────────────────────────────
-function buildDecRevisionCard(displayEl, renderDisplay) {
+// ── Section 5 ────────────────────────────────────────────────────────────────
+function buildDecRevisionCard(displayEl, renderDisplay, onChange) {
   const s    = cfg();
   const year = s.year || String(new Date().getFullYear());
   const card = el('div', { class: 'card mb-16' });
@@ -399,13 +376,13 @@ function buildDecRevisionCard(displayEl, renderDisplay) {
   card.appendChild(el('div', { class: 'card-header' },
     el('div', {},
       el('div', { class: 'card-title' }, 'December Revision Check'),
-      el('div', { class: 'card-subtitle' }, `Revise estimates before 31 December ${year} to confirm the correct 2nd instalment`)
+      el('div', { class: 'card-subtitle' }, `Revise estimates before 31 December ${year} to determine the correct 2nd instalment`)
     )
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
 
   body.appendChild(el('p', { style: 'font-size:12px;color:var(--text-muted);margin:0 0 14px' },
-    'Enter your best revised full-year figures in December to confirm whether the second instalment needs adjusting.'
+    'Use revised full-year figures to check whether the second instalment needs increasing.'
   ));
 
   const fi = (key, val, label) => {
