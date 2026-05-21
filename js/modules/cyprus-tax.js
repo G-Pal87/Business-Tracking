@@ -40,7 +40,7 @@ const fmtE  = v => formatEUR(Math.max(0, v), { minFrac: 2 });
 const mkCurrencyInput = (val, style, onValue) => {
   const fmt   = v => v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
   const parse = s => { const n = parseFloat((s || '').replace(/[^0-9.]/g, '')); return isFinite(n) && n > 0 ? n : 0; };
-  const i = el('input', { type: 'text', style: style || 'width:100%', inputmode: 'decimal', placeholder: '0.00', autocomplete: 'off' });
+  const i = el('input', { class: 'input', type: 'text', style: style || 'width:100%', inputmode: 'decimal', placeholder: '0.00', autocomplete: 'off' });
   const initVal = safeN(val);
   i.value = initVal > 0 ? fmt(initVal) : '';
   i.addEventListener('focus', () => { const n = parse(i.value); i.value = n > 0 ? String(n) : ''; i.select(); });
