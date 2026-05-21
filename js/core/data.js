@@ -27,7 +27,7 @@ export function formatMoney(amount, currency = 'EUR', options = {}) {
     style: 'currency',
     currency,
     maximumFractionDigits: options.maxFrac ?? (currency === 'HUF' ? 0 : 2),
-    minimumFractionDigits: options.minFrac ?? 0
+    minimumFractionDigits: options.minFrac ?? (currency === 'HUF' ? 0 : 2)
   };
   try {
     return new Intl.NumberFormat('en-US', opts).format(amount || 0);
