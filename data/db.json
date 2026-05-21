@@ -29155,7 +29155,7 @@
       "corpTaxRate": 15,
       "bufferEnabled": true,
       "bufferPct": 10,
-      "actualRevenue": 80000,
+      "actualRevenue": 0,
       "forecastRevenue": 0,
       "actualExpenses": 387.39,
       "forecastExpenses": 0,
