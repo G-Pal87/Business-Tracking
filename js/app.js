@@ -24,6 +24,7 @@ async function boot() {
 
     { default: analyticsOwner },
     { default: analyticsTax },
+    { default: cyprusTax },
     { default: clients },
     { default: invoices },
     { default: settings },
@@ -47,6 +48,7 @@ async function boot() {
 
     import(`./modules/analytics-owner.js?v=${VERSION}`),
     import(`./modules/analytics-tax.js?v=${VERSION}`),
+    import(`./modules/cyprus-tax.js?v=${VERSION}`),
     import(`./modules/clients.js?v=${VERSION}`),
     import(`./modules/invoices.js?v=${VERSION}`),
     import(`./modules/settings.js?v=${VERSION}`),
@@ -58,7 +60,7 @@ async function boot() {
 
   const MODULES = [
     properties, payments, expenses, tenants, vendors, inventory,
-    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsTax, clients, invoices, settings, users
+    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsTax, cyprusTax, clients, invoices, settings, users
   ];
 
   MODULES.forEach(router.registerModule);
@@ -332,7 +334,7 @@ function buildUserFooter() {
 
 function buildSidebar(MODULES) {
   const navGroups = [
-    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-tax'] },
+    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-tax', 'cyprus-tax'] },
     { title: 'Operations', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'forecast'] },
     { title: 'System', items: ['settings', 'users'] }
   ];
