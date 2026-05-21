@@ -29163,7 +29163,7 @@
       "taxAllowances": 0,
       "estimatedFinalTax": 0,
       "julPayment": 0,
-      "decRevRevenue": 0,
+      "decRevRevenue": 300000,
       "decRevExpenses": 0,
       "decRevNonDeductible": 0,
       "decRevAllowances": 0,
