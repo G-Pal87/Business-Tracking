@@ -367,7 +367,7 @@ function build() {
 
         // Entity name cell (sticky)
         const nameTd = document.createElement('td');
-        nameTd.style.cssText = 'padding:6px 12px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;position:sticky;left:0;background:var(--card,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;border-right:1px solid var(--border)';
+        nameTd.style.cssText = 'padding:6px 12px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer;position:sticky;left:0;background:var(--surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;border-right:1px solid var(--border)';
         nameTd.title = ent.label;
         nameTd.textContent = ent.label;
         nameTd.onclick = () => openEntityModal(ent, yr);
