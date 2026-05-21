@@ -31542,5 +31542,18 @@
       "updatedAt": 1778787262764,
       "updatedBy": "Giorgos"
     }
+  ],
+  "dividends": [
+    {
+      "id": "div_mpfxw4ugcl",
+      "date": "2026-01-01",
+      "grossAmount": 40000,
+      "recipient": "giorgos",
+      "notes": "",
+      "createdAt": 1779395087752,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779395087752,
+      "updatedBy": "Giorgos"
+    }
   ]
 }
