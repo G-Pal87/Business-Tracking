@@ -25733,8 +25733,10 @@
       "status": "active",
       "createdAt": 1778911294920,
       "createdBy": "Giorgos",
-      "updatedAt": 1778911294920,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1779345551567,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779345551567,
+      "deletedBy": "Giorgos"
     }
   ],
   "clients": [
