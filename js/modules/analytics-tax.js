@@ -323,7 +323,7 @@ function buildKpiCards(data, year) {
   }
 
   grid.appendChild(mkKpiCard({
-    label: 'Operating Margin', value: `${operatingMargin.toFixed(1)}%`, subtitle: 'Revenue minus OpEx',
+    label: 'Operating Margin', value: `${operatingMargin.toFixed(1)}%`, subtitle: operatingMargin > 80 ? 'High margin — minimal overhead (service business)' : 'Revenue minus OpEx',
     variant: operatingMargin >= 50 ? 'success' : operatingMargin >= 20 ? 'warning' : 'danger',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -351,7 +351,7 @@ function buildKpiCards(data, year) {
   }));
 
   grid.appendChild(mkKpiCard({
-    label: 'Capital Deployed', value: formatEUR(totalCapEx), subtitle: 'Non-deductible (depreciated)',
+    label: 'Capital Deployed', value: formatEUR(totalCapEx), subtitle: totalCapEx === 0 ? 'No capital assets recorded this year' : 'Non-deductible (depreciated)',
     variant: totalCapEx > 0 ? 'warning' : '',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -406,14 +406,28 @@ function buildKpiCards(data, year) {
     grid.appendChild(mkKpiCard({
       label: 'Year vs Forecast', value: '—', subtitle: 'No forecast set for this year',
       onClick: () => {
-        const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
+        let tRevenue = 0, tExpenses = 0;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
         body.appendChild(el('p', { style: 'font-size:13px;color:var(--text-muted);line-height:1.6;margin:0' },
-          `No forecast targets have been set for ${year}. To enable this comparison, add forecast data for any property or service entity.`
+          `Set a simple revenue and expense target for ${year} to enable the actual vs forecast comparison.`
         ));
-        body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);padding:10px 12px;background:rgba(99,102,241,0.06);border-left:2px solid var(--accent);border-radius:4px;line-height:1.6' },
-          'Navigate to a property or service, open its Forecast tab, and set year targets for revenue and/or expenses. They will appear here automatically once saved.'
+        const revI = mkCurrencyInput(0, 'width:100%', v => { tRevenue = v; });
+        const expI = mkCurrencyInput(0, 'width:100%', v => { tExpenses = v; });
+        body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
+          formRow(`${year} Revenue Target (€)`, revI),
+          formRow(`${year} Expense Target (€)`, expI)
         ));
-        openModal({ title: `Year vs Forecast — ${year}`, body });
+        const saveBtn = button('Save Year Targets', { variant: 'primary sm' });
+        saveBtn.onclick = () => {
+          if (tRevenue <= 0 && tExpenses <= 0) { toast('Enter at least one target', 'error'); return; }
+          const existing = listActive('forecasts').find(f => String(f.year) === String(year) && f.entityId === '_portfolio_target');
+          upsert('forecasts', { id: existing?.id || newId('fc'), year: Number(year), entityId: '_portfolio_target', type: 'portfolio', yearTarget: { revenue: tRevenue, expenses: tExpenses } });
+          markDirty();
+          rebuildView();
+          toast(`${year} forecast targets saved`, 'success');
+        };
+        body.appendChild(el('div', {}, saveBtn));
+        openModal({ title: `Set Year Forecast — ${year}`, body });
       }
     }));
   }
@@ -581,6 +595,7 @@ function renderCharts(data, year, ownerFilter) {
         openCategoryModal(catKey, data.opExpenses.filter(e => resolvedCatKey(e) === catKey), false, catEntries[index][1]);
       }
     });
+    charts.toggleDoughnutPct('tax-exp-cat-donut');
   }
 
   const allYears   = getDataYears().reverse();
@@ -1245,9 +1260,10 @@ function ptBuildEstimateCard(onChange) {
       fi('forecastExpenses', s.forecastExpenses, 'Forecast deductible expenses, rest of year')
     )
   ));
-  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px' },
-    fi('nonDeductibleExpenses', s.nonDeductibleExpenses, 'Non-deductible expenses (€)', 'Entertainment, fines, etc. — added back to taxable profit'),
-    fi('taxAllowances',         s.taxAllowances,         'Tax allowances / deductions (€)', 'Depreciation, R&D credits, etc. — reduces taxable profit')
+  body.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)' }, 'Profit Adjustments (€)'));
+  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px' },
+    fi('nonDeductibleExpenses', s.nonDeductibleExpenses, 'Non-deductible expenses', 'Entertainment, fines, etc. — added back to taxable profit'),
+    fi('taxAllowances',         s.taxAllowances,         'Tax allowances / deductions', 'Depreciation, R&D credits, etc. — reduces taxable profit')
   ));
 
   body.appendChild(breakdownEl);
@@ -1396,14 +1412,16 @@ function ptBuildDecRevisionCard(displayEl, renderDisplay, onChange) {
   };
   const julI = mkCurrencyInput(s.julPayment, 'width:220px', v => { persist({ julPayment: v }); renderDisplay(); });
 
+  body.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)' }, 'Revised Year-End Estimates'));
   body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
-    fi('decRevRevenue',  s.decRevRevenue,  'Revised expected annual revenue (€)'),
-    fi('decRevExpenses', s.decRevExpenses, 'Revised deductible expenses (€)')
+    fi('decRevRevenue',  s.decRevRevenue,  'Expected annual revenue (€)'),
+    fi('decRevExpenses', s.decRevExpenses, 'Deductible expenses (€)')
   ));
-  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
-    fi('decRevNonDeductible', s.decRevNonDeductible, 'Revised non-deductible expenses (€)'),
-    fi('decRevAllowances',    s.decRevAllowances,    'Revised tax allowances / deductions (€)')
+  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px' },
+    fi('decRevNonDeductible', s.decRevNonDeductible, 'Non-deductible expenses (€)'),
+    fi('decRevAllowances',    s.decRevAllowances,    'Tax allowances / deductions (€)')
   ));
+  body.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)' }, 'Prior Payment'));
   body.appendChild(el('div', { style: 'margin-top:4px' },
     formRow('Amount already paid in July (€)', julI, 'Your actual first instalment payment')
   ));
@@ -1519,7 +1537,7 @@ function buildDividendsContent(years) {
   const retained    = corpTaxEst !== null ? pnlData.opProfit - corpTaxEst - totalGross : pnlData.opProfit - totalGross;
 
   // ── Summary KPIs ─────────────────────────────────────────────────────────────
-  wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px' },
+  wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:20px' },
     mkKpiCard({
       label: 'Operating Profit',
       value: fmtE(pnlData.opProfit),
@@ -1575,6 +1593,25 @@ function buildDividendsContent(years) {
         ], 2));
         openModal({ title: `Dividends Paid — ${gYear}`, body });
       } : null
+    }),
+    mkKpiCard({
+      label: 'SDC Owed (2.65%)',
+      value: fmtE(sdcAmount),
+      subtitle: totalGross > 0 ? `On ${fmtE(totalGross)} gross dividends` : 'No dividends recorded',
+      variant: sdcAmount > 0 ? 'warning' : '',
+      onClick: () => {
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+        body.appendChild(mkSummaryGrid([
+          { label: 'Gross Dividends', value: fmtE(totalGross) },
+          { label: 'SDC Rate',        value: '2.65%' },
+          { label: 'SDC Amount',      value: fmtE(sdcAmount) },
+          { label: 'Net Dividends',   value: fmtE(netTotal) },
+        ], 2));
+        body.appendChild(el('div', { style: 'margin-top:4px;font-size:12px;color:var(--text-muted);padding:10px 12px;background:rgba(99,102,241,0.06);border-left:2px solid var(--accent);border-radius:4px;line-height:1.6' },
+          'Special Defence Contribution (SDC) of 2.65% applies to dividends paid to non-domicile Cyprus tax residents. It is withheld at source and remitted to the Cyprus Tax Department. The non-dom status must be declared annually.'
+        ));
+        openModal({ title: `SDC — Special Defence Contribution ${gYear}`, body });
+      }
     }),
     mkKpiCard({
       label: 'Retained Earnings',
