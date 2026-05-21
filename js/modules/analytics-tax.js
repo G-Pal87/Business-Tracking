@@ -1,48 +1,105 @@
-// Tax & Annual Summary Analytics Dashboard — year-end accounting and tax filing support
-import { el, openModal } from '../core/ui.js';
+// Tax — Annual P&L Report + Cyprus Provisional Tax Calculator
+import { state, markDirty } from '../core/state.js';
+import { el, input, select, button, formRow, toast, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { COST_CATEGORIES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
-  resolveExpenseFields, isCapEx
+  resolveExpenseFields, isCapEx,
+  newId, upsert, softDelete
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const CHART_IDS = ['tax-rev-exp-bar', 'tax-exp-cat-donut', 'tax-yoy-bar'];
+// ── Module state ───────────────────────────────────────────────────────────────
+const CHART_IDS  = ['tax-rev-exp-bar', 'tax-exp-cat-donut', 'tax-yoy-bar'];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-// ── Module state ──────────────────────────────────────────────────────────────
-let gYear   = null;  // string like '2024'
-let gOwner  = '';    // '' | 'you' | 'rita' | 'both'
+let gYear  = null;
+let gOwner = '';
+let gTab   = 'pnl'; // 'pnl' | 'provisional' | 'dividends'
 
-// ── Module export ─────────────────────────────────────────────────────────────
+const SDC_RATE = 0.0265;
+
+// ── Module export ──────────────────────────────────────────────────────────────
 export default {
   id:    'analytics-tax',
-  label: 'Annual / Tax',
+  label: 'Tax',
   icon:  '₪',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }
 };
 
-// ── Utility helpers ───────────────────────────────────────────────────────────
+// ── Rebuild ────────────────────────────────────────────────────────────────────
+function rebuildView() {
+  CHART_IDS.forEach(id => charts.destroy(id));
+  const c = document.getElementById('content');
+  if (!c) return;
+  c.innerHTML = '';
+  c.appendChild(buildView());
+}
+
+// ── Main view (tab shell) ──────────────────────────────────────────────────────
+function buildView() {
+  const years = getDataYears();
+  if (!gYear || !years.includes(gYear)) gYear = defaultYear();
+
+  const wrap = el('div', { class: 'view active' });
+
+  wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
+    el('h2', { style: 'margin:0 0 4px;font-size:20px;font-weight:700' }, 'Tax'),
+    el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' },
+      'Annual P&L reporting and provisional corporation tax calculator')
+  ));
+
+  // Tab bar
+  const tabBar = el('div', {
+    style: 'display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)'
+  });
+  for (const [key, label] of [['pnl', 'P&L Report'], ['provisional', 'Provisional Tax'], ['dividends', 'Dividends']]) {
+    const isActive = gTab === key;
+    const btn = el('button', {
+      style: [
+        'padding:9px 20px;border:none;border-bottom:2px solid',
+        isActive
+          ? 'var(--accent);color:var(--accent);font-weight:600;background:none'
+          : 'transparent;color:var(--text-muted);background:none',
+        ';cursor:pointer;font-size:13px;margin-bottom:-1px;transition:color 120ms,border-color 120ms'
+      ].join(' ')
+    }, label);
+    btn.onclick = () => {
+      if (gTab !== key) {
+        CHART_IDS.forEach(id => charts.destroy(id));
+        gTab = key;
+        rebuildView();
+      }
+    };
+    tabBar.appendChild(btn);
+  }
+  wrap.appendChild(tabBar);
+
+  if (gTab === 'pnl') {
+    wrap.appendChild(buildPnLContent(years));
+  } else if (gTab === 'dividends') {
+    wrap.appendChild(buildDividendsContent(years));
+  } else {
+    wrap.appendChild(buildProvisionalTax());
+  }
+
+  return wrap;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// P&L REPORT TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+
 function getDataYears() {
   const y = new Set();
-  listActive('invoices').forEach(i => {
-    const yr = (i.issueDate || '').slice(0, 4);
-    if (yr >= '2000') y.add(yr);
-  });
-  listActivePayments().forEach(p => {
-    const yr = (p.date || '').slice(0, 4);
-    if (yr >= '2000') y.add(yr);
-  });
-  listActive('expenses').forEach(e => {
-    const yr = (e.date || '').slice(0, 4);
-    if (yr >= '2000') y.add(yr);
-  });
-  return [...y].sort().reverse(); // newest first
+  listActive('invoices').forEach(i => { const yr = (i.issueDate || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
+  listActivePayments().forEach(p => { const yr = (p.date || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
+  listActive('expenses').forEach(e => { const yr = (e.date || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
+  return [...y].sort().reverse();
 }
 
 function defaultYear() {
@@ -50,7 +107,6 @@ function defaultYear() {
   const currentYear = String(now.getFullYear());
   const years = getDataYears();
   if (!years.length) return currentYear;
-  // Prefer last full year; if we're in current year and there's data, show last year if available
   const prevYear = String(now.getFullYear() - 1);
   if (years.includes(prevYear)) return prevYear;
   return years[0];
@@ -91,72 +147,53 @@ function catColor(catKey) {
   return COST_CATEGORIES[catKey]?.color || '#8b93b0';
 }
 
-// ── Data aggregation ──────────────────────────────────────────────────────────
 function getYearData(year, ownerFilter) {
   const payments = listActivePayments().filter(p =>
     p.status === 'paid' && inYear(p.date, year) && ownerMatches(p, ownerFilter)
   );
-
   const invoices = listActive('invoices').filter(i =>
     i.status === 'paid' && inYear(i.issueDate || i.date, year) && invOwnerMatches(i, ownerFilter)
   );
-
-  const allExp = listActive('expenses').filter(e =>
-    inYear(e.date, year) && ownerMatches(e, ownerFilter)
-  );
+  const allExp      = listActive('expenses').filter(e => inYear(e.date, year) && ownerMatches(e, ownerFilter));
   const opExpenses  = allExp.filter(e => !isCapEx(e));
   const capExpenses = allExp.filter(e =>  isCapEx(e));
 
-  // Revenue breakdown by stream
-  const rentalPaymentsSTR = payments.filter(p => {
-    const prop = byId('properties', p.propertyId);
-    return p.stream === 'short_term_rental' || prop?.type === 'short_term';
-  });
-  const rentalPaymentsLTR = payments.filter(p => {
-    const prop = byId('properties', p.propertyId);
-    return p.stream === 'long_term_rental' || prop?.type === 'long_term';
-  });
-  const invoicesCS  = invoices.filter(i => i.stream === 'customer_success');
-  const invoicesMkt = invoices.filter(i => i.stream === 'marketing_services');
-  // DEV: warn when invoices fall into the catch-all bucket so unrecognised streams are visible during development
+  const rentalPaymentsSTR = payments.filter(p => { const prop = byId('properties', p.propertyId); return p.stream === 'short_term_rental' || prop?.type === 'short_term'; });
+  const rentalPaymentsLTR = payments.filter(p => { const prop = byId('properties', p.propertyId); return p.stream === 'long_term_rental'  || prop?.type === 'long_term';  });
+  const invoicesCS    = invoices.filter(i => i.stream === 'customer_success');
+  const invoicesMkt   = invoices.filter(i => i.stream === 'marketing_services');
   const invoicesOther = invoices.filter(i => !['customer_success','marketing_services'].includes(i.stream));
   if (invoicesOther.length > 0) {
-    console.warn('[analytics-tax] invoicesOther catch-all bucket has', invoicesOther.length, 'record(s). Streams:', [...new Set(invoicesOther.map(i => i.stream || '(none)'))]);
+    console.warn('[analytics-tax] invoicesOther catch-all:', invoicesOther.length, 'record(s). Streams:', [...new Set(invoicesOther.map(i => i.stream || '(none)'))]);
   }
 
   const sum = (arr, getAmt, getDate) => arr.reduce((s, x) => s + toEUR(getAmt(x), x.currency, getDate(x)), 0);
-
-  const revSTR   = sum(rentalPaymentsSTR, p => p.amount,  p => p.date);
-  const revLTR   = sum(rentalPaymentsLTR, p => p.amount,  p => p.date);
-  const revCS    = sum(invoicesCS,        i => i.total,   i => i.issueDate || i.date);
-  const revMkt   = sum(invoicesMkt,       i => i.total,   i => i.issueDate || i.date);
-  const revOther = sum(invoicesOther,     i => i.total,   i => i.issueDate || i.date);
+  const revSTR   = sum(rentalPaymentsSTR, p => p.amount, p => p.date);
+  const revLTR   = sum(rentalPaymentsLTR, p => p.amount, p => p.date);
+  const revCS    = sum(invoicesCS,        i => i.total,  i => i.issueDate || i.date);
+  const revMkt   = sum(invoicesMkt,       i => i.total,  i => i.issueDate || i.date);
+  const revOther = sum(invoicesOther,     i => i.total,  i => i.issueDate || i.date);
   const totalRevenue = revSTR + revLTR + revCS + revMkt + revOther;
 
-  // OpEx by category
   const catMap = new Map();
   for (const e of opExpenses) {
     const key = resolvedCatKey(e);
-    const amt = toEUR(e.amount, e.currency, e.date);
-    catMap.set(key, (catMap.get(key) || 0) + amt);
+    catMap.set(key, (catMap.get(key) || 0) + toEUR(e.amount, e.currency, e.date));
   }
 
-  const totalOpEx  = opExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const totalOpEx  = opExpenses.reduce((s, e)  => s + toEUR(e.amount, e.currency, e.date), 0);
   const totalCapEx = capExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-
   const opProfit   = totalRevenue - totalOpEx;
   const netCash    = opProfit - totalCapEx;
 
-  // Monthly data for charts (12 months)
   const monthly = Array.from({ length: 12 }, (_, mi) => {
-    const mk = `${year}-${String(mi + 1).padStart(2, '0')}`;
+    const mk  = `${year}-${String(mi + 1).padStart(2, '0')}`;
     const rev = payments.filter(p => p.date?.startsWith(mk)).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
               + invoices.filter(i => (i.issueDate || '').startsWith(mk)).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
     const opex = opExpenses.filter(e => e.date?.startsWith(mk)).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
     return { mk, rev, opex };
   });
 
-  // Forecast data
   const forecasts = listActive('forecasts').filter(f => String(f.year) === String(year));
   let forecastRevenue = 0, forecastExpenses = 0;
   for (const f of forecasts) {
@@ -175,120 +212,59 @@ function getYearData(year, ownerFilter) {
   };
 }
 
-// ── Rebuild ───────────────────────────────────────────────────────────────────
-function rebuildView() {
-  CHART_IDS.forEach(id => charts.destroy(id));
-  const c = document.getElementById('content');
-  if (!c) return;
-  c.innerHTML = '';
-  c.appendChild(buildView());
-}
-
-// ── Year selector bar ─────────────────────────────────────────────────────────
 function buildYearSelectorBar(years, selectedYear, selectedOwner, onChange) {
   const bar = el('div', {
     style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm)'
   });
 
-  // Year pills
   const yearGroup = el('div', { style: 'display:flex;align-items:center;gap:6px;flex-wrap:wrap' });
-  yearGroup.appendChild(el('span', {
-    style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-right:4px'
-  }, 'Year'));
-
+  yearGroup.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-right:4px' }, 'Year'));
   for (const yr of years) {
     const isActive = yr === selectedYear;
     const pill = el('button', {
-      style: [
-        'padding:4px 12px;border-radius:14px;border:1px solid',
-        isActive
-          ? 'var(--accent);background:var(--accent);color:#fff;font-weight:600'
-          : 'var(--border);background:transparent;color:var(--text-muted)',
-        ';font-size:12px;cursor:pointer;transition:all 120ms'
-      ].join(' ')
+      style: ['padding:4px 12px;border-radius:14px;border:1px solid', isActive ? 'var(--accent);background:var(--accent);color:#fff;font-weight:600' : 'var(--border);background:transparent;color:var(--text-muted)', ';font-size:12px;cursor:pointer;transition:all 120ms'].join(' ')
     }, yr);
     pill.addEventListener('click', () => onChange(yr, selectedOwner));
     yearGroup.appendChild(pill);
   }
   bar.appendChild(yearGroup);
-
-  // Divider
   bar.appendChild(el('div', { style: 'width:1px;height:24px;background:var(--border)' }));
 
-  // Owner filter
   const ownerGroup = el('div', { style: 'display:flex;align-items:center;gap:6px' });
-  ownerGroup.appendChild(el('span', {
-    style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-right:4px'
-  }, 'Owner'));
-
-  const ownerOpts = [['', 'All'], ['you', 'Giorgos'], ['rita', 'Rita'], ['both', 'Both']];
-  for (const [val, label] of ownerOpts) {
+  ownerGroup.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-right:4px' }, 'Owner'));
+  for (const [val, label] of [['', 'All'], ['you', 'Giorgos'], ['rita', 'Rita'], ['both', 'Both']]) {
     const isActive = val === selectedOwner;
     const pill = el('button', {
-      style: [
-        'padding:4px 12px;border-radius:14px;border:1px solid',
-        isActive
-          ? 'var(--accent);background:var(--accent);color:#fff;font-weight:600'
-          : 'var(--border);background:transparent;color:var(--text-muted)',
-        ';font-size:12px;cursor:pointer;transition:all 120ms'
-      ].join(' ')
+      style: ['padding:4px 12px;border-radius:14px;border:1px solid', isActive ? 'var(--accent);background:var(--accent);color:#fff;font-weight:600' : 'var(--border);background:transparent;color:var(--text-muted)', ';font-size:12px;cursor:pointer;transition:all 120ms'].join(' ')
     }, label);
     pill.addEventListener('click', () => onChange(selectedYear, val));
     ownerGroup.appendChild(pill);
   }
   bar.appendChild(ownerGroup);
-
   return bar;
 }
 
-// ── Annual P&L Table ──────────────────────────────────────────────────────────
 function buildPnLTable(data) {
-  const {
-    revSTR, revLTR, revCS, revMkt, revOther, totalRevenue,
-    catMap, totalOpEx, totalCapEx, opProfit, netCash
-  } = data;
-
-  const wrap = el('div', {
-    class: 'card mb-16',
-    style: 'background:var(--bg-elev-2)'
-  });
-
+  const { revSTR, revLTR, revCS, revMkt, revOther, totalRevenue, catMap, totalOpEx, totalCapEx, opProfit, netCash } = data;
+  const wrap = el('div', { class: 'card mb-16', style: 'background:var(--bg-elev-2)' });
   wrap.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Annual Profit & Loss Statement'),
     el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Cash basis · EUR')
   ));
 
-  const tbl = el('table', {
-    style: 'width:100%;border-collapse:collapse;font-size:13px;padding:16px'
-  });
+  const tbl   = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px;padding:16px' });
   const tbody = el('tbody');
 
   const mkRow = (label, value, opts = {}) => {
-    const {
-      isSectionHeader = false,
-      isSectionTotal  = false,
-      isSubtotal      = false,
-      isSeparator     = false,
-      isPositive      = null,
-      indent          = 0
-    } = opts;
-
+    const { isSectionHeader = false, isSectionTotal = false, isSubtotal = false, isSeparator = false, isPositive = null, indent = 0 } = opts;
     if (isSeparator) {
       const tr = el('tr');
-      const td = el('td', {
-        colspan: '2',
-        style: 'padding:4px 16px;border-bottom:1px solid rgba(255,255,255,0.12)'
-      });
-      tr.appendChild(td);
+      tr.appendChild(el('td', { colspan: '2', style: 'padding:4px 16px;border-bottom:1px solid rgba(255,255,255,0.12)' }));
       return tr;
     }
-
     const tr = el('tr');
-
-    // Determine styles
     let labelStyle = `padding:5px ${16 + indent * 16}px 5px 16px;`;
     let valueStyle = 'padding:5px 16px;text-align:right;';
-
     if (isSectionHeader) {
       labelStyle += 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);padding-top:14px;';
       valueStyle  = 'display:none';
@@ -302,158 +278,92 @@ function buildPnLTable(data) {
       labelStyle += 'color:var(--text-muted);';
       valueStyle += 'color:var(--text-muted);';
     }
-
-    const labelTd = el('td', { style: labelStyle }, label);
-    const valueTd = el('td', { style: valueStyle }, isSectionHeader ? '' : formatEUR(value));
-
-    tr.appendChild(labelTd);
-    if (!isSectionHeader) tr.appendChild(valueTd);
+    tr.appendChild(el('td', { style: labelStyle }, label));
+    if (!isSectionHeader) tr.appendChild(el('td', { style: valueStyle }, formatEUR(value)));
     return tr;
   };
 
-  // INCOME
   tbody.appendChild(mkRow('INCOME', 0, { isSectionHeader: true }));
-  if (revSTR   > 0) tbody.appendChild(mkRow('Rental Revenue (STR)',         revSTR,   { indent: 1 }));
-  if (revLTR   > 0) tbody.appendChild(mkRow('Rental Revenue (LTR)',         revLTR,   { indent: 1 }));
-  if (revCS    > 0) tbody.appendChild(mkRow('Service Revenue (CS)',          revCS,    { indent: 1 }));
-  if (revMkt   > 0) tbody.appendChild(mkRow('Service Revenue (Marketing)',   revMkt,   { indent: 1 }));
-  if (revOther > 0) tbody.appendChild(mkRow('Other Services',                revOther, { indent: 1 }));
+  if (revSTR   > 0) tbody.appendChild(mkRow('Rental Revenue (STR)',       revSTR,   { indent: 1 }));
+  if (revLTR   > 0) tbody.appendChild(mkRow('Rental Revenue (LTR)',       revLTR,   { indent: 1 }));
+  if (revCS    > 0) tbody.appendChild(mkRow('Service Revenue (CS)',        revCS,    { indent: 1 }));
+  if (revMkt   > 0) tbody.appendChild(mkRow('Service Revenue (Marketing)', revMkt,   { indent: 1 }));
+  if (revOther > 0) tbody.appendChild(mkRow('Other Services',              revOther, { indent: 1 }));
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
-  tbody.appendChild(mkRow('Total Revenue', totalRevenue, {
-    isSectionTotal: true, isPositive: totalRevenue >= 0
-  }));
+  tbody.appendChild(mkRow('Total Revenue', totalRevenue, { isSectionTotal: true, isPositive: totalRevenue >= 0 }));
 
-  // OPERATING EXPENSES
   tbody.appendChild(mkRow('OPERATING EXPENSES', 0, { isSectionHeader: true }));
-  const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
-  for (const [catKey, amt] of catEntries) {
-    const label = COST_CATEGORIES[catKey]?.label || catKey;
-    tbody.appendChild(mkRow(label, amt, { indent: 1 }));
+  for (const [catKey, amt] of [...catMap.entries()].sort((a, b) => b[1] - a[1])) {
+    tbody.appendChild(mkRow(COST_CATEGORIES[catKey]?.label || catKey, amt, { indent: 1 }));
   }
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
-  tbody.appendChild(mkRow('Total Operating Expenses', totalOpEx, {
-    isSectionTotal: true, isPositive: false
-  }));
+  tbody.appendChild(mkRow('Total Operating Expenses', totalOpEx, { isSectionTotal: true, isPositive: false }));
+  tbody.appendChild(mkRow('', 0, {}));
+  tbody.appendChild(mkRow('Operating Profit', opProfit, { isSubtotal: true, isPositive: opProfit >= 0 }));
 
-  // Operating profit
-  tbody.appendChild(mkRow('', 0, {})); // spacer
-  tbody.appendChild(mkRow('Operating Profit', opProfit, {
-    isSubtotal: true, isPositive: opProfit >= 0
-  }));
-
-  // CAPITAL EXPENDITURES
   tbody.appendChild(mkRow('CAPITAL EXPENDITURES (not P&L)', 0, { isSectionHeader: true }));
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
-  tbody.appendChild(mkRow('Total CapEx', totalCapEx, {
-    isSectionTotal: true, isPositive: null
-  }));
-
-  // Net Cash Used
+  tbody.appendChild(mkRow('Total CapEx', totalCapEx, { isSectionTotal: true, isPositive: null }));
   tbody.appendChild(mkRow('', 0, {}));
-  tbody.appendChild(mkRow('Net Cash Used', netCash, {
-    isSubtotal: true, isPositive: netCash >= 0
-  }));
+  tbody.appendChild(mkRow('Net Cash Used', netCash, { isSubtotal: true, isPositive: netCash >= 0 }));
 
   tbl.appendChild(tbody);
-  const tblWrap = el('div', { style: 'padding:0 0 16px' });
-  tblWrap.appendChild(tbl);
-  wrap.appendChild(tblWrap);
-
+  wrap.appendChild(el('div', { style: 'padding:0 0 16px' }, tbl));
   return wrap;
 }
 
-// ── KPI Cards ─────────────────────────────────────────────────────────────────
 function buildKpiCards(data, year) {
-  const {
-    totalRevenue, totalOpEx, totalCapEx, opProfit, netCash,
-    hasForecast, forecastNet
-  } = data;
-
+  const { totalRevenue, totalOpEx, totalCapEx, opProfit, netCash, hasForecast, forecastNet } = data;
   const operatingMargin = totalRevenue > 0 ? ((totalRevenue - totalOpEx) / totalRevenue * 100) : 0;
-
-  const grid = el('div', {
-    style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px'
-  });
+  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px' });
 
   if (totalRevenue === 0 && totalOpEx === 0 && totalCapEx === 0) {
     return mkEmptyState('No activity recorded for ' + year + '. Select a different year or add data.');
   }
 
-  // 1. Operating Margin
   grid.appendChild(mkKpiCard({
-    label: 'Operating Margin',
-    value: `${operatingMargin.toFixed(1)}%`,
-    subtitle: 'Revenue minus OpEx',
+    label: 'Operating Margin', value: `${operatingMargin.toFixed(1)}%`, subtitle: 'Revenue minus OpEx',
     variant: operatingMargin >= 50 ? 'success' : operatingMargin >= 20 ? 'warning' : 'danger',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       body.appendChild(mkSummaryGrid([
-        { label: 'Total Revenue',     value: formatEUR(totalRevenue) },
-        { label: 'Total OpEx',        value: formatEUR(totalOpEx) },
-        { label: 'Operating Profit',  value: formatEUR(opProfit) },
-        { label: 'Operating Margin',      value: `${operatingMargin.toFixed(2)}%` }
+        { label: 'Total Revenue',    value: formatEUR(totalRevenue) },
+        { label: 'Total OpEx',       value: formatEUR(totalOpEx) },
+        { label: 'Operating Profit', value: formatEUR(opProfit) },
+        { label: 'Operating Margin', value: `${operatingMargin.toFixed(2)}%` }
       ], 2));
-      body.appendChild(el('div', {
-        style: 'font-size:12px;color:var(--text-muted);line-height:1.5'
-      }, 'Operating Margin = (Revenue − OpEx) ÷ Revenue × 100. Excludes CapEx as it is a balance-sheet item.'));
+      body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);line-height:1.5' }, 'Operating Margin = (Revenue − OpEx) ÷ Revenue × 100. Excludes CapEx as it is a balance-sheet item.'));
       openModal({ title: 'Operating Margin — Breakdown', body });
     }
   }));
 
-  // 2. Total Tax-Deductible
   grid.appendChild(mkKpiCard({
-    label: 'Total Tax-Deductible',
-    value: formatEUR(totalOpEx),
-    subtitle: 'Estimated deductible OpEx',
-    variant: '',
+    label: 'Total Tax-Deductible', value: formatEUR(totalOpEx), subtitle: 'Estimated deductible OpEx',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       const catEntries = [...data.catMap.entries()].sort((a, b) => b[1] - a[1]);
       body.appendChild(mkSectionLabel('OpEx by Category'));
-      body.appendChild(mkModalTable(
-        ['Category', 'Amount', '% of OpEx'],
-        catEntries.map(([k, v]) => [
-          COST_CATEGORIES[k]?.label || k,
-          formatEUR(v),
-          totalOpEx > 0 ? (v / totalOpEx * 100).toFixed(1) + '%' : '—'
-        ])
-      ));
-      body.appendChild(el('div', {
-        style: 'font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:8px'
-      }, 'Operating expenses are generally deductible for tax purposes. CapEx is typically depreciated over the asset\'s useful life. Consult your accountant for specific deductibility.'));
+      body.appendChild(mkModalTable(['Category', 'Amount', '% of OpEx'], catEntries.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), totalOpEx > 0 ? (v / totalOpEx * 100).toFixed(1) + '%' : '—'])));
+      body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:8px' }, 'Operating expenses are generally deductible for tax purposes. CapEx is typically depreciated over the asset\'s useful life.'));
       openModal({ title: 'Tax-Deductible OpEx — Breakdown', body, large: true });
     }
   }));
 
-  // 3. Capital Deployed
   grid.appendChild(mkKpiCard({
-    label: 'Capital Deployed',
-    value: formatEUR(totalCapEx),
-    subtitle: 'Non-deductible (depreciated)',
+    label: 'Capital Deployed', value: formatEUR(totalCapEx), subtitle: 'Non-deductible (depreciated)',
     variant: totalCapEx > 0 ? 'warning' : '',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       const capByCategory = new Map();
-      for (const e of data.capExpenses) {
-        const key = resolvedCatKey(e);
-        const amt = toEUR(e.amount, e.currency, e.date);
-        capByCategory.set(key, (capByCategory.get(key) || 0) + amt);
-      }
+      for (const e of data.capExpenses) capByCategory.set(resolvedCatKey(e), (capByCategory.get(resolvedCatKey(e)) || 0) + toEUR(e.amount, e.currency, e.date));
       const catEntries = [...capByCategory.entries()].sort((a, b) => b[1] - a[1]);
       body.appendChild(mkSummaryGrid([
-        { label: 'Total CapEx', value: formatEUR(totalCapEx), sub: `${data.capExpenses.length} items` },
-        { label: 'As % of Revenue', value: totalRevenue > 0 ? (totalCapEx / totalRevenue * 100).toFixed(1) + '%' : '—', sub: 'Capital intensity' }
+        { label: 'Total CapEx',       value: formatEUR(totalCapEx), sub: `${data.capExpenses.length} items` },
+        { label: 'As % of Revenue',   value: totalRevenue > 0 ? (totalCapEx / totalRevenue * 100).toFixed(1) + '%' : '—', sub: 'Capital intensity' }
       ], 2));
       if (catEntries.length > 0) {
         body.appendChild(mkSectionLabel('CapEx by Category'));
-        body.appendChild(mkModalTable(
-          ['Category', 'Amount', '% of CapEx'],
-          catEntries.map(([k, v]) => [
-            COST_CATEGORIES[k]?.label || k,
-            formatEUR(v),
-            totalCapEx > 0 ? (v / totalCapEx * 100).toFixed(1) + '%' : '—'
-          ])
-        ));
+        body.appendChild(mkModalTable(['Category', 'Amount', '% of CapEx'], catEntries.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), totalCapEx > 0 ? (v / totalCapEx * 100).toFixed(1) + '%' : '—'])));
       } else {
         body.appendChild(mkEmptyState('No CapEx recorded for this year.'));
       }
@@ -461,38 +371,30 @@ function buildKpiCards(data, year) {
     }
   }));
 
-  // 4. Year vs Forecast
   if (hasForecast) {
-    const actualNet  = opProfit;
-    const variance   = actualNet - forecastNet;
-    const variantStr = variance >= 0 ? 'success' : 'danger';
+    const actualNet = opProfit;
+    const variance  = actualNet - forecastNet;
     const forecastCard = mkKpiCard({
-      label: 'Year vs Forecast',
-      value: formatEUR(actualNet),
-      variant: variantStr,
+      label: 'Year vs Forecast', value: formatEUR(actualNet), variant: variance >= 0 ? 'success' : 'danger',
       onClick: () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
         body.appendChild(mkSummaryGrid([
-          { label: 'Actual Revenue',       value: formatEUR(totalRevenue) },
-          { label: 'Forecast Revenue',     value: formatEUR(data.forecastRevenue) },
-          { label: 'Actual OpEx',          value: formatEUR(totalOpEx) },
-          { label: 'Forecast Expenses',    value: formatEUR(data.forecastExpenses) },
-          { label: 'Actual Net (OpEx)',     value: formatEUR(actualNet) },
-          { label: 'Forecast Net',         value: formatEUR(forecastNet) }
+          { label: 'Actual Revenue',    value: formatEUR(totalRevenue) },
+          { label: 'Forecast Revenue',  value: formatEUR(data.forecastRevenue) },
+          { label: 'Actual OpEx',       value: formatEUR(totalOpEx) },
+          { label: 'Forecast Expenses', value: formatEUR(data.forecastExpenses) },
+          { label: 'Actual Net (OpEx)', value: formatEUR(actualNet) },
+          { label: 'Forecast Net',      value: formatEUR(forecastNet) }
         ], 2));
         body.appendChild(mkSectionLabel('Variance'));
-        body.appendChild(mkModalTable(
-          ['Metric', 'Actual', 'Forecast', 'Variance'],
-          [
-            ['Revenue',     formatEUR(totalRevenue),         formatEUR(data.forecastRevenue),  formatEUR(totalRevenue - data.forecastRevenue)],
-            ['Expenses',    formatEUR(totalOpEx),            formatEUR(data.forecastExpenses), formatEUR(totalOpEx - data.forecastExpenses)],
-            ['Net (OpEx)',  formatEUR(actualNet),            formatEUR(forecastNet),           formatEUR(variance)]
-          ]
-        ));
+        body.appendChild(mkModalTable(['Metric', 'Actual', 'Forecast', 'Variance'], [
+          ['Revenue',    formatEUR(totalRevenue), formatEUR(data.forecastRevenue),  formatEUR(totalRevenue - data.forecastRevenue)],
+          ['Expenses',   formatEUR(totalOpEx),    formatEUR(data.forecastExpenses), formatEUR(totalOpEx - data.forecastExpenses)],
+          ['Net (OpEx)', formatEUR(actualNet),    formatEUR(forecastNet),           formatEUR(variance)]
+        ]));
         openModal({ title: `${year} Actual vs Forecast`, body, large: true });
       }
     });
-    // Safely insert variance badge + label as DOM nodes before the accent bar (avoids outerHTML injection)
     const subtitleEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px;display:flex;align-items:center;gap:4px' });
     subtitleEl.appendChild(mkVarianceBadge(variance, formatEUR(Math.abs(variance))));
     subtitleEl.appendChild(document.createTextNode(' vs forecast net'));
@@ -500,27 +402,16 @@ function buildKpiCards(data, year) {
     forecastCard.insertBefore(subtitleEl, accentBar);
     grid.appendChild(forecastCard);
   } else {
-    grid.appendChild(mkKpiCard({
-      label: 'Year vs Forecast',
-      value: '—',
-      subtitle: 'No forecast set for this year'
-    }));
+    grid.appendChild(mkKpiCard({ label: 'Year vs Forecast', value: '—', subtitle: 'No forecast set for this year' }));
   }
 
   return grid;
 }
 
-// ── Expense Categories Table ──────────────────────────────────────────────────
 function buildExpenseCategoryTable(data) {
   const { catMap, totalOpEx, capExpenses } = data;
-
-  // Build capex by category too
   const capCatMap = new Map();
-  for (const e of capExpenses) {
-    const key = resolvedCatKey(e);
-    const amt = toEUR(e.amount, e.currency, e.date);
-    capCatMap.set(key, (capCatMap.get(key) || 0) + amt);
-  }
+  for (const e of capExpenses) capCatMap.set(resolvedCatKey(e), (capCatMap.get(resolvedCatKey(e)) || 0) + toEUR(e.amount, e.currency, e.date));
 
   const wrap = el('div', { class: 'card mb-16' });
   wrap.appendChild(el('div', { class: 'card-header' },
@@ -528,216 +419,122 @@ function buildExpenseCategoryTable(data) {
     el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a row to see individual records')
   ));
 
-  // Build combined list: OpEx categories + CapEx categories
   const rows = [];
   for (const [catKey, amt] of [...catMap.entries()].sort((a, b) => b[1] - a[1])) {
-    const expList = data.opExpenses.filter(e => resolvedCatKey(e) === catKey);
-    rows.push({ catKey, amt, count: expList.length, isCapex: false, expList });
+    rows.push({ catKey, amt, count: data.opExpenses.filter(e => resolvedCatKey(e) === catKey).length, isCapex: false, expList: data.opExpenses.filter(e => resolvedCatKey(e) === catKey) });
   }
   for (const [catKey, amt] of [...capCatMap.entries()].sort((a, b) => b[1] - a[1])) {
-    const expList = capExpenses.filter(e => resolvedCatKey(e) === catKey);
-    rows.push({ catKey, amt, count: expList.length, isCapex: true, expList });
+    rows.push({ catKey, amt, count: capExpenses.filter(e => resolvedCatKey(e) === catKey).length, isCapex: true, expList: capExpenses.filter(e => resolvedCatKey(e) === catKey) });
   }
 
-  if (!rows.length) {
-    wrap.appendChild(mkEmptyState('No expense data for this year.'));
-    return wrap;
-  }
+  if (!rows.length) { wrap.appendChild(mkEmptyState('No expense data for this year.')); return wrap; }
 
-  const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
-
-  // Header
+  const tbl  = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
   const hrow = el('tr');
   ['Category', 'Count', 'Total (€)', '% of OpEx', 'Type'].forEach((h, hi) => {
-    hrow.appendChild(el('th', {
-      style: `padding:8px 12px;text-align:${hi === 0 ? 'left' : 'right'};font-size:11px;font-weight:600;` +
-             `text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);` +
-             `border-bottom:1px solid rgba(255,255,255,0.08)`
-    }, h));
+    hrow.appendChild(el('th', { style: `padding:8px 12px;text-align:${hi === 0 ? 'left' : 'right'};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08)` }, h));
   });
   tbl.appendChild(el('thead', {}, hrow));
 
   const tbody = el('tbody');
   rows.forEach((row, ri) => {
-    const tr = el('tr', {
-      style: [
-        ri % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : '',
-        'cursor:pointer;transition:background 80ms'
-      ].join(';')
-    });
+    const tr = el('tr', { style: [ri % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : '', 'cursor:pointer;transition:background 80ms'].join(';') });
     tr.addEventListener('mouseenter', () => { tr.style.background = 'rgba(255,255,255,0.05)'; });
     tr.addEventListener('mouseleave', () => { tr.style.background = ri % 2 === 1 ? 'rgba(255,255,255,0.02)' : ''; });
-
-    const dotColor = catColor(row.catKey);
     const labelCell = el('td', { style: 'padding:8px 12px;display:flex;align-items:center;gap:8px' });
-    const dot = el('span', { style: `width:8px;height:8px;border-radius:50%;background:${dotColor};flex-shrink:0;display:inline-block` });
-    labelCell.appendChild(dot);
+    labelCell.appendChild(el('span', { style: `width:8px;height:8px;border-radius:50%;background:${catColor(row.catKey)};flex-shrink:0;display:inline-block` }));
     labelCell.appendChild(document.createTextNode(COST_CATEGORIES[row.catKey]?.label || row.catKey));
     tr.appendChild(labelCell);
-
     const pctOfOpEx = (!row.isCapex && totalOpEx > 0) ? (row.amt / totalOpEx * 100).toFixed(1) + '%' : '—';
-    [
-      [String(row.count),       'right'],
-      [formatEUR(row.amt),      'right'],
-      [pctOfOpEx,               'right'],
-      [row.isCapex ? 'CapEx' : 'OpEx', 'right']
-    ].forEach(([text, align]) => {
+    [[String(row.count), 'right'], [formatEUR(row.amt), 'right'], [pctOfOpEx, 'right'], [row.isCapex ? 'CapEx' : 'OpEx', 'right']].forEach(([text, align]) => {
       tr.appendChild(el('td', { style: `padding:8px 12px;text-align:${align};color:var(--text-muted)` }, text));
     });
-
     tr.onclick = () => openCategoryModal(row.catKey, row.expList, row.isCapex, row.amt);
     tbody.appendChild(tr);
   });
   tbl.appendChild(tbody);
-
-  const tblWrap = el('div', { style: 'padding:0 0 8px' });
-  tblWrap.appendChild(tbl);
-  wrap.appendChild(tblWrap);
-
+  wrap.appendChild(el('div', { style: 'padding:0 0 8px' }, tbl));
   return wrap;
 }
 
 function openCategoryModal(catKey, expList, isCapex, total) {
   const label = COST_CATEGORIES[catKey]?.label || catKey;
   const body  = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-
   body.appendChild(mkSummaryGrid([
-    { label: 'Category',   value: label,                        sub: isCapex ? 'CapEx' : 'OpEx' },
-    { label: 'Total',      value: formatEUR(total),             sub: `${expList.length} records` },
-    { label: 'Avg Amount', value: expList.length > 0 ? formatEUR(total / expList.length) : '—', sub: 'per expense' }
+    { label: 'Category',   value: label,                                                                                 sub: isCapex ? 'CapEx' : 'OpEx' },
+    { label: 'Total',      value: formatEUR(total),                                                                      sub: `${expList.length} records` },
+    { label: 'Avg Amount', value: expList.length > 0 ? formatEUR(total / expList.length) : '—',                         sub: 'per expense' }
   ], 3));
-
   body.appendChild(mkSectionLabel('Individual Records'));
-
   const sorted = [...expList].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   body.appendChild(mkModalTable(
     ['Date', 'Description', 'Property / Vendor', 'Amount (EUR)'],
     sorted.map(e => {
       const prop   = e.propertyId ? byId('properties', e.propertyId)?.name : null;
       const vendor = e.vendorId   ? byId('vendors', e.vendorId)?.name      : null;
-      return [
-        e.date || '—',
-        e.description || e.notes || '—',
-        prop || vendor || '—',
-        formatEUR(toEUR(e.amount, e.currency, e.date))
-      ];
+      return [e.date || '—', e.description || e.notes || '—', prop || vendor || '—', formatEUR(toEUR(e.amount, e.currency, e.date))];
     })
   ));
-
   openModal({ title: `${label} — Expense Detail`, body, large: true });
 }
 
-// ── Charts section ────────────────────────────────────────────────────────────
 function buildCharts(data, year) {
   const wrap = el('div');
-
-  // Chart row 1: Monthly bar + donut
   const row1 = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px' });
-
   row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Monthly Revenue vs Operating Expenses'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Operating P&L view — CapEx excluded')
-    ),
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Monthly Revenue vs Operating Expenses'), el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Operating P&L view — CapEx excluded')),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'tax-rev-exp-bar' }))
   ));
-
   row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'OpEx by Category'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click slice for detail')
-    ),
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'OpEx by Category'), el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click slice for detail')),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'tax-exp-cat-donut' }))
   ));
   wrap.appendChild(row1);
-
-  // Chart row 2: Year-over-year
   wrap.appendChild(el('div', { class: 'card mb-16' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Year-over-Year Revenue Comparison'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a bar to see that year\'s P&L summary')
-    ),
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Year-over-Year Revenue Comparison'), el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a bar to see that year\'s P&L summary')),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'tax-yoy-bar' }))
   ));
-
   return wrap;
 }
 
 function renderCharts(data, year, ownerFilter) {
-  // ── Chart 1: Monthly Revenue vs OpEx bar ─────────────────────────────────
   charts.bar('tax-rev-exp-bar', {
-    labels:   MONTH_LABELS,
+    labels: MONTH_LABELS,
     datasets: [
-      {
-        label: 'Revenue',
-        data:  data.monthly.map(m => Math.round(m.rev)),
-        backgroundColor: 'rgba(16,185,129,0.75)',
-        borderColor:     '#10b981',
-        borderWidth:     1
-      },
-      {
-        label: 'Operating Expenses',
-        data:  data.monthly.map(m => Math.round(m.opex)),
-        backgroundColor: 'rgba(239,68,68,0.65)',
-        borderColor:     '#ef4444',
-        borderWidth:     1
-      }
+      { label: 'Revenue',             data: data.monthly.map(m => Math.round(m.rev)),  backgroundColor: 'rgba(16,185,129,0.75)', borderColor: '#10b981', borderWidth: 1 },
+      { label: 'Operating Expenses',  data: data.monthly.map(m => Math.round(m.opex)), backgroundColor: 'rgba(239,68,68,0.65)',  borderColor: '#ef4444', borderWidth: 1 }
     ],
     onClickItem: (label, index) => {
       const m = data.monthly[index];
       if (!m) return;
-      const mk = m.mk; // e.g. '2024-03'
-      const monthLabel = MONTH_LABELS[index];
-
-      // Revenue sources for this month
+      const mk           = m.mk;
+      const monthLabel   = MONTH_LABELS[index];
       const monthPayments = data.payments.filter(p => p.date?.startsWith(mk));
       const monthInvoices = data.invoices.filter(i => (i.issueDate || '').startsWith(mk));
       const monthExpenses = data.opExpenses.filter(e => e.date?.startsWith(mk));
-
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-
-      body.appendChild(mkSummaryGrid([
-        { label: 'Revenue',           value: formatEUR(m.rev)  },
-        { label: 'Operating Expenses', value: formatEUR(m.opex) },
-        { label: 'Net',               value: formatEUR(m.rev - m.opex) }
-      ], 3));
-
+      body.appendChild(mkSummaryGrid([{ label: 'Revenue', value: formatEUR(m.rev) }, { label: 'Operating Expenses', value: formatEUR(m.opex) }, { label: 'Net', value: formatEUR(m.rev - m.opex) }], 3));
       if (monthPayments.length > 0 || monthInvoices.length > 0) {
         body.appendChild(mkSectionLabel('Revenue Breakdown'));
         const revRows = [
-          ...monthPayments.map(p => {
-            const prop = p.propertyId ? byId('properties', p.propertyId)?.name : null;
-            return [p.date || '—', prop || '—', 'Payment', formatEUR(toEUR(p.amount, p.currency, p.date))];
-          }),
-          ...monthInvoices.map(i => {
-            const client = i.clientId ? byId('clients', i.clientId)?.name : null;
-            return [i.issueDate || '—', client || '—', 'Invoice', formatEUR(toEUR(i.total, i.currency, i.issueDate))];
-          })
+          ...monthPayments.map(p => { const prop = p.propertyId ? byId('properties', p.propertyId)?.name : null; return [p.date || '—', prop || '—', 'Payment', formatEUR(toEUR(p.amount, p.currency, p.date))]; }),
+          ...monthInvoices.map(i => { const client = i.clientId ? byId('clients', i.clientId)?.name : null;      return [i.issueDate || '—', client || '—', 'Invoice', formatEUR(toEUR(i.total, i.currency, i.issueDate))]; })
         ].sort((a, b) => a[0].localeCompare(b[0]));
         body.appendChild(mkModalTable(['Date', 'Entity', 'Type', 'Amount (EUR)'], revRows));
       }
-
       if (monthExpenses.length > 0) {
         body.appendChild(mkSectionLabel('Expense Breakdown'));
-        const expRows = monthExpenses
-          .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
-          .map(e => {
-            const prop   = e.propertyId ? byId('properties', e.propertyId)?.name : null;
-            const vendor = e.vendorId   ? byId('vendors', e.vendorId)?.name      : null;
-            return [e.date || '—', e.description || e.notes || '—', prop || vendor || '—', formatEUR(toEUR(e.amount, e.currency, e.date))];
-          });
-        body.appendChild(mkModalTable(['Date', 'Description', 'Entity', 'Amount (EUR)'], expRows));
+        body.appendChild(mkModalTable(['Date', 'Description', 'Entity', 'Amount (EUR)'], monthExpenses.sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(e => {
+          const prop   = e.propertyId ? byId('properties', e.propertyId)?.name : null;
+          const vendor = e.vendorId   ? byId('vendors', e.vendorId)?.name      : null;
+          return [e.date || '—', e.description || e.notes || '—', prop || vendor || '—', formatEUR(toEUR(e.amount, e.currency, e.date))];
+        })));
       }
-
-      if (!monthPayments.length && !monthInvoices.length && !monthExpenses.length) {
-        body.appendChild(mkEmptyState('No data for this month.'));
-      }
-
+      if (!monthPayments.length && !monthInvoices.length && !monthExpenses.length) body.appendChild(mkEmptyState('No data for this month.'));
       openModal({ title: `${monthLabel} ${year} — Revenue & Expense Detail`, body, large: true });
     }
   });
 
-  // ── Chart 2: OpEx category donut ──────────────────────────────────────────
   const catEntries = [...data.catMap.entries()].sort((a, b) => b[1] - a[1]);
   if (catEntries.length > 0) {
     charts.doughnut('tax-exp-cat-donut', {
@@ -746,71 +543,41 @@ function renderCharts(data, year, ownerFilter) {
       colors: catEntries.map(([k]) => catColor(k)),
       onClickItem: (label, index) => {
         const [catKey] = catEntries[index];
-        const expList = data.opExpenses.filter(e => resolvedCatKey(e) === catKey);
-        openCategoryModal(catKey, expList, false, catEntries[index][1]);
+        openCategoryModal(catKey, data.opExpenses.filter(e => resolvedCatKey(e) === catKey), false, catEntries[index][1]);
       }
     });
   }
 
-  // ── Chart 3: Year-over-Year bar ───────────────────────────────────────────
-  const allYears = getDataYears().reverse(); // oldest first for the chart
-  const yoyRevenue = [];
-  const yoyOpEx    = [];
-
-  for (const yr of allYears) {
-    const d = getYearData(yr, ownerFilter);
-    yoyRevenue.push(Math.round(d.totalRevenue));
-    yoyOpEx.push(Math.round(d.totalOpEx));
-  }
-
+  const allYears   = getDataYears().reverse();
+  const yoyRevenue = [], yoyOpEx = [];
+  for (const yr of allYears) { const d = getYearData(yr, ownerFilter); yoyRevenue.push(Math.round(d.totalRevenue)); yoyOpEx.push(Math.round(d.totalOpEx)); }
   charts.bar('tax-yoy-bar', {
     labels: allYears,
     datasets: [
-      {
-        label: 'Revenue',
-        data:  yoyRevenue,
-        backgroundColor: 'rgba(16,185,129,0.75)',
-        borderColor:     '#10b981',
-        borderWidth:     1
-      },
-      {
-        label: 'Operating Expenses',
-        data:  yoyOpEx,
-        backgroundColor: 'rgba(239,68,68,0.65)',
-        borderColor:     '#ef4444',
-        borderWidth:     1
-      }
+      { label: 'Revenue',            data: yoyRevenue, backgroundColor: 'rgba(16,185,129,0.75)', borderColor: '#10b981', borderWidth: 1 },
+      { label: 'Operating Expenses', data: yoyOpEx,    backgroundColor: 'rgba(239,68,68,0.65)',  borderColor: '#ef4444', borderWidth: 1 }
     ],
-    onClickItem: (label) => {
-      const clickedYear = label;
+    onClickItem: (clickedYear) => {
       const d = getYearData(clickedYear, ownerFilter);
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       body.appendChild(mkSummaryGrid([
-        { label: 'Total Revenue',        value: formatEUR(d.totalRevenue)  },
-        { label: 'Total OpEx',           value: formatEUR(d.totalOpEx)     },
-        { label: 'Operating Profit',     value: formatEUR(d.opProfit)      },
-        { label: 'CapEx',                value: formatEUR(d.totalCapEx)    },
-        { label: 'Net Cash Used',        value: formatEUR(d.netCash)       },
-        { label: 'Operating Margin',         value: d.totalRevenue > 0 ? (d.opProfit / d.totalRevenue * 100).toFixed(1) + '%' : '—' }
+        { label: 'Total Revenue',    value: formatEUR(d.totalRevenue) },
+        { label: 'Total OpEx',       value: formatEUR(d.totalOpEx) },
+        { label: 'Operating Profit', value: formatEUR(d.opProfit) },
+        { label: 'CapEx',            value: formatEUR(d.totalCapEx) },
+        { label: 'Net Cash Used',    value: formatEUR(d.netCash) },
+        { label: 'Operating Margin', value: d.totalRevenue > 0 ? (d.opProfit / d.totalRevenue * 100).toFixed(1) + '%' : '—' }
       ], 3));
       const catEnt = [...d.catMap.entries()].sort((a, b) => b[1] - a[1]);
       if (catEnt.length > 0) {
         body.appendChild(mkSectionLabel('OpEx by Category'));
-        body.appendChild(mkModalTable(
-          ['Category', 'Amount', '% of OpEx'],
-          catEnt.map(([k, v]) => [
-            COST_CATEGORIES[k]?.label || k,
-            formatEUR(v),
-            d.totalOpEx > 0 ? (v / d.totalOpEx * 100).toFixed(1) + '%' : '—'
-          ])
-        ));
+        body.appendChild(mkModalTable(['Category', 'Amount', '% of OpEx'], catEnt.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), d.totalOpEx > 0 ? (v / d.totalOpEx * 100).toFixed(1) + '%' : '—'])));
       }
       openModal({ title: `${clickedYear} Annual P&L Summary`, body, large: true });
     }
   });
 }
 
-// ── Tax CSV Download ──────────────────────────────────────────────────────────
 function downloadTaxCsv(year, catData, totalOpEx, totalCapEx, totalRevenue) {
   const rows = [['Category', 'Type', 'Count', 'Amount EUR', '% of OpEx']];
   catData.opex.forEach(c => rows.push([c.label, 'OpEx', c.count, c.total.toFixed(2), (c.total / totalOpEx * 100).toFixed(1) + '%']));
@@ -818,151 +585,72 @@ function downloadTaxCsv(year, catData, totalOpEx, totalCapEx, totalRevenue) {
   rows.push(['TOTAL OpEx', '', '', totalOpEx.toFixed(2), '100%']);
   rows.push(['TOTAL CapEx', '', '', totalCapEx.toFixed(2), '—']);
   rows.push(['TOTAL Revenue', '', '', totalRevenue.toFixed(2), '—']);
-
-  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+  const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `tax-summary-${year}.csv`;
-  a.click();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = `tax-summary-${year}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
 
-// ── Tax Export Section ────────────────────────────────────────────────────────
 function buildTaxExportSection(data, year) {
-  const wrap = el('div', { class: 'card mb-16' });
+  const wrap  = el('div', { class: 'card mb-16' });
   wrap.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Tax Export'),
     el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Export a formatted summary for your accountant')
   ));
-
   const inner = el('div', { style: 'padding:16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap' });
+  const toastEl = el('div', { style: 'display:none;padding:8px 16px;border-radius:6px;background:var(--success,#10b981);color:#fff;font-size:13px;font-weight:600' }, 'Copied to clipboard!');
 
-  const toast = el('div', {
-    style: [
-      'display:none;padding:8px 16px;border-radius:6px;background:var(--success,#10b981);color:#fff;',
-      'font-size:13px;font-weight:600;transition:opacity 200ms'
-    ].join('')
-  }, 'Copied to clipboard!');
-
-  const btn = el('button', {
-    class: 'btn btn-primary',
-    style: 'display:flex;align-items:center;gap:8px;font-size:13px'
-  });
+  const btn = el('button', { class: 'btn btn-primary', style: 'display:flex;align-items:center;gap:8px;font-size:13px' });
   btn.appendChild(el('span', {}, '📋'));
   btn.appendChild(document.createTextNode('Copy for Accountant'));
-
   btn.addEventListener('click', () => {
     const catEntries = [...data.catMap.entries()].sort((a, b) => b[1] - a[1]);
-    const catLines = catEntries
-      .map(([k, v]) => `  ${COST_CATEGORIES[k]?.label || k}: ${formatEUR(v)}`)
-      .join('\n');
-
-    const text = [
-      `Annual P&L Summary — ${year}`,
-      `Revenue: ${formatEUR(data.totalRevenue)}`,
-      `Operating Expenses: ${formatEUR(data.totalOpEx)}`,
-      `Operating Profit: ${formatEUR(data.opProfit)}`,
-      `Capital Expenditures: ${formatEUR(data.totalCapEx)}`,
-      `Net Cash: ${formatEUR(data.netCash)}`,
-      '',
-      'Expense Breakdown:',
-      catLines,
-      '',
-      `Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`
-    ].join('\n');
-
+    const catLines   = catEntries.map(([k, v]) => `  ${COST_CATEGORIES[k]?.label || k}: ${formatEUR(v)}`).join('\n');
+    const text = [`Annual P&L Summary — ${year}`, `Revenue: ${formatEUR(data.totalRevenue)}`, `Operating Expenses: ${formatEUR(data.totalOpEx)}`, `Operating Profit: ${formatEUR(data.opProfit)}`, `Capital Expenditures: ${formatEUR(data.totalCapEx)}`, `Net Cash: ${formatEUR(data.netCash)}`, '', 'Expense Breakdown:', catLines, '', `Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`].join('\n');
     navigator.clipboard.writeText(text).then(() => {
-      toast.style.display = 'inline-block';
-      setTimeout(() => { toast.style.display = 'none'; }, 2500);
+      toastEl.style.display = 'inline-block';
+      setTimeout(() => { toastEl.style.display = 'none'; }, 2500);
     }).catch(() => {
-      // Fallback: show a textarea with the text
-      const fallbackModal = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
-      fallbackModal.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' }, 'Copy the text below:'));
-      const ta = el('textarea', {
-        style: 'width:100%;height:200px;padding:10px;font-family:monospace;font-size:12px;background:var(--bg-elev-2);color:var(--text);border:1px solid var(--border);border-radius:4px;resize:vertical',
-        readonly: ''
-      });
+      const fb = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
+      fb.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' }, 'Copy the text below:'));
+      const ta = el('textarea', { style: 'width:100%;height:200px;padding:10px;font-family:monospace;font-size:12px;background:var(--bg-elev-2);color:var(--text);border:1px solid var(--border);border-radius:4px;resize:vertical', readonly: '' });
       ta.value = text;
-      fallbackModal.appendChild(ta);
-      openModal({ title: 'Copy for Accountant', body: fallbackModal, large: true });
+      fb.appendChild(ta);
+      openModal({ title: 'Copy for Accountant', body: fb, large: true });
     });
   });
 
-  // Build catData for CSV export
   const buildCatData = () => {
-    const opex = [...data.catMap.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([k, total]) => ({
-        label: COST_CATEGORIES[k]?.label || k,
-        count: data.opExpenses.filter(e => resolvedCatKey(e) === k).length,
-        total
-      }));
-
+    const opex = [...data.catMap.entries()].sort((a, b) => b[1] - a[1]).map(([k, total]) => ({ label: COST_CATEGORIES[k]?.label || k, count: data.opExpenses.filter(e => resolvedCatKey(e) === k).length, total }));
     const capCatMap = new Map();
-    for (const e of data.capExpenses) {
-      const key = resolvedCatKey(e);
-      const amt = toEUR(e.amount, e.currency, e.date);
-      capCatMap.set(key, (capCatMap.get(key) || 0) + amt);
-    }
-    const capex = [...capCatMap.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([k, total]) => ({
-        label: COST_CATEGORIES[k]?.label || k,
-        count: data.capExpenses.filter(e => resolvedCatKey(e) === k).length,
-        total
-      }));
-
+    for (const e of data.capExpenses) capCatMap.set(resolvedCatKey(e), (capCatMap.get(resolvedCatKey(e)) || 0) + toEUR(e.amount, e.currency, e.date));
+    const capex = [...capCatMap.entries()].sort((a, b) => b[1] - a[1]).map(([k, total]) => ({ label: COST_CATEGORIES[k]?.label || k, count: data.capExpenses.filter(e => resolvedCatKey(e) === k).length, total }));
     return { opex, capex };
   };
 
-  const csvBtn = el('button', {
-    class: 'btn btn-secondary',
-    style: 'display:flex;align-items:center;gap:8px;font-size:13px'
-  });
+  const csvBtn = el('button', { class: 'btn btn-secondary', style: 'display:flex;align-items:center;gap:8px;font-size:13px' });
   csvBtn.appendChild(el('span', {}, '⬇'));
   csvBtn.appendChild(document.createTextNode('Download CSV'));
-  csvBtn.addEventListener('click', () => {
-    downloadTaxCsv(year, buildCatData(), data.totalOpEx, data.totalCapEx, data.totalRevenue);
-  });
+  csvBtn.addEventListener('click', () => downloadTaxCsv(year, buildCatData(), data.totalOpEx, data.totalCapEx, data.totalRevenue));
 
   inner.appendChild(btn);
   inner.appendChild(csvBtn);
-  inner.appendChild(toast);
-  inner.appendChild(el('div', {
-    style: 'font-size:12px;color:var(--text-muted);line-height:1.5'
-  }, `Copies a plain-text summary of ${year} P&L including revenue, operating expenses, and expense breakdown by category.`));
-
+  inner.appendChild(toastEl);
+  inner.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);line-height:1.5' }, `Copies a plain-text summary of ${year} P&L including revenue, operating expenses, and expense breakdown by category.`));
   wrap.appendChild(inner);
   return wrap;
 }
 
-// ── Main view builder ─────────────────────────────────────────────────────────
-function buildView() {
-  // Initialize year/owner if not set
-  const years = getDataYears();
-  if (!gYear || !years.includes(gYear)) {
-    gYear = defaultYear();
-  }
-
-  const wrap = el('div', { class: 'view active' });
-
-  // Header
-  wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
-    el('h2', { style: 'margin:0 0 4px;font-size:20px;font-weight:700' }, 'Annual / Tax Summary'),
-    el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' },
-      'Year-end P&L, tax-deductible expense analysis, and annual comparisons')
-  ));
+function buildPnLContent(years) {
+  const wrap = el('div');
 
   if (!years.length) {
-    wrap.appendChild(el('div', { style: 'padding:40px;text-align:center;color:var(--text-muted);font-size:14px' },
-      'No data found. Add payments, invoices, or expenses to get started.'
-    ));
+    wrap.appendChild(el('div', { style: 'padding:40px;text-align:center;color:var(--text-muted);font-size:14px' }, 'No data found. Add payments, invoices, or expenses to get started.'));
     return wrap;
   }
 
-  // Year selector bar (custom — no standard filter bar)
   const selectorBar = buildYearSelectorBar(years, gYear, gOwner, (newYear, newOwner) => {
     gYear  = newYear;
     gOwner = newOwner;
@@ -970,26 +658,997 @@ function buildView() {
   });
   wrap.appendChild(selectorBar);
 
-  // Load data for selected year/owner
   const data = getYearData(gYear, gOwner);
-
-  // Annual P&L Table
   wrap.appendChild(buildPnLTable(data));
-
-  // KPI Cards
   wrap.appendChild(buildKpiCards(data, gYear));
-
-  // Expense Categories Table
   wrap.appendChild(buildExpenseCategoryTable(data));
-
-  // Charts
   wrap.appendChild(buildCharts(data, gYear));
-
-  // Tax Export
   wrap.appendChild(buildTaxExportSection(data, gYear));
 
-  // Render charts after DOM is ready
   requestAnimationFrame(() => renderCharts(data, gYear, gOwner));
+  return wrap;
+}
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// PROVISIONAL TAX TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const PT_DEFAULTS = {
+  year: String(new Date().getFullYear()),
+  corpTaxRate: 12.5,
+  bufferEnabled: true,
+  bufferPct: 10,
+  actualRevenue: 0,
+  forecastRevenue: 0,
+  actualExpenses: 0,
+  forecastExpenses: 0,
+  nonDeductibleExpenses: 0,
+  taxAllowances: 0,
+  estimatedFinalTax: 0,
+  julPayment: 0,
+  decRevRevenue: 0,
+  decRevExpenses: 0,
+  decRevNonDeductible: 0,
+  decRevAllowances: 0,
+};
+
+function cfg() {
+  if (!state.db.settings) state.db.settings = {};
+  if (!state.db.settings.cyprusTax) state.db.settings.cyprusTax = { ...PT_DEFAULTS };
+  return state.db.settings.cyprusTax;
+}
+
+function persist(patch) {
+  Object.assign(cfg(), patch);
+  markDirty();
+}
+
+const safeN = v => (isFinite(Number(v)) ? Math.max(0, Number(v)) : 0);
+const fmtE  = v => formatEUR(Math.max(0, v), { minFrac: 2 });
+
+const mkCurrencyInput = (val, style, onValue) => {
+  const fmt   = v => v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
+  const parse = s => { const n = parseFloat((s || '').replace(/[^0-9.]/g, '')); return isFinite(n) && n > 0 ? n : 0; };
+  const i = el('input', { class: 'input', type: 'text', style: style || 'width:100%', inputmode: 'decimal', placeholder: '0.00', autocomplete: 'off' });
+  const initVal = safeN(val);
+  i.value = initVal > 0 ? fmt(initVal) : '';
+  i.addEventListener('focus', () => { const n = parse(i.value); i.value = n > 0 ? String(n) : ''; i.select(); });
+  i.addEventListener('blur',  () => { const n = parse(i.value); i.value = n > 0 ? fmt(n) : ''; });
+  i.addEventListener('input', () => onValue(parse(i.value)));
+  return i;
+};
+
+function calcAll(s) {
+  const rate       = safeN(s.corpTaxRate);
+  const bufPct     = safeN(s.bufferPct);
+  const bufEnabled = !!s.bufferEnabled;
+
+  const totalRevenue    = safeN(s.actualRevenue) + safeN(s.forecastRevenue);
+  const totalDeductible = safeN(s.actualExpenses) + safeN(s.forecastExpenses);
+  const estProfit       = Math.max(0, totalRevenue - totalDeductible + safeN(s.nonDeductibleExpenses) - safeN(s.taxAllowances));
+  const bufferedProfit  = bufEnabled ? estProfit * (1 + bufPct / 100) : estProfit;
+  const taxableProfit   = Math.max(0, bufferedProfit);
+  const corpTax         = taxableProfit * (rate / 100);
+  const julyPayment     = corpTax / 2;
+  const decPayment      = corpTax / 2;
+
+  const finalTax      = safeN(s.estimatedFinalTax);
+  const minRequired75 = finalTax * 0.75;
+  const shortfall     = Math.max(0, minRequired75 - corpTax);
+
+  const revProfit        = Math.max(0, safeN(s.decRevRevenue) - safeN(s.decRevExpenses) + safeN(s.decRevNonDeductible) - safeN(s.decRevAllowances));
+  const revisedAnnualTax = revProfit * (rate / 100);
+  const alreadyPaid      = safeN(s.julPayment);
+  const addDecRaw        = revisedAnnualTax - alreadyPaid;
+  const reqDecPayment    = Math.max(0, addDecRaw);
+  const overpayment      = addDecRaw < 0 ? Math.abs(addDecRaw) : 0;
+
+  return {
+    rate, bufPct, bufEnabled,
+    totalRevenue, totalDeductible, estProfit, bufferedProfit, taxableProfit, corpTax,
+    julyPayment, decPayment,
+    finalTax, minRequired75, shortfall, safe: minRequired75 - corpTax <= 0,
+    revProfit, revisedAnnualTax, alreadyPaid, reqDecPayment, overpayment,
+  };
+}
+
+const pct = (v, tot) => tot > 0 ? `${((v / tot) * 100).toFixed(1)}%` : '—';
+
+function daysLabel(dateStr) {
+  const diff = Math.round((new Date(dateStr) - new Date()) / 86400000);
+  if (diff > 0)  return `${diff}d remaining`;
+  if (diff === 0) return 'Due today';
+  return `${Math.abs(diff)}d overdue`;
+}
+
+function getActualsForYear(year) {
+  const today  = new Date().toISOString().slice(0, 10);
+  const cutoff = today < `${year}-12-31` ? today : `${year}-12-31`;
+  const s1     = `${year}-01-01`;
+  return {
+    pays: listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff),
+    invs: listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff),
+    exps: listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff),
+    cutoff, year,
+  };
+}
+
+function emptyModal(title, msg) {
+  openModal({ title, body: el('div', { style: 'padding:24px;text-align:center;color:var(--text-muted)' }, msg) });
+}
+
+function modalRentalPayments() {
+  const year = cfg().year || String(new Date().getFullYear());
+  const { pays } = getActualsForYear(year);
+  if (!pays.length) { emptyModal('Rental Payments', 'No paid rental payments for this period.'); return; }
+
+  const propMap = Object.fromEntries((state.db.properties || []).map(p => [p.id, p]));
+  const byProp = {}, byMonth = {};
+  for (const p of pays) {
+    const rev = toEUR(p.amount, p.currency, year);
+    const pid = p.propertyId || '_';
+    if (!byProp[pid]) byProp[pid] = { rev: 0, n: 0 };
+    byProp[pid].rev += rev; byProp[pid].n++;
+    const mo = p.date.slice(0, 7);
+    byMonth[mo] = (byMonth[mo] || 0) + rev;
+  }
+  const total    = Object.values(byProp).reduce((a, d) => a + d.rev, 0);
+  const propRows = Object.entries(byProp).sort(([, a], [, b]) => b.rev - a.rev);
+  const moRows   = Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b));
+
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Total Revenue', value: fmtE(total) }, { label: 'Payments', value: String(pays.length) }, { label: 'Avg / Payment', value: fmtE(total / pays.length) }, { label: 'Properties', value: String(propRows.length) }], 4));
+  body.appendChild(mkSectionLabel('Revenue by Property'));
+  body.appendChild(mkModalTable([{ label: 'Property' }, { label: 'Pmts', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }], propRows.map(([id, d]) => { const p = propMap[id]; return [p?.name || p?.address || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })));
+  body.appendChild(mkSectionLabel('Monthly Collections'));
+  body.appendChild(mkModalTable([{ label: 'Month' }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }], moRows.map(([mo, v]) => [mo, fmtE(v), pct(v, total)])));
+  openModal({ title: `Rental Payments — ${year}`, body, large: true });
+}
+
+function modalInvoiceRevenue() {
+  const year = cfg().year || String(new Date().getFullYear());
+  const { invs } = getActualsForYear(year);
+  if (!invs.length) { emptyModal('Invoice Revenue', 'No paid invoices for this period.'); return; }
+
+  const clientMap = Object.fromEntries((state.db.clients || []).map(c => [c.id, c]));
+  const byClient  = {};
+  for (const i of invs) {
+    const rev = toEUR(i.total, i.currency, year);
+    const id  = i.clientId || '_';
+    if (!byClient[id]) byClient[id] = { rev: 0, n: 0 };
+    byClient[id].rev += rev; byClient[id].n++;
+  }
+  const total  = Object.values(byClient).reduce((a, d) => a + d.rev, 0);
+  const clRows = Object.entries(byClient).sort(([, a], [, b]) => b.rev - a.rev);
+
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Total Invoiced', value: fmtE(total) }, { label: 'Invoices', value: String(invs.length) }, { label: 'Avg Invoice', value: fmtE(total / invs.length) }, { label: 'Clients', value: String(clRows.length) }], 4));
+  body.appendChild(mkSectionLabel('Revenue by Client'));
+  body.appendChild(mkModalTable([{ label: 'Client' }, { label: 'Invoices', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }], clRows.map(([id, d]) => { const c = clientMap[id]; return [c?.name || c?.company || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })));
+  openModal({ title: `Invoice Revenue — ${year}`, body, large: true });
+}
+
+function modalExpenseCategory(cat) {
+  const year     = cfg().year || String(new Date().getFullYear());
+  const { exps } = getActualsForYear(year);
+  const catExps  = exps.filter(e => (e.category || 'Other') === cat);
+  if (!catExps.length) { emptyModal(cat, 'No expenses found for this category.'); return; }
+
+  const allTotal = exps.reduce((a, e) => a + toEUR(e.amount, e.currency, year), 0);
+  const total    = catExps.reduce((a, e) => a + toEUR(e.amount, e.currency, year), 0);
+  const byMonth  = {};
+  for (const e of catExps) { const mo = e.date.slice(0, 7); byMonth[mo] = (byMonth[mo] || 0) + toEUR(e.amount, e.currency, year); }
+  const moRows  = Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b));
+  const topRecs = [...catExps].sort((a, b) => toEUR(b.amount, b.currency, year) - toEUR(a.amount, a.currency, year)).slice(0, 8);
+
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Category Total', value: fmtE(total) }, { label: 'Records', value: String(catExps.length) }, { label: 'Avg / Record', value: fmtE(total / catExps.length) }, { label: '% of All Expenses', value: pct(total, allTotal) }], 4));
+  body.appendChild(mkSectionLabel('Monthly Distribution'));
+  body.appendChild(mkModalTable([{ label: 'Month' }, { label: 'Amount', right: true }, { label: '% of Category', right: true, muted: true }], moRows.map(([mo, v]) => [mo, fmtE(v), pct(v, total)])));
+  body.appendChild(mkSectionLabel(`Top Records (${topRecs.length} of ${catExps.length})`));
+  body.appendChild(mkModalTable([{ label: 'Description / Vendor' }, { label: 'Date' }, { label: 'Amount', right: true }], topRecs.map(e => {
+    const vendorName = e.vendorId ? byId('vendors', e.vendorId)?.name : null;
+    return [e.description || vendorName || e.vendor || '—', e.date || '', fmtE(toEUR(e.amount, e.currency, year))];
+  })));
+  openModal({ title: `${cat} — ${year}`, body, large: true });
+}
+
+function modalForecastEntities(forRevenue) {
+  const s        = cfg();
+  const year     = s.year || String(new Date().getFullYear());
+  const today    = new Date().toISOString().slice(0, 10);
+  const cutoff   = today < `${year}-12-31` ? today : `${year}-12-31`;
+  const curMonth = cutoff.slice(0, 7);
+  const propMap  = Object.fromEntries((state.db.properties || []).map(p => [p.id, p]));
+  const humanize = id => id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+  const fcData = {};
+  for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
+    const eid = fc.entityId || fc.propertyId || fc.id;
+    if (!fcData[eid]) fcData[eid] = { rev: 0, exp: 0, months: 0, type: fc.type };
+    for (const [mk, md] of Object.entries(fc.months || {})) {
+      if (mk > curMonth) {
+        const rev = Number(md.revenue) || 0, exp = Number(md.expenses) || 0;
+        if (rev > 0 || exp > 0) { fcData[eid].rev += rev; fcData[eid].exp += exp; fcData[eid].months++; }
+      }
+    }
+  }
+
+  const rows = Object.entries(fcData).filter(([, d]) => forRevenue ? d.rev > 0 : d.exp > 0).sort(([, a], [, b]) => forRevenue ? b.rev - a.rev : b.exp - a.exp);
+  if (!rows.length) { emptyModal('Forecast', 'No forecast data found for remaining months.'); return; }
+
+  const total     = rows.reduce((a, [, d]) => a + (forRevenue ? d.rev : d.exp), 0);
+  const propCount = rows.filter(([id, d]) => d.type === 'property' || !!propMap[id]).length;
+  const svcCount  = rows.length - propCount;
+
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: forRevenue ? 'Forecast Revenue' : 'Forecast Expenses', value: fmtE(total) }, { label: 'Properties', value: String(propCount) }, { label: 'Services', value: String(svcCount) }, { label: 'From Month', value: `> ${curMonth}` }], 4));
+  body.appendChild(mkSectionLabel(`${forRevenue ? 'Revenue' : 'Expense'} Forecast by Entity`));
+  body.appendChild(mkModalTable(
+    [{ label: 'Entity' }, { label: 'Type' }, { label: 'Months', right: true }, { label: forRevenue ? 'Revenue' : 'Expenses', right: true }, { label: 'Share', right: true, muted: true }],
+    rows.map(([id, d]) => {
+      const prop = propMap[id];
+      const isProperty = d.type === 'property' || !!prop;
+      const name = prop ? (prop.name || prop.address || id) : humanize(id);
+      const val  = forRevenue ? d.rev : d.exp;
+      return [name, isProperty ? 'Property' : 'Service', String(d.months), fmtE(val), pct(val, total)];
+    })
+  ));
+  openModal({ title: `Forecast ${forRevenue ? 'Revenue' : 'Expenses'} — ${year}`, body, large: true });
+}
+
+function modalRevenueDetail() {
+  const s = cfg();
+  const year = s.year || String(new Date().getFullYear());
+  const { pays, invs } = getActualsForYear(year);
+  const byMonth = {};
+  for (const p of pays) { const mo = p.date.slice(0, 7); byMonth[mo] = (byMonth[mo] || 0) + toEUR(p.amount, p.currency, year); }
+  for (const i of invs) { const mo = (i.issueDate || '').slice(0, 7); if (mo) byMonth[mo] = (byMonth[mo] || 0) + toEUR(i.total, i.currency, year); }
+  const moRows    = Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b));
+  const actTotal  = moRows.reduce((a, [, v]) => a + v, 0);
+  const paysTotal = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
+  const invsTotal = invs.reduce((a, i) => a + toEUR(i.total, i.currency, year), 0);
+
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Actual Collected', value: fmtE(actTotal) }, { label: 'Forecast Remaining', value: fmtE(safeN(s.forecastRevenue)) }, { label: 'Rental Share', value: pct(paysTotal, actTotal) }, { label: 'Invoice Share', value: pct(invsTotal, actTotal) }], 4));
+  if (moRows.length) {
+    body.appendChild(mkSectionLabel('Month-by-Month Actual Collections'));
+    let cum = 0;
+    body.appendChild(mkModalTable([{ label: 'Month' }, { label: 'Revenue', right: true }, { label: 'Cumulative', right: true, muted: true }], moRows.map(([mo, v]) => { cum += v; return [mo, fmtE(v), fmtE(cum)]; })));
+  }
+  openModal({ title: `Annual Revenue Breakdown — ${year}`, body, large: true });
+}
+
+function modalExpensesDetail() {
+  const s = cfg();
+  const year = s.year || String(new Date().getFullYear());
+  const { exps } = getActualsForYear(year);
+  const byCat  = {};
+  for (const e of exps) { const cat = e.category || 'Other'; byCat[cat] = (byCat[cat] || 0) + toEUR(e.amount, e.currency, year); }
+  const actTotal = Object.values(byCat).reduce((a, v) => a + v, 0);
+  const catRows  = Object.entries(byCat).sort(([, a], [, b]) => b - a);
+
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Actual to Date', value: fmtE(actTotal) }, { label: 'Forecast Remaining', value: fmtE(safeN(s.forecastExpenses)) }, { label: 'Expense Categories', value: String(catRows.length) }, { label: 'Largest Category', value: catRows[0]?.[0] || '—', sub: catRows[0] ? fmtE(catRows[0][1]) : '' }], 4));
+  if (catRows.length) {
+    body.appendChild(mkSectionLabel('All Categories — Actual to Date'));
+    body.appendChild(mkModalTable([{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Actual', right: true, muted: true }], catRows.map(([cat, v]) => [cat, fmtE(v), pct(v, actTotal)])));
+  }
+  openModal({ title: `Deductible Expenses Breakdown — ${year}`, body, large: true });
+}
+
+function modalTaxableProfit() {
+  const s = cfg();
+  const c = calcAll(s);
+  const margin = c.totalRevenue > 0 ? (c.estProfit / c.totalRevenue * 100).toFixed(1) : null;
+  const rows = [['Est. Annual Revenue', '', fmtE(c.totalRevenue)], ['Est. Deductible Expenses', '−', fmtE(c.totalDeductible)]];
+  if (safeN(s.nonDeductibleExpenses) > 0) rows.push(['Non-deductible add-back', '+', fmtE(safeN(s.nonDeductibleExpenses))]);
+  if (safeN(s.taxAllowances)         > 0) rows.push(['Tax allowances', '−', fmtE(safeN(s.taxAllowances))]);
+  rows.push(['Est. Taxable Profit', '=', fmtE(c.estProfit)]);
+
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Est. Revenue', value: fmtE(c.totalRevenue) }, { label: 'Est. Expenses', value: fmtE(c.totalDeductible) }, { label: 'Taxable Profit', value: fmtE(c.estProfit) }, { label: 'Profit Margin', value: margin ? `${margin}%` : '—', sub: 'Profit ÷ Revenue' }], 4));
+  body.appendChild(mkSectionLabel('Calculation'));
+  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], rows));
+  openModal({ title: 'Taxable Profit — Calculation', body });
+}
+
+function modalBufferedProfit() {
+  const s = cfg();
+  const c = calcAll(s);
+  if (!c.bufEnabled) return;
+  const bufferAmt = c.taxableProfit - c.estProfit;
+  const extraTax  = bufferAmt * c.rate / 100;
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Base Taxable Profit', value: fmtE(c.estProfit) }, { label: `Buffer (${c.bufPct}%)`, value: `+ ${fmtE(bufferAmt)}` }, { label: 'Buffered Profit', value: fmtE(c.taxableProfit) }, { label: 'Extra Tax Cost', value: fmtE(extraTax), sub: 'Cost of the safety margin' }], 4));
+  body.appendChild(el('div', { style: 'margin-top:4px;padding:12px;border-radius:6px;background:rgba(251,191,36,0.08);border-left:3px solid var(--warning);font-size:12px;color:var(--text-muted);line-height:1.6' },
+    `The ${c.bufPct}% buffer inflates the taxable profit estimate so provisional tax is less likely to fall below 75% of the final liability. Cyprus imposes a 10% surcharge on any shortfall below that threshold. The buffer costs ~${fmtE(extraTax)} in extra provisional tax but protects against the penalty.`
+  ));
+  openModal({ title: `Safety Buffer — ${c.bufPct}%`, body });
+}
+
+function modalCorpTax() {
+  const s        = cfg();
+  const c        = calcAll(s);
+  const year     = s.year || String(new Date().getFullYear());
+  const nextYear = String(Number(year) + 1);
+  const effRate  = c.totalRevenue > 0 ? (c.corpTax / c.totalRevenue * 100).toFixed(2) : '0.00';
+  const netRetained = Math.max(0, c.estProfit - c.corpTax);
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Corp Tax Rate', value: `${c.rate}%` }, { label: 'Taxable Profit', value: fmtE(c.taxableProfit) }, { label: 'Total Corp Tax', value: fmtE(c.corpTax) }, { label: 'Effective Rate on Revenue', value: `${effRate}%`, sub: 'Tax ÷ Est. Revenue' }], 4));
+  body.appendChild(mkSectionLabel('Payment Schedule'));
+  body.appendChild(mkModalTable([{ label: 'Instalment' }, { label: 'Due Date' }, { label: 'Amount', right: true }, { label: 'Status', right: true, muted: true }], [
+    ['1st — 50%',     `31 Jul ${year}`,      fmtE(c.julyPayment), daysLabel(`${year}-07-31`)],
+    ['2nd — 50%',     `31 Dec ${year}`,      fmtE(c.decPayment),  daysLabel(`${year}-12-31`)],
+    ['Final balance', `1 Aug ${nextYear}`,   '—',                 'After audit'],
+  ]));
+  if (c.estProfit > 0) body.appendChild(el('div', { style: 'margin-top:12px;font-size:12px;color:var(--text-muted)' }, `Net profit retained after tax: ${fmtE(netRetained)} (${(netRetained / c.estProfit * 100).toFixed(1)}% of taxable profit)`));
+  openModal({ title: `Corporation Tax — ${year}`, body, large: true });
+}
+
+function modalInstalment(which) {
+  const s      = cfg();
+  const c      = calcAll(s);
+  const year   = s.year || String(new Date().getFullYear());
+  const isJuly = which === 'july';
+  const dueDate = `${year}-${isJuly ? '07-31' : '12-31'}`;
+  const amount  = isJuly ? c.julyPayment : c.decPayment;
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Amount Due', value: fmtE(amount) }, { label: 'Due Date', value: isJuly ? `31 Jul ${year}` : `31 Dec ${year}` }, { label: 'Deadline Status', value: daysLabel(dueDate) }, { label: 'Total Corp Tax', value: fmtE(c.corpTax), sub: 'Both instalments combined' }], 4));
+  body.appendChild(el('div', { style: 'margin-top:4px;padding:12px;border-radius:6px;background:rgba(251,191,36,0.08);border-left:3px solid var(--warning);font-size:12px;color:var(--text-muted);line-height:1.6' },
+    isJuly
+      ? `Pay ${fmtE(amount)} to the Cyprus Tax Department by 31 July ${year}. Late payment attracts a 10% additional charge. The 2nd instalment is due 31 December ${year}.`
+      : `Pay ${fmtE(amount)} by 31 December ${year}. Before paying, use the December Revision section to check whether this amount needs adjusting based on updated year-end estimates. Late payment attracts a 10% additional charge.`
+  ));
+  openModal({ title: `${isJuly ? '1st' : '2nd'} Instalment — ${isJuly ? '31 Jul' : '31 Dec'} ${year}`, body });
+}
+
+function modalFinalBalance() {
+  const s        = cfg();
+  const c        = calcAll(s);
+  const year     = s.year || String(new Date().getFullYear());
+  const nextYear = String(Number(year) + 1);
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Provisional Tax Paid', value: fmtE(c.corpTax), sub: 'Jul + Dec instalments' }, { label: 'Current Estimate', value: fmtE(c.corpTax), sub: 'Based on your inputs' }, { label: 'Final Balance', value: '—', sub: 'Determined after audit' }, { label: 'Deadline', value: `1 Aug ${nextYear}` }], 4));
+  body.appendChild(el('div', { style: 'margin-top:4px;padding:12px;border-radius:6px;background:rgba(99,102,241,0.08);border-left:3px solid var(--accent);font-size:12px;color:var(--text-muted);line-height:1.6' },
+    `The final balance is settled after submitting audited accounts. If actual profit exceeded estimates, pay the difference plus any applicable interest. If lower, you receive a credit or refund. The deadline for the final balance payment is 1 August ${nextYear}.`
+  ));
+  openModal({ title: `Final Balance — 1 Aug ${nextYear}`, body });
+}
+
+function modalDecRevProfit() {
+  const s = cfg();
+  const c = calcAll(s);
+  const delta = c.revProfit - c.estProfit;
+  const rows = [['Revised Revenue', '', fmtE(safeN(s.decRevRevenue))], ['Revised Expenses', '−', fmtE(safeN(s.decRevExpenses))]];
+  if (safeN(s.decRevNonDeductible) > 0) rows.push(['Non-deductible add-back', '+', fmtE(safeN(s.decRevNonDeductible))]);
+  if (safeN(s.decRevAllowances)    > 0) rows.push(['Tax allowances', '−', fmtE(safeN(s.decRevAllowances))]);
+  rows.push(['Revised Taxable Profit', '=', fmtE(c.revProfit)]);
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Original Estimate', value: fmtE(c.estProfit) }, { label: 'Revised Estimate', value: fmtE(c.revProfit) }, { label: 'Change', value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta)), sub: delta > 0 ? 'Profit up' : delta < 0 ? 'Profit down' : 'No change' }, { label: 'Tax Impact', value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta) * c.rate / 100), sub: `At ${c.rate}% rate` }], 4));
+  body.appendChild(mkSectionLabel('Revised Calculation'));
+  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], rows));
+  openModal({ title: 'Revised Taxable Profit vs Original', body });
+}
+
+function modalDecRevTax() {
+  const s     = cfg();
+  const c     = calcAll(s);
+  const delta = c.revisedAnnualTax - c.corpTax;
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Original Corp Tax', value: fmtE(c.corpTax), sub: 'From Annual Estimate' }, { label: 'Revised Corp Tax', value: fmtE(c.revisedAnnualTax) }, { label: 'Tax Change', value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta)), sub: delta > 0 ? 'More tax required' : delta < 0 ? 'Less tax required' : 'No change' }, { label: 'Rate Applied', value: `${c.rate}%` }], 4));
+  body.appendChild(el('div', { style: 'margin-top:4px;padding:12px;border-radius:6px;background:rgba(99,102,241,0.08);border-left:3px solid var(--accent);font-size:12px;color:var(--text-muted);line-height:1.6' },
+    delta > 0 ? `Your revised estimates show ${fmtE(delta)} more in corporation tax than originally planned. Check the Required Dec Payment card to see how much more you owe in December.`
+    : delta < 0 ? `Your revised estimates show ${fmtE(Math.abs(delta))} less in corporation tax than originally planned. You may have overpaid in July — see the Overpayment card.`
+    : 'Your revised estimates match the original — no adjustment to the December payment needed.'
+  ));
+  openModal({ title: 'Revised Corp Tax vs Original Estimate', body });
+}
+
+function modalJulyPaid() {
+  const s = cfg();
+  const c = calcAll(s);
+  const coverOrig    = c.corpTax          > 0 ? (c.alreadyPaid / c.corpTax          * 100).toFixed(1) : '—';
+  const coverRevised = c.revisedAnnualTax > 0 ? (c.alreadyPaid / c.revisedAnnualTax * 100).toFixed(1) : '—';
+  const surplus = c.alreadyPaid - c.revisedAnnualTax;
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'July Payment', value: fmtE(c.alreadyPaid) }, { label: '% of Original Tax', value: `${coverOrig}%`, sub: `Original: ${fmtE(c.corpTax)}` }, { label: '% of Revised Tax', value: `${coverRevised}%`, sub: `Revised: ${fmtE(c.revisedAnnualTax)}` }, { label: surplus >= 0 ? 'Surplus Paid' : 'Still Owed', value: fmtE(Math.abs(surplus)), sub: surplus >= 0 ? 'Overpaid so far' : 'Remaining liability' }], 4));
+  openModal({ title: 'July Payment — Coverage Analysis', body });
+}
+
+function modalReqDecPayment() {
+  const s    = cfg();
+  const c    = calcAll(s);
+  const year = s.year || String(new Date().getFullYear());
+  const delta = c.reqDecPayment - c.decPayment;
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'Original Dec Plan', value: fmtE(c.decPayment), sub: '50% of original estimate' }, { label: 'Required Dec Payment', value: fmtE(c.reqDecPayment), sub: delta > 0 ? '↑ More than planned' : delta < 0 ? '↓ Less than planned' : 'Same as planned' }, { label: 'Change vs Plan', value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta)) }, { label: 'Deadline Status', value: daysLabel(`${year}-12-31`) }], 4));
+  body.appendChild(el('div', { style: `margin-top:4px;padding:12px;border-radius:6px;${c.reqDecPayment > 0 ? 'background:rgba(251,191,36,0.08);border-left:3px solid var(--warning)' : 'background:rgba(16,185,129,0.08);border-left:3px solid var(--success)'};font-size:12px;color:var(--text-muted);line-height:1.6` },
+    c.reqDecPayment > 0 ? `Pay ${fmtE(c.reqDecPayment)} by 31 December ${year}. Failure to pay the correct amount results in a 10% surcharge on the underpaid portion.` : `Your July payment fully covers the revised annual tax liability. No December payment is required.`
+  ));
+  openModal({ title: `Required December Payment — 31 Dec ${year}`, body });
+}
+
+function modalOverpayment() {
+  const s = cfg();
+  const c = calcAll(s);
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([{ label: 'July Payment', value: fmtE(c.alreadyPaid) }, { label: 'Revised Annual Tax', value: fmtE(c.revisedAnnualTax) }, { label: 'Overpayment', value: fmtE(c.overpayment) }, { label: 'No Dec Payment Due', value: 'Confirmed' }], 4));
+  body.appendChild(mkSectionLabel('Your Options'));
+  body.appendChild(mkModalTable(
+    ['Option', 'Description'],
+    [
+      ['Offset against final balance', `Apply the ${fmtE(c.overpayment)} credit toward the final corporation tax balance due after the year-end audit (1 Aug).`],
+      ['Claim a refund', 'Request a refund from the Cyprus Tax Department after the final assessment is issued. Processing times vary.'],
+    ]
+  ));
+  openModal({ title: 'July Overpayment — Options', body, large: true });
+}
+
+function ptBuildSettingsCard(onChange) {
+  const s    = cfg();
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', {}, el('div', { class: 'card-title' }, 'Tax Settings'), el('div', { class: 'card-subtitle' }, 'Corporate tax rate and safety buffer'))
+  ));
+  const body = el('div', { style: 'padding:0 16px 16px' });
+
+  const dataYears    = getDataYears(); // only years with actual payments/invoices/expenses
+  const selectedYear = dataYears.includes(s.year) ? s.year : (dataYears[0] || String(new Date().getFullYear()));
+  if (selectedYear !== s.year) persist({ year: selectedYear });
+  const yearSel = select(dataYears.map(y => ({ value: y, label: y })), selectedYear);
+  yearSel.onchange = () => { persist({ year: yearSel.value }); onChange(); };
+
+  const rateI = input({ type: 'number', value: s.corpTaxRate ?? 12.5, min: 0, max: 100, step: 0.1, style: 'width:110px' });
+  rateI.oninput = () => { persist({ corpTaxRate: safeN(rateI.value) }); onChange(); };
+
+  const bufChk = el('input', { type: 'checkbox' });
+  bufChk.checked = !!s.bufferEnabled;
+  const bufPctI = input({ type: 'number', value: s.bufferPct ?? 10, min: 0, max: 100, step: 0.1, style: 'width:80px' });
+  bufPctI.oninput = () => { persist({ bufferPct: safeN(bufPctI.value) }); onChange(); };
+  bufChk.onchange = () => { persist({ bufferEnabled: bufChk.checked }); onChange(); };
+
+  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px' },
+    formRow('Tax Year', yearSel),
+    formRow('Corporate Tax Rate', el('div', { style: 'display:flex;align-items:center;gap:6px' }, rateI, el('span', { style: 'color:var(--text-muted);font-size:13px' }, '%')), 'Cyprus default: 12.5%'),
+    formRow('Safety Buffer', el('div', { style: 'display:flex;align-items:center;gap:10px' }, el('label', { style: 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap' }, bufChk, 'Enable'), bufPctI, el('span', { style: 'color:var(--text-muted);font-size:13px' }, '%')), 'Inflates estimate to reduce underpayment risk')
+  ));
+  card.appendChild(body);
+  return card;
+}
+
+function ptBuildEstimateCard(onChange) {
+  const s    = cfg();
+  const card = el('div', { class: 'card mb-16' });
+
+  const prefillBtn = button('↓ Prefill from actuals & forecast', { variant: 'sm ghost', onClick: () => ptPrefillFromActuals(onChange) });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', {}, el('div', { class: 'card-title' }, 'Annual Estimate'), el('div', { class: 'card-subtitle' }, 'Expected full-year revenue and expenses')),
+    prefillBtn
+  ));
+  const body = el('div', { style: 'padding:0 16px 16px' });
+
+  const breakdownEl = el('div');
+  const renderBreakdown = () => {
+    const s2 = cfg();
+    breakdownEl.innerHTML = '';
+    const totalRev = safeN(s2.actualRevenue) + safeN(s2.forecastRevenue);
+    const totalExp = safeN(s2.actualExpenses) + safeN(s2.forecastExpenses);
+    if (totalRev === 0 && totalExp === 0) return;
+
+    const bd = s2._prefillBreakdown || null;
+    const row = (label, value, isTot) => el('div', {
+      style: `display:flex;justify-content:space-between;align-items:center;padding:${isTot ? '6px 0 2px' : '4px 0'};${isTot ? 'border-top:1px solid var(--border);margin-top:4px;font-weight:600' : ''}`
+    }, el('span', { style: `font-size:12px;color:${isTot ? 'var(--text)' : 'var(--text-muted)'}` }, label), el('span', { style: `font-size:12px;color:${isTot ? 'var(--text)' : 'var(--text-muted)'};font-weight:${isTot ? '700' : '400'}` }, fmtE(value)));
+    const subRow = (label, value, onClick) => {
+      const d = el('div', { style: `display:flex;justify-content:space-between;align-items:center;padding:2px 0 2px 14px${onClick ? ';cursor:pointer' : ''}` },
+        el('span', { style: `font-size:11px;color:var(--text-muted);opacity:.75${onClick ? ';text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px' : ''}` }, label),
+        el('span', { style: 'font-size:11px;color:var(--text-muted);opacity:.75' }, fmtE(value))
+      );
+      if (onClick) d.onclick = onClick;
+      return d;
+    };
+
+    const revEl = el('div');
+    revEl.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px' }, 'Revenue breakdown'));
+    revEl.appendChild(row('Actual (paid to date)', safeN(s2.actualRevenue)));
+    if (bd) {
+      if (bd.paysCount > 0) revEl.appendChild(subRow(`↳ Rental payments (${bd.paysCount})`, bd.paysRevenue, modalRentalPayments));
+      if (bd.invsCount > 0) revEl.appendChild(subRow(`↳ Invoices (${bd.invsCount})`, bd.invsRevenue, modalInvoiceRevenue));
+    }
+    revEl.appendChild(row('Forecast (remaining months)', safeN(s2.forecastRevenue)));
+    if (bd && bd.fcRevCount > 0) revEl.appendChild(subRow(`↳ ${bd.fcRevLabel} in forecast`, safeN(s2.forecastRevenue), () => modalForecastEntities(true)));
+    if (safeN(s2.nonDeductibleExpenses) > 0) revEl.appendChild(row('Non-deductible add-back', safeN(s2.nonDeductibleExpenses)));
+    if (safeN(s2.taxAllowances) > 0) {
+      revEl.appendChild(el('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding:4px 0' },
+        el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Tax allowances'),
+        el('span', { style: 'font-size:12px;color:var(--text-muted)' }, `−${fmtE(safeN(s2.taxAllowances))}`)
+      ));
+    }
+    revEl.appendChild(row('Est. taxable revenue', totalRev + safeN(s2.nonDeductibleExpenses) - safeN(s2.taxAllowances), true));
+
+    const expEl = el('div');
+    expEl.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px' }, 'Expenses breakdown'));
+    expEl.appendChild(row('Actual (to date)', safeN(s2.actualExpenses)));
+    if (bd && bd.expsByCat) {
+      const cats = Object.entries(bd.expsByCat);
+      for (const [cat, amt] of cats.slice(0, 5)) expEl.appendChild(subRow(`↳ ${cat}`, amt, () => modalExpenseCategory(cat)));
+      if (cats.length > 5) {
+        const rest = cats.slice(5).reduce((a, [, v]) => a + v, 0);
+        expEl.appendChild(subRow(`↳ ${cats.length - 5} more categor${cats.length - 5 === 1 ? 'y' : 'ies'}`, rest));
+      }
+    }
+    expEl.appendChild(row('Forecast (remaining months)', safeN(s2.forecastExpenses)));
+    if (bd && bd.fcExpCount > 0 && safeN(s2.forecastExpenses) > 0) expEl.appendChild(subRow(`↳ ${bd.fcExpLabel} in forecast`, safeN(s2.forecastExpenses), () => modalForecastEntities(false)));
+    expEl.appendChild(row('Total deductible expenses', totalExp, true));
+
+    breakdownEl.appendChild(el('div', { style: 'margin-top:16px;padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);display:grid;grid-template-columns:1fr 1fr;gap:16px 24px' }, revEl, expEl));
+  };
+
+  const MAIN_FIELDS = new Set(['actualRevenue', 'forecastRevenue', 'actualExpenses', 'forecastExpenses']);
+  const fi = (key, val, label, hint) => {
+    const i = mkCurrencyInput(val, 'width:100%', v => {
+      const patch = { [key]: v };
+      if (MAIN_FIELDS.has(key)) patch._prefillBreakdown = null;
+      persist(patch);
+      onChange();
+      renderBreakdown();
+    });
+    return formRow(label, i, hint);
+  };
+
+  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px' },
+    el('div', {},
+      el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)' }, 'Revenue (€)'),
+      fi('actualRevenue',   s.actualRevenue,   'Actual revenue to date'),
+      fi('forecastRevenue', s.forecastRevenue, 'Forecast revenue, rest of year')
+    ),
+    el('div', {},
+      el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)' }, 'Expenses (€)'),
+      fi('actualExpenses',   s.actualExpenses,   'Actual deductible expenses to date'),
+      fi('forecastExpenses', s.forecastExpenses, 'Forecast deductible expenses, rest of year')
+    )
+  ));
+  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px' },
+    fi('nonDeductibleExpenses', s.nonDeductibleExpenses, 'Non-deductible expenses (€)', 'Entertainment, fines, etc. — added back to taxable profit'),
+    fi('taxAllowances',         s.taxAllowances,         'Tax allowances / deductions (€)', 'Depreciation, R&D credits, etc. — reduces taxable profit')
+  ));
+
+  body.appendChild(breakdownEl);
+  renderBreakdown();
+  card.appendChild(body);
+  return card;
+}
+
+function ptPrefillFromActuals(onChange) {
+  const s        = cfg();
+  const year     = s.year || String(new Date().getFullYear());
+  const today    = new Date().toISOString().slice(0, 10);
+  const cutoff   = today < `${year}-12-31` ? today : `${year}-12-31`;
+  const curMonth = cutoff.slice(0, 7);
+  const s1       = `${year}-01-01`;
+
+  const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff);
+  const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff);
+  const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff);
+
+  const rnd = v => Math.round(v * 100) / 100;
+  const paysRevenue    = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
+  const invsRevenue    = invs.reduce((a, i) => a + toEUR(i.total, i.currency, year), 0);
+  const actualRevenue  = paysRevenue + invsRevenue;
+  const actualExpenses = exps.reduce((a, e) => a + toEUR(e.amount, e.currency, year), 0);
+
+  const expsByCat = {};
+  for (const e of exps) { const cat = e.category || 'Other'; expsByCat[cat] = (expsByCat[cat] || 0) + toEUR(e.amount, e.currency, year); }
+
+  let forecastRevenue = 0, forecastExpenses = 0;
+  const fcRevIds = new Set(), fcExpIds = new Set();
+  const propIds  = new Set((state.db.properties || []).map(p => p.id));
+  for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
+    const eid = fc.entityId || fc.propertyId || fc.id;
+    for (const [mk, md] of Object.entries(fc.months || {})) {
+      if (mk > curMonth) {
+        const rev = Number(md.revenue) || 0, exp = Number(md.expenses) || 0;
+        if (rev > 0) { fcRevIds.add(eid); forecastRevenue  += rev; }
+        if (exp > 0) { fcExpIds.add(eid); forecastExpenses += exp; }
+      }
+    }
+  }
+
+  const fcLabel = ids => {
+    const pCount = [...ids].filter(id => propIds.has(id)).length;
+    const sCount = ids.size - pCount;
+    if (pCount && sCount) return `${pCount} propert${pCount === 1 ? 'y' : 'ies'} + ${sCount} service${sCount === 1 ? '' : 's'}`;
+    if (pCount) return `${pCount} propert${pCount === 1 ? 'y' : 'ies'}`;
+    return `${sCount} service${sCount === 1 ? '' : 's'}`;
+  };
+
+  persist({
+    actualRevenue:    rnd(actualRevenue),
+    actualExpenses:   rnd(actualExpenses),
+    forecastRevenue:  rnd(forecastRevenue),
+    forecastExpenses: rnd(forecastExpenses),
+    _prefillBreakdown: {
+      paysRevenue: rnd(paysRevenue), paysCount: pays.length,
+      invsRevenue: rnd(invsRevenue), invsCount: invs.length,
+      expsByCat: Object.fromEntries(Object.entries(expsByCat).sort(([, a], [, b]) => b - a).map(([k, v]) => [k, rnd(v)])),
+      expsCount: exps.length,
+      fcRevLabel: fcLabel(fcRevIds), fcRevCount: fcRevIds.size,
+      fcExpLabel: fcLabel(fcExpIds), fcExpCount: fcExpIds.size,
+      cutoff,
+    }
+  });
+
+  rebuildView();
+  toast(`Prefilled: actuals to ${cutoff}, forecast from ${curMonth} onwards`, 'success');
+}
+
+function ptBuildResultsCard(c, s) {
+  const year     = s.year || String(new Date().getFullYear());
+  const nextYear = String(Number(year) + 1);
+  const card     = el('div', { class: 'card mb-16' });
+
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', {}, el('div', { class: 'card-title' }, 'Provisional Tax Result'), el('div', { class: 'card-subtitle' }, `Estimated corporation tax liability for ${year}`))
+  ));
+  const body = el('div', { style: 'padding:0 16px 16px' });
+
+  const revSub = [safeN(s.actualRevenue) > 0 ? `Actual ${fmtE(safeN(s.actualRevenue))}` : null, safeN(s.forecastRevenue) > 0 ? `Forecast ${fmtE(safeN(s.forecastRevenue))}` : null].filter(Boolean).join(' + ') || null;
+  const expSub = [safeN(s.actualExpenses) > 0 ? `Actual ${fmtE(safeN(s.actualExpenses))}` : null, safeN(s.forecastExpenses) > 0 ? `Forecast ${fmtE(safeN(s.forecastExpenses))}` : null].filter(Boolean).join(' + ') || null;
+
+  body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
+    mkKpiCard({ label: 'Est. Annual Revenue',      value: fmtE(c.totalRevenue),    subtitle: revSub, onClick: modalRevenueDetail }),
+    mkKpiCard({ label: 'Est. Deductible Expenses', value: fmtE(c.totalDeductible), subtitle: expSub, onClick: modalExpensesDetail }),
+    mkKpiCard({ label: 'Est. Taxable Profit',      value: fmtE(c.estProfit),       onClick: modalTaxableProfit })
+  ));
+
+  const taxRow = [];
+  if (c.bufEnabled) taxRow.push(mkKpiCard({ label: `Buffered Taxable Profit (+${c.bufPct}%)`, value: fmtE(c.taxableProfit), subtitle: `${c.bufPct}% safety margin applied`, onClick: modalBufferedProfit }));
+  taxRow.push(mkKpiCard({ label: `Est. Corporation Tax (${c.rate}%)`, value: fmtE(c.corpTax), variant: c.corpTax > 0 ? 'warning' : '', onClick: modalCorpTax }));
+  body.appendChild(el('div', { style: `display:grid;grid-template-columns:repeat(${taxRow.length},1fr);gap:16px;margin-bottom:16px` }, ...taxRow));
+
+  body.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px' }, 'Payment Schedule'));
+  body.appendChild(el('div', { class: 'grid grid-3' },
+    mkKpiCard({ label: `1st Instalment — 31 Jul ${year}`,   value: fmtE(c.julyPayment), subtitle: '50% of estimated corporation tax', onClick: () => modalInstalment('july') }),
+    mkKpiCard({ label: `2nd Instalment — 31 Dec ${year}`,   value: fmtE(c.decPayment),  subtitle: '50% — revise in Dec if needed',   onClick: () => modalInstalment('dec') }),
+    mkKpiCard({ label: `Final Balance — 1 Aug ${nextYear}`, value: '—',                 subtitle: 'Based on actual audited profit',  onClick: modalFinalBalance })
+  ));
+
+  card.appendChild(body);
+  return card;
+}
+
+function ptBuildSafetyCard(displayEl, renderDisplay, onChange) {
+  const s    = cfg();
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', {}, el('div', { class: 'card-title' }, '75% Safety Check'), el('div', { class: 'card-subtitle' }, 'Provisional tax must cover ≥ 75% of actual final tax to avoid the 10% penalty'))
+  ));
+  const body = el('div', { style: 'padding:0 16px 16px' });
+  const finalTaxI = mkCurrencyInput(s.estimatedFinalTax, 'width:220px', v => { persist({ estimatedFinalTax: v }); renderDisplay(); onChange(); });
+  body.appendChild(formRow('Estimated final actual tax liability (€)', finalTaxI, 'Your best estimate of the audited year-end tax. Leave 0 if unknown.'));
+  body.appendChild(displayEl);
+  card.appendChild(body);
+  return card;
+}
+
+function ptBuildDecRevisionCard(displayEl, renderDisplay, onChange) {
+  const s    = cfg();
+  const year = s.year || String(new Date().getFullYear());
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', {}, el('div', { class: 'card-title' }, 'December Revision Check'), el('div', { class: 'card-subtitle' }, `Revise estimates before 31 December ${year} to determine the correct 2nd instalment`))
+  ));
+  const body = el('div', { style: 'padding:0 16px 16px' });
+  body.appendChild(el('p', { style: 'font-size:12px;color:var(--text-muted);margin:0 0 14px' }, 'Use revised full-year figures to check whether the second instalment needs increasing.'));
+
+  const fi = (key, val, label) => {
+    const i = mkCurrencyInput(val, 'width:100%', v => { persist({ [key]: v }); renderDisplay(); });
+    return formRow(label, i);
+  };
+  const julI = mkCurrencyInput(s.julPayment, 'width:220px', v => { persist({ julPayment: v }); renderDisplay(); });
+
+  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
+    fi('decRevRevenue',  s.decRevRevenue,  'Revised expected annual revenue (€)'),
+    fi('decRevExpenses', s.decRevExpenses, 'Revised deductible expenses (€)')
+  ));
+  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
+    fi('decRevNonDeductible', s.decRevNonDeductible, 'Revised non-deductible expenses (€)'),
+    fi('decRevAllowances',    s.decRevAllowances,    'Revised tax allowances / deductions (€)')
+  ));
+  body.appendChild(el('div', { style: 'margin-top:4px' },
+    formRow('Amount already paid in July (€)', julI, 'Your actual first instalment payment')
+  ));
+  body.appendChild(displayEl);
+  card.appendChild(body);
+  return card;
+}
+
+function buildProvisionalTax() {
+  const wrap = el('div', { style: 'padding:0;max-width:1100px' });
+
+  const resultsEl       = el('div');
+  const safetyDisplayEl = el('div');
+
+  const renderSafetyDisplay = () => {
+    safetyDisplayEl.innerHTML = '';
+    const c = calcAll(cfg());
+    if (c.finalTax === 0) {
+      safetyDisplayEl.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px;font-style:italic' }, 'Enter an estimated final tax liability above to see the safety check.'));
+      return;
+    }
+    safetyDisplayEl.appendChild(el('div', { class: 'grid grid-3', style: 'margin-bottom:12px' },
+      mkKpiCard({ label: 'Planned Provisional Tax', value: fmtE(c.corpTax) }),
+      mkKpiCard({ label: 'Minimum Required (75%)',  value: fmtE(c.minRequired75), subtitle: `75% of ${fmtE(c.finalTax)}` }),
+      mkKpiCard({ label: 'Shortfall',               value: fmtE(c.shortfall), variant: c.shortfall > 0 ? 'danger' : 'success' })
+    ));
+    const safe = c.safe;
+    safetyDisplayEl.appendChild(el('div', { style: `padding:12px 14px;border-radius:var(--radius-sm);border-left:4px solid var(--${safe ? 'success' : 'danger'});background:rgba(${safe ? '16,185,129' : '239,68,68'},0.07)` },
+      el('span', { class: `badge ${safe ? 'success' : 'danger'}` }, safe ? '✓ No additional charge risk' : '⚠ Risk of 10% additional charge'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:6px' }, safe ? 'Your planned provisional tax covers at least 75% of the estimated final tax liability.' : `Increase provisional tax by ${fmtE(c.shortfall)} to reach the 75% threshold.`)
+    ));
+  };
+
+  const decDisplayEl = el('div', { style: 'margin-top:16px' });
+  const renderDecDisplay = () => {
+    decDisplayEl.innerHTML = '';
+    const c    = calcAll(cfg());
+    const s    = cfg();
+    const year = s.year || String(new Date().getFullYear());
+    if (c.revProfit === 0 && safeN(s.decRevRevenue) === 0) {
+      decDisplayEl.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px;font-style:italic' }, 'Enter revised year-end estimates above to see the required December payment.'));
+      return;
+    }
+    decDisplayEl.appendChild(el('div', { class: 'grid grid-3 mb-16' },
+      mkKpiCard({ label: 'Revised Taxable Profit',         value: fmtE(c.revProfit),        onClick: modalDecRevProfit }),
+      mkKpiCard({ label: `Revised Corp Tax (${c.rate}%)`,  value: fmtE(c.revisedAnnualTax), onClick: modalDecRevTax }),
+      mkKpiCard({ label: 'Already Paid in July',           value: fmtE(c.alreadyPaid),      onClick: modalJulyPaid })
+    ));
+    decDisplayEl.appendChild(el('div', { class: 'grid grid-2' },
+      mkKpiCard({ label: `Required 2nd Instalment — 31 Dec ${year}`, value: fmtE(c.reqDecPayment), variant: c.reqDecPayment > 0 ? 'warning' : 'success', subtitle: c.reqDecPayment > 0 ? 'Pay by 31 December' : 'No additional payment required', onClick: modalReqDecPayment }),
+      c.overpayment > 0
+        ? mkKpiCard({ label: 'July Overpayment', value: fmtE(c.overpayment), variant: 'success', subtitle: 'Offset or refund — click for options', onClick: modalOverpayment })
+        : mkKpiCard({ label: 'Overpayment', value: fmtE(0), subtitle: 'None' })
+    ));
+  };
+
+  const recalc = () => {
+    resultsEl.innerHTML = '';
+    resultsEl.appendChild(ptBuildResultsCard(calcAll(cfg()), cfg()));
+    renderSafetyDisplay();
+    renderDecDisplay();
+  };
+
+  wrap.appendChild(ptBuildSettingsCard(recalc));
+  wrap.appendChild(ptBuildEstimateCard(recalc));
+  wrap.appendChild(resultsEl);
+  wrap.appendChild(ptBuildSafetyCard(safetyDisplayEl, renderSafetyDisplay, recalc));
+  wrap.appendChild(ptBuildDecRevisionCard(decDisplayEl, renderDecDisplay, recalc));
+
+  recalc();
+  return wrap;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DIVIDENDS TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function buildDividendsContent(years) {
+  const wrap = el('div');
+
+  if (!years.length) {
+    wrap.appendChild(el('div', { style: 'padding:40px;text-align:center;color:var(--text-muted);font-size:14px' }, 'No data found. Add payments, invoices, or expenses to get started.'));
+    return wrap;
+  }
+
+  // Year selector (same pill style as P&L tab, no owner filter)
+  const yearBar = el('div', {
+    style: 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:20px;padding:12px 16px;background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm)'
+  });
+  yearBar.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-right:4px' }, 'Year'));
+  for (const yr of years) {
+    const isActive = yr === gYear;
+    const pill = el('button', {
+      style: ['padding:4px 12px;border-radius:14px;border:1px solid', isActive ? 'var(--accent);background:var(--accent);color:#fff;font-weight:600' : 'var(--border);background:transparent;color:var(--text-muted)', ';font-size:12px;cursor:pointer;transition:all 120ms'].join(' ')
+    }, yr);
+    pill.onclick = () => { if (gYear !== yr) { CHART_IDS.forEach(id => charts.destroy(id)); gYear = yr; rebuildView(); } };
+    yearBar.appendChild(pill);
+  }
+  wrap.appendChild(yearBar);
+
+  // Live data for selected year
+  const yearDivs   = listActive('dividends').filter(d => (d.date || '').startsWith(gYear)).sort((a, b) => b.date.localeCompare(a.date));
+  const pnlData    = getYearData(gYear, '');
+  const ptCfg      = cfg();
+  const ptCalc     = calcAll(ptCfg);
+  const corpTaxEst = String(ptCfg.year) === gYear ? ptCalc.corpTax : null;
+
+  const totalGross  = yearDivs.reduce((s, d) => s + (d.grossAmount || 0), 0);
+  const sdcAmount   = totalGross * SDC_RATE;
+  const netTotal    = totalGross - sdcAmount;
+  const gTotal      = yearDivs.filter(d => d.recipient === 'giorgos').reduce((s, d) => s + (d.grossAmount || 0), 0);
+  const rTotal      = yearDivs.filter(d => d.recipient === 'rita').reduce((s, d) => s + (d.grossAmount || 0), 0);
+  const retained    = corpTaxEst !== null ? pnlData.opProfit - corpTaxEst - totalGross : pnlData.opProfit - totalGross;
+
+  // ── Summary KPIs ─────────────────────────────────────────────────────────────
+  wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px' },
+    mkKpiCard({
+      label: 'Operating Profit',
+      value: fmtE(pnlData.opProfit),
+      subtitle: 'From P&L — before tax',
+      onClick: () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Total Revenue',    value: fmtE(pnlData.totalRevenue) },
+          { label: 'Total OpEx',       value: fmtE(pnlData.totalOpEx) },
+          { label: 'Operating Profit', value: fmtE(pnlData.opProfit) },
+          { label: 'CapEx (excluded)', value: fmtE(pnlData.totalCapEx) },
+        ], 2));
+        openModal({ title: `Operating Profit — ${gYear}`, body });
+      }
+    }),
+    mkKpiCard({
+      label: 'Est. Corporation Tax',
+      value: corpTaxEst !== null ? fmtE(corpTaxEst) : '—',
+      subtitle: corpTaxEst !== null ? `From Provisional Tax (${gYear})` : 'Set in Provisional Tax tab',
+      variant: corpTaxEst !== null && corpTaxEst > 0 ? 'warning' : '',
+      onClick: corpTaxEst !== null ? () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Taxable Profit',    value: fmtE(ptCalc.taxableProfit) },
+          { label: `Tax Rate`,          value: `${ptCalc.rate}%` },
+          { label: 'Corporation Tax',   value: fmtE(corpTaxEst) },
+          { label: 'After-Tax Profit',  value: fmtE(Math.max(0, pnlData.opProfit - corpTaxEst)) },
+        ], 2));
+        body.appendChild(el('div', { style: 'margin-top:8px;font-size:12px;color:var(--text-muted)' }, 'Figure sourced from the Provisional Tax tab. Update that tab for a more accurate estimate.'));
+        openModal({ title: `Corporation Tax Estimate — ${gYear}`, body });
+      } : null
+    }),
+    mkKpiCard({
+      label: 'Total Dividends Paid',
+      value: fmtE(totalGross),
+      subtitle: yearDivs.length ? `${yearDivs.length} payment${yearDivs.length > 1 ? 's' : ''}` : 'None recorded',
+      onClick: yearDivs.length ? () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Giorgos',     value: fmtE(gTotal), sub: `${yearDivs.filter(d=>d.recipient==='giorgos').length} payment(s)` },
+          { label: 'Rita',        value: fmtE(rTotal), sub: `${yearDivs.filter(d=>d.recipient==='rita').length} payment(s)` },
+          { label: 'SDC (2.65%)', value: fmtE(sdcAmount) },
+          { label: 'Net Total',   value: fmtE(netTotal) },
+        ], 2));
+        openModal({ title: `Dividends Paid — ${gYear}`, body });
+      } : null
+    }),
+    mkKpiCard({
+      label: 'Retained Earnings',
+      value: fmtE(Math.max(0, retained)),
+      subtitle: corpTaxEst !== null ? 'After tax & dividends' : 'After dividends (set corp tax for full picture)',
+      variant: retained < 0 ? 'danger' : retained < pnlData.opProfit * 0.1 ? 'warning' : 'success',
+      onClick: () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Operating Profit',      value: fmtE(pnlData.opProfit) },
+          { label: 'Est. Corporation Tax',  value: corpTaxEst !== null ? fmtE(corpTaxEst) : '—' },
+          { label: 'Total Dividends',       value: fmtE(totalGross) },
+          { label: 'Retained Earnings',     value: fmtE(Math.max(0, retained)) },
+        ], 2));
+        if (corpTaxEst === null) body.appendChild(el('div', { style: 'margin-top:8px;font-size:12px;color:var(--text-muted)' }, 'Corporation tax not included — set the year in the Provisional Tax tab to activate.'));
+        openModal({ title: `Retained Earnings — ${gYear}`, body });
+      }
+    })
+  ));
+
+  // ── Add dividend form ─────────────────────────────────────────────────────────
+  const formCard = el('div', { class: 'card mb-16' });
+  formCard.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Record Dividend Payment'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Log a gross dividend distribution')
+  ));
+  const formBody = el('div', { style: 'padding:0 16px 16px' });
+
+  let formDate      = `${gYear}-01-01`;
+  let formAmount    = 0;
+  let formRecipient = 'giorgos';
+  let formNotes     = '';
+
+  const dateI = input({ type: 'date', value: formDate, style: 'width:150px' });
+  dateI.oninput = () => { formDate = dateI.value; };
+
+  const amountI = mkCurrencyInput(0, 'width:160px', v => { formAmount = v; });
+
+  const recipientSel = select([{ value: 'giorgos', label: 'Giorgos' }, { value: 'rita', label: 'Rita' }], 'giorgos');
+  recipientSel.onchange = () => { formRecipient = recipientSel.value; };
+
+  const notesI = input({ type: 'text', placeholder: 'Notes (optional)', style: 'flex:1;min-width:140px' });
+  notesI.oninput = () => { formNotes = notesI.value; };
+
+  const addBtn = button('+ Add Dividend', { variant: 'primary sm' });
+  addBtn.onclick = () => {
+    if (!formDate || formAmount <= 0) { toast('Enter a valid date and amount', 'error'); return; }
+    upsert('dividends', { id: newId('div'), date: formDate, grossAmount: formAmount, recipient: formRecipient, notes: formNotes });
+    rebuildView();
+    toast('Dividend recorded', 'success');
+  };
+
+  formBody.appendChild(el('div', { style: 'display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap' },
+    formRow('Date', dateI),
+    formRow('Gross Amount (€)', amountI),
+    formRow('Recipient', recipientSel),
+    formRow('Notes', notesI),
+    el('div', { style: 'padding-bottom:2px' }, addBtn)
+  ));
+
+  // SDC note
+  formBody.appendChild(el('div', { style: 'margin-top:10px;font-size:12px;color:var(--text-muted);padding:8px 12px;background:rgba(99,102,241,0.06);border-left:2px solid var(--accent);border-radius:4px' },
+    `SDC of 2.65% (non-dom rate) is withheld on the gross dividend and paid to the Tax Department. Net received = gross × 97.35%.`
+  ));
+
+  formCard.appendChild(formBody);
+  wrap.appendChild(formCard);
+
+  // ── Dividend log ──────────────────────────────────────────────────────────────
+  const logCard = el('div', { class: 'card mb-16' });
+  logCard.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, `Dividend Log — ${gYear}`),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${yearDivs.length} payment${yearDivs.length !== 1 ? 's' : ''} · SDC rate 2.65%`)
+  ));
+
+  if (!yearDivs.length) {
+    logCard.appendChild(el('div', { style: 'padding:24px;text-align:center;color:var(--text-muted);font-size:13px;font-style:italic' }, `No dividends recorded for ${gYear}. Use the form above to add one.`));
+  } else {
+    const tbl  = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
+    const hrow = el('tr');
+    [['Date', 'left'], ['Recipient', 'left'], ['Gross Amount', 'right'], ['SDC (2.65%)', 'right'], ['Net Amount', 'right'], ['Notes', 'left'], ['', 'right']].forEach(([h, align]) => {
+      hrow.appendChild(el('th', { style: `padding:8px 12px;text-align:${align};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08)` }, h));
+    });
+    tbl.appendChild(el('thead', {}, hrow));
+
+    const tbody = el('tbody');
+    yearDivs.forEach((d, ri) => {
+      const sdc = (d.grossAmount || 0) * SDC_RATE;
+      const net = (d.grossAmount || 0) - sdc;
+      const isG = d.recipient === 'giorgos';
+      const tr  = el('tr', { style: ri % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : '' });
+
+      [
+        [d.date || '—',                                          'left',  'var(--text-muted)'],
+        [isG ? 'Giorgos' : 'Rita',                              'left',  isG ? 'var(--accent)' : '#f472b6'],
+        [fmtE(d.grossAmount || 0),                              'right', 'var(--text)'],
+        [fmtE(sdc),                                             'right', 'var(--text-muted)'],
+        [fmtE(net),                                             'right', 'var(--success,#10b981)'],
+        [d.notes || '—',                                        'left',  'var(--text-muted)'],
+      ].forEach(([text, align, color]) => {
+        tr.appendChild(el('td', { style: `padding:8px 12px;text-align:${align};color:${color}` }, text));
+      });
+
+      const delBtn = el('button', { style: 'padding:2px 8px;font-size:11px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:4px;cursor:pointer' }, '×');
+      delBtn.onclick = () => { if (confirm('Remove this dividend record?')) { softDelete('dividends', d.id); rebuildView(); } };
+      const delTd = el('td', { style: 'padding:8px 12px;text-align:right' });
+      delTd.appendChild(delBtn);
+      tr.appendChild(delTd);
+      tbody.appendChild(tr);
+    });
+
+    // Totals row
+    const totRow = el('tr', { style: 'border-top:2px solid var(--border);font-weight:700' });
+    [['Total', 'left'], ['', 'left'], [fmtE(totalGross), 'right'], [fmtE(sdcAmount), 'right'], [fmtE(netTotal), 'right'], ['', 'left'], ['', 'right']].forEach(([text, align]) => {
+      totRow.appendChild(el('td', { style: `padding:8px 12px;text-align:${align};color:var(--text)` }, text));
+    });
+    tbody.appendChild(totRow);
+
+    tbl.appendChild(tbody);
+    logCard.appendChild(el('div', { style: 'padding:0 0 8px' }, tbl));
+
+    // Per-recipient split
+    if (gTotal > 0 && rTotal > 0) {
+      logCard.appendChild(el('div', { style: 'padding:0 16px 16px;display:flex;gap:24px;font-size:12px;color:var(--text-muted)' },
+        el('span', {}, `Giorgos: ${fmtE(gTotal)} gross · ${fmtE(gTotal * (1 - SDC_RATE))} net`),
+        el('span', {}, `Rita: ${fmtE(rTotal)} gross · ${fmtE(rTotal * (1 - SDC_RATE))} net`),
+        el('span', { style: 'color:var(--text-muted);font-style:italic' }, 'SDC applies to all dividends (formally in Giorgos\'s name)')
+      ));
+    }
+  }
+
+  wrap.appendChild(logCard);
   return wrap;
 }
