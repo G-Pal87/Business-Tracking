@@ -6,7 +6,8 @@ import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
   isCapEx, drillRevRows, drillExpRows,
-  sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR
+  sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR,
+  softDelete
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -852,7 +853,12 @@ function buildDataQualityWarnings() {
     const ids = [...new Set(orphans.map(f => f.entityId))].slice(0, 5).join(', ');
     warnings.push({
       title: 'Orphan Property Forecasts',
-      text: `${orphans.length} forecast record${orphans.length > 1 ? 's' : ''} reference propert${orphans.length > 1 ? 'ies' : 'y'} that no longer exist. Affected IDs: ${ids}${orphans.length > 5 ? ', …' : ''}`
+      text: `${orphans.length} forecast record${orphans.length > 1 ? 's' : ''} reference propert${orphans.length > 1 ? 'ies' : 'y'} that no longer exist. Affected IDs: ${ids}${orphans.length > 5 ? ', …' : ''}`,
+      action: { label: 'Clean Up', fn: () => {
+        if (!confirm(`Remove ${orphans.length} orphan forecast record${orphans.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
+        orphans.forEach(fc => softDelete('forecasts', fc.id));
+        rebuildView();
+      }}
     });
   }
 
@@ -875,10 +881,15 @@ function buildDataQualityWarnings() {
   for (const w of warnings) {
     const wRow = el('div', { style: 'display:flex;gap:8px;align-items:flex-start' });
     wRow.appendChild(el('span', { style: 'flex-shrink:0;color:#f59e0b;font-weight:700;font-size:13px' }, '⚠'));
-    const txt = el('div');
+    const txt = el('div', { style: 'flex:1' });
     txt.appendChild(el('div', { style: 'font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px' }, w.title));
     txt.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, w.text));
     wRow.appendChild(txt);
+    if (w.action) {
+      const btn = el('button', { style: 'flex-shrink:0;font-size:11px;padding:3px 10px;border:1px solid #f59e0b;border-radius:4px;background:none;color:#f59e0b;cursor:pointer;white-space:nowrap' }, w.action.label);
+      btn.onclick = w.action.fn;
+      wRow.appendChild(btn);
+    }
     body.appendChild(wRow);
   }
   section.appendChild(body);
