@@ -344,15 +344,6 @@ function buildCurrencyCard() {
       body.appendChild(el('div', { class: 'table-wrap' }, t));
     }
 
-    const taxI = input({ type: 'number', value: state.db.settings?.defaultTaxRate || 0, min: 0, max: 100, step: 0.1 });
-    body.appendChild(el('div', { class: 'form-row horizontal', style: 'margin-top:16px' },
-      formRow('Default invoice tax %', taxI)
-    ));
-    body.appendChild(button('Save Tax Rate', { variant: 'primary', onClick: () => {
-      state.db.settings.defaultTaxRate = Number(taxI.value) || 0;
-      markDirty();
-      toast('Saved', 'success');
-    }}));
   };
 
   renderCard();
