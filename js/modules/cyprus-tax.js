@@ -37,6 +37,18 @@ function persist(patch) {
 const safeN = v => (isFinite(Number(v)) ? Math.max(0, Number(v)) : 0);
 const fmtE  = v => formatEUR(Math.max(0, v), { minFrac: 2 });
 
+const mkCurrencyInput = (val, style, onValue) => {
+  const fmt   = v => v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
+  const parse = s => { const n = parseFloat((s || '').replace(/[^0-9.]/g, '')); return isFinite(n) && n > 0 ? n : 0; };
+  const i = el('input', { type: 'text', style: style || 'width:100%', inputmode: 'decimal', placeholder: '0.00', autocomplete: 'off' });
+  const initVal = safeN(val);
+  i.value = initVal > 0 ? fmt(initVal) : '';
+  i.addEventListener('focus', () => { const n = parse(i.value); i.value = n > 0 ? String(n) : ''; i.select(); });
+  i.addEventListener('blur',  () => { const n = parse(i.value); i.value = n > 0 ? fmt(n) : ''; });
+  i.addEventListener('input', () => onValue(parse(i.value)));
+  return i;
+};
+
 function calcAll(s) {
   const rate       = safeN(s.corpTaxRate);
   const bufPct     = safeN(s.bufferPct);
@@ -762,14 +774,13 @@ function buildEstimateCard(onChange) {
 
   const MAIN_FIELDS = new Set(['actualRevenue', 'forecastRevenue', 'actualExpenses', 'forecastExpenses']);
   const fi = (key, val, label, hint) => {
-    const i = input({ type: 'number', value: val || '', min: 0, step: 0.01, style: 'width:100%', placeholder: '0.00' });
-    i.oninput = () => {
-      const patch = { [key]: safeN(i.value) };
+    const i = mkCurrencyInput(val, 'width:100%', v => {
+      const patch = { [key]: v };
       if (MAIN_FIELDS.has(key)) patch._prefillBreakdown = null;
       persist(patch);
       onChange();
       renderBreakdown();
-    };
+    });
     return formRow(label, i, hint);
   };
 
@@ -933,8 +944,7 @@ function buildSafetyCard(displayEl, renderDisplay, onChange) {
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
 
-  const finalTaxI = input({ type: 'number', value: s.estimatedFinalTax || '', min: 0, step: 0.01, style: 'width:220px', placeholder: '0.00' });
-  finalTaxI.oninput = () => { persist({ estimatedFinalTax: safeN(finalTaxI.value) }); renderDisplay(); onChange(); };
+  const finalTaxI = mkCurrencyInput(s.estimatedFinalTax, 'width:220px', v => { persist({ estimatedFinalTax: v }); renderDisplay(); onChange(); });
 
   body.appendChild(formRow('Estimated final actual tax liability (€)', finalTaxI, 'Your best estimate of the audited year-end tax. Leave 0 if unknown.'));
   body.appendChild(displayEl);
@@ -961,12 +971,10 @@ function buildDecRevisionCard(displayEl, renderDisplay, onChange) {
   ));
 
   const fi = (key, val, label) => {
-    const i = input({ type: 'number', value: val || '', min: 0, step: 0.01, style: 'width:100%', placeholder: '0.00' });
-    i.oninput = () => { persist({ [key]: safeN(i.value) }); renderDisplay(); };
+    const i = mkCurrencyInput(val, 'width:100%', v => { persist({ [key]: v }); renderDisplay(); });
     return formRow(label, i);
   };
-  const julI = input({ type: 'number', value: s.julPayment || '', min: 0, step: 0.01, style: 'width:220px', placeholder: '0.00' });
-  julI.oninput = () => { persist({ julPayment: safeN(julI.value) }); renderDisplay(); };
+  const julI = mkCurrencyInput(s.julPayment, 'width:220px', v => { persist({ julPayment: v }); renderDisplay(); });
 
   body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
     fi('decRevRevenue',       s.decRevRevenue,       'Revised expected annual revenue (€)'),
