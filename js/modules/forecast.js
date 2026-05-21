@@ -1,8 +1,8 @@
 // Forecast module: monthly grid per property/service, stored, tax estimation
-import { state } from '../core/state.js';
+import { state, markDirty } from '../core/state.js';
 import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, setForecastTaxRate, getForecastVsActual, estimateTaxForYear, getForecastEntries, upsertForecastEntry, removeForecastEntry, listActive, listActivePayments } from '../core/data.js';
+import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, estimateTaxForYear, getForecastEntries, upsertForecastEntry, removeForecastEntry, listActive, listActivePayments } from '../core/data.js';
 import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1825,7 +1825,12 @@ function buildTaxSection(wrap) {
   })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   const render = () => {
-    setForecastTaxRate(Number(rateI.value) || 0);
+    if (!state.db.settings) state.db.settings = {};
+    const newRate = Number(rateI.value) || 0;
+    if (state.db.settings.globalTaxRate !== newRate) {
+      state.db.settings.globalTaxRate = newRate;
+      markDirty();
+    }
     const d = getFiltered();
     const y = yearSel.value;
 
