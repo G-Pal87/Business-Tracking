@@ -1,7 +1,7 @@
 // Cyprus Provisional Corporation Tax Calculator
 import { state, markDirty } from '../core/state.js';
 import { el, input, select, button, formRow, toast, openModal } from '../core/ui.js';
-import { formatEUR, toEUR, listActivePayments, listActive, availableYears, isCapEx } from '../core/data.js';
+import { formatEUR, toEUR, listActivePayments, listActive, availableYears, isCapEx, byId } from '../core/data.js';
 import { mkKpiCard, mkModalTable, mkSectionLabel, mkSummaryGrid } from './analytics-helpers.js';
 
 const DEFAULTS = {
@@ -35,7 +35,7 @@ function persist(patch) {
 }
 
 const safeN = v => (isFinite(Number(v)) ? Math.max(0, Number(v)) : 0);
-const fmtE  = v => formatEUR(Math.max(0, v));
+const fmtE  = v => formatEUR(Math.max(0, v), { minFrac: 2 });
 
 function calcAll(s) {
   const rate       = safeN(s.corpTaxRate);
@@ -200,7 +200,11 @@ function modalExpenseCategory(cat) {
   body.appendChild(mkSectionLabel(`Top Records (${topRecs.length} of ${catExps.length})`));
   body.appendChild(mkModalTable(
     [{ label: 'Description / Vendor' }, { label: 'Date' }, { label: 'Amount', right: true }],
-    topRecs.map(e => [e.description || e.vendor || '—', e.date || '', fmtE(toEUR(e.amount, e.currency, year))])
+    topRecs.map(e => {
+      const vendorName = e.vendorId ? byId('vendors', e.vendorId)?.name : null;
+      const label = e.description || vendorName || e.vendor || '—';
+      return [label, e.date || '', fmtE(toEUR(e.amount, e.currency, year))];
+    })
   ));
   openModal({ title: `${cat} — ${year}`, body, large: true });
 }
