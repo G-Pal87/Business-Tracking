@@ -1733,11 +1733,11 @@ function buildTaxSection(wrap) {
     const taxExcluded = new Set(state.db.settings?.taxExcludedPropertyIds || []);
     const propOk = id => selPropIds.size === 0 || selPropIds.has(id);
 
+    // All payments matching stream/property filters (for total revenue display)
     const pays = listActivePayments().filter(p =>
       p.status === 'paid' && p.date >= s && p.date <= e2 &&
       selStreams.has(p.stream) &&
-      propOk(p.propertyId) &&
-      !taxExcluded.has(p.propertyId)
+      propOk(p.propertyId)
     );
     // Invoices are service-based (no propertyId); include only when no property filter
     const invs = listActive('invoices').filter(i =>
@@ -1745,20 +1745,26 @@ function buildTaxSection(wrap) {
       selStreams.has(i.stream) &&
       selPropIds.size === 0
     );
+    // Taxable subset: exclude tax-excluded properties
+    const taxablePays = pays.filter(p => !taxExcluded.has(p.propertyId));
     const exps = listActive('expenses').filter(ex =>
       ex.date >= s && ex.date <= e2 &&
       propOk(ex.propertyId) &&
       !taxExcluded.has(ex.propertyId)
     );
 
-    // Map selected streams → forecast entityIds
-    const fcEntityIds = [];
+    // Map selected streams → forecast entityIds (all, and taxable-only)
+    const fcEntityIds = [], fcTaxableEntityIds = [];
     for (const k of selStreams) {
       if (k === 'short_term_rental' || k === 'long_term_rental') {
         const ptype = k === 'short_term_rental' ? 'short_term' : 'long_term';
-        allProps.filter(p => p.type === ptype && propOk(p.id) && !taxExcluded.has(p.id)).forEach(p => fcEntityIds.push(p.id));
+        allProps.filter(p => p.type === ptype && propOk(p.id)).forEach(p => {
+          fcEntityIds.push(p.id);
+          if (!taxExcluded.has(p.id)) fcTaxableEntityIds.push(p.id);
+        });
       } else if (selPropIds.size === 0) {
-        fcEntityIds.push(k); // 'customer_success' | 'marketing_services'
+        fcEntityIds.push(k);
+        fcTaxableEntityIds.push(k);
       }
     }
 
@@ -1772,14 +1778,22 @@ function buildTaxSection(wrap) {
         if (rev > 0) forecastRows.push({ entityLabel, monthKey: mk, revenue: rev });
       });
     });
+    const forecastTaxableRows = forecastRows.filter(row =>
+      !fcEntityIds.some(id => !fcTaxableEntityIds.includes(id) && (byId('properties', id)?.name || id) === row.entityLabel)
+    );
 
     const rev = [...pays.map(p => toEUR(p.amount, p.currency, y)), ...invs.map(i => toEUR(i.total, i.currency, y))].reduce((a, b) => a + b, 0);
+    const nonTaxableRev = pays.filter(p => taxExcluded.has(p.propertyId)).reduce((a, p) => a + toEUR(p.amount, p.currency, y), 0);
+    const taxableRev = [...taxablePays.map(p => toEUR(p.amount, p.currency, y)), ...invs.map(i => toEUR(i.total, i.currency, y))].reduce((a, b) => a + b, 0);
     const exp = exps.reduce((a, ex) => a + toEUR(ex.amount, ex.currency, y), 0);
-    const taxable = Math.max(0, rev - exp);
+    const taxable = Math.max(0, taxableRev - exp);
     const forecastRev = forecastRows.reduce((s, m) => s + m.revenue, 0);
-    const forecastTaxable = Math.max(0, forecastRev - exp);
+    const forecastTaxableRev = (state.db.forecasts || [])
+      .filter(f => f.year === Number(y) && fcTaxableEntityIds.includes(f.entityId))
+      .reduce((sum, f) => sum + Object.values(f.months || {}).reduce((ms, md) => ms + (md.revenue || 0), 0), 0);
+    const forecastTaxable = Math.max(0, forecastTaxableRev - exp);
 
-    return { pays, invs, exps, forecastRows, rev, exp, taxable, forecastRev, forecastTaxable,
+    return { pays, invs, exps, forecastRows, rev, nonTaxableRev, taxableRev, exp, taxable, forecastRev, forecastTaxable,
       estimatedTax: taxable * (r / 100), forecastTax: forecastTaxable * (r / 100), rate: r };
   };
 
@@ -1844,20 +1858,28 @@ function buildTaxSection(wrap) {
       const names = [...taxExcluded].map(id => byId('properties', id)?.name || id).join(', ');
       resultsWrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px;display:flex;align-items:center;gap:6px' },
         el('span', { style: 'color:#f59e0b' }, '⚠'),
-        `Excluding ${taxExcluded.size} propert${taxExcluded.size === 1 ? 'y' : 'ies'} from tax calculations: ${names}`
+        `Revenue from ${taxExcluded.size} propert${taxExcluded.size === 1 ? 'y' : 'ies'} counted but not taxed: ${names}`
       ));
     }
 
     resultsWrap.appendChild(el('div', { class: 'grid grid-4 mb-16' },
-      kpi('Actual Revenue', formatEUR(d.rev), null,
-        () => drillDownModal('Actual Revenue', toRevRows(d.pays, d.invs, y), revCols)),
-      kpi('Actual Expenses', formatEUR(d.exp), null,
-        () => drillDownModal('Actual Expenses', toExpRows(d.exps, y), expCols)),
-      kpi('Taxable Income (actual)', formatEUR(d.taxable), null,
+      kpi('Total Revenue', formatEUR(d.rev), null,
+        () => drillDownModal('Total Revenue', toRevRows(d.pays, d.invs, y), revCols)),
+      taxExcluded.size > 0
+        ? kpi('Non-Taxable Revenue', formatEUR(d.nonTaxableRev), null, null)
+        : kpi('Deductible Expenses', formatEUR(d.exp), null,
+            () => drillDownModal('Deductible Expenses', toExpRows(d.exps, y), expCols)),
+      kpi('Taxable Income', formatEUR(d.taxable), null,
         () => drillDownModal('Taxable Income — Revenue Records', toRevRows(d.pays, d.invs, y), revCols)),
       kpi(`Estimated Tax @ ${d.rate}%`, formatEUR(d.estimatedTax), 'warning',
         () => drillDownModal(`Estimated Tax @ ${d.rate}% — Revenue Records`, toRevRows(d.pays, d.invs, y), revCols))
     ));
+    if (taxExcluded.size > 0) {
+      resultsWrap.appendChild(el('div', { class: 'grid grid-4 mb-16' },
+        kpi('Deductible Expenses', formatEUR(d.exp), null,
+          () => drillDownModal('Deductible Expenses', toExpRows(d.exps, y), expCols))
+      ));
+    }
     resultsWrap.appendChild(el('div', { class: 'grid grid-4' },
       kpi('Forecast Revenue', formatEUR(d.forecastRev), 'info',
         () => drillDownModal('Forecast Revenue', d.forecastRows, fcCols)),
