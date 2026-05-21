@@ -31552,8 +31552,10 @@
       "notes": "",
       "createdAt": 1779395087752,
       "createdBy": "Giorgos",
-      "updatedAt": 1779395087752,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1779395100652,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779395100652,
+      "deletedBy": "Giorgos"
     }
   ]
 }
