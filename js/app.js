@@ -332,8 +332,8 @@ function buildUserFooter() {
 
 function buildSidebar(MODULES) {
   const navGroups = [
-    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'analytics-forecast', 'analytics-owner', 'analytics-tax'] },
-    { title: 'Operations', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'reconciliation', 'forecast'] },
+    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-tax'] },
+    { title: 'Operations', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'forecast'] },
     { title: 'System', items: ['settings', 'users'] }
   ];
   const nav = document.getElementById('nav');
