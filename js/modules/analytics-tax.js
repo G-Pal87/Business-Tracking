@@ -6,7 +6,8 @@ import { COST_CATEGORIES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
-  resolveExpenseFields, isCapEx
+  resolveExpenseFields, isCapEx,
+  newId, upsert, softDelete
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
@@ -16,7 +17,9 @@ const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct
 
 let gYear  = null;
 let gOwner = '';
-let gTab   = 'pnl'; // 'pnl' | 'provisional'
+let gTab   = 'pnl'; // 'pnl' | 'provisional' | 'dividends'
+
+const SDC_RATE = 0.0265;
 
 // ── Module export ──────────────────────────────────────────────────────────────
 export default {
@@ -54,7 +57,7 @@ function buildView() {
   const tabBar = el('div', {
     style: 'display:flex;gap:0;margin-bottom:24px;border-bottom:1px solid var(--border)'
   });
-  for (const [key, label] of [['pnl', 'P&L Report'], ['provisional', 'Provisional Tax']]) {
+  for (const [key, label] of [['pnl', 'P&L Report'], ['provisional', 'Provisional Tax'], ['dividends', 'Dividends']]) {
     const isActive = gTab === key;
     const btn = el('button', {
       style: [
@@ -78,6 +81,8 @@ function buildView() {
 
   if (gTab === 'pnl') {
     wrap.appendChild(buildPnLContent(years));
+  } else if (gTab === 'dividends') {
+    wrap.appendChild(buildDividendsContent(years));
   } else {
     wrap.appendChild(buildProvisionalTax());
   }
@@ -1421,5 +1426,229 @@ function buildProvisionalTax() {
   wrap.appendChild(ptBuildDecRevisionCard(decDisplayEl, renderDecDisplay, recalc));
 
   recalc();
+  return wrap;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DIVIDENDS TAB
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function buildDividendsContent(years) {
+  const wrap = el('div');
+
+  if (!years.length) {
+    wrap.appendChild(el('div', { style: 'padding:40px;text-align:center;color:var(--text-muted);font-size:14px' }, 'No data found. Add payments, invoices, or expenses to get started.'));
+    return wrap;
+  }
+
+  // Year selector (same pill style as P&L tab, no owner filter)
+  const yearBar = el('div', {
+    style: 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:20px;padding:12px 16px;background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm)'
+  });
+  yearBar.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-right:4px' }, 'Year'));
+  for (const yr of years) {
+    const isActive = yr === gYear;
+    const pill = el('button', {
+      style: ['padding:4px 12px;border-radius:14px;border:1px solid', isActive ? 'var(--accent);background:var(--accent);color:#fff;font-weight:600' : 'var(--border);background:transparent;color:var(--text-muted)', ';font-size:12px;cursor:pointer;transition:all 120ms'].join(' ')
+    }, yr);
+    pill.onclick = () => { if (gYear !== yr) { CHART_IDS.forEach(id => charts.destroy(id)); gYear = yr; rebuildView(); } };
+    yearBar.appendChild(pill);
+  }
+  wrap.appendChild(yearBar);
+
+  // Live data for selected year
+  const yearDivs   = listActive('dividends').filter(d => (d.date || '').startsWith(gYear)).sort((a, b) => b.date.localeCompare(a.date));
+  const pnlData    = getYearData(gYear, '');
+  const ptCfg      = cfg();
+  const ptCalc     = calcAll(ptCfg);
+  const corpTaxEst = String(ptCfg.year) === gYear ? ptCalc.corpTax : null;
+
+  const totalGross  = yearDivs.reduce((s, d) => s + (d.grossAmount || 0), 0);
+  const sdcAmount   = totalGross * SDC_RATE;
+  const netTotal    = totalGross - sdcAmount;
+  const gTotal      = yearDivs.filter(d => d.recipient === 'giorgos').reduce((s, d) => s + (d.grossAmount || 0), 0);
+  const rTotal      = yearDivs.filter(d => d.recipient === 'rita').reduce((s, d) => s + (d.grossAmount || 0), 0);
+  const retained    = corpTaxEst !== null ? pnlData.opProfit - corpTaxEst - totalGross : pnlData.opProfit - totalGross;
+
+  // ── Summary KPIs ─────────────────────────────────────────────────────────────
+  wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px' },
+    mkKpiCard({
+      label: 'Operating Profit',
+      value: fmtE(pnlData.opProfit),
+      subtitle: 'From P&L — before tax',
+      onClick: () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Total Revenue',    value: fmtE(pnlData.totalRevenue) },
+          { label: 'Total OpEx',       value: fmtE(pnlData.totalOpEx) },
+          { label: 'Operating Profit', value: fmtE(pnlData.opProfit) },
+          { label: 'CapEx (excluded)', value: fmtE(pnlData.totalCapEx) },
+        ], 2));
+        openModal({ title: `Operating Profit — ${gYear}`, body });
+      }
+    }),
+    mkKpiCard({
+      label: 'Est. Corporation Tax',
+      value: corpTaxEst !== null ? fmtE(corpTaxEst) : '—',
+      subtitle: corpTaxEst !== null ? `From Provisional Tax (${gYear})` : 'Set in Provisional Tax tab',
+      variant: corpTaxEst !== null && corpTaxEst > 0 ? 'warning' : '',
+      onClick: corpTaxEst !== null ? () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Taxable Profit',    value: fmtE(ptCalc.taxableProfit) },
+          { label: `Tax Rate`,          value: `${ptCalc.rate}%` },
+          { label: 'Corporation Tax',   value: fmtE(corpTaxEst) },
+          { label: 'After-Tax Profit',  value: fmtE(Math.max(0, pnlData.opProfit - corpTaxEst)) },
+        ], 2));
+        body.appendChild(el('div', { style: 'margin-top:8px;font-size:12px;color:var(--text-muted)' }, 'Figure sourced from the Provisional Tax tab. Update that tab for a more accurate estimate.'));
+        openModal({ title: `Corporation Tax Estimate — ${gYear}`, body });
+      } : null
+    }),
+    mkKpiCard({
+      label: 'Total Dividends Paid',
+      value: fmtE(totalGross),
+      subtitle: yearDivs.length ? `${yearDivs.length} payment${yearDivs.length > 1 ? 's' : ''}` : 'None recorded',
+      onClick: yearDivs.length ? () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Giorgos',     value: fmtE(gTotal), sub: `${yearDivs.filter(d=>d.recipient==='giorgos').length} payment(s)` },
+          { label: 'Rita',        value: fmtE(rTotal), sub: `${yearDivs.filter(d=>d.recipient==='rita').length} payment(s)` },
+          { label: 'SDC (2.65%)', value: fmtE(sdcAmount) },
+          { label: 'Net Total',   value: fmtE(netTotal) },
+        ], 2));
+        openModal({ title: `Dividends Paid — ${gYear}`, body });
+      } : null
+    }),
+    mkKpiCard({
+      label: 'Retained Earnings',
+      value: fmtE(Math.max(0, retained)),
+      subtitle: corpTaxEst !== null ? 'After tax & dividends' : 'After dividends (set corp tax for full picture)',
+      variant: retained < 0 ? 'danger' : retained < pnlData.opProfit * 0.1 ? 'warning' : 'success',
+      onClick: () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Operating Profit',      value: fmtE(pnlData.opProfit) },
+          { label: 'Est. Corporation Tax',  value: corpTaxEst !== null ? fmtE(corpTaxEst) : '—' },
+          { label: 'Total Dividends',       value: fmtE(totalGross) },
+          { label: 'Retained Earnings',     value: fmtE(Math.max(0, retained)) },
+        ], 2));
+        if (corpTaxEst === null) body.appendChild(el('div', { style: 'margin-top:8px;font-size:12px;color:var(--text-muted)' }, 'Corporation tax not included — set the year in the Provisional Tax tab to activate.'));
+        openModal({ title: `Retained Earnings — ${gYear}`, body });
+      }
+    })
+  ));
+
+  // ── Add dividend form ─────────────────────────────────────────────────────────
+  const formCard = el('div', { class: 'card mb-16' });
+  formCard.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Record Dividend Payment'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Log a gross dividend distribution')
+  ));
+  const formBody = el('div', { style: 'padding:0 16px 16px' });
+
+  let formDate      = `${gYear}-01-01`;
+  let formAmount    = 0;
+  let formRecipient = 'giorgos';
+  let formNotes     = '';
+
+  const dateI = input({ type: 'date', value: formDate, style: 'width:150px' });
+  dateI.oninput = () => { formDate = dateI.value; };
+
+  const amountI = mkCurrencyInput(0, 'width:160px', v => { formAmount = v; });
+
+  const recipientSel = select([{ value: 'giorgos', label: 'Giorgos' }, { value: 'rita', label: 'Rita' }], 'giorgos');
+  recipientSel.onchange = () => { formRecipient = recipientSel.value; };
+
+  const notesI = input({ type: 'text', placeholder: 'Notes (optional)', style: 'flex:1;min-width:140px' });
+  notesI.oninput = () => { formNotes = notesI.value; };
+
+  const addBtn = button('+ Add Dividend', { variant: 'primary sm' });
+  addBtn.onclick = () => {
+    if (!formDate || formAmount <= 0) { toast('Enter a valid date and amount', 'error'); return; }
+    upsert('dividends', { id: newId('div'), date: formDate, grossAmount: formAmount, recipient: formRecipient, notes: formNotes });
+    rebuildView();
+    toast('Dividend recorded', 'success');
+  };
+
+  formBody.appendChild(el('div', { style: 'display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap' },
+    formRow('Date', dateI),
+    formRow('Gross Amount (€)', amountI),
+    formRow('Recipient', recipientSel),
+    formRow('Notes', notesI),
+    el('div', { style: 'padding-bottom:2px' }, addBtn)
+  ));
+
+  // SDC note
+  formBody.appendChild(el('div', { style: 'margin-top:10px;font-size:12px;color:var(--text-muted);padding:8px 12px;background:rgba(99,102,241,0.06);border-left:2px solid var(--accent);border-radius:4px' },
+    `SDC of 2.65% (non-dom rate) is withheld on the gross dividend and paid to the Tax Department. Net received = gross × 97.35%.`
+  ));
+
+  formCard.appendChild(formBody);
+  wrap.appendChild(formCard);
+
+  // ── Dividend log ──────────────────────────────────────────────────────────────
+  const logCard = el('div', { class: 'card mb-16' });
+  logCard.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, `Dividend Log — ${gYear}`),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${yearDivs.length} payment${yearDivs.length !== 1 ? 's' : ''} · SDC rate 2.65%`)
+  ));
+
+  if (!yearDivs.length) {
+    logCard.appendChild(el('div', { style: 'padding:24px;text-align:center;color:var(--text-muted);font-size:13px;font-style:italic' }, `No dividends recorded for ${gYear}. Use the form above to add one.`));
+  } else {
+    const tbl  = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
+    const hrow = el('tr');
+    [['Date', 'left'], ['Recipient', 'left'], ['Gross Amount', 'right'], ['SDC (2.65%)', 'right'], ['Net Amount', 'right'], ['Notes', 'left'], ['', 'right']].forEach(([h, align]) => {
+      hrow.appendChild(el('th', { style: `padding:8px 12px;text-align:${align};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08)` }, h));
+    });
+    tbl.appendChild(el('thead', {}, hrow));
+
+    const tbody = el('tbody');
+    yearDivs.forEach((d, ri) => {
+      const sdc = (d.grossAmount || 0) * SDC_RATE;
+      const net = (d.grossAmount || 0) - sdc;
+      const isG = d.recipient === 'giorgos';
+      const tr  = el('tr', { style: ri % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : '' });
+
+      [
+        [d.date || '—',                                          'left',  'var(--text-muted)'],
+        [isG ? 'Giorgos' : 'Rita',                              'left',  isG ? 'var(--accent)' : '#f472b6'],
+        [fmtE(d.grossAmount || 0),                              'right', 'var(--text)'],
+        [fmtE(sdc),                                             'right', 'var(--text-muted)'],
+        [fmtE(net),                                             'right', 'var(--success,#10b981)'],
+        [d.notes || '—',                                        'left',  'var(--text-muted)'],
+      ].forEach(([text, align, color]) => {
+        tr.appendChild(el('td', { style: `padding:8px 12px;text-align:${align};color:${color}` }, text));
+      });
+
+      const delBtn = el('button', { style: 'padding:2px 8px;font-size:11px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:4px;cursor:pointer' }, '×');
+      delBtn.onclick = () => { if (confirm('Remove this dividend record?')) { softDelete('dividends', d.id); rebuildView(); } };
+      const delTd = el('td', { style: 'padding:8px 12px;text-align:right' });
+      delTd.appendChild(delBtn);
+      tr.appendChild(delTd);
+      tbody.appendChild(tr);
+    });
+
+    // Totals row
+    const totRow = el('tr', { style: 'border-top:2px solid var(--border);font-weight:700' });
+    [['Total', 'left'], ['', 'left'], [fmtE(totalGross), 'right'], [fmtE(sdcAmount), 'right'], [fmtE(netTotal), 'right'], ['', 'left'], ['', 'right']].forEach(([text, align]) => {
+      totRow.appendChild(el('td', { style: `padding:8px 12px;text-align:${align};color:var(--text)` }, text));
+    });
+    tbody.appendChild(totRow);
+
+    tbl.appendChild(tbody);
+    logCard.appendChild(el('div', { style: 'padding:0 0 8px' }, tbl));
+
+    // Per-recipient split
+    if (gTotal > 0 && rTotal > 0) {
+      logCard.appendChild(el('div', { style: 'padding:0 16px 16px;display:flex;gap:24px;font-size:12px;color:var(--text-muted)' },
+        el('span', {}, `Giorgos: ${fmtE(gTotal)} gross · ${fmtE(gTotal * (1 - SDC_RATE))} net`),
+        el('span', {}, `Rita: ${fmtE(rTotal)} gross · ${fmtE(rTotal * (1 - SDC_RATE))} net`),
+        el('span', { style: 'color:var(--text-muted);font-style:italic' }, 'SDC applies to all dividends (formally in Giorgos\'s name)')
+      ));
+    }
+  }
+
+  wrap.appendChild(logCard);
   return wrap;
 }
