@@ -107,7 +107,7 @@ export async function fetchDb() {
 
   if (!res.ok) {
     if (res.status === 404) throw new Error('db.json not found in repo. Create data/db.json first.');
-    if (res.status === 401) throw new Error('GitHub auth failed — check your token');
+    if (res.status === 401) throw new Error(token ? 'GitHub auth failed — token is invalid or expired' : 'GitHub token required — enter a Personal Access Token in Settings → GitHub Storage');
     if (res.status === 403) throw new Error('GitHub access denied — check token permissions');
     throw new Error(`GitHub fetch failed (${res.status})`);
   }

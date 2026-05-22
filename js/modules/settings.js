@@ -234,21 +234,39 @@ function buildGithubCard() {
     const setupUrl = `${window.location.origin}${window.location.pathname}#/setup?${params}`;
     setupLinkInput.value = setupUrl;
 
-    const copyBtn = button('Copy Link', { variant: 'primary', onClick: () => {
-      setupLinkInput.select();
+    const doCopy = (text, msg) => {
       if (navigator.clipboard) {
-        navigator.clipboard.writeText(setupUrl)
-          .then(() => toast('Setup link copied — share it with any new user', 'success', 5000))
-          .catch(() => { document.execCommand('copy'); toast('Setup link copied', 'success', 5000); });
+        navigator.clipboard.writeText(text).then(() => toast(msg, 'success', 5000))
+          .catch(() => { document.execCommand('copy'); toast(msg, 'success', 5000); });
       } else {
         document.execCommand('copy');
-        toast('Setup link copied', 'success', 5000);
+        toast(msg, 'success', 5000);
       }
+    };
+
+    const copyBtn = button('Copy Link', { variant: 'primary', onClick: () => {
+      setupLinkInput.select();
+      doCopy(setupUrl, 'Setup link copied — share it with any new user');
     }});
 
     const linkRow = el('div', { class: 'flex gap-8', style: 'align-items:center' });
     linkRow.appendChild(setupLinkInput);
     linkRow.appendChild(copyBtn);
+
+    if (effToken) {
+      const paramsWithToken = new URLSearchParams({ owner: effOwner, repo: effRepo, branch: effBranch, path: effPath, token: effToken });
+      const setupUrlWithToken = `${window.location.origin}${window.location.pathname}#/setup?${paramsWithToken}`;
+      const copyTokenBtn = button('Copy Link + Token', { onClick: () => {
+        doCopy(setupUrlWithToken, '⚠️ Link includes your token — share only with trusted users');
+      }});
+      copyTokenBtn.title = 'Includes the GitHub token — one-click setup for private repos. Share only with trusted users.';
+      linkRow.appendChild(copyTokenBtn);
+
+      setupSection.appendChild(el('div', {
+        style: 'font-size:11px;color:var(--text-muted);margin-top:6px'
+      }, 'Private repo? Use "Copy Link + Token" so the recipient can pull without entering credentials. Treat that link like a password.'));
+    }
+
     setupSection.appendChild(linkRow);
     body.appendChild(setupSection);
   }
