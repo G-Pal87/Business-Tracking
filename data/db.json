@@ -31569,6 +31569,17 @@
       "updatedBy": "Giorgos",
       "deletedAt": 1779422097246,
       "deletedBy": "Giorgos"
+    },
+    {
+      "id": "div_mpgdz6xz7l",
+      "date": "2026-01-01",
+      "grossAmount": 100000,
+      "recipient": "giorgos",
+      "notes": "",
+      "createdAt": 1779422104295,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779422104295,
+      "updatedBy": "Giorgos"
     }
   ]
 }
