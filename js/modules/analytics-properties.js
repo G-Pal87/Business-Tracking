@@ -87,6 +87,7 @@ function getData(start, end) {
 
     return {
       prop, rev, opEx, capEx, allTimeCapEx, purchaseEUR, totalInvested,
+      netIncome,
       profit: rev - opEx,
       net:    rev - opEx - capEx,
       simpleROI, annualizedROI, cashOnCashROI,
@@ -754,6 +755,175 @@ function computePropertyInsights({ totals, propData, avgROI, best, worst }) {
   return signals;
 }
 
+// ── Lease Expiry Alerts ───────────────────────────────────────────────────────
+function buildLeaseExpiryCard() {
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Lease Expiry Alerts'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Tenants whose lease ends within the next 90 days')
+  ));
+
+  const today = new Date().toISOString().slice(0, 10);
+  const in90  = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
+
+  const expiring = listActive('tenants').filter(t => {
+    const end = t.leaseEndDate;
+    return end && end >= today && end <= in90;
+  });
+
+  if (expiring.length === 0) {
+    card.appendChild(el('div', {
+      style: 'padding:12px 16px;display:flex;align-items:center;gap:8px;color:var(--success);font-size:13px'
+    }, '✓ No leases expiring in the next 90 days'));
+    return card;
+  }
+
+  const body = el('div', { style: 'padding:0 16px 16px' });
+
+  const table = el('table', { class: 'table' });
+  const htr   = el('tr');
+  ['Property', 'Tenant', 'Lease End', 'Days Left', 'Status'].forEach((h, i) => {
+    htr.appendChild(el('th', { class: i >= 3 ? 'right' : '' }, h));
+  });
+  table.appendChild(el('thead', {}, htr));
+
+  const tbody = el('tbody');
+  [...expiring].sort((a, b) => (a.leaseEndDate || '').localeCompare(b.leaseEndDate || '')).forEach(t => {
+    const daysLeft = Math.ceil((new Date(t.leaseEndDate) - new Date(today)) / 86400000);
+    const propName = byId('properties', t.propertyId)?.name || '—';
+    let badgeCls, badgeLbl;
+    if (daysLeft <= 30)       { badgeCls = 'danger';  badgeLbl = 'Urgent';  }
+    else if (daysLeft <= 60)  { badgeCls = 'warning'; badgeLbl = 'Warning'; }
+    else                      { badgeCls = 'info';    badgeLbl = 'Notice';  }
+
+    const tr = el('tr');
+    tr.appendChild(el('td', {}, propName));
+    tr.appendChild(el('td', {}, t.name || '—'));
+    tr.appendChild(el('td', {}, fmtDate(t.leaseEndDate)));
+    tr.appendChild(el('td', { class: 'right num' }, String(daysLeft)));
+    const tdS = el('td', { class: 'right' });
+    tdS.appendChild(el('span', { class: `badge ${badgeCls}` }, badgeLbl));
+    tr.appendChild(tdS);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  const tableWrap = el('div', { class: 'table-wrap' });
+  tableWrap.appendChild(table);
+  body.appendChild(tableWrap);
+  card.appendChild(body);
+  return card;
+}
+
+// ── STR Occupancy Heatmap ─────────────────────────────────────────────────────
+function buildOccupancyHeatmap(propData, monthKeys) {
+  const strProps = propData.filter(d => d.prop.type === 'short_term');
+  const wrap = el('div', { class: 'card mb-16' });
+  wrap.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'STR Occupancy Heatmap'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Nights booked ÷ 30 available nights per month')
+  ));
+  if (!strProps.length) {
+    wrap.appendChild(mkEmptyState('No short-term rental properties found.'));
+    return wrap;
+  }
+
+  // Check whether any STR property has airbnbNights data at all
+  let anyNightsData = false;
+  for (const d of strProps) {
+    for (const p of d.propPayments) {
+      if ((p.airbnbNights || 0) > 0) { anyNightsData = true; break; }
+    }
+    if (anyNightsData) break;
+  }
+
+  const body = el('div', { style: 'padding:0 16px 16px;overflow-x:auto' });
+
+  const table = el('table', { class: 'table', style: 'min-width:600px' });
+  // Header row
+  const htr = el('tr');
+  htr.appendChild(el('th', {}, 'Property'));
+  monthKeys.forEach(m => htr.appendChild(el('th', { class: 'right', style: 'white-space:nowrap' }, m.label)));
+  table.appendChild(el('thead', {}, htr));
+
+  const tbody = el('tbody');
+  for (const d of strProps) {
+    const tr = el('tr');
+    // Property name cell with status badge if needed
+    const nameTd = el('td', { style: 'white-space:nowrap;font-weight:600' }, d.prop.name);
+    const propStatus = d.prop.status || 'active';
+    if (propStatus !== 'active') {
+      const statusBadge = buildStatusBadge(propStatus);
+      if (statusBadge) { nameTd.appendChild(document.createTextNode(' ')); nameTd.appendChild(statusBadge); }
+    }
+    tr.appendChild(nameTd);
+
+    for (const m of monthKeys) {
+      const monthPays = d.propPayments.filter(p => (p.date || '').slice(0, 7) === m.key);
+      const nights = monthPays.reduce((s, p) => s + (p.airbnbNights || 0), 0);
+      const hasNightsField = monthPays.some(p => p.airbnbNights !== undefined && p.airbnbNights !== null);
+      const pct = Math.min(100, (nights / 30) * 100);
+
+      const td = el('td', { class: 'right', style: 'cursor:pointer' });
+      if (!hasNightsField || nights === 0) {
+        td.textContent = monthPays.length > 0 ? '—' : '';
+        td.style.color = 'var(--text-muted)';
+      } else {
+        td.textContent = pct.toFixed(0) + '%';
+        if      (pct >= 70) td.style.color = 'var(--success)';
+        else if (pct >= 40) td.style.color = '#f59e0b';
+        else                td.style.color = 'var(--danger)';
+      }
+
+      // Cell click: modal with payments for that property+month
+      if (monthPays.length > 0) {
+        td.title = 'Click for payments';
+        td.onclick = () => {
+          const modalBody = el('div');
+          modalBody.appendChild(mkSectionLabel(`${d.prop.name} — ${m.label}`));
+          modalBody.appendChild(mkModalTable(
+            [{ label: 'Date' }, { label: 'Nights', right: true }, { label: 'Amount (EUR)', right: true }],
+            [...monthPays].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(p => [
+              fmtDate(p.date),
+              p.airbnbNights != null ? String(p.airbnbNights) : '—',
+              formatEUR(toEUR(p.amount, p.currency, p.date))
+            ])
+          ));
+          openModal({ title: `Occupancy — ${d.prop.name} · ${m.label}`, body: modalBody, large: true });
+        };
+      }
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+
+  const tableWrap = el('div', { class: 'table-wrap' });
+  tableWrap.appendChild(table);
+  body.appendChild(tableWrap);
+
+  if (!anyNightsData) {
+    body.appendChild(el('div', {
+      style: 'margin-top:10px;padding:10px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:12px;color:#92400e'
+    }, '⚠ Occupancy data requires Airbnb nights. Import an Airbnb CSV in the Payments section to populate this field.'));
+  }
+
+  wrap.appendChild(body);
+  return wrap;
+}
+
+// ── Status badge helper ───────────────────────────────────────────────────────
+function buildStatusBadge(status) {
+  const MAP = {
+    renovation: { label: '🔨 Renovation', css: 'warning' },
+    vacant:     { label: '⬜ Vacant',     css: ''        },
+    sold:       { label: '✓ Sold',        css: 'danger'  }
+  };
+  const def = MAP[status];
+  if (!def) return null;
+  return el('span', { class: `badge ${def.css}`, style: 'font-size:10px' }, def.label);
+}
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 function buildView() {
   const wrap = el('div', { class: 'view active' });
@@ -1010,12 +1180,26 @@ function buildView() {
     }
   }));
 
-  // 3. Rental Yield
+  // 3. Rental Yield (gross + net)
   const ryData = opData.rentalYield;
+  // Compute net yield: netIncome / totalInvested * 100, averaged across props with totalInvested > 0
+  const netYieldItems = propData.filter(d => d.totalInvested > 0);
+  const periodMonthsForYield = (() => {
+    const s = start.split('-'), e = end.split('-');
+    return (parseInt(e[0]) - parseInt(s[0])) * 12 + (parseInt(e[1]) - parseInt(s[1])) + 1;
+  })();
+  const avgNetYield = netYieldItems.length > 0
+    ? netYieldItems.reduce((sum, d) => {
+        const annualNet = periodMonthsForYield > 0 ? (d.netIncome / periodMonthsForYield) * 12 : 0;
+        return sum + (d.totalInvested > 0 ? (annualNet / d.totalInvested) * 100 : 0);
+      }, 0) / netYieldItems.length
+    : null;
   opKpiRow.appendChild(mkKpiCard({
     label:   'Rental Yield',
     value:   ryData.avg !== null ? ryData.avg.toFixed(1) + '%' : '—',
-    subtitle: 'Annualized · portfolio avg',
+    subtitle: avgNetYield !== null
+      ? `Gross avg · Net: ${avgNetYield.toFixed(1)}% (annualized)`
+      : 'Annualized · portfolio avg',
     variant: ryData.avg !== null ? (ryData.avg >= 5 ? 'success' : ryData.avg >= 3 ? 'warning' : 'danger') : '',
     onClick: () => {
       const body = el('div');
@@ -1024,17 +1208,29 @@ function buildView() {
           'No properties have a purchase price recorded. Enter purchase prices to calculate rental yield.'
         ));
       } else {
-        const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:20px' });
-        sgrid.appendChild(mkSummaryBox('Portfolio Avg Yield', ryData.avg !== null ? ryData.avg.toFixed(1) + '%' : '—', 'Annualized, averaged across properties with purchase price'));
+        const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px' });
+        sgrid.appendChild(mkSummaryBox('Gross Yield (avg)', ryData.avg !== null ? ryData.avg.toFixed(1) + '%' : '—', 'Annualized revenue ÷ purchase price'));
+        sgrid.appendChild(mkSummaryBox('Net Yield (avg)', avgNetYield !== null ? avgNetYield.toFixed(1) + '%' : '—', 'Annualized net income ÷ total invested'));
         body.appendChild(sgrid);
-        body.appendChild(mkSectionLabel('Per Property'));
+        body.appendChild(mkSectionLabel('Per Property — Gross vs Net Yield'));
+        // Build per-property net yield
+        const perPropWithNet = [...ryData.perProp].map(y => {
+          const pd = propData.find(d => d.prop.name === y.name);
+          let netYieldPct = null;
+          if (pd && pd.totalInvested > 0 && periodMonthsForYield > 0) {
+            const annualNet = (pd.netIncome / periodMonthsForYield) * 12;
+            netYieldPct = (annualNet / pd.totalInvested) * 100;
+          }
+          return { ...y, netYieldPct };
+        }).sort((a, b) => (b.yieldPct ?? -Infinity) - (a.yieldPct ?? -Infinity));
         body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Annual Revenue (est.)', right: true }, { label: 'Purchase Price', right: true }, { label: 'Yield %', right: true }],
-          [...ryData.perProp].sort((a, b) => (b.yieldPct ?? -Infinity) - (a.yieldPct ?? -Infinity)).map(y => [
+          [{ label: 'Property' }, { label: 'Annual Rev (est.)', right: true }, { label: 'Purchase Price', right: true }, { label: 'Gross Yield', right: true }, { label: 'Net Yield', right: true }],
+          perPropWithNet.map(y => [
             y.name,
             formatEUR(y.annualRev),
             formatEUR(y.purchase),
-            y.yieldPct !== null ? y.yieldPct.toFixed(1) + '%' : '—'
+            y.yieldPct !== null ? y.yieldPct.toFixed(1) + '%' : '—',
+            y.netYieldPct !== null ? y.netYieldPct.toFixed(1) + '%' : '—'
           ])
         ));
       }
@@ -1123,13 +1319,20 @@ function buildView() {
   if (compSection) wrap.appendChild(compSection);
 
   // ── Property summary table ─────────────────────────────────────────────────
-  const tableCard = el('div', { class: 'card' });
+  const tableCard = el('div', { class: 'card mb-16' });
   tableCard.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Property Summary'),
     el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a row for transactions')
   ));
   buildSummaryTable(tableCard, propData);
   wrap.appendChild(tableCard);
+
+  // ── Lease Expiry Alerts ────────────────────────────────────────────────────
+  wrap.appendChild(buildLeaseExpiryCard());
+
+  // ── STR Occupancy Heatmap ──────────────────────────────────────────────────
+  const { keys: heatmapMonthKeys } = getMonthKeysForRange(start, end);
+  wrap.appendChild(buildOccupancyHeatmap(propData, heatmapMonthKeys));
 
   // ── Portfolio Acquisition & Growth ─────────────────────────────────────────
   const acqData = getAcquisitionData(allProps);
@@ -1814,16 +2017,41 @@ function buildSummaryTable(container, propData) {
   const tbody = el('tbody');
   for (const d of sorted) {
     const sm = STREAMS[propStream(d.prop)];
+    const propStatus = d.prop.status || 'active';
     const tr = el('tr', { style: 'cursor:pointer', title: 'Click for transactions' });
-    tr.onclick = () => drillDownModal(
-      `${d.prop.name} — All Transactions`,
-      mixedRows(d.propPayments, [...d.propOpExpenses, ...d.propCapExpenses]),
-      MIXED_DRILL_COLS
-    );
+    tr.onclick = () => {
+      const rows = mixedRows(d.propPayments, [...d.propOpExpenses, ...d.propCapExpenses]);
+      if (propStatus === 'renovation' || propStatus === 'vacant' || propStatus === 'sold') {
+        // Show contextual note in a modal with the note first, then the transactions
+        const modalBody = el('div');
+        modalBody.appendChild(el('div', {
+          style: 'margin-bottom:12px;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:12px;color:#92400e'
+        }, `ℹ This property is currently ${propStatus} — revenue reflects any activity during the selected period.`));
+        const tableEl = mkModalTable(
+          MIXED_DRILL_COLS.map(c => c.label ? c : { label: c.key }),
+          rows.map(r => MIXED_DRILL_COLS.map(c => {
+            const v = r[c.key];
+            return c.format ? c.format(v) : (v ?? '—');
+          }))
+        );
+        modalBody.appendChild(tableEl);
+        openModal({ title: `${d.prop.name} — All Transactions`, body: modalBody, large: true });
+      } else {
+        drillDownModal(
+          `${d.prop.name} — All Transactions`,
+          rows,
+          MIXED_DRILL_COLS
+        );
+      }
+    };
     COLS.forEach(col => {
       const td = el('td', { class: col.right ? 'right num' : '' });
       if (col.key === 'name') {
         td.textContent = d.prop.name;
+        if (propStatus !== 'active') {
+          const badge = buildStatusBadge(propStatus);
+          if (badge) { td.appendChild(document.createTextNode(' ')); td.appendChild(badge); }
+        }
       } else if (col.key === 'stream') {
         td.appendChild(el('span', { class: `badge ${sm?.css || ''}` }, sm?.short || propStream(d.prop)));
       } else if (col.key === 'owner') {

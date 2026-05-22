@@ -158,8 +158,9 @@ function getYearData(year, ownerFilter) {
   const opExpenses  = allExp.filter(e => !isCapEx(e));
   const capExpenses = allExp.filter(e =>  isCapEx(e));
 
-  const rentalPaymentsSTR = payments.filter(p => { const prop = byId('properties', p.propertyId); return p.stream === 'short_term_rental' || prop?.type === 'short_term'; });
-  const rentalPaymentsLTR = payments.filter(p => { const prop = byId('properties', p.propertyId); return p.stream === 'long_term_rental'  || prop?.type === 'long_term';  });
+  const propMap = new Map(listActive('properties').map(p => [p.id, p]));
+  const rentalPaymentsSTR = payments.filter(p => { const prop = p.propertyId ? propMap.get(p.propertyId) : null; return p.stream === 'short_term_rental' || prop?.type === 'short_term'; });
+  const rentalPaymentsLTR = payments.filter(p => { const prop = p.propertyId ? propMap.get(p.propertyId) : null; return p.stream === 'long_term_rental'  || prop?.type === 'long_term';  });
   const invoicesCS    = invoices.filter(i => i.stream === 'customer_success');
   const invoicesMkt   = invoices.filter(i => i.stream === 'marketing_services');
   const invoicesOther = invoices.filter(i => !['customer_success','marketing_services'].includes(i.stream));
@@ -322,7 +323,7 @@ function buildKpiCards(data, year) {
   }
 
   grid.appendChild(mkKpiCard({
-    label: 'Operating Margin', value: `${operatingMargin.toFixed(1)}%`, subtitle: 'Revenue minus OpEx',
+    label: 'Operating Margin', value: `${operatingMargin.toFixed(1)}%`, subtitle: operatingMargin > 80 ? 'High margin — minimal overhead (service business)' : 'Revenue minus OpEx',
     variant: operatingMargin >= 50 ? 'success' : operatingMargin >= 20 ? 'warning' : 'danger',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -350,7 +351,7 @@ function buildKpiCards(data, year) {
   }));
 
   grid.appendChild(mkKpiCard({
-    label: 'Capital Deployed', value: formatEUR(totalCapEx), subtitle: 'Non-deductible (depreciated)',
+    label: 'Capital Deployed', value: formatEUR(totalCapEx), subtitle: totalCapEx === 0 ? 'No capital assets recorded this year' : 'Non-deductible (depreciated)',
     variant: totalCapEx > 0 ? 'warning' : '',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -402,7 +403,33 @@ function buildKpiCards(data, year) {
     forecastCard.insertBefore(subtitleEl, accentBar);
     grid.appendChild(forecastCard);
   } else {
-    grid.appendChild(mkKpiCard({ label: 'Year vs Forecast', value: '—', subtitle: 'No forecast set for this year' }));
+    grid.appendChild(mkKpiCard({
+      label: 'Year vs Forecast', value: '—', subtitle: 'No forecast set for this year',
+      onClick: () => {
+        let tRevenue = 0, tExpenses = 0;
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+        body.appendChild(el('p', { style: 'font-size:13px;color:var(--text-muted);line-height:1.6;margin:0' },
+          `Set a simple revenue and expense target for ${year} to enable the actual vs forecast comparison.`
+        ));
+        const revI = mkCurrencyInput(0, 'width:100%', v => { tRevenue = v; });
+        const expI = mkCurrencyInput(0, 'width:100%', v => { tExpenses = v; });
+        body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
+          formRow(`${year} Revenue Target (€)`, revI),
+          formRow(`${year} Expense Target (€)`, expI)
+        ));
+        const saveBtn = button('Save Year Targets', { variant: 'primary sm' });
+        saveBtn.onclick = () => {
+          if (tRevenue <= 0 && tExpenses <= 0) { toast('Enter at least one target', 'error'); return; }
+          const existing = listActive('forecasts').find(f => String(f.year) === String(year) && f.entityId === '_portfolio_target');
+          upsert('forecasts', { id: existing?.id || newId('fc'), year: Number(year), entityId: '_portfolio_target', type: 'portfolio', yearTarget: { revenue: tRevenue, expenses: tExpenses } });
+          markDirty();
+          rebuildView();
+          toast(`${year} forecast targets saved`, 'success');
+        };
+        body.appendChild(el('div', {}, saveBtn));
+        openModal({ title: `Set Year Forecast — ${year}`, body });
+      }
+    }));
   }
 
   return grid;
@@ -478,26 +505,48 @@ function openCategoryModal(catKey, expList, isCapex, total) {
   openModal({ title: `${label} — Expense Detail`, body, large: true });
 }
 
+const CHART_FALLBACK_MSG = 'Chart unavailable — network connection required to load charting library';
+
+function mkChartWrap(id) {
+  const w = el('div', { class: 'chart-wrap tall', style: 'position:relative' });
+  w.appendChild(el('canvas', { id }));
+  w.appendChild(el('p', {
+    id: `${id}-fallback`,
+    style: 'display:none;text-align:center;color:var(--text-muted);font-size:13px;padding:40px 16px;margin:0;position:absolute;inset:0;display:none;align-items:center;justify-content:center'
+  }, CHART_FALLBACK_MSG));
+  return w;
+}
+
 function buildCharts(data, year) {
   const wrap = el('div');
   const row1 = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px' });
   row1.appendChild(el('div', { class: 'card' },
     el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Monthly Revenue vs Operating Expenses'), el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Operating P&L view — CapEx excluded')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'tax-rev-exp-bar' }))
+    mkChartWrap('tax-rev-exp-bar')
   ));
   row1.appendChild(el('div', { class: 'card' },
     el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'OpEx by Category'), el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click slice for detail')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'tax-exp-cat-donut' }))
+    mkChartWrap('tax-exp-cat-donut')
   ));
   wrap.appendChild(row1);
   wrap.appendChild(el('div', { class: 'card mb-16' },
     el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Year-over-Year Revenue Comparison'), el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a bar to see that year\'s P&L summary')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'tax-yoy-bar' }))
+    mkChartWrap('tax-yoy-bar')
   ));
   return wrap;
 }
 
 function renderCharts(data, year, ownerFilter) {
+  if (typeof window.Chart === 'undefined') {
+    CHART_IDS.forEach(id => {
+      const canvas   = document.getElementById(id);
+      const fallback = document.getElementById(`${id}-fallback`);
+      if (canvas)   canvas.style.display = 'none';
+      if (fallback) { fallback.style.display = 'flex'; }
+    });
+    return;
+  }
+
   charts.bar('tax-rev-exp-bar', {
     labels: MONTH_LABELS,
     datasets: [
@@ -546,11 +595,13 @@ function renderCharts(data, year, ownerFilter) {
         openCategoryModal(catKey, data.opExpenses.filter(e => resolvedCatKey(e) === catKey), false, catEntries[index][1]);
       }
     });
+    charts.toggleDoughnutPct('tax-exp-cat-donut');
   }
 
   const allYears   = getDataYears().reverse();
-  const yoyRevenue = [], yoyOpEx = [];
-  for (const yr of allYears) { const d = getYearData(yr, ownerFilter); yoyRevenue.push(Math.round(d.totalRevenue)); yoyOpEx.push(Math.round(d.totalOpEx)); }
+  const yoyCache   = new Map(allYears.map(yr => [yr, getYearData(yr, ownerFilter)]));
+  const yoyRevenue = allYears.map(yr => Math.round(yoyCache.get(yr).totalRevenue));
+  const yoyOpEx    = allYears.map(yr => Math.round(yoyCache.get(yr).totalOpEx));
   charts.bar('tax-yoy-bar', {
     labels: allYears,
     datasets: [
@@ -558,7 +609,7 @@ function renderCharts(data, year, ownerFilter) {
       { label: 'Operating Expenses', data: yoyOpEx,    backgroundColor: 'rgba(239,68,68,0.65)',  borderColor: '#ef4444', borderWidth: 1 }
     ],
     onClickItem: (clickedYear) => {
-      const d = getYearData(clickedYear, ownerFilter);
+      const d = yoyCache.get(clickedYear) || getYearData(clickedYear, ownerFilter);
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       body.appendChild(mkSummaryGrid([
         { label: 'Total Revenue',    value: formatEUR(d.totalRevenue) },
@@ -1209,9 +1260,10 @@ function ptBuildEstimateCard(onChange) {
       fi('forecastExpenses', s.forecastExpenses, 'Forecast deductible expenses, rest of year')
     )
   ));
-  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:12px' },
-    fi('nonDeductibleExpenses', s.nonDeductibleExpenses, 'Non-deductible expenses (€)', 'Entertainment, fines, etc. — added back to taxable profit'),
-    fi('taxAllowances',         s.taxAllowances,         'Tax allowances / deductions (€)', 'Depreciation, R&D credits, etc. — reduces taxable profit')
+  body.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)' }, 'Profit Adjustments (€)'));
+  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:20px' },
+    fi('nonDeductibleExpenses', s.nonDeductibleExpenses, 'Non-deductible expenses', 'Entertainment, fines, etc. — added back to taxable profit'),
+    fi('taxAllowances',         s.taxAllowances,         'Tax allowances / deductions', 'Depreciation, R&D credits, etc. — reduces taxable profit')
   ));
 
   body.appendChild(breakdownEl);
@@ -1291,6 +1343,18 @@ function ptBuildResultsCard(c, s) {
   card.appendChild(el('div', { class: 'card-header' },
     el('div', {}, el('div', { class: 'card-title' }, 'Provisional Tax Result'), el('div', { class: 'card-subtitle' }, `Estimated corporation tax liability for ${year}`))
   ));
+
+  if (c.totalRevenue === 0 && c.totalDeductible === 0) {
+    const emptyBody = el('div', { style: 'padding:32px 24px;text-align:center' });
+    emptyBody.appendChild(el('div', { style: 'font-size:28px;margin-bottom:10px' }, '📊'));
+    emptyBody.appendChild(el('div', { style: 'font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px' }, 'Enter your income estimates above to see the tax calculation'));
+    emptyBody.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);line-height:1.6;max-width:420px;margin:0 auto' },
+      'Fill in the Annual Estimate card with actual and forecast revenue and expenses, or click "Prefill from actuals & forecast" to auto-populate from your recorded data.'
+    ));
+    card.appendChild(emptyBody);
+    return card;
+  }
+
   const body = el('div', { style: 'padding:0 16px 16px' });
 
   const revSub = [safeN(s.actualRevenue) > 0 ? `Actual ${fmtE(safeN(s.actualRevenue))}` : null, safeN(s.forecastRevenue) > 0 ? `Forecast ${fmtE(safeN(s.forecastRevenue))}` : null].filter(Boolean).join(' + ') || null;
@@ -1348,14 +1412,16 @@ function ptBuildDecRevisionCard(displayEl, renderDisplay, onChange) {
   };
   const julI = mkCurrencyInput(s.julPayment, 'width:220px', v => { persist({ julPayment: v }); renderDisplay(); });
 
+  body.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)' }, 'Revised Year-End Estimates'));
   body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
-    fi('decRevRevenue',  s.decRevRevenue,  'Revised expected annual revenue (€)'),
-    fi('decRevExpenses', s.decRevExpenses, 'Revised deductible expenses (€)')
+    fi('decRevRevenue',  s.decRevRevenue,  'Expected annual revenue (€)'),
+    fi('decRevExpenses', s.decRevExpenses, 'Deductible expenses (€)')
   ));
-  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
-    fi('decRevNonDeductible', s.decRevNonDeductible, 'Revised non-deductible expenses (€)'),
-    fi('decRevAllowances',    s.decRevAllowances,    'Revised tax allowances / deductions (€)')
+  body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:8px' },
+    fi('decRevNonDeductible', s.decRevNonDeductible, 'Non-deductible expenses (€)'),
+    fi('decRevAllowances',    s.decRevAllowances,    'Tax allowances / deductions (€)')
   ));
+  body.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:16px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)' }, 'Prior Payment'));
   body.appendChild(el('div', { style: 'margin-top:4px' },
     formRow('Amount already paid in July (€)', julI, 'Your actual first instalment payment')
   ));
@@ -1471,7 +1537,7 @@ function buildDividendsContent(years) {
   const retained    = corpTaxEst !== null ? pnlData.opProfit - corpTaxEst - totalGross : pnlData.opProfit - totalGross;
 
   // ── Summary KPIs ─────────────────────────────────────────────────────────────
-  wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px' },
+  wrap.appendChild(el('div', { style: 'display:grid;grid-template-columns:repeat(5,1fr);gap:16px;margin-bottom:20px' },
     mkKpiCard({
       label: 'Operating Profit',
       value: fmtE(pnlData.opProfit),
@@ -1502,7 +1568,16 @@ function buildDividendsContent(years) {
         ], 2));
         body.appendChild(el('div', { style: 'margin-top:8px;font-size:12px;color:var(--text-muted)' }, 'Figure sourced from the Provisional Tax tab. Update that tab for a more accurate estimate.'));
         openModal({ title: `Corporation Tax Estimate — ${gYear}`, body });
-      } : null
+      } : () => {
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
+        body.appendChild(el('p', { style: 'font-size:13px;color:var(--text-muted);line-height:1.6;margin:0' },
+          `No corporation tax estimate is linked to ${gYear}. The Provisional Tax tab must be configured for the same year to surface this figure here.`
+        ));
+        body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);padding:10px 12px;background:rgba(251,191,36,0.07);border-left:2px solid var(--warning,#f59e0b);border-radius:4px;line-height:1.6' },
+          `Switch to the Provisional Tax tab → Tax Settings → select year ${gYear} → enter revenue and expense estimates. The corporation tax figure will then appear here automatically.`
+        ));
+        openModal({ title: `Corporation Tax — Not Set for ${gYear}`, body });
+      }
     }),
     mkKpiCard({
       label: 'Total Dividends Paid',
@@ -1518,6 +1593,25 @@ function buildDividendsContent(years) {
         ], 2));
         openModal({ title: `Dividends Paid — ${gYear}`, body });
       } : null
+    }),
+    mkKpiCard({
+      label: 'SDC Owed (2.65%)',
+      value: fmtE(sdcAmount),
+      subtitle: totalGross > 0 ? `On ${fmtE(totalGross)} gross dividends` : 'No dividends recorded',
+      variant: sdcAmount > 0 ? 'warning' : '',
+      onClick: () => {
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+        body.appendChild(mkSummaryGrid([
+          { label: 'Gross Dividends', value: fmtE(totalGross) },
+          { label: 'SDC Rate',        value: '2.65%' },
+          { label: 'SDC Amount',      value: fmtE(sdcAmount) },
+          { label: 'Net Dividends',   value: fmtE(netTotal) },
+        ], 2));
+        body.appendChild(el('div', { style: 'margin-top:4px;font-size:12px;color:var(--text-muted);padding:10px 12px;background:rgba(99,102,241,0.06);border-left:2px solid var(--accent);border-radius:4px;line-height:1.6' },
+          'Special Defence Contribution (SDC) of 2.65% applies to dividends paid to non-domicile Cyprus tax residents. It is withheld at source and remitted to the Cyprus Tax Department. The non-dom status must be declared annually.'
+        ));
+        openModal({ title: `SDC — Special Defence Contribution ${gYear}`, body });
+      }
     }),
     mkKpiCard({
       label: 'Retained Earnings',
@@ -1554,7 +1648,21 @@ function buildDividendsContent(years) {
   const dateI = input({ type: 'date', value: formDate, style: 'width:150px' });
   dateI.oninput = () => { formDate = dateI.value; };
 
-  const amountI = mkCurrencyInput(0, 'width:160px', v => { formAmount = v; });
+  const sdcPreviewEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;min-height:16px;transition:opacity 120ms' });
+  const updateSdcPreview = v => {
+    if (v > 0) {
+      const sdc = v * SDC_RATE;
+      sdcPreviewEl.textContent = `SDC ${fmtE(sdc)} · Net received ${fmtE(v - sdc)}`;
+      sdcPreviewEl.style.opacity = '1';
+    } else {
+      sdcPreviewEl.textContent = '';
+      sdcPreviewEl.style.opacity = '0';
+    }
+  };
+  const amountWrap = el('div');
+  const amountI = mkCurrencyInput(0, 'width:160px', v => { formAmount = v; updateSdcPreview(v); });
+  amountWrap.appendChild(amountI);
+  amountWrap.appendChild(sdcPreviewEl);
 
   const recipientSel = select([{ value: 'giorgos', label: 'Giorgos' }, { value: 'rita', label: 'Rita' }], 'giorgos');
   recipientSel.onchange = () => { formRecipient = recipientSel.value; };
@@ -1564,7 +1672,13 @@ function buildDividendsContent(years) {
 
   const addBtn = button('+ Add Dividend', { variant: 'primary sm' });
   addBtn.onclick = () => {
-    if (!formDate || formAmount <= 0) { toast('Enter a valid date and amount', 'error'); return; }
+    if (!formDate) { toast('Select a date', 'error'); return; }
+    if (formAmount <= 0) {
+      amountI.style.borderColor = 'var(--danger,#ef4444)';
+      toast('Enter a gross amount greater than zero', 'error');
+      setTimeout(() => { amountI.style.borderColor = ''; }, 2000);
+      return;
+    }
     upsert('dividends', { id: newId('div'), date: formDate, grossAmount: formAmount, recipient: formRecipient, notes: formNotes });
     rebuildView();
     toast('Dividend recorded', 'success');
@@ -1572,7 +1686,7 @@ function buildDividendsContent(years) {
 
   formBody.appendChild(el('div', { style: 'display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap' },
     formRow('Date', dateI),
-    formRow('Gross Amount (€)', amountI),
+    formRow('Gross Amount (€)', amountWrap),
     formRow('Recipient', recipientSel),
     formRow('Notes', notesI),
     el('div', { style: 'padding-bottom:2px' }, addBtn)

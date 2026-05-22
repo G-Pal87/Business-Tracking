@@ -611,13 +611,24 @@ function buildView() {
   }));
   wrap.appendChild(kpiRow2);
 
-  // ── KPI row 3: DSO, Avg Invoice Value, New vs Recurring Clients ───────────
-  // Days Sales Outstanding: (outstanding balance ÷ total invoiced) × 30
-  const dso = invoicedTotal > 0 ? (outstandingTotal / invoicedTotal) * 30 : null;
-  const dsoVariant = dso === null ? '' : dso <= 30 ? 'success' : dso <= 60 ? 'warning' : 'danger';
+  // ── KPI row 3: DSO, Avg Invoice Size, New vs Recurring Clients ───────────
+  // Fix 4 — Days Sales Outstanding: (Outstanding / Invoiced) × Days in Period
+  const periodDays = Math.round((new Date(end) - new Date(start)) / 86400000) + 1;
+  const dso = invoicedTotal > 0 ? (outstandingTotal / invoicedTotal) * periodDays : null;
+  const dsoVariant = dso === null ? '' : dso < 30 ? 'success' : dso <= 60 ? 'warning' : 'danger';
+  const dsoSubtitle = dso === null ? 'No invoiced activity' :
+    dso < 30  ? 'Healthy collection speed' :
+    dso <= 60 ? 'Review follow-up cadence' : 'Collections at risk';
 
-  // Average Invoice Value: total invoiced ÷ count of non-draft invoices
+  // Fix 6 — Average Invoice Size: total invoiced ÷ count of non-draft invoices
   const avgInvValue = nonDraft.length > 0 ? invoicedTotal / nonDraft.length : null;
+  const deltaAvgInv = (avgInvValue !== null && cmpData && cmpData.nonDraft.length > 0)
+    ? safePct(avgInvValue, cmpData.invoicedTotal / cmpData.nonDraft.length) : null;
+
+  // Draft invoice totals for Fix 6 draft summary
+  const draftInvs  = kpiBase.filter(i => i.status === 'draft');
+  const draftCount = draftInvs.length;
+  const draftTotal = draftInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
 
   // New vs Recurring Clients: compare clientIds in kpiBase against ALL historical invoices
   const allHistoricalInvs = listActive('invoices').filter(i => SERVICE_STREAMS.includes(i.stream));
@@ -641,17 +652,25 @@ function buildView() {
 
   const kpiRow3 = el('div', { class: 'grid grid-4 mb-16' });
 
-  // DSO KPI
+  // Fix 4 — DSO KPI card
   kpiRow3.appendChild(mkKpiCard({
-    label:   'Invoice Collection Lag (DSO proxy)',
-    value:   dso !== null ? `${dso.toFixed(0)} days` : '—',
+    label:   'Days Sales Outstanding',
+    value:   dso !== null ? `${Math.round(dso)}d` : '—',
     variant: dsoVariant,
-    subtitle: 'Outstanding ÷ Invoiced × 30 (proxy)',
+    subtitle: dsoSubtitle,
     onClick: () => {
       const body = el('div');
-      const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
-      sgrid.appendChild(mkSummaryBox('Avg DSO', dso !== null ? `${dso.toFixed(0)} days` : '—', null));
-      // Per-client DSO: (client outstanding ÷ client invoiced) × 30
+      body.appendChild(mkSectionLabel('DSO Formula'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Metric' }, { label: 'Value', right: true }],
+        [
+          ['Outstanding Invoices Balance', formatEUR(outstandingTotal)],
+          ['Total Invoiced (non-draft)',    formatEUR(invoicedTotal)],
+          ['Days in Period',               String(periodDays)],
+          ['DSO = (Outstanding / Invoiced) × Days', dso !== null ? `${Math.round(dso)} days` : '—']
+        ]
+      ));
+      // Per-client DSO
       const clientDsoMap = new Map();
       nonDraft.forEach(i => {
         if (!i.clientId) return;
@@ -665,21 +684,12 @@ function buildView() {
       const clientDsoRows = [...clientDsoMap.entries()]
         .map(([cid, d]) => ({
           client: byId('clients', cid)?.name || '—',
-          dso: d.invoiced > 0 ? (d.outstanding / d.invoiced) * 30 : 0,
+          dso: d.invoiced > 0 ? (d.outstanding / d.invoiced) * periodDays : 0,
           outstanding: d.outstanding,
           invoiced: d.invoiced
         }))
         .filter(r => r.outstanding > 0)
         .sort((a, b) => b.dso - a.dso);
-
-      // sorted worst-first (highest DSO at top); best = lowest DSO (fastest payer)
-      const worst  = clientDsoRows[0];
-      const best   = clientDsoRows[clientDsoRows.length - 1];
-      sgrid.appendChild(mkSummaryBox('Best Client DSO',  best   ? `${best.dso.toFixed(0)} days`   : '—', best   ? best.client   : null));
-      sgrid.appendChild(mkSummaryBox('Worst Client DSO', worst  ? `${worst.dso.toFixed(0)} days`  : '—', worst  ? worst.client  : null));
-      body.appendChild(sgrid);
-
-      body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:8px' }, 'Note: Uses outstanding balance ratio as a DSO proxy. True DSO requires per-invoice payment dates.'));
 
       if (clientDsoRows.length) {
         body.appendChild(mkSectionLabel('Per-Client DSO (worst first)'));
@@ -692,25 +702,49 @@ function buildView() {
           ],
           clientDsoRows.map(r => [
             r.client,
-            r.dso.toFixed(0),
+            String(Math.round(r.dso)),
             formatEUR(r.outstanding),
             formatEUR(r.invoiced)
           ])
         ));
       } else {
-        body.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px' }, 'No outstanding invoices — DSO is 0.'));
+        body.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px;margin-top:12px' }, 'No outstanding invoices — DSO is 0.'));
       }
-      openModal({ title: `Invoice Collection Lag (DSO proxy) — ${dso !== null ? dso.toFixed(0) + ' days' : 'N/A'}`, body, large: true });
+      openModal({ title: `Days Sales Outstanding — ${dso !== null ? Math.round(dso) + 'd' : 'N/A'}`, body, large: true });
     }
   }));
 
-  // Average Invoice Value KPI
+  // Fix 6 — Average Invoice Size KPI
   kpiRow3.appendChild(mkKpiCard({
-    label:    'Avg Invoice Value',
-    value:    avgInvValue !== null ? formatEUR(avgInvValue) : '—',
-    subtitle: avgInvValue !== null ? `per invoice, ${nonDraft.length} invoices` : 'No invoices',
+    label:    'Avg Invoice Size',
+    value:    nonDraft.length > 0 ? formatEUR(invoicedTotal / nonDraft.length) : '—',
+    subtitle: avgInvValue !== null ? `${nonDraft.length} invoice${nonDraft.length !== 1 ? 's' : ''}` : 'No invoices',
+    delta:    deltaAvgInv,
+    compLabel: cmpRange?.label,
     onClick:  () => {
       const body = el('div');
+
+      // Top 5 largest invoices
+      const top5 = [...nonDraft]
+        .map(i => ({ i, eur: toEUR(i.total, i.currency, i.issueDate) }))
+        .sort((a, b) => b.eur - a.eur)
+        .slice(0, 5);
+
+      if (top5.length) {
+        body.appendChild(mkSectionLabel('Top 5 Largest Invoices'));
+        body.appendChild(mkModalTable(
+          [
+            { label: 'Client' },
+            { label: 'Issue Date' },
+            { label: 'Amount', right: true }
+          ],
+          top5.map(({ i, eur }) => [
+            byId('clients', i.clientId)?.name || '—',
+            fmtDate(i.issueDate || i.date),
+            formatEUR(eur)
+          ])
+        ));
+      }
 
       // Distribution buckets
       const DIST_BUCKETS = [
@@ -735,48 +769,17 @@ function buildView() {
           { label: '% of Invoiced', right: true, muted: true }
         ],
         DIST_BUCKETS.map(b => {
-          const total = b.items.reduce((s, x) => s + x.eur, 0);
+          const bTotal = b.items.reduce((s, x) => s + x.eur, 0);
           return [
             b.label,
             String(b.items.length),
-            b.items.length ? formatEUR(total) : '—',
-            invoicedTotal > 0 && b.items.length ? (total / invoicedTotal * 100).toFixed(1) + '%' : '—'
+            b.items.length ? formatEUR(bTotal) : '—',
+            invoicedTotal > 0 && b.items.length ? (bTotal / invoicedTotal * 100).toFixed(1) + '%' : '—'
           ];
         })
       ));
 
-      // Per-client average
-      const clientAvgMap = new Map();
-      nonDraft.forEach(i => {
-        if (!i.clientId) return;
-        const rec = clientAvgMap.get(i.clientId) || { total: 0, count: 0 };
-        rec.total += toEUR(i.total, i.currency, i.issueDate);
-        rec.count++;
-        clientAvgMap.set(i.clientId, rec);
-      });
-      const clientAvgRows = [...clientAvgMap.entries()]
-        .map(([cid, d]) => ({
-          client: byId('clients', cid)?.name || '—',
-          avg:    d.count > 0 ? d.total / d.count : 0,
-          total:  d.total,
-          count:  d.count
-        }))
-        .sort((a, b) => b.avg - a.avg);
-
-      if (clientAvgRows.length) {
-        body.appendChild(mkSectionLabel('Avg Invoice Value by Client'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Client' },
-            { label: 'Avg Value', right: true },
-            { label: 'Invoices', right: true, muted: true },
-            { label: 'Total', right: true, muted: true }
-          ],
-          clientAvgRows.map(r => [r.client, formatEUR(r.avg), String(r.count), formatEUR(r.total)])
-        ));
-      }
-
-      openModal({ title: `Avg Invoice Value — ${avgInvValue !== null ? formatEUR(avgInvValue) : 'N/A'}`, body, large: true });
+      openModal({ title: `Avg Invoice Size — ${avgInvValue !== null ? formatEUR(avgInvValue) : 'N/A'}`, body, large: true });
     }
   }));
 
@@ -835,6 +838,13 @@ function buildView() {
   kpiRow3.appendChild(el('div'));
 
   wrap.appendChild(kpiRow3);
+
+  // Fix 6 — Draft summary line (always show draft count/amount so they are visible)
+  if (draftCount > 0) {
+    wrap.appendChild(el('div', {
+      style: 'font-size:12px;color:var(--text-muted);margin:-8px 0 16px;padding:6px 10px;background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);display:inline-block'
+    }, `${draftCount} draft${draftCount !== 1 ? 's' : ''} · ${formatEUR(draftTotal)} not yet sent`));
+  }
 
   // ── Stream Performance ────────────────────────────────────────────────────
   const streamPerfCard = buildStreamPerformanceCard(kpiBase);
@@ -1165,6 +1175,40 @@ function renderAgingBar({ outstanding }) {
           String(c.count),
           formatEUR(c.total),
           c.oldestDue ? fmtDate(c.oldestDue) : '—'
+        ])
+      ));
+
+      // Fix 5 — Individual invoice rows, sorted by days outstanding descending
+      const today2 = new Date().toISOString().slice(0, 10);
+      const invRows = b.items.map(i => {
+        const agingDate = i.dueDate || i.issueDate || i.date;
+        const daysOut = agingDate
+          ? Math.max(0, Math.floor((new Date(today2) - new Date(agingDate)) / 86400000))
+          : 0;
+        return {
+          client:   byId('clients', i.clientId)?.name || '—',
+          issueDate: i.issueDate || i.date || '',
+          dueDate:  i.dueDate || '',
+          daysOut,
+          eur:      toEUR(i.total, i.currency, i.issueDate)
+        };
+      }).sort((a, b2) => b2.daysOut - a.daysOut);
+
+      body.appendChild(mkSectionLabel('Individual Invoices (oldest first)'));
+      body.appendChild(mkModalTable(
+        [
+          { label: 'Client' },
+          { label: 'Invoice Date' },
+          { label: 'Due Date' },
+          { label: 'Days Outstanding', right: true },
+          { label: 'Amount', right: true }
+        ],
+        invRows.map(r => [
+          r.client,
+          r.issueDate ? fmtDate(r.issueDate) : '—',
+          r.dueDate   ? fmtDate(r.dueDate)   : '—',
+          String(r.daysOut),
+          formatEUR(r.eur)
         ])
       ));
 

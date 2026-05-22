@@ -299,10 +299,15 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   {
     const months = burnCoverage !== null ? Math.round(burnCoverage * 10) / 10 : null;
     const variant = burnCoverage === null ? '' : burnCoverage < 1 ? 'danger' : burnCoverage < 3 ? 'warning' : 'success';
+    const cmpBC = cmp && cmp.avgMonthlyOpEx > 0 ? cmp.cashPos / cmp.avgMonthlyOpEx : null;
+    const dBC   = months !== null && cmpBC !== null ? months - cmpBC : null;
     grid.appendChild(mkKpiCard({
       label:    'Burn Coverage',
       value:    months !== null ? `${months.toFixed(1)} mo` : '—',
       subtitle: 'Period net ÷ avg monthly OpEx',
+      delta: dBC,
+      deltaIsPp: true,
+      compLabel: cl,
       variant,
       onClick: () => {
         const body = el('div');
@@ -498,21 +503,19 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
 
   // 4. Forecast accuracy (if forecast data exists)
   {
-    const allForecasts = listActive('forecasts');
     const year = new Date(start).getFullYear();
-    const relevantFc = allForecasts.find(fc => fc.year === year);
-    if (relevantFc) {
-      const fcRevTarget = relevantFc.yearTarget || 0;
-      if (fcRevTarget > 0) {
-        const accuracy = (cur.totalRev / fcRevTarget) * 100;
-        const icon  = accuracy >= 90 ? '🎯' : accuracy >= 70 ? '📊' : '❗';
-        const color = accuracy >= 90 ? 'var(--success, #22c55e)' : accuracy >= 70 ? 'var(--warning, #f59e0b)' : 'var(--danger, #ef4444)';
-        const bg    = accuracy >= 90 ? 'rgba(34,197,94,0.06)' : accuracy >= 70 ? 'rgba(245,158,11,0.06)' : 'rgba(239,68,68,0.06)';
-        insights.push({ icon, color, bg,
-          title: 'Forecast Accuracy',
-          body:  `Revenue is at ${accuracy.toFixed(0)}% of the ${year} annual target (${formatEUR(cur.totalRev)} of ${formatEUR(fcRevTarget)}).`
-        });
-      }
+    const fcRevTarget = listActive('forecasts')
+      .filter(fc => fc.year === year)
+      .reduce((sum, fc) => sum + (Number(fc.yearTarget?.revenue) || 0), 0);
+    if (fcRevTarget > 0) {
+      const accuracy = (cur.totalRev / fcRevTarget) * 100;
+      const icon  = accuracy >= 90 ? '🎯' : accuracy >= 70 ? '📊' : '❗';
+      const color = accuracy >= 90 ? 'var(--success, #22c55e)' : accuracy >= 70 ? 'var(--warning, #f59e0b)' : 'var(--danger, #ef4444)';
+      const bg    = accuracy >= 90 ? 'rgba(34,197,94,0.06)' : accuracy >= 70 ? 'rgba(245,158,11,0.06)' : 'rgba(239,68,68,0.06)';
+      insights.push({ icon, color, bg,
+        title: 'Forecast Accuracy',
+        body:  `Revenue is at ${accuracy.toFixed(0)}% of the ${year} annual target (${formatEUR(cur.totalRev)} of ${formatEUR(fcRevTarget)}).`
+      });
     }
   }
 
@@ -581,7 +584,27 @@ function renderRevExpBar(cur, months) {
         { label: 'CapEx',     value: formatEUR(mCapEx) },
         { label: 'Net',       value: formatEUR(mNet), sub: mNet >= 0 ? 'Profitable' : 'Loss' }
       ]));
-      openModal({ title: `${months[idx].label} — P&L Summary`, body, large: false });
+      const mPays = cur.payments.filter(p => p.date?.slice(0,7) === mk);
+      const mInvs = cur.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk);
+      const mOpEx2 = cur.opExpenses.filter(e => (e.date||'').slice(0,7) === mk);
+      const mCapEx2 = cur.capExpenses.filter(e => (e.date||'').slice(0,7) === mk);
+      if (mPays.length || mInvs.length) {
+        body.appendChild(mkSectionLabel('Revenue Records'));
+        body.appendChild(mkModalTable(['Date','Entity','Type','Amount'],
+          [...mPays.map(p => [p.date||'—', byId('properties',p.propertyId)?.name||'—', 'Payment', formatEUR(toEUR(p.amount,p.currency,p.date))]),
+           ...mInvs.map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', 'Invoice', formatEUR(toEUR(i.total,i.currency,i.issueDate))])]
+          .sort((a,b) => a[0].localeCompare(b[0]))
+        ));
+      }
+      if (mOpEx2.length || mCapEx2.length) {
+        body.appendChild(mkSectionLabel('Expense Records'));
+        body.appendChild(mkModalTable(['Date','Description','Type','Amount'],
+          [...mOpEx2.map(e => [e.date||'—', e.description||e.notes||'—', 'OpEx', formatEUR(toEUR(e.amount,e.currency,e.date))]),
+           ...mCapEx2.map(e => [e.date||'—', e.description||e.notes||'—', 'CapEx', formatEUR(toEUR(e.amount,e.currency,e.date))])]
+          .sort((a,b) => a[0].localeCompare(b[0]))
+        ));
+      }
+      openModal({ title: `${months[idx].label} — P&L Summary`, body, large: true });
     }
   });
 }
@@ -607,10 +630,40 @@ function renderMixDonut(cur) {
   const entries = [...streamMap.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   if (!entries.length) return;
 
+  const totalRevMix = entries.reduce((s, [, v]) => s + v, 0);
+
   charts.doughnut('exec-mix-donut', {
     labels: entries.map(([k]) => STREAM_LABELS[k] || k),
     data:   entries.map(([, v]) => Math.round(v)),
-    colors: entries.map(([k]) => STREAM_COLORS[k] || '#8b93b0')
+    colors: entries.map(([k]) => STREAM_COLORS[k] || '#8b93b0'),
+    onClickItem: (label, index) => {
+      const [streamKey, streamTotal] = entries[index];
+      const streamLabel = STREAM_LABELS[streamKey] || streamKey;
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+      body.appendChild(mkSummaryGrid([
+        { label: 'Stream',   value: streamLabel },
+        { label: 'Revenue',  value: formatEUR(streamTotal) },
+        { label: '% of Mix', value: totalRevMix > 0 ? (streamTotal / totalRevMix * 100).toFixed(1) + '%' : '—' }
+      ], 3));
+      const pays = cur.payments.filter(p => (p.stream || 'other') === streamKey);
+      const invs = cur.invoices.filter(i => (i.stream || 'other') === streamKey);
+      if (pays.length) {
+        body.appendChild(mkSectionLabel('Payments'));
+        body.appendChild(mkModalTable(['Date','Property','Amount'],
+          pays.sort((a,b) => (b.date||'').localeCompare(a.date||'')).slice(0,8)
+              .map(p => [p.date||'—', byId('properties',p.propertyId)?.name||'—', formatEUR(toEUR(p.amount,p.currency,p.date))])
+        ));
+      }
+      if (invs.length) {
+        body.appendChild(mkSectionLabel('Invoices'));
+        body.appendChild(mkModalTable(['Date','Client','Amount'],
+          invs.sort((a,b) => (b.issueDate||'').localeCompare(a.issueDate||'')).slice(0,8)
+              .map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', formatEUR(toEUR(i.total,i.currency,i.issueDate))])
+        ));
+      }
+      if (!pays.length && !invs.length) body.appendChild(mkEmptyState('No records for this stream.'));
+      openModal({ title: `${streamLabel} — Revenue Detail`, body, large: true });
+    }
   });
 }
 
@@ -688,6 +741,19 @@ function buildView() {
   const cmpData  = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
 
   wrap.appendChild(buildComparisonLine(curRange, cmpRange));
+
+  {
+    const now = new Date();
+    const periodStart = new Date(curRange.start);
+    const periodEnd   = new Date(curRange.end);
+    const isCurrentYear = periodStart.getFullYear() === now.getFullYear() && periodEnd >= now;
+    if (isCurrentYear && periodStart.getMonth() === 0) {
+      const monthN = now.getMonth() + 1;
+      wrap.appendChild(el('div', {
+        style: 'font-size:11px;color:var(--text-muted);margin-bottom:12px;padding:6px 10px;background:rgba(255,255,255,0.03);border-radius:4px;display:inline-block'
+      }, `Year to date — month ${monthN} of 12 · ${now.getFullYear()}`));
+    }
+  }
 
   // KPI Grid (2 rows of 4)
   wrap.appendChild(buildKpiGrid(curData, cmpData, cmpRange));

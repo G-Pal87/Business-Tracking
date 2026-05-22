@@ -530,6 +530,7 @@ function openForm(existing, defaults = {}) {
       accountingTypeS.value = 'capex';
       costCategoryS.value   = 'renovation';
     } else {
+      accountingTypeS.value = 'opex';
       costCategoryS.value = resolveExpenseFields({ category: catS.value }).costCategory;
     }
     syncAccountingTypeRow();

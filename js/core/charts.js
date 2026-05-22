@@ -24,6 +24,25 @@ const baseOpts = () => ({
 
 const registry = new Map();
 
+function showChartFallback(canvas) {
+  canvas.style.display = 'none';
+  let fb = canvas.parentElement?.querySelector('.chart-cdn-fallback');
+  if (!fb) {
+    fb = document.createElement('p');
+    fb.className = 'chart-cdn-fallback';
+    fb.style.cssText = 'text-align:center;color:var(--text-muted);font-size:13px;padding:40px 16px;margin:0;font-style:italic';
+    fb.textContent = 'Chart unavailable — network connection required to load Chart.js';
+    canvas.parentElement.appendChild(fb);
+  }
+  fb.style.display = '';
+}
+
+function clearChartFallback(canvas) {
+  canvas.style.display = '';
+  const fb = canvas.parentElement?.querySelector('.chart-cdn-fallback');
+  if (fb) fb.style.display = 'none';
+}
+
 export function destroy(id) {
   const c = registry.get(id);
   if (c) { c.destroy(); registry.delete(id); }
@@ -38,6 +57,8 @@ export function line(id, { labels, datasets, onClickItem }) {
   destroy(id);
   const canvas = document.getElementById(id);
   if (!canvas) return;
+  if (typeof window.Chart === 'undefined') { showChartFallback(canvas); return; }
+  clearChartFallback(canvas);
   const ctx = canvas.getContext('2d');
   const opts = baseOpts();
   if (onClickItem) {
@@ -70,6 +91,8 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
   destroy(id);
   const canvas = document.getElementById(id);
   if (!canvas) return;
+  if (typeof window.Chart === 'undefined') { showChartFallback(canvas); return; }
+  clearChartFallback(canvas);
   const ctx = canvas.getContext('2d');
   const opts = baseOpts();
   if (stacked) { opts.scales.x.stacked = true; opts.scales.y.stacked = true; }
@@ -127,6 +150,8 @@ export function doughnut(id, { labels, data, colors, onClickItem }) {
   destroy(id);
   const canvas = document.getElementById(id);
   if (!canvas) return;
+  if (typeof window.Chart === 'undefined') { showChartFallback(canvas); return; }
+  clearChartFallback(canvas);
   const ctx = canvas.getContext('2d');
   const opts = baseOpts();
   delete opts.scales;
