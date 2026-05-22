@@ -31542,5 +31542,55 @@
       "updatedAt": 1778787262764,
       "updatedBy": "Giorgos"
     }
+  ],
+  "dividends": [
+    {
+      "id": "div_mpfxw4ugcl",
+      "date": "2026-01-01",
+      "grossAmount": 40000,
+      "recipient": "giorgos",
+      "notes": "",
+      "createdAt": 1779395087752,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779395100652,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779395100652,
+      "deletedBy": "Giorgos"
+    },
+    {
+      "id": "div_mpgdys4nde",
+      "date": "2025-01-01",
+      "grossAmount": 100000,
+      "recipient": "giorgos",
+      "notes": "",
+      "createdAt": 1779422085095,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779422097246,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779422097246,
+      "deletedBy": "Giorgos"
+    },
+    {
+      "id": "div_mpgdz6xz7l",
+      "date": "2026-01-01",
+      "grossAmount": 100000,
+      "recipient": "giorgos",
+      "notes": "",
+      "createdAt": 1779422104295,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779422104295,
+      "updatedBy": "Giorgos"
+    },
+    {
+      "id": "div_mpge6pc116",
+      "date": "2025-01-01",
+      "grossAmount": 2000,
+      "recipient": "giorgos",
+      "notes": "",
+      "createdAt": 1779422454721,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779422454721,
+      "updatedBy": "Giorgos"
+    }
   ]
 }
