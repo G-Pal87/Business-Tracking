@@ -31580,6 +31580,17 @@
       "createdBy": "Giorgos",
       "updatedAt": 1779422104295,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "div_mpge6pc116",
+      "date": "2025-01-01",
+      "grossAmount": 2000,
+      "recipient": "giorgos",
+      "notes": "",
+      "createdAt": 1779422454721,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779422454721,
+      "updatedBy": "Giorgos"
     }
   ]
 }
