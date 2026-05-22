@@ -269,12 +269,18 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     }
   }));
 
+  // Compute comparison period share percentages for delta
+  const cmpTotal   = cmpData ? (cmpData.revSplit.you + cmpData.revSplit.rita) : 0;
+  const cmpYouPct  = cmpTotal > 0 ? cmpData.revSplit.you  / cmpTotal * 100 : null;
+  const cmpRitaPct = cmpTotal > 0 ? cmpData.revSplit.rita / cmpTotal * 100 : null;
+
   // 2. Giorgos Share
   grid.appendChild(mkKpiCard({
     label: 'Giorgos Share',
     value: youPct.toFixed(1) + '%',
     subtitle: formatEUR(revSplit.you),
-    delta: safePct(revSplit.you, cmpData?.revSplit.you),
+    delta: safePct(youPct, cmpYouPct),
+    deltaIsPp: true,
     compLabel: cmpRange?.label,
     onClick: () => {
       const body = buildShareKpiModal('you', 'Giorgos', revSplit.you, youPct, [...annotatedPayments, ...annotatedInvoices]);
@@ -287,7 +293,8 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     label: 'Rita Share',
     value: ritaPct.toFixed(1) + '%',
     subtitle: formatEUR(revSplit.rita),
-    delta: safePct(revSplit.rita, cmpData?.revSplit.rita),
+    delta: safePct(ritaPct, cmpRitaPct),
+    deltaIsPp: true,
     compLabel: cmpRange?.label,
     onClick: () => {
       const body = buildShareKpiModal('rita', 'Rita', revSplit.rita, ritaPct, [...annotatedPayments, ...annotatedInvoices]);
@@ -303,12 +310,26 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       if (propsData.bothProps.length > 0) {
+        // Compute period revenue per shared property
+        const allRecords = [...annotatedPayments, ...annotatedInvoices];
+        const sharedRevMap = new Map();
+        for (const r of allRecords) {
+          if (!r.propertyId) continue;
+          const prop = propsData.bothProps.find(p => p.id === r.propertyId);
+          if (!prop) continue;
+          sharedRevMap.set(r.propertyId, (sharedRevMap.get(r.propertyId) || 0) + r._eur);
+        }
+        const sharedRevTotal = [...sharedRevMap.values()].reduce((s, v) => s + v, 0);
+
+        const sharedRows = propsData.bothProps
+          .map(p => ({ name: p.name, rev: sharedRevMap.get(p.id) || 0 }))
+          .sort((a, b) => b.rev - a.rev)
+          .map(r => [r.name, formatEUR(r.rev), sharedRevTotal > 0 ? (r.rev / sharedRevTotal * 100).toFixed(1) + '%' : '—']);
+
+        body.appendChild(mkSectionLabel('Shared Properties — Period Revenue'));
         body.appendChild(mkModalTable(
-          ['Property', 'Book Value (EUR)'],
-          propsData.bothProps.map(p => {
-            const eur = toEUR(p.purchasePrice || 0, p.currency || 'EUR', p.purchaseDate || null);
-            return [p.name, formatEUR(eur)];
-          }),
+          ['Property', 'Revenue', '% of Shared Total'],
+          sharedRows,
           { highlight: 1 }
         ));
       } else {
@@ -407,14 +428,36 @@ function buildSettlementSection(data, curRange) {
     totNet >= 0 ? 'Portfolio profitable' : 'Portfolio at a loss'));
   body.appendChild(sgrid);
 
+  // Per-partner expense attribution breakdown
+  // Shared expenses (owner='both') → split 50/50 by share percentage
+  const youShareFraction  = totRev > 0 ? revSplit.you  / totRev : 0.5;
+  const ritaShareFraction = totRev > 0 ? revSplit.rita / totRev : 0.5;
+
+  // Partition expenses: partner-specific vs shared
+  const { annotatedExpenses } = data;
+  let youDirectExp = 0, ritaDirectExp = 0, sharedExp = 0;
+  for (const e of annotatedExpenses) {
+    const owner = e._resolvedOwner;
+    if (owner === 'you')       youDirectExp  += e._eur;
+    else if (owner === 'rita') ritaDirectExp += e._eur;
+    else                       sharedExp     += e._eur;
+  }
+  // Attribute shared expenses proportionally to each partner's revenue share
+  const youSharedAlloc  = sharedExp * youShareFraction;
+  const ritaSharedAlloc = sharedExp * ritaShareFraction;
+  const youTotalExp  = youDirectExp  + youSharedAlloc;
+  const ritaTotalExp = ritaDirectExp + ritaSharedAlloc;
+
   // Table rows: [label, Giorgos, Rita, Total]
   const rows = [
-    ['Revenue',            formatEUR(revSplit.you), formatEUR(revSplit.rita), formatEUR(totRev)],
-    ['Operating Expenses', formatEUR(expSplit.you), formatEUR(expSplit.rita), formatEUR(totExp)],
-    ['Net Profit',         formatEUR(netSplit.you), formatEUR(netSplit.rita), formatEUR(totNet)],
+    ['Gross Revenue Share',       formatEUR(revSplit.you),  formatEUR(revSplit.rita),  formatEUR(totRev)],
+    ['  Direct Expenses',         formatEUR(youDirectExp),  formatEUR(ritaDirectExp),  formatEUR(youDirectExp + ritaDirectExp)],
+    ['  Shared Expenses (alloc)', formatEUR(youSharedAlloc),formatEUR(ritaSharedAlloc),formatEUR(sharedExp)],
+    ['− Total Expenses',          formatEUR(youTotalExp),   formatEUR(ritaTotalExp),   formatEUR(totExp)],
+    ['= Net Profit',              formatEUR(netSplit.you),  formatEUR(netSplit.rita),  formatEUR(totNet)],
   ];
 
-  body.appendChild(mkSectionLabel('Period Breakdown'));
+  body.appendChild(mkSectionLabel('Per-Partner Net Distribution'));
   body.appendChild(mkModalTable(
     ['', YOU_LABEL, RITA_LABEL, 'Total'],
     rows,

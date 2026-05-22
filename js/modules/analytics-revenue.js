@@ -625,11 +625,50 @@ function renderGrowthTrend({ payments, invoices }, months) {
     labels: months.map(m => m.label),
     datasets: [{ label: 'MoM Growth %', data: growthData, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.08)', fill: false }],
     onClickItem: (_, idx) => {
-      const mk = months[idx]?.key;
+      const m   = months[idx];
+      const mk  = m?.key;
       if (!mk) return;
-      drillDownModal(`${months[idx].label} — Revenue`,
-        drillRevRows(payments.filter(p => p.date?.slice(0, 7) === mk), invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk)),
-        REV_COLS);
+
+      const label      = m.label;
+      const curRev     = totals[idx];
+      const prevRev    = idx > 0 ? totals[idx - 1] : null;
+      const prevLabel  = idx > 0 ? months[idx - 1].label : null;
+      const growthPct  = growthData[idx];
+
+      // Records that contributed to this month
+      const mPays = payments.filter(p => p.date?.slice(0, 7) === mk);
+      const mInvs = invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk);
+
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+      // Summary boxes: current month, prior month, growth %
+      const summaryItems = [
+        { label: `Revenue — ${label}`,              value: formatEUR(curRev) },
+        { label: prevLabel ? `Revenue — ${prevLabel}` : 'Prior Month', value: prevRev !== null ? formatEUR(prevRev) : '—' },
+        { label: 'MoM Growth',                       value: growthPct !== null ? (growthPct > 0 ? '+' : '') + growthPct.toFixed(1) + '%' : '—' },
+      ];
+      body.appendChild(mkSummaryGrid(summaryItems, 3));
+
+      // Contributing payments / invoices
+      if (mPays.length > 0 || mInvs.length > 0) {
+        body.appendChild(mkSectionLabel(`Contributions — ${label}`));
+        body.appendChild(mkModalTable(
+          ['Date', 'Type', 'Entity', 'EUR'],
+          drillRevRows(mPays, mInvs)
+            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+            .map(r => [
+              r.date  || '—',
+              r.type  || '—',
+              r.source || '—',
+              formatEUR(r.eur)
+            ]),
+          { highlight: 3 }
+        ));
+      } else {
+        body.appendChild(mkEmptyState(`No revenue records for ${label}.`));
+      }
+
+      openModal({ title: `Revenue — ${label}`, body, large: true });
     }
   });
 }
@@ -695,8 +734,14 @@ function renderAging({ outstanding }) {
   const buckets = [0, 0, 0, 0];
   const items   = [[], [], [], []];
   outstanding.forEach(i => {
-    // dueDate first, issueDate as fallback
-    const ref  = i.dueDate || i.issueDate || today;
+    // Use dueDate if available; otherwise compute due date as issueDate + 30 days
+    let dueDate = i.dueDate;
+    if (!dueDate && i.issueDate) {
+      const d = new Date(i.issueDate);
+      d.setDate(d.getDate() + 30);
+      dueDate = d.toISOString().slice(0, 10);
+    }
+    const ref  = dueDate || today;
     const days = Math.max(0, Math.floor((new Date(today) - new Date(ref)) / 86400000));
     const b    = days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3;
     buckets[b] += toEUR(i.total, i.currency, i.issueDate);

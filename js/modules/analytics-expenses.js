@@ -128,7 +128,7 @@ const DRILL_COLS = [
 ];
 
 // ── Expense Insights (same card-grid format as Executive Insights) ────────────
-function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }) {
+function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, curRange, cmpData }) {
   const signals = []; // { title, text, severity: 'At Risk'|'Watch'|'Note', inspect, onClick }
   if (total === 0) return signals;
 
@@ -191,7 +191,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }) {
     });
   }
 
-  // Vendor concentration
+  // Vendor concentration — Fix 3: name vendor, show amount/%, show trend vs comparison
   const vendMap = new Map();
   allExp.forEach(e => {
     const name = vendorLabel(e);
@@ -201,13 +201,67 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }) {
   const topVend = [...vendMap.entries()].sort((a, b) => b[1] - a[1])[0];
   if (topVend && topVend[1] / total > 0.5) {
     const pct = Math.round(topVend[1] / total * 100);
+    let trendText = '';
+    if (cmpData && cmpData.total > 0) {
+      const cmpVendMap = new Map();
+      cmpData.allExp.forEach(e => {
+        const name = vendorLabel(e);
+        if (name === '—') return;
+        cmpVendMap.set(name, (cmpVendMap.get(name) || 0) + toEUR(e.amount, e.currency, e.date));
+      });
+      const cmpAmt = cmpVendMap.get(topVend[0]) || 0;
+      const cmpPct = Math.round((cmpAmt / cmpData.total) * 100);
+      if (cmpAmt > 0) {
+        const diff = pct - cmpPct;
+        trendText = ` Share is ${diff > 0 ? 'growing' : diff < 0 ? 'shrinking' : 'stable'} (was ${cmpPct}%).`;
+      }
+    }
     signals.push({
       title:    'Vendor Concentration',
-      text:     `"${topVend[0]}" accounts for ${pct}% of total expenses — high dependency on a single vendor.`,
+      text:     `"${topVend[0]}" accounts for ${formatEUR(topVend[1])} (${pct}% of total expenses) — high dependency on a single vendor.${trendText}`,
       severity: 'Watch',
       inspect:  'Vendor Breakdown',
       onClick:  () => drillDownModal(`Expenses — ${topVend[0]}`, toExpDrillRows(allExp.filter(e => vendorLabel(e) === topVend[0])), DRILL_COLS)
     });
+  }
+
+  // Fix 2: Recurring expense detection
+  if (curRange) {
+    const vendorMonthMap = new Map(); // vendorKey → Map(monthKey → amounts[])
+    allExp.forEach(e => {
+      const key = vendorLabel(e) !== '—' ? vendorLabel(e) : (e.description || '—');
+      if (key === '—') return;
+      const mk = e.date?.slice(0, 7);
+      if (!mk) return;
+      if (!vendorMonthMap.has(key)) vendorMonthMap.set(key, new Map());
+      const mMap = vendorMonthMap.get(key);
+      const eur = toEUR(e.amount, e.currency, e.date);
+      if (!mMap.has(mk)) mMap.set(mk, []);
+      mMap.get(mk).push(eur);
+    });
+
+    const recurringPatterns = [];
+    vendorMonthMap.forEach((mMap, key) => {
+      if (mMap.size < 3) return; // need 3+ months
+      // Compute per-month totals
+      const monthTotals = [...mMap.values()].map(amts => amts.reduce((s, v) => s + v, 0));
+      const avg = monthTotals.reduce((s, v) => s + v, 0) / monthTotals.length;
+      if (avg === 0) return;
+      // Check within 20% variance of average
+      const allWithin = monthTotals.every(v => Math.abs(v - avg) / avg <= 0.2);
+      if (allWithin) recurringPatterns.push({ key, avg, months: mMap.size });
+    });
+
+    if (recurringPatterns.length > 0) {
+      recurringPatterns.sort((a, b) => b.avg - a.avg);
+      const examples = recurringPatterns.slice(0, 3).map(p => `${p.key} monthly avg ${formatEUR(p.avg)}`).join(', ');
+      signals.push({
+        title:    'Recurring Expenses',
+        text:     `${recurringPatterns.length} recurring expense pattern${recurringPatterns.length !== 1 ? 's' : ''} detected — ${examples}`,
+        severity: 'Note',
+        inspect:  null
+      });
+    }
   }
 
   return signals;
@@ -291,6 +345,21 @@ function buildView() {
   const kpiRow1 = el('div', { class: 'grid grid-4 mb-16' });
 
   // ── Shared KPI drill helpers (close over cur data) ─────────────────────────
+  // ── Forecast budget helper: sum fc.months[mk].expenses for all active forecasts
+  //    within the current date range (Fix 1)
+  function getForecastOpExBudget() {
+    const { keys: mks } = getMonthKeysForRange(curRange.start, curRange.end);
+    const mkSet = new Set(mks.map(m => m.key));
+    let total = 0;
+    listActive('forecasts').forEach(fc => {
+      Object.entries(fc.months || {}).forEach(([mk, md]) => {
+        if (!mkSet.has(mk)) return;
+        total += Number(md.expenses) || 0;
+      });
+    });
+    return total > 0 ? total : null;
+  }
+
   const totalExpDrill = () => {
     const body = el('div');
     const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
@@ -303,10 +372,29 @@ function buildView() {
     allExp.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
     const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
     if (cats.length) {
+      const fcBudget = getForecastOpExBudget();
       body.appendChild(mkSectionLabel('By Category'));
       body.appendChild(mkModalTable(
-        [{ label: 'Category' }, { label: 'Type', muted: true }, { label: 'Amount', right: true }, { label: '% of Total', right: true, muted: true }],
-        cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, capExCats.has(k) ? 'CapEx' : 'OpEx', formatEUR(v), total > 0 ? (v / total * 100).toFixed(1) + '%' : '—'])
+        [
+          { label: 'Category' },
+          { label: 'Type', muted: true },
+          { label: 'Actual', right: true },
+          { label: '% of Total', right: true, muted: true },
+          { label: 'Budget', right: true, muted: true },
+          { label: 'Variance', right: true, muted: true }
+        ],
+        cats.map(([k, v]) => {
+          const budgetShare = fcBudget !== null ? (catMap.get(k) || 0) / (total || 1) * fcBudget : null;
+          const variance = budgetShare !== null ? v - budgetShare : null;
+          return [
+            COST_CATEGORIES[k]?.label || k,
+            capExCats.has(k) ? 'CapEx' : 'OpEx',
+            formatEUR(v),
+            total > 0 ? (v / total * 100).toFixed(1) + '%' : '—',
+            budgetShare !== null ? formatEUR(budgetShare) : '—',
+            variance !== null ? (variance >= 0 ? '+' : '') + formatEUR(variance) : '—'
+          ];
+        })
       ));
     }
     openModal({ title: `Total Expenses — ${formatEUR(total)}`, body, large: true });
@@ -318,10 +406,27 @@ function buildView() {
     opEx.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
     const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
     if (cats.length) {
+      const fcBudget = getForecastOpExBudget();
       body.appendChild(mkSectionLabel('By Category'));
       body.appendChild(mkModalTable(
-        [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of OpEx', right: true, muted: true }],
-        cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—'])
+        [
+          { label: 'Category' },
+          { label: 'Actual', right: true },
+          { label: '% of OpEx', right: true, muted: true },
+          { label: 'Budget', right: true, muted: true },
+          { label: 'Variance', right: true, muted: true }
+        ],
+        cats.map(([k, v]) => {
+          const budgetShare = fcBudget !== null ? (catMap.get(k) || 0) / (opTotal || 1) * fcBudget : null;
+          const variance = budgetShare !== null ? v - budgetShare : null;
+          return [
+            COST_CATEGORIES[k]?.label || k,
+            formatEUR(v),
+            opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—',
+            budgetShare !== null ? formatEUR(budgetShare) : '—',
+            variance !== null ? (variance >= 0 ? '+' : '') + formatEUR(variance) : '—'
+          ];
+        })
       ));
     }
     const propMap = new Map();
@@ -515,7 +620,7 @@ function buildView() {
   wrap.appendChild(kpiRow2);
 
   // Inline insights
-  const expBanner = mkInsightsBanner(computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue }), 'Expense Insights');
+  const expBanner = mkInsightsBanner(computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, curRange, cmpData: cmp }), 'Expense Insights');
   if (expBanner) wrap.appendChild(expBanner);
 
   // ── Chart row 1: Stacked bar (2/3) + Stream donut (1/3) ───────────────────

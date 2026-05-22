@@ -1,13 +1,15 @@
 // Analysis Forecast Dashboard — forecast vs actual performance reporting
-import { el, fmtDate, drillDownModal, openModal } from '../core/ui.js';
+import { el, fmtDate, drillDownModal, openModal, toast, input, formRow, button } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
   isCapEx, drillRevRows, drillExpRows,
-  sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR
+  sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR,
+  upsert, newId
 } from '../core/data.js';
+import { markDirty } from '../core/state.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, resolveStream,
@@ -991,23 +993,108 @@ function buildPropertyTable(data) {
     return el('p', { style: 'color:var(--text-muted);padding:12px 0;margin:0' }, 'No property data available.');
   }
   const hasPending = data.propertyBreakdown.some(r => r.pending > 0);
-  const headers = [
-    { label: 'Property' },
-    { label: 'Forecast', right: true },
-    { label: 'Actual',   right: true },
-    { label: 'Variance', right: true },
-    { label: 'Var %',    right: true },
-    ...(hasPending ? [{ label: 'Pending', right: true }] : [])
-  ];
-  const rows = data.propertyBreakdown.map(r => [
-    r.label,
-    formatEUR(r.fcRev),
-    formatEUR(r.actRev),
-    fmtVar(r.actRev, r.fcRev),
-    fmtVarPct(r.actRev, r.fcRev),
-    ...(hasPending ? [r.pending > 0 ? formatEUR(r.pending) : '—'] : [])
-  ]);
-  return mkModalTable(headers, rows);
+
+  // Build table manually so we can add Edit buttons per row
+  const table = el('table', { class: 'table' });
+  const htr = el('tr');
+  ['Property', 'Forecast', 'Actual', 'Variance', 'Var %', ...(hasPending ? ['Pending'] : []), ''].forEach((lbl, i) => {
+    const isRight = i > 0 && i < (hasPending ? 6 : 5);
+    htr.appendChild(el('th', { class: isRight ? 'right' : '' }, lbl));
+  });
+  table.appendChild(el('thead', {}, htr));
+
+  const tbody = el('tbody');
+  data.propertyBreakdown.forEach(r => {
+    const tr = el('tr');
+    [
+      r.label,
+      formatEUR(r.fcRev),
+      formatEUR(r.actRev),
+      fmtVar(r.actRev, r.fcRev),
+      fmtVarPct(r.actRev, r.fcRev),
+      ...(hasPending ? [r.pending > 0 ? formatEUR(r.pending) : '—'] : [])
+    ].forEach((val, i) => {
+      const isRight = i > 0;
+      tr.appendChild(el('td', { class: isRight ? 'right num' : '' }, String(val)));
+    });
+
+    // Edit button cell
+    const editTd = el('td', { style: 'text-align:center;padding:4px 8px' });
+    const editBtn = el('button', {
+      class: 'btn',
+      style: 'font-size:11px;padding:2px 8px;line-height:1.4',
+      title: `Edit forecast for ${r.label}`
+    }, 'Edit');
+    editBtn.onclick = () => openForecastEditModal(r, data);
+    editTd.appendChild(editBtn);
+    tr.appendChild(editTd);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+
+  const wrap = el('div', { class: 'table-wrap' });
+  wrap.appendChild(table);
+  return wrap;
+}
+
+// Open a modal to quick-edit a property's forecast targets for the active year
+function openForecastEditModal(propRow, data) {
+  const curRange  = getCurrentPeriodRange(gF);
+  const year      = parseInt((curRange?.start || '').slice(0, 4)) || new Date().getFullYear();
+
+  // Find existing forecast record for this property + year
+  const allFcs    = listActive('forecasts');
+  const existing  = allFcs.find(fc => fc.type === 'property' && fc.entityId === propRow.propId && fc.year === year);
+
+  // Compute current annual revenue + expense totals from months
+  let curFcRev = 0, curFcExp = 0;
+  if (existing?.months) {
+    Object.values(existing.months).forEach(md => {
+      const entries = Array.isArray(md.entries) ? md.entries : [];
+      curFcRev += entries.length > 0 ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0) : Number(md.revenue) || 0;
+      curFcExp += Number(md.expenses) || 0;
+    });
+  }
+
+  // Inputs
+  const revInput = input({ type: 'number', value: String(Math.round(curFcRev)), min: '0', step: '1', style: 'width:100%' });
+  const expInput = input({ type: 'number', value: String(Math.round(curFcExp)), min: '0', step: '1', style: 'width:100%' });
+
+  const saveBtn = button('Save', {
+    variant: 'primary',
+    onClick: () => {
+      const newRev = Number(revInput.value) || 0;
+      const newExp = Number(expInput.value) || 0;
+      const monthlyRev = Math.round(newRev / 12);
+      const monthlyExp = Math.round(newExp / 12);
+
+      // Build months object distributing evenly across all 12 months
+      const months = {};
+      for (let m = 1; m <= 12; m++) {
+        const mk = `${year}-${String(m).padStart(2, '0')}`;
+        months[mk] = { revenue: monthlyRev, expenses: monthlyExp };
+      }
+
+      const record = existing
+        ? { ...existing, months }
+        : { id: newId('fc'), type: 'property', entityId: propRow.propId, year, months };
+
+      upsert('forecasts', record);
+      markDirty();
+      rebuildView();
+      toast(`Forecast for ${propRow.label} updated`, 'success');
+    }
+  });
+
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
+  body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:4px' },
+    `Editing annual forecast for ${year}. Revenue and expenses will be distributed evenly across all 12 months.`
+  ));
+  body.appendChild(formRow(`Revenue Target (€) — ${year}`, revInput));
+  body.appendChild(formRow(`Expense Target (€) — ${year}`, expInput));
+  body.appendChild(el('div', { style: 'display:flex;justify-content:flex-end;margin-top:8px' }, saveBtn));
+
+  openModal({ title: `Edit Forecast — ${propRow.label}`, body });
 }
 
 function buildPendingTable(data) {
@@ -1407,9 +1494,10 @@ function renderCharts(data) {
       return Math.round(pct * 10) / 10;
     });
 
-    // Reference lines at 10% (good) and 25% (poor) as constant-value datasets
-    const goodLine = accuracyTrendMonths.map(() => 10);
-    const poorLine = accuracyTrendMonths.map(() => 25);
+    // Reference lines at 10% (good), 20% (80% target), and 25% (poor) as constant-value datasets
+    const goodLine   = accuracyTrendMonths.map(() => 10);
+    const targetLine = accuracyTrendMonths.map(() => 20);
+    const poorLine   = accuracyTrendMonths.map(() => 25);
 
     charts.line('anf-accuracy-trend', {
       labels: accLabels,
@@ -1428,6 +1516,16 @@ function renderCharts(data) {
           borderColor: '#10b981',
           borderDash: [6, 3],
           borderWidth: 1.5,
+          backgroundColor: 'transparent',
+          pointRadius: 0,
+          fill: false
+        },
+        {
+          label: '80% Accuracy Target (20% error)',
+          data: targetLine,
+          borderColor: 'rgba(245,158,11,0.5)',
+          borderDash: [4, 4],
+          borderWidth: 1,
           backgroundColor: 'transparent',
           pointRadius: 0,
           fill: false
@@ -1520,9 +1618,24 @@ function buildView() {
   if (dqSection) wrap.appendChild(dqSection);
 
   if (!hasAnyData) {
-    wrap.appendChild(el('div', { class: 'card mb-16', style: 'padding:32px;text-align:center;color:var(--text-muted)' },
-      'No forecast or actual data found for the selected period and filters.'
+    const emptyCard = el('div', { class: 'card mb-16' });
+    const emptyBody = el('div', { style: 'padding:48px 32px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px' });
+    emptyBody.appendChild(el('div', { style: 'font-size:40px;opacity:0.25;line-height:1' }, '◈'));
+    emptyBody.appendChild(el('div', { style: 'font-size:16px;font-weight:600;color:var(--text)' }, 'No Forecast or Actual Data'));
+    emptyBody.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);max-width:420px;line-height:1.6' },
+      'No forecast or actual revenue data was found for the selected period and filters. Set up forecasts in the Forecast section to enable this comparison.'
     ));
+    const goToFcBtn = el('button', {
+      class: 'btn',
+      style: 'margin-top:8px',
+      onclick: () => {
+        const nav = document.querySelector('[data-view="forecast"], [data-module="forecast"], a[href="#forecast"]');
+        if (nav) nav.click();
+      }
+    }, 'Go to Forecast Section');
+    emptyBody.appendChild(goToFcBtn);
+    emptyCard.appendChild(emptyBody);
+    wrap.appendChild(emptyCard);
     return wrap;
   }
 
@@ -1551,8 +1664,86 @@ function buildView() {
   wrap.appendChild(cardSection('Stream Breakdown',            buildStreamTable(data)));
   wrap.appendChild(cardSection('Property Breakdown',          buildPropertyTable(data)));
   wrap.appendChild(cardSection('Pending Airbnb Reservations', buildPendingTable(data)));
+  wrap.appendChild(buildWhatIfCard(data));
 
   setTimeout(() => renderCharts(data), 0);
 
   return wrap;
+}
+
+// ── What-If Analysis ──────────────────────────────────────────────────────────
+function buildWhatIfCard(data) {
+  const { actualRev, actualExp, actualNet } = data;
+
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'What-If Analysis'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Revenue sensitivity — not saved')
+  ));
+
+  const body = el('div', { style: 'padding:16px' });
+
+  // Slider row
+  const sliderLabel = el('div', { style: 'font-size:13px;margin-bottom:8px;color:var(--text)' }, 'Revenue change scenario: 0%');
+  const slider = el('input', {
+    type:  'range',
+    min:   '-30',
+    max:   '30',
+    value: '0',
+    step:  '1',
+    style: 'width:100%;accent-color:#6366f1;cursor:pointer'
+  });
+  body.appendChild(sliderLabel);
+  body.appendChild(slider);
+
+  // Range labels
+  body.appendChild(el('div', { style: 'display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);margin-top:2px;margin-bottom:16px' },
+    el('span', {}, '−30%'),
+    el('span', {}, '0%'),
+    el('span', {}, '+30%')
+  ));
+
+  // Output summary box
+  const summaryBox = el('div', {
+    style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:14px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px'
+  });
+
+  const makeResultLine = (label, valEl) => {
+    const wrap = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
+    wrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em' }, label));
+    wrap.appendChild(valEl);
+    return wrap;
+  };
+
+  const adjRevEl  = el('div', { style: 'font-size:16px;font-weight:700;color:var(--text)' }, formatEUR(actualRev));
+  const adjNetEl  = el('div', { style: 'font-size:16px;font-weight:700' }, formatEUR(actualNet));
+  const adjDeltaEl = el('div', { style: 'font-size:13px;color:var(--text-muted)' }, '0% change');
+
+  summaryBox.appendChild(makeResultLine('Adjusted Revenue', adjRevEl));
+  summaryBox.appendChild(makeResultLine('Adjusted Net', adjNetEl));
+  summaryBox.appendChild(makeResultLine('Revenue Impact', adjDeltaEl));
+  body.appendChild(summaryBox);
+
+  // Note
+  body.appendChild(el('div', { style: 'margin-top:12px;font-size:11px;color:var(--text-muted);font-style:italic' },
+    'This is a sensitivity analysis only — not saved to forecast data. Adjusts actual revenue by the selected percentage and recalculates net.'
+  ));
+
+  // Slider event
+  slider.oninput = () => {
+    const pct     = Number(slider.value);
+    const adjRev  = actualRev * (1 + pct / 100);
+    const adjNet  = adjRev - actualExp;
+    const delta   = adjRev - actualRev;
+
+    sliderLabel.textContent = `Revenue change scenario: ${pct >= 0 ? '+' : ''}${pct}%`;
+    adjRevEl.textContent    = formatEUR(adjRev);
+    adjNetEl.textContent    = formatEUR(adjNet);
+    adjNetEl.style.color    = adjNet >= 0 ? '#10b981' : '#ef4444';
+    adjDeltaEl.textContent  = `${pct >= 0 ? '+' : ''}${formatEUR(delta)}`;
+    adjDeltaEl.style.color  = delta >= 0 ? '#10b981' : '#ef4444';
+  };
+
+  card.appendChild(body);
+  return card;
 }
