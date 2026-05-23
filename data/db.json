@@ -29350,8 +29350,10 @@
       "pdfPath": "invoices/23.pdf",
       "createdAt": 1779562558287,
       "createdBy": "Giorgos",
-      "updatedAt": 1779562558287,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1779562721670,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779562721670,
+      "deletedBy": "Giorgos"
     }
   ],
   "users": [
