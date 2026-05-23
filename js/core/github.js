@@ -158,6 +158,8 @@ async function doPushDb(message = 'Update data') {
   };
 
   const snapshot = structuredClone(state.db);
+  // Never push the token to GitHub — strip it from appConfig before computing content
+  if (snapshot.appConfig?.github?.token) delete snapshot.appConfig.github.token;
   const base     = state.github.remoteDb ? structuredClone(state.github.remoteDb) : null;
   let   lastError = null;
 
@@ -193,6 +195,7 @@ async function doPushDb(message = 'Update data') {
       throw new Error('GitHub returned no content for db.json');
     }
     const merged  = mergeDb(freshDb, snapshot, base);
+    if (merged.appConfig?.github?.token) delete merged.appConfig.github.token;
 
     // PUT merged content
     let putRes;

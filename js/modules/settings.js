@@ -156,7 +156,7 @@ function buildGithubCard() {
       const db = await fetchDb();
       // Preserve the config we just set in the fetched db before calling setDb
       if (!db.appConfig) db.appConfig = {};
-      db.appConfig.github = { owner, repo, branch, path: dbPath, token };
+      db.appConfig.github = { owner, repo, branch, path: dbPath };
       setDb(db);
       saveLocalCache(state.db);
       markDirty(); // push db.appConfig.github to GitHub
@@ -167,7 +167,7 @@ function buildGithubCard() {
     } catch (e) {
       // Config saved locally; push will happen when connection is available
       if (!state.db.appConfig) state.db.appConfig = {};
-      state.db.appConfig.github = { owner, repo, branch, path: dbPath, token };
+      state.db.appConfig.github = { owner, repo, branch, path: dbPath };
       markDirty();
       toast('Config saved. Pull failed: ' + e.message, 'warning', 5000);
     } finally {
@@ -201,7 +201,7 @@ function buildGithubCard() {
       const ok = await confirmDialog('Disconnect from GitHub? Config will be cleared from db.json.', { danger: true, okLabel: 'Disconnect' });
       if (!ok) return;
       if (!state.db.appConfig) state.db.appConfig = {};
-      state.db.appConfig.github = { owner: '', repo: '', branch: 'main', path: 'data/db.json', token: '' };
+      state.db.appConfig.github = { owner: '', repo: '', branch: 'main', path: 'data/db.json' };
       clearConfig();
       markDirty();
       toast('Disconnected from GitHub', 'info');
