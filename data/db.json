@@ -29282,8 +29282,10 @@
       "pdfPath": "invoices/23_WiseGuysHoldingO_23052026.pdf",
       "createdAt": 1779561952167,
       "createdBy": "Giorgos",
-      "updatedAt": 1779561952167,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1779562539039,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779562539039,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "inv_mpipfq3bpp",
@@ -29314,8 +29316,44 @@
       "pdfPath": "invoices/24.pdf",
       "createdAt": 1779562297945,
       "createdBy": "Giorgos",
-      "updatedAt": 1779562297945,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1779562539061,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779562539061,
+      "deletedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mpipl9db5s",
+      "number": "23",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2026-05-23",
+      "dueDate": "2026-06-22",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_mpiplckfgu",
+          "serviceId": "svc_001",
+          "description": "Customer Success Professional Services",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 650,
+          "total": 650
+        }
+      ],
+      "subtotal": 650,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 650,
+      "notes": "",
+      "pdfPath": "invoices/23.pdf",
+      "createdAt": 1779562558287,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779562721670,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779562721670,
+      "deletedBy": "Giorgos"
     }
   ],
   "users": [
