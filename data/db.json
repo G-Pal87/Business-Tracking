@@ -29180,7 +29180,75 @@
       "pdfPath": "invoices/23_WiseGuysHoldingO_23052026.pdf",
       "createdAt": 1779559807490,
       "createdBy": "Giorgos",
-      "updatedAt": 1779559807490,
+      "updatedAt": 1779561040207,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779561040207,
+      "deletedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mpiop4edae",
+      "number": "23_WiseGuysHoldingO_23052026",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2026-05-23",
+      "dueDate": "2026-06-22",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_mpiop8thx",
+          "serviceId": "svc_001",
+          "description": "Customer Success Professional Services",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 650,
+          "total": 650
+        }
+      ],
+      "subtotal": 650,
+      "taxRate": 20,
+      "tax": 130,
+      "total": 780,
+      "notes": "",
+      "pdfPath": "invoices/23_WiseGuysHoldingO_23052026.pdf",
+      "createdAt": 1779561076578,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779561180875,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779561180875,
+      "deletedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mpios4zkfh",
+      "number": "23_NordicStartupVenture_23052026",
+      "clientId": "cli_mohkkscfr5",
+      "owner": "rita",
+      "issueDate": "2026-05-23",
+      "dueDate": "2026-06-22",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_mpioseig22",
+          "serviceId": "svc_001",
+          "description": "Customer Success Professional Services",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 650,
+          "total": 650
+        }
+      ],
+      "subtotal": 650,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 650,
+      "notes": "",
+      "pdfPath": "invoices/23_NordicStartupVenture_23052026.pdf",
+      "createdAt": 1779561201213,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779561201213,
       "updatedBy": "Giorgos"
     }
   ],
