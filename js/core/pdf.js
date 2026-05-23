@@ -114,7 +114,12 @@ export function generateInvoicePDF(invoice) {
     y += 18;
   }
   doc.setLineWidth(1.5);
-  doc.line(C_RATE_X - 8, y, C_AMT_X, y);
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  const totalLineX = C_RATE_X - doc.getTextWidth('TOTAL');
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.line(totalLineX, y, C_AMT_X, y);
   y += 16;
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
