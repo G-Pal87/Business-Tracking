@@ -26059,9 +26059,9 @@
       "source": "pdf_import",
       "createdAt": 1777486416456,
       "createdBy": "Giorgos",
-      "updatedAt": 1779563039444,
+      "updatedAt": 1779564682736,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/1_CTWO_050126.pdf"
+      "pdfPath": "invoices/1_CTWO_050126_CTWOAutomateAS_05012026.pdf"
     },
     {
       "id": "inv_mokdm16hba",
@@ -26099,7 +26099,7 @@
       "source": "pdf_import",
       "createdAt": 1777486572666,
       "createdBy": "Giorgos",
-      "updatedAt": 1779562955394,
+      "updatedAt": 1779564831220,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/2_Vitas_050126_VITASGmbH_05012026.pdf"
     },
@@ -26131,9 +26131,9 @@
       "source": "pdf_import",
       "createdAt": 1777486805209,
       "createdBy": "Giorgos",
-      "updatedAt": 1779563044576,
+      "updatedAt": 1779564835745,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/3_ZOLLHOF_050126.pdf"
+      "pdfPath": "invoices/3_ZOLLHOF_050126_ZollhofHoldingGmbH_05012026.pdf"
     },
     {
       "id": "inv_mokdu982kv",
@@ -26163,7 +26163,7 @@
       "source": "pdf_import",
       "createdAt": 1777486956338,
       "createdBy": "Giorgos",
-      "updatedAt": 1779562980535,
+      "updatedAt": 1779564849039,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/4_Nexial_080126_NexialUnipessoalLDA_08012026.pdf"
     },
@@ -26227,9 +26227,9 @@
       "source": "pdf_import",
       "createdAt": 1777487040464,
       "createdBy": "Giorgos",
-      "updatedAt": 1778185834561,
+      "updatedAt": 1779564860315,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/5_Reimbursement_Plug_Play_120126.pdf"
+      "pdfPath": "invoices/5_Reimbursement_Plug_Play_120126_PlugPlayGermanyGmbH_12012026.pdf"
     },
     {
       "id": "inv_moke0m79ql",
@@ -26259,9 +26259,9 @@
       "source": "pdf_import",
       "createdAt": 1777487253093,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180341975,
+      "updatedAt": 1779564867414,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/6_Pling_140126.pdf"
+      "pdfPath": "invoices/6_Pling_140126_PlingSolutionsGmbH_14012026.pdf"
     },
     {
       "id": "inv_mokeaewuro",
@@ -26291,7 +26291,7 @@
       "source": "pdf_import",
       "createdAt": 1777487710206,
       "createdBy": "Giorgos",
-      "updatedAt": 1779565574058,
+      "updatedAt": 1779564283097,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/7_ZOLLHOF_260126_ZollhofHoldingGmbH_26012026.pdf"
     },
@@ -26339,9 +26339,9 @@
       "source": "pdf_import",
       "createdAt": 1777793671780,
       "createdBy": "Giorgos",
-      "updatedAt": 1779563074596,
+      "updatedAt": 1779564286949,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/22_CTWO_290426.pdf"
+      "pdfPath": "invoices/22_CTWO_290426_CTWOAutomateAS_29042026.pdf"
     },
     {
       "id": "inv_mopuq8262b",
@@ -26387,7 +26387,7 @@
       "source": "pdf_import",
       "createdAt": 1777817652558,
       "createdBy": "RitaK",
-      "updatedAt": 1779563006184,
+      "updatedAt": 1779564867456,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/8_CTWO_300126_CTWOAutomateAS_30012026.pdf"
     },
@@ -26419,7 +26419,7 @@
       "source": "pdf_import",
       "createdAt": 1777817759663,
       "createdBy": "RitaK",
-      "updatedAt": 1779563014867,
+      "updatedAt": 1779564294545,
       "updatedBy": "Giorgos",
       "pdfPath": "invoices/9_Vitas_060226_VITASGmbH_05022026.pdf"
     },
@@ -26491,9 +26491,9 @@
       "source": "pdf_import",
       "createdAt": 1777817869156,
       "createdBy": "RitaK",
-      "updatedAt": 1779563062163,
+      "updatedAt": 1779564298472,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/11_ZOHO_190226.pdf"
+      "pdfPath": "invoices/11_ZOHO_190226_ZollhofHoldingGmbH_19022026.pdf"
     },
     {
       "id": "inv_mopuwp7wd6",
@@ -26523,9 +26523,9 @@
       "source": "pdf_import",
       "createdAt": 1777817954732,
       "createdBy": "RitaK",
-      "updatedAt": 1779563049855,
+      "updatedAt": 1779564302201,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/12_CTWO_270226.pdf"
+      "pdfPath": "invoices/12_CTWO_270226_CTWOAutomateAS_27022026.pdf"
     },
     {
       "id": "inv_mopuywywlw",
@@ -26555,9 +26555,9 @@
       "source": "pdf_import",
       "createdAt": 1777818058088,
       "createdBy": "RitaK",
-      "updatedAt": 1778180410831,
+      "updatedAt": 1779564306507,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/13_Nexial_100326.pdf"
+      "pdfPath": "invoices/13_Nexial_100326_NexialUnipessoalLDA_10032026.pdf"
     },
     {
       "id": "inv_mopv030enn",
@@ -26587,9 +26587,9 @@
       "source": "pdf_import",
       "createdAt": 1777818112574,
       "createdBy": "RitaK",
-      "updatedAt": 1779563053885,
+      "updatedAt": 1779564318771,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/14_SWG_100326.pdf"
+      "pdfPath": "invoices/14_SWG_100326_WiseGuysHoldingO_10032026.pdf"
     },
     {
       "id": "inv_mopv4syhd9",
@@ -26619,9 +26619,9 @@
       "source": "pdf_import",
       "createdAt": 1777818332825,
       "createdBy": "RitaK",
-      "updatedAt": 1778185841203,
+      "updatedAt": 1779564323019,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/15_Plug_Play_100326.pdf"
+      "pdfPath": "invoices/15_Plug_Play_100326_PlugPlayGermanyGmbH_10032026.pdf"
     },
     {
       "id": "inv_mopv7hbj6g",
@@ -26651,9 +26651,9 @@
       "source": "pdf_import",
       "createdAt": 1777818457711,
       "createdBy": "RitaK",
-      "updatedAt": 1778180434942,
+      "updatedAt": 1779564326506,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/16_ZOHO_210326.pdf"
+      "pdfPath": "invoices/16_ZOHO_210326_ZollhofHoldingGmbH_21032026.pdf"
     },
     {
       "id": "inv_mopv8v4hfs",
@@ -26739,9 +26739,9 @@
       "source": "pdf_import",
       "createdAt": 1777818718984,
       "createdBy": "RitaK",
-      "updatedAt": 1779563202241,
+      "updatedAt": 1779564331706,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/18_CTWO_310326.pdf"
+      "pdfPath": "invoices/18_CTWO_310326_CTWOAutomateAS_31032026.pdf"
     },
     {
       "id": "inv_mopvfsiqjb",
@@ -26771,9 +26771,9 @@
       "source": "pdf_import",
       "createdAt": 1777818845475,
       "createdBy": "RitaK",
-      "updatedAt": 1779563141540,
+      "updatedAt": 1779564336977,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/19_Event_More_070426.pdf"
+      "pdfPath": "invoices/19_Event_More_070426_EventMoreProdukcisIr_07042026.pdf"
     },
     {
       "id": "inv_mopvil7xjb",
@@ -26803,9 +26803,9 @@
       "source": "pdf_import",
       "createdAt": 1777818975981,
       "createdBy": "RitaK",
-      "updatedAt": 1778180472712,
+      "updatedAt": 1779564342253,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/20_Nexial_150426.pdf"
+      "pdfPath": "invoices/20_Nexial_150426_NexialUnipessoalLDA_15042026.pdf"
     },
     {
       "id": "inv_mopvjxwbl2",
@@ -27235,9 +27235,9 @@
       "source": "pdf_import",
       "createdAt": 1777921487461,
       "createdBy": "RitaK",
-      "updatedAt": 1778317900891,
+      "updatedAt": 1779564350946,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/12_CTWO_Reimbursement_050325.pdf"
+      "pdfPath": "invoices/12_CTWO_Reimbursement_050325_CTWOAutomateAS_05032025.pdf"
     },
     {
       "id": "inv_morkl6zt8x",
@@ -27267,9 +27267,9 @@
       "source": "pdf_import",
       "createdAt": 1777921554089,
       "createdBy": "RitaK",
-      "updatedAt": 1778317853874,
+      "updatedAt": 1779564358589,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/13_CTWO_01042025.pdf"
+      "pdfPath": "invoices/13_CTWO_01042025_CTWOAutomateAS_01042025.pdf"
     },
     {
       "id": "inv_morst9erv",
@@ -29081,6 +29081,70 @@
       "createdAt": 1777975007519,
       "createdBy": "Giorgos",
       "updatedAt": 1779563396053,
+      "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mpirg7wz19",
+      "number": "23",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2026-05-23",
+      "dueDate": "2026-06-22",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_mpirge677s",
+          "serviceId": "svc_001",
+          "description": "Customer Success Professional Services",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 650,
+          "total": 650
+        }
+      ],
+      "subtotal": 650,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 650,
+      "notes": "",
+      "pdfPath": "invoices/23_WiseGuysHoldingO_23052026.pdf",
+      "createdAt": 1779565677282,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779565677282,
+      "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mpirgsmzbq",
+      "number": "24",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2026-05-23",
+      "dueDate": "2026-06-22",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_mpirgzzcob",
+          "serviceId": "svc_001",
+          "description": "Customer Success Professional Services",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 650,
+          "total": 650
+        }
+      ],
+      "subtotal": 650,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 650,
+      "notes": "",
+      "pdfPath": "invoices/24_WiseGuysHoldingO_23052026.pdf",
+      "createdAt": 1779565704923,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779565704923,
       "updatedBy": "Giorgos"
     }
   ],
@@ -30907,11 +30971,10 @@
   ],
   "appConfig": {
     "github": {
-      "owner": "",
-      "repo": "",
+      "owner": "g-pal87",
+      "repo": "Business-Tracking",
       "branch": "main",
-      "path": "data/db.json",
-      "token": ""
+      "path": "data/db.json"
     }
   },
   "reservationExpenseRules": [
