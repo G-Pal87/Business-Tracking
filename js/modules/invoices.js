@@ -294,7 +294,11 @@ function build() {
     if (clientFilter.size > 0) rows = rows.filter(r => clientFilter.has(r.clientId));
     if (ownerFilter.size > 0)  rows = rows.filter(r => ownerFilter.has(r.owner));
     if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(r.status));
-    rows.sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate));
+    rows.sort((a, b) => {
+      const d = (b.issueDate || '').localeCompare(a.issueDate);
+      if (d !== 0) return d;
+      return parseInt(b.number || '0', 10) - parseInt(a.number || '0', 10);
+    });
 
     // Update KPI cards to reflect current filter
     filteredRows = rows;
