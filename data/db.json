@@ -27713,10 +27713,10 @@
       "total": 14157.1,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/27_CTWO_010725.pdf",
+      "pdfPath": "invoices/27_CTWO_010725_CTWOAutomateAS_01072025.pdf",
       "createdAt": 1777968690215,
       "createdBy": "Giorgos",
-      "updatedAt": 1778317791922,
+      "updatedAt": 1779563262186,
       "updatedBy": "Giorgos"
     },
     {
@@ -27753,10 +27753,10 @@
       "total": 90,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/28_CTWO_020725.pdf",
+      "pdfPath": "invoices/28_CTWO_020725_CTWOAutomateAS_01072025.pdf",
       "createdAt": 1777968907638,
       "createdBy": "Giorgos",
-      "updatedAt": 1778317818476,
+      "updatedAt": 1779563267125,
       "updatedBy": "Giorgos"
     },
     {
@@ -27785,10 +27785,10 @@
       "total": 300,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/29_Nexial_11072025.pdf",
+      "pdfPath": "invoices/29_Nexial_11072025_NexialUnipessoalLDA_11072025.pdf",
       "createdAt": 1777969029732,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180712797,
+      "updatedAt": 1779563271327,
       "updatedBy": "Giorgos"
     },
     {
