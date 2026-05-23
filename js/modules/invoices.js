@@ -432,7 +432,7 @@ function openBuilder(existing) {
     currency: clients[0].currency,
     status: 'draft',
     lineItems: [],
-    subtotal: 0, taxRate: state.db.settings?.defaultTaxRate ?? 0, tax: 0, total: 0, notes: ''
+    subtotal: 0, taxRate: 0, tax: 0, total: 0, notes: ''
   };
 
   const body = el('div', {});
