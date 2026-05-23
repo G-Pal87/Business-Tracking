@@ -212,10 +212,10 @@ async function doPushDb(message = 'Update data') {
       throw new Error('Cannot reach GitHub');
     }
 
-    if (putRes.status === 409 && attempt < 5) {
+    if (putRes.status === 409) {
       lastError = 'SHA conflict';
-      await sleep(500 * attempt);
-      continue;
+      if (attempt < 5) { await sleep(500 * attempt); continue; }
+      break; // exhausted — fall through to ConflictError below
     }
 
     if (!putRes.ok) {
@@ -258,7 +258,11 @@ async function doPushDb(message = 'Update data') {
     return { sha: newSha };
   }
 
-  throw new Error(`Push failed after retries: ${lastError || 'conflict'}`);
+  // All retries exhausted with SHA conflicts — treat as ConflictError so
+  // doSave stops re-queuing and prompts the user to refresh instead.
+  const err = new Error('SHA conflict after retries — refresh the page to resync');
+  err.name = 'ConflictError';
+  throw err;
 }
 
 // ── Three-way merge ───────────────────────────────────────────────────────────
