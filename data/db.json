@@ -26339,9 +26339,9 @@
       "source": "pdf_import",
       "createdAt": 1777793671780,
       "createdBy": "Giorgos",
-      "updatedAt": 1779563001703,
+      "updatedAt": 1779563074596,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/22_CTWO_290426_CTWOAutomateAS_29042026.pdf"
+      "pdfPath": "invoices/22_CTWO_290426.pdf"
     },
     {
       "id": "inv_mopuq8262b",
@@ -26491,9 +26491,9 @@
       "source": "pdf_import",
       "createdAt": 1777817869156,
       "createdBy": "RitaK",
-      "updatedAt": 1779563029085,
+      "updatedAt": 1779563062163,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/11_ZOHO_190226_ZollhofHoldingGmbH_19022026.pdf"
+      "pdfPath": "invoices/11_ZOHO_190226.pdf"
     },
     {
       "id": "inv_mopuwp7wd6",
@@ -26683,9 +26683,9 @@
       "source": "pdf_import",
       "createdAt": 1777818522257,
       "createdBy": "RitaK",
-      "updatedAt": 1778317593490,
+      "updatedAt": 1779563060858,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/17_Alexis_310326.pdf"
+      "pdfPath": "invoices/17_Alexis_310326_AlexisPapageorgiou_31032026.pdf"
     },
     {
       "id": "inv_mopvd2x49n",
@@ -26739,9 +26739,9 @@
       "source": "pdf_import",
       "createdAt": 1777818718984,
       "createdBy": "RitaK",
-      "updatedAt": 1778317599965,
+      "updatedAt": 1779563065888,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/18_CTWO_310326.pdf"
+      "pdfPath": "invoices/18_CTWO_310326_CTWOAutomateAS_31032026.pdf"
     },
     {
       "id": "inv_mopvfsiqjb",
@@ -26771,9 +26771,9 @@
       "source": "pdf_import",
       "createdAt": 1777818845475,
       "createdBy": "RitaK",
-      "updatedAt": 1778319536456,
+      "updatedAt": 1779563072007,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/19_Event_More_070426.pdf"
+      "pdfPath": "invoices/19_Event_More_070426_EventMoreProdukcisIr_07042026.pdf"
     },
     {
       "id": "inv_mopvil7xjb",
