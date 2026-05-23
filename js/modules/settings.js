@@ -376,6 +376,8 @@ function buildCurrencyCard() {
       toast('Default VAT rate saved', 'success');
     }}));
 
+  };
+
   renderCard();
   return card;
 }
