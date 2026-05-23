@@ -29112,8 +29112,10 @@
       "pdfPath": "invoices/23_WiseGuysHoldingO_23052026.pdf",
       "createdAt": 1779565677282,
       "createdBy": "Giorgos",
-      "updatedAt": 1779565677282,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1779567159093,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779567159093,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "inv_mpirgsmzbq",
@@ -29144,8 +29146,10 @@
       "pdfPath": "invoices/24_WiseGuysHoldingO_23052026.pdf",
       "createdAt": 1779565704923,
       "createdBy": "Giorgos",
-      "updatedAt": 1779565704923,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1779567159077,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779567159077,
+      "deletedBy": "Giorgos"
     }
   ],
   "users": [
