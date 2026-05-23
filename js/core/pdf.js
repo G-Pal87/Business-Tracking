@@ -103,24 +103,23 @@ export function generateInvoicePDF(invoice) {
 
   y += 16;
 
-  // Totals
-  const totalsX = 390;
+  // Totals — labels align with RATE column, values align with AMOUNT column
   doc.setFontSize(10);
-  doc.text('Subtotal', totalsX, y, { align: 'right' });
-  doc.text(formatMoney(invoice.subtotal, invoice.currency), 536, y, { align: 'right' });
+  doc.text('Subtotal', C_RATE_X, y, { align: 'right' });
+  doc.text(formatMoney(invoice.subtotal, invoice.currency), C_AMT_X, y, { align: 'right' });
   y += 18;
   if (invoice.taxRate) {
-    doc.text(`Tax (${invoice.taxRate}%)`, totalsX, y, { align: 'right' });
-    doc.text(formatMoney(invoice.tax, invoice.currency), 536, y, { align: 'right' });
+    doc.text(`Tax (${invoice.taxRate}%)`, C_RATE_X, y, { align: 'right' });
+    doc.text(formatMoney(invoice.tax, invoice.currency), C_AMT_X, y, { align: 'right' });
     y += 18;
   }
   doc.setLineWidth(1.5);
-  doc.line(totalsX - 8, y, 548, y);
+  doc.line(C_RATE_X - 8, y, C_AMT_X, y);
   y += 16;
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
-  doc.text('TOTAL', totalsX, y, { align: 'right' });
-  doc.text(formatMoney(invoice.total, invoice.currency), 536, y, { align: 'right' });
+  doc.text('TOTAL', C_RATE_X, y, { align: 'right' });
+  doc.text(formatMoney(invoice.total, invoice.currency), C_AMT_X, y, { align: 'right' });
   doc.setFont('helvetica', 'normal');
 
   y += 40;
