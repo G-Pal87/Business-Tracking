@@ -108,11 +108,9 @@ export function generateInvoicePDF(invoice) {
   doc.text('Subtotal', C_RATE_X, y, { align: 'right' });
   doc.text(formatMoney(invoice.subtotal, invoice.currency), C_AMT_X, y, { align: 'right' });
   y += 18;
-  if (invoice.taxRate) {
-    doc.text(`Tax (${invoice.taxRate}%)`, C_RATE_X, y, { align: 'right' });
-    doc.text(formatMoney(invoice.tax, invoice.currency), C_AMT_X, y, { align: 'right' });
-    y += 18;
-  }
+  doc.text(`Tax (${invoice.taxRate || 0}%)`, C_RATE_X, y, { align: 'right' });
+  doc.text(formatMoney(invoice.tax || 0, invoice.currency), C_AMT_X, y, { align: 'right' });
+  y += 18;
   doc.setLineWidth(1.5);
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
