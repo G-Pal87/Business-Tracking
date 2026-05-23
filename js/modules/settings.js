@@ -1263,9 +1263,13 @@ function fillInvoiceRepoBody(body) {
   body.appendChild(backupStatusEl);
   body.appendChild(deleteStatusEl);
 
-  // Mirrors invoicePdfPath() in invoices.js — derive canonical repo path from invoice number
+  // Mirrors invoicePdfPath() + invoicePdfFilename() in invoices.js exactly
   function canonicalPath(inv) {
-    const safe = (inv.number || inv.id).replace(/[/\\:*?"<>|#&%]/g, '_').replace(/\s+/g, '_');
+    const client = byId('clients', inv.clientId);
+    const clientPart = client ? String(client.name).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'Client' : 'Client';
+    const dateFmt = (inv.issueDate || '').split('-').reverse().join('');
+    const filename = `${inv.number || inv.id}_${clientPart}_${dateFmt}`;
+    const safe = filename.replace(/[/\\:*?"<>|#&%]/g, '_').replace(/\s+/g, '_');
     return `invoices/${safe}.pdf`;
   }
 
