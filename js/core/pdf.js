@@ -152,7 +152,7 @@ export function generateInvoicePDF(invoice) {
   return doc;
 }
 
-export function downloadInvoicePDF(invoice) {
+export function downloadInvoicePDF(invoice, filename) {
   const doc = generateInvoicePDF(invoice);
-  doc.save(`${invoice.number || 'invoice'}.pdf`);
+  doc.save(filename || `${invoice.number || 'invoice'}.pdf`);
 }

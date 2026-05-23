@@ -31,9 +31,16 @@ export default {
   destroy() {}
 };
 
-// Canonical repo path for an invoice PDF — always uses the UI invoice number as the filename.
+// Canonical PDF filename: {number}_{ClientName}_{DDMMYYYY}
+function invoicePdfFilename(inv) {
+  const client = byId('clients', inv.clientId);
+  const clientPart = client ? sanitizeClientName(client.name) : 'Client';
+  const dateFmt = (inv.issueDate || '').split('-').reverse().join('');
+  return `${inv.number || inv.id}_${clientPart}_${dateFmt}`;
+}
+
 function invoicePdfPath(inv) {
-  const safe = (inv.number || inv.id).replace(/[/\\:*?"<>|#&%]/g, '_').replace(/\s+/g, '_');
+  const safe = invoicePdfFilename(inv).replace(/[/\\:*?"<>|#&%]/g, '_').replace(/\s+/g, '_');
   return `invoices/${safe}.pdf`;
 }
 
@@ -356,7 +363,7 @@ function build() {
       actions.appendChild(button('View', { variant: 'sm ghost', onClick: (e) => { e.stopPropagation(); openPDFViewer(r); }}));
       actions.appendChild(button('PDF', { variant: 'sm ghost', onClick: (e) => {
         e.stopPropagation();
-        if (r.source === 'pdf_import' && (r.pdfPath || r.pdfData)) downloadOriginalPDF(r); else downloadInvoicePDF(r);
+        if (r.source === 'pdf_import' && (r.pdfPath || r.pdfData)) downloadOriginalPDF(r); else downloadInvoicePDF(r, `${invoicePdfFilename(r)}.pdf`);
       }}));
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: (e) => { e.stopPropagation(); openBuilder(r); }}));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async (e) => {
