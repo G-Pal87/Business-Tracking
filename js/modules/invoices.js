@@ -696,7 +696,7 @@ function previewInvoice(inv, clientId) {
     </table>
     <div class="totals">
       <div class="totals-row"><span>Subtotal</span><span>${formatMoney(inv.subtotal, inv.currency)}</span></div>
-      ${inv.taxRate ? `<div class="totals-row"><span>Tax (${inv.taxRate}%)</span><span>${formatMoney(inv.tax, inv.currency)}</span></div>` : ''}
+      <div class="totals-row"><span>Tax (${inv.taxRate || 0}%)</span><span>${formatMoney(inv.tax || 0, inv.currency)}</span></div>
       <div class="totals-row total"><span>Total</span><span>${formatMoney(inv.total, inv.currency)}</span></div>
     </div>
     ${inv.notes ? `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#666">${escape(inv.notes)}</div>` : ''}
