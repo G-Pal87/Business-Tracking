@@ -29112,8 +29112,10 @@
       "pdfPath": "invoices/23_CreerplanO_23052026.pdf",
       "createdAt": 1779558973271,
       "createdBy": "Giorgos",
-      "updatedAt": 1779558973271,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1779559725081,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779559725081,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "inv_mpinrl7cio",
@@ -29144,8 +29146,10 @@
       "pdfPath": "invoices/24_WiseGuysHoldingO_23052026.pdf",
       "createdAt": 1779559491883,
       "createdBy": "Giorgos",
-      "updatedAt": 1779559491883,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1779559725096,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779559725096,
+      "deletedBy": "Giorgos"
     }
   ],
   "users": [
