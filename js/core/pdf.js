@@ -62,15 +62,22 @@ export function generateInvoicePDF(invoice) {
 
   // Line items header
   const rowH = 24;
+  // Column right-edge x positions (all numeric cols right-aligned)
+  const C_DESC_X  = margin + 8;   // left-aligned, maxWidth 245
+  const C_DESC_W  = 245;
+  const C_QTY_X   = 370;          // right-aligned
+  const C_RATE_X  = 460;          // right-aligned
+  const C_AMT_X   = 548;          // right-aligned
+
   doc.setFillColor(243, 244, 246);
   doc.rect(margin, y, 500, rowH, 'F');
   doc.setFontSize(9);
   doc.setTextColor(80);
   doc.setFont('helvetica', 'bold');
-  doc.text('DESCRIPTION', margin + 8, y + 16);
-  doc.text('QTY', 330, y + 16);
-  doc.text('RATE', 390, y + 16, { align: 'right' });
-  doc.text('AMOUNT', 536, y + 16, { align: 'right' });
+  doc.text('DESCRIPTION', C_DESC_X, y + 16);
+  doc.text('QTY',    C_QTY_X,  y + 16, { align: 'right' });
+  doc.text('RATE',   C_RATE_X, y + 16, { align: 'right' });
+  doc.text('AMOUNT', C_AMT_X,  y + 16, { align: 'right' });
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(0);
   doc.setDrawColor(180);
@@ -81,12 +88,15 @@ export function generateInvoicePDF(invoice) {
   // Line items
   doc.setFontSize(10);
   for (const li of invoice.lineItems || []) {
-    if (y + rowH > 720) { doc.addPage(); y = margin; }
-    doc.text(li.description || '', margin + 8, y + 16);
-    doc.text(`${li.quantity} ${li.unit || ''}`, 330, y + 16);
-    doc.text(formatMoney(li.rate, invoice.currency), 390, y + 16, { align: 'right' });
-    doc.text(formatMoney(li.total, invoice.currency), 536, y + 16, { align: 'right' });
-    y += rowH;
+    const descLines = doc.splitTextToSize(li.description || '', C_DESC_W);
+    const itemH = Math.max(rowH, descLines.length * 14 + 8);
+    if (y + itemH > 720) { doc.addPage(); y = margin; }
+    const midY = y + 16;
+    doc.text(descLines, C_DESC_X, midY);
+    doc.text(`${li.quantity} ${li.unit || ''}`.trim(), C_QTY_X,  midY, { align: 'right' });
+    doc.text(formatMoney(li.rate,  invoice.currency),  C_RATE_X, midY, { align: 'right' });
+    doc.text(formatMoney(li.total, invoice.currency),  C_AMT_X,  midY, { align: 'right' });
+    y += itemH;
     doc.setDrawColor(230);
     doc.line(margin, y, 548, y);
   }
