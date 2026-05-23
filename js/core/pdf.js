@@ -103,19 +103,38 @@ export function generateInvoicePDF(invoice) {
 
   y += 16;
 
+  // Helper: draw underline beneath right-aligned text at (x, textY)
+  const ul = (text, x, textY) => {
+    const w = doc.getTextWidth(text);
+    doc.setDrawColor(0);
+    doc.setLineWidth(0.5);
+    doc.line(x - w, textY + 2.5, x, textY + 2.5);
+  };
+
   // Totals — labels align with RATE column, values align with AMOUNT column
   doc.setFontSize(10);
-  doc.text('Subtotal', C_RATE_X, y, { align: 'right' });
-  doc.text(formatMoney(invoice.subtotal, invoice.currency), C_AMT_X, y, { align: 'right' });
-  y += 18;
+
+  // Subtotal — underlined
+  const subtotalLabel = 'Subtotal';
+  const subtotalValue = formatMoney(invoice.subtotal, invoice.currency);
+  doc.text(subtotalLabel, C_RATE_X, y, { align: 'right' });
+  doc.text(subtotalValue, C_AMT_X,  y, { align: 'right' });
+  ul(subtotalLabel, C_RATE_X, y);
+  ul(subtotalValue, C_AMT_X,  y);
+  y += 20;
+
+  // VAT — underlined (only when taxRate is set)
   if (invoice.taxRate) {
-    doc.text(`Tax (${invoice.taxRate}%)`, C_RATE_X, y, { align: 'right' });
-    doc.text(formatMoney(invoice.tax, invoice.currency), C_AMT_X, y, { align: 'right' });
-    y += 18;
+    const vatLabel = `VAT (${invoice.taxRate}%)`;
+    const vatValue = formatMoney(invoice.tax, invoice.currency);
+    doc.text(vatLabel, C_RATE_X, y, { align: 'right' });
+    doc.text(vatValue, C_AMT_X,  y, { align: 'right' });
+    ul(vatLabel, C_RATE_X, y);
+    ul(vatValue, C_AMT_X,  y);
+    y += 20;
   }
-  doc.setLineWidth(1.5);
-  doc.line(C_RATE_X - 8, y, C_AMT_X, y);
-  y += 16;
+
+  // TOTAL — bold, no underline
   doc.setFontSize(13);
   doc.setFont('helvetica', 'bold');
   doc.text('TOTAL', C_RATE_X, y, { align: 'right' });
