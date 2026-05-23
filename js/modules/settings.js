@@ -363,7 +363,18 @@ function buildCurrencyCard() {
       body.appendChild(el('div', { class: 'table-wrap' }, t));
     }
 
-  };
+    // Default invoice VAT rate
+    body.appendChild(el('div', { style: 'margin-top:16px;padding-top:16px;border-top:1px solid var(--border)' }));
+    const taxRateI = input({ type: 'number', value: state.db.settings?.defaultTaxRate ?? 0, min: 0, max: 100, step: 0.1, style: 'width:100px' });
+    body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Default invoice VAT %', taxRateI)));
+    body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;margin-bottom:10px' },
+      'Pre-fills the Tax % field on every new invoice. Set to 0 to leave it blank.'));
+    body.appendChild(button('Save VAT Rate', { variant: 'primary', onClick: () => {
+      if (!state.db.settings) state.db.settings = {};
+      state.db.settings.defaultTaxRate = Number(taxRateI.value) || 0;
+      markDirty();
+      toast('Default VAT rate saved', 'success');
+    }}));
 
   renderCard();
   return card;
