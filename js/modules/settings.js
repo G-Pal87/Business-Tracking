@@ -1426,17 +1426,71 @@ function fillInvoiceRepoBody(body) {
     const TYPE_LABEL = { missing_file: 'Missing file', orphan_file: 'Orphan file', filename_mismatch: 'Name mismatch', duplicate: 'Duplicate' };
     const TYPE_CSS   = { orphan_file: 'warning', duplicate: 'warning' };
 
+    // Multi-select toolbar
+    const resolvableItems = discrepancies.map(d => ({ d, action: resolveAction(d) })).filter(x => x.action);
+    const toolbar = el('div', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:6px 0' });
+    const selectAllCb = document.createElement('input');
+    selectAllCb.type = 'checkbox';
+    selectAllCb.title = 'Select all resolvable';
+    const resolveSelBtn = button('Resolve Selected (0)', { variant: 'sm primary' });
+    resolveSelBtn.disabled = true;
+    toolbar.appendChild(selectAllCb);
+    toolbar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Select all'));
+    toolbar.appendChild(resolveSelBtn);
+
+    const rowCheckboxes = [];
+
+    function updateToolbar() {
+      const checked = rowCheckboxes.filter(cb => cb.checked);
+      resolveSelBtn.disabled = checked.length === 0;
+      resolveSelBtn.textContent = `Resolve Selected (${checked.length})`;
+      selectAllCb.indeterminate = checked.length > 0 && checked.length < rowCheckboxes.length;
+      selectAllCb.checked = rowCheckboxes.length > 0 && checked.length === rowCheckboxes.length;
+    }
+
+    selectAllCb.onchange = () => {
+      rowCheckboxes.forEach(cb => { cb.checked = selectAllCb.checked; });
+      updateToolbar();
+    };
+
+    resolveSelBtn.onclick = async () => {
+      const toResolve = resolvableItems.filter((_, i) => rowCheckboxes[i]?.checked);
+      resolveSelBtn.disabled = true;
+      resolveSelBtn.textContent = 'Resolving…';
+      const errors = [];
+      for (const { action } of toResolve) {
+        try { await action(); } catch (err) { if (err.message !== 'cancelled') errors.push(err.message); }
+      }
+      if (errors.length) toast(errors.join('; '), 'danger', 6000);
+      await runCheck();
+    };
+
     const list = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
+
+    if (resolvableItems.length > 0) resultEl.appendChild(toolbar);
+
     for (const d of discrepancies) {
       const badgeCss = TYPE_CSS[d.type] || 'danger';
       const row = el('div', {
         style: 'display:flex;align-items:flex-start;gap:6px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)'
       });
+      const action = resolveAction(d);
+
+      if (action) {
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'flex-shrink:0;margin-top:3px;cursor:pointer';
+        cb.onchange = updateToolbar;
+        row.appendChild(cb);
+        rowCheckboxes.push(cb);
+      } else {
+        row.appendChild(el('span', { style: 'width:16px;flex-shrink:0' }));
+      }
+
       row.appendChild(el('span', { class: `badge ${badgeCss}`, style: 'flex-shrink:0;margin-top:1px' }, TYPE_LABEL[d.type] || d.type));
       row.appendChild(el('span', { style: 'flex:1' }, d.detail));
 
       const statusEl = el('span', { style: 'font-size:11px;white-space:nowrap;flex-shrink:0' });
-      const action   = resolveAction(d);
 
       if (action) {
         const btn = button('Resolve', { variant: 'sm primary' });
@@ -1832,14 +1886,68 @@ function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLa
     const TYPE_LABEL = { missing_file: 'Missing file', orphan_file: 'Orphan file' };
     const TYPE_CSS   = { orphan_file: 'warning' };
 
+    // Multi-select toolbar
+    const resolvableItems = discrepancies.map(d => ({ d, action: resolveAction(d) })).filter(x => x.action);
+    const toolbar = el('div', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:6px 0' });
+    const selectAllCb = document.createElement('input');
+    selectAllCb.type = 'checkbox';
+    selectAllCb.title = 'Select all resolvable';
+    const resolveSelBtn = button('Resolve Selected (0)', { variant: 'sm primary' });
+    resolveSelBtn.disabled = true;
+    toolbar.appendChild(selectAllCb);
+    toolbar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Select all'));
+    toolbar.appendChild(resolveSelBtn);
+
+    const rowCheckboxes = [];
+
+    function updateToolbar() {
+      const checked = rowCheckboxes.filter(cb => cb.checked);
+      resolveSelBtn.disabled = checked.length === 0;
+      resolveSelBtn.textContent = `Resolve Selected (${checked.length})`;
+      selectAllCb.indeterminate = checked.length > 0 && checked.length < rowCheckboxes.length;
+      selectAllCb.checked = rowCheckboxes.length > 0 && checked.length === rowCheckboxes.length;
+    }
+
+    selectAllCb.onchange = () => {
+      rowCheckboxes.forEach(cb => { cb.checked = selectAllCb.checked; });
+      updateToolbar();
+    };
+
+    resolveSelBtn.onclick = async () => {
+      const toResolve = resolvableItems.filter((_, i) => rowCheckboxes[i]?.checked);
+      resolveSelBtn.disabled = true;
+      resolveSelBtn.textContent = 'Resolving…';
+      const errors = [];
+      for (const { action } of toResolve) {
+        try { await action(); } catch (err) { if (err.message !== 'cancelled') errors.push(err.message); }
+      }
+      if (errors.length) toast(errors.join('; '), 'danger', 6000);
+      await runCheck();
+    };
+
     const list = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
+
+    if (resolvableItems.length > 0) resultEl.appendChild(toolbar);
+
     for (const d of discrepancies) {
       const row = el('div', { style: 'display:flex;align-items:flex-start;gap:6px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)' });
+      const action = resolveAction(d);
+
+      if (action) {
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'flex-shrink:0;margin-top:3px;cursor:pointer';
+        cb.onchange = updateToolbar;
+        row.appendChild(cb);
+        rowCheckboxes.push(cb);
+      } else {
+        row.appendChild(el('span', { style: 'width:16px;flex-shrink:0' }));
+      }
+
       row.appendChild(el('span', { class: `badge ${TYPE_CSS[d.type] || 'danger'}`, style: 'flex-shrink:0;margin-top:1px' }, TYPE_LABEL[d.type] || d.type));
       row.appendChild(el('span', { style: 'flex:1' }, d.detail));
 
       const statusEl = el('span', { style: 'font-size:11px;white-space:nowrap;flex-shrink:0' });
-      const action   = resolveAction(d);
       if (action) {
         const btn = button('Resolve', { variant: 'sm primary' });
         btn.onclick = async () => {
