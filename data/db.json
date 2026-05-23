@@ -26059,9 +26059,9 @@
       "source": "pdf_import",
       "createdAt": 1777486416456,
       "createdBy": "Giorgos",
-      "updatedAt": 1778317724409,
+      "updatedAt": 1779562940239,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/1_CTWO_050126.pdf"
+      "pdfPath": "invoices/1_CTWO_050126_CTWOAutomateAS_05012026.pdf"
     },
     {
       "id": "inv_mokdm16hba",
@@ -29384,8 +29384,10 @@
       "pdfPath": "invoices/23.pdf",
       "createdAt": 1779562881755,
       "createdBy": "Giorgos",
-      "updatedAt": 1779562881755,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1779562942626,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779562942626,
+      "deletedBy": "Giorgos"
     }
   ],
   "users": [
