@@ -123,16 +123,14 @@ export function generateInvoicePDF(invoice) {
   ul(subtotalValue, C_AMT_X,  y);
   y += 20;
 
-  // VAT — underlined (only when taxRate is set)
-  if (invoice.taxRate) {
-    const vatLabel = `VAT (${invoice.taxRate}%)`;
-    const vatValue = formatMoney(invoice.tax, invoice.currency);
-    doc.text(vatLabel, C_RATE_X, y, { align: 'right' });
-    doc.text(vatValue, C_AMT_X,  y, { align: 'right' });
-    ul(vatLabel, C_RATE_X, y);
-    ul(vatValue, C_AMT_X,  y);
-    y += 20;
-  }
+  // VAT — underlined, always shown
+  const vatLabel = `VAT (${invoice.taxRate || 0}%)`;
+  const vatValue = formatMoney(invoice.tax || 0, invoice.currency);
+  doc.text(vatLabel, C_RATE_X, y, { align: 'right' });
+  doc.text(vatValue, C_AMT_X,  y, { align: 'right' });
+  ul(vatLabel, C_RATE_X, y);
+  ul(vatValue, C_AMT_X,  y);
+  y += 20;
 
   // TOTAL — bold, no underline
   doc.setFontSize(13);
