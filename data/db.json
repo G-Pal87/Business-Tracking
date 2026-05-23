@@ -26739,9 +26739,9 @@
       "source": "pdf_import",
       "createdAt": 1777818718984,
       "createdBy": "RitaK",
-      "updatedAt": 1779563065888,
+      "updatedAt": 1779563202241,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/18_CTWO_310326_CTWOAutomateAS_31032026.pdf"
+      "pdfPath": "invoices/18_CTWO_310326.pdf"
     },
     {
       "id": "inv_mopvfsiqjb",
@@ -27393,10 +27393,10 @@
       "total": 14740,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/17_CTWO_01052025.pdf",
+      "pdfPath": "invoices/17_CTWO_01052025_CTWOAutomateAS_01052025.pdf",
       "createdAt": 1777935684881,
       "createdBy": "Giorgos",
-      "updatedAt": 1778317843545,
+      "updatedAt": 1779563193488,
       "updatedBy": "Giorgos"
     },
     {
@@ -27425,10 +27425,10 @@
       "total": 6000,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/18_SWG_14042025.pdf",
+      "pdfPath": "invoices/18_SWG_14042025_WiseGuysHoldingO_14052025.pdf",
       "createdAt": 1777935726818,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180632725,
+      "updatedAt": 1779563199925,
       "updatedBy": "Giorgos"
     },
     {
@@ -27457,10 +27457,10 @@
       "total": 200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/19_SWG_14052025.pdf",
+      "pdfPath": "invoices/19_SWG_14052025_WiseGuysHoldingO_14052025.pdf",
       "createdAt": 1777935803239,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180640850,
+      "updatedAt": 1779563206071,
       "updatedBy": "Giorgos"
     },
     {
