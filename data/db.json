@@ -29180,8 +29180,10 @@
       "pdfPath": "invoices/23_WiseGuysHoldingO_23052026.pdf",
       "createdAt": 1779559807490,
       "createdBy": "Giorgos",
-      "updatedAt": 1779559807490,
-      "updatedBy": "Giorgos"
+      "updatedAt": 1779561040207,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779561040207,
+      "deletedBy": "Giorgos"
     }
   ],
   "users": [
