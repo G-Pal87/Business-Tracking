@@ -27945,10 +27945,10 @@
       "total": 650,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/34_Avionas_290925.pdf",
+      "pdfPath": "invoices/34_Avionas_290925_AvionasPLspzoo_29082025.pdf",
       "createdAt": 1777969549879,
       "createdBy": "Giorgos",
-      "updatedAt": 1778317127118,
+      "updatedAt": 1779563295773,
       "updatedBy": "Giorgos"
     },
     {
@@ -27977,10 +27977,10 @@
       "total": 4690,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/35_CTWO_011025.pdf",
+      "pdfPath": "invoices/35_CTWO_011025_CTWOAutomateAS_01102025.pdf",
       "createdAt": 1777969790716,
       "createdBy": "Giorgos",
-      "updatedAt": 1778317759596,
+      "updatedAt": 1779563300682,
       "updatedBy": "Giorgos"
     },
     {
