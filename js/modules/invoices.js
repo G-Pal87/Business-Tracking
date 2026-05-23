@@ -560,7 +560,7 @@ function openBuilder(existing) {
     const client = byId('clients', clientS.value);
     const clientPart = client ? sanitizeClientName(client.name) : 'Client';
     const seq = nextInvoiceSequence(year);
-    numberI.placeholder = `Auto: ${seq}_${clientPart}_${dateFmt}`;
+    numberI.placeholder = `Auto: ${seq}`;
   }
 
   clientS.onchange = () => {
@@ -590,11 +590,8 @@ function openBuilder(existing) {
     inv.notes = notesT.value;
     if (!numberI.value.trim()) {
       const year = inv.issueDate.slice(0, 4);
-      const client = byId('clients', inv.clientId);
-      const clientPart = client ? sanitizeClientName(client.name) : 'Client';
       const seq = nextInvoiceSequence(year, inv.id);
-      const dateFmt = inv.issueDate.split('-').reverse().join('');
-      const candidate = `${seq}_${clientPart}_${dateFmt}`;
+      const candidate = `${seq}`;
       if (listActive('invoices').some(i => i.id !== inv.id && i.number === candidate)) {
         toast(`Auto-generated number ${candidate} conflicts with an existing invoice`, 'danger');
         return;
