@@ -28081,10 +28081,10 @@
       "total": 920,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/38_Nexial_131025.pdf",
+      "pdfPath": "invoices/38_Nexial_131025_NexialUnipessoalLDA_13102025.pdf",
       "createdAt": 1777970532460,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180789729,
+      "updatedAt": 1779563322122,
       "updatedBy": "Giorgos"
     },
     {
@@ -28113,10 +28113,10 @@
       "total": 4500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/39_SWG_141025.pdf",
+      "pdfPath": "invoices/39_SWG_141025_WiseGuysHoldingO_12102025.pdf",
       "createdAt": 1777970679002,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180798901,
+      "updatedAt": 1779563326113,
       "updatedBy": "Giorgos"
     },
     {
@@ -28153,10 +28153,10 @@
       "total": 15548.9,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/40_CTWO_011125.pdf",
+      "pdfPath": "invoices/40_CTWO_011125_CTWOAutomateAS_01112025.pdf",
       "createdAt": 1777970784435,
       "createdBy": "Giorgos",
-      "updatedAt": 1778317745386,
+      "updatedAt": 1779563330648,
       "updatedBy": "Giorgos"
     },
     {
@@ -28185,10 +28185,10 @@
       "total": 1500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/41_VITAS_061125.pdf",
+      "pdfPath": "invoices/41_VITAS_061125_VITASGmbH_06112025.pdf",
       "createdAt": 1777971023613,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180816233,
+      "updatedAt": 1779563334344,
       "updatedBy": "Giorgos"
     },
     {
@@ -28217,10 +28217,10 @@
       "total": 300,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/42_Nexial_13112025.pdf",
+      "pdfPath": "invoices/42_Nexial_13112025_NexialUnipessoalLDA_13112025.pdf",
       "createdAt": 1777971112572,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180824547,
+      "updatedAt": 1779563338240,
       "updatedBy": "Giorgos"
     },
     {
@@ -28249,10 +28249,10 @@
       "total": 250,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/43_SWG_13112025.pdf",
+      "pdfPath": "invoices/43_SWG_13112025_WiseGuysHoldingO_11112025.pdf",
       "createdAt": 1777971161179,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180832934,
+      "updatedAt": 1779563342471,
       "updatedBy": "Giorgos"
     },
     {
@@ -28281,10 +28281,10 @@
       "total": 3500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/44_ZOLLHOF_21112025.pdf",
+      "pdfPath": "invoices/44_ZOLLHOF_21112025_ZollhofHoldingGmbH_21112025.pdf",
       "createdAt": 1777971198581,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180841056,
+      "updatedAt": 1779563345884,
       "updatedBy": "Giorgos"
     },
     {
@@ -28313,10 +28313,10 @@
       "total": 300,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/45_Nexial_15122025.pdf",
+      "pdfPath": "invoices/45_Nexial_15122025_NexialUnipessoalLDA_15122025.pdf",
       "createdAt": 1777971280272,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180849227,
+      "updatedAt": 1779563349549,
       "updatedBy": "Giorgos"
     },
     {
@@ -28347,9 +28347,9 @@
       "source": "pdf_import",
       "createdAt": 1777971869613,
       "createdBy": "Giorgos",
-      "updatedAt": 1778318055406,
+      "updatedAt": 1779563352932,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/Invoice_-_M_WPrimeSolutions_1001.pdf"
+      "pdfPath": "invoices/Invoice_-_M_WPrimeSolutions_1001_CTWOAutomateAS_31072024.pdf"
     },
     {
       "id": "inv_mosekkn58w",
@@ -28379,9 +28379,9 @@
       "source": "pdf_import",
       "createdAt": 1777971918833,
       "createdBy": "Giorgos",
-      "updatedAt": 1778186810478,
+      "updatedAt": 1779563356601,
       "updatedBy": "Giorgos",
-      "pdfPath": "invoices/Invoice-M_WPrimeSolutions_2002-SWG.pdf"
+      "pdfPath": "invoices/Invoice-M_WPrimeSolutions_2002-SWG_WiseGuysHoldingO_11072024.pdf"
     },
     {
       "id": "inv_mosellmfaz",
@@ -28471,10 +28471,10 @@
       "total": 480,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M_WPrimeSolutions_2001__24-NordicSV.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions_2001__24-NordicSV_CTWOAutomateAS_11072024.pdf",
       "createdAt": 1777972197971,
       "createdBy": "Giorgos",
-      "updatedAt": 1778318067677,
+      "updatedAt": 1779563360453,
       "updatedBy": "Giorgos"
     },
     {
@@ -28728,10 +28728,10 @@
       "total": 400,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M_WPrimeSolutions_2012_-24_SWG.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions_2012_-24_SWG_WiseGuysHoldingO_30092024.pdf",
       "createdAt": 1777974226805,
       "createdBy": "Giorgos",
-      "updatedAt": 1778185864315,
+      "updatedAt": 1779563364031,
       "updatedBy": "Giorgos"
     },
     {
@@ -28822,10 +28822,10 @@
       "total": 2500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M_WPrimeSolutions20101__24-VITAS.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions20101__24-VITAS_VITASGmbH_03092024.pdf",
       "createdAt": 1777974402873,
       "createdBy": "Giorgos",
-      "updatedAt": 1778185872358,
+      "updatedAt": 1779563368156,
       "updatedBy": "Giorgos"
     },
     {
@@ -28885,10 +28885,10 @@
       "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M_WPrimeSolutions_2013_24_SWG.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions_2013_24_SWG_WiseGuysHoldingO_03102024.pdf",
       "createdAt": 1777974645871,
       "createdBy": "Giorgos",
-      "updatedAt": 1778185879926,
+      "updatedAt": 1779563371865,
       "updatedBy": "Giorgos"
     },
     {
@@ -28917,10 +28917,10 @@
       "total": 1000,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M_WPrimeSolutions_2015_24-VITAS.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions_2015_24-VITAS_VITASGmbH_05112024.pdf",
       "createdAt": 1777974729294,
       "createdBy": "Giorgos",
-      "updatedAt": 1778185887323,
+      "updatedAt": 1779563375545,
       "updatedBy": "Giorgos"
     },
     {
@@ -28949,10 +28949,10 @@
       "total": 900,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M_WPrimeSolutions_2016_24-Nexial.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions_2016_24-Nexial_NexialUnipessoalLDA_10112024.pdf",
       "createdAt": 1777974784546,
       "createdBy": "Giorgos",
-      "updatedAt": 1778185894946,
+      "updatedAt": 1779563379167,
       "updatedBy": "Giorgos"
     },
     {
@@ -28981,10 +28981,10 @@
       "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M_WPrimeSolutions-2014_24_-_SWG.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions-2014_24_-_SWG_WiseGuysHoldingO_04112024.pdf",
       "createdAt": 1777974830613,
       "createdBy": "Giorgos",
-      "updatedAt": 1778185903331,
+      "updatedAt": 1779563382766,
       "updatedBy": "Giorgos"
     },
     {
@@ -29013,10 +29013,10 @@
       "total": 6200,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M_WPrimeSolutions_2017_24-SWG.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions_2017_24-SWG_WiseGuysHoldingO_04122024.pdf",
       "createdAt": 1777974897946,
       "createdBy": "Giorgos",
-      "updatedAt": 1778185910699,
+      "updatedAt": 1779563386708,
       "updatedBy": "Giorgos"
     },
     {
@@ -29045,10 +29045,10 @@
       "total": 2000,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/M_WPrimeSolutions_2018_24-SWG-EMPOW.pdf",
+      "pdfPath": "invoices/M_WPrimeSolutions_2018_24-SWG-EMPOW_WiseGuysHoldingO_04122024.pdf",
       "createdAt": 1777974946726,
       "createdBy": "Giorgos",
-      "updatedAt": 1778185919571,
+      "updatedAt": 1779563390601,
       "updatedBy": "Giorgos"
     },
     {
