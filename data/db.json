@@ -27585,10 +27585,10 @@
       "total": 1500,
       "notes": "Imported from PDF",
       "source": "pdf_import",
-      "pdfPath": "invoices/23_VITAS_04062025.pdf",
+      "pdfPath": "invoices/23_VITAS_04062025_VITASGmbH_04062025.pdf",
       "createdAt": 1777936023784,
       "createdBy": "Giorgos",
-      "updatedAt": 1778180672364,
+      "updatedAt": 1779563241502,
       "updatedBy": "Giorgos"
     },
     {
