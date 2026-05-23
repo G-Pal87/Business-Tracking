@@ -136,7 +136,7 @@ function stat(label, value) {
   );
 }
 
-function openDetail(id) {
+export function openDetail(id) {
   const c = byId('clients', id);
   if (!c) return;
   const invs = listActive('invoices').filter(i => i.clientId === id).sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''));

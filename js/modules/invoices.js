@@ -654,7 +654,7 @@ function openBuilder(existing) {
   openModal({ title: existing ? 'Edit Invoice' : 'New Invoice', body, footer: [cancel, preview, save], large: true });
 }
 
-function openPreview(id) {
+export function openPreview(id) {
   const inv = byId('invoices', id);
   if (!inv) return;
   previewInvoice(inv, inv.clientId);

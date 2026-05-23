@@ -7,6 +7,9 @@ import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRe
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { generateInvoicePDF } from '../core/pdf.js';
+import { openPreview as openInvoicePreview } from './invoices.js';
+import { openDetail as openClientDetail } from './clients.js';
+import { openDetail as openPropertyDetail } from './properties.js';
 
 export default {
   id: 'settings',
@@ -1494,6 +1497,19 @@ function fillInvoiceRepoBody(body) {
       row.appendChild(el('span', { class: `badge ${badgeCss}`, style: 'flex-shrink:0;margin-top:1px' }, TYPE_LABEL[d.type] || d.type));
       row.appendChild(el('span', { style: 'flex:1' }, d.detail));
 
+      if (d.inv) {
+        const viewLink = document.createElement('a');
+        viewLink.textContent = 'View ↗';
+        viewLink.href = '#invoices';
+        viewLink.style.cssText = 'font-size:11px;white-space:nowrap;flex-shrink:0;color:var(--primary,#0d6efd);cursor:pointer;margin-right:4px';
+        viewLink.onclick = (e) => {
+          e.preventDefault();
+          navigate('invoices');
+          setTimeout(() => openInvoicePreview(d.inv.id), 200);
+        };
+        row.appendChild(viewLink);
+      }
+
       const statusEl = el('span', { style: 'font-size:11px;white-space:nowrap;flex-shrink:0' });
 
       if (action) {
@@ -1778,7 +1794,7 @@ async function listDocRepoFiles(rootFolder) {
   return files;
 }
 
-function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLabel, backupBtnLabel, deleteBackupBtnLabel }) {
+function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLabel, backupBtnLabel, deleteBackupBtnLabel, openRecord }) {
   const resultEl        = el('div', { style: 'margin-top:12px' });
   const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
   const deleteStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
@@ -1950,6 +1966,19 @@ function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLa
 
       row.appendChild(el('span', { class: `badge ${TYPE_CSS[d.type] || 'danger'}`, style: 'flex-shrink:0;margin-top:1px' }, TYPE_LABEL[d.type] || d.type));
       row.appendChild(el('span', { style: 'flex:1' }, d.detail));
+
+      if (d.entity && openRecord) {
+        const viewLink = document.createElement('a');
+        viewLink.textContent = 'View ↗';
+        viewLink.href = `#${collection}`;
+        viewLink.style.cssText = 'font-size:11px;white-space:nowrap;flex-shrink:0;color:var(--primary,#0d6efd);cursor:pointer;margin-right:4px';
+        viewLink.onclick = (e) => {
+          e.preventDefault();
+          navigate(collection);
+          setTimeout(() => openRecord(d.entity.id), 200);
+        };
+        row.appendChild(viewLink);
+      }
 
       const statusEl = el('span', { style: 'font-size:11px;white-space:nowrap;flex-shrink:0' });
       if (action) {
@@ -2185,7 +2214,8 @@ function buildRepositoryMaintenanceCard() {
     entityLabel:          'Property',
     checkBtnLabel:        'Check Property Documents',
     backupBtnLabel:       'Backup Property Documents',
-    deleteBackupBtnLabel: 'Delete Property Backups'
+    deleteBackupBtnLabel: 'Delete Property Backups',
+    openRecord:           openPropertyDetail
   });
   fillDocRepoBody(cliSub.body, {
     rootFolder:           'Clients',
@@ -2193,7 +2223,8 @@ function buildRepositoryMaintenanceCard() {
     entityLabel:          'Client',
     checkBtnLabel:        'Check Client Documents',
     backupBtnLabel:       'Backup Client Documents',
-    deleteBackupBtnLabel: 'Delete Client Backups'
+    deleteBackupBtnLabel: 'Delete Client Backups',
+    openRecord:           openClientDetail
   });
 
   body.appendChild(invSub.wrap);

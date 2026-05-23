@@ -278,7 +278,7 @@ function statBox(label, value) {
   );
 }
 
-function openDetail(id, preStats) {
+export function openDetail(id, preStats) {
   selectedId = id;
   const p = byId('properties', id);
   if (!p) return;
