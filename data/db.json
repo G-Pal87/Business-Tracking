@@ -29114,6 +29114,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1779558973271,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_mpinrl7cio",
+      "number": "24_WiseGuysHoldingO_23052026",
+      "clientId": "cli_mohkf6ip14",
+      "owner": "rita",
+      "issueDate": "2026-05-23",
+      "dueDate": "2026-06-22",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "draft",
+      "lineItems": [
+        {
+          "id": "li_mpinrrz345",
+          "serviceId": "svc_001",
+          "description": "Customer Success Professional Services",
+          "quantity": 1,
+          "unit": "day",
+          "rate": 650,
+          "total": 650
+        }
+      ],
+      "subtotal": 650,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 650,
+      "notes": "",
+      "pdfPath": "invoices/24_WiseGuysHoldingO_23052026.pdf",
+      "createdAt": 1779559491883,
+      "createdBy": "Giorgos",
+      "updatedAt": 1779559491883,
+      "updatedBy": "Giorgos"
     }
   ],
   "users": [
