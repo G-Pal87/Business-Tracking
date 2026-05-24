@@ -19,22 +19,23 @@ export function loadConfig() {
   } catch { /* ignore */ }
 }
 
-// Called after db.json is loaded — overrides state.github with db.appConfig.github
-// and caches the result to localStorage for next-load bootstrap.
+// Called after db.json is loaded — syncs owner/repo/branch/path from db.appConfig.github
+// into state and localStorage. Token is intentionally NOT read from the DB —
+// it lives in localStorage only (set via setup link or Settings form).
 export function applyDbConfig(ghCfg) {
   if (!ghCfg) return;
   if (ghCfg.owner)  state.github.owner  = ghCfg.owner;
   if (ghCfg.repo)   state.github.repo   = ghCfg.repo;
   if (ghCfg.branch) state.github.branch = ghCfg.branch;
   if (ghCfg.path)   state.github.dbPath = ghCfg.path;
-  if (ghCfg.token)  state.github.token  = ghCfg.token;
+  // ghCfg.token is deliberately ignored — never read tokens from the DB
   try {
     localStorage.setItem(CFG_LS_KEY, JSON.stringify({
       owner:  state.github.owner,
       repo:   state.github.repo,
       branch: state.github.branch,
       path:   state.github.dbPath,
-      token:  state.github.token
+      token:  state.github.token   // preserve the current localStorage-sourced token
     }));
   } catch { /* ignore */ }
 }
