@@ -26113,8 +26113,10 @@
       "notes": "On time payer",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779648211588,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779648211588,
+      "deletedBy": "Giorgos"
     }
   ],
   "clients": [
