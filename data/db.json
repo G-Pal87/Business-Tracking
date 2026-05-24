@@ -26003,8 +26003,10 @@
       "stream": "short_term_rental",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779644789278,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779644789278,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_006",
@@ -26018,8 +26020,10 @@
       "stream": "short_term_rental",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779644789268,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779644789268,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_007",
@@ -26169,8 +26173,10 @@
       "stream": "short_term_rental",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779644789327,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779644789327,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_016",
@@ -26184,8 +26190,10 @@
       "stream": "short_term_rental",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779644789309,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779644789309,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_017",
@@ -26199,8 +26207,10 @@
       "stream": "short_term_rental",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779644789294,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779644789294,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_018",
@@ -26214,8 +26224,10 @@
       "stream": "short_term_rental",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779644789319,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779644789319,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_019",
@@ -26229,8 +26241,10 @@
       "stream": "short_term_rental",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779644789286,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779644789286,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_020",
@@ -26380,8 +26394,10 @@
       "stream": "short_term_rental",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779644789254,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779644789254,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_029",
@@ -26395,8 +26411,10 @@
       "stream": "short_term_rental",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779644789230,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779644789230,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "exp_030",
@@ -26410,8 +26428,10 @@
       "stream": "short_term_rental",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779644789239,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779644789239,
+      "deletedBy": "Giorgos"
     }
   ],
   "vendors": [
