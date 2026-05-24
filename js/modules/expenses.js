@@ -409,10 +409,6 @@ export function openExpenseForm(id) {
   if (exp) openForm(exp);
 }
 
-export function openExpenseForm(defaults = {}) {
-  openForm(null, defaults);
-}
-
 function openForm(existing, defaults = {}) {
   const r = existing ? { ...existing } : {
     id: newId('exp'),
