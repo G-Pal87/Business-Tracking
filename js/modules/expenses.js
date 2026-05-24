@@ -5,6 +5,38 @@ import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, to
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
+import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+async function openReceipt(receipt) {
+  let b64;
+  if (receipt.path) {
+    const file = await fetchGithubFile(receipt.path);
+    b64 = file.content.replace(/\s/g, '');
+  } else {
+    b64 = receipt.data;
+  }
+  const byteChars = atob(b64);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  const blob = new Blob([bytes], { type: receipt.type || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function receiptRepoPath(expenseId, filename) {
+  const ext = filename.split('.').pop().toLowerCase();
+  return `expenses/receipts/${expenseId}.${ext}`;
+}
 
 export default {
   id: 'expenses',
@@ -237,6 +269,14 @@ function build() {
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
       const actions = el('td', { class: 'right' });
+      if (r.receipt) {
+        const rcptBtn = button('📎', { variant: 'sm ghost' });
+        rcptBtn.title = `Receipt: ${r.receipt.name}`;
+        rcptBtn.onclick = async () => {
+          try { await openReceipt(r.receipt); } catch (e) { toast('Could not open receipt: ' + e.message, 'danger'); }
+        };
+        actions.appendChild(rcptBtn);
+      }
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog('Delete expense?', { danger: true, okLabel: 'Delete' });
@@ -454,6 +494,58 @@ function openForm(existing, defaults = {}) {
   }
   body.appendChild(formRow('Description', descT));
 
+  // ── Receipt upload ────────────────────────────────────────────────────────────
+  let pendingReceiptFile = null;
+  let removeExistingReceipt = false;
+
+  const receiptWrap = el('div', { style: 'margin-top:4px' });
+  const receiptStatus = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:4px' });
+  const fileInput = el('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png,.gif,.webp', style: 'display:none' });
+
+  const chooseBtn  = button('📎 Attach Receipt', { variant: 'sm ghost' });
+  const viewBtn    = button('View', { variant: 'sm ghost' });
+  const removeBtn  = button('Remove', { variant: 'sm ghost' });
+  removeBtn.style.color = 'var(--danger,#dc3545)';
+
+  const btnRow = el('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap' });
+  btnRow.appendChild(chooseBtn);
+  btnRow.appendChild(fileInput);
+
+  const syncReceiptUI = () => {
+    viewBtn.remove(); removeBtn.remove();
+    if (pendingReceiptFile) {
+      receiptStatus.textContent = `📎 ${pendingReceiptFile.name} (pending upload)`;
+      btnRow.appendChild(removeBtn);
+    } else if (r.receipt && !removeExistingReceipt) {
+      receiptStatus.textContent = `📎 ${r.receipt.name}`;
+      btnRow.appendChild(viewBtn);
+      btnRow.appendChild(removeBtn);
+    } else {
+      receiptStatus.textContent = '';
+    }
+  };
+
+  chooseBtn.onclick = () => fileInput.click();
+  fileInput.onchange = () => {
+    pendingReceiptFile = fileInput.files[0] || null;
+    removeExistingReceipt = false;
+    syncReceiptUI();
+  };
+  viewBtn.onclick = async () => {
+    try { await openReceipt(r.receipt); } catch (e) { toast('Could not open receipt: ' + e.message, 'danger'); }
+  };
+  removeBtn.onclick = () => {
+    pendingReceiptFile = null;
+    removeExistingReceipt = true;
+    fileInput.value = '';
+    syncReceiptUI();
+  };
+
+  receiptWrap.appendChild(receiptStatus);
+  receiptWrap.appendChild(btnRow);
+  body.appendChild(formRow('Receipt', receiptWrap));
+  syncReceiptUI();
+
   const autoFillAmount = () => {
     if (catS.value === 'inventory') return;
     cleaningHint.textContent = '';
@@ -608,6 +700,33 @@ function openForm(existing, defaults = {}) {
       stream:        autoStream,
       ...(appliedFee !== undefined ? { appliedCleaningFee: appliedFee } : {})
     });
+
+    // ── Receipt handling ────────────────────────────────────────────────────────
+    if (removeExistingReceipt && r.receipt?.path) {
+      try { await deleteGithubFile(r.receipt.path, null, `Remove receipt for expense ${r.id}`); } catch { /* ignore */ }
+      delete r.receipt;
+    }
+    if (pendingReceiptFile) {
+      const b64 = await readFileAsBase64(pendingReceiptFile);
+      const repoPath = receiptRepoPath(r.id, pendingReceiptFile.name);
+      const { token, owner, repo } = state.github;
+      if (token && owner && repo) {
+        // Delete old receipt file if replacing
+        if (r.receipt?.path && r.receipt.path !== repoPath) {
+          try { await deleteGithubFile(r.receipt.path, null, `Replace receipt for expense ${r.id}`); } catch { /* ignore */ }
+        }
+        try {
+          await uploadGithubFile(repoPath, b64, `Upload receipt for expense ${r.id}`);
+          r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, path: repoPath };
+        } catch {
+          r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, data: b64 };
+        }
+      } else {
+        r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, data: b64 };
+      }
+    } else if (removeExistingReceipt) {
+      delete r.receipt;
+    }
 
     if (!existing && recurChk.checked && catS.value !== 'inventory') {
       const period  = recurPeriodS.value;
