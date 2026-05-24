@@ -26098,27 +26098,7 @@
       "updatedBy": "RitaK"
     }
   ],
-  "tenants": [
-    {
-      "id": "ten_001",
-      "propertyId": "prop_003",
-      "name": "Kovacs Anna",
-      "email": "akovacs@example.hu",
-      "phone": "+36 30 123 4567",
-      "leaseStart": "2024-09-01",
-      "leaseEnd": "2025-08-31",
-      "monthlyRent": 350000,
-      "currency": "HUF",
-      "deposit": 700000,
-      "notes": "On time payer",
-      "createdAt": 1777638212996,
-      "createdBy": "RitaK",
-      "updatedAt": 1779648211588,
-      "updatedBy": "Giorgos",
-      "deletedAt": 1779648211588,
-      "deletedBy": "Giorgos"
-    }
-  ],
+  "tenants": [],
   "clients": [
     {
       "id": "cli_mohkf6ip14",
