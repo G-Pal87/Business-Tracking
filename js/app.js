@@ -80,11 +80,12 @@ async function boot() {
         const qs = hash.slice(hash.indexOf('?') + 1);
         const p  = new URLSearchParams(qs);
         if (p.get('owner')) {
-          if (!state.github.owner)  state.github.owner  = p.get('owner');
-          if (!state.github.repo)   state.github.repo   = p.get('repo')   || '';
-          if (!state.github.branch) state.github.branch = p.get('branch') || 'main';
-          if (!state.github.dbPath) state.github.dbPath = p.get('path')   || 'data/db.json';
-          if (!state.github.token && p.get('token')) state.github.token = p.get('token');
+          // Always override — setup link is the authoritative source
+          state.github.owner  = p.get('owner');
+          state.github.repo   = p.get('repo')   || '';
+          state.github.branch = p.get('branch') || 'main';
+          state.github.dbPath = p.get('path')   || 'data/db.json';
+          if (p.get('token')) state.github.token = p.get('token');
           // Save to localStorage so subsequent loads don't need the link again
           github.saveConfig({
             owner:  state.github.owner,

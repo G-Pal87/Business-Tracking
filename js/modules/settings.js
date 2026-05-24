@@ -239,12 +239,20 @@ function buildGithubCard() {
     setupLinkInput.value = setupUrl;
 
     const doCopy = (text, msg) => {
+      const fallback = () => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        try { document.execCommand('copy'); toast(msg, 'success', 5000); }
+        catch { toast('Copy failed — select the link manually', 'warning', 3000); }
+        document.body.removeChild(ta);
+      };
       if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(() => toast(msg, 'success', 5000))
-          .catch(() => { document.execCommand('copy'); toast(msg, 'success', 5000); });
+        navigator.clipboard.writeText(text).then(() => toast(msg, 'success', 5000)).catch(fallback);
       } else {
-        document.execCommand('copy');
-        toast(msg, 'success', 5000);
+        fallback();
       }
     };
 
