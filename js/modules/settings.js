@@ -2471,6 +2471,7 @@ function buildRepositoryMaintenanceCard() {
 function buildDangerCard() {
   const EXPORT_VERSION = 2;
   const SCHEMA_VERSION = 1;
+  const MAX_BACKUPS    = 30;
 
   // Canonical collection list — order controls export/import summary display
   const ALL_COLLECTIONS = [
@@ -2532,33 +2533,9 @@ function buildDangerCard() {
 
   const statusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
 
-  // ── Export ──────────────────────────────────────────────────────────────────
+  // ── Shared import logic ──────────────────────────────────────────────────────
 
-  const exportBtn = button('Export JSON', { onClick: () => {
-    doExport(`bt-snapshot-${new Date().toISOString().slice(0, 10)}.json`);
-    statusEl.textContent = `Full snapshot exported at ${new Date().toLocaleTimeString()}.`;
-    statusEl.style.color = 'var(--success,#198754)';
-  }});
-
-  // ── Import ──────────────────────────────────────────────────────────────────
-
-  const importInput = input({ type: 'file', accept: '.json', style: 'display:none' });
-
-  importInput.onchange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    importInput.value = '';
-
-    // 1. Parse file
-    let raw;
-    try { raw = JSON.parse(await file.text()); }
-    catch {
-      statusEl.textContent = 'Import failed: file is not valid JSON.';
-      statusEl.style.color = 'var(--danger,#dc3545)';
-      return;
-    }
-
-    // 2. Detect format: versioned snapshot vs legacy raw-db export
+  async function processImport(raw) {
     let importedData, meta;
     if (typeof raw.exportVersion === 'number') {
       if (raw.exportVersion > EXPORT_VERSION) {
@@ -2574,7 +2551,6 @@ function buildDangerCard() {
       importedData = raw.data;
       meta         = raw;
     } else if (raw.properties !== undefined || raw.payments !== undefined || raw.settings !== undefined) {
-      // Legacy raw-db export — accept with a warning
       importedData = raw;
       meta         = null;
     } else {
@@ -2583,35 +2559,28 @@ function buildDangerCard() {
       return;
     }
 
-    // 3. Build confirmation body with snapshot summary
     const rows = ALL_COLLECTIONS
       .filter(c => Array.isArray(importedData[c]))
       .map(c => {
-        const total   = importedData[c].length;
-        const active  = importedData[c].filter(x => !x.deletedAt).length;
+        const total  = importedData[c].length;
+        const active = importedData[c].filter(x => !x.deletedAt).length;
         return { name: c, total, active, deleted: total - active };
       });
 
     const bodyEl = el('div', {});
-
     if (meta) {
       const parts = [
         `Exported ${new Date(meta.exportedAt).toLocaleString()}`,
-        meta.exportedBy   ? `by ${meta.exportedBy}` : null,
-        meta.appVersion   ? `(app v${meta.appVersion})` : null
+        meta.exportedBy ? `by ${meta.exportedBy}` : null,
+        meta.appVersion ? `(app v${meta.appVersion})` : null,
+        meta.source     ? `[${meta.source}]` : null
       ].filter(Boolean);
-      bodyEl.appendChild(el('div', {
-        style: 'margin-bottom:12px;font-size:13px;color:var(--text-muted)'
-      }, parts.join(' · ')));
+      bodyEl.appendChild(el('div', { style: 'margin-bottom:12px;font-size:13px;color:var(--text-muted)' }, parts.join(' · ')));
     } else {
-      bodyEl.appendChild(el('div', {
-        style: 'margin-bottom:12px;padding:8px;background:var(--warning-bg,#fff3cd);border-radius:4px;font-size:12px'
-      }, 'Legacy export — no version metadata. Proceeding anyway.'));
+      bodyEl.appendChild(el('div', { style: 'margin-bottom:12px;padding:8px;background:var(--warning-bg,#fff3cd);border-radius:4px;font-size:12px' }, 'Legacy export — no version metadata. Proceeding anyway.'));
     }
 
-    const grid = el('div', {
-      style: 'display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px;margin-bottom:12px'
-    });
+    const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px;margin-bottom:12px' });
     for (const { name, active, deleted } of rows) {
       grid.appendChild(el('div', { style: 'color:var(--text-muted)' }, name));
       grid.appendChild(el('div', {}, `${active} active${deleted > 0 ? ` + ${deleted} deleted` : ''}`));
@@ -2620,52 +2589,227 @@ function buildDangerCard() {
       grid.appendChild(el('div', { style: 'color:var(--text-muted);grid-column:1/-1' }, 'No data collections found in this file.'));
     }
     bodyEl.appendChild(grid);
+    bodyEl.appendChild(el('div', { style: 'padding:8px;background:var(--danger-bg,#f8d7da);border-radius:4px;font-size:12px;color:var(--danger,#dc3545)' },
+      'This will replace ALL current app data. Your current state will be downloaded as an automatic backup before the restore proceeds.'
+    ));
 
-    bodyEl.appendChild(el('div', {
-      style: 'padding:8px;background:var(--danger-bg,#f8d7da);border-radius:4px;font-size:12px;color:var(--danger,#dc3545)'
-    }, 'This will replace ALL current app data. Your current state will be downloaded as an automatic backup before the restore proceeds.'));
-
-    // 4. Confirm via custom modal
     const confirmed = await new Promise(resolve => {
       let settled = false;
       const settle = v => { if (!settled) { settled = true; resolve(v); } };
       const okBtn     = button('Restore Snapshot', { variant: 'danger' });
       const cancelBtn = button('Cancel');
-      const { close } = openModal({
-        title:   'Restore Snapshot',
-        body:    bodyEl,
-        footer:  [cancelBtn, okBtn],
-        onClose: () => settle(false)
-      });
+      const { close } = openModal({ title: 'Restore Snapshot', body: bodyEl, footer: [cancelBtn, okBtn], onClose: () => settle(false) });
       okBtn.onclick     = () => { close(); settle(true); };
       cancelBtn.onclick = () => { close(); settle(false); };
     });
-
     if (!confirmed) return;
 
-    // 5. Auto-backup current state before overwriting
     doExport(`bt-pre-import-backup-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.json`);
 
-    // 6. Restore — preserve current GitHub token; take all other config from snapshot
-    const restoredDb   = structuredClone(importedData);
+    const restoredDb  = structuredClone(importedData);
     const currentToken = state.github.token || '';
-    if (!restoredDb.appConfig)         restoredDb.appConfig = {};
-    if (!restoredDb.appConfig.github)  restoredDb.appConfig.github = {};
-    if (currentToken)                  restoredDb.appConfig.github.token = currentToken;
+    if (!restoredDb.appConfig)        restoredDb.appConfig = {};
+    if (!restoredDb.appConfig.github) restoredDb.appConfig.github = {};
+    if (currentToken)                 restoredDb.appConfig.github.token = currentToken;
 
-    setDb(restoredDb);          // triggers data-loaded → current view refreshes
-    saveLocalCache(restoredDb); // warm localStorage cache
-    markDirty();                // queue push to GitHub
+    setDb(restoredDb);
+    saveLocalCache(restoredDb);
+    markDirty();
 
     const activeTotal = rows.reduce((s, r) => s + r.active, 0);
     statusEl.textContent = `Snapshot restored: ${activeTotal} active records across ${rows.length} collection${rows.length !== 1 ? 's' : ''}. Syncing to GitHub…`;
     statusEl.style.color = 'var(--success,#198754)';
     toast('Snapshot restored successfully', 'success');
     navigate('analytics');
+  }
+
+  // ── Export ──────────────────────────────────────────────────────────────────
+
+  const exportBtn = button('Export JSON', { onClick: () => {
+    doExport(`bt-snapshot-${new Date().toISOString().slice(0, 10)}.json`);
+    statusEl.textContent = `Full snapshot exported at ${new Date().toLocaleTimeString()}.`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }});
+
+  // ── Import from local file ───────────────────────────────────────────────────
+
+  const importInput = input({ type: 'file', accept: '.json', style: 'display:none' });
+
+  importInput.onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    importInput.value = '';
+    let raw;
+    try { raw = JSON.parse(await file.text()); }
+    catch {
+      statusEl.textContent = 'Import failed: file is not valid JSON.';
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+    await processImport(raw);
   };
 
   const importBtn = button('Import JSON', { onClick: () => importInput.click() });
-  body.appendChild(el('div', { class: 'flex gap-8' }, exportBtn, importBtn, importInput));
+
+  // ── Backup Now (push snapshot to backups/ in GitHub) ────────────────────────
+
+  async function trimBackups() {
+    let files;
+    try { files = await listGithubFolder('backups'); } catch { return; }
+    const jsons = files.filter(f => f.name.endsWith('.json')).sort((a, b) => a.name.localeCompare(b.name));
+    const excess = jsons.length - MAX_BACKUPS;
+    for (let i = 0; i < excess; i++) {
+      try { await deleteGithubFile(jsons[i].path, jsons[i].sha, `Auto-trim: ${jsons[i].name}`); }
+      catch { /* best-effort */ }
+    }
+  }
+
+  const backupNowBtn = button('Backup Now', { onClick: backupNow });
+
+  async function backupNow() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      statusEl.textContent = 'GitHub not configured — cannot backup.';
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+    backupNowBtn.disabled = true;
+    backupNowBtn.textContent = 'Backing up…';
+    statusEl.style.color = 'var(--text-muted)';
+    statusEl.textContent = 'Uploading backup to GitHub…';
+    try {
+      const snapshot = buildSnapshot();
+      const json = JSON.stringify(snapshot, null, 2);
+      const b64  = btoa(unescape(encodeURIComponent(json)));
+      const ts   = new Date().toISOString().slice(0, 16).replace(':', '-');
+      const filename = `bt-backup-${ts}.json`;
+      await uploadGithubFile(`backups/${filename}`, b64, `Manual backup: ${filename}`);
+      statusEl.textContent = `Backup saved: ${filename}. Trimming old backups…`;
+      await trimBackups();
+      statusEl.textContent = `Backup saved to GitHub: ${filename}`;
+      statusEl.style.color = 'var(--success,#198754)';
+      toast('Backup saved to GitHub', 'success');
+    } catch (e) {
+      statusEl.textContent = `Backup failed: ${e.message}`;
+      statusEl.style.color = 'var(--danger,#dc3545)';
+    } finally {
+      backupNowBtn.disabled = false;
+      backupNowBtn.textContent = 'Backup Now';
+    }
+  }
+
+  // ── Restore from Backup (select from backups/ in GitHub) ────────────────────
+
+  const restoreBackupBtn = button('Restore from Backup', { onClick: openRestoreFromBackup });
+
+  async function openRestoreFromBackup() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      statusEl.textContent = 'GitHub not configured — cannot list backups.';
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+    restoreBackupBtn.disabled = true;
+    restoreBackupBtn.textContent = 'Loading…';
+    statusEl.textContent = '';
+
+    let files;
+    try { files = await listGithubFolder('backups'); }
+    catch (e) {
+      statusEl.textContent = `Failed to list backups: ${e.message}`;
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      restoreBackupBtn.disabled = false;
+      restoreBackupBtn.textContent = 'Restore from Backup';
+      return;
+    }
+    restoreBackupBtn.disabled = false;
+    restoreBackupBtn.textContent = 'Restore from Backup';
+
+    // Newest first
+    const jsonFiles = files.filter(f => f.name.endsWith('.json')).sort((a, b) => b.name.localeCompare(a.name));
+
+    if (jsonFiles.length === 0) {
+      statusEl.textContent = 'No backup files found in backups/ folder. Run a backup first.';
+      statusEl.style.color = 'var(--text-muted)';
+      return;
+    }
+
+    const modalBodyEl = el('div', {});
+    modalBodyEl.appendChild(el('p', { style: 'font-size:13px;color:var(--text-muted);margin:0 0 12px' },
+      'Select a backup to restore. Your current data will be downloaded as a safety backup first.'
+    ));
+
+    let selectedFile = null;
+    const restoreBtn = button('Restore Selected', { variant: 'danger' });
+    restoreBtn.disabled = true;
+
+    const listEl = el('div', { style: 'display:flex;flex-direction:column;gap:4px;max-height:380px;overflow-y:auto' });
+
+    for (const file of jsonFiles) {
+      const namePart = file.name.replace(/^bt-backup-/, '').replace(/\.json$/, '');
+      const isManual = namePart.includes('T');
+      const label    = namePart.replace('T', ' ').replace(/(\d{2})-(\d{2})$/, '$1:$2');
+      const row = el('div', {
+        style: 'display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;background:var(--surface);transition:border-color 0.1s'
+      });
+      const radioEl = el('input', { type: 'radio', name: 'backup-file-select', style: 'flex-shrink:0' });
+      row.appendChild(radioEl);
+      row.appendChild(el('div', { style: 'flex:1;min-width:0' },
+        el('div', { style: 'font-size:13px;font-weight:500;font-family:monospace' }, label),
+        el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, isManual ? 'Manual backup' : 'Scheduled backup')
+      ));
+      row.addEventListener('click', () => {
+        radioEl.checked = true;
+        selectedFile = file;
+        restoreBtn.disabled = false;
+        listEl.querySelectorAll('[data-bk-row]').forEach(r => {
+          r.style.borderColor = 'var(--border)';
+          r.style.background  = 'var(--surface)';
+        });
+        row.style.borderColor = 'var(--primary,#0d6efd)';
+        row.style.background  = 'var(--info-soft,#e8f0fe)';
+      });
+      row.dataset.bkRow = '1';
+      listEl.appendChild(row);
+    }
+    modalBodyEl.appendChild(listEl);
+
+    const chosen = await new Promise(resolve => {
+      let settled = false;
+      const settle = v => { if (!settled) { settled = true; resolve(v); } };
+      const cancelBtn = button('Cancel');
+      const { close } = openModal({
+        title: 'Restore from Backup',
+        body:  modalBodyEl,
+        footer: [cancelBtn, restoreBtn],
+        onClose: () => settle(null)
+      });
+      restoreBtn.onclick = () => { close(); settle(selectedFile); };
+      cancelBtn.onclick  = () => { close(); settle(null); };
+    });
+    if (!chosen) return;
+
+    statusEl.textContent = `Fetching ${chosen.name}…`;
+    statusEl.style.color = 'var(--text-muted)';
+
+    let raw;
+    try {
+      const fileData = await fetchGithubFile(chosen.path);
+      const bytes = Uint8Array.from(atob(fileData.content.replace(/\s/g, '')), c => c.charCodeAt(0));
+      const text  = new TextDecoder().decode(bytes);
+      raw = JSON.parse(text);
+    } catch (e) {
+      statusEl.textContent = `Failed to fetch backup: ${e.message}`;
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
+    await processImport(raw);
+  }
+
+  // ── Button row ───────────────────────────────────────────────────────────────
+
+  body.appendChild(el('div', { class: 'flex gap-8', style: 'flex-wrap:wrap' }, exportBtn, importBtn, backupNowBtn, restoreBackupBtn, importInput));
   body.appendChild(statusEl);
   return card;
 }
