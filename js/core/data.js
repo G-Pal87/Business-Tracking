@@ -184,8 +184,11 @@ const LEGACY_CAT_MAP = {
   management:    'property_management', cleaning:      'cleaning',
   electricity:   'utilities',           water:         'utilities',
   inventory:     'other',              vat:            'tax',
-  reimbursement: 'other',              str_fee:        'property_management',
-  other:         'other'
+  reimbursement:  'other',              str_fee:        'property_management',
+  salary_giorgos: 'payroll',            salary_rita:    'payroll',
+  salary_diana:   'payroll',            gesy_giorgos:   'payroll',
+  gesy_rita:      'payroll',            gesy_diana:     'payroll',
+  other:          'other'
 };
 
 // Derives accountingType / costCategory / recurrence for any expense record

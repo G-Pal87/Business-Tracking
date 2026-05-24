@@ -23,9 +23,15 @@ export const EXPENSE_CATEGORIES = {
   water:         { label: 'Water',          icon: 'W',  color: '#06b6d4' },
   inventory:     { label: 'Inventory',      icon: 'B',  color: '#84cc16' },
   vat:           { label: 'VAT',            icon: 'V',  color: '#f97316' },
-  reimbursement: { label: 'Reimbursement',  icon: 'Rb', color: '#a855f7' },
-  str_fee:       { label: 'STR Fee',         icon: 'SF', color: '#fb923c' },
-  other:         { label: 'Other',          icon: 'O',  color: '#8b93b0' }
+  reimbursement:  { label: 'Reimbursement',   icon: 'Rb', color: '#a855f7' },
+  str_fee:        { label: 'STR Fee',         icon: 'SF', color: '#fb923c' },
+  salary_giorgos: { label: 'Salary Giorgos',  icon: 'GS', color: '#818cf8' },
+  salary_rita:    { label: 'Salary Rita',     icon: 'RS', color: '#a78bfa' },
+  salary_diana:   { label: 'Salary Diana',    icon: 'DS', color: '#c4b5fd' },
+  gesy_giorgos:   { label: 'GESY Giorgos',    icon: 'GG', color: '#34d399' },
+  gesy_rita:      { label: 'GESY Rita',       icon: 'GR', color: '#6ee7b7' },
+  gesy_diana:     { label: 'GESY Diana',      icon: 'GD', color: '#a7f3d0' },
+  other:          { label: 'Other',           icon: 'O',  color: '#8b93b0' }
 };
 
 // ---- Classification model (OpEx/CapEx, costCategory, recurrence) ----
@@ -47,6 +53,7 @@ export const COST_CATEGORIES = {
   legal:               { label: 'Legal',               color: '#84cc16' },
   accounting:          { label: 'Accounting',          color: '#14b8a6' },
   property_management: { label: 'Property Mgmt',       color: '#f97316' },
+  payroll:             { label: 'Payroll',              color: '#818cf8' },
   other:               { label: 'Other',               color: '#8b93b0' }
 };
 
