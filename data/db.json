@@ -26415,8 +26415,10 @@
       "notes": "",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779646235963,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779646235963,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "cli_mo8wghcok1",
@@ -26432,8 +26434,10 @@
       "notes": "",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779646232114,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779646232114,
+      "deletedBy": "Giorgos"
     }
   ],
   "services": [
