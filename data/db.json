@@ -651,6 +651,142 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778262833465,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "prop_001",
+      "name": "Barcelona Beach Apartment",
+      "address": "Carrer de la Marina 42",
+      "city": "Barcelona",
+      "country": "Spain",
+      "flag": "ES",
+      "type": "short_term",
+      "status": "active",
+      "bedrooms": 2,
+      "bathrooms": 1,
+      "purchasePrice": 280000,
+      "currency": "EUR",
+      "purchaseDate": "2021-06-15",
+      "monthlyRent": 0,
+      "nightlyRate": 120,
+      "mortgageAmount": 196000,
+      "mortgageMonthly": 920,
+      "mortgageRate": 3.2,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "Beachfront apartment with sea views",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "prop_002",
+      "name": "Lisbon City Loft",
+      "address": "Rua Augusta 18",
+      "city": "Lisbon",
+      "country": "Portugal",
+      "flag": "PT",
+      "type": "short_term",
+      "status": "active",
+      "bedrooms": 1,
+      "bathrooms": 1,
+      "purchasePrice": 195000,
+      "currency": "EUR",
+      "purchaseDate": "2022-03-10",
+      "monthlyRent": 0,
+      "nightlyRate": 95,
+      "mortgageAmount": 136500,
+      "mortgageMonthly": 680,
+      "mortgageRate": 2.9,
+      "owner": "both",
+      "airbnbCalUrl": "",
+      "notes": "Modern loft in the heart of Lisbon",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "prop_003",
+      "name": "Budapest District V Flat",
+      "address": "Vaci utca 24",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "long_term",
+      "status": "active",
+      "bedrooms": 2,
+      "bathrooms": 1,
+      "purchasePrice": 85000000,
+      "currency": "HUF",
+      "purchaseDate": "2022-09-01",
+      "monthlyRent": 350000,
+      "nightlyRate": 0,
+      "mortgageAmount": 55000000,
+      "mortgageMonthly": 280000,
+      "mortgageRate": 6.5,
+      "paymentDayOfMonth": 5,
+      "owner": "both",
+      "airbnbCalUrl": "",
+      "notes": "Central Budapest rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "prop_004",
+      "name": "Budapest Buda Hills Villa",
+      "address": "Szechenyi hegy 12",
+      "city": "Budapest",
+      "country": "Hungary",
+      "flag": "HU",
+      "type": "short_term",
+      "status": "renovation",
+      "bedrooms": 4,
+      "bathrooms": 3,
+      "purchasePrice": 145000000,
+      "currency": "HUF",
+      "purchaseDate": "2024-01-15",
+      "monthlyRent": 0,
+      "nightlyRate": 180,
+      "mortgageAmount": 100000000,
+      "mortgageMonthly": 520000,
+      "mortgageRate": 7,
+      "owner": "both",
+      "airbnbCalUrl": "",
+      "notes": "Premium villa - under full renovation until Q3",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "prop_005",
+      "name": "Athens Penthouse",
+      "address": "Vouliagmenis 105",
+      "city": "Athens",
+      "country": "Greece",
+      "flag": "GR",
+      "type": "short_term",
+      "status": "active",
+      "bedrooms": 3,
+      "bathrooms": 2,
+      "purchasePrice": 320000,
+      "currency": "EUR",
+      "purchaseDate": "2023-05-20",
+      "monthlyRent": 0,
+      "nightlyRate": 180,
+      "mortgageAmount": 224000,
+      "mortgageMonthly": 1100,
+      "mortgageRate": 3.8,
+      "owner": "you",
+      "airbnbCalUrl": "",
+      "notes": "Rooftop penthouse with Acropolis views",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     }
   ],
   "payments": [
@@ -7597,6 +7733,326 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778883633098,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "pay_001",
+      "propertyId": "prop_001",
+      "amount": 1850,
+      "currency": "EUR",
+      "date": "2025-01-12",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Jan bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_002",
+      "propertyId": "prop_001",
+      "amount": 2100,
+      "currency": "EUR",
+      "date": "2025-02-10",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Feb bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_003",
+      "propertyId": "prop_001",
+      "amount": 2400,
+      "currency": "EUR",
+      "date": "2025-03-15",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Mar bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_004",
+      "propertyId": "prop_001",
+      "amount": 2800,
+      "currency": "EUR",
+      "date": "2025-04-08",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Apr bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_005",
+      "propertyId": "prop_002",
+      "amount": 1450,
+      "currency": "EUR",
+      "date": "2025-01-14",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Jan bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_006",
+      "propertyId": "prop_002",
+      "amount": 1620,
+      "currency": "EUR",
+      "date": "2025-02-11",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Feb bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_007",
+      "propertyId": "prop_002",
+      "amount": 1800,
+      "currency": "EUR",
+      "date": "2025-03-12",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Mar bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_008",
+      "propertyId": "prop_002",
+      "amount": 2050,
+      "currency": "EUR",
+      "date": "2025-04-10",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Apr bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_009",
+      "propertyId": "prop_003",
+      "amount": 350000,
+      "currency": "HUF",
+      "date": "2025-01-05",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "January rent",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_010",
+      "propertyId": "prop_003",
+      "amount": 350000,
+      "currency": "HUF",
+      "date": "2025-02-05",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "February rent",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_011",
+      "propertyId": "prop_003",
+      "amount": 350000,
+      "currency": "HUF",
+      "date": "2025-03-05",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "March rent",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_012",
+      "propertyId": "prop_003",
+      "amount": 350000,
+      "currency": "HUF",
+      "date": "2025-04-05",
+      "type": "rental",
+      "status": "paid",
+      "source": "manual",
+      "stream": "long_term_rental",
+      "notes": "April rent",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_013",
+      "propertyId": "prop_005",
+      "amount": 2700,
+      "currency": "EUR",
+      "date": "2025-01-18",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Jan bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_014",
+      "propertyId": "prop_005",
+      "amount": 3200,
+      "currency": "EUR",
+      "date": "2025-02-15",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Feb bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_015",
+      "propertyId": "prop_005",
+      "amount": 3600,
+      "currency": "EUR",
+      "date": "2025-03-20",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Mar bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_016",
+      "propertyId": "prop_005",
+      "amount": 4100,
+      "currency": "EUR",
+      "date": "2025-04-12",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Apr bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_017",
+      "propertyId": "prop_001",
+      "amount": 2600,
+      "currency": "EUR",
+      "date": "2024-07-10",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Jul bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_018",
+      "propertyId": "prop_001",
+      "amount": 3100,
+      "currency": "EUR",
+      "date": "2024-08-08",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Aug bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_019",
+      "propertyId": "prop_002",
+      "amount": 1950,
+      "currency": "EUR",
+      "date": "2024-08-12",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Aug bookings",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "pay_020",
+      "propertyId": "prop_005",
+      "amount": 4500,
+      "currency": "EUR",
+      "date": "2024-08-15",
+      "type": "rental",
+      "status": "paid",
+      "source": "airbnb",
+      "stream": "short_term_rental",
+      "notes": "Peak season",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     }
   ],
   "expenses": [
@@ -25602,6 +26058,456 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778883633153,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "exp_001",
+      "propertyId": "prop_001",
+      "category": "mortgage",
+      "amount": 920,
+      "currency": "EUR",
+      "date": "2025-01-01",
+      "vendor": "Bank",
+      "description": "January mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_002",
+      "propertyId": "prop_001",
+      "category": "mortgage",
+      "amount": 920,
+      "currency": "EUR",
+      "date": "2025-02-01",
+      "vendor": "Bank",
+      "description": "February mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_003",
+      "propertyId": "prop_001",
+      "category": "mortgage",
+      "amount": 920,
+      "currency": "EUR",
+      "date": "2025-03-01",
+      "vendor": "Bank",
+      "description": "March mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_004",
+      "propertyId": "prop_001",
+      "category": "mortgage",
+      "amount": 920,
+      "currency": "EUR",
+      "date": "2025-04-01",
+      "vendor": "Bank",
+      "description": "April mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_005",
+      "propertyId": "prop_001",
+      "category": "maintenance",
+      "amount": 180,
+      "currency": "EUR",
+      "date": "2025-02-20",
+      "vendor": "Plumber",
+      "description": "Bathroom fix",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_006",
+      "propertyId": "prop_001",
+      "category": "insurance",
+      "amount": 340,
+      "currency": "EUR",
+      "date": "2025-01-15",
+      "vendor": "Mapfre",
+      "description": "Annual insurance",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_007",
+      "propertyId": "prop_002",
+      "category": "mortgage",
+      "amount": 680,
+      "currency": "EUR",
+      "date": "2025-01-01",
+      "vendor": "Bank",
+      "description": "January mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_008",
+      "propertyId": "prop_002",
+      "category": "mortgage",
+      "amount": 680,
+      "currency": "EUR",
+      "date": "2025-02-01",
+      "vendor": "Bank",
+      "description": "February mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_009",
+      "propertyId": "prop_002",
+      "category": "mortgage",
+      "amount": 680,
+      "currency": "EUR",
+      "date": "2025-03-01",
+      "vendor": "Bank",
+      "description": "March mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_010",
+      "propertyId": "prop_002",
+      "category": "mortgage",
+      "amount": 680,
+      "currency": "EUR",
+      "date": "2025-04-01",
+      "vendor": "Bank",
+      "description": "April mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_011",
+      "propertyId": "prop_003",
+      "category": "mortgage",
+      "amount": 280000,
+      "currency": "HUF",
+      "date": "2025-01-01",
+      "vendor": "OTP Bank",
+      "description": "January mortgage",
+      "stream": "long_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_012",
+      "propertyId": "prop_003",
+      "category": "mortgage",
+      "amount": 280000,
+      "currency": "HUF",
+      "date": "2025-02-01",
+      "vendor": "OTP Bank",
+      "description": "February mortgage",
+      "stream": "long_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_013",
+      "propertyId": "prop_003",
+      "category": "mortgage",
+      "amount": 280000,
+      "currency": "HUF",
+      "date": "2025-03-01",
+      "vendor": "OTP Bank",
+      "description": "March mortgage",
+      "stream": "long_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_014",
+      "propertyId": "prop_003",
+      "category": "mortgage",
+      "amount": 280000,
+      "currency": "HUF",
+      "date": "2025-04-01",
+      "vendor": "OTP Bank",
+      "description": "April mortgage",
+      "stream": "long_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_015",
+      "propertyId": "prop_004",
+      "category": "renovation",
+      "amount": 8500000,
+      "currency": "HUF",
+      "date": "2024-03-10",
+      "vendor": "Buda Construction",
+      "description": "Structural work",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_016",
+      "propertyId": "prop_004",
+      "category": "renovation",
+      "amount": 4200000,
+      "currency": "HUF",
+      "date": "2024-06-15",
+      "vendor": "IKEA Pro",
+      "description": "Kitchen & bathrooms",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_017",
+      "propertyId": "prop_004",
+      "category": "renovation",
+      "amount": 3100000,
+      "currency": "HUF",
+      "date": "2024-09-20",
+      "vendor": "Decor Hungary",
+      "description": "Interior design",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_018",
+      "propertyId": "prop_004",
+      "category": "renovation",
+      "amount": 2800000,
+      "currency": "HUF",
+      "date": "2025-01-10",
+      "vendor": "Pool Builders",
+      "description": "Pool installation",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_019",
+      "propertyId": "prop_004",
+      "category": "renovation",
+      "amount": 1900000,
+      "currency": "HUF",
+      "date": "2025-03-05",
+      "vendor": "Smart Home HU",
+      "description": "Home automation",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_020",
+      "propertyId": "prop_004",
+      "category": "mortgage",
+      "amount": 520000,
+      "currency": "HUF",
+      "date": "2025-01-01",
+      "vendor": "OTP Bank",
+      "description": "January mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_021",
+      "propertyId": "prop_004",
+      "category": "mortgage",
+      "amount": 520000,
+      "currency": "HUF",
+      "date": "2025-02-01",
+      "vendor": "OTP Bank",
+      "description": "February mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_022",
+      "propertyId": "prop_004",
+      "category": "mortgage",
+      "amount": 520000,
+      "currency": "HUF",
+      "date": "2025-03-01",
+      "vendor": "OTP Bank",
+      "description": "March mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_023",
+      "propertyId": "prop_004",
+      "category": "mortgage",
+      "amount": 520000,
+      "currency": "HUF",
+      "date": "2025-04-01",
+      "vendor": "OTP Bank",
+      "description": "April mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_024",
+      "propertyId": "prop_005",
+      "category": "mortgage",
+      "amount": 1100,
+      "currency": "EUR",
+      "date": "2025-01-01",
+      "vendor": "Alpha Bank",
+      "description": "January mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_025",
+      "propertyId": "prop_005",
+      "category": "mortgage",
+      "amount": 1100,
+      "currency": "EUR",
+      "date": "2025-02-01",
+      "vendor": "Alpha Bank",
+      "description": "February mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_026",
+      "propertyId": "prop_005",
+      "category": "mortgage",
+      "amount": 1100,
+      "currency": "EUR",
+      "date": "2025-03-01",
+      "vendor": "Alpha Bank",
+      "description": "March mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_027",
+      "propertyId": "prop_005",
+      "category": "mortgage",
+      "amount": 1100,
+      "currency": "EUR",
+      "date": "2025-04-01",
+      "vendor": "Alpha Bank",
+      "description": "April mortgage",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_028",
+      "propertyId": "prop_005",
+      "category": "management",
+      "amount": 250,
+      "currency": "EUR",
+      "date": "2025-03-25",
+      "vendor": "Athens PM",
+      "description": "Property management Q1",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_029",
+      "propertyId": "prop_001",
+      "category": "utilities",
+      "amount": 95,
+      "currency": "EUR",
+      "date": "2025-03-18",
+      "vendor": "Endesa",
+      "description": "Electricity Q1",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "exp_030",
+      "propertyId": "prop_002",
+      "category": "utilities",
+      "amount": 72,
+      "currency": "EUR",
+      "date": "2025-03-20",
+      "vendor": "EDP",
+      "description": "Electricity Q1",
+      "stream": "short_term_rental",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     }
   ],
   "vendors": [
@@ -25714,9 +26620,89 @@
           "fee": 25
         }
       ]
+    },
+    {
+      "id": "vnd_001",
+      "name": "CleanTeam Barcelona",
+      "type": "cleaner",
+      "email": "clean@barcelona.es",
+      "phone": "+34 600 123 456",
+      "pricing": {
+        "studio": 15,
+        "one_bedroom": 20,
+        "two_bedroom": 28,
+        "three_bedroom_plus": 35
+      },
+      "currency": "EUR",
+      "propertyIds": [
+        "prop_001"
+      ],
+      "notes": "Reliable, 24h notice",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "vnd_002",
+      "name": "BudaClean Kft.",
+      "type": "cleaner",
+      "email": "info@budaclean.hu",
+      "phone": "+36 30 555 1234",
+      "pricing": {
+        "studio": 4500,
+        "one_bedroom": 6000,
+        "two_bedroom": 8000,
+        "three_bedroom_plus": 12000
+      },
+      "currency": "HUF",
+      "propertyIds": [
+        "prop_003",
+        "prop_004"
+      ],
+      "notes": "Key holder",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "vnd_003",
+      "name": "Athens Property Services",
+      "type": "management",
+      "email": "ops@athenspm.gr",
+      "phone": "+30 210 123 4567",
+      "pricing": {},
+      "currency": "EUR",
+      "propertyIds": [
+        "prop_005"
+      ],
+      "notes": "5% monthly management fee",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     }
   ],
-  "tenants": [],
+  "tenants": [
+    {
+      "id": "ten_001",
+      "propertyId": "prop_003",
+      "name": "Kovacs Anna",
+      "email": "akovacs@example.hu",
+      "phone": "+36 30 123 4567",
+      "leaseStart": "2024-09-01",
+      "leaseEnd": "2025-08-31",
+      "monthlyRent": 350000,
+      "currency": "HUF",
+      "deposit": 700000,
+      "notes": "On time payer",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    }
+  ],
   "clients": [
     {
       "id": "cli_mohkf6ip14",
@@ -25932,21 +26918,123 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778319559353,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "cli_001",
+      "name": "Acme SaaS Inc.",
+      "email": "billing@acmesaas.com",
+      "address": "123 Tech Ave, Austin TX",
+      "vatNumber": "US-842910",
+      "registrationNumber": "US-DE-8429100",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2024-06-01",
+      "notes": "Monthly retainer",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "cli_002",
+      "name": "Nordic Cloud AB",
+      "email": "finance@nordiccloud.se",
+      "address": "Storgatan 5, Stockholm",
+      "vatNumber": "SE556789012301",
+      "registrationNumber": "SE5567890123",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2024-09-15",
+      "notes": "Quarterly reviews",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "cli_003",
+      "name": "Budapest Bistro Group",
+      "email": "rita@bistro.hu",
+      "address": "Andrassy ut 21, Budapest",
+      "vatNumber": "HU12345678",
+      "registrationNumber": "01-09-123456",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "HUF",
+      "contractStart": "2024-11-01",
+      "notes": "Social media + campaigns",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "cli_004",
+      "name": "Mediterra Boutique Hotels",
+      "email": "hello@mediterra.it",
+      "address": "Via Roma 8, Rome",
+      "vatNumber": "IT01234567890",
+      "registrationNumber": "IT-RM-20241234",
+      "owner": "rita",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "contractStart": "2025-01-10",
+      "notes": "Performance marketing",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "cli_mo8wettwp7",
+      "name": "rabbit",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2026-04-21",
+      "notes": "",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "cli_mo8wghcok1",
+      "name": "2 rabbits",
+      "email": "",
+      "address": "",
+      "vatNumber": "",
+      "registrationNumber": "",
+      "owner": "you",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "contractStart": "2026-04-21",
+      "notes": "",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     }
   ],
   "services": [
     {
       "id": "svc_001",
-      "name": "Customer Success Professional Services",
-      "description": "",
+      "name": "Customer Success Management",
+      "description": "CS strategy, QBRs, health scoring",
       "unit": "day",
       "defaultRate": 650,
       "currency": "EUR",
       "stream": "customer_success",
-      "createdAt": 1777669591749,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778232219100,
-      "updatedBy": "Giorgos"
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     },
     {
       "id": "svc_002",
@@ -25956,10 +27044,10 @@
       "defaultRate": 4500,
       "currency": "EUR",
       "stream": "customer_success",
-      "createdAt": 1777669591749,
-      "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
-      "updatedBy": "Giorgos"
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     },
     {
       "id": "svc_003",
@@ -25969,10 +27057,10 @@
       "defaultRate": 120,
       "currency": "EUR",
       "stream": "customer_success",
-      "createdAt": 1777669591749,
-      "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
-      "updatedBy": "Giorgos"
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     },
     {
       "id": "svc_004",
@@ -25982,10 +27070,10 @@
       "defaultRate": 1500,
       "currency": "EUR",
       "stream": "marketing_services",
-      "createdAt": 1777669591749,
-      "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
-      "updatedBy": "Giorgos"
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     },
     {
       "id": "svc_005",
@@ -25995,10 +27083,10 @@
       "defaultRate": 2800,
       "currency": "EUR",
       "stream": "marketing_services",
-      "createdAt": 1777669591749,
-      "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
-      "updatedBy": "Giorgos"
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     },
     {
       "id": "svc_006",
@@ -26008,10 +27096,10 @@
       "defaultRate": 850,
       "currency": "EUR",
       "stream": "marketing_services",
-      "createdAt": 1777669591749,
-      "createdBy": "Giorgos",
-      "updatedAt": 1777669591749,
-      "updatedBy": "Giorgos"
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     }
   ],
   "invoices": [
@@ -29082,6 +30170,262 @@
       "createdBy": "Giorgos",
       "updatedAt": 1779563396053,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "inv_001",
+      "number": "INV-2025-001",
+      "clientId": "cli_001",
+      "owner": "you",
+      "issueDate": "2025-01-31",
+      "dueDate": "2025-02-28",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_001",
+          "description": "CS Management - January",
+          "quantity": 10,
+          "unit": "day",
+          "rate": 650,
+          "total": 6500
+        }
+      ],
+      "subtotal": 6500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 6500,
+      "notes": "",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "inv_002",
+      "number": "INV-2025-002",
+      "clientId": "cli_001",
+      "owner": "you",
+      "issueDate": "2025-02-28",
+      "dueDate": "2025-03-31",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_001",
+          "description": "CS Management - February",
+          "quantity": 9,
+          "unit": "day",
+          "rate": 650,
+          "total": 5850
+        }
+      ],
+      "subtotal": 5850,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 5850,
+      "notes": "",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "inv_003",
+      "number": "INV-2025-003",
+      "clientId": "cli_002",
+      "owner": "you",
+      "issueDate": "2025-03-15",
+      "dueDate": "2025-04-15",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_002",
+          "description": "Onboarding Playbook",
+          "quantity": 1,
+          "unit": "project",
+          "rate": 4500,
+          "total": 4500
+        },
+        {
+          "serviceId": "svc_003",
+          "description": "Follow-up calls",
+          "quantity": 4,
+          "unit": "hour",
+          "rate": 120,
+          "total": 480
+        }
+      ],
+      "subtotal": 4980,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 4980,
+      "notes": "",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "inv_004",
+      "number": "INV-2025-004",
+      "clientId": "cli_001",
+      "owner": "you",
+      "issueDate": "2025-03-31",
+      "dueDate": "2025-04-30",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_001",
+          "description": "CS Management - March",
+          "quantity": 11,
+          "unit": "day",
+          "rate": 650,
+          "total": 7150
+        }
+      ],
+      "subtotal": 7150,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 7150,
+      "notes": "",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "inv_005",
+      "number": "RTA-2025-001",
+      "clientId": "cli_003",
+      "owner": "rita",
+      "issueDate": "2025-01-31",
+      "dueDate": "2025-02-28",
+      "stream": "marketing_services",
+      "currency": "HUF",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_004",
+          "description": "Social Media - January",
+          "quantity": 1,
+          "unit": "month",
+          "rate": 550000,
+          "total": 550000
+        }
+      ],
+      "subtotal": 550000,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 550000,
+      "notes": "",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "inv_006",
+      "number": "RTA-2025-002",
+      "clientId": "cli_003",
+      "owner": "rita",
+      "issueDate": "2025-02-28",
+      "dueDate": "2025-03-31",
+      "stream": "marketing_services",
+      "currency": "HUF",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_004",
+          "description": "Social Media - February",
+          "quantity": 1,
+          "unit": "month",
+          "rate": 550000,
+          "total": 550000
+        }
+      ],
+      "subtotal": 550000,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 550000,
+      "notes": "",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "inv_007",
+      "number": "RTA-2025-003",
+      "clientId": "cli_004",
+      "owner": "rita",
+      "issueDate": "2025-02-15",
+      "dueDate": "2025-03-15",
+      "stream": "marketing_services",
+      "currency": "EUR",
+      "status": "paid",
+      "lineItems": [
+        {
+          "serviceId": "svc_005",
+          "description": "Meta Ads Q1 Campaign",
+          "quantity": 1,
+          "unit": "project",
+          "rate": 2800,
+          "total": 2800
+        },
+        {
+          "serviceId": "svc_006",
+          "description": "Strategy Day",
+          "quantity": 2,
+          "unit": "day",
+          "rate": 850,
+          "total": 1700
+        }
+      ],
+      "subtotal": 4500,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 4500,
+      "notes": "",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "inv_008",
+      "number": "INV-2025-005",
+      "clientId": "cli_002",
+      "owner": "you",
+      "issueDate": "2025-04-15",
+      "dueDate": "2025-05-15",
+      "stream": "customer_success",
+      "currency": "EUR",
+      "status": "sent",
+      "lineItems": [
+        {
+          "serviceId": "svc_001",
+          "description": "CS Management - April",
+          "quantity": 8,
+          "unit": "day",
+          "rate": 650,
+          "total": 5200
+        }
+      ],
+      "subtotal": 5200,
+      "taxRate": 0,
+      "tax": 0,
+      "total": 5200,
+      "notes": "",
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     }
   ],
   "users": [
@@ -29102,35 +30446,38 @@
       "createdBy": "Giorgos",
       "updatedAt": 1777750639978,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "usr_mokfwfbzob",
+      "username": "RitaK",
+      "name": "Rita",
+      "role": "admin",
+      "passwordHash": "64bf621b3dad972a3e1a4c3115e712c4c30ae503ec6e82fa4242f3b05eadf3a6",
+      "createdAt": 1777490416799,
+      "createdBy": "system",
+      "updatedAt": 1777490416799,
+      "updatedBy": "system"
     }
   ],
   "settings": {
     "masterCurrency": "EUR",
     "fxRates": {
       "HUF_EUR": 0.0025,
-      "yearRates": {
-        "2016": 0.0032,
-        "2018": 0.0031,
-        "2019": 0.0031,
-        "2024": 0.0025,
-        "2025": 0.0025
-      }
+      "yearRates": {}
     },
     "defaultTaxRate": 0,
     "business": {
-      "name": "M&W Prime Solutions Limited",
-      "email": "",
-      "address": "Morphou 27,  Paphos, 8015",
-      "vatNumber": "60080676C",
-      "iban": "LT283250049546458651",
-      "bic": "REVOLT21",
-      "registrationNumber": "HE 461745",
-      "swift": "CHASDEFX"
+      "name": "Property & Services Ltd.",
+      "email": "hello@business.example",
+      "address": "Budapest, Hungary",
+      "vatNumber": "",
+      "iban": "",
+      "bic": ""
     },
     "team": [
       {
         "id": "you",
-        "name": "Giorgos",
+        "name": "Owner",
         "role": "Customer Success"
       },
       {
@@ -29145,41 +30492,9 @@
     },
     "invoiceCounters": {
       "you_2025": 5,
-      "rita_2025": 3,
-      "you_2026": 0
+      "rita_2025": 3
     },
-    "globalTaxRate": 15,
-    "taxExcludedPropertyIds": [],
-    "cyprusTax": {
-      "year": "2026",
-      "corpTaxRate": 15,
-      "bufferEnabled": true,
-      "bufferPct": 10,
-      "actualRevenue": 129957.34,
-      "forecastRevenue": 145843.33,
-      "actualExpenses": 142.51,
-      "forecastExpenses": 6600,
-      "nonDeductibleExpenses": 0,
-      "taxAllowances": 0,
-      "estimatedFinalTax": 0,
-      "julPayment": 0,
-      "decRevRevenue": 4566322,
-      "decRevExpenses": 5000,
-      "decRevNonDeductible": 2000,
-      "decRevAllowances": 3000,
-      "_prefillBreakdown": {
-        "paysRevenue": 20107.78,
-        "paysCount": 68,
-        "invsRevenue": 109849.56,
-        "invsCount": 22,
-        "expsByCat": {
-          "inventory": 142.51
-        },
-        "expsCount": 198,
-        "fcPropCount": 5,
-        "cutoff": "2026-05-21"
-      }
-    }
+    "globalTaxRate": 15
   },
   "forecasts": [
     {
@@ -29190,170 +30505,58 @@
       "taxRate": 15,
       "months": {
         "2025-01": {
-          "revenue": 42717,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 42717,
-              "notes": "",
-              "id": "fce_mozggerm7f"
-            }
-          ]
+          "revenue": 6500,
+          "expenses": 500
         },
         "2025-02": {
-          "revenue": 12545,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 12545,
-              "notes": "",
-              "id": "fce_mozggu6qo4"
-            }
-          ]
+          "revenue": 6500,
+          "expenses": 500
         },
         "2025-03": {
-          "revenue": 12450,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 12450,
-              "notes": "",
-              "id": "fce_mozghasqu"
-            }
-          ]
+          "revenue": 7000,
+          "expenses": 500
         },
         "2025-04": {
-          "revenue": 12492,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 12492,
-              "notes": "",
-              "id": "fce_mozghgbjjl"
-            }
-          ]
+          "revenue": 7000,
+          "expenses": 500
         },
         "2025-05": {
-          "revenue": 12450,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 12450,
-              "notes": "",
-              "id": "fce_mozgigiqqt"
-            }
-          ]
+          "revenue": 7500,
+          "expenses": 500
         },
         "2025-06": {
-          "revenue": 12450,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 12450,
-              "notes": "",
-              "id": "fce_mozgimjsjj"
-            }
-          ]
+          "revenue": 7500,
+          "expenses": 500
         },
         "2025-07": {
-          "revenue": 12450,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 12450,
-              "notes": "",
-              "id": "fce_mozgitazk"
-            }
-          ]
+          "revenue": 7500,
+          "expenses": 500
         },
         "2025-08": {
-          "revenue": 12450,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 12450,
-              "notes": "",
-              "id": "fce_mozgiz4il"
-            }
-          ]
+          "revenue": 7500,
+          "expenses": 500
         },
         "2025-09": {
-          "revenue": 12450,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 12450,
-              "notes": "",
-              "id": "fce_mozgj4magu"
-            }
-          ]
+          "revenue": 8000,
+          "expenses": 500
         },
         "2025-10": {
-          "revenue": 12450,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 12450,
-              "notes": "",
-              "id": "fce_mozgja8hka"
-            }
-          ]
+          "revenue": 8000,
+          "expenses": 500
         },
         "2025-11": {
-          "revenue": 12450,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 12450,
-              "notes": "",
-              "id": "fce_mozgjfkn1z"
-            }
-          ]
+          "revenue": 8000,
+          "expenses": 500
         },
         "2025-12": {
-          "revenue": 12450,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "C TWO",
-              "amount": 12450,
-              "notes": "",
-              "id": "fce_mozgjlh78d"
-            }
-          ]
+          "revenue": 8000,
+          "expenses": 500
         }
       },
-      "yearTarget": {
-        "revenue": 0,
-        "expenses": 0
-      },
-      "createdAt": 1777669591749,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778398494839,
-      "updatedBy": "Giorgos"
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     },
     {
       "id": "fcs_004",
@@ -29363,290 +30566,58 @@
       "taxRate": 15,
       "months": {
         "2025-01": {
-          "revenue": 7700,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "Wise Guys",
-              "amount": 6200,
-              "notes": "",
-              "id": "fce_mozgkjahdc"
-            },
-            {
-              "clientName": "VITAS",
-              "amount": 1500,
-              "notes": "",
-              "id": "fce_mozgko26dn"
-            }
-          ]
+          "revenue": 2875,
+          "expenses": 300
         },
         "2025-02": {
-          "revenue": 7700,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "Wise Guys",
-              "amount": 6200,
-              "notes": "",
-              "id": "fce_mozgkvib8e"
-            },
-            {
-              "clientName": "VITAS",
-              "amount": 1500,
-              "notes": "",
-              "id": "fce_mozgl69mji"
-            }
-          ]
+          "revenue": 2875,
+          "expenses": 300
         },
         "2025-03": {
-          "revenue": 7700,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "Wise Guys",
-              "amount": 6200,
-              "notes": "",
-              "id": "fce_mozgldkxf5"
-            },
-            {
-              "clientName": "VITAS",
-              "amount": 1500,
-              "notes": "",
-              "id": "fce_mozgln3jkm"
-            }
-          ]
+          "revenue": 4500,
+          "expenses": 300
         },
         "2025-04": {
-          "revenue": 7700,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "Wise Guys",
-              "amount": 6200,
-              "notes": "",
-              "id": "fce_mozgm2ho1r"
-            },
-            {
-              "clientName": "VITAS",
-              "amount": 1500,
-              "notes": "",
-              "id": "fce_mozgm5zj46"
-            }
-          ]
+          "revenue": 4500,
+          "expenses": 300
         },
         "2025-05": {
-          "revenue": 7700,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "Wise Guys",
-              "amount": 6200,
-              "notes": "",
-              "id": "fce_mozgme8mhi"
-            },
-            {
-              "clientName": "VITAS",
-              "amount": 1500,
-              "notes": "",
-              "id": "fce_mozgmp5m5d"
-            }
-          ]
+          "revenue": 5000,
+          "expenses": 300
         },
         "2025-06": {
-          "revenue": 12200,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "Wise Guys",
-              "amount": 6200,
-              "notes": "",
-              "id": "fce_mozgmxy5g0"
-            },
-            {
-              "clientName": "VITAS",
-              "amount": 1500,
-              "notes": "",
-              "id": "fce_mozgn9038h"
-            },
-            {
-              "clientName": "Wise Guys (Empowomen)",
-              "amount": 4500,
-              "notes": "",
-              "id": "fce_mozgneh5qc"
-            }
-          ]
+          "revenue": 5000,
+          "expenses": 300
         },
         "2025-07": {
-          "revenue": 2100,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "VITAS",
-              "amount": 1500,
-              "notes": "",
-              "id": "fce_mozgqinrhy"
-            },
-            {
-              "clientName": "Nexial",
-              "amount": 300,
-              "notes": "",
-              "id": "fce_mozgqnszdu"
-            },
-            {
-              "clientName": "Nexial",
-              "amount": 300,
-              "notes": "",
-              "id": "fce_mozgqzykh"
-            }
-          ]
+          "revenue": 5000,
+          "expenses": 300
         },
         "2025-08": {
-          "revenue": 170,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "Polish Startup",
-              "amount": 170,
-              "notes": "",
-              "id": "fce_mozgr9x9fa"
-            }
-          ]
+          "revenue": 5500,
+          "expenses": 300
         },
         "2025-09": {
-          "revenue": 3400,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "Startup coaching",
-              "amount": 650,
-              "notes": "Dutch Startup",
-              "id": "fce_mozgrspthi"
-            },
-            {
-              "clientName": "VITAS",
-              "amount": 2750,
-              "notes": "Vitas",
-              "id": "fce_mozgs1ynf4"
-            }
-          ]
+          "revenue": 5500,
+          "expenses": 300
         },
         "2025-10": {
-          "revenue": 7170,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "Wise Guys (Empowomen)",
-              "amount": 4500,
-              "notes": "Marketing services (EMPOWOMEN)",
-              "id": "fce_mozgst673s"
-            },
-            {
-              "clientName": "VITAS",
-              "amount": 1500,
-              "notes": "",
-              "id": "fce_mozgt1wqox"
-            },
-            {
-              "clientName": "Nexial",
-              "amount": 920,
-              "notes": "",
-              "id": "fce_mozgt7i8h5"
-            },
-            {
-              "clientName": "Wise Guys",
-              "amount": 250,
-              "notes": "Workshop - Founders Club",
-              "id": "fce_mozgti79au"
-            }
-          ]
+          "revenue": 5500,
+          "expenses": 300
         },
         "2025-11": {
-          "revenue": 5950,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "Nexial",
-              "amount": 300,
-              "notes": "",
-              "id": "fce_mozgtxj23u"
-            },
-            {
-              "clientName": "Wise Guys",
-              "amount": 250,
-              "notes": "Workshop - Founders Club",
-              "id": "fce_mozgu1nh6v"
-            },
-            {
-              "clientName": "LetsPling",
-              "amount": 400,
-              "notes": "",
-              "id": "fce_mozgu94hbh"
-            },
-            {
-              "clientName": "ZOLLHOF",
-              "amount": 3500,
-              "notes": "",
-              "id": "fce_mozguk2c1v"
-            },
-            {
-              "clientName": "VITAS",
-              "amount": 1500,
-              "notes": "",
-              "id": "fce_mozguob3pv"
-            }
-          ]
+          "revenue": 5500,
+          "expenses": 300
         },
         "2025-12": {
-          "revenue": 5500,
-          "expenses": 0,
-          "expenseEntries": [],
-          "entries": [
-            {
-              "clientName": "Nexial",
-              "amount": 300,
-              "notes": "",
-              "id": "fce_mozgv2d03w"
-            },
-            {
-              "clientName": "LetsPling",
-              "amount": 200,
-              "notes": "",
-              "id": "fce_mozgv6nvaf"
-            },
-            {
-              "clientName": "ZOLLHOF",
-              "amount": 3500,
-              "notes": "",
-              "id": "fce_mozgvg1xfo"
-            },
-            {
-              "clientName": "VITAS",
-              "amount": 1500,
-              "notes": "",
-              "id": "fce_mozgvkdhhx"
-            }
-          ]
+          "revenue": 6000,
+          "expenses": 300
         }
       },
-      "yearTarget": {
-        "revenue": 0,
-        "expenses": 0
-      },
-      "createdAt": 1777669591749,
-      "createdBy": "Giorgos",
-      "updatedAt": 1778399063628,
-      "updatedBy": "Giorgos"
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
     },
     {
       "id": "fcs_mo8wkfghbf",
@@ -30721,6 +31692,160 @@
       "createdBy": "Giorgos",
       "updatedAt": 1778883574487,
       "updatedBy": "Giorgos"
+    },
+    {
+      "id": "fcs_001",
+      "type": "property",
+      "entityId": "prop_001",
+      "year": 2025,
+      "taxRate": 0,
+      "months": {
+        "2025-01": {
+          "revenue": 1900,
+          "expenses": 1100
+        },
+        "2025-02": {
+          "revenue": 2100,
+          "expenses": 1100
+        },
+        "2025-03": {
+          "revenue": 2400,
+          "expenses": 1100
+        },
+        "2025-04": {
+          "revenue": 2800,
+          "expenses": 1100
+        },
+        "2025-05": {
+          "revenue": 3000,
+          "expenses": 1100
+        },
+        "2025-06": {
+          "revenue": 3200,
+          "expenses": 1100
+        },
+        "2025-07": {
+          "revenue": 3600,
+          "expenses": 1100
+        },
+        "2025-08": {
+          "revenue": 3800,
+          "expenses": 1100
+        },
+        "2025-09": {
+          "revenue": 3000,
+          "expenses": 1100
+        },
+        "2025-10": {
+          "revenue": 2500,
+          "expenses": 1100
+        },
+        "2025-11": {
+          "revenue": 2000,
+          "expenses": 1100
+        },
+        "2025-12": {
+          "revenue": 2200,
+          "expenses": 1100
+        }
+      },
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "fcs_002",
+      "type": "property",
+      "entityId": "prop_005",
+      "year": 2025,
+      "taxRate": 0,
+      "months": {
+        "2025-01": {
+          "revenue": 2800,
+          "expenses": 1400
+        },
+        "2025-02": {
+          "revenue": 3200,
+          "expenses": 1400
+        },
+        "2025-03": {
+          "revenue": 3600,
+          "expenses": 1400
+        },
+        "2025-04": {
+          "revenue": 4200,
+          "expenses": 1400
+        },
+        "2025-05": {
+          "revenue": 4500,
+          "expenses": 1400
+        },
+        "2025-06": {
+          "revenue": 5000,
+          "expenses": 1400
+        },
+        "2025-07": {
+          "revenue": 5500,
+          "expenses": 1400
+        },
+        "2025-08": {
+          "revenue": 5800,
+          "expenses": 1400
+        },
+        "2025-09": {
+          "revenue": 4500,
+          "expenses": 1400
+        },
+        "2025-10": {
+          "revenue": 3800,
+          "expenses": 1400
+        },
+        "2025-11": {
+          "revenue": 3200,
+          "expenses": 1400
+        },
+        "2025-12": {
+          "revenue": 3400,
+          "expenses": 1400
+        }
+      },
+      "createdAt": 1777638212996,
+      "createdBy": "RitaK",
+      "updatedAt": 1777638212996,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "fcs_mokfx33k27",
+      "type": "service",
+      "entityId": "customer_success",
+      "year": 2024,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {},
+      "createdAt": 1777490447600,
+      "createdBy": "RitaK",
+      "updatedAt": 1777490447600,
+      "updatedBy": "RitaK"
+    },
+    {
+      "id": "fcs_mokfx3qnh0",
+      "type": "service",
+      "entityId": "marketing_services",
+      "year": 2024,
+      "taxRate": 0,
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "months": {},
+      "createdAt": 1777490448431,
+      "createdBy": "RitaK",
+      "updatedAt": 1777490448431,
+      "updatedBy": "RitaK"
     }
   ],
   "inventory": [
@@ -30908,7 +32033,7 @@
   "appConfig": {
     "github": {
       "owner": "g-pal87",
-      "repo": "Business-Tracking",
+      "repo": "business-tracking",
       "branch": "main",
       "path": "data/db.json"
     }
