@@ -30510,7 +30510,7 @@
       "corpTaxRate": 15,
       "bufferEnabled": true,
       "bufferPct": 10,
-      "actualRevenue": 0,
+      "actualRevenue": 129957.34,
       "forecastRevenue": 145843.33,
       "actualExpenses": 142.51,
       "forecastExpenses": 6600,
@@ -30518,11 +30518,25 @@
       "taxAllowances": 0,
       "estimatedFinalTax": 0,
       "julPayment": 0,
-      "decRevRevenue": 4566322,
-      "decRevExpenses": 5000,
-      "decRevNonDeductible": 2000,
-      "decRevAllowances": 3000,
-      "_prefillBreakdown": null
+      "decRevRevenue": 0,
+      "decRevExpenses": 0,
+      "decRevNonDeductible": 0,
+      "decRevAllowances": 0,
+      "_prefillBreakdown": {
+        "paysRevenue": 20107.78,
+        "paysCount": 68,
+        "invsRevenue": 109849.56,
+        "invsCount": 22,
+        "expsByCat": {
+          "inventory": 142.51
+        },
+        "expsCount": 201,
+        "fcRevLabel": "3 properties + 2 services",
+        "fcRevCount": 5,
+        "fcExpLabel": "1 service",
+        "fcExpCount": 1,
+        "cutoff": "2026-05-24"
+      }
     }
   },
   "forecasts": [
