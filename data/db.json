@@ -676,8 +676,10 @@
       "notes": "Beachfront apartment with sea views",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779643698843,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779643698843,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "prop_002",
