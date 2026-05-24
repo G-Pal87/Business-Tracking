@@ -165,6 +165,8 @@ function build() {
     filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => {
       yearFilter.clear(); monthFilter.clear(); streamFilter.clear(); propFilter.clear();
       catFilter.clear(); accountingTypeFilter.clear(); recurrenceFilter.clear();
+      ['exp_years','exp_months','exp_streams','exp_props','exp_cats','exp_types','exp_recurrence']
+        .forEach(k => { try { localStorage.removeItem(`btf:${k}`); } catch {} });
       rebuildFilters(); renderAll();
     }}));
     filterBar.appendChild(el('div', { class: 'flex-1' }));
