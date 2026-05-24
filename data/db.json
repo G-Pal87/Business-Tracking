@@ -30368,7 +30368,23 @@
       "you_2026": 0
     },
     "globalTaxRate": 15,
-    "taxExcludedPropertyIds": [],
+    "taxExcludedPropertyIds": [
+      "prop_mohg2xyol2",
+      "prop_mohfnur5bi",
+      "prop_mohfq1ly6o",
+      "prop_mohgxct7b6",
+      "prop_mohgwjvdlg",
+      "prop_mohgu7hc28",
+      "prop_mohgap08rl",
+      "prop_mohgf9k39v",
+      "prop_mohg6old31",
+      "prop_mohfxic4em",
+      "prop_mohg1qiy3j",
+      "prop_mohg4jrjb0",
+      "prop_mohfyxp815",
+      "prop_mohgcpkr2r",
+      "prop_mohfv8np89"
+    ],
     "cyprusTax": {
       "year": "2026",
       "corpTaxRate": 15,
