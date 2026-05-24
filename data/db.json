@@ -30504,7 +30504,9 @@
       "you_2026": 0
     },
     "globalTaxRate": 15,
-    "taxExcludedPropertyIds": [],
+    "taxExcludedPropertyIds": [
+      "prop_005"
+    ],
     "cyprusTax": {
       "year": "2026",
       "corpTaxRate": 15,
