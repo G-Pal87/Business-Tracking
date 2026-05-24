@@ -3,7 +3,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod } from '../core/data.js';
 import * as charts from '../core/charts.js';
-import { CURRENCIES, EXPENSE_CATEGORIES, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
+import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
 
@@ -411,6 +411,31 @@ export function openExpenseForm(id) {
   if (exp) openForm(exp);
 }
 
+function buildCategorySelect(currentValue) {
+  const grouped = new Set(Object.values(EXPENSE_CATEGORY_GROUPS).flatMap(g => g.subtypes));
+  const s = el('select', { class: 'select' });
+  // Ungrouped categories first
+  for (const [key, meta] of Object.entries(EXPENSE_CATEGORIES)) {
+    if (grouped.has(key)) continue;
+    const opt = el('option', { value: key }, meta.label);
+    if (key === currentValue) opt.selected = true;
+    s.appendChild(opt);
+  }
+  // Grouped categories as optgroups
+  for (const group of Object.values(EXPENSE_CATEGORY_GROUPS)) {
+    const og = el('optgroup', { label: group.label });
+    for (const key of group.subtypes) {
+      const meta = EXPENSE_CATEGORIES[key];
+      if (!meta) continue;
+      const opt = el('option', { value: key }, meta.label);
+      if (key === currentValue) opt.selected = true;
+      og.appendChild(opt);
+    }
+    s.appendChild(og);
+  }
+  return s;
+}
+
 function openForm(existing, defaults = {}) {
   const r = existing ? { ...existing } : {
     id: newId('exp'),
@@ -425,7 +450,7 @@ function openForm(existing, defaults = {}) {
 
   const body = el('div', {});
   const propS = select((state.db.properties || []).map(p => ({ value: p.id, label: p.name })), r.propertyId);
-  const catS = select(Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), r.category);
+  const catS = buildCategorySelect(r.category);
   const resolved = resolveExpenseFields(r);
   const accountingTypeS = select(Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label })), resolved.accountingType);
   const costCategoryS   = select(Object.entries(COST_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), resolved.costCategory);
