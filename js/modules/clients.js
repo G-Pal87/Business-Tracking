@@ -202,8 +202,17 @@ export function openDetail(id) {
         const { openPreview } = await import('./invoices.js');
         setTimeout(() => openPreview(i.id), 220);
       }});
+      const deleteBtn = button('Delete', { variant: 'sm danger', onClick: async (e) => {
+        e.stopPropagation();
+        const ok = await confirmDialog(`Delete invoice ${i.number || i.id}?`, { danger: true, okLabel: 'Delete' });
+        if (!ok) return;
+        softDelete('invoices', i.id);
+        toast('Invoice deleted', 'success');
+        renderInvoiceTable();
+      }});
       actions.appendChild(editBtn);
       actions.appendChild(previewBtn);
+      actions.appendChild(deleteBtn);
       tr.appendChild(actions);
       tr.addEventListener('click', async () => {
         closeModal();
