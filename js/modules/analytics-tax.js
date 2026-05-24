@@ -132,6 +132,18 @@ function inYear(date, year) {
   return !!date && date.startsWith(year + '-');
 }
 
+function getTaxRate(year) {
+  const rates = state.db.settings?.taxRates || {};
+  return rates[String(year)] ?? state.db.settings?.corpTaxRate ?? 12.5;
+}
+
+function saveTaxRate(year, rate) {
+  if (!state.db.settings) state.db.settings = {};
+  if (!state.db.settings.taxRates) state.db.settings.taxRates = {};
+  state.db.settings.taxRates[String(year)] = rate;
+  markDirty();
+}
+
 function resolvedCatLabel(e) {
   const fields = resolveExpenseFields(e);
   const cat = fields.costCategory || e.costCategory || e.category || 'other';
@@ -213,7 +225,7 @@ function getYearData(year, ownerFilter) {
   };
 }
 
-function buildYearSelectorBar(years, selectedYear, selectedOwner, onChange) {
+function buildYearSelectorBar(years, selectedYear, selectedOwner, taxRate, onChange, onTaxRateChange) {
   const bar = el('div', {
     style: 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm)'
   });
@@ -242,11 +254,32 @@ function buildYearSelectorBar(years, selectedYear, selectedOwner, onChange) {
     ownerGroup.appendChild(pill);
   }
   bar.appendChild(ownerGroup);
+  bar.appendChild(el('div', { style: 'width:1px;height:24px;background:var(--border)' }));
+
+  const rateI = input({ type: 'number', value: taxRate, min: 0, max: 100, step: 0.1, style: 'width:68px;padding:3px 6px;font-size:12px' });
+  rateI.title = `Corporation tax rate applied to ${selectedYear} Operating Profit`;
+  let rateDebounce;
+  rateI.oninput = () => {
+    clearTimeout(rateDebounce);
+    rateDebounce = setTimeout(() => {
+      const v = parseFloat(rateI.value);
+      if (isFinite(v) && v >= 0 && v <= 100) onTaxRateChange(v);
+    }, 600);
+  };
+  bar.appendChild(el('div', { style: 'display:flex;align-items:center;gap:5px' },
+    el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)' }, `${selectedYear} Tax Rate`),
+    rateI,
+    el('span', { style: 'font-size:12px;color:var(--text-muted)' }, '%')
+  ));
+
   return bar;
 }
 
-function buildPnLTable(data) {
+function buildPnLTable(data, taxRate, year) {
   const { revSTR, revLTR, revCS, revMkt, revOther, totalRevenue, catMap, totalOpEx, totalCapEx, opProfit, netCash } = data;
+  const taxableIncome = Math.max(0, opProfit);
+  const estimatedTax  = taxableIncome * (taxRate / 100);
+  const netAfterTax   = opProfit - estimatedTax;
   const wrap = el('div', { class: 'card mb-16', style: 'background:var(--bg-elev-2)' });
   wrap.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Annual Profit & Loss Statement'),
@@ -308,22 +341,36 @@ function buildPnLTable(data) {
   tbody.appendChild(mkRow('', 0, {}));
   tbody.appendChild(mkRow('Net Cash Used', netCash, { isSubtotal: true, isPositive: netCash >= 0 }));
 
+  tbody.appendChild(mkRow(`TAX ESTIMATION — ${year} (${taxRate}%)`, 0, { isSectionHeader: true }));
+  tbody.appendChild(mkRow('Taxable Income (Operating Profit)', taxableIncome, { indent: 1 }));
+  if (opProfit < 0) tbody.appendChild(mkRow('Note: loss year — no tax due', 0, { indent: 1 }));
+  tbody.appendChild(mkRow(null, null, { isSeparator: true }));
+  tbody.appendChild(mkRow(`Estimated Corporation Tax @ ${taxRate}%`, estimatedTax, { isSectionTotal: true, isPositive: estimatedTax === 0 }));
+  tbody.appendChild(mkRow('', 0, {}));
+  tbody.appendChild(mkRow('Net After Tax (est.)', netAfterTax, { isSubtotal: true, isPositive: netAfterTax >= 0 }));
+
   tbl.appendChild(tbody);
   wrap.appendChild(el('div', { style: 'padding:0 0 16px' }, tbl));
   return wrap;
 }
 
-function buildKpiCards(data, year) {
+function buildKpiCards(data, year, taxRate) {
   const { totalRevenue, totalOpEx, totalCapEx, opProfit, netCash, hasForecast, forecastNet } = data;
   const operatingMargin = totalRevenue > 0 ? ((totalRevenue - totalOpEx) / totalRevenue * 100) : 0;
-  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:16px' });
+  const taxableIncome   = Math.max(0, opProfit);
+  const estimatedTax    = taxableIncome * (taxRate / 100);
+  const netAfterTax     = opProfit - estimatedTax;
 
   if (totalRevenue === 0 && totalOpEx === 0 && totalCapEx === 0) {
     return mkEmptyState('No activity recorded for ' + year + '. Select a different year or add data.');
   }
 
+  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px' });
+
+  // 1. Operating Margin
   grid.appendChild(mkKpiCard({
-    label: 'Operating Margin', value: `${operatingMargin.toFixed(1)}%`, subtitle: operatingMargin > 80 ? 'High margin — minimal overhead (service business)' : 'Revenue minus OpEx',
+    label: 'Operating Margin', value: `${operatingMargin.toFixed(1)}%`,
+    subtitle: operatingMargin > 80 ? 'High margin — service-led' : 'Revenue minus OpEx',
     variant: operatingMargin >= 50 ? 'success' : operatingMargin >= 20 ? 'warning' : 'danger',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -338,8 +385,29 @@ function buildKpiCards(data, year) {
     }
   }));
 
+  // 2. Estimated Corporation Tax
   grid.appendChild(mkKpiCard({
-    label: 'Total Tax-Deductible', value: formatEUR(totalOpEx), subtitle: 'Estimated deductible OpEx',
+    label: `Est. Corp Tax @ ${taxRate}%`, value: formatEUR(estimatedTax),
+    subtitle: opProfit <= 0 ? 'No taxable profit this year' : `On ${formatEUR(taxableIncome)} taxable income`,
+    variant: estimatedTax > 0 ? 'danger' : '',
+    onClick: () => {
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+      body.appendChild(mkSummaryGrid([
+        { label: 'Operating Profit',        value: formatEUR(opProfit),      sub: 'Taxable base' },
+        { label: `Tax Rate (${year})`,       value: `${taxRate}%`,            sub: 'Corporation tax' },
+        { label: 'Estimated Corp Tax',       value: formatEUR(estimatedTax),  sub: 'Gross liability' },
+        { label: 'Net After Tax (est.)',     value: formatEUR(netAfterTax),   sub: opProfit > 0 ? 'After tax' : 'Loss year' }
+      ], 2));
+      body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:8px' },
+        `Tax rate for ${year} is set in the year selector bar above. Each year can have its own rate to account for rate changes. This is an estimate — consult your accountant for the precise figure.`
+      ));
+      openModal({ title: `Estimated Corporation Tax — ${year}`, body });
+    }
+  }));
+
+  // 3. Tax-Deductible OpEx
+  grid.appendChild(mkKpiCard({
+    label: 'Tax-Deductible OpEx', value: formatEUR(totalOpEx), subtitle: 'Estimated deductible expenses',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       const catEntries = [...data.catMap.entries()].sort((a, b) => b[1] - a[1]);
@@ -350,8 +418,10 @@ function buildKpiCards(data, year) {
     }
   }));
 
+  // 4. Capital Deployed
   grid.appendChild(mkKpiCard({
-    label: 'Capital Deployed', value: formatEUR(totalCapEx), subtitle: totalCapEx === 0 ? 'No capital assets recorded this year' : 'Non-deductible (depreciated)',
+    label: 'Capital Deployed', value: formatEUR(totalCapEx),
+    subtitle: totalCapEx === 0 ? 'No capital assets this year' : 'Non-deductible (depreciated)',
     variant: totalCapEx > 0 ? 'warning' : '',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -359,8 +429,8 @@ function buildKpiCards(data, year) {
       for (const e of data.capExpenses) capByCategory.set(resolvedCatKey(e), (capByCategory.get(resolvedCatKey(e)) || 0) + toEUR(e.amount, e.currency, e.date));
       const catEntries = [...capByCategory.entries()].sort((a, b) => b[1] - a[1]);
       body.appendChild(mkSummaryGrid([
-        { label: 'Total CapEx',       value: formatEUR(totalCapEx), sub: `${data.capExpenses.length} items` },
-        { label: 'As % of Revenue',   value: totalRevenue > 0 ? (totalCapEx / totalRevenue * 100).toFixed(1) + '%' : '—', sub: 'Capital intensity' }
+        { label: 'Total CapEx',     value: formatEUR(totalCapEx), sub: `${data.capExpenses.length} items` },
+        { label: 'As % of Revenue', value: totalRevenue > 0 ? (totalCapEx / totalRevenue * 100).toFixed(1) + '%' : '—', sub: 'Capital intensity' }
       ], 2));
       if (catEntries.length > 0) {
         body.appendChild(mkSectionLabel('CapEx by Category'));
@@ -372,9 +442,10 @@ function buildKpiCards(data, year) {
     }
   }));
 
+  // 5. Year vs Forecast
   if (hasForecast) {
-    const actualNet = opProfit;
-    const variance  = actualNet - forecastNet;
+    const actualNet    = opProfit;
+    const variance     = actualNet - forecastNet;
     const forecastCard = mkKpiCard({
       label: 'Year vs Forecast', value: formatEUR(actualNet), variant: variance >= 0 ? 'success' : 'danger',
       onClick: () => {
@@ -659,7 +730,11 @@ function buildTaxExportSection(data, year) {
   btn.addEventListener('click', () => {
     const catEntries = [...data.catMap.entries()].sort((a, b) => b[1] - a[1]);
     const catLines   = catEntries.map(([k, v]) => `  ${COST_CATEGORIES[k]?.label || k}: ${formatEUR(v)}`).join('\n');
-    const text = [`Annual P&L Summary — ${year}`, `Revenue: ${formatEUR(data.totalRevenue)}`, `Operating Expenses: ${formatEUR(data.totalOpEx)}`, `Operating Profit: ${formatEUR(data.opProfit)}`, `Capital Expenditures: ${formatEUR(data.totalCapEx)}`, `Net Cash: ${formatEUR(data.netCash)}`, '', 'Expense Breakdown:', catLines, '', `Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`].join('\n');
+    const yr      = gYear;
+    const txRate  = getTaxRate(yr);
+    const txBase  = Math.max(0, data.opProfit);
+    const txAmt   = txBase * (txRate / 100);
+    const text = [`Annual P&L Summary — ${yr}`, `Revenue: ${formatEUR(data.totalRevenue)}`, `Operating Expenses: ${formatEUR(data.totalOpEx)}`, `Operating Profit: ${formatEUR(data.opProfit)}`, `Capital Expenditures: ${formatEUR(data.totalCapEx)}`, `Net Cash: ${formatEUR(data.netCash)}`, '', `Tax Estimation (${yr})`, `Corporation Tax Rate: ${txRate}%`, `Taxable Income: ${formatEUR(txBase)}`, `Estimated Corporation Tax: ${formatEUR(txAmt)}`, `Net After Tax (est.): ${formatEUR(data.opProfit - txAmt)}`, '', 'Expense Breakdown:', catLines, '', `Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`].join('\n');
     navigator.clipboard.writeText(text).then(() => {
       toastEl.style.display = 'inline-block';
       setTimeout(() => { toastEl.style.display = 'none'; }, 2500);
@@ -702,16 +777,20 @@ function buildPnLContent(years) {
     return wrap;
   }
 
-  const selectorBar = buildYearSelectorBar(years, gYear, gOwner, (newYear, newOwner) => {
+  const taxRate    = getTaxRate(gYear);
+  const selectorBar = buildYearSelectorBar(years, gYear, gOwner, taxRate, (newYear, newOwner) => {
     gYear  = newYear;
     gOwner = newOwner;
+    rebuildView();
+  }, (newRate) => {
+    saveTaxRate(gYear, newRate);
     rebuildView();
   });
   wrap.appendChild(selectorBar);
 
   const data = getYearData(gYear, gOwner);
-  wrap.appendChild(buildPnLTable(data));
-  wrap.appendChild(buildKpiCards(data, gYear));
+  wrap.appendChild(buildPnLTable(data, taxRate, gYear));
+  wrap.appendChild(buildKpiCards(data, gYear, taxRate));
   wrap.appendChild(buildExpenseCategoryTable(data));
   wrap.appendChild(buildCharts(data, gYear));
   wrap.appendChild(buildTaxExportSection(data, gYear));
