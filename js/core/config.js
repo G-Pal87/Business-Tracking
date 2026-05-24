@@ -24,6 +24,7 @@ export const EXPENSE_CATEGORIES = {
   inventory:     { label: 'Inventory',      icon: 'B',  color: '#84cc16' },
   vat:           { label: 'VAT',            icon: 'V',  color: '#f97316' },
   reimbursement: { label: 'Reimbursement',  icon: 'Rb', color: '#a855f7' },
+  str_fee:       { label: 'STR Fee',         icon: 'SF', color: '#fb923c' },
   other:         { label: 'Other',          icon: 'O',  color: '#8b93b0' }
 };
 

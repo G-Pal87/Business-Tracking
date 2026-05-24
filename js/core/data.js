@@ -184,7 +184,8 @@ const LEGACY_CAT_MAP = {
   management:    'property_management', cleaning:      'cleaning',
   electricity:   'utilities',           water:         'utilities',
   inventory:     'other',              vat:            'tax',
-  reimbursement: 'other',              other:          'other'
+  reimbursement: 'other',              str_fee:        'property_management',
+  other:         'other'
 };
 
 // Derives accountingType / costCategory / recurrence for any expense record
