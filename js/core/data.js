@@ -23,11 +23,13 @@ export function toEUR(amount, currency, dateOrYear) {
 }
 
 export function formatMoney(amount, currency = 'EUR', options = {}) {
+  const maxFrac = options.maxFrac ?? (currency === 'HUF' ? 0 : 2);
+  const minFrac = Math.min(options.minFrac ?? (currency === 'HUF' ? 0 : 2), maxFrac);
   const opts = {
     style: 'currency',
     currency,
-    maximumFractionDigits: options.maxFrac ?? (currency === 'HUF' ? 0 : 2),
-    minimumFractionDigits: options.minFrac ?? (currency === 'HUF' ? 0 : 2)
+    maximumFractionDigits: maxFrac,
+    minimumFractionDigits: minFrac
   };
   try {
     return new Intl.NumberFormat('en-US', opts).format(amount || 0);
