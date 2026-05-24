@@ -362,7 +362,7 @@ function build() {
       tr.appendChild(el('td', {}, fmtDate(r.dueDate)));
       tr.appendChild(el('td', {}, OWNERS[r.owner] || r.owner));
       tr.appendChild(el('td', {}, el('span', { class: `badge ${st.css}` }, st.label)));
-      tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.total, r.currency, { maxFrac: 0 })));
+      tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.total, r.currency)));
       const actions = el('td', { class: 'right flex gap-4', style: 'justify-content:flex-end' });
       actions.appendChild(button('View', { variant: 'sm ghost', onClick: (e) => { e.stopPropagation(); openPDFViewer(r); }}));
       actions.appendChild(button('PDF', { variant: 'sm ghost', onClick: (e) => {
