@@ -432,7 +432,8 @@ export function openBuilder(existing, { onSaved } = {}) {
   const clients = listActive('clients');
   if (clients.length === 0) { toast('Add a client first', 'warning'); return; }
 
-  const inv = existing ? { ...existing, lineItems: existing.lineItems?.map(l => ({ ...l })) || [] } : {
+  const round2 = v => Math.round((Number(v) || 0) * 100) / 100;
+  const inv = existing ? { ...existing, lineItems: existing.lineItems?.map(l => ({ ...l, total: round2(l.total), rate: round2(l.rate) })) || [] } : {
     id: newId('inv'),
     number: '',
     clientId: clients[0].id,
@@ -490,13 +491,13 @@ export function openBuilder(existing, { onSaved } = {}) {
   body.appendChild(formRow('Notes', notesT));
 
   function recalcLine(li) {
-    li.total = (Number(li.quantity) || 0) * (Number(li.rate) || 0);
+    li.total = Math.round((Number(li.quantity) || 0) * (Number(li.rate) || 0) * 100) / 100;
   }
   function recalcInvoice() {
-    const subtotal = inv.lineItems.reduce((s, l) => s + (Number(l.total) || 0), 0);
-    const taxRate = Number(taxI.value) || 0;
-    const tax = subtotal * (taxRate / 100);
-    const total = subtotal + tax;
+    const subtotal = Math.round(inv.lineItems.reduce((s, l) => s + (Number(l.total) || 0), 0) * 100) / 100;
+    const taxRate  = Number(taxI.value) || 0;
+    const tax      = Math.round(subtotal * (taxRate / 100) * 100) / 100;
+    const total    = Math.round((subtotal + tax) * 100) / 100;
     inv.subtotal = subtotal;
     inv.tax = tax;
     inv.total = total;
