@@ -4,6 +4,7 @@ import { upsert, softDelete, listActive, newId, formatMoney, formatEUR, toEUR, b
 import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
+import { openBuilder as openInvoiceBuilder, openPreview as openInvoicePreview } from './invoices.js';
 
 // ── Document helpers (same pattern as properties.js) ─────────────────────────
 
@@ -155,23 +156,68 @@ export function openDetail(id) {
     c.notes ? el('div', { class: 'mt-8', style: 'font-size:13px' }, c.notes) : null
   ));
 
-  if (invs.length === 0) {
-    body.appendChild(el('div', { class: 'empty' }, 'No invoices yet'));
-  } else {
-    const t = el('table', { class: 'table' });
-    t.innerHTML = `<thead><tr><th>Number</th><th>Issued</th><th>Status</th><th class="right">Amount</th></tr></thead>`;
+  const invSection = el('div', { class: 'card mb-16' });
+  const invHeader  = el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, `Invoices (${invs.length})`),
+    button('+ New Invoice', { variant: 'primary sm', onClick: () => {
+      closeModal();
+      setTimeout(() => openInvoiceBuilder({ clientId: id }, { onSaved: () => openDetail(id) }), 220);
+    }})
+  );
+  invSection.appendChild(invHeader);
+
+  const renderInvoiceTable = () => {
+    const existing = invSection.querySelector('.inv-table-wrap');
+    if (existing) existing.remove();
+    const fresh = listActive('invoices').filter(i => i.clientId === id).sort((a, b) => {
+      const d = (b.issueDate || '').localeCompare(a.issueDate || '');
+      return d !== 0 ? d : parseInt(b.number || '0', 10) - parseInt(a.number || '0', 10);
+    });
+    if (fresh.length === 0) {
+      const empty = el('div', { class: 'empty inv-table-wrap' }, 'No invoices yet');
+      invSection.appendChild(empty);
+      return;
+    }
+    const t  = el('table', { class: 'table' });
+    t.innerHTML = `<thead><tr><th>Number</th><th>Issued</th><th>Due</th><th>Status</th><th class="right">Amount</th><th></th></tr></thead>`;
     const tb = el('tbody');
-    for (const i of invs) {
-      const tr = el('tr');
-      tr.appendChild(el('td', {}, i.number));
+    for (const i of fresh) {
+      const statusCss = i.status === 'paid' ? 'success' : i.status === 'sent' ? 'warning' : i.status === 'overdue' ? 'danger' : '';
+      const tr = el('tr', { style: 'cursor:pointer' });
+      tr.appendChild(el('td', {}, i.number || '—'));
       tr.appendChild(el('td', {}, fmtDate(i.issueDate)));
-      tr.appendChild(el('td', {}, el('span', { class: `badge ${i.status === 'paid' ? 'success' : i.status === 'sent' ? 'warning' : ''}` }, i.status)));
+      tr.appendChild(el('td', {}, fmtDate(i.dueDate)));
+      tr.appendChild(el('td', {}, el('span', { class: `badge ${statusCss}` }, i.status)));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(i.total, i.currency, { maxFrac: 0 })));
+      const actions = el('td', { class: 'right', style: 'white-space:nowrap' });
+      const editBtn = button('Edit', { variant: 'sm ghost', onClick: (e) => {
+        e.stopPropagation();
+        closeModal();
+        setTimeout(() => openInvoiceBuilder(i, { onSaved: () => openDetail(id) }), 220);
+      }});
+      const previewBtn = button('Preview', { variant: 'sm ghost', onClick: (e) => {
+        e.stopPropagation();
+        closeModal();
+        setTimeout(() => { openInvoicePreview(i.id); }, 220);
+      }});
+      actions.appendChild(editBtn);
+      actions.appendChild(previewBtn);
+      tr.appendChild(actions);
+      tr.addEventListener('click', () => {
+        closeModal();
+        setTimeout(() => openInvoiceBuilder(i, { onSaved: () => openDetail(id) }), 220);
+      });
+      tr.addEventListener('mouseenter', () => { tr.style.background = 'rgba(255,255,255,0.04)'; });
+      tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
       tb.appendChild(tr);
     }
     t.appendChild(tb);
-    const wrap = el('div', { class: 'table-wrap' }); wrap.appendChild(t); body.appendChild(wrap);
-  }
+    const wrap = el('div', { class: 'table-wrap inv-table-wrap' });
+    wrap.appendChild(t);
+    invSection.appendChild(wrap);
+  };
+  renderInvoiceTable();
+  body.appendChild(invSection);
 
   // Documents
   const docsViewCard = el('div', { class: 'card mb-16' });

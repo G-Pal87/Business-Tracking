@@ -428,7 +428,7 @@ function nextInvoiceSequence(year, excludeId) {
 }
 
 // ============ BUILDER ============
-function openBuilder(existing) {
+export function openBuilder(existing, { onSaved } = {}) {
   const clients = listActive('clients');
   if (clients.length === 0) { toast('Add a client first', 'warning'); return; }
 
@@ -651,7 +651,8 @@ function openBuilder(existing) {
     else if (pdfUploadStatus) toast(`Invoice ${inv.number || inv.id} could not be uploaded to the repo.`, 'danger', 6000);
     toast(existing ? 'Invoice updated' : 'Invoice saved', 'success');
     closeModal();
-    setTimeout(() => navigate('invoices'), 200);
+    if (onSaved) setTimeout(onSaved, 220);
+    else setTimeout(() => navigate('invoices'), 200);
   }});
   const cancel = button('Cancel', { onClick: closeModal });
 
