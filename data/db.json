@@ -27025,16 +27025,16 @@
   "services": [
     {
       "id": "svc_001",
-      "name": "Customer Success Management",
-      "description": "CS strategy, QBRs, health scoring",
+      "name": "Customer Success Professional Services",
+      "description": "",
       "unit": "day",
       "defaultRate": 650,
       "currency": "EUR",
       "stream": "customer_success",
-      "createdAt": 1777638212996,
-      "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "createdAt": 1777669591749,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778232219100,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "svc_002",
@@ -27044,10 +27044,10 @@
       "defaultRate": 4500,
       "currency": "EUR",
       "stream": "customer_success",
-      "createdAt": 1777638212996,
-      "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "createdAt": 1777669591749,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777669591749,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "svc_003",
@@ -27057,10 +27057,10 @@
       "defaultRate": 120,
       "currency": "EUR",
       "stream": "customer_success",
-      "createdAt": 1777638212996,
-      "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "createdAt": 1777669591749,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777669591749,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "svc_004",
@@ -27070,10 +27070,10 @@
       "defaultRate": 1500,
       "currency": "EUR",
       "stream": "marketing_services",
-      "createdAt": 1777638212996,
-      "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "createdAt": 1777669591749,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777669591749,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "svc_005",
@@ -27083,10 +27083,10 @@
       "defaultRate": 2800,
       "currency": "EUR",
       "stream": "marketing_services",
-      "createdAt": 1777638212996,
-      "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "createdAt": 1777669591749,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777669591749,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "svc_006",
@@ -27096,10 +27096,10 @@
       "defaultRate": 850,
       "currency": "EUR",
       "stream": "marketing_services",
-      "createdAt": 1777638212996,
-      "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "createdAt": 1777669591749,
+      "createdBy": "Giorgos",
+      "updatedAt": 1777669591749,
+      "updatedBy": "Giorgos"
     }
   ],
   "invoices": [
@@ -30463,21 +30463,29 @@
     "masterCurrency": "EUR",
     "fxRates": {
       "HUF_EUR": 0.0025,
-      "yearRates": {}
+      "yearRates": {
+        "2016": 0.0032,
+        "2018": 0.0031,
+        "2019": 0.0031,
+        "2024": 0.0025,
+        "2025": 0.0025
+      }
     },
     "defaultTaxRate": 0,
     "business": {
-      "name": "Property & Services Ltd.",
-      "email": "hello@business.example",
-      "address": "Budapest, Hungary",
-      "vatNumber": "",
-      "iban": "",
-      "bic": ""
+      "name": "M&W Prime Solutions Limited",
+      "email": "",
+      "address": "Morphou 27,  Paphos, 8015",
+      "vatNumber": "60080676C",
+      "iban": "LT283250049546458651",
+      "bic": "REVOLT21",
+      "registrationNumber": "HE 461745",
+      "swift": "CHASDEFX"
     },
     "team": [
       {
         "id": "you",
-        "name": "Owner",
+        "name": "Giorgos",
         "role": "Customer Success"
       },
       {
@@ -30492,9 +30500,44 @@
     },
     "invoiceCounters": {
       "you_2025": 5,
-      "rita_2025": 3
+      "rita_2025": 3,
+      "you_2026": 0
     },
-    "globalTaxRate": 15
+    "globalTaxRate": 15,
+    "taxExcludedPropertyIds": [],
+    "cyprusTax": {
+      "year": "2026",
+      "corpTaxRate": 15,
+      "bufferEnabled": true,
+      "bufferPct": 10,
+      "actualRevenue": 129957.34,
+      "forecastRevenue": 145843.33,
+      "actualExpenses": 142.51,
+      "forecastExpenses": 6600,
+      "nonDeductibleExpenses": 0,
+      "taxAllowances": 0,
+      "estimatedFinalTax": 0,
+      "julPayment": 0,
+      "decRevRevenue": 4566322,
+      "decRevExpenses": 5000,
+      "decRevNonDeductible": 2000,
+      "decRevAllowances": 3000,
+      "_prefillBreakdown": {
+        "paysRevenue": 20107.78,
+        "paysCount": 68,
+        "invsRevenue": 109849.56,
+        "invsCount": 22,
+        "expsByCat": {
+          "inventory": 142.51
+        },
+        "expsCount": 201,
+        "fcRevLabel": "3 properties + 2 services",
+        "fcRevCount": 5,
+        "fcExpLabel": "1 service",
+        "fcExpCount": 1,
+        "cutoff": "2026-05-24"
+      }
+    }
   },
   "forecasts": [
     {
@@ -30505,58 +30548,170 @@
       "taxRate": 15,
       "months": {
         "2025-01": {
-          "revenue": 6500,
-          "expenses": 500
+          "revenue": 42717,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 42717,
+              "notes": "",
+              "id": "fce_mozggerm7f"
+            }
+          ]
         },
         "2025-02": {
-          "revenue": 6500,
-          "expenses": 500
+          "revenue": 12545,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12545,
+              "notes": "",
+              "id": "fce_mozggu6qo4"
+            }
+          ]
         },
         "2025-03": {
-          "revenue": 7000,
-          "expenses": 500
+          "revenue": 12450,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12450,
+              "notes": "",
+              "id": "fce_mozghasqu"
+            }
+          ]
         },
         "2025-04": {
-          "revenue": 7000,
-          "expenses": 500
+          "revenue": 12492,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12492,
+              "notes": "",
+              "id": "fce_mozghgbjjl"
+            }
+          ]
         },
         "2025-05": {
-          "revenue": 7500,
-          "expenses": 500
+          "revenue": 12450,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12450,
+              "notes": "",
+              "id": "fce_mozgigiqqt"
+            }
+          ]
         },
         "2025-06": {
-          "revenue": 7500,
-          "expenses": 500
+          "revenue": 12450,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12450,
+              "notes": "",
+              "id": "fce_mozgimjsjj"
+            }
+          ]
         },
         "2025-07": {
-          "revenue": 7500,
-          "expenses": 500
+          "revenue": 12450,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12450,
+              "notes": "",
+              "id": "fce_mozgitazk"
+            }
+          ]
         },
         "2025-08": {
-          "revenue": 7500,
-          "expenses": 500
+          "revenue": 12450,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12450,
+              "notes": "",
+              "id": "fce_mozgiz4il"
+            }
+          ]
         },
         "2025-09": {
-          "revenue": 8000,
-          "expenses": 500
+          "revenue": 12450,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12450,
+              "notes": "",
+              "id": "fce_mozgj4magu"
+            }
+          ]
         },
         "2025-10": {
-          "revenue": 8000,
-          "expenses": 500
+          "revenue": 12450,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12450,
+              "notes": "",
+              "id": "fce_mozgja8hka"
+            }
+          ]
         },
         "2025-11": {
-          "revenue": 8000,
-          "expenses": 500
+          "revenue": 12450,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12450,
+              "notes": "",
+              "id": "fce_mozgjfkn1z"
+            }
+          ]
         },
         "2025-12": {
-          "revenue": 8000,
-          "expenses": 500
+          "revenue": 12450,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "C TWO",
+              "amount": 12450,
+              "notes": "",
+              "id": "fce_mozgjlh78d"
+            }
+          ]
         }
       },
-      "createdAt": 1777638212996,
-      "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "createdAt": 1777669591749,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778398494839,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "fcs_004",
@@ -30566,58 +30721,290 @@
       "taxRate": 15,
       "months": {
         "2025-01": {
-          "revenue": 2875,
-          "expenses": 300
+          "revenue": 7700,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "Wise Guys",
+              "amount": 6200,
+              "notes": "",
+              "id": "fce_mozgkjahdc"
+            },
+            {
+              "clientName": "VITAS",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozgko26dn"
+            }
+          ]
         },
         "2025-02": {
-          "revenue": 2875,
-          "expenses": 300
+          "revenue": 7700,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "Wise Guys",
+              "amount": 6200,
+              "notes": "",
+              "id": "fce_mozgkvib8e"
+            },
+            {
+              "clientName": "VITAS",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozgl69mji"
+            }
+          ]
         },
         "2025-03": {
-          "revenue": 4500,
-          "expenses": 300
+          "revenue": 7700,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "Wise Guys",
+              "amount": 6200,
+              "notes": "",
+              "id": "fce_mozgldkxf5"
+            },
+            {
+              "clientName": "VITAS",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozgln3jkm"
+            }
+          ]
         },
         "2025-04": {
-          "revenue": 4500,
-          "expenses": 300
+          "revenue": 7700,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "Wise Guys",
+              "amount": 6200,
+              "notes": "",
+              "id": "fce_mozgm2ho1r"
+            },
+            {
+              "clientName": "VITAS",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozgm5zj46"
+            }
+          ]
         },
         "2025-05": {
-          "revenue": 5000,
-          "expenses": 300
+          "revenue": 7700,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "Wise Guys",
+              "amount": 6200,
+              "notes": "",
+              "id": "fce_mozgme8mhi"
+            },
+            {
+              "clientName": "VITAS",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozgmp5m5d"
+            }
+          ]
         },
         "2025-06": {
-          "revenue": 5000,
-          "expenses": 300
+          "revenue": 12200,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "Wise Guys",
+              "amount": 6200,
+              "notes": "",
+              "id": "fce_mozgmxy5g0"
+            },
+            {
+              "clientName": "VITAS",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozgn9038h"
+            },
+            {
+              "clientName": "Wise Guys (Empowomen)",
+              "amount": 4500,
+              "notes": "",
+              "id": "fce_mozgneh5qc"
+            }
+          ]
         },
         "2025-07": {
-          "revenue": 5000,
-          "expenses": 300
+          "revenue": 2100,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "VITAS",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozgqinrhy"
+            },
+            {
+              "clientName": "Nexial",
+              "amount": 300,
+              "notes": "",
+              "id": "fce_mozgqnszdu"
+            },
+            {
+              "clientName": "Nexial",
+              "amount": 300,
+              "notes": "",
+              "id": "fce_mozgqzykh"
+            }
+          ]
         },
         "2025-08": {
-          "revenue": 5500,
-          "expenses": 300
+          "revenue": 170,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "Polish Startup",
+              "amount": 170,
+              "notes": "",
+              "id": "fce_mozgr9x9fa"
+            }
+          ]
         },
         "2025-09": {
-          "revenue": 5500,
-          "expenses": 300
+          "revenue": 3400,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "Startup coaching",
+              "amount": 650,
+              "notes": "Dutch Startup",
+              "id": "fce_mozgrspthi"
+            },
+            {
+              "clientName": "VITAS",
+              "amount": 2750,
+              "notes": "Vitas",
+              "id": "fce_mozgs1ynf4"
+            }
+          ]
         },
         "2025-10": {
-          "revenue": 5500,
-          "expenses": 300
+          "revenue": 7170,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "Wise Guys (Empowomen)",
+              "amount": 4500,
+              "notes": "Marketing services (EMPOWOMEN)",
+              "id": "fce_mozgst673s"
+            },
+            {
+              "clientName": "VITAS",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozgt1wqox"
+            },
+            {
+              "clientName": "Nexial",
+              "amount": 920,
+              "notes": "",
+              "id": "fce_mozgt7i8h5"
+            },
+            {
+              "clientName": "Wise Guys",
+              "amount": 250,
+              "notes": "Workshop - Founders Club",
+              "id": "fce_mozgti79au"
+            }
+          ]
         },
         "2025-11": {
-          "revenue": 5500,
-          "expenses": 300
+          "revenue": 5950,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "Nexial",
+              "amount": 300,
+              "notes": "",
+              "id": "fce_mozgtxj23u"
+            },
+            {
+              "clientName": "Wise Guys",
+              "amount": 250,
+              "notes": "Workshop - Founders Club",
+              "id": "fce_mozgu1nh6v"
+            },
+            {
+              "clientName": "LetsPling",
+              "amount": 400,
+              "notes": "",
+              "id": "fce_mozgu94hbh"
+            },
+            {
+              "clientName": "ZOLLHOF",
+              "amount": 3500,
+              "notes": "",
+              "id": "fce_mozguk2c1v"
+            },
+            {
+              "clientName": "VITAS",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozguob3pv"
+            }
+          ]
         },
         "2025-12": {
-          "revenue": 6000,
-          "expenses": 300
+          "revenue": 5500,
+          "expenses": 0,
+          "expenseEntries": [],
+          "entries": [
+            {
+              "clientName": "Nexial",
+              "amount": 300,
+              "notes": "",
+              "id": "fce_mozgv2d03w"
+            },
+            {
+              "clientName": "LetsPling",
+              "amount": 200,
+              "notes": "",
+              "id": "fce_mozgv6nvaf"
+            },
+            {
+              "clientName": "ZOLLHOF",
+              "amount": 3500,
+              "notes": "",
+              "id": "fce_mozgvg1xfo"
+            },
+            {
+              "clientName": "VITAS",
+              "amount": 1500,
+              "notes": "",
+              "id": "fce_mozgvkdhhx"
+            }
+          ]
         }
       },
-      "createdAt": 1777638212996,
-      "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "yearTarget": {
+        "revenue": 0,
+        "expenses": 0
+      },
+      "createdAt": 1777669591749,
+      "createdBy": "Giorgos",
+      "updatedAt": 1778399063628,
+      "updatedBy": "Giorgos"
     },
     {
       "id": "fcs_mo8wkfghbf",
@@ -32033,7 +32420,7 @@
   "appConfig": {
     "github": {
       "owner": "g-pal87",
-      "repo": "business-tracking",
+      "repo": "Business-Tracking",
       "branch": "main",
       "path": "data/db.json"
     }
