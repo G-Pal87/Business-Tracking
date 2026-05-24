@@ -10,6 +10,7 @@ import { generateInvoicePDF } from '../core/pdf.js';
 import { openPreview as openInvoicePreview } from './invoices.js';
 import { openDetail as openClientDetail } from './clients.js';
 import { openDetail as openPropertyDetail } from './properties.js';
+import { openExpenseForm } from './expenses.js';
 
 export default {
   id: 'settings',
@@ -2192,6 +2193,228 @@ function makeSubSection(title, subtitle) {
   return { wrap, body };
 }
 
+function fillExpenseReceiptRepoBody(body) {
+  const resultEl = el('div', { style: 'margin-top:12px' });
+  const checkBtn = button('Check Expense Receipts', { onClick: runCheck });
+  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn));
+  body.appendChild(resultEl);
+
+  async function runCheck() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      resultEl.innerHTML = '<div style="color:var(--danger,#dc3545)">GitHub not configured — add owner/repo/token in Settings.</div>';
+      return;
+    }
+    checkBtn.disabled = true;
+    checkBtn.textContent = 'Checking…';
+    resultEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Fetching repository file list…</div>';
+
+    let repoFiles;
+    try {
+      repoFiles = await listGithubFolder('expenses/receipts');
+    } catch (err) {
+      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not read repository: ${err.message}</div>`;
+      checkBtn.disabled = false;
+      checkBtn.textContent = 'Check Expense Receipts';
+      return;
+    }
+    checkBtn.disabled = false;
+    checkBtn.textContent = 'Check Expense Receipts';
+
+    const repoByPath = new Map(repoFiles.map(f => [f.path, f]));
+    const expenses   = listActive('expenses').filter(e => e.receipt);
+    const discrepancies  = [];
+    const matchedPaths   = new Set();
+
+    for (const exp of expenses) {
+      const { receipt } = exp;
+      if (!receipt.path && receipt.data) {
+        discrepancies.push({
+          type: 'not_uploaded',
+          detail: `Expense ${fmtDate(exp.date)} "${exp.description || exp.category}": receipt "${receipt.name}" is embedded — not yet in GitHub`,
+          exp, receipt
+        });
+      } else if (receipt.path) {
+        if (repoByPath.has(receipt.path)) {
+          matchedPaths.add(receipt.path);
+        } else {
+          discrepancies.push({
+            type: 'missing_file',
+            detail: `Expense ${fmtDate(exp.date)} "${exp.description || exp.category}": file "${receipt.path.split('/').pop()}" not found${receipt.data ? ' — embedded copy available, can re-upload' : ' — link will be cleared'}`,
+            exp, receipt, canReupload: !!receipt.data
+          });
+        }
+      }
+    }
+
+    for (const file of repoFiles) {
+      if (!matchedPaths.has(file.path)) {
+        discrepancies.push({
+          type: 'orphan_file',
+          detail: `File "${file.name}" in expenses/receipts/ is not referenced by any active expense`,
+          file
+        });
+      }
+    }
+
+    renderCheckResults(expenses.length, repoFiles.length, discrepancies);
+  }
+
+  function renderCheckResults(totalExpenses, totalFiles, discrepancies) {
+    resultEl.innerHTML = '';
+    const refreshRow = el('div', { style: 'display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:8px' });
+    refreshRow.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted)' }, `Checked at ${new Date().toLocaleTimeString()}`));
+    refreshRow.appendChild(button('Refresh', { variant: 'sm ghost', onClick: runCheck }));
+    resultEl.appendChild(refreshRow);
+
+    const unmatched = discrepancies.filter(d => d.type !== 'orphan_file').length;
+    const matched   = totalExpenses - unmatched;
+    const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px' });
+    for (const [label, val, good] of [
+      ['Expenses w/ receipts', totalExpenses, true],
+      ['Repository files',     totalFiles,    true],
+      ['Matched',              matched,        matched === totalExpenses],
+      ['Discrepancies',        discrepancies.length, discrepancies.length === 0]
+    ]) {
+      summaryGrid.appendChild(el('div', {
+        style: `background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;border-top:3px solid ${good ? 'var(--success,#198754)' : 'var(--danger,#dc3545)'}`
+      },
+        el('div', { style: 'font-size:1.4rem;font-weight:700' }, String(val)),
+        el('div', { style: 'font-size:11px;color:var(--text-muted)' }, label)
+      ));
+    }
+    resultEl.appendChild(summaryGrid);
+
+    if (discrepancies.length === 0) {
+      resultEl.appendChild(el('div', { style: 'color:var(--success,#198754);font-size:13px' }, 'All expense receipts match repository files.'));
+      return;
+    }
+
+    const TYPE_LABEL = { not_uploaded: 'Not uploaded', missing_file: 'Missing file', orphan_file: 'Orphan file' };
+    const TYPE_CSS   = { not_uploaded: 'warning', orphan_file: 'warning' };
+
+    const resolvableItems = discrepancies.map(d => ({ d, action: resolveAction(d) })).filter(x => x.action);
+    const toolbar = el('div', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:6px 0' });
+    const selectAllCb = document.createElement('input');
+    selectAllCb.type = 'checkbox';
+    selectAllCb.title = 'Select all resolvable';
+    const resolveSelBtn = button('Resolve Selected (0)', { variant: 'sm primary' });
+    resolveSelBtn.disabled = true;
+    toolbar.appendChild(selectAllCb);
+    toolbar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Select all'));
+    toolbar.appendChild(resolveSelBtn);
+
+    const rowCheckboxes = [];
+    function updateToolbar() {
+      const checked = rowCheckboxes.filter(cb => cb.checked);
+      resolveSelBtn.disabled = checked.length === 0;
+      resolveSelBtn.textContent = `Resolve Selected (${checked.length})`;
+      selectAllCb.indeterminate = checked.length > 0 && checked.length < rowCheckboxes.length;
+      selectAllCb.checked = rowCheckboxes.length > 0 && checked.length === rowCheckboxes.length;
+    }
+    selectAllCb.onchange = () => { rowCheckboxes.forEach(cb => { cb.checked = selectAllCb.checked; }); updateToolbar(); };
+    resolveSelBtn.onclick = async () => {
+      const toResolve = resolvableItems.filter((_, i) => rowCheckboxes[i]?.checked);
+      resolveSelBtn.disabled = true;
+      resolveSelBtn.textContent = 'Resolving…';
+      const errors = [];
+      for (const { action } of toResolve) {
+        try { await action(); } catch (err) { if (err.message !== 'cancelled') errors.push(err.message); }
+      }
+      if (errors.length) toast(errors.join('; '), 'danger', 6000);
+      await runCheck();
+    };
+
+    const list = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
+    if (resolvableItems.length > 0) resultEl.appendChild(toolbar);
+
+    for (const d of discrepancies) {
+      const row = el('div', { style: 'display:flex;align-items:flex-start;gap:6px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)' });
+      const action = resolveAction(d);
+      if (action) {
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'flex-shrink:0;margin-top:3px;cursor:pointer';
+        cb.onchange = updateToolbar;
+        row.appendChild(cb);
+        rowCheckboxes.push(cb);
+      } else {
+        row.appendChild(el('span', { style: 'width:16px;flex-shrink:0' }));
+      }
+      row.appendChild(el('span', { class: `badge ${TYPE_CSS[d.type] || 'danger'}`, style: 'flex-shrink:0;margin-top:1px' }, TYPE_LABEL[d.type] || d.type));
+      row.appendChild(el('span', { style: 'flex:1' }, d.detail));
+
+      if (d.exp) {
+        const viewLink = document.createElement('a');
+        viewLink.textContent = 'View ↗';
+        viewLink.href = '#expenses';
+        viewLink.style.cssText = 'font-size:11px;white-space:nowrap;flex-shrink:0;color:var(--primary,#0d6efd);cursor:pointer;margin-right:4px';
+        viewLink.onclick = (e) => {
+          e.preventDefault();
+          navigate('expenses');
+          setTimeout(() => openExpenseForm(d.exp.id), 200);
+        };
+        row.appendChild(viewLink);
+      }
+
+      const statusEl = el('span', { style: 'font-size:11px;white-space:nowrap;flex-shrink:0' });
+      if (action) {
+        const btn = button('Resolve', { variant: 'sm primary' });
+        btn.onclick = async () => {
+          btn.disabled = true; btn.textContent = 'Resolving…';
+          statusEl.textContent = ''; statusEl.style.color = '';
+          try {
+            await action();
+            btn.textContent = '✓ Done';
+            statusEl.textContent = 'Refreshing…';
+            statusEl.style.color = 'var(--success,#198754)';
+            await new Promise(r => setTimeout(r, 600));
+            await runCheck();
+          } catch (err) {
+            btn.disabled = false; btn.textContent = 'Resolve';
+            if (err.message !== 'cancelled') { statusEl.textContent = err.message; statusEl.style.color = 'var(--danger,#dc3545)'; }
+          }
+        };
+        row.appendChild(statusEl);
+        row.appendChild(btn);
+      }
+      list.appendChild(row);
+    }
+    resultEl.appendChild(list);
+  }
+
+  function resolveAction(d) {
+    if (d.type === 'not_uploaded' || (d.type === 'missing_file' && d.canReupload)) {
+      return async () => {
+        const ext = (d.receipt.name || 'file').split('.').pop().toLowerCase();
+        const repoPath = `expenses/receipts/${d.exp.id}.${ext}`;
+        await uploadGithubFile(repoPath, d.receipt.data, `Upload receipt for expense ${d.exp.id}`);
+        upsert('expenses', { ...d.exp, receipt: { name: d.receipt.name, type: d.receipt.type, path: repoPath } });
+        markDirty();
+      };
+    }
+    if (d.type === 'missing_file' && !d.canReupload) {
+      return async () => {
+        const updated = { ...d.exp };
+        delete updated.receipt;
+        upsert('expenses', updated);
+        markDirty();
+      };
+    }
+    if (d.type === 'orphan_file') {
+      return async () => {
+        const ok = await confirmDialog(
+          `Delete orphaned receipt "${d.file.name}" from the repository? This cannot be undone.`,
+          { danger: true, okLabel: 'Delete File' }
+        );
+        if (!ok) throw new Error('cancelled');
+        await deleteGithubFile(d.file.path, d.file.sha, `Delete orphan receipt: ${d.file.name}`);
+      };
+    }
+    return null;
+  }
+}
+
 function buildRepositoryMaintenanceCard() {
   const card = el('div', { class: 'card mb-16' });
   const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
@@ -2211,11 +2434,13 @@ function buildRepositoryMaintenanceCard() {
     chevron.classList.toggle('open', !open);
   });
 
-  const invSub  = makeSubSection('Invoices',   'PDF files stored in the invoice repository');
-  const propSub = makeSubSection('Properties', 'Document files stored under Properties/');
-  const cliSub  = makeSubSection('Clients',    'Document files stored under Clients/');
+  const invSub  = makeSubSection('Invoices',         'PDF files stored in the invoice repository');
+  const expSub  = makeSubSection('Expense Receipts', 'Receipt files stored under expenses/receipts/');
+  const propSub = makeSubSection('Properties',       'Document files stored under Properties/');
+  const cliSub  = makeSubSection('Clients',          'Document files stored under Clients/');
 
   fillInvoiceRepoBody(invSub.body);
+  fillExpenseReceiptRepoBody(expSub.body);
   fillDocRepoBody(propSub.body, {
     rootFolder:           'Properties',
     collection:           'properties',
@@ -2236,6 +2461,7 @@ function buildRepositoryMaintenanceCard() {
   });
 
   body.appendChild(invSub.wrap);
+  body.appendChild(expSub.wrap);
   body.appendChild(propSub.wrap);
   body.appendChild(cliSub.wrap);
 

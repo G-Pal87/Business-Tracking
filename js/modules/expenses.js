@@ -404,6 +404,11 @@ function findCleaningRates(propertyId, date) {
   return findVendorRateByPeriod(propertyId, date, '').filter(m => m.vendor.role === 'cleaner');
 }
 
+export function openExpenseForm(id) {
+  const exp = byId('expenses', id);
+  if (exp) openForm(exp);
+}
+
 export function openExpenseForm(defaults = {}) {
   openForm(null, defaults);
 }
