@@ -4,7 +4,6 @@ import { upsert, softDelete, listActive, newId, formatMoney, formatEUR, toEUR, b
 import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
-import { openBuilder as openInvoiceBuilder, openPreview as openInvoicePreview } from './invoices.js';
 
 // ── Document helpers (same pattern as properties.js) ─────────────────────────
 
@@ -159,9 +158,10 @@ export function openDetail(id) {
   const invSection = el('div', { class: 'card mb-16' });
   const invHeader  = el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, `Invoices (${invs.length})`),
-    button('+ New Invoice', { variant: 'primary sm', onClick: () => {
+    button('+ New Invoice', { variant: 'primary sm', onClick: async () => {
       closeModal();
-      setTimeout(() => openInvoiceBuilder({ clientId: id }, { onSaved: () => openDetail(id) }), 220);
+      const { openBuilder } = await import('./invoices.js');
+      setTimeout(() => openBuilder({ clientId: id }, { onSaved: () => openDetail(id) }), 220);
     }})
   );
   invSection.appendChild(invHeader);
@@ -190,22 +190,25 @@ export function openDetail(id) {
       tr.appendChild(el('td', {}, el('span', { class: `badge ${statusCss}` }, i.status)));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(i.total, i.currency, { maxFrac: 0 })));
       const actions = el('td', { class: 'right', style: 'white-space:nowrap' });
-      const editBtn = button('Edit', { variant: 'sm ghost', onClick: (e) => {
+      const editBtn = button('Edit', { variant: 'sm ghost', onClick: async (e) => {
         e.stopPropagation();
         closeModal();
-        setTimeout(() => openInvoiceBuilder(i, { onSaved: () => openDetail(id) }), 220);
+        const { openBuilder } = await import('./invoices.js');
+        setTimeout(() => openBuilder(i, { onSaved: () => openDetail(id) }), 220);
       }});
-      const previewBtn = button('Preview', { variant: 'sm ghost', onClick: (e) => {
+      const previewBtn = button('Preview', { variant: 'sm ghost', onClick: async (e) => {
         e.stopPropagation();
         closeModal();
-        setTimeout(() => { openInvoicePreview(i.id); }, 220);
+        const { openPreview } = await import('./invoices.js');
+        setTimeout(() => openPreview(i.id), 220);
       }});
       actions.appendChild(editBtn);
       actions.appendChild(previewBtn);
       tr.appendChild(actions);
-      tr.addEventListener('click', () => {
+      tr.addEventListener('click', async () => {
         closeModal();
-        setTimeout(() => openInvoiceBuilder(i, { onSaved: () => openDetail(id) }), 220);
+        const { openBuilder } = await import('./invoices.js');
+        setTimeout(() => openBuilder(i, { onSaved: () => openDetail(id) }), 220);
       });
       tr.addEventListener('mouseenter', () => { tr.style.background = 'rgba(255,255,255,0.04)'; });
       tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
