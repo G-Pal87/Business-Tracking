@@ -30537,6 +30537,9 @@
         "fcExpCount": 1,
         "cutoff": "2026-05-24"
       }
+    },
+    "taxRates": {
+      "2026": 15
     }
   },
   "forecasts": [
