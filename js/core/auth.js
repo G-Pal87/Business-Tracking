@@ -40,7 +40,9 @@ export function requireAuth() {
     }
     const screen = el('div', { id: 'login-screen', class: 'login-screen' });
     document.body.appendChild(screen);
-    if (users.length === 0) renderSetup(screen, resolve);
+    const hasGithubConfig = !!(state.github?.owner && state.github?.repo);
+    if (users.length === 0 && hasGithubConfig) renderNoData(screen, resolve);
+    else if (users.length === 0) renderSetup(screen, resolve);
     else renderLogin(screen, resolve);
   });
 }
@@ -85,6 +87,22 @@ function renderLogin(screen, resolve) {
   passwordI.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   usernameI.addEventListener('keydown', e => { if (e.key === 'Enter') passwordI.focus(); });
   setTimeout(() => usernameI.focus(), 50);
+}
+
+function renderNoData(screen, resolve) {
+  screen.innerHTML = '';
+  const card = el('div', { class: 'login-card' });
+  card.appendChild(el('div', { class: 'login-brand' }, 'BT'));
+  card.appendChild(el('div', { class: 'login-title' }, 'Business Tracking'));
+  card.appendChild(el('div', { class: 'login-sub' }, 'Could not load data from GitHub'));
+  card.appendChild(el('div', {
+    style: 'font-size:13px;color:var(--text-muted);margin:16px 0;line-height:1.6;text-align:center'
+  }, 'The app is configured but could not reach the database — your token may be missing or expired. Open the setup link you were given, or ask your admin to share a new one.'));
+  const retryBtn = button('Retry', { variant: 'primary' });
+  retryBtn.style.cssText = 'width:100%;margin-top:4px';
+  retryBtn.onclick = () => { location.reload(); };
+  card.appendChild(retryBtn);
+  screen.appendChild(card);
 }
 
 function renderSetup(screen, resolve) {
