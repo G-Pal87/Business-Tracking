@@ -26347,8 +26347,10 @@
       "notes": "Monthly retainer",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779646392800,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779646392800,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "cli_002",
@@ -26364,8 +26366,10 @@
       "notes": "Quarterly reviews",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779646388202,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779646388202,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "cli_003",
@@ -26381,8 +26385,10 @@
       "notes": "Social media + campaigns",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779646383229,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779646383229,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "cli_004",
@@ -29754,8 +29760,10 @@
       "notes": "",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779646379427,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779646379427,
+      "deletedBy": "Giorgos"
     },
     {
       "id": "inv_006",
