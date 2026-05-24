@@ -2684,11 +2684,47 @@ function buildDangerCard() {
       const ts   = new Date().toISOString().slice(0, 16).replace(':', '-');
       const filename = `bt-backup-${ts}.json`;
       await uploadGithubFile(`backups/${filename}`, b64, `Manual backup: ${filename}`);
-      statusEl.textContent = `Backup saved: ${filename}. Trimming old backups…`;
+      statusEl.textContent = 'Trimming old backups…';
       await trimBackups();
-      statusEl.textContent = `Backup saved to GitHub: ${filename}`;
-      statusEl.style.color = 'var(--success,#198754)';
-      toast('Backup saved to GitHub', 'success');
+
+      // Count remaining backups for the confirmation dialog
+      let totalCount = 0;
+      try {
+        const remaining = await listGithubFolder('backups');
+        totalCount = remaining.filter(f => f.name.endsWith('.json')).length;
+      } catch { /* ignore */ }
+
+      statusEl.textContent = '';
+
+      // Confirmation modal
+      const modalBody = el('div', {});
+      const topRow = el('div', { style: 'display:flex;align-items:center;gap:14px;margin-bottom:16px' });
+      const iconEl = el('div', {
+        style: 'width:44px;height:44px;border-radius:50%;background:var(--success-soft,#d1fae5);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0'
+      }, '✓');
+      const infoEl = el('div', {});
+      infoEl.appendChild(el('div', { style: 'font-weight:600;font-size:14px' }, 'Backup saved to GitHub'));
+      infoEl.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:3px;font-family:monospace' }, filename));
+      topRow.appendChild(iconEl);
+      topRow.appendChild(infoEl);
+      modalBody.appendChild(topRow);
+
+      const grid = el('div', { style: 'display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12px;color:var(--text-muted)' });
+      grid.appendChild(el('span', {}, 'Saved at'));
+      grid.appendChild(el('span', { style: 'color:var(--text)' }, new Date().toLocaleString()));
+      grid.appendChild(el('span', {}, 'Location'));
+      grid.appendChild(el('span', { style: 'font-family:monospace;color:var(--text)' }, `backups/${filename}`));
+      if (totalCount > 0) {
+        grid.appendChild(el('span', {}, 'Total backups'));
+        grid.appendChild(el('span', { style: 'color:var(--text)' }, `${totalCount} of ${MAX_BACKUPS} max`));
+      }
+      modalBody.appendChild(grid);
+
+      openModal({
+        title: 'Backup Complete',
+        body:  modalBody,
+        footer: [button('Close', { variant: 'primary', onClick: closeModal })]
+      });
     } catch (e) {
       statusEl.textContent = `Backup failed: ${e.message}`;
       statusEl.style.color = 'var(--danger,#dc3545)';

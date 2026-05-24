@@ -4,6 +4,7 @@ import * as github from './core/github.js';
 import * as router from './core/router.js';
 import { toast } from './core/ui.js';
 import { requireAuth, clearSession } from './core/auth.js';
+import { startPresence } from './core/presence.js';
 
 const VERSION = window._appV || '20260523b';
 
@@ -162,6 +163,9 @@ async function boot() {
   buildUserFooter();
 
   router.init(document.getElementById('content'));
+
+  // ── Phase 4: multi-user presence (Operations + System views only)
+  if (state.github.token) startPresence();
 
   let pushTimer = null;
   let saveFailCount = 0;
