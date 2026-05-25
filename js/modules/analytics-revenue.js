@@ -29,6 +29,7 @@ const REV_COLS = [
 ];
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
+let gScope = 'company'; // 'company' | 'all'
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -43,7 +44,9 @@ function getData(start, end) {
   const inRange = d => d && d >= start && d <= end;
   const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
   const coPropIds = companyPropIds();
-  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
+  const isCoRec = gScope === 'all'
+    ? () => true
+    : r => !r.propertyId || coPropIds.has(r.propertyId);
 
   // Property filter → isolate rental revenue (exclude invoices entirely)
   // Client filter   → isolate service revenue (exclude payments entirely)
@@ -885,7 +888,25 @@ function buildView() {
     el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' }, 'Structure · Growth · Collections · Contributors · Dynamics')
   ));
 
-  wrap.appendChild(buildFilterBar(gF, { showOwner: true, showStream: true, showProperty: true, showClient: true, storagePrefix: 'rev', channelScope: 'company' }, (newGF) => { if (newGF) gF = newGF; rebuildView(); }));
+  wrap.appendChild(buildFilterBar(gF, { showOwner: true, showStream: true, showProperty: true, showClient: true, storagePrefix: 'rev', channelScope: gScope === 'all' ? null : 'company' }, (newGF) => { if (newGF) gF = newGF; rebuildView(); }));
+
+  // Scope toggle (Company only / All incl. personal)
+  const scopeBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:12px' });
+  scopeBar.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)' }, 'Scope'));
+  for (const [val, label] of [['company', 'Company only'], ['all', 'All (incl. personal)']]) {
+    const isActive = gScope === val;
+    const btn = el('button', {
+      style: [
+        'padding:4px 14px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer;transition:all 120ms',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (gScope !== val) { gScope = val; rebuildView(); } };
+    scopeBar.appendChild(btn);
+  }
+  wrap.appendChild(scopeBar);
 
   const curRange = getCurrentPeriodRange(gF);
   const cmpRange = getComparisonRange(gF, curRange);
