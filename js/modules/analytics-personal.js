@@ -8,13 +8,13 @@ import {
 } from './analytics-filters.js?v=20260519';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge,
-  mkEmptyState, mkKpiCard, safePct
+  mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK
 } from './analytics-helpers.js';
 import { PERSONAL_EXPENSE_CATS } from '../core/config.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const SDC_RATE  = 0.0265;
-const CHART_IDS = ['pi-monthly-bar', 'pi-giorgos-donut', 'pi-rita-donut'];
+const CHART_IDS = ['pi-stream-monthly', 'pi-person-monthly', 'pi-giorgos-donut', 'pi-rita-donut'];
 const YOU_HEX   = '#6366f1';
 const RITA_HEX  = '#ec4899';
 const YOU_LABEL = 'Giorgos';
@@ -127,55 +127,115 @@ function getPersonData(person, start, end, months) {
 }
 
 // ── KPI section ───────────────────────────────────────────────────────────────
-function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange) {
+function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, cmpMonths) {
   const combined    = youData.total + ritaData.total;
-  const cmpCombined = youCmp ? youCmp.total + ritaCmp.total : null;
+  const cmpCombined = youCmp && ritaCmp ? youCmp.total + ritaCmp.total : null;
 
   const grid = el('div', {
     style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:20px'
   });
 
+  // Giorgos total
   grid.appendChild(mkKpiCard({
     label: 'Total — ' + YOU_LABEL,
     value: formatEUR(youData.total),
     subtitle: `Company: ${formatEUR(youData.fromCompany)} · Personal: ${formatEUR(youData.personalIncome)}`,
     delta: safePct(youData.total, youCmp?.total),
     compLabel: cmpRange?.label,
+    compValue: youCmp ? formatEUR(youCmp.total) : undefined,
     onClick: () => showPersonModal(YOU_LABEL, youData)
   }));
 
+  // Rita total
   grid.appendChild(mkKpiCard({
     label: 'Total — ' + RITA_LABEL,
     value: formatEUR(ritaData.total),
     subtitle: `Company: ${formatEUR(ritaData.fromCompany)} · Personal: ${formatEUR(ritaData.personalIncome)}`,
     delta: safePct(ritaData.total, ritaCmp?.total),
     compLabel: cmpRange?.label,
+    compValue: ritaCmp ? formatEUR(ritaCmp.total) : undefined,
     onClick: () => showPersonModal(RITA_LABEL, ritaData)
   }));
 
+  // Combined Gross
   grid.appendChild(mkKpiCard({
     label: 'Combined Gross',
     value: formatEUR(combined),
     subtitle: 'Both directors combined',
     delta: safePct(combined, cmpCombined),
     compLabel: cmpRange?.label,
+    compValue: cmpCombined !== null ? formatEUR(cmpCombined) : undefined,
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      body.appendChild(mkSummaryGrid([
-        { label: YOU_LABEL,  value: formatEUR(youData.total),  sub: null },
-        { label: RITA_LABEL, value: formatEUR(ritaData.total), sub: null },
-        { label: 'Combined', value: formatEUR(combined) }
-      ], 3));
+      if (youCmp && ritaCmp && cmpRange) {
+        body.appendChild(mkCmpGrid([
+          { label: YOU_LABEL,  curVal: formatEUR(youData.total),  cmpVal: formatEUR(youCmp.total)  },
+          { label: RITA_LABEL, curVal: formatEUR(ritaData.total), cmpVal: formatEUR(ritaCmp.total) },
+          { label: 'Combined', curVal: formatEUR(combined),       cmpVal: formatEUR(cmpCombined)   },
+        ], 'Current Period', cmpRange.label));
+      } else {
+        body.appendChild(mkSummaryGrid([
+          { label: YOU_LABEL,  value: formatEUR(youData.total),  sub: null },
+          { label: RITA_LABEL, value: formatEUR(ritaData.total), sub: null },
+          { label: 'Combined', value: formatEUR(combined) }
+        ], 3));
+      }
       openModal({ title: 'Combined Gross Income', body, large: true });
     }
   }));
 
-  const avgMonth = combined / Math.max(1, Object.keys(youData.ownerRentByMonth).length || 1);
+  // Avg / Month with annualised run-rate
+  const avgMonth = months.length > 0 ? combined / months.length : 0;
+  const cmpAvg   = cmpRange && youCmp && ritaCmp
+    ? (youCmp.total + ritaCmp.total) / Math.max(1, cmpMonths.length)
+    : null;
   grid.appendChild(mkKpiCard({
     label: 'Avg / Month',
     value: formatEUR(avgMonth),
-    subtitle: 'Combined both directors',
-    delta: null
+    subtitle: months.length < 12
+      ? `~${formatEUR(avgMonth * 12)} annualised`
+      : 'Combined both directors',
+    delta: safePct(avgMonth, cmpAvg),
+    compLabel: cmpRange?.label,
+    compValue: cmpAvg ? formatEUR(cmpAvg) : undefined,
+  }));
+
+  // Recurring Income card
+  const recurring    = (youData.salary + youData.ownerRentTotal) + (ritaData.salary + ritaData.ownerRentTotal);
+  const cmpRecurring = youCmp && ritaCmp
+    ? (youCmp.salary + youCmp.ownerRentTotal) + (ritaCmp.salary + ritaCmp.ownerRentTotal)
+    : null;
+  const recPct = combined > 0 ? (recurring / combined * 100).toFixed(0) + '% of total' : null;
+  grid.appendChild(mkKpiCard({
+    label: 'Recurring Income',
+    value: formatEUR(recurring),
+    subtitle: recPct ? `${recPct} · Salary + Owner Rent` : 'Salary + Owner Rent',
+    delta: safePct(recurring, cmpRecurring),
+    compLabel: cmpRange?.label,
+    compValue: cmpRecurring ? formatEUR(cmpRecurring) : undefined,
+  }));
+
+  // Dividends (Combined) card
+  const divsCombined    = youData.netDivs + ritaData.netDivs;
+  const cmpDivsCombined = youCmp && ritaCmp ? youCmp.netDivs + ritaCmp.netDivs : null;
+  grid.appendChild(mkKpiCard({
+    label: 'Dividends (Net SDC)',
+    value: divsCombined > 0 ? formatEUR(divsCombined) : '—',
+    subtitle: divsCombined > 0
+      ? `Gross ${formatEUR(youData.grossDivs + ritaData.grossDivs)} − SDC ${formatEUR(youData.sdcAmount + ritaData.sdcAmount)}`
+      : 'No dividends this period',
+    delta: safePct(divsCombined, cmpDivsCombined),
+    compLabel: cmpRange?.label,
+    compValue: cmpDivsCombined && cmpDivsCombined > 0 ? formatEUR(cmpDivsCombined) : undefined,
+    onClick: () => {
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+      body.appendChild(mkSummaryGrid([
+        { label: `${YOU_LABEL} Net`,  value: formatEUR(youData.netDivs) },
+        { label: `${RITA_LABEL} Net`, value: formatEUR(ritaData.netDivs) },
+        { label: 'SDC Total',         value: formatEUR(youData.sdcAmount + ritaData.sdcAmount) },
+      ], 3));
+      openModal({ title: 'Dividends — Combined', body, large: false });
+    }
   }));
 
   return grid;
@@ -312,13 +372,14 @@ function showPersonalPropsModal(label, data) {
 }
 
 // ── Person column ─────────────────────────────────────────────────────────────
-function buildPersonColumn(label, color, data, months) {
+function buildPersonColumn(label, color, data, months, cmpData) {
   const col = el('div', {
     style: `background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:16px;border-top:3px solid ${color}`
   });
   col.appendChild(el('div', { style: `font-size:14px;font-weight:700;color:${color};margin-bottom:12px;letter-spacing:0.03em` }, label));
 
-  const makeRow = (rowLabel, value, clickable, onClick, sub) => {
+  // makeRow — optional cmpNote renders a muted second line on the right side
+  const makeRow = (rowLabel, value, clickable, onClick, sub, cmpNote) => {
     const item = el('div', {
       style: 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04)' +
              (clickable ? ';cursor:pointer' : '')
@@ -332,9 +393,18 @@ function buildPersonColumn(label, color, data, months) {
     lhs.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, rowLabel));
     if (sub) lhs.appendChild(el('div', { style: 'font-size:10px;color:var(--text-dim);margin-top:1px' }, sub));
     item.appendChild(lhs);
-    item.appendChild(el('span', { style: 'font-size:13px;font-weight:600;color:var(--text)' }, value));
+
+    const rhs = el('div', { style: 'display:flex;flex-direction:column;align-items:flex-end;gap:2px' });
+    rhs.appendChild(el('span', { style: 'font-size:13px;font-weight:600;color:var(--text)' }, value));
+    if (cmpNote) {
+      rhs.appendChild(el('span', { style: 'font-size:10px;color:var(--text-muted)' }, cmpNote));
+    }
+    item.appendChild(rhs);
     return item;
   };
+
+  // Helper: % of total sub-text
+  const pctOf = (val) => data.total > 0 ? `${(val / data.total * 100).toFixed(0)}% of total` : null;
 
   // ── From Company ────────────────────────────────────────────────────────────
   col.appendChild(mkSectionLabel('From Company'));
@@ -343,14 +413,22 @@ function buildPersonColumn(label, color, data, months) {
     'Director Salary', formatEUR(data.salary),
     data.salaryExps.length > 0 || true,
     () => showSalaryModal(label, data),
-    data.salaryExps.length > 0 ? `${data.salaryExps.length} records` : 'No records — add salary expenses'
+    [
+      data.salaryExps.length > 0 ? `${data.salaryExps.length} records` : 'No records — add salary expenses',
+      pctOf(data.salary)
+    ].filter(Boolean).join(' · '),
+    cmpData ? `${formatEUR(cmpData.salary)} prev` : null
   ));
 
   col.appendChild(makeRow(
     'Property Rent (Owner)', formatEUR(data.ownerRentTotal),
     true,
     () => showRentModal(label, data, months),
-    data.companyProps.length > 0 ? `${data.companyProps.length} properties × ${months.length} months` : 'Configure rent rates on company properties'
+    [
+      data.companyProps.length > 0 ? `${data.companyProps.length} properties × ${months.length} months` : 'Configure rent rates on company properties',
+      pctOf(data.ownerRentTotal)
+    ].filter(Boolean).join(' · '),
+    cmpData ? `${formatEUR(cmpData.ownerRentTotal)} prev` : null
   ));
 
   col.appendChild(makeRow(
@@ -368,16 +446,24 @@ function buildPersonColumn(label, color, data, months) {
       }
       openModal({ title: `${label} — Reimbursements`, body, large: true });
     },
-    data.reimbExps.length > 0 ? `${data.reimbExps.length} records` : null
+    [
+      data.reimbExps.length > 0 ? `${data.reimbExps.length} records` : null,
+      pctOf(data.reimb)
+    ].filter(Boolean).join(' · '),
+    cmpData ? `${formatEUR(cmpData.reimb)} prev` : null
   ));
 
   col.appendChild(makeRow(
     'Dividends (net SDC)', formatEUR(data.netDivs),
     data.divRecords.length > 0,
     () => showDivModal(label, data),
-    data.grossDivs > 0
-      ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}`
-      : 'No dividends this period'
+    [
+      data.grossDivs > 0
+        ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}`
+        : 'No dividends this period',
+      pctOf(data.netDivs)
+    ].filter(Boolean).join(' · '),
+    cmpData ? `${formatEUR(cmpData.netDivs)} prev` : null
   ));
 
   // Subtotal from company
@@ -393,9 +479,13 @@ function buildPersonColumn(label, color, data, months) {
       'Rental Income', formatEUR(data.personalIncome),
       data.personalPayments.length > 0 || data.personalProps.length > 0,
       () => showPersonalPropsModal(label, data),
-      data.personalProps.length > 0
-        ? `${data.personalProps.length} properties · ${data.personalPayments.length} payments`
-        : 'No personal-channel properties'
+      [
+        data.personalProps.length > 0
+          ? `${data.personalProps.length} properties · ${data.personalPayments.length} payments`
+          : 'No personal-channel properties',
+        pctOf(data.personalIncome)
+      ].filter(Boolean).join(' · '),
+      cmpData ? `${formatEUR(cmpData.personalIncome)} prev` : null
     ));
   }
 
@@ -408,8 +498,182 @@ function buildPersonColumn(label, color, data, months) {
   return col;
 }
 
+// ── Insights ──────────────────────────────────────────────────────────────────
+function buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange) {
+  const combined = youData.total + ritaData.total;
+  if (combined === 0) return null;
+
+  const salary    = youData.salary + ritaData.salary;
+  const rent      = youData.ownerRentTotal + ritaData.ownerRentTotal;
+  const divs      = youData.netDivs + ritaData.netDivs;
+  const pers      = youData.personalIncome + ritaData.personalIncome;
+  const recurring = salary + rent;
+  const recPct    = combined > 0 ? recurring / combined * 100 : 0;
+
+  const signals = [];
+
+  // 1. Income stability
+  signals.push({
+    title:    'Income Stability',
+    severity: recPct >= 70 ? 'Note' : 'Watch',
+    text:     `${recPct.toFixed(0)}% of combined income is recurring (salary + owner rent = ${formatEUR(recurring)}). ` +
+              (recPct >= 70 ? 'Good stability — most income is predictable.' : 'Consider increasing recurring income streams.'),
+  });
+
+  // 2. Income balance between partners
+  const youShare = youData.total / combined * 100;
+  if (youShare > 65 || youShare < 35) {
+    signals.push({
+      title:    'Partner Income Balance',
+      severity: 'Watch',
+      text:     `${YOU_LABEL} receives ${youShare.toFixed(0)}% of combined income (${formatEUR(youData.total)}) vs ${RITA_LABEL} at ${(100 - youShare).toFixed(0)}% (${formatEUR(ritaData.total)}). Review if intentional.`,
+    });
+  }
+
+  // 3. Dividends context
+  if (youData.grossDivs === 0 && ritaData.grossDivs === 0) {
+    signals.push({
+      title:    'No Dividends',
+      severity: 'Note',
+      text:     'No dividends declared this period. Dividends (after 2.65% SDC) can be a tax-efficient way to extract company profits when surplus exists.',
+    });
+  } else {
+    const sdcTotal   = youData.sdcAmount + ritaData.sdcAmount;
+    const grossTotal = youData.grossDivs + ritaData.grossDivs;
+    signals.push({
+      title:    'Dividends & SDC',
+      severity: 'Note',
+      text:     `${formatEUR(grossTotal)} gross dividends paid. SDC withheld: ${formatEUR(sdcTotal)} (2.65%). Net to directors: ${formatEUR(divs)}.`,
+    });
+  }
+
+  // 4. Personal property income
+  if (pers > 0) {
+    const persPct = (pers / combined * 100).toFixed(0);
+    signals.push({
+      title:    'Personal Properties',
+      severity: 'Note',
+      text:     `Personal-channel properties contribute ${formatEUR(pers)} (${persPct}% of combined income) — ${youData.personalProps.length + ritaData.personalProps.length} properties, ${youData.personalPayments.length + ritaData.personalPayments.length} payments.`,
+    });
+  }
+
+  // 5. GESY context
+  const gesyTotal = youData.gesyTotal + ritaData.gesyTotal;
+  if (gesyTotal > 0) {
+    signals.push({
+      title:    'Employer GESY Cost',
+      severity: 'Note',
+      text:     `Company paid ${formatEUR(gesyTotal)} in GESY / social contributions on top of salaries — the true employment cost is ${formatEUR(salary + gesyTotal)}.`,
+    });
+  }
+
+  // Render using analytics-helpers mkInsightsBanner pattern
+  const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b', 'Note': '#6366f1' };
+  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)', 'Note': 'rgba(99,102,241,0.06)' };
+
+  const card = el('div', { class: 'card mb-16' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Income Insights')
+  ));
+  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:16px' });
+  for (const sig of signals) {
+    const color = SEV_COLOR[sig.severity] || SEV_COLOR['Note'];
+    const bg    = SEV_BG[sig.severity]    || SEV_BG['Note'];
+    const block = el('div', {
+      style: `background:${bg};border-left:3px solid ${color};border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:12px 14px`
+    });
+    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:6px' });
+    titleRow.appendChild(el('span', { style: `font-size:11px;font-weight:700;letter-spacing:0.5px;color:${color}` }, sig.title));
+    titleRow.appendChild(el('span', { style: `font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;background:${color};color:#fff` }, sig.severity));
+    block.appendChild(titleRow);
+    block.appendChild(el('p', { style: 'margin:0;font-size:12px;color:var(--text);line-height:1.4' }, sig.text));
+    grid.appendChild(block);
+  }
+  card.appendChild(grid);
+  return card;
+}
+
 // ── Charts ────────────────────────────────────────────────────────────────────
-function renderMonthlyBar(youData, ritaData, months) {
+
+// Stacked-by-stream monthly chart
+function renderStreamMonthly(youData, ritaData, months) {
+  if (!months.length) return;
+
+  const salaryData = [], rentData = [], reimbData = [], divsData = [], persData = [];
+
+  for (const m of months) {
+    const mk = m.key;
+
+    const sal = youData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk)
+                  .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
+              + ritaData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk)
+                  .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+
+    const rent = (youData.ownerRentByMonth[mk] || 0) + (ritaData.ownerRentByMonth[mk] || 0);
+
+    const reimb = youData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk)
+                    .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
+                + ritaData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk)
+                    .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+
+    const divs = youData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk)
+                   .reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0)
+               + ritaData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk)
+                   .reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0);
+
+    const pers = youData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk)
+                   .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
+               + ritaData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk)
+                   .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+
+    salaryData.push(Math.round(sal));
+    rentData.push(Math.round(rent));
+    reimbData.push(Math.round(reimb));
+    divsData.push(Math.round(divs));
+    persData.push(Math.round(pers));
+  }
+
+  const hasData = [...salaryData, ...rentData, ...reimbData, ...divsData, ...persData].some(v => v > 0);
+  if (!hasData) return;
+
+  const onClickItem = (_, idx) => {
+    const m = months[idx];
+    if (!m) return;
+    const items = [
+      { label: 'Director Salary',     val: salaryData[idx] },
+      { label: 'Owner Rent',          val: rentData[idx]   },
+      { label: 'Reimbursements',      val: reimbData[idx]  },
+      { label: 'Dividends (Net SDC)', val: divsData[idx]   },
+      { label: 'Personal Properties', val: persData[idx]   },
+    ].filter(i => i.val > 0);
+    const total = items.reduce((s, i) => s + i.val, 0);
+    const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
+    body.appendChild(mkSectionLabel('Income by Stream'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Stream' }, { label: 'Amount', right: true }, { label: '% of Month', right: true, muted: true }],
+      items.map(i => [i.label, formatEUR(i.val), total > 0 ? (i.val / total * 100).toFixed(0) + '%' : '—'])
+    ));
+    body.appendChild(mkSummaryGrid([{ label: 'Total Combined', value: formatEUR(total) }], 1));
+    openModal({ title: `${m.label} — Income Breakdown`, body, large: false });
+  };
+
+  const datasets = [];
+  if (salaryData.some(v => v > 0)) datasets.push({ label: 'Salary',         data: salaryData, backgroundColor: INCOME_COLORS.salary   });
+  if (rentData.some(v => v > 0))   datasets.push({ label: 'Owner Rent',     data: rentData,   backgroundColor: INCOME_COLORS.rent     });
+  if (reimbData.some(v => v > 0))  datasets.push({ label: 'Reimbursements', data: reimbData,  backgroundColor: INCOME_COLORS.reimb    });
+  if (divsData.some(v => v > 0))   datasets.push({ label: 'Dividends',      data: divsData,   backgroundColor: INCOME_COLORS.divs     });
+  if (persData.some(v => v > 0))   datasets.push({ label: 'Personal Props', data: persData,   backgroundColor: INCOME_COLORS.personal });
+
+  charts.bar('pi-stream-monthly', {
+    labels: months.map(m => m.label),
+    datasets,
+    stacked: true,
+    onClickItem,
+  });
+}
+
+// Giorgos vs Rita monthly comparison chart
+function renderPersonMonthly(youData, ritaData, months) {
   if (!months.length) return;
 
   const youMonthly  = [];
@@ -417,31 +681,31 @@ function renderMonthlyBar(youData, ritaData, months) {
 
   for (const m of months) {
     const mk = m.key;
-    // Salary: sum by month
+
     const youSal = youData.salaryExps
       .filter(e => (e.date || '').slice(0, 7) === mk)
       .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
     const ritaSal = ritaData.salaryExps
       .filter(e => (e.date || '').slice(0, 7) === mk)
       .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    // Rent by month
+
     const youRent  = youData.ownerRentByMonth[mk] || 0;
     const ritaRent = ritaData.ownerRentByMonth[mk] || 0;
-    // Reimbs by month
+
     const youReimb = youData.reimbExps
       .filter(e => (e.date || '').slice(0, 7) === mk)
       .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
     const ritaReimb = ritaData.reimbExps
       .filter(e => (e.date || '').slice(0, 7) === mk)
       .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    // Dividends by month
+
     const youDivs = youData.divRecords
       .filter(d => (d.date || '').slice(0, 7) === mk)
       .reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0);
     const ritaDivs = ritaData.divRecords
       .filter(d => (d.date || '').slice(0, 7) === mk)
       .reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0);
-    // Personal by month
+
     const youPers = youData.personalPayments
       .filter(p => (p.date || '').slice(0, 7) === mk)
       .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
@@ -455,7 +719,7 @@ function renderMonthlyBar(youData, ritaData, months) {
 
   if (!youMonthly.some(v => v > 0) && !ritaMonthly.some(v => v > 0)) return;
 
-  charts.bar('pi-monthly-bar', {
+  charts.bar('pi-person-monthly', {
     labels:   months.map(m => m.label),
     datasets: [
       { label: YOU_LABEL,  data: youMonthly,  backgroundColor: YOU_HEX  },
@@ -464,7 +728,6 @@ function renderMonthlyBar(youData, ritaData, months) {
     onClickItem: (_, idx) => {
       const m    = months[idx];
       if (!m) return;
-      const mk   = m.key;
       const yTot = youMonthly[idx];
       const rTot = ritaMonthly[idx];
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
@@ -473,7 +736,7 @@ function renderMonthlyBar(youData, ritaData, months) {
         { label: RITA_LABEL, value: formatEUR(rTot) },
         { label: 'Combined', value: formatEUR(yTot + rTot) }
       ], 3));
-      openModal({ title: `${m.label} — Income Breakdown`, body, large: true });
+      openModal({ title: `${m.label} — Partner Comparison`, body, large: false });
     }
   });
 }
@@ -546,21 +809,24 @@ function buildView() {
   const compLine = buildComparisonLine(curRange, cmpRange);
   if (compLine) wrap.appendChild(compLine);
 
-  wrap.appendChild(buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange));
+  wrap.appendChild(buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, cmpMonths));
 
   // ── Person columns ──────────────────────────────────────────────────────────
   const colGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px' });
-  colGrid.appendChild(buildPersonColumn(YOU_LABEL,  YOU_HEX,  youData,  months));
-  colGrid.appendChild(buildPersonColumn(RITA_LABEL, RITA_HEX, ritaData, months));
+  colGrid.appendChild(buildPersonColumn(YOU_LABEL,  YOU_HEX,  youData,  months, youCmp));
+  colGrid.appendChild(buildPersonColumn(RITA_LABEL, RITA_HEX, ritaData, months, ritaCmp));
   wrap.appendChild(colGrid);
 
-  // ── Charts ──────────────────────────────────────────────────────────────────
-  const chartsRow = el('div', { class: 'grid grid-2 mb-16' });
+  // ── Insights ────────────────────────────────────────────────────────────────
+  const insightsEl = buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange);
+  if (insightsEl) wrap.appendChild(insightsEl);
 
-  // Monthly income trend
-  chartsRow.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, `Monthly Income — ${curRange.label}`)),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'pi-monthly-bar' }))
+  // ── Charts — Row 1: stacked stream + donuts ─────────────────────────────────
+  const row1 = el('div', { class: 'grid grid-2 mb-16' });
+
+  row1.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Income by Stream — Monthly')),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'pi-stream-monthly' }))
   ));
 
   // Composition donuts
@@ -576,8 +842,16 @@ function buildView() {
   donutRow.appendChild(mkDonutCell('pi-giorgos-donut', YOU_LABEL));
   donutRow.appendChild(mkDonutCell('pi-rita-donut', RITA_LABEL));
   donutCard.appendChild(donutRow);
-  chartsRow.appendChild(donutCard);
-  wrap.appendChild(chartsRow);
+  row1.appendChild(donutCard);
+  wrap.appendChild(row1);
+
+  // ── Charts — Row 2: partner comparison (full width) ─────────────────────────
+  const row2 = el('div', { class: 'mb-16' });
+  row2.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Partner Comparison — Monthly')),
+    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'pi-person-monthly' }))
+  ));
+  wrap.appendChild(row2);
 
   // ── Footnote ────────────────────────────────────────────────────────────────
   wrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-dim);padding:4px 0 16px' },
@@ -586,7 +860,8 @@ function buildView() {
   ));
 
   setTimeout(() => {
-    renderMonthlyBar(youData, ritaData, months);
+    renderStreamMonthly(youData, ritaData, months);
+    renderPersonMonthly(youData, ritaData, months);
     renderCompositionDonut('pi-giorgos-donut', youData, YOU_LABEL, YOU_HEX);
     renderCompositionDonut('pi-rita-donut',    ritaData, RITA_LABEL, RITA_HEX);
   }, 0);
