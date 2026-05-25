@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkKpiCard, mkEmptyState, expStream, safePct, mkInsightsBanner } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -390,12 +390,20 @@ function buildView() {
 
   const totalExpDrill = () => {
     const body = el('div');
-    const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
-    sgrid.appendChild(mkSummaryBox('Operating Expenses', formatEUR(opTotal),
-      total > 0 ? `${(opTotal / total * 100).toFixed(0)}% of total · ${opEx.length} record${opEx.length !== 1 ? 's' : ''}` : null));
-    sgrid.appendChild(mkSummaryBox('Capital Expenditure', formatEUR(capTotal),
-      total > 0 ? `${(capTotal / total * 100).toFixed(0)}% of total · ${capEx.length} record${capEx.length !== 1 ? 's' : ''}` : null));
-    body.appendChild(sgrid);
+    if (cmp) {
+      body.appendChild(mkCmpGrid([
+        { label: 'Total Expenses',      curVal: formatEUR(total),    cmpVal: formatEUR(cmp.total)    },
+        { label: 'Operating Expenses',  curVal: formatEUR(opTotal),  cmpVal: formatEUR(cmp.opTotal)  },
+        { label: 'Capital Expenditure', curVal: formatEUR(capTotal), cmpVal: formatEUR(cmp.capTotal) },
+      ], 'Current Period', cmpLabel));
+    } else {
+      const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
+      sgrid.appendChild(mkSummaryBox('Operating Expenses', formatEUR(opTotal),
+        total > 0 ? `${(opTotal / total * 100).toFixed(0)}% of total · ${opEx.length} record${opEx.length !== 1 ? 's' : ''}` : null));
+      sgrid.appendChild(mkSummaryBox('Capital Expenditure', formatEUR(capTotal),
+        total > 0 ? `${(capTotal / total * 100).toFixed(0)}% of total · ${capEx.length} record${capEx.length !== 1 ? 's' : ''}` : null));
+      body.appendChild(sgrid);
+    }
     const catMap = new Map();
     allExp.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
     const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
@@ -508,6 +516,7 @@ function buildView() {
     delta:       safePct(total, cmp?.total),
     invertDelta: true,
     compLabel:   cmpLabel,
+    compValue:   cmp ? formatEUR(cmp.total) : undefined,
     onClick:     totalExpDrill,
     lines: [
       { label: 'OpEx',  value: formatEUR(opTotal),  color: '#ef4444' },
@@ -522,6 +531,7 @@ function buildView() {
     delta:       safePct(opTotal, cmp?.opTotal),
     invertDelta: true,
     compLabel:   cmpLabel,
+    compValue:   cmp ? formatEUR(cmp.opTotal) : undefined,
     onClick:     opExDrill
   }));
 
@@ -532,6 +542,7 @@ function buildView() {
     delta:       safePct(capTotal, cmp?.capTotal),
     invertDelta: true,
     compLabel:   cmpLabel,
+    compValue:   cmp ? formatEUR(cmp.capTotal) : undefined,
     variant:     capTotal > 0 ? 'warning' : '',
     onClick:     capExDrill
   }));

@@ -7,7 +7,7 @@ import {
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers
 } from './analytics-filters.js?v=20260519';
 import {
-  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, safePct
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct
 } from './analytics-helpers.js';
 import { SERVICE_STREAMS, STREAMS, PROPERTY_STREAMS } from '../core/config.js';
 
@@ -245,19 +245,31 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
   });
 
   // 1. Total Portfolio Revenue
+  const cl = cmpRange?.label || '';
   grid.appendChild(mkKpiCard({
     label: 'Total Portfolio Revenue',
     value: formatEUR(total),
     subtitle: 'All partners combined',
     delta: safePct(total, cmpData?.total),
-    compLabel: cmpRange?.label,
+    compLabel: cl,
+    compValue: cmpData ? formatEUR(cmpData.total) : undefined,
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      body.appendChild(mkSummaryGrid([
-        { label: YOU_LABEL,  value: formatEUR(revSplit.you),  sub: youPct.toFixed(1) + '%' },
-        { label: RITA_LABEL, value: formatEUR(revSplit.rita), sub: ritaPct.toFixed(1) + '%' },
-        { label: 'Total',    value: formatEUR(total) }
-      ], 3));
+      if (cmpData) {
+        const cmpYou  = cmpData.revSplit.you;
+        const cmpRita = cmpData.revSplit.rita;
+        body.appendChild(mkCmpGrid([
+          { label: YOU_LABEL,  curVal: formatEUR(revSplit.you),  cmpVal: formatEUR(cmpYou)  },
+          { label: RITA_LABEL, curVal: formatEUR(revSplit.rita), cmpVal: formatEUR(cmpRita) },
+          { label: 'Total',    curVal: formatEUR(total),          cmpVal: formatEUR(cmpData.total) },
+        ], 'Current Period', cl));
+      } else {
+        body.appendChild(mkSummaryGrid([
+          { label: YOU_LABEL,  value: formatEUR(revSplit.you),  sub: youPct.toFixed(1) + '%' },
+          { label: RITA_LABEL, value: formatEUR(revSplit.rita), sub: ritaPct.toFixed(1) + '%' },
+          { label: 'Total',    value: formatEUR(total) }
+        ], 3));
+      }
       body.appendChild(mkSectionLabel('Revenue Split'));
       body.appendChild(mkModalTable(
         ['Partner', 'Revenue', '% of Total'],
@@ -284,7 +296,8 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     subtitle: formatEUR(revSplit.you),
     delta: safePct(youPct, cmpYouPct),
     deltaIsPp: true,
-    compLabel: cmpRange?.label,
+    compLabel: cl,
+    compValue: cmpYouPct != null ? `${cmpYouPct.toFixed(1)}%` : undefined,
     onClick: () => {
       const body = buildShareKpiModal('you', 'Giorgos', revSplit.you, youPct, [...annotatedPayments, ...annotatedInvoices]);
       openModal({ title: 'Giorgos Share — Detail', body, large: true });
@@ -298,7 +311,8 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     subtitle: formatEUR(revSplit.rita),
     delta: safePct(ritaPct, cmpRitaPct),
     deltaIsPp: true,
-    compLabel: cmpRange?.label,
+    compLabel: cl,
+    compValue: cmpRitaPct != null ? `${cmpRitaPct.toFixed(1)}%` : undefined,
     onClick: () => {
       const body = buildShareKpiModal('rita', 'Rita', revSplit.rita, ritaPct, [...annotatedPayments, ...annotatedInvoices]);
       openModal({ title: 'Rita Share — Detail', body, large: true });

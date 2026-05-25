@@ -10,7 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, expStream, safePct, fmtK, mkInsightsBanner } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -473,6 +473,7 @@ function buildView() {
     variant:   'success',
     delta:     deltaCashIn,
     compLabel: cmpRange?.label,
+    compValue: cmpData ? formatEUR(cmpData.cashIn) : undefined,
     onClick:   () => {
       // Summary: Payments vs Invoices totals
       const totalPay = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
@@ -510,6 +511,7 @@ function buildView() {
     delta:       deltaOpEx,
     invertDelta: true,
     compLabel:   cmpRange?.label,
+    compValue:   cmpData ? formatEUR(cmpData.opExCashOut) : undefined,
     onClick:     () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
@@ -566,6 +568,7 @@ function buildView() {
     variant:   opCashFlow >= 0 ? 'success' : 'danger',
     delta:     deltaOpCF,
     compLabel: cmpRange?.label,
+    compValue: cmpData ? formatEUR(cmpData.opCashFlow) : undefined,
     onClick:   () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
@@ -625,6 +628,7 @@ function buildView() {
     delta:       deltaInvest,
     invertDelta: true,
     compLabel:   cmpRange?.label,
+    compValue:   cmpData ? formatEUR(cmpData.investCashOut) : undefined,
     onClick:     () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
@@ -677,15 +681,25 @@ function buildView() {
     subtitle:  'After OpEx and CapEx',
     delta:     deltaNet,
     compLabel: cmpRange?.label,
+    compValue: cmpData ? formatEUR(cmpData.net) : undefined,
     onClick:   () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
       // Top-level summary
-      const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
-      summaryGrid.appendChild(mkSummaryBox('Operating CF', formatEUR(opCashFlow), `In ${formatEUR(cashIn)} − OpEx ${formatEUR(opExCashOut)}`));
-      summaryGrid.appendChild(mkSummaryBox('Investment Out', formatEUR(investCashOut), `${capExpenses.length} CapEx items`));
-      summaryGrid.appendChild(mkSummaryBox('Net Cash Flow', formatEUR(net), net >= 0 ? 'Surplus' : 'Deficit'));
-      body.appendChild(summaryGrid);
+      if (cmpData) {
+        body.appendChild(mkCmpGrid([
+          { label: 'Cash In (Revenue)', curVal: formatEUR(cashIn),       cmpVal: formatEUR(cmpData.cashIn)       },
+          { label: 'OpEx',              curVal: formatEUR(opExCashOut),   cmpVal: formatEUR(cmpData.opExCashOut)   },
+          { label: 'CapEx',             curVal: formatEUR(investCashOut), cmpVal: formatEUR(cmpData.investCashOut) },
+          { label: 'Net Cash Flow',     curVal: formatEUR(net),           cmpVal: formatEUR(cmpData.net)           },
+        ], 'Current Period', cmpRange?.label || ''));
+      } else {
+        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
+        summaryGrid.appendChild(mkSummaryBox('Operating CF', formatEUR(opCashFlow), `In ${formatEUR(cashIn)} − OpEx ${formatEUR(opExCashOut)}`));
+        summaryGrid.appendChild(mkSummaryBox('Investment Out', formatEUR(investCashOut), `${capExpenses.length} CapEx items`));
+        summaryGrid.appendChild(mkSummaryBox('Net Cash Flow', formatEUR(net), net >= 0 ? 'Surplus' : 'Deficit'));
+        body.appendChild(summaryGrid);
+      }
 
       // Monthly breakdown
       const monthMap = new Map();
@@ -736,6 +750,7 @@ function buildView() {
     variant:   avgMonthlyNet >= 0 ? '' : 'warning',
     delta:     deltaAvgNet,
     compLabel: cmpRange?.label,
+    compValue: cmpData ? formatEUR(cmpData.avgMonthlyNet) : undefined,
     onClick:   () => {
       const monthMap = new Map();
       const addMk = (mk, inAmt, opOut, capOut) => {

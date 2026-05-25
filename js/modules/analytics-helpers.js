@@ -200,7 +200,7 @@ export function mkProgressBar(pct, color) {
  * @param {Array}    [opts.lines]      - Breakdown lines for composite cards.
  *   Each line: { label, value, pct?, onClick? }
  */
-export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, variant, onClick, lines } = {}) {
+export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, compValue, variant, onClick, lines } = {}) {
   const card = el('div', {
     class: 'kpi' + (variant ? ' ' + variant : ''),
     style: onClick ? 'cursor:pointer;transition:box-shadow 120ms' : '',
@@ -221,6 +221,7 @@ export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelt
     const disp  = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
     const cls   = delta === 0 ? '' : delta > 0 ? (invertDelta ? 'down' : 'up') : (invertDelta ? 'up' : 'down');
     trend.appendChild(el('span', { class: cls }, disp));
+    if (compValue) trend.appendChild(el('span', { style: 'color:var(--text-muted);margin:0 4px' }, `· ${compValue}`));
     if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
     card.appendChild(trend);
   }
@@ -246,6 +247,27 @@ export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelt
   if (subtitle) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, subtitle));
   card.appendChild(el('div', { class: 'kpi-accent-bar' }));
   return card;
+}
+
+// ── Comparison grid ───────────────────────────────────────────────────────────
+
+/**
+ * mkCmpGrid(items, curLabel, cmpLabel) — side-by-side comparison summary.
+ * items = [{label, curVal, cmpVal, curSub?, cmpSub?}]
+ */
+export function mkCmpGrid(items, curLabel, cmpLabel) {
+  const wrap = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
+  const headerStyle = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px';
+  for (const [lbl, vals] of [
+    [curLabel,         items.map(i => [i.label, i.curVal, i.curSub ?? null])],
+    [`vs ${cmpLabel}`, items.map(i => [i.label, i.cmpVal, i.cmpSub ?? null])]
+  ]) {
+    const col = el('div');
+    col.appendChild(el('div', { style: headerStyle }, lbl));
+    vals.forEach(([label, value, sub]) => col.appendChild(mkSummaryBox(label, value, sub)));
+    wrap.appendChild(col);
+  }
+  return wrap;
 }
 
 // ── Empty state ───────────────────────────────────────────────────────────────

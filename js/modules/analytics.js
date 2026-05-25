@@ -10,7 +10,7 @@ import {
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
 import {
-  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard,
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid,
   safePct, fmtK
 } from './analytics-helpers.js';
 
@@ -192,10 +192,18 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   // Total Revenue drill
   const revDrill = () => {
     const body = el('div');
-    body.appendChild(mkSummaryGrid([
-      { label: 'Rental Income',   value: formatEUR(propRev), sub: pct(propRev, totalRev) + ' of total' },
-      { label: 'Service Income',  value: formatEUR(svcRev),  sub: pct(svcRev,  totalRev) + ' of total' }
-    ]));
+    if (cmp) {
+      body.appendChild(mkCmpGrid([
+        { label: 'Total Revenue',  curVal: formatEUR(totalRev), cmpVal: formatEUR(cmp.totalRev) },
+        { label: 'Rental Income',  curVal: formatEUR(propRev),  cmpVal: formatEUR(cmp.propRev)  },
+        { label: 'Service Income', curVal: formatEUR(svcRev),   cmpVal: formatEUR(cmp.svcRev)   },
+      ], 'Current Period', cl));
+    } else {
+      body.appendChild(mkSummaryGrid([
+        { label: 'Rental Income',   value: formatEUR(propRev), sub: pct(propRev, totalRev) + ' of total' },
+        { label: 'Service Income',  value: formatEUR(svcRev),  sub: pct(svcRev,  totalRev) + ' of total' }
+      ]));
+    }
     body.appendChild(mkSectionLabel('Revenue by Stream'));
     const streamLabels = {
       short_term_rental:  'Short-term Rental',
@@ -222,12 +230,21 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   // P&L drill (cash position)
   const cashDrill = () => {
     const body = el('div');
-    body.appendChild(mkSummaryGrid([
-      { label: 'Total Revenue',   value: formatEUR(totalRev) },
-      { label: 'OpEx',            value: formatEUR(cur.opEx),    sub: 'Operating expenses' },
-      { label: 'CapEx',           value: formatEUR(cur.capEx),   sub: 'Capital expenses' },
-      { label: 'Net Cash Flow',   value: formatEUR(cashPos),     sub: cashPos >= 0 ? 'Positive' : 'Negative' }
-    ], 2));
+    if (cmp) {
+      body.appendChild(mkCmpGrid([
+        { label: 'Total Revenue', curVal: formatEUR(totalRev),  cmpVal: formatEUR(cmp.totalRev)  },
+        { label: 'OpEx',          curVal: formatEUR(cur.opEx),  cmpVal: formatEUR(cmp.opEx)       },
+        { label: 'CapEx',         curVal: formatEUR(cur.capEx), cmpVal: formatEUR(cmp.capEx)      },
+        { label: 'Net Cash Flow', curVal: formatEUR(cashPos),   cmpVal: formatEUR(cmp.cashPos)    },
+      ], 'Current Period', cl));
+    } else {
+      body.appendChild(mkSummaryGrid([
+        { label: 'Total Revenue',   value: formatEUR(totalRev) },
+        { label: 'OpEx',            value: formatEUR(cur.opEx),    sub: 'Operating expenses' },
+        { label: 'CapEx',           value: formatEUR(cur.capEx),   sub: 'Capital expenses' },
+        { label: 'Net Cash Flow',   value: formatEUR(cashPos),     sub: cashPos >= 0 ? 'Positive' : 'Negative' }
+      ], 2));
+    }
     openModal({ title: 'Cash Position Breakdown', body, large: false });
   };
 
@@ -260,6 +277,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     subtitle: `Rental ${pct(propRev, totalRev)} · Service ${pct(svcRev, totalRev)}`,
     delta:    dRev,
     compLabel: cl,
+    compValue: cmp ? formatEUR(cmp.totalRev) : undefined,
     onClick:  revDrill
   }));
 
@@ -273,14 +291,23 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       subtitle: margin !== null ? `Margin: ${margin.toFixed(1)}%` : 'No revenue',
       delta:    dProfit,
       compLabel: cl,
+      compValue: cmp ? formatEUR(cmp.netOpProfit) : undefined,
       variant,
       onClick: () => {
         const body = el('div');
-        body.appendChild(mkSummaryGrid([
-          { label: 'Revenue',         value: formatEUR(totalRev) },
-          { label: 'OpEx',            value: formatEUR(opEx) },
-          { label: 'Net Op. Profit',  value: formatEUR(netOpProfit), sub: margin !== null ? `${margin.toFixed(1)}% margin` : '' }
-        ], 1));
+        if (cmp) {
+          body.appendChild(mkCmpGrid([
+            { label: 'Revenue',        curVal: formatEUR(totalRev),    cmpVal: formatEUR(cmp.totalRev)    },
+            { label: 'OpEx',           curVal: formatEUR(opEx),        cmpVal: formatEUR(cmp.opEx)         },
+            { label: 'Net Op. Profit', curVal: formatEUR(netOpProfit), cmpVal: formatEUR(cmp.netOpProfit)  },
+          ], 'Current Period', cl));
+        } else {
+          body.appendChild(mkSummaryGrid([
+            { label: 'Revenue',         value: formatEUR(totalRev) },
+            { label: 'OpEx',            value: formatEUR(opEx) },
+            { label: 'Net Op. Profit',  value: formatEUR(netOpProfit), sub: margin !== null ? `${margin.toFixed(1)}% margin` : '' }
+          ], 1));
+        }
         openModal({ title: 'Net Operating Profit', body, large: false });
       }
     }));
@@ -295,6 +322,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       subtitle: `Revenue minus all expenses`,
       delta:    dCash,
       compLabel: cl,
+      compValue: cmp ? formatEUR(cmp.cashPos) : undefined,
       variant,
       onClick:  cashDrill
     }));
@@ -313,14 +341,24 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       delta: dBC,
       deltaIsPp: true,
       compLabel: cl,
+      compValue: cmp && cmpBC !== null ? `${cmpBC.toFixed(1)} mo` : undefined,
       variant,
       onClick: () => {
         const body = el('div');
-        body.appendChild(mkSummaryGrid([
-          { label: 'Period Net Cash',    value: formatEUR(cashPos),       sub: cashPos >= 0 ? 'Positive' : 'Negative' },
-          { label: 'Avg Monthly OpEx',  value: formatEUR(avgMonthlyOpEx), sub: `over ${periodMonths} month${periodMonths !== 1 ? 's' : ''}` },
-          { label: 'Burn Coverage',      value: months !== null ? `${months.toFixed(1)} months` : '—', sub: months !== null && months < 3 ? 'Low — review spending' : null }
-        ], 1));
+        if (cmp) {
+          const cmpMonths = cmpBC !== null ? `${cmpBC.toFixed(1)} months` : '—';
+          body.appendChild(mkCmpGrid([
+            { label: 'Period Net Cash',   curVal: formatEUR(cashPos),        cmpVal: formatEUR(cmp.cashPos)        },
+            { label: 'Avg Monthly OpEx',  curVal: formatEUR(avgMonthlyOpEx),  cmpVal: formatEUR(cmp.avgMonthlyOpEx) },
+            { label: 'Burn Coverage',     curVal: months !== null ? `${months.toFixed(1)} months` : '—', cmpVal: cmpMonths },
+          ], 'Current Period', cl));
+        } else {
+          body.appendChild(mkSummaryGrid([
+            { label: 'Period Net Cash',    value: formatEUR(cashPos),       sub: cashPos >= 0 ? 'Positive' : 'Negative' },
+            { label: 'Avg Monthly OpEx',  value: formatEUR(avgMonthlyOpEx), sub: `over ${periodMonths} month${periodMonths !== 1 ? 's' : ''}` },
+            { label: 'Burn Coverage',      value: months !== null ? `${months.toFixed(1)} months` : '—', sub: months !== null && months < 3 ? 'Low — review spending' : null }
+          ], 1));
+        }
         body.appendChild(el('div', {
           style: 'font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.6;padding:8px 10px;border-radius:6px;background:rgba(255,255,255,0.03)'
         }, 'Measures how many months of operating expenses are covered by this period\'s net cash flow. Uses period-level data — not a balance-sheet cash runway figure.'));
@@ -368,15 +406,25 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       delta:    dCollect,
       deltaIsPp: true,
       compLabel: cl,
+      compValue: cmp && cmp.collectionRate != null ? `${cmp.collectionRate.toFixed(1)}%` : undefined,
       variant,
       onClick: () => {
         const body = el('div');
-        body.appendChild(mkSummaryGrid([
-          { label: 'Paid',        value: formatEUR(cur.paidInvTotal) },
-          { label: 'Outstanding', value: formatEUR(cur.outTotal) },
-          { label: 'Invoiced',    value: formatEUR(cur.invoicedTotal) },
-          { label: 'Rate',        value: collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—' }
-        ]));
+        if (cmp) {
+          body.appendChild(mkCmpGrid([
+            { label: 'Paid',        curVal: formatEUR(cur.paidInvTotal), cmpVal: formatEUR(cmp.paidInvTotal) },
+            { label: 'Outstanding', curVal: formatEUR(cur.outTotal),     cmpVal: formatEUR(cmp.outTotal)     },
+            { label: 'Rate',        curVal: collectionRate != null ? `${collectionRate.toFixed(1)}%` : '—',
+                                    cmpVal: cmp.collectionRate != null ? `${cmp.collectionRate.toFixed(1)}%` : '—' },
+          ], 'Current Period', cl));
+        } else {
+          body.appendChild(mkSummaryGrid([
+            { label: 'Paid',        value: formatEUR(cur.paidInvTotal) },
+            { label: 'Outstanding', value: formatEUR(cur.outTotal) },
+            { label: 'Invoiced',    value: formatEUR(cur.invoicedTotal) },
+            { label: 'Rate',        value: collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—' }
+          ]));
+        }
         openModal({ title: 'Invoice Collection Rate', body, large: false });
       }
     }));
@@ -396,15 +444,25 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       deltaIsPp: true,
       invertDelta: true,
       compLabel: cl,
+      compValue: cmp && cmp.expenseRatio != null ? `${cmp.expenseRatio.toFixed(1)}%` : undefined,
       variant,
       onClick: () => {
         const body = el('div');
-        body.appendChild(mkSummaryGrid([
-          { label: 'Total Revenue', value: formatEUR(totalRev) },
-          { label: 'OpEx',          value: formatEUR(opEx) },
-          { label: 'CapEx',         value: formatEUR(cur.capEx) },
-          { label: 'Expense Ratio', value: expenseRatio !== null ? `${expenseRatio.toFixed(1)}%` : '—' }
-        ]));
+        if (cmp) {
+          body.appendChild(mkCmpGrid([
+            { label: 'Total Revenue', curVal: formatEUR(totalRev),  cmpVal: formatEUR(cmp.totalRev)  },
+            { label: 'OpEx',          curVal: formatEUR(opEx),      cmpVal: formatEUR(cmp.opEx)       },
+            { label: 'Expense Ratio', curVal: expenseRatio != null ? `${expenseRatio.toFixed(1)}%` : '—',
+                                      cmpVal: cmp.expenseRatio != null ? `${cmp.expenseRatio.toFixed(1)}%` : '—' },
+          ], 'Current Period', cl));
+        } else {
+          body.appendChild(mkSummaryGrid([
+            { label: 'Total Revenue', value: formatEUR(totalRev) },
+            { label: 'OpEx',          value: formatEUR(opEx) },
+            { label: 'CapEx',         value: formatEUR(cur.capEx) },
+            { label: 'Expense Ratio', value: expenseRatio !== null ? `${expenseRatio.toFixed(1)}%` : '—' }
+          ]));
+        }
         openModal({ title: 'Expense Ratio', body, large: false });
       }
     }));

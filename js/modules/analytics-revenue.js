@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, safePct, fmtK } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK } from './analytics-helpers.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const OWNER_COLORS = { you: '#6366f1', rita: '#ec4899', both: '#14b8a6' };
@@ -116,14 +116,23 @@ function buildKpiSection(cur, cmp, cmpRange) {
   // ── Total Revenue drill-down ────────────────────────────────────────────────
   const totalRevDrill = () => {
     const body = el('div');
+    const { propRev: cPropRev, svcRev: cSvcRev, total: cTotal } = cmp || {};
 
-    // Rental vs Service summary boxes
-    const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
-    sgrid.appendChild(mkSummaryBox('Rental Revenue', formatEUR(propRev),
-      total > 0 ? `${(propRev / total * 100).toFixed(0)}% of total · ${activePropIds.size} propert${activePropIds.size !== 1 ? 'ies' : 'y'}` : null));
-    sgrid.appendChild(mkSummaryBox('Service Revenue', formatEUR(svcRev),
-      total > 0 ? `${(svcRev / total * 100).toFixed(0)}% of total · ${activeClientIds.size} client${activeClientIds.size !== 1 ? 's' : ''}` : null));
-    body.appendChild(sgrid);
+    if (cmp) {
+      body.appendChild(mkCmpGrid([
+        { label: 'Total Revenue',   curVal: formatEUR(total),   cmpVal: formatEUR(cTotal)   },
+        { label: 'Rental Revenue',  curVal: formatEUR(propRev), cmpVal: formatEUR(cPropRev) },
+        { label: 'Service Revenue', curVal: formatEUR(svcRev),  cmpVal: formatEUR(cSvcRev)  },
+      ], 'Current Period', cl));
+    } else {
+      // Rental vs Service summary boxes
+      const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
+      sgrid.appendChild(mkSummaryBox('Rental Revenue', formatEUR(propRev),
+        total > 0 ? `${(propRev / total * 100).toFixed(0)}% of total · ${activePropIds.size} propert${activePropIds.size !== 1 ? 'ies' : 'y'}` : null));
+      sgrid.appendChild(mkSummaryBox('Service Revenue', formatEUR(svcRev),
+        total > 0 ? `${(svcRev / total * 100).toFixed(0)}% of total · ${activeClientIds.size} client${activeClientIds.size !== 1 ? 's' : ''}` : null));
+      body.appendChild(sgrid);
+    }
 
     // Stream breakdown table
     const streamRows = [
@@ -157,16 +166,26 @@ function buildKpiSection(cur, cmp, cmpRange) {
   const serviceRevDrill = () => {
     const body = el('div');
 
-    // CS vs Marketing boxes
-    const streamData = [
-      { label: 'Customer Success',   eur: csRev  },
-      { label: 'Marketing Services', eur: mktRev },
-    ].filter(s => s.eur > 0);
-    if (streamData.length) {
-      const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${streamData.length},1fr);gap:12px;margin-bottom:20px` });
-      streamData.forEach(s => sgrid.appendChild(mkSummaryBox(s.label, formatEUR(s.eur),
-        svcRev > 0 ? `${(s.eur / svcRev * 100).toFixed(0)}% of service revenue` : null)));
-      body.appendChild(sgrid);
+    if (cmp) {
+      const cmpStr = new Map();
+      (cmp.invoices || []).forEach(i => { const s = i.stream || 'other'; cmpStr.set(s, (cmpStr.get(s)||0) + toEUR(i.total, i.currency, i.issueDate)); });
+      body.appendChild(mkCmpGrid([
+        { label: 'Service Revenue',    curVal: formatEUR(svcRev), cmpVal: formatEUR(cmp.svcRev) },
+        { label: 'Customer Success',   curVal: formatEUR(csRev),  cmpVal: formatEUR(cmpStr.get('customer_success')  || 0) },
+        { label: 'Marketing Services', curVal: formatEUR(mktRev), cmpVal: formatEUR(cmpStr.get('marketing_services')|| 0) },
+      ], 'Current Period', cl));
+    } else {
+      // CS vs Marketing boxes
+      const streamData = [
+        { label: 'Customer Success',   eur: csRev  },
+        { label: 'Marketing Services', eur: mktRev },
+      ].filter(s => s.eur > 0);
+      if (streamData.length) {
+        const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${streamData.length},1fr);gap:12px;margin-bottom:20px` });
+        streamData.forEach(s => sgrid.appendChild(mkSummaryBox(s.label, formatEUR(s.eur),
+          svcRev > 0 ? `${(s.eur / svcRev * 100).toFixed(0)}% of service revenue` : null)));
+        body.appendChild(sgrid);
+      }
     }
 
     // Clients table
@@ -198,16 +217,26 @@ function buildKpiSection(cur, cmp, cmpRange) {
   const rentalRevDrill = () => {
     const body = el('div');
 
-    // STR vs LTR summary boxes
-    const typeData = [
-      { label: 'Short-term Rental', eur: stRev, props: strPropIds.size },
-      { label: 'Long-term Rental',  eur: ltRev, props: ltrPropIds.size },
-    ].filter(t => t.eur > 0);
-    if (typeData.length) {
-      const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${typeData.length},1fr);gap:12px;margin-bottom:20px` });
-      typeData.forEach(t => sgrid.appendChild(mkSummaryBox(t.label, formatEUR(t.eur),
-        `${t.props} prop${t.props !== 1 ? 's' : ''} · ${propRev > 0 ? (t.eur / propRev * 100).toFixed(0) : 0}% of rental`)));
-      body.appendChild(sgrid);
+    if (cmp) {
+      const cmpStr = new Map();
+      (cmp.payments || []).forEach(p => { const s = p.stream || 'other'; cmpStr.set(s, (cmpStr.get(s)||0) + toEUR(p.amount, p.currency, p.date)); });
+      body.appendChild(mkCmpGrid([
+        { label: 'Rental Revenue',    curVal: formatEUR(propRev), cmpVal: formatEUR(cmp.propRev) },
+        { label: 'Short-term Rental', curVal: formatEUR(stRev),   cmpVal: formatEUR(cmpStr.get('short_term_rental') || 0) },
+        { label: 'Long-term Rental',  curVal: formatEUR(ltRev),   cmpVal: formatEUR(cmpStr.get('long_term_rental')  || 0) },
+      ], 'Current Period', cl));
+    } else {
+      // STR vs LTR summary boxes
+      const typeData = [
+        { label: 'Short-term Rental', eur: stRev, props: strPropIds.size },
+        { label: 'Long-term Rental',  eur: ltRev, props: ltrPropIds.size },
+      ].filter(t => t.eur > 0);
+      if (typeData.length) {
+        const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${typeData.length},1fr);gap:12px;margin-bottom:20px` });
+        typeData.forEach(t => sgrid.appendChild(mkSummaryBox(t.label, formatEUR(t.eur),
+          `${t.props} prop${t.props !== 1 ? 's' : ''} · ${propRev > 0 ? (t.eur / propRev * 100).toFixed(0) : 0}% of rental`)));
+        body.appendChild(sgrid);
+      }
     }
 
     // Per-property table
@@ -244,7 +273,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
 
   compGrid.appendChild(mkKpiCard({
     label: 'Total Revenue', value: formatEUR(total),
-    delta: dTotal, compLabel: cl,
+    delta: dTotal, compLabel: cl, compValue: cmp ? formatEUR(cmp.total) : undefined,
     onClick: totalRevDrill,
     lines: [
       { label: 'Rental',   value: formatEUR(propRev), pct: pct(propRev, total), onClick: rentalRevDrill },
@@ -254,7 +283,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
 
   compGrid.appendChild(mkKpiCard({
     label: 'Service Revenue', value: formatEUR(svcRev),
-    delta: dService, compLabel: cl,
+    delta: dService, compLabel: cl, compValue: cmp ? formatEUR(cmp.svcRev) : undefined,
     onClick: serviceRevDrill,
     lines: [
       { label: 'Customer Success',   value: formatEUR(csRev),  pct: pct(csRev,  svcRev),
@@ -266,7 +295,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
 
   compGrid.appendChild(mkKpiCard({
     label: 'Rental Revenue', value: formatEUR(propRev),
-    delta: dRental, compLabel: cl,
+    delta: dRental, compLabel: cl, compValue: cmp ? formatEUR(cmp.propRev) : undefined,
     onClick: rentalRevDrill,
     lines: [
       { label: 'Short-term', value: formatEUR(stRev), pct: pct(stRev, propRev),
