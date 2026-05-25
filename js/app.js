@@ -6,7 +6,7 @@ import { toast } from './core/ui.js';
 import { requireAuth, clearSession } from './core/auth.js';
 import { startPresence } from './core/presence.js';
 
-const VERSION = window._appV || '20260523b';
+const VERSION = window._appV || '20260525';
 
 async function boot() {
   const [
@@ -24,6 +24,7 @@ async function boot() {
     { default: analyticsForecast },
 
     { default: analyticsOwner },
+    { default: analyticsPersonal },
     { default: analyticsTax },
     { default: clients },
     { default: invoices },
@@ -47,6 +48,7 @@ async function boot() {
     import(`./modules/analytics-forecast.js?v=${VERSION}`),
 
     import(`./modules/analytics-owner.js?v=${VERSION}`),
+    import(`./modules/analytics-personal.js?v=${VERSION}`),
     import(`./modules/analytics-tax.js?v=${VERSION}`),
     import(`./modules/clients.js?v=${VERSION}`),
     import(`./modules/invoices.js?v=${VERSION}`),
@@ -59,7 +61,7 @@ async function boot() {
 
   const MODULES = [
     properties, payments, expenses, tenants, vendors, inventory,
-    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsTax, clients, invoices, settings, users
+    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsPersonal, analyticsTax, clients, invoices, settings, users
   ];
 
   MODULES.forEach(router.registerModule);
@@ -337,7 +339,7 @@ function buildUserFooter() {
 
 function buildSidebar(MODULES) {
   const navGroups = [
-    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-tax'] },
+    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-personal', 'analytics-tax'] },
     { title: 'Operations', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'forecast'] },
     { title: 'System', items: ['settings', 'users'] }
   ];

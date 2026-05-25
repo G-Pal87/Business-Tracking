@@ -5,7 +5,7 @@ import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI
 } from '../core/data.js';
-import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES } from '../core/config.js';
+import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS } from '../core/config.js';
 import { fetchICal, parseICal, nights } from '../core/ical.js';
 import { openExpenseForm } from './expenses.js';
 import { navigate } from '../core/router.js';
@@ -506,7 +506,7 @@ function openForm(existing) {
   const p = existing ? { ...existing } : {
     id: newId('prop'),
     name: '', address: '', city: '', country: '', flag: '',
-    type: 'short_term', status: 'active',
+    type: 'short_term', status: 'active', channel: 'company',
     bedrooms: 1, bathrooms: 1,
     purchasePrice: 0, currency: 'EUR', purchaseDate: new Date().toISOString().slice(0, 10),
     monthlyRent: 0, nightlyRate: 0,
@@ -520,9 +520,10 @@ function openForm(existing) {
   const cityI = input({ value: p.city });
   const countryI = input({ value: p.country });
   const flagI = input({ value: p.flag, placeholder: 'ES, HU, PT...', maxlength: 4 });
-  const typeS = select(Object.entries(PROPERTY_TYPES).map(([v, l]) => ({ value: v, label: l })), p.type);
-  const statusS = select(Object.entries(PROPERTY_STATUSES).map(([v, m]) => ({ value: v, label: m.label })), p.status);
-  const ownerS = select(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), p.owner);
+  const typeS    = select(Object.entries(PROPERTY_TYPES).map(([v, l]) => ({ value: v, label: l })), p.type);
+  const statusS  = select(Object.entries(PROPERTY_STATUSES).map(([v, m]) => ({ value: v, label: m.label })), p.status);
+  const ownerS   = select(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), p.owner);
+  const channelS = select(Object.entries(PROPERTY_CHANNELS).map(([v, l]) => ({ value: v, label: l })), p.channel || 'company');
   const currencyS = select(CURRENCIES, p.currency);
   const purchaseI = input({ type: 'number', value: p.purchasePrice, min: 0, step: 1000 });
   const dateI = input({ type: 'date', value: p.purchaseDate });
@@ -538,15 +539,27 @@ function openForm(existing) {
   const icalI = input({ value: p.airbnbCalUrl || '', placeholder: 'https://airbnb.com/calendar/ical/...' });
   const soldDateI = input({ type: 'date', value: p.soldDate || '' });
 
-  // Rows that toggle based on type
-  const ltRow = el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Payment Due Day (1–28)', payDayI));
+  // Rows that toggle based on type + channel
+  const rentLabelEl = el('label', { class: 'form-label' }, 'Monthly Rent');
+  const rentRowInner = el('div', { class: 'form-row' }, rentLabelEl, rentI);
+  const payDayRow = formRow('Payment Due Day (1–28)', payDayI);
+  const ltRow = el('div', { class: 'form-row horizontal' }, rentRowInner, payDayRow);
   const icalRow = formRow('Airbnb iCal URL', icalI);
+
   const updateTypeFields = () => {
-    const isLT = typeS.value === 'long_term';
-    ltRow.style.display = isLT ? '' : 'none';
-    icalRow.style.display = isLT ? 'none' : '';
+    const isLT      = typeS.value === 'long_term';
+    const isCompany = (channelS.value || 'company') === 'company';
+    // Company-channel: show owner rent (no payment-day, not a tenant schedule)
+    // Personal LT: show tenant monthly rent + payment day
+    const showOwnerRent  = isCompany;
+    const showTenantRent = !isCompany && isLT;
+    ltRow.style.display  = (showOwnerRent || showTenantRent) ? '' : 'none';
+    payDayRow.style.display = showTenantRent ? '' : 'none';
+    rentLabelEl.textContent = isCompany ? 'Monthly Owner Rent' : 'Monthly Rent';
+    icalRow.style.display   = !isCompany && !isLT ? '' : 'none';
   };
-  typeS.onchange = updateTypeFields;
+  typeS.onchange    = updateTypeFields;
+  channelS.onchange = updateTypeFields;
 
   const soldDateRow = formRow('Sold Date', soldDateI);
   const updateStatusFields = () => {
@@ -559,7 +572,8 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Country', countryI), formRow('Flag (ISO)', flagI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Type', typeS), formRow('Status', statusS)));
   body.appendChild(soldDateRow);
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Owner', ownerS), formRow('Currency', currencyS)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Owner', ownerS), formRow('Channel', channelS)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Currency', currencyS), el('div', { class: 'form-row' })));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Purchase Price', purchaseI), formRow('Purchase Date', dateI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Bedrooms', bedsI), formRow('Bathrooms', bathsI)));
   body.appendChild(ltRow);
@@ -716,6 +730,7 @@ function openForm(existing) {
       type: typeS.value,
       status: statusS.value,
       owner: ownerS.value,
+      channel: channelS.value || 'company',
       currency: currencyS.value,
       purchasePrice: Number(purchaseI.value) || 0,
       purchaseDate: dateI.value,

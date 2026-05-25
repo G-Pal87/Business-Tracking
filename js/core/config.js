@@ -23,17 +23,20 @@ export const EXPENSE_CATEGORIES = {
   water:            { label: 'Water',              icon: 'W',  color: '#06b6d4' },
   inventory:        { label: 'Inventory',          icon: 'B',  color: '#84cc16' },
   vat:              { label: 'VAT',                icon: 'V',  color: '#f97316' },
-  reimbursement:    { label: 'Reimbursement',      icon: 'Rb', color: '#a855f7' },
-  str_fee:          { label: 'STR Fee',            icon: 'SF', color: '#fb923c' },
-  salary_giorgos:   { label: 'Giorgos Salary',     icon: 'GS', color: '#818cf8' },
-  salary_rita:      { label: 'Rita Salary',        icon: 'RS', color: '#a78bfa' },
-  salary_diana:     { label: 'Diana Salary',       icon: 'DS', color: '#c4b5fd' },
-  gesy_giorgos:     { label: 'Giorgos GESY',       icon: 'GG', color: '#34d399' },
-  gesy_rita:        { label: 'Rita GESY',          icon: 'GR', color: '#6ee7b7' },
-  gesy_diana:       { label: 'Diana GESY',         icon: 'GD', color: '#a7f3d0' },
-  eurolife_giorgos: { label: 'Giorgos EUROLIFE',   icon: 'GE', color: '#60a5fa' },
-  eurolife_rita:    { label: 'Rita EUROLIFE',      icon: 'RE', color: '#93c5fd' },
-  other:            { label: 'Other',              icon: 'O',  color: '#8b93b0' }
+  reimbursement:         { label: 'Reimbursement',          icon: 'Rb', color: '#a855f7' },
+  str_fee:               { label: 'STR Fee',                icon: 'SF', color: '#fb923c' },
+  owner_rent:            { label: 'Owner Rent',             icon: 'OR', color: '#2dd4bf' },
+  reimbursement_giorgos: { label: 'Giorgos Reimbursement',  icon: 'GRb',color: '#818cf8' },
+  reimbursement_rita:    { label: 'Rita Reimbursement',     icon: 'RRb',color: '#a78bfa' },
+  salary_giorgos:        { label: 'Giorgos Salary',         icon: 'GS', color: '#818cf8' },
+  salary_rita:           { label: 'Rita Salary',            icon: 'RS', color: '#a78bfa' },
+  salary_diana:          { label: 'Diana Salary',           icon: 'DS', color: '#c4b5fd' },
+  gesy_giorgos:          { label: 'Giorgos GESY',           icon: 'GG', color: '#34d399' },
+  gesy_rita:             { label: 'Rita GESY',              icon: 'GR', color: '#6ee7b7' },
+  gesy_diana:            { label: 'Diana GESY',             icon: 'GD', color: '#a7f3d0' },
+  eurolife_giorgos:      { label: 'Giorgos EUROLIFE',       icon: 'GE', color: '#60a5fa' },
+  eurolife_rita:         { label: 'Rita EUROLIFE',          icon: 'RE', color: '#93c5fd' },
+  other:                 { label: 'Other',                  icon: 'O',  color: '#8b93b0' }
 };
 
 // Groups define how categories are displayed in the expense form dropdown (optgroups).
@@ -41,7 +44,19 @@ export const EXPENSE_CATEGORIES = {
 export const EXPENSE_CATEGORY_GROUPS = {
   salary:            { label: 'Salary',            subtypes: ['salary_giorgos', 'salary_rita', 'salary_diana'] },
   public_insurance:  { label: 'Public Insurance',  subtypes: ['gesy_giorgos', 'gesy_rita', 'gesy_diana'] },
-  private_insurance: { label: 'Private Insurance', subtypes: ['insurance', 'eurolife_giorgos', 'eurolife_rita'] }
+  private_insurance: { label: 'Private Insurance', subtypes: ['insurance', 'eurolife_giorgos', 'eurolife_rita'] },
+  director_payments: { label: 'Director Payments', subtypes: ['owner_rent', 'reimbursement_giorgos', 'reimbursement_rita'] }
+};
+
+export const PROPERTY_CHANNELS = {
+  company:  'Company (business income)',
+  personal: 'Personal (direct income)'
+};
+
+// Maps person key → their personal-income expense categories
+export const PERSONAL_EXPENSE_CATS = {
+  you:  { salary: 'salary_giorgos', gesy: 'gesy_giorgos', reimb: 'reimbursement_giorgos' },
+  rita: { salary: 'salary_rita',    gesy: 'gesy_rita',    reimb: 'reimbursement_rita'    }
 };
 
 // ---- Classification model (OpEx/CapEx, costCategory, recurrence) ----
