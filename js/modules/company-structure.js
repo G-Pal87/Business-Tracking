@@ -118,8 +118,14 @@ function openPersonForm(existing, onSave) {
   const activeChk  = el('input', { type: 'checkbox' });
   activeChk.checked = p.active !== false;
 
+  const othersTotal = getPeople()
+    .filter(x => x.id !== p.id && ['partner', 'director'].includes(x.role) && x.sharePercent != null)
+    .reduce((sum, x) => sum + x.sharePercent, 0);
+  const available = 100 - othersTotal;
+  const shareHint = `Ownership % for dividends — max available: ${available.toFixed(available % 1 === 0 ? 0 : 2)}%`;
+
   const shareRow = el('div', {});
-  shareRow.appendChild(formRow('Share %', shareI, 'Ownership percentage for dividend calculations'));
+  shareRow.appendChild(formRow('Share %', shareI, shareHint));
 
   const updateShareVis = () => {
     shareRow.style.display = ['partner', 'director'].includes(roleS.value) ? '' : 'none';
@@ -135,10 +141,20 @@ function openPersonForm(existing, onSave) {
 
   const saveBtn = button('Save', { variant: 'primary', onClick: () => {
     if (!nameI.value.trim()) { toast('Name required', 'danger'); return; }
+    const newShare = ['partner', 'director'].includes(roleS.value) ? (Number(shareI.value) || 0) : null;
+    if (newShare != null) {
+      const othersTotal = getPeople()
+        .filter(x => x.id !== p.id && ['partner', 'director'].includes(x.role) && x.sharePercent != null)
+        .reduce((sum, x) => sum + x.sharePercent, 0);
+      if (othersTotal + newShare > 100) {
+        toast(`Share % exceeds 100% — others hold ${othersTotal}%, leaving ${(100 - othersTotal).toFixed(2)}% available`, 'danger');
+        return;
+      }
+    }
     Object.assign(p, {
       name: nameI.value.trim(),
       role: roleS.value,
-      sharePercent: ['partner', 'director'].includes(roleS.value) ? (Number(shareI.value) || 0) : null,
+      sharePercent: newShare,
       phone: phoneI.value.trim(),
       email: emailI.value.trim(),
       active: activeChk.checked
