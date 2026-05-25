@@ -29,7 +29,6 @@ function build() {
   wrap.appendChild(buildBusinessCard());
   wrap.appendChild(buildServicesCard());
   wrap.appendChild(buildReservationExpenseRulesCard());
-  wrap.appendChild(buildTeamCard());
   wrap.appendChild(buildRepositoryMaintenanceCard());
   wrap.appendChild(buildTrashCard());
   wrap.appendChild(buildDangerCard());
@@ -727,46 +726,6 @@ function openReservationExpenseRuleForm(existing, onSave) {
     body,
     footer: [button('Cancel', { onClick: closeModal }), saveBtn]
   });
-}
-
-function buildTeamCard() {
-  const card = el('div', { class: 'card mb-16' });
-
-  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
-  const header = el('div', { class: 'card-header card-header--toggle' },
-    el('div', {},
-      el('div', { class: 'card-title' }, 'Team')
-    ),
-    el('div', { style: 'display:flex;align-items:center;gap:8px' },
-      chevron
-    )
-  );
-  card.appendChild(header);
-
-  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
-  card.appendChild(body);
-
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
-
-  const team = state.db.settings?.team || [];
-  const rows = el('div', {});
-  for (const t of team) {
-    const nameI = input({ value: t.name });
-    const roleI = input({ value: t.role });
-    const row = el('div', { class: 'form-row horizontal' },
-      formRow(`${t.id} - name`, nameI),
-      formRow(`${t.id} - role`, roleI)
-    );
-    rows.appendChild(row);
-    nameI.onchange = () => { t.name = nameI.value.trim(); markDirty(); };
-    roleI.onchange = () => { t.role = roleI.value.trim(); markDirty(); };
-  }
-  body.appendChild(rows);
-  return card;
 }
 
 function trashDisplayName(collection, item) {

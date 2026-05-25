@@ -33,7 +33,8 @@ async function boot() {
     { default: users },
     { default: inventory },
     { default: tenants },
-    { default: dividends }
+    { default: dividends },
+    { default: companyStructure }
   ] = await Promise.all([
     import(`./modules/properties.js?v=${VERSION}`),
     import(`./modules/payments.js?v=${VERSION}`),
@@ -58,11 +59,12 @@ async function boot() {
     import(`./modules/users.js?v=${VERSION}`),
     import(`./modules/inventory.js?v=${VERSION}`),
     import(`./modules/tenants.js?v=${VERSION}`),
-    import(`./modules/dividends.js?v=${VERSION}`)
+    import(`./modules/dividends.js?v=${VERSION}`),
+    import(`./modules/company-structure.js?v=${VERSION}`)
   ]);
 
   const MODULES = [
-    properties, payments, expenses, dividends, tenants, vendors, inventory,
+    properties, payments, expenses, dividends, tenants, vendors, inventory, companyStructure,
     reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsPersonal, analyticsTax, clients, invoices, settings, users
   ];
 
@@ -311,6 +313,20 @@ function migrateDb() {
     }
   }
 
+  // Seed default people from legacy OWNERS if no people exist
+  if (!state.db.people || state.db.people.length === 0) {
+    if (!state.db.people) state.db.people = [];
+    state.db.people.push(
+      { id: 'ppl_giorgos', name: 'Giorgos', role: 'director', sharePercent: 100, phone: '', email: '', active: true, legacyKey: 'you',  createdAt: now, createdBy: 'system', updatedAt: now, updatedBy: 'system' },
+      { id: 'ppl_rita',    name: 'Rita',    role: 'director', sharePercent: 0,   phone: '', email: '', active: true, legacyKey: 'rita', createdAt: now, createdBy: 'system', updatedAt: now, updatedBy: 'system' }
+    );
+    changed = true;
+  }
+  if (!state.db.settings.dividendSettings) {
+    state.db.settings.dividendSettings = [];
+    changed = true;
+  }
+
   if (changed) markDirty();
 }
 
@@ -342,7 +358,7 @@ function buildUserFooter() {
 function buildSidebar(MODULES) {
   const navGroups = [
     { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-personal', 'analytics-tax'] },
-    { title: 'Operations', items: ['properties', 'payments', 'expenses', 'dividends', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'forecast'] },
+    { title: 'Operations', items: ['properties', 'payments', 'expenses', 'dividends', 'tenants', 'vendors', 'inventory', 'company-structure', 'clients', 'invoices', 'forecast'] },
     { title: 'System', items: ['settings', 'users'] }
   ];
   const nav = document.getElementById('nav');

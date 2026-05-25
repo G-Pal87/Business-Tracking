@@ -1091,6 +1091,33 @@ function _applyOneRule(rule, payment, reservationRef) {
   });
 }
 
+// ============== People / Owner helpers ==============
+
+export function getPeopleOwners({ includeBoth = false } = {}) {
+  const people = (state.db.people || []).filter(p =>
+    !p.deletedAt && p.active !== false && ['partner', 'director'].includes(p.role)
+  );
+  if (people.length === 0) {
+    // Fallback to hardcoded OWNERS when no people are configured
+    const opts = [{ value: 'you', label: 'Giorgos' }, { value: 'rita', label: 'Rita' }];
+    if (includeBoth) opts.push({ value: 'both', label: 'Both' });
+    return opts;
+  }
+  const opts = people.map(p => ({ value: p.legacyKey || p.id, label: p.name }));
+  if (includeBoth && opts.length > 1) opts.push({ value: 'both', label: 'Both' });
+  return opts;
+}
+
+export function getPersonName(ownerKey) {
+  if (!ownerKey) return '—';
+  const people = state.db.people || [];
+  const person = people.find(p => (p.legacyKey || p.id) === ownerKey && !p.deletedAt);
+  if (person) return person.name;
+  // Fallback: check OWNERS constant
+  const OWNERS_FALLBACK = { you: 'Giorgos', rita: 'Rita', both: 'Both' };
+  return OWNERS_FALLBACK[ownerKey] || ownerKey;
+}
+
 export function removeReservationExpenses(payment) {
   const reservationRef = payment.confirmationCode || payment.id;
   if (!reservationRef) return;

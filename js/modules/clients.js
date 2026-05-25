@@ -1,6 +1,6 @@
 // Clients module
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, newId, formatMoney, formatEUR, toEUR, byId } from '../core/data.js';
+import { upsert, softDelete, listActive, newId, formatMoney, formatEUR, toEUR, byId, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
@@ -70,7 +70,7 @@ function build() {
   const streamFilter = new Set();
   const ownerFilter  = new Set();
   const streamMS = buildMultiSelect(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label, css: STREAMS[s].css })), streamFilter, 'All Streams', renderCards, 'cli_streams');
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => k !== 'both').map(([v, l]) => ({ value: v, label: l })), ownerFilter, 'All Owners', renderCards, 'cli_owners');
+  const ownerMS  = buildMultiSelect(getPeopleOwners(), ownerFilter, 'All Owners', renderCards, 'cli_owners');
   const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { streamMS.reset(); ownerMS.reset(); renderCards(); } });
   filterBar.appendChild(streamMS);
   filterBar.appendChild(ownerMS);
@@ -118,7 +118,7 @@ function card(c, invs = []) {
     el('span', { class: `badge ${streamMeta.css}` }, streamMeta.short)
   ));
   node.appendChild(el('div', { class: 'flex gap-8 mt-8' },
-    el('span', { class: 'badge' }, OWNERS[c.owner] || c.owner),
+    el('span', { class: 'badge' }, getPersonName(c.owner)),
     el('span', { class: 'badge' }, c.currency)
   ));
   node.appendChild(el('div', { class: 'prop-card-stats' },
@@ -146,7 +146,7 @@ export function openDetail(id) {
     el('div', { class: 'muted' }, c.email || ''),
     el('div', { class: 'flex gap-8 mt-8' },
       el('span', { class: `badge ${STREAMS[c.stream]?.css || ''}` }, STREAMS[c.stream]?.label || c.stream),
-      el('span', { class: 'badge' }, OWNERS[c.owner] || c.owner),
+      el('span', { class: 'badge' }, getPersonName(c.owner)),
       el('span', { class: 'badge' }, c.currency)
     ),
     c.address ? el('div', { class: 'mt-8 muted', style: 'font-size:12px' }, c.address) : null,
@@ -289,7 +289,7 @@ function openForm(existing) {
     name: '', email: '', address: '', vatNumber: '', registrationNumber: '',
     currency: 'EUR',
     stream: SERVICE_STREAMS[0] || '',
-    owner: Object.keys(OWNERS).find(k => k !== 'both') || '',
+    owner: getPeopleOwners()[0]?.value || 'you',
     contractStart: new Date().toISOString().slice(0, 10),
     notes: ''
   };
@@ -297,7 +297,7 @@ function openForm(existing) {
   const nameI   = input({ value: c.name });
   const emailI  = input({ value: c.email, type: 'email' });
   const streamS = select(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label })), c.stream || SERVICE_STREAMS[0]);
-  const ownerS  = select(Object.entries(OWNERS).filter(([k]) => k !== 'both').map(([v, l]) => ({ value: v, label: l })), c.owner || '');
+  const ownerS  = select(getPeopleOwners(), c.owner || '');
   const addressI = input({ value: c.address });
   const vatI = input({ value: c.vatNumber, placeholder: 'e.g. HU12345678' });
   const regI = input({ value: c.registrationNumber, placeholder: 'e.g. 01-09-123456' });

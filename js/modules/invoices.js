@@ -1,7 +1,7 @@
 // Invoices module - builder + repository
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
 import { downloadInvoicePDF, generateInvoicePDF } from '../core/pdf.js';
 import { navigate } from '../core/router.js';
@@ -12,7 +12,7 @@ const INV_COLS = [
   { key: 'clientName', label: 'Client' },
   { key: 'issueDate', label: 'Issued', format: v => fmtDate(v) },
   { key: 'dueDate', label: 'Due', format: v => fmtDate(v) },
-  { key: 'owner', label: 'Owner', format: v => OWNERS[v] || v },
+  { key: 'owner', label: 'Owner', format: v => getPersonName(v) },
   { key: 'status', label: 'Status', format: v => { const st = INVOICE_STATUSES[v] || { label: v, css: '' }; return el('span', { class: `badge ${st.css}` }, st.label); } },
   { key: 'total', label: 'Amount', right: true, format: (v, row) => formatMoney(v, row.currency, { maxFrac: 0 }) },
   { key: 'eur', label: '€ EUR', right: true, format: v => formatEUR(v) }
@@ -212,7 +212,7 @@ function build() {
   const yearMS   = buildMultiSelect(years.map(y => ({ value: y, label: y })), yearFilter, 'All Years', debouncedRT, 'inv_years');
   const monthMS  = buildMultiSelect(months.map(m => ({ value: m, label: new Date(2000, Number(m)-1, 1).toLocaleDateString('en-US', { month: 'long' }) })), monthFilter, 'All Months', debouncedRT, 'inv_months');
   const clientMS = buildMultiSelect(listActive('clients').map(c => ({ value: c.id, label: c.name })), clientFilter, 'All Clients', debouncedRT, 'inv_clients');
-  const ownerMS  = buildMultiSelect(Object.entries(OWNERS).filter(([k]) => k !== 'both').map(([v, l]) => ({ value: v, label: l })), ownerFilter, 'All Owners', debouncedRT, 'inv_owners');
+  const ownerMS  = buildMultiSelect(getPeopleOwners(), ownerFilter, 'All Owners', debouncedRT, 'inv_owners');
   const statusMS = buildMultiSelect(Object.entries(INVOICE_STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', debouncedRT, 'inv_statuses');
   const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); clientMS.reset(); ownerMS.reset(); statusMS.reset(); renderTable(); } });
   bar.appendChild(yearMS);
@@ -362,7 +362,7 @@ function build() {
       tr.appendChild(el('td', {}, client?.name || '-'));
       tr.appendChild(el('td', {}, fmtDate(r.issueDate)));
       tr.appendChild(el('td', {}, fmtDate(r.dueDate)));
-      tr.appendChild(el('td', {}, OWNERS[r.owner] || r.owner));
+      tr.appendChild(el('td', {}, getPersonName(r.owner)));
       tr.appendChild(el('td', {}, el('span', { class: `badge ${st.css}` }, st.label)));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.total, r.currency)));
       const actions = el('td', { class: 'right flex gap-4', style: 'justify-content:flex-end' });
@@ -455,7 +455,7 @@ export function openBuilder(existing, { onSaved } = {}) {
   const issueI = input({ type: 'date', value: inv.issueDate });
   const dueI = input({ type: 'date', value: inv.dueDate });
   const statusS = select(Object.keys(INVOICE_STATUSES), inv.status);
-  const ownerS = select(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), inv.owner);
+  const ownerS = select(getPeopleOwners(), inv.owner);
   const currencyS = select(CURRENCIES, inv.currency);
   const taxI = input({ type: 'number', value: inv.taxRate, min: 0, max: 100, step: 0.1 });
   const notesT = textarea({ placeholder: 'Notes / payment terms' });
