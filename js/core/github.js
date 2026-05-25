@@ -199,6 +199,10 @@ async function doPushDb(message = 'Update data') {
     if (merged.appConfig?.github?.token) delete merged.appConfig.github.token;
 
     // PUT merged content
+    const jsonStr = JSON.stringify(merged, null, 2);
+    if (jsonStr.length > 8 * 1024 * 1024) {
+      console.warn(`[BT] DB is ${(jsonStr.length / 1024 / 1024).toFixed(1)} MB — consider purging deleted records in Settings → Data`);
+    }
     let putRes;
     try {
       putRes = await fetch(apiBase, {
@@ -206,7 +210,7 @@ async function doPushDb(message = 'Update data') {
         headers: ghHeaders,
         body: JSON.stringify({
           message,
-          content: b64encode(JSON.stringify(merged, null, 2)),
+          content: b64encode(jsonStr),
           branch:  branch || 'main',
           sha
         })
@@ -386,7 +390,14 @@ export function saveLocalCache(db) {
         safe.invoices = safe.invoices.map(({ pdfData, ...rest }) => rest);
       }
       localStorage.setItem(DB_LS_KEY, JSON.stringify(safe));
-    } catch (e) { console.warn('saveLocalCache:', e); }
+    } catch (e) {
+      console.warn('saveLocalCache:', e);
+      if (e.name === 'QuotaExceededError') {
+        import('./ui.js').then(({ toast }) =>
+          toast('Local cache full — offline access may use stale data. Purge deleted records in Settings → Data to free space.', 'warning', 8000)
+        ).catch(() => {});
+      }
+    }
   }, 500);
 }
 

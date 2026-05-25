@@ -28,8 +28,10 @@ function build() {
   const propFilter   = new Set();
   const statusFilter = new Set();
 
-  const propMS   = buildMultiSelect(ltProps.map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', () => renderTable(), 'ten_props');
-  const statusMS = buildMultiSelect(Object.entries(STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', () => renderTable(), 'ten_statuses');
+  let _rtTimer;
+  const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => renderTable(), 250); };
+  const propMS   = buildMultiSelect(ltProps.map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', debouncedRT, 'ten_props');
+  const statusMS = buildMultiSelect(Object.entries(STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', debouncedRT, 'ten_statuses');
 
   const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); statusMS.reset(); renderTable(); } });
   filterBar.appendChild(propMS);

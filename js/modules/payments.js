@@ -79,11 +79,13 @@ function buildAllPayments(wrap) {
     };
   };
   const fo = buildFilterOpts();
-  const yearMS   = buildMultiSelect(fo.years,    yearFilter,   'All Years',      () => renderTable(), 'pay_years');
-  const monthMS  = buildMultiSelect(fo.months,   monthFilter,  'All Months',     () => renderTable(), 'pay_months');
-  const propMS   = buildMultiSelect(fo.props,    propFilter,   'All Properties', () => renderTable(), 'pay_props');
-  const typeMS   = buildMultiSelect(fo.types,    typeFilter,   'All Types',      () => renderTable(), 'pay_types');
-  const statusMS = buildMultiSelect(fo.statuses, statusFilter, 'All Statuses',   () => renderTable(), 'pay_statuses');
+  let _rtTimer;
+  const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => renderTable(), 250); };
+  const yearMS   = buildMultiSelect(fo.years,    yearFilter,   'All Years',      debouncedRT, 'pay_years');
+  const monthMS  = buildMultiSelect(fo.months,   monthFilter,  'All Months',     debouncedRT, 'pay_months');
+  const propMS   = buildMultiSelect(fo.props,    propFilter,   'All Properties', debouncedRT, 'pay_props');
+  const typeMS   = buildMultiSelect(fo.types,    typeFilter,   'All Types',      debouncedRT, 'pay_types');
+  const statusMS = buildMultiSelect(fo.statuses, statusFilter, 'All Statuses',   debouncedRT, 'pay_statuses');
 
   let selected = new Set();
 

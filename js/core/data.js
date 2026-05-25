@@ -531,6 +531,16 @@ export function getForecastVsActual(type, entityId, year) {
     }
   }
 
+  // Pre-filter collections to entity + year — avoids 24 full-collection scans
+  const yearStr = String(year);
+  let entityPayments = null, entityExpenses = null, entityInvoices = null;
+  if (type === 'property') {
+    entityPayments = listActivePayments().filter(p => p.propertyId === entityId && p.status === 'paid' && (p.date || '').startsWith(yearStr));
+    entityExpenses = listActive('expenses').filter(e => e.propertyId === entityId && !isCapEx(e) && (e.date || '').startsWith(yearStr));
+  } else {
+    entityInvoices = listActive('invoices').filter(i => i.stream === entityId && i.status === 'paid' && (i.issueDate || '').startsWith(yearStr));
+  }
+
   const months = [];
   for (let m = 1; m <= 12; m++) {
     const key = `${year}-${String(m).padStart(2, '0')}`;
@@ -538,10 +548,10 @@ export function getForecastVsActual(type, entityId, year) {
     const end = `${key}-${new Date(year, m, 0).getDate().toString().padStart(2, '0')}`;
     let actualRev = 0, actualExp = 0;
     if (type === 'property') {
-      actualRev = listActivePayments().filter(p => p.propertyId === entityId && p.status === 'paid' && p.date >= start && p.date <= end).reduce((s, p) => s + toEUR(p.amount, p.currency, year), 0);
-      actualExp = listActive('expenses').filter(e => e.propertyId === entityId && !isCapEx(e) && e.date >= start && e.date <= end).reduce((s, e) => s + toEUR(e.amount, e.currency, year), 0);
+      actualRev = entityPayments.filter(p => p.date >= start && p.date <= end).reduce((s, p) => s + toEUR(p.amount, p.currency, year), 0);
+      actualExp = entityExpenses.filter(e => e.date >= start && e.date <= end).reduce((s, e) => s + toEUR(e.amount, e.currency, year), 0);
     } else {
-      actualRev = listActive('invoices').filter(i => i.stream === entityId && i.status === 'paid' && i.issueDate >= start && i.issueDate <= end).reduce((s, i) => s + toEUR(i.total, i.currency, year), 0);
+      actualRev = entityInvoices.filter(i => i.issueDate >= start && i.issueDate <= end).reduce((s, i) => s + toEUR(i.total, i.currency, year), 0);
     }
     const fd = fc?.months?.[key] || {};
     // Fall back to scheduled LT rent when no manual forecast entry exists for this month
@@ -595,7 +605,7 @@ export function estimateTaxForYear(year, rate) {
 
 // Internal helper: generate schedule entries for one lease segment.
 // leaseData must have: monthlyRent, currency, leaseStartDate?, leaseEndDate?, paymentDayOfMonth?
-function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDate) {
+function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDate, paysByMonth) {
   const now = new Date();
   const dueDay = Math.min(Math.max(leaseData.paymentDayOfMonth || 1, 1), 28);
 
@@ -621,17 +631,12 @@ function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDa
     const dueDate = new Date(cursor.getFullYear(), cursor.getMonth(), day);
     const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
     const dateStr = `${monthKey}-${String(day).padStart(2, '0')}`;
-    const paidPayment = listActivePayments().find(p =>
+    const monthPays = (paysByMonth.get(monthKey) || []).filter(p =>
       p.propertyId === propertyId &&
-      p.date?.slice(0, 7) === monthKey &&
-      p.status === 'paid' &&
       (p.stream === 'long_term_rental' || p.type === 'rental')
     );
-    const linkedPayment = paidPayment || listActivePayments().find(p =>
-      p.propertyId === propertyId &&
-      p.date?.slice(0, 7) === monthKey &&
-      (p.stream === 'long_term_rental' || p.type === 'rental')
-    );
+    const paidPayment  = monthPays.find(p => p.status === 'paid') || null;
+    const linkedPayment = paidPayment || monthPays[0] || null;
     const paid = !!paidPayment;
     // Skip unpaid entries in a vacant period or on/after the sold date
     if (!paid) {
@@ -668,12 +673,22 @@ export function generatePaymentSchedule(property) {
 
   if (!tenants.length) return [];
 
+  // Pre-build month → payments map to avoid repeated full scans inside _scheduleSegment
+  const paysByMonth = new Map();
+  for (const p of listActivePayments()) {
+    if (!p.date) continue;
+    const mk = p.date.slice(0, 7);
+    const arr = paysByMonth.get(mk) || [];
+    arr.push(p);
+    paysByMonth.set(mk, arr);
+  }
+
   const vacantPeriods = property.vacantPeriods || [];
   const soldDate = (property.status === 'sold' && property.soldDate) ? property.soldDate : null;
 
   // Merge segments from all tenants, deduplicate by monthKey (earlier lease wins)
   const all = [];
-  for (const t of tenants) all.push(..._scheduleSegment(property.id, t, t.id, vacantPeriods, soldDate));
+  for (const t of tenants) all.push(..._scheduleSegment(property.id, t, t.id, vacantPeriods, soldDate, paysByMonth));
   all.sort((a, b) => a.date.localeCompare(b.date));
   const seen = new Set();
   return all.filter(e => { if (seen.has(e.monthKey)) return false; seen.add(e.monthKey); return true; });
@@ -683,9 +698,36 @@ export function generatePaymentSchedule(property) {
 export function buildReconciliationData(year) {
   const yr = Number(year);
   const now = new Date();
+  const yearStr = String(yr);
+
+  // Pre-build lookup maps — avoids O(n) listActive() scans inside nested loops
+  const tenantsByProp = new Map();
+  for (const t of listActive('tenants')) {
+    if (!t.monthlyRent) continue;
+    const arr = tenantsByProp.get(t.propertyId) || [];
+    arr.push(t);
+    tenantsByProp.set(t.propertyId, arr);
+  }
+  const paysByProp = new Map();
+  for (const p of listActivePayments()) {
+    if (!(p.date || '').startsWith(yearStr)) continue;
+    const arr = paysByProp.get(p.propertyId) || [];
+    arr.push(p);
+    paysByProp.set(p.propertyId, arr);
+  }
+  const invsByStream = new Map();
+  for (const i of listActive('invoices')) {
+    if (i.status === 'draft' || !(i.issueDate || '').startsWith(yearStr)) continue;
+    const arr = invsByStream.get(i.stream) || [];
+    arr.push(i);
+    invsByStream.set(i.stream, arr);
+  }
+
   const entities = [];
 
   for (const prop of listActive('properties')) {
+    const propTenants = tenantsByProp.get(prop.id) || [];
+    const propPayments = paysByProp.get(prop.id) || [];
     const months = [];
     for (let m = 1; m <= 12; m++) {
       const mk = `${yr}-${String(m).padStart(2, '0')}`;
@@ -696,7 +738,6 @@ export function buildReconciliationData(year) {
       let expected = 0, actual = 0;
 
       if (prop.type === 'long_term') {
-        const propTenants = listActive('tenants').filter(t => t.propertyId === prop.id && t.monthlyRent);
         const mStr = `${mk}-01`;
         const tenant = propTenants.find(t => {
           const ls = t.leaseStartDate ? t.leaseStartDate.slice(0, 7) + '-01' : null;
@@ -704,16 +745,13 @@ export function buildReconciliationData(year) {
           return (!ls || mStr >= ls) && (!le || mStr <= le);
         });
         if (tenant) expected = toEUR(tenant.monthlyRent, tenant.currency || 'EUR', yr);
-        actual = listActivePayments()
-          .filter(p => p.propertyId === prop.id && p.date >= start && p.date <= end && p.status === 'paid')
+        actual = propPayments
+          .filter(p => p.date >= start && p.date <= end && p.status === 'paid')
           .reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
       } else if (prop.type === 'short_term') {
-        // Expected = all booked revenue (paid + pending); Actual = paid only
-        const all = listActivePayments().filter(p =>
-          p.propertyId === prop.id && p.date >= start && p.date <= end
-        );
-        expected = all.reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
-        actual   = all.filter(p => p.status === 'paid').reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
+        const monthPays = propPayments.filter(p => p.date >= start && p.date <= end);
+        expected = monthPays.reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
+        actual   = monthPays.filter(p => p.status === 'paid').reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
       }
 
       months.push({ mk, m, expected, actual, variance: actual - expected, isPast });
@@ -732,6 +770,7 @@ export function buildReconciliationData(year) {
     { stream: 'customer_success',  label: 'Customer Success' },
     { stream: 'marketing_services', label: 'Marketing Services' }
   ]) {
+    const streamInvs = invsByStream.get(stream) || [];
     const months = [];
     for (let m = 1; m <= 12; m++) {
       const mk = `${yr}-${String(m).padStart(2, '0')}`;
@@ -739,19 +778,14 @@ export function buildReconciliationData(year) {
       const end = `${mk}-${new Date(yr, m, 0).getDate().toString().padStart(2, '0')}`;
       const monthEnd = new Date(yr, m, 0);
       const isPast = monthEnd < now;
-      const invs = listActive('invoices').filter(i =>
-        i.stream === stream && i.issueDate >= start && i.issueDate <= end && i.status !== 'draft'
-      );
+      const invs = streamInvs.filter(i => i.issueDate >= start && i.issueDate <= end);
       const expected = invs.reduce((s, i) => s + toEUR(i.total, i.currency, yr), 0);
       const actual   = invs.filter(i => i.status === 'paid').reduce((s, i) => s + toEUR(i.total, i.currency, yr), 0);
       months.push({ mk, m, expected, actual, variance: actual - expected, isPast });
     }
     const totExp = months.reduce((s, m) => s + m.expected, 0);
     const totAct = months.reduce((s, m) => s + m.actual, 0);
-    entities.push({
-      id: stream, label, kind: 'service',
-      months, totExp, totAct, totVariance: totAct - totExp
-    });
+    entities.push({ id: stream, label, kind: 'service', months, totExp, totAct, totVariance: totAct - totExp });
   }
 
   return entities;
@@ -781,8 +815,9 @@ export function buildReportData(filters = {}) {
 
   const payments = listActivePayments().filter(p => p.status === 'paid' && matchDate(p) && matchStream(p) && matchProperty(p));
   const invoices = listActive('invoices').filter(i => i.status === 'paid' && matchDate({ date: i.issueDate }) && matchStream(i) && matchProperty(i));
-  const opExpenses = listActive('expenses').filter(e => !isCapEx(e) && matchDate(e) && matchStream(e) && matchProperty(e));
-  const renoExpenses = listActive('expenses').filter(e => isCapEx(e) && matchDate(e) && matchProperty(e));
+  const allExpenses  = listActive('expenses');
+  const opExpenses   = allExpenses.filter(e => !isCapEx(e) && matchDate(e) && matchStream(e) && matchProperty(e));
+  const renoExpenses = allExpenses.filter(e =>  isCapEx(e) && matchDate(e) && matchProperty(e));
 
   const rev = [...payments, ...invoices.map(i => ({ ...i, amount: i.total, date: i.date || i.issueDate }))].reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
   const exp = opExpenses.reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);

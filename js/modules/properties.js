@@ -12,6 +12,7 @@ import { navigate } from '../core/router.js';
 import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
 
 let selectedId = null;
+let _propRebuildTimer = null;
 
 // ── Filter + sort state (persists across navigation via localStorage) ─────────
 const _pf = { years: new Set(), owners: new Set(), types: new Set(), countries: new Set() };
@@ -159,7 +160,7 @@ function rebuildPropFilters(filterBar, grid) {
   [..._pf.countries].forEach(v => { if (!validCountries.includes(v)) _pf.countries.delete(v); });
   savePropFilters();
 
-  const onChange = () => { savePropFilters(); rebuildPropFilters(filterBar, grid); };
+  const onChange = () => { savePropFilters(); clearTimeout(_propRebuildTimer); _propRebuildTimer = setTimeout(() => rebuildPropFilters(filterBar, grid), 250); };
 
   const yearMS    = buildMultiSelect(validYears.map(y => ({ value: y, label: y })), _pf.years, 'All Years', onChange);
   const ownerMS   = buildMultiSelect(validOwners.map(v => ({ value: v, label: OWNERS[v] || v })), _pf.owners, 'All Owners', onChange);
