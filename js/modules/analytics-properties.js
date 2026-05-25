@@ -44,7 +44,8 @@ function getData(start, end) {
   const mStatus     = p => !gStatusFilter.size || gStatusFilter.has(p.status || 'active');
 
   const allProps = listActive('properties').filter(p =>
-    mOwner(p) && mPropStream(p) && mPropId(p) && mStatus(p)
+    mOwner(p) && mPropStream(p) && mPropId(p) && mStatus(p) &&
+    (p.channel || 'company') === 'company'
   );
   const propIds = new Set(allProps.map(p => p.id));
 

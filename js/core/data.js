@@ -826,6 +826,16 @@ export function buildReportData(filters = {}) {
   return { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net: rev - exp };
 }
 
+// Returns a Set of property IDs whose channel is 'company' (or unset, which defaults to company).
+// Records without a propertyId (e.g. salary expenses, service invoices) are always company-scope.
+export function companyPropIds() {
+  return new Set(
+    listActive('properties')
+      .filter(p => (p.channel || 'company') === 'company')
+      .map(p => p.id)
+  );
+}
+
 // ============== Drill-down row normalisers (used by all reporting modules) ==============
 export function drillRevRows(payments, invoices) {
   return [

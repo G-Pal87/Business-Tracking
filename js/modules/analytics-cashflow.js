@@ -4,7 +4,7 @@ import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, COST_CATEGORIES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
-  listActive, listActivePayments, isCapEx, resolveExpenseFields
+  listActive, listActivePayments, isCapEx, resolveExpenseFields, companyPropIds
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -45,17 +45,19 @@ function getData(start, end) {
   };
 
   const inRange = d => !!d && d >= start && d <= end;
+  const coPropIds = companyPropIds();
+  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
 
   const payments = listActivePayments().filter(p =>
-    p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p)
+    p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
   );
   const invoices = listActive('invoices').filter(i =>
     i.status === 'paid' && inRange(i.issueDate || i.date) && mStream(i) && mInvOwner(i) && mClient(i)
   );
 
   const allExp    = listActive('expenses');
-  const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e));
-  const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e));
+  const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
+  const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
   const expenses = [...opExpenses, ...capExpenses];
 
   const sum = arr => arr.reduce((s, x) => s + toEUR(x.amount ?? x.total, x.currency, x.date ?? x.issueDate), 0);

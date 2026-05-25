@@ -5,7 +5,7 @@ import { STREAMS, OWNERS } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
-  drillRevRows
+  drillRevRows, companyPropIds
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -42,11 +42,13 @@ export default {
 function getData(start, end) {
   const inRange = d => d && d >= start && d <= end;
   const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const coPropIds = companyPropIds();
+  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
 
   // Property filter → isolate rental revenue (exclude invoices entirely)
   // Client filter   → isolate service revenue (exclude payments entirely)
   const payments = gF.clientIds.size > 0 ? [] : listActivePayments().filter(p =>
-    p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p)
+    p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
   );
   const invoices = gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i =>
     i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
@@ -772,7 +774,9 @@ function renderAging({ outstanding }) {
 // ── Seasonality heatmap (DOM table, shows all available years for context) ────
 function buildSeasonalityHeatmap() {
   const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
-  const pays = listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p));
+  const coPropIds = companyPropIds();
+  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
+  const pays = listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p));
   const invs = gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i => i.status === 'paid' && mStream(i) && mOwner(i) && mClient(i));
   const years = [...new Set([...pays.map(p => p.date?.slice(0, 4)), ...invs.map(i => i.issueDate?.slice(0, 4))].filter(Boolean))].sort();
   if (!years.length) return null;

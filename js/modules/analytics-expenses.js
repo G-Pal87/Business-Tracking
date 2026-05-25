@@ -5,7 +5,7 @@ import { STREAMS, COST_CATEGORIES, ACCOUNTING_TYPES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActiveVendors, listActivePayments,
-  isCapEx, resolveExpenseFields
+  isCapEx, resolveExpenseFields, companyPropIds
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -53,6 +53,8 @@ function vendorLabel(e) {
 // ── Data fetching ─────────────────────────────────────────────────────────────
 function getData(start, end) {
   const { mStream, mOwner, mProperty } = makeMatchers(gF);
+  const coPropIds = companyPropIds();
+  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
   const vendors = listActiveVendors();
   const vMap    = new Map(vendors.map(v => [v.name, v.id]));
 
@@ -60,6 +62,7 @@ function getData(start, end) {
     const d = e.date || '';
     if (d < start || d > end) return false;
     if (!mStream(e) || !mOwner(e) || !mProperty(e)) return false;
+    if (!isCoRec(e)) return false;
     if (gExpFilters.categories.size > 0) {
       if (!gExpFilters.categories.has(resolveExpenseFields(e).costCategory)) return false;
     }
@@ -82,8 +85,10 @@ function getData(start, end) {
 
 function getRevenue(start, end) {
   const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const coPropIds = companyPropIds();
+  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
   const rentals = listActivePayments()
-    .filter(p => p.status === 'paid' && (p.date || '') >= start && (p.date || '') <= end && mStream(p) && mOwner(p) && mProperty(p))
+    .filter(p => p.status === 'paid' && (p.date || '') >= start && (p.date || '') <= end && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p))
     .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
   // Include paid service invoices so expense ratio reflects total revenue, not rental-only
   const services = listActive('invoices')

@@ -7,7 +7,7 @@ import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
   resolveExpenseFields, isCapEx,
-  newId, upsert, softDelete
+  newId, upsert, softDelete, companyPropIds
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
@@ -160,13 +160,15 @@ function catColor(catKey) {
 }
 
 function getYearData(year, ownerFilter) {
+  const coPropIds = companyPropIds();
+  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
   const payments = listActivePayments().filter(p =>
-    p.status === 'paid' && inYear(p.date, year) && ownerMatches(p, ownerFilter)
+    p.status === 'paid' && inYear(p.date, year) && ownerMatches(p, ownerFilter) && isCoRec(p)
   );
   const invoices = listActive('invoices').filter(i =>
     i.status === 'paid' && inYear(i.issueDate || i.date, year) && invOwnerMatches(i, ownerFilter)
   );
-  const allExp      = listActive('expenses').filter(e => inYear(e.date, year) && ownerMatches(e, ownerFilter));
+  const allExp      = listActive('expenses').filter(e => inYear(e.date, year) && ownerMatches(e, ownerFilter) && isCoRec(e));
   const opExpenses  = allExp.filter(e => !isCapEx(e));
   const capExpenses = allExp.filter(e =>  isCapEx(e));
 

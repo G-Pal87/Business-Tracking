@@ -22,6 +22,7 @@ const RITA_LABEL   = 'Rita';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
+let gScope = 'company'; // 'company' | 'all'
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -66,9 +67,11 @@ function getData(start, end) {
   // Build Map once so annotation loops use O(1) lookups instead of O(n) byId scans
   const propMap = new Map(listActive('properties').map(p => [p.id, p]));
 
+  const scopeOk = p => gScope === 'all' || (propMap.get(p.propertyId)?.channel || 'company') === 'company';
+
   // Payments — rental income (no owner filter, we split manually)
   const payments = listActivePayments().filter(p =>
-    p.status === 'paid' && inRange(p.date) && mStream(p) && mProperty(p)
+    p.status === 'paid' && inRange(p.date) && mStream(p) && mProperty(p) && (!p.propertyId || scopeOk(p))
   );
 
   // Annotate payments with resolved owner
@@ -90,7 +93,7 @@ function getData(start, end) {
   // Expenses (OpEx only for profit)
   const expenses = listActive('expenses').filter(e => {
     const d = e.date || '';
-    return d >= start && d <= end && !isCapEx(e) && mProperty(e) && mStream(e);
+    return d >= start && d <= end && !isCapEx(e) && mProperty(e) && mStream(e) && (!e.propertyId || scopeOk(e));
   });
   const annotatedExpenses = expenses.map(e => {
     const prop = e.propertyId ? propMap.get(e.propertyId) : null;
@@ -685,6 +688,24 @@ function buildView() {
     { showOwner: false, showStream: true, showProperty: true, storagePrefix: 'ana_owner' },
     (newGF) => { if (newGF) gF = newGF; rebuildView(); }
   ));
+
+  // Scope toggle (Company only / All incl. personal)
+  const scopeBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:12px' });
+  scopeBar.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)' }, 'Scope'));
+  for (const [val, label] of [['company', 'Company only'], ['all', 'All (incl. personal)']]) {
+    const isActive = gScope === val;
+    const btn = el('button', {
+      style: [
+        'padding:4px 14px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer;transition:all 120ms',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (gScope !== val) { gScope = val; rebuildView(); } };
+    scopeBar.appendChild(btn);
+  }
+  wrap.appendChild(scopeBar);
 
   const curRange = getCurrentPeriodRange(gF);
   const cmpRange = getComparisonRange(gF, curRange);

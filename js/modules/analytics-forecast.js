@@ -7,7 +7,7 @@ import {
   listActive, listActivePayments,
   isCapEx, drillRevRows, drillExpRows,
   sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR,
-  softDelete, upsert, newId
+  softDelete, upsert, newId, companyPropIds
 } from '../core/data.js';
 import { markDirty } from '../core/state.js';
 import {
@@ -118,6 +118,10 @@ function buildFcMaps(startY, endY) {
   for (let y = startY; y <= endY; y++) {
     allFcs.filter(fc => fc.year === y).forEach(fc => {
       if (gF.propertyIds.size > 0 && fc.type === 'property' && !gF.propertyIds.has(fc.entityId)) return;
+      if (fc.type === 'property') {
+        const prop = byId('properties', fc.entityId);
+        if ((prop?.channel || 'company') !== 'company') return;
+      }
       if (gF.streams.size > 0) {
         const s = resolveFcStream(fc);
         if (!s || !gF.streams.has(s)) return;
@@ -151,15 +155,17 @@ function buildFcMaps(startY, endY) {
 function calculateDashboardData(range) {
   if (!range) return null;
   const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const coPropIds = companyPropIds();
+  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
   const inRange = d => d && d >= range.start && d <= range.end;
 
   const actPayments = listActivePayments().filter(p =>
-    p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p)
+    p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
   );
   const actInvoices = listActive('invoices').filter(i =>
     i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
   );
-  const allExpenses = listActive('expenses').filter(e => inRange(e.date) && mOwner(e) && mProperty(e));
+  const allExpenses = listActive('expenses').filter(e => inRange(e.date) && mOwner(e) && mProperty(e) && isCoRec(e));
   const actOpExpenses  = allExpenses.filter(e => !isCapEx(e) && mStream(e));
   const actCapExpenses = allExpenses.filter(e => isCapEx(e) && mStream(e));
 
@@ -194,7 +200,7 @@ function calculateDashboardData(range) {
       const ow = prop?.owner || 'both';
       if (ow !== 'both' && !gF.owners.has(ow)) return false;
     }
-    return true;
+    return isCoRec(p);
   });
   const pendingPipeline = pendingReservations.reduce(
     (s, p) => s + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date), 0
@@ -210,7 +216,7 @@ function calculateDashboardData(range) {
       const ow = prop?.owner || 'both';
       if (ow !== 'both' && !gF.owners.has(ow)) return false;
     }
-    return true;
+    return isCoRec(p);
   });
 
   // Pre-group payments/invoices/expenses by month key for efficiency

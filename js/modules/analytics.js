@@ -3,7 +3,7 @@ import { el, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import {
   formatEUR, toEUR, byId,
-  listActive, listActivePayments, isCapEx
+  listActive, listActivePayments, isCapEx, companyPropIds
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -34,10 +34,12 @@ export default {
 function getData(start, end) {
   const inRange = d => !!d && d >= start && d <= end;
   const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const coPropIds = companyPropIds();
+  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
 
   // Paid rental income
   const payments = listActivePayments().filter(p =>
-    p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p)
+    p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
   );
 
   // Paid service invoices
@@ -47,7 +49,7 @@ function getData(start, end) {
 
   // Pending payments (pipeline)
   const pendingPayments = listActivePayments().filter(p =>
-    p.status === 'pending' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p)
+    p.status === 'pending' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
   );
 
   // Outstanding invoices (not paid, not cancelled/void)
@@ -64,8 +66,8 @@ function getData(start, end) {
 
   // Expenses: split OpEx / CapEx
   const allExp    = listActive('expenses');
-  const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mOwner(e) && mProperty(e));
-  const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mOwner(e) && mProperty(e));
+  const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mOwner(e) && mProperty(e) && isCoRec(e));
+  const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mOwner(e) && mProperty(e) && isCoRec(e));
 
   // Revenue totals
   const propRev  = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
