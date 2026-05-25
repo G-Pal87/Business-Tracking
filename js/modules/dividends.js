@@ -488,12 +488,12 @@ function buildAddForm(year) {
     rebuildView();
   };
 
-  formBody.appendChild(el('div', { style: 'display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap' },
+  formBody.appendChild(el('div', { style: 'display:grid;grid-template-columns:150px 180px 130px 1fr auto;gap:0 14px;align-items:start' },
     formRow('Date', dateI),
     formRow('Gross Amount (€)', amountWrap),
     formRow('Recipient', recipientSel),
     formRow('Notes', notesI),
-    el('div', { style: 'padding-bottom:2px' }, addBtn)
+    el('div', { style: 'padding-top:22px' }, addBtn)
   ));
 
   formBody.appendChild(el('div', { style: 'margin-top:10px;font-size:12px;color:var(--text-muted);padding:8px 12px;background:rgba(99,102,241,0.06);border-left:2px solid var(--accent);border-radius:4px' },
