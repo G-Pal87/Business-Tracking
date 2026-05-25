@@ -440,6 +440,7 @@ function buildView() {
     variant:   'success',
     delta:     deltaPaid,
     compLabel: cmpRange?.label,
+    compValue: cmpData ? formatEUR(cmpData.paidTotal) : undefined,
     onClick:   () => {
       const body = el('div');
       const streamMap = new Map();
@@ -468,6 +469,7 @@ function buildView() {
     value:     formatEUR(invoicedTotal),
     delta:     deltaInvoiced,
     compLabel: cmpRange?.label,
+    compValue: cmpData ? formatEUR(cmpData.invoicedTotal) : undefined,
     onClick:   () => {
       const body = el('div');
       const statusMap = new Map();
@@ -499,6 +501,7 @@ function buildView() {
     delta:     deltaCollection,
     deltaIsPp: true,
     compLabel: cmpRange?.label,
+    compValue: cmpData?.collectionRate != null ? cmpData.collectionRate.toFixed(0) + '%' : undefined,
     onClick:   () => {
       const body = el('div');
       const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
@@ -526,6 +529,7 @@ function buildView() {
     delta:       deltaOutstanding,
     invertDelta: true,
     compLabel:   cmpRange?.label,
+    compValue:   cmpData ? formatEUR(cmpData.outstandingTotal) : undefined,
     onClick:     () => {
       const body = el('div');
       const clientMap = new Map();
@@ -721,6 +725,7 @@ function buildView() {
     subtitle: avgInvValue !== null ? `${nonDraft.length} invoice${nonDraft.length !== 1 ? 's' : ''}` : 'No invoices',
     delta:    deltaAvgInv,
     compLabel: cmpRange?.label,
+    compValue: (cmpData && cmpData.nonDraft.length > 0) ? formatEUR(cmpData.invoicedTotal / cmpData.nonDraft.length) : undefined,
     onClick:  () => {
       const body = el('div');
 

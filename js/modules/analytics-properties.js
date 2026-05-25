@@ -1034,7 +1034,9 @@ function buildView() {
   kpiRow.appendChild(mkKpiCard({
     label:   'Rental Revenue',
     value:   formatEUR(totals.rev),
-    delta:   deltaRev,
+    delta:      deltaRev,
+    compLabel:  cmpRange?.label,
+    compValue:  cmpData ? formatEUR(cmpData.totals.rev) : undefined,
     onClick: () => {
       const body = el('div');
       const sorted = [...propData].filter(d => d.rev > 0).sort((a, b) => b.rev - a.rev);
@@ -1053,6 +1055,8 @@ function buildView() {
     value:       formatEUR(totals.opEx),
     delta:       deltaOpEx,
     invertDelta: true,
+    compLabel:   cmpRange?.label,
+    compValue:   cmpData ? formatEUR(cmpData.totals.opEx) : undefined,
     onClick:     () => {
       const body = el('div');
       const catMap = new Map();
@@ -1082,8 +1086,10 @@ function buildView() {
   kpiRow.appendChild(mkKpiCard({
     label:   'Operating Profit',
     value:   formatEUR(totals.profit),
-    variant: totals.profit >= 0 ? 'success' : 'danger',
-    delta:   deltaProfit,
+    variant:    totals.profit >= 0 ? 'success' : 'danger',
+    delta:      deltaProfit,
+    compLabel:  cmpRange?.label,
+    compValue:  cmpData ? formatEUR(cmpData.totals.profit) : undefined,
     onClick: () => {
       const body = el('div');
       const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
@@ -1108,6 +1114,8 @@ function buildView() {
     variant:     totals.capEx > 0 ? 'warning' : '',
     delta:       deltaCapEx,
     invertDelta: true,
+    compLabel:   cmpRange?.label,
+    compValue:   cmpData ? formatEUR(cmpData.totals.capEx) : undefined,
     onClick:     () => {
       const body = el('div');
       const propCapMap = new Map();

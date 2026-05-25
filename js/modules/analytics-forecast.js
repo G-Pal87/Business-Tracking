@@ -442,7 +442,8 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     value: forecastRev > 0 ? formatEUR(forecastRev) : '—',
     onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS),
     delta: cmpData ? safePct(forecastRev, cmpData.forecastRev) : null,
-    invertDelta: false, compLabel: cmpLabel
+    invertDelta: false, compLabel: cmpLabel,
+    compValue: cmpData ? formatEUR(cmpData.forecastRev) : undefined,
   }));
 
   // 2. Actual Revenue
@@ -495,7 +496,8 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       openModal({ title: 'Actual Revenue Breakdown', body, large: true });
     },
     delta: cmpData ? safePct(actualRev, cmpData.actualRev) : null,
-    invertDelta: false, compLabel: cmpLabel
+    invertDelta: false, compLabel: cmpLabel,
+    compValue: cmpData ? formatEUR(cmpData.actualRev) : undefined,
   }));
 
   // 3. Forecast Variance
@@ -526,7 +528,8 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     value: forecastExp > 0 ? formatEUR(forecastExp) : '—',
     onClick: () => drillDownModal('Forecast vs Actual OpEx', expMoDrillRows(monthlyBreakdown), EXP_MO_COLS),
     delta: cmpData ? safePct(forecastExp, cmpData.forecastExp) : null,
-    invertDelta: true, compLabel: cmpLabel
+    invertDelta: true, compLabel: cmpLabel,
+    compValue: cmpData ? formatEUR(cmpData.forecastExp) : undefined,
   }));
 
   // 6. Actual OpEx
@@ -577,7 +580,8 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       openModal({ title: 'Actual OpEx Breakdown', body, large: true });
     },
     delta: cmpData ? safePct(actualExp, cmpData.actualExp) : null,
-    invertDelta: true, compLabel: cmpLabel
+    invertDelta: true, compLabel: cmpLabel,
+    compValue: cmpData ? formatEUR(cmpData.actualExp) : undefined,
   }));
 
   // 7. Forecast Net
@@ -587,7 +591,8 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     variant: forecastNet >= 0 ? 'success' : 'danger',
     onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS),
     delta: cmpData ? safePct(forecastNet, cmpData.forecastNet) : null,
-    invertDelta: false, compLabel: cmpLabel
+    invertDelta: false, compLabel: cmpLabel,
+    compValue: cmpData ? formatEUR(cmpData.forecastNet) : undefined,
   }));
 
   // 8. Actual Net — drilldown shows monthly net breakdown vs forecast
@@ -597,7 +602,8 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     variant: actualNet >= 0 ? 'success' : 'danger',
     onClick: () => drillDownModal('Actual Net Breakdown', netMoDrillRows(monthlyBreakdown), NET_MO_COLS),
     delta: cmpData ? safePct(actualNet, cmpData.actualNet) : null,
-    invertDelta: false, compLabel: cmpLabel
+    invertDelta: false, compLabel: cmpLabel,
+    compValue: cmpData ? formatEUR(cmpData.actualNet) : undefined,
   }));
 
   // 9. Pending Pipeline — period scoped
@@ -624,7 +630,8 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       ]);
     },
     delta: cmpData ? safePct(pendingPipeline, cmpData.pendingPipeline) : null,
-    invertDelta: false, compLabel: cmpLabel
+    invertDelta: false, compLabel: cmpLabel,
+    compValue: cmpData ? formatEUR(cmpData.pendingPipeline) : undefined,
   }));
 
   // 10. CapEx Budget vs Actual — forecast model has no CapEx field; show actuals with explanatory subtitle
