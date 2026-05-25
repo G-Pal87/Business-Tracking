@@ -15,7 +15,7 @@ let selectedId = null;
 let _propRebuildTimer = null;
 
 // ── Filter + sort state (persists across navigation via localStorage) ─────────
-const _pf = { years: new Set(), owners: new Set(), types: new Set(), countries: new Set() };
+const _pf = { years: new Set(), channels: new Set(), owners: new Set(), types: new Set(), countries: new Set() };
 let _pSortDir = 1; // 1 = asc, -1 = desc
 let _pSortKey = 'name'; // 'name' | 'type'
 
@@ -25,7 +25,7 @@ function loadPropFilters() {
   try {
     const d = JSON.parse(localStorage.getItem(PF_KEY) || 'null');
     if (!d) return;
-    ['years', 'owners', 'types', 'countries'].forEach(k => {
+    ['years', 'channels', 'owners', 'types', 'countries'].forEach(k => {
       _pf[k].clear();
       if (Array.isArray(d[k])) d[k].forEach(v => _pf[k].add(v));
     });
@@ -37,7 +37,7 @@ function loadPropFilters() {
 function savePropFilters() {
   try {
     localStorage.setItem(PF_KEY, JSON.stringify({
-      years: [..._pf.years], owners: [..._pf.owners],
+      years: [..._pf.years], channels: [..._pf.channels], owners: [..._pf.owners],
       types: [..._pf.types], countries: [..._pf.countries],
       sortDir: _pSortDir, sortKey: _pSortKey
     }));
@@ -141,6 +141,7 @@ function rebuildPropFilters(filterBar, grid) {
   // Returns true if property p passes all filters except the one named `skip`
   const matchesExcept = (p, skip) => {
     if (skip !== 'years'     && _pf.years.size     && !_pf.years.has(p.purchaseDate?.slice(0, 4) || ''))  return false;
+    if (skip !== 'channels'  && _pf.channels.size  && !_pf.channels.has(p.channel || 'company'))           return false;
     if (skip !== 'owners'    && _pf.owners.size    && !_pf.owners.has(p.owner || ''))                       return false;
     if (skip !== 'types'     && _pf.types.size     && !_pf.types.has(p.type || ''))                         return false;
     if (skip !== 'countries' && _pf.countries.size && !_pf.countries.has(p.country || ''))                  return false;
@@ -149,20 +150,23 @@ function rebuildPropFilters(filterBar, grid) {
   const uniq = (arr) => [...new Set(arr)].sort();
 
   const validYears     = uniq(all.filter(p => matchesExcept(p, 'years'    )).map(p => p.purchaseDate?.slice(0, 4)).filter(Boolean));
+  const validChannels  = uniq(all.filter(p => matchesExcept(p, 'channels' )).map(p => p.channel || 'company'));
   const validOwners    = uniq(all.filter(p => matchesExcept(p, 'owners'   )).map(p => p.owner).filter(Boolean));
   const validTypes     = uniq(all.filter(p => matchesExcept(p, 'types'    )).map(p => p.type).filter(Boolean));
   const validCountries = uniq(all.filter(p => matchesExcept(p, 'countries')).map(p => p.country).filter(Boolean));
 
   // Prune selections that are no longer valid given other active filters
-  [..._pf.years    ].forEach(v => { if (!validYears.includes(v))     _pf.years.delete(v); });
-  [..._pf.owners   ].forEach(v => { if (!validOwners.includes(v))    _pf.owners.delete(v); });
-  [..._pf.types    ].forEach(v => { if (!validTypes.includes(v))     _pf.types.delete(v); });
+  [..._pf.years    ].forEach(v => { if (!validYears.includes(v))    _pf.years.delete(v); });
+  [..._pf.channels ].forEach(v => { if (!validChannels.includes(v)) _pf.channels.delete(v); });
+  [..._pf.owners   ].forEach(v => { if (!validOwners.includes(v))   _pf.owners.delete(v); });
+  [..._pf.types    ].forEach(v => { if (!validTypes.includes(v))    _pf.types.delete(v); });
   [..._pf.countries].forEach(v => { if (!validCountries.includes(v)) _pf.countries.delete(v); });
   savePropFilters();
 
   const onChange = () => { savePropFilters(); clearTimeout(_propRebuildTimer); _propRebuildTimer = setTimeout(() => rebuildPropFilters(filterBar, grid), 250); };
 
   const yearMS    = buildMultiSelect(validYears.map(y => ({ value: y, label: y })), _pf.years, 'All Years', onChange);
+  const channelMS = buildMultiSelect(validChannels.map(v => ({ value: v, label: PROPERTY_CHANNELS[v] || v })), _pf.channels, 'All Channels', onChange);
   const ownerMS   = buildMultiSelect(validOwners.map(v => ({ value: v, label: OWNERS[v] || v })), _pf.owners, 'All Owners', onChange);
   const typeMS    = buildMultiSelect(validTypes.map(v => ({ value: v, label: PROPERTY_TYPES[v] || v })), _pf.types, 'All Types', onChange);
   const countryMS = buildMultiSelect(validCountries.map(v => ({ value: v, label: v })), _pf.countries, 'All Countries', onChange);
@@ -170,8 +174,8 @@ function rebuildPropFilters(filterBar, grid) {
   const resetBtn = button('Reset Filters', {
     variant: 'sm ghost',
     onClick: () => {
-      yearMS.reset(); ownerMS.reset(); typeMS.reset(); countryMS.reset();
-      _pf.years.clear(); _pf.owners.clear(); _pf.types.clear(); _pf.countries.clear();
+      yearMS.reset(); channelMS.reset(); ownerMS.reset(); typeMS.reset(); countryMS.reset();
+      _pf.years.clear(); _pf.channels.clear(); _pf.owners.clear(); _pf.types.clear(); _pf.countries.clear();
       _pSortDir = 1; _pSortKey = 'name';
       savePropFilters();
       rebuildPropFilters(filterBar, grid);
@@ -193,6 +197,7 @@ function rebuildPropFilters(filterBar, grid) {
   };
 
   filterBar.appendChild(yearMS);
+  filterBar.appendChild(channelMS);
   filterBar.appendChild(ownerMS);
   filterBar.appendChild(typeMS);
   filterBar.appendChild(countryMS);
@@ -211,6 +216,7 @@ function renderPropGrid(grid, preloaded) {
   let props = preloaded || listActive('properties');
 
   if (_pf.years.size)     props = props.filter(p => _pf.years.has(p.purchaseDate?.slice(0, 4) || ''));
+  if (_pf.channels.size)  props = props.filter(p => _pf.channels.has(p.channel || 'company'));
   if (_pf.owners.size)    props = props.filter(p => _pf.owners.has(p.owner || ''));
   if (_pf.types.size)     props = props.filter(p => _pf.types.has(p.type || ''));
   if (_pf.countries.size) props = props.filter(p => _pf.countries.has(p.country || ''));
@@ -234,7 +240,7 @@ function renderPropGrid(grid, preloaded) {
   });
 
   if (props.length === 0) {
-    const hasFilter = _pf.years.size || _pf.owners.size || _pf.types.size || _pf.countries.size;
+    const hasFilter = _pf.years.size || _pf.channels.size || _pf.owners.size || _pf.types.size || _pf.countries.size;
     grid.appendChild(el('div', { class: 'empty' },
       el('div', { class: 'empty-icon' }, 'H'),
       hasFilter ? 'No properties match your filters.' : 'No properties yet. Add your first one.'
