@@ -11,13 +11,15 @@ const initialData = {
   clients: [],
   services: [],
   invoices: [],
+  people: [],
   users: [],
   settings: {
     masterCurrency: 'EUR',
     fxRates: { yearRates: {} },
     defaultTaxRate: 0,
     business: { name: '', email: '', address: '', vatNumber: '', iban: '', bic: '' },
-    team: []
+    team: [],
+    dividendSettings: []
   },
   appConfig: {
     github: { owner: '', repo: '', branch: 'main', path: 'data/db.json', token: '' }
@@ -59,6 +61,8 @@ export function setDb(db) {
   if (!state.db.settings.fxRates) state.db.settings.fxRates = { yearRates: {} };
   if (!state.db.settings.fxRates.yearRates) state.db.settings.fxRates.yearRates = {};
   if (!state.db.users) state.db.users = [];
+  if (!state.db.people) state.db.people = [];
+  if (!state.db.settings.dividendSettings) state.db.settings.dividendSettings = [];
   state._ix = new Map();
   for (const [key, val] of Object.entries(state.db)) {
     if (Array.isArray(val)) {

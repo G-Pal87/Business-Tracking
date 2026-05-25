@@ -3,7 +3,8 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect } from '../core/ui.js';
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
-  propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI
+  propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI,
+  getPeopleOwners, getPersonName
 } from '../core/data.js';
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS } from '../core/config.js';
 import { fetchICal, parseICal, nights } from '../core/ical.js';
@@ -167,7 +168,7 @@ function rebuildPropFilters(filterBar, grid) {
 
   const yearMS    = buildMultiSelect(validYears.map(y => ({ value: y, label: y })), _pf.years, 'All Years', onChange);
   const channelMS = buildMultiSelect(validChannels.map(v => ({ value: v, label: PROPERTY_CHANNELS[v] || v })), _pf.channels, 'All Channels', onChange);
-  const ownerMS   = buildMultiSelect(validOwners.map(v => ({ value: v, label: OWNERS[v] || v })), _pf.owners, 'All Owners', onChange);
+  const ownerMS   = buildMultiSelect(validOwners.map(v => ({ value: v, label: getPersonName(v) })), _pf.owners, 'All Owners', onChange);
   const typeMS    = buildMultiSelect(validTypes.map(v => ({ value: v, label: PROPERTY_TYPES[v] || v })), _pf.types, 'All Types', onChange);
   const countryMS = buildMultiSelect(validCountries.map(v => ({ value: v, label: v })), _pf.countries, 'All Countries', onChange);
 
@@ -268,7 +269,7 @@ function card(p, stats) {
   ));
   c.appendChild(el('div', { class: 'flex gap-8 mt-8' },
     el('span', { class: `badge ${p.type === 'short_term' ? 'short' : 'long'}` }, p.type === 'short_term' ? 'Short-term' : 'Long-term'),
-    el('span', { class: 'badge' }, OWNERS[p.owner] || p.owner)
+    el('span', { class: 'badge' }, getPersonName(p.owner || 'both'))
   ));
   c.appendChild(el('div', { class: 'prop-card-stats' },
     statBox('Purchase', formatMoney(p.purchasePrice, p.currency, { maxFrac: 0 })),
@@ -305,7 +306,7 @@ export function openDetail(id, preStats) {
       el('div', { class: 'flex gap-8 mt-8' },
         el('span', { class: `badge ${p.status === 'active' ? 'success' : p.status === 'renovation' ? 'warning' : p.status === 'sold' ? 'danger' : ''}` }, PROPERTY_STATUSES[p.status]?.label || p.status),
         el('span', { class: `badge ${p.type === 'short_term' ? 'short' : 'long'}` }, PROPERTY_TYPES[p.type]),
-        el('span', { class: 'badge' }, OWNERS[p.owner] || p.owner)
+        el('span', { class: 'badge' }, getPersonName(p.owner || 'both'))
       )
     )
   ));
@@ -570,7 +571,7 @@ function openForm(existing) {
   const flagI = input({ value: p.flag, placeholder: 'ES, HU, PT...', maxlength: 4 });
   const typeS    = select(Object.entries(PROPERTY_TYPES).map(([v, l]) => ({ value: v, label: l })), p.type);
   const statusS  = select(Object.entries(PROPERTY_STATUSES).map(([v, m]) => ({ value: v, label: m.label })), p.status);
-  const ownerS   = select(Object.entries(OWNERS).map(([v, l]) => ({ value: v, label: l })), p.owner);
+  const ownerS   = select(getPeopleOwners({ includeBoth: true }), p.owner);
   const channelS = select(Object.entries(PROPERTY_CHANNELS).map(([v, l]) => ({ value: v, label: l })), p.channel || 'company');
   const currencyS = select(CURRENCIES, p.currency);
   const purchaseI = input({ type: 'number', value: p.purchasePrice, min: 0, step: 1000 });

@@ -114,6 +114,18 @@ export const OWNERS = {
   both: 'Both'
 };
 
+export const PERSON_ROLES = {
+  employee:  { label: 'Employee',  color: '#10b981' },
+  director:  { label: 'Director',  color: '#3b82f6' },
+  partner:   { label: 'Partner',   color: '#8b5cf6' },
+  assistant: { label: 'Assistant', color: '#f59e0b' }
+};
+
+export const DIVIDEND_METHODS = {
+  fixed_rate:        { label: 'Fixed Rate (% of shares)' },
+  acquired_revenue:  { label: 'Acquired Revenue (based on individual revenue)' }
+};
+
 export const CURRENCIES = ['EUR', 'HUF'];
 export const MASTER_CURRENCY = 'EUR';
 
