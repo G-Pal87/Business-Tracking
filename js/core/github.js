@@ -199,7 +199,7 @@ async function doPushDb(message = 'Update data') {
     if (merged.appConfig?.github?.token) delete merged.appConfig.github.token;
 
     // PUT merged content
-    const jsonStr = JSON.stringify(merged, null, 2);
+    const jsonStr = JSON.stringify(merged);
     if (jsonStr.length > 8 * 1024 * 1024) {
       console.warn(`[BT] DB is ${(jsonStr.length / 1024 / 1024).toFixed(1)} MB — consider purging deleted records in Settings → Data`);
     }
