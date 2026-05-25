@@ -26094,8 +26094,10 @@
       "notes": "5% monthly management fee",
       "createdAt": 1777638212996,
       "createdBy": "RitaK",
-      "updatedAt": 1777638212996,
-      "updatedBy": "RitaK"
+      "updatedAt": 1779689960493,
+      "updatedBy": "Giorgos",
+      "deletedAt": 1779689960493,
+      "deletedBy": "Giorgos"
     }
   ],
   "tenants": [],
