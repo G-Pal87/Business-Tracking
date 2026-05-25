@@ -32,7 +32,8 @@ async function boot() {
     { default: vendors },
     { default: users },
     { default: inventory },
-    { default: tenants }
+    { default: tenants },
+    { default: dividends }
   ] = await Promise.all([
     import(`./modules/properties.js?v=${VERSION}`),
     import(`./modules/payments.js?v=${VERSION}`),
@@ -56,11 +57,12 @@ async function boot() {
     import(`./modules/vendors.js?v=${VERSION}`),
     import(`./modules/users.js?v=${VERSION}`),
     import(`./modules/inventory.js?v=${VERSION}`),
-    import(`./modules/tenants.js?v=${VERSION}`)
+    import(`./modules/tenants.js?v=${VERSION}`),
+    import(`./modules/dividends.js?v=${VERSION}`)
   ]);
 
   const MODULES = [
-    properties, payments, expenses, tenants, vendors, inventory,
+    properties, payments, expenses, dividends, tenants, vendors, inventory,
     reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsPersonal, analyticsTax, clients, invoices, settings, users
   ];
 
@@ -340,7 +342,7 @@ function buildUserFooter() {
 function buildSidebar(MODULES) {
   const navGroups = [
     { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-personal', 'analytics-tax'] },
-    { title: 'Operations', items: ['properties', 'payments', 'expenses', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'forecast'] },
+    { title: 'Operations', items: ['properties', 'payments', 'expenses', 'dividends', 'tenants', 'vendors', 'inventory', 'clients', 'invoices', 'forecast'] },
     { title: 'System', items: ['settings', 'users'] }
   ];
   const nav = document.getElementById('nav');
