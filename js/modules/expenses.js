@@ -90,6 +90,7 @@ function build() {
   const recurrenceFilter = new Set();
 
   let selected = new Set();
+  let _filterTimer;
 
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
     const count = selected.size;
@@ -144,7 +145,7 @@ function build() {
     for (const v of [...accountingTypeFilter]) if (!validTps.has(v))  accountingTypeFilter.delete(v);
     for (const v of [...recurrenceFilter])     if (!validRecs.has(v)) recurrenceFilter.delete(v);
 
-    const onFilter = () => { rebuildFilters(); renderAll(); };
+    const onFilter = () => { clearTimeout(_filterTimer); _filterTimer = setTimeout(() => { rebuildFilters(); renderAll(); }, 250); };
 
     const yearOpts   = [...validYrs].sort().reverse().map(y => ({ value: y, label: y }));
     const monthOpts  = [...validMos].sort().map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] }));

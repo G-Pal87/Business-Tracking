@@ -21,28 +21,34 @@ const LABELS = {
   settings: 'Settings', users: 'Users'
 };
 
-let pollTimer   = null;
-let banner      = null;
-const notified  = new Map(); // `${user}:${view}` → timestamp
+let pollTimer       = null;
+let banner          = null;
+let navTimer        = null;
+let lastWrittenView = null;
+const notified      = new Map(); // `${user}:${view}` → timestamp
 
 // ── Public ────────────────────────────────────────────────────────────────────
 
 export function startPresence() {
-  // Listen for navigation events
-  window.addEventListener('hashchange', handleNavigate);
-  // Update presence for the page the user landed on (after a brief delay so
-  // session and GitHub config are fully initialised)
+  window.addEventListener('hashchange', onHashChange);
   setTimeout(() => {
-    handleNavigate();
+    onHashChange();
     schedulePoll();
   }, 3000);
 }
 
 // ── Navigation hook ───────────────────────────────────────────────────────────
 
+function onHashChange() {
+  clearTimeout(navTimer);
+  navTimer = setTimeout(handleNavigate, 2000);
+}
+
 async function handleNavigate() {
+  navTimer = null;
   const view = currentView();
   if (!TRACKED.has(view)) return;
+  if (view === lastWrittenView) return;
   const username = state.session?.username;
   const { owner, repo, token } = state.github;
   if (!username || !owner || !repo || !token) return;
@@ -51,6 +57,7 @@ async function handleNavigate() {
     const { entries = {} } = await readPresence();
     entries[username] = { view, t: Date.now(), name: state.session?.name || username };
     await writePresence(entries);
+    lastWrittenView = view;
   } catch { /* best-effort */ }
 }
 
@@ -68,9 +75,13 @@ async function poll() {
   const { owner, repo, token } = state.github;
   if (!username || !owner || !repo || !token) return;
 
+  const now = Date.now();
+  for (const [key, ts] of notified) {
+    if (now - ts > THROTTLE_MS) notified.delete(key);
+  }
+
   try {
     const { entries = {} } = await readPresence();
-    const now = Date.now();
     for (const [user, entry] of Object.entries(entries)) {
       if (user === username) continue;
       if (!entry.view || !entry.t) continue;

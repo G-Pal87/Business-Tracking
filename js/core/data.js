@@ -2,6 +2,11 @@
 import { state, markDirty } from './state.js';
 import { MASTER_CURRENCY } from './config.js';
 
+const _fmtCache    = new Map();
+const _numFmtCache = new Map();
+let _fxKeysCache   = null;
+let _fxRatesRef    = null;
+
 // ============== Currency ==============
 export function toEUR(amount, currency, dateOrYear) {
   if (!amount) return 0;
@@ -14,8 +19,11 @@ export function toEUR(amount, currency, dateOrYear) {
     if (y && yearRates[y] !== undefined) {
       rate = yearRates[y];
     } else {
-      const keys = Object.keys(yearRates).sort();
-      rate = keys.length ? yearRates[keys[keys.length - 1]] : undefined;
+      if (_fxRatesRef !== yearRates) {
+        _fxKeysCache = Object.keys(yearRates).sort();
+        _fxRatesRef  = yearRates;
+      }
+      rate = _fxKeysCache.length ? yearRates[_fxKeysCache[_fxKeysCache.length - 1]] : undefined;
     }
     if (rate !== undefined) return Number(amount) * rate;
   }
@@ -25,17 +33,17 @@ export function toEUR(amount, currency, dateOrYear) {
 export function formatMoney(amount, currency = 'EUR', options = {}) {
   const maxFrac = options.maxFrac ?? (currency === 'HUF' ? 0 : 2);
   const minFrac = Math.min(options.minFrac ?? (currency === 'HUF' ? 0 : 2), maxFrac);
-  const opts = {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: maxFrac,
-    minimumFractionDigits: minFrac
-  };
-  try {
-    return new Intl.NumberFormat('en-US', opts).format(amount || 0);
-  } catch (e) {
-    return `${amount} ${currency}`;
+  const key = `${currency}:${maxFrac}:${minFrac}`;
+  let fmt = _fmtCache.get(key);
+  if (!fmt) {
+    try {
+      fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: maxFrac, minimumFractionDigits: minFrac });
+    } catch (e) {
+      return `${amount} ${currency}`;
+    }
+    _fmtCache.set(key, fmt);
   }
+  return fmt.format(amount || 0);
 }
 
 export function formatEUR(amount, options = {}) {
@@ -43,7 +51,12 @@ export function formatEUR(amount, options = {}) {
 }
 
 export function formatNumber(n, frac = 0) {
-  return new Intl.NumberFormat('en-US', { minimumFractionDigits: frac, maximumFractionDigits: frac }).format(n || 0);
+  let fmt = _numFmtCache.get(frac);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: frac, maximumFractionDigits: frac });
+    _numFmtCache.set(frac, fmt);
+  }
+  return fmt.format(n || 0);
 }
 
 // ============== IDs ==============
@@ -64,6 +77,7 @@ export function upsert(collection, item) {
   item.updatedAt = now;
   item.updatedBy = actor;
   if (idx >= 0) arr[idx] = item; else arr.push(item);
+  state._ix?.get(collection)?.set(item.id, item);
   markDirty();
   return item;
 }
@@ -75,6 +89,7 @@ export function remove(collection, id) {
   const idx = arr.findIndex(x => x.id === id);
   if (idx >= 0) {
     arr.splice(idx, 1);
+    state._ix?.get(collection)?.delete(id);
     markDirty();
     return true;
   }
@@ -142,6 +157,8 @@ export function updateRecord(collection, id, patch) {
 }
 
 export function byId(collection, id) {
+  const ix = state._ix?.get(collection);
+  if (ix) return ix.get(id);
   return (state.db[collection] || []).find(x => x.id === id);
 }
 

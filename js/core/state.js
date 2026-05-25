@@ -26,6 +26,7 @@ const initialData = {
 
 export const state = {
   db: structuredClone(initialData),
+  _ix: new Map(),
   github: {
     token: '', owner: '', repo: '', branch: 'main', dbPath: 'data/db.json',
     sha: null, connected: false, remoteDb: null,
@@ -58,6 +59,12 @@ export function setDb(db) {
   if (!state.db.settings.fxRates) state.db.settings.fxRates = { yearRates: {} };
   if (!state.db.settings.fxRates.yearRates) state.db.settings.fxRates.yearRates = {};
   if (!state.db.users) state.db.users = [];
+  state._ix = new Map();
+  for (const [key, val] of Object.entries(state.db)) {
+    if (Array.isArray(val)) {
+      state._ix.set(key, new Map(val.map(item => [item.id, item])));
+    }
+  }
   state.dirty = false;
   notify('data-loaded');
 }

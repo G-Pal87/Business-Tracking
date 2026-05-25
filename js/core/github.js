@@ -371,18 +371,23 @@ export function mergeLocalPending(remoteDb, localCache) {
   return result;
 }
 
+let _saveCacheTimer = null;
+let _pendingSaveDb  = null;
 export function saveLocalCache(db) {
-  try {
-    // Strip embedded PDF data before caching — prevents QuotaExceededError.
-    // Invoices imported after the migration store only pdfPath, but older records
-    // may still have pdfData until the one-time migration runs.
-    const safe = { ...db };
-    if (Array.isArray(safe.invoices)) {
-      safe.invoices = safe.invoices.map(({ pdfData, ...rest }) => rest);
-    }
-    localStorage.setItem(DB_LS_KEY, JSON.stringify(safe));
-  }
-  catch (e) { console.warn('saveLocalCache:', e); }
+  _pendingSaveDb = db;
+  clearTimeout(_saveCacheTimer);
+  _saveCacheTimer = setTimeout(() => {
+    _saveCacheTimer = null;
+    const toSave = _pendingSaveDb;
+    _pendingSaveDb = null;
+    try {
+      const safe = { ...toSave };
+      if (Array.isArray(safe.invoices)) {
+        safe.invoices = safe.invoices.map(({ pdfData, ...rest }) => rest);
+      }
+      localStorage.setItem(DB_LS_KEY, JSON.stringify(safe));
+    } catch (e) { console.warn('saveLocalCache:', e); }
+  }, 500);
 }
 
 // ── File storage (invoice PDFs, etc.) ────────────────────────────────────────

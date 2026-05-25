@@ -59,16 +59,17 @@ export function openModal({ title, body, footer, large = false, onClose } = {}) 
   overlay.appendChild(modal);
   requestAnimationFrame(() => overlay.classList.add('open'));
 
+  function escHandler(e) {
+    if (e.key === 'Escape') close();
+  }
   const close = () => {
+    document.removeEventListener('keydown', escHandler);
     overlay.classList.remove('open');
     setTimeout(() => { overlay.innerHTML = ''; if (onClose) onClose(); }, 200);
   };
   closeBtn.onclick = close;
   overlay.onclick = e => { if (e.target === overlay) close(); };
   document.addEventListener('keydown', escHandler);
-  function escHandler(e) {
-    if (e.key === 'Escape') { close(); document.removeEventListener('keydown', escHandler); }
-  }
   return { modal, close, body: bodyEl };
 }
 
@@ -385,6 +386,7 @@ export function buildMultiSelect(items, filterSet, allLabel, onRefresh, storageK
   };
 
   const closeMenu = () => {
+    if (!wrapper.isConnected) { document.removeEventListener('click', closeMenu); return; }
     if (menu.style.display === 'none') return;
     menu.style.display = 'none';
     persist();
