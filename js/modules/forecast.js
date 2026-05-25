@@ -235,11 +235,13 @@ function buildPropertySection(wrap) {
   yearTrigger.onclick = e => { e.stopPropagation(); yearMenu.style.display = yearMenu.style.display === 'none' ? '' : 'none'; };
   yearMenu.onclick = e => e.stopPropagation();
 
-  document.addEventListener('click', () => {
+  const closeForecMenus = () => {
+    if (!streamWrapper.isConnected) { document.removeEventListener('click', closeForecMenus); return; }
     streamMenu.style.display = 'none';
     propMenu.style.display = 'none';
     yearMenu.style.display = 'none';
-  });
+  };
+  document.addEventListener('click', closeForecMenus);
 
   streamWrapper.appendChild(streamTrigger);
   streamWrapper.appendChild(streamMenu);
@@ -568,7 +570,12 @@ function buildServiceSection(wrap) {
 
   svcYearTrigger.onclick = e => { e.stopPropagation(); svcYearMenu.style.display = svcYearMenu.style.display === 'none' ? '' : 'none'; };
   svcYearMenu.onclick = e => e.stopPropagation();
-  document.addEventListener('click', () => { svcMenu.style.display = 'none'; svcYearMenu.style.display = 'none'; });
+  const closeSvcMenus = () => {
+    if (!svcWrapper.isConnected) { document.removeEventListener('click', closeSvcMenus); return; }
+    svcMenu.style.display = 'none';
+    svcYearMenu.style.display = 'none';
+  };
+  document.addEventListener('click', closeSvcMenus);
   svcYearWrapper.appendChild(svcYearTrigger);
   svcYearWrapper.appendChild(svcYearMenu);
 

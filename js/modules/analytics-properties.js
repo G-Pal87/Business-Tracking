@@ -65,16 +65,25 @@ function getData(start, end) {
   // All-time CapEx is never filtered by current period date range
   const allCapExpenses = listActive('expenses').filter(e => isCapEx(e));
 
+  // Pre-build propertyId → records maps — eliminates O(n²) .filter() inside the property loop
+  const payByProp     = new Map();
+  const opExByProp    = new Map();
+  const capExByProp   = new Map();
+  const allCapExByProp = new Map();
+  for (const p of payments)      { const a = payByProp.get(p.propertyId)      || []; a.push(p); payByProp.set(p.propertyId, a); }
+  for (const e of opExpenses)    { const a = opExByProp.get(e.propertyId)     || []; a.push(e); opExByProp.set(e.propertyId, a); }
+  for (const e of capExpenses)   { const a = capExByProp.get(e.propertyId)    || []; a.push(e); capExByProp.set(e.propertyId, a); }
+  for (const e of allCapExpenses) { const a = allCapExByProp.get(e.propertyId) || []; a.push(e); allCapExByProp.set(e.propertyId, a); }
+
   const propData = allProps.map(prop => {
-    const propPay   = payments   .filter(p => p.propertyId === prop.id);
-    const propOpEx  = opExpenses .filter(e => e.propertyId === prop.id);
-    const propCapEx = capExpenses.filter(e => e.propertyId === prop.id);
+    const propPay   = payByProp.get(prop.id)    || [];
+    const propOpEx  = opExByProp.get(prop.id)   || [];
+    const propCapEx = capExByProp.get(prop.id)  || [];
     const rev   = propPay  .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
     const opEx  = propOpEx .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
     const capEx = propCapEx.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
-    const allTimeCapEx  = allCapExpenses
-      .filter(e => e.propertyId === prop.id)
+    const allTimeCapEx  = (allCapExByProp.get(prop.id) || [])
       .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
     const purchaseEUR   = prop.purchasePrice
       ? toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) : 0;
