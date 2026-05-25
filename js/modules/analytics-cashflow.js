@@ -14,6 +14,7 @@ import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBa
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
+let gScope = 'company'; // 'company' | 'all'
 
 const CHART_IDS = ['cf-cumulative-line', 'cf-month-bar', 'cf-net-donut', 'cf-net-month-bar', 'cf-prop-hbar', 'cf-stream-bar'];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -46,7 +47,9 @@ function getData(start, end) {
 
   const inRange = d => !!d && d >= start && d <= end;
   const coPropIds = companyPropIds();
-  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
+  const isCoRec = gScope === 'all'
+    ? () => true
+    : r => !r.propertyId || coPropIds.has(r.propertyId);
 
   const payments = listActivePayments().filter(p =>
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
@@ -412,12 +415,30 @@ function buildView() {
   // Shared filter bar
   const filterBarEl = buildFilterBar(gF, {
     showOwner: true, showStream: true, showProperty: true, showClient: true,
-    storagePrefix: 'cf', channelScope: 'company'
+    storagePrefix: 'cf', channelScope: gScope === 'all' ? null : 'company'
   }, newState => {
     if (newState) Object.assign(gF, newState);
     rebuildView();
   });
   wrap.appendChild(filterBarEl);
+
+  // Scope toggle (Company only / All incl. personal)
+  const scopeBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:12px' });
+  scopeBar.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)' }, 'Scope'));
+  for (const [val, label] of [['company', 'Company only'], ['all', 'All (incl. personal)']]) {
+    const isActive = gScope === val;
+    const btn = el('button', {
+      style: [
+        'padding:4px 14px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer;transition:all 120ms',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (gScope !== val) { gScope = val; rebuildView(); } };
+    scopeBar.appendChild(btn);
+  }
+  wrap.appendChild(scopeBar);
 
   // Date ranges
   const curRange = getCurrentPeriodRange(gF);

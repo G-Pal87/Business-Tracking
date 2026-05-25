@@ -18,6 +18,7 @@ const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct
 let gYear  = null;
 let gOwner = '';
 let gTab   = 'pnl'; // 'pnl' | 'provisional' | 'dividends'
+let gScope = 'company'; // 'company' | 'all'
 
 const SDC_RATE = 0.0265;
 
@@ -78,6 +79,24 @@ function buildView() {
     tabBar.appendChild(btn);
   }
   wrap.appendChild(tabBar);
+
+  // Scope toggle (Company only / All incl. personal)
+  const scopeBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:12px' });
+  scopeBar.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)' }, 'Scope'));
+  for (const [val, label] of [['company', 'Company only'], ['all', 'All (incl. personal)']]) {
+    const isActive = gScope === val;
+    const btn = el('button', {
+      style: [
+        'padding:4px 14px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer;transition:all 120ms',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (gScope !== val) { gScope = val; rebuildView(); } };
+    scopeBar.appendChild(btn);
+  }
+  wrap.appendChild(scopeBar);
 
   if (gTab === 'pnl') {
     wrap.appendChild(buildPnLContent(years));
@@ -161,7 +180,9 @@ function catColor(catKey) {
 
 function getYearData(year, ownerFilter) {
   const coPropIds = companyPropIds();
-  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
+  const isCoRec = gScope === 'all'
+    ? () => true
+    : r => !r.propertyId || coPropIds.has(r.propertyId);
   const payments = listActivePayments().filter(p =>
     p.status === 'paid' && inYear(p.date, year) && ownerMatches(p, ownerFilter) && isCoRec(p)
   );
