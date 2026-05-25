@@ -26,7 +26,6 @@ function build() {
 
   wrap.appendChild(buildGithubCard());
   wrap.appendChild(buildCurrencyCard());
-  wrap.appendChild(buildTaxExclusionsCard());
   wrap.appendChild(buildBusinessCard());
   wrap.appendChild(buildVendorsCard());
   wrap.appendChild(buildServicesCard());
@@ -378,93 +377,6 @@ function buildCurrencyCard() {
   };
 
   renderCard();
-  return card;
-}
-
-function buildTaxExclusionsCard() {
-  const card = el('div', { class: 'card mb-16' });
-
-  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
-  const header = el('div', { class: 'card-header card-header--toggle' },
-    el('div', {},
-      el('div', { class: 'card-title' }, 'Income Tax Exclusions'),
-      el('div', { class: 'card-subtitle' }, 'Properties excluded from tax estimation in the Forecast module')
-    ),
-    chevron
-  );
-  card.appendChild(header);
-
-  const body = el('div', { class: 'card-collapsible-body', style: 'display:none;padding:0 16px 16px' });
-  card.appendChild(body);
-
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
-
-  const render = () => {
-    body.innerHTML = '';
-    const excluded = new Set(state.db.settings?.taxExcludedPropertyIds || []);
-    const props = listActive('properties').sort((a, b) => (a.country || '').localeCompare(b.country || '') || a.name.localeCompare(b.name));
-
-    if (props.length === 0) {
-      body.appendChild(el('div', { class: 'empty' }, 'No properties found.'));
-      return;
-    }
-
-    body.appendChild(el('p', { style: 'font-size:12px;color:var(--text-muted);margin:0 0 12px' },
-      'Tick a property to exclude its revenue and expenses from income tax calculations.'
-    ));
-
-    const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px' });
-
-    for (const p of props) {
-      const chk = el('input', { type: 'checkbox' });
-      chk.checked = excluded.has(p.id);
-
-      const typeLabel = p.type === 'short_term' ? 'ST' : 'LT';
-      const location = [p.city, p.country].filter(Boolean).join(', ');
-      const label = el('label', { style: 'display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;background:var(--surface)' },
-        chk,
-        el('div', { style: 'flex:1;min-width:0' },
-          el('div', { style: 'font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis' },
-            `${p.flag ? p.flag + ' ' : ''}${p.name}`
-          ),
-          el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, location || '—')
-        ),
-        el('span', { class: `badge ${p.type === 'short_term' ? 'short' : 'long'}`, style: 'flex-shrink:0' }, typeLabel)
-      );
-
-      chk.onchange = () => {
-        if (!state.db.settings) state.db.settings = {};
-        const ids = new Set(state.db.settings.taxExcludedPropertyIds || []);
-        if (chk.checked) ids.add(p.id); else ids.delete(p.id);
-        state.db.settings.taxExcludedPropertyIds = [...ids];
-        markDirty();
-        const n = ids.size;
-        toast(chk.checked ? `${p.name} excluded from tax` : `${p.name} included in tax`, 'success');
-        // update header subtitle count
-        header.querySelector('.card-subtitle').textContent =
-          n > 0
-            ? `${n} propert${n === 1 ? 'y' : 'ies'} excluded from tax estimation`
-            : 'Properties excluded from tax estimation in the Forecast module';
-      };
-
-      grid.appendChild(label);
-    }
-
-    body.appendChild(grid);
-
-    // Update subtitle on initial render
-    const n = excluded.size;
-    if (n > 0) {
-      header.querySelector('.card-subtitle').textContent =
-        `${n} propert${n === 1 ? 'y' : 'ies'} excluded from tax estimation`;
-    }
-  };
-
-  render();
   return card;
 }
 
