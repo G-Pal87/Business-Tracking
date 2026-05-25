@@ -508,6 +508,48 @@ function smallStat(label, value, sub) {
   );
 }
 
+function nextMonthKey(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+}
+
+function generateOwnerRentExpenses(prop, history) {
+  if (!history || history.length === 0) return;
+  const sorted = [...history].sort((a, b) => a.from.localeCompare(b.from));
+  const startMonth = sorted[0].from.slice(0, 7);
+  const nowMonth   = new Date().toISOString().slice(0, 7);
+  const stream     = prop.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
+  let monthKey = startMonth;
+  while (monthKey <= nowMonth) {
+    const applicable = [...sorted].reverse().find(e => e.from.slice(0, 7) <= monthKey);
+    if (applicable) {
+      const already = (state.db.expenses || []).some(e =>
+        !e.deletedAt &&
+        e.propertyId === prop.id &&
+        e.category === 'owner_rent' &&
+        (e.date || '').slice(0, 7) === monthKey
+      );
+      if (!already) {
+        upsert('expenses', {
+          id: newId('exp'),
+          propertyId: prop.id,
+          category: 'owner_rent',
+          amount: applicable.amount,
+          currency: applicable.currency || prop.currency || 'EUR',
+          date: monthKey + '-01',
+          description: `Owner rent — ${prop.name}`,
+          stream,
+          owner: prop.owner || 'both',
+          accountingType: 'opex',
+          costCategory: 'property_management',
+          recurrence: 'recurring'
+        });
+      }
+    }
+    monthKey = nextMonthKey(monthKey);
+  }
+}
+
 function openForm(existing) {
   const p = existing ? { ...existing } : {
     id: newId('prop'),
@@ -545,24 +587,80 @@ function openForm(existing) {
   const icalI = input({ value: p.airbnbCalUrl || '', placeholder: 'https://airbnb.com/calendar/ical/...' });
   const soldDateI = input({ type: 'date', value: p.soldDate || '' });
 
-  // Rows that toggle based on type + channel
-  const rentLabelEl = el('label', { class: 'form-label' }, 'Monthly Rent');
-  const rentRowInner = el('div', { class: 'form-row' }, rentLabelEl, rentI);
-  const payDayRow = formRow('Payment Due Day (1–28)', payDayI);
-  const ltRow = el('div', { class: 'form-row horizontal' }, rentRowInner, payDayRow);
+  // ── Personal-LT tenant rent row ─────────────────────────────────────────────
+  const ltRow   = el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Payment Due Day (1–28)', payDayI));
   const icalRow = formRow('Airbnb iCal URL', icalI);
+
+  // ── Owner rent history (company-channel) ────────────────────────────────────
+  let pendingRentHistory = [...(p.ownerRentHistory || [])];
+
+  const rentHistoryListEl = el('div', { style: 'padding:0 16px 8px' });
+  const renderRentHistoryList = () => {
+    rentHistoryListEl.innerHTML = '';
+    const sorted = [...pendingRentHistory].sort((a, b) => a.from.localeCompare(b.from));
+    if (sorted.length === 0) {
+      rentHistoryListEl.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);padding:4px 0' },
+        'No rates configured yet. Add a rate to start generating monthly expense records.'));
+      return;
+    }
+    for (let i = 0; i < sorted.length; i++) {
+      const entry = sorted[i];
+      const row = el('div', { class: 'flex gap-8', style: 'align-items:center;margin-bottom:4px' });
+      row.appendChild(el('span', { style: 'font-size:13px;flex:1' },
+        `From ${fmtDate(entry.from)}: ${formatMoney(entry.amount, entry.currency, { maxFrac: 0 })}/month` +
+        (i === sorted.length - 1 ? ' — current' : '')
+      ));
+      row.appendChild(button('✕', { variant: 'sm ghost', onClick: () => {
+        pendingRentHistory = pendingRentHistory.filter(x => x.id !== entry.id);
+        renderRentHistoryList();
+      }}));
+      rentHistoryListEl.appendChild(row);
+    }
+  };
+  renderRentHistoryList();
+
+  const rhFromI  = el('input', { type: 'date',   class: 'input', style: 'min-width:130px' });
+  const rhAmtI   = el('input', { type: 'number', class: 'input', min: '0', placeholder: 'Amount', style: 'min-width:110px' });
+  const rhCurS   = select(CURRENCIES, p.currency || 'EUR');
+  const rhInline = el('div', { class: 'flex gap-8', style: 'padding:4px 16px 8px;flex-wrap:wrap;align-items:center;display:none' });
+  rhInline.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'From'));
+  rhInline.appendChild(rhFromI);
+  rhInline.appendChild(rhAmtI);
+  rhInline.appendChild(rhCurS);
+  rhInline.appendChild(button('Add', { onClick: () => {
+    if (!rhFromI.value) { toast('Effective date required', 'danger'); return; }
+    const amt = Number(rhAmtI.value);
+    if (!amt || amt <= 0) { toast('Amount required', 'danger'); return; }
+    pendingRentHistory.push({ id: newId('rrh'), amount: amt, currency: rhCurS.value, from: rhFromI.value });
+    rhFromI.value = ''; rhAmtI.value = '';
+    rhInline.style.display = 'none';
+    renderRentHistoryList();
+  }}));
+  rhInline.appendChild(button('Cancel', { variant: 'ghost', onClick: () => { rhInline.style.display = 'none'; } }));
+
+  const addRateBtn = button('+ Add Rate', { variant: 'sm', onClick: () => {
+    const now = new Date();
+    rhFromI.value = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0, 10);
+    rhInline.style.display = '';
+  }});
+
+  const ownerRentCard = el('div', { class: 'card mb-16' });
+  ownerRentCard.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Owner Rent (paid by company)'),
+    addRateBtn
+  ));
+  ownerRentCard.appendChild(rhInline);
+  ownerRentCard.appendChild(rentHistoryListEl);
+  ownerRentCard.appendChild(el('div', { style: 'padding:0 16px 10px;font-size:11px;color:var(--text-muted)' },
+    'Saving generates monthly owner_rent expense records up to today. Existing records are never changed.'
+  ));
 
   const updateTypeFields = () => {
     const isLT      = typeS.value === 'long_term';
     const isCompany = (channelS.value || 'company') === 'company';
-    // Company-channel: show owner rent (no payment-day, not a tenant schedule)
-    // Personal LT: show tenant monthly rent + payment day
-    const showOwnerRent  = isCompany;
-    const showTenantRent = !isCompany && isLT;
-    ltRow.style.display  = (showOwnerRent || showTenantRent) ? '' : 'none';
-    payDayRow.style.display = showTenantRent ? '' : 'none';
-    rentLabelEl.textContent = isCompany ? 'Monthly Owner Rent' : 'Monthly Rent';
-    icalRow.style.display   = !isCompany && !isLT ? '' : 'none';
+    ownerRentCard.style.display = isCompany ? '' : 'none';
+    ltRow.style.display         = !isCompany && isLT ? '' : 'none';
+    icalRow.style.display       = !isLT ? '' : 'none';
   };
   typeS.onchange    = updateTypeFields;
   channelS.onchange = updateTypeFields;
@@ -582,6 +680,7 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Currency', currencyS), el('div', { class: 'form-row' })));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Purchase Price', purchaseI), formRow('Purchase Date', dateI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Bedrooms', bedsI), formRow('Bathrooms', bathsI)));
+  body.appendChild(ownerRentCard);
   body.appendChild(ltRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Mortgage Amount', mAmtI), formRow('Monthly Payment', mMoI)));
   body.appendChild(formRow('Interest Rate %', mRateI));
@@ -742,8 +841,9 @@ function openForm(existing) {
       purchaseDate: dateI.value,
       bedrooms: Number(bedsI.value) || 0,
       bathrooms: Number(bathsI.value) || 0,
-      monthlyRent: Number(rentI.value) || 0,
+      monthlyRent: (channelS.value || 'company') !== 'company' ? (Number(rentI.value) || 0) : 0,
       paymentDayOfMonth: Number(payDayI.value) || 1,
+      ownerRentHistory: (channelS.value || 'company') === 'company' ? pendingRentHistory : [],
       mortgageAmount: Number(mAmtI.value) || 0,
       mortgageMonthly: Number(mMoI.value) || 0,
       mortgageRate: Number(mRateI.value) || 0,
@@ -764,6 +864,9 @@ function openForm(existing) {
       }
     }
     upsert('properties', p);
+    if ((channelS.value || 'company') === 'company' && pendingRentHistory.length > 0) {
+      generateOwnerRentExpenses(p, pendingRentHistory);
+    }
     toast(existing ? 'Property updated' : 'Property added', 'success');
     closeModal();
     setTimeout(() => navigate('properties'),200);

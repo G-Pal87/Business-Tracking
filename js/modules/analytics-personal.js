@@ -28,6 +28,14 @@ const INCOME_COLORS = {
   personal: '#ec4899'
 };
 
+function rentForMonth(history, monthKey) {
+  const sorted = [...history].sort((a, b) => a.from.localeCompare(b.from));
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    if (sorted[i].from.slice(0, 7) <= monthKey) return sorted[i];
+  }
+  return null;
+}
+
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
 
@@ -60,11 +68,11 @@ function getPersonData(person, start, end, months) {
   const reimbExps  = listActive('expenses').filter(e => e.category === cats.reimb && inRange(e.date));
   const reimb      = reimbExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
-  // Owner rent — calculated from monthlyRent × active months for company-channel properties
+  // Owner rent — derived from ownerRentHistory, rate-per-month aware
   const companyProps = listActive('properties').filter(p =>
     (p.channel === 'company' || !p.channel) &&
     ownerKeys.includes(p.owner || 'both') &&
-    (p.monthlyRent || 0) > 0 &&
+    (p.ownerRentHistory || []).length > 0 &&
     p.status !== 'sold'
   );
   const ownerRentByMonth = {};
@@ -74,8 +82,10 @@ function getPersonData(person, start, end, months) {
     let mo = 0;
     for (const prop of companyProps) {
       if (prop.soldDate && prop.soldDate < m.key + '-01') continue;
+      const entry = rentForMonth(prop.ownerRentHistory || [], m.key);
+      if (!entry) continue;
       const share = prop.owner === 'both' ? 0.5 : 1;
-      mo += toEUR(prop.monthlyRent || 0, prop.currency || 'EUR', mDate) * share;
+      mo += toEUR(entry.amount || 0, entry.currency || prop.currency || 'EUR', mDate) * share;
     }
     ownerRentByMonth[m.key] = mo;
     ownerRentTotal += mo;
@@ -230,17 +240,26 @@ function showRentModal(label, data, months) {
   if (data.companyProps.length > 0) {
     body.appendChild(mkSectionLabel('Company-Operated Properties (Monthly Rent)'));
     const rows = data.companyProps.map(p => {
-      const share = p.owner === 'both' ? 0.5 : 1;
-      const monthly = toEUR(p.monthlyRent || 0, p.currency || 'EUR', null);
-      const period  = monthly * share * months.length;
-      return [p.name, p.city, formatEUR(monthly * share) + '/mo', formatEUR(period)];
+      const share   = p.owner === 'both' ? 0.5 : 1;
+      const history = p.ownerRentHistory || [];
+      const latest  = [...history].sort((a, b) => a.from.localeCompare(b.from)).pop();
+      const curMonthly = latest ? toEUR(latest.amount || 0, latest.currency || p.currency || 'EUR', null) : 0;
+      let periodTotal = 0;
+      for (const m of months) {
+        if (p.soldDate && p.soldDate < m.key + '-01') continue;
+        const entry = rentForMonth(history, m.key);
+        if (!entry) continue;
+        periodTotal += toEUR(entry.amount || 0, entry.currency || p.currency || 'EUR', m.key + '-15') * share;
+      }
+      return [p.name, p.city, formatEUR(curMonthly * share) + '/mo', formatEUR(periodTotal)];
     });
     body.appendChild(mkModalTable(['Property', 'City', 'Share/Month', 'Period Total'], rows, { highlight: 3 }));
     body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted)' },
-      'Calculated from Monthly Owner Rent field × months in period. To update rent amounts, edit each property.'
+      'Owner rent is calculated from the Owner Rent rate history on each property (rate-per-month aware). ' +
+      'To update rent rates, edit each property.'
     ));
   } else {
-    body.appendChild(mkEmptyState('No company-operated properties with owner rent configured. Set "Monthly Owner Rent" on Cyprus properties.'));
+    body.appendChild(mkEmptyState('No company-operated properties with rent rates configured. Open each property and add rates under "Owner Rent".'));
   }
   openModal({ title: `${label} — Owner Rent Income`, body, large: true });
 }
@@ -331,7 +350,7 @@ function buildPersonColumn(label, color, data, months) {
     'Property Rent (Owner)', formatEUR(data.ownerRentTotal),
     true,
     () => showRentModal(label, data, months),
-    data.companyProps.length > 0 ? `${data.companyProps.length} properties × ${months.length} months` : 'Set Monthly Owner Rent on properties'
+    data.companyProps.length > 0 ? `${data.companyProps.length} properties × ${months.length} months` : 'Configure rent rates on company properties'
   ));
 
   col.appendChild(makeRow(
@@ -562,7 +581,7 @@ function buildView() {
 
   // ── Footnote ────────────────────────────────────────────────────────────────
   wrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-dim);padding:4px 0 16px' },
-    'Owner rent is calculated from the Monthly Owner Rent field on each property × months in period. ' +
+    'Owner rent is calculated from the Owner Rent rate history on each property (rate-per-month aware). ' +
     'Dividends shown net of SDC (2.65%). Social contributions (GESY) paid by the company are not personal income and are excluded.'
   ));
 
