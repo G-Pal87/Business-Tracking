@@ -221,9 +221,9 @@ export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelt
     const disp  = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
     const cls   = delta === 0 ? '' : delta > 0 ? (invertDelta ? 'down' : 'up') : (invertDelta ? 'up' : 'down');
     trend.appendChild(el('span', { class: cls }, disp));
-    if (compValue) trend.appendChild(el('span', { style: 'color:var(--text-muted);margin:0 4px' }, `· ${compValue}`));
     if (compLabel) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
     card.appendChild(trend);
+    if (compValue) card.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:1px' }, `${compValue} prev`));
   }
 
   if (lines?.length) {
