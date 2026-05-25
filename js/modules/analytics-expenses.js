@@ -284,7 +284,7 @@ function buildView() {
   ));
 
   // Shared filter bar (period, owner, stream, property, comparison)
-  wrap.appendChild(buildFilterBar(gF, { showOwner: true, showStream: true, showProperty: true, showClient: false, storagePrefix: 'aexp' }, newGF => {
+  wrap.appendChild(buildFilterBar(gF, { showOwner: true, showStream: true, showProperty: true, showClient: false, storagePrefix: 'aexp', channelScope: 'company' }, newGF => {
     if (newGF) gF = newGF;
     rebuildView();
   }));

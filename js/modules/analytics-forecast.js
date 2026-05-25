@@ -1609,7 +1609,7 @@ function buildView() {
   // TODO: re-enable showClient once service forecast entries support clientId
   wrap.appendChild(buildFilterBar(
     gF,
-    { showOwner: true, showStream: true, showProperty: true, storagePrefix: 'ana_fc' },
+    { showOwner: true, showStream: true, showProperty: true, storagePrefix: 'ana_fc', channelScope: 'company' },
     newGF => { if (newGF) gF = newGF; rebuildView(); }
   ));
 

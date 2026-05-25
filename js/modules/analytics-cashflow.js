@@ -412,7 +412,7 @@ function buildView() {
   // Shared filter bar
   const filterBarEl = buildFilterBar(gF, {
     showOwner: true, showStream: true, showProperty: true, showClient: true,
-    storagePrefix: 'cf'
+    storagePrefix: 'cf', channelScope: 'company'
   }, newState => {
     if (newState) Object.assign(gF, newState);
     rebuildView();

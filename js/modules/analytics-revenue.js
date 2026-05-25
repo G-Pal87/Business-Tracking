@@ -885,7 +885,7 @@ function buildView() {
     el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' }, 'Structure · Growth · Collections · Contributors · Dynamics')
   ));
 
-  wrap.appendChild(buildFilterBar(gF, { showOwner: true, showStream: true, showProperty: true, showClient: true, storagePrefix: 'rev' }, (newGF) => { if (newGF) gF = newGF; rebuildView(); }));
+  wrap.appendChild(buildFilterBar(gF, { showOwner: true, showStream: true, showProperty: true, showClient: true, storagePrefix: 'rev', channelScope: 'company' }, (newGF) => { if (newGF) gF = newGF; rebuildView(); }));
 
   const curRange = getCurrentPeriodRange(gF);
   const cmpRange = getComparisonRange(gF, curRange);

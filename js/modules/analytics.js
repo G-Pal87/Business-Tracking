@@ -733,7 +733,7 @@ function buildView() {
   // Filter bar (owner + period only)
   wrap.appendChild(buildFilterBar(
     gF,
-    { showOwner: true, showStream: false, showProperty: false, storagePrefix: 'ana_exec_sum' },
+    { showOwner: true, showStream: false, showProperty: false, storagePrefix: 'ana_exec_sum', channelScope: 'company' },
     newGF => { if (newGF) gF = newGF; rebuildView(); }
   ));
 

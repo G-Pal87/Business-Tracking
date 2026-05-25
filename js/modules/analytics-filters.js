@@ -297,8 +297,10 @@ export function makeMatchers(gF) {
 // ── Available filter options (leave-one-out faceting) ─────────────────────────
 // For each dimension, compute available options using ALL OTHER active filters
 // (not the dimension itself), then trim stale selections from gF.
-function computeAvailableOptions(gF) {
-  const allProps   = listActive('properties');
+function computeAvailableOptions(gF, channelScope) {
+  const allProps   = channelScope
+    ? listActive('properties').filter(p => (p.channel || 'company') === channelScope)
+    : listActive('properties');
   const allPays    = listActivePayments();
   const allInvs    = listActive('invoices').filter(i => i.status !== 'cancelled' && i.status !== 'void');
   const allClients = listActiveClients();
@@ -441,10 +443,11 @@ export function buildFilterBar(gF, opts, onChange) {
     showProperty = true,
     showClient   = false,
     storagePrefix = 'ana',
+    channelScope  = null,
   } = opts || {};
 
   // Compute available options using leave-one-out faceting & trim stale selections
-  const { availProps, availOwners, availStreams, availClients } = computeAvailableOptions(gF);
+  const { availProps, availOwners, availStreams, availClients } = computeAvailableOptions(gF, channelScope);
 
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap;align-items:center' });
 

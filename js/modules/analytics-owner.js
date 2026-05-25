@@ -685,7 +685,7 @@ function buildView() {
   // Filter bar (no owner filter — whole dashboard IS the owner breakdown)
   wrap.appendChild(buildFilterBar(
     gF,
-    { showOwner: false, showStream: true, showProperty: true, storagePrefix: 'ana_owner' },
+    { showOwner: false, showStream: true, showProperty: true, storagePrefix: 'ana_owner', channelScope: gScope === 'all' ? null : 'company' },
     (newGF) => { if (newGF) gF = newGF; rebuildView(); }
   ));
 
