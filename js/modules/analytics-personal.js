@@ -1,7 +1,7 @@
 // Personal Income Dashboard — salary, owner rent, reimbursements, dividends, personal properties
 import { el, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, listActive, listActivePayments } from '../core/data.js';
+import { formatEUR, toEUR, byId, listActive, listActivePayments, getPersonName } from '../core/data.js';
 import {
   createFilterState, buildFilterBar, buildComparisonLine,
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange
@@ -17,8 +17,8 @@ const SDC_RATE  = 0.0265;
 const CHART_IDS = ['pi-stream-monthly', 'pi-person-monthly', 'pi-giorgos-donut', 'pi-rita-donut'];
 const YOU_HEX   = '#6366f1';
 const RITA_HEX  = '#ec4899';
-const YOU_LABEL = 'Giorgos';
-const RITA_LABEL = 'Rita';
+let YOU_LABEL  = 'Giorgos';
+let RITA_LABEL = 'Rita';
 
 const INCOME_COLORS = {
   salary:   '#6366f1',
@@ -780,6 +780,9 @@ function rebuildView() {
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 function buildView() {
+  YOU_LABEL  = getPersonName('you');
+  RITA_LABEL = getPersonName('rita');
+
   const wrap = el('div', { class: 'view active' });
 
   wrap.appendChild(el('div', { style: 'margin-bottom:16px' },

@@ -1,7 +1,7 @@
 // Owner/Partner Analytics Dashboard — partner P&L, settlement, portfolio split
 import { el, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, listActive, listActivePayments, isCapEx } from '../core/data.js';
+import { formatEUR, toEUR, byId, listActive, listActivePayments, isCapEx, getPersonName } from '../core/data.js';
 import {
   createFilterState, buildFilterBar, buildComparisonLine,
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers
@@ -17,8 +17,8 @@ const YOU_COLOR    = 'var(--accent, #6366f1)';
 const YOU_HEX      = '#6366f1';
 const RITA_COLOR   = 'var(--stream-mkt, #ec4899)';
 const RITA_HEX     = '#ec4899';
-const YOU_LABEL    = 'Giorgos (You)';
-const RITA_LABEL   = 'Rita';
+let YOU_LABEL  = 'Giorgos';
+let RITA_LABEL = 'Rita';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -688,6 +688,9 @@ function rebuildView() {
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 function buildView() {
+  YOU_LABEL  = getPersonName('you');
+  RITA_LABEL = getPersonName('rita');
+
   const wrap = el('div', { class: 'view active' });
 
   // Header

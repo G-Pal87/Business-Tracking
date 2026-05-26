@@ -6,7 +6,8 @@ import {
   formatEUR, toEUR,
   listActive, listActivePayments,
   resolveExpenseFields, isCapEx,
-  newId, upsert, softDelete, companyPropIds
+  newId, upsert, softDelete, companyPropIds,
+  getPersonName
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
@@ -15,6 +16,8 @@ const SDC_RATE  = 0.0265;
 const CHART_IDS = ['div-history-bar', 'div-recipient-donut'];
 const G_COLOR   = '#6366f1';
 const R_COLOR   = '#ec4899';
+let G_LABEL = 'Giorgos';
+let R_LABEL = 'Rita';
 
 // ── Module state ──────────────────────────────────────────────────────────────
 let gYear = null;
@@ -118,6 +121,9 @@ const mkCurrencyInput = (val, style, onValue) => {
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 function buildView() {
+  G_LABEL = getPersonName('you');
+  R_LABEL = getPersonName('rita');
+
   const years = getDataYears();
   if (!gYear || !years.includes(gYear)) gYear = defaultYear();
 
@@ -211,8 +217,8 @@ function buildView() {
       onClick: totalGross > 0 ? () => {
         const body = el('div');
         body.appendChild(mkSummaryGrid([
-          { label: 'Giorgos', value: fmtE(gTotal), sub: `${yearDivs.filter(d => d.recipient === 'giorgos').length} payment(s)` },
-          { label: 'Rita',    value: fmtE(rTotal), sub: `${yearDivs.filter(d => d.recipient === 'rita').length} payment(s)` },
+          { label: G_LABEL, value: fmtE(gTotal), sub: `${yearDivs.filter(d => d.recipient === 'giorgos').length} payment(s)` },
+          { label: R_LABEL, value: fmtE(rTotal), sub: `${yearDivs.filter(d => d.recipient === 'rita').length} payment(s)` },
           { label: 'SDC (2.65%)', value: fmtE(sdcAmount) },
           { label: 'Net Total',   value: fmtE(netTotal) },
         ], 2));
@@ -409,8 +415,8 @@ function renderHistoryBar(allDivs) {
     labels,
     stacked: true,
     datasets: [
-      { label: 'Giorgos', data: labels.map(yr => byYear[yr].giorgos), color: G_COLOR },
-      { label: 'Rita',    data: labels.map(yr => byYear[yr].rita),    color: R_COLOR },
+      { label: G_LABEL, data: labels.map(yr => byYear[yr].giorgos), color: G_COLOR },
+      { label: R_LABEL, data: labels.map(yr => byYear[yr].rita),    color: R_COLOR },
     ],
     onClickItem: (idx) => {
       const yr = labels[idx];
@@ -427,7 +433,7 @@ function renderRecipientDonut(allDivs) {
   if (gTotal + rTotal === 0) return;
 
   charts.doughnut('div-recipient-donut', {
-    labels: ['Giorgos', 'Rita'],
+    labels: [G_LABEL, R_LABEL],
     data:   [gTotal, rTotal],
     colors: [G_COLOR, R_COLOR],
     onClickItem: null
@@ -468,7 +474,7 @@ function buildAddForm(year) {
   amountWrap.appendChild(amountI);
   amountWrap.appendChild(sdcPreviewEl);
 
-  const recipientSel = select([{ value: 'giorgos', label: 'Giorgos' }, { value: 'rita', label: 'Rita' }], 'giorgos');
+  const recipientSel = select([{ value: 'giorgos', label: G_LABEL }, { value: 'rita', label: R_LABEL }], 'giorgos');
   recipientSel.onchange = () => { formRecipient = recipientSel.value; };
 
   const notesI = input({ type: 'text', placeholder: 'Notes (optional)', style: 'flex:1;min-width:140px' });
@@ -538,7 +544,7 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, sdcAmount, ne
 
     [
       [d.date || '—',            'left',  'var(--text-muted)'],
-      [isG ? 'Giorgos' : 'Rita', 'left',  isG ? 'var(--accent)' : '#f472b6'],
+      [isG ? G_LABEL : R_LABEL,  'left',  isG ? 'var(--accent)' : '#f472b6'],
       [fmtE(d.grossAmount || 0), 'right', 'var(--text)'],
       [fmtE(sdc),                'right', 'var(--text-muted)'],
       [fmtE(net),                'right', 'var(--success,#10b981)'],
@@ -553,7 +559,7 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, sdcAmount, ne
     editBtn.onclick = () => openEditModal(d);
     const delBtn = el('button', { style: 'padding:2px 8px;font-size:11px;border:1px solid var(--border);background:transparent;color:var(--text-muted);border-radius:4px;cursor:pointer' }, '×');
     delBtn.onclick = () => {
-      if (confirm(`Remove dividend of ${fmtE(d.grossAmount || 0)} for ${isG ? 'Giorgos' : 'Rita'} on ${d.date}?`)) {
+      if (confirm(`Remove dividend of ${fmtE(d.grossAmount || 0)} for ${isG ? G_LABEL : R_LABEL} on ${d.date}?`)) {
         softDelete('dividends', d.id);
         rebuildView();
       }
@@ -576,8 +582,8 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, sdcAmount, ne
   // Per-recipient split footer
   if (gTotal > 0 || rTotal > 0) {
     const parts = [];
-    if (gTotal > 0) parts.push(el('span', {}, `Giorgos: ${fmtE(gTotal)} gross · ${fmtE(gTotal * (1 - SDC_RATE))} net`));
-    if (rTotal > 0) parts.push(el('span', {}, `Rita: ${fmtE(rTotal)} gross · ${fmtE(rTotal * (1 - SDC_RATE))} net`));
+    if (gTotal > 0) parts.push(el('span', {}, `${G_LABEL}: ${fmtE(gTotal)} gross · ${fmtE(gTotal * (1 - SDC_RATE))} net`));
+    if (rTotal > 0) parts.push(el('span', {}, `${R_LABEL}: ${fmtE(rTotal)} gross · ${fmtE(rTotal * (1 - SDC_RATE))} net`));
     if (gTotal > 0 && rTotal > 0) {
       parts.push(el('span', { style: 'color:var(--text-muted);font-style:italic' }, 'SDC applies to all dividends'));
     }
@@ -616,7 +622,7 @@ function openEditModal(d) {
   amountWrap.appendChild(sdcPreviewEl);
   updateSdcPreview(editAmount);
 
-  const recipientSel = select([{ value: 'giorgos', label: 'Giorgos' }, { value: 'rita', label: 'Rita' }], editRecipient);
+  const recipientSel = select([{ value: 'giorgos', label: G_LABEL }, { value: 'rita', label: R_LABEL }], editRecipient);
   recipientSel.onchange = () => { editRecipient = recipientSel.value; };
 
   const notesI = input({ type: 'text', value: editNotes, placeholder: 'Notes (optional)', style: 'width:100%' });

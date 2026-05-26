@@ -7,7 +7,8 @@ import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
   resolveExpenseFields, isCapEx,
-  newId, upsert, softDelete, companyPropIds
+  newId, upsert, softDelete, companyPropIds,
+  getPersonName
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
@@ -264,7 +265,7 @@ function buildYearSelectorBar(years, selectedYear, selectedOwner, taxRate, onCha
 
   const ownerGroup = el('div', { style: 'display:flex;align-items:center;gap:6px' });
   ownerGroup.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-right:4px' }, 'Owner'));
-  for (const [val, label] of [['', 'All'], ['you', 'Giorgos'], ['rita', 'Rita'], ['both', 'Both']]) {
+  for (const [val, label] of [['', 'All'], ['you', getPersonName('you')], ['rita', getPersonName('rita')], ['both', 'Both']]) {
     const isActive = val === selectedOwner;
     const pill = el('button', {
       style: ['padding:4px 12px;border-radius:14px;border:1px solid', isActive ? 'var(--accent);background:var(--accent);color:#fff;font-weight:600' : 'var(--border);background:transparent;color:var(--text-muted)', ';font-size:12px;cursor:pointer;transition:all 120ms'].join(' ')
