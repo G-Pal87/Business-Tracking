@@ -4,9 +4,9 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI,
-  getPeopleOwners, getPersonName
+  getPeopleOwners, getPersonName, restoreInventoryStock
 } from '../core/data.js';
-import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS } from '../core/config.js';
+import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { fetchICal, parseICal, nights } from '../core/ical.js';
 import { openExpenseForm } from './expenses.js';
 import { navigate } from '../core/router.js';
@@ -415,12 +415,10 @@ export function openDetail(id, preStats) {
   expTable.appendChild(el('div', { class: 'card-header' }, expTitleEl, expActions));
 
   const renderExpenses = () => {
-    // remove old table-wrap / empty if present
     const old = expTable.querySelector('.table-wrap, .empty');
     if (old) old.remove();
     const shown = expList.slice(0, expShowAll ? expList.length : 10);
     expTitleEl.textContent = `Recent Expenses${expList.length > 10 ? ` (${shown.length}/${expList.length})` : ''}`;
-    // remove any existing show-all button
     const oldBtn = expActions.querySelector('.exp-show-all');
     if (oldBtn) oldBtn.remove();
     if (!expShowAll && expList.length > 10) {
@@ -432,14 +430,29 @@ export function openDetail(id, preStats) {
     if (expList.length === 0) { expTable.appendChild(el('div', { class: 'empty' }, 'No expenses recorded')); return; }
     const tw = el('div', { class: 'table-wrap' });
     const t = el('table', { class: 'table' });
-    t.innerHTML = '<thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="right">Amount</th></tr></thead>';
+    t.innerHTML = '<thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="right">Amount</th><th></th></tr></thead>';
     const tb = el('tbody');
     for (const e of shown) {
       const tr = el('tr');
       tr.appendChild(el('td', {}, fmtDate(e.date)));
-      tr.appendChild(el('td', {}, el('span', { class: 'badge' }, e.category)));
+      tr.appendChild(el('td', {}, el('span', { class: 'badge' }, EXPENSE_CATEGORIES[e.category]?.label || e.category)));
       tr.appendChild(el('td', {}, e.description || ''));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(e.amount, e.currency, { maxFrac: 0 })));
+      const actions = el('td', { class: 'right', style: 'white-space:nowrap' });
+      actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => {
+        closeModal();
+        setTimeout(() => openExpenseForm(e.id), 220);
+      }}));
+      actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
+        const ok = await confirmDialog('Delete this expense?', { danger: true, okLabel: 'Delete' });
+        if (!ok) return;
+        restoreInventoryStock(e);
+        softDelete('expenses', e.id);
+        expList.splice(expList.indexOf(e), 1);
+        renderExpenses();
+        toast('Expense deleted', 'success');
+      }}));
+      tr.appendChild(actions);
       tb.appendChild(tr);
     }
     t.appendChild(tb); tw.appendChild(t); expTable.appendChild(tw);
