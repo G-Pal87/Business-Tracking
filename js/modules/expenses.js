@@ -229,7 +229,7 @@ function build() {
     const htr = el('tr', {});
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    ['Date', 'Property', 'Category', 'Description', 'Vendor'].forEach(h => htr.appendChild(el('th', {}, h)));
+    ['Date', 'Property', 'Category', 'Description', 'Vendor / Person'].forEach(h => htr.appendChild(el('th', {}, h)));
     htr.appendChild(el('th', { class: 'right' }, 'Amount'));
     htr.appendChild(el('th', { class: 'right' }, 'EUR'));
     htr.appendChild(el('th', {}));
@@ -269,7 +269,7 @@ function build() {
       descCell.appendChild(document.createTextNode(r.description || ''));
       tr.appendChild(descCell);
       tr.appendChild(el('td', {}, r.personId
-        ? ((state.db.people || []).find(p => p.id === r.personId)?.name || r.personId)
+        ? ((state.db.people || []).find(p => p.id === r.personId || (p.legacyKey || p.id) === r.personId)?.name || r.personId)
         : (r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || ''))));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
@@ -316,7 +316,7 @@ function build() {
     { key: 'accountingType',label: 'Type' },
     { key: 'recurrence',    label: 'Recurrence' },
     { key: 'desc',          label: 'Description' },
-    { key: 'vendor',        label: 'Vendor' },
+    { key: 'vendor',        label: 'Vendor / Person' },
     { key: 'eur',           label: 'Amount (€)',  right: true, format: v => formatEUR(v) },
   ];
   const toDrillRows = rows => rows
@@ -329,7 +329,9 @@ function build() {
         accountingType: ACCOUNTING_TYPES[res.accountingType]?.label || res.accountingType,
         recurrence:    RECURRENCE_TYPES[res.recurrence]?.label || res.recurrence,
         desc:          r.description || '—',
-        vendor:        r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '—') : (r.vendor || '—'),
+        vendor:        r.personId
+          ? ((state.db.people || []).find(p => p.id === r.personId || (p.legacyKey || p.id) === r.personId)?.name || r.personId)
+          : (r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '—') : (r.vendor || '—')),
         eur:           toEUR(r.amount, r.currency),
       };
     })
