@@ -56,12 +56,17 @@ function getPersonData(person, start, end, months) {
   const ownerKeys  = person === 'you' ? ['you', 'both'] : ['rita', 'both'];
   const recipient  = person === 'you' ? 'giorgos' : 'rita';
 
-  // Resolve person record from Company Structure
-  const personRecord = (state.db.people || []).find(p => p.legacyKey === person && !p.deletedAt);
-  const personId = personRecord?.id;
-  // getPeopleOwners stores legacyKey as the select value, so expenses saved via the
-  // form have personId === legacyKey (e.g. 'you'). Match both to stay safe.
-  const matchesPerson = e => e.personId === person || (personId && e.personId === personId);
+  // Mirror getPeopleOwners logic exactly: it returns p.legacyKey || p.id as the option value,
+  // or falls back to 'you'/'rita' when no people are configured.
+  const activePeople = (state.db.people || []).filter(p =>
+    !p.deletedAt && p.active !== false && ['partner', 'director'].includes(p.role)
+  );
+  const personRecord = activePeople.find(p => p.legacyKey === person) ||
+                       activePeople[person === 'you' ? 0 : 1];
+  const personId  = personRecord?.id;
+  // personKey is the value getPeopleOwners stores as select option value
+  const personKey = activePeople.length === 0 ? person : (personRecord?.legacyKey || personRecord?.id || person);
+  const matchesPerson = e => e.personId === personKey || e.personId === person || (personId && e.personId === personId);
 
   // Salary — expenses with category 'salary' linked to this person
   const salaryExps = listActive('expenses').filter(e =>
