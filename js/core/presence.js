@@ -128,16 +128,16 @@ function showBanner(otherName, viewLabel) {
   const b = document.createElement('div');
   b.id = 'presence-banner';
   b.style.cssText = [
-    'background:var(--warning-bg,#fefce8)',
-    'border-bottom:2px solid var(--warning,#f59e0b)',
-    'color:var(--text,#1a1a1a)',
+    'background:var(--warning,#f59e0b)',
+    'border-bottom:2px solid #d97706',
+    'color:#1a1a1a',
     'padding:10px 16px',
     'display:flex',
     'align-items:center',
     'justify-content:space-between',
     'gap:12px',
     'font-size:13px',
-    'font-weight:500'
+    'font-weight:600'
   ].join(';');
 
   const msg = document.createElement('span');
@@ -146,7 +146,7 @@ function showBanner(otherName, viewLabel) {
 
   const btn = document.createElement('button');
   btn.textContent = '✕';
-  btn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;padding:2px 6px;color:var(--text-muted);flex-shrink:0';
+  btn.style.cssText = 'background:none;border:none;cursor:pointer;font-size:16px;padding:2px 6px;color:#1a1a1a;flex-shrink:0';
   btn.onclick = () => { b.remove(); banner = null; };
   b.appendChild(btn);
 
