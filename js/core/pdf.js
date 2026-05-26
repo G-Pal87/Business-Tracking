@@ -38,9 +38,10 @@ export function generateInvoicePDF(invoice) {
   doc.setFontSize(9);
   const bizLines = [
     biz.address,
-    biz.email,
     biz.registrationNumber ? `Reg: ${biz.registrationNumber}` : '',
     biz.vatNumber ? `VAT: ${biz.vatNumber}` : '',
+    biz.iban ? `IBAN: ${biz.iban}` : '',
+    biz.bic ? `BIC: ${biz.bic}` : '',
   ].filter(Boolean);
   bizLines.forEach(line => { doc.text(line, margin, y); y += 12; });
 
@@ -165,17 +166,6 @@ export function generateInvoicePDF(invoice) {
   doc.setFont('helvetica', 'normal');
 
   y += 40;
-
-  // ── Payment details ───────────────────────────────────────────────────────────
-  if (biz.iban || biz.bic) {
-    doc.setFontSize(9);
-    doc.setTextColor(120);
-    doc.text('PAYMENT DETAILS', margin, y);
-    doc.setTextColor(0);
-    y += 14;
-    if (biz.iban) { doc.text(`IBAN: ${biz.iban}`, margin, y); y += 12; }
-    if (biz.bic)  { doc.text(`BIC: ${biz.bic}`,   margin, y); y += 12; }
-  }
 
   if (invoice.notes) {
     y += 16;
