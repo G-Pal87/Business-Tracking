@@ -406,7 +406,7 @@ export function openDetail(id, preStats) {
   const addExpBtn = button('+ Add Expense', { variant: 'primary', onClick: () => {
     closeModal();
     const defaults = { propertyId: id, stream: p.type === 'short_term' ? 'short_term_rental' : 'long_term_rental', currency: p.currency };
-    setTimeout(() => openExpenseForm(defaults), 220);
+    setTimeout(() => openExpenseForm(defaults, { onSave: () => openDetail(id) }), 220);
   }});
   let expShowAll = false;
   const expTitleEl = el('div', { class: 'card-title' }, 'Recent Expenses');
@@ -441,7 +441,7 @@ export function openDetail(id, preStats) {
       const actions = el('td', { class: 'right', style: 'white-space:nowrap' });
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => {
         closeModal();
-        setTimeout(() => openExpenseForm(e.id), 220);
+        setTimeout(() => openExpenseForm(e.id, { onSave: () => openDetail(id) }), 220);
       }}));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog('Delete this expense?', { danger: true, okLabel: 'Delete' });
