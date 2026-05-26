@@ -30,12 +30,26 @@ function build() {
   const propFilter   = new Set();
   const statusFilter = new Set();
 
-  let _rtTimer;
-  const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => renderTable(), 250); };
-  const propMS   = buildMultiSelect(ltProps.map(p => ({ value: p.id, label: p.name })), propFilter, 'All Properties', debouncedRT, 'ten_props');
-  const statusMS = buildMultiSelect(Object.entries(STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', debouncedRT, 'ten_statuses');
+  const matchesExcept = (t, skip) => {
+    if (skip !== 'prop'   && propFilter.size   > 0 && !propFilter.has(t.propertyId)) return false;
+    if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(t.status))   return false;
+    return true;
+  };
 
-  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); statusMS.reset(); renderTable(); } });
+  let _rtTimer;
+  const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => { rebuildFilters(); renderTable(); }, 250); };
+  const propMS   = buildMultiSelect([], propFilter,   'All Properties', debouncedRT, 'ten_props');
+  const statusMS = buildMultiSelect([], statusFilter, 'All Statuses',   debouncedRT, 'ten_statuses');
+
+  const rebuildFilters = () => {
+    const allTenants = listActive('tenants');
+    const validProps    = [...new Set(allTenants.filter(t => matchesExcept(t, 'prop'))  .map(t => t.propertyId).filter(Boolean))];
+    const validStatuses = [...new Set(allTenants.filter(t => matchesExcept(t, 'status')).map(t => t.status).filter(Boolean))];
+    propMS.setItems(validProps.map(id => allProps.find(p => p.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name })));
+    statusMS.setItems(validStatuses.map(s => { const m = STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
+  };
+
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
   filterBar.appendChild(propMS);
   filterBar.appendChild(statusMS);
   filterBar.appendChild(resetFiltersBtn);
@@ -101,6 +115,7 @@ function build() {
     ));
   };
 
+  rebuildFilters();
   renderTable();
   return wrap;
 }

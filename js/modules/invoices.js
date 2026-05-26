@@ -202,21 +202,47 @@ function build() {
   wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' }, totalKpi.node, paidKpi.node, openKpi.node, overdueKpi.node));
 
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
-  const years = [...new Set(listActive('invoices').map(i => i.issueDate?.slice(0, 4)).filter(Boolean))].sort().reverse();
-  const months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
   const yearFilter   = new Set();
   const monthFilter  = new Set();
   const clientFilter = new Set();
   const ownerFilter  = new Set();
   const statusFilter = new Set();
+
+  const matchesExcept = (inv, skip) => {
+    if (skip !== 'year'   && yearFilter.size   > 0 && !yearFilter.has(inv.issueDate?.slice(0, 4)))  return false;
+    if (skip !== 'month'  && monthFilter.size  > 0 && !monthFilter.has(inv.issueDate?.slice(5, 7))) return false;
+    if (skip !== 'client' && clientFilter.size > 0 && !clientFilter.has(inv.clientId))               return false;
+    if (skip !== 'owner'  && ownerFilter.size  > 0 && !ownerFilter.has(inv.owner))                   return false;
+    if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(inv.status))                 return false;
+    return true;
+  };
+
   let _rtTimer;
-  const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => renderTable(), 250); };
-  const yearMS   = buildMultiSelect(years.map(y => ({ value: y, label: y })), yearFilter, 'All Years', debouncedRT, 'inv_years');
-  const monthMS  = buildMultiSelect(months.map(m => ({ value: m, label: new Date(2000, Number(m)-1, 1).toLocaleDateString('en-US', { month: 'long' }) })), monthFilter, 'All Months', debouncedRT, 'inv_months');
-  const clientMS = buildMultiSelect(listActive('clients').map(c => ({ value: c.id, label: c.name })), clientFilter, 'All Clients', debouncedRT, 'inv_clients');
-  const ownerMS  = buildMultiSelect(getPeopleOwners(), ownerFilter, 'All Owners', debouncedRT, 'inv_owners');
-  const statusMS = buildMultiSelect(Object.entries(INVOICE_STATUSES).map(([v, m]) => ({ value: v, label: m.label, css: m.css })), statusFilter, 'All Statuses', debouncedRT, 'inv_statuses');
-  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); clientMS.reset(); ownerMS.reset(); statusMS.reset(); renderTable(); } });
+  const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => { rebuildFilters(); renderTable(); }, 250); };
+  const yearMS   = buildMultiSelect([], yearFilter,   'All Years',    debouncedRT, 'inv_years');
+  const monthMS  = buildMultiSelect([], monthFilter,  'All Months',   debouncedRT, 'inv_months');
+  const clientMS = buildMultiSelect([], clientFilter, 'All Clients',  debouncedRT, 'inv_clients');
+  const ownerMS  = buildMultiSelect([], ownerFilter,  'All Owners',   debouncedRT, 'inv_owners');
+  const statusMS = buildMultiSelect([], statusFilter, 'All Statuses', debouncedRT, 'inv_statuses');
+
+  const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const rebuildFilters = () => {
+    const allInvs    = listActive('invoices');
+    const allClients = listActive('clients');
+    const allOwners  = getPeopleOwners();
+    const ys  = [...new Set(allInvs.filter(i => matchesExcept(i, 'year'))  .map(i => i.issueDate?.slice(0, 4)).filter(Boolean))].sort().reverse();
+    const ms  = [...new Set(allInvs.filter(i => matchesExcept(i, 'month')) .map(i => i.issueDate?.slice(5, 7)).filter(Boolean))].sort();
+    const cs  = [...new Set(allInvs.filter(i => matchesExcept(i, 'client')).map(i => i.clientId).filter(Boolean))];
+    const ows = new Set(allInvs.filter(i => matchesExcept(i, 'owner')).map(i => i.owner).filter(Boolean));
+    const ss  = [...new Set(allInvs.filter(i => matchesExcept(i, 'status')).map(i => i.status).filter(Boolean))].sort();
+    yearMS.setItems(ys.map(y => ({ value: y, label: y })));
+    monthMS.setItems(ms.map(m => ({ value: m, label: MONTH_NAMES[parseInt(m, 10) - 1] })));
+    clientMS.setItems(cs.map(id => allClients.find(c => c.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(c => ({ value: c.id, label: c.name })));
+    ownerMS.setItems(allOwners.filter(o => ows.has(o.value)));
+    statusMS.setItems(ss.map(s => { const m = INVOICE_STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
+  };
+
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); clientMS.reset(); ownerMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
   bar.appendChild(yearMS);
   bar.appendChild(monthMS);
   bar.appendChild(clientMS);
@@ -408,6 +434,7 @@ function build() {
       el('div', { class: 'flex gap-16' }, paidSpan, totalSpanEl)
     ));
   };
+  rebuildFilters();
   renderTable();
   return wrap;
 }
