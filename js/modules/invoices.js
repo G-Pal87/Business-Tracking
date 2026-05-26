@@ -7,6 +7,46 @@ import { downloadInvoicePDF, generateInvoicePDF } from '../core/pdf.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFile, fetchGithubFile, deleteGithubFile } from '../core/github.js';
 
+// Returns the display status for an invoice. Sent invoices past their due date
+// are shown as overdue without changing the stored value.
+function effectiveStatus(inv) {
+  if (inv.status === 'sent' && inv.dueDate && inv.dueDate < today()) return 'overdue';
+  return inv.status;
+}
+
+function exportInvoicesCSV(rows) {
+  const clientMap = new Map(listActive('clients').map(c => [c.id, c]));
+  const header = ['Invoice Name', 'Number', 'Client', 'Issue Date', 'Due Date', 'Owner', 'Status', 'Currency', 'Subtotal', 'Tax', 'Total', 'Total EUR', 'Stream', 'Notes'];
+  const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [header.map(escape).join(',')];
+  for (const r of rows) {
+    const eff = effectiveStatus(r);
+    lines.push([
+      invoicePdfFilename(r),
+      r.number || '',
+      clientMap.get(r.clientId)?.name || '',
+      r.issueDate || '',
+      r.dueDate || '',
+      getPersonName(r.owner),
+      eff,
+      r.currency || '',
+      r.subtotal ?? '',
+      r.tax ?? '',
+      r.total ?? '',
+      toEUR(r.total, r.currency).toFixed(2),
+      r.stream || '',
+      r.notes || ''
+    ].map(escape).join(','));
+  }
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `invoices_${today().replace(/-/g, '')}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 const INV_COLS = [
   { key: 'number', label: 'Number' },
   { key: 'clientName', label: 'Client' },
@@ -211,9 +251,9 @@ function build() {
 
   let filteredRows = [];
   const totalKpi   = makeKpiCard('Total Issued', null,      () => drillDownModal('All Invoices',          invDrillRows(filteredRows), INV_COLS));
-  const paidKpi    = makeKpiCard('Paid',          'success', () => drillDownModal('Paid Invoices',          invDrillRows(filteredRows.filter(i => i.status === 'paid')), INV_COLS));
-  const openKpi    = makeKpiCard('Outstanding',   'warning', () => drillDownModal('Outstanding Invoices',   invDrillRows(filteredRows.filter(i => i.status === 'sent')), INV_COLS));
-  const overdueKpi = makeKpiCard('Overdue',       'danger',  () => drillDownModal('Overdue Invoices',       invDrillRows(filteredRows.filter(i => i.status === 'overdue')), INV_COLS));
+  const paidKpi    = makeKpiCard('Paid',          'success', () => drillDownModal('Paid Invoices',          invDrillRows(filteredRows.filter(i => effectiveStatus(i) === 'paid')), INV_COLS));
+  const openKpi    = makeKpiCard('Outstanding',   'warning', () => drillDownModal('Outstanding Invoices',   invDrillRows(filteredRows.filter(i => effectiveStatus(i) === 'sent')), INV_COLS));
+  const overdueKpi = makeKpiCard('Overdue',       'danger',  () => drillDownModal('Overdue Invoices',       invDrillRows(filteredRows.filter(i => effectiveStatus(i) === 'overdue')), INV_COLS));
   wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' }, totalKpi.node, paidKpi.node, openKpi.node, overdueKpi.node));
 
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
@@ -228,7 +268,7 @@ function build() {
     if (skip !== 'month'  && monthFilter.size  > 0 && !monthFilter.has(inv.issueDate?.slice(5, 7))) return false;
     if (skip !== 'client' && clientFilter.size > 0 && !clientFilter.has(inv.clientId))               return false;
     if (skip !== 'owner'  && ownerFilter.size  > 0 && !ownerFilter.has(inv.owner))                   return false;
-    if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(inv.status))                 return false;
+    if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(effectiveStatus(inv)))       return false;
     return true;
   };
 
@@ -249,7 +289,7 @@ function build() {
     const ms  = [...new Set(allInvs.filter(i => matchesExcept(i, 'month')) .map(i => i.issueDate?.slice(5, 7)).filter(Boolean))].sort();
     const cs  = [...new Set(allInvs.filter(i => matchesExcept(i, 'client')).map(i => i.clientId).filter(Boolean))];
     const ows = new Set(allInvs.filter(i => matchesExcept(i, 'owner')).map(i => i.owner).filter(Boolean));
-    const ss  = [...new Set(allInvs.filter(i => matchesExcept(i, 'status')).map(i => i.status).filter(Boolean))].sort();
+    const ss  = [...new Set(allInvs.filter(i => matchesExcept(i, 'status')).map(i => effectiveStatus(i)).filter(Boolean))].sort();
     yearMS.setItems(ys.map(y => ({ value: y, label: y })));
     monthMS.setItems(ms.map(m => ({ value: m, label: MONTH_NAMES[parseInt(m, 10) - 1] })));
     clientMS.setItems(cs.map(id => allClients.find(c => c.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(c => ({ value: c.id, label: c.name })));
@@ -294,9 +334,24 @@ function build() {
   }});
   downloadZipBtn.style.display = 'none';
 
+  const exportCsvBtn = button('Export CSV', { variant: 'ghost', onClick: () => {
+    const rows = [...listActive('invoices')];
+    const fil = rows.filter(r => {
+      if (yearFilter.size   > 0 && !yearFilter.has(r.issueDate?.slice(0, 4)))  return false;
+      if (monthFilter.size  > 0 && !monthFilter.has(r.issueDate?.slice(5, 7))) return false;
+      if (clientFilter.size > 0 && !clientFilter.has(r.clientId))               return false;
+      if (ownerFilter.size  > 0 && !ownerFilter.has(r.owner))                   return false;
+      if (statusFilter.size > 0 && !statusFilter.has(r.status))                 return false;
+      return true;
+    });
+    exportInvoicesCSV(fil);
+    toast(`Exported ${fil.length} invoice(s) to CSV`, 'success', 3000);
+  }});
+
   bar.appendChild(el('div', { class: 'flex-1' }));
   bar.appendChild(downloadZipBtn);
   bar.appendChild(deleteSelBtn);
+  bar.appendChild(exportCsvBtn);
   bar.appendChild(button('Import PDF', { onClick: () => openPDFImport() }));
   bar.appendChild(button('+ New Invoice', { variant: 'primary', onClick: () => openBuilder() }));
   wrap.appendChild(bar);
@@ -338,7 +393,7 @@ function build() {
     if (monthFilter.size > 0)  rows = rows.filter(r => monthFilter.has(r.issueDate?.slice(5, 7)));
     if (clientFilter.size > 0) rows = rows.filter(r => clientFilter.has(r.clientId));
     if (ownerFilter.size > 0)  rows = rows.filter(r => ownerFilter.has(r.owner));
-    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(r.status));
+    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(effectiveStatus(r)));
     rows.sort((a, b) => {
       const d = (b.issueDate || '').localeCompare(a.issueDate);
       if (d !== 0) return d;
@@ -347,9 +402,9 @@ function build() {
 
     // Update KPI cards to reflect current filter
     filteredRows = rows;
-    const paidRows    = rows.filter(r => r.status === 'paid');
-    const sentRows    = rows.filter(r => r.status === 'sent');
-    const overdueRows = rows.filter(r => r.status === 'overdue');
+    const paidRows    = rows.filter(r => effectiveStatus(r) === 'paid');
+    const sentRows    = rows.filter(r => effectiveStatus(r) === 'sent');
+    const overdueRows = rows.filter(r => effectiveStatus(r) === 'overdue');
     totalKpi.valEl.textContent   = formatEUR(rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
     totalKpi.subEl.textContent   = `${rows.length} invoices`;
     paidKpi.valEl.textContent    = formatEUR(paidRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
@@ -380,7 +435,8 @@ function build() {
 
     for (const r of rows) {
       const client = clientMap.get(r.clientId);
-      const st = INVOICE_STATUSES[r.status] || { label: r.status, css: '' };
+      const eff = effectiveStatus(r);
+      const st = INVOICE_STATUSES[eff] || { label: eff, css: '' };
 
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
       rowChks.push(chk);
@@ -395,7 +451,7 @@ function build() {
 
       const tr = el('tr');
       tr.dataset.eur = String(toEUR(r.total, r.currency));
-      tr.dataset.paid = r.status === 'paid' ? '1' : '0';
+      tr.dataset.paid = eff === 'paid' ? '1' : '0';
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       chkTd.onclick = e => e.stopPropagation();
       tr.appendChild(chkTd);

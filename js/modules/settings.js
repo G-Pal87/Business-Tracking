@@ -6,7 +6,7 @@ import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
-import { generateInvoicePDF } from '../core/pdf.js';
+import { generateInvoicePDF, PDF_TEMPLATES } from '../core/pdf.js';
 import { openPreview as openInvoicePreview, invoicePdfPath } from './invoices.js';
 import { openDetail as openClientDetail } from './clients.js';
 import { openDetail as openPropertyDetail } from './properties.js';
@@ -438,6 +438,20 @@ function buildBusinessCard() {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI), formRow('VAT Number', vatI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('IBAN', ibanI), formRow('BIC', bicI)));
   body.appendChild(formRow('SWIFT', swiftI, 'Used on invoice payment details. BIC and SWIFT are often identical.'));
+
+  const tplS = select(PDF_TEMPLATES.map(t => ({ value: t.value, label: t.label })), b.invoiceTemplate || 'standard');
+  const tplDesc = el('span', { style: 'font-size:12px;color:var(--text-muted);margin-top:4px;display:block' });
+  const updateTplDesc = () => {
+    const found = PDF_TEMPLATES.find(t => t.value === tplS.value);
+    tplDesc.textContent = found ? found.description : '';
+  };
+  tplS.addEventListener('change', updateTplDesc);
+  updateTplDesc();
+  const tplWrap = el('div', {});
+  tplWrap.appendChild(tplS);
+  tplWrap.appendChild(tplDesc);
+  body.appendChild(formRow('Invoice PDF Template', tplWrap, 'Applied to all generated PDFs (does not affect already-uploaded files)'));
+
   const save = button('Save', { variant: 'primary', onClick: () => {
     const iban  = ibanI.value.trim().replace(/\s/g, '').toUpperCase();
     const bic   = bicI.value.trim().toUpperCase();
@@ -457,7 +471,8 @@ function buildBusinessCard() {
       vatNumber: vatI.value.trim(),
       iban,
       bic,
-      swift
+      swift,
+      invoiceTemplate: tplS.value
     };
     markDirty();
     toast('Saved', 'success');
