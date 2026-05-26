@@ -215,8 +215,8 @@ export function monthLabel(yyyymm) {
 }
 
 // ========== Table sort + filter ==========
-export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } = {}) {
-  let sortCol = -1, sortDir = 1, searchTerm = '';
+export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', initialCol = -1, initialDir = 1, onSortChange = null } = {}) {
+  let sortCol = initialCol, sortDir = initialDir, searchTerm = '';
 
   const searchWrap = el('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:8px' });
   const searchInput = el('input', { type: 'search', class: 'input', placeholder, style: 'max-width:220px;font-size:13px' });
@@ -285,6 +285,7 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…' } =
       th.appendChild(arr);
       th.addEventListener('click', () => {
         if (sortCol === i) sortDir *= -1; else { sortCol = i; sortDir = 1; }
+        onSortChange?.(sortCol, sortDir);
         applySort();
         applyFilter();
         updateArrows([...tableWrap.querySelector('table').querySelectorAll('thead th')]);
