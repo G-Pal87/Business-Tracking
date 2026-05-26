@@ -86,11 +86,17 @@ function getPersonData(person, start, end, months) {
   );
   const reimb = reimbExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
+  // STR Income — str_fee expenses linked to this person and flagged as personal income
+  const strIncomeExps = listActive('expenses').filter(e =>
+    e.category === 'str_fee' && matchesPerson(e) && e.countsAsPersonalIncome && inRange(e.date)
+  );
+  const strIncomeTotal = strIncomeExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+
   // Person-linked personal income expenses (any category, countsAsPersonalIncome=true, not already counted above)
   const piExps = listActive('expenses').filter(e =>
     matchesPerson(e) &&
     e.countsAsPersonalIncome &&
-    !['salary', 'reimbursement', 'social_contributions'].includes(e.category) &&
+    !['salary', 'reimbursement', 'social_contributions', 'str_fee'].includes(e.category) &&
     inRange(e.date)
   );
   const piExpTotal = piExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
@@ -139,13 +145,14 @@ function getPersonData(person, start, end, months) {
   }
   const personalIncome = [...personalByProp.values()].reduce((s, v) => s + v, 0);
 
-  const fromCompany = salary + ownerRentTotal + reimb + netDivs + piExpTotal;
+  const fromCompany = salary + ownerRentTotal + reimb + netDivs + strIncomeTotal + piExpTotal;
   const total = fromCompany + personalIncome;
 
   return {
     salary, salaryExps,
     gesyTotal, gesyExps,
     reimb, reimbExps,
+    strIncomeExps, strIncomeTotal,
     piExps, piExpTotal,
     ownerRentTotal, ownerRentByMonth, companyProps,
     grossDivs, sdcAmount, netDivs, divRecords,
@@ -281,12 +288,13 @@ function showPersonModal(label, data) {
   body.appendChild(mkModalTable(
     ['Source', 'Amount', 'Notes'],
     [
-      ['Director Salary',             formatEUR(data.salary),         `${data.salaryExps.length} expense records`],
-      ['Property Rent (owner)',        formatEUR(data.ownerRentTotal), `${data.companyProps.length} company-operated properties`],
-      ['Reimbursements',               formatEUR(data.reimb),          `${data.reimbExps.length} records`],
-      ['Personal Income Expenses',     formatEUR(data.piExpTotal),     data.piExps.length > 0 ? `${data.piExps.length} linked expenses` : 'None'],
-      ['Dividends (net SDC)',          formatEUR(data.netDivs),        data.grossDivs > 0 ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}` : 'No dividends'],
-      ['Personal Properties',          formatEUR(data.personalIncome), `${data.personalPayments.length} payments`],
+      ['Director Salary',             formatEUR(data.salary),          `${data.salaryExps.length} expense records`],
+      ['Property Rent (owner)',        formatEUR(data.ownerRentTotal),  `${data.companyProps.length} company-operated properties`],
+      ['Reimbursements',               formatEUR(data.reimb),           `${data.reimbExps.length} records`],
+      ['STR Income',                   formatEUR(data.strIncomeTotal),  data.strIncomeExps.length > 0 ? `${data.strIncomeExps.length} STR fee records` : 'None'],
+      ['Other Personal Income',        formatEUR(data.piExpTotal),      data.piExps.length > 0 ? `${data.piExps.length} linked expenses` : 'None'],
+      ['Dividends (net SDC)',          formatEUR(data.netDivs),         data.grossDivs > 0 ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}` : 'No dividends'],
+      ['Personal Properties',          formatEUR(data.personalIncome),  `${data.personalPayments.length} payments`],
     ],
     { highlight: 1 }
   ));
@@ -482,9 +490,38 @@ function buildPersonColumn(label, color, data, months, cmpData) {
     cmpData ? `${formatEUR(cmpData.reimb)} prev` : null
   ));
 
+  if (data.strIncomeTotal > 0 || data.strIncomeExps.length > 0) {
+    col.appendChild(makeRow(
+      'STR Income', formatEUR(data.strIncomeTotal),
+      data.strIncomeExps.length > 0,
+      () => {
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
+        if (data.strIncomeExps.length > 0) {
+          const rows = data.strIncomeExps
+            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+            .map(e => [
+              e.date || '—',
+              formatEUR(toEUR(e.amount, e.currency, e.date)),
+              byId('properties', e.propertyId)?.name || '—',
+              e.description || '—'
+            ]);
+          body.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Property', 'Description'], rows, { highlight: 1 }));
+        } else {
+          body.appendChild(mkEmptyState('No STR income records this period.'));
+        }
+        openModal({ title: `${label} — STR Income`, body, large: true });
+      },
+      [
+        data.strIncomeExps.length > 0 ? `${data.strIncomeExps.length} STR fee record(s)` : 'No STR income yet',
+        pctOf(data.strIncomeTotal)
+      ].filter(Boolean).join(' · '),
+      cmpData ? `${formatEUR(cmpData.strIncomeTotal || 0)} prev` : null
+    ));
+  }
+
   if (data.piExpTotal > 0 || data.piExps.length > 0) {
     col.appendChild(makeRow(
-      'Personal Income Expenses', formatEUR(data.piExpTotal),
+      'Other Personal Income', formatEUR(data.piExpTotal),
       data.piExps.length > 0,
       () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
@@ -496,7 +533,7 @@ function buildPersonColumn(label, color, data, months, cmpData) {
         } else {
           body.appendChild(mkEmptyState('No personal income expenses linked to this person.'));
         }
-        openModal({ title: `${label} — Personal Income Expenses`, body, large: true });
+        openModal({ title: `${label} — Other Personal Income`, body, large: true });
       },
       [
         data.piExps.length > 0 ? `${data.piExps.length} linked expense(s)` : 'No linked expenses yet',
