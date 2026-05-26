@@ -370,7 +370,7 @@ export function mergeLocalPending(remoteDb, localCache) {
       // Non-array fields (settings, appConfig): without sync history remote is
       // authoritative (old cache can't be trusted). With sync history local wins
       // because the user may have intentionally changed settings since last sync.
-      result[col] = (syncedAt || local === undefined) ? (remote ?? local) : local;
+      result[col] = syncedAt ? (local ?? remote) : (remote ?? local);
       continue;
     }
 
