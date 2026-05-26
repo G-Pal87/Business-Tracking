@@ -702,6 +702,10 @@ export function openBuilder(existing, { onSaved } = {}) {
         const b64 = dataUri.split(',')[1];
         if (!b64) throw new Error('PDF generation produced empty content');
         await uploadGithubFile(pdfPath, b64, `${existing ? 'Update' : 'Create'} PDF for invoice ${invLabel}`);
+        // Delete the old file if the path changed (e.g. number, client, or date was edited)
+        if (existing?.pdfPath && existing.pdfPath !== pdfPath) {
+          try { await deleteGithubFile(existing.pdfPath, null, `Rename PDF for invoice ${invLabel}`); } catch { /* old file already gone */ }
+        }
         inv.pdfPath = pdfPath;
         pdfUploadStatus = 'success';
       } catch (err) {
