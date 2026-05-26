@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth, applyReservationExpenseRules, removeReservationExpenses } from '../core/data.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth, applyReservationExpenseRules, removeReservationExpenses, deletePayment } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -455,7 +455,7 @@ function buildScheduleSection(wrap) {
           td.appendChild(button('Delete', { variant: 'sm danger', onClick: async () => {
             const ok = await confirmDialog('Delete this payment record? This cannot be undone.', { danger: true, okLabel: 'Delete' });
             if (!ok) return;
-            softDelete('payments', s.linkedPaymentId);
+            deletePayment(s.linkedPaymentId);
             toast('Payment record deleted', 'success');
             render();
           }}));
@@ -525,7 +525,7 @@ function buildScheduleSection(wrap) {
           if (newAmt <= 0) { toast('Amount must be greater than zero', 'danger'); return; }
 
           if (newStat === 'revert') {
-            if (s.linkedPaymentId) softDelete('payments', s.linkedPaymentId);
+            if (s.linkedPaymentId) deletePayment(s.linkedPaymentId);
             toast('Payment record removed — row reverted to scheduled state', 'success');
           } else {
             const pay = linked ? { ...linked } : {
@@ -595,7 +595,7 @@ function buildScheduleSection(wrap) {
     if (!count) return;
     const ok = await confirmDialog(`Delete ${count} payment record(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
-    for (const id of [...selected]) softDelete('payments', id);
+    for (const id of [...selected]) deletePayment(id);
     selected.clear();
     toast(`Deleted ${count} payment record(s)`, 'success');
     render();

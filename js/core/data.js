@@ -61,7 +61,7 @@ export function formatNumber(n, frac = 0) {
 
 // ============== IDs ==============
 export function newId(prefix) {
-  return `${prefix}_${Date.now().toString(36)}${Math.floor(Math.random() * 1000).toString(36)}`;
+  return `${prefix}_${crypto.randomUUID().replace(/-/g, '')}`;
 }
 
 // ============== Generic CRUD ==============
@@ -1124,6 +1124,12 @@ export function removeReservationExpenses(payment) {
       softDelete('expenses', e.id);
     }
   }
+}
+
+export function deletePayment(id) {
+  const p = byId('payments', id);
+  if (p) removeReservationExpenses(p);
+  return softDelete('payments', id);
 }
 
 // Apply a rule to all existing short-term payments (skip inventory to avoid retroactive stock changes).

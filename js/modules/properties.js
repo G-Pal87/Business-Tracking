@@ -4,7 +4,7 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI,
-  getPeopleOwners, getPersonName, restoreInventoryStock
+  getPeopleOwners, getPersonName, restoreInventoryStock, removeReservationExpenses
 } from '../core/data.js';
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { fetchICal, parseICal, nights } from '../core/ical.js';
@@ -503,7 +503,15 @@ export function openDetail(id, preStats) {
 
   const editBtn = button('Edit', { onClick: () => { closeModal(); setTimeout(() => openForm(p), 220); } });
   const delBtn = button('Delete', { variant: 'danger', onClick: async () => {
-    const ok = await confirmDialog(`Delete property "${p.name}"? This will NOT delete its payments/expenses.`, { danger: true, okLabel: 'Delete' });
+    const expCount = listActive('expenses').filter(e => e.propertyId === p.id).length;
+    const payCount = listActivePayments().filter(pm => pm.propertyId === p.id).length;
+    const tenCount = listActive('tenants').filter(t => t.propertyId === p.id).length;
+    const refs = [];
+    if (expCount) refs.push(`${expCount} expense(s)`);
+    if (payCount) refs.push(`${payCount} payment(s)`);
+    if (tenCount) refs.push(`${tenCount} tenant(s)`);
+    const refNote = refs.length ? ` Linked records that will remain: ${refs.join(', ')}.` : '';
+    const ok = await confirmDialog(`Delete property "${p.name}"?${refNote}`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
     softDelete('properties', p.id);
     toast('Property deleted', 'success');
@@ -873,6 +881,7 @@ function openForm(existing) {
         if (pmt.propertyId !== p.id || pmt.status === 'paid' || pmt.deletedAt) continue;
         const d = pmt.date?.slice(0, 10) || '';
         if (pendingVacantPeriods.some(vp => vp.startDate && d >= vp.startDate && d <= (vp.endDate || '9999-12-31'))) {
+          removeReservationExpenses(pmt);
           softDelete('payments', pmt.id);
         }
       }

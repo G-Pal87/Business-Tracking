@@ -104,7 +104,9 @@ function build() {
       const acts = el('td', { class: 'right' });
       acts.appendChild(button('Restock', { variant: 'sm ghost', onClick: () => openAddForm(item, render) }));
       acts.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
-        const ok = await confirmDialog(`Delete "${item.name}" and all its batches?`, { danger: true, okLabel: 'Delete' });
+        const expCount = listActive('expenses').filter(e => e.inventoryItemId === item.id).length;
+        const refNote = expCount ? ` ${expCount} expense(s) reference this item and will remain.` : '';
+        const ok = await confirmDialog(`Delete "${item.name}" and all its batches?${refNote}`, { danger: true, okLabel: 'Delete' });
         if (ok) { softDelete('inventory', item.id); toast('Deleted', 'success'); render(); }
       }}));
       tr.appendChild(acts);
