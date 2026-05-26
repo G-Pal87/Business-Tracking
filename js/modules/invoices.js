@@ -33,11 +33,12 @@ export default {
   destroy() {}
 };
 
-// Canonical PDF filename: {number}_{CLIENT}_{DDMMYY}  e.g. 1_CTWO_050126
-// If the number already contains underscores (legacy formatted number), use it as-is.
+// Canonical PDF filename: purely numeric numbers get {num}_{CLIENT}_{DDMMYY},
+// e.g. 1_CTWO_050126. Non-numeric numbers (descriptive/legacy) are used as-is
+// and sanitized by invoicePdfPath — avoids double-suffixing complex numbers.
 function invoicePdfFilename(inv) {
   const num = String(inv.number || inv.id);
-  if (num.includes('_')) return num;
+  if (!/^\d+$/.test(num)) return num;
   const client = byId('clients', inv.clientId);
   const clientPart = client ? sanitizeClientName(client.name) : 'CLIENT';
   const [y, m, d] = (inv.issueDate || '').split('-');
@@ -637,12 +638,17 @@ export function openBuilder(existing, { onSaved } = {}) {
   drawLines();
 
   function updateNamePreview() {
-    const client = byId('clients', clientS.value);
-    const clientPart = client ? sanitizeClientName(client.name) : 'CLIENT';
-    const [y2, m2, d2] = (issueI.value || today()).split('-');
-    const dateFmt = `${d2 || ''}${m2 || ''}${(y2 || '').slice(2)}`;
-    const num = numberI.value.trim() || nextInvoiceSequence((issueI.value || today()).slice(0, 4));
-    namePreviewEl.textContent = `Invoice Name: ${num}_${clientPart}_${dateFmt}`;
+    const numVal = numberI.value.trim();
+    const num = numVal || String(nextInvoiceSequence((issueI.value || today()).slice(0, 4)));
+    if (!/^\d+$/.test(num)) {
+      namePreviewEl.textContent = `Invoice Name: ${num}`;
+    } else {
+      const client = byId('clients', clientS.value);
+      const clientPart = client ? sanitizeClientName(client.name) : 'CLIENT';
+      const [y2, m2, d2] = (issueI.value || today()).split('-');
+      const dateFmt = `${d2 || ''}${m2 || ''}${(y2 || '').slice(2)}`;
+      namePreviewEl.textContent = `Invoice Name: ${num}_${clientPart}_${dateFmt}`;
+    }
   }
   [numberI, clientS, issueI].forEach(f => {
     f.addEventListener('input', updateNamePreview);
