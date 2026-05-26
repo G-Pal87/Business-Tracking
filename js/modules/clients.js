@@ -301,6 +301,17 @@ function openForm(existing) {
   const emailI       = input({ value: c.email, type: 'email' });
   const streamS = select(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label })), c.stream || SERVICE_STREAMS[0]);
   const ownerS  = select(getPeopleOwners(), c.owner || '');
+
+  // When owner changes, auto-update stream to match what that owner typically uses
+  ownerS.addEventListener('change', () => {
+    const ownerClients = listActive('clients').filter(cl => cl.owner === ownerS.value && cl.id !== c.id && cl.stream);
+    if (ownerClients.length > 0) {
+      const freq = {};
+      ownerClients.forEach(cl => { freq[cl.stream] = (freq[cl.stream] || 0) + 1; });
+      streamS.value = Object.entries(freq).sort((a, b) => b[1] - a[1])[0][0];
+    }
+  });
+
   const addressI = input({ value: c.address });
   const vatI = input({ value: c.vatNumber, placeholder: 'e.g. HU12345678' });
   const regI = input({ value: c.registrationNumber, placeholder: 'e.g. 01-09-123456' });
