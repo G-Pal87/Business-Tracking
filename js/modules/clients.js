@@ -288,7 +288,7 @@ export function openDetail(id) {
 function openForm(existing) {
   const c = existing ? { ...existing } : {
     id: newId('cli'),
-    name: '', email: '', address: '', vatNumber: '', registrationNumber: '',
+    name: '', billingCode: '', email: '', address: '', vatNumber: '', registrationNumber: '',
     currency: 'EUR',
     stream: SERVICE_STREAMS[0] || '',
     owner: getPeopleOwners()[0]?.value || 'you',
@@ -296,8 +296,9 @@ function openForm(existing) {
     notes: ''
   };
   const body = el('div', {});
-  const nameI   = input({ value: c.name });
-  const emailI  = input({ value: c.email, type: 'email' });
+  const nameI        = input({ value: c.name });
+  const billingCodeI = input({ value: c.billingCode || '', placeholder: 'e.g. CTWO, VITAS, NEXIAL' });
+  const emailI       = input({ value: c.email, type: 'email' });
   const streamS = select(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label })), c.stream || SERVICE_STREAMS[0]);
   const ownerS  = select(getPeopleOwners(), c.owner || '');
   const addressI = input({ value: c.address });
@@ -307,7 +308,7 @@ function openForm(existing) {
   const dateI = input({ type: 'date', value: c.contractStart });
   const notesT = textarea(); notesT.value = c.notes || '';
 
-  body.appendChild(formRow('Name', nameI));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Name', nameI), formRow('Billing Code', billingCodeI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Stream', streamS), formRow('Owner', ownerS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Email', emailI), formRow('VAT Number', vatI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI)));
@@ -406,6 +407,7 @@ function openForm(existing) {
 
     Object.assign(c, {
       name: clientName,
+      billingCode: billingCodeI.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10),
       email: emailI.value.trim(),
       address: addressI.value.trim(),
       vatNumber: vatI.value.trim(),

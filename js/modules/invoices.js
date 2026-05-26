@@ -40,7 +40,9 @@ function invoicePdfFilename(inv) {
   const num = String(inv.number || inv.id);
   if (!/^\d+$/.test(num)) return num;
   const client = byId('clients', inv.clientId);
-  const clientPart = client ? sanitizeClientName(client.name) : 'CLIENT';
+  const clientPart = client
+    ? (client.billingCode || sanitizeClientName(client.name))
+    : 'CLIENT';
   const [y, m, d] = (inv.issueDate || '').split('-');
   const dateFmt = `${d || ''}${m || ''}${(y || '').slice(2)}`;
   return `${num}_${clientPart}_${dateFmt}`;
@@ -643,7 +645,7 @@ export function openBuilder(existing, { onSaved } = {}) {
       namePreviewEl.textContent = `Invoice Name: ${num}`;
     } else {
       const client = byId('clients', clientS.value);
-      const clientPart = client ? sanitizeClientName(client.name) : 'CLIENT';
+      const clientPart = client ? (client.billingCode || sanitizeClientName(client.name)) : 'CLIENT';
       const [y2, m2, d2] = (issueI.value || today()).split('-');
       const dateFmt = `${d2 || ''}${m2 || ''}${(y2 || '').slice(2)}`;
       namePreviewEl.textContent = `Invoice Name: ${num}_${clientPart}_${dateFmt}`;
