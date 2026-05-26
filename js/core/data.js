@@ -201,7 +201,7 @@ const LEGACY_CAT_MAP = {
   renovation:           'renovation',          tax:                  'tax',
   utilities:            'utilities',           management:           'property_management',
   cleaning:             'cleaning',            electricity:          'utilities',
-  water:                'utilities',           inventory:            'other',
+  water:                'utilities',           inventory:            'inventory',
   vat:                  'tax',                 reimbursement:        'other',
   str_fee:              'property_management', salary:               'payroll',
   social_contributions: 'payroll',             eurolife:             'insurance',

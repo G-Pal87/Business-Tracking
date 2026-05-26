@@ -60,6 +60,7 @@ export const COST_CATEGORIES = {
   accounting:          { label: 'Accounting',          color: '#14b8a6' },
   property_management: { label: 'Property Mgmt',       color: '#f97316' },
   payroll:             { label: 'Payroll',              color: '#818cf8' },
+  inventory:           { label: 'Inventory',            color: '#84cc16' },
   other:               { label: 'Other',               color: '#8b93b0' }
 };
 
