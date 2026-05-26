@@ -367,7 +367,7 @@ function build() {
     const htr = el('tr', {});
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    ['Invoice No', 'Invoice Name', 'Client', 'Issued', 'Due', 'Owner', 'Status'].forEach(h => htr.appendChild(el('th', {}, h)));
+    ['Invoice Name', 'Client', 'Issued', 'Due', 'Owner', 'Status'].forEach(h => htr.appendChild(el('th', {}, h)));
     htr.appendChild(el('th', { class: 'right' }, 'Total'));
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
@@ -397,10 +397,9 @@ function build() {
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       chkTd.onclick = e => e.stopPropagation();
       tr.appendChild(chkTd);
-      const numTd = el('td', { style: 'font-weight:600;white-space:nowrap' }, r.number);
-      numTd.dataset.sort = String(parseInt(r.number || '0', 10) || r.number || '');
-      tr.appendChild(numTd);
-      tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted);white-space:nowrap' }, invoicePdfFilename(r)));
+      const nameTd = el('td', { style: 'font-weight:600;white-space:nowrap' }, invoicePdfFilename(r));
+      nameTd.dataset.sort = String(parseInt(r.number || '0', 10) || r.number || '');
+      tr.appendChild(nameTd);
       tr.appendChild(el('td', {}, client?.name || '-'));
       tr.appendChild(el('td', {}, fmtDate(r.issueDate)));
       tr.appendChild(el('td', {}, fmtDate(r.dueDate)));
