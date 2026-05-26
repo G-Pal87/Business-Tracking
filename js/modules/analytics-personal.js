@@ -2,6 +2,7 @@
 import { el, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { formatEUR, toEUR, byId, listActive, listActivePayments, getPersonName } from '../core/data.js';
+import { state } from '../core/state.js';
 import {
   createFilterState, buildFilterBar, buildComparisonLine,
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange
@@ -10,7 +11,7 @@ import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge,
   mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK
 } from './analytics-helpers.js';
-import { PERSONAL_EXPENSE_CATS } from '../core/config.js';
+import { EXPENSE_CATEGORIES } from '../core/config.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const SDC_RATE  = 0.0265;
@@ -52,21 +53,39 @@ export default {
 // ── Data ──────────────────────────────────────────────────────────────────────
 function getPersonData(person, start, end, months) {
   const inRange    = d => d && d >= start && d <= end;
-  const cats       = PERSONAL_EXPENSE_CATS[person];
   const ownerKeys  = person === 'you' ? ['you', 'both'] : ['rita', 'both'];
   const recipient  = person === 'you' ? 'giorgos' : 'rita';
 
-  // Salary
-  const salaryExps = listActive('expenses').filter(e => e.category === cats.salary && inRange(e.date));
-  const salary     = salaryExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  // Resolve person record from Company Structure
+  const personRecord = (state.db.people || []).find(p => p.legacyKey === person && !p.deletedAt);
+  const personId = personRecord?.id;
 
-  // GESY / social contributions (company cost — shown for context, not personal income)
-  const gesyExps   = listActive('expenses').filter(e => e.category === cats.gesy && inRange(e.date));
-  const gesyTotal  = gesyExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  // Salary — expenses with category 'salary' linked to this person
+  const salaryExps = listActive('expenses').filter(e =>
+    e.category === 'salary' && personId && e.personId === personId && inRange(e.date)
+  );
+  const salary = salaryExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+
+  // Social contributions (company cost — shown for context)
+  const gesyExps = listActive('expenses').filter(e =>
+    e.category === 'social_contributions' && personId && e.personId === personId && inRange(e.date)
+  );
+  const gesyTotal = gesyExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
   // Reimbursements
-  const reimbExps  = listActive('expenses').filter(e => e.category === cats.reimb && inRange(e.date));
-  const reimb      = reimbExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const reimbExps = listActive('expenses').filter(e =>
+    e.category === 'reimbursement' && personId && e.personId === personId && inRange(e.date)
+  );
+  const reimb = reimbExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+
+  // Person-linked personal income expenses (any category, countsAsPersonalIncome=true, not already counted above)
+  const piExps = listActive('expenses').filter(e =>
+    personId && e.personId === personId &&
+    e.countsAsPersonalIncome &&
+    !['salary', 'reimbursement', 'social_contributions'].includes(e.category) &&
+    inRange(e.date)
+  );
+  const piExpTotal = piExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
   // Owner rent — derived from ownerRentHistory, rate-per-month aware
   const companyProps = listActive('properties').filter(p =>
@@ -112,13 +131,14 @@ function getPersonData(person, start, end, months) {
   }
   const personalIncome = [...personalByProp.values()].reduce((s, v) => s + v, 0);
 
-  const fromCompany = salary + ownerRentTotal + reimb + netDivs;
+  const fromCompany = salary + ownerRentTotal + reimb + netDivs + piExpTotal;
   const total = fromCompany + personalIncome;
 
   return {
     salary, salaryExps,
     gesyTotal, gesyExps,
     reimb, reimbExps,
+    piExps, piExpTotal,
     ownerRentTotal, ownerRentByMonth, companyProps,
     grossDivs, sdcAmount, netDivs, divRecords,
     personalIncome, personalPayments, personalProps, personalByProp,
@@ -253,11 +273,12 @@ function showPersonModal(label, data) {
   body.appendChild(mkModalTable(
     ['Source', 'Amount', 'Notes'],
     [
-      ['Director Salary',       formatEUR(data.salary),       `${data.salaryExps.length} expense records`],
-      ['Property Rent (owner)', formatEUR(data.ownerRentTotal), `${data.companyProps.length} company-operated properties`],
-      ['Reimbursements',        formatEUR(data.reimb),        `${data.reimbExps.length} records`],
-      ['Dividends (net SDC)',   formatEUR(data.netDivs),      data.grossDivs > 0 ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}` : 'No dividends'],
-      ['Personal Properties',   formatEUR(data.personalIncome), `${data.personalPayments.length} payments`],
+      ['Director Salary',             formatEUR(data.salary),         `${data.salaryExps.length} expense records`],
+      ['Property Rent (owner)',        formatEUR(data.ownerRentTotal), `${data.companyProps.length} company-operated properties`],
+      ['Reimbursements',               formatEUR(data.reimb),          `${data.reimbExps.length} records`],
+      ['Personal Income Expenses',     formatEUR(data.piExpTotal),     data.piExps.length > 0 ? `${data.piExps.length} linked expenses` : 'None'],
+      ['Dividends (net SDC)',          formatEUR(data.netDivs),        data.grossDivs > 0 ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}` : 'No dividends'],
+      ['Personal Properties',          formatEUR(data.personalIncome), `${data.personalPayments.length} payments`],
     ],
     { highlight: 1 }
   ));
@@ -452,6 +473,30 @@ function buildPersonColumn(label, color, data, months, cmpData) {
     ].filter(Boolean).join(' · '),
     cmpData ? `${formatEUR(cmpData.reimb)} prev` : null
   ));
+
+  if (data.piExpTotal > 0 || data.piExps.length > 0) {
+    col.appendChild(makeRow(
+      'Personal Income Expenses', formatEUR(data.piExpTotal),
+      data.piExps.length > 0,
+      () => {
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
+        if (data.piExps.length > 0) {
+          const rows = data.piExps
+            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+            .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), EXPENSE_CATEGORIES[e.category]?.label || e.category, e.description || '—']);
+          body.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Category', 'Description'], rows, { highlight: 1 }));
+        } else {
+          body.appendChild(mkEmptyState('No personal income expenses linked to this person.'));
+        }
+        openModal({ title: `${label} — Personal Income Expenses`, body, large: true });
+      },
+      [
+        data.piExps.length > 0 ? `${data.piExps.length} linked expense(s)` : 'No linked expenses yet',
+        pctOf(data.piExpTotal)
+      ].filter(Boolean).join(' · '),
+      cmpData ? `${formatEUR(cmpData.piExpTotal || 0)} prev` : null
+    ));
+  }
 
   col.appendChild(makeRow(
     'Dividends (net SDC)', formatEUR(data.netDivs),
