@@ -1163,13 +1163,7 @@ function fillInvoiceRepoBody(body) {
   function renderCheckResults(totalInvoices, totalPdfs, discrepancies) {
     resultEl.innerHTML = '';
 
-    // Refresh button — always visible once results are shown
-    const refreshRow = el('div', { style: 'display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:8px' });
-    const tsEl = el('span', { style: 'font-size:11px;color:var(--text-muted)' }, `Checked at ${new Date().toLocaleTimeString()}`);
-    const refreshBtn = button('Refresh', { variant: 'sm ghost', onClick: runCheck });
-    refreshRow.appendChild(tsEl);
-    refreshRow.appendChild(refreshBtn);
-    resultEl.appendChild(refreshRow);
+    resultEl.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);text-align:right;margin-bottom:8px' }, `Checked at ${new Date().toLocaleTimeString()}`));
 
     const missing = discrepancies.filter(d => d.type === 'missing_file').length;
     const matched = totalInvoices - missing;
@@ -1642,10 +1636,7 @@ function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLa
   function renderCheckResults(totalEntities, totalFiles, totalDocs, discrepancies) {
     resultEl.innerHTML = '';
 
-    const refreshRow = el('div', { style: 'display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:8px' });
-    refreshRow.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted)' }, `Checked at ${new Date().toLocaleTimeString()}`));
-    refreshRow.appendChild(button('Refresh', { variant: 'sm ghost', onClick: runCheck }));
-    resultEl.appendChild(refreshRow);
+    resultEl.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);text-align:right;margin-bottom:8px' }, `Checked at ${new Date().toLocaleTimeString()}`));
 
     const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px' });
     for (const [label, val, good] of [
@@ -2019,10 +2010,7 @@ function fillExpenseReceiptRepoBody(body) {
 
   function renderCheckResults(totalExpenses, totalFiles, discrepancies) {
     resultEl.innerHTML = '';
-    const refreshRow = el('div', { style: 'display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:8px' });
-    refreshRow.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted)' }, `Checked at ${new Date().toLocaleTimeString()}`));
-    refreshRow.appendChild(button('Refresh', { variant: 'sm ghost', onClick: runCheck }));
-    resultEl.appendChild(refreshRow);
+    resultEl.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);text-align:right;margin-bottom:8px' }, `Checked at ${new Date().toLocaleTimeString()}`));
 
     const unmatched = discrepancies.filter(d => d.type !== 'orphan_file').length;
     const matched   = totalExpenses - unmatched;
