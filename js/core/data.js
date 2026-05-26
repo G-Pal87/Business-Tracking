@@ -197,18 +197,14 @@ export function isCapEx(e) {
 
 // Legacy category → costCategory mapping (mirrors COST_CATEGORIES in config.js)
 const LEGACY_CAT_MAP = {
-  mortgage:      'financing',           maintenance:   'maintenance',
-  renovation:    'renovation',          insurance:     'insurance',
-  tax:           'tax',                 utilities:     'utilities',
-  management:    'property_management', cleaning:      'cleaning',
-  electricity:   'utilities',           water:         'utilities',
-  inventory:     'other',              vat:            'tax',
-  reimbursement:  'other',              str_fee:          'property_management',
-  salary_giorgos: 'payroll',            salary_rita:      'payroll',
-  salary_diana:   'payroll',            gesy_giorgos:     'payroll',
-  gesy_rita:      'payroll',            gesy_diana:       'payroll',
-  eurolife_giorgos: 'insurance',        eurolife_rita:    'insurance',
-  other:          'other'
+  mortgage:             'financing',           maintenance:          'maintenance',
+  renovation:           'renovation',          tax:                  'tax',
+  utilities:            'utilities',           management:           'property_management',
+  cleaning:             'cleaning',            electricity:          'utilities',
+  water:                'utilities',           inventory:            'other',
+  vat:                  'tax',                 reimbursement:        'other',
+  str_fee:              'property_management', salary:               'payroll',
+  social_contributions: 'payroll',             other:                'other'
 };
 
 // Derives accountingType / costCategory / recurrence for any expense record

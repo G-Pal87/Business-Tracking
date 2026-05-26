@@ -1,7 +1,7 @@
 // Expenses module
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod, getPeopleOwners, getPersonName } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -268,7 +268,9 @@ function build() {
       if (r.recurringGroupId) descCell.appendChild(el('span', { class: 'badge', style: 'margin-right:4px;font-size:10px' }, '↻'));
       descCell.appendChild(document.createTextNode(r.description || ''));
       tr.appendChild(descCell);
-      tr.appendChild(el('td', {}, r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || '')));
+      tr.appendChild(el('td', {}, r.personId
+        ? ((state.db.people || []).find(p => p.id === r.personId)?.name || r.personId)
+        : (r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || ''))));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
       const actions = el('td', { class: 'right' });
@@ -413,21 +415,20 @@ export function openExpenseForm(id) {
 }
 
 function buildCategorySelect(currentValue) {
+  const HIDDEN = new Set(['owner_rent']);
   const grouped = new Set(Object.values(EXPENSE_CATEGORY_GROUPS).flatMap(g => g.subtypes));
   const s = el('select', { class: 'select' });
-  // Ungrouped categories first
   for (const [key, meta] of Object.entries(EXPENSE_CATEGORIES)) {
-    if (grouped.has(key)) continue;
+    if (grouped.has(key) || HIDDEN.has(key)) continue;
     const opt = el('option', { value: key }, meta.label);
     if (key === currentValue) opt.selected = true;
     s.appendChild(opt);
   }
-  // Grouped categories as optgroups
   for (const group of Object.values(EXPENSE_CATEGORY_GROUPS)) {
     const og = el('optgroup', { label: group.label });
     for (const key of group.subtypes) {
       const meta = EXPENSE_CATEGORIES[key];
-      if (!meta) continue;
+      if (!meta || HIDDEN.has(key)) continue;
       const opt = el('option', { value: key }, meta.label);
       if (key === currentValue) opt.selected = true;
       og.appendChild(opt);
@@ -456,8 +457,57 @@ function openForm(existing, defaults = {}) {
   const accountingTypeS = select(Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label })), resolved.accountingType);
   const costCategoryS   = select(Object.entries(COST_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), resolved.costCategory);
   const recurrenceS     = select(Object.entries(RECURRENCE_TYPES).map(([v, m]) => ({ value: v, label: m.label })), resolved.recurrence);
+  // Association toggle (Vendor | Person)
+  let assocMode = r.personId ? 'person' : 'vendor';
+
   const vendorOpts = [{ value: '', label: '— No vendor —' }, ...(state.db.vendors || []).map(v => ({ value: v.id, label: v.name }))];
   const vendorS = select(vendorOpts, r.vendorId || '');
+
+  const personOpts = [{ value: '', label: '— Select person —' }, ...getPeopleOwners()];
+  const personS = select(personOpts, r.personId || '');
+
+  const piChk = el('input', { type: 'checkbox' });
+  piChk.checked = !!r.countsAsPersonalIncome;
+  const piRow = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px 10px;background:rgba(99,102,241,0.07);border-radius:4px;border:1px solid rgba(99,102,241,0.15)' },
+    piChk,
+    el('label', { style: 'font-size:12px;color:var(--text);cursor:pointer;user-select:none' }, 'Include in Personal Income for this person')
+  );
+  piChk.id = 'piChk_' + r.id;
+  piRow.querySelector('label').htmlFor = piChk.id;
+
+  const vendorRow  = el('div', {}, formRow('Vendor', vendorS));
+  const personWrap = el('div', {}, formRow('Person', personS), piRow);
+  const cleaningHint = el('div', { style: 'font-size:12px;color:var(--text-muted);padding:2px 0 6px' });
+
+  const assocVendorBtn = el('button', {
+    type: 'button',
+    style: 'padding:4px 12px;border-radius:14px;font-size:12px;cursor:pointer;border:1px solid;transition:all 120ms'
+  }, 'Vendor');
+  const assocPersonBtn = el('button', {
+    type: 'button',
+    style: 'padding:4px 12px;border-radius:14px;font-size:12px;cursor:pointer;border:1px solid;transition:all 120ms'
+  }, 'Person');
+
+  const syncAssocBtns = () => {
+    const isVendor = assocMode === 'vendor';
+    assocVendorBtn.style.cssText = isVendor
+      ? 'padding:4px 12px;border-radius:14px;font-size:12px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff;font-weight:600;transition:all 120ms'
+      : 'padding:4px 12px;border-radius:14px;font-size:12px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-muted);transition:all 120ms';
+    assocPersonBtn.style.cssText = !isVendor
+      ? 'padding:4px 12px;border-radius:14px;font-size:12px;cursor:pointer;border:1px solid var(--accent);background:var(--accent);color:#fff;font-weight:600;transition:all 120ms'
+      : 'padding:4px 12px;border-radius:14px;font-size:12px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-muted);transition:all 120ms';
+    vendorRow.style.display  = isVendor ? '' : 'none';
+    personWrap.style.display = !isVendor ? '' : 'none';
+  };
+
+  assocVendorBtn.onclick = () => { assocMode = 'vendor'; syncAssocBtns(); };
+  assocPersonBtn.onclick = () => { assocMode = 'person'; syncAssocBtns(); };
+  syncAssocBtns();
+
+  const assocToggle = el('div', {},
+    formRow('Associate with', el('div', { style: 'display:flex;gap:6px' }, assocVendorBtn, assocPersonBtn))
+  );
+
   const amountI = input({ type: 'number', value: r.amount, min: 0, step: 0.01 });
   const currencyS = select(CURRENCIES, r.currency);
   const dateI = input({ type: 'date', value: r.date });
@@ -506,9 +556,9 @@ function openForm(existing, defaults = {}) {
   body.appendChild(formRow('Category', catS));
   body.appendChild(accountingTypeRow);
   body.appendChild(invRow);
-  const vendorRow = formRow('Vendor', vendorS);
-  const cleaningHint = el('div', { style: 'font-size:12px;color:var(--text-muted);padding:2px 0 6px' });
+  body.appendChild(assocToggle);
   body.appendChild(vendorRow);
+  body.appendChild(personWrap);
   body.appendChild(cleaningHint);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', currencyS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI)));
@@ -636,8 +686,10 @@ function openForm(existing, defaults = {}) {
 
   const syncInventoryRow = () => {
     const isInv = catS.value === 'inventory';
-    invRow.style.display    = isInv ? '' : 'none';
-    vendorRow.style.display = isInv ? 'none' : '';
+    invRow.style.display      = isInv ? '' : 'none';
+    assocToggle.style.display = isInv ? 'none' : '';
+    vendorRow.style.display   = isInv ? 'none' : (assocMode === 'vendor' ? '' : 'none');
+    personWrap.style.display  = isInv ? 'none' : (assocMode === 'person' ? '' : 'none');
   };
   syncInventoryRow();
 
@@ -723,8 +775,10 @@ function openForm(existing, defaults = {}) {
       amount:        Number(amountI.value),
       currency:      currencyS.value,
       date:          dateI.value,
-      vendorId:      vendorS.value || '',
-      vendor:        selectedVendor?.name || r.vendor || '',
+      personId:             assocMode === 'person' ? (personS.value || '') : '',
+      countsAsPersonalIncome: assocMode === 'person' && !!piChk.checked,
+      vendorId:      assocMode === 'vendor' ? (vendorS.value || '') : '',
+      vendor:        assocMode === 'vendor' ? (selectedVendor?.name || r.vendor || '') : '',
       description:   descT.value.trim(),
       stream:        autoStream,
       ...(appliedFee !== undefined ? { appliedCleaningFee: appliedFee } : {})
