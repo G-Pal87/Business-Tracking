@@ -302,7 +302,7 @@ async function boot() {
         initialSyncDone = true;
         // Flush any writes that were queued before sync completed
         if (pendingSaveBeforeSync) { pendingSaveBeforeSync = false; doSave().catch(() => {}); }
-        needAutoSave = (merged !== remoteDb);
+        needAutoSave = !!merged._hasLocalChanges;
         if (needAutoSave && state.github.token && !pushPending) {
           doSave().catch(() => {});
         }

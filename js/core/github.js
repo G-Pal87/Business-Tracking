@@ -352,6 +352,7 @@ export async function fetchLocalDb() {
 export function mergeLocalPending(remoteDb, localCache) {
   const cols   = new Set([...Object.keys(remoteDb || {}), ...Object.keys(localCache || {})]);
   const result = {};
+  let   hasLocalChanges = false;
 
   for (const col of cols) {
     const remote = remoteDb[col];
@@ -364,17 +365,18 @@ export function mergeLocalPending(remoteDb, localCache) {
       continue;
     }
 
-    // NEW — remote is authoritative; local wins only when genuinely newer
+    // Remote is authoritative; local wins only when genuinely newer
     const merged = new Map(remote.map(x => [x.id, x]));
 
     for (const item of local) {
       const remoteItem = merged.get(item.id);
       if (!remoteItem) {
         // local-only item (created offline) — add it
-        if (!item.deletedAt) merged.set(item.id, item);
+        if (!item.deletedAt) { merged.set(item.id, item); hasLocalChanges = true; }
       } else if (item.updatedAt && remoteItem.updatedAt && item.updatedAt > remoteItem.updatedAt) {
         // local is genuinely newer — apply it
         merged.set(item.id, item);
+        hasLocalChanges = true;
       }
       // otherwise: remote is same age or newer — keep remote (already in merged)
     }
@@ -382,6 +384,7 @@ export function mergeLocalPending(remoteDb, localCache) {
     result[col] = [...merged.values()];
   }
 
+  result._hasLocalChanges = hasLocalChanges;
   return result;
 }
 
