@@ -214,10 +214,12 @@ async function boot() {
         clearTimeout(pushTimer);
         pushTimer = null;
         updateSyncStatus('offline', 'Push conflict — refresh required', true);
+        const cols = [...new Set((e.conflicts || []).map(c => c.collection))];
+        const detail = cols.length ? ` Affected: ${cols.join(', ')}.` : '';
         toast(
-          'Another user modified the same data. Refresh the page to load the latest version before saving your changes.',
+          `Another user modified the same data.${detail} Refresh the page to load the latest — your unsaved changes may need to be re-entered.`,
           'danger',
-          10000
+          15000
         );
       } else {
         updateSyncStatus('offline', 'Push failed — changes saved locally only', true);
@@ -257,6 +259,9 @@ async function boot() {
   }
 
   subscribe(evt => {
+    if (evt === 'cache-quota-exceeded') {
+      updateSyncStatus('offline', 'Local cache full — purge deleted records in Settings → Data', true);
+    }
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
       if (state.github.token && state.github.owner && state.github.repo) {

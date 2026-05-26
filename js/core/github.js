@@ -1,5 +1,5 @@
 // GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
-import { state } from './state.js';
+import { state, notify } from './state.js';
 
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
@@ -403,6 +403,8 @@ export function saveLocalCache(db) {
     } catch (e) {
       console.warn('saveLocalCache:', e);
       if (e.name === 'QuotaExceededError') {
+        state.github.cacheQuotaFull = true;
+        notify('cache-quota-exceeded');
         import('./ui.js').then(({ toast }) =>
           toast('Local cache full — offline access may use stale data. Purge deleted records in Settings → Data to free space.', 'warning', 8000)
         ).catch(() => {});
