@@ -148,6 +148,7 @@ async function boot() {
     } catch (e) {
       console.warn('GitHub load failed, no local cache available', e);
       state.github.lastSyncError = normalizeNetworkError(e.message);
+      initialSyncDone = true; // unblock saves — GitHub is unreachable, not a sync issue
     }
   }
 
@@ -275,6 +276,11 @@ async function boot() {
 
   // ── Phase 4: background GitHub sync (only when we served from local cache)
   // Runs after router.init so setDb() triggers a live refresh of the current view.
+  // If Phase 4 won't run (no local cache, or GitHub not configured), unblock saves now
+  if (!(loaded && localCache && state.github.owner && state.github.repo)) {
+    initialSyncDone = true;
+  }
+
   if (loaded && localCache && state.github.owner && state.github.repo) {
     (async () => {
       try {
