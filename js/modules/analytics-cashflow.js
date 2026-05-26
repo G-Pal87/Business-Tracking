@@ -19,6 +19,8 @@ let gScope = 'company'; // 'company' | 'all'
 const CHART_IDS = ['cf-cumulative-line', 'cf-month-bar', 'cf-net-donut', 'cf-net-month-bar', 'cf-prop-hbar', 'cf-stream-bar'];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+let _cfSortCol = -1, _cfSortDir = 1;
+
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
   id:    'analytics-cashflow',
@@ -1686,7 +1688,7 @@ function buildCashFlowTable(container, { payments, invoices, opExpenses, capExpe
   const tableWrap = el('div', { class: 'table-wrap' });
   tableWrap.appendChild(table);
   container.appendChild(tableWrap);
-  attachSortFilter(tableWrap);
+  attachSortFilter(tableWrap, { initialCol: _cfSortCol, initialDir: _cfSortDir, onSortChange: (c, d) => { _cfSortCol = c; _cfSortDir = d; } });
 
   const totalIn  = rows.filter(r => r._type === 'in')   .reduce((s, r) => s + r._eur, 0);
   const totalOp  = rows.filter(r => r._type === 'opex') .reduce((s, r) => s + r._eur, 0);

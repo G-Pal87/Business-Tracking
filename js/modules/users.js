@@ -4,6 +4,8 @@ import { el, openModal, closeModal, confirmDialog, toast, input, select, formRow
 import { upsert, softDelete, listActive, newId } from '../core/data.js';
 import { hashPassword } from '../core/auth.js';
 
+let _sortCol = -1, _sortDir = 1;
+
 export default {
   id: 'users',
   label: 'Users',
@@ -74,7 +76,7 @@ function renderTable(container, wrap) {
   t.appendChild(tb);
   tw.appendChild(t);
   container.appendChild(tw);
-  attachSortFilter(tw);
+  attachSortFilter(tw, { initialCol: _sortCol, initialDir: _sortDir, onSortChange: (c, d) => { _sortCol = c; _sortDir = d; } });
 }
 
 function openForm(existing, wrap) {
