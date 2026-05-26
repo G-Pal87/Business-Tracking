@@ -457,6 +457,17 @@ function build() {
 
 
 
+// Maps an owner key to their default stream.
+// 'you' / Giorgos = Customer Success; 'rita' / Rita = Marketing Services.
+function ownerStream(ownerKey) {
+  const map = { you: 'customer_success', rita: 'marketing_services' };
+  if (map[ownerKey]) return map[ownerKey];
+  // Also handle people-record IDs by checking their legacyKey
+  const person = (state.db.people || []).find(p => (p.legacyKey || p.id) === ownerKey && !p.deletedAt);
+  if (person?.legacyKey) return map[person.legacyKey] || null;
+  return null;
+}
+
 function sanitizeClientName(name) {
   return String(name).replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 20) || 'CLIENT';
 }
@@ -628,8 +639,9 @@ export function openBuilder(existing, { onSaved } = {}) {
     const c = byId('clients', clientS.value);
     if (c) { ownerS.value = c.owner; currencyS.value = c.currency; drawLines(); }
     refreshNumberHint();
+    updateNamePreview();
   };
-  ownerS.onchange = refreshNumberHint;
+  ownerS.onchange = () => { refreshNumberHint(); updateNamePreview(); };
   issueI.onchange = refreshNumberHint;
   numberI.oninput = () => { if (!numberI.value.trim()) refreshNumberHint(); else numberI.placeholder = ''; };
   currencyS.onchange = () => drawLines();
@@ -666,7 +678,7 @@ export function openBuilder(existing, { onSaved } = {}) {
     inv.issueDate = issueI.value;
     inv.dueDate = dueI.value;
     inv.status = statusS.value;
-    inv.stream = byId('clients', inv.clientId)?.stream || inv.stream;
+    inv.stream = ownerStream(inv.owner) || byId('clients', inv.clientId)?.stream || inv.stream;
     inv.notes = notesT.value;
     if (!numberI.value.trim()) {
       const year = inv.issueDate.slice(0, 4);
