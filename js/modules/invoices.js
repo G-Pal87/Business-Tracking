@@ -34,12 +34,15 @@ export default {
 };
 
 // Canonical PDF filename: {number}_{CLIENT}_{DDMMYY}  e.g. 1_CTWO_050126
+// If the number already contains underscores (legacy formatted number), use it as-is.
 function invoicePdfFilename(inv) {
+  const num = String(inv.number || inv.id);
+  if (num.includes('_')) return num;
   const client = byId('clients', inv.clientId);
   const clientPart = client ? sanitizeClientName(client.name) : 'CLIENT';
   const [y, m, d] = (inv.issueDate || '').split('-');
   const dateFmt = `${d || ''}${m || ''}${(y || '').slice(2)}`;
-  return `${inv.number || inv.id}_${clientPart}_${dateFmt}`;
+  return `${num}_${clientPart}_${dateFmt}`;
 }
 
 function invoicePdfPath(inv) {
@@ -87,15 +90,15 @@ async function migrateEmbeddedPDFs(pending) {
 
 // ── Retrospective migration: rename id-based paths → number-based paths ────────
 
-let pathMigrationScheduled = false;
+let pathMigrationRunning = false;
 function schedulePathMigration() {
-  if (pathMigrationScheduled) return;
+  if (pathMigrationRunning) return;
   const { owner, repo, token } = state.github;
   if (!owner || !repo || !token) return;
   const pending = (state.db.invoices || []).filter(i => !i.deletedAt && i.pdfPath && i.pdfPath !== invoicePdfPath(i));
   if (pending.length === 0) return;
-  pathMigrationScheduled = true;
-  setTimeout(() => migrateInvoicePdfPaths(pending), 4000);
+  pathMigrationRunning = true;
+  setTimeout(async () => { await migrateInvoicePdfPaths(pending); pathMigrationRunning = false; }, 4000);
 }
 
 async function migrateInvoicePdfPaths(pending) {
