@@ -42,7 +42,12 @@ export function generateInvoicePDF(invoice) {
   doc.text(biz.name || ownerName, margin, y + 16);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  const fromLines = [biz.address, biz.email, biz.vatNumber ? `VAT: ${biz.vatNumber}` : ''].filter(Boolean);
+  const fromLines = [
+    biz.address,
+    biz.email,
+    biz.registrationNumber ? `Reg: ${biz.registrationNumber}` : '',
+    biz.vatNumber ? `VAT: ${biz.vatNumber}` : '',
+  ].filter(Boolean);
   fromLines.forEach((line, i) => doc.text(line, margin, y + 32 + i * 12));
 
   // To
