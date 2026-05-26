@@ -300,6 +300,12 @@ function mergeDb(freshRemote, localCurrent, lastSynced) {
     for (const item of local) {
       const remoteItem = merged.get(item.id);
       const baseItem   = baseMap.get(item.id);
+
+      // Local unchanged since last sync → remote may be newer, keep it
+      if (baseItem && item.updatedAt && baseItem.updatedAt && item.updatedAt === baseItem.updatedAt) {
+        continue;
+      }
+
       if (
         remoteItem && baseItem &&
         item.updatedAt && remoteItem.updatedAt && baseItem.updatedAt &&
@@ -358,15 +364,19 @@ export function mergeLocalPending(remoteDb, localCache) {
       continue;
     }
 
-    // Seed from local — it holds all recent user actions (soft-deletes, edits, permanent deletes).
-    const merged = new Map(local.map(x => [x.id, x]));
+    // NEW — remote is authoritative; local wins only when genuinely newer
+    const merged = new Map(remote.map(x => [x.id, x]));
 
-    // Add remote-only items that are still active (created on another device).
-    // Skip remote soft-deleted records: if they're absent from local the user permanently deleted them.
-    for (const item of remote) {
-      if (!merged.has(item.id) && !item.deletedAt) {
+    for (const item of local) {
+      const remoteItem = merged.get(item.id);
+      if (!remoteItem) {
+        // local-only item (created offline) — add it
+        if (!item.deletedAt) merged.set(item.id, item);
+      } else if (item.updatedAt && remoteItem.updatedAt && item.updatedAt > remoteItem.updatedAt) {
+        // local is genuinely newer — apply it
         merged.set(item.id, item);
       }
+      // otherwise: remote is same age or newer — keep remote (already in merged)
     }
 
     result[col] = [...merged.values()];
