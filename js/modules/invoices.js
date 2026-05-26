@@ -33,7 +33,7 @@ export default {
   destroy() {}
 };
 
-// Canonical PDF filename: {number}_{ClientName}_{DDMMYYYY}
+// Canonical PDF filename: {number}_{TrimmedClientName}_{DDMMYYYY}
 function invoicePdfFilename(inv) {
   const client = byId('clients', inv.clientId);
   const clientPart = client ? sanitizeClientName(client.name) : 'Client';
@@ -443,7 +443,7 @@ function build() {
 
 
 function sanitizeClientName(name) {
-  return String(name).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'Client';
+  return String(name).trim().replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_').slice(0, 30) || 'Client';
 }
 
 function nextInvoiceSequence(year, excludeId) {
