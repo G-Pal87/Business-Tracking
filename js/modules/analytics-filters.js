@@ -1,7 +1,7 @@
 // Shared filter infrastructure for Executive & Revenue dashboards
 import { el, buildMultiSelect, button } from '../core/ui.js';
 import { STREAMS, OWNERS } from '../core/config.js';
-import { listActive, listActivePayments, listActiveClients, byId } from '../core/data.js';
+import { listActive, listActivePayments, listActiveClients, byId, getPeopleOwners } from '../core/data.js';
 
 const ML = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const SS = 'background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer';
@@ -485,9 +485,7 @@ export function buildFilterBar(gF, opts, onChange) {
   // Owner — only show owners that exist in data given other filters
   if (showOwner) {
     bar.appendChild(buildMultiSelect(
-      Object.entries(OWNERS)
-        .filter(([k]) => k !== 'both' && availOwners.has(k))
-        .map(([k, v]) => ({ value: k, label: v })),
+      getPeopleOwners().filter(o => availOwners.has(o.value)),
       gF.owners, 'All Owners', onChange, `${storagePrefix}_owners`
     ));
   }
