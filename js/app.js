@@ -166,7 +166,7 @@ async function boot() {
   } else if (!state.github.connected) {
     // Loaded from local cache — show a "syncing" hint until background fetch completes
     if (state.github.owner && state.github.repo) {
-      updateSyncStatus('syncing', 'Syncing with GitHub…');
+      updateSyncStatus('syncing', 'Pulling from GitHub…');
     } else {
       updateSyncStatus('offline', 'Local only — configure GitHub in Settings');
     }
@@ -188,7 +188,7 @@ async function boot() {
   const doSave = async () => {
     if (!initialSyncDone) {
       pendingSaveBeforeSync = true;
-      updateSyncStatus('syncing', 'Waiting for initial sync before saving…');
+      updateSyncStatus('syncing', 'Waiting for pull before pushing…');
       return;
     }
     pushPending = true;
@@ -198,14 +198,14 @@ async function boot() {
     document.body.classList.add('app-saving');
     let hadNewChanges = false;
     try {
-      updateSyncStatus('syncing', 'Saving…');
+      updateSyncStatus('syncing', 'Pushing to GitHub…');
       await github.pushDb('Auto-sync from app');
       hadNewChanges = state.dirty; // true if markDirty() fired during the push
       state.dirty = false;
       saveFailCount = 0;
       state.github.lastSyncError = null;
       if (!hadNewChanges) {
-        updateSyncStatus('online', `Saved to GitHub at ${new Date().toLocaleTimeString()}`);
+        updateSyncStatus('online', `Pushed to GitHub at ${new Date().toLocaleTimeString()}`);
       }
     } catch (e) {
       saveFailCount++;
@@ -213,14 +213,14 @@ async function boot() {
       if (e.name === 'ConflictError') {
         clearTimeout(pushTimer);
         pushTimer = null;
-        updateSyncStatus('offline', 'Conflict — refresh required', true);
+        updateSyncStatus('offline', 'Push conflict — refresh required', true);
         toast(
           'Another user modified the same data. Refresh the page to load the latest version before saving your changes.',
           'danger',
           10000
         );
       } else {
-        updateSyncStatus('offline', 'Save failed — changes saved locally only', true);
+        updateSyncStatus('offline', 'Push failed — changes saved locally only', true);
         if (saveFailCount === 1) {
           toast('Save failed: ' + e.message, 'danger', 6000);
         }
@@ -263,10 +263,10 @@ async function boot() {
         if (!initialSyncDone) {
           // Initial remote sync not yet complete — queue the save for when it finishes
           pendingSaveBeforeSync = true;
-          updateSyncStatus('syncing', 'Waiting for initial sync before saving…');
+          updateSyncStatus('syncing', 'Waiting for pull before pushing…');
         } else if (!pushPending) {
           // No push in flight — start the debounce timer.
-          updateSyncStatus('syncing', 'Local changes pending sync…');
+          updateSyncStatus('syncing', 'Changes pending — pushing soon…');
           clearTimeout(pushTimer);
           pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 1500);
         }
