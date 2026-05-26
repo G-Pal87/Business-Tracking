@@ -355,7 +355,7 @@ function build() {
     const htr = el('tr', {});
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    ['Number', 'Client', 'Issued', 'Due', 'Owner', 'Status'].forEach(h => htr.appendChild(el('th', {}, h)));
+    ['Invoice No', 'Invoice Name', 'Client', 'Issued', 'Due', 'Owner', 'Status'].forEach(h => htr.appendChild(el('th', {}, h)));
     htr.appendChild(el('th', { class: 'right' }, 'Total'));
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
@@ -385,9 +385,10 @@ function build() {
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       chkTd.onclick = e => e.stopPropagation();
       tr.appendChild(chkTd);
-      const numTd = el('td', { style: 'font-weight:600' }, r.number);
-      numTd.dataset.sort = String(parseInt((r.number || '').split('_')[0], 10) || r.number || '');
+      const numTd = el('td', { style: 'font-weight:600;white-space:nowrap' }, r.number);
+      numTd.dataset.sort = String(parseInt(r.number || '0', 10) || r.number || '');
       tr.appendChild(numTd);
+      tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted);white-space:nowrap' }, invoicePdfFilename(r)));
       tr.appendChild(el('td', {}, client?.name || '-'));
       tr.appendChild(el('td', {}, fmtDate(r.issueDate)));
       tr.appendChild(el('td', {}, fmtDate(r.dueDate)));
@@ -491,8 +492,11 @@ export function openBuilder(existing, { onSaved } = {}) {
   const notesT = textarea({ placeholder: 'Notes / payment terms' });
   notesT.value = inv.notes || '';
 
+  const namePreviewEl = el('div', { style: 'font-size:11px;color:var(--text-muted);padding:2px 0 10px' });
+
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Client', clientS), formRow('Owner', ownerS)));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Number', numberI), formRow('Status', statusS)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Invoice No', numberI), formRow('Status', statusS)));
+  body.appendChild(namePreviewEl);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Issue Date', issueI), formRow('Due Date', dueI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Currency', currencyS), formRow('Tax %', taxI)));
 
@@ -620,6 +624,20 @@ export function openBuilder(existing, { onSaved } = {}) {
 
   refreshNumberHint();
   drawLines();
+
+  function updateNamePreview() {
+    const client = byId('clients', clientS.value);
+    const clientPart = client ? sanitizeClientName(client.name) : 'CLIENT';
+    const [y2, m2, d2] = (issueI.value || today()).split('-');
+    const dateFmt = `${d2 || ''}${m2 || ''}${(y2 || '').slice(2)}`;
+    const num = numberI.value.trim() || nextInvoiceSequence((issueI.value || today()).slice(0, 4));
+    namePreviewEl.textContent = `Invoice Name: ${num}_${clientPart}_${dateFmt}`;
+  }
+  [numberI, clientS, issueI].forEach(f => {
+    f.addEventListener('input', updateNamePreview);
+    f.addEventListener('change', updateNamePreview);
+  });
+  updateNamePreview();
 
   const preview = button('Preview', { onClick: () => previewInvoice(inv, clientS.value) });
   const save = button('Save Invoice', { variant: 'primary', onClick: async () => {
