@@ -204,7 +204,8 @@ const LEGACY_CAT_MAP = {
   water:                'utilities',           inventory:            'other',
   vat:                  'tax',                 reimbursement:        'other',
   str_fee:              'property_management', salary:               'payroll',
-  social_contributions: 'payroll',             other:                'other'
+  social_contributions: 'payroll',             eurolife:             'insurance',
+  other:                'other'
 };
 
 // Derives accountingType / costCategory / recurrence for any expense record
