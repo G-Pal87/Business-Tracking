@@ -3,76 +3,113 @@ import { byId, formatMoney } from './data.js';
 import { state } from './state.js';
 import { fmtDate } from './ui.js';
 
+function getInvoiceName(invoice) {
+  const client = byId('clients', invoice.clientId);
+  const clientPart = client ? String(client.name).replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 20) : 'CLIENT';
+  const [y, m, d] = (invoice.issueDate || '').split('-');
+  const dateFmt = `${d || ''}${m || ''}${(y || '').slice(2)}`;
+  return `${invoice.number || invoice.id}_${clientPart}_${dateFmt}`;
+}
+
 export function generateInvoicePDF(invoice) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const client = byId('clients', invoice.clientId) || {};
   const biz = state.db.settings?.business || {};
-
-  const ownerLabel = invoice.owner === 'rita' ? 'Rita' : invoice.owner === 'you' ? 'Owner' : 'Team';
   const team = (state.db.settings?.team || []).find(t => t.id === invoice.owner);
-  const ownerName = team?.name || ownerLabel;
+  const ownerName = team?.name || (invoice.owner === 'rita' ? 'Rita' : invoice.owner === 'you' ? 'Owner' : 'Team');
 
   const margin = 48;
-  let y = margin;
+  const rightX = 320;
 
-  // Header
+  // ── Header ────────────────────────────────────────────────────────────────────
+  let y = margin;
+  let ry = margin;
+
+  // Left: INVOICE title + business info
   doc.setFontSize(28);
   doc.setFont('helvetica', 'bold');
   doc.text('INVOICE', margin, y);
-  doc.setFont('helvetica', 'normal');
+  y += 20;
   doc.setFontSize(11);
-  doc.text(`#${invoice.number}`, 420, y);
-  y += 8;
-  doc.setFontSize(9);
-  doc.setTextColor(120);
-  doc.text(`Issued: ${fmtDate(invoice.issueDate)}`, 420, y + 12);
-  doc.text(`Due: ${fmtDate(invoice.dueDate)}`, 420, y + 26);
-  doc.setTextColor(0);
-
-  y += 56;
-
-  // From
-  doc.setFontSize(9);
-  doc.setTextColor(120);
-  doc.text('FROM', margin, y);
-  doc.setTextColor(0);
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.text(biz.name || ownerName, margin, y + 16);
+  doc.text(biz.name || ownerName, margin, y);
+  y += 16;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  const fromLines = [
+  const bizLines = [
     biz.address,
     biz.email,
     biz.registrationNumber ? `Reg: ${biz.registrationNumber}` : '',
     biz.vatNumber ? `VAT: ${biz.vatNumber}` : '',
   ].filter(Boolean);
-  fromLines.forEach((line, i) => doc.text(line, margin, y + 32 + i * 12));
+  bizLines.forEach(line => { doc.text(line, margin, y); y += 12; });
 
-  // To
+  // Right: Invoice No, Invoice Name, dates
   doc.setFontSize(9);
   doc.setTextColor(120);
-  doc.text('TO', 320, y);
+  doc.text('Invoice No', rightX, ry);
   doc.setTextColor(0);
-  doc.setFontSize(11);
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text(client.name || '', 320, y + 16);
+  doc.text(String(invoice.number || ''), rightX, ry + 15);
+  ry += 32;
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  const toLines = [client.address, client.email, client.vatNumber ? `VAT: ${client.vatNumber}` : '', client.registrationNumber ? `Reg: ${client.registrationNumber}` : ''].filter(Boolean);
-  toLines.forEach((line, i) => doc.text(line, 320, y + 32 + i * 12));
+  doc.setTextColor(120);
+  doc.text('Invoice Name', rightX, ry);
+  doc.setTextColor(80);
+  doc.text(getInvoiceName(invoice), rightX, ry + 12);
+  ry += 28;
 
-  y += 110;
+  doc.setTextColor(120);
+  doc.text('Issued', rightX, ry);
+  doc.setTextColor(0);
+  doc.text(fmtDate(invoice.issueDate), rightX, ry + 12);
+  ry += 24;
 
-  // Line items header
+  doc.setTextColor(120);
+  doc.text('Due', rightX, ry);
+  doc.setTextColor(0);
+  doc.text(fmtDate(invoice.dueDate), rightX, ry + 12);
+  ry += 12;
+  doc.setTextColor(0);
+
+  // Separator after both columns
+  y = Math.max(y, ry) + 20;
+  doc.setDrawColor(200);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, 548, y);
+  y += 16;
+
+  // ── Bill To ───────────────────────────────────────────────────────────────────
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  doc.text('BILL TO', margin, y);
+  doc.setTextColor(0);
+  y += 14;
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text(client.name || '', margin, y);
+  y += 14;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  const toLines = [
+    client.address,
+    client.email,
+    client.vatNumber ? `VAT: ${client.vatNumber}` : '',
+    client.registrationNumber ? `Reg: ${client.registrationNumber}` : '',
+  ].filter(Boolean);
+  toLines.forEach(line => { doc.text(line, margin, y); y += 12; });
+  y += 24;
+
+  // ── Line items ────────────────────────────────────────────────────────────────
   const rowH = 24;
-  // Column right-edge x positions (all numeric cols right-aligned)
-  const C_DESC_X  = margin + 8;   // left-aligned, maxWidth 245
-  const C_DESC_W  = 245;
-  const C_QTY_X   = 370;          // right-aligned
-  const C_RATE_X  = 460;          // right-aligned
-  const C_AMT_X   = 548;          // right-aligned
+  const C_DESC_X = margin + 8;
+  const C_DESC_W = 245;
+  const C_QTY_X  = 370;
+  const C_RATE_X = 460;
+  const C_AMT_X  = 548;
 
   doc.setFillColor(243, 244, 246);
   doc.rect(margin, y, 500, rowH, 'F');
@@ -90,7 +127,6 @@ export function generateInvoicePDF(invoice) {
   doc.line(margin, y + rowH, 548, y + rowH);
   y += rowH;
 
-  // Line items
   doc.setFontSize(10);
   for (const li of invoice.lineItems || []) {
     const descLines = doc.splitTextToSize(li.description || '', C_DESC_W);
@@ -108,7 +144,7 @@ export function generateInvoicePDF(invoice) {
 
   y += 16;
 
-  // Totals — labels align with RATE column, values align with AMOUNT column
+  // ── Totals ────────────────────────────────────────────────────────────────────
   doc.setFontSize(10);
   doc.text('Subtotal', C_RATE_X, y, { align: 'right' });
   doc.text(formatMoney(invoice.subtotal, invoice.currency), C_AMT_X, y, { align: 'right' });
@@ -117,8 +153,6 @@ export function generateInvoicePDF(invoice) {
   doc.text(formatMoney(invoice.tax || 0, invoice.currency), C_AMT_X, y, { align: 'right' });
   y += 18;
   doc.setLineWidth(1.5);
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
   const totalLineX = C_RATE_X - doc.getTextWidth('TOTAL');
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
@@ -132,7 +166,7 @@ export function generateInvoicePDF(invoice) {
 
   y += 40;
 
-  // Footer - payment details
+  // ── Payment details ───────────────────────────────────────────────────────────
   if (biz.iban || biz.bic) {
     doc.setFontSize(9);
     doc.setTextColor(120);
@@ -140,7 +174,7 @@ export function generateInvoicePDF(invoice) {
     doc.setTextColor(0);
     y += 14;
     if (biz.iban) { doc.text(`IBAN: ${biz.iban}`, margin, y); y += 12; }
-    if (biz.bic) { doc.text(`BIC: ${biz.bic}`, margin, y); y += 12; }
+    if (biz.bic)  { doc.text(`BIC: ${biz.bic}`,   margin, y); y += 12; }
   }
 
   if (invoice.notes) {
