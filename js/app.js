@@ -112,6 +112,10 @@ async function boot() {
 
   // ── Phase 1: load from local cache instantly (< 1 ms if localStorage is warm)
   const localCache = await github.fetchLocalDb();
+  // Deep-clone before setDb() shares its array references with state.db.
+  // migrateDb() mutates those shared objects (stamps updatedAt = now), which
+  // would make every stale local record look newer than remote during Phase 4 merge.
+  const localSnapshot = localCache ? structuredClone(localCache) : null;
   if (localCache) {
     setDb(localCache);
     github.applyDbConfig(localCache.appConfig?.github);
@@ -285,7 +289,7 @@ async function boot() {
     (async () => {
       try {
         const remoteDb = await github.fetchDb();
-        const merged = github.mergeLocalPending(remoteDb, localCache);
+        const merged = github.mergeLocalPending(remoteDb, localSnapshot);
         setDb(merged);                              // triggers data-loaded → view refresh
         github.applyDbConfig(merged.appConfig?.github);
         github.saveLocalCache(merged);

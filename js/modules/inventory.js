@@ -4,6 +4,8 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import { upsert, softDelete, listActive, byId, newId, formatMoney, totalRemaining } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
 
+let _sortCol = -1, _sortDir = 1;
+
 export default {
   id: 'inventory',
   label: 'Inventory',
@@ -71,7 +73,7 @@ function build() {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap);
+  attachSortFilter(tableWrap, { initialCol: _sortCol, initialDir: _sortDir, onSortChange: (c, d) => { _sortCol = c; _sortDir = d; } });
 
   const render = () => {
     tableWrap.innerHTML = '';

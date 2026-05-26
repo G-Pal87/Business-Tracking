@@ -22,6 +22,8 @@ function invDrillRows(invs) {
   return invs.map(i => ({ ...i, clientName: byId('clients', i.clientId)?.name || '-', eur: toEUR(i.total, i.currency) }));
 }
 
+let _sortCol = -1, _sortDir = 1;
+
 export default {
   id: 'invoices',
   label: 'Invoices',
@@ -260,7 +262,7 @@ function build() {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap);
+  attachSortFilter(tableWrap, { initialCol: _sortCol, initialDir: _sortDir, onSortChange: (c, d) => { _sortCol = c; _sortDir = d; } });
   tableWrap.addEventListener('sf:filter', () => {
     const countEl = tableWrap.querySelector('.table-footer-count');
     const paidEl  = tableWrap.querySelector('.table-footer-paid');

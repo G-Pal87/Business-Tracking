@@ -35,6 +35,9 @@ function getCapExCatKeys(allExp) {
   return s;
 }
 
+let _capexSortCol   = -1, _capexSortDir   = 1;
+let _expTableSortCol = -1, _expTableSortDir = 1;
+
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
   id:    'analytics-expenses',
@@ -1133,7 +1136,7 @@ function buildCapExDetailSection(container, { capEx, total }) {
   body.appendChild(tableWrap);
   card.appendChild(body);
   container.appendChild(card);
-  attachSortFilter(tableWrap);
+  attachSortFilter(tableWrap, { initialCol: _capexSortCol, initialDir: _capexSortDir, onSortChange: (c, d) => { _capexSortCol = c; _capexSortDir = d; } });
 }
 
 // ── Expense table ─────────────────────────────────────────────────────────────
@@ -1198,7 +1201,7 @@ function buildExpenseTable(container, { allExp }) {
   const tableWrap = el('div', { class: 'table-wrap' });
   tableWrap.appendChild(table);
   container.appendChild(tableWrap);
-  attachSortFilter(tableWrap);
+  attachSortFilter(tableWrap, { initialCol: _expTableSortCol, initialDir: _expTableSortDir, onSortChange: (c, d) => { _expTableSortCol = c; _expTableSortDir = d; } });
 
   const totalEUR = rows.reduce((s, r) => s + (r._eur || 0), 0);
   container.appendChild(el('div', {

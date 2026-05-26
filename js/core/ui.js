@@ -226,8 +226,12 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
   const parseCell = txt => {
     if ((/^\d{4}-\d{2}/.test(txt) || (/[a-zA-Z]/.test(txt) && txt.length >= 6)) && !isNaN(new Date(txt)))
       return { t: 'd', v: new Date(txt).getTime() };
-    const n = parseFloat(txt.replace(/[^0-9.-]/g, ''));
-    if (!isNaN(n) && txt.trim() !== '') return { t: 'n', v: n };
+    // Only treat as numeric when the cell is a plain number or currency amount
+    // (e.g. "€1,500", "HUF 50,000") — not when text merely contains digits
+    // (e.g. "Danko u. 38 -2" would otherwise sort as 38, not alphabetically).
+    const clean = txt.replace(/^[A-Z]{2,3}\s*/, '').replace(/[€£$¥₿,\s]/g, '');
+    const n = parseFloat(clean);
+    if (!isNaN(n) && clean !== '' && /^-?[\d.]+$/.test(clean)) return { t: 'n', v: n };
     return { t: 's', v: txt };
   };
 

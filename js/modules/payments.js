@@ -5,6 +5,10 @@ import { upsert, softDelete, listActive, listActivePayments, byId, newId, format
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
+let _allPaySortCol = -1, _allPaySortDir = 1;
+let _schedSortCol  = -1, _schedSortDir  = 1;
+let _upcomSortCol  = -1, _upcomSortDir  = 1;
+
 export default {
   id: 'payments',
   label: 'Payments',
@@ -135,7 +139,7 @@ function buildAllPayments(wrap) {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap);
+  attachSortFilter(tableWrap, { initialCol: _allPaySortCol, initialDir: _allPaySortDir, onSortChange: (c, d) => { _allPaySortCol = c; _allPaySortDir = d; } });
   tableWrap.addEventListener('sf:filter', () => {
     const countEl = tableWrap.querySelector('.table-footer-count');
     const totalEl = tableWrap.querySelector('.table-footer-total');
@@ -315,7 +319,7 @@ function buildScheduleSection(wrap) {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap);
+  attachSortFilter(tableWrap, { initialCol: _schedSortCol, initialDir: _schedSortDir, onSortChange: (c, d) => { _schedSortCol = c; _schedSortDir = d; } });
 
   let selected = new Set();
 
@@ -628,7 +632,7 @@ function buildUpcomingSection(wrap) {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap);
+  attachSortFilter(tableWrap, { initialCol: _upcomSortCol, initialDir: _upcomSortDir, onSortChange: (c, d) => { _upcomSortCol = c; _upcomSortDir = d; } });
 
   const render = () => {
     const now = new Date();
