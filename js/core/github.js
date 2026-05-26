@@ -354,7 +354,15 @@ export function mergeLocalPending(remoteDb, localCache) {
   const result = {};
   let   hasLocalChanges = false;
 
+  // _syncedAt is stamped onto the local cache every time we successfully pull
+  // from GitHub. A local record can only override remote if it was modified
+  // AFTER that point — proving it's a real offline edit, not a migrateDb stamp
+  // or any other metadata backfill. Without _syncedAt (old or corrupted cache)
+  // remote is fully authoritative and no local record can override it.
+  const syncedAt = localCache?._syncedAt ?? null;
+
   for (const col of cols) {
+    if (col.startsWith('_')) continue; // skip internal meta fields
     const remote = remoteDb[col];
     const local  = localCache[col];
 
@@ -365,20 +373,30 @@ export function mergeLocalPending(remoteDb, localCache) {
       continue;
     }
 
-    // Remote is authoritative; local wins only when genuinely newer
+    // Remote is authoritative by default
     const merged = new Map(remote.map(x => [x.id, x]));
 
     for (const item of local) {
       const remoteItem = merged.get(item.id);
       if (!remoteItem) {
-        // local-only item (created offline) — add it
-        if (!item.deletedAt) { merged.set(item.id, item); hasLocalChanges = true; }
-      } else if (item.updatedAt && remoteItem.updatedAt && item.updatedAt > remoteItem.updatedAt) {
-        // local is genuinely newer — apply it
+        // Local-only item: only keep if it was created after the last known sync,
+        // which proves it's a genuine offline addition. Without sync history we
+        // can't trust it — remote is authoritative (item may have been deleted remotely).
+        if (!item.deletedAt && syncedAt && item.createdAt && item.createdAt > syncedAt) {
+          merged.set(item.id, item);
+          hasLocalChanges = true;
+        }
+      } else if (
+        syncedAt &&
+        item.updatedAt && item.updatedAt > syncedAt &&
+        remoteItem.updatedAt && item.updatedAt > remoteItem.updatedAt
+      ) {
+        // Local record was modified after the last sync AND is newer than remote:
+        // this is a genuine offline edit — apply it.
         merged.set(item.id, item);
         hasLocalChanges = true;
       }
-      // otherwise: remote is same age or newer — keep remote (already in merged)
+      // Otherwise: remote is same age or newer, or we have no sync baseline → remote wins
     }
 
     result[col] = [...merged.values()];
