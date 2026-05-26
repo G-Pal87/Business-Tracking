@@ -115,7 +115,15 @@ async function migrateInvoicePdfPaths(pending) {
       upsert('invoices', { ...inv, pdfPath: correctPath });
       done++;
     } catch (err) {
-      console.warn(`[PDF rename] Could not rename ${inv.pdfPath} → ${correctPath}:`, err.message);
+      // If source file is already gone (prior migration moved it), update the DB
+      // record to point at the correct path so we don't keep retrying indefinitely.
+      if (err.status === 404 || String(err.message).includes('404') || String(err.message).includes('Not Found')) {
+        upsert('invoices', { ...inv, pdfPath: correctPath });
+        console.log(`[PDF rename] Source missing, updated pdfPath to ${correctPath}`);
+        done++;
+      } else {
+        console.warn(`[PDF rename] Could not rename ${inv.pdfPath} → ${correctPath}:`, err.message);
+      }
     }
   }
   if (done > 0) {
