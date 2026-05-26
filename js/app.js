@@ -143,6 +143,7 @@ async function boot() {
   if (!loaded && state.github.owner && state.github.repo) {
     try {
       const remoteDb = await github.fetchDb();
+      remoteDb._syncedAt = Date.now();
       setDb(remoteDb);
       github.applyDbConfig(remoteDb.appConfig?.github);
       github.saveLocalCache(remoteDb);
@@ -297,6 +298,7 @@ async function boot() {
       try {
         const remoteDb = await github.fetchDb();
         const merged = github.mergeLocalPending(remoteDb, localSnapshot);
+        merged._syncedAt = Date.now(); // stamp pull time so next merge knows what's a real offline edit
         setDb(merged);                              // triggers data-loaded → view refresh
         github.applyDbConfig(merged.appConfig?.github);
         github.saveLocalCache(merged);
