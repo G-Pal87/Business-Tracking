@@ -65,31 +65,39 @@ function buildAllPayments(wrap) {
     materialized: { label: 'Sold', css: 'info'    }
   };
 
-  const buildFilterOpts = () => {
-    const ys = new Set(), ms = new Set(), propIds = new Set(), ts = new Set(), ss = new Set();
-    for (const p of listActivePayments()) {
-      if (p.date) { ys.add(p.date.slice(0, 4)); ms.add(p.date.slice(5, 7)); }
-      if (p.propertyId) propIds.add(p.propertyId);
-      ts.add(p.source === 'airbnb' ? (p.airbnbType || p.type || 'other') : (p.type || 'other'));
-      if (p.status) ss.add(p.status);
-    }
-    const allProps = listActive('properties');
-    return {
-      years:    [...ys].sort().reverse().map(y => ({ value: y, label: y })),
-      months:   [...ms].sort().map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] })),
-      props:    [...propIds].map(id => allProps.find(pr => pr.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(pr => ({ value: pr.id, label: pr.name })),
-      types:    [...ts].sort().map(t => ({ value: t, label: t })),
-      statuses: [...ss].sort().map(s => { const m = STATUS_META[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; })
-    };
+  const getPayType = p => p.source === 'airbnb' ? (p.airbnbType || p.type || 'other') : (p.type || 'other');
+
+  const matchesExcept = (p, skip) => {
+    if (skip !== 'year'   && yearFilter.size   > 0 && !yearFilter.has(p.date?.slice(0, 4)))  return false;
+    if (skip !== 'month'  && monthFilter.size  > 0 && !monthFilter.has(p.date?.slice(5, 7))) return false;
+    if (skip !== 'prop'   && propFilter.size   > 0 && !propFilter.has(p.propertyId))          return false;
+    if (skip !== 'type'   && typeFilter.size   > 0 && !typeFilter.has(getPayType(p)))          return false;
+    if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(p.status))             return false;
+    return true;
   };
-  const fo = buildFilterOpts();
+
   let _rtTimer;
-  const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => renderTable(), 250); };
-  const yearMS   = buildMultiSelect(fo.years,    yearFilter,   'All Years',      debouncedRT, 'pay_years');
-  const monthMS  = buildMultiSelect(fo.months,   monthFilter,  'All Months',     debouncedRT, 'pay_months');
-  const propMS   = buildMultiSelect(fo.props,    propFilter,   'All Properties', debouncedRT, 'pay_props');
-  const typeMS   = buildMultiSelect(fo.types,    typeFilter,   'All Types',      debouncedRT, 'pay_types');
-  const statusMS = buildMultiSelect(fo.statuses, statusFilter, 'All Statuses',   debouncedRT, 'pay_statuses');
+  const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => { rebuildFilters(); renderTable(); }, 250); };
+  const yearMS   = buildMultiSelect([], yearFilter,   'All Years',      debouncedRT, 'pay_years');
+  const monthMS  = buildMultiSelect([], monthFilter,  'All Months',     debouncedRT, 'pay_months');
+  const propMS   = buildMultiSelect([], propFilter,   'All Properties', debouncedRT, 'pay_props');
+  const typeMS   = buildMultiSelect([], typeFilter,   'All Types',      debouncedRT, 'pay_types');
+  const statusMS = buildMultiSelect([], statusFilter, 'All Statuses',   debouncedRT, 'pay_statuses');
+
+  const rebuildFilters = () => {
+    const allPayments = listActivePayments();
+    const allProps    = listActive('properties');
+    const ys  = [...new Set(allPayments.filter(p => matchesExcept(p, 'year'))  .map(p => p.date?.slice(0, 4)).filter(Boolean))].sort().reverse();
+    const ms  = [...new Set(allPayments.filter(p => matchesExcept(p, 'month')) .map(p => p.date?.slice(5, 7)).filter(Boolean))].sort();
+    const ps  = [...new Set(allPayments.filter(p => matchesExcept(p, 'prop'))  .map(p => p.propertyId).filter(Boolean))];
+    const ts  = [...new Set(allPayments.filter(p => matchesExcept(p, 'type'))  .map(p => getPayType(p)))].sort();
+    const ss  = [...new Set(allPayments.filter(p => matchesExcept(p, 'status')).map(p => p.status).filter(Boolean))].sort();
+    yearMS.setItems(ys.map(y => ({ value: y, label: y })));
+    monthMS.setItems(ms.map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] })));
+    propMS.setItems(ps.map(id => allProps.find(pr => pr.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(pr => ({ value: pr.id, label: pr.name })));
+    typeMS.setItems(ts.map(t => ({ value: t, label: t })));
+    statusMS.setItems(ss.map(s => { const m = STATUS_META[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
+  };
 
   let selected = new Set();
 
@@ -123,7 +131,7 @@ function buildAllPayments(wrap) {
   }});
   deleteSelBtn.style.display = 'none';
 
-  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); propMS.reset(); typeMS.reset(); statusMS.reset(); renderTable(); } });
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); propMS.reset(); typeMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
   filterBar.appendChild(yearMS);
   filterBar.appendChild(monthMS);
   filterBar.appendChild(propMS);
@@ -272,6 +280,7 @@ function buildAllPayments(wrap) {
     ));
   };
 
+  rebuildFilters();
   renderTable();
 }
 

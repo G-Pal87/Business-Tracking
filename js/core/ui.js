@@ -318,7 +318,7 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
 // storageKey: optional localStorage key for filter persistence
 //
 // The returned element has a .reset() method that restores the "show all" state.
-export function buildMultiSelect(items, filterSet, allLabel, onRefresh, storageKey = null) {
+export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, storageKey = null) {
   // ── Restore persisted state into the Set before building the UI ────────────
   if (storageKey) {
     try {
@@ -352,30 +352,9 @@ export function buildMultiSelect(items, filterSet, allLabel, onRefresh, storageK
     style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px'
   }, allChk, el('span', {}, allLabel)));
 
-  const chks = items.map(({ value, label, css, color }) => {
-    const chk         = el('input', { type: 'checkbox' });
-    chk.dataset.value = value;
-    chk.checked       = filterSet.size === 0 || filterSet.has(value);
-    let content;
-    if (css) {
-      content = el('span', { class: `badge ${css}` }, label);
-    } else if (color) {
-      const dot = el('span', { style: `display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0` });
-      content = el('span', { style: 'display:flex;align-items:center;gap:6px' }, dot, el('span', {}, label));
-    } else {
-      content = el('span', {}, label);
-    }
-    menu.appendChild(el('label', {
-      style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px'
-    }, chk, content));
-    return chk;
-  });
-
-  const persist = () => {
-    if (!storageKey) return;
-    try { localStorage.setItem(`btf:${storageKey}`, JSON.stringify([...filterSet])); }
-    catch { /* quota exceeded — ignore */ }
-  };
+  // items and chks are mutable so setItems() can swap them out
+  let items = [];
+  let chks  = [];
 
   const sync = () => {
     const sel = chks.filter(c => c.checked);
@@ -390,6 +369,41 @@ export function buildMultiSelect(items, filterSet, allLabel, onRefresh, storageK
     if (n > 0 && n < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
   };
 
+  // Builds (or rebuilds) the item rows in the menu
+  const buildRows = (newItems) => {
+    while (menu.children.length > 1) menu.removeChild(menu.lastChild);
+    // Prune selections that no longer exist in the new item set
+    const newVals = new Set(newItems.map(i => i.value));
+    for (const v of [...filterSet]) { if (!newVals.has(v)) filterSet.delete(v); }
+    items = newItems;
+    chks  = newItems.map(({ value, label, css, color }) => {
+      const chk         = el('input', { type: 'checkbox' });
+      chk.dataset.value = value;
+      chk.checked       = filterSet.size === 0 || filterSet.has(value);
+      let content;
+      if (css) {
+        content = el('span', { class: `badge ${css}` }, label);
+      } else if (color) {
+        const dot = el('span', { style: `display:inline-block;width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0` });
+        content = el('span', { style: 'display:flex;align-items:center;gap:6px' }, dot, el('span', {}, label));
+      } else {
+        content = el('span', {}, label);
+      }
+      menu.appendChild(el('label', {
+        style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px'
+      }, chk, content));
+      chk.onchange = () => sync();
+      return chk;
+    });
+    sync();
+  };
+
+  const persist = () => {
+    if (!storageKey) return;
+    try { localStorage.setItem(`btf:${storageKey}`, JSON.stringify([...filterSet])); }
+    catch { /* quota exceeded — ignore */ }
+  };
+
   const closeMenu = () => {
     if (!wrapper.isConnected) { document.removeEventListener('click', closeMenu); return; }
     if (menu.style.display === 'none') return;
@@ -400,23 +414,25 @@ export function buildMultiSelect(items, filterSet, allLabel, onRefresh, storageK
 
   allChk.checked  = filterSet.size === 0;
   allChk.onchange = () => { chks.forEach(c => { c.checked = allChk.checked; }); allChk.indeterminate = false; sync(); };
-  chks.forEach(chk => { chk.onchange = () => sync(); });
   trigger.onclick = e => { e.stopPropagation(); menu.style.display === 'none' ? (menu.style.display = '') : closeMenu(); };
   menu.onclick    = e => e.stopPropagation();
   document.addEventListener('click', closeMenu);
 
   wrapper.appendChild(trigger);
   wrapper.appendChild(menu);
-  sync();
+  buildRows(initialItems);
 
   // ── Public reset method — restores "show all" without triggering onRefresh ─
   wrapper.reset = () => {
     chks.forEach(c => { c.checked = true; });
     allChk.checked = true;
     allChk.indeterminate = false;
-    sync(); // clears filterSet and updates label
+    sync();
     persist();
   };
+
+  // ── Swap in a new option list (prunes stale selections, updates UI) ─────────
+  wrapper.setItems = buildRows;
 
   return wrapper;
 }
