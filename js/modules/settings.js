@@ -1155,6 +1155,31 @@ function fillInvoiceRepoBody(body) {
       }
     }
 
+    // PDFs still in the repo that belong to soft-deleted invoices
+    const deletedInvoices = (state.db.invoices || []).filter(i => i.deletedAt && i.pdfPath);
+    for (const inv of deletedInvoices) {
+      const fname = inv.pdfPath.split('/').pop().toLowerCase();
+      if (repoByName.has(fname)) {
+        discrepancies.push({
+          type: 'deleted_invoice_pdf',
+          detail: `"${inv.pdfPath.split('/').pop()}" belongs to deleted invoice "${inv.number || inv.id}" — safe to remove`,
+          file: repoByName.get(fname),
+          inv
+        });
+      }
+    }
+
+    // db.json size warning — GitHub Contents API has a hard 1 MB limit
+    const dbBytes = JSON.stringify(state.db).length;
+    const DB_WARN_BYTES = 800_000;
+    if (dbBytes > DB_WARN_BYTES) {
+      discrepancies.push({
+        type: 'db_size_warning',
+        detail: `db.json is ${(dbBytes / 1024).toFixed(0)} KB — approaching GitHub's 1 MB API limit. Consider purging old soft-deleted records or moving pdfData to GitHub files.`,
+        noResolve: true
+      });
+    }
+
     renderCheckResults(invoices.length, pdfFiles.length, discrepancies);
   }
 
@@ -1190,8 +1215,8 @@ function fillInvoiceRepoBody(body) {
       return;
     }
 
-    const TYPE_LABEL = { missing_file: 'Missing file', orphan_file: 'Orphan file', filename_mismatch: 'Name mismatch', duplicate: 'Duplicate' };
-    const TYPE_CSS   = { orphan_file: 'warning', duplicate: 'warning' };
+    const TYPE_LABEL = { missing_file: 'Missing file', orphan_file: 'Orphan file', filename_mismatch: 'Name mismatch', duplicate: 'Duplicate', deleted_invoice_pdf: 'Deleted invoice PDF', db_size_warning: 'DB size warning' };
+    const TYPE_CSS   = { orphan_file: 'warning', duplicate: 'warning', deleted_invoice_pdf: 'danger', db_size_warning: 'warning' };
 
     // Multi-select toolbar
     const resolvableItems = discrepancies.map(d => ({ d, action: resolveAction(d) })).filter(x => x.action);
@@ -1361,7 +1386,19 @@ function fillInvoiceRepoBody(body) {
       };
     }
 
-    // duplicate: requires changing invoice numbers — no safe auto-resolve
+    if (d.type === 'deleted_invoice_pdf') {
+      // PDF belongs to a soft-deleted invoice — offer to remove it from the repo
+      return async () => {
+        const ok = await confirmDialog(
+          `Delete "${d.file.name}" from the repository? It belongs to deleted invoice "${d.inv.number || d.inv.id}" and is no longer needed.`,
+          { danger: true, okLabel: 'Delete File' }
+        );
+        if (!ok) throw new Error('cancelled');
+        await deleteGithubFile(d.file.path, d.file.sha, `Delete PDF for deleted invoice ${d.inv.number || d.inv.id}`);
+      };
+    }
+
+    // duplicate / db_size_warning: no safe auto-resolve
     return null;
   }
 

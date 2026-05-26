@@ -302,8 +302,12 @@ function openForm(existing) {
   const streamS = select(SERVICE_STREAMS.map(s => ({ value: s, label: STREAMS[s].label })), c.stream || SERVICE_STREAMS[0]);
   const ownerS  = select(getPeopleOwners(), c.owner || '');
 
-  // When owner changes, auto-update stream to match what that owner typically uses
+  // When owner changes, auto-update stream (you/Giorgos → CS, rita/Rita → Marketing)
   ownerS.addEventListener('change', () => {
+    const OWNER_STREAM = { you: 'customer_success', rita: 'marketing_services' };
+    const mapped = OWNER_STREAM[ownerS.value];
+    if (mapped) { streamS.value = mapped; return; }
+    // Fallback: majority stream of that owner's other clients
     const ownerClients = listActive('clients').filter(cl => cl.owner === ownerS.value && cl.id !== c.id && cl.stream);
     if (ownerClients.length > 0) {
       const freq = {};
