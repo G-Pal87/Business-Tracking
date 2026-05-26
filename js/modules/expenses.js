@@ -38,6 +38,8 @@ function receiptRepoPath(expenseId, filename) {
   return `expenses/receipts/${expenseId}.${ext}`;
 }
 
+let _sortCol = -1, _sortDir = 1;
+
 export default {
   id: 'expenses',
   label: 'Expenses',
@@ -180,7 +182,11 @@ function build() {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap);
+  attachSortFilter(tableWrap, {
+    initialCol: _sortCol,
+    initialDir: _sortDir,
+    onSortChange: (col, dir) => { _sortCol = col; _sortDir = dir; }
+  });
   tableWrap.addEventListener('sf:filter', () => {
     const countEl  = tableWrap.querySelector('.table-footer-count');
     const capexEl  = tableWrap.querySelector('.table-footer-capex');
