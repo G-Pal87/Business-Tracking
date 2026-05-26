@@ -46,7 +46,7 @@ function invoicePdfFilename(inv) {
   return `${num}_${clientPart}_${dateFmt}`;
 }
 
-function invoicePdfPath(inv) {
+export function invoicePdfPath(inv) {
   const safe = invoicePdfFilename(inv).replace(/[/\\:*?"<>|#&%]/g, '_').replace(/\s+/g, '_');
   return `invoices/${safe}.pdf`;
 }

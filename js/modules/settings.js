@@ -7,7 +7,7 @@ import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRe
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { generateInvoicePDF } from '../core/pdf.js';
-import { openPreview as openInvoicePreview } from './invoices.js';
+import { openPreview as openInvoicePreview, invoicePdfPath } from './invoices.js';
 import { openDetail as openClientDetail } from './clients.js';
 import { openDetail as openPropertyDetail } from './properties.js';
 import { openExpenseForm } from './expenses.js';
@@ -1038,14 +1038,7 @@ function fillInvoiceRepoBody(body) {
   body.appendChild(deleteStatusEl);
 
   // Mirrors invoicePdfPath() + invoicePdfFilename() in invoices.js exactly
-  function canonicalPath(inv) {
-    const client = byId('clients', inv.clientId);
-    const clientPart = client ? String(client.name).replace(/[^a-zA-Z0-9]/g, '').slice(0, 20) || 'Client' : 'Client';
-    const dateFmt = (inv.issueDate || '').split('-').reverse().join('');
-    const filename = `${inv.number || inv.id}_${clientPart}_${dateFmt}`;
-    const safe = filename.replace(/[/\\:*?"<>|#&%]/g, '_').replace(/\s+/g, '_');
-    return `invoices/${safe}.pdf`;
-  }
+  const canonicalPath = invoicePdfPath;
 
   // ── Check ────────────────────────────────────────────────────────────────────
 
