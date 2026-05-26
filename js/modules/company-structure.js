@@ -1,7 +1,7 @@
 // Company Structure — people management and dividend settings
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, button, textarea } from '../core/ui.js';
-import { upsert, softDelete, listActive, newId } from '../core/data.js';
+import { upsert, softDelete, listActive, newId, listActivePayments } from '../core/data.js';
 import { PERSON_ROLES, DIVIDEND_METHODS } from '../core/config.js';
 
 export default {
@@ -26,6 +26,19 @@ function getPeople() {
 
 function getDividendSettings() {
   return state.db.settings?.dividendSettings || [];
+}
+
+function getRelatedRecordCount(person) {
+  const key = person.legacyKey || person.id;
+  const counts = {
+    properties: listActive('properties').filter(r => r.owner === key).length,
+    invoices:   listActive('invoices').filter(r => r.owner === key).length,
+    clients:    listActive('clients').filter(r => r.owner === key).length,
+    payments:   listActivePayments().filter(r => r.owner === key).length,
+    dividends:  listActive('dividends').filter(r => r.recipient === key).length,
+  };
+  const total = Object.values(counts).reduce((s, v) => s + v, 0);
+  return { total, counts };
 }
 
 function rebuildView() {
@@ -85,10 +98,20 @@ function buildPeopleCard() {
       const acts = el('td', { class: 'right' });
       acts.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openPersonForm(p, renderBody) }));
       if (!p.legacyKey) {
-        acts.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
-          const ok = await confirmDialog(`Remove ${p.name}? This cannot be undone.`, { danger: true, okLabel: 'Remove' });
-          if (ok) { softDelete('people', p.id); toast('Removed', 'success'); renderBody(); }
-        }}));
+        const { total, counts } = getRelatedRecordCount(p);
+        if (total > 0) {
+          const lines = Object.entries(counts).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`).join(', ');
+          const delBtn = button('Del', { variant: 'sm ghost' });
+          delBtn.disabled = true;
+          delBtn.title = `Cannot delete — linked to: ${lines}`;
+          delBtn.style.cssText = 'opacity:0.35;cursor:not-allowed';
+          acts.appendChild(delBtn);
+        } else {
+          acts.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
+            const ok = await confirmDialog(`Remove ${p.name}? This cannot be undone.`, { danger: true, okLabel: 'Remove' });
+            if (ok) { softDelete('people', p.id); toast('Removed', 'success'); renderBody(); }
+          }}));
+        }
       }
       tr.appendChild(acts);
       tb.appendChild(tr);
