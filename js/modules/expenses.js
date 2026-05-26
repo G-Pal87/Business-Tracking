@@ -417,9 +417,10 @@ function findCleaningRates(propertyId, date) {
   return findVendorRateByPeriod(propertyId, date, '').filter(m => m.vendor.role === 'cleaner');
 }
 
-export function openExpenseForm(id) {
+export function openExpenseForm(id, { onSave } = {}) {
+  if (id && typeof id === 'object') { openForm(null, id, onSave); return; }
   const exp = byId('expenses', id);
-  if (exp) openForm(exp);
+  if (exp) openForm(exp, {}, onSave);
 }
 
 function buildCategorySelect(currentValue) {
@@ -446,7 +447,7 @@ function buildCategorySelect(currentValue) {
   return s;
 }
 
-function openForm(existing, defaults = {}) {
+function openForm(existing, defaults = {}, onSave = null) {
   const r = existing ? { ...existing } : {
     id: newId('exp'),
     propertyId: state.db.properties?.[0]?.id || '',
@@ -838,7 +839,8 @@ function openForm(existing, defaults = {}) {
       toast(existing ? 'Expense updated' : 'Expense added', 'success');
     }
     closeModal();
-    setTimeout(() => navigate('expenses'), 200);
+    if (onSave) setTimeout(onSave, 200);
+    else setTimeout(() => navigate('expenses'), 200);
   }});
   const cancel = button('Cancel', { onClick: closeModal });
   openModal({ title: existing ? 'Edit Expense' : 'New Expense', body, footer: [cancel, save] });
