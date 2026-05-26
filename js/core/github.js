@@ -367,9 +367,10 @@ export function mergeLocalPending(remoteDb, localCache) {
     const local  = localCache[col];
 
     if (!Array.isArray(remote) || !Array.isArray(local)) {
-      // Non-array fields (settings, appConfig): local is the authoritative version
-      // because it holds the user's latest changes. Remote wins only when local has no value.
-      result[col] = local !== undefined ? local : remote;
+      // Non-array fields (settings, appConfig): without sync history remote is
+      // authoritative (old cache can't be trusted). With sync history local wins
+      // because the user may have intentionally changed settings since last sync.
+      result[col] = (syncedAt || local === undefined) ? (remote ?? local) : local;
       continue;
     }
 
