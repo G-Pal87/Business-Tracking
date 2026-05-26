@@ -102,7 +102,9 @@ function build() {
         actions.appendChild(tBtn);
       }
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
-        const ok = await confirmDialog(`Delete tenant "${r.name}"? This will not affect recorded payments.`, { danger: true, okLabel: 'Delete' });
+        const pmtCount = listActive('payments').filter(p => p.tenantId === r.id).length;
+        if (pmtCount) { toast(`Cannot delete — ${pmtCount} payment(s) are linked to this tenant.`, 'danger', 5000); return; }
+        const ok = await confirmDialog(`Delete tenant "${r.name}"?`, { danger: true, okLabel: 'Delete' });
         if (ok) { softDelete('tenants', r.id); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);

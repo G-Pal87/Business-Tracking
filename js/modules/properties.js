@@ -510,8 +510,8 @@ export function openDetail(id, preStats) {
     if (expCount) refs.push(`${expCount} expense(s)`);
     if (payCount) refs.push(`${payCount} payment(s)`);
     if (tenCount) refs.push(`${tenCount} tenant(s)`);
-    const refNote = refs.length ? ` Linked records that will remain: ${refs.join(', ')}.` : '';
-    const ok = await confirmDialog(`Delete property "${p.name}"?${refNote}`, { danger: true, okLabel: 'Delete' });
+    if (refs.length) { toast(`Cannot delete — linked records exist: ${refs.join(', ')}.`, 'danger', 5000); return; }
+    const ok = await confirmDialog(`Delete property "${p.name}"?`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
     softDelete('properties', p.id);
     toast('Property deleted', 'success');

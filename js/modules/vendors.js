@@ -236,8 +236,8 @@ function openDetail(id) {
     variant: 'danger',
     onClick: async () => {
       const expCount = listActive('expenses').filter(e => e.vendorId === v.id).length;
-      const refNote = expCount ? ` This vendor has ${expCount} expense(s) that will remain.` : '';
-      const ok = await confirmDialog(`Delete vendor "${v.name}"?${refNote}`, { danger: true, okLabel: 'Delete' });
+      if (expCount) { toast(`Cannot delete — ${expCount} expense(s) are linked to this vendor.`, 'danger', 5000); return; }
+      const ok = await confirmDialog(`Delete vendor "${v.name}"?`, { danger: true, okLabel: 'Delete' });
       if (!ok) return;
       softDelete('vendors', v.id);
       toast('Vendor deleted', 'success');

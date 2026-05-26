@@ -275,8 +275,8 @@ export function openDetail(id) {
   const edit = button('Edit', { onClick: () => { closeModal(); setTimeout(() => openForm(c), 220); } });
   const del = button('Delete', { variant: 'danger', onClick: async () => {
     const invCount = listActive('invoices').filter(i => i.clientId === c.id).length;
-    const refNote = invCount ? ` This client has ${invCount} invoice(s) that will remain.` : '';
-    const ok = await confirmDialog(`Delete client "${c.name}"?${refNote}`, { danger: true, okLabel: 'Delete' });
+    if (invCount) { toast(`Cannot delete — ${invCount} invoice(s) are linked to this client.`, 'danger', 5000); return; }
+    const ok = await confirmDialog(`Delete client "${c.name}"?`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
     softDelete('clients', c.id);
     toast('Deleted', 'success');

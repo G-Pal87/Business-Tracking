@@ -510,6 +510,8 @@ function buildServicesCard() {
         const actions = el('td', { class: 'right' });
         actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openServiceForm(s, renderCard) }));
         actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
+          const invCount = listActive('invoices').filter(i => (i.lineItems || []).some(li => li.serviceId === s.id)).length;
+          if (invCount) { toast(`Cannot delete — ${invCount} invoice(s) use this service.`, 'danger', 5000); return; }
           const ok = await confirmDialog(`Delete service ${s.name}?`, { danger: true, okLabel: 'Delete' });
           if (ok) { softDelete('services', s.id); toast('Deleted', 'success'); renderCard(); }
         }}));
