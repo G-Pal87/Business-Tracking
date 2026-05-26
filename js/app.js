@@ -76,6 +76,8 @@ async function boot() {
 
   let loaded = false;
   let needAutoSave = false;
+  let initialSyncDone = false;
+  let pendingSaveBeforeSync = false;
 
   // ── Phase 0: bootstrap from URL hash setup link (works for any hosting setup)
   // Admin generates this link via Settings → GitHub Storage → "Copy Setup Link"
@@ -141,6 +143,7 @@ async function boot() {
       github.applyDbConfig(remoteDb.appConfig?.github);
       github.saveLocalCache(remoteDb);
       loaded = true;
+      initialSyncDone = true;
       updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
     } catch (e) {
       console.warn('GitHub load failed, no local cache available', e);
@@ -178,6 +181,11 @@ async function boot() {
   let pushPending = false; // true while doSave is queued or running
 
   const doSave = async () => {
+    if (!initialSyncDone) {
+      pendingSaveBeforeSync = true;
+      updateSyncStatus('syncing', 'Waiting for initial sync before saving…');
+      return;
+    }
     pushPending = true;
     clearTimeout(pushTimer);
     pushTimer = null;
@@ -247,7 +255,11 @@ async function boot() {
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
       if (state.github.token && state.github.owner && state.github.repo) {
-        if (!pushPending) {
+        if (!initialSyncDone) {
+          // Initial remote sync not yet complete — queue the save for when it finishes
+          pendingSaveBeforeSync = true;
+          updateSyncStatus('syncing', 'Waiting for initial sync before saving…');
+        } else if (!pushPending) {
           // No push in flight — start the debounce timer.
           updateSyncStatus('syncing', 'Local changes pending sync…');
           clearTimeout(pushTimer);
@@ -272,6 +284,9 @@ async function boot() {
         github.applyDbConfig(merged.appConfig?.github);
         github.saveLocalCache(merged);
         updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+        initialSyncDone = true;
+        // Flush any writes that were queued before sync completed
+        if (pendingSaveBeforeSync) { pendingSaveBeforeSync = false; doSave().catch(() => {}); }
         needAutoSave = (merged !== remoteDb);
         if (needAutoSave && state.github.token && !pushPending) {
           doSave().catch(() => {});
@@ -281,6 +296,7 @@ async function boot() {
         state.github.lastSyncError = normalizeNetworkError(e.message);
         state.github.usingCache = true;
         updateSyncStatus('offline', 'Using local cache — GitHub is currently unavailable');
+        initialSyncDone = true;
       }
     })();
   }
