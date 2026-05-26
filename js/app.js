@@ -288,6 +288,8 @@ async function boot() {
   // If Phase 4 won't run (no local cache, or GitHub not configured), unblock saves now
   if (!(loaded && localCache && state.github.owner && state.github.repo)) {
     initialSyncDone = true;
+    // No Phase 4 — migrate immediately on whatever data we have
+    migrateDb();
   }
 
   if (loaded && localCache && state.github.owner && state.github.repo) {
@@ -300,10 +302,16 @@ async function boot() {
         github.saveLocalCache(merged);
         updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
         initialSyncDone = true;
-        // Flush any writes that were queued before sync completed
-        if (pendingSaveBeforeSync) { pendingSaveBeforeSync = false; doSave().catch(() => {}); }
-        needAutoSave = !!merged._hasLocalChanges;
-        if (needAutoSave && state.github.token && !pushPending) {
+        // Discard any dirty flag that came from migrateDb() running on the stale
+        // local cache before this point — that data has now been replaced by the
+        // authoritative remote merge, so there is nothing to push back.
+        pendingSaveBeforeSync = false;
+        // Migrate the authoritative merged data. If any record truly lacks metadata
+        // (e.g. a remote record pre-dating this feature), markDirty() fires now that
+        // initialSyncDone=true and the normal 1.5s debounce pushes it cleanly.
+        migrateDb();
+        // If local had genuinely newer records that won the merge, push them now.
+        if (merged._hasLocalChanges && state.github.token && !pushPending) {
           doSave().catch(() => {});
         }
       } catch (e) {
@@ -311,14 +319,12 @@ async function boot() {
         state.github.lastSyncError = normalizeNetworkError(e.message);
         state.github.usingCache = true;
         updateSyncStatus('offline', 'Using local cache — GitHub is currently unavailable');
+        pendingSaveBeforeSync = false; // GitHub unreachable — can't push anyway
         initialSyncDone = true;
+        migrateDb(); // migrate local cache data for this session
       }
     })();
   }
-
-  // Backfill metadata on legacy records so conflict detection has updatedAt
-  // on every record. Called after subscribe so markDirty triggers a real save.
-  migrateDb();
 }
 
 // Backfills createdAt/createdBy/updatedAt/updatedBy on records that pre-date
