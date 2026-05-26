@@ -59,28 +59,31 @@ function getPersonData(person, start, end, months) {
   // Resolve person record from Company Structure
   const personRecord = (state.db.people || []).find(p => p.legacyKey === person && !p.deletedAt);
   const personId = personRecord?.id;
+  // getPeopleOwners stores legacyKey as the select value, so expenses saved via the
+  // form have personId === legacyKey (e.g. 'you'). Match both to stay safe.
+  const matchesPerson = e => e.personId === person || (personId && e.personId === personId);
 
   // Salary — expenses with category 'salary' linked to this person
   const salaryExps = listActive('expenses').filter(e =>
-    e.category === 'salary' && personId && e.personId === personId && inRange(e.date)
+    e.category === 'salary' && matchesPerson(e) && inRange(e.date)
   );
   const salary = salaryExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
   // Social contributions (company cost — shown for context)
   const gesyExps = listActive('expenses').filter(e =>
-    e.category === 'social_contributions' && personId && e.personId === personId && inRange(e.date)
+    e.category === 'social_contributions' && matchesPerson(e) && inRange(e.date)
   );
   const gesyTotal = gesyExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
   // Reimbursements
   const reimbExps = listActive('expenses').filter(e =>
-    e.category === 'reimbursement' && personId && e.personId === personId && inRange(e.date)
+    e.category === 'reimbursement' && matchesPerson(e) && inRange(e.date)
   );
   const reimb = reimbExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
   // Person-linked personal income expenses (any category, countsAsPersonalIncome=true, not already counted above)
   const piExps = listActive('expenses').filter(e =>
-    personId && e.personId === personId &&
+    matchesPerson(e) &&
     e.countsAsPersonalIncome &&
     !['salary', 'reimbursement', 'social_contributions'].includes(e.category) &&
     inRange(e.date)
