@@ -497,7 +497,7 @@ async function renderLuxury(doc, invoice) {
   doc.setFont('helvetica', 'bolditalic');
   doc.setFontSize(42);
   doc.setTextColor(...GHOST);
-  doc.text(`#${invoice.number || 'DRAFT'}`, MR, y + 30, { align: 'right' });
+  doc.text(`#${invoice.number || 'DRAFT'}`, MR, y + 34, { align: 'right' }); // Word: 28pt × 1.2 line height = 34pt baseline gap
 
   // header block height + margin-bottom
   y += 40 + 24;
