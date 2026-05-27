@@ -508,25 +508,21 @@ async function renderLuxury(doc, invoice) {
   doc.line(ML, y, MR, y);
   y += 18; // space-before label: 18pt (Word: spacing before=360 twips)
 
-  // ── Meta grid — C1 10% wider, C2/C3 share remaining space equally ────────
-  const metaGap = 18;
-  const totalMetaW = MR - ML - 2 * metaGap;
-  const col1W = totalMetaW / 3 * 1.1;
-  const col2W = (totalMetaW - col1W) / 2;
-  const C1 = ML;
-  const C2 = ML + col1W + metaGap;
-  const C3 = C2 + col2W + metaGap;
+  // ── Meta grid — Word col widths: Billed To=180pt, Issued=145pt, Due=190pt ──
+  const C1 = ML;           // Billed To starts at left margin
+  const C2 = ML + 180;     // Issued starts 180pt in
+  const C3 = ML + 325;     // Due starts 325pt in (180+145)
 
-  // Labels — DM Sans 400, 6pt, gold, tracked
-  doc.setFont('DMSans', 'normal');
+  // Labels — helvetica bolditalic 6pt gold, tracked (Word: Arial 6pt bold italic)
+  doc.setFont('helvetica', 'bolditalic');
   doc.setFontSize(6);
   doc.setTextColor(...GOLD);
   doc.text('BILLED TO', C1, y, { charSpace: 1.35 });
   doc.text('ISSUED',    C2, y, { charSpace: 1.35 });
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
-  y += 6; // space-after label: 6pt (Word: spacing after=120 twips)
+  y += 6; // space-after label: 6pt (Word: 120 twips)
 
-  // Values — Georgia bolditalic 10pt #31302E, line-height 1.5 (Word: size=10pt bold italic)
+  // Values — Georgia bolditalic 10pt #31302E (Word: Georgia 10pt bold italic)
   const LH = 15; // 10pt × 1.5
   doc.setFont('Georgia', 'bolditalic');
   doc.setFontSize(10);
@@ -540,36 +536,34 @@ async function renderLuxury(doc, invoice) {
     client.registrationNumber ? `Reg: ${client.registrationNumber}` : '',
   ].filter(Boolean);
 
-  const wrappedBillLines = billLines.flatMap(line => doc.splitTextToSize(line, 158));
+  const wrappedBillLines = billLines.flatMap(line => doc.splitTextToSize(line, 178)); // 180pt col
 
   const valueY = y;
   wrappedBillLines.forEach((line, i) => doc.text(line, C1, valueY + i * LH));
   const billH = Math.max(wrappedBillLines.length, 1) * LH;
 
-  // Issued / Due — Georgia bolditalic 10pt (Word: size=10pt bold italic)
-  doc.setFont('Georgia', 'bolditalic');
-  doc.setFontSize(10);
-  doc.setTextColor(...DARK);
+  // Issued / Due values — same config as Billed To
   doc.text(fmtDate(invoice.issueDate), C2, valueY);
   doc.text(fmtDate(invoice.dueDate),   C3, valueY);
 
-  y += billH + 27; // 36px margin-bottom below tallest column
+  y += billH + 27;
 
-  // ── Line items table ───────────────────────────────────────────────────────
-  // thead th: DM Sans 6pt, uppercase, letter-spacing 0.16em, gold
-  const C_DESC = ML;           // 42pt
-  const C_QTY  = 250.8;        // right-anchored
-  const C_RATE = 339.1;        // right-anchored
-  const C_AMT  = MR;           // right edge
-  const DESC_W = C_QTY - ML - 10; // wrap before Qty column
+  // ── Line items table — Word col widths: Desc=215pt, Qty=82.5pt, Rate=107.5pt, Amt=110pt
+  const C_DESC   = ML;               // left margin
+  const C_QTY_R  = ML + 297.5;       // right edge of QTY col (for label + value)
+  const C_QTY_C  = ML + 256.25;      // center of QTY col (value: center-aligned)
+  const C_RATE   = ML + 405;         // right edge of RATE col
+  const C_AMT    = MR;               // right edge
+  const DESC_W   = 213;              // description wrap width (Word: 215pt col)
 
-  doc.setFont('DMSans', 'normal');
+  // Labels — helvetica bolditalic 6pt gold (Word: Arial 6pt bold italic)
+  doc.setFont('helvetica', 'bolditalic');
   doc.setFontSize(6);
   doc.setTextColor(...GOLD);
-  doc.text('DESCRIPTION', C_DESC, y, { charSpace: 1.2 });
-  doc.text('QTY',         C_QTY,  y, { align: 'right', charSpace: 1.2 });
-  doc.text('RATE',        C_RATE, y, { align: 'right', charSpace: 1.2 });
-  doc.text('AMOUNT',      C_AMT,  y, { align: 'right', charSpace: 1.2 });
+  doc.text('DESCRIPTION', C_DESC,  y, { charSpace: 1.2 });
+  doc.text('QTY',         C_QTY_R, y, { align: 'right', charSpace: 1.2 });
+  doc.text('RATE',        C_RATE,  y, { align: 'right', charSpace: 1.2 });
+  doc.text('AMOUNT',      C_AMT,   y, { align: 'right', charSpace: 1.2 });
   y += 2; // space-after: 2pt (Word: 40 twips)
   doc.setDrawColor(...HAIR);
   doc.setLineWidth(0.5);
@@ -582,9 +576,9 @@ async function renderLuxury(doc, invoice) {
     const subDesc     = parts.slice(1).join(' ').trim();
     const mainWrapped = doc.splitTextToSize(mainDesc, DESC_W);
     const mainH       = mainWrapped.length * 12;
-    const subH        = subDesc ? 11 : 0;
+    const subH        = subDesc ? 10 : 0;
     const descTotal   = mainH + (subDesc ? 1.5 + subH : 0);
-    const rowH        = 10 + descTotal + 10; // space-before 10pt + content + space-after 10pt
+    const rowH        = 10 + descTotal + 10;
 
     if (y + rowH > 780) {
       doc.addPage();
@@ -595,29 +589,30 @@ async function renderLuxury(doc, invoice) {
       y = MT;
     }
 
-    const descY   = y + 10;  // space-before description: 10pt (Word: 200 twips)
-    const numberY = y + 14;  // space-before qty/rate/amount: 14pt (Word: 280 twips)
+    const descY   = y + 10; // space-before description: 10pt (Word: 200 twips)
+    const numberY = y + 14; // space-before qty/rate/amount: 14pt (Word: 280 twips)
 
-    // Description — Georgia italic 11.5pt
-    doc.setFont('Georgia', 'italic');
-    doc.setFontSize(11.5);
+    // Description — Georgia bolditalic 11pt #31302E (Word: Georgia 11pt bold italic)
+    doc.setFont('Georgia', 'bolditalic');
+    doc.setFontSize(11);
     doc.setTextColor(...DARK);
     doc.text(mainWrapped, C_DESC, descY);
 
     if (subDesc) {
-      doc.setFont('Cormorant', 'italic');
-      doc.setFontSize(9);
+      // Sub-line — Georgia bolditalic 8pt gold (Word: Georgia 8pt bold italic)
+      doc.setFont('Georgia', 'bolditalic');
+      doc.setFontSize(8);
       doc.setTextColor(...GOLD);
       doc.text(subDesc, C_DESC, descY + mainH + 1.5);
     }
 
-    // Qty (center) / Rate (right) / Amount (right) — Georgia italic 10.5pt
-    doc.setFont('Georgia', 'italic');
-    doc.setFontSize(10.5);
+    // Qty center / Rate right / Amount right — Georgia bolditalic 10pt (Word: Georgia 10pt bold italic)
+    doc.setFont('Georgia', 'bolditalic');
+    doc.setFontSize(10);
     doc.setTextColor(...DARK);
-    doc.text(`${li.quantity} ${li.unit || ''}`.trim(), C_QTY,  numberY, { align: 'right' });
-    doc.text(formatMoney(li.rate,  invoice.currency),  C_RATE, numberY, { align: 'right' });
-    doc.text(formatMoney(li.total, invoice.currency),  C_AMT,  numberY, { align: 'right' });
+    doc.text(`${li.quantity} ${li.unit || ''}`.trim(), C_QTY_C, numberY, { align: 'center' });
+    doc.text(formatMoney(li.rate,  invoice.currency),  C_RATE,  numberY, { align: 'right' });
+    doc.text(formatMoney(li.total, invoice.currency),  C_AMT,   numberY, { align: 'right' });
 
     y += rowH;
     // Divider after every row — lighter than ROWDIV, aligned to table columns
@@ -675,22 +670,20 @@ async function renderLuxury(doc, invoice) {
     doc.line(ML, y, MR, y);
     y += 13.5;
 
-    // Footer fields — labels: Arial bold italic 6pt gold, values: Arial bold italic 8pt #7A7975
-    let fx = ML;
-    const FOOT_GAP = 24;
-    footerFields.forEach((f) => {
+    // Footer — Word col widths: IBAN=135pt, BIC=85pt, SWIFT=295pt
+    // Labels: helvetica bolditalic 6pt gold, 2pt gap to value (Word: Arial 6pt bold italic)
+    // Values: helvetica bolditalic 8pt #7A7975 (Word: Arial 8pt bold italic)
+    const footerX = [ML, ML + 135, ML + 220];
+    footerFields.forEach((f, idx) => {
+      const fx = footerX[idx] ?? (ML + idx * 135);
       doc.setFont('helvetica', 'bolditalic');
       doc.setFontSize(6);
       doc.setTextColor(...GOLD);
       doc.text(f.label, fx, y, { charSpace: 1.2 });
-      const labelW = doc.getTextWidth(f.label) + (f.label.length - 1) * 1.2;
 
       doc.setFontSize(8);
       doc.setTextColor(...FTR);
-      doc.text(f.value, fx, y + 8); // 6pt label + 2pt space-after (Word: 40 twips)
-      const valueW = doc.getTextWidth(f.value);
-
-      fx += Math.max(labelW, valueW) + FOOT_GAP;
+      doc.text(f.value, fx, y + 8); // 2pt space-after label (Word: 40 twips)
     });
   }
 }
