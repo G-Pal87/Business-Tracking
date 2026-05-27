@@ -853,6 +853,9 @@ function renderLuxuryPreview(inv, client, biz) {
   const billLines = [
     client.name || '',
     ...(client.address || '').split(/\n|,/).map(s => s.trim()).filter(Boolean),
+    client.email || '',
+    client.vatNumber ? `VAT: ${client.vatNumber}` : '',
+    client.registrationNumber ? `Reg: ${client.registrationNumber}` : '',
   ].filter(Boolean);
 
   const items = (inv.lineItems || []).map((li, i, arr) => {

@@ -512,6 +512,9 @@ async function renderLuxury(doc, invoice) {
   const billLines = [
     client.name || '',
     ...(client.address || '').split(/\n|,/).map(s => s.trim()).filter(Boolean),
+    client.email || '',
+    client.vatNumber ? `VAT: ${client.vatNumber}` : '',
+    client.registrationNumber ? `Reg: ${client.registrationNumber}` : '',
   ].filter(Boolean);
 
   const wrappedBillLines = billLines.flatMap(line => doc.splitTextToSize(line, 158));
