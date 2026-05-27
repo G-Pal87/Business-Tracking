@@ -4,8 +4,9 @@ import { state } from './state.js';
 import { uploadGithubFile } from './github.js';
 
 const PRESENCE_PATH  = 'data/presence.json';
-const STALE_MS       = 5 * 60 * 1000;   // entry expires after 5 minutes of inactivity
-const POLL_MS        = 45 * 1000;       // conflict check interval
+const STALE_MS       = 2 * 60 * 1000;   // entry expires after 2 min of inactivity
+const HEARTBEAT_MS   = 50 * 1000;       // refresh own entry every 50 s while active
+const POLL_MS        = 30 * 1000;       // conflict check interval
 const THROTTLE_MS    = 5 * 60 * 1000;  // don't re-notify same user+view within 5 min
 
 // Operations + System nav groups (read-write views where conflicts matter)
@@ -22,6 +23,7 @@ const LABELS = {
 };
 
 let pollTimer       = null;
+let heartbeatTimer  = null;
 let banner          = null;
 let navTimer        = null;
 let lastWrittenView = null;
@@ -31,10 +33,58 @@ const notified      = new Map(); // `${user}:${view}` → timestamp
 
 export function startPresence() {
   window.addEventListener('hashchange', onHashChange);
+
+  // Clear own entry when the tab is hidden or closed
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) clearOwnPresence();
+    else { lastWrittenView = null; onHashChange(); } // re-announce on return
+  });
+  window.addEventListener('pagehide', clearOwnPresence);
+
   setTimeout(() => {
     onHashChange();
     schedulePoll();
+    scheduleHeartbeat();
   }, 3000);
+}
+
+// ── Heartbeat ─────────────────────────────────────────────────────────────────
+
+function scheduleHeartbeat() {
+  heartbeatTimer = setInterval(heartbeat, HEARTBEAT_MS);
+}
+
+async function heartbeat() {
+  if (document.hidden) return;
+  const view = currentView();
+  if (!TRACKED.has(view)) return;
+  const username = state.session?.username;
+  const { owner, repo, token } = state.github;
+  if (!username || !owner || !repo || !token) return;
+  // Only refresh timestamp — don't change anything else
+  try {
+    const { entries = {} } = await readPresence();
+    if (entries[username]?.view === view) {
+      entries[username].t = Date.now();
+      await writePresence(entries);
+    }
+  } catch { /* best-effort */ }
+}
+
+// ── Clear own presence on tab close / hide ────────────────────────────────────
+
+async function clearOwnPresence() {
+  const username = state.session?.username;
+  const { owner, repo, token } = state.github;
+  if (!username || !owner || !repo || !token) return;
+  lastWrittenView = null;
+  try {
+    const { entries = {} } = await readPresence();
+    if (entries[username]) {
+      delete entries[username];
+      await writePresence(entries);
+    }
+  } catch { /* best-effort */ }
 }
 
 // ── Navigation hook ───────────────────────────────────────────────────────────
