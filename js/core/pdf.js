@@ -412,123 +412,125 @@ function renderMinimal(doc, invoice) {
   y = renderNotes(doc, invoice, y, margin);
 }
 
-// ── Template: Luxury (Cormorant Garamond + DM Sans, parchment + gold) ─────────
+// ── Template: Luxury — exact port of invoice_t3_option1.html ─────────────────
+// px→pt scale: A4 595pt / 800px HTML max-width ≈ 0.744
 async function renderLuxury(doc, invoice) {
   await loadAllFonts(doc);
 
   const client = byId('clients', invoice.clientId) || {};
   const biz    = state.db.settings?.business || {};
 
-  const W      = 595;
-  const margin = 48;       // ~56px
-  const rEdge  = W - margin;
+  const W    = 595;
+  const ML   = 42;          // 56px * 0.744
+  const MR   = W - ML;
+  const MT   = 48;          // 60px top padding * 0.744 + 4pt border
 
-  // Colours
-  const PARCH  = [250, 247, 242];   // #faf7f2
-  const DARK   = [42,  33,  24];    // #2a2118
-  const GOLD   = [184, 147, 90];    // #b8935a
-  const HAIR   = [214, 201, 176];   // #d6c9b0
-  const ROWDIV = [237, 230, 214];   // #ede6d6
-  const GHOST  = [232, 217, 184];   // #e8d9b8
-  const MUTED  = [153, 153, 153];   // #999
-  const FOOTER = [136, 136, 136];   // #888
+  // Colors — exact hex from spec
+  const PARCH  = [250, 247, 242];  // #faf7f2
+  const DARK   = [42,  33,  24];   // #2a2118
+  const GOLD   = [184, 147, 90];   // #b8935a
+  const HAIR   = [214, 201, 176];  // #d6c9b0
+  const ROWDIV = [237, 230, 214];  // #ede6d6
+  const GHOST  = [232, 217, 184];  // #e8d9b8
+  const MUTED  = [153, 153, 153];  // #999
+  const FTR    = [136, 136, 136];  // #888
 
   // Page background
   doc.setFillColor(...PARCH);
   doc.rect(0, 0, W, 841, 'F');
 
-  // Top gold border 4pt
+  // 4px top gold border → 3pt
   doc.setFillColor(...GOLD);
   doc.rect(0, 0, W, 3, 'F');
 
-  let y = 52;
+  // ── Header (.head: space-between, margin-bottom 44px→33pt) ───────────────
+  let y = MT;
 
-  // ── Header ─────────────────────────────────────────────────────────────────
-  // Left: company name
+  // Left: .bn — Cormorant SemiBold 21px→16pt, letter-spacing 0.04em
   doc.setFont('CormorantBold', 'normal');
   doc.setFontSize(16);
   doc.setTextColor(...DARK);
-  doc.text(biz.name || 'Your Company', margin, y);
+  doc.text(biz.name || 'Your Company', ML, y);
 
-  // Left: sub-line (reg/type)
-  const subParts = [
-    biz.registrationNumber ? `Reg ${biz.registrationNumber}` : ''
-  ].filter(Boolean);
-  if (subParts.length || biz.vatNumber) {
+  // Left: .bs — DM Sans 11px→8pt, uppercase, letter-spacing 0.2em, gold, margin-top 3px→2pt
+  const subLine = [biz.registrationNumber ? `Reg ${biz.registrationNumber}` : ''].filter(Boolean).join(' · ');
+  if (subLine) {
     doc.setFont('DMSans', 'normal');
-    doc.setFontSize(7);
+    doc.setFontSize(8);
     doc.setTextColor(...GOLD);
-    const subText = subParts.join(' · ');
-    doc.text(subText, margin, y + 13, { charSpace: 1.2 });
+    doc.text(subLine.toUpperCase(), ML, y + 13, { charSpace: 1.6 });
   }
 
-  // Right: "Invoice" italic light serif
+  // Right: "Invoice" — Cormorant Light Italic 36px→27pt, gold, line-height 1
   doc.setFont('Cormorant', 'italic');
-  doc.setFontSize(26);
+  doc.setFontSize(27);
   doc.setTextColor(...GOLD);
-  doc.text('Invoice', rEdge, y, { align: 'right' });
+  doc.text('Invoice', MR, y, { align: 'right' });
 
-  // Right: ghost number
+  // Right: ghost number — Cormorant SemiBold 72px→54pt, #e8d9b8, margin-top -8px→-6pt
   doc.setFont('CormorantBold', 'normal');
   doc.setFontSize(54);
   doc.setTextColor(...GHOST);
-  doc.text(`#${invoice.number || 'DRAFT'}`, rEdge, y + 40, { align: 'right' });
+  doc.text(`#${invoice.number || 'DRAFT'}`, MR, y + 21, { align: 'right' }); // 27pt line-height - 6pt overlap
 
-  y += 70;
+  y += 33; // margin-bottom 44px * 0.744
 
-  // ── Hairline rule ───────────────────────────────────────────────────────────
+  // ── Hairline rule (.rule: 0.5px solid #d6c9b0, margin-bottom 28px→21pt) ──
   doc.setDrawColor(...HAIR);
   doc.setLineWidth(0.5);
-  doc.line(margin, y, rEdge, y);
-  y += 22;
+  doc.line(ML, y, MR, y);
+  y += 21;
 
-  // ── Meta grid: BILLED TO / ISSUED / DUE ────────────────────────────────────
-  const col1 = margin;
-  const col2 = margin + 180;
-  const col3 = margin + 320;
+  // ── Meta grid (.meta: 3×1fr, gap 24px→18pt, margin-bottom 36px→27pt) ─────
+  const colW = (MR - ML) / 3;
+  const C1 = ML;
+  const C2 = ML + colW;
+  const C3 = ML + colW * 2;
 
-  // Labels
+  // Labels: .ml — DM Sans 10px→7.5pt, uppercase, letter-spacing 0.18em, gold, mb 6px→4.5pt
   doc.setFont('DMSans', 'normal');
-  doc.setFontSize(7);
+  doc.setFontSize(7.5);
   doc.setTextColor(...GOLD);
-  ['BILLED TO', 'ISSUED', 'DUE'].forEach((lbl, i) => {
-    doc.text(lbl, [col1, col2, col3][i], y, { charSpace: 1.4 });
-  });
-  y += 11;
+  doc.text('BILLED TO', C1, y, { charSpace: 1.4 });
+  doc.text('ISSUED',    C2, y, { charSpace: 1.4 });
+  doc.text('DUE',       C3, y, { charSpace: 1.4 });
+  y += 8; // label + margin-bottom
 
-  // BILLED TO value (multi-line)
-  doc.setFont('Cormorant', 'normal');
-  doc.setFontSize(11);
-  doc.setTextColor(...DARK);
+  // BILLED TO value: .mv — Cormorant 14px→10.5pt, line-height 1.5→15.75pt
+  // Name bold, address lines regular, then email/VAT/Reg
   const billLines = [
     client.name || '',
-    ...(client.address ? client.address.split(',').map(s => s.trim()) : []),
-    client.vatNumber ? `VAT: ${client.vatNumber}` : '',
+    ...(client.address || '').split(',').map(s => s.trim()).filter(Boolean),
+    client.email              ? client.email                         : '',
+    client.vatNumber          ? `VAT: ${client.vatNumber}`          : '',
     client.registrationNumber ? `Reg: ${client.registrationNumber}` : '',
   ].filter(Boolean);
+
+  const LH = 10.5 * 1.5; // line-height 1.5
   billLines.forEach((line, i) => {
-    if (i === 0) { doc.setFont('CormorantBold', 'normal'); }
-    else         { doc.setFont('Cormorant', 'normal'); }
-    doc.text(line, col1, y + i * 13);
+    doc.setFont(i === 0 ? 'CormorantBold' : 'Cormorant', 'normal');
+    doc.setFontSize(10.5);
+    doc.setTextColor(...DARK);
+    doc.text(line, C1, y + i * LH);
   });
 
-  // ISSUED / DUE values
+  // ISSUED / DUE
   doc.setFont('Cormorant', 'normal');
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setTextColor(...DARK);
-  doc.text(fmtDate(invoice.issueDate), col2, y);
-  doc.text(fmtDate(invoice.dueDate),   col3, y);
+  doc.text(fmtDate(invoice.issueDate), C2, y);
+  doc.text(fmtDate(invoice.dueDate),   C3, y);
 
-  y += Math.max(billLines.length * 13, 13) + 28;
+  y += Math.max(billLines.length * LH, LH) + 27; // margin-bottom 36px
 
-  // ── Line items table ────────────────────────────────────────────────────────
-  const C_DESC  = margin;
-  const C_QTY   = margin + 270;
-  const C_RATE  = margin + 360;
-  const C_AMT   = rEdge;
-  const DESC_W  = 240;
+  // ── Line items table ───────────────────────────────────────────────────────
+  // thead th: DM Sans 10px→7.5pt, uppercase, letter-spacing 0.16em, gold, padding 9px→6.75pt
+  const C_DESC = ML;
+  const C_QTY  = ML + 248;
+  const C_RATE = ML + 352;
+  const C_AMT  = MR;
+  const DESC_W = 230;
 
-  // Table header
   doc.setFont('DMSans', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(...GOLD);
@@ -536,92 +538,103 @@ async function renderLuxury(doc, invoice) {
   doc.text('QTY',         C_QTY,  y, { charSpace: 1.2 });
   doc.text('RATE',        C_RATE, y, { charSpace: 1.2 });
   doc.text('AMOUNT',      C_AMT,  y, { align: 'right', charSpace: 1.2 });
-
-  y += 8;
+  y += 6.75;
   doc.setDrawColor(...HAIR);
   doc.setLineWidth(0.5);
-  doc.line(margin, y, rEdge, y);
-  y += 16;
+  doc.line(ML, y, MR, y);
+  y += 12;
 
-  // Rows
+  // tbody td: Cormorant 15px→11.25pt, padding 16px→12pt each side
+  // .ds sub-line: 12px→9pt, italic, gold, margin-top 2px→1.5pt
   for (const li of invoice.lineItems || []) {
-    const descLines = doc.splitTextToSize(li.description || '', DESC_W);
-    const hasNote   = li.note || li.period;
-    const rowH      = descLines.length * 14 + (hasNote ? 14 : 0) + 22;
-    if (y + rowH > 780) { doc.addPage(); doc.setFillColor(...PARCH); doc.rect(0, 0, W, 841, 'F'); y = margin; }
+    // Split description on newline — first line bold, rest italic gold sub-line
+    const parts     = (li.description || '').split('\n');
+    const mainDesc  = parts[0];
+    const subDesc   = parts.slice(1).join(' ').trim();
+    const mainWrapped = doc.splitTextToSize(mainDesc, DESC_W);
+    const rowH = 12 + mainWrapped.length * 12 + (subDesc ? 10 : 0) + 12;
 
-    // Description main
-    doc.setFont('CormorantBold', 'normal');
-    doc.setFontSize(12);
+    if (y + rowH > 780) {
+      doc.addPage();
+      doc.setFillColor(...PARCH);
+      doc.rect(0, 0, W, 841, 'F');
+      y = MT;
+    }
+
+    const ry = y + 12; // padding-top
+
+    // Description
+    doc.setFont('Cormorant', 'normal');
+    doc.setFontSize(11.25);
     doc.setTextColor(...DARK);
-    doc.text(descLines, C_DESC, y);
+    doc.text(mainWrapped, C_DESC, ry);
 
-    // Sub-line (note/period from description second line if split)
-    if (descLines.length > 1) {
+    if (subDesc) {
       doc.setFont('Cormorant', 'italic');
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setTextColor(...GOLD);
+      doc.text(subDesc, C_DESC, ry + mainWrapped.length * 12 + 1.5);
     }
 
     // Qty / Rate / Amount
     doc.setFont('Cormorant', 'normal');
-    doc.setFontSize(12);
+    doc.setFontSize(11.25);
     doc.setTextColor(...DARK);
-    doc.text(`${li.quantity} ${li.unit || ''}`.trim(), C_QTY,  y);
-    doc.text(formatMoney(li.rate,  invoice.currency),  C_RATE, y);
-    doc.text(formatMoney(li.total, invoice.currency),  C_AMT,  y, { align: 'right' });
+    doc.text(`${li.quantity} ${li.unit || ''}`.trim(), C_QTY,  ry);
+    doc.text(formatMoney(li.rate,  invoice.currency),  C_RATE, ry);
+    doc.text(formatMoney(li.total, invoice.currency),  C_AMT,  ry, { align: 'right' });
 
-    y += descLines.length * 14 + 16;
+    y += rowH;
     doc.setDrawColor(...ROWDIV);
     doc.setLineWidth(0.5);
-    doc.line(margin, y, rEdge, y);
-    y += 10;
+    doc.line(ML, y, MR, y);
   }
 
-  y += 10;
-
-  // ── Totals ─────────────────────────────────────────────────────────────────
-  const TOT_X = rEdge - 175;
+  // ── Totals (.tot: margin-top 20px→15pt, width 230px→172pt) ───────────────
+  y += 15;
+  const TOT_L = MR - 172;
 
   doc.setDrawColor(...HAIR);
   doc.setLineWidth(0.5);
-  doc.line(TOT_X, y, rEdge, y);
-  y += 14;
+  doc.line(TOT_L, y, MR, y);
+  y += 10.5; // padding-top 14px
 
+  // .tr rows: DM Sans 12px→9pt, #999, padding 4px→3pt
   doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...MUTED);
-  doc.text('Subtotal', TOT_X, y);
-  doc.text(formatMoney(invoice.subtotal, invoice.currency), rEdge, y, { align: 'right' });
-  y += 16;
+  doc.text('Subtotal', TOT_L, y);
+  doc.text(formatMoney(invoice.subtotal, invoice.currency), MR, y, { align: 'right' });
+  y += 10;
 
-  doc.text(`Tax (${invoice.taxRate || 0}%)`, TOT_X, y);
-  doc.text(formatMoney(invoice.tax || 0, invoice.currency), rEdge, y, { align: 'right' });
-  y += 8;
+  doc.text(`Tax (${invoice.taxRate || 0}%)`, TOT_L, y);
+  doc.text(formatMoney(invoice.tax || 0, invoice.currency), MR, y, { align: 'right' });
+  y += 7.5;
 
+  // .tf Total: border-top, margin-top 6px→4.5pt, Cormorant 21px→15.75pt, gold
   doc.setDrawColor(...HAIR);
-  doc.line(TOT_X, y, rEdge, y);
-  y += 14;
+  doc.line(TOT_L, y, MR, y);
+  y += 9; // padding-top 12px
 
   doc.setFont('Cormorant', 'normal');
-  doc.setFontSize(16);
+  doc.setFontSize(15.75);
   doc.setTextColor(...GOLD);
-  doc.text('Total', TOT_X, y);
-  doc.text(formatMoney(invoice.total, invoice.currency), rEdge, y, { align: 'right' });
+  doc.text('Total', TOT_L, y);
+  doc.text(formatMoney(invoice.total, invoice.currency), MR, y, { align: 'right' });
+  y += 18;
 
-  y += 30;
-
-  // ── Notes ──────────────────────────────────────────────────────────────────
+  // ── Notes ─────────────────────────────────────────────────────────────────
   if (invoice.notes) {
+    y += 12;
     doc.setFont('DMSans', 'normal');
     doc.setFontSize(8.5);
     doc.setTextColor(...MUTED);
-    const noteLines = doc.splitTextToSize(invoice.notes, rEdge - margin);
-    doc.text(noteLines, margin, y);
-    y += noteLines.length * 12 + 16;
+    const noteLines = doc.splitTextToSize(invoice.notes, MR - ML);
+    doc.text(noteLines, ML, y);
+    y += noteLines.length * 11;
   }
 
-  // ── Footer: IBAN / BIC / SWIFT ─────────────────────────────────────────────
+  // ── Footer (.foot: margin-top 40px→30pt, border-top, padding-top 18px→13.5pt)
   const footerFields = [
     biz.iban  ? { label: 'IBAN',  value: biz.iban }  : null,
     biz.bic   ? { label: 'BIC',   value: biz.bic }   : null,
@@ -629,21 +642,22 @@ async function renderLuxury(doc, invoice) {
   ].filter(Boolean);
 
   if (footerFields.length) {
-    y += 8;
+    y += 30;
     doc.setDrawColor(...HAIR);
     doc.setLineWidth(0.5);
-    doc.line(margin, y, rEdge, y);
-    y += 14;
+    doc.line(ML, y, MR, y);
+    y += 13.5;
 
+    // gap 32px→24pt between each item
     footerFields.forEach((f, i) => {
-      const fx = margin + i * 120;
+      const fx = ML + i * 90;
       doc.setFont('DMSans', 'normal');
-      doc.setFontSize(7);
+      doc.setFontSize(7.5);
       doc.setTextColor(...GOLD);
       doc.text(f.label, fx, y, { charSpace: 1.2 });
       doc.setFontSize(9);
-      doc.setTextColor(...FOOTER);
-      doc.text(f.value, fx, y + 12);
+      doc.setTextColor(...FTR);
+      doc.text(f.value, fx, y + 10);
     });
   }
 }
