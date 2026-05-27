@@ -1500,7 +1500,10 @@ async function openPDFViewer(inv) {
   const loadMsg = el('div', { style: 'padding:24px;text-align:center;color:var(--text-muted)' }, 'Loading PDF…');
   const bodyWrap = el('div', {}, hasAttached ? loadMsg : frame);
 
-  const dlBtn = button('Download', { variant: 'primary', onClick: () => downloadOriginalPDF(inv) });
+  const dlBtn = button('Download', { variant: 'primary', onClick: () => {
+    if (inv.source === 'pdf_import' && hasAttached) downloadOriginalPDF(inv);
+    else downloadInvoicePDF(inv, `${invoicePdfFilename(inv)}.pdf`);
+  }});
   const { close } = openModal({ title: titleLabel, body: bodyWrap, footer: [button('Close', { onClick: () => close() }), dlBtn], large: true });
 
   let objectUrl = null;
