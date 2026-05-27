@@ -426,6 +426,7 @@ function buildBusinessCard() {
   const nameI = input({ value: b.name });
   const emailI = input({ value: b.email });
   const addressI = input({ value: b.address });
+  const legalSuffixI = input({ value: b.legalSuffix, placeholder: 'e.g. Limited, GmbH, S.L.' });
   const regI = input({ value: b.registrationNumber, placeholder: 'e.g. 01-09-123456' });
   const vatI = input({ value: b.vatNumber, placeholder: 'e.g. HU12345678' });
   const ibanI = input({ value: b.iban, placeholder: 'e.g. HU42 1177 3016 1111...' });
@@ -435,7 +436,8 @@ function buildBusinessCard() {
   swiftI.oninput = () => { swiftI.value = swiftI.value.toUpperCase(); };
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Business Name', nameI), formRow('Email', emailI)));
   body.appendChild(formRow('Address', addressI));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI), formRow('VAT Number', vatI)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Legal Suffix', legalSuffixI), formRow('Company Registration No.', regI)));
+  body.appendChild(formRow('VAT Number', vatI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('IBAN', ibanI), formRow('BIC', bicI)));
   body.appendChild(formRow('SWIFT', swiftI, 'Used on invoice payment details. BIC and SWIFT are often identical.'));
 
@@ -467,6 +469,7 @@ function buildBusinessCard() {
       name: nameI.value.trim(),
       email: emailI.value.trim(),
       address: addressI.value.trim(),
+      legalSuffix: legalSuffixI.value.trim(),
       registrationNumber: reg,
       vatNumber: vatI.value.trim(),
       iban,

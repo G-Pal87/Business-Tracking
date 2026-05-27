@@ -827,12 +827,145 @@ export function openPreview(id) {
   previewInvoice(inv, inv.clientId);
 }
 
+function ensureLuxuryFonts() {
+  if (document.querySelector('link[data-luxury-fonts]')) return;
+  const pc1 = document.createElement('link');
+  pc1.rel = 'preconnect'; pc1.href = 'https://fonts.googleapis.com';
+  pc1.dataset.luxuryFonts = '1';
+  document.head.appendChild(pc1);
+  const pc2 = document.createElement('link');
+  pc2.rel = 'preconnect'; pc2.href = 'https://fonts.gstatic.com';
+  pc2.crossOrigin = 'anonymous'; pc2.dataset.luxuryFonts = '1';
+  document.head.appendChild(pc2);
+  const lnk = document.createElement('link');
+  lnk.rel = 'stylesheet';
+  lnk.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap';
+  lnk.dataset.luxuryFonts = '1';
+  document.head.appendChild(lnk);
+}
+
+function renderLuxuryPreview(inv, client, biz) {
+  const subLine = [
+    biz.legalSuffix || '',
+    biz.registrationNumber ? `Reg ${biz.registrationNumber}` : '',
+  ].filter(Boolean).join(' · ');
+
+  const billLines = [
+    escape(client.name || ''),
+    ...(client.address || '').split(/\n|,/).map(s => s.trim()).filter(Boolean).map(escape),
+  ].join('<br>');
+
+  const items = (inv.lineItems || []).map((li, i, arr) => {
+    const isLast = i === arr.length - 1;
+    const parts  = (li.description || '').split('\n');
+    const main   = escape(parts[0] || '');
+    const sub    = parts.slice(1).join(' ').trim();
+    const subHtml = sub ? `<span class="lux-sub">${escape(sub)}</span>` : '';
+    return `<tr class="${isLast ? 'lux-last' : ''}">
+      <td>${main}${subHtml}</td>
+      <td>${escape(`${li.quantity} ${li.unit || ''}`.trim())}</td>
+      <td>${escape(formatMoney(li.rate, inv.currency))}</td>
+      <td class="lux-right">${escape(formatMoney(li.total, inv.currency))}</td>
+    </tr>`;
+  }).join('');
+
+  const footerFields = [
+    biz.iban  && { label: 'IBAN',  value: biz.iban },
+    biz.bic   && { label: 'BIC',   value: biz.bic },
+    biz.swift && biz.swift !== biz.bic && { label: 'SWIFT', value: biz.swift },
+  ].filter(Boolean);
+
+  const footerHtml = footerFields.map(f => `
+    <div class="lux-item">
+      <div class="lux-label">${escape(f.label)}</div>
+      <div class="lux-value">${escape(f.value)}</div>
+    </div>`).join('');
+
+  return `
+    <style>
+      .lux-page{background:#faf7f2;max-width:800px;margin:0 auto;padding:60px 56px;position:relative;min-height:1123px;font-size:16px;color:#2a2118}
+      .lux-page::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:#b8935a}
+      .lux-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px}
+      .lux-company{font:600 21px/1 "Cormorant Garamond",serif;letter-spacing:.04em;white-space:nowrap}
+      .lux-company-sub{margin-top:3px;font:400 11px/1 "DM Sans",sans-serif;letter-spacing:.2em;text-transform:uppercase;color:#b8935a}
+      .lux-invoice-block{text-align:right}
+      .lux-invoice-word{font:italic 300 36px/1 "Cormorant Garamond",serif;color:#b8935a}
+      .lux-invoice-num{font:600 72px/1 "Cormorant Garamond",serif;letter-spacing:-.02em;color:#e8d9b8;margin-top:-8px}
+      .lux-rule{border:0;border-top:.5px solid #d6c9b0;margin:0 0 28px 0}
+      .lux-meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-bottom:36px}
+      .lux-meta .lux-label{margin-bottom:6px;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#b8935a}
+      .lux-meta .lux-value{font:400 14px/1.5 "Cormorant Garamond",serif;color:#2a2118}
+      table.lux-items{width:100%;border-collapse:collapse}
+      table.lux-items th{text-align:left;padding:9px 0;border-bottom:.5px solid #d6c9b0;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#b8935a}
+      table.lux-items th.lux-right,table.lux-items td.lux-right{text-align:right}
+      table.lux-items td{padding:16px 0;border-bottom:.5px solid #ede6d6;font:400 15px/1.2 "Cormorant Garamond",serif;vertical-align:middle}
+      table.lux-items tr.lux-last td{border-bottom:0}
+      table.lux-items .lux-sub{display:block;margin-top:2px;font:italic 400 12px/1 "Cormorant Garamond",serif;color:#b8935a}
+      .lux-totals-wrap{display:flex;justify-content:flex-end;margin-top:18px}
+      .lux-totals{width:230px;border-top:.5px solid #d6c9b0;padding-top:14px}
+      .lux-totals .lux-row{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;font:400 12px/1 "DM Sans",sans-serif;color:#999}
+      .lux-totals .lux-row.lux-total{font:400 21px/1 "Cormorant Garamond",serif;color:#b8935a;border-top:.5px solid #d6c9b0;margin-top:6px;padding-top:12px}
+      .lux-footer{display:flex;gap:32px;margin-top:40px;padding-top:18px;border-top:.5px solid #d6c9b0}
+      .lux-footer .lux-label{margin-bottom:4px;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#b8935a}
+      .lux-footer .lux-value{font:400 12px/1.2 "DM Sans",sans-serif;color:#888}
+    </style>
+    <div class="lux-page">
+      <div class="lux-header">
+        <div>
+          <div class="lux-company">${escape(biz.name || 'Your Company')}</div>
+          ${subLine ? `<div class="lux-company-sub">${escape(subLine)}</div>` : ''}
+        </div>
+        <div class="lux-invoice-block">
+          <div class="lux-invoice-word">Invoice</div>
+          <div class="lux-invoice-num">#${escape(inv.number || 'DRAFT')}</div>
+        </div>
+      </div>
+      <hr class="lux-rule">
+      <div class="lux-meta">
+        <div>
+          <div class="lux-label">Billed to</div>
+          <div class="lux-value">${billLines}</div>
+        </div>
+        <div>
+          <div class="lux-label">Issued</div>
+          <div class="lux-value">${escape(fmtDate(inv.issueDate))}</div>
+        </div>
+        <div>
+          <div class="lux-label">Due</div>
+          <div class="lux-value">${escape(fmtDate(inv.dueDate))}</div>
+        </div>
+      </div>
+      <table class="lux-items">
+        <thead>
+          <tr>
+            <th>Description</th><th>Qty</th><th>Rate</th><th class="lux-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${items}</tbody>
+      </table>
+      <div class="lux-totals-wrap">
+        <div class="lux-totals">
+          <div class="lux-row"><span>Subtotal</span><span>${escape(formatMoney(inv.subtotal, inv.currency))}</span></div>
+          <div class="lux-row"><span>Tax (${inv.taxRate || 0}%)</span><span>${escape(formatMoney(inv.tax || 0, inv.currency))}</span></div>
+          <div class="lux-row lux-total"><span>Total</span><span>${escape(formatMoney(inv.total, inv.currency))}</span></div>
+        </div>
+      </div>
+      ${footerFields.length ? `<footer class="lux-footer">${footerHtml}</footer>` : ''}
+    </div>`;
+}
+
 function previewInvoice(inv, clientId) {
   const client = byId('clients', clientId) || {};
-  const biz = state.db.settings?.business || {};
-  const body = el('div', {});
+  const biz    = state.db.settings?.business || {};
+  const tpl    = state.db.settings?.business?.invoiceTemplate || 'standard';
+  const body   = el('div', {});
   const preview = el('div', { class: 'invoice-preview' });
-  preview.innerHTML = `
+
+  if (tpl === 'luxury') {
+    ensureLuxuryFonts();
+    preview.innerHTML = renderLuxuryPreview(inv, client, biz);
+  } else {
+    preview.innerHTML = `
     <div class="inv-hdr">
       <div>
         <h1>INVOICE</h1>
@@ -879,6 +1012,7 @@ function previewInvoice(inv, clientId) {
     </div>
     ${inv.notes ? `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#666">${escape(inv.notes)}</div>` : ''}
   `;
+  }
   body.appendChild(preview);
 
   // PDF attachment section (only for imported invoices)
