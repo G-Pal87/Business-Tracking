@@ -458,10 +458,7 @@ async function renderLuxury(doc, invoice) {
   doc.text(biz.name || 'Your Company', ML, y, { charSpace: 0.6 });
 
   // Left: sub-line — Arial bolditalic 6pt gold, tracked
-  const subLine = [
-    biz.legalSuffix || '',
-    biz.registrationNumber ? `Reg ${biz.registrationNumber}` : '',
-  ].filter(Boolean).join(' · ');
+  const subLine = biz.registrationNumber ? `Reg ${biz.registrationNumber}` : '';
 
   // Left: biz details — Georgia bolditalic 10pt #31302E (same as Billed To value)
   const bizDetails = [
