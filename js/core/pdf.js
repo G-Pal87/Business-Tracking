@@ -24,6 +24,7 @@ function bizLines(biz) {
     biz.vatNumber          ? `VAT: ${biz.vatNumber}`          : '',
     biz.iban               ? `IBAN: ${biz.iban}`              : '',
     biz.bic                ? `BIC: ${biz.bic}`                : '',
+    biz.swift && biz.swift !== biz.bic ? `SWIFT: ${biz.swift}` : '',
   ].filter(Boolean);
 }
 
