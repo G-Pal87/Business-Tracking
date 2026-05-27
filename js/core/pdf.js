@@ -426,15 +426,16 @@ async function renderLuxury(doc, invoice) {
   const MR   = W - ML;
   const MT   = 48;          // 60px top padding * 0.744 + 4pt border
 
-  // Colors — exact hex from spec
+  // Colors — matched to Invoice_23_Converted.docx
   const PARCH  = [250, 247, 242];  // #faf7f2
-  const DARK   = [42,  33,  24];   // #2a2118
-  const GOLD   = [184, 147, 90];   // #b8935a
+  const BNAME  = [43,  41,  38];   // #2B2926 company name
+  const DARK   = [49,  48,  46];   // #31302E value ink
+  const GOLD   = [185, 159, 99];   // #B99F63
   const HAIR   = [214, 201, 176];  // #d6c9b0
   const ROWDIV = [237, 230, 214];  // #ede6d6
-  const GHOST  = [232, 217, 184];  // #e8d9b8
-  const MUTED  = [153, 153, 153];  // #999
-  const FTR    = [136, 136, 136];  // #888
+  const GHOST  = [229, 217, 187];  // #E5D9BB
+  const MUTED  = [155, 154, 150];  // #9B9A96
+  const FTR    = [122, 121, 117];  // #7A7975
 
   // Page background
   doc.setFillColor(...PARCH);
@@ -447,10 +448,10 @@ async function renderLuxury(doc, invoice) {
   // ── Header (.head: space-between, margin-bottom 44px→33pt) ───────────────
   let y = MT;
 
-  // Left: .bn — Cormorant SemiBold 21px→15.75pt, letter-spacing 0.04em
+  // Left: .bn — Cormorant SemiBold 17pt, letter-spacing 0.04em
   doc.setFont('CormorantBold', 'normal');
-  doc.setFontSize(15.75);
-  doc.setTextColor(...DARK);
+  doc.setFontSize(17);
+  doc.setTextColor(...BNAME);
   doc.text(biz.name || 'Your Company', ML, y, { charSpace: 0.6 });
 
   // Left: .bs — DM Sans 11px→8.25pt, uppercase, letter-spacing 0.2em, gold, margin-top 3px
@@ -468,7 +469,7 @@ async function renderLuxury(doc, invoice) {
   doc.setTextColor(...GOLD);
   let leftY = y + 15;
   if (subLine) {
-    doc.setFontSize(8.25);
+    doc.setFontSize(6.5);
     doc.text(subLine.toUpperCase(), ML, leftY, { charSpace: 1.6 });
     leftY += 11;
   }
@@ -481,20 +482,20 @@ async function renderLuxury(doc, invoice) {
     });
   }
 
-  // Right: "Invoice" — Cormorant Light Italic 36px→27pt, gold, line-height 1
+  // Right: "Invoice" — Cormorant Light Italic 28pt, gold
   doc.setFont('Cormorant', 'italic');
-  doc.setFontSize(27);
+  doc.setFontSize(28);
   doc.setTextColor(...GOLD);
   doc.text('Invoice', MR, y, { align: 'right' });
 
-  // Right: ghost number — Cormorant SemiBold 72px→54pt, #e8d9b8, margin-top -8px→-6pt
+  // Right: ghost number — Cormorant SemiBold 42pt, #E5D9BB
   doc.setFont('CormorantBold', 'normal');
-  doc.setFontSize(54);
+  doc.setFontSize(42);
   doc.setTextColor(...GHOST);
-  doc.text(`#${invoice.number || 'DRAFT'}`, MR, y + 38, { align: 'right' });
+  doc.text(`#${invoice.number || 'DRAFT'}`, MR, y + 30, { align: 'right' });
 
-  // ghost line height (~54pt) + 32px (24pt) margin-bottom below the header block
-  y += 50 + 24;
+  // header block height + margin-bottom
+  y += 40 + 24;
 
   // ── Hairline rule (.rule: 0.5px solid #d6c9b0, margin-bottom 28px→21pt) ──
   doc.setDrawColor(...HAIR);
@@ -511,20 +512,20 @@ async function renderLuxury(doc, invoice) {
   const C2 = ML + col1W + metaGap;
   const C3 = C2 + col2W + metaGap;
 
-  // Labels — DM Sans 400, 7.5pt, gold, tracked
+  // Labels — DM Sans 400, 6pt, gold, tracked
   doc.setFont('DMSans', 'normal');
-  doc.setFontSize(7.5);
+  doc.setFontSize(6);
   doc.setTextColor(...GOLD);
   doc.text('BILLED TO', C1, y, { charSpace: 1.35 });
   doc.text('ISSUED',    C2, y, { charSpace: 1.35 });
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
   y += 18; // label-to-value gap
 
-  // Values — Cormorant Garamond Regular 400, 14px→10.5pt, #2a2118, line-height 1.5→15.75pt
-  const LH = 15.75; // 14px × 1.5 × 0.75
-  doc.setFont('CormorantReg', 'normal');
+  // Values — Cormorant Garamond Light Italic 10.5pt, #31302E, line-height 1.5
+  const LH = 15.75; // 10.5pt × 1.5
+  doc.setFont('Cormorant', 'italic');
   doc.setFontSize(10.5);
-  doc.setTextColor(...DARK); // #2a2118
+  doc.setTextColor(...DARK);
 
   const billLines = [
     client.name || '',
@@ -540,8 +541,8 @@ async function renderLuxury(doc, invoice) {
   wrappedBillLines.forEach((line, i) => doc.text(line, C1, valueY + i * LH));
   const billH = Math.max(wrappedBillLines.length, 1) * LH;
 
-  // Issued / Due — Cormorant Garamond Regular 400
-  doc.setFont('CormorantReg', 'normal');
+  // Issued / Due — Cormorant Light Italic 10.5pt
+  doc.setFont('Cormorant', 'italic');
   doc.setFontSize(10.5);
   doc.setTextColor(...DARK);
   doc.text(fmtDate(invoice.issueDate), C2, valueY);
@@ -550,7 +551,7 @@ async function renderLuxury(doc, invoice) {
   y += billH + 27; // 36px margin-bottom below tallest column
 
   // ── Line items table ───────────────────────────────────────────────────────
-  // thead th: DM Sans 10px→7.5pt, uppercase, letter-spacing 0.16em, gold, padding 9px→6.75pt
+  // thead th: DM Sans 6pt, uppercase, letter-spacing 0.16em, gold
   const C_DESC = ML;           // 42pt
   const C_QTY  = 250.8;        // golden x — left-aligned
   const C_RATE = 339.1;        // golden x — left-aligned (NOT right)
@@ -558,7 +559,7 @@ async function renderLuxury(doc, invoice) {
   const DESC_W = C_QTY - ML - 10; // wrap before Qty column
 
   doc.setFont('DMSans', 'normal');
-  doc.setFontSize(7.5);
+  doc.setFontSize(6);
   doc.setTextColor(...GOLD);
   doc.text('DESCRIPTION', C_DESC, y, { charSpace: 1.2 });
   doc.text('QTY',         C_QTY,  y, { charSpace: 1.2 });
@@ -596,8 +597,8 @@ async function renderLuxury(doc, invoice) {
     const numberY   = ry + (descTotal - 12) / 2; // vertical mid of description block
 
     // Description
-    doc.setFont('CormorantReg', 'normal');
-    doc.setFontSize(11.25);
+    doc.setFont('Cormorant', 'italic');
+    doc.setFontSize(11.5);
     doc.setTextColor(...DARK);
     doc.text(mainWrapped, C_DESC, ry);
 
@@ -609,8 +610,8 @@ async function renderLuxury(doc, invoice) {
     }
 
     // Qty / Rate / Amount — vertically centered on the description block
-    doc.setFont('CormorantReg', 'normal');
-    doc.setFontSize(11.25);
+    doc.setFont('Cormorant', 'italic');
+    doc.setFontSize(10.5);
     doc.setTextColor(...DARK);
     doc.text(`${li.quantity} ${li.unit || ''}`.trim(), C_QTY,  numberY);
     doc.text(formatMoney(li.rate,  invoice.currency),  C_RATE, numberY);
@@ -651,8 +652,8 @@ async function renderLuxury(doc, invoice) {
   doc.line(TOT_L, y, MR, y);
   y += 16; // padding-top — increased from 9 so Total doesn't touch the divider
 
-  doc.setFont('CormorantReg', 'normal');
-  doc.setFontSize(15.75);
+  doc.setFont('Cormorant', 'italic');
+  doc.setFontSize(14.5);
   doc.setTextColor(...GOLD);
   doc.text('Total', TOT_L, y);
   doc.text(formatMoney(invoice.total, invoice.currency), MR, y, { align: 'right' });
@@ -679,12 +680,12 @@ async function renderLuxury(doc, invoice) {
     const FOOT_GAP = 24;
     footerFields.forEach((f) => {
       doc.setFont('DMSans', 'normal');
-      doc.setFontSize(7.5);
+      doc.setFontSize(6);
       doc.setTextColor(...GOLD);
       doc.text(f.label, fx, y, { charSpace: 1.2 });
       const labelW = doc.getTextWidth(f.label) + (f.label.length - 1) * 1.2;
 
-      doc.setFontSize(9);
+      doc.setFontSize(8);
       doc.setTextColor(...FTR);
       doc.text(f.value, fx, y + 11); // label height (~7.5pt) + 4px gap (~3pt) ≈ 11pt below
       const valueW = doc.getTextWidth(f.value);
