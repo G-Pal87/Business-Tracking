@@ -3,7 +3,9 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
-import { downloadInvoicePDF, generateInvoicePDF } from '../core/pdf.js';
+const _pdfMod = () => import(`../core/pdf.js?v=${window._appV || Date.now()}`);
+const downloadInvoicePDF  = (...a) => _pdfMod().then(m => m.downloadInvoicePDF(...a));
+const generateInvoicePDF  = (...a) => _pdfMod().then(m => m.generateInvoicePDF(...a));
 import { navigate } from '../core/router.js';
 import { uploadGithubFile, fetchGithubFile, deleteGithubFile } from '../core/github.js';
 
