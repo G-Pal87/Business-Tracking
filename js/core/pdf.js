@@ -503,7 +503,7 @@ async function renderLuxury(doc, invoice) {
   doc.setDrawColor(...HAIR);
   doc.setLineWidth(0.5);
   doc.line(ML, y, MR, y);
-  y += 33;
+  y += 18; // space-before label: 18pt (Word: spacing before=360 twips)
 
   // ── Meta grid — C1 10% wider, C2/C3 share remaining space equally ────────
   const metaGap = 18;
@@ -521,7 +521,7 @@ async function renderLuxury(doc, invoice) {
   doc.text('BILLED TO', C1, y, { charSpace: 1.35 });
   doc.text('ISSUED',    C2, y, { charSpace: 1.35 });
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
-  y += 18; // label-to-value gap
+  y += 6; // space-after label: 6pt (Word: spacing after=120 twips)
 
   // Values — Georgia Italic 10.5pt, #31302E, line-height 1.5
   const LH = 15.75; // 10.5pt × 1.5
