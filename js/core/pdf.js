@@ -485,12 +485,14 @@ async function renderLuxury(doc, invoice) {
   doc.line(ML, y, MR, y);
   y += 21;
 
-  // ── Meta grid — 3 equal columns, 18pt gap, 27pt margin-below ────────────
+  // ── Meta grid — Billed To 0.75fr, Issued/Due 1fr each, 18pt gap ─────────
   const META_GAP = 18;
-  const colW = (MR - ML - 2 * META_GAP) / 3;
-  const C1 = ML;                             // 42
-  const C2 = ML + colW + META_GAP;           // 218.4
-  const C3 = ML + 2 * (colW + META_GAP);     // 394.8
+  const totalW = MR - ML - 2 * META_GAP;   // available after gaps
+  const unit   = totalW / 2.75;             // 0.75 + 1 + 1 = 2.75 units
+  const col1W  = unit * 0.75;               // Billed To — slightly narrower
+  const C1 = ML;
+  const C2 = ML + col1W + META_GAP;
+  const C3 = C2 + unit + META_GAP;
 
   // Labels — DM Sans 400, 7.5pt, gold, tracked
   doc.setFont('DMSans', 'normal');
@@ -499,7 +501,7 @@ async function renderLuxury(doc, invoice) {
   doc.text('BILLED TO', C1, y, { charSpace: 1.35 });
   doc.text('ISSUED',    C2, y, { charSpace: 1.35 });
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
-  y += 4.5; // 6px gap below label
+  y += 9; // ~12px gap — pushes values clear of the labels
 
   // Values — Cormorant 400, 10.5pt, ink, line-height 1.5 → 15.75pt step
   const LH = 15.75;
