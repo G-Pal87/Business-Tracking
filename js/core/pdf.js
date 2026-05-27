@@ -420,7 +420,7 @@ async function renderLuxury(doc, invoice) {
   const client = byId('clients', invoice.clientId) || {};
   const biz    = state.db.settings?.business || {};
 
-  const W    = 595;
+  const W    = 595.28;
   const ML   = 42;          // 56px * 0.744
   const MR   = W - ML;
   const MT   = 48;          // 60px top padding * 0.744 + 4pt border
