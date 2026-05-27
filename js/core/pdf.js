@@ -459,8 +459,8 @@ async function renderLuxury(doc, invoice) {
   ].filter(Boolean).join(' · ');
 
   const bizDetails = [
-    biz.address || '',
     biz.vatNumber ? `VAT: ${biz.vatNumber}` : '',
+    biz.address || '',
   ].filter(Boolean);
 
   doc.setFont('DMSans', 'normal');
