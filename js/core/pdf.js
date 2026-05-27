@@ -39,6 +39,7 @@ async function loadAllFonts(doc) {
   await Promise.all([
     loadFont(doc, 'CormorantGaramond-Light.ttf',      'Cormorant', 'normal'),
     loadFont(doc, 'CormorantGaramond-LightItalic.ttf','Cormorant', 'italic'),
+    loadFont(doc, 'CormorantGaramond-Regular.ttf',    'CormorantReg', 'normal'),
     loadFont(doc, 'CormorantGaramond-SemiBold.ttf',   'CormorantBold', 'normal'),
     loadFont(doc, 'DMSans-Regular.ttf',               'DMSans', 'normal'),
     loadFont(doc, 'DMSans-Medium.ttf',                'DMSans', 'bold'),
@@ -519,9 +520,9 @@ async function renderLuxury(doc, invoice) {
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
   y += 18; // label-to-value gap
 
-  // Values — Cormorant Garamond 400 upright, 14px→10.5pt, #2a2118, line-height 1.5→15.75pt
+  // Values — Cormorant Garamond Regular 400, 14px→10.5pt, #2a2118, line-height 1.5→15.75pt
   const LH = 15.75; // 14px × 1.5 × 0.75
-  doc.setFont('Cormorant', 'normal');
+  doc.setFont('CormorantReg', 'normal');
   doc.setFontSize(10.5);
   doc.setTextColor(...DARK); // #2a2118
 
@@ -539,8 +540,8 @@ async function renderLuxury(doc, invoice) {
   wrappedBillLines.forEach((line, i) => doc.text(line, C1, valueY + i * LH));
   const billH = Math.max(wrappedBillLines.length, 1) * LH;
 
-  // Issued / Due — same font as Billed To value
-  doc.setFont('Cormorant', 'normal');
+  // Issued / Due — Cormorant Garamond Regular 400
+  doc.setFont('CormorantReg', 'normal');
   doc.setFontSize(10.5);
   doc.setTextColor(...DARK);
   doc.text(fmtDate(invoice.issueDate), C2, valueY);
