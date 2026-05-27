@@ -628,7 +628,7 @@ async function renderLuxury(doc, invoice) {
   doc.setDrawColor(...HAIR);
   doc.setLineWidth(0.5);
   doc.line(ML, y, MR, y);
-  y += 7; // space-before Subtotal: 7pt (Word: 140 twips)
+  y += 13; // Word space-before 7pt + 8pt font cap height (~6pt) = baseline offset
 
   // Subtotal / Tax — Arial bold italic 8pt, #9B9A96
   doc.setFont('helvetica', 'bolditalic');
