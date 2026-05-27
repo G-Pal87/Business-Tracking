@@ -640,12 +640,12 @@ async function renderLuxury(doc, invoice) {
 
   doc.text(`Tax (${invoice.taxRate || 0}%)`, TOT_L, y);
   doc.text(formatMoney(invoice.tax || 0, invoice.currency), MR, y, { align: 'right' });
-  y += 10; // 8pt font + spacing before divider
+  y += 3; // Word space-after Tax=1pt + 8pt descender (~1.6pt) ≈ 3pt to divider line
 
   // Total — Georgia bold italic 14pt, gold
   doc.setDrawColor(...HAIR);
   doc.line(TOT_L, y, MR, y);
-  y += 5; // space-before Total: 5pt (Word: 100 twips)
+  y += 15; // Word space-before Total=5pt + 14pt cap height (~10pt) = 15pt to baseline
 
   doc.setFont('Georgia', 'bolditalic');
   doc.setFontSize(14);
