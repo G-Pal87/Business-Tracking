@@ -485,36 +485,42 @@ async function renderLuxury(doc, invoice) {
   doc.line(ML, y, MR, y);
   y += 21;
 
-  // ── Meta grid (.meta: 3×1fr, gap 24px→18pt, margin-bottom 36px→27pt) ─────
-  const gap  = 18; // 24px gap between columns
-  const colW = (MR - ML - 2 * gap) / 3;
+  // ── Meta grid (.meta: 2fr 1fr 1fr, gap 18pt, margin-bottom 27pt) ────────
+  // Billed To gets 2 units so long company names / addresses have room
+  const gap  = 18;
+  const unit = (MR - ML - 2 * gap) / 4;  // 2+1+1 = 4 total units
+  const colW = unit * 2;                   // Billed To width ≈ 237pt
   const C1 = ML;
   const C2 = ML + colW + gap;
-  const C3 = ML + 2 * (colW + gap);
+  const C3 = C2 + unit + gap;
 
-  // Labels: .ml — DM Sans 10px→7.5pt, uppercase, letter-spacing 0.18em, gold, mb 6px→4.5pt
+  // Labels: DM Sans 7.5pt gold uppercase — advance y by label height (7.5pt) + gap (4.5pt)
   doc.setFont('DMSans', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(...GOLD);
   doc.text('BILLED TO', C1, y, { charSpace: 1.4 });
   doc.text('ISSUED',    C2, y, { charSpace: 1.4 });
   doc.text('DUE',       C3, y, { charSpace: 1.4 });
-  y += 4.5; // label + margin-bottom
+  y += 12; // 7.5pt label height + 4.5pt margin-bottom
 
-  // BILLED TO value: .mv — Cormorant 14px→10.5pt, line-height 1.5→15.75pt
-  // Name + address lines only (no email/VAT/Reg in Luxury per golden reference)
+  // BILLED TO value: Cormorant 10.5pt, line-height 1.5
+  // Name + address lines only; wrap each segment to column width
   const billLines = [
     client.name || '',
     ...(client.address || '').split(/\n|,/).map(s => s.trim()).filter(Boolean),
   ].filter(Boolean);
 
-  const LH = 10.5 * 1.5; // line-height 1.5
-  billLines.forEach((line, i) => {
+  const LH = 10.5 * 1.5; // line-height 1.5 → 15.75pt
+  let billY = y;
+  billLines.forEach((line) => {
+    const wrapped = doc.splitTextToSize(line, colW - 4);
     doc.setFont('Cormorant', 'normal');
     doc.setFontSize(10.5);
     doc.setTextColor(...DARK);
-    doc.text(line, C1, y + i * LH);
+    doc.text(wrapped, C1, billY);
+    billY += wrapped.length * LH;
   });
+  const billH = Math.max(billY - y, LH);
 
   // ISSUED / DUE
   doc.setFont('Cormorant', 'normal');
@@ -523,7 +529,7 @@ async function renderLuxury(doc, invoice) {
   doc.text(fmtDate(invoice.issueDate), C2, y);
   doc.text(fmtDate(invoice.dueDate),   C3, y);
 
-  y += Math.max(billLines.length * LH, LH) + 27; // margin-bottom 36px
+  y += billH + 27; // margin-bottom 36px→27pt
 
   // ── Line items table ───────────────────────────────────────────────────────
   // thead th: DM Sans 10px→7.5pt, uppercase, letter-spacing 0.16em, gold, padding 9px→6.75pt
@@ -625,7 +631,7 @@ async function renderLuxury(doc, invoice) {
   // .tf Total: border-top, Cormorant 21px→15.75pt, gold
   doc.setDrawColor(...HAIR);
   doc.line(TOT_L, y, MR, y);
-  y += 9; // padding-top 12px
+  y += 16; // padding-top — increased from 9 so Total doesn't touch the divider
 
   doc.setFont('Cormorant', 'normal');
   doc.setFontSize(15.75);
