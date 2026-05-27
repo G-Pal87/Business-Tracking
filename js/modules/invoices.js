@@ -725,7 +725,22 @@ export function openBuilder(existing, { onSaved } = {}) {
   });
   updateNamePreview();
 
-  const preview = button('Preview', { onClick: () => previewInvoice(inv, clientS.value) });
+  const preview = button('Preview', { onClick: () => {
+    // Snapshot current form state so preview matches what would be saved
+    recalcInvoice();
+    const snap = {
+      ...inv,
+      clientId:  clientS.value,
+      owner:     ownerS.value,
+      currency:  currencyS.value,
+      issueDate: issueI.value,
+      dueDate:   dueI.value,
+      status:    statusS.value,
+      notes:     notesT.value,
+      number:    numberI.value.trim() || String(nextInvoiceSequence((issueI.value || today()).slice(0, 4), inv.id))
+    };
+    previewInvoice(snap, clientS.value);
+  }});
   const save = button('Save Invoice', { variant: 'primary', onClick: async () => {
     if (inv.lineItems.length === 0) { toast('Add at least one line item', 'danger'); return; }
     inv.clientId = clientS.value;
@@ -1350,7 +1365,8 @@ async function openPDFViewer(inv) {
   let objectUrl = null;
   const cleanup = () => { if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; } };
 
-  if (hasAttached) {
+  if (inv.source === 'pdf_import' && hasAttached) {
+    // Imported invoices: show the original uploaded file as-is
     try {
       const blob  = await resolveInvoiceBlob(inv);
       objectUrl   = URL.createObjectURL(blob);
@@ -1360,11 +1376,13 @@ async function openPDFViewer(inv) {
       bodyWrap.replaceChildren(el('div', { style: 'padding:24px;color:var(--danger,#ef4444)' }, `Could not load PDF: ${err.message}`));
     }
   } else {
-    // Generated invoice — render immediately
+    // Builder invoices: always regenerate from current settings so changes
+    // (business info, template, SWIFT etc.) are reflected immediately
     try {
       const blob = generateInvoicePDF(inv).output('blob');
       objectUrl  = URL.createObjectURL(blob);
       frame.src  = objectUrl;
+      bodyWrap.replaceChildren(frame);
     } catch (err) {
       bodyWrap.replaceChildren(el('div', { style: 'padding:24px;color:var(--danger,#ef4444)' }, `Could not render invoice: ${err.message}`));
     }
