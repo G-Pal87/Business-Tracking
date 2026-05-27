@@ -501,9 +501,7 @@ async function renderLuxury(doc, invoice) {
   doc.text('BILLED TO', C1, y, { charSpace: 1.35 });
   doc.text('ISSUED',    C2, y, { charSpace: 1.35 });
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
-  // 14pt clears the 7.5pt label (ascenders ~7pt above baseline) plus the
-  // 10.5pt value (ascenders ~9pt above baseline) with a visible gap between them
-  y += 14;
+  y += 18; // gap between label baseline and value baseline
 
   // Values — Cormorant 400, 10.5pt, ink, line-height 1.5 → 15.75pt step
   const LH = 15.75;
@@ -511,18 +509,26 @@ async function renderLuxury(doc, invoice) {
   doc.setFontSize(10.5);
   doc.setTextColor(...DARK);
 
-  // Billed to — name + address lines, each on its own row, all regular weight
+  // Billed to — wrap each segment to col1W so it never bleeds into Issued
   const billLines = [
     client.name || '',
     ...(client.address || '').split(/\n|,/).map(s => s.trim()).filter(Boolean),
   ].filter(Boolean);
-  billLines.forEach((line, i) => doc.text(line, C1, y + i * LH));
 
-  // Issued / Due — single line each, left-aligned
-  doc.text(fmtDate(invoice.issueDate), C2, y);
-  doc.text(fmtDate(invoice.dueDate),   C3, y);
+  const valueY = y; // baseline shared by all three columns
+  let billRunY = valueY;
+  billLines.forEach((line) => {
+    const wrapped = doc.splitTextToSize(line, col1W - 2);
+    doc.text(wrapped, C1, billRunY);
+    billRunY += wrapped.length * LH;
+  });
+  const billH = Math.max(billRunY - valueY, LH);
 
-  y += Math.max(billLines.length, 1) * LH + 27; // 36px margin-bottom
+  // Issued / Due — aligned to the same baseline as the first bill line
+  doc.text(fmtDate(invoice.issueDate), C2, valueY);
+  doc.text(fmtDate(invoice.dueDate),   C3, valueY);
+
+  y += billH + 27; // 36px margin-bottom below tallest column
 
   // ── Line items table ───────────────────────────────────────────────────────
   // thead th: DM Sans 10px→7.5pt, uppercase, letter-spacing 0.16em, gold, padding 9px→6.75pt
