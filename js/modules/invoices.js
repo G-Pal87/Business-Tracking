@@ -851,9 +851,9 @@ function renderLuxuryPreview(inv, client, biz) {
   ].filter(Boolean).join(' · ');
 
   const billLines = [
-    escape(client.name || ''),
-    ...(client.address || '').split(/\n|,/).map(s => s.trim()).filter(Boolean).map(escape),
-  ].join('<br>');
+    client.name || '',
+    ...(client.address || '').split(/\n|,/).map(s => s.trim()).filter(Boolean),
+  ].filter(Boolean);
 
   const items = (inv.lineItems || []).map((li, i, arr) => {
     const isLast = i === arr.length - 1;
@@ -925,7 +925,7 @@ function renderLuxuryPreview(inv, client, biz) {
       <div class="lux-meta">
         <div>
           <div class="lux-label">Billed to</div>
-          <div class="lux-value">${billLines}</div>
+          <div class="lux-value">${billLines.map(escape).join('<br>')}</div>
         </div>
         <div>
           <div class="lux-label">Issued</div>
