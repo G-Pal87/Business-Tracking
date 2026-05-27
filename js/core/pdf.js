@@ -483,7 +483,7 @@ async function renderLuxury(doc, invoice) {
   doc.setDrawColor(...HAIR);
   doc.setLineWidth(0.5);
   doc.line(ML, y, MR, y);
-  y += 21;
+  y += 33;
 
   // ── Meta grid — equal thirds with 18pt gap ───────────────────────────────
   const metaGap = 18;
