@@ -468,11 +468,11 @@ async function renderLuxury(doc, invoice) {
 
   let leftY = y + 15;
   if (subLine) {
-    doc.setFont('helvetica', 'bolditalic');
-    doc.setFontSize(6);
+    doc.setFont('DMSans', 'normal');
+    doc.setFontSize(8);
     doc.setTextColor(...GOLD);
     doc.text(subLine.toUpperCase(), ML, leftY, { charSpace: 1.6 });
-    leftY += 10;
+    leftY += 12;
   }
   if (bizDetails.length) {
     doc.setFont('Georgia', 'bolditalic');
