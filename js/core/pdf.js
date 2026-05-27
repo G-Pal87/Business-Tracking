@@ -457,11 +457,27 @@ async function renderLuxury(doc, invoice) {
     biz.legalSuffix || '',
     biz.registrationNumber ? `Reg ${biz.registrationNumber}` : '',
   ].filter(Boolean).join(' · ');
+
+  const bizDetails = [
+    biz.address || '',
+    biz.vatNumber ? `VAT: ${biz.vatNumber}` : '',
+  ].filter(Boolean);
+
+  doc.setFont('DMSans', 'normal');
+  doc.setTextColor(...GOLD);
+  let leftY = y + 15;
   if (subLine) {
-    doc.setFont('DMSans', 'normal');
     doc.setFontSize(8.25);
-    doc.setTextColor(...GOLD);
-    doc.text(subLine.toUpperCase(), ML, y + 15, { charSpace: 1.6 });
+    doc.text(subLine.toUpperCase(), ML, leftY, { charSpace: 1.6 });
+    leftY += 11;
+  }
+  if (bizDetails.length) {
+    doc.setFontSize(7.5);
+    doc.setTextColor(...MUTED);
+    bizDetails.forEach(line => {
+      doc.text(line, ML, leftY);
+      leftY += 10;
+    });
   }
 
   // Right: "Invoice" — Cormorant Light Italic 36px→27pt, gold, line-height 1

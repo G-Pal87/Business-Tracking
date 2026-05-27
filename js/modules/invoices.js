@@ -852,6 +852,11 @@ function renderLuxuryPreview(inv, client, biz) {
     biz.registrationNumber ? `Reg ${biz.registrationNumber}` : '',
   ].filter(Boolean).join(' · ');
 
+  const bizDetails = [
+    biz.address || '',
+    biz.vatNumber ? `VAT: ${biz.vatNumber}` : '',
+  ].filter(Boolean);
+
   const billLines = [
     client.name || '',
     ...(client.address || '').split(/\n|,/).map(s => s.trim()).filter(Boolean),
@@ -897,6 +902,7 @@ function renderLuxuryPreview(inv, client, biz) {
       .lux-invoice-block{text-align:right}
       .lux-invoice-word{font:italic 300 36px/1 "Cormorant Garamond",serif;color:#b8935a}
       .lux-invoice-num{font:600 72px/1 "Cormorant Garamond",serif;letter-spacing:-.02em;color:#e8d9b8;margin-top:-8px}
+      .lux-biz-details{margin-top:4px;font:400 10px/1.6 "DM Sans",sans-serif;color:#999}
       .lux-rule{border:0;border-top:.5px solid #d6c9b0;margin:0 0 44px 0}
       .lux-meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-bottom:36px}
       .lux-meta .lux-label{margin-bottom:6px;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#b8935a}
@@ -920,6 +926,7 @@ function renderLuxuryPreview(inv, client, biz) {
         <div>
           <div class="lux-company">${escape(biz.name || 'Your Company')}</div>
           ${subLine ? `<div class="lux-company-sub">${escape(subLine)}</div>` : ''}
+          ${bizDetails.length ? `<div class="lux-biz-details">${bizDetails.map(escape).join('<br>')}</div>` : ''}
         </div>
         <div class="lux-invoice-block">
           <div class="lux-invoice-word">Invoice</div>
