@@ -451,48 +451,50 @@ async function renderLuxury(doc, invoice) {
   // ── Header (.head: space-between, margin-bottom 44px→33pt) ───────────────
   let y = MT;
 
-  // Left: .bn — Cormorant SemiBold 17pt, letter-spacing 0.04em
-  doc.setFont('CormorantBold', 'normal');
+  // Left: company name — Georgia bolditalic 17pt #2B2926
+  doc.setFont('Georgia', 'bolditalic');
   doc.setFontSize(17);
   doc.setTextColor(...BNAME);
   doc.text(biz.name || 'Your Company', ML, y, { charSpace: 0.6 });
 
-  // Left: .bs — DM Sans 11px→8.25pt, uppercase, letter-spacing 0.2em, gold, margin-top 3px
+  // Left: sub-line — Arial bolditalic 6pt gold, tracked
   const subLine = [
     biz.legalSuffix || '',
     biz.registrationNumber ? `Reg ${biz.registrationNumber}` : '',
   ].filter(Boolean).join(' · ');
 
+  // Left: biz details — Georgia bolditalic 10pt #31302E (same as Billed To value)
   const bizDetails = [
     biz.vatNumber ? `VAT: ${biz.vatNumber}` : '',
     biz.address || '',
   ].filter(Boolean);
 
-  doc.setFont('DMSans', 'normal');
-  doc.setTextColor(...GOLD);
   let leftY = y + 15;
   if (subLine) {
-    doc.setFontSize(6.5);
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setFontSize(6);
+    doc.setTextColor(...GOLD);
     doc.text(subLine.toUpperCase(), ML, leftY, { charSpace: 1.6 });
-    leftY += 11;
+    leftY += 10;
   }
   if (bizDetails.length) {
-    doc.setFontSize(7.5);
-    doc.setTextColor(...MUTED);
+    doc.setFont('Georgia', 'bolditalic');
+    doc.setFontSize(10);
+    doc.setTextColor(...DARK);
     bizDetails.forEach(line => {
       doc.text(line, ML, leftY);
-      leftY += 10;
+      leftY += 15;
     });
   }
 
-  // Right: "Invoice" — Cormorant Light Italic 28pt, gold
-  doc.setFont('Cormorant', 'italic');
+  // Right: "Invoice" — Georgia bolditalic 28pt gold
+  doc.setFont('Georgia', 'bolditalic');
   doc.setFontSize(28);
   doc.setTextColor(...GOLD);
   doc.text('Invoice', MR, y, { align: 'right' });
 
-  // Right: ghost number — Arial (Helvetica) 42pt, #E5D9BB
-  doc.setFont('helvetica', 'normal');
+  // Right: ghost number — Arial bolditalic 42pt #E5D9BB
+  doc.setFont('helvetica', 'bolditalic');
   doc.setFontSize(42);
   doc.setTextColor(...GHOST);
   doc.text(`#${invoice.number || 'DRAFT'}`, MR, y + 30, { align: 'right' });
@@ -524,10 +526,10 @@ async function renderLuxury(doc, invoice) {
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
   y += 6; // space-after label: 6pt (Word: spacing after=120 twips)
 
-  // Values — Georgia Italic 10.5pt, #31302E, line-height 1.5
-  const LH = 15.75; // 10.5pt × 1.5
-  doc.setFont('Georgia', 'italic');
-  doc.setFontSize(10.5);
+  // Values — Georgia bolditalic 10pt #31302E, line-height 1.5 (Word: size=10pt bold italic)
+  const LH = 15; // 10pt × 1.5
+  doc.setFont('Georgia', 'bolditalic');
+  doc.setFontSize(10);
   doc.setTextColor(...DARK);
 
   const billLines = [
@@ -544,9 +546,9 @@ async function renderLuxury(doc, invoice) {
   wrappedBillLines.forEach((line, i) => doc.text(line, C1, valueY + i * LH));
   const billH = Math.max(wrappedBillLines.length, 1) * LH;
 
-  // Issued / Due — Georgia Italic 10.5pt
-  doc.setFont('Georgia', 'italic');
-  doc.setFontSize(10.5);
+  // Issued / Due — Georgia bolditalic 10pt (Word: size=10pt bold italic)
+  doc.setFont('Georgia', 'bolditalic');
+  doc.setFontSize(10);
   doc.setTextColor(...DARK);
   doc.text(fmtDate(invoice.issueDate), C2, valueY);
   doc.text(fmtDate(invoice.dueDate),   C3, valueY);
