@@ -555,19 +555,19 @@ async function renderLuxury(doc, invoice) {
   // ── Line items table ───────────────────────────────────────────────────────
   // thead th: DM Sans 6pt, uppercase, letter-spacing 0.16em, gold
   const C_DESC = ML;           // 42pt
-  const C_QTY  = 250.8;        // golden x — left-aligned
-  const C_RATE = 339.1;        // golden x — left-aligned (NOT right)
-  const C_AMT  = MR;           // right edge, right-anchored for AMOUNT only
+  const C_QTY  = 250.8;        // right-anchored
+  const C_RATE = 339.1;        // right-anchored
+  const C_AMT  = MR;           // right edge
   const DESC_W = C_QTY - ML - 10; // wrap before Qty column
 
   doc.setFont('DMSans', 'normal');
   doc.setFontSize(6);
   doc.setTextColor(...GOLD);
   doc.text('DESCRIPTION', C_DESC, y, { charSpace: 1.2 });
-  doc.text('QTY',         C_QTY,  y, { charSpace: 1.2 });
-  doc.text('RATE',        C_RATE, y, { charSpace: 1.2 });
+  doc.text('QTY',         C_QTY,  y, { align: 'right', charSpace: 1.2 });
+  doc.text('RATE',        C_RATE, y, { align: 'right', charSpace: 1.2 });
   doc.text('AMOUNT',      C_AMT,  y, { align: 'right', charSpace: 1.2 });
-  y += 6.75;
+  y += 2; // space-after: 2pt (Word: 40 twips)
   doc.setDrawColor(...HAIR);
   doc.setLineWidth(0.5);
   doc.line(ML, y, MR, y);
