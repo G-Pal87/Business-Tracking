@@ -43,6 +43,8 @@ async function loadAllFonts(doc) {
     loadFont(doc, 'CormorantGaramond-SemiBold.ttf',   'CormorantBold', 'normal'),
     loadFont(doc, 'DMSans-Regular.ttf',               'DMSans', 'normal'),
     loadFont(doc, 'DMSans-Medium.ttf',                'DMSans', 'bold'),
+    loadFont(doc, 'Gelasio-Regular.ttf',              'Georgia', 'normal'),
+    loadFont(doc, 'Gelasio-Italic.ttf',               'Georgia', 'italic'),
   ]);
 }
 
@@ -521,9 +523,9 @@ async function renderLuxury(doc, invoice) {
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
   y += 18; // label-to-value gap
 
-  // Values — Cormorant Garamond Light Italic 10.5pt, #31302E, line-height 1.5
+  // Values — Georgia Italic 10.5pt, #31302E, line-height 1.5
   const LH = 15.75; // 10.5pt × 1.5
-  doc.setFont('Cormorant', 'italic');
+  doc.setFont('Georgia', 'italic');
   doc.setFontSize(10.5);
   doc.setTextColor(...DARK);
 
@@ -541,8 +543,8 @@ async function renderLuxury(doc, invoice) {
   wrappedBillLines.forEach((line, i) => doc.text(line, C1, valueY + i * LH));
   const billH = Math.max(wrappedBillLines.length, 1) * LH;
 
-  // Issued / Due — Cormorant Light Italic 10.5pt
-  doc.setFont('Cormorant', 'italic');
+  // Issued / Due — Georgia Italic 10.5pt
+  doc.setFont('Georgia', 'italic');
   doc.setFontSize(10.5);
   doc.setTextColor(...DARK);
   doc.text(fmtDate(invoice.issueDate), C2, valueY);
