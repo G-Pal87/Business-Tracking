@@ -450,7 +450,7 @@ async function renderLuxury(doc, invoice) {
   doc.setFont('CormorantBold', 'normal');
   doc.setFontSize(16);
   doc.setTextColor(...DARK);
-  doc.text(biz.name || 'Your Company', ML, y);
+  doc.text(biz.name || 'Your Company', ML, y, { charSpace: 0.6 });
 
   // Left: .bs — DM Sans 11px→8pt, uppercase, letter-spacing 0.2em, gold, margin-top 3px→2pt
   const subLine = [biz.registrationNumber ? `Reg ${biz.registrationNumber}` : ''].filter(Boolean).join(' · ');
@@ -458,7 +458,7 @@ async function renderLuxury(doc, invoice) {
     doc.setFont('DMSans', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...GOLD);
-    doc.text(subLine.toUpperCase(), ML, y + 13, { charSpace: 1.6 });
+    doc.text(subLine.toUpperCase(), ML, y + 15, { charSpace: 1.6 });
   }
 
   // Right: "Invoice" — Cormorant Light Italic 36px→27pt, gold, line-height 1
@@ -471,7 +471,7 @@ async function renderLuxury(doc, invoice) {
   doc.setFont('CormorantBold', 'normal');
   doc.setFontSize(54);
   doc.setTextColor(...GHOST);
-  doc.text(`#${invoice.number || 'DRAFT'}`, MR, y + 21, { align: 'right' }); // 27pt line-height - 6pt overlap
+  doc.text(`#${invoice.number || 'DRAFT'}`, MR, y + 13, { align: 'right' });
 
   y += 33; // margin-bottom 44px * 0.744
 
@@ -494,7 +494,7 @@ async function renderLuxury(doc, invoice) {
   doc.text('BILLED TO', C1, y, { charSpace: 1.4 });
   doc.text('ISSUED',    C2, y, { charSpace: 1.4 });
   doc.text('DUE',       C3, y, { charSpace: 1.4 });
-  y += 8; // label + margin-bottom
+  y += 4.5; // label + margin-bottom
 
   // BILLED TO value: .mv — Cormorant 14px→10.5pt, line-height 1.5→15.75pt
   // Name bold, address lines regular, then email/VAT/Reg
@@ -573,7 +573,7 @@ async function renderLuxury(doc, invoice) {
       doc.setFont('Cormorant', 'italic');
       doc.setFontSize(9);
       doc.setTextColor(...GOLD);
-      doc.text(subDesc, C_DESC, ry + mainWrapped.length * 12 + 1.5);
+      doc.text(subDesc, C_DESC, ry + mainWrapped.length * 12 + 3);
     }
 
     // Qty / Rate / Amount
@@ -650,14 +650,14 @@ async function renderLuxury(doc, invoice) {
 
     // gap 32px→24pt between each item
     footerFields.forEach((f, i) => {
-      const fx = ML + i * 90;
+      const fx = ML + i * 64;
       doc.setFont('DMSans', 'normal');
       doc.setFontSize(7.5);
       doc.setTextColor(...GOLD);
       doc.text(f.label, fx, y, { charSpace: 1.2 });
       doc.setFontSize(9);
       doc.setTextColor(...FTR);
-      doc.text(f.value, fx, y + 10);
+      doc.text(f.value, fx, y + 7);
     });
   }
 }
