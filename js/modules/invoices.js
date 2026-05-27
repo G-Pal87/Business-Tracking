@@ -824,8 +824,11 @@ function previewInvoice(inv, clientId) {
         <div class="inv-party">
           <strong>${escape(biz.name || 'Your Business')}</strong><br>
           ${escape(biz.address || '')}<br>
-          ${escape(biz.email || '')}<br>
-          ${biz.vatNumber ? 'VAT: ' + escape(biz.vatNumber) : ''}
+          ${biz.registrationNumber ? 'Reg: ' + escape(biz.registrationNumber) + '<br>' : ''}
+          ${biz.vatNumber ? 'VAT: ' + escape(biz.vatNumber) + '<br>' : ''}
+          ${biz.iban  ? 'IBAN: '  + escape(biz.iban)  + '<br>' : ''}
+          ${biz.bic   ? 'BIC: '   + escape(biz.bic)   + '<br>' : ''}
+          ${biz.swift && biz.swift !== biz.bic ? 'SWIFT: ' + escape(biz.swift) + '<br>' : ''}
         </div>
       </div>
       <div class="inv-meta">
