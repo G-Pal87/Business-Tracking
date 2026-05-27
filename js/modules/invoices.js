@@ -853,9 +853,10 @@ function previewInvoice(inv, clientId) {
         <br>
         <strong>BILL TO:</strong><br>
         ${escape(client.name || '')}<br>
-        ${escape(client.address || '')}<br>
-        ${escape(client.email || '')}<br>
-        ${client.vatNumber ? 'VAT: ' + escape(client.vatNumber) : ''}
+        ${client.address ? escape(client.address) + '<br>' : ''}
+        ${client.email ? escape(client.email) + '<br>' : ''}
+        ${client.vatNumber ? 'VAT: ' + escape(client.vatNumber) + '<br>' : ''}
+        ${client.registrationNumber ? 'Reg: ' + escape(client.registrationNumber) : ''}
       </div>
     </div>
     <table>
