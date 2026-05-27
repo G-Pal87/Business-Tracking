@@ -1371,7 +1371,7 @@ function fillInvoiceRepoBody(body) {
     if (d.type === 'missing_file' && d.canRegen) {
       // Builder invoice — regenerate the PDF and upload it
       return async () => {
-        const b64 = generateInvoicePDF(d.inv).output('datauristring').split(',')[1];
+        const b64 = (await generateInvoicePDF(d.inv)).output('datauristring').split(',')[1];
         if (!b64) throw new Error('PDF generation produced empty content');
         await uploadGithubFile(d.expPath, b64, `Regenerate PDF for invoice ${d.inv.number || d.inv.id}`);
         upsert('invoices', { ...d.inv, pdfPath: d.expPath });
