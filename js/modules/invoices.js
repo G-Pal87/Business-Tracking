@@ -740,15 +740,21 @@ export function openBuilder(existing, { onSaved } = {}) {
       const year = inv.issueDate.slice(0, 4);
       const seq = nextInvoiceSequence(year, inv.id);
       const candidate = `${seq}`;
-      if (listActive('invoices').some(i => i.id !== inv.id && i.number === candidate)) {
-        toast(`Auto-generated number ${candidate} conflicts with an existing invoice`, 'danger');
+      // Uniqueness check scoped to the same year (sequence is already per-year)
+      if (listActive('invoices').some(i => i.id !== inv.id && i.number === candidate && (i.issueDate || '').startsWith(year))) {
+        toast(`Auto-generated number ${candidate} conflicts with an existing invoice in ${year}`, 'danger');
         return;
       }
       inv.number = candidate;
     } else {
       inv.number = numberI.value.trim();
-      if (listActive('invoices').some(i => i.id !== inv.id && i.number === inv.number)) {
-        toast(`Invoice number ${inv.number} is already in use`, 'danger');
+      const year = inv.issueDate.slice(0, 4);
+      // For purely numeric numbers, uniqueness is scoped to the same year
+      const sameYear = /^\d+$/.test(inv.number)
+        ? listActive('invoices').some(i => i.id !== inv.id && i.number === inv.number && (i.issueDate || '').startsWith(year))
+        : listActive('invoices').some(i => i.id !== inv.id && i.number === inv.number);
+      if (sameYear) {
+        toast(`Invoice number ${inv.number} is already in use in ${year}`, 'danger');
         return;
       }
     }
