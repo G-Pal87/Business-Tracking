@@ -499,7 +499,7 @@ async function renderLuxury(doc, invoice) {
   doc.text('BILLED TO', C1, y, { charSpace: 1.35 });
   doc.text('ISSUED',    C2, y, { charSpace: 1.35 });
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
-  y += 14; // label-bottom(1.5pt) + 6px gap(4.5pt) + value-ascender(8.25pt)
+  y += 20; // clear label descent + gap + value ascender with extra breathing room
 
   // Values — Cormorant 400, 10.5pt, ink, line-height 1.5 → 15.75pt step
   const LH = 15.75;
