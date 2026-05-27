@@ -883,7 +883,8 @@ function renderLuxuryPreview(inv, client, biz) {
 
   return `
     <style>
-      .lux-page{background:#faf7f2;max-width:800px;margin:0 auto;padding:60px 56px;position:relative;min-height:1123px;font-size:16px;color:#2a2118}
+      .lux-page{background:#faf7f2;max-width:800px;margin:0 auto;padding:60px 56px;position:relative;min-height:1123px;font-size:16px;color:#2a2118;box-sizing:border-box}
+      .lux-page *,.lux-page *::before,.lux-page *::after{box-sizing:border-box}
       .lux-page::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:#b8935a}
       .lux-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px}
       .lux-company{font:600 21px/1 "Cormorant Garamond",serif;letter-spacing:.04em;white-space:nowrap}
@@ -892,10 +893,9 @@ function renderLuxuryPreview(inv, client, biz) {
       .lux-invoice-word{font:italic 300 36px/1 "Cormorant Garamond",serif;color:#b8935a}
       .lux-invoice-num{font:600 72px/1 "Cormorant Garamond",serif;letter-spacing:-.02em;color:#e8d9b8;margin-top:-8px}
       .lux-rule{border:0;border-top:.5px solid #d6c9b0;margin:0 0 28px 0}
-      .lux-meta{display:grid;grid-template-columns:0.9fr 1fr 1fr;gap:24px;margin-bottom:36px}
-      .lux-meta>div{min-width:0}
-      .lux-meta .lux-label{margin-bottom:16px;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#b8935a}
-      .lux-meta .lux-value{font:400 14px/1.5 "Cormorant Garamond",serif;color:#2a2118;overflow-wrap:break-word;word-break:break-word}
+      .lux-meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-bottom:36px}
+      .lux-meta .lux-label{margin-bottom:6px;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#b8935a}
+      .lux-meta .lux-value{font:400 14px/1.5 "Cormorant Garamond",serif;color:#2a2118}
       table.lux-items{width:100%;border-collapse:collapse}
       table.lux-items th{text-align:left;padding:9px 0;border-bottom:.5px solid #d6c9b0;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#b8935a}
       table.lux-items th.lux-right,table.lux-items td.lux-right{text-align:right}
@@ -905,7 +905,7 @@ function renderLuxuryPreview(inv, client, biz) {
       .lux-totals-wrap{display:flex;justify-content:flex-end;margin-top:18px}
       .lux-totals{width:230px;border-top:.5px solid #d6c9b0;padding-top:14px}
       .lux-totals .lux-row{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;font:400 12px/1 "DM Sans",sans-serif;color:#999}
-      .lux-totals .lux-row.lux-total{font:400 21px/1 "Cormorant Garamond",serif;color:#b8935a;border-top:.5px solid #d6c9b0;margin-top:10px;padding-top:16px}
+      .lux-totals .lux-row.lux-total{font:400 21px/1 "Cormorant Garamond",serif;color:#b8935a;border-top:.5px solid #d6c9b0;margin-top:6px;padding-top:12px}
       .lux-footer{display:flex;gap:32px;margin-top:40px;padding-top:18px;border-top:.5px solid #d6c9b0}
       .lux-footer .lux-label{margin-bottom:4px;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#b8935a}
       .lux-footer .lux-value{font:400 12px/1.2 "DM Sans",sans-serif;color:#888}

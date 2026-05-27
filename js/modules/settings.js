@@ -436,8 +436,8 @@ function buildBusinessCard() {
   swiftI.oninput = () => { swiftI.value = swiftI.value.toUpperCase(); };
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Business Name', nameI), formRow('Email', emailI)));
   body.appendChild(formRow('Address', addressI));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Legal Suffix', legalSuffixI), formRow('Company Registration No.', regI)));
-  body.appendChild(formRow('VAT Number', vatI));
+  body.appendChild(formRow('Legal Suffix', legalSuffixI, 'Shown on the Luxury template sub-line, e.g. "Limited · Reg HE 461745"'));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI), formRow('VAT Number', vatI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('IBAN', ibanI), formRow('BIC', bicI)));
   body.appendChild(formRow('SWIFT', swiftI, 'Used on invoice payment details. BIC and SWIFT are often identical.'));
 

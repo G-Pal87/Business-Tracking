@@ -446,20 +446,20 @@ async function renderLuxury(doc, invoice) {
   // ── Header (.head: space-between, margin-bottom 44px→33pt) ───────────────
   let y = MT;
 
-  // Left: .bn — Cormorant SemiBold 21px→16pt, letter-spacing 0.04em
+  // Left: .bn — Cormorant SemiBold 21px→15.75pt, letter-spacing 0.04em
   doc.setFont('CormorantBold', 'normal');
-  doc.setFontSize(16);
+  doc.setFontSize(15.75);
   doc.setTextColor(...DARK);
   doc.text(biz.name || 'Your Company', ML, y, { charSpace: 0.6 });
 
-  // Left: .bs — DM Sans 11px→8pt, uppercase, letter-spacing 0.2em, gold, margin-top 3px→2pt
+  // Left: .bs — DM Sans 11px→8.25pt, uppercase, letter-spacing 0.2em, gold, margin-top 3px
   const subLine = [
     biz.legalSuffix || '',
     biz.registrationNumber ? `Reg ${biz.registrationNumber}` : '',
   ].filter(Boolean).join(' · ');
   if (subLine) {
     doc.setFont('DMSans', 'normal');
-    doc.setFontSize(8);
+    doc.setFontSize(8.25);
     doc.setTextColor(...GOLD);
     doc.text(subLine.toUpperCase(), ML, y + 15, { charSpace: 1.6 });
   }
@@ -485,14 +485,12 @@ async function renderLuxury(doc, invoice) {
   doc.line(ML, y, MR, y);
   y += 21;
 
-  // ── Meta grid — Billed To 0.9fr, Issued/Due 1fr each, 18pt gap ──────────
-  const META_GAP = 18;
-  const totalW = MR - ML - 2 * META_GAP;   // available width after gaps
-  const unit   = totalW / 2.9;              // 0.9 + 1 + 1 = 2.9 units
-  const col1W  = unit * 0.9;               // Billed To — slightly narrower than peers
+  // ── Meta grid — equal thirds with 18pt gap ───────────────────────────────
+  const metaGap = 18;
+  const colW = (MR - ML - 2 * metaGap) / 3;
   const C1 = ML;
-  const C2 = ML + col1W + META_GAP;
-  const C3 = C2 + unit + META_GAP;
+  const C2 = ML + colW + metaGap;        // 218.4
+  const C3 = ML + 2 * (colW + metaGap);  // 394.8
 
   // Labels — DM Sans 400, 7.5pt, gold, tracked
   doc.setFont('DMSans', 'normal');
@@ -501,7 +499,7 @@ async function renderLuxury(doc, invoice) {
   doc.text('BILLED TO', C1, y, { charSpace: 1.35 });
   doc.text('ISSUED',    C2, y, { charSpace: 1.35 });
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
-  y += 18; // gap between label baseline and value baseline
+  y += 4.5; // 6px margin-bottom
 
   // Values — Cormorant 400, 10.5pt, ink, line-height 1.5 → 15.75pt step
   const LH = 15.75;
@@ -509,20 +507,14 @@ async function renderLuxury(doc, invoice) {
   doc.setFontSize(10.5);
   doc.setTextColor(...DARK);
 
-  // Billed to — wrap each segment to col1W so it never bleeds into Issued
   const billLines = [
     client.name || '',
     ...(client.address || '').split(/\n|,/).map(s => s.trim()).filter(Boolean),
   ].filter(Boolean);
 
-  const valueY = y; // baseline shared by all three columns
-  let billRunY = valueY;
-  billLines.forEach((line) => {
-    const wrapped = doc.splitTextToSize(line, col1W - 2);
-    doc.text(wrapped, C1, billRunY);
-    billRunY += wrapped.length * LH;
-  });
-  const billH = Math.max(billRunY - valueY, LH);
+  const valueY = y;
+  billLines.forEach((line, i) => doc.text(line, C1, valueY + i * LH));
+  const billH = Math.max(billLines.length, 1) * LH;
 
   // Issued / Due — aligned to the same baseline as the first bill line
   doc.text(fmtDate(invoice.issueDate), C2, valueY);
@@ -663,13 +655,13 @@ async function renderLuxury(doc, invoice) {
       doc.setFontSize(7.5);
       doc.setTextColor(...GOLD);
       doc.text(f.label, fx, y, { charSpace: 1.2 });
+      const labelW = doc.getTextWidth(f.label) + (f.label.length - 1) * 1.2;
 
       doc.setFontSize(9);
       doc.setTextColor(...FTR);
       doc.text(f.value, fx, y + 11); // label height (~7.5pt) + 4px gap (~3pt) ≈ 11pt below
+      const valueW = doc.getTextWidth(f.value);
 
-      const labelW = doc.getStringUnitWidth(f.label) * 7.5 + (f.label.length - 1) * 1.2;
-      const valueW = doc.getStringUnitWidth(f.value) * 9;
       fx += Math.max(labelW, valueW) + FOOT_GAP;
     });
   }
