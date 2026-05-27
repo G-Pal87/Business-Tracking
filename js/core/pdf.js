@@ -514,9 +514,11 @@ async function renderLuxury(doc, invoice) {
     ...(client.address || '').split(/\n|,/).map(s => s.trim()).filter(Boolean),
   ].filter(Boolean);
 
+  const wrappedBillLines = billLines.flatMap(line => doc.splitTextToSize(line, 158));
+
   const valueY = y;
-  billLines.forEach((line, i) => doc.text(line, C1, valueY + i * LH));
-  const billH = Math.max(billLines.length, 1) * LH;
+  wrappedBillLines.forEach((line, i) => doc.text(line, C1, valueY + i * LH));
+  const billH = Math.max(wrappedBillLines.length, 1) * LH;
 
   // Issued / Due — aligned to the same baseline as the first bill line
   doc.text(fmtDate(invoice.issueDate), C2, valueY);
