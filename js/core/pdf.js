@@ -573,15 +573,15 @@ async function renderLuxury(doc, invoice) {
   doc.line(ML, y, MR, y);
   y += 12;
 
-  // tbody td: Cormorant 15px→11.25pt, padding 16px→12pt each side
-  // .ds sub-line: 12px→9pt, italic, gold, margin-top 2px→1.5pt
   for (const li of invoice.lineItems || []) {
-    // Split description on newline — first line bold, rest italic gold sub-line
-    const parts     = (li.description || '').split('\n');
-    const mainDesc  = parts[0];
-    const subDesc   = parts.slice(1).join(' ').trim();
+    const parts       = (li.description || '').split('\n');
+    const mainDesc    = parts[0];
+    const subDesc     = parts.slice(1).join(' ').trim();
     const mainWrapped = doc.splitTextToSize(mainDesc, DESC_W);
-    const rowH = 12 + mainWrapped.length * 12 + (subDesc ? 10 : 0) + 12;
+    const mainH       = mainWrapped.length * 12;
+    const subH        = subDesc ? 11 : 0;
+    const descTotal   = mainH + (subDesc ? 1.5 + subH : 0);
+    const rowH        = 10 + descTotal + 10; // space-before 10pt + content + space-after 10pt
 
     if (y + rowH > 780) {
       doc.addPage();
@@ -592,40 +592,35 @@ async function renderLuxury(doc, invoice) {
       y = MT;
     }
 
-    const ry        = y + 12; // padding-top
-    const mainH     = mainWrapped.length * 12;
-    const subH      = subDesc ? 12 : 0;
-    const descTotal = mainH + subH;
-    const numberY   = ry + (descTotal - 12) / 2; // vertical mid of description block
+    const descY   = y + 10;  // space-before description: 10pt (Word: 200 twips)
+    const numberY = y + 14;  // space-before qty/rate/amount: 14pt (Word: 280 twips)
 
-    // Description
-    doc.setFont('Cormorant', 'italic');
+    // Description — Georgia italic 11.5pt
+    doc.setFont('Georgia', 'italic');
     doc.setFontSize(11.5);
     doc.setTextColor(...DARK);
-    doc.text(mainWrapped, C_DESC, ry);
+    doc.text(mainWrapped, C_DESC, descY);
 
     if (subDesc) {
       doc.setFont('Cormorant', 'italic');
       doc.setFontSize(9);
       doc.setTextColor(...GOLD);
-      doc.text(subDesc, C_DESC, ry + mainH + 3);
+      doc.text(subDesc, C_DESC, descY + mainH + 1.5);
     }
 
-    // Qty / Rate / Amount — vertically centered on the description block
-    doc.setFont('Cormorant', 'italic');
+    // Qty (center) / Rate (right) / Amount (right) — Georgia italic 10.5pt
+    doc.setFont('Georgia', 'italic');
     doc.setFontSize(10.5);
     doc.setTextColor(...DARK);
-    doc.text(`${li.quantity} ${li.unit || ''}`.trim(), C_QTY,  numberY);
-    doc.text(formatMoney(li.rate,  invoice.currency),  C_RATE, numberY);
+    doc.text(`${li.quantity} ${li.unit || ''}`.trim(), C_QTY,  numberY, { align: 'right' });
+    doc.text(formatMoney(li.rate,  invoice.currency),  C_RATE, numberY, { align: 'right' });
     doc.text(formatMoney(li.total, invoice.currency),  C_AMT,  numberY, { align: 'right' });
 
     y += rowH;
-    const isLastItem = li === (invoice.lineItems || [])[invoice.lineItems.length - 1];
-    if (!isLastItem) {
-      doc.setDrawColor(...ROWDIV);
-      doc.setLineWidth(0.5);
-      doc.line(ML, y, MR, y);
-    }
+    // Divider after every row — lighter than ROWDIV, aligned to table columns
+    doc.setDrawColor(245, 239, 226);
+    doc.setLineWidth(0.5);
+    doc.line(ML, y, MR, y);
   }
 
   // ── Totals (.tot: margin-top 20px→15pt, width 230px→172pt) ───────────────
