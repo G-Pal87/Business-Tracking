@@ -596,7 +596,7 @@ async function renderLuxury(doc, invoice) {
     const numberY   = ry + (descTotal - 12) / 2; // vertical mid of description block
 
     // Description
-    doc.setFont('Cormorant', 'normal');
+    doc.setFont('CormorantReg', 'normal');
     doc.setFontSize(11.25);
     doc.setTextColor(...DARK);
     doc.text(mainWrapped, C_DESC, ry);
@@ -609,7 +609,7 @@ async function renderLuxury(doc, invoice) {
     }
 
     // Qty / Rate / Amount — vertically centered on the description block
-    doc.setFont('Cormorant', 'normal');
+    doc.setFont('CormorantReg', 'normal');
     doc.setFontSize(11.25);
     doc.setTextColor(...DARK);
     doc.text(`${li.quantity} ${li.unit || ''}`.trim(), C_QTY,  numberY);
@@ -651,7 +651,7 @@ async function renderLuxury(doc, invoice) {
   doc.line(TOT_L, y, MR, y);
   y += 16; // padding-top — increased from 9 so Total doesn't touch the divider
 
-  doc.setFont('Cormorant', 'normal');
+  doc.setFont('CormorantReg', 'normal');
   doc.setFontSize(15.75);
   doc.setTextColor(...GOLD);
   doc.text('Total', TOT_L, y);
