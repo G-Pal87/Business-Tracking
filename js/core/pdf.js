@@ -575,10 +575,10 @@ async function renderLuxury(doc, invoice) {
     const mainDesc    = parts[0];
     const subDesc     = parts.slice(1).join(' ').trim();
     const mainWrapped = doc.splitTextToSize(mainDesc, DESC_W);
-    const mainH       = mainWrapped.length * 12;
+    const mainH       = mainWrapped.length * 14; // 14pt line height for 11pt font
     const subH        = subDesc ? 10 : 0;
     const descTotal   = mainH + (subDesc ? 1.5 + subH : 0);
-    const rowH        = 10 + descTotal + 10;
+    const rowH        = 14 + descTotal + 10; // 14pt top padding + content + 10pt bottom
 
     if (y + rowH > 780) {
       doc.addPage();
@@ -589,8 +589,9 @@ async function renderLuxury(doc, invoice) {
       y = MT;
     }
 
-    const descY   = y + 10; // space-before description: 10pt (Word: 200 twips)
-    const numberY = y + 14; // space-before qty/rate/amount: 14pt (Word: 280 twips)
+    // Single baseline for all columns; for multi-line desc, numbers center on the block
+    const descY   = y + 14;
+    const numberY = descY + Math.max(0, (descTotal - 14) / 2);
 
     // Description — Georgia bolditalic 11pt #31302E (Word: Georgia 11pt bold italic)
     doc.setFont('Georgia', 'bolditalic');
