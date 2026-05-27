@@ -906,7 +906,7 @@ function renderLuxuryPreview(inv, client, biz) {
       .lux-rule{border:0;border-top:.5px solid #d6c9b0;margin:0 0 44px 0}
       .lux-meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-bottom:36px}
       .lux-meta .lux-label{margin-bottom:6px;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#b8935a}
-      .lux-meta .lux-value{font:400 14px/1.5 "Cormorant Garamond",serif;color:#2a2118}
+      .lux-meta .lux-value{font:400 14px/1.5 "Cormorant Garamond",serif;color:#2a2118;overflow-wrap:break-word;word-break:break-word}
       table.lux-items{width:100%;border-collapse:collapse}
       table.lux-items th{text-align:left;padding:9px 0;border-bottom:.5px solid #d6c9b0;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#b8935a}
       table.lux-items th.lux-right,table.lux-items td.lux-right{text-align:right}
