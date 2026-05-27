@@ -853,8 +853,8 @@ function renderLuxuryPreview(inv, client, biz) {
   ].filter(Boolean).join(' · ');
 
   const bizDetails = [
-    biz.address || '',
     biz.vatNumber ? `VAT: ${biz.vatNumber}` : '',
+    biz.address || '',
   ].filter(Boolean);
 
   const billLines = [
