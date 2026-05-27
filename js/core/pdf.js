@@ -519,11 +519,11 @@ async function renderLuxury(doc, invoice) {
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
   y += 18; // label-to-value gap
 
-  // Values — Cormorant 400, 10.5pt, ink, line-height 1.5 → 15.75pt step
-  const LH = 15.75;
+  // Values — Cormorant Garamond 400 upright, 14px→10.5pt, #2a2118, line-height 1.5→15.75pt
+  const LH = 15.75; // 14px × 1.5 × 0.75
   doc.setFont('Cormorant', 'normal');
   doc.setFontSize(10.5);
-  doc.setTextColor(...DARK);
+  doc.setTextColor(...DARK); // #2a2118
 
   const billLines = [
     client.name || '',
@@ -539,7 +539,10 @@ async function renderLuxury(doc, invoice) {
   wrappedBillLines.forEach((line, i) => doc.text(line, C1, valueY + i * LH));
   const billH = Math.max(wrappedBillLines.length, 1) * LH;
 
-  // Issued / Due — aligned to the same baseline as the first bill line
+  // Issued / Due — same font as Billed To value
+  doc.setFont('Cormorant', 'normal');
+  doc.setFontSize(10.5);
+  doc.setTextColor(...DARK);
   doc.text(fmtDate(invoice.issueDate), C2, valueY);
   doc.text(fmtDate(invoice.dueDate),   C3, valueY);
 
