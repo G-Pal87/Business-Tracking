@@ -13,6 +13,15 @@ export const PDF_TEMPLATES = [
 // ── Font loader (fetch from repo, cache in memory) ────────────────────────────
 const _fontCache = {};
 
+function arrayBufToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  }
+  return btoa(binary);
+}
+
 async function loadFont(doc, filename, family, style) {
   const cacheKey = `${family}:${style}`;
   if (!_fontCache[cacheKey]) {
@@ -20,9 +29,7 @@ async function loadFont(doc, filename, family, style) {
     const url  = `${base}/assets/fonts/${filename}`;
     const res  = await fetch(url);
     if (!res.ok) throw new Error(`Font fetch failed: ${filename} (${res.status})`);
-    const buf  = await res.arrayBuffer();
-    const b64  = btoa(String.fromCharCode(...new Uint8Array(buf)));
-    _fontCache[cacheKey] = b64;
+    _fontCache[cacheKey] = arrayBufToBase64(await res.arrayBuffer());
   }
   doc.addFileToVFS(filename, _fontCache[cacheKey]);
   doc.addFont(filename, family, style);
