@@ -786,7 +786,7 @@ export function openBuilder(existing, { onSaved } = {}) {
       save.disabled = true;
       save.textContent = 'Uploading PDF…';
       try {
-        const pdfDoc = generateInvoicePDF(inv);
+        const pdfDoc = await generateInvoicePDF(inv);
         const dataUri = pdfDoc.output('datauristring');
         const b64 = dataUri.split(',')[1];
         if (!b64) throw new Error('PDF generation produced empty content');
@@ -1334,7 +1334,7 @@ async function resolveInvoiceBlob(inv) {
     return b64toBlob(b64);
   }
   if (inv.pdfData) return b64toBlob(inv.pdfData);
-  return generateInvoicePDF(inv).output('blob');
+  return (await generateInvoicePDF(inv)).output('blob');
 }
 
 async function downloadOriginalPDF(inv) {
@@ -1380,7 +1380,7 @@ async function openPDFViewer(inv) {
     // Builder invoices: always regenerate from current settings so changes
     // (business info, template, SWIFT etc.) are reflected immediately
     try {
-      const blob = generateInvoicePDF(inv).output('blob');
+      const blob = (await generateInvoicePDF(inv)).output('blob');
       objectUrl  = URL.createObjectURL(blob);
       frame.src  = objectUrl;
       bodyWrap.replaceChildren(frame);

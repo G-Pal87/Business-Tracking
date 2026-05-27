@@ -4,10 +4,39 @@ import { state } from './state.js';
 import { fmtDate } from './ui.js';
 
 export const PDF_TEMPLATES = [
-  { value: 'standard',   label: 'Standard',         description: 'Clean two-column header, light table' },
-  { value: 'corporate',  label: 'Corporate Navy',    description: 'Bold navy header band, formal layout' },
-  { value: 'minimal',    label: 'Minimal',           description: 'Ultra-clean, accent stripe, lots of whitespace' },
+  { value: 'standard',  label: 'Standard',      description: 'Clean two-column header, light table' },
+  { value: 'luxury',    label: 'Luxury',         description: 'Parchment background, gold accents, serif typography' },
+  { value: 'corporate', label: 'Corporate Navy', description: 'Bold navy header band, formal layout' },
+  { value: 'minimal',   label: 'Minimal',        description: 'Ultra-clean, accent stripe, lots of whitespace' },
 ];
+
+// ── Font loader (fetch from repo, cache in memory) ────────────────────────────
+const _fontCache = {};
+
+async function loadFont(doc, filename, family, style) {
+  const cacheKey = `${family}:${style}`;
+  if (!_fontCache[cacheKey]) {
+    const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
+    const url  = `${base}/assets/fonts/${filename}`;
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error(`Font fetch failed: ${filename} (${res.status})`);
+    const buf  = await res.arrayBuffer();
+    const b64  = btoa(String.fromCharCode(...new Uint8Array(buf)));
+    _fontCache[cacheKey] = b64;
+  }
+  doc.addFileToVFS(filename, _fontCache[cacheKey]);
+  doc.addFont(filename, family, style);
+}
+
+async function loadAllFonts(doc) {
+  await Promise.all([
+    loadFont(doc, 'CormorantGaramond-Light.ttf',      'Cormorant', 'normal'),
+    loadFont(doc, 'CormorantGaramond-LightItalic.ttf','Cormorant', 'italic'),
+    loadFont(doc, 'CormorantGaramond-SemiBold.ttf',   'CormorantBold', 'normal'),
+    loadFont(doc, 'DMSans-Regular.ttf',               'DMSans', 'normal'),
+    loadFont(doc, 'DMSans-Medium.ttf',                'DMSans', 'bold'),
+  ]);
+}
 
 
 function bizLines(biz) {
@@ -376,15 +405,253 @@ function renderMinimal(doc, invoice) {
   y = renderNotes(doc, invoice, y, margin);
 }
 
+// ── Template: Luxury (Cormorant Garamond + DM Sans, parchment + gold) ─────────
+async function renderLuxury(doc, invoice) {
+  await loadAllFonts(doc);
+
+  const client = byId('clients', invoice.clientId) || {};
+  const biz    = state.db.settings?.business || {};
+
+  const W      = 595;
+  const margin = 48;       // ~56px
+  const rEdge  = W - margin;
+
+  // Colours
+  const PARCH  = [250, 247, 242];   // #faf7f2
+  const DARK   = [42,  33,  24];    // #2a2118
+  const GOLD   = [184, 147, 90];    // #b8935a
+  const HAIR   = [214, 201, 176];   // #d6c9b0
+  const ROWDIV = [237, 230, 214];   // #ede6d6
+  const GHOST  = [232, 217, 184];   // #e8d9b8
+  const MUTED  = [153, 153, 153];   // #999
+  const FOOTER = [136, 136, 136];   // #888
+
+  // Page background
+  doc.setFillColor(...PARCH);
+  doc.rect(0, 0, W, 841, 'F');
+
+  // Top gold border 4pt
+  doc.setFillColor(...GOLD);
+  doc.rect(0, 0, W, 3, 'F');
+
+  let y = 52;
+
+  // ── Header ─────────────────────────────────────────────────────────────────
+  // Left: company name
+  doc.setFont('CormorantBold', 'normal');
+  doc.setFontSize(16);
+  doc.setTextColor(...DARK);
+  doc.text(biz.name || 'Your Company', margin, y);
+
+  // Left: sub-line (reg/type)
+  const subParts = [
+    biz.registrationNumber ? `Reg ${biz.registrationNumber}` : ''
+  ].filter(Boolean);
+  if (subParts.length || biz.vatNumber) {
+    doc.setFont('DMSans', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(...GOLD);
+    const subText = subParts.join(' · ');
+    doc.text(subText, margin, y + 13, { charSpace: 1.2 });
+  }
+
+  // Right: "Invoice" italic light serif
+  doc.setFont('Cormorant', 'italic');
+  doc.setFontSize(26);
+  doc.setTextColor(...GOLD);
+  doc.text('Invoice', rEdge, y, { align: 'right' });
+
+  // Right: ghost number
+  doc.setFont('CormorantBold', 'normal');
+  doc.setFontSize(54);
+  doc.setTextColor(...GHOST);
+  doc.text(`#${invoice.number || 'DRAFT'}`, rEdge, y + 40, { align: 'right' });
+
+  y += 70;
+
+  // ── Hairline rule ───────────────────────────────────────────────────────────
+  doc.setDrawColor(...HAIR);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, rEdge, y);
+  y += 22;
+
+  // ── Meta grid: BILLED TO / ISSUED / DUE ────────────────────────────────────
+  const col1 = margin;
+  const col2 = margin + 180;
+  const col3 = margin + 320;
+
+  // Labels
+  doc.setFont('DMSans', 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(...GOLD);
+  ['BILLED TO', 'ISSUED', 'DUE'].forEach((lbl, i) => {
+    doc.text(lbl, [col1, col2, col3][i], y, { charSpace: 1.4 });
+  });
+  y += 11;
+
+  // BILLED TO value (multi-line)
+  doc.setFont('Cormorant', 'normal');
+  doc.setFontSize(11);
+  doc.setTextColor(...DARK);
+  const billLines = [
+    client.name || '',
+    ...(client.address ? client.address.split(',').map(s => s.trim()) : []),
+    client.vatNumber ? `VAT: ${client.vatNumber}` : '',
+    client.registrationNumber ? `Reg: ${client.registrationNumber}` : '',
+  ].filter(Boolean);
+  billLines.forEach((line, i) => {
+    if (i === 0) { doc.setFont('CormorantBold', 'normal'); }
+    else         { doc.setFont('Cormorant', 'normal'); }
+    doc.text(line, col1, y + i * 13);
+  });
+
+  // ISSUED / DUE values
+  doc.setFont('Cormorant', 'normal');
+  doc.setFontSize(11);
+  doc.setTextColor(...DARK);
+  doc.text(fmtDate(invoice.issueDate), col2, y);
+  doc.text(fmtDate(invoice.dueDate),   col3, y);
+
+  y += Math.max(billLines.length * 13, 13) + 28;
+
+  // ── Line items table ────────────────────────────────────────────────────────
+  const C_DESC  = margin;
+  const C_QTY   = margin + 270;
+  const C_RATE  = margin + 360;
+  const C_AMT   = rEdge;
+  const DESC_W  = 240;
+
+  // Table header
+  doc.setFont('DMSans', 'normal');
+  doc.setFontSize(7.5);
+  doc.setTextColor(...GOLD);
+  doc.text('DESCRIPTION', C_DESC, y, { charSpace: 1.2 });
+  doc.text('QTY',         C_QTY,  y, { charSpace: 1.2 });
+  doc.text('RATE',        C_RATE, y, { charSpace: 1.2 });
+  doc.text('AMOUNT',      C_AMT,  y, { align: 'right', charSpace: 1.2 });
+
+  y += 8;
+  doc.setDrawColor(...HAIR);
+  doc.setLineWidth(0.5);
+  doc.line(margin, y, rEdge, y);
+  y += 16;
+
+  // Rows
+  for (const li of invoice.lineItems || []) {
+    const descLines = doc.splitTextToSize(li.description || '', DESC_W);
+    const hasNote   = li.note || li.period;
+    const rowH      = descLines.length * 14 + (hasNote ? 14 : 0) + 22;
+    if (y + rowH > 780) { doc.addPage(); doc.setFillColor(...PARCH); doc.rect(0, 0, W, 841, 'F'); y = margin; }
+
+    // Description main
+    doc.setFont('CormorantBold', 'normal');
+    doc.setFontSize(12);
+    doc.setTextColor(...DARK);
+    doc.text(descLines, C_DESC, y);
+
+    // Sub-line (note/period from description second line if split)
+    if (descLines.length > 1) {
+      doc.setFont('Cormorant', 'italic');
+      doc.setFontSize(10);
+      doc.setTextColor(...GOLD);
+    }
+
+    // Qty / Rate / Amount
+    doc.setFont('Cormorant', 'normal');
+    doc.setFontSize(12);
+    doc.setTextColor(...DARK);
+    doc.text(`${li.quantity} ${li.unit || ''}`.trim(), C_QTY,  y);
+    doc.text(formatMoney(li.rate,  invoice.currency),  C_RATE, y);
+    doc.text(formatMoney(li.total, invoice.currency),  C_AMT,  y, { align: 'right' });
+
+    y += descLines.length * 14 + 16;
+    doc.setDrawColor(...ROWDIV);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, rEdge, y);
+    y += 10;
+  }
+
+  y += 10;
+
+  // ── Totals ─────────────────────────────────────────────────────────────────
+  const TOT_X = rEdge - 175;
+
+  doc.setDrawColor(...HAIR);
+  doc.setLineWidth(0.5);
+  doc.line(TOT_X, y, rEdge, y);
+  y += 14;
+
+  doc.setFont('DMSans', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...MUTED);
+  doc.text('Subtotal', TOT_X, y);
+  doc.text(formatMoney(invoice.subtotal, invoice.currency), rEdge, y, { align: 'right' });
+  y += 16;
+
+  doc.text(`Tax (${invoice.taxRate || 0}%)`, TOT_X, y);
+  doc.text(formatMoney(invoice.tax || 0, invoice.currency), rEdge, y, { align: 'right' });
+  y += 8;
+
+  doc.setDrawColor(...HAIR);
+  doc.line(TOT_X, y, rEdge, y);
+  y += 14;
+
+  doc.setFont('Cormorant', 'normal');
+  doc.setFontSize(16);
+  doc.setTextColor(...GOLD);
+  doc.text('Total', TOT_X, y);
+  doc.text(formatMoney(invoice.total, invoice.currency), rEdge, y, { align: 'right' });
+
+  y += 30;
+
+  // ── Notes ──────────────────────────────────────────────────────────────────
+  if (invoice.notes) {
+    doc.setFont('DMSans', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...MUTED);
+    const noteLines = doc.splitTextToSize(invoice.notes, rEdge - margin);
+    doc.text(noteLines, margin, y);
+    y += noteLines.length * 12 + 16;
+  }
+
+  // ── Footer: IBAN / BIC / SWIFT ─────────────────────────────────────────────
+  const footerFields = [
+    biz.iban  ? { label: 'IBAN',  value: biz.iban }  : null,
+    biz.bic   ? { label: 'BIC',   value: biz.bic }   : null,
+    biz.swift && biz.swift !== biz.bic ? { label: 'SWIFT', value: biz.swift } : null,
+  ].filter(Boolean);
+
+  if (footerFields.length) {
+    y += 8;
+    doc.setDrawColor(...HAIR);
+    doc.setLineWidth(0.5);
+    doc.line(margin, y, rEdge, y);
+    y += 14;
+
+    footerFields.forEach((f, i) => {
+      const fx = margin + i * 120;
+      doc.setFont('DMSans', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(...GOLD);
+      doc.text(f.label, fx, y, { charSpace: 1.2 });
+      doc.setFontSize(9);
+      doc.setTextColor(...FOOTER);
+      doc.text(f.value, fx, y + 12);
+    });
+  }
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export function generateInvoicePDF(invoice, templateOverride) {
+export async function generateInvoicePDF(invoice, templateOverride) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
 
   const tpl = templateOverride || state.db.settings?.business?.invoiceTemplate || 'standard';
 
-  if (tpl === 'corporate') {
+  if (tpl === 'luxury') {
+    await renderLuxury(doc, invoice);
+  } else if (tpl === 'corporate') {
     renderCorporate(doc, invoice);
   } else if (tpl === 'minimal') {
     renderMinimal(doc, invoice);
@@ -395,7 +662,7 @@ export function generateInvoicePDF(invoice, templateOverride) {
   return doc;
 }
 
-export function downloadInvoicePDF(invoice, filename) {
-  const doc = generateInvoicePDF(invoice);
+export async function downloadInvoicePDF(invoice, filename) {
+  const doc = await generateInvoicePDF(invoice);
   doc.save(filename || `${invoice.number || 'invoice'}.pdf`);
 }
