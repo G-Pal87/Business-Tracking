@@ -488,8 +488,8 @@ async function renderLuxury(doc, invoice) {
   doc.setTextColor(...GOLD);
   doc.text('Invoice', MR, y, { align: 'right' });
 
-  // Right: ghost number — Cormorant SemiBold 42pt, #E5D9BB
-  doc.setFont('CormorantBold', 'normal');
+  // Right: ghost number — Arial (Helvetica) 42pt, #E5D9BB
+  doc.setFont('helvetica', 'normal');
   doc.setFontSize(42);
   doc.setTextColor(...GHOST);
   doc.text(`#${invoice.number || 'DRAFT'}`, MR, y + 30, { align: 'right' });
