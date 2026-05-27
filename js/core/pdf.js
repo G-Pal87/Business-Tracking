@@ -45,6 +45,7 @@ async function loadAllFonts(doc) {
     loadFont(doc, 'DMSans-Medium.ttf',                'DMSans', 'bold'),
     loadFont(doc, 'Gelasio-Regular.ttf',              'Georgia', 'normal'),
     loadFont(doc, 'Gelasio-Italic.ttf',               'Georgia', 'italic'),
+    loadFont(doc, 'Gelasio-BoldItalic.ttf',           'Georgia', 'bolditalic'),
   ]);
 }
 
@@ -630,27 +631,27 @@ async function renderLuxury(doc, invoice) {
   doc.setDrawColor(...HAIR);
   doc.setLineWidth(0.5);
   doc.line(TOT_L, y, MR, y);
-  y += 10.5; // padding-top 14px
+  y += 7; // space-before Subtotal: 7pt (Word: 140 twips)
 
-  // .tr rows: DM Sans 12px→9pt, #999, padding 4px→3pt
-  doc.setFont('DMSans', 'normal');
-  doc.setFontSize(9);
+  // Subtotal / Tax — Arial bold italic 8pt, #9B9A96
+  doc.setFont('helvetica', 'bolditalic');
+  doc.setFontSize(8);
   doc.setTextColor(...MUTED);
   doc.text('Subtotal', TOT_L, y);
   doc.text(formatMoney(invoice.subtotal, invoice.currency), MR, y, { align: 'right' });
-  y += 13.5; // 9pt font + equal top/bottom padding
+  y += 10; // 8pt font + space-after(1pt) + space-before(1pt)
 
   doc.text(`Tax (${invoice.taxRate || 0}%)`, TOT_L, y);
   doc.text(formatMoney(invoice.tax || 0, invoice.currency), MR, y, { align: 'right' });
-  y += 10.5; // 9pt font + buffer before divider
+  y += 10; // 8pt font + spacing before divider
 
-  // .tf Total: border-top, Cormorant 21px→15.75pt, gold
+  // Total — Georgia bold italic 14pt, gold
   doc.setDrawColor(...HAIR);
   doc.line(TOT_L, y, MR, y);
-  y += 16; // padding-top — increased from 9 so Total doesn't touch the divider
+  y += 5; // space-before Total: 5pt (Word: 100 twips)
 
-  doc.setFont('Cormorant', 'italic');
-  doc.setFontSize(14.5);
+  doc.setFont('Georgia', 'bolditalic');
+  doc.setFontSize(14);
   doc.setTextColor(...GOLD);
   doc.text('Total', TOT_L, y);
   doc.text(formatMoney(invoice.total, invoice.currency), MR, y, { align: 'right' });
@@ -672,11 +673,11 @@ async function renderLuxury(doc, invoice) {
     doc.line(ML, y, MR, y);
     y += 13.5;
 
-    // Content-sized items with 24pt gap — IBAN block is wider because its value is longer
+    // Footer fields — labels: Arial bold italic 6pt gold, values: Arial bold italic 8pt #7A7975
     let fx = ML;
     const FOOT_GAP = 24;
     footerFields.forEach((f) => {
-      doc.setFont('DMSans', 'normal');
+      doc.setFont('helvetica', 'bolditalic');
       doc.setFontSize(6);
       doc.setTextColor(...GOLD);
       doc.text(f.label, fx, y, { charSpace: 1.2 });
@@ -684,7 +685,7 @@ async function renderLuxury(doc, invoice) {
 
       doc.setFontSize(8);
       doc.setTextColor(...FTR);
-      doc.text(f.value, fx, y + 11); // label height (~7.5pt) + 4px gap (~3pt) ≈ 11pt below
+      doc.text(f.value, fx, y + 8); // 6pt label + 2pt space-after (Word: 40 twips)
       const valueW = doc.getTextWidth(f.value);
 
       fx += Math.max(labelW, valueW) + FOOT_GAP;
