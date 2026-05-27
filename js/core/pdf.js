@@ -457,30 +457,21 @@ async function renderLuxury(doc, invoice) {
   doc.setTextColor(...BNAME);
   doc.text(biz.name || 'Your Company', ML, y, { charSpace: 0.6 });
 
-  // Left: sub-line — Arial bolditalic 6pt gold, tracked
-  const subLine = biz.registrationNumber ? `Reg ${biz.registrationNumber}` : '';
-
-  // Left: biz details — Georgia bolditalic 10pt #31302E (same as Billed To value)
-  const bizDetails = [
-    biz.vatNumber ? `VAT: ${biz.vatNumber}` : '',
-    biz.address || '',
+  // Left: sub-info — DMSans regular 8pt gold uppercase (Word sub-line style)
+  const subItems = [
+    biz.registrationNumber ? `Reg No  ${biz.registrationNumber}` : '',
+    biz.vatNumber          ? `VAT  ${biz.vatNumber}`              : '',
+    biz.address            || '',
   ].filter(Boolean);
 
   let leftY = y + 15;
-  if (subLine) {
+  if (subItems.length) {
     doc.setFont('DMSans', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...GOLD);
-    doc.text(subLine.toUpperCase(), ML, leftY, { charSpace: 1.6 });
-    leftY += 12;
-  }
-  if (bizDetails.length) {
-    doc.setFont('Georgia', 'bolditalic');
-    doc.setFontSize(10);
-    doc.setTextColor(...DARK);
-    bizDetails.forEach(line => {
-      doc.text(line, ML, leftY);
-      leftY += 15;
+    subItems.forEach(line => {
+      doc.text(line.toUpperCase(), ML, leftY, { charSpace: 1.6 });
+      leftY += 12;
     });
   }
 
@@ -503,7 +494,7 @@ async function renderLuxury(doc, invoice) {
   doc.setDrawColor(...HAIR);
   doc.setLineWidth(0.5);
   doc.line(ML, y, MR, y);
-  y += 18; // space-before label: 18pt (Word: spacing before=360 twips)
+  y += 33; // rule → meta gap: HTML ref hr.rule margin-bottom 44px → 33pt
 
   // ── Meta grid — Word col widths: Billed To=180pt, Issued=145pt, Due=190pt ──
   const C1 = ML;           // Billed To starts at left margin
