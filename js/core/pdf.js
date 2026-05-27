@@ -9,13 +9,6 @@ export const PDF_TEMPLATES = [
   { value: 'minimal',    label: 'Minimal',           description: 'Ultra-clean, accent stripe, lots of whitespace' },
 ];
 
-function getInvoiceName(invoice) {
-  const client = byId('clients', invoice.clientId);
-  const clientPart = client ? String(client.name).replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 20) : 'CLIENT';
-  const [y, m, d] = (invoice.issueDate || '').split('-');
-  const dateFmt = `${d || ''}${m || ''}${(y || '').slice(2)}`;
-  return `${invoice.number || invoice.id}_${clientPart}_${dateFmt}`;
-}
 
 function bizLines(biz) {
   return [
@@ -153,12 +146,6 @@ function renderStandard(doc, invoice) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(120);
-  doc.text('Invoice Name', rightX, ry);
-  doc.setTextColor(80);
-  doc.text(getInvoiceName(invoice), rightX, ry + 12);
-  ry += 28;
-
-  doc.setTextColor(120);
   doc.text('Issued', rightX, ry);
   doc.setTextColor(0);
   doc.text(fmtDate(invoice.issueDate), rightX, ry + 12);
@@ -284,15 +271,6 @@ function renderCorporate(doc, invoice) {
   doc.line(margin, y, W - margin, y);
   y += 20;
 
-  // Invoice name line
-  doc.setFontSize(8);
-  doc.setTextColor(120);
-  doc.text('INVOICE NAME', margin, y);
-  doc.setTextColor(80);
-  doc.setFontSize(9);
-  doc.text(getInvoiceName(invoice), margin, y + 12);
-  y += 30;
-
   y = renderLineItems(doc, invoice, y, margin, 841);
 
   // Footer band
@@ -393,12 +371,6 @@ function renderMinimal(doc, invoice) {
   clientLines(client).forEach((line, i) => doc.text(line, margin + 10, y + 40 + i * 13));
 
   y += boxH + 24;
-
-  // Invoice name in small accent text above table
-  doc.setFontSize(8);
-  doc.setTextColor(ACC_R, ACC_G, ACC_B);
-  doc.text(getInvoiceName(invoice), margin, y);
-  y += 14;
 
   y = renderLineItems(doc, invoice, y, margin, 841);
   y = renderNotes(doc, invoice, y, margin);
