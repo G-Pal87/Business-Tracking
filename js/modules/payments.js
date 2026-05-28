@@ -307,15 +307,19 @@ function buildAllPayments(wrap) {
       return tr;
     };
 
+    // Build rows into a detached fragment across frames, then attach in a single
+    // append. Appending to a live <tbody> chunk-by-chunk forces the browser to
+    // re-layout the whole table (table-layout:auto) on every chunk — O(n²) reflow
+    // that froze the view with large datasets. One final append = one reflow.
+    const frag = document.createDocumentFragment();
     const renderChunk = () => {
       if (token !== _payRenderToken) return;
-      const end = Math.min(idx + 80, rows.length);
-      const frag = document.createDocumentFragment();
+      const end = Math.min(idx + 120, rows.length);
       for (; idx < end; idx++) frag.appendChild(buildRow(rows[idx]));
-      tb.appendChild(frag);
       if (idx < rows.length) {
         requestAnimationFrame(renderChunk);
       } else {
+        tb.appendChild(frag);
         selectAllChk.onchange = () => {
           rowChks.forEach(c => { c.checked = selectAllChk.checked; });
           selectAllChk.indeterminate = false;
