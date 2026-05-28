@@ -531,7 +531,7 @@ export function buildFilterBar(gF, opts, onChange) {
   // Reset
   bar.appendChild(button('Reset', {
     variant: 'sm ghost',
-    onClick: () => onChange(createFilterState()),
+    onClick: () => onChange(createFilterState({ period: 'all' })),
   }));
 
   return bar;
