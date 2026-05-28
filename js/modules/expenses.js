@@ -1,6 +1,6 @@
 // Expenses module
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal, buildMultiSelect } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod, getPeopleOwners, getPersonName } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
@@ -39,6 +39,7 @@ function receiptRepoPath(expenseId, filename) {
 }
 
 let _sortCol = -1, _sortDir = 1;
+let _expPage = 0, _expPageSize = 100, _expSearch = '';
 let _updateFn = null;
 
 export default {
@@ -100,7 +101,7 @@ function build() {
   const recurrenceFilter = new Set();
 
   let selected = new Set();
-  let _filterTimer, _renderToken = 0;
+  let _filterTimer;
   let _expFieldCache = new Map();
   let yearMS, monthMS, streamMS, propMS, catMS, typeMS, recMS;
   const onFilter = () => { clearTimeout(_filterTimer); _filterTimer = setTimeout(() => { rebuildFilters(); renderAll(); }, 250); };
@@ -229,24 +230,23 @@ function build() {
   wrap.appendChild(filterBar);
   wrap.appendChild(chartsGrid);
 
+  // Data-level search box (filters the whole dataset, not just the visible page)
+  const searchWrap = el('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:8px' });
+  const searchInput = el('input', { type: 'search', class: 'input', placeholder: 'Filter expenses…', style: 'max-width:220px;font-size:13px' });
+  searchInput.value = _expSearch;
+  searchWrap.appendChild(searchInput);
+  wrap.appendChild(searchWrap);
+
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap, {
-    initialCol: _sortCol,
-    initialDir: _sortDir,
-    onSortChange: (col, dir) => { _sortCol = col; _sortDir = dir; }
-  });
-  tableWrap.addEventListener('sf:filter', () => {
-    const countEl  = tableWrap.querySelector('.table-footer-count');
-    const capexEl  = tableWrap.querySelector('.table-footer-capex');
-    const totalEl  = tableWrap.querySelector('.table-footer-total');
-    if (!countEl || !totalEl) return;
-    const vis = [...tableWrap.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none');
-    const total = vis.reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0);
-    const capex = vis.filter(tr => tr.dataset.capex === '1').reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0);
-    countEl.textContent = `${vis.length} expense(s)`;
-    if (capexEl) capexEl.textContent = formatEUR(capex);
-    totalEl.textContent = formatEUR(total);
+
+  const pagerWrap = el('div', { class: 'flex justify-between', style: 'align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px' });
+  wrap.appendChild(pagerWrap);
+
+  let _searchTimer;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(() => { _expSearch = searchInput.value.trim().toLowerCase(); _expPage = 0; renderTable(); }, 200);
   });
 
   const syncDeleteBtn = () => {
@@ -258,11 +258,40 @@ function build() {
     }
   };
 
+  const PAGE_SIZES = [50, 100, 250, 500];
+
+  // Derive an expense's display + sort/search values once, reused by every consumer.
+  const derive = (r) => {
+    const res  = _expFieldCache.get(r.id) || resolveExpenseFields(r);
+    const prop = byId('properties', r.propertyId);
+    const cat  = EXPENSE_CATEGORIES[r.category];
+    const catLabel = cat?.label || r.category;
+    const vendorPerson = r.personId
+      ? ((state.db.people || []).find(p => p.id === r.personId || (p.legacyKey || p.id) === r.personId)?.name || r.personId)
+      : (r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || ''));
+    const eur = toEUR(r.amount, r.currency);
+    return {
+      r, res, prop, cat, catLabel, vendorPerson, eur,
+      propName: prop?.name || '-',
+      isCapex: res.accountingType === 'capex',
+      searchText: [fmtDate(r.date), prop?.name, catLabel, r.description, vendorPerson, r.currency].filter(Boolean).join(' ').toLowerCase()
+    };
+  };
+
+  // Sort accessors, one per data column (matches the header order below).
+  const colAccessors = [
+    d => d.r.date, d => d.propName, d => d.catLabel, d => (d.r.description || ''), d => d.vendorPerson, d => d.eur, d => d.eur
+  ];
+  const HEADERS = [
+    ['Date', ''], ['Property', ''], ['Category', ''], ['Description', ''], ['Vendor / Person', ''],
+    ['Amount', 'right'], ['EUR', 'right']
+  ];
+
   const renderTable = () => {
-    const token = ++_renderToken;
     selected.clear();
     syncDeleteBtn();
     tableWrap.innerHTML = '';
+    pagerWrap.innerHTML = '';
 
     const allExpenses = listActive('expenses');
     // Ensure cache is warm (may be empty when renderTable is called directly after a delete/edit)
@@ -270,7 +299,8 @@ function build() {
       _expFieldCache = new Map(allExpenses.map(e => [e.id, resolveExpenseFields(e)]));
     }
 
-    const rows = allExpenses.filter(r => {
+    // 1. Facet filters
+    let derived = allExpenses.filter(r => {
       if (yearFilter.size > 0           && !yearFilter.has((r.date || '').slice(0, 4)))                return false;
       if (monthFilter.size > 0          && !monthFilter.has((r.date || '').slice(5, 7)))               return false;
       if (streamFilter.size > 0         && !streamFilter.has(r.stream || ''))                          return false;
@@ -280,65 +310,84 @@ function build() {
       if (accountingTypeFilter.size > 0 && !accountingTypeFilter.has(res?.accountingType))             return false;
       if (recurrenceFilter.size > 0     && !recurrenceFilter.has(res?.recurrence))                     return false;
       return true;
-    });
-    rows.sort((a, b) => (b.date || '').localeCompare(a.date));
+    }).map(derive);
 
-    if (rows.length === 0) {
-      tableWrap.appendChild(el('div', { class: 'empty' }, 'No expenses'));
+    // 2. Text search (whole dataset)
+    if (_expSearch) derived = derived.filter(d => d.searchText.includes(_expSearch));
+
+    // 3. Sort (date desc by default, otherwise by clicked column)
+    if (_sortCol >= 0 && colAccessors[_sortCol]) {
+      const acc = colAccessors[_sortCol], dir = _sortDir;
+      derived.sort((a, b) => {
+        const av = acc(a), bv = acc(b);
+        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+        return String(av ?? '').localeCompare(String(bv ?? '')) * dir;
+      });
+    } else {
+      derived.sort((a, b) => (b.r.date || '').localeCompare(a.r.date || ''));
+    }
+
+    const total = derived.length;
+    if (total === 0) {
+      tableWrap.appendChild(el('div', { class: 'empty' }, _expSearch ? 'No expenses match your search' : 'No expenses'));
       return;
     }
+
+    // Footer totals computed over the full filtered set
+    let totalEUR = 0, capexEUR = 0;
+    for (const d of derived) { totalEUR += d.eur; if (d.isCapex) capexEUR += d.eur; }
+
+    // 4. Paginate
+    const pageCount = Math.max(1, Math.ceil(total / _expPageSize));
+    if (_expPage >= pageCount) _expPage = pageCount - 1;
+    if (_expPage < 0) _expPage = 0;
+    const startIdx = _expPage * _expPageSize;
+    const pageRows = derived.slice(startIdx, startIdx + _expPageSize);
 
     const t = el('table', { class: 'table' });
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr', {});
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    ['Date', 'Property', 'Category', 'Description', 'Vendor / Person'].forEach(h => htr.appendChild(el('th', {}, h)));
-    htr.appendChild(el('th', { class: 'right' }, 'Amount'));
-    htr.appendChild(el('th', { class: 'right' }, 'EUR'));
+    HEADERS.forEach(([label, cls], i) => {
+      const th = el('th', cls ? { class: cls } : {}, label);
+      th.style.cursor = 'pointer';
+      th.style.userSelect = 'none';
+      const arr = el('span', { style: 'margin-left:4px;font-size:10px;opacity:' + (_sortCol === i ? '1' : '0.4') },
+        _sortCol === i ? (_sortDir > 0 ? ' ▲' : ' ▼') : ' ⇅');
+      th.appendChild(arr);
+      th.onclick = () => {
+        if (_sortCol === i) _sortDir *= -1; else { _sortCol = i; _sortDir = 1; }
+        _expPage = 0;
+        renderTable();
+      };
+      htr.appendChild(th);
+    });
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
     const tb = el('tbody');
     t.appendChild(tb);
-    tableWrap.appendChild(t);
-
-    // Compute footer totals from data upfront so they appear before rows finish rendering
-    let totalEUR = 0, capexEUR = 0;
-    for (const r of rows) {
-      const eur = toEUR(r.amount, r.currency);
-      totalEUR += eur;
-      if (_expFieldCache.get(r.id)?.accountingType === 'capex') capexEUR += eur;
-    }
-    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted' }, el('span', { class: 'table-footer-count' }, `${rows.length} expense(s)`), ' · CapEx: ', el('span', { class: 'table-footer-capex' }, formatEUR(capexEUR))),
-      el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
-    ));
 
     const rowChks = [];
-    let idx = 0;
 
-    const buildRow = (r) => {
-      const prop = byId('properties', r.propertyId);
-      const cat  = EXPENSE_CATEGORIES[r.category];
-      const res  = _expFieldCache.get(r.id) || resolveExpenseFields(r);
+    const buildRow = (d) => {
+      const { r, res, cat } = d;
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
       rowChks.push(chk);
       chk.onchange = () => {
         if (chk.checked) selected.add(r.id); else selected.delete(r.id);
         const n = rowChks.filter(c => c.checked).length;
-        selectAllChk.indeterminate = n > 0 && n < rows.length;
-        selectAllChk.checked = n === rows.length;
+        selectAllChk.indeterminate = n > 0 && n < pageRows.length;
+        selectAllChk.checked = n === pageRows.length;
         syncDeleteBtn();
       };
       const tr = el('tr');
-      tr.dataset.eur = String(toEUR(r.amount, r.currency));
-      tr.dataset.capex = res.accountingType === 'capex' ? '1' : '0';
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       tr.appendChild(chkTd);
       tr.appendChild(el('td', {}, fmtDate(r.date)));
-      tr.appendChild(el('td', {}, prop?.name || '-'));
+      tr.appendChild(el('td', {}, d.propName));
       const catCell = el('td', {});
-      catCell.appendChild(el('span', { class: 'badge ' + (r.category === 'renovation' ? 'warning' : '') }, cat?.label || r.category));
+      catCell.appendChild(el('span', { class: 'badge ' + (r.category === 'renovation' ? 'warning' : '') }, d.catLabel));
       if (res.accountingType === 'capex' && r.category !== 'renovation')
         catCell.appendChild(el('span', { class: 'badge warning', style: 'margin-left:4px;font-size:10px' }, 'CapEx'));
       tr.appendChild(catCell);
@@ -346,11 +395,9 @@ function build() {
       if (r.recurringGroupId) descCell.appendChild(el('span', { class: 'badge', style: 'margin-right:4px;font-size:10px' }, '↻'));
       descCell.appendChild(document.createTextNode(r.description || ''));
       tr.appendChild(descCell);
-      tr.appendChild(el('td', {}, r.personId
-        ? ((state.db.people || []).find(p => p.id === r.personId || (p.legacyKey || p.id) === r.personId)?.name || r.personId)
-        : (r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || ''))));
+      tr.appendChild(el('td', {}, d.vendorPerson));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
-      tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
+      tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(d.eur)));
       const actions = el('td', { class: 'right' });
       if (r.receipt) {
         const rcptBtn = button('📎', { variant: 'sm ghost' });
@@ -369,28 +416,36 @@ function build() {
       return tr;
     };
 
-    // Build rows into a detached fragment across frames, then attach in a single
-    // append. Appending to a live <tbody> chunk-by-chunk forces the browser to
-    // re-layout the whole table (table-layout:auto) on every chunk — O(n²) reflow
-    // that froze the view with large datasets. One final append = one reflow.
     const frag = document.createDocumentFragment();
-    const renderChunk = () => {
-      if (token !== _renderToken) return; // cancelled by a newer renderTable() call
-      const end = Math.min(idx + 120, rows.length);
-      for (; idx < end; idx++) frag.appendChild(buildRow(rows[idx]));
-      if (idx < rows.length) {
-        requestAnimationFrame(renderChunk);
-      } else {
-        tb.appendChild(frag);
-        selectAllChk.onchange = () => {
-          rowChks.forEach(c => { c.checked = selectAllChk.checked; });
-          selectAllChk.indeterminate = false;
-          if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
-          syncDeleteBtn();
-        };
-      }
+    for (const d of pageRows) frag.appendChild(buildRow(d));
+    tb.appendChild(frag);
+    tableWrap.appendChild(t);
+
+    selectAllChk.onchange = () => {
+      rowChks.forEach(c => { c.checked = selectAllChk.checked; });
+      selectAllChk.indeterminate = false;
+      if (selectAllChk.checked) pageRows.forEach(d => selected.add(d.r.id)); else selected.clear();
+      syncDeleteBtn();
     };
-    renderChunk();
+
+    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
+      el('span', { class: 'muted' }, `${total} expense(s) · CapEx: `, formatEUR(capexEUR)),
+      el('span', {}, 'Total: ', el('strong', { class: 'num' }, formatEUR(totalEUR)))
+    ));
+
+    // Pagination controls
+    const endIdx = Math.min(startIdx + _expPageSize, total);
+    const prevBtn = button('‹ Prev', { variant: 'sm ghost', onClick: () => { if (_expPage > 0) { _expPage--; renderTable(); } } });
+    const nextBtn = button('Next ›', { variant: 'sm ghost', onClick: () => { if (_expPage < pageCount - 1) { _expPage++; renderTable(); } } });
+    prevBtn.disabled = _expPage === 0;
+    nextBtn.disabled = _expPage >= pageCount - 1;
+    const sizeSel = select(PAGE_SIZES.map(n => ({ value: String(n), label: `${n} / page` })), String(_expPageSize));
+    sizeSel.style.maxWidth = '120px';
+    sizeSel.onchange = () => { _expPageSize = Number(sizeSel.value); _expPage = 0; renderTable(); };
+    pagerWrap.appendChild(el('span', { class: 'muted', style: 'font-size:13px' }, `Showing ${startIdx + 1}–${endIdx} of ${total}`));
+    pagerWrap.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center;flex-wrap:wrap' },
+      sizeSel, prevBtn, el('span', { style: 'font-size:13px' }, `Page ${_expPage + 1} / ${pageCount}`), nextBtn
+    ));
   };
 
   // Drilldown helpers shared by both charts
