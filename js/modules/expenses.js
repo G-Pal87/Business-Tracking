@@ -994,6 +994,33 @@ function openForm(existing, defaults = {}, onSave = null) {
         count++;
       }
       toast(`${count} recurring expense(s) added`, 'success');
+    } else if (existing?.recurringGroupId) {
+      const choice = await new Promise(resolve => {
+        let settled = false;
+        const settle = v => { if (!settled) { settled = true; resolve(v); } };
+        const thisBtn = button('This instance only', { variant: 'primary', onClick: () => { close(); settle('one'); } });
+        const allBtn  = button('All occurrences',    { variant: 'primary', onClick: () => { close(); settle('all'); } });
+        const cancelBtn = button('Cancel', { onClick: () => { close(); settle(null); } });
+        const { close } = openModal({
+          title: 'Edit Recurring Expense',
+          body: el('p', {}, 'Do you want to apply this change to this instance only, or to all occurrences in the group?'),
+          footer: [cancelBtn, thisBtn, allBtn],
+          onClose: () => settle(null),
+        });
+      });
+      if (!choice) return;
+      if (choice === 'all') {
+        const siblings = listActive('expenses').filter(e => e.recurringGroupId === existing.recurringGroupId);
+        const { id: _id, date: _date, recurringGroupId: _grp, isGenerated: _gen, manualOverride: _mo, ...sharedFields } = r;
+        for (const sib of siblings) {
+          upsert('expenses', { ...sib, ...sharedFields });
+        }
+        toast(`${siblings.length} occurrence(s) updated`, 'success');
+      } else {
+        if (existing.isGenerated) r.manualOverride = true;
+        upsert('expenses', r);
+        toast('Expense updated', 'success');
+      }
     } else {
       if (existing?.isGenerated) r.manualOverride = true;
       upsert('expenses', r);
