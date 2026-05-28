@@ -309,6 +309,33 @@ export const fmtK = v =>
   : formatEUR(v, { maxFrac: 0 });
 
 /**
+ * groupByMonthKey(rows, dateOf) — group records into a Map keyed by 'YYYY-MM'.
+ *
+ * The bucket key is `dateOf(row).slice(0, 7)`; rows with a missing/empty date
+ * are skipped. This is built to be an exact, reusable substitute for the
+ * `rows.filter(r => dateOf(r)?.slice(0, 7) === key)` pattern repeated across the
+ * dashboards: for any month key, `map.get(key) || []` yields the identical
+ * subset, so any sum/reduce over it produces the identical number. Building the
+ * map once turns O(charts × months × n) re-filtering into a single O(n) pass.
+ *
+ * @param {Array<object>} rows
+ * @param {(row:object)=>(string|undefined|null)} dateOf
+ * @returns {Map<string, object[]>}
+ */
+export function groupByMonthKey(rows, dateOf) {
+  const m = new Map();
+  for (const r of rows) {
+    const d = dateOf(r);
+    if (!d) continue;
+    const key = d.slice(0, 7);
+    let arr = m.get(key);
+    if (!arr) { arr = []; m.set(key, arr); }
+    arr.push(r);
+  }
+  return m;
+}
+
+/**
  * expStream(e) — resolve the business stream for an expense record.
  * Checks e.stream first, then infers from the linked property type.
  */
