@@ -43,10 +43,13 @@ function build() {
 
   const rebuildFilters = () => {
     const allTenants = listActive('tenants');
-    const validProps    = [...new Set(allTenants.filter(t => matchesExcept(t, 'prop'))  .map(t => t.propertyId).filter(Boolean))];
-    const validStatuses = [...new Set(allTenants.filter(t => matchesExcept(t, 'status')).map(t => t.status).filter(Boolean))];
-    propMS.setItems(validProps.map(id => allProps.find(p => p.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name })));
-    statusMS.setItems(validStatuses.map(s => { const m = STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
+    const validProps = new Set(), validStatuses = new Set();
+    for (const t of allTenants) {
+      if (matchesExcept(t, 'prop'))   { if (t.propertyId) validProps.add(t.propertyId); }
+      if (matchesExcept(t, 'status')) { if (t.status) validStatuses.add(t.status); }
+    }
+    propMS.setItems([...validProps].map(id => allProps.find(p => p.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name })));
+    statusMS.setItems([...validStatuses].map(s => { const m = STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
   };
 
   const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
