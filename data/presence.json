@@ -1,13 +1,13 @@
 {
   "entries": {
     "RitaK": {
-      "view": "clients",
-      "t": 1779888797637,
+      "view": "invoices",
+      "t": 1779949674178,
       "name": "Rita"
     },
     "Giorgos": {
       "view": "invoices",
-      "t": 1779902329347,
+      "t": 1779950883358,
       "name": "Giorgos"
     }
   }
