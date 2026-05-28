@@ -6,6 +6,7 @@ import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
 let _allPaySortCol = -1, _allPaySortDir = 1;
+let _allPayPage = 0, _allPayPageSize = 100, _allPaySearch = '';
 let _schedSortCol  = -1, _schedSortDir  = 1;
 let _upcomSortCol  = -1, _upcomSortDir  = 1;
 let _payUpdateFn = null;
@@ -76,7 +77,6 @@ function buildAllPayments(wrap) {
   const propFilter   = new Set();
   const typeFilter   = new Set();
   const statusFilter = new Set();
-  let _payRenderToken = 0;
 
   const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const STATUS_META = {
@@ -176,16 +176,23 @@ function buildAllPayments(wrap) {
   filterBar.appendChild(button('+ Add Payment', { variant: 'primary', onClick: () => openForm() }));
   wrap.appendChild(filterBar);
 
+  // Data-level search box (filters the whole dataset, not just the visible page)
+  const searchWrap = el('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:8px' });
+  const searchInput = el('input', { type: 'search', class: 'input', placeholder: 'Filter payments…', style: 'max-width:220px;font-size:13px' });
+  searchInput.value = _allPaySearch;
+  searchWrap.appendChild(searchInput);
+  wrap.appendChild(searchWrap);
+
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _allPaySortCol, initialDir: _allPaySortDir, onSortChange: (c, d) => { _allPaySortCol = c; _allPaySortDir = d; } });
-  tableWrap.addEventListener('sf:filter', () => {
-    const countEl = tableWrap.querySelector('.table-footer-count');
-    const totalEl = tableWrap.querySelector('.table-footer-total');
-    if (!countEl || !totalEl) return;
-    const vis = [...tableWrap.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none');
-    countEl.textContent = `${vis.length} payment(s)`;
-    totalEl.textContent = formatEUR(vis.reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0));
+
+  const pagerWrap = el('div', { class: 'flex justify-between', style: 'align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px' });
+  wrap.appendChild(pagerWrap);
+
+  let _searchTimer;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(() => { _allPaySearch = searchInput.value.trim().toLowerCase(); _allPayPage = 0; renderTable(); }, 200);
   });
 
   const syncDeleteBtn = () => {
@@ -197,13 +204,55 @@ function buildAllPayments(wrap) {
     }
   };
 
+  const PAGE_SIZES = [50, 100, 250, 500];
+
+  // Derive a payment's display + sort/search values once, reused by every consumer.
+  const derive = (r) => {
+    const prop  = byId('properties', r.propertyId);
+    const sMeta = STATUS_META[r.status] || { label: r.status, css: '' };
+    const rType = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
+    const isNegDisplay  = rType === 'resolution adjustment' || rType === 'adjustment';
+    const isReservation = rType === 'reservation';
+    const dispAmt   = isNegDisplay ? -Math.abs(r.amount) : r.amount;
+    const dispGross = r.airbnbGrossEarnings != null ? (isNegDisplay ? -Math.abs(r.airbnbGrossEarnings) : r.airbnbGrossEarnings) : null;
+    const typeLabel = r.source === 'airbnb' ? (r.airbnbType || r.type || '-') : (r.type || '-');
+    const source    = r.source || 'manual';
+    const conf      = r.confirmationCode || r.airbnbRef || '';
+    const guest     = r.source === 'airbnb' ? (r.notes || '').split(' · ')[0] : (r.notes || '');
+    const eur       = toEUR(dispAmt, r.currency);
+    return {
+      r, prop, sMeta, isReservation, dispAmt, dispGross,
+      propName: prop?.name || '-', typeLabel, source, statusLabel: sMeta.label, conf, guest, eur,
+      checkIn:  r.airbnbCheckIn || '',
+      checkOut: r.airbnbCheckOut || '',
+      nights:   isReservation && r.airbnbNights ? r.airbnbNights : null,
+      avgNight: isReservation ? (r.avgNightExclCleaning != null ? r.avgNightExclCleaning : (r.avgNightlyRate != null ? r.avgNightlyRate : null)) : null,
+      avgGross: isReservation && r.avgGross != null ? r.avgGross : null,
+      searchText: [fmtDate(r.date), prop?.name, typeLabel, source, sMeta.label, conf, guest, r.currency].filter(Boolean).join(' ').toLowerCase()
+    };
+  };
+
+  // Sort accessors, one per data column (matches the header order below).
+  const colAccessors = [
+    d => d.r.date, d => d.propName, d => d.typeLabel, d => d.source, d => d.statusLabel,
+    d => d.conf, d => d.guest, d => d.eur, d => d.eur, d => (d.dispGross ?? -Infinity),
+    d => d.checkIn, d => d.checkOut, d => (d.nights ?? -Infinity),
+    d => (d.avgNight ?? -Infinity), d => (d.avgGross ?? -Infinity)
+  ];
+  const HEADERS = [
+    ['Date', ''], ['Property', ''], ['Type', ''], ['Source', ''], ['Status', ''], ['Conf. Code', ''], ['Guest', ''],
+    ['Amount', 'right'], ['EUR', 'right'], ['Gross', 'right'], ['Check-in', 'right'], ['Check-out', 'right'],
+    ['Nights', 'right'], ['Avg/Night', 'right'], ['Avg Gross/N', 'right']
+  ];
+
   const renderTable = () => {
-    const token = ++_payRenderToken;
     selected.clear();
     syncDeleteBtn();
     tableWrap.innerHTML = '';
+    pagerWrap.innerHTML = '';
 
-    const rows = listActivePayments().filter(r => {
+    // 1. Facet filters
+    let derived = listActivePayments().filter(r => {
       if (yearFilter.size > 0   && !(r.date && yearFilter.has(r.date.slice(0, 4))))  return false;
       if (monthFilter.size > 0  && !(r.date && monthFilter.has(r.date.slice(5, 7)))) return false;
       if (streamFilter.size > 0 && !streamFilter.has(r.stream || ''))                return false;
@@ -211,84 +260,94 @@ function buildAllPayments(wrap) {
       if (typeFilter.size > 0   && !typeFilter.has(getPayType(r)))                   return false;
       if (statusFilter.size > 0 && !statusFilter.has(r.status))                      return false;
       return true;
-    });
-    rows.sort((a, b) => (b.date || '').localeCompare(a.date));
+    }).map(derive);
 
-    if (rows.length === 0) {
-      tableWrap.appendChild(el('div', { class: 'empty' }, 'No payments match your filters'));
+    // 2. Text search (whole dataset)
+    if (_allPaySearch) derived = derived.filter(d => d.searchText.includes(_allPaySearch));
+
+    // 3. Sort (date desc by default, otherwise by clicked column)
+    if (_allPaySortCol >= 0 && colAccessors[_allPaySortCol]) {
+      const acc = colAccessors[_allPaySortCol], dir = _allPaySortDir;
+      derived.sort((a, b) => {
+        const av = acc(a), bv = acc(b);
+        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+        return String(av ?? '').localeCompare(String(bv ?? '')) * dir;
+      });
+    } else {
+      derived.sort((a, b) => (b.r.date || '').localeCompare(a.r.date || ''));
+    }
+
+    const total = derived.length;
+    if (total === 0) {
+      tableWrap.appendChild(el('div', { class: 'empty' }, _allPaySearch ? 'No payments match your search' : 'No payments match your filters'));
       return;
     }
+
+    const totalEUR = derived.reduce((s, d) => s + d.eur, 0);
+
+    // 4. Paginate
+    const pageCount = Math.max(1, Math.ceil(total / _allPayPageSize));
+    if (_allPayPage >= pageCount) _allPayPage = pageCount - 1;
+    if (_allPayPage < 0) _allPayPage = 0;
+    const startIdx = _allPayPage * _allPayPageSize;
+    const pageRows = derived.slice(startIdx, startIdx + _allPayPageSize);
 
     const t = el('table', { class: 'table' });
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr', {});
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    ['Date', 'Property', 'Type', 'Source', 'Status', 'Conf. Code', 'Guest'].forEach(h => htr.appendChild(el('th', {}, h)));
-    htr.appendChild(el('th', { class: 'right' }, 'Amount'));
-    htr.appendChild(el('th', { class: 'right' }, 'EUR'));
-    htr.appendChild(el('th', { class: 'right' }, 'Gross'));
-    ['Check-in', 'Check-out', 'Nights', 'Avg/Night', 'Avg Gross/N'].forEach(h => htr.appendChild(el('th', { class: 'right' }, h)));
+    HEADERS.forEach(([label, cls], i) => {
+      const th = el('th', cls ? { class: cls } : {}, label);
+      th.style.cursor = 'pointer';
+      th.style.userSelect = 'none';
+      const arr = el('span', { style: 'margin-left:4px;font-size:10px;opacity:' + (_allPaySortCol === i ? '1' : '0.4') },
+        _allPaySortCol === i ? (_allPaySortDir > 0 ? ' ▲' : ' ▼') : ' ⇅');
+      th.appendChild(arr);
+      th.onclick = () => {
+        if (_allPaySortCol === i) _allPaySortDir *= -1; else { _allPaySortCol = i; _allPaySortDir = 1; }
+        _allPayPage = 0;
+        renderTable();
+      };
+      htr.appendChild(th);
+    });
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
     const tb = el('tbody');
     t.appendChild(tb);
-    tableWrap.appendChild(t);
-
-    // Compute footer total from data upfront so it shows before rows finish rendering
-    let totalEUR = 0;
-    for (const r of rows) {
-      const rType = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
-      const neg = rType === 'resolution adjustment' || rType === 'adjustment';
-      totalEUR += toEUR(neg ? -Math.abs(r.amount) : r.amount, r.currency);
-    }
-    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted table-footer-count' }, `${rows.length} payment(s)`),
-      el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
-    ));
 
     const rowChks = [];
-    let idx = 0;
 
-    const buildRow = (r) => {
-      const prop  = byId('properties', r.propertyId);
-      const sMeta = STATUS_META[r.status] || { label: r.status, css: '' };
-      const rType = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
-      const isNegDisplay  = rType === 'resolution adjustment' || rType === 'adjustment';
-      const isReservation = rType === 'reservation';
-      const dispAmt   = isNegDisplay ? -Math.abs(r.amount) : r.amount;
-      const dispGross = r.airbnbGrossEarnings != null ? (isNegDisplay ? -Math.abs(r.airbnbGrossEarnings) : r.airbnbGrossEarnings) : null;
-
+    const buildRow = (d) => {
+      const { r, sMeta } = d;
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
       rowChks.push(chk);
       chk.onchange = () => {
         if (chk.checked) selected.add(r.id); else selected.delete(r.id);
         const n = rowChks.filter(c => c.checked).length;
-        selectAllChk.indeterminate = n > 0 && n < rows.length;
-        selectAllChk.checked = n === rows.length;
+        selectAllChk.indeterminate = n > 0 && n < pageRows.length;
+        selectAllChk.checked = n === pageRows.length;
         syncDeleteBtn();
       };
 
       const tr = el('tr');
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       tr.appendChild(chkTd);
-      tr.dataset.eur = String(toEUR(dispAmt, r.currency));
       tr.appendChild(el('td', {}, fmtDate(r.date)));
-      tr.appendChild(el('td', {}, prop?.name || '-'));
-      tr.appendChild(el('td', {}, r.source === 'airbnb' ? (r.airbnbType || r.type || '-') : (r.type || '-')));
-      tr.appendChild(el('td', {}, el('span', { class: 'badge' }, r.source || 'manual')));
-      tr.appendChild(el('td', {}, el('span', { class: `badge ${sMeta.css}` }, sMeta.label)));
-      tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px' }, r.confirmationCode || r.airbnbRef || ''));
-      const guestName = r.source === 'airbnb' ? (r.notes || '').split(' · ')[0] : (r.notes || '');
-      tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, guestName));
-      tr.appendChild(el('td', { class: 'right num' }, formatMoney(dispAmt, r.currency, { maxFrac: 0 })));
-      tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(dispAmt, r.currency))));
-      tr.appendChild(el('td', { class: 'right num muted' }, dispGross != null ? formatMoney(dispGross, r.currency, { maxFrac: 0 }) : ''));
-      tr.appendChild(el('td', { class: 'right muted' }, r.airbnbCheckIn ? fmtDate(r.airbnbCheckIn) : ''));
-      tr.appendChild(el('td', { class: 'right muted' }, r.airbnbCheckOut ? fmtDate(r.airbnbCheckOut) : ''));
-      tr.appendChild(el('td', { class: 'right muted' }, isReservation && r.airbnbNights ? String(r.airbnbNights) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, isReservation ? (r.avgNightExclCleaning != null ? formatMoney(r.avgNightExclCleaning, r.currency, { maxFrac: 0 }) : (r.avgNightlyRate ? formatMoney(r.avgNightlyRate, r.currency, { maxFrac: 0 }) : '')) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, isReservation && r.avgGross != null ? formatMoney(r.avgGross, r.currency, { maxFrac: 0 }) : ''));
+      tr.appendChild(el('td', {}, d.propName));
+      tr.appendChild(el('td', {}, d.typeLabel));
+      tr.appendChild(el('td', {}, el('span', { class: 'badge' }, d.source)));
+      tr.appendChild(el('td', {}, el('span', { class: `badge ${sMeta.css}` }, d.statusLabel)));
+      tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px' }, d.conf));
+      tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, d.guest));
+      tr.appendChild(el('td', { class: 'right num' }, formatMoney(d.dispAmt, r.currency, { maxFrac: 0 })));
+      tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(d.eur)));
+      tr.appendChild(el('td', { class: 'right num muted' }, d.dispGross != null ? formatMoney(d.dispGross, r.currency, { maxFrac: 0 }) : ''));
+      tr.appendChild(el('td', { class: 'right muted' }, d.checkIn ? fmtDate(d.checkIn) : ''));
+      tr.appendChild(el('td', { class: 'right muted' }, d.checkOut ? fmtDate(d.checkOut) : ''));
+      tr.appendChild(el('td', { class: 'right muted' }, d.nights != null ? String(d.nights) : ''));
+      tr.appendChild(el('td', { class: 'right num muted' }, d.avgNight != null ? formatMoney(d.avgNight, r.currency, { maxFrac: 0 }) : ''));
+      tr.appendChild(el('td', { class: 'right num muted' }, d.avgGross != null ? formatMoney(d.avgGross, r.currency, { maxFrac: 0 }) : ''));
       const actions = el('td', { class: 'right' });
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
@@ -307,28 +366,36 @@ function buildAllPayments(wrap) {
       return tr;
     };
 
-    // Build rows into a detached fragment across frames, then attach in a single
-    // append. Appending to a live <tbody> chunk-by-chunk forces the browser to
-    // re-layout the whole table (table-layout:auto) on every chunk — O(n²) reflow
-    // that froze the view with large datasets. One final append = one reflow.
     const frag = document.createDocumentFragment();
-    const renderChunk = () => {
-      if (token !== _payRenderToken) return;
-      const end = Math.min(idx + 120, rows.length);
-      for (; idx < end; idx++) frag.appendChild(buildRow(rows[idx]));
-      if (idx < rows.length) {
-        requestAnimationFrame(renderChunk);
-      } else {
-        tb.appendChild(frag);
-        selectAllChk.onchange = () => {
-          rowChks.forEach(c => { c.checked = selectAllChk.checked; });
-          selectAllChk.indeterminate = false;
-          if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
-          syncDeleteBtn();
-        };
-      }
+    for (const d of pageRows) frag.appendChild(buildRow(d));
+    tb.appendChild(frag);
+    tableWrap.appendChild(t);
+
+    selectAllChk.onchange = () => {
+      rowChks.forEach(c => { c.checked = selectAllChk.checked; });
+      selectAllChk.indeterminate = false;
+      if (selectAllChk.checked) pageRows.forEach(d => selected.add(d.r.id)); else selected.clear();
+      syncDeleteBtn();
     };
-    renderChunk();
+
+    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
+      el('span', { class: 'muted' }, `${total} payment(s)`),
+      el('span', {}, 'Total: ', el('strong', { class: 'num' }, formatEUR(totalEUR)))
+    ));
+
+    // Pagination controls
+    const endIdx = Math.min(startIdx + _allPayPageSize, total);
+    const prevBtn = button('‹ Prev', { variant: 'sm ghost', onClick: () => { if (_allPayPage > 0) { _allPayPage--; renderTable(); } } });
+    const nextBtn = button('Next ›', { variant: 'sm ghost', onClick: () => { if (_allPayPage < pageCount - 1) { _allPayPage++; renderTable(); } } });
+    prevBtn.disabled = _allPayPage === 0;
+    nextBtn.disabled = _allPayPage >= pageCount - 1;
+    const sizeSel = select(PAGE_SIZES.map(n => ({ value: String(n), label: `${n} / page` })), String(_allPayPageSize));
+    sizeSel.style.maxWidth = '120px';
+    sizeSel.onchange = () => { _allPayPageSize = Number(sizeSel.value); _allPayPage = 0; renderTable(); };
+    pagerWrap.appendChild(el('span', { class: 'muted', style: 'font-size:13px' }, `Showing ${startIdx + 1}–${endIdx} of ${total}`));
+    pagerWrap.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center;flex-wrap:wrap' },
+      sizeSel, prevBtn, el('span', { style: 'font-size:13px' }, `Page ${_allPayPage + 1} / ${pageCount}`), nextBtn
+    ));
   };
 
   rebuildFilters();
