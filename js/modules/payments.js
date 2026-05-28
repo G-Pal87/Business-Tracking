@@ -8,14 +8,22 @@ import { navigate } from '../core/router.js';
 let _allPaySortCol = -1, _allPaySortDir = 1;
 let _schedSortCol  = -1, _schedSortDir  = 1;
 let _upcomSortCol  = -1, _upcomSortDir  = 1;
+let _payUpdateFn = null;
 
 export default {
   id: 'payments',
   label: 'Property Payments',
   icon: 'P',
-  render(container) { container.appendChild(build()); },
-  refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
-  destroy() {}
+  render(container) { const { element, update } = build(); _payUpdateFn = update; container.appendChild(element); },
+  refresh() {
+    if (_payUpdateFn) { _payUpdateFn(); return; }
+    const c = document.getElementById('content');
+    c.innerHTML = '';
+    const { element, update } = build();
+    _payUpdateFn = update;
+    c.appendChild(element);
+  },
+  destroy() { _payUpdateFn = null; }
 };
 
 function build() {
@@ -32,12 +40,15 @@ function build() {
     el('div', { class: 'tab' }, 'Rent Schedule'),
     el('div', { class: 'tab' }, 'Upcoming')
   ];
+
+  let schedUpdate = null, upcomUpdate = null;
+
   tabEls.forEach((t, i) => {
     t.onclick = () => {
       tabEls.forEach(x => x.classList.remove('active')); t.classList.add('active');
       sections.forEach((s, j) => { s.style.display = j === i ? '' : 'none'; });
-      if (i === 1 && !scheduleSection.dataset.built) { scheduleSection.dataset.built = '1'; buildScheduleSection(scheduleSection); }
-      if (i === 2 && !upcomingSection.dataset.built) { upcomingSection.dataset.built = '1'; buildUpcomingSection(upcomingSection); }
+      if (i === 1 && !scheduleSection.dataset.built) { scheduleSection.dataset.built = '1'; schedUpdate = buildScheduleSection(scheduleSection); }
+      if (i === 2 && !upcomingSection.dataset.built) { upcomingSection.dataset.built = '1'; upcomUpdate = buildUpcomingSection(upcomingSection); }
     };
     tabs.appendChild(t);
   });
@@ -45,8 +56,16 @@ function build() {
   wrap.appendChild(tabs);
   sections.forEach(s => wrap.appendChild(s));
 
-  buildAllPayments(allSection);
-  return wrap;
+  const allPayUpdate = buildAllPayments(allSection);
+
+  return {
+    element: wrap,
+    update: () => {
+      allPayUpdate();
+      if (schedUpdate) schedUpdate();
+      if (upcomUpdate) upcomUpdate();
+    }
+  };
 }
 
 function buildAllPayments(wrap) {
@@ -184,13 +203,15 @@ function buildAllPayments(wrap) {
     syncDeleteBtn();
     tableWrap.innerHTML = '';
 
-    let rows = [...listActivePayments()];
-    if (yearFilter.size > 0)   rows = rows.filter(r => r.date && yearFilter.has(r.date.slice(0, 4)));
-    if (monthFilter.size > 0)  rows = rows.filter(r => r.date && monthFilter.has(r.date.slice(5, 7)));
-    if (streamFilter.size > 0) rows = rows.filter(r => streamFilter.has(r.stream || ''));
-    if (propFilter.size > 0)   rows = rows.filter(r => propFilter.has(r.propertyId));
-    if (typeFilter.size > 0)   rows = rows.filter(r => typeFilter.has(r.source === 'airbnb' ? (r.airbnbType || r.type || 'other') : (r.type || 'other')));
-    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(r.status));
+    const rows = listActivePayments().filter(r => {
+      if (yearFilter.size > 0   && !(r.date && yearFilter.has(r.date.slice(0, 4))))  return false;
+      if (monthFilter.size > 0  && !(r.date && monthFilter.has(r.date.slice(5, 7)))) return false;
+      if (streamFilter.size > 0 && !streamFilter.has(r.stream || ''))                return false;
+      if (propFilter.size > 0   && !propFilter.has(r.propertyId))                    return false;
+      if (typeFilter.size > 0   && !typeFilter.has(getPayType(r)))                   return false;
+      if (statusFilter.size > 0 && !statusFilter.has(r.status))                      return false;
+      return true;
+    });
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
     if (rows.length === 0) {
@@ -306,7 +327,9 @@ function buildAllPayments(wrap) {
     renderChunk();
   };
 
-  requestAnimationFrame(() => { rebuildFilters(); renderTable(); });
+  rebuildFilters();
+  requestAnimationFrame(() => renderTable());
+  return () => { rebuildFilters(); renderTable(); };
 }
 
 function recordRentPayment(prop, entry, onDone) {
@@ -663,6 +686,7 @@ function buildScheduleSection(wrap) {
 
   unpaidChk.onchange = render;
   render();
+  return render;
 }
 
 function kpiCard(label, value, sub, variant, onClick) {
@@ -794,6 +818,7 @@ function buildUpcomingSection(wrap) {
 
   horizonSel.onchange = render;
   render();
+  return render;
 }
 
 function openForm(existing) {

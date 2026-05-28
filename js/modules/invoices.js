@@ -65,14 +65,22 @@ function invDrillRows(invs) {
 }
 
 let _sortCol = -1, _sortDir = 1;
+let _invUpdateFn = null;
 
 export default {
   id: 'invoices',
   label: 'Invoices',
   icon: 'I',
-  render(container) { container.appendChild(build()); scheduleMigration(); schedulePathMigration(); },
-  refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
-  destroy() {}
+  render(container) { const { element, update } = build(); _invUpdateFn = update; container.appendChild(element); scheduleMigration(); schedulePathMigration(); },
+  refresh() {
+    if (_invUpdateFn) { _invUpdateFn(); return; }
+    const c = document.getElementById('content');
+    c.innerHTML = '';
+    const { element, update } = build();
+    _invUpdateFn = update;
+    c.appendChild(element);
+  },
+  destroy() { _invUpdateFn = null; }
 };
 
 // Canonical PDF filename: purely numeric numbers get {num}_{CLIENT}_{DDMMYY},
@@ -540,8 +548,9 @@ function build() {
     };
     renderChunk();
   };
-  requestAnimationFrame(() => { rebuildFilters(); renderTable(); });
-  return wrap;
+  rebuildFilters();
+  requestAnimationFrame(() => renderTable());
+  return { element: wrap, update: () => { _invStatCache = new Map(); rebuildFilters(); renderTable(); } };
 }
 
 

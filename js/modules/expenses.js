@@ -39,14 +39,22 @@ function receiptRepoPath(expenseId, filename) {
 }
 
 let _sortCol = -1, _sortDir = 1;
+let _updateFn = null;
 
 export default {
   id: 'expenses',
   label: 'Expenses',
   icon: 'E',
-  render(container) { container.appendChild(build()); },
-  refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
-  destroy() { charts.destroyAll(); }
+  render(container) { const { element, update } = build(); _updateFn = update; container.appendChild(element); },
+  refresh() {
+    if (_updateFn) { _updateFn(); return; }
+    const c = document.getElementById('content');
+    c.innerHTML = '';
+    const { element, update } = build();
+    _updateFn = update;
+    c.appendChild(element);
+  },
+  destroy() { _updateFn = null; charts.destroyAll(); }
 };
 
 function addPeriod(date, period) {
@@ -262,14 +270,17 @@ function build() {
       _expFieldCache = new Map(allExpenses.map(e => [e.id, resolveExpenseFields(e)]));
     }
 
-    let rows = [...allExpenses];
-    if (yearFilter.size > 0)           rows = rows.filter(r => yearFilter.has((r.date || '').slice(0, 4)));
-    if (monthFilter.size > 0)          rows = rows.filter(r => monthFilter.has((r.date || '').slice(5, 7)));
-    if (streamFilter.size > 0)         rows = rows.filter(r => streamFilter.has(r.stream || ''));
-    if (propFilter.size > 0)           rows = rows.filter(r => propFilter.has(r.propertyId));
-    if (catFilter.size > 0)            rows = rows.filter(r => catFilter.has(r.category));
-    if (accountingTypeFilter.size > 0) rows = rows.filter(r => accountingTypeFilter.has(_expFieldCache.get(r.id)?.accountingType));
-    if (recurrenceFilter.size > 0)     rows = rows.filter(r => recurrenceFilter.has(_expFieldCache.get(r.id)?.recurrence));
+    const rows = allExpenses.filter(r => {
+      if (yearFilter.size > 0           && !yearFilter.has((r.date || '').slice(0, 4)))                return false;
+      if (monthFilter.size > 0          && !monthFilter.has((r.date || '').slice(5, 7)))               return false;
+      if (streamFilter.size > 0         && !streamFilter.has(r.stream || ''))                          return false;
+      if (propFilter.size > 0           && !propFilter.has(r.propertyId))                              return false;
+      if (catFilter.size > 0            && !catFilter.has(r.category))                                 return false;
+      const res = _expFieldCache.get(r.id);
+      if (accountingTypeFilter.size > 0 && !accountingTypeFilter.has(res?.accountingType))             return false;
+      if (recurrenceFilter.size > 0     && !recurrenceFilter.has(res?.recurrence))                     return false;
+      return true;
+    });
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
     if (rows.length === 0) {
@@ -413,14 +424,17 @@ function build() {
     if (_expFieldCache.size === 0) {
       _expFieldCache = new Map(allExp.map(e => [e.id, resolveExpenseFields(e)]));
     }
-    let bkRows = allExp;
-    if (yearFilter.size > 0)           bkRows = bkRows.filter(r => yearFilter.has((r.date || '').slice(0, 4)));
-    if (monthFilter.size > 0)          bkRows = bkRows.filter(r => monthFilter.has((r.date || '').slice(5, 7)));
-    if (streamFilter.size > 0)         bkRows = bkRows.filter(r => streamFilter.has(r.stream || ''));
-    if (propFilter.size > 0)           bkRows = bkRows.filter(r => propFilter.has(r.propertyId));
-    if (catFilter.size > 0)            bkRows = bkRows.filter(r => catFilter.has(r.category));
-    if (accountingTypeFilter.size > 0) bkRows = bkRows.filter(r => accountingTypeFilter.has(_expFieldCache.get(r.id)?.accountingType));
-    if (recurrenceFilter.size > 0)     bkRows = bkRows.filter(r => recurrenceFilter.has(_expFieldCache.get(r.id)?.recurrence));
+    const bkRows = allExp.filter(r => {
+      if (yearFilter.size > 0           && !yearFilter.has((r.date || '').slice(0, 4)))                return false;
+      if (monthFilter.size > 0          && !monthFilter.has((r.date || '').slice(5, 7)))               return false;
+      if (streamFilter.size > 0         && !streamFilter.has(r.stream || ''))                          return false;
+      if (propFilter.size > 0           && !propFilter.has(r.propertyId))                              return false;
+      if (catFilter.size > 0            && !catFilter.has(r.category))                                 return false;
+      const res = _expFieldCache.get(r.id);
+      if (accountingTypeFilter.size > 0 && !accountingTypeFilter.has(res?.accountingType))             return false;
+      if (recurrenceFilter.size > 0     && !recurrenceFilter.has(res?.recurrence))                     return false;
+      return true;
+    });
 
     // By Cost Category doughnut (groups by resolved costCategory for correct OpEx/CapEx separation)
     const byCostCat = new Map();
@@ -475,9 +489,10 @@ function build() {
 
   const renderAll = () => { renderTable(); requestAnimationFrame(() => renderDash()); };
 
-  requestAnimationFrame(() => { rebuildFilters(); renderTable(); requestAnimationFrame(() => renderDash()); });
+  rebuildFilters();
+  requestAnimationFrame(() => { renderTable(); requestAnimationFrame(() => renderDash()); });
 
-  return wrap;
+  return { element: wrap, update: () => { _expFieldCache = new Map(); rebuildFilters(); renderAll(); } };
 }
 
 function findCleaningRates(propertyId, date) {
