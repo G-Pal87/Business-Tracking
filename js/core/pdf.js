@@ -508,7 +508,7 @@ async function renderLuxury(doc, invoice) {
   doc.text('BILLED TO', C1, y, { charSpace: 1.35 });
   doc.text('ISSUED',    C2, y, { charSpace: 1.35 });
   doc.text('DUE',       C3, y, { charSpace: 1.35 });
-  y += 6; // space-after label: 6pt (Word: 120 twips)
+  y += 13; // label→value gap: label cap(4pt) + margin(4.5pt) + value cap(7pt) ≈ 13pt
 
   // Values — Georgia bolditalic 10pt #31302E (Word: Georgia 10pt bold italic)
   const LH = 15; // 10pt × 1.5
@@ -562,6 +562,9 @@ async function renderLuxury(doc, invoice) {
     const parts       = (li.description || '').split('\n');
     const mainDesc    = parts[0];
     const subDesc     = parts.slice(1).join(' ').trim();
+    // Set font before splitTextToSize so width is measured with the correct metrics
+    doc.setFont('Georgia', 'bolditalic');
+    doc.setFontSize(11);
     const mainWrapped = doc.splitTextToSize(mainDesc, DESC_W);
     const mainH       = mainWrapped.length * 14; // 14pt line height for 11pt font
     const subH        = subDesc ? 10 : 0;
