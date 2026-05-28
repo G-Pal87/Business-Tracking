@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK, groupByMonthKey } from './analytics-helpers.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const OWNER_COLORS = { you: '#6366f1', rita: '#ec4899', both: '#14b8a6' };
@@ -66,7 +66,13 @@ function getData(start, end) {
   const propRev  = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
   const svcRev   = invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
   const outTotal = outstanding.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-  return { payments, invoices, outstanding, propRev, svcRev, total: propRev + svcRev, outstandingTotal: outTotal };
+  // Pre-bucket by month once so the chart renderers don't re-filter the full
+  // arrays per month (keys/derivation match the inline filters exactly).
+  return {
+    payments, invoices, outstanding, propRev, svcRev, total: propRev + svcRev, outstandingTotal: outTotal,
+    payByMonth: groupByMonthKey(payments, p => p.date),
+    invByMonth: groupByMonthKey(invoices, i => i.issueDate),
+  };
 }
 
 // ── KPI section ───────────────────────────────────────────────────────────────
@@ -525,10 +531,10 @@ function rebuildView() {
 
 // ── Chart renderers ───────────────────────────────────────────────────────────
 
-function renderTrend({ payments, invoices }, months) {
+function renderTrend({ payments, invoices, payByMonth, invByMonth }, months) {
   const data = months.map(m => {
-    const p = payments.filter(x => x.date?.slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0);
-    const i = invoices.filter(x => (x.issueDate || '').slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.total, x.currency, x.issueDate), 0);
+    const p = (payByMonth.get(m.key) || []).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0);
+    const i = (invByMonth.get(m.key) || []).reduce((s, x) => s + toEUR(x.total, x.currency, x.issueDate), 0);
     return Math.round(p + i);
   });
   if (!data.some(v => v > 0)) return;
@@ -624,9 +630,9 @@ function renderClientBar({ invoices }) {
   });
 }
 
-function renderMixEvolution({ payments, invoices }, months) {
-  const rental  = months.map(m => Math.round(payments.filter(p => p.date?.slice(0, 7) === m.key).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)));
-  const service = months.map(m => Math.round(invoices.filter(i => (i.issueDate || '').slice(0, 7) === m.key).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0)));
+function renderMixEvolution({ payByMonth, invByMonth }, months) {
+  const rental  = months.map(m => Math.round((payByMonth.get(m.key) || []).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)));
+  const service = months.map(m => Math.round((invByMonth.get(m.key) || []).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0)));
   if (!rental.some(v => v > 0) && !service.some(v => v > 0)) return;
   charts.bar('rev-mix-evolution', {
     labels: months.map(m => m.label),
@@ -645,10 +651,10 @@ function renderMixEvolution({ payments, invoices }, months) {
   });
 }
 
-function renderGrowthTrend({ payments, invoices }, months) {
+function renderGrowthTrend({ payments, invoices, payByMonth, invByMonth }, months) {
   const totals = months.map(m => {
-    const p = payments.filter(x => x.date?.slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0);
-    const i = invoices.filter(x => (x.issueDate || '').slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.total, x.currency, x.issueDate), 0);
+    const p = (payByMonth.get(m.key) || []).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0);
+    const i = (invByMonth.get(m.key) || []).reduce((s, x) => s + toEUR(x.total, x.currency, x.issueDate), 0);
     return p + i;
   });
   const growthData = totals.map((v, i) => {
@@ -709,15 +715,16 @@ function renderGrowthTrend({ payments, invoices }, months) {
   });
 }
 
-function renderPaidOutstanding({ invoices }, months, start, end) {
+function renderPaidOutstanding({ invoices, invByMonth }, months, start, end) {
   const { mStream, mOwner, mClient } = makeMatchers(gF);
   const allOut = gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i =>
     !['paid', 'cancelled', 'void'].includes(i.status) &&
     i.issueDate && i.issueDate >= start && i.issueDate <= end &&
     mStream(i) && mOwner(i) && mClient(i)
   );
-  const paidData = months.map(m => Math.round(invoices.filter(i => (i.issueDate || '').slice(0, 7) === m.key).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0)));
-  const outData  = months.map(m => Math.round(allOut.filter(i => (i.issueDate || '').slice(0, 7) === m.key).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0)));
+  const outByMonth = groupByMonthKey(allOut, i => i.issueDate);
+  const paidData = months.map(m => Math.round((invByMonth.get(m.key) || []).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0)));
+  const outData  = months.map(m => Math.round((outByMonth.get(m.key) || []).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0)));
   if (!paidData.some(v => v > 0) && !outData.some(v => v > 0)) return;
   charts.bar('rev-paid-outstanding', {
     labels: months.map(m => m.label),

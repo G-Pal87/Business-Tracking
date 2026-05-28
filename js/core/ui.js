@@ -89,7 +89,8 @@ export function drillDownModal(title, rows, columns) {
     tr.appendChild(el('td', { colspan: String(columns.length), style: 'text-align:center;padding:24px;color:var(--text-muted)' }, 'No records'));
     tbody.appendChild(tr);
   }
-  for (const row of rows) {
+
+  const buildRow = (row) => {
     const tr = el('tr');
     for (const col of columns) {
       const raw = row[col.key];
@@ -99,8 +100,23 @@ export function drillDownModal(title, rows, columns) {
       else cell.appendChild(document.createTextNode(String(display ?? '—')));
       tr.appendChild(cell);
     }
-    tbody.appendChild(tr);
-  }
+    return tr;
+  };
+
+  // Render in pages so a drill-down with thousands of records doesn't freeze the
+  // UI building one DOM node per cell synchronously. All rows remain reachable
+  // via "Show more". Each page is appended in a single DocumentFragment.
+  const PAGE = 200;
+  let shown = 0;
+  const renderPage = () => {
+    const frag = document.createDocumentFragment();
+    const end = Math.min(shown + PAGE, rows.length);
+    for (let i = shown; i < end; i++) frag.appendChild(buildRow(rows[i]));
+    tbody.appendChild(frag);
+    shown = end;
+  };
+  renderPage();
+
   table.appendChild(tbody);
   const tw = el('div', { class: 'table-wrap' });
   tw.appendChild(table);
@@ -109,6 +125,17 @@ export function drillDownModal(title, rows, columns) {
   const body = el('div');
   body.appendChild(meta);
   body.appendChild(tw);
+  if (rows.length > PAGE) {
+    const moreBtn = el('button', { class: 'btn', style: 'margin-top:12px' });
+    const updateLabel = () => { moreBtn.textContent = `Show more (${shown} of ${rows.length})`; };
+    updateLabel();
+    moreBtn.onclick = () => {
+      renderPage();
+      updateLabel();
+      if (shown >= rows.length) moreBtn.remove();
+    };
+    body.appendChild(moreBtn);
+  }
   openModal({ title, body, large: true });
 }
 
