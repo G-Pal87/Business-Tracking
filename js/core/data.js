@@ -959,6 +959,62 @@ export function purgeDeletedRecords() {
   return count;
 }
 
+// Collect every string value held by a record (depth-limited) into `set`.
+// Any of these may be a foreign key pointing at another record's id, so a
+// deleted record whose id appears here must not be purged (would orphan a ref).
+function _collectStringValues(value, set, depth = 0) {
+  if (value == null || depth > 5) return;
+  const t = typeof value;
+  if (t === 'string') { set.add(value); return; }
+  if (t !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const v of value) _collectStringValues(v, set, depth + 1);
+    return;
+  }
+  for (const k in value) _collectStringValues(value[k], set, depth + 1);
+}
+
+/**
+ * Permanently remove records that were soft-deleted longer than `maxAgeDays`
+ * ago, EXCEPT any whose id is still referenced by an active (non-deleted)
+ * record — keeping referential integrity intact. Runs at load after the
+ * authoritative data is in place. Returns the number of records purged.
+ */
+export function autoPurgeOldDeleted({ maxAgeDays = 90 } = {}) {
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+
+  // 1) Build the set of ids referenced by any active record.
+  const referenced = new Set();
+  for (const col of Object.keys(state.db)) {
+    const arr = state.db[col];
+    if (!Array.isArray(arr)) continue;
+    for (const rec of arr) {
+      if (rec && rec.deletedAt) continue; // only active records can hold live refs
+      _collectStringValues(rec, referenced);
+    }
+  }
+
+  // 2) Purge old soft-deleted records that nothing active points at.
+  let count = 0;
+  for (const col of Object.keys(state.db)) {
+    const arr = state.db[col];
+    if (!Array.isArray(arr)) continue;
+    let changed = false;
+    const kept = [];
+    for (const rec of arr) {
+      const purgeable = rec && rec.deletedAt && rec.deletedAt < cutoff && !referenced.has(rec.id);
+      if (purgeable) { changed = true; count++; continue; }
+      kept.push(rec);
+    }
+    if (changed) {
+      state.db[col] = kept;
+      if (state._ix) state._ix.set(col, new Map(kept.map(r => [r.id, r])));
+    }
+  }
+  if (count > 0) markDirty();
+  return count;
+}
+
 // ============== Inventory FIFO helpers ==============
 
 export function totalRemaining(item) {

@@ -1,5 +1,6 @@
 // Application bootstrap - registers modules and loads data
 import { state, subscribe, setDb, markDirty } from './core/state.js';
+import { autoPurgeOldDeleted } from './core/data.js';
 import * as github from './core/github.js';
 import * as router from './core/router.js';
 import { toast } from './core/ui.js';
@@ -367,6 +368,14 @@ function migrateDb() {
   }
 
   if (changed) markDirty();
+
+  // Reclaim space from long-deleted records (kept >90 days), preserving any
+  // still referenced by an active record. Runs once per load on authoritative
+  // data; the resulting markDirty() schedules a normal debounced push.
+  try {
+    const purged = autoPurgeOldDeleted({ maxAgeDays: 90 });
+    if (purged > 0) console.info(`[BT] Auto-purged ${purged} record(s) deleted over 90 days ago`);
+  } catch (e) { console.warn('autoPurgeOldDeleted failed', e); }
 }
 
 function buildUserFooter() {
