@@ -132,18 +132,28 @@ function build() {
   function rebuildFilters() {
     const all = listActive('expenses');
 
-    // Single pass: collect valid options for all dimensions simultaneously
+    // Single pass: inline filter checks so resolveExpenseFields is called once per expense
     const validYrs = new Set(), validMos = new Set(), validSts = new Set(),
           validPrs = new Set(), validCats = new Set(), validTps = new Set(), validRecs = new Set();
     for (const e of all) {
       const res = resolveExpenseFields(e);
-      if (matchesAll(e, 'year'))   { const v = (e.date || '').slice(0, 4); if (v) validYrs.add(v); }
-      if (matchesAll(e, 'month'))  { const v = (e.date || '').slice(5, 7); if (v) validMos.add(v); }
-      if (matchesAll(e, 'stream')) { const v = e.stream || ''; if (v) validSts.add(v); }
-      if (matchesAll(e, 'prop'))   { if (e.propertyId) validPrs.add(e.propertyId); }
-      if (matchesAll(e, 'cat'))    { if (e.category) validCats.add(e.category); }
-      if (matchesAll(e, 'type'))   { if (res.accountingType) validTps.add(res.accountingType); }
-      if (matchesAll(e, 'rec'))    { if (res.recurrence) validRecs.add(res.recurrence); }
+      const yr  = (e.date || '').slice(0, 4);
+      const mo  = (e.date || '').slice(5, 7);
+      const st  = e.stream || '';
+      const passYr  = yearFilter.size           === 0 || yearFilter.has(yr);
+      const passMo  = monthFilter.size          === 0 || monthFilter.has(mo);
+      const passSt  = streamFilter.size         === 0 || streamFilter.has(st);
+      const passPr  = propFilter.size           === 0 || propFilter.has(e.propertyId);
+      const passCat = catFilter.size            === 0 || catFilter.has(e.category);
+      const passTp  = accountingTypeFilter.size === 0 || accountingTypeFilter.has(res.accountingType);
+      const passRec = recurrenceFilter.size     === 0 || recurrenceFilter.has(res.recurrence);
+      if (passMo && passSt && passPr  && passCat && passTp  && passRec) { if (yr) validYrs.add(yr); }
+      if (passYr && passSt && passPr  && passCat && passTp  && passRec) { if (mo) validMos.add(mo); }
+      if (passYr && passMo && passPr  && passCat && passTp  && passRec) { if (st) validSts.add(st); }
+      if (passYr && passMo && passSt  && passCat && passTp  && passRec) { if (e.propertyId)        validPrs.add(e.propertyId); }
+      if (passYr && passMo && passSt  && passPr  && passTp  && passRec) { if (e.category)          validCats.add(e.category); }
+      if (passYr && passMo && passSt  && passPr  && passCat && passRec) { if (res.accountingType)  validTps.add(res.accountingType); }
+      if (passYr && passMo && passSt  && passPr  && passCat && passTp)  { if (res.recurrence)      validRecs.add(res.recurrence); }
     }
 
     // Prune stale selections
@@ -449,8 +459,7 @@ function build() {
 
   const renderAll = () => { renderTable(); requestAnimationFrame(() => renderDash()); };
 
-  rebuildFilters();
-  requestAnimationFrame(() => { renderTable(); requestAnimationFrame(() => renderDash()); });
+  requestAnimationFrame(() => { rebuildFilters(); renderTable(); requestAnimationFrame(() => renderDash()); });
 
   return wrap;
 }
