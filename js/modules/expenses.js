@@ -271,7 +271,7 @@ function build() {
       : (r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || ''));
     const eur = toEUR(r.amount, r.currency);
     // No property → business-line allocation: show the stream label instead of "-"
-    const allocName = prop?.name || (STREAMS[r.stream]?.label || '-');
+    const allocName = prop?.name || (r.stream ? (STREAMS[r.stream]?.label || 'Company') : 'Company');
     return {
       r, res, prop, cat, catLabel, vendorPerson, eur,
       propName: allocName,
@@ -604,21 +604,16 @@ function openForm(existing, defaults = {}, onSave = null) {
 
   const body = el('div', {});
   // "Allocated To" — a specific property, or a business line (stream) for
-  // company-wide costs (salary, social contributions, insurance, etc.) that
-  // don't belong to any single property.
-  const STREAM_PREFIX = 'stream:';
+  const COMPANY_VALUE = '__company__';
   const allocS = el('select', { class: 'select' });
   {
     const propOg = el('optgroup', { label: 'Properties' });
     for (const p of (state.db.properties || [])) propOg.appendChild(el('option', { value: p.id }, p.name));
     if (propOg.children.length) allocS.appendChild(propOg);
-    const slOg = el('optgroup', { label: 'Business Lines' });
-    for (const [k, v] of Object.entries(STREAMS)) slOg.appendChild(el('option', { value: STREAM_PREFIX + k }, v.label));
-    allocS.appendChild(slOg);
+    allocS.appendChild(el('option', { value: COMPANY_VALUE }, 'Company'));
   }
-  allocS.value = r.propertyId ? r.propertyId : (r.stream ? STREAM_PREFIX + r.stream : (state.db.properties?.[0]?.id || ''));
-  const allocPid    = () => allocS.value.startsWith(STREAM_PREFIX) ? '' : allocS.value;
-  const allocStream = () => allocS.value.startsWith(STREAM_PREFIX) ? allocS.value.slice(STREAM_PREFIX.length) : '';
+  allocS.value = r.propertyId ? r.propertyId : COMPANY_VALUE;
+  const allocPid = () => allocS.value === COMPANY_VALUE ? '' : allocS.value;
   const catS = buildCategorySelect(r.category);
   const resolved = resolveExpenseFields(r);
   const accountingTypeS = select(Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label })), resolved.accountingType);
@@ -930,11 +925,9 @@ function openForm(existing, defaults = {}, onSave = null) {
     if (catS.value !== 'inventory' && Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
     const selectedVendor = vendorS.value ? byId('vendors', vendorS.value) : null;
     const prop = byId('properties', allocPid());
-    // Property allocation derives the stream from the property type; a direct
-    // business-line allocation uses the chosen stream.
     const autoStream = prop?.type === 'short_term' ? 'short_term_rental'
       : prop?.type === 'long_term' ? 'long_term_rental'
-      : (allocStream() || r.stream || 'short_term_rental');
+      : (r.stream || null);
     const appliedFee = catS.value === 'cleaning' && Number(amountI.value) > 0 ? Number(amountI.value) : undefined;
     Object.assign(r, {
       propertyId:    allocPid(),
@@ -994,6 +987,33 @@ function openForm(existing, defaults = {}, onSave = null) {
         count++;
       }
       toast(`${count} recurring expense(s) added`, 'success');
+    } else if (existing?.recurringGroupId) {
+      const choice = await new Promise(resolve => {
+        let settled = false;
+        const settle = v => { if (!settled) { settled = true; resolve(v); } };
+        const thisBtn = button('This instance only', { variant: 'primary', onClick: () => { close(); settle('one'); } });
+        const allBtn  = button('All occurrences',    { variant: 'primary', onClick: () => { close(); settle('all'); } });
+        const cancelBtn = button('Cancel', { onClick: () => { close(); settle(null); } });
+        const { close } = openModal({
+          title: 'Edit Recurring Expense',
+          body: el('p', {}, 'Do you want to apply this change to this instance only, or to all occurrences in the group?'),
+          footer: [cancelBtn, thisBtn, allBtn],
+          onClose: () => settle(null),
+        });
+      });
+      if (!choice) return;
+      if (choice === 'all') {
+        const siblings = listActive('expenses').filter(e => e.recurringGroupId === existing.recurringGroupId);
+        const { id: _id, date: _date, recurringGroupId: _grp, isGenerated: _gen, manualOverride: _mo, ...sharedFields } = r;
+        for (const sib of siblings) {
+          upsert('expenses', { ...sib, ...sharedFields });
+        }
+        toast(`${siblings.length} occurrence(s) updated`, 'success');
+      } else {
+        if (existing.isGenerated) r.manualOverride = true;
+        upsert('expenses', r);
+        toast('Expense updated', 'success');
+      }
     } else {
       if (existing?.isGenerated) r.manualOverride = true;
       upsert('expenses', r);
