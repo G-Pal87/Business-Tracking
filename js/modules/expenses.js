@@ -93,6 +93,8 @@ function build() {
 
   let selected = new Set();
   let _filterTimer;
+  let yearMS, monthMS, streamMS, propMS, catMS, typeMS, recMS;
+  const onFilter = () => { clearTimeout(_filterTimer); _filterTimer = setTimeout(() => { rebuildFilters(); renderAll(); }, 250); };
 
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
     const count = selected.size;
@@ -130,13 +132,19 @@ function build() {
   function rebuildFilters() {
     const all = listActive('expenses');
 
-    const validYrs  = new Set(all.filter(e => matchesAll(e, 'year')).map(e => (e.date || '').slice(0, 4)).filter(Boolean));
-    const validMos  = new Set(all.filter(e => matchesAll(e, 'month')).map(e => (e.date || '').slice(5, 7)).filter(Boolean));
-    const validSts  = new Set(all.filter(e => matchesAll(e, 'stream')).map(e => e.stream || '').filter(Boolean));
-    const validPrs  = new Set(all.filter(e => matchesAll(e, 'prop')).map(e => e.propertyId).filter(Boolean));
-    const validCats = new Set(all.filter(e => matchesAll(e, 'cat')).map(e => e.category).filter(Boolean));
-    const validTps  = new Set(all.filter(e => matchesAll(e, 'type')).map(e => resolveExpenseFields(e).accountingType).filter(Boolean));
-    const validRecs = new Set(all.filter(e => matchesAll(e, 'rec')).map(e => resolveExpenseFields(e).recurrence).filter(Boolean));
+    // Single pass: collect valid options for all dimensions simultaneously
+    const validYrs = new Set(), validMos = new Set(), validSts = new Set(),
+          validPrs = new Set(), validCats = new Set(), validTps = new Set(), validRecs = new Set();
+    for (const e of all) {
+      const res = resolveExpenseFields(e);
+      if (matchesAll(e, 'year'))   { const v = (e.date || '').slice(0, 4); if (v) validYrs.add(v); }
+      if (matchesAll(e, 'month'))  { const v = (e.date || '').slice(5, 7); if (v) validMos.add(v); }
+      if (matchesAll(e, 'stream')) { const v = e.stream || ''; if (v) validSts.add(v); }
+      if (matchesAll(e, 'prop'))   { if (e.propertyId) validPrs.add(e.propertyId); }
+      if (matchesAll(e, 'cat'))    { if (e.category) validCats.add(e.category); }
+      if (matchesAll(e, 'type'))   { if (res.accountingType) validTps.add(res.accountingType); }
+      if (matchesAll(e, 'rec'))    { if (res.recurrence) validRecs.add(res.recurrence); }
+    }
 
     // Prune stale selections
     for (const v of [...yearFilter])           if (!validYrs.has(v))  yearFilter.delete(v);
@@ -147,8 +155,6 @@ function build() {
     for (const v of [...accountingTypeFilter]) if (!validTps.has(v))  accountingTypeFilter.delete(v);
     for (const v of [...recurrenceFilter])     if (!validRecs.has(v)) recurrenceFilter.delete(v);
 
-    const onFilter = () => { clearTimeout(_filterTimer); _filterTimer = setTimeout(() => { rebuildFilters(); renderAll(); }, 250); };
-
     const yearOpts   = [...validYrs].sort().reverse().map(y => ({ value: y, label: y }));
     const monthOpts  = [...validMos].sort().map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] }));
     const streamOpts = [...validSts].sort().map(s => ({ value: s, label: STREAMS[s]?.label || s }));
@@ -157,24 +163,44 @@ function build() {
     const typeOpts   = [...validTps].sort().map(t => ({ value: t, label: ACCOUNTING_TYPES[t]?.label || t }));
     const recOpts    = [...validRecs].sort().map(r => ({ value: r, label: RECURRENCE_TYPES[r]?.label || r }));
 
-    filterBar.innerHTML = '';
-    filterBar.appendChild(buildMultiSelect(yearOpts,   yearFilter,           'All Years',      onFilter, 'exp_years'));
-    filterBar.appendChild(buildMultiSelect(monthOpts,  monthFilter,          'All Months',     onFilter, 'exp_months'));
-    filterBar.appendChild(buildMultiSelect(streamOpts, streamFilter,         'All Streams',    onFilter, 'exp_streams'));
-    filterBar.appendChild(buildMultiSelect(propOpts,   propFilter,           'All Properties', onFilter, 'exp_props'));
-    filterBar.appendChild(buildMultiSelect(catOpts,    catFilter,            'All Expenses',   onFilter, 'exp_cats'));
-    filterBar.appendChild(buildMultiSelect(typeOpts,   accountingTypeFilter, 'All Types',      onFilter, 'exp_types'));
-    filterBar.appendChild(buildMultiSelect(recOpts,    recurrenceFilter,     'All Recurrence', onFilter, 'exp_recurrence'));
-    filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => {
-      yearFilter.clear(); monthFilter.clear(); streamFilter.clear(); propFilter.clear();
-      catFilter.clear(); accountingTypeFilter.clear(); recurrenceFilter.clear();
-      ['exp_years','exp_months','exp_streams','exp_props','exp_cats','exp_types','exp_recurrence']
-        .forEach(k => { try { localStorage.removeItem(`btf:${k}`); } catch {} });
-      rebuildFilters(); renderAll();
-    }}));
-    filterBar.appendChild(el('div', { class: 'flex-1' }));
-    filterBar.appendChild(deleteSelBtn);
-    filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
+    if (!yearMS) {
+      // First build: create multiselects and assemble the filter bar once
+      yearMS   = buildMultiSelect(yearOpts,   yearFilter,           'All Years',      onFilter, 'exp_years');
+      monthMS  = buildMultiSelect(monthOpts,  monthFilter,          'All Months',     onFilter, 'exp_months');
+      streamMS = buildMultiSelect(streamOpts, streamFilter,         'All Streams',    onFilter, 'exp_streams');
+      propMS   = buildMultiSelect(propOpts,   propFilter,           'All Properties', onFilter, 'exp_props');
+      catMS    = buildMultiSelect(catOpts,    catFilter,            'All Expenses',   onFilter, 'exp_cats');
+      typeMS   = buildMultiSelect(typeOpts,   accountingTypeFilter, 'All Types',      onFilter, 'exp_types');
+      recMS    = buildMultiSelect(recOpts,    recurrenceFilter,     'All Recurrence', onFilter, 'exp_recurrence');
+
+      filterBar.appendChild(yearMS);
+      filterBar.appendChild(monthMS);
+      filterBar.appendChild(streamMS);
+      filterBar.appendChild(propMS);
+      filterBar.appendChild(catMS);
+      filterBar.appendChild(typeMS);
+      filterBar.appendChild(recMS);
+      filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => {
+        yearFilter.clear(); monthFilter.clear(); streamFilter.clear(); propFilter.clear();
+        catFilter.clear(); accountingTypeFilter.clear(); recurrenceFilter.clear();
+        ['exp_years','exp_months','exp_streams','exp_props','exp_cats','exp_types','exp_recurrence']
+          .forEach(k => { try { localStorage.removeItem(`btf:${k}`); } catch {} });
+        yearMS.reset(); monthMS.reset(); streamMS.reset(); propMS.reset(); catMS.reset(); typeMS.reset(); recMS.reset();
+        rebuildFilters(); renderAll();
+      }}));
+      filterBar.appendChild(el('div', { class: 'flex-1' }));
+      filterBar.appendChild(deleteSelBtn);
+      filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
+    } else {
+      // Subsequent calls: update options in place — no DOM teardown
+      yearMS.setItems(yearOpts);
+      monthMS.setItems(monthOpts);
+      streamMS.setItems(streamOpts);
+      propMS.setItems(propOpts);
+      catMS.setItems(catOpts);
+      typeMS.setItems(typeOpts);
+      recMS.setItems(recOpts);
+    }
   }
 
   wrap.appendChild(filterBar);
@@ -247,6 +273,7 @@ function build() {
     for (const r of rows) {
       const prop = byId('properties', r.propertyId);
       const cat  = EXPENSE_CATEGORIES[r.category];
+      const res  = resolveExpenseFields(r);
 
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
       rowChks.push(chk);
@@ -260,14 +287,14 @@ function build() {
 
       const tr = el('tr');
       tr.dataset.eur = String(toEUR(r.amount, r.currency));
-      tr.dataset.capex = resolveExpenseFields(r).accountingType === 'capex' ? '1' : '0';
+      tr.dataset.capex = res.accountingType === 'capex' ? '1' : '0';
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       tr.appendChild(chkTd);
       tr.appendChild(el('td', {}, fmtDate(r.date)));
       tr.appendChild(el('td', {}, prop?.name || '-'));
       const catCell = el('td', {});
       catCell.appendChild(el('span', { class: 'badge ' + (r.category === 'renovation' ? 'warning' : '') }, cat?.label || r.category));
-      if (resolveExpenseFields(r).accountingType === 'capex' && r.category !== 'renovation')
+      if (res.accountingType === 'capex' && r.category !== 'renovation')
         catCell.appendChild(el('span', { class: 'badge warning', style: 'margin-left:4px;font-size:10px' }, 'CapEx'));
       tr.appendChild(catCell);
       const descCell = el('td', {});
@@ -404,7 +431,7 @@ function build() {
     });
   };
 
-  const renderAll = () => { renderTable(); renderDash(); };
+  const renderAll = () => { renderTable(); requestAnimationFrame(() => renderDash()); };
 
   rebuildFilters();
   renderTable();
