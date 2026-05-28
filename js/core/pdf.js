@@ -494,7 +494,7 @@ async function renderLuxury(doc, invoice) {
   doc.setDrawColor(...HAIR);
   doc.setLineWidth(0.5);
   doc.line(ML, y, MR, y);
-  y += 6;  // rule → meta gap (shifted another 10% up)
+  y += 33; // rule → meta gap: HTML ref hr.rule margin-bottom 44px → 33pt
 
   // ── Meta grid — Word col widths: Billed To=180pt, Issued=145pt, Due=190pt ──
   const C1 = ML;           // Billed To starts at left margin
