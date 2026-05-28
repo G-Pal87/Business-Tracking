@@ -270,11 +270,13 @@ function build() {
       ? ((state.db.people || []).find(p => p.id === r.personId || (p.legacyKey || p.id) === r.personId)?.name || r.personId)
       : (r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || ''));
     const eur = toEUR(r.amount, r.currency);
+    // No property → business-line allocation: show the stream label instead of "-"
+    const allocName = prop?.name || (STREAMS[r.stream]?.label || '-');
     return {
       r, res, prop, cat, catLabel, vendorPerson, eur,
-      propName: prop?.name || '-',
+      propName: allocName,
       isCapex: res.accountingType === 'capex',
-      searchText: [fmtDate(r.date), prop?.name, catLabel, r.description, vendorPerson, r.currency].filter(Boolean).join(' ').toLowerCase()
+      searchText: [fmtDate(r.date), allocName, catLabel, r.description, vendorPerson, r.currency].filter(Boolean).join(' ').toLowerCase()
     };
   };
 
@@ -601,7 +603,22 @@ function openForm(existing, defaults = {}, onSave = null) {
   };
 
   const body = el('div', {});
-  const propS = select((state.db.properties || []).map(p => ({ value: p.id, label: p.name })), r.propertyId);
+  // "Allocated To" — a specific property, or a business line (stream) for
+  // company-wide costs (salary, social contributions, insurance, etc.) that
+  // don't belong to any single property.
+  const STREAM_PREFIX = 'stream:';
+  const allocS = el('select', { class: 'select' });
+  {
+    const propOg = el('optgroup', { label: 'Properties' });
+    for (const p of (state.db.properties || [])) propOg.appendChild(el('option', { value: p.id }, p.name));
+    if (propOg.children.length) allocS.appendChild(propOg);
+    const slOg = el('optgroup', { label: 'Business Lines' });
+    for (const [k, v] of Object.entries(STREAMS)) slOg.appendChild(el('option', { value: STREAM_PREFIX + k }, v.label));
+    allocS.appendChild(slOg);
+  }
+  allocS.value = r.propertyId ? r.propertyId : (r.stream ? STREAM_PREFIX + r.stream : (state.db.properties?.[0]?.id || ''));
+  const allocPid    = () => allocS.value.startsWith(STREAM_PREFIX) ? '' : allocS.value;
+  const allocStream = () => allocS.value.startsWith(STREAM_PREFIX) ? allocS.value.slice(STREAM_PREFIX.length) : '';
   const catS = buildCategorySelect(r.category);
   const resolved = resolveExpenseFields(r);
   const accountingTypeS = select(Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label })), resolved.accountingType);
@@ -669,7 +686,7 @@ function openForm(existing, defaults = {}, onSave = null) {
   const invRow   = el('div', { class: 'form-row horizontal' }, formRow('Item', invItemS), formRow('Qty', invQtyI));
 
   const updateInvItemOpts = () => {
-    const pid   = propS.value;
+    const pid   = allocPid();
     const items = listActive('inventory').filter(i => !pid || i.propertyId === pid);
     invItemS.innerHTML = '';
     const placeholder = el('option', { value: '' }, '— Select item —');
@@ -702,7 +719,7 @@ function openForm(existing, defaults = {}, onSave = null) {
 
   const accountingTypeRow = el('div', { class: 'form-row horizontal' }, formRow('Expense Type', accountingTypeS));
 
-  body.appendChild(formRow('Property', propS));
+  body.appendChild(formRow('Allocated To', allocS));
   body.appendChild(formRow('Category', catS));
   body.appendChild(accountingTypeRow);
   body.appendChild(invRow);
@@ -780,7 +797,7 @@ function openForm(existing, defaults = {}, onSave = null) {
     cleaningHint.textContent = '';
 
     if (catS.value === 'cleaning') {
-      const propId = propS.value;
+      const propId = allocPid();
       const date   = dateI.value;
       if (!propId || !date) return;
 
@@ -809,7 +826,7 @@ function openForm(existing, defaults = {}, onSave = null) {
 
     // Non-cleaning: auto-fill from vendor flat rate or property utility defaults
     if (Number(amountI.value) > 0) return;
-    const prop = byId('properties', propS.value);
+    const prop = byId('properties', allocPid());
     if (!prop) return;
     if (vendorS.value) {
       const vendor = byId('vendors', vendorS.value);
@@ -863,16 +880,17 @@ function openForm(existing, defaults = {}, onSave = null) {
   };
   vendorS.onchange = autoFillAmount;
   dateI.onchange   = autoFillAmount;
-  propS.onchange = () => {
-    const p = byId('properties', propS.value);
-    if (p) { currencyS.value = p.currency; autoFillAmount(); }
+  allocS.onchange = () => {
+    const p = byId('properties', allocPid());
+    if (p) currencyS.value = p.currency;
+    autoFillAmount();
     updateInvItemOpts();
   };
   invItemS.onchange = syncInventoryAmount;
   invQtyI.oninput   = syncInventoryAmount;
 
   const save = button('Save', { variant: 'primary', onClick: async () => {
-    if (!propS.value) { toast('Select property', 'danger'); return; }
+    if (!allocS.value) { toast('Select what this expense is allocated to', 'danger'); return; }
 
     if (catS.value === 'inventory') {
       const itemId = invItemS.value;
@@ -911,13 +929,15 @@ function openForm(existing, defaults = {}, onSave = null) {
 
     if (catS.value !== 'inventory' && Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
     const selectedVendor = vendorS.value ? byId('vendors', vendorS.value) : null;
-    const prop = byId('properties', propS.value);
+    const prop = byId('properties', allocPid());
+    // Property allocation derives the stream from the property type; a direct
+    // business-line allocation uses the chosen stream.
     const autoStream = prop?.type === 'short_term' ? 'short_term_rental'
       : prop?.type === 'long_term' ? 'long_term_rental'
-      : r.stream || 'short_term_rental';
+      : (allocStream() || r.stream || 'short_term_rental');
     const appliedFee = catS.value === 'cleaning' && Number(amountI.value) > 0 ? Number(amountI.value) : undefined;
     Object.assign(r, {
-      propertyId:    propS.value,
+      propertyId:    allocPid(),
       category:      catS.value,
       accountingType: catS.value === 'renovation' ? 'capex' : accountingTypeS.value,
       costCategory:   catS.value === 'renovation' ? 'renovation' : costCategoryS.value,
