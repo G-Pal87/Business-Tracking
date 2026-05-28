@@ -307,9 +307,7 @@ function buildPropertySection(wrap) {
         gridWrap.appendChild(buildAggregatedGrid(selIds, year));
       }
     }
-    renderChart(aggCache);
-    renderSummary(aggCache);
-    renderBreakdown(selIds);
+    requestAnimationFrame(() => { renderChart(aggCache); renderSummary(aggCache); renderBreakdown(selIds); });
   };
 
   const renderBreakdown = (selIds) => {
@@ -354,10 +352,7 @@ function buildPropertySection(wrap) {
     let allMonths = [];
     for (const year of years) {
       const agg = aggCache?.get(year) ?? getAggregated(year);
-      forecastRev += agg.months.reduce((s, m) => s + m.forecastRev, 0);
-      forecastExp += agg.months.reduce((s, m) => s + m.forecastExp, 0);
-      actualRev   += agg.months.reduce((s, m) => s + m.actualRev, 0);
-      actualExp   += agg.months.reduce((s, m) => s + m.actualExp, 0);
+      for (const m of agg.months) { forecastRev += m.forecastRev; forecastExp += m.forecastExp; actualRev += m.actualRev; actualExp += m.actualExp; }
       yearTarget.revenue  += agg.yearTarget?.revenue  || 0;
       yearTarget.expenses += agg.yearTarget?.expenses || 0;
       allMonths = allMonths.concat(agg.months);
@@ -654,8 +649,7 @@ function buildServiceSection(wrap) {
         gridWrap.appendChild(buildAggregatedGrid(selIds, year, 'service'));
       }
     }
-    renderChart(aggCache);
-    renderSummary(aggCache);
+    requestAnimationFrame(() => { renderChart(aggCache); renderSummary(aggCache); });
   };
 
   const renderChart = (aggCache) => {
@@ -678,8 +672,7 @@ function buildServiceSection(wrap) {
     let allMonths = [];
     for (const year of years) {
       const agg = aggCache?.get(year) ?? getAggregated(year);
-      forecastRev += agg.months.reduce((s, m) => s + m.forecastRev, 0);
-      actualRev   += agg.months.reduce((s, m) => s + m.actualRev,   0);
+      for (const m of agg.months) { forecastRev += m.forecastRev; actualRev += m.actualRev; }
       yearTarget.revenue += agg.yearTarget?.revenue || 0;
       allMonths = allMonths.concat(agg.months);
     }

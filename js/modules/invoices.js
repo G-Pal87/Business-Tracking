@@ -287,16 +287,19 @@ function build() {
     const allInvs    = listActive('invoices');
     const allClients = listActive('clients');
     const allOwners  = getPeopleOwners();
-    const ys  = [...new Set(allInvs.filter(i => matchesExcept(i, 'year'))  .map(i => i.issueDate?.slice(0, 4)).filter(Boolean))].sort().reverse();
-    const ms  = [...new Set(allInvs.filter(i => matchesExcept(i, 'month')) .map(i => i.issueDate?.slice(5, 7)).filter(Boolean))].sort();
-    const cs  = [...new Set(allInvs.filter(i => matchesExcept(i, 'client')).map(i => i.clientId).filter(Boolean))];
-    const ows = new Set(allInvs.filter(i => matchesExcept(i, 'owner')).map(i => i.owner).filter(Boolean));
-    const ss  = [...new Set(allInvs.filter(i => matchesExcept(i, 'status')).map(i => effectiveStatus(i)).filter(Boolean))].sort();
-    yearMS.setItems(ys.map(y => ({ value: y, label: y })));
-    monthMS.setItems(ms.map(m => ({ value: m, label: MONTH_NAMES[parseInt(m, 10) - 1] })));
-    clientMS.setItems(cs.map(id => allClients.find(c => c.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(c => ({ value: c.id, label: c.name })));
+    const ys = new Set(), ms = new Set(), cs = new Set(), ows = new Set(), ss = new Set();
+    for (const i of allInvs) {
+      if (matchesExcept(i, 'year'))   { if (i.issueDate?.slice(0, 4)) ys.add(i.issueDate.slice(0, 4)); }
+      if (matchesExcept(i, 'month'))  { if (i.issueDate?.slice(5, 7)) ms.add(i.issueDate.slice(5, 7)); }
+      if (matchesExcept(i, 'client')) { if (i.clientId) cs.add(i.clientId); }
+      if (matchesExcept(i, 'owner'))  { if (i.owner) ows.add(i.owner); }
+      if (matchesExcept(i, 'status')) { const s = effectiveStatus(i); if (s) ss.add(s); }
+    }
+    yearMS.setItems([...ys].sort().reverse().map(y => ({ value: y, label: y })));
+    monthMS.setItems([...ms].sort().map(m => ({ value: m, label: MONTH_NAMES[parseInt(m, 10) - 1] })));
+    clientMS.setItems([...cs].map(id => allClients.find(c => c.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(c => ({ value: c.id, label: c.name })));
     ownerMS.setItems(allOwners.filter(o => ows.has(o.value)));
-    statusMS.setItems(ss.map(s => { const m = INVOICE_STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
+    statusMS.setItems([...ss].sort().map(s => { const m = INVOICE_STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
   };
 
   const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); clientMS.reset(); ownerMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });

@@ -87,16 +87,19 @@ function buildAllPayments(wrap) {
   const rebuildFilters = () => {
     const allPayments = listActivePayments();
     const allProps    = listActive('properties');
-    const ys  = [...new Set(allPayments.filter(p => matchesExcept(p, 'year'))  .map(p => p.date?.slice(0, 4)).filter(Boolean))].sort().reverse();
-    const ms  = [...new Set(allPayments.filter(p => matchesExcept(p, 'month')) .map(p => p.date?.slice(5, 7)).filter(Boolean))].sort();
-    const ps  = [...new Set(allPayments.filter(p => matchesExcept(p, 'prop'))  .map(p => p.propertyId).filter(Boolean))];
-    const ts  = [...new Set(allPayments.filter(p => matchesExcept(p, 'type'))  .map(p => getPayType(p)))].sort();
-    const ss  = [...new Set(allPayments.filter(p => matchesExcept(p, 'status')).map(p => p.status).filter(Boolean))].sort();
-    yearMS.setItems(ys.map(y => ({ value: y, label: y })));
-    monthMS.setItems(ms.map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] })));
-    propMS.setItems(ps.map(id => allProps.find(pr => pr.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(pr => ({ value: pr.id, label: pr.name })));
-    typeMS.setItems(ts.map(t => ({ value: t, label: t })));
-    statusMS.setItems(ss.map(s => { const m = STATUS_META[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
+    const ys = new Set(), ms = new Set(), ps = new Set(), ts = new Set(), ss = new Set();
+    for (const p of allPayments) {
+      if (matchesExcept(p, 'year'))   { if (p.date?.slice(0, 4)) ys.add(p.date.slice(0, 4)); }
+      if (matchesExcept(p, 'month'))  { if (p.date?.slice(5, 7)) ms.add(p.date.slice(5, 7)); }
+      if (matchesExcept(p, 'prop'))   { if (p.propertyId) ps.add(p.propertyId); }
+      if (matchesExcept(p, 'type'))   { ts.add(getPayType(p)); }
+      if (matchesExcept(p, 'status')) { if (p.status) ss.add(p.status); }
+    }
+    yearMS.setItems([...ys].sort().reverse().map(y => ({ value: y, label: y })));
+    monthMS.setItems([...ms].sort().map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] })));
+    propMS.setItems([...ps].map(id => allProps.find(pr => pr.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(pr => ({ value: pr.id, label: pr.name })));
+    typeMS.setItems([...ts].sort().map(t => ({ value: t, label: t })));
+    statusMS.setItems([...ss].sort().map(s => { const m = STATUS_META[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
   };
 
   let selected = new Set();
