@@ -92,7 +92,7 @@ function build() {
   const recurrenceFilter = new Set();
 
   let selected = new Set();
-  let _filterTimer;
+  let _filterTimer, _renderToken = 0;
   let yearMS, monthMS, streamMS, propMS, catMS, typeMS, recMS;
   const onFilter = () => { clearTimeout(_filterTimer); _filterTimer = setTimeout(() => { rebuildFilters(); renderAll(); }, 250); };
 
@@ -236,6 +236,7 @@ function build() {
   };
 
   const renderTable = () => {
+    const token = ++_renderToken;
     selected.clear();
     syncDeleteBtn();
     tableWrap.innerHTML = '';
@@ -256,7 +257,6 @@ function build() {
     }
 
     const t = el('table', { class: 'table' });
-
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr', {});
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
@@ -266,15 +266,29 @@ function build() {
     htr.appendChild(el('th', { class: 'right' }, 'EUR'));
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
-
     const tb = el('tbody');
-    const rowChks = [];
+    t.appendChild(tb);
+    tableWrap.appendChild(t);
 
+    // Compute footer totals from data upfront so they appear before rows finish rendering
+    let totalEUR = 0, capexEUR = 0;
     for (const r of rows) {
+      const eur = toEUR(r.amount, r.currency);
+      totalEUR += eur;
+      if (resolveExpenseFields(r).accountingType === 'capex') capexEUR += eur;
+    }
+    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
+      el('span', { class: 'muted' }, el('span', { class: 'table-footer-count' }, `${rows.length} expense(s)`), ' · CapEx: ', el('span', { class: 'table-footer-capex' }, formatEUR(capexEUR))),
+      el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
+    ));
+
+    const rowChks = [];
+    let idx = 0;
+
+    const buildRow = (r) => {
       const prop = byId('properties', r.propertyId);
       const cat  = EXPENSE_CATEGORIES[r.category];
       const res  = resolveExpenseFields(r);
-
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
       rowChks.push(chk);
       chk.onchange = () => {
@@ -284,7 +298,6 @@ function build() {
         selectAllChk.checked = n === rows.length;
         syncDeleteBtn();
       };
-
       const tr = el('tr');
       tr.dataset.eur = String(toEUR(r.amount, r.currency));
       tr.dataset.capex = res.accountingType === 'capex' ? '1' : '0';
@@ -321,24 +334,27 @@ function build() {
         if (ok) { restoreInventoryStock(r); softDelete('expenses', r.id); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
-      tb.appendChild(tr);
-    }
-    t.appendChild(tb);
-    tableWrap.appendChild(t);
-
-    selectAllChk.onchange = () => {
-      rowChks.forEach(c => { c.checked = selectAllChk.checked; });
-      selectAllChk.indeterminate = false;
-      if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
-      syncDeleteBtn();
+      return tr;
     };
 
-    const totalEUR = rows.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
-    const capexEUR = rows.filter(r => resolveExpenseFields(r).accountingType === 'capex').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
-    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted' }, el('span', { class: 'table-footer-count' }, `${rows.length} expense(s)`), ' · CapEx: ', el('span', { class: 'table-footer-capex' }, formatEUR(capexEUR))),
-      el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
-    ));
+    const renderChunk = () => {
+      if (token !== _renderToken) return; // cancelled by a newer renderTable() call
+      const end = Math.min(idx + 80, rows.length);
+      const frag = document.createDocumentFragment();
+      for (; idx < end; idx++) frag.appendChild(buildRow(rows[idx]));
+      tb.appendChild(frag);
+      if (idx < rows.length) {
+        requestAnimationFrame(renderChunk);
+      } else {
+        selectAllChk.onchange = () => {
+          rowChks.forEach(c => { c.checked = selectAllChk.checked; });
+          selectAllChk.indeterminate = false;
+          if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
+          syncDeleteBtn();
+        };
+      }
+    };
+    renderChunk();
   };
 
   // Drilldown helpers shared by both charts
@@ -434,8 +450,7 @@ function build() {
   const renderAll = () => { renderTable(); requestAnimationFrame(() => renderDash()); };
 
   rebuildFilters();
-  renderTable();
-  requestAnimationFrame(() => renderDash());
+  requestAnimationFrame(() => { renderTable(); requestAnimationFrame(() => renderDash()); });
 
   return wrap;
 }
