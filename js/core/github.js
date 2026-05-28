@@ -1,5 +1,5 @@
 // GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
-import { state, notify } from './state.js';
+import { state, notify, invalidateActiveCache } from './state.js';
 
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
@@ -161,7 +161,9 @@ async function doPushDb(message = 'Update data') {
   const snapshot = structuredClone(state.db);
   // Never push the token to GitHub — strip it from appConfig before computing content
   if (snapshot.appConfig?.github?.token) delete snapshot.appConfig.github.token;
-  const base     = state.github.remoteDb ? structuredClone(state.github.remoteDb) : null;
+  // mergeDb only reads `base` (the last-synced snapshot), so we can reference
+  // remoteDb directly instead of cloning the whole DB again on every push.
+  const base     = state.github.remoteDb || null;
   let   lastError = null;
 
   for (let attempt = 1; attempt <= 5; attempt++) {
@@ -172,7 +174,7 @@ async function doPushDb(message = 'Update data') {
         headers: ghHeaders, cache: 'no-store'
       });
     } catch {
-      if (attempt < 5) { await sleep(500 * attempt); continue; }
+      if (attempt < 5) { await sleep(backoff(attempt)); continue; }
       throw new Error('Cannot reach GitHub');
     }
 
@@ -216,13 +218,13 @@ async function doPushDb(message = 'Update data') {
         })
       });
     } catch {
-      if (attempt < 5) { await sleep(500 * attempt); continue; }
+      if (attempt < 5) { await sleep(backoff(attempt)); continue; }
       throw new Error('Cannot reach GitHub');
     }
 
     if (putRes.status === 409) {
       lastError = 'SHA conflict';
-      if (attempt < 5) { await sleep(500 * attempt); continue; }
+      if (attempt < 5) { await sleep(backoff(attempt)); continue; }
       break; // exhausted — fall through to ConflictError below
     }
 
@@ -252,15 +254,22 @@ async function doPushDb(message = 'Update data') {
       }
     }
 
+    let adopted = false;
     for (const [col, items] of Object.entries(merged)) {
       if (!Array.isArray(items) || !Array.isArray(state.db[col])) continue;
       const localIds = new Set(state.db[col].map(x => x.id));
       for (const item of items) {
         if (!localIds.has(item.id) && !permanentlyDeletedDuringPush.has(`${col}:${item.id}`)) {
           state.db[col].push(item);
+          // Keep the id index in sync — this path bypasses upsert/markDirty,
+          // so byId() would otherwise miss remote-adopted records until reload.
+          state._ix?.get(col)?.set(item.id, item);
+          adopted = true;
         }
       }
     }
+    // Adopting records changes the active set without going through markDirty.
+    if (adopted) invalidateActiveCache();
 
     saveLocalCache(state.db);
     return { sha: newSha };
@@ -418,8 +427,22 @@ export function saveLocalCache(db) {
     _pendingSaveDb = null;
     try {
       const safe = { ...toSave };
+      // Strip heavy fields that are already externalized to the GitHub repo
+      // (invoice PDFs, expense receipt blobs, document blobs). They're
+      // re-fetchable on demand and would otherwise blow the localStorage quota.
+      // Soft-deleted records are intentionally kept so unpushed local deletions
+      // survive an offline reload + merge.
       if (Array.isArray(safe.invoices)) {
         safe.invoices = safe.invoices.map(({ pdfData, ...rest }) => rest);
+      }
+      if (Array.isArray(safe.expenses)) {
+        safe.expenses = safe.expenses.map(e => {
+          if (!e.receipt?.data && !e.documents) return e;
+          const copy = { ...e };
+          if (copy.receipt?.data) copy.receipt = { ...copy.receipt, data: undefined };
+          if (Array.isArray(copy.documents)) copy.documents = copy.documents.map(({ data, ...rest }) => rest);
+          return copy;
+        });
       }
       localStorage.setItem(DB_LS_KEY, JSON.stringify(safe));
     } catch (e) {
@@ -584,3 +607,10 @@ export async function deleteGithubFile(path, sha = null, message = 'Delete file'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Exponential backoff with jitter — avoids a thundering herd when several
+// clients hit the same SHA conflict and all retry in lockstep.
+function backoff(attempt) {
+  const base = Math.min(8000, 250 * 2 ** attempt);
+  return base + Math.random() * 400;
+}

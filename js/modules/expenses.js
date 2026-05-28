@@ -1,5 +1,5 @@
 // Expenses module
-import { state } from '../core/state.js';
+import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod, getPeopleOwners, getPersonName } from '../core/data.js';
 import * as charts from '../core/charts.js';
@@ -111,11 +111,13 @@ function build() {
     if (!count) return;
     const ok = await confirmDialog(`Delete ${count} expense(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
-    for (const id of [...selected]) {
-      const exp = listActive('expenses').find(e => e.id === id);
-      if (exp) restoreInventoryStock(exp);
-      softDelete('expenses', id);
-    }
+    runBatch(() => {
+      for (const id of [...selected]) {
+        const exp = byId('expenses', id);
+        if (exp) restoreInventoryStock(exp);
+        softDelete('expenses', id);
+      }
+    });
     selected.clear();
     _expFieldCache = new Map();
     toast(`Deleted ${count} expense(s)`, 'success');
