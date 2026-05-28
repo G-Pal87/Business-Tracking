@@ -599,9 +599,12 @@ async function renderLuxury(doc, invoice) {
     doc.setFont('Georgia', 'bolditalic');
     doc.setFontSize(10);
     doc.setTextColor(...DARK);
-    doc.text(`${li.quantity} ${li.unit || ''}`.trim(), C_QTY_C, numberY, { align: 'center' });
-    doc.text(formatMoney(li.rate,  invoice.currency),  C_RATE,  numberY, { align: 'right' });
-    doc.text(formatMoney(li.total, invoice.currency),  C_AMT,   numberY, { align: 'right' });
+    const QTY_W  = C_QTY_R - (C_DESC + DESC_W);   // ~84pt
+    const RATE_W = C_RATE   - C_QTY_R;             // ~107pt
+    const AMT_W  = C_AMT    - C_RATE;              // ~106pt
+    doc.text(doc.splitTextToSize(`${li.quantity} ${li.unit || ''}`.trim(), QTY_W),  C_QTY_C, numberY, { align: 'center' });
+    doc.text(doc.splitTextToSize(formatMoney(li.rate,  invoice.currency),  RATE_W), C_RATE,  numberY, { align: 'right' });
+    doc.text(doc.splitTextToSize(formatMoney(li.total, invoice.currency),  AMT_W),  C_AMT,   numberY, { align: 'right' });
 
     y += rowH;
     // Divider after every row — lighter than ROWDIV, aligned to table columns
