@@ -252,10 +252,11 @@ function build() {
   const wrap = el('div', { class: 'view active' });
 
   let filteredRows = [];
+  let _invStatCache = new Map(); // effectiveStatus cache — rebuilt each renderTable cycle
   const totalKpi   = makeKpiCard('Total Issued', null,      () => drillDownModal('All Invoices',          invDrillRows(filteredRows), INV_COLS));
-  const paidKpi    = makeKpiCard('Paid',          'success', () => drillDownModal('Paid Invoices',          invDrillRows(filteredRows.filter(i => effectiveStatus(i) === 'paid')), INV_COLS));
-  const openKpi    = makeKpiCard('Outstanding',   'warning', () => drillDownModal('Outstanding Invoices',   invDrillRows(filteredRows.filter(i => effectiveStatus(i) === 'sent')), INV_COLS));
-  const overdueKpi = makeKpiCard('Overdue',       'danger',  () => drillDownModal('Overdue Invoices',       invDrillRows(filteredRows.filter(i => effectiveStatus(i) === 'overdue')), INV_COLS));
+  const paidKpi    = makeKpiCard('Paid',          'success', () => drillDownModal('Paid Invoices',          invDrillRows(filteredRows.filter(i => _invStatCache.get(i.id) === 'paid')), INV_COLS));
+  const openKpi    = makeKpiCard('Outstanding',   'warning', () => drillDownModal('Outstanding Invoices',   invDrillRows(filteredRows.filter(i => _invStatCache.get(i.id) === 'sent')), INV_COLS));
+  const overdueKpi = makeKpiCard('Overdue',       'danger',  () => drillDownModal('Overdue Invoices',       invDrillRows(filteredRows.filter(i => _invStatCache.get(i.id) === 'overdue')), INV_COLS));
   wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' }, totalKpi.node, paidKpi.node, openKpi.node, overdueKpi.node));
 
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
@@ -266,15 +267,15 @@ function build() {
   const statusFilter = new Set();
 
   const matchesExcept = (inv, skip) => {
-    if (skip !== 'year'   && yearFilter.size   > 0 && !yearFilter.has(inv.issueDate?.slice(0, 4)))  return false;
-    if (skip !== 'month'  && monthFilter.size  > 0 && !monthFilter.has(inv.issueDate?.slice(5, 7))) return false;
-    if (skip !== 'client' && clientFilter.size > 0 && !clientFilter.has(inv.clientId))               return false;
-    if (skip !== 'owner'  && ownerFilter.size  > 0 && !ownerFilter.has(inv.owner))                   return false;
-    if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(effectiveStatus(inv)))       return false;
+    if (skip !== 'year'   && yearFilter.size   > 0 && !yearFilter.has(inv.issueDate?.slice(0, 4)))    return false;
+    if (skip !== 'month'  && monthFilter.size  > 0 && !monthFilter.has(inv.issueDate?.slice(5, 7)))   return false;
+    if (skip !== 'client' && clientFilter.size > 0 && !clientFilter.has(inv.clientId))                 return false;
+    if (skip !== 'owner'  && ownerFilter.size  > 0 && !ownerFilter.has(inv.owner))                     return false;
+    if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(_invStatCache.get(inv.id) || effectiveStatus(inv))) return false;
     return true;
   };
 
-  let _rtTimer;
+  let _rtTimer, _invRenderToken = 0;
   const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => { rebuildFilters(); renderTable(); }, 250); };
   const yearMS   = buildMultiSelect([], yearFilter,   'All Years',    debouncedRT, 'inv_years');
   const monthMS  = buildMultiSelect([], monthFilter,  'All Months',   debouncedRT, 'inv_months');
@@ -287,13 +288,15 @@ function build() {
     const allInvs    = listActive('invoices');
     const allClients = listActive('clients');
     const allOwners  = getPeopleOwners();
+    // Rebuild status cache so matchesExcept and renderTable share the same computed values
+    _invStatCache = new Map(allInvs.map(i => [i.id, effectiveStatus(i)]));
     const ys = new Set(), ms = new Set(), cs = new Set(), ows = new Set(), ss = new Set();
     for (const i of allInvs) {
       if (matchesExcept(i, 'year'))   { if (i.issueDate?.slice(0, 4)) ys.add(i.issueDate.slice(0, 4)); }
       if (matchesExcept(i, 'month'))  { if (i.issueDate?.slice(5, 7)) ms.add(i.issueDate.slice(5, 7)); }
       if (matchesExcept(i, 'client')) { if (i.clientId) cs.add(i.clientId); }
       if (matchesExcept(i, 'owner'))  { if (i.owner) ows.add(i.owner); }
-      if (matchesExcept(i, 'status')) { const s = effectiveStatus(i); if (s) ss.add(s); }
+      if (matchesExcept(i, 'status')) { const s = _invStatCache.get(i.id); if (s) ss.add(s); }
     }
     yearMS.setItems([...ys].sort().reverse().map(y => ({ value: y, label: y })));
     monthMS.setItems([...ms].sort().map(m => ({ value: m, label: MONTH_NAMES[parseInt(m, 10) - 1] })));
@@ -390,41 +393,56 @@ function build() {
   };
 
   const renderTable = () => {
+    const token = ++_invRenderToken;
     selected.clear();
     syncBulkActions();
     tableWrap.innerHTML = '';
-    let rows = [...listActive('invoices')];
+
+    const allInvs = listActive('invoices');
+    // Ensure status cache is warm (may be empty when called after delete/edit)
+    if (_invStatCache.size === 0) {
+      _invStatCache = new Map(allInvs.map(i => [i.id, effectiveStatus(i)]));
+    }
+
+    let rows = [...allInvs];
     if (yearFilter.size > 0)   rows = rows.filter(r => yearFilter.has(r.issueDate?.slice(0, 4)));
     if (monthFilter.size > 0)  rows = rows.filter(r => monthFilter.has(r.issueDate?.slice(5, 7)));
     if (clientFilter.size > 0) rows = rows.filter(r => clientFilter.has(r.clientId));
     if (ownerFilter.size > 0)  rows = rows.filter(r => ownerFilter.has(r.owner));
-    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(effectiveStatus(r)));
+    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(_invStatCache.get(r.id)));
     rows.sort((a, b) => {
       const d = (b.issueDate || '').localeCompare(a.issueDate);
       if (d !== 0) return d;
       return parseInt(b.number || '0', 10) - parseInt(a.number || '0', 10);
     });
 
-    // Update KPI cards to reflect current filter
+    // Update KPI cards — single pass using cached statuses
     filteredRows = rows;
-    const paidRows    = rows.filter(r => effectiveStatus(r) === 'paid');
-    const sentRows    = rows.filter(r => effectiveStatus(r) === 'sent');
-    const overdueRows = rows.filter(r => effectiveStatus(r) === 'overdue');
-    totalKpi.valEl.textContent   = formatEUR(rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
+    let totalV = 0, paidV = 0, sentV = 0, overdueV = 0, paidN = 0, sentN = 0, overdueN = 0;
+    const paidRows = [], sentRows = [], overdueRows = [];
+    for (const r of rows) {
+      const eur = toEUR(r.total, r.currency);
+      totalV += eur;
+      const st = _invStatCache.get(r.id);
+      if (st === 'paid')    { paidV += eur; paidN++;    paidRows.push(r); }
+      else if (st === 'sent')    { sentV += eur; sentN++;    sentRows.push(r); }
+      else if (st === 'overdue') { overdueV += eur; overdueN++; overdueRows.push(r); }
+    }
+    totalKpi.valEl.textContent   = formatEUR(totalV);
     totalKpi.subEl.textContent   = `${rows.length} invoices`;
-    paidKpi.valEl.textContent    = formatEUR(paidRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
-    paidKpi.subEl.textContent    = String(paidRows.length);
-    openKpi.valEl.textContent    = formatEUR(sentRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
-    openKpi.subEl.textContent    = String(sentRows.length);
-    overdueKpi.valEl.textContent = formatEUR(overdueRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
-    overdueKpi.subEl.textContent = String(overdueRows.length);
+    paidKpi.valEl.textContent    = formatEUR(paidV);
+    paidKpi.subEl.textContent    = String(paidN);
+    openKpi.valEl.textContent    = formatEUR(sentV);
+    openKpi.subEl.textContent    = String(sentN);
+    overdueKpi.valEl.textContent = formatEUR(overdueV);
+    overdueKpi.subEl.textContent = String(overdueN);
 
     if (rows.length === 0) {
       tableWrap.appendChild(el('div', { class: 'empty' }, 'No invoices'));
       return;
     }
-    const t = el('table', { class: 'table' });
 
+    const t = el('table', { class: 'table' });
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr', {});
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
@@ -433,14 +451,31 @@ function build() {
     htr.appendChild(el('th', { class: 'right' }, 'Total'));
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
-
     const tb = el('tbody');
+    t.appendChild(tb);
+    tableWrap.appendChild(t);
+
+    // Footer computed upfront from already-calculated totals
+    const paidSpan = el('span', { style: 'cursor:pointer', title: 'Drill down' });
+    paidSpan.appendChild(document.createTextNode('Paid: '));
+    paidSpan.appendChild(el('strong', { class: 'num table-footer-paid' }, formatEUR(paidV)));
+    paidSpan.onclick = () => drillDownModal('Paid Invoices (filtered)', invDrillRows(paidRows), INV_COLS);
+    const totalSpanEl = el('span', { style: 'cursor:pointer', title: 'Drill down' });
+    totalSpanEl.appendChild(document.createTextNode('Total: '));
+    totalSpanEl.appendChild(el('strong', { class: 'num table-footer-total' }, formatEUR(totalV)));
+    totalSpanEl.onclick = () => drillDownModal('All Invoices (filtered)', invDrillRows(rows), INV_COLS);
+    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px;flex-wrap:wrap;gap:8px' },
+      el('span', { class: 'muted table-footer-count' }, `${rows.length} invoice(s)`),
+      el('div', { class: 'flex gap-16' }, paidSpan, totalSpanEl)
+    ));
+
     const rowChks = [];
     const clientMap = new Map(listActive('clients').map(c => [c.id, c]));
+    let idx = 0;
 
-    for (const r of rows) {
+    const buildRow = (r) => {
       const client = clientMap.get(r.clientId);
-      const eff = effectiveStatus(r);
+      const eff = _invStatCache.get(r.id);
       const st = INVOICE_STATUSES[eff] || { label: eff, css: '' };
 
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
@@ -479,39 +514,33 @@ function build() {
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async (e) => {
         e.stopPropagation();
         const ok = await confirmDialog(`Delete ${r.number}?`, { danger: true, okLabel: 'Delete' });
-        if (ok) { softDelete('invoices', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (ok) { _invStatCache = new Map(); softDelete('invoices', r.id); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
       tr.onclick = () => openPreview(r.id);
-      tb.appendChild(tr);
-    }
-    t.appendChild(tb);
-    tableWrap.appendChild(t);
-
-    selectAllChk.onchange = () => {
-      rowChks.forEach(c => { c.checked = selectAllChk.checked; });
-      selectAllChk.indeterminate = false;
-      if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
-      syncBulkActions();
+      return tr;
     };
-    // Totals footer
-    const totalEUR = rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
-    const paidEUR = paidRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
-    const paidSpan = el('span', { style: 'cursor:pointer', title: 'Drill down' });
-    paidSpan.appendChild(document.createTextNode('Paid: '));
-    paidSpan.appendChild(el('strong', { class: 'num table-footer-paid' }, formatEUR(paidEUR)));
-    paidSpan.onclick = () => drillDownModal('Paid Invoices (filtered)', invDrillRows(paidRows), INV_COLS);
-    const totalSpanEl = el('span', { style: 'cursor:pointer', title: 'Drill down' });
-    totalSpanEl.appendChild(document.createTextNode('Total: '));
-    totalSpanEl.appendChild(el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)));
-    totalSpanEl.onclick = () => drillDownModal('All Invoices (filtered)', invDrillRows(rows), INV_COLS);
-    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px;flex-wrap:wrap;gap:8px' },
-      el('span', { class: 'muted table-footer-count' }, `${rows.length} invoice(s)`),
-      el('div', { class: 'flex gap-16' }, paidSpan, totalSpanEl)
-    ));
+
+    const renderChunk = () => {
+      if (token !== _invRenderToken) return;
+      const end = Math.min(idx + 80, rows.length);
+      const frag = document.createDocumentFragment();
+      for (; idx < end; idx++) frag.appendChild(buildRow(rows[idx]));
+      tb.appendChild(frag);
+      if (idx < rows.length) {
+        requestAnimationFrame(renderChunk);
+      } else {
+        selectAllChk.onchange = () => {
+          rowChks.forEach(c => { c.checked = selectAllChk.checked; });
+          selectAllChk.indeterminate = false;
+          if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
+          syncBulkActions();
+        };
+      }
+    };
+    renderChunk();
   };
-  rebuildFilters();
-  renderTable();
+  requestAnimationFrame(() => { rebuildFilters(); renderTable(); });
   return wrap;
 }
 

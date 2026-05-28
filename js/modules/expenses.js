@@ -93,6 +93,7 @@ function build() {
 
   let selected = new Set();
   let _filterTimer, _renderToken = 0;
+  let _expFieldCache = new Map();
   let yearMS, monthMS, streamMS, propMS, catMS, typeMS, recMS;
   const onFilter = () => { clearTimeout(_filterTimer); _filterTimer = setTimeout(() => { rebuildFilters(); renderAll(); }, 250); };
 
@@ -107,6 +108,7 @@ function build() {
       softDelete('expenses', id);
     }
     selected.clear();
+    _expFieldCache = new Map();
     toast(`Deleted ${count} expense(s)`, 'success');
     rebuildFilters(); renderAll();
   }});
@@ -132,11 +134,14 @@ function build() {
   function rebuildFilters() {
     const all = listActive('expenses');
 
+    // Build field cache once so every consumer in this render cycle pays zero extra calls
+    _expFieldCache = new Map(all.map(e => [e.id, resolveExpenseFields(e)]));
+
     // Single pass: inline filter checks so resolveExpenseFields is called once per expense
     const validYrs = new Set(), validMos = new Set(), validSts = new Set(),
           validPrs = new Set(), validCats = new Set(), validTps = new Set(), validRecs = new Set();
     for (const e of all) {
-      const res = resolveExpenseFields(e);
+      const res = _expFieldCache.get(e.id);
       const yr  = (e.date || '').slice(0, 4);
       const mo  = (e.date || '').slice(5, 7);
       const st  = e.stream || '';
@@ -251,14 +256,20 @@ function build() {
     syncDeleteBtn();
     tableWrap.innerHTML = '';
 
-    let rows = [...listActive('expenses')];
+    const allExpenses = listActive('expenses');
+    // Ensure cache is warm (may be empty when renderTable is called directly after a delete/edit)
+    if (_expFieldCache.size === 0) {
+      _expFieldCache = new Map(allExpenses.map(e => [e.id, resolveExpenseFields(e)]));
+    }
+
+    let rows = [...allExpenses];
     if (yearFilter.size > 0)           rows = rows.filter(r => yearFilter.has((r.date || '').slice(0, 4)));
     if (monthFilter.size > 0)          rows = rows.filter(r => monthFilter.has((r.date || '').slice(5, 7)));
     if (streamFilter.size > 0)         rows = rows.filter(r => streamFilter.has(r.stream || ''));
     if (propFilter.size > 0)           rows = rows.filter(r => propFilter.has(r.propertyId));
     if (catFilter.size > 0)            rows = rows.filter(r => catFilter.has(r.category));
-    if (accountingTypeFilter.size > 0) rows = rows.filter(r => accountingTypeFilter.has(resolveExpenseFields(r).accountingType));
-    if (recurrenceFilter.size > 0)     rows = rows.filter(r => recurrenceFilter.has(resolveExpenseFields(r).recurrence));
+    if (accountingTypeFilter.size > 0) rows = rows.filter(r => accountingTypeFilter.has(_expFieldCache.get(r.id)?.accountingType));
+    if (recurrenceFilter.size > 0)     rows = rows.filter(r => recurrenceFilter.has(_expFieldCache.get(r.id)?.recurrence));
     rows.sort((a, b) => (b.date || '').localeCompare(a.date));
 
     if (rows.length === 0) {
@@ -285,7 +296,7 @@ function build() {
     for (const r of rows) {
       const eur = toEUR(r.amount, r.currency);
       totalEUR += eur;
-      if (resolveExpenseFields(r).accountingType === 'capex') capexEUR += eur;
+      if (_expFieldCache.get(r.id)?.accountingType === 'capex') capexEUR += eur;
     }
     tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
       el('span', { class: 'muted' }, el('span', { class: 'table-footer-count' }, `${rows.length} expense(s)`), ' · CapEx: ', el('span', { class: 'table-footer-capex' }, formatEUR(capexEUR))),
@@ -298,7 +309,7 @@ function build() {
     const buildRow = (r) => {
       const prop = byId('properties', r.propertyId);
       const cat  = EXPENSE_CATEGORIES[r.category];
-      const res  = resolveExpenseFields(r);
+      const res  = _expFieldCache.get(r.id) || resolveExpenseFields(r);
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
       rowChks.push(chk);
       chk.onchange = () => {
@@ -341,7 +352,7 @@ function build() {
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog('Delete expense?', { danger: true, okLabel: 'Delete' });
-        if (ok) { restoreInventoryStock(r); softDelete('expenses', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (ok) { restoreInventoryStock(r); softDelete('expenses', r.id); _expFieldCache = new Map(); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
       return tr;
@@ -397,19 +408,24 @@ function build() {
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   const renderDash = () => {
-    let bkRows = listActive('expenses');
+    const allExp = listActive('expenses');
+    // Cache may be stale if expenses were added externally; rebuild if needed
+    if (_expFieldCache.size === 0) {
+      _expFieldCache = new Map(allExp.map(e => [e.id, resolveExpenseFields(e)]));
+    }
+    let bkRows = allExp;
     if (yearFilter.size > 0)           bkRows = bkRows.filter(r => yearFilter.has((r.date || '').slice(0, 4)));
     if (monthFilter.size > 0)          bkRows = bkRows.filter(r => monthFilter.has((r.date || '').slice(5, 7)));
     if (streamFilter.size > 0)         bkRows = bkRows.filter(r => streamFilter.has(r.stream || ''));
     if (propFilter.size > 0)           bkRows = bkRows.filter(r => propFilter.has(r.propertyId));
     if (catFilter.size > 0)            bkRows = bkRows.filter(r => catFilter.has(r.category));
-    if (accountingTypeFilter.size > 0) bkRows = bkRows.filter(r => accountingTypeFilter.has(resolveExpenseFields(r).accountingType));
-    if (recurrenceFilter.size > 0)     bkRows = bkRows.filter(r => recurrenceFilter.has(resolveExpenseFields(r).recurrence));
+    if (accountingTypeFilter.size > 0) bkRows = bkRows.filter(r => accountingTypeFilter.has(_expFieldCache.get(r.id)?.accountingType));
+    if (recurrenceFilter.size > 0)     bkRows = bkRows.filter(r => recurrenceFilter.has(_expFieldCache.get(r.id)?.recurrence));
 
     // By Cost Category doughnut (groups by resolved costCategory for correct OpEx/CapEx separation)
     const byCostCat = new Map();
     for (const r of bkRows) {
-      const k = resolveExpenseFields(r).costCategory;
+      const k = _expFieldCache.get(r.id)?.costCategory;
       byCostCat.set(k, (byCostCat.get(k) || 0) + toEUR(r.amount, r.currency));
     }
     const catLabels = [], catData = [], catColors = [], catKeys = [];
@@ -426,7 +442,7 @@ function build() {
         const key = catKeys[idx];
         drillDownModal(
           `Expenses — ${COST_CATEGORIES[key]?.label || key}`,
-          toDrillRows(bkRows.filter(r => resolveExpenseFields(r).costCategory === key)),
+          toDrillRows(bkRows.filter(r => (_expFieldCache.get(r.id) || resolveExpenseFields(r)).costCategory === key)),
           drillCols
         );
       }
