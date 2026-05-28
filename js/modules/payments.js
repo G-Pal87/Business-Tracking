@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
-import { state } from '../core/state.js';
+import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth, applyReservationExpenseRules, removeReservationExpenses, deletePayment } from '../core/data.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildReservationExpenseRefMap } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -146,15 +146,18 @@ function buildAllPayments(wrap) {
         if (mk) affectedForecast.add(`${p.propertyId}|${mk}`);
       }
     }
-    for (const id of [...selected]) {
-      const p = payMap.get(id);
-      if (p) removeReservationExpenses(p);
-      softDelete('payments', id);
-    }
-    for (const key of affectedForecast) {
-      const [propId, monthKey] = key.split('|');
-      recalcPendingAirbnbForecast(propId, monthKey);
-    }
+    const refMap = buildReservationExpenseRefMap();
+    runBatch(() => {
+      for (const id of [...selected]) {
+        const p = payMap.get(id);
+        if (p) removeReservationExpenses(p, refMap);
+        softDelete('payments', id);
+      }
+      for (const key of affectedForecast) {
+        const [propId, monthKey] = key.split('|');
+        recalcPendingAirbnbForecast(propId, monthKey);
+      }
+    });
     selected.clear();
     toast(`Deleted ${count} payment(s)`, 'success');
     renderTable();
@@ -1004,13 +1007,13 @@ function openCSVImport() {
       const rows = mergeReservationRows(parseAirbnbCSV(text));
       let added = 0, updated = 0, skipped = 0;
       const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
-      const toDelete = listActivePayments().filter(p => p.source === 'airbnb' && p.airbnbKey && !csvKeys.has(p.airbnbKey)).length;
+      const allPays = listActivePayments();
+      const existingKeySet = new Set(allPays.filter(p => p.airbnbKey).map(p => p.airbnbKey));
+      const toDelete = allPays.filter(p => p.source === 'airbnb' && p.airbnbKey && !csvKeys.has(p.airbnbKey)).length;
       for (const row of rows) {
         const pmatch = findProp(row.listing);
         if (!pmatch) { skipped++; continue; }
-        const exists = row.airbnbKey
-          ? listActivePayments().some(p => p.airbnbKey === row.airbnbKey)
-          : false;
+        const exists = row.airbnbKey ? existingKeySet.has(row.airbnbKey) : false;
         if (exists) updated++; else added++;
       }
       const badge = el('span', { class: 'badge success' }, 'Paid');
@@ -1056,6 +1059,9 @@ function openCSVImport() {
 
     let totalAdded = 0, totalUpdated = 0, totalRemoved = 0;
 
+    // Batch all the per-row mutations into a single save/refresh cycle instead
+    // of one per upsert (thousands during a large import).
+    await runBatch(async () => {
     // ── Completed CSV (airbnb_.csv): full sync / overwrite ──────────────────
     const completedFile = completedFileI.files?.[0];
     if (completedFile) {
@@ -1071,9 +1077,12 @@ function openCSVImport() {
       // Remove orphaned completed payments (airbnbKey set but not in CSV).
       // Never delete pending payments — they come from a separate CSV and aren't
       // in the completed export until after payout.
+      // Pre-index generated expenses by reservationRef so each removal is O(1)
+      // instead of scanning all expenses per orphaned payment.
+      const orphanRefMap = buildReservationExpenseRefMap();
       for (const p of listActivePayments()) {
         if (p.source === 'airbnb' && p.status !== 'pending' && p.airbnbKey && !csvKeys.has(p.airbnbKey)) {
-          removeReservationExpenses(p);
+          removeReservationExpenses(p, orphanRefMap);
           softDelete('payments', p.id);
           totalRemoved++;
         }
@@ -1089,6 +1098,9 @@ function openCSVImport() {
           if (p.airbnbRef && p.airbnbRef !== p.confirmationCode) pendingByCode.set(p.airbnbRef, p);
         }
       }
+      // Index existing generated expenses once so rule application can find an
+      // already-generated expense in O(1) (otherwise O(rows × rules × expenses)).
+      const genIndex = buildGeneratedExpenseIndex();
 
       // Upsert each row as a separate payment line item (one per type per code)
       for (const row of rows) {
@@ -1128,7 +1140,7 @@ function openCSVImport() {
         upsert('payments', pay);
         if (existing) totalUpdated++; else totalAdded++;
 
-        if (row.type.toLowerCase() === 'reservation') applyReservationExpenseRules(pay);
+        if (row.type.toLowerCase() === 'reservation') applyReservationExpenseRules(pay, genIndex);
 
         // Materialize any matching pending reservation so it no longer counts
         // in active forecast calculations while remaining visible for history.
@@ -1175,6 +1187,7 @@ function openCSVImport() {
           .filter(p => p.status === 'paid' && p.confirmationCode)
           .map(p => [p.confirmationCode, p])
       );
+      const genIndexP = buildGeneratedExpenseIndex();
 
       for (const row of rows) {
         const matched = findProp(row.listing);
@@ -1240,7 +1253,7 @@ function openCSVImport() {
         }
         upsert('payments', pay);
 
-        if (row.type?.toLowerCase() === 'reservation') applyReservationExpenseRules(pay);
+        if (row.type?.toLowerCase() === 'reservation') applyReservationExpenseRules(pay, genIndexP);
 
         // Accumulate forecast total for this property+month
         const refDate = row.checkIn || row.date;
@@ -1262,6 +1275,7 @@ function openCSVImport() {
         saveForecastMonth(fc.id, monthKey, { revenue: total });
       }
     }
+    });
 
     const parts = [`${totalAdded} new`, `${totalUpdated} updated`];
     if (totalRemoved > 0) parts.push(`${totalRemoved} removed`);

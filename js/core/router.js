@@ -1,5 +1,6 @@
 // Hash-based router + module registry
 import { state, setRoute, subscribe } from './state.js';
+import * as charts from './charts.js';
 
 const modules = new Map();
 let currentModule = null;
@@ -40,6 +41,9 @@ function onHashChange() {
   if (currentModule && currentModule.destroy) {
     try { currentModule.destroy(); } catch (e) { console.error(e); }
   }
+  // Destroy any Chart.js instances before their canvases are removed below.
+  // Centralized here so a module with an incomplete destroy() can't leak charts.
+  try { charts.destroyAll(); } catch (e) { console.error(e); }
   container.innerHTML = '';
   currentModule = mod;
   setRoute(mod.id);

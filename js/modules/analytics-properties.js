@@ -253,11 +253,17 @@ function getOperationalData({ propData, payments, start, end }) {
     if (cm > 12) { cm = 1; cy++; }
   }
 
+  // Build a Set of "propertyId|YYYY-MM" with revenue in one pass, then test
+  // membership per property/month — replaces an O(props × months × payments)
+  // nested scan with O(payments + props × months).
+  const revKeys = new Set();
+  for (const p of payments) {
+    if (p.propertyId && p.date) revKeys.add(p.propertyId + '|' + p.date.slice(0, 7));
+  }
   const vacancyDetails = [];
   for (const d of propData) {
     for (const mk of monthKeys) {
-      const hasRev = payments.some(p => p.propertyId === d.prop.id && p.date?.slice(0, 7) === mk);
-      if (!hasRev) {
+      if (!revKeys.has(d.prop.id + '|' + mk)) {
         vacancyDetails.push({ property: d.prop.name, month: mk });
       }
     }
