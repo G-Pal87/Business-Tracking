@@ -56,6 +56,7 @@ function buildAllPayments(wrap) {
   const propFilter   = new Set();
   const typeFilter   = new Set();
   const statusFilter = new Set();
+  let _payRenderToken = 0;
 
   const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const STATUS_META = {
@@ -170,6 +171,7 @@ function buildAllPayments(wrap) {
   };
 
   const renderTable = () => {
+    const token = ++_payRenderToken;
     selected.clear();
     syncDeleteBtn();
     tableWrap.innerHTML = '';
@@ -188,12 +190,9 @@ function buildAllPayments(wrap) {
     }
 
     const t = el('table', { class: 'table' });
-
-    // Header with select-all checkbox
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr', {});
-    const chkTh = el('th', { style: 'width:36px' });
-    chkTh.appendChild(selectAllChk);
+    const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
     ['Date', 'Property', 'Type', 'Source', 'Status', 'Conf. Code', 'Guest'].forEach(h => htr.appendChild(el('th', {}, h)));
     htr.appendChild(el('th', { class: 'right' }, 'Amount'));
@@ -202,13 +201,33 @@ function buildAllPayments(wrap) {
     ['Check-in', 'Check-out', 'Nights', 'Avg/Night', 'Avg Gross/N'].forEach(h => htr.appendChild(el('th', { class: 'right' }, h)));
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
-
     const tb = el('tbody');
-    const rowChks = [];
+    t.appendChild(tb);
+    tableWrap.appendChild(t);
 
+    // Compute footer total from data upfront so it shows before rows finish rendering
+    let totalEUR = 0;
     for (const r of rows) {
+      const rType = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
+      const neg = rType === 'resolution adjustment' || rType === 'adjustment';
+      totalEUR += toEUR(neg ? -Math.abs(r.amount) : r.amount, r.currency);
+    }
+    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
+      el('span', { class: 'muted table-footer-count' }, `${rows.length} payment(s)`),
+      el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
+    ));
+
+    const rowChks = [];
+    let idx = 0;
+
+    const buildRow = (r) => {
       const prop  = byId('properties', r.propertyId);
       const sMeta = STATUS_META[r.status] || { label: r.status, css: '' };
+      const rType = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
+      const isNegDisplay  = rType === 'resolution adjustment' || rType === 'adjustment';
+      const isReservation = rType === 'reservation';
+      const dispAmt   = isNegDisplay ? -Math.abs(r.amount) : r.amount;
+      const dispGross = r.airbnbGrossEarnings != null ? (isNegDisplay ? -Math.abs(r.airbnbGrossEarnings) : r.airbnbGrossEarnings) : null;
 
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
       rowChks.push(chk);
@@ -223,6 +242,7 @@ function buildAllPayments(wrap) {
       const tr = el('tr');
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       tr.appendChild(chkTd);
+      tr.dataset.eur = String(toEUR(dispAmt, r.currency));
       tr.appendChild(el('td', {}, fmtDate(r.date)));
       tr.appendChild(el('td', {}, prop?.name || '-'));
       tr.appendChild(el('td', {}, r.source === 'airbnb' ? (r.airbnbType || r.type || '-') : (r.type || '-')));
@@ -231,12 +251,6 @@ function buildAllPayments(wrap) {
       tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px' }, r.confirmationCode || r.airbnbRef || ''));
       const guestName = r.source === 'airbnb' ? (r.notes || '').split(' · ')[0] : (r.notes || '');
       tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, guestName));
-      const rType = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
-      const isNegDisplay = rType === 'resolution adjustment' || rType === 'adjustment';
-      const isReservation = rType === 'reservation';
-      const dispAmt   = isNegDisplay ? -Math.abs(r.amount) : r.amount;
-      const dispGross = r.airbnbGrossEarnings != null ? (isNegDisplay ? -Math.abs(r.airbnbGrossEarnings) : r.airbnbGrossEarnings) : null;
-      tr.dataset.eur = String(toEUR(dispAmt, r.currency));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(dispAmt, r.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(dispAmt, r.currency))));
       tr.appendChild(el('td', { class: 'right num muted' }, dispGross != null ? formatMoney(dispGross, r.currency, { maxFrac: 0 }) : ''));
@@ -260,31 +274,30 @@ function buildAllPayments(wrap) {
         renderTable();
       }}));
       tr.appendChild(actions);
-      tb.appendChild(tr);
-    }
-    t.appendChild(tb);
-    tableWrap.appendChild(t);
-
-    selectAllChk.onchange = () => {
-      rowChks.forEach(c => { c.checked = selectAllChk.checked; });
-      selectAllChk.indeterminate = false;
-      if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
-      syncDeleteBtn();
+      return tr;
     };
 
-    const totalEUR = rows.reduce((s, r) => {
-      const t = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
-      const neg = t === 'resolution adjustment' || t === 'adjustment';
-      return s + toEUR(neg ? -Math.abs(r.amount) : r.amount, r.currency);
-    }, 0);
-    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted table-footer-count' }, `${rows.length} payment(s)`),
-      el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
-    ));
+    const renderChunk = () => {
+      if (token !== _payRenderToken) return;
+      const end = Math.min(idx + 80, rows.length);
+      const frag = document.createDocumentFragment();
+      for (; idx < end; idx++) frag.appendChild(buildRow(rows[idx]));
+      tb.appendChild(frag);
+      if (idx < rows.length) {
+        requestAnimationFrame(renderChunk);
+      } else {
+        selectAllChk.onchange = () => {
+          rowChks.forEach(c => { c.checked = selectAllChk.checked; });
+          selectAllChk.indeterminate = false;
+          if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
+          syncDeleteBtn();
+        };
+      }
+    };
+    renderChunk();
   };
 
-  rebuildFilters();
-  renderTable();
+  requestAnimationFrame(() => { rebuildFilters(); renderTable(); });
 }
 
 function recordRentPayment(prop, entry, onDone) {
