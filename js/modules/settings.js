@@ -5,7 +5,7 @@ import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fet
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
 import { setDb } from '../core/state.js';
-import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT } from '../core/config.js';
+import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { PDF_TEMPLATES } from '../core/pdf.js';
 const generateInvoicePDF = (...a) => import(`../core/pdf.js?v=${window._appV || Date.now()}`).then(m => m.generateInvoicePDF(...a));
 import { openPreview as openInvoicePreview, invoicePdfPath } from './invoices.js';
@@ -510,20 +510,25 @@ function buildStrSettingsCard() {
 
   const feeI = input({ value: af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT, type: 'number', placeholder: String(AIRBNB_GUEST_FEE_PCT) });
   const taxI = input({ value: af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT,      type: 'number', placeholder: String(AIRBNB_TAX_PCT) });
+  const cleanI = input({ value: af.cleaningFee != null ? af.cleaningFee : AIRBNB_CLEANING_FEE, type: 'number', placeholder: String(AIRBNB_CLEANING_FEE) });
   body.appendChild(el('div', { class: 'form-row horizontal' },
     formRow('Guest service fee %', feeI, 'Airbnb charges this to the guest on top of your price (typically ~14%).'),
     formRow('Occupancy / tourist tax %', taxI, 'Any tax added to the guest total. Leave 0 if not applicable.')
   ));
+  body.appendChild(formRow('Cleaning fee (flat, per booking)', cleanI, 'Net cleaning fee charged once per booking. Published in the daily-rate feed (with guest fee + tax applied) for the Short-Term-Rentals repo.'));
 
   const save = button('Save', { variant: 'primary', onClick: () => {
     const fee = parseFloat(feeI.value);
     const tax = parseFloat(taxI.value);
+    const clean = parseFloat(cleanI.value);
     if (feeI.value !== '' && (isNaN(fee) || fee < 0)) { toast('Guest fee % must be a positive number', 'warning'); return; }
     if (taxI.value !== '' && (isNaN(tax) || tax < 0)) { toast('Tax % must be a positive number', 'warning'); return; }
+    if (cleanI.value !== '' && (isNaN(clean) || clean < 0)) { toast('Cleaning fee must be a positive number', 'warning'); return; }
     state.db.settings.airbnb = {
       ...af,
       guestFeePct: feeI.value === '' ? AIRBNB_GUEST_FEE_PCT : fee,
-      taxPct:      taxI.value === '' ? AIRBNB_TAX_PCT : tax
+      taxPct:      taxI.value === '' ? AIRBNB_TAX_PCT : tax,
+      cleaningFee: cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean
     };
     markDirty();
     toast('Saved', 'success');
