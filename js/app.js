@@ -188,6 +188,20 @@ async function boot() {
   let pushTimer = null;
   let saveFailCount = 0;
   let pushPending = false; // true while doSave is queued or running
+  let ratesFeedTimer = null; // debounce for auto-publishing the STR daily-rate feeds
+
+  // After a real data push, re-publish the STR daily-rate feeds. Debounced so a
+  // burst of edits results in a single publish; the publisher itself only
+  // uploads feeds whose rates actually changed, so unrelated edits are no-ops.
+  const scheduleRatesFeedPublish = () => {
+    clearTimeout(ratesFeedTimer);
+    ratesFeedTimer = setTimeout(() => {
+      ratesFeedTimer = null;
+      import(`./modules/str-rates.js?v=${VERSION}`)
+        .then(m => m.autoPublishRatesFeeds?.())
+        .catch(() => { /* best-effort; never block sync */ });
+    }, 4000);
+  };
 
   const doSave = async () => {
     if (!initialSyncDone) {
@@ -208,6 +222,7 @@ async function boot() {
       state.dirty = false;
       saveFailCount = 0;
       state.github.lastSyncError = null;
+      scheduleRatesFeedPublish(); // keep the public daily-rate feeds current
       if (!hadNewChanges) {
         updateSyncStatus('online', `Pushed to GitHub at ${new Date().toLocaleTimeString()}`);
       }
