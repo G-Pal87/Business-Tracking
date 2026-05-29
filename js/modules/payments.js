@@ -234,6 +234,10 @@ function buildAllPayments(wrap) {
       ? Math.round(guestBase * (1 + (feePct + taxPct) / 100) * 100) / 100
       : null;
     const guestPerNight = guestTotal != null && nightsVal ? guestTotal / nightsVal : null;
+    // The estimated service-fee + tax markup the guest pays on top of the host's gross.
+    const guestFee = guestTotal != null && guestBase != null
+      ? Math.round((guestTotal - guestBase) * 100) / 100
+      : null;
     return {
       r, prop, sMeta, isReservation, dispAmt, dispGross,
       propName: prop?.name || '-', typeLabel, source, statusLabel: sMeta.label, conf, guest, eur,
@@ -244,7 +248,7 @@ function buildAllPayments(wrap) {
       nights:   nightsVal,
       avgNight: isReservation ? (r.avgNightExclCleaning != null ? r.avgNightExclCleaning : (r.avgNightlyRate != null ? r.avgNightlyRate : null)) : null,
       avgGross: isReservation && r.avgGross != null ? r.avgGross : null,
-      guestTotal, guestPerNight,
+      guestFee, guestTotal, guestPerNight,
       searchText: [fmtDate(r.date), prop?.name, typeLabel, source, sMeta.label, conf, guest, r.currency].filter(Boolean).join(' ').toLowerCase()
     };
   };
@@ -257,13 +261,13 @@ function buildAllPayments(wrap) {
     d => d.eur, d => d.eur, d => (d.dispGross ?? -Infinity),
     d => (d.serviceFee ?? -Infinity), d => (d.cleaningFee ?? -Infinity),
     d => (d.avgNight ?? -Infinity), d => (d.avgGross ?? -Infinity),
-    d => (d.guestTotal ?? -Infinity), d => (d.guestPerNight ?? -Infinity)
+    d => (d.guestFee ?? -Infinity), d => (d.guestTotal ?? -Infinity), d => (d.guestPerNight ?? -Infinity)
   ];
   const HEADERS = [
     ['Date', ''], ['Property', ''], ['Type', ''], ['Source', ''], ['Status', ''], ['Conf. Code', ''], ['Guest', ''],
     ['Check-in', 'right'], ['Check-out', 'right'], ['Nights', 'right'],
     ['Amount', 'right'], ['EUR', 'right'], ['Gross', 'right'], ['Service Fee', 'right'], ['Cleaning Fee', 'right'],
-    ['Avg/Night', 'right'], ['Avg Gross/N', 'right'], ['Guest Total', 'right'], ['Guest/Night', 'right']
+    ['Avg/Night', 'right'], ['Avg Gross/N', 'right'], ['Guest Fee', 'right'], ['Guest Total', 'right'], ['Guest/Night', 'right']
   ];
 
   const renderTable = () => {
@@ -371,6 +375,7 @@ function buildAllPayments(wrap) {
       tr.appendChild(el('td', { class: 'right num muted' }, d.cleaningFee != null ? formatMoney(d.cleaningFee, r.currency, { maxFrac: 0 }) : ''));
       tr.appendChild(el('td', { class: 'right num muted' }, d.avgNight != null ? formatMoney(d.avgNight, r.currency, { maxFrac: 0 }) : ''));
       tr.appendChild(el('td', { class: 'right num muted' }, d.avgGross != null ? formatMoney(d.avgGross, r.currency, { maxFrac: 0 }) : ''));
+      tr.appendChild(el('td', { class: 'right num muted' }, d.guestFee != null ? formatMoney(d.guestFee, r.currency, { maxFrac: 0 }) : ''));
       tr.appendChild(el('td', { class: 'right num' }, d.guestTotal != null ? formatMoney(d.guestTotal, r.currency, { maxFrac: 0 }) : ''));
       tr.appendChild(el('td', { class: 'right num muted' }, d.guestPerNight != null ? formatMoney(d.guestPerNight, r.currency, { maxFrac: 0 }) : ''));
       const actions = el('td', { class: 'right' });
