@@ -2,9 +2,10 @@
 // into a month calendar with suggested prices for open days. Booked/blocked
 // days can be overlaid from an Airbnb iCal feed.
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, toast, select, input, button, formRow, fmtDate } from '../core/ui.js';
+import { el, openModal, closeModal, toast, select, input, button, formRow, fmtDate, confirmDialog } from '../core/ui.js';
 import { listActive, listActivePayments, byId, upsert, newId, formatMoney } from '../core/data.js';
 import { fetchICal, parseICal } from '../core/ical.js';
+import { uploadGithubFile } from '../core/github.js';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const WEEKDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -112,6 +113,90 @@ function blockedDateSet(propertyId) {
   return set;
 }
 
+// ── Daily-rate feed export (consumed read-only by the Short-Term-Rentals repo) ─
+// Publishes one JSON file per short-term property mapping each upcoming date to
+// the rate amount to push into a channel/iCal. The external repo only needs the
+// `amount` per `date`; `status`/`basis` are extra context it can ignore.
+const FEED_DIR = 'exports/daily-rates';
+const FEED_HORIZON_DAYS = 365;
+
+// UTF-8 safe base64 (GitHub Contents API expects base64-encoded content).
+function toB64(str) { return btoa(unescape(encodeURIComponent(str))); }
+
+// Build the per-property rate feed: actual rate on booked nights, suggested rate
+// on open/blocked nights, for the next FEED_HORIZON_DAYS days from today.
+function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
+  const prop    = byId('properties', propertyId);
+  const ccy     = prop?.currency || 'EUR';
+  const histMap = historicNightMap(propertyId);
+  const suggest = buildSuggester(histMap);
+  const blocked = blockedDateSet(propertyId);
+
+  const rates = [];
+  let date = todayStr();
+  for (let i = 0; i < horizonDays; i++) {
+    const hist = histMap.get(date);
+    let amount = null, basis = null, status;
+    if (hist) {
+      amount = hist.rate; basis = 'historic actual'; status = 'booked';
+    } else {
+      const s = suggest(date);
+      if (s) { amount = s.rate; basis = s.basis; }
+      status = blocked.has(date) ? 'blocked' : 'open';
+    }
+    if (amount != null) rates.push({ date, amount: Math.round(amount), currency: ccy, status, basis });
+    date = addDays(date, 1);
+  }
+
+  return {
+    schema: 'str-daily-rates/v1',
+    generatedAt: new Date().toISOString(),
+    property: { id: prop?.id || propertyId, name: prop?.name || '', currency: ccy, airbnbCalUrl: prop?.airbnbCalUrl || '' },
+    horizonDays,
+    rates
+  };
+}
+
+// Publish a feed file per STR property plus an index manifest. Returns the
+// raw public base URL and the list of published files.
+async function publishRatesFeeds() {
+  const stProps = listActive('properties').filter(p => p.type === 'short_term');
+  if (!stProps.length) throw new Error('No short-term properties to export');
+
+  const manifest = { schema: 'str-daily-rates-index/v1', generatedAt: new Date().toISOString(), properties: [] };
+  for (const p of stProps) {
+    const feed = buildRatesFeed(p.id);
+    const file = `${p.id}.json`;
+    await uploadGithubFile(`${FEED_DIR}/${file}`, toB64(JSON.stringify(feed, null, 2)), `Publish daily-rate feed: ${p.name}`);
+    manifest.properties.push({ id: p.id, name: p.name, currency: p.currency || 'EUR', file, nights: feed.rates.length });
+  }
+  await uploadGithubFile(`${FEED_DIR}/index.json`, toB64(JSON.stringify(manifest, null, 2)), 'Publish daily-rate feed index');
+
+  const { owner, repo, branch } = state.github;
+  const base = `https://raw.githubusercontent.com/${owner}/${repo}/${branch || 'main'}/${FEED_DIR}`;
+  return { base, manifest };
+}
+
+// Show the public URLs after publishing so they can be wired into the other repo.
+function showFeedUrls({ base, manifest }) {
+  const body = el('div', {});
+  body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:10px' },
+    'Daily-rate feeds published. The Short-Term-Rentals repo can read these read-only over HTTPS (the repo must be public for raw URLs to work without a token).'));
+
+  const urlRow = (label, url) => {
+    const inp = input({ value: url });
+    inp.readOnly = true;
+    inp.onclick = () => { inp.select(); };
+    return formRow(label, inp);
+  };
+
+  body.appendChild(urlRow('Index (start here)', `${base}/index.json`));
+  for (const p of manifest.properties) {
+    body.appendChild(urlRow(`${p.name} (${p.nights} nights)`, `${base}/${p.file}`));
+  }
+  openModal({ title: 'Daily-Rate Feed URLs', body, footer: [button('Close', { onClick: closeModal })] });
+}
+
 // ── Main view ─────────────────────────────────────────────────────────────────
 function build() {
   const wrap = el('div', { class: 'view active' });
@@ -146,6 +231,25 @@ function build() {
   bar.appendChild(nextBtn);
   bar.appendChild(todayBtn);
   bar.appendChild(el('div', { class: 'flex-1' }));
+  const publishBtn = button('Publish Rates Feed', { onClick: async () => {
+    const ok = await confirmDialog(
+      `Publish daily-rate feeds for all short-term properties to GitHub (under ${FEED_DIR}/)? These JSON files are read by the Short-Term-Rentals repo.`,
+      { okLabel: 'Publish' }
+    );
+    if (!ok) return;
+    const orig = publishBtn.textContent;
+    publishBtn.disabled = true; publishBtn.textContent = 'Publishing…';
+    try {
+      const res = await publishRatesFeeds();
+      toast(`Published ${res.manifest.properties.length} rate feed(s)`, 'success');
+      showFeedUrls(res);
+    } catch (e) {
+      toast(`Publish failed: ${e.message}`, 'danger', 6000);
+    } finally {
+      publishBtn.disabled = false; publishBtn.textContent = orig;
+    }
+  }});
+  bar.appendChild(publishBtn);
   bar.appendChild(button('Import Airbnb Calendar', { onClick: () => openImportModal(_propId, rerender) }));
   wrap.appendChild(bar);
 
