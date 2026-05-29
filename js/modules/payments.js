@@ -2,7 +2,7 @@
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildReservationExpenseRefMap } from '../core/data.js';
-import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
+import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
 let _allPaySortCol = -1, _allPaySortDir = 1;
@@ -223,14 +223,26 @@ function buildAllPayments(wrap) {
     const conf      = r.confirmationCode || r.airbnbRef || '';
     const guest     = r.source === 'airbnb' ? (r.notes || '').split(' · ')[0] : (r.notes || '');
     const eur       = toEUR(dispAmt, r.currency);
+    // Estimated guest-facing price. The host CSV has no guest total, so we gross
+    // up the host gross earnings by the configured guest service fee + tax.
+    const af        = state.db.settings?.airbnb || {};
+    const feePct    = af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT;
+    const taxPct    = af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT;
+    const guestBase = r.airbnbGrossEarnings != null ? r.airbnbGrossEarnings : r.amount;
+    const nightsVal = isReservation && r.airbnbNights ? r.airbnbNights : null;
+    const guestTotal = isReservation && guestBase != null
+      ? Math.round(guestBase * (1 + (feePct + taxPct) / 100) * 100) / 100
+      : null;
+    const guestPerNight = guestTotal != null && nightsVal ? guestTotal / nightsVal : null;
     return {
       r, prop, sMeta, isReservation, dispAmt, dispGross,
       propName: prop?.name || '-', typeLabel, source, statusLabel: sMeta.label, conf, guest, eur,
       checkIn:  r.airbnbCheckIn || '',
       checkOut: r.airbnbCheckOut || '',
-      nights:   isReservation && r.airbnbNights ? r.airbnbNights : null,
+      nights:   nightsVal,
       avgNight: isReservation ? (r.avgNightExclCleaning != null ? r.avgNightExclCleaning : (r.avgNightlyRate != null ? r.avgNightlyRate : null)) : null,
       avgGross: isReservation && r.avgGross != null ? r.avgGross : null,
+      guestTotal, guestPerNight,
       searchText: [fmtDate(r.date), prop?.name, typeLabel, source, sMeta.label, conf, guest, r.currency].filter(Boolean).join(' ').toLowerCase()
     };
   };
@@ -240,12 +252,13 @@ function buildAllPayments(wrap) {
     d => d.r.date, d => d.propName, d => d.typeLabel, d => d.source, d => d.statusLabel,
     d => d.conf, d => d.guest, d => d.eur, d => d.eur, d => (d.dispGross ?? -Infinity),
     d => d.checkIn, d => d.checkOut, d => (d.nights ?? -Infinity),
-    d => (d.avgNight ?? -Infinity), d => (d.avgGross ?? -Infinity)
+    d => (d.avgNight ?? -Infinity), d => (d.avgGross ?? -Infinity),
+    d => (d.guestTotal ?? -Infinity), d => (d.guestPerNight ?? -Infinity)
   ];
   const HEADERS = [
     ['Date', ''], ['Property', ''], ['Type', ''], ['Source', ''], ['Status', ''], ['Conf. Code', ''], ['Guest', ''],
     ['Amount', 'right'], ['EUR', 'right'], ['Gross', 'right'], ['Check-in', 'right'], ['Check-out', 'right'],
-    ['Nights', 'right'], ['Avg/Night', 'right'], ['Avg Gross/N', 'right']
+    ['Nights', 'right'], ['Avg/Night', 'right'], ['Avg Gross/N', 'right'], ['Guest Total', 'right'], ['Guest/Night', 'right']
   ];
 
   const renderTable = () => {
@@ -351,6 +364,8 @@ function buildAllPayments(wrap) {
       tr.appendChild(el('td', { class: 'right muted' }, d.nights != null ? String(d.nights) : ''));
       tr.appendChild(el('td', { class: 'right num muted' }, d.avgNight != null ? formatMoney(d.avgNight, r.currency, { maxFrac: 0 }) : ''));
       tr.appendChild(el('td', { class: 'right num muted' }, d.avgGross != null ? formatMoney(d.avgGross, r.currency, { maxFrac: 0 }) : ''));
+      tr.appendChild(el('td', { class: 'right num' }, d.guestTotal != null ? formatMoney(d.guestTotal, r.currency, { maxFrac: 0 }) : ''));
+      tr.appendChild(el('td', { class: 'right num muted' }, d.guestPerNight != null ? formatMoney(d.guestPerNight, r.currency, { maxFrac: 0 }) : ''));
       const actions = el('td', { class: 'right' });
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
