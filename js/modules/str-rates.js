@@ -124,11 +124,29 @@ const FEED_HORIZON_DAYS = 365;
 // UTF-8 safe base64 (GitHub Contents API expects base64-encoded content).
 function toB64(str) { return btoa(unescape(encodeURIComponent(str))); }
 
+// Typical cleaning fee + stay length for a property, from its booking history
+// (falls back to the property's cleaningFee and a 3-night assumption). Used to
+// spread the one-off cleaning fee across nights for an all-in guest price.
+function cleaningProfile(propertyId) {
+  const prop = byId('properties', propertyId);
+  const bookings = listActivePayments().filter(p =>
+    p.propertyId === propertyId && p.stream === 'short_term_rental' && p.status !== 'materialized');
+  const avg = arr => arr.length ? arr.reduce((s, x) => s + x, 0) / arr.length : null;
+  const fees   = bookings.map(b => b.airbnbCleaningFee).filter(v => v != null && v > 0);
+  const nights = bookings.map(b => b.airbnbNights).filter(v => v != null && v > 0);
+  let cleaningFee = avg(fees);
+  if (cleaningFee == null) cleaningFee = (prop?.cleaningFee != null ? prop.cleaningFee : 0) || 0;
+  const assumedNights = Math.max(1, Math.round(avg(nights) || 3));
+  return { cleaningFee, assumedNights, cleaningPerNight: cleaningFee / assumedNights };
+}
+
 // Build the per-property rate feed: actual rate on booked nights, suggested rate
 // on open/blocked nights, for the next FEED_HORIZON_DAYS days from today.
-// Each night carries both the net nightly rate (`amount`, what the host earns)
-// and the full guest-facing price (`guestAmount` = amount grossed up by the
-// configured guest service fee % + tax %) so the consumer can discount it.
+// Each night carries:
+//   amount           — net nightly rate (what the host earns)
+//   guestAmount      — guest-facing nightly price, fees included, NO cleaning
+//   guestAmountAllIn — full price the guest pays via Airbnb per night, incl. an
+//                      allocated share of the cleaning fee + guest fee + tax
 function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
   const prop    = byId('properties', propertyId);
   const ccy     = prop?.currency || 'EUR';
@@ -141,6 +159,7 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
   const feePct  = af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT;
   const taxPct  = af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT;
   const guestMult = 1 + (feePct + taxPct) / 100;
+  const clean = cleaningProfile(propertyId);
 
   const rates = [];
   let date = todayStr();
@@ -157,8 +176,9 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
     if (amount != null) {
       rates.push({
         date,
-        amount: Math.round(amount),                  // net nightly rate (host earns)
-        guestAmount: Math.round(amount * guestMult), // full price guest pays per night, fees included
+        amount: Math.round(amount),                                          // net nightly rate (host earns)
+        guestAmount: Math.round(amount * guestMult),                         // guest nightly, fees incl, no cleaning
+        guestAmountAllIn: Math.round((amount + clean.cleaningPerNight) * guestMult), // full Airbnb price/night incl cleaning
         currency: ccy,
         status,
         basis
@@ -173,6 +193,9 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
     property: { id: prop?.id || propertyId, name: prop?.name || '', currency: ccy, airbnbCalUrl: prop?.airbnbCalUrl || '' },
     guestFeePct: feePct,
     taxPct,
+    cleaningFee: Math.round(clean.cleaningFee),
+    cleaningGuestTotal: Math.round(clean.cleaningFee * guestMult), // cleaning fee as the guest sees it (fee+tax applied)
+    assumedNights: clean.assumedNights,
     horizonDays,
     rates
   };
