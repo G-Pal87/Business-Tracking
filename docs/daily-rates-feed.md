@@ -53,26 +53,39 @@ The exact URLs are shown in a dialog right after publishing.
   "property": { "id": "prop_abc123", "name": "Poolside Studio", "currency": "EUR", "airbnbCalUrl": "" },
   "guestFeePct": 14,
   "taxPct": 0,
+  "cleaningFee": 40,
+  "cleaningGuestTotal": 46,
+  "assumedNights": 3,
   "horizonDays": 365,
   "rates": [
-    { "date": "2026-05-30", "amount": 55, "guestAmount": 63, "currency": "EUR", "status": "open",    "basis": "May average" },
-    { "date": "2026-05-31", "amount": 62, "guestAmount": 71, "currency": "EUR", "status": "booked",  "basis": "historic actual" },
-    { "date": "2026-06-01", "amount": 58, "guestAmount": 66, "currency": "EUR", "status": "blocked", "basis": "same day, prior years" }
+    { "date": "2026-05-30", "amount": 55, "guestAmount": 63, "guestAmountAllIn": 78, "currency": "EUR", "status": "open",    "basis": "May average" },
+    { "date": "2026-05-31", "amount": 62, "guestAmount": 71, "guestAmountAllIn": 86, "currency": "EUR", "status": "booked",  "basis": "historic actual" },
+    { "date": "2026-06-01", "amount": 58, "guestAmount": 66, "guestAmountAllIn": 81, "currency": "EUR", "status": "blocked", "basis": "same day, prior years" }
   ]
 }
 ```
 
 ### Field meaning
 
-| Field         | Meaning                                                                              |
-|---------------|--------------------------------------------------------------------------------------|
-| `date`        | The night, `YYYY-MM-DD`.                                                              |
-| `amount`      | Net nightly rate — what the host earns (integer, rounded).                           |
-| `guestAmount` | **Full price the guest pays per night, fees included** = `amount × (1 + guestFeePct% + taxPct%)`. Use this if you want to discount off the guest-facing price. |
-| `currency`    | Currency of both amounts.                                                            |
-| `status`      | `booked` (actual historic night), `blocked` (reserved via iCal), or `open`.          |
-| `basis`       | How the amount was derived (`historic actual`, `same day, prior years`, `<Month> average`, `overall average`). |
+| Field              | Meaning                                                                              |
+|--------------------|--------------------------------------------------------------------------------------|
+| `date`             | The night, `YYYY-MM-DD`.                                                              |
+| `amount`           | Net nightly rate — what the host earns (integer, rounded).                           |
+| `guestAmount`      | Guest-facing nightly price, guest fee + tax included, **without** cleaning = `amount × (1 + guestFeePct% + taxPct%)`. |
+| `guestAmountAllIn` | **Full price the guest pays via Airbnb per night, everything included** — nightly rate + an allocated share of the cleaning fee, all grossed up by guest fee + tax = `(amount + cleaningFee/assumedNights) × (1 + guestFeePct% + taxPct%)`. Use this to discount off the all-in Airbnb price. |
+| `currency`         | Currency of all amounts.                                                             |
+| `status`           | `booked` (actual historic night), `blocked` (reserved via iCal), or `open`.          |
+| `basis`            | How the rate was derived (`historic actual`, `same day, prior years`, `<Month> average`, `overall average`). |
 
-Feed-level `guestFeePct` / `taxPct` tell you the assumptions used to gross
-`amount` up to `guestAmount`. The feed covers the next `horizonDays` days
-(default 365) from the day it was published.
+Feed-level fields document the assumptions:
+- `guestFeePct` / `taxPct` — Airbnb guest service fee and tax applied to gross the net rate up.
+- `cleaningFee` — typical cleaning fee for the property (net), taken from booking history.
+- `cleaningGuestTotal` — that cleaning fee as the guest sees it (fee + tax applied).
+- `assumedNights` — the stay length used to spread the cleaning fee across nights.
+
+Because cleaning is a one-off per booking, `guestAmountAllIn` folds in a *per-night
+allocation* of it (`cleaningFee / assumedNights`). If you'd rather charge cleaning
+once per booking, use `guestAmount` for the nightly price and add `cleaningGuestTotal`
+once per stay instead.
+
+The feed covers the next `horizonDays` days (default 365) from publication.
