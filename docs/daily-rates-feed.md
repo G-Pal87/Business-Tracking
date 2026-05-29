@@ -54,7 +54,7 @@ The exact URLs are shown in a dialog right after publishing.
   "guestFeePct": 14,
   "taxPct": 0,
   "cleaningFee": 50,
-  "cleaningGuestTotal": 57,
+  "cleaningGuestTotal": 50,
   "horizonDays": 365,
   "rates": [
     { "date": "2026-05-30", "amount": 55, "guestAmount": 63, "currency": "EUR", "status": "open",    "basis": "May average" },
@@ -76,9 +76,8 @@ The exact URLs are shown in a dialog right after publishing.
 | `basis`       | How the rate was derived (`historic actual`, `same day, prior years`, `<Month> average`, `overall average`). |
 
 Cleaning is charged **once per booking**, not per night. Feed-level fields:
-- `guestFeePct` / `taxPct` — Airbnb guest service fee and tax applied to gross the net rate up.
-- `cleaningFee` — flat cleaning fee (net), set in Settings → STR / Airbnb (default 50).
-- `cleaningGuestTotal` — that cleaning fee as the guest sees it (fee + tax applied). **Add this once per stay.**
+- `guestFeePct` / `taxPct` — Airbnb guest service fee and tax applied to gross the nightly rate up.
+- `cleaningFee` / `cleaningGuestTotal` — flat cleaning fee the guest pays, once per booking (no fee/tax added, so these are equal). Set in Settings → STR / Airbnb (default 50). **Add this once per stay.**
 
 ### Reconstructing the full Airbnb guest price
 

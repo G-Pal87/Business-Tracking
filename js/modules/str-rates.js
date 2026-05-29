@@ -176,8 +176,8 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
     property: { id: prop?.id || propertyId, name: prop?.name || '', currency: ccy, airbnbCalUrl: prop?.airbnbCalUrl || '' },
     guestFeePct: feePct,
     taxPct,
-    cleaningFee: Math.round(cleanFee),                       // flat cleaning fee, charged once per booking (net)
-    cleaningGuestTotal: Math.round(cleanFee * guestMult),    // cleaning as the guest sees it (fee + tax applied)
+    cleaningFee: Math.round(cleanFee),                       // flat cleaning fee, charged once per booking
+    cleaningGuestTotal: Math.round(cleanFee),                // flat fee the guest pays for cleaning (no fee/tax added)
     horizonDays,
     rates
   };

@@ -515,7 +515,7 @@ function buildStrSettingsCard() {
     formRow('Guest service fee %', feeI, 'Airbnb charges this to the guest on top of your price (typically ~14%).'),
     formRow('Occupancy / tourist tax %', taxI, 'Any tax added to the guest total. Leave 0 if not applicable.')
   ));
-  body.appendChild(formRow('Cleaning fee (flat, per booking)', cleanI, 'Net cleaning fee charged once per booking. Published in the daily-rate feed (with guest fee + tax applied) for the Short-Term-Rentals repo.'));
+  body.appendChild(formRow('Cleaning fee (flat, per booking)', cleanI, 'Flat fee the guest pays for cleaning, once per booking (no guest fee/tax added). Published in the daily-rate feed for the Short-Term-Rentals repo.'));
 
   const save = button('Save', { variant: 'primary', onClick: () => {
     const fee = parseFloat(feeI.value);
