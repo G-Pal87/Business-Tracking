@@ -35,7 +35,8 @@ async function boot() {
     { default: inventory },
     { default: tenants },
     { default: dividends },
-    { default: companyStructure }
+    { default: companyStructure },
+    { default: strRates }
   ] = await Promise.all([
     import(`./modules/properties.js?v=${VERSION}`),
     import(`./modules/payments.js?v=${VERSION}`),
@@ -61,11 +62,12 @@ async function boot() {
     import(`./modules/inventory.js?v=${VERSION}`),
     import(`./modules/tenants.js?v=${VERSION}`),
     import(`./modules/dividends.js?v=${VERSION}`),
-    import(`./modules/company-structure.js?v=${VERSION}`)
+    import(`./modules/company-structure.js?v=${VERSION}`),
+    import(`./modules/str-rates.js?v=${VERSION}`)
   ]);
 
   const MODULES = [
-    properties, payments, expenses, dividends, tenants, vendors, inventory, companyStructure,
+    properties, payments, strRates, expenses, dividends, tenants, vendors, inventory, companyStructure,
     reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsPersonal, analyticsTax, clients, invoices, settings, users
   ];
 
@@ -444,7 +446,7 @@ function buildUserFooter() {
 function buildSidebar(MODULES) {
   const navGroups = [
     { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-personal', 'analytics-tax'] },
-    { title: 'Operations', items: ['properties', 'payments', 'expenses', 'dividends', 'tenants', 'vendors', 'inventory', 'company-structure', 'clients', 'invoices', 'forecast'] },
+    { title: 'Operations', items: ['properties', 'payments', 'str-rates', 'expenses', 'dividends', 'tenants', 'vendors', 'inventory', 'company-structure', 'clients', 'invoices', 'forecast'] },
     { title: 'System', items: ['settings', 'users'] }
   ];
   const nav = document.getElementById('nav');
