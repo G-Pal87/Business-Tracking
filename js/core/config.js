@@ -135,3 +135,10 @@ export const CURRENCY_SYMBOLS = {
   EUR: '€',
   HUF: 'Ft'
 };
+
+// Default assumptions for estimating the guest-facing Airbnb price.
+// The host CSV only contains host-side figures (payout / gross), so the guest
+// total is estimated: guestTotal = gross × (1 + guestFee% + tax%).
+// Both are overridable in Settings → STR / Airbnb (state.db.settings.airbnb).
+export const AIRBNB_GUEST_FEE_PCT = 14; // typical Airbnb guest service fee
+export const AIRBNB_TAX_PCT = 0;        // occupancy / tourist tax, off by default
