@@ -1,11 +1,11 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-05-29T20:16:17.021Z",
+  "generatedAt": "2026-05-29T20:17:10.743Z",
   "property": {
     "id": "prop_mox7p43s8o",
     "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
     "currency": "EUR",
-    "airbnbCalUrl": ""
+    "airbnbCalUrl": "https://www.airbnb.co.uk/calendar/ical/1341854905555812998.ics?t=1e2c75c8b84645a4ac88669d8ec7bdda"
   },
   "guestFeePct": 14,
   "taxPct": 0,
@@ -58,7 +58,7 @@
       "amount": 73,
       "guestAmount": 84,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -66,7 +66,7 @@
       "amount": 73,
       "guestAmount": 84,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -74,7 +74,7 @@
       "amount": 73,
       "guestAmount": 84,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -82,7 +82,7 @@
       "amount": 73,
       "guestAmount": 84,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -90,7 +90,7 @@
       "amount": 73,
       "guestAmount": 84,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -98,7 +98,7 @@
       "amount": 63,
       "guestAmount": 72,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -106,7 +106,7 @@
       "amount": 74,
       "guestAmount": 84,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -114,7 +114,7 @@
       "amount": 74,
       "guestAmount": 84,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -122,7 +122,7 @@
       "amount": 74,
       "guestAmount": 84,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -130,7 +130,7 @@
       "amount": 74,
       "guestAmount": 84,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -138,7 +138,7 @@
       "amount": 70,
       "guestAmount": 80,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June average"
     },
     {
@@ -146,7 +146,7 @@
       "amount": 51,
       "guestAmount": 59,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -186,7 +186,7 @@
       "amount": 83,
       "guestAmount": 95,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -194,7 +194,7 @@
       "amount": 83,
       "guestAmount": 95,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -202,7 +202,7 @@
       "amount": 77,
       "guestAmount": 88,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -210,7 +210,7 @@
       "amount": 53,
       "guestAmount": 60,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -218,7 +218,7 @@
       "amount": 53,
       "guestAmount": 60,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -226,7 +226,7 @@
       "amount": 53,
       "guestAmount": 60,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -234,7 +234,7 @@
       "amount": 53,
       "guestAmount": 60,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -242,7 +242,7 @@
       "amount": 53,
       "guestAmount": 60,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -298,7 +298,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -306,7 +306,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -314,7 +314,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -322,7 +322,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -362,7 +362,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -370,7 +370,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -378,7 +378,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -386,7 +386,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -394,7 +394,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -402,7 +402,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -410,7 +410,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -498,7 +498,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -506,7 +506,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -514,7 +514,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -522,7 +522,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -530,7 +530,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -538,7 +538,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -546,7 +546,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -554,7 +554,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -562,7 +562,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -570,7 +570,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -578,7 +578,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -586,7 +586,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -594,7 +594,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -602,7 +602,7 @@
       "amount": 86,
       "guestAmount": 98,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -2898,7 +2898,7 @@
       "amount": 84,
       "guestAmount": 96,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -2906,7 +2906,7 @@
       "amount": 71,
       "guestAmount": 81,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -2914,7 +2914,7 @@
       "amount": 71,
       "guestAmount": 81,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -2922,7 +2922,7 @@
       "amount": 71,
       "guestAmount": 81,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     },
     {
@@ -2930,7 +2930,7 @@
       "amount": 71,
       "guestAmount": 81,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "same day, prior years"
     }
   ]
