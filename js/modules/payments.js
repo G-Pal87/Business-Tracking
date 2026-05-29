@@ -70,6 +70,19 @@ function build() {
 }
 
 function buildAllPayments(wrap) {
+  // Column headers. Defined up here so the "Columns" show/hide control can be
+  // built alongside the other filters. Order must match colAccessors + buildRow.
+  const HEADERS = [
+    ['Date', ''], ['Property', ''], ['Type', ''], ['Source', ''], ['Status', ''], ['Conf. Code', ''], ['Guest', ''],
+    ['Check-in', 'right'], ['Check-out', 'right'], ['Nights', 'right'],
+    ['Amount', 'right'], ['EUR', 'right'], ['Gross', 'right'], ['Service Fee', 'right'], ['Cleaning Fee', 'right'],
+    ['Avg/Night', 'right'], ['Avg Gross/N', 'right'], ['Guest Fee', 'right'], ['Guest Total', 'right'], ['Guest/Night', 'right']
+  ];
+  // Visible-column set (empty = all visible). A column is shown when the set is
+  // empty or contains its label.
+  const colVisible = new Set();
+  const colShown = (i) => colVisible.size === 0 || colVisible.has(HEADERS[i][0]);
+
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   const yearFilter   = new Set();
   const monthFilter  = new Set();
@@ -108,6 +121,11 @@ function buildAllPayments(wrap) {
   const propMS   = buildMultiSelect([], propFilter,   'All Properties', debouncedRT, 'pay_props');
   const typeMS   = buildMultiSelect([], typeFilter,   'All Types',      debouncedRT, 'pay_types');
   const statusMS = buildMultiSelect([], statusFilter, 'All Statuses',   debouncedRT, 'pay_statuses');
+  // Column show/hide. Reuses the multi-select: empty set = all columns visible.
+  const colMS = buildMultiSelect(
+    HEADERS.map(([label]) => ({ value: label, label })),
+    colVisible, 'Columns', () => renderTable(), 'pay_cols'
+  );
 
   const rebuildFilters = () => {
     const allPayments = listActivePayments();
@@ -171,6 +189,7 @@ function buildAllPayments(wrap) {
   filterBar.appendChild(propMS);
   filterBar.appendChild(typeMS);
   filterBar.appendChild(statusMS);
+  filterBar.appendChild(colMS);
   filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(deleteSelBtn);
@@ -263,12 +282,6 @@ function buildAllPayments(wrap) {
     d => (d.avgNight ?? -Infinity), d => (d.avgGross ?? -Infinity),
     d => (d.guestFee ?? -Infinity), d => (d.guestTotal ?? -Infinity), d => (d.guestPerNight ?? -Infinity)
   ];
-  const HEADERS = [
-    ['Date', ''], ['Property', ''], ['Type', ''], ['Source', ''], ['Status', ''], ['Conf. Code', ''], ['Guest', ''],
-    ['Check-in', 'right'], ['Check-out', 'right'], ['Nights', 'right'],
-    ['Amount', 'right'], ['EUR', 'right'], ['Gross', 'right'], ['Service Fee', 'right'], ['Cleaning Fee', 'right'],
-    ['Avg/Night', 'right'], ['Avg Gross/N', 'right'], ['Guest Fee', 'right'], ['Guest Total', 'right'], ['Guest/Night', 'right']
-  ];
 
   const renderTable = () => {
     selected.clear();
@@ -323,6 +336,7 @@ function buildAllPayments(wrap) {
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
     HEADERS.forEach(([label, cls], i) => {
+      if (!colShown(i)) return;
       const th = el('th', cls ? { class: cls } : {}, label);
       th.style.cursor = 'pointer';
       th.style.userSelect = 'none';
@@ -358,26 +372,30 @@ function buildAllPayments(wrap) {
       const tr = el('tr');
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       tr.appendChild(chkTd);
-      tr.appendChild(el('td', {}, fmtDate(r.date)));
-      tr.appendChild(el('td', {}, d.propName));
-      tr.appendChild(el('td', {}, d.typeLabel));
-      tr.appendChild(el('td', {}, el('span', { class: 'badge' }, d.source)));
-      tr.appendChild(el('td', {}, el('span', { class: `badge ${sMeta.css}` }, d.statusLabel)));
-      tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px' }, d.conf));
-      tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, d.guest));
-      tr.appendChild(el('td', { class: 'right muted' }, d.checkIn ? fmtDate(d.checkIn) : ''));
-      tr.appendChild(el('td', { class: 'right muted' }, d.checkOut ? fmtDate(d.checkOut) : ''));
-      tr.appendChild(el('td', { class: 'right muted' }, d.nights != null ? String(d.nights) : ''));
-      tr.appendChild(el('td', { class: 'right num' }, formatMoney(d.dispAmt, r.currency, { maxFrac: 0 })));
-      tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(d.eur)));
-      tr.appendChild(el('td', { class: 'right num muted' }, d.dispGross != null ? formatMoney(d.dispGross, r.currency, { maxFrac: 0 }) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, d.serviceFee  != null ? formatMoney(d.serviceFee,  r.currency, { maxFrac: 0 }) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, d.cleaningFee != null ? formatMoney(d.cleaningFee, r.currency, { maxFrac: 0 }) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, d.avgNight != null ? formatMoney(d.avgNight, r.currency, { maxFrac: 0 }) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, d.avgGross != null ? formatMoney(d.avgGross, r.currency, { maxFrac: 0 }) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, d.guestFee != null ? formatMoney(d.guestFee, r.currency, { maxFrac: 0 }) : ''));
-      tr.appendChild(el('td', { class: 'right num' }, d.guestTotal != null ? formatMoney(d.guestTotal, r.currency, { maxFrac: 0 }) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, d.guestPerNight != null ? formatMoney(d.guestPerNight, r.currency, { maxFrac: 0 }) : ''));
+      // One cell per HEADERS entry, in the same order. Only visible columns are appended.
+      const cells = [
+        el('td', {}, fmtDate(r.date)),
+        el('td', {}, d.propName),
+        el('td', {}, d.typeLabel),
+        el('td', {}, el('span', { class: 'badge' }, d.source)),
+        el('td', {}, el('span', { class: `badge ${sMeta.css}` }, d.statusLabel)),
+        el('td', { class: 'muted', style: 'font-size:11px' }, d.conf),
+        el('td', { class: 'muted', style: 'font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, d.guest),
+        el('td', { class: 'right muted' }, d.checkIn ? fmtDate(d.checkIn) : ''),
+        el('td', { class: 'right muted' }, d.checkOut ? fmtDate(d.checkOut) : ''),
+        el('td', { class: 'right muted' }, d.nights != null ? String(d.nights) : ''),
+        el('td', { class: 'right num' }, formatMoney(d.dispAmt, r.currency, { maxFrac: 0 })),
+        el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(d.eur)),
+        el('td', { class: 'right num muted' }, d.dispGross != null ? formatMoney(d.dispGross, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num muted' }, d.serviceFee  != null ? formatMoney(d.serviceFee,  r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num muted' }, d.cleaningFee != null ? formatMoney(d.cleaningFee, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num muted' }, d.avgNight != null ? formatMoney(d.avgNight, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num muted' }, d.avgGross != null ? formatMoney(d.avgGross, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num muted' }, d.guestFee != null ? formatMoney(d.guestFee, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num' }, d.guestTotal != null ? formatMoney(d.guestTotal, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num muted' }, d.guestPerNight != null ? formatMoney(d.guestPerNight, r.currency, { maxFrac: 0 }) : '')
+      ];
+      cells.forEach((td, i) => { if (colShown(i)) tr.appendChild(td); });
       const actions = el('td', { class: 'right' });
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
