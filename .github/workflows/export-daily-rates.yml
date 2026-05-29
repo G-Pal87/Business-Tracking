@@ -1,0 +1,48 @@
+name: Export daily-rate feeds
+
+# Regenerates exports/daily-rates/ from data/db.json so the Short-Term-Rentals
+# repo always has current feeds. Runs when the DB changes, on a schedule, and
+# on demand. The commit only touches exports/, so it never retriggers itself
+# (the push trigger is filtered to data/db.json).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "data/db.json"
+      - "scripts/export-daily-rates.js"
+  schedule:
+    - cron: "0 5,17 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: export-daily-rates
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Generate daily-rate feeds
+        run: node scripts/export-daily-rates.js
+
+      - name: Commit feeds if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add exports/daily-rates
+          if git diff --cached --quiet; then
+            echo "No feed changes to commit."
+          else
+            git commit -m "Update daily-rate feeds [skip ci]"
+            git push
+          fi
