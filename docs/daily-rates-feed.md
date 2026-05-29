@@ -51,25 +51,28 @@ The exact URLs are shown in a dialog right after publishing.
   "schema": "str-daily-rates/v1",
   "generatedAt": "2026-05-29T10:00:00.000Z",
   "property": { "id": "prop_abc123", "name": "Poolside Studio", "currency": "EUR", "airbnbCalUrl": "" },
+  "guestFeePct": 14,
+  "taxPct": 0,
   "horizonDays": 365,
   "rates": [
-    { "date": "2026-05-30", "amount": 55, "currency": "EUR", "status": "open",    "basis": "May average" },
-    { "date": "2026-05-31", "amount": 62, "currency": "EUR", "status": "booked",  "basis": "historic actual" },
-    { "date": "2026-06-01", "amount": 58, "currency": "EUR", "status": "blocked", "basis": "same day, prior years" }
+    { "date": "2026-05-30", "amount": 55, "guestAmount": 63, "currency": "EUR", "status": "open",    "basis": "May average" },
+    { "date": "2026-05-31", "amount": 62, "guestAmount": 71, "currency": "EUR", "status": "booked",  "basis": "historic actual" },
+    { "date": "2026-06-01", "amount": 58, "guestAmount": 66, "currency": "EUR", "status": "blocked", "basis": "same day, prior years" }
   ]
 }
 ```
 
 ### Field meaning
 
-| Field      | Meaning                                                                              |
-|------------|--------------------------------------------------------------------------------------|
-| `date`     | The night, `YYYY-MM-DD`.                                                              |
-| `amount`   | **The rate to push** for that night (integer, rounded).                              |
-| `currency` | Currency of `amount`.                                                                |
-| `status`   | `booked` (actual historic night), `blocked` (reserved via iCal), or `open`.          |
-| `basis`    | How the amount was derived (`historic actual`, `same day, prior years`, `<Month> average`, `overall average`). |
+| Field         | Meaning                                                                              |
+|---------------|--------------------------------------------------------------------------------------|
+| `date`        | The night, `YYYY-MM-DD`.                                                              |
+| `amount`      | Net nightly rate — what the host earns (integer, rounded).                           |
+| `guestAmount` | **Full price the guest pays per night, fees included** = `amount × (1 + guestFeePct% + taxPct%)`. Use this if you want to discount off the guest-facing price. |
+| `currency`    | Currency of both amounts.                                                            |
+| `status`      | `booked` (actual historic night), `blocked` (reserved via iCal), or `open`.          |
+| `basis`       | How the amount was derived (`historic actual`, `same day, prior years`, `<Month> average`, `overall average`). |
 
-The Short-Term-Rentals repo typically only needs `date` + `amount`. `status` and
-`basis` are extra context it may ignore. The feed covers the next `horizonDays`
-days (default 365) from the day it was published.
+Feed-level `guestFeePct` / `taxPct` tell you the assumptions used to gross
+`amount` up to `guestAmount`. The feed covers the next `horizonDays` days
+(default 365) from the day it was published.

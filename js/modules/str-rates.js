@@ -6,6 +6,7 @@ import { el, openModal, closeModal, toast, select, input, button, formRow, fmtDa
 import { listActive, listActivePayments, byId, upsert, newId, formatMoney } from '../core/data.js';
 import { fetchICal, parseICal } from '../core/ical.js';
 import { uploadGithubFile } from '../core/github.js';
+import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT } from '../core/config.js';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const WEEKDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -125,12 +126,21 @@ function toB64(str) { return btoa(unescape(encodeURIComponent(str))); }
 
 // Build the per-property rate feed: actual rate on booked nights, suggested rate
 // on open/blocked nights, for the next FEED_HORIZON_DAYS days from today.
+// Each night carries both the net nightly rate (`amount`, what the host earns)
+// and the full guest-facing price (`guestAmount` = amount grossed up by the
+// configured guest service fee % + tax %) so the consumer can discount it.
 function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
   const prop    = byId('properties', propertyId);
   const ccy     = prop?.currency || 'EUR';
   const histMap = historicNightMap(propertyId);
   const suggest = buildSuggester(histMap);
   const blocked = blockedDateSet(propertyId);
+
+  // Guest service fee + tax used to gross the net rate up to the full guest price.
+  const af      = state.db.settings?.airbnb || {};
+  const feePct  = af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT;
+  const taxPct  = af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT;
+  const guestMult = 1 + (feePct + taxPct) / 100;
 
   const rates = [];
   let date = todayStr();
@@ -144,7 +154,16 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
       if (s) { amount = s.rate; basis = s.basis; }
       status = blocked.has(date) ? 'blocked' : 'open';
     }
-    if (amount != null) rates.push({ date, amount: Math.round(amount), currency: ccy, status, basis });
+    if (amount != null) {
+      rates.push({
+        date,
+        amount: Math.round(amount),                  // net nightly rate (host earns)
+        guestAmount: Math.round(amount * guestMult), // full price guest pays per night, fees included
+        currency: ccy,
+        status,
+        basis
+      });
+    }
     date = addDays(date, 1);
   }
 
@@ -152,6 +171,8 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
     schema: 'str-daily-rates/v1',
     generatedAt: new Date().toISOString(),
     property: { id: prop?.id || propertyId, name: prop?.name || '', currency: ccy, airbnbCalUrl: prop?.airbnbCalUrl || '' },
+    guestFeePct: feePct,
+    taxPct,
     horizonDays,
     rates
   };
