@@ -89,6 +89,30 @@ function buildAllPayments(wrap) {
   const colVisible = new Set();
   const colShown = (i) => colVisible.size === 0 || colVisible.has(HEADERS[i][0]);
 
+  // Hover descriptions shown as a tooltip on each column header.
+  const COL_DESC = {
+    'Date':         'Payout / transaction date',
+    'Property':     'Property this payment belongs to',
+    'Type':         'Transaction type (reservation, payout, adjustment, …)',
+    'Source':       'Where the payment came from (Airbnb, manual, …)',
+    'Status':       'Payment status (paid, pending, overdue, …)',
+    'Conf. Code':   'Airbnb confirmation / reservation code',
+    'Guest':        'Guest name',
+    'Check-in':     'Booking check-in date',
+    'Check-out':    'Booking check-out date',
+    'Nights':       'Number of nights booked',
+    'Gross':        "Gross earnings before Airbnb's host service fee (includes the cleaning fee)",
+    'Service Fee':  'Airbnb host service fee deducted from your earnings',
+    'Cleaning Fee': 'Cleaning fee charged on the booking',
+    'Amount':       'Your payout — what Airbnb actually pays you (after the host fee, includes cleaning)',
+    'EUR':          'Payout converted to EUR (master currency)',
+    'Avg/Night':    'Average nightly rate excluding cleaning = (Amount − Cleaning Fee) ÷ Nights',
+    'Avg Gross/N':  'Average gross earnings per night = Gross ÷ Nights',
+    'Guest Fee':    'Estimated guest service fee + tax added on top of your gross (Guest Total − Gross)',
+    'Guest Total':  'Estimated all-in price the guest paid = Gross × (1 + guest fee % + tax %)',
+    'Guest/Night':  'Estimated guest total ÷ nights — what each night costs the guest'
+  };
+
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   const yearFilter   = new Set();
   const monthFilter  = new Set();
@@ -343,6 +367,7 @@ function buildAllPayments(wrap) {
     HEADERS.forEach(([label, cls], i) => {
       if (!colShown(i)) return;
       const th = el('th', cls ? { class: cls } : {}, label);
+      if (COL_DESC[label]) th.title = COL_DESC[label];
       th.style.cursor = 'pointer';
       th.style.userSelect = 'none';
       const arr = el('span', { style: 'margin-left:4px;font-size:10px;opacity:' + (_allPaySortCol === i ? '1' : '0.4') },
