@@ -317,7 +317,7 @@ function buildAllPayments(wrap) {
     const startIdx = _allPayPage * _allPayPageSize;
     const pageRows = derived.slice(startIdx, startIdx + _allPayPageSize);
 
-    const t = el('table', { class: 'table' });
+    const t = el('table', { class: 'table table-compact' });
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr', {});
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
