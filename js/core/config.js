@@ -142,3 +142,4 @@ export const CURRENCY_SYMBOLS = {
 // Both are overridable in Settings → STR / Airbnb (state.db.settings.airbnb).
 export const AIRBNB_GUEST_FEE_PCT = 14; // typical Airbnb guest service fee
 export const AIRBNB_TAX_PCT = 0;        // occupancy / tourist tax, off by default
+export const AIRBNB_CLEANING_FEE = 50;  // flat cleaning fee charged once per booking
