@@ -237,6 +237,8 @@ function buildAllPayments(wrap) {
     return {
       r, prop, sMeta, isReservation, dispAmt, dispGross,
       propName: prop?.name || '-', typeLabel, source, statusLabel: sMeta.label, conf, guest, eur,
+      serviceFee:  r.airbnbServiceFee  != null ? (isNegDisplay ? -Math.abs(r.airbnbServiceFee)  : r.airbnbServiceFee)  : null,
+      cleaningFee: r.airbnbCleaningFee != null ? (isNegDisplay ? -Math.abs(r.airbnbCleaningFee) : r.airbnbCleaningFee) : null,
       checkIn:  r.airbnbCheckIn || '',
       checkOut: r.airbnbCheckOut || '',
       nights:   nightsVal,
@@ -251,13 +253,15 @@ function buildAllPayments(wrap) {
   const colAccessors = [
     d => d.r.date, d => d.propName, d => d.typeLabel, d => d.source, d => d.statusLabel,
     d => d.conf, d => d.guest, d => d.eur, d => d.eur, d => (d.dispGross ?? -Infinity),
+    d => (d.serviceFee ?? -Infinity), d => (d.cleaningFee ?? -Infinity),
     d => d.checkIn, d => d.checkOut, d => (d.nights ?? -Infinity),
     d => (d.avgNight ?? -Infinity), d => (d.avgGross ?? -Infinity),
     d => (d.guestTotal ?? -Infinity), d => (d.guestPerNight ?? -Infinity)
   ];
   const HEADERS = [
     ['Date', ''], ['Property', ''], ['Type', ''], ['Source', ''], ['Status', ''], ['Conf. Code', ''], ['Guest', ''],
-    ['Amount', 'right'], ['EUR', 'right'], ['Gross', 'right'], ['Check-in', 'right'], ['Check-out', 'right'],
+    ['Amount', 'right'], ['EUR', 'right'], ['Gross', 'right'], ['Service Fee', 'right'], ['Cleaning Fee', 'right'],
+    ['Check-in', 'right'], ['Check-out', 'right'],
     ['Nights', 'right'], ['Avg/Night', 'right'], ['Avg Gross/N', 'right'], ['Guest Total', 'right'], ['Guest/Night', 'right']
   ];
 
@@ -359,6 +363,8 @@ function buildAllPayments(wrap) {
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(d.dispAmt, r.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(d.eur)));
       tr.appendChild(el('td', { class: 'right num muted' }, d.dispGross != null ? formatMoney(d.dispGross, r.currency, { maxFrac: 0 }) : ''));
+      tr.appendChild(el('td', { class: 'right num muted' }, d.serviceFee  != null ? formatMoney(d.serviceFee,  r.currency, { maxFrac: 0 }) : ''));
+      tr.appendChild(el('td', { class: 'right num muted' }, d.cleaningFee != null ? formatMoney(d.cleaningFee, r.currency, { maxFrac: 0 }) : ''));
       tr.appendChild(el('td', { class: 'right muted' }, d.checkIn ? fmtDate(d.checkIn) : ''));
       tr.appendChild(el('td', { class: 'right muted' }, d.checkOut ? fmtDate(d.checkOut) : ''));
       tr.appendChild(el('td', { class: 'right muted' }, d.nights != null ? String(d.nights) : ''));
