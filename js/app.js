@@ -245,6 +245,44 @@ async function boot() {
 
   state.github.syncNow = doSave;
 
+  // ── Live convergence: re-pull others' changes when it's safe to do so ───────
+  // A full re-pull replaces the local view with everyone's latest. We only do it
+  // when there is nothing to lose: no unsaved/dirty edits, no push in flight, the
+  // tab is visible, and no modal/form is open (so we never yank the UI out from
+  // under the user). When the user IS dirty, the imminent push already fetches +
+  // 3-way-merges the current remote, so their changes converge safely there.
+  let resyncing = false;
+  const backgroundResync = async () => {
+    if (resyncing) return;
+    if (!initialSyncDone) return;
+    if (!state.github.token || !state.github.owner || !state.github.repo) return;
+    if (state.dirty || pushPending || state.saving || pendingSaveBeforeSync) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (document.querySelector('.modal-overlay.open')) return; // don't disrupt an open form/dialog
+    resyncing = true;
+    try {
+      const remoteDb = await github.fetchDb();          // also refreshes sha + remoteDb base
+      // Re-check after the await — the user may have started editing meanwhile.
+      if (state.dirty || pushPending || state.saving || document.querySelector('.modal-overlay.open')) return;
+      remoteDb._syncedAt = Date.now();
+      setDb(remoteDb);                                  // triggers data-loaded → view refresh
+      github.saveLocalCache(remoteDb);
+      updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
+    } catch { /* offline / transient — keep working from current state */ }
+    finally { resyncing = false; }
+  };
+
+  // Reconnecting: push pending offline edits (which merge against fresh remote),
+  // otherwise pull everyone else's changes.
+  window.addEventListener('online', () => {
+    if (state.dirty || pendingSaveBeforeSync) { if (!pushPending) doSave().catch(() => {}); }
+    else backgroundResync();
+  });
+  // Returning to the tab — surface anything that changed while it was hidden.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) backgroundResync(); });
+  // Steady-state polling so long-lived sessions converge on multi-user edits.
+  setInterval(backgroundResync, 60000);
+
   const retryBtn = document.getElementById('sync-retry');
   if (retryBtn) {
     retryBtn.onclick = () => {
@@ -369,12 +407,12 @@ function migrateDb() {
 
   if (changed) markDirty();
 
-  // Reclaim space from long-deleted records (kept >90 days), preserving any
+  // Reclaim space from long-deleted records (kept >5 days), preserving any
   // still referenced by an active record. Runs once per load on authoritative
   // data; the resulting markDirty() schedules a normal debounced push.
   try {
-    const purged = autoPurgeOldDeleted({ maxAgeDays: 90 });
-    if (purged > 0) console.info(`[BT] Auto-purged ${purged} record(s) deleted over 90 days ago`);
+    const purged = autoPurgeOldDeleted({ maxAgeDays: 5 });
+    if (purged > 0) console.info(`[BT] Auto-purged ${purged} record(s) deleted over 5 days ago`);
   } catch (e) { console.warn('autoPurgeOldDeleted failed', e); }
 }
 

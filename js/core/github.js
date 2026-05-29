@@ -242,6 +242,10 @@ async function doPushDb(message = 'Update data') {
     state.github.lastSyncError = null;
     state.github.connected    = true;
     state.github.usingCache   = false;
+    // Local state is now consistent with this remote — advance the sync marker so
+    // the next reload's mergeLocalPending only treats genuinely newer local edits
+    // as offline changes.
+    state.db._syncedAt = Date.now();
 
     // Adopt remote-only additions, but never re-add items permanently deleted
     // during this push (items that were in snapshot but are now gone from state.db).
@@ -284,7 +288,7 @@ async function doPushDb(message = 'Update data') {
 
 // ── Three-way merge ───────────────────────────────────────────────────────────
 
-function mergeDb(freshRemote, localCurrent, lastSynced) {
+export function mergeDb(freshRemote, localCurrent, lastSynced) {
   const result    = {};
   const conflicts = [];
   const cols = new Set([
@@ -310,25 +314,52 @@ function mergeDb(freshRemote, localCurrent, lastSynced) {
       const remoteItem = merged.get(item.id);
       const baseItem   = baseMap.get(item.id);
 
-      // Local unchanged since last sync → remote may be newer, keep it
-      if (baseItem && item.updatedAt && baseItem.updatedAt && item.updatedAt === baseItem.updatedAt) {
+      const localChanged  = !baseItem || item.updatedAt !== baseItem.updatedAt;
+
+      // Local copy is unchanged since the common ancestor → remote is authoritative.
+      if (baseItem && !localChanged) continue;
+
+      if (!remoteItem) {
+        // Remote no longer has this record.
+        if (baseItem) {
+          // It existed at the ancestor and remote removed it (delete/purge). Only
+          // a genuine local edit should resurrect it; otherwise respect the remote
+          // removal (and never re-add a record we ourselves soft-deleted).
+          if (localChanged && !item.deletedAt) merged.set(item.id, item);
+        } else {
+          // Brand-new local record the remote has never seen → add it.
+          merged.set(item.id, item);
+        }
         continue;
       }
 
-      if (
-        remoteItem && baseItem &&
-        item.updatedAt && remoteItem.updatedAt && baseItem.updatedAt &&
-        item.updatedAt !== baseItem.updatedAt &&
-        remoteItem.updatedAt !== baseItem.updatedAt
-      ) {
+      const remoteChanged = !baseItem || remoteItem.updatedAt !== baseItem.updatedAt;
+
+      if (localChanged && remoteChanged && baseItem) {
+        // Both sides edited a known common ancestor → genuine concurrent-edit conflict.
         conflicts.push({ collection: col, id: item.id });
         continue;
       }
-      merged.set(item.id, item);
+
+      // Either only the local side changed, or there is no ancestor to arbitrate
+      // (e.g. a push after a failed initial pull). Fall back to last-writer-wins
+      // by updatedAt so a STALE local cache can never overwrite a fresher remote
+      // record — this is the root fix for the cross-user data-loss bug.
+      if ((item.updatedAt || 0) >= (remoteItem.updatedAt || 0)) {
+        merged.set(item.id, item);
+      }
+      // else: remote is newer → keep it.
     }
 
+    // Propagate local hard-deletes/purges, but never let a local deletion wipe a
+    // record the remote has independently modified since the common ancestor.
     for (const id of baseMap.keys()) {
-      if (!localMap.has(id)) merged.delete(id);
+      if (localMap.has(id)) continue;
+      const remoteItem = merged.get(id);
+      const baseItem   = baseMap.get(id);
+      if (!remoteItem || !baseItem || remoteItem.updatedAt === baseItem.updatedAt) {
+        merged.delete(id);
+      }
     }
 
     result[col] = [...merged.values()];
