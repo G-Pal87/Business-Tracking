@@ -157,8 +157,23 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
   };
 }
 
-// Publish a feed file per STR property plus an index manifest. Returns the
-// raw public base URL and the list of published files.
+// Content signature of a feed (ignores generatedAt so unchanged data is a no-op).
+function feedSig(feed) { return JSON.stringify({ p: feed.property, r: feed.rates }); }
+
+// Cache of the last-published signature per property, so auto-publish only
+// uploads feeds whose rates actually changed. In-memory only (resets on reload,
+// in which case the next publish simply re-uploads everything once).
+const _lastFeedSig = new Map();
+let _lastManifestSig = '';
+let _publishing = false;
+
+const feedBase = () => {
+  const { owner, repo, branch } = state.github;
+  return `https://raw.githubusercontent.com/${owner}/${repo}/${branch || 'main'}/${FEED_DIR}`;
+};
+
+// Publish a feed file per STR property plus an index manifest. Always uploads
+// every property (used by the manual button). Returns the public base URL + manifest.
 async function publishRatesFeeds() {
   const stProps = listActive('properties').filter(p => p.type === 'short_term');
   if (!stProps.length) throw new Error('No short-term properties to export');
@@ -168,13 +183,49 @@ async function publishRatesFeeds() {
     const feed = buildRatesFeed(p.id);
     const file = `${p.id}.json`;
     await uploadGithubFile(`${FEED_DIR}/${file}`, toB64(JSON.stringify(feed, null, 2)), `Publish daily-rate feed: ${p.name}`);
+    _lastFeedSig.set(p.id, feedSig(feed));
     manifest.properties.push({ id: p.id, name: p.name, currency: p.currency || 'EUR', file, nights: feed.rates.length });
   }
   await uploadGithubFile(`${FEED_DIR}/index.json`, toB64(JSON.stringify(manifest, null, 2)), 'Publish daily-rate feed index');
+  _lastManifestSig = JSON.stringify(manifest.properties);
 
-  const { owner, repo, branch } = state.github;
-  const base = `https://raw.githubusercontent.com/${owner}/${repo}/${branch || 'main'}/${FEED_DIR}`;
-  return { base, manifest };
+  return { base: feedBase(), manifest };
+}
+
+// Auto-publish hook (called after a successful data sync). Incremental: only
+// uploads property feeds whose content changed, and only rewrites the index when
+// a feed changed or the property set changed. Silent and best-effort.
+export async function autoPublishRatesFeeds() {
+  if (_publishing) return;
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) return;
+  const stProps = listActive('properties').filter(p => p.type === 'short_term');
+  if (!stProps.length) return;
+
+  _publishing = true;
+  try {
+    const manifestProps = [];
+    let changed = false;
+    for (const p of stProps) {
+      const feed = buildRatesFeed(p.id);
+      manifestProps.push({ id: p.id, name: p.name, currency: p.currency || 'EUR', file: `${p.id}.json`, nights: feed.rates.length });
+      const sig = feedSig(feed);
+      if (_lastFeedSig.get(p.id) === sig) continue; // unchanged → skip upload
+      await uploadGithubFile(`${FEED_DIR}/${p.id}.json`, toB64(JSON.stringify(feed, null, 2)), `Update daily-rate feed: ${p.name}`);
+      _lastFeedSig.set(p.id, sig);
+      changed = true;
+    }
+    const manifestSig = JSON.stringify(manifestProps);
+    if (changed || manifestSig !== _lastManifestSig) {
+      const manifest = { schema: 'str-daily-rates-index/v1', generatedAt: new Date().toISOString(), properties: manifestProps };
+      await uploadGithubFile(`${FEED_DIR}/index.json`, toB64(JSON.stringify(manifest, null, 2)), 'Update daily-rate feed index');
+      _lastManifestSig = manifestSig;
+    }
+  } catch (e) {
+    console.warn('Auto-publish daily-rate feeds failed:', e);
+  } finally {
+    _publishing = false;
+  }
 }
 
 // Show the public URLs after publishing so they can be wired into the other repo.

@@ -7,8 +7,14 @@ Short-Term-Rentals repo.
 
 ## How it's published
 
-In Business-Tracking, open **STR Daily Rates → Publish Rates Feed**. This writes
-JSON files into the configured GitHub repo under `exports/daily-rates/`:
+The feeds refresh **automatically** after every data sync to GitHub: whenever
+payment / property / calendar changes are pushed, the feeds whose rates changed
+are re-published (unchanged feeds are skipped, so it won't spam commits). You can
+also publish on demand via **STR Daily Rates → Publish Rates Feed**, which also
+shows the public URLs.
+
+Both publish paths write JSON files into the configured GitHub repo under
+`exports/daily-rates/`:
 
 ```
 exports/daily-rates/index.json        # manifest listing every property feed
