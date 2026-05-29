@@ -7,6 +7,7 @@ const initialData = {
   expenses: [],
   vendors: [],
   inventory: [],
+  strCalendars: [],
   tenants: [],
   clients: [],
   services: [],
