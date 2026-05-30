@@ -15,6 +15,9 @@ const WEEKDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 let _propId  = null;
 let _anchor  = null; // "YYYY-MM" of the month being displayed
 
+// Track in-flight iCal refreshes so concurrent renders don't spawn duplicate fetches.
+const _icalRefreshing = new Set();
+
 export default {
   id: 'str-rates',
   label: 'STR Daily Rates',
@@ -776,12 +779,16 @@ function build() {
     const suggest = buildSuggester(histMap);
     const blocked = blockedDateSet(_propId);
 
+    // Auto-refresh iCal whenever URL is known but record is missing or stale (>4 h).
+    // Silently re-fetches and calls rerender() on success so blocks update automatically.
+    autoRefreshICal(_propId, rerender);
+
     const rates = [...histMap.values()].map(v => v.rate);
     const minR = rates.length ? Math.min(...rates) : 0;
     const maxR = rates.length ? Math.max(...rates) : 0;
 
     renderKpis(kpiRow, { histMap, suggest, blocked, year, month1, ccy, propertyId: _propId });
-    renderCalendar(calCard, { histMap, suggest, blocked, year, month1, ccy, minR, maxR });
+    renderCalendar(calCard, { histMap, suggest, blocked, year, month1, ccy, minR, maxR, onAutoRefresh: rerender });
     renderAnalysis(analysisEl, { propertyId: _propId, year, month1, ccy, onRerender: rerender });
   }
 
@@ -840,7 +847,7 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
 }
 
 // ── Calendar grid ───────────────────────────────────────────────────────────
-function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, minR, maxR }) {
+function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, minR, maxR, onAutoRefresh }) {
   card.innerHTML = '';
   const mo  = String(month1).padStart(2, '0');
   const dim = daysInMonth(year, month1);
@@ -913,10 +920,19 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
   legend.appendChild(chip('transparent', 'Open · sugg = high confidence · ~ = medium · ? = low'));
   body.appendChild(legend);
 
-  const calInfo = calendarFor(_propId);
+  const calInfo    = calendarFor(_propId);
+  const refreshing = _icalRefreshing.has(_propId);
   if (calInfo?.importedAt) {
+    const infoWrap = el('div', { style: 'margin-top:8px;font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap' });
+    infoWrap.appendChild(el('span', {}, `Calendar imported ${fmtDate(calInfo.importedAt)} · ${(calInfo.blocks || []).length} reserved period(s).`));
+    const refreshLnk = el('span', { style: `color:var(--accent,#6366f1);cursor:${refreshing ? 'default' : 'pointer'};text-decoration:underline` },
+      refreshing ? 'refreshing…' : 'Refresh');
+    if (!refreshing) refreshLnk.onclick = () => autoRefreshICal(_propId, onAutoRefresh, { force: true });
+    infoWrap.appendChild(refreshLnk);
+    body.appendChild(infoWrap);
+  } else if (refreshing) {
     body.appendChild(el('div', { style: 'margin-top:8px;font-size:11px;color:var(--text-muted)' },
-      `Calendar last imported ${fmtDate(calInfo.importedAt)} · ${(calInfo.blocks || []).length} reserved period(s).`));
+      'Fetching Airbnb calendar…'));
   } else {
     body.appendChild(el('div', {
       style: 'margin-top:10px;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);font-size:12px;display:flex;align-items:center;gap:8px'
@@ -1111,6 +1127,35 @@ function openDayDetail(date, { hist, isBlocked, suggest, ccy }) {
   }
 
   openModal({ title: 'Daily Rate Detail', body, footer: [button('Close', { onClick: closeModal })] });
+}
+
+// ── Airbnb iCal auto-refresh ──────────────────────────────────────────────────
+// Silently re-fetches iCal whenever the URL is known but the strCalendars record
+// is missing or older than 4 hours. Called on every rerender so the blocks are
+// always current and the record self-heals after any sync overwrite.
+async function autoRefreshICal(propertyId, onDone, { force = false } = {}) {
+  if (_icalRefreshing.has(propertyId)) return;
+  const prop     = byId('properties', propertyId);
+  const existing = calendarFor(propertyId);
+  const url      = existing?.url || prop?.airbnbCalUrl || '';
+  if (!url) return;
+  const freshMs  = 4 * 60 * 60 * 1000; // 4-hour cache window
+  if (!force && existing && (Date.now() - (existing.updatedAt || 0)) < freshMs) return;
+
+  _icalRefreshing.add(propertyId);
+  try {
+    const text   = await fetchICal(url);
+    const events = parseICal(text);
+    const blocks = events
+      .filter(e => e.start && e.end)
+      .map(e => ({ start: e.start, end: e.end, uid: e.uid || '', summary: e.summary || '' }));
+    const rec = existing
+      ? { ...existing, url, blocks, importedAt: todayStr() }
+      : { id: newId('stc'), propertyId, url, blocks, importedAt: todayStr() };
+    upsert('strCalendars', rec);
+    onDone?.();
+  } catch { /* silent — leave existing record intact */ }
+  finally { _icalRefreshing.delete(propertyId); }
 }
 
 // ── Airbnb iCal import ─────────────────────────────────────────────────────────
