@@ -90,20 +90,22 @@ function historicNightMap(propertyId) {
 }
 
 // ── Suggestion engine ─────────────────────────────────────────────────────────
-// Priority: same year-month → same day (≥2 prior years) → same month prior years → overall.
-// Requiring ≥2 years for same-day prevents a single short-stay booking from
-// distorting a specific date's net rate via cleaning-fee amortisation.
-const MIN_SAME_DAY_YEARS = 2;
+// Current-year same-month is the strongest signal (3× weight per night).
+// When current-year sample is thin (<5 nights effective), it is blended with
+// the best available prior-year signal to stabilise the estimate.
+// Same-day prior-years requires ≥2 distinct years to avoid single-booking noise.
+const MIN_SAME_DAY_YEARS  = 2;
+const CURRENT_YEAR_WEIGHT = 3;   // per-night influence multiplier for current-year data
+const SAME_DAY_WEIGHT     = 1.5; // per-night multiplier for same-calendar-day prior years
+const STANDALONE_THRESHOLD = 15; // effectiveN at which current year stands alone (no prior blend)
 
 function buildSuggester(histMap) {
-  const byYearMonth = new Map(); // "YYYY-MM" → [{date, rate, adr, ...}]  ← strongest signal
-  const byMonthDay  = new Map(); // "MM-DD"   → [{...}]
-  const byMonth     = new Map(); // "MM"      → [{...}]
+  const byYearMonth = new Map();
+  const byMonthDay  = new Map();
+  const byMonth     = new Map();
   const all = [];
   for (const [date, info] of histMap) {
-    const ym = date.slice(0, 7);
-    const md = date.slice(5);
-    const mo = date.slice(5, 7);
+    const ym = date.slice(0, 7), md = date.slice(5), mo = date.slice(5, 7);
     const entry = {
       date, rate: info.rate, adr: info.adr || info.rate,
       checkIn: info.checkIn || '', checkOut: info.checkOut || '',
@@ -116,7 +118,6 @@ function buildSuggester(histMap) {
   }
   const avg    = arr => arr.reduce((s, r) => s + r.rate, 0) / arr.length;
   const avgADR = arr => arr.reduce((s, r) => s + r.adr,  0) / arr.length;
-  const overall = all.length ? avg(all) : null;
 
   return function suggest(date) {
     const ym     = date.slice(0, 7);
@@ -125,47 +126,93 @@ function buildSuggester(histMap) {
     const moName = MONTHS[Number(mo) - 1];
     const yr     = ym.slice(0, 4);
 
-    // Priority 1: existing/pending bookings in the same year-month
-    const ymArr = byYearMonth.get(ym);
-    if (ymArr && ymArr.length) return {
-      rate: avg(ymArr), adr: avgADR(ymArr),
-      basis: `${moName} ${yr} bookings`,
-      fallbackReason: null,
-      sources: ymArr
-    };
+    const ymArr       = byYearMonth.get(ym) || [];
+    const priorMD     = (byMonthDay.get(date.slice(5)) || []).filter(e => e.date.slice(0, 4) !== yr);
+    const priorMDYears = new Set(priorMD.map(e => e.date.slice(0, 4))).size;
+    const priorMo     = (byMonth.get(mo) || []).filter(e => e.date.slice(0, 4) !== yr);
 
-    // Priority 2: same calendar day, prior years — only when ≥ MIN_SAME_DAY_YEARS distinct years
-    const mdAll = byMonthDay.get(date.slice(5));
-    const priorMD = mdAll ? mdAll.filter(e => e.date.slice(0, 4) !== yr) : null;
-    const priorMDYears = priorMD ? new Set(priorMD.map(e => e.date.slice(0, 4))).size : 0;
-    if (priorMD && priorMDYears >= MIN_SAME_DAY_YEARS) return {
-      rate: avg(priorMD), adr: avgADR(priorMD),
-      basis: `same day, ${priorMDYears} prior years`,
-      fallbackReason: `No ${moName} ${yr} bookings yet`,
-      sources: priorMD
-    };
+    // Build pools — current year dominates; prior data blended in only when current is thin
+    const pools = [];
+    const currentEffN = ymArr.length * CURRENT_YEAR_WEIGHT;
 
-    // Priority 3: same month, prior years only
-    const moAll = byMonth.get(mo);
-    const priorMo = moAll ? moAll.filter(e => e.date.slice(0, 4) !== yr) : null;
-    if (priorMo && priorMo.length) return {
-      rate: avg(priorMo), adr: avgADR(priorMo),
-      basis: `${moName} average (prior years)`,
-      fallbackReason: priorMDYears > 0
-        ? `Only ${priorMDYears} year of day-${dayStr} data (need ${MIN_SAME_DAY_YEARS}) — using ${moName} average instead`
-        : `No ${moName} ${yr} bookings and no day-${dayStr} history in prior years`,
-      sources: priorMo
-    };
+    if (ymArr.length) {
+      pools.push({ label: `${moName} ${yr} bookings`, entries: ymArr, weight: CURRENT_YEAR_WEIGHT });
+      if (currentEffN < STANDALONE_THRESHOLD) {
+        // Current sample is thin — blend with best available prior signal
+        if (priorMDYears >= MIN_SAME_DAY_YEARS) {
+          pools.push({ label: `day ${dayStr}, ${priorMDYears} prior yr${priorMDYears > 1 ? 's' : ''}`, entries: priorMD, weight: SAME_DAY_WEIGHT });
+        } else if (priorMo.length) {
+          pools.push({ label: `${moName} prior years`, entries: priorMo, weight: 1 });
+        }
+      }
+    } else {
+      // No current-year data — use best prior signal
+      if (priorMDYears >= MIN_SAME_DAY_YEARS) {
+        pools.push({ label: `day ${dayStr}, ${priorMDYears} prior yr${priorMDYears > 1 ? 's' : ''}`, entries: priorMD, weight: SAME_DAY_WEIGHT });
+      } else if (priorMo.length) {
+        pools.push({ label: `${moName} prior years`, entries: priorMo, weight: 1 });
+      } else if (all.length) {
+        pools.push({ label: 'overall history', entries: all, weight: 1 });
+      }
+    }
+    if (!pools.length) return null;
 
-    // Priority 4: full history
-    if (overall != null) return {
-      rate: overall, adr: avgADR(all),
-      basis: 'overall average',
-      fallbackReason: `No ${moName} data at all — using full booking history`,
-      sources: all
+    // Weighted blend across pools
+    let totalW = 0, rateSum = 0, adrSum = 0;
+    for (const pool of pools) {
+      pool.rate = avg(pool.entries);
+      pool.adr  = avgADR(pool.entries);
+      const w   = pool.entries.length * pool.weight;
+      rateSum  += pool.rate * w;
+      adrSum   += pool.adr  * w;
+      totalW   += w;
+    }
+    const blendedRate = rateSum / totalW;
+    const blendedADR  = adrSum  / totalW;
+    const effectiveN  = Math.round(totalW);
+    const confidence  = effectiveN >= 15 ? 'high' : effectiveN >= 5 ? 'medium' : 'low';
+
+    const basis = pools.length > 1
+      ? pools.map(p => `${p.label} (${p.entries.length}n)`).join(' + ')
+      : `${pools[0].label} (${pools[0].entries.length} night${pools[0].entries.length !== 1 ? 's' : ''})`;
+
+    const fallbackReason = !ymArr.length
+      ? (priorMDYears > 0 && priorMDYears < MIN_SAME_DAY_YEARS
+          ? `Only ${priorMDYears} year of day-${dayStr} data (need ${MIN_SAME_DAY_YEARS}) — using ${moName} average`
+          : `No ${moName} ${yr} bookings yet`)
+      : null;
+
+    const confidenceNote = buildConfidenceNote(pools, effectiveN, confidence, moName, yr, dayStr, priorMDYears, currentEffN);
+
+    return {
+      rate: blendedRate, adr: blendedADR,
+      basis, confidence, effectiveN, confidenceNote,
+      pools, sources: pools.flatMap(p => p.entries),
+      fallbackReason
     };
-    return null;
   };
+}
+
+function buildConfidenceNote(pools, effectiveN, confidence, moName, yr, dayStr, priorMDYears, currentEffN) {
+  const curPool   = pools.find(p => p.label.includes(yr));
+  const priorPool = pools.find(p => !p.label.includes(yr));
+  if (confidence === 'high') {
+    if (curPool && priorPool)
+      return `Strong signal: ${curPool.entries.length} current-year + ${priorPool.entries.length} prior-year nights (blended, current weighted ${CURRENT_YEAR_WEIGHT}×)`;
+    if (curPool)
+      return `${curPool.entries.length} ${moName} ${yr} nights — strong current-year signal (no prior blend needed)`;
+    return `${priorPool?.entries.length ?? 0} nights of prior-year history — solid baseline`;
+  }
+  if (confidence === 'medium') {
+    if (curPool)
+      return `${curPool.entries.length} ${moName} ${yr} booking${curPool.entries.length > 1 ? 's' : ''} blended with prior data — moderate confidence; more ${moName} ${yr} bookings will sharpen this`;
+    return `${priorPool?.entries.length ?? 0} prior-year nights — no ${moName} ${yr} data yet`;
+  }
+  if (curPool)
+    return `Only ${curPool.entries.length} ${moName} ${yr} night${curPool.entries.length > 1 ? 's' : ''} — low confidence; rate will shift as more bookings arrive`;
+  if (priorMDYears === 1)
+    return `Only 1 year of day-${dayStr} history — not enough for reliable same-day signal`;
+  return `Very little data — treat as rough estimate only`;
 }
 
 // ── Monthly stats (for trend chart + insights) ───────────────────────────────
@@ -583,26 +630,26 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
       rateEl = el('div', { style: 'font-size:13px;font-weight:700;color:var(--text)' }, formatMoney(hist.rate, hist.currency, { maxFrac: 0 }));
       badge = 'booked';
     } else if (isBlocked) {
-      // Reserved/blocked via iCal — show suggested price but mark unavailable.
       bg = 'rgba(239,68,68,0.06)';
       border = '1px solid rgba(239,68,68,0.35)';
       const s = suggest(date);
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, s ? formatMoney(s.rate, ccy, { maxFrac: 0 }) : '—');
       badge = 'blocked';
     } else {
-      // Open day — show the suggested rate (the recommended price).
       const s = suggest(date);
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, s ? formatMoney(s.rate, ccy, { maxFrac: 0 }) : '—');
-      badge = s ? 'suggested' : '';
+      badge = s ? (s.confidence || 'sugg') : '';
     }
 
     const cell = el('div', {
       style: `position:relative;min-height:66px;padding:6px;border-radius:6px;border:${border};background:${bg};cursor:pointer;` +
              (isToday ? 'box-shadow:0 0 0 2px var(--accent,#6366f1) inset;' : '')
     });
+    const badgeColor = badge === 'booked' ? '#10b981' : badge === 'blocked' ? '#ef4444' : badge === 'low' ? '#f59e0b' : 'var(--text-muted)';
+    const badgeText  = badge === 'booked' ? 'booked' : badge === 'blocked' ? 'blocked' : badge === 'low' ? '?' : badge === 'medium' ? '~' : badge === 'high' ? 'sugg' : badge ? 'sugg' : '';
     cell.appendChild(el('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
       el('span', { style: 'font-size:12px;font-weight:600;color:var(--text-muted)' }, String(d)),
-      badge ? el('span', { style: `font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${badge === 'booked' ? '#10b981' : badge === 'blocked' ? '#ef4444' : 'var(--text-muted)'}` }, badge === 'suggested' ? 'sugg' : badge) : null
+      badgeText ? el('span', { style: `font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${badgeColor}` }, badgeText) : null
     ));
     cell.appendChild(el('div', { style: 'margin-top:8px;text-align:center' }, rateEl));
     cell.onclick = () => openDayDetail(date, { hist, isBlocked, suggest, ccy });
@@ -617,9 +664,9 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
     el('span', { style: `width:11px;height:11px;border-radius:3px;background:${color};display:inline-block` }),
     el('span', {}, label)
   );
-  legend.appendChild(chip('rgba(16,185,129,0.30)', 'Booked (historic actual rate)'));
-  legend.appendChild(chip('rgba(239,68,68,0.20)', 'Reserved / blocked (from iCal)'));
-  legend.appendChild(chip('transparent', 'Open (suggested rate, italic)'));
+  legend.appendChild(chip('rgba(16,185,129,0.30)', 'Booked (actual rate)'));
+  legend.appendChild(chip('rgba(239,68,68,0.20)', 'Blocked (iCal)'));
+  legend.appendChild(chip('transparent', 'Open · sugg = high confidence · ~ = medium · ? = low'));
   body.appendChild(legend);
 
   const calInfo = calendarFor(_propId);
@@ -674,11 +721,59 @@ function openDayDetail(date, { hist, isBlocked, suggest, ccy }) {
     body.appendChild(row('Status', isBlocked ? 'Reserved / blocked (iCal)' : 'Open'));
     const s = suggest(date);
     if (s) {
+      // ── Confidence badge ──
+      const confColor = s.confidence === 'high' ? '#10b981' : s.confidence === 'medium' ? '#f59e0b' : '#ef4444';
+      const confLabel = s.confidence === 'high' ? 'HIGH' : s.confidence === 'medium' ? 'MEDIUM' : 'LOW';
+      const confRow = el('div', { style: 'display:flex;align-items:center;gap:8px;margin:8px 0' });
+      confRow.appendChild(el('span', { style: `background:${confColor};color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;letter-spacing:.05em` }, confLabel));
+      confRow.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, `effectiveN = ${s.effectiveN}`));
+      body.appendChild(confRow);
+      if (s.confidenceNote) {
+        body.appendChild(el('div', { style: `font-size:12px;padding:5px 8px;border-radius:4px;border-left:3px solid ${confColor};background:var(--bg-alt,rgba(0,0,0,.04));margin-bottom:8px` }, s.confidenceNote));
+      }
+
       // ── Method explanation ──
       body.appendChild(section('Suggestion Method'));
       body.appendChild(row('Basis', s.basis));
       if (s.fallbackReason) {
         body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);padding:3px 0 6px' }, `ℹ ${s.fallbackReason}`));
+      }
+
+      // ── Pool breakdown ──
+      if (s.pools && s.pools.length) {
+        body.appendChild(section(`Data Pools (${s.pools.length} source${s.pools.length !== 1 ? 's' : ''})`));
+        const poolTable = el('div', { style: 'font-size:12px' });
+        for (const pool of s.pools) {
+          const poolAvgAdr = pool.adr ?? pool.entries.reduce((a, e) => a + e.adr, 0) / pool.entries.length;
+          const poolAvgNet = pool.rate ?? pool.entries.reduce((a, e) => a + e.rate, 0) / pool.entries.length;
+          const poolRow = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)' });
+          const left = el('div', {});
+          left.appendChild(el('div', { style: 'font-weight:600' }, pool.label));
+          left.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px' }, `${pool.entries.length} night${pool.entries.length !== 1 ? 's' : ''} · weight ${pool.weight}×`));
+          const right = el('div', { style: 'text-align:right' });
+          right.appendChild(el('div', {}, `ADR ${fmt(poolAvgAdr)}`));
+          right.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px' }, `Net ${fmt(poolAvgNet)}`));
+          poolRow.appendChild(left); poolRow.appendChild(right);
+          poolTable.appendChild(poolRow);
+        }
+        body.appendChild(poolTable);
+
+        // Blended formula when multiple pools
+        if (s.pools.length > 1) {
+          const fmlaEl = el('div', { style: 'margin-top:6px;font-size:12px;background:var(--bg-alt,rgba(0,0,0,.04));border-radius:4px;padding:6px 8px' });
+          const adrParts = s.pools.map(p => {
+            const w = p.entries.length * p.weight;
+            return `${fmt(p.adr)}×${w.toFixed(1)}`;
+          }).join(' + ');
+          const totalW = s.pools.reduce((a, p) => a + p.entries.length * p.weight, 0);
+          fmlaEl.appendChild(el('div', {}, `ADR = (${adrParts}) ÷ ${totalW.toFixed(1)} = ${fmt(s.adr)}`));
+          const netParts = s.pools.map(p => {
+            const w = p.entries.length * p.weight;
+            return `${fmt(p.rate)}×${w.toFixed(1)}`;
+          }).join(' + ');
+          fmlaEl.appendChild(el('div', { style: 'margin-top:2px' }, `Net = (${netParts}) ÷ ${totalW.toFixed(1)} = ${fmt(s.rate)}`));
+          body.appendChild(fmlaEl);
+        }
       }
 
       // ── Suggested rates ──
