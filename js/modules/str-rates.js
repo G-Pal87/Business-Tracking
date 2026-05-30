@@ -90,8 +90,11 @@ function historicNightMap(propertyId) {
 }
 
 // ── Suggestion engine ─────────────────────────────────────────────────────────
-// Priority: same year-month (current bookings) → same day prior years →
-// same month prior years → overall average.
+// Priority: same year-month → same day (≥2 prior years) → same month prior years → overall.
+// Requiring ≥2 years for same-day prevents a single short-stay booking from
+// distorting a specific date's net rate via cleaning-fee amortisation.
+const MIN_SAME_DAY_YEARS = 2;
+
 function buildSuggester(histMap) {
   const byYearMonth = new Map(); // "YYYY-MM" → [{date, rate, adr, ...}]  ← strongest signal
   const byMonthDay  = new Map(); // "MM-DD"   → [{...}]
@@ -131,12 +134,13 @@ function buildSuggester(histMap) {
       sources: ymArr
     };
 
-    // Priority 2: same calendar day, prior years only
+    // Priority 2: same calendar day, prior years — only when ≥ MIN_SAME_DAY_YEARS distinct years
     const mdAll = byMonthDay.get(date.slice(5));
     const priorMD = mdAll ? mdAll.filter(e => e.date.slice(0, 4) !== yr) : null;
-    if (priorMD && priorMD.length) return {
+    const priorMDYears = priorMD ? new Set(priorMD.map(e => e.date.slice(0, 4))).size : 0;
+    if (priorMD && priorMDYears >= MIN_SAME_DAY_YEARS) return {
       rate: avg(priorMD), adr: avgADR(priorMD),
-      basis: 'same day, prior years',
+      basis: `same day, ${priorMDYears} prior years`,
       fallbackReason: `No ${moName} ${yr} bookings yet`,
       sources: priorMD
     };
@@ -147,7 +151,9 @@ function buildSuggester(histMap) {
     if (priorMo && priorMo.length) return {
       rate: avg(priorMo), adr: avgADR(priorMo),
       basis: `${moName} average (prior years)`,
-      fallbackReason: `No ${moName} ${yr} bookings and no day-${dayStr} history`,
+      fallbackReason: priorMDYears > 0
+        ? `Only ${priorMDYears} year of day-${dayStr} data (need ${MIN_SAME_DAY_YEARS}) — using ${moName} average instead`
+        : `No ${moName} ${yr} bookings and no day-${dayStr} history in prior years`,
       sources: priorMo
     };
 
