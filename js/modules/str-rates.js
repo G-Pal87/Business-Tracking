@@ -48,6 +48,15 @@ function avgNightOf(p) {
   return null;
 }
 
+// ADR = total payout per night (cleaning fee amortised in). Used for pricing benchmarks.
+function adrNightOf(p) {
+  const ci = checkInOf(p), co = checkOutOf(p);
+  const n = p.airbnbNights || (ci && co ? Math.max(0, Math.round((parseYMD(co) - parseYMD(ci)) / 86400000)) : 0);
+  if (n > 0 && p.amount) return p.amount / n;
+  if (p.avgNightlyRate != null) return p.avgNightlyRate;
+  return null;
+}
+
 // Build date → { rate, currency, label } for every historic night of an STR property.
 function historicNightMap(propertyId) {
   const map = new Map();
@@ -62,8 +71,9 @@ function historicNightMap(propertyId) {
     if (rate == null || rate <= 0) continue;
     const ci = checkInOf(p), co = checkOutOf(p);
     const guest = (p.notes || '').split(' · ')[0] || '';
+    const adr = adrNightOf(p) || rate;
     for (let cur = ci; cur < co; cur = addDays(cur, 1)) {
-      map.set(cur, { rate, currency: p.currency || 'EUR', label: guest, code: p.confirmationCode || '' });
+      map.set(cur, { rate, adr, currency: p.currency || 'EUR', label: guest, code: p.confirmationCode || '' });
     }
   }
   return map;
@@ -95,6 +105,69 @@ function buildSuggester(histMap) {
     if (overall != null)  return { rate: overall, basis: 'overall average' };
     return null;
   };
+}
+
+// ── Monthly stats (for trend chart + insights) ───────────────────────────────
+function buildMonthlyStats(propertyId, anchor, numMonths = 12) {
+  const bookings = listActivePayments().filter(p =>
+    p.propertyId === propertyId &&
+    p.stream === 'short_term_rental' &&
+    p.status !== 'materialized' &&
+    checkInOf(p) && checkOutOf(p)
+  );
+  const months = [];
+  let cur = anchor;
+  for (let i = 0; i < numMonths; i++) { months.unshift(cur); cur = shiftMonth(cur, -1); }
+
+  const byMo = new Map();
+  for (const p of bookings) {
+    const adr = adrNightOf(p), net = avgNightOf(p);
+    if (!adr && !net) continue;
+    const ci = checkInOf(p), co = checkOutOf(p);
+    for (let d = ci; d < co; d = addDays(d, 1)) {
+      const mo = d.slice(0, 7);
+      if (!byMo.has(mo)) byMo.set(mo, { adrSum: 0, netSum: 0, nights: 0 });
+      const b = byMo.get(mo);
+      b.adrSum += (adr || net || 0); b.netSum += (net || adr || 0); b.nights++;
+    }
+  }
+  return months.map(mo => {
+    const [y, m] = mo.split('-').map(Number);
+    const dim = daysInMonth(y, m);
+    const b = byMo.get(mo) || { adrSum: 0, netSum: 0, nights: 0 };
+    return {
+      month: mo,
+      adr:     b.nights ? b.adrSum / b.nights : null,
+      netRate: b.nights ? b.netSum / b.nights : null,
+      nights: b.nights, days: dim,
+      occ: Math.round((b.nights / dim) * 100)
+    };
+  });
+}
+
+// Recommended ADR = average ADR for the same calendar month across all years.
+function computeRecommendedADR(propertyId, month1) {
+  const mo = String(month1).padStart(2, '0');
+  const bookings = listActivePayments().filter(p =>
+    p.propertyId === propertyId && p.stream === 'short_term_rental' &&
+    p.status !== 'materialized' && checkInOf(p) && checkOutOf(p)
+  );
+  let sum = 0, n = 0;
+  for (const p of bookings) {
+    const adr = adrNightOf(p);
+    if (adr == null || adr <= 0) continue;
+    const ci = checkInOf(p), co = checkOutOf(p);
+    for (let d = ci; d < co; d = addDays(d, 1)) {
+      if (d.slice(5, 7) === mo) { sum += adr; n++; }
+    }
+  }
+  return n > 0 ? Math.round(sum / n) : null;
+}
+
+function getConfirmedTarget(propertyId, month) {
+  return (state.db.strRateTargets || []).find(t =>
+    t.propertyId === propertyId && t.month === month && !t.deletedAt
+  ) || null;
 }
 
 // ── iCal blocks (external reserved/blocked days) ─────────────────────────────
@@ -153,8 +226,10 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
     if (hist) {
       amount = hist.rate; basis = 'historic actual'; status = 'booked';
     } else {
-      const s = suggest(date);
-      if (s) { amount = s.rate; basis = s.basis; }
+      const mo = date.slice(0, 7);
+      const target = getConfirmedTarget(propertyId, mo);
+      if (target) { amount = target.targetADR; basis = 'confirmed target'; }
+      else { const s = suggest(date); if (s) { amount = s.rate; basis = s.basis; } }
       status = blocked.has(date) ? 'blocked' : 'open';
     }
     if (amount != null) {
@@ -330,10 +405,12 @@ function build() {
   bar.appendChild(button('Import Airbnb Calendar', { onClick: () => openImportModal(_propId, rerender) }));
   wrap.appendChild(bar);
 
-  const kpiRow   = el('div', { class: 'grid grid-4 mb-16' });
-  const calCard  = el('div', { class: 'card' });
+  const kpiRow     = el('div', { style: 'display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px' });
+  const calCard    = el('div', { class: 'card' });
+  const analysisEl = el('div', {});
   wrap.appendChild(kpiRow);
   wrap.appendChild(calCard);
+  wrap.appendChild(analysisEl);
 
   function rerender() {
     propSel.value = _propId;
@@ -347,13 +424,13 @@ function build() {
     const suggest = buildSuggester(histMap);
     const blocked = blockedDateSet(_propId);
 
-    // Rate range across history → used for colour grading.
     const rates = [...histMap.values()].map(v => v.rate);
     const minR = rates.length ? Math.min(...rates) : 0;
     const maxR = rates.length ? Math.max(...rates) : 0;
 
-    renderKpis(kpiRow, { histMap, suggest, blocked, year, month1, ccy });
+    renderKpis(kpiRow, { histMap, suggest, blocked, year, month1, ccy, propertyId: _propId });
     renderCalendar(calCard, { histMap, suggest, blocked, year, month1, ccy, minR, maxR });
+    renderAnalysis(analysisEl, { propertyId: _propId, year, month1, ccy, onRerender: rerender });
   }
 
   rerender();
@@ -369,14 +446,21 @@ function shiftMonth(anchor, delta) {
 }
 
 // ── KPI cards ─────────────────────────────────────────────────────────────────
-function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy }) {
+function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propertyId }) {
   row.innerHTML = '';
   const mo = String(month1).padStart(2, '0');
   const dim = daysInMonth(year, month1);
 
-  // Historic average for this calendar month, across all years.
-  const monthHist = [...histMap].filter(([d]) => d.slice(5, 7) === mo).map(([, v]) => v.rate);
-  const avgHist = monthHist.length ? monthHist.reduce((s, r) => s + r, 0) / monthHist.length : null;
+  // Net nightly rate (excl. cleaning) + ADR (incl. cleaning) for this month, all years.
+  const monthEntries = [...histMap].filter(([d]) => d.slice(5, 7) === mo);
+  const netRates = monthEntries.map(([, v]) => v.rate);
+  const adrRates = monthEntries.map(([, v]) => v.adr);
+  const avgNet = netRates.length ? netRates.reduce((s, r) => s + r, 0) / netRates.length : null;
+  const avgADR = adrRates.length ? adrRates.reduce((s, r) => s + r, 0) / adrRates.length : null;
+
+  // Confirmed target for this month
+  const anchor = `${year}-${mo}`;
+  const confirmed = propertyId ? getConfirmedTarget(propertyId, anchor) : null;
 
   // Booked vs open nights within the displayed month.
   let booked = 0, suggSum = 0, suggN = 0;
@@ -396,8 +480,9 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy }) {
     sub ? el('div', { class: 'fx-hint' }, sub) : null
   );
 
-  row.appendChild(card('Avg Historic Rate', avgHist != null ? formatMoney(avgHist, ccy, { maxFrac: 0 }) : '—', `${MONTHS[month1 - 1]}, all years · ${monthHist.length} night(s)`));
-  row.appendChild(card('Suggested Avg', avgSugg != null ? formatMoney(avgSugg, ccy, { maxFrac: 0 }) : '—', 'open days this month'));
+  row.appendChild(card('ADR', avgADR != null ? formatMoney(avgADR, ccy, { maxFrac: 0 }) : '—', `incl. cleaning · ${MONTHS[month1 - 1]}, all years`));
+  row.appendChild(card('Net Nightly Rate', avgNet != null ? formatMoney(avgNet, ccy, { maxFrac: 0 }) : '—', `excl. cleaning · ${netRates.length} night(s)`));
+  row.appendChild(card('Confirmed Target', confirmed ? formatMoney(confirmed.targetADR, ccy, { maxFrac: 0 }) : '—', confirmed ? `set ${fmtDate(confirmed.confirmedAt)}` : 'not set', confirmed ? 'success' : ''));
   row.appendChild(card('Booked Nights', String(booked), `of ${dim} · ${occ}% occupancy`, occ >= 70 ? 'success' : ''));
   row.appendChild(card('Open Nights', String(dim - booked), 'awaiting bookings', (dim - booked) > 0 ? 'warning' : ''));
 }
@@ -553,4 +638,309 @@ function openImportModal(propertyId, onDone) {
   }});
 
   openModal({ title: 'Import Airbnb Calendar', body, footer: [button('Cancel', { onClick: closeModal }), importBtn] });
+}
+
+// ── ADR Analysis section ──────────────────────────────────────────────────────
+function renderAnalysis(container, { propertyId, year, month1, ccy, onRerender }) {
+  container.innerHTML = '';
+  const anchor = `${year}-${String(month1).padStart(2, '0')}`;
+  const monthStats   = buildMonthlyStats(propertyId, anchor, 12);
+  const recommendedADR = computeRecommendedADR(propertyId, month1);
+  const confirmed    = getConfirmedTarget(propertyId, anchor);
+  const currentStats = monthStats.find(s => s.month === anchor) || { month: anchor, adr: null, netRate: null, nights: 0, days: daysInMonth(year, month1), occ: 0 };
+
+  const card = el('div', { class: 'card', style: 'margin-top:16px' });
+  const inner = el('div', { style: 'padding:16px' });
+  card.appendChild(inner);
+
+  inner.appendChild(el('div', { style: 'font-size:14px;font-weight:700;margin-bottom:14px' }, 'ADR Analysis'));
+  inner.appendChild(renderTrendChart(monthStats, anchor, confirmed, ccy));
+  inner.appendChild(renderInsights({ monthStats, anchor, currentStats, recommendedADR, confirmed, ccy }));
+  inner.appendChild(renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, ccy, onRerender }));
+
+  container.appendChild(card);
+}
+
+function renderTrendChart(monthStats, anchor, confirmed, ccy) {
+  const wrap = el('div', { style: 'margin-bottom:16px' });
+  const data = monthStats.slice(-12);
+  const allVals = data.flatMap(s => [s.adr, s.netRate]).filter(Boolean);
+  if (confirmed?.targetADR) allVals.push(confirmed.targetADR);
+  const maxVal = allVals.length ? Math.max(...allVals) * 1.15 : 200;
+
+  const W = 60, H = 80, cols = data.length;
+  const svgW = W * cols;
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${svgW} ${H + 22}`);
+  svg.style.cssText = 'width:100%;height:130px;display:block';
+  svg.setAttribute('preserveAspectRatio', 'none');
+
+  // Confirmed target dashed line
+  if (confirmed?.targetADR) {
+    const ty = H - (confirmed.targetADR / maxVal) * H;
+    const line = document.createElementNS(svgNS, 'line');
+    line.setAttribute('x1', '0'); line.setAttribute('y1', ty);
+    line.setAttribute('x2', String(svgW)); line.setAttribute('y2', ty);
+    line.setAttribute('stroke', '#ef4444'); line.setAttribute('stroke-width', '1');
+    line.setAttribute('stroke-dasharray', '4 3'); line.setAttribute('opacity', '0.8');
+    svg.appendChild(line);
+    const ltxt = document.createElementNS(svgNS, 'text');
+    ltxt.setAttribute('x', '2'); ltxt.setAttribute('y', String(ty - 2));
+    ltxt.setAttribute('font-size', '6'); ltxt.setAttribute('fill', '#ef4444');
+    ltxt.textContent = `Target ${formatMoney(confirmed.targetADR, ccy, { maxFrac: 0 })}`;
+    svg.appendChild(ltxt);
+  }
+
+  const netPoints = [];
+  data.forEach((s, i) => {
+    const cx = i * W + W / 2;
+    const isAnchor = s.month === anchor;
+
+    if (s.adr != null) {
+      const bh = (s.adr / maxVal) * H;
+      const rect = document.createElementNS(svgNS, 'rect');
+      rect.setAttribute('x', String(i * W + W * 0.15));
+      rect.setAttribute('y', String(H - bh));
+      rect.setAttribute('width', String(W * 0.7));
+      rect.setAttribute('height', String(bh));
+      rect.setAttribute('rx', '2');
+      rect.setAttribute('fill', isAnchor ? '#6366f1' : '#10b981');
+      rect.setAttribute('opacity', isAnchor ? '1' : '0.65');
+      svg.appendChild(rect);
+
+      const vtxt = document.createElementNS(svgNS, 'text');
+      vtxt.setAttribute('x', String(cx)); vtxt.setAttribute('y', String(H - bh - 2));
+      vtxt.setAttribute('text-anchor', 'middle'); vtxt.setAttribute('font-size', '5.5');
+      vtxt.setAttribute('fill', 'currentColor');
+      vtxt.textContent = formatMoney(s.adr, ccy, { maxFrac: 0 });
+      svg.appendChild(vtxt);
+    }
+
+    if (s.netRate != null) {
+      const ny = H - (s.netRate / maxVal) * H;
+      netPoints.push(`${cx},${ny}`);
+      const dot = document.createElementNS(svgNS, 'circle');
+      dot.setAttribute('cx', String(cx)); dot.setAttribute('cy', String(ny)); dot.setAttribute('r', '2.5');
+      dot.setAttribute('fill', '#f59e0b');
+      svg.appendChild(dot);
+    }
+
+    const mo = MONTHS[Number(s.month.slice(5, 7)) - 1].slice(0, 3);
+    const yr = s.month.slice(2, 4);
+    const lbl = document.createElementNS(svgNS, 'text');
+    lbl.setAttribute('x', String(cx)); lbl.setAttribute('y', String(H + 14));
+    lbl.setAttribute('text-anchor', 'middle'); lbl.setAttribute('font-size', '6');
+    lbl.setAttribute('fill', isAnchor ? '#6366f1' : 'currentColor');
+    lbl.setAttribute('opacity', isAnchor ? '1' : '0.55');
+    lbl.textContent = `${mo} ${yr}`;
+    svg.appendChild(lbl);
+  });
+
+  if (netPoints.length > 1) {
+    const polyline = document.createElementNS(svgNS, 'polyline');
+    polyline.setAttribute('points', netPoints.join(' '));
+    polyline.setAttribute('fill', 'none'); polyline.setAttribute('stroke', '#f59e0b');
+    polyline.setAttribute('stroke-width', '1.5'); polyline.setAttribute('opacity', '0.7');
+    svg.insertBefore(polyline, svg.firstChild);
+  }
+
+  wrap.appendChild(svg);
+
+  const leg = el('div', { style: 'display:flex;gap:14px;font-size:11px;color:var(--text-muted);margin-top:4px' });
+  const chip = (color, label, dashed) => {
+    const icon = dashed
+      ? el('span', { style: `width:14px;height:0;border-top:2px dashed ${color};display:inline-block;margin-bottom:2px` })
+      : el('span', { style: `width:10px;height:10px;border-radius:2px;background:${color};display:inline-block` });
+    return el('span', { style: 'display:flex;align-items:center;gap:4px' }, icon, el('span', {}, label));
+  };
+  leg.appendChild(chip('#10b981', 'ADR'));
+  leg.appendChild(chip('#f59e0b', 'Net nightly rate'));
+  if (confirmed?.targetADR) leg.appendChild(chip('#ef4444', 'Confirmed target', true));
+  wrap.appendChild(leg);
+  return wrap;
+}
+
+function renderInsights({ monthStats, anchor, currentStats, recommendedADR, confirmed, ccy }) {
+  const insights = [];
+  const fmt = v => formatMoney(v, ccy, { maxFrac: 0 });
+  const mo1 = Number(anchor.slice(5, 7));
+  const yr  = Number(anchor.slice(0, 4));
+
+  // YoY ADR comparison
+  const prevYearMo = `${yr - 1}-${String(mo1).padStart(2, '0')}`;
+  const pyStats = monthStats.find(s => s.month === prevYearMo);
+  if (currentStats.adr && pyStats?.adr) {
+    const pct = Math.round(((currentStats.adr - pyStats.adr) / pyStats.adr) * 100);
+    const dir = pct >= 0 ? '↑' : '↓';
+    const color = pct >= 0 ? '#10b981' : '#ef4444';
+    insights.push({ text: `ADR ${fmt(currentStats.adr)} is ${dir}${Math.abs(pct)}% vs ${MONTHS[mo1 - 1]} ${yr - 1} (${fmt(pyStats.adr)})`, color });
+  }
+
+  // Open night revenue opportunity
+  if (currentStats.nights > 0 && recommendedADR) {
+    const open = currentStats.days - currentStats.nights;
+    if (open > 0) {
+      const potential = open * recommendedADR;
+      insights.push({ text: `${currentStats.nights} nights booked (${currentStats.occ}% occupancy) · ${open} open nights at recommended ${fmt(recommendedADR)} = ${fmt(potential)} potential revenue`, color: null });
+    } else {
+      insights.push({ text: `Month is fully booked (100% occupancy) — consider raising rates for next year`, color: '#10b981' });
+    }
+  }
+
+  // 3-month ADR momentum
+  const recent = monthStats.filter(s => s.adr != null).slice(-4);
+  if (recent.length >= 3) {
+    const first = recent[0].adr, last = recent[recent.length - 2].adr;
+    const diff = last - first;
+    if (Math.abs(diff) > 5) {
+      const dir = diff > 0 ? 'upward' : 'downward';
+      const color = diff > 0 ? '#10b981' : '#f59e0b';
+      insights.push({ text: `ADR has been on a ${dir} trend over the last 3 months (${fmt(first)} → ${fmt(last)})`, color });
+    }
+  }
+
+  // Upside vs recommendation
+  if (currentStats.adr && recommendedADR && currentStats.adr < recommendedADR * 0.92) {
+    const upside = recommendedADR - currentStats.adr;
+    insights.push({ text: `Current ADR ${fmt(currentStats.adr)} is ${fmt(upside)} below the ${MONTHS[mo1 - 1]} historical average — pricing may be conservative`, color: '#f59e0b' });
+  }
+
+  // Confirmed target note
+  if (confirmed) {
+    const adj = confirmed.adjustmentPct ? ` (${confirmed.adjustmentPct > 0 ? '+' : ''}${confirmed.adjustmentPct}% adjustment)` : '';
+    insights.push({ text: `Confirmed target for ${MONTHS[mo1 - 1]} ${yr}: ${fmt(confirmed.targetADR)}${adj} — will be used when publishing the rate feed`, color: '#6366f1' });
+  } else if (recommendedADR) {
+    insights.push({ text: `Recommended ADR: ${fmt(recommendedADR)} (${MONTHS[mo1 - 1]} historical avg, all years) — approve or override below`, color: '#6366f1' });
+  }
+
+  if (!insights.length) return el('div', {});
+
+  const wrap = el('div', { style: 'margin-bottom:16px' });
+  wrap.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:8px' }, 'Insights'));
+  for (const ins of insights) {
+    const row = el('div', { style: 'display:flex;gap:8px;align-items:flex-start;font-size:13px;padding:5px 0;border-bottom:1px solid var(--border)' });
+    row.appendChild(el('span', { style: `color:${ins.color || 'var(--accent,#6366f1)'};flex-shrink:0;font-weight:700` }, '•'));
+    row.appendChild(el('span', {}, ins.text));
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+
+function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, ccy, onRerender }) {
+  const mo1 = Number(anchor.slice(5, 7));
+  const yr  = Number(anchor.slice(0, 4));
+  const monthName = `${MONTHS[mo1 - 1]} ${yr}`;
+  const fmt = v => formatMoney(v, ccy, { maxFrac: 0 });
+
+  const wrap = el('div', {});
+  const hdr = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:10px' });
+  hdr.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)' }, `ADR Target — ${monthName}`));
+  if (confirmed) {
+    const badge = el('span', { style: 'font-size:11px;font-weight:600;color:#10b981;background:rgba(16,185,129,.1);padding:2px 8px;border-radius:10px' },
+      `✓ Confirmed ${fmt(confirmed.targetADR)}`);
+    hdr.appendChild(badge);
+  }
+  wrap.appendChild(hdr);
+
+  // Recommended row
+  if (recommendedADR) {
+    const recRow = el('div', { style: 'font-size:13px;margin-bottom:12px' });
+    recRow.appendChild(el('span', { style: 'color:var(--text-muted)' }, 'Recommended: '));
+    recRow.appendChild(el('strong', {}, fmt(recommendedADR)));
+    recRow.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted);margin-left:6px' }, `(${MONTHS[mo1 - 1]} historical average, all years)`));
+    wrap.appendChild(recRow);
+  } else {
+    wrap.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:12px' }, 'No historical data for this month yet. Enter a target ADR manually.'));
+  }
+
+  // Form row: % adjustment → calculated value → target input
+  const formRow2 = el('div', { style: 'display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:12px' });
+
+  const adjWrap = el('div', {});
+  adjWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, '% Adjustment'));
+  const adjInp = input({ value: confirmed?.adjustmentPct != null ? String(confirmed.adjustmentPct) : '', placeholder: 'e.g. +10', style: 'width:80px' });
+  adjWrap.appendChild(adjInp);
+
+  const arrowEl = el('div', { style: 'font-size:18px;color:var(--text-muted);padding-bottom:6px;line-height:1' }, '→');
+  const adjResult = el('div', { style: 'font-size:13px;font-weight:600;color:var(--text);padding-bottom:8px;min-width:55px' },
+    confirmed?.adjustmentPct != null && recommendedADR ? fmt(Math.round(recommendedADR * (1 + confirmed.adjustmentPct / 100))) : ''
+  );
+
+  const targetWrap = el('div', {});
+  targetWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, 'Target ADR'));
+  const targetInp = input({
+    value: confirmed ? String(confirmed.targetADR) : (recommendedADR ? String(recommendedADR) : ''),
+    placeholder: 'e.g. 130',
+    style: 'width:100px'
+  });
+  targetWrap.appendChild(targetInp);
+
+  adjInp.oninput = () => {
+    const base = recommendedADR || (confirmed?.targetADR) || 0;
+    const pct = parseFloat(adjInp.value);
+    if (!isNaN(pct) && base) {
+      const result = Math.round(base * (1 + pct / 100));
+      adjResult.textContent = fmt(result);
+      targetInp.value = String(result);
+    } else {
+      adjResult.textContent = '';
+    }
+  };
+  targetInp.oninput = () => { adjInp.value = ''; adjResult.textContent = ''; };
+
+  formRow2.appendChild(adjWrap);
+  formRow2.appendChild(arrowEl);
+  formRow2.appendChild(adjResult);
+  formRow2.appendChild(targetWrap);
+  wrap.appendChild(formRow2);
+
+  // Buttons
+  const btnRow = el('div', { style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px' });
+
+  const saveTarget = (targetADR) => {
+    const adjPct = parseFloat(adjInp.value);
+    const base   = confirmed ? { ...confirmed } : {};
+    if (!base.id) base.id = newId('srt');
+    Object.assign(base, {
+      propertyId, month: anchor,
+      recommendedADR: recommendedADR || null,
+      adjustmentPct: !isNaN(adjPct) ? adjPct : 0,
+      targetADR,
+      confirmedAt: todayStr()
+    });
+    delete base.deletedAt;
+    upsert('strRateTargets', base);
+    toast(`ADR target set to ${fmt(targetADR)} for ${monthName}`, 'success');
+    onRerender?.();
+  };
+
+  if (recommendedADR) {
+    btnRow.appendChild(button('✓ Approve Recommendation', { variant: 'primary sm', onClick: () => saveTarget(recommendedADR) }));
+  }
+  btnRow.appendChild(button('Save Override', { variant: 'sm', onClick: () => {
+    const v = parseFloat(targetInp.value);
+    if (!v || v <= 0) { toast('Enter a valid target ADR', 'warning'); return; }
+    saveTarget(Math.round(v));
+  }}));
+  if (confirmed) {
+    btnRow.appendChild(button('Clear', { variant: 'sm ghost', onClick: () => {
+      upsert('strRateTargets', { ...confirmed, deletedAt: todayStr() });
+      toast('ADR target cleared', 'success');
+      onRerender?.();
+    }}));
+  }
+  wrap.appendChild(btnRow);
+
+  // Status line
+  if (confirmed) {
+    const statusEl = el('div', { style: 'font-size:12px;color:var(--text-muted)' });
+    statusEl.appendChild(el('span', { style: 'color:#10b981;font-weight:600' }, '✓ Confirmed '));
+    statusEl.appendChild(el('strong', {}, fmt(confirmed.targetADR)));
+    statusEl.appendChild(el('span', {}, ` · set on ${fmtDate(confirmed.confirmedAt)}`));
+    if (confirmed.adjustmentPct) statusEl.appendChild(el('span', {}, ` · ${confirmed.adjustmentPct > 0 ? '+' : ''}${confirmed.adjustmentPct}% applied to recommendation`));
+    wrap.appendChild(statusEl);
+  }
+
+  return wrap;
 }
