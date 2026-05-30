@@ -90,14 +90,15 @@ function historicNightMap(propertyId) {
 }
 
 // ── Suggestion engine ─────────────────────────────────────────────────────────
-// For a date with no historic actual, suggest a price from history, preferring
-// the most specific signal available: same month-day across years → same month
-// → overall average.
+// Priority: same year-month (current bookings) → same day prior years →
+// same month prior years → overall average.
 function buildSuggester(histMap) {
-  const byMonthDay = new Map(); // "MM-DD" → [{date, rate, adr, checkIn, checkOut, code, label}]
-  const byMonth    = new Map(); // "MM"    → [...]
+  const byYearMonth = new Map(); // "YYYY-MM" → [{date, rate, adr, ...}]  ← strongest signal
+  const byMonthDay  = new Map(); // "MM-DD"   → [{...}]
+  const byMonth     = new Map(); // "MM"      → [{...}]
   const all = [];
   for (const [date, info] of histMap) {
+    const ym = date.slice(0, 7);
     const md = date.slice(5);
     const mo = date.slice(5, 7);
     const entry = {
@@ -105,8 +106,9 @@ function buildSuggester(histMap) {
       checkIn: info.checkIn || '', checkOut: info.checkOut || '',
       code: info.code || '', label: info.label || ''
     };
-    (byMonthDay.get(md) || byMonthDay.set(md, []).get(md)).push(entry);
-    (byMonth.get(mo)    || byMonth.set(mo, []).get(mo)).push(entry);
+    (byYearMonth.get(ym) || byYearMonth.set(ym, []).get(ym)).push(entry);
+    (byMonthDay.get(md)  || byMonthDay.set(md,  []).get(md)).push(entry);
+    (byMonth.get(mo)     || byMonth.set(mo,     []).get(mo)).push(entry);
     all.push(entry);
   }
   const avg    = arr => arr.reduce((s, r) => s + r.rate, 0) / arr.length;
@@ -114,21 +116,42 @@ function buildSuggester(histMap) {
   const overall = all.length ? avg(all) : null;
 
   return function suggest(date) {
-    const dayStr  = date.slice(8);          // DD
-    const mo      = date.slice(5, 7);       // MM
-    const moName  = MONTHS[Number(mo) - 1];
-    const md = byMonthDay.get(date.slice(5));
-    if (md && md.length) return {
-      rate: avg(md), adr: avgADR(md),
-      basis: 'same day, prior years', fallbackReason: null, sources: md
+    const ym     = date.slice(0, 7);
+    const dayStr = date.slice(8);
+    const mo     = date.slice(5, 7);
+    const moName = MONTHS[Number(mo) - 1];
+    const yr     = ym.slice(0, 4);
+
+    // Priority 1: existing/pending bookings in the same year-month
+    const ymArr = byYearMonth.get(ym);
+    if (ymArr && ymArr.length) return {
+      rate: avg(ymArr), adr: avgADR(ymArr),
+      basis: `${moName} ${yr} bookings`,
+      fallbackReason: null,
+      sources: ymArr
     };
-    const moArr = byMonth.get(mo);
-    if (moArr && moArr.length) return {
-      rate: avg(moArr), adr: avgADR(moArr),
-      basis: `${moName} average`,
-      fallbackReason: `No data for day ${dayStr} in prior years — using all ${moName} nights`,
-      sources: moArr
+
+    // Priority 2: same calendar day, prior years only
+    const mdAll = byMonthDay.get(date.slice(5));
+    const priorMD = mdAll ? mdAll.filter(e => e.date.slice(0, 4) !== yr) : null;
+    if (priorMD && priorMD.length) return {
+      rate: avg(priorMD), adr: avgADR(priorMD),
+      basis: 'same day, prior years',
+      fallbackReason: `No ${moName} ${yr} bookings yet`,
+      sources: priorMD
     };
+
+    // Priority 3: same month, prior years only
+    const moAll = byMonth.get(mo);
+    const priorMo = moAll ? moAll.filter(e => e.date.slice(0, 4) !== yr) : null;
+    if (priorMo && priorMo.length) return {
+      rate: avg(priorMo), adr: avgADR(priorMo),
+      basis: `${moName} average (prior years)`,
+      fallbackReason: `No ${moName} ${yr} bookings and no day-${dayStr} history`,
+      sources: priorMo
+    };
+
+    // Priority 4: full history
     if (overall != null) return {
       rate: overall, adr: avgADR(all),
       basis: 'overall average',
