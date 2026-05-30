@@ -630,8 +630,8 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
       rateEl = el('div', { style: 'font-size:13px;font-weight:700;color:var(--text)' }, formatMoney(hist.rate, hist.currency, { maxFrac: 0 }));
       badge = 'booked';
     } else if (isBlocked) {
-      bg = 'rgba(239,68,68,0.06)';
-      border = '1px solid rgba(239,68,68,0.35)';
+      bg = 'rgba(239,68,68,0.15)';
+      border = '1px solid rgba(239,68,68,0.55)';
       const s = suggest(date);
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, s ? formatMoney(s.rate, ccy, { maxFrac: 0 }) : '—');
       badge = 'blocked';
@@ -673,6 +673,15 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
   if (calInfo?.importedAt) {
     body.appendChild(el('div', { style: 'margin-top:8px;font-size:11px;color:var(--text-muted)' },
       `Calendar last imported ${fmtDate(calInfo.importedAt)} · ${(calInfo.blocks || []).length} reserved period(s).`));
+  } else {
+    body.appendChild(el('div', {
+      style: 'margin-top:10px;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);font-size:12px;display:flex;align-items:center;gap:8px'
+    },
+      el('span', { style: 'color:#ef4444;font-size:14px' }, '⚠'),
+      el('span', {}, 'No Airbnb iCal imported for this property — upcoming reservations won\'t show as blocked. Click '),
+      el('strong', {}, 'Import Airbnb Calendar'),
+      el('span', {}, ' above to connect your Airbnb calendar.')
+    ));
   }
 
   card.appendChild(body);
