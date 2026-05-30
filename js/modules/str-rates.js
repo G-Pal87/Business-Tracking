@@ -1028,7 +1028,7 @@ function build() {
     const maxR = rates.length ? Math.max(...rates) : 0;
 
     renderKpis(kpiRow, { histMap, suggest, blocked, year, month1, ccy, propertyId: _propId });
-    renderCalendar(calCard, { histMap, suggest, blocked, year, month1, ccy, minR, maxR, onAutoRefresh: rerender });
+    renderCalendar(calCard, { histMap, suggest, blocked, year, month1, ccy, minR, maxR, propertyId: _propId, onAutoRefresh: rerender });
     renderAnalysis(analysisEl, { propertyId: _propId, year, month1, ccy, onRerender: rerender });
   }
 
@@ -1087,13 +1087,16 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
 }
 
 // ── Calendar grid ───────────────────────────────────────────────────────────
-function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, minR, maxR, onAutoRefresh }) {
+function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, minR, maxR, propertyId, onAutoRefresh }) {
   card.innerHTML = '';
   const mo  = String(month1).padStart(2, '0');
   const dim = daysInMonth(year, month1);
   const first = parseYMD(`${year}-${mo}-01`);
   const lead  = (first.getUTCDay() + 6) % 7; // Monday-first offset
   const tStr  = todayStr();
+  // Confirmed ADR target for this month overrides suggestions on open/blocked
+  // days — this is the rate the feed actually publishes (see buildRatesFeed).
+  const target = propertyId ? getConfirmedTarget(propertyId, `${year}-${mo}`) : null;
 
   const body = el('div', { style: 'padding:16px' });
 
@@ -1123,9 +1126,13 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
     } else if (isBlocked) {
       bg = 'rgba(239,68,68,0.15)';
       border = '1px solid rgba(239,68,68,0.55)';
-      const s = suggest(date);
-      rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, s ? formatMoney(s.rate, ccy, { maxFrac: 0 }) : '—');
+      const rateVal = target ? target.targetADR : suggest(date)?.rate;
+      rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
       badge = 'blocked';
+    } else if (target) {
+      // Confirmed target overrides the suggestion — show it as the published rate.
+      rateEl = el('div', { style: 'font-size:13px;font-weight:700;color:var(--text)' }, formatMoney(target.targetADR, ccy, { maxFrac: 0 }));
+      badge = 'target';
     } else {
       const s = suggest(date);
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, s ? formatMoney(s.rate, ccy, { maxFrac: 0 }) : '—');
@@ -1136,14 +1143,14 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
       style: `position:relative;min-height:66px;padding:6px;border-radius:6px;border:${border};background:${bg};cursor:pointer;` +
              (isToday ? 'box-shadow:0 0 0 2px var(--accent,#6366f1) inset;' : '')
     });
-    const badgeColor = badge === 'booked' ? '#10b981' : badge === 'blocked' ? '#ef4444' : badge === 'low' ? '#f59e0b' : 'var(--text-muted)';
-    const badgeText  = badge === 'booked' ? 'booked' : badge === 'blocked' ? 'blocked' : badge === 'low' ? '?' : badge === 'medium' ? '~' : badge === 'high' ? 'sugg' : badge ? 'sugg' : '';
+    const badgeColor = badge === 'booked' ? '#10b981' : badge === 'blocked' ? '#ef4444' : badge === 'target' ? '#6366f1' : badge === 'low' ? '#f59e0b' : 'var(--text-muted)';
+    const badgeText  = badge === 'booked' ? 'booked' : badge === 'blocked' ? 'blocked' : badge === 'target' ? 'target' : badge === 'low' ? '?' : badge === 'medium' ? '~' : badge === 'high' ? 'sugg' : badge ? 'sugg' : '';
     cell.appendChild(el('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
       el('span', { style: 'font-size:12px;font-weight:600;color:var(--text-muted)' }, String(d)),
       badgeText ? el('span', { style: `font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${badgeColor}` }, badgeText) : null
     ));
     cell.appendChild(el('div', { style: 'margin-top:8px;text-align:center' }, rateEl));
-    cell.onclick = () => openDayDetail(date, { hist, isBlocked, suggest, ccy });
+    cell.onclick = () => openDayDetail(date, { hist, isBlocked, suggest, ccy, target });
     grid.appendChild(cell);
   }
 
@@ -1157,6 +1164,7 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
   );
   legend.appendChild(chip('rgba(16,185,129,0.30)', 'Booked (actual rate)'));
   legend.appendChild(chip('rgba(239,68,68,0.20)', 'Blocked (iCal)'));
+  if (target) legend.appendChild(chip('#6366f1', `target = confirmed ${formatMoney(target.targetADR, ccy, { maxFrac: 0 })} (published rate)`));
   legend.appendChild(chip('transparent', 'Open · sugg = high confidence · ~ = medium · ? = low'));
   body.appendChild(legend);
 
@@ -1188,7 +1196,7 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
 }
 
 // ── Day detail modal ──────────────────────────────────────────────────────────
-function openDayDetail(date, { hist, isBlocked, suggest, ccy }) {
+function openDayDetail(date, { hist, isBlocked, suggest, ccy, target }) {
   const body = el('div', {});
   const row = (label, value, muted) => {
     const v = el('strong', {}, value);
@@ -1228,6 +1236,15 @@ function openDayDetail(date, { hist, isBlocked, suggest, ccy }) {
     }
   } else {
     body.appendChild(row('Status', isBlocked ? 'Reserved / blocked (iCal)' : 'Open'));
+    if (target) {
+      const mo1 = Number(date.slice(5, 7));
+      const box = el('div', { style: 'margin:8px 0;padding:8px 10px;border-radius:6px;background:rgba(99,102,241,0.10);border-left:3px solid #6366f1;font-size:12px' });
+      box.appendChild(el('div', { style: 'font-weight:700;color:var(--text);margin-bottom:2px' },
+        `Published rate: ${fmt(target.targetADR)}`));
+      box.appendChild(el('div', { style: 'color:var(--text-muted)' },
+        `Confirmed ADR target for ${MONTHS[mo1 - 1]} ${date.slice(0, 4)} — this overrides the suggestion below and is the rate sent to the daily-rate feed.`));
+      body.appendChild(box);
+    }
     const s = suggest(date);
     if (s) {
       // ── Confidence badge ──
