@@ -101,7 +101,7 @@ export async function fetchDb() {
   const headers = { 'Accept': 'application/vnd.github+json' };
   if (token) headers['Authorization'] = `token ${token}`;
 
-  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}?ref=${encodeURIComponent(branch || 'main')}`;
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}?ref=${encodeURIComponent(branch || 'main')}&_=${Date.now()}`;
   let res;
   try { res = await fetch(url, { headers, cache: 'no-store' }); }
   catch { throw new Error('Cannot reach GitHub — check your internet connection'); }
@@ -120,7 +120,10 @@ export async function fetchDb() {
   if (content) {
     parsed = safeParseDb(b64decode(content));
   } else if (download_url) {
-    const raw = await fetch(download_url).then(r => {
+    const bustUrl = download_url.includes('?')
+      ? `${download_url}&_=${Date.now()}`
+      : `${download_url}?_=${Date.now()}`;
+    const raw = await fetch(bustUrl, { cache: 'no-store' }).then(r => {
       if (!r.ok) throw new Error(`Download failed (${r.status})`);
       return r.text();
     });
