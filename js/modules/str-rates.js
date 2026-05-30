@@ -94,26 +94,27 @@ function historicNightMap(propertyId) {
 // the most specific signal available: same month-day across years → same month
 // → overall average.
 function buildSuggester(histMap) {
-  const byMonthDay = new Map(); // "MM-DD" → [{date, rate}]
-  const byMonth    = new Map(); // "MM"    → [{date, rate}]
+  const byMonthDay = new Map(); // "MM-DD" → [{date, rate, adr}]
+  const byMonth    = new Map(); // "MM"    → [{date, rate, adr}]
   const all = [];
   for (const [date, info] of histMap) {
     const md = date.slice(5);
     const mo = date.slice(5, 7);
-    const entry = { date, rate: info.rate };
+    const entry = { date, rate: info.rate, adr: info.adr || info.rate };
     (byMonthDay.get(md) || byMonthDay.set(md, []).get(md)).push(entry);
     (byMonth.get(mo)    || byMonth.set(mo, []).get(mo)).push(entry);
     all.push(entry);
   }
-  const avg = arr => arr.reduce((s, r) => s + r.rate, 0) / arr.length;
+  const avg    = arr => arr.reduce((s, r) => s + r.rate, 0) / arr.length;
+  const avgADR = arr => arr.reduce((s, r) => s + r.adr,  0) / arr.length;
   const overall = all.length ? avg(all) : null;
 
   return function suggest(date) {
     const md = byMonthDay.get(date.slice(5));
-    if (md && md.length) return { rate: avg(md), basis: 'same day, prior years', sources: md };
+    if (md && md.length) return { rate: avg(md), adr: avgADR(md), basis: 'same day, prior years', sources: md };
     const mo = byMonth.get(date.slice(5, 7));
-    if (mo && mo.length) return { rate: avg(mo), basis: `${MONTHS[Number(date.slice(5, 7)) - 1]} average`, sources: mo };
-    if (overall != null)  return { rate: overall, basis: 'overall average', sources: all };
+    if (mo && mo.length) return { rate: avg(mo), adr: avgADR(mo), basis: `${MONTHS[Number(date.slice(5, 7)) - 1]} average`, sources: mo };
+    if (overall != null)  return { rate: overall, adr: avgADR(all), basis: 'overall average', sources: all };
     return null;
   };
 }
@@ -624,26 +625,32 @@ function openDayDetail(date, { hist, isBlocked, suggest, ccy }) {
     body.appendChild(row('Status', isBlocked ? 'Reserved / blocked (iCal)' : 'Open'));
     const s = suggest(date);
     if (s) {
-      body.appendChild(row('Suggested ADR', fmt(s.rate)));
+      body.appendChild(section('Suggested Rates'));
+      body.appendChild(row('ADR (incl. cleaning amortised)', fmt(s.adr)));
+      body.appendChild(row('Net nightly rate (excl. cleaning)', fmt(s.rate)));
+      const cleanEst = s.adr - s.rate;
+      if (cleanEst > 0.01) body.appendChild(row('Est. cleaning per night', fmt(cleanEst), true));
       body.appendChild(row('Method', s.basis));
 
       if (s.sources && s.sources.length) {
-        // Group source nights by YYYY-MM for a compact display
         const grouped = new Map();
         for (const src of s.sources) {
           const ym = src.date.slice(0, 7);
-          if (!grouped.has(ym)) grouped.set(ym, { rateSum: 0, n: 0 });
+          if (!grouped.has(ym)) grouped.set(ym, { rateSum: 0, adrSum: 0, n: 0 });
           const b = grouped.get(ym);
-          b.rateSum += src.rate; b.n++;
+          b.rateSum += src.rate; b.adrSum += src.adr; b.n++;
         }
         body.appendChild(section(`Source nights (${s.sources.length} total)`));
         for (const [ym, b] of [...grouped].sort()) {
           const moLabel = `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
-          body.appendChild(row(moLabel, `${fmt(b.rateSum / b.n)} avg · ${b.n} night${b.n !== 1 ? 's' : ''}`, true));
+          const avgNet = b.rateSum / b.n, avgAdr = b.adrSum / b.n;
+          const cleanLine = Math.abs(avgAdr - avgNet) > 0.5 ? ` · ADR ${fmt(avgAdr)}` : '';
+          body.appendChild(row(moLabel, `Net ${fmt(avgNet)}${cleanLine} · ${b.n} night${b.n !== 1 ? 's' : ''}`, true));
         }
-        const overall = s.sources.reduce((sum, r) => sum + r.rate, 0) / s.sources.length;
+        const overallNet = s.sources.reduce((sum, r) => sum + r.rate, 0) / s.sources.length;
+        const overallADR = s.sources.reduce((sum, r) => sum + r.adr,  0) / s.sources.length;
         body.appendChild(el('div', { style: 'padding:6px 0;font-size:12px;color:var(--text-muted)' },
-          `→ Weighted average: ${fmt(overall)} from ${s.sources.length} nights`));
+          `→ Net avg: ${fmt(overallNet)} · ADR avg: ${fmt(overallADR)} · ${s.sources.length} nights`));
       }
     } else {
       body.appendChild(el('div', { style: 'padding:8px 0;font-size:13px;color:var(--text-muted)' }, 'No historic data yet to suggest a rate.'));
