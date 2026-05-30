@@ -90,22 +90,21 @@ function historicNightMap(propertyId) {
 }
 
 // ── Suggestion engine ─────────────────────────────────────────────────────────
-// Current-year same-month is the strongest signal (3× weight per night).
-// When current-year sample is thin (<5 nights effective), it is blended with
-// the best available prior-year signal to stabilise the estimate.
-// Same-day prior-years requires ≥2 distinct years to avoid single-booking noise.
-const MIN_SAME_DAY_YEARS  = 2;
-const CURRENT_YEAR_WEIGHT = 3;   // per-night influence multiplier for current-year data
-const SAME_DAY_WEIGHT     = 1.5; // per-night multiplier for same-calendar-day prior years
-const STANDALONE_THRESHOLD = 15; // effectiveN at which current year stands alone (no prior blend)
+// Priority: current year (3×) > year-1 (1.95×) > year-2 (1.27×) > year-3 (0.82×) …
+// Each prior year is weighted at PRIOR_YEAR_DECAY of the year before it.
+// Same-day data uses the same decay (no separate SAME_DAY_WEIGHT).
+// Current year stands alone when its effectiveN ≥ STANDALONE_THRESHOLD.
+const MIN_SAME_DAY_YEARS   = 2;
+const CURRENT_YEAR_WEIGHT  = 3;    // weight for the current year's per-night data
+const PRIOR_YEAR_DECAY     = 0.65; // each prior year = previous year × this factor
+const STANDALONE_THRESHOLD = 15;   // effectiveN above which current year needs no prior blend
 
 function buildSuggester(histMap) {
   const byYearMonth = new Map();
   const byMonthDay  = new Map();
-  const byMonth     = new Map();
   const all = [];
   for (const [date, info] of histMap) {
-    const ym = date.slice(0, 7), md = date.slice(5), mo = date.slice(5, 7);
+    const ym = date.slice(0, 7), md = date.slice(5);
     const entry = {
       date, rate: info.rate, adr: info.adr || info.rate,
       checkIn: info.checkIn || '', checkOut: info.checkOut || '',
@@ -113,11 +112,17 @@ function buildSuggester(histMap) {
     };
     (byYearMonth.get(ym) || byYearMonth.set(ym, []).get(ym)).push(entry);
     (byMonthDay.get(md)  || byMonthDay.set(md,  []).get(md)).push(entry);
-    (byMonth.get(mo)     || byMonth.set(mo,     []).get(mo)).push(entry);
     all.push(entry);
   }
   const avg    = arr => arr.reduce((s, r) => s + r.rate, 0) / arr.length;
   const avgADR = arr => arr.reduce((s, r) => s + r.adr,  0) / arr.length;
+
+  // Per-night weight for data that is `yearsAgo` years old.
+  function yrWeight(yearsAgo) {
+    return CURRENT_YEAR_WEIGHT * Math.pow(PRIOR_YEAR_DECAY, yearsAgo);
+  }
+  // Format weight for display: "3×", "1.95×", "1.27×" …
+  function fmtW(w) { return Number.isInteger(w) ? `${w}` : w.toFixed(2); }
 
   return function suggest(date) {
     const ym     = date.slice(0, 7);
@@ -125,13 +130,33 @@ function buildSuggester(histMap) {
     const mo     = date.slice(5, 7);
     const moName = MONTHS[Number(mo) - 1];
     const yr     = ym.slice(0, 4);
+    const yrNum  = Number(yr);
 
-    const ymArr       = byYearMonth.get(ym) || [];
-    const priorMD     = (byMonthDay.get(date.slice(5)) || []).filter(e => e.date.slice(0, 4) !== yr);
-    const priorMDYears = new Set(priorMD.map(e => e.date.slice(0, 4))).size;
-    const priorMo     = (byMonth.get(mo) || []).filter(e => e.date.slice(0, 4) !== yr);
+    const ymArr = byYearMonth.get(ym) || [];
 
-    // Current-year bookings from other months — reference context when same-month is empty
+    // All years that have data for this same month, sorted newest-first.
+    const monthByYear = [];
+    for (const [ym2, entries] of byYearMonth) {
+      if (ym2.slice(5, 7) !== mo) continue;
+      const yr2 = ym2.slice(0, 4);
+      const yearsAgo = yrNum - Number(yr2);
+      if (yearsAgo < 0) continue;
+      monthByYear.push({ yr2, yearsAgo, entries, weight: yrWeight(yearsAgo),
+        label: `${moName} ${yr2}` });
+    }
+    monthByYear.sort((a, b) => a.yearsAgo - b.yearsAgo);
+
+    // Same calendar-day data split by prior year.
+    const priorDayMap = new Map();
+    for (const e of (byMonthDay.get(date.slice(5)) || [])) {
+      const yr2 = e.date.slice(0, 4);
+      if (yr2 === yr) continue;
+      if (!priorDayMap.has(yr2)) priorDayMap.set(yr2, []);
+      priorDayMap.get(yr2).push(e);
+    }
+    const priorDayYears = priorDayMap.size;
+
+    // Current-year context from other months (reference only — not part of blend).
     let currentYearContext = null;
     if (!ymArr.length) {
       const cyOther = [];
@@ -140,50 +165,49 @@ function buildSuggester(histMap) {
       }
       if (cyOther.length) {
         const cyMonths = [...new Set(cyOther.map(e => MONTHS[Number(e.date.slice(5, 7)) - 1]))];
-        currentYearContext = {
-          nights: cyOther.length,
-          avgRate: avg(cyOther),
-          avgADR: avgADR(cyOther),
-          months: cyMonths.join(', ')
-        };
+        currentYearContext = { nights: cyOther.length, avgRate: avg(cyOther),
+          avgADR: avgADR(cyOther), months: cyMonths.join(', ') };
       }
     }
 
-    // Build pools — current year dominates; prior data blended in only when current is thin
+    // ── Decide which pools to use ──────────────────────────────────────────
     const pools = [];
     const currentEffN = ymArr.length * CURRENT_YEAR_WEIGHT;
 
-    if (ymArr.length) {
-      pools.push({ label: `${moName} ${yr} bookings`, entries: ymArr, weight: CURRENT_YEAR_WEIGHT });
-      if (currentEffN < STANDALONE_THRESHOLD) {
-        // Current sample is thin — blend with best available prior signal
-        if (priorMDYears >= MIN_SAME_DAY_YEARS) {
-          pools.push({ label: `day ${dayStr}, ${priorMDYears} prior yr${priorMDYears > 1 ? 's' : ''}`, entries: priorMD, weight: SAME_DAY_WEIGHT });
-        } else if (priorMo.length) {
-          pools.push({ label: `${moName} prior years`, entries: priorMo, weight: 1 });
-        }
-      }
+    if (ymArr.length && currentEffN >= STANDALONE_THRESHOLD) {
+      // Strong current-year signal — use alone, no prior blend needed.
+      pools.push(monthByYear.find(p => p.yearsAgo === 0));
+
+    } else if (ymArr.length) {
+      // Thin current-year signal — blend with prior years, each decayed.
+      for (const p of monthByYear) pools.push(p);
+
     } else {
-      // No current-year data — use best prior signal
-      if (priorMDYears >= MIN_SAME_DAY_YEARS) {
-        pools.push({ label: `day ${dayStr}, ${priorMDYears} prior yr${priorMDYears > 1 ? 's' : ''}`, entries: priorMD, weight: SAME_DAY_WEIGHT });
-      } else if (priorMo.length) {
-        pools.push({ label: `${moName} prior years`, entries: priorMo, weight: 1 });
-      } else if (all.length) {
-        pools.push({ label: 'overall history', entries: all, weight: 1 });
+      // No current-year data at all.
+      if (priorDayYears >= MIN_SAME_DAY_YEARS) {
+        // Same calendar-day, per-year decay.
+        for (const [yr2, entries] of priorDayMap) {
+          const yearsAgo = yrNum - Number(yr2);
+          pools.push({ yr2, yearsAgo, entries, weight: yrWeight(yearsAgo),
+            label: `${moName} ${yr2} day ${dayStr}` });
+        }
+        pools.sort((a, b) => a.yearsAgo - b.yearsAgo);
+      } else {
+        // Month average, per-year decay.
+        for (const p of monthByYear) if (p.yearsAgo > 0) pools.push(p);
+        if (!pools.length && all.length)
+          pools.push({ label: 'overall history', entries: all, weight: 1 });
       }
     }
     if (!pools.length) return null;
 
-    // Weighted blend across pools
+    // ── Weighted blend ─────────────────────────────────────────────────────
     let totalW = 0, rateSum = 0, adrSum = 0;
     for (const pool of pools) {
       pool.rate = avg(pool.entries);
       pool.adr  = avgADR(pool.entries);
       const w   = pool.entries.length * pool.weight;
-      rateSum  += pool.rate * w;
-      adrSum   += pool.adr  * w;
-      totalW   += w;
+      rateSum  += pool.rate * w; adrSum += pool.adr * w; totalW += w;
     }
     const blendedRate = rateSum / totalW;
     const blendedADR  = adrSum  / totalW;
@@ -191,27 +215,28 @@ function buildSuggester(histMap) {
     const confidence  = effectiveN >= 15 ? 'high' : effectiveN >= 5 ? 'medium' : 'low';
 
     const basis = pools.length > 1
-      ? pools.map(p => `${p.label} (${p.entries.length}n)`).join(' + ')
+      ? pools.map(p => `${p.label} (${p.entries.length}n, ${fmtW(p.weight)}×)`).join(' + ')
       : `${pools[0].label} (${pools[0].entries.length} night${pools[0].entries.length !== 1 ? 's' : ''})`;
 
     const fallbackReason = !ymArr.length
-      ? (priorMDYears > 0 && priorMDYears < MIN_SAME_DAY_YEARS
-          ? `Only ${priorMDYears} year of day-${dayStr} data (need ${MIN_SAME_DAY_YEARS}) — using ${moName} average`
+      ? (priorDayYears > 0 && priorDayYears < MIN_SAME_DAY_YEARS
+          ? `Only ${priorDayYears} year of day-${dayStr} data (need ${MIN_SAME_DAY_YEARS}) — using ${moName} average`
           : `No ${moName} ${yr} bookings yet`)
       : null;
 
-    // Plain-language "why" for this suggestion
+    // Plain-language reasoning.
+    const priorPools = pools.filter(p => p.yearsAgo > 0);
     const why = ymArr.length
       ? (pools.length > 1
-          ? `${moName} ${yr} has ${ymArr.length} booking night${ymArr.length > 1 ? 's' : ''} (primary, ${CURRENT_YEAR_WEIGHT}× weight) blended with ${priorMDYears >= MIN_SAME_DAY_YEARS ? `prior-year day-${dayStr}` : `prior-year ${moName}`} for stability.`
-          : `${moName} ${yr} has ${ymArr.length} booking night${ymArr.length > 1 ? 's' : ''} — used directly as the primary signal.`)
-      : (priorMDYears >= MIN_SAME_DAY_YEARS
-          ? `No ${moName} ${yr} bookings yet. Falling back to prior-year data for day ${dayStr} (${priorMDYears} year${priorMDYears > 1 ? 's' : ''}).`
-          : priorMo.length
-              ? `No ${moName} ${yr} bookings yet${priorMD.length && priorMDYears < MIN_SAME_DAY_YEARS ? ` (only ${priorMDYears} year of same-day data — need ${MIN_SAME_DAY_YEARS}+)` : ''}. Falling back to prior-year ${moName} average (${priorMo.length} nights).`
+          ? `${moName} ${yr}: ${ymArr.length}n at ${fmtW(CURRENT_YEAR_WEIGHT)}× — blended with: ${priorPools.map(p => `${p.yr2} (${p.entries.length}n at ${fmtW(p.weight)}×)`).join(', ')}.`
+          : `${moName} ${yr}: ${ymArr.length} night${ymArr.length > 1 ? 's' : ''} — strong standalone signal, no prior-year blend needed.`)
+      : (priorDayYears >= MIN_SAME_DAY_YEARS
+          ? `No ${moName} ${yr} bookings yet. Day-${dayStr} data (per-year decay): ${pools.map(p => `${p.yr2} (${p.entries.length}n at ${fmtW(p.weight)}×)`).join(', ')}.`
+          : pools[0]?.label !== 'overall history'
+              ? `No ${moName} ${yr} bookings yet. Prior-year ${moName} data (per-year decay): ${pools.map(p => `${p.yr2} (${p.entries.length}n at ${fmtW(p.weight)}×)`).join(', ')}.`
               : 'No month-specific history found — using overall property average.');
 
-    const confidenceNote = buildConfidenceNote(pools, effectiveN, confidence, moName, yr, dayStr, priorMDYears, currentEffN);
+    const confidenceNote = buildConfidenceNote(pools, effectiveN, confidence, moName, yr, dayStr, priorDayYears, currentEffN);
 
     return {
       rate: blendedRate, adr: blendedADR,
@@ -222,25 +247,32 @@ function buildSuggester(histMap) {
   };
 }
 
-function buildConfidenceNote(pools, effectiveN, confidence, moName, yr, dayStr, priorMDYears, currentEffN) {
-  const curPool   = pools.find(p => p.label.includes(yr));
-  const priorPool = pools.find(p => !p.label.includes(yr));
+function buildConfidenceNote(pools, effectiveN, confidence, moName, yr, dayStr, priorDayYears, currentEffN) {
+  const curPool        = pools.find(p => p.yearsAgo === 0);
+  const priorPools     = pools.filter(p => p.yearsAgo > 0);
+  const totalPriorN    = priorPools.reduce((s, p) => s + p.entries.length, 0);
+  const priorYearRange = priorPools.length
+    ? (priorPools.length === 1
+        ? priorPools[0].yr2
+        : `${priorPools[priorPools.length - 1].yr2}–${priorPools[0].yr2}`)
+    : '';
+
   if (confidence === 'high') {
-    if (curPool && priorPool)
-      return `Strong signal: ${curPool.entries.length} current-year + ${priorPool.entries.length} prior-year nights (blended, current weighted ${CURRENT_YEAR_WEIGHT}×)`;
+    if (curPool && priorPools.length)
+      return `Strong signal: ${curPool.entries.length} ${yr} night${curPool.entries.length > 1 ? 's' : ''} (${CURRENT_YEAR_WEIGHT}×) + ${totalPriorN} prior-year nights (${priorYearRange}, decay-weighted)`;
     if (curPool)
-      return `${curPool.entries.length} ${moName} ${yr} nights — strong current-year signal (no prior blend needed)`;
-    return `${priorPool?.entries.length ?? 0} nights of prior-year history — solid baseline`;
+      return `${curPool.entries.length} ${moName} ${yr} nights — strong current-year signal, no prior blend needed`;
+    return `${totalPriorN} nights across ${priorYearRange} — solid prior-year baseline`;
   }
   if (confidence === 'medium') {
     if (curPool)
-      return `${curPool.entries.length} ${moName} ${yr} booking${curPool.entries.length > 1 ? 's' : ''} blended with prior data — moderate confidence; more ${moName} ${yr} bookings will sharpen this`;
-    return `${priorPool?.entries.length ?? 0} prior-year nights — no ${moName} ${yr} data yet`;
+      return `${curPool.entries.length} ${moName} ${yr} night${curPool.entries.length > 1 ? 's' : ''} blended with ${totalPriorN} prior-year nights (${priorYearRange}) — moderate confidence`;
+    return `${totalPriorN} prior-year nights (${priorYearRange}) — no ${moName} ${yr} data yet`;
   }
   if (curPool)
-    return `Only ${curPool.entries.length} ${moName} ${yr} night${curPool.entries.length > 1 ? 's' : ''} — low confidence; rate will shift as more bookings arrive`;
-  if (priorMDYears === 1)
-    return `Only 1 year of day-${dayStr} history — not enough for reliable same-day signal`;
+    return `Only ${curPool.entries.length} ${moName} ${yr} night${curPool.entries.length > 1 ? 's' : ''} — low confidence; rate will shift as more ${yr} bookings arrive`;
+  if (priorDayYears === 1)
+    return `Only 1 year of day-${dayStr} history — insufficient for reliable same-day signal`;
   return `Very little data — treat as rough estimate only`;
 }
 
@@ -806,7 +838,8 @@ function openDayDetail(date, { hist, isBlocked, suggest, ccy }) {
           const poolRow = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)' });
           const left = el('div', {});
           left.appendChild(el('div', { style: 'font-weight:600' }, pool.label));
-          left.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px' }, `${pool.entries.length} night${pool.entries.length !== 1 ? 's' : ''} · weight ${pool.weight}×`));
+          const wLabel = Number.isInteger(pool.weight) ? `${pool.weight}` : pool.weight.toFixed(2);
+          left.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px' }, `${pool.entries.length} night${pool.entries.length !== 1 ? 's' : ''} · weight ${wLabel}×`));
           const right = el('div', { style: 'text-align:right' });
           right.appendChild(el('div', {}, `ADR ${fmt(poolAvgAdr)}`));
           right.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px' }, `Net ${fmt(poolAvgNet)}`));
