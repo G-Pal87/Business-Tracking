@@ -923,6 +923,14 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     if (!v || v <= 0) { toast('Enter a valid target ADR', 'warning'); return; }
     saveTarget(Math.round(v));
   }}));
+  if (recommendedADR) {
+    btnRow.appendChild(button('Reset to Recommended', { variant: 'sm ghost', onClick: () => {
+      adjInp.value = '';
+      adjResult.textContent = '';
+      targetInp.value = String(recommendedADR);
+      targetInp.focus();
+    }}));
+  }
   if (confirmed) {
     btnRow.appendChild(button('Clear', { variant: 'sm ghost', onClick: () => {
       upsert('strRateTargets', { ...confirmed, deletedAt: todayStr() });
