@@ -377,7 +377,7 @@ export function openDetail(id, preStats) {
     body.appendChild(el('div', { class: 'card mb-16' },
       el('div', { class: 'card-header' },
         el('div', { class: 'card-title' }, 'Airbnb Calendar Sync'),
-        el('div', { class: 'actions' }, button('Import iCal', { variant: 'primary', onClick: () => doImportICal(p) }))
+        el('div', { class: 'actions' }, button('Sync Calendar', { variant: 'primary', onClick: () => doImportICal(p) }))
       ),
       el('div', { class: 'form-row' },
         el('label', { class: 'form-label' }, 'iCal URL (Airbnb export)'),
