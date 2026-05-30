@@ -314,6 +314,189 @@ function buildMonthlyStats(propertyId, anchor, numMonths = 12) {
   });
 }
 
+// ── Occupancy × ADR by year (for a given calendar month) ─────────────────────
+// Returns one row per year that has bookings in that month.
+function buildOccupancyByYear(propertyId, month1) {
+  const mo = String(month1).padStart(2, '0');
+  const bookings = listActivePayments().filter(p =>
+    p.propertyId === propertyId && p.stream === 'short_term_rental' &&
+    p.status !== 'materialized' && checkInOf(p) && checkOutOf(p)
+  );
+  const byYear = new Map();
+  for (const p of bookings) {
+    const adr = adrNightOf(p), net = avgNightOf(p);
+    if (!adr && !net) continue;
+    const ci = checkInOf(p), co = checkOutOf(p);
+    for (let d = ci; d < co; d = addDays(d, 1)) {
+      if (d.slice(5, 7) !== mo) continue;
+      const yr = d.slice(0, 4);
+      if (!byYear.has(yr)) byYear.set(yr, { adrSum: 0, netSum: 0, nights: 0 });
+      const b = byYear.get(yr);
+      b.nights++; b.adrSum += (adr || net || 0); b.netSum += (net || adr || 0);
+    }
+  }
+  return [...byYear.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([yr, b]) => ({
+      year: yr,
+      nights: b.nights,
+      total: daysInMonth(Number(yr), month1),
+      occ: b.nights / daysInMonth(Number(yr), month1),
+      adr: b.nights ? b.adrSum / b.nights : null,
+      net: b.nights ? b.netSum / b.nights : null,
+      revenue: b.nights ? b.adrSum : null   // sum of ADR×nights = total ADR revenue
+    }));
+}
+
+function renderOccupancyHistory(data, month1, ccy, confirmedADR) {
+  const wrap = el('div', { style: 'margin-bottom:14px' });
+  if (!data.length) {
+    wrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'No historical data yet.'));
+    return wrap;
+  }
+
+  const moName = MONTHS[month1 - 1];
+  const fmt    = v => formatMoney(v, ccy, { maxFrac: 0 });
+  const pct    = v => `${Math.round(v * 100)}%`;
+  const today  = todayStr();
+  const curYr  = today.slice(0, 4);
+  const curMo  = today.slice(5, 7);
+
+  // ── SVG bar chart ─────────────────────────────────────────────────────
+  const W = 560, H = 190, PAD = { t: 50, b: 44, l: 32, r: 12 };
+  const chartW = W - PAD.l - PAD.r;
+  const chartH = H - PAD.t - PAD.b;
+  const cols   = data.length;
+  const barW   = Math.min(52, (chartW / cols) * 0.58);
+  const slot   = chartW / cols;
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.style.cssText = 'width:100%;max-width:560px;height:auto;display:block;overflow:visible';
+
+  // Grid lines at 25 / 50 / 75 / 100 %
+  for (const level of [0.25, 0.5, 0.75, 1]) {
+    const y = PAD.t + chartH * (1 - level);
+    const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    ln.setAttribute('x1', PAD.l); ln.setAttribute('x2', W - PAD.r);
+    ln.setAttribute('y1', y);     ln.setAttribute('y2', y);
+    ln.setAttribute('stroke', level === 0.5 ? 'rgba(128,128,128,0.25)' : 'rgba(128,128,128,0.10)');
+    ln.setAttribute('stroke-dasharray', level === 1 ? '' : '3,3');
+    svg.appendChild(ln);
+    const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    lbl.setAttribute('x', PAD.l - 4); lbl.setAttribute('y', y + 4);
+    lbl.setAttribute('text-anchor', 'end'); lbl.setAttribute('font-size', '9');
+    lbl.setAttribute('fill', 'var(--text-muted)');
+    lbl.textContent = level === 1 ? '100%' : level === 0.5 ? '50%' : '';
+    svg.appendChild(lbl);
+  }
+
+  // Confirmed ADR target line (if set) — drawn as a labelled horizontal reference on a second pass
+  // We'll add it after bars so it sits on top.
+
+  // Bars
+  data.forEach((d, i) => {
+    const cx   = PAD.l + i * slot + slot / 2;
+    const barH = Math.max(d.occ * chartH, 2);
+    const barY = PAD.t + chartH - barH;
+    const isCurrentYr  = d.year === curYr;
+    const isPartial = isCurrentYr && String(month1).padStart(2, '0') === curMo;
+
+    const fillColor = d.occ >= 0.8 ? '#10b981' : d.occ >= 0.5 ? '#6366f1' : '#f59e0b';
+
+    // Bar (hatched/lighter for partial current month)
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('x', cx - barW / 2); rect.setAttribute('y', barY);
+    rect.setAttribute('width', barW); rect.setAttribute('height', barH);
+    rect.setAttribute('rx', '3');
+    rect.setAttribute('fill', fillColor);
+    rect.setAttribute('opacity', isPartial ? '0.45' : '0.82');
+    svg.appendChild(rect);
+
+    // Occupancy % above bar
+    const occTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    occTxt.setAttribute('x', cx); occTxt.setAttribute('y', barY - 16);
+    occTxt.setAttribute('text-anchor', 'middle'); occTxt.setAttribute('font-size', '10');
+    occTxt.setAttribute('fill', 'var(--text-muted)');
+    occTxt.textContent = pct(d.occ) + (isPartial ? '*' : '');
+    svg.appendChild(occTxt);
+
+    // ADR above occupancy % — amber, bold
+    if (d.adr) {
+      const adrTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      adrTxt.setAttribute('x', cx); adrTxt.setAttribute('y', barY - 28);
+      adrTxt.setAttribute('text-anchor', 'middle'); adrTxt.setAttribute('font-size', '11');
+      adrTxt.setAttribute('font-weight', '700'); adrTxt.setAttribute('fill', '#f59e0b');
+      adrTxt.textContent = fmt(d.adr);
+      svg.appendChild(adrTxt);
+    }
+
+    // Year label
+    const yrTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    yrTxt.setAttribute('x', cx); yrTxt.setAttribute('y', PAD.t + chartH + 14);
+    yrTxt.setAttribute('text-anchor', 'middle'); yrTxt.setAttribute('font-size', '11');
+    yrTxt.setAttribute('font-weight', isCurrentYr ? '700' : '400');
+    yrTxt.setAttribute('fill', isCurrentYr ? 'var(--text)' : 'var(--text-muted)');
+    yrTxt.textContent = d.year;
+    svg.appendChild(yrTxt);
+
+    // Nights label
+    const nTxt2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    nTxt2.setAttribute('x', cx); nTxt2.setAttribute('y', PAD.t + chartH + 26);
+    nTxt2.setAttribute('text-anchor', 'middle'); nTxt2.setAttribute('font-size', '9');
+    nTxt2.setAttribute('fill', 'var(--text-muted)');
+    nTxt2.textContent = `${d.nights}/${d.total}n`;
+    svg.appendChild(nTxt2);
+  });
+
+  wrap.appendChild(svg);
+
+  // ── Insight strip ─────────────────────────────────────────────────────
+  if (data.length >= 2) {
+    const newest = data[data.length - 1];
+    const prev   = data[data.length - 2];
+    const adrDiff = newest.adr && prev.adr ? newest.adr - prev.adr : null;
+    const occDiff = newest.occ - prev.occ;
+    const insights = [];
+
+    if (adrDiff !== null) {
+      const dir = adrDiff > 0 ? '↑' : '↓';
+      insights.push(`ADR ${dir} ${fmt(Math.abs(adrDiff))} vs ${prev.year} (${fmt(prev.adr)} → ${fmt(newest.adr)})`);
+    }
+    if (Math.abs(occDiff) > 0.02) {
+      const dir = occDiff > 0 ? '↑' : '↓';
+      insights.push(`Occupancy ${dir} ${Math.round(Math.abs(occDiff) * 100)}pp vs ${prev.year} (${pct(prev.occ)} → ${pct(newest.occ)})`);
+    }
+    // ADR elasticity hint
+    if (adrDiff !== null && Math.abs(occDiff) > 0.03) {
+      if (adrDiff > 0 && occDiff < 0)
+        insights.push(`Higher ADR appears to correlate with lower occupancy — consider whether the revenue trade-off is worth it`);
+      else if (adrDiff > 0 && occDiff > 0)
+        insights.push(`Higher ADR with higher occupancy — pricing pressure may support a further increase`);
+      else if (adrDiff < 0 && occDiff > 0)
+        insights.push(`Lower ADR drove higher occupancy — the rate cut filled more nights`);
+    }
+
+    if (insights.length) {
+      const strip = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.6' });
+      for (const ins of insights) {
+        strip.appendChild(el('div', {}, `· ${ins}`));
+      }
+      wrap.appendChild(strip);
+    }
+  }
+
+  const curYrData = data.find(d => d.year === curYr);
+  if (curYrData) {
+    const isPartialMonth = String(month1).padStart(2, '0') === curMo;
+    if (isPartialMonth)
+      wrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:3px' },
+        `* ${curYr} occupancy is partial — month not yet complete (${curYrData.nights} of ${curYrData.total} nights booked so far)`));
+  }
+
+  return wrap;
+}
+
 // Recommended ADR = average ADR for the same calendar month across all years.
 function computeRecommendedADR(propertyId, month1) {
   const mo = String(month1).padStart(2, '0');
@@ -987,6 +1170,11 @@ function renderAnalysis(container, { propertyId, year, month1, ccy, onRerender }
   card.appendChild(inner);
 
   inner.appendChild(el('div', { style: 'font-size:14px;font-weight:700;margin-bottom:14px' }, 'ADR Analysis'));
+
+  const occData = buildOccupancyByYear(propertyId, month1);
+  inner.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:6px' }, `${MONTHS[month1 - 1]} — Occupancy & ADR by Year`));
+  inner.appendChild(renderOccupancyHistory(occData, month1, ccy, confirmed?.targetADR));
+
   inner.appendChild(renderTrendChart(monthStats, anchor, confirmed, ccy));
   inner.appendChild(renderInsights({ monthStats, anchor, currentStats, recommendedADR, confirmed, ccy }));
   inner.appendChild(renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, ccy, onRerender }));
