@@ -1,13 +1,12 @@
 {
   "schema": "str-daily-rates-index/v1",
-  "generatedAt": "2026-05-30T22:45:09.279Z",
+  "generatedAt": "2026-05-30T22:51:26.914Z",
   "properties": [
     {
       "id": "prop_mohfv8np89",
       "name": "Rooftop Tenerife",
       "currency": "EUR",
       "file": "prop_mohfv8np89.json",
-      "airbnbCalUrl": "",
       "nights": 0
     },
     {
@@ -15,7 +14,6 @@
       "name": "Studio Tenerife",
       "currency": "EUR",
       "file": "prop_mohfwhqrgj.json",
-      "airbnbCalUrl": "",
       "nights": 0
     },
     {
@@ -23,7 +21,6 @@
       "name": "Poolside Central Studio | Balcony & Beach Walk",
       "currency": "EUR",
       "file": "prop_mox7ipfiam.json",
-      "airbnbCalUrl": "",
       "nights": 365
     },
     {
@@ -31,7 +28,6 @@
       "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
       "currency": "EUR",
       "file": "prop_mox7mr8day.json",
-      "airbnbCalUrl": "",
       "nights": 365
     },
     {
@@ -39,7 +35,6 @@
       "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
       "currency": "EUR",
       "file": "prop_mox7p43s8o.json",
-      "airbnbCalUrl": "https://www.airbnb.co.uk/calendar/ical/1341854905555812998.ics?t=1e2c75c8b84645a4ac88669d8ec7bdda",
       "nights": 365
     }
   ]
