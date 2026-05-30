@@ -1315,11 +1315,19 @@ function renderAnalysis(container, { propertyId, year, month1, ccy, onRerender }
   inner.appendChild(el('div', { style: 'font-size:14px;font-weight:700;margin-bottom:14px' }, 'ADR Analysis'));
 
   const occData = buildOccupancyByYear(propertyId, month1);
-  inner.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:6px' }, `${MONTHS[month1 - 1]} — Occupancy & ADR by Year`));
-  inner.appendChild(renderOccupancyHistory(occData, month1, ccy, confirmed?.targetADR));
+  const chartsRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px' });
 
-  inner.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:6px;margin-top:16px' }, `${MONTHS[month1 - 1]} — Revenue & ADR by Year`));
-  inner.appendChild(renderRevenueADRChart(occData, month1, ccy));
+  const occCol = el('div', {});
+  occCol.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:6px' }, `${MONTHS[month1 - 1]} — Occupancy & ADR by Year`));
+  occCol.appendChild(renderOccupancyHistory(occData, month1, ccy, confirmed?.targetADR));
+
+  const revCol = el('div', {});
+  revCol.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:6px' }, `${MONTHS[month1 - 1]} — Revenue & ADR by Year`));
+  revCol.appendChild(renderRevenueADRChart(occData, month1, ccy));
+
+  chartsRow.appendChild(occCol);
+  chartsRow.appendChild(revCol);
+  inner.appendChild(chartsRow);
 
   inner.appendChild(renderTrendChart(monthStats, anchor, confirmed, ccy));
   inner.appendChild(renderInsights({ monthStats, anchor, currentStats, recommendedADR, confirmed, ccy }));
