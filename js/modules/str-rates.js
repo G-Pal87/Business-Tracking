@@ -351,6 +351,106 @@ function buildOccupancyByYear(propertyId, month1) {
     }));
 }
 
+// Year-over-year comparison table — replaces the two separate SVG bar charts with
+// a clean HTML/CSS table: one row per year, columns for occupancy (with progress bar),
+// ADR, revenue, and nights. Insight strip below shows the ADR→revenue relationship.
+function renderYearComparisonTable(data, month1, ccy) {
+  const wrap = el('div', { style: 'margin-bottom:16px' });
+  if (!data.length) {
+    wrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'No historical data yet.'));
+    return wrap;
+  }
+
+  const fmt    = v => formatMoney(v, ccy, { maxFrac: 0 });
+  const pct    = v => `${Math.round(v * 100)}%`;
+  const today  = todayStr();
+  const curYr  = today.slice(0, 4);
+  const curMo  = today.slice(5, 7);
+  const mo1Str = String(month1).padStart(2, '0');
+  const maxRev = Math.max(...data.map(d => d.revenue || 0), 1);
+
+  // Header
+  const COLS = 'auto 1fr 64px 88px 56px';
+  const hdr = el('div', { style: `display:grid;grid-template-columns:${COLS};gap:8px;padding:0 10px 6px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted)` });
+  for (const h of ['Year', 'Occupancy', 'ADR', 'Revenue', 'Nights']) hdr.appendChild(el('div', {}, h));
+  wrap.appendChild(hdr);
+
+  // Data rows
+  data.forEach(d => {
+    const isPartial = d.year === curYr && mo1Str === curMo;
+    const isBestRev = d.revenue === maxRev;
+    const occColor  = d.occ >= 0.8 ? '#10b981' : d.occ >= 0.5 ? '#6366f1' : '#f59e0b';
+    const rowBg     = d.year === curYr ? 'background:rgba(99,102,241,0.06);' : '';
+    const muted     = isPartial ? 'opacity:0.7;' : '';
+
+    const row = el('div', { style: `display:grid;grid-template-columns:${COLS};gap:8px;align-items:center;padding:7px 10px;border-radius:6px;margin-bottom:3px;${rowBg}${muted}` });
+
+    // Year
+    row.appendChild(el('div', { style: `font-size:13px;font-weight:${d.year === curYr ? '700' : '500'};color:var(--text)` },
+      d.year + (isPartial ? '*' : '')));
+
+    // Occupancy + progress bar
+    const occWrap = el('div', { style: 'display:flex;align-items:center;gap:6px' });
+    const track = el('div', { style: 'flex:1;height:6px;border-radius:3px;background:var(--border)' });
+    const fill  = el('div', { style: `height:6px;border-radius:3px;background:${occColor};width:${Math.round(d.occ * 100)}%` });
+    track.appendChild(fill);
+    occWrap.appendChild(track);
+    occWrap.appendChild(el('div', { style: 'font-size:12px;font-weight:600;color:var(--text);min-width:36px;text-align:right' },
+      pct(d.occ) + (isPartial ? '*' : '')));
+    row.appendChild(occWrap);
+
+    // ADR
+    row.appendChild(el('div', { style: 'font-size:13px;font-weight:700;color:#f59e0b' },
+      d.adr ? fmt(d.adr) : '—'));
+
+    // Revenue
+    row.appendChild(el('div', { style: `font-size:13px;font-weight:700;color:${isBestRev ? '#10b981' : 'var(--text)'}` },
+      d.revenue ? fmt(d.revenue) + (isPartial ? '*' : '') : '—'));
+
+    // Nights
+    row.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
+      isPartial ? `${d.nights}/${d.total}` : `${d.nights}`));
+
+    wrap.appendChild(row);
+  });
+
+  // Insight strip — last two years
+  const active = data.filter(d => d.revenue);
+  if (active.length >= 2) {
+    const prev    = active[active.length - 2];
+    const curr    = active[active.length - 1];
+    const adrDiff = (curr.adr || 0) - (prev.adr || 0);
+    const revDiff = (curr.revenue || 0) - (prev.revenue || 0);
+    const occDiff = curr.occ - prev.occ;
+    const revPct  = prev.revenue ? Math.round(Math.abs(revDiff) / prev.revenue * 100) : null;
+    const isPartialCurr = curr.year === curYr && mo1Str === curMo;
+    const tag = isPartialCurr ? ` (${curr.year} partial)` : '';
+    const insights = [];
+
+    insights.push(
+      `${prev.year}→${curr.year}${tag}: ADR ${adrDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(adrDiff))}` +
+      ` · Occ ${occDiff >= 0 ? '↑' : '↓'} ${Math.round(Math.abs(occDiff) * 100)}pp` +
+      ` · Revenue ${revDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(revDiff))}${revPct != null ? ` (${revPct}%)` : ''}`
+    );
+    if      (adrDiff > 0 && revDiff < 0) insights.push('Higher ADR reduced total revenue — the occupancy drop more than offset the rate increase');
+    else if (adrDiff > 0 && revDiff > 0) insights.push('Higher ADR grew total revenue — demand held despite the rate increase');
+    else if (adrDiff < 0 && revDiff > 0) insights.push('Lower ADR boosted revenue — more nights booked outweighed the rate cut');
+    else if (adrDiff < 0 && revDiff < 0) insights.push('Lower ADR did not recover revenue — occupancy lift was insufficient');
+
+    const strip = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:8px;line-height:1.7;border-top:1px solid var(--border);padding-top:8px' });
+    for (const ins of insights) strip.appendChild(el('div', {}, `· ${ins}`));
+    wrap.appendChild(strip);
+  }
+
+  const partialEntry = data.find(d => d.year === curYr && mo1Str === curMo);
+  if (partialEntry)
+    wrap.appendChild(el('div', { style: 'font-size:10px;color:var(--text-muted);margin-top:4px' },
+      `* ${curYr} is partial — ${partialEntry.nights} of ${partialEntry.total} nights booked so far`));
+
+  return wrap;
+}
+
+// Legacy SVG occupancy chart — kept for reference but no longer rendered.
 function renderOccupancyHistory(data, month1, ccy, confirmedADR) {
   const wrap = el('div', { style: 'margin-bottom:14px' });
   if (!data.length) {
@@ -1315,19 +1415,8 @@ function renderAnalysis(container, { propertyId, year, month1, ccy, onRerender }
   inner.appendChild(el('div', { style: 'font-size:14px;font-weight:700;margin-bottom:14px' }, 'ADR Analysis'));
 
   const occData = buildOccupancyByYear(propertyId, month1);
-  const chartsRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:4px' });
-
-  const occCol = el('div', {});
-  occCol.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:6px' }, `${MONTHS[month1 - 1]} — Occupancy & ADR by Year`));
-  occCol.appendChild(renderOccupancyHistory(occData, month1, ccy, confirmed?.targetADR));
-
-  const revCol = el('div', {});
-  revCol.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:6px' }, `${MONTHS[month1 - 1]} — Revenue & ADR by Year`));
-  revCol.appendChild(renderRevenueADRChart(occData, month1, ccy));
-
-  chartsRow.appendChild(occCol);
-  chartsRow.appendChild(revCol);
-  inner.appendChild(chartsRow);
+  inner.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:8px' }, `${MONTHS[month1 - 1]} — Year over Year`));
+  inner.appendChild(renderYearComparisonTable(occData, month1, ccy));
 
   inner.appendChild(renderTrendChart(monthStats, anchor, confirmed, ccy));
   inner.appendChild(renderInsights({ monthStats, anchor, currentStats, recommendedADR, confirmed, ccy }));
