@@ -1,11 +1,11 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-05-30T18:30:12.267Z",
+  "generatedAt": "2026-05-30T18:30:31.623Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
     "currency": "EUR",
-    "airbnbCalUrl": ""
+    "airbnbCalUrl": "https://www.airbnb.gr/calendar/ical/1417130109923067210.ics?t=e8ec8f5e94b845b6817598eeaa30df0e"
   },
   "guestFeePct": 14,
   "taxPct": 0,
@@ -18,7 +18,7 @@
       "amount": 54,
       "guestAmount": 62,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "May 2026 (26 nights)"
     },
     {
@@ -26,7 +26,7 @@
       "amount": 54,
       "guestAmount": 62,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "May 2026 (26 nights)"
     },
     {
@@ -34,7 +34,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -42,7 +42,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -50,7 +50,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -58,7 +58,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -90,7 +90,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -98,7 +98,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -106,7 +106,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -114,7 +114,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -122,7 +122,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -130,7 +130,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -138,7 +138,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -154,7 +154,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -162,7 +162,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -170,7 +170,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -178,7 +178,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -186,7 +186,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -194,7 +194,7 @@
       "amount": 49,
       "guestAmount": 55,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June 2025 (24 nights)"
     },
     {
@@ -722,7 +722,7 @@
       "amount": 63,
       "guestAmount": 72,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 (31 nights)"
     },
     {
@@ -730,7 +730,7 @@
       "amount": 63,
       "guestAmount": 72,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 (31 nights)"
     },
     {
@@ -738,7 +738,7 @@
       "amount": 63,
       "guestAmount": 72,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 (31 nights)"
     },
     {
@@ -746,7 +746,7 @@
       "amount": 63,
       "guestAmount": 72,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 (31 nights)"
     },
     {
@@ -754,7 +754,7 @@
       "amount": 63,
       "guestAmount": 72,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 (31 nights)"
     },
     {
@@ -762,7 +762,7 @@
       "amount": 63,
       "guestAmount": 72,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 (31 nights)"
     },
     {
@@ -1002,7 +1002,7 @@
       "amount": 56,
       "guestAmount": 64,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "September 2025 (29 nights)"
     },
     {
@@ -1010,7 +1010,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1018,7 +1018,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1026,7 +1026,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1034,7 +1034,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1042,7 +1042,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1050,7 +1050,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1058,7 +1058,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1066,7 +1066,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1074,7 +1074,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1082,7 +1082,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1090,7 +1090,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1098,7 +1098,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1106,7 +1106,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1114,7 +1114,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1122,7 +1122,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1130,7 +1130,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -1138,7 +1138,7 @@
       "amount": 47,
       "guestAmount": 54,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "October 2025 (27 nights)"
     },
     {
@@ -2898,7 +2898,7 @@
       "amount": 53,
       "guestAmount": 60,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "May 2026 day 25 (1n, 1.95×) + May 2025 day 25 (1n, 1.27×)"
     },
     {
@@ -2906,7 +2906,7 @@
       "amount": 55,
       "guestAmount": 62,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "May 2026 day 26 (1n, 1.95×) + May 2025 day 26 (1n, 1.27×)"
     },
     {
@@ -2914,7 +2914,7 @@
       "amount": 51,
       "guestAmount": 58,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)"
     },
     {
@@ -2922,7 +2922,7 @@
       "amount": 51,
       "guestAmount": 58,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)"
     },
     {
@@ -2930,7 +2930,7 @@
       "amount": 51,
       "guestAmount": 58,
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)"
     }
   ]
