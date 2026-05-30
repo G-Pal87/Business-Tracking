@@ -166,15 +166,16 @@ async function doPushDb(message = 'Update data') {
   const base     = state.github.remoteDb || null;
   let   lastError = null;
 
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    // GET current SHA + content
+  for (let attempt = 1; attempt <= 8; attempt++) {
+    // GET current SHA + content — append timestamp to bypass GitHub's edge-cache,
+    // which can return a stale SHA even when cache: 'no-store' is set.
     let getRes;
     try {
-      getRes = await fetch(`${apiBase}?ref=${encodeURIComponent(branch || 'main')}`, {
+      getRes = await fetch(`${apiBase}?ref=${encodeURIComponent(branch || 'main')}&_=${Date.now()}`, {
         headers: ghHeaders, cache: 'no-store'
       });
     } catch {
-      if (attempt < 5) { await sleep(backoff(attempt)); continue; }
+      if (attempt < 8) { await sleep(backoff(attempt)); continue; }
       throw new Error('Cannot reach GitHub');
     }
 
@@ -189,7 +190,11 @@ async function doPushDb(message = 'Update data') {
     if (getData.content) {
       freshDb = safeParseDb(b64decode(getData.content));
     } else if (getData.download_url) {
-      const raw = await fetch(getData.download_url).then(r => {
+      // Bust CDN cache on the raw download URL too, same as the API GET above.
+      const bustUrl = getData.download_url.includes('?')
+        ? `${getData.download_url}&_=${Date.now()}`
+        : `${getData.download_url}?_=${Date.now()}`;
+      const raw = await fetch(bustUrl, { cache: 'no-store' }).then(r => {
         if (!r.ok) throw new Error(`Download failed (${r.status})`);
         return r.text();
       });
@@ -218,13 +223,13 @@ async function doPushDb(message = 'Update data') {
         })
       });
     } catch {
-      if (attempt < 5) { await sleep(backoff(attempt)); continue; }
+      if (attempt < 8) { await sleep(backoff(attempt)); continue; }
       throw new Error('Cannot reach GitHub');
     }
 
     if (putRes.status === 409) {
       lastError = 'SHA conflict';
-      if (attempt < 5) { await sleep(backoff(attempt)); continue; }
+      if (attempt < 8) { await sleep(backoff(attempt)); continue; }
       break; // exhausted — fall through to ConflictError below
     }
 
