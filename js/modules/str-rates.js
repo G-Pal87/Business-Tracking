@@ -131,6 +131,24 @@ function buildSuggester(histMap) {
     const priorMDYears = new Set(priorMD.map(e => e.date.slice(0, 4))).size;
     const priorMo     = (byMonth.get(mo) || []).filter(e => e.date.slice(0, 4) !== yr);
 
+    // Current-year bookings from other months — reference context when same-month is empty
+    let currentYearContext = null;
+    if (!ymArr.length) {
+      const cyOther = [];
+      for (const [ym2, entries] of byYearMonth) {
+        if (ym2.slice(0, 4) === yr && ym2 !== ym) cyOther.push(...entries);
+      }
+      if (cyOther.length) {
+        const cyMonths = [...new Set(cyOther.map(e => MONTHS[Number(e.date.slice(5, 7)) - 1]))];
+        currentYearContext = {
+          nights: cyOther.length,
+          avgRate: avg(cyOther),
+          avgADR: avgADR(cyOther),
+          months: cyMonths.join(', ')
+        };
+      }
+    }
+
     // Build pools — current year dominates; prior data blended in only when current is thin
     const pools = [];
     const currentEffN = ymArr.length * CURRENT_YEAR_WEIGHT;
@@ -182,13 +200,24 @@ function buildSuggester(histMap) {
           : `No ${moName} ${yr} bookings yet`)
       : null;
 
+    // Plain-language "why" for this suggestion
+    const why = ymArr.length
+      ? (pools.length > 1
+          ? `${moName} ${yr} has ${ymArr.length} booking night${ymArr.length > 1 ? 's' : ''} (primary, ${CURRENT_YEAR_WEIGHT}× weight) blended with ${priorMDYears >= MIN_SAME_DAY_YEARS ? `prior-year day-${dayStr}` : `prior-year ${moName}`} for stability.`
+          : `${moName} ${yr} has ${ymArr.length} booking night${ymArr.length > 1 ? 's' : ''} — used directly as the primary signal.`)
+      : (priorMDYears >= MIN_SAME_DAY_YEARS
+          ? `No ${moName} ${yr} bookings yet. Falling back to prior-year data for day ${dayStr} (${priorMDYears} year${priorMDYears > 1 ? 's' : ''}).`
+          : priorMo.length
+              ? `No ${moName} ${yr} bookings yet${priorMD.length && priorMDYears < MIN_SAME_DAY_YEARS ? ` (only ${priorMDYears} year of same-day data — need ${MIN_SAME_DAY_YEARS}+)` : ''}. Falling back to prior-year ${moName} average (${priorMo.length} nights).`
+              : 'No month-specific history found — using overall property average.');
+
     const confidenceNote = buildConfidenceNote(pools, effectiveN, confidence, moName, yr, dayStr, priorMDYears, currentEffN);
 
     return {
       rate: blendedRate, adr: blendedADR,
-      basis, confidence, effectiveN, confidenceNote,
+      basis, confidence, effectiveN, confidenceNote, why,
       pools, sources: pools.flatMap(p => p.entries),
-      fallbackReason
+      fallbackReason, currentYearContext
     };
   };
 }
@@ -739,6 +768,25 @@ function openDayDetail(date, { hist, isBlocked, suggest, ccy }) {
       body.appendChild(confRow);
       if (s.confidenceNote) {
         body.appendChild(el('div', { style: `font-size:12px;padding:5px 8px;border-radius:4px;border-left:3px solid ${confColor};background:var(--bg-alt,rgba(0,0,0,.04));margin-bottom:8px` }, s.confidenceNote));
+      }
+
+      // ── Why reasoning ──
+      if (s.why) {
+        body.appendChild(section('Why This Rate?'));
+        body.appendChild(el('div', { style: 'font-size:12px;line-height:1.5;padding:3px 0 4px' }, s.why));
+      }
+
+      // ── Current-year cross-month context ──
+      if (s.currentYearContext) {
+        const ctx = s.currentYearContext;
+        const yr = date.slice(0, 4);
+        const ctxBox = el('div', { style: 'margin:4px 0 8px;font-size:12px;background:var(--bg-alt,rgba(0,0,0,.04));border-radius:4px;padding:7px 10px;border-left:3px solid #6366f1' });
+        ctxBox.appendChild(el('div', { style: 'font-weight:600;margin-bottom:3px' }, `${yr} bookings (other months)`));
+        ctxBox.appendChild(el('div', {}, `${ctx.nights} nights in ${ctx.months} — avg ADR ${fmt(ctx.avgADR)} · avg Net ${fmt(ctx.avgRate)}`));
+        ctxBox.appendChild(el('div', { style: 'color:var(--text-muted);font-size:11px;margin-top:3px' },
+          `These are your current-year ${yr} bookings, but from a different month. They are shown here for context — they do not directly feed the formula above. Once bookings arrive for this month in ${yr}, they will become the primary signal (${CURRENT_YEAR_WEIGHT}× weight).`
+        ));
+        body.appendChild(ctxBox);
       }
 
       // ── Method explanation ──
