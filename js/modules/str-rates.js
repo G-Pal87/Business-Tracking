@@ -898,7 +898,6 @@ function build() {
     }
   }});
   bar.appendChild(publishBtn);
-  bar.appendChild(button('Import Airbnb Calendar', { onClick: () => openImportModal(_propId, rerender) }));
   wrap.appendChild(bar);
 
   const kpiRow     = el('div', { style: 'display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px' });
@@ -1079,9 +1078,9 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
       style: 'margin-top:10px;padding:8px 12px;border-radius:6px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);font-size:12px;display:flex;align-items:center;gap:8px'
     },
       el('span', { style: 'color:#ef4444;font-size:14px' }, '⚠'),
-      el('span', {}, 'No Airbnb iCal imported for this property — upcoming reservations won\'t show as blocked. Click '),
-      el('strong', {}, 'Import Airbnb Calendar'),
-      el('span', {}, ' above to connect your Airbnb calendar.')
+      el('span', {}, 'No Airbnb iCal URL set for this property — upcoming reservations won\'t show as blocked. Add the iCal URL in '),
+      el('strong', {}, 'Properties → Edit Property → Airbnb iCal URL'),
+      el('span', {}, '.')
     ));
   }
 
@@ -1299,48 +1298,6 @@ async function autoRefreshICal(propertyId, onDone, { force = false } = {}) {
   finally { _icalRefreshing.delete(propertyId); }
 }
 
-// ── Airbnb iCal import ─────────────────────────────────────────────────────────
-function openImportModal(propertyId, onDone) {
-  const prop = byId('properties', propertyId);
-  const existing = calendarFor(propertyId);
-  const body = el('div', {});
-
-  body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:10px' },
-    'Paste the property’s Airbnb iCal export URL. Reserved and blocked dates will be overlaid on the calendar so you can see open vs. booked days. (Airbnb iCal carries availability only, not prices.)'));
-
-  const urlI = input({ value: existing?.url || prop?.airbnbCalUrl || '', placeholder: 'https://www.airbnb.com/calendar/ical/....ics' });
-  body.appendChild(formRow('Airbnb iCal URL', urlI));
-
-  const status = el('div', { style: 'font-size:12px;color:var(--text-muted);min-height:18px;margin-top:6px' });
-  body.appendChild(status);
-
-  const importBtn = button('Import', { variant: 'primary', onClick: async () => {
-    const url = urlI.value.trim();
-    if (!url) { toast('Enter an iCal URL', 'warning'); return; }
-    status.textContent = 'Fetching calendar…';
-    try {
-      const text = await fetchICal(url);
-      const events = parseICal(text);
-      const blocks = events
-        .filter(e => e.start && e.end)
-        .map(e => ({ start: e.start, end: e.end, uid: e.uid || '', summary: e.summary || '' }));
-      const rec = existing
-        ? { ...existing, url, blocks, importedAt: todayStr() }
-        : { id: newId('stc'), propertyId, url, blocks, importedAt: todayStr() };
-      upsert('strCalendars', rec);
-      // Persist the URL on the property too, so it round-trips with the property record.
-      if (prop && prop.airbnbCalUrl !== url) upsert('properties', { ...prop, airbnbCalUrl: url });
-      toast(`Imported ${blocks.length} reserved period(s)`, 'success');
-      closeModal();
-      onDone?.();
-    } catch (e) {
-      status.textContent = '';
-      toast(`iCal import failed: ${e.message}`, 'danger', 5000);
-    }
-  }});
-
-  openModal({ title: 'Import Airbnb Calendar', body, footer: [button('Cancel', { onClick: closeModal }), importBtn] });
-}
 
 // ── ADR Analysis section ──────────────────────────────────────────────────────
 function renderAnalysis(container, { propertyId, year, month1, ccy, onRerender }) {
