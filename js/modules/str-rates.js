@@ -500,6 +500,147 @@ function renderOccupancyHistory(data, month1, ccy, confirmedADR) {
   return wrap;
 }
 
+// Revenue vs ADR bar chart — shows total monthly revenue per year with ADR annotated
+// so the user can directly see whether raising or lowering the rate moved revenue.
+function renderRevenueADRChart(data, month1, ccy) {
+  const wrap = el('div', { style: 'margin-bottom:14px' });
+  const active = data.filter(d => d.revenue);
+  if (!active.length) {
+    wrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'No historical data yet.'));
+    return wrap;
+  }
+
+  const fmt    = v => formatMoney(v, ccy, { maxFrac: 0 });
+  const today  = todayStr();
+  const curYr  = today.slice(0, 4);
+  const curMo  = today.slice(5, 7);
+  const mo1Str = String(month1).padStart(2, '0');
+
+  const W = 560, H = 170;
+  const PAD = { t: 54, b: 48, l: 32, r: 12 };
+  const chartH = H - PAD.t - PAD.b;
+  const ns  = 'http://www.w3.org/2000/svg';
+  const maxRev = Math.max(...active.map(d => d.revenue), 1);
+  const n   = data.length;
+  const colW = (W - PAD.l - PAD.r) / Math.max(n, 1);
+
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('style', 'width:100%;max-width:560px;display:block');
+
+  // Grid at 50% and 100% revenue
+  for (const frac of [0.5, 1.0]) {
+    const y = PAD.t + chartH * (1 - frac);
+    const gl = document.createElementNS(ns, 'line');
+    gl.setAttribute('x1', PAD.l); gl.setAttribute('x2', W - PAD.r);
+    gl.setAttribute('y1', y);    gl.setAttribute('y2', y);
+    gl.setAttribute('stroke', 'var(--border)'); gl.setAttribute('stroke-dasharray', '3,3');
+    svg.appendChild(gl);
+    if (frac === 1.0) {
+      const lbl = document.createElementNS(ns, 'text');
+      lbl.setAttribute('x', PAD.l - 2); lbl.setAttribute('y', y + 3);
+      lbl.setAttribute('text-anchor', 'end'); lbl.setAttribute('font-size', '8');
+      lbl.setAttribute('fill', 'var(--text-muted)');
+      lbl.textContent = fmt(maxRev);
+      svg.appendChild(lbl);
+    }
+  }
+
+  data.forEach((d, i) => {
+    if (!d.revenue) return;
+    const isPartial = d.year === curYr && mo1Str === curMo;
+    const isBest    = d.revenue === maxRev;
+    const cx   = PAD.l + (i + 0.5) * colW;
+    const barW = Math.min(colW * 0.55, 44);
+    const barH = Math.max(chartH * (d.revenue / maxRev), 2);
+    const barY = PAD.t + chartH - barH;
+    const color = isBest ? '#10b981' : '#6366f1';
+
+    const rect = document.createElementNS(ns, 'rect');
+    rect.setAttribute('x', cx - barW / 2); rect.setAttribute('y', barY);
+    rect.setAttribute('width', barW); rect.setAttribute('height', barH);
+    rect.setAttribute('rx', '3'); rect.setAttribute('fill', color);
+    rect.setAttribute('opacity', isPartial ? '0.5' : '1');
+    svg.appendChild(rect);
+
+    // Revenue above bar
+    const revTxt = document.createElementNS(ns, 'text');
+    revTxt.setAttribute('x', cx);
+    revTxt.setAttribute('y', Math.max(barY - 18, PAD.t - 32));
+    revTxt.setAttribute('text-anchor', 'middle'); revTxt.setAttribute('font-size', '10');
+    revTxt.setAttribute('font-weight', '700');
+    revTxt.setAttribute('fill', isBest ? '#10b981' : 'var(--text)');
+    revTxt.textContent = fmt(d.revenue) + (isPartial ? '*' : '');
+    svg.appendChild(revTxt);
+
+    // ADR just above bar top (amber)
+    const adrTxt = document.createElementNS(ns, 'text');
+    adrTxt.setAttribute('x', cx);
+    adrTxt.setAttribute('y', Math.max(barY - 4, PAD.t - 18));
+    adrTxt.setAttribute('text-anchor', 'middle'); adrTxt.setAttribute('font-size', '9');
+    adrTxt.setAttribute('fill', '#f59e0b');
+    adrTxt.textContent = d.adr ? fmt(d.adr) : '';
+    svg.appendChild(adrTxt);
+
+    // Year below bar
+    const yrTxt = document.createElementNS(ns, 'text');
+    yrTxt.setAttribute('x', cx); yrTxt.setAttribute('y', PAD.t + chartH + 14);
+    yrTxt.setAttribute('text-anchor', 'middle'); yrTxt.setAttribute('font-size', '10');
+    yrTxt.setAttribute('font-weight', '600'); yrTxt.setAttribute('fill', 'var(--text)');
+    yrTxt.textContent = d.year;
+    svg.appendChild(yrTxt);
+
+    // Nights booked
+    const nTxt = document.createElementNS(ns, 'text');
+    nTxt.setAttribute('x', cx); nTxt.setAttribute('y', PAD.t + chartH + 26);
+    nTxt.setAttribute('text-anchor', 'middle'); nTxt.setAttribute('font-size', '9');
+    nTxt.setAttribute('fill', 'var(--text-muted)');
+    nTxt.textContent = isPartial ? `${d.nights}/${d.total}n` : `${d.nights}n`;
+    svg.appendChild(nTxt);
+
+    // Occupancy %
+    const occTxt = document.createElementNS(ns, 'text');
+    occTxt.setAttribute('x', cx); occTxt.setAttribute('y', PAD.t + chartH + 38);
+    occTxt.setAttribute('text-anchor', 'middle'); occTxt.setAttribute('font-size', '9');
+    occTxt.setAttribute('fill', 'var(--text-muted)');
+    occTxt.textContent = `${Math.round(d.occ * 100)}%${isPartial ? '*' : ''}`;
+    svg.appendChild(occTxt);
+  });
+
+  wrap.appendChild(svg);
+
+  // Insight strip — YoY ADR → Revenue impact
+  if (active.length >= 2) {
+    const prev    = active[active.length - 2];
+    const curr    = active[active.length - 1];
+    const revDiff = curr.revenue - prev.revenue;
+    const adrDiff = (curr.adr || 0) - (prev.adr || 0);
+    const revPct  = prev.revenue ? Math.round(Math.abs(revDiff) / prev.revenue * 100) : null;
+    const isPartialCurr = curr.year === curYr && mo1Str === curMo;
+    const insights = [];
+    const partTag = isPartialCurr ? ` (${curr.year} partial)` : '';
+
+    insights.push(
+      `${prev.year}→${curr.year}${partTag}: ADR ${adrDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(adrDiff))} (${fmt(prev.adr)} → ${fmt(curr.adr)}) | Revenue ${revDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(revDiff))}${revPct != null ? ` (${revPct}%)` : ''}`
+    );
+    if      (adrDiff > 0 && revDiff < 0) insights.push('Higher ADR reduced total revenue — the occupancy drop more than offset the rate increase');
+    else if (adrDiff > 0 && revDiff > 0) insights.push('Higher ADR grew total revenue — demand held despite the rate increase');
+    else if (adrDiff < 0 && revDiff > 0) insights.push('Lower ADR boosted revenue — more nights booked outweighed the rate reduction');
+    else if (adrDiff < 0 && revDiff < 0) insights.push('Lower ADR did not recover revenue — occupancy lift was insufficient');
+
+    const strip = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.6' });
+    for (const ins of insights) strip.appendChild(el('div', {}, `· ${ins}`));
+    wrap.appendChild(strip);
+  }
+
+  const partialEntry = active.find(d => d.year === curYr && mo1Str === curMo);
+  if (partialEntry)
+    wrap.appendChild(el('div', { style: 'font-size:10px;color:var(--text-muted);margin-top:3px' },
+      `* ${curYr} revenue is partial — ${partialEntry.nights} of ${partialEntry.total} nights booked so far`));
+
+  return wrap;
+}
+
 // Recommended ADR = average ADR for the same calendar month across all years.
 function computeRecommendedADR(propertyId, month1) {
   const mo = String(month1).padStart(2, '0');
@@ -1219,6 +1360,9 @@ function renderAnalysis(container, { propertyId, year, month1, ccy, onRerender }
   const occData = buildOccupancyByYear(propertyId, month1);
   inner.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:6px' }, `${MONTHS[month1 - 1]} — Occupancy & ADR by Year`));
   inner.appendChild(renderOccupancyHistory(occData, month1, ccy, confirmed?.targetADR));
+
+  inner.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:6px;margin-top:16px' }, `${MONTHS[month1 - 1]} — Revenue & ADR by Year`));
+  inner.appendChild(renderRevenueADRChart(occData, month1, ccy));
 
   inner.appendChild(renderTrendChart(monthStats, anchor, confirmed, ccy));
   inner.appendChild(renderInsights({ monthStats, anchor, currentStats, recommendedADR, confirmed, ccy }));
