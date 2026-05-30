@@ -70,10 +70,20 @@ function historicNightMap(propertyId) {
     const rate = avgNightOf(p);
     if (rate == null || rate <= 0) continue;
     const ci = checkInOf(p), co = checkOutOf(p);
+    const nights = p.airbnbNights || Math.max(0, Math.round((parseYMD(co) - parseYMD(ci)) / 86400000));
+    const adr  = adrNightOf(p) || rate;
     const guest = (p.notes || '').split(' · ')[0] || '';
-    const adr = adrNightOf(p) || rate;
     for (let cur = ci; cur < co; cur = addDays(cur, 1)) {
-      map.set(cur, { rate, adr, currency: p.currency || 'EUR', label: guest, code: p.confirmationCode || '' });
+      map.set(cur, {
+        rate, adr,
+        currency: p.currency || 'EUR',
+        label: guest,
+        code: p.confirmationCode || '',
+        nights,
+        amount: p.amount ?? null,
+        cleaningFee: p.airbnbCleaningFee ?? null,
+        checkIn: ci, checkOut: co
+      });
     }
   }
   return map;
@@ -84,25 +94,26 @@ function historicNightMap(propertyId) {
 // the most specific signal available: same month-day across years → same month
 // → overall average.
 function buildSuggester(histMap) {
-  const byMonthDay = new Map(); // "MM-DD" → [rates]
-  const byMonth    = new Map(); // "MM"    → [rates]
+  const byMonthDay = new Map(); // "MM-DD" → [{date, rate}]
+  const byMonth    = new Map(); // "MM"    → [{date, rate}]
   const all = [];
   for (const [date, info] of histMap) {
-    const md = date.slice(5);      // MM-DD
-    const mo = date.slice(5, 7);   // MM
-    (byMonthDay.get(md) || byMonthDay.set(md, []).get(md)).push(info.rate);
-    (byMonth.get(mo)    || byMonth.set(mo, []).get(mo)).push(info.rate);
-    all.push(info.rate);
+    const md = date.slice(5);
+    const mo = date.slice(5, 7);
+    const entry = { date, rate: info.rate };
+    (byMonthDay.get(md) || byMonthDay.set(md, []).get(md)).push(entry);
+    (byMonth.get(mo)    || byMonth.set(mo, []).get(mo)).push(entry);
+    all.push(entry);
   }
-  const avg = arr => arr.reduce((s, r) => s + r, 0) / arr.length;
+  const avg = arr => arr.reduce((s, r) => s + r.rate, 0) / arr.length;
   const overall = all.length ? avg(all) : null;
 
   return function suggest(date) {
     const md = byMonthDay.get(date.slice(5));
-    if (md && md.length) return { rate: avg(md), basis: 'same day, prior years' };
+    if (md && md.length) return { rate: avg(md), basis: 'same day, prior years', sources: md };
     const mo = byMonth.get(date.slice(5, 7));
-    if (mo && mo.length) return { rate: avg(mo), basis: `${MONTHS[Number(date.slice(5, 7)) - 1]} average` };
-    if (overall != null)  return { rate: overall, basis: 'overall average' };
+    if (mo && mo.length) return { rate: avg(mo), basis: `${MONTHS[Number(date.slice(5, 7)) - 1]} average`, sources: mo };
+    if (overall != null)  return { rate: overall, basis: 'overall average', sources: all };
     return null;
   };
 }
@@ -573,28 +584,73 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
 // ── Day detail modal ──────────────────────────────────────────────────────────
 function openDayDetail(date, { hist, isBlocked, suggest, ccy }) {
   const body = el('div', {});
-  const row = (label, value) => el('div', { class: 'flex justify-between', style: 'padding:6px 0;border-bottom:1px solid var(--border);font-size:13px' },
-    el('span', { class: 'muted' }, label), el('strong', {}, value));
+  const row = (label, value, muted) => {
+    const v = el('strong', {}, value);
+    if (muted) v.style.color = 'var(--text-muted)';
+    return el('div', { class: 'flex justify-between', style: 'padding:6px 0;border-bottom:1px solid var(--border);font-size:13px' },
+      el('span', { class: 'muted' }, label), v);
+  };
+  const section = txt => el('div', { style: 'font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:12px 0 4px' }, txt);
+  const fmt = (v, c) => formatMoney(v, c || ccy, { maxFrac: 2 });
 
   body.appendChild(el('div', { style: 'font-size:15px;font-weight:600;margin-bottom:10px' }, fmtDate(date)));
 
   if (hist) {
-    body.appendChild(row('Status', 'Booked (historic)'));
-    body.appendChild(row('Actual nightly rate', formatMoney(hist.rate, hist.currency, { maxFrac: 0 })));
+    body.appendChild(row('Status', 'Booked'));
     if (hist.label) body.appendChild(row('Guest', hist.label));
     if (hist.code)  body.appendChild(row('Confirmation', hist.code));
+    if (hist.checkIn) body.appendChild(row('Stay', `${fmtDate(hist.checkIn)} – ${fmtDate(hist.checkOut)} (${hist.nights} night${hist.nights !== 1 ? 's' : ''})`));
+
+    body.appendChild(section('Nightly Rate Breakdown'));
+    body.appendChild(row('ADR (incl. cleaning amortised)', fmt(hist.adr, hist.currency)));
+    body.appendChild(row('Net nightly rate (excl. cleaning)', fmt(hist.rate, hist.currency)));
+    const cleanPerNight = hist.adr - hist.rate;
+    if (cleanPerNight > 0.01) body.appendChild(row('Cleaning per night (amortised)', fmt(cleanPerNight, hist.currency), true));
+
+    if (hist.amount != null && hist.nights) {
+      body.appendChild(section('Booking Totals'));
+      body.appendChild(row('Total booking amount', fmt(hist.amount, hist.currency)));
+      if (hist.cleaningFee != null) {
+        body.appendChild(row('of which cleaning fee', fmt(hist.cleaningFee, hist.currency), true));
+        body.appendChild(row('of which accommodation', fmt(hist.amount - hist.cleaningFee, hist.currency), true));
+      }
+      body.appendChild(section('Formulas'));
+      body.appendChild(row('ADR', `${fmt(hist.amount, hist.currency)} ÷ ${hist.nights} nights = ${fmt(hist.adr, hist.currency)}`));
+      if (hist.cleaningFee != null) {
+        body.appendChild(row('Net rate', `(${fmt(hist.amount, hist.currency)} − ${fmt(hist.cleaningFee, hist.currency)}) ÷ ${hist.nights} = ${fmt(hist.rate, hist.currency)}`));
+      }
+    }
   } else {
     body.appendChild(row('Status', isBlocked ? 'Reserved / blocked (iCal)' : 'Open'));
     const s = suggest(date);
     if (s) {
-      body.appendChild(row('Suggested rate', formatMoney(s.rate, ccy, { maxFrac: 0 })));
-      body.appendChild(row('Based on', s.basis));
+      body.appendChild(row('Suggested ADR', fmt(s.rate)));
+      body.appendChild(row('Method', s.basis));
+
+      if (s.sources && s.sources.length) {
+        // Group source nights by YYYY-MM for a compact display
+        const grouped = new Map();
+        for (const src of s.sources) {
+          const ym = src.date.slice(0, 7);
+          if (!grouped.has(ym)) grouped.set(ym, { rateSum: 0, n: 0 });
+          const b = grouped.get(ym);
+          b.rateSum += src.rate; b.n++;
+        }
+        body.appendChild(section(`Source nights (${s.sources.length} total)`));
+        for (const [ym, b] of [...grouped].sort()) {
+          const moLabel = `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
+          body.appendChild(row(moLabel, `${fmt(b.rateSum / b.n)} avg · ${b.n} night${b.n !== 1 ? 's' : ''}`, true));
+        }
+        const overall = s.sources.reduce((sum, r) => sum + r.rate, 0) / s.sources.length;
+        body.appendChild(el('div', { style: 'padding:6px 0;font-size:12px;color:var(--text-muted)' },
+          `→ Weighted average: ${fmt(overall)} from ${s.sources.length} nights`));
+      }
     } else {
       body.appendChild(el('div', { style: 'padding:8px 0;font-size:13px;color:var(--text-muted)' }, 'No historic data yet to suggest a rate.'));
     }
   }
 
-  openModal({ title: 'Daily Rate', body, footer: [button('Close', { onClick: closeModal })] });
+  openModal({ title: 'Daily Rate Detail', body, footer: [button('Close', { onClick: closeModal })] });
 }
 
 // ── Airbnb iCal import ─────────────────────────────────────────────────────────
