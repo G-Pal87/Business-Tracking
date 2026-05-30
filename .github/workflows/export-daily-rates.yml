@@ -1,18 +1,16 @@
 name: Export daily-rate feeds
 
-# Regenerates exports/daily-rates/ from data/db.json so the Short-Term-Rentals
-# repo always has current feeds. Runs when the DB changes, on a schedule, and
-# on demand. The commit only touches exports/, so it never retriggers itself
-# (the push trigger is filtered to data/db.json).
-
+# Manual-only fallback regenerator for exports/daily-rates/.
+#
+# The in-app publisher (js/modules/str-rates.js → autoPublishRatesFeeds) is the
+# single source of truth for the feeds: it runs the full weighted-blend pricing
+# engine and publishes on every relevant change. This standalone script uses a
+# simpler suggester, so running it automatically (on push / schedule) overwrote
+# the app's feeds with different numbers — making published rates flip-flop.
+#
+# Triggers are therefore limited to manual dispatch. Use it only to bootstrap or
+# repair feeds when the app hasn't published; expect simpler pricing than the app.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "data/db.json"
-      - "scripts/export-daily-rates.js"
-  schedule:
-    - cron: "0 5,17 * * *"
   workflow_dispatch:
 
 permissions:

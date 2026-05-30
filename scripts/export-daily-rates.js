@@ -100,6 +100,15 @@ function blockedDateSet(strCalendars, propertyId) {
   return set;
 }
 
+// Confirmed manual ADR target for a property + month ('YYYY-MM'), or null.
+// Mirrors getConfirmedTarget() in js/modules/str-rates.js so CI-generated feeds
+// honor the same manual targets the in-app publisher uses.
+function getConfirmedTarget(strRateTargets, propertyId, month) {
+  return (strRateTargets || []).find(t =>
+    t.propertyId === propertyId && t.month === month && !t.deletedAt
+  ) || null;
+}
+
 function buildRatesFeed(db, prop) {
   const ccy = prop.currency || 'EUR';
   const histMap = historicNightMap(db.payments || [], prop.id);
@@ -120,8 +129,9 @@ function buildRatesFeed(db, prop) {
     if (hist) {
       amount = hist.rate; basis = 'historic actual'; status = 'booked';
     } else {
-      const s = suggest(date);
-      if (s) { amount = s.rate; basis = s.basis; }
+      const target = getConfirmedTarget(db.strRateTargets, prop.id, date.slice(0, 7));
+      if (target) { amount = target.targetADR; basis = 'confirmed target'; }
+      else { const s = suggest(date); if (s) { amount = s.rate; basis = s.basis; } }
       status = blocked.has(date) ? 'blocked' : 'open';
     }
     if (amount != null) {
