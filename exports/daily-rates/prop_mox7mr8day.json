@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-05-30T22:27:05.847Z",
+  "generatedAt": "2026-05-30T22:28:40.206Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
@@ -15,243 +15,243 @@
   "rates": [
     {
       "date": "2026-05-30",
-      "amount": 85,
-      "guestAmount": 97,
+      "amount": 38,
+      "guestAmount": 43,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-05-31",
-      "amount": 85,
-      "guestAmount": 97,
+      "amount": 38,
+      "guestAmount": 43,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-01",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-02",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-03",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-04",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-05",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-06",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-07",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-08",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-09",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-10",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-11",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-12",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-13",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-14",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 43,
+      "guestAmount": 49,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-15",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-16",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-17",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-18",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-19",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-20",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-21",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-22",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-23",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-24",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-25",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-26",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-27",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-28",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-06-29",
@@ -259,751 +259,751 @@
       "guestAmount": 95,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "June average"
     },
     {
       "date": "2026-06-30",
-      "amount": 84,
-      "guestAmount": 95,
+      "amount": 78,
+      "guestAmount": 89,
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-01",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 78,
+      "guestAmount": 89,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-02",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 78,
+      "guestAmount": 89,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-03",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 52,
+      "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-04",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 52,
+      "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-05",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 75,
+      "guestAmount": 85,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-06",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 75,
+      "guestAmount": 85,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-07",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 75,
+      "guestAmount": 85,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-08",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 75,
+      "guestAmount": 85,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-09",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 60,
+      "guestAmount": 69,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-10",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 86,
+      "guestAmount": 97,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-11",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 86,
+      "guestAmount": 97,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-12",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 86,
+      "guestAmount": 97,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-13",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 86,
+      "guestAmount": 97,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-14",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 86,
+      "guestAmount": 97,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-15",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 86,
+      "guestAmount": 97,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-16",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 86,
+      "guestAmount": 97,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-17",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-18",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-19",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-20",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-21",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-22",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-23",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-24",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-25",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-26",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-27",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-28",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-29",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-30",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-07-31",
-      "amount": 97,
-      "guestAmount": 110,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-01",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 118,
+      "guestAmount": 135,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-02",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 86,
+      "guestAmount": 98,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-03",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 86,
+      "guestAmount": 98,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-04",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 86,
+      "guestAmount": 98,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-05",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 86,
+      "guestAmount": 98,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-06",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 86,
+      "guestAmount": 98,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-07",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-08",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-09",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-10",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-11",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-12",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-13",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-14",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-15",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-16",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-17",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-18",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 34,
+      "guestAmount": 39,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-19",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 34,
+      "guestAmount": 39,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-20",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 34,
+      "guestAmount": 39,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-21",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-22",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-23",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-24",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-25",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-26",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-27",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-28",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-29",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-30",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-08-31",
-      "amount": 80,
-      "guestAmount": 91,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-01",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-02",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 108,
+      "guestAmount": 123,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-03",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 62,
+      "guestAmount": 71,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-04",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 62,
+      "guestAmount": 71,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-05",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-06",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-07",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-08",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-09",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-10",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-11",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-12",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-13",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-14",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-15",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 88,
+      "guestAmount": 100,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-16",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 100,
+      "guestAmount": 114,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-17",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 100,
+      "guestAmount": 114,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-18",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 100,
+      "guestAmount": 114,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-19",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 76,
+      "guestAmount": 87,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-20",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 76,
+      "guestAmount": 87,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-21",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 76,
+      "guestAmount": 87,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-22",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-23",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-24",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 81,
+      "guestAmount": 92,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-25",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 81,
+      "guestAmount": 92,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-26",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 81,
+      "guestAmount": 92,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-27",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 81,
+      "guestAmount": 92,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-28",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 81,
+      "guestAmount": 92,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-29",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 81,
+      "guestAmount": 92,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-09-30",
-      "amount": 83,
-      "guestAmount": 95,
+      "amount": 81,
+      "guestAmount": 92,
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-01",
@@ -1011,95 +1011,95 @@
       "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "October average"
     },
     {
       "date": "2026-10-02",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 76,
+      "guestAmount": 87,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-03",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 76,
+      "guestAmount": 87,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-04",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 76,
+      "guestAmount": 87,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-05",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 87,
+      "guestAmount": 99,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-06",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 87,
+      "guestAmount": 99,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-07",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 87,
+      "guestAmount": 99,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-08",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 87,
+      "guestAmount": 99,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-09",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 87,
+      "guestAmount": 99,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-10",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 87,
+      "guestAmount": 99,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-11",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 87,
+      "guestAmount": 99,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-12",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 87,
+      "guestAmount": 99,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-13",
@@ -1107,39 +1107,39 @@
       "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "October average"
     },
     {
       "date": "2026-10-14",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 85,
+      "guestAmount": 96,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-15",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 85,
+      "guestAmount": 96,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-16",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 85,
+      "guestAmount": 96,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-17",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 85,
+      "guestAmount": 96,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-18",
@@ -1147,87 +1147,87 @@
       "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "October average"
     },
     {
       "date": "2026-10-19",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 80,
+      "guestAmount": 91,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-20",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 80,
+      "guestAmount": 91,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-21",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 80,
+      "guestAmount": 91,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-22",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 80,
+      "guestAmount": 91,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-23",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 80,
+      "guestAmount": 91,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-24",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 80,
+      "guestAmount": 91,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-25",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 80,
+      "guestAmount": 91,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-26",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-27",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-28",
-      "amount": 79,
-      "guestAmount": 90,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-29",
@@ -1235,7 +1235,7 @@
       "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "October average"
     },
     {
       "date": "2026-10-30",
@@ -1243,7 +1243,7 @@
       "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-10-31",
@@ -1251,111 +1251,111 @@
       "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "October 2025 (27 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-01",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 79,
+      "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-02",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 79,
+      "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-03",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 79,
+      "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-04",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 79,
+      "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-05",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 67,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-06",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 67,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-07",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 67,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-08",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 67,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-09",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 67,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-10",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-11",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-12",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-13",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-14",
@@ -1363,7 +1363,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-15",
@@ -1371,7 +1371,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-16",
@@ -1379,7 +1379,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-17",
@@ -1387,7 +1387,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-18",
@@ -1395,7 +1395,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-19",
@@ -1403,7 +1403,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-20",
@@ -1411,23 +1411,23 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-21",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 52,
+      "guestAmount": 59,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-22",
-      "amount": 63,
-      "guestAmount": 72,
+      "amount": 52,
+      "guestAmount": 59,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-11-23",
@@ -1435,7 +1435,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-24",
@@ -1443,7 +1443,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-25",
@@ -1451,7 +1451,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-26",
@@ -1459,7 +1459,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-27",
@@ -1467,7 +1467,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-28",
@@ -1475,7 +1475,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-29",
@@ -1483,7 +1483,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-11-30",
@@ -1491,7 +1491,7 @@
       "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "November 2025 (15 nights)"
+      "basis": "November average"
     },
     {
       "date": "2026-12-01",
@@ -1499,7 +1499,7 @@
       "guestAmount": 55,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "December average"
     },
     {
       "date": "2026-12-02",
@@ -1507,7 +1507,7 @@
       "guestAmount": 55,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "December average"
     },
     {
       "date": "2026-12-03",
@@ -1515,7 +1515,7 @@
       "guestAmount": 55,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "December average"
     },
     {
       "date": "2026-12-04",
@@ -1523,39 +1523,39 @@
       "guestAmount": 55,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "December average"
     },
     {
       "date": "2026-12-05",
       "amount": 48,
-      "guestAmount": 55,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-06",
       "amount": 48,
-      "guestAmount": 55,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-07",
       "amount": 48,
-      "guestAmount": 55,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-08",
       "amount": 48,
-      "guestAmount": 55,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-09",
@@ -1563,7 +1563,7 @@
       "guestAmount": 55,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "December average"
     },
     {
       "date": "2026-12-10",
@@ -1571,7 +1571,7 @@
       "guestAmount": 55,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "December average"
     },
     {
       "date": "2026-12-11",
@@ -1579,63 +1579,63 @@
       "guestAmount": 55,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "December average"
     },
     {
       "date": "2026-12-12",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-13",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-14",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-15",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-16",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-17",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-18",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-19",
@@ -1643,7 +1643,7 @@
       "guestAmount": 55,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "December average"
     },
     {
       "date": "2026-12-20",
@@ -1651,167 +1651,167 @@
       "guestAmount": 55,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "December average"
     },
     {
       "date": "2026-12-21",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-22",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-23",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-24",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-25",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-26",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-27",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-28",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-29",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-30",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 57,
+      "guestAmount": 65,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2026-12-31",
-      "amount": 48,
-      "guestAmount": 55,
+      "amount": 57,
+      "guestAmount": 65,
       "currency": "EUR",
       "status": "open",
-      "basis": "December 2025 (22 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-01",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 57,
+      "guestAmount": 65,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-02",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 57,
+      "guestAmount": 65,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-03",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 57,
+      "guestAmount": 65,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-04",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 57,
+      "guestAmount": 65,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-05",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 57,
+      "guestAmount": 65,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-06",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 57,
+      "guestAmount": 65,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-07",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 57,
+      "guestAmount": 65,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-08",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 57,
+      "guestAmount": 65,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-09",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 57,
+      "guestAmount": 65,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-10",
@@ -1819,7 +1819,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-11",
@@ -1827,7 +1827,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-12",
@@ -1835,7 +1835,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-13",
@@ -1843,7 +1843,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-14",
@@ -1851,7 +1851,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-15",
@@ -1859,7 +1859,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-16",
@@ -1867,7 +1867,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-17",
@@ -1875,7 +1875,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-18",
@@ -1883,7 +1883,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-19",
@@ -1891,7 +1891,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-20",
@@ -1899,7 +1899,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-21",
@@ -1907,7 +1907,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-22",
@@ -1915,7 +1915,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-23",
@@ -1923,7 +1923,7 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-24",
@@ -1931,63 +1931,63 @@
       "guestAmount": 60,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "January average"
     },
     {
       "date": "2027-01-25",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-26",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-27",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-28",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-29",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-30",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-01-31",
-      "amount": 53,
-      "guestAmount": 60,
+      "amount": 47,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (16 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-01",
@@ -1995,127 +1995,127 @@
       "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "February average"
     },
     {
       "date": "2027-02-02",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 28,
+      "guestAmount": 32,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-03",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 28,
+      "guestAmount": 32,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-04",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 43,
+      "guestAmount": 49,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-05",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 43,
+      "guestAmount": 49,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-06",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 43,
+      "guestAmount": 49,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-07",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 43,
+      "guestAmount": 49,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-08",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 67,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-09",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 67,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-10",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 67,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-11",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 67,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-12",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 38,
+      "guestAmount": 43,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-13",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 38,
+      "guestAmount": 43,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-14",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 38,
+      "guestAmount": 43,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-15",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 38,
+      "guestAmount": 43,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-16",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 38,
+      "guestAmount": 43,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-17",
@@ -2123,7 +2123,7 @@
       "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "February average"
     },
     {
       "date": "2027-02-18",
@@ -2131,7 +2131,7 @@
       "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "February average"
     },
     {
       "date": "2027-02-19",
@@ -2139,7 +2139,7 @@
       "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "February average"
     },
     {
       "date": "2027-02-20",
@@ -2147,7 +2147,7 @@
       "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "February average"
     },
     {
       "date": "2027-02-21",
@@ -2155,7 +2155,7 @@
       "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "February average"
     },
     {
       "date": "2027-02-22",
@@ -2163,7 +2163,7 @@
       "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "February average"
     },
     {
       "date": "2027-02-23",
@@ -2171,87 +2171,87 @@
       "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "February average"
     },
     {
       "date": "2027-02-24",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 54,
+      "guestAmount": 61,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-25",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 54,
+      "guestAmount": 61,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-26",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 54,
+      "guestAmount": 61,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-27",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 54,
+      "guestAmount": 61,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-02-28",
-      "amount": 48,
-      "guestAmount": 54,
+      "amount": 54,
+      "guestAmount": 61,
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (20 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-01",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 33,
+      "guestAmount": 38,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-02",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 33,
+      "guestAmount": 38,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-03",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 65,
+      "guestAmount": 74,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-04",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 65,
+      "guestAmount": 74,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-05",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 65,
+      "guestAmount": 74,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-06",
@@ -2259,183 +2259,183 @@
       "guestAmount": 68,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "March average"
     },
     {
       "date": "2027-03-07",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-08",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-09",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-10",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-11",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 48,
+      "guestAmount": 54,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-12",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 62,
+      "guestAmount": 71,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-13",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 62,
+      "guestAmount": 71,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-14",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 62,
+      "guestAmount": 71,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-15",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-16",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-17",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-18",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-19",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-20",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-21",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-22",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-23",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-24",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-25",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-26",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-27",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-28",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 64,
+      "guestAmount": 73,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-29",
@@ -2443,495 +2443,495 @@
       "guestAmount": 68,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "March average"
     },
     {
       "date": "2027-03-30",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 69,
+      "guestAmount": 78,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-03-31",
-      "amount": 59,
-      "guestAmount": 68,
+      "amount": 69,
+      "guestAmount": 78,
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (29 nights)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-01",
       "amount": 69,
-      "guestAmount": 79,
+      "guestAmount": 78,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-02",
       "amount": 69,
-      "guestAmount": 79,
+      "guestAmount": 78,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-03",
       "amount": 67,
-      "guestAmount": 77,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 03 (1n, 1.95×) + April 2025 day 03 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-04",
       "amount": 67,
-      "guestAmount": 77,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 04 (1n, 1.95×) + April 2025 day 04 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-05",
       "amount": 67,
-      "guestAmount": 77,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 05 (1n, 1.95×) + April 2025 day 05 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-06",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 28,
+      "guestAmount": 31,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-07",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 79,
+      "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-08",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 79,
+      "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-09",
-      "amount": 71,
-      "guestAmount": 80,
+      "amount": 68,
+      "guestAmount": 78,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 09 (1n, 1.95×) + April 2025 day 09 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-10",
-      "amount": 71,
-      "guestAmount": 80,
+      "amount": 68,
+      "guestAmount": 78,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 10 (1n, 1.95×) + April 2025 day 10 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-11",
-      "amount": 71,
-      "guestAmount": 80,
+      "amount": 68,
+      "guestAmount": 78,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 11 (1n, 1.95×) + April 2025 day 11 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-12",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 79,
+      "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-13",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 79,
+      "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-14",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 66,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 14 (1n, 1.95×) + April 2025 day 14 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-15",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 66,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 15 (1n, 1.95×) + April 2025 day 15 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-16",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 66,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 16 (1n, 1.95×) + April 2025 day 16 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-17",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 66,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 17 (1n, 1.95×) + April 2025 day 17 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-18",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 66,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 18 (1n, 1.95×) + April 2025 day 18 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-19",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 66,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 19 (1n, 1.95×) + April 2025 day 19 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-20",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 66,
+      "guestAmount": 76,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 20 (1n, 1.95×) + April 2025 day 20 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-21",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 79,
+      "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-22",
-      "amount": 69,
-      "guestAmount": 79,
+      "amount": 79,
+      "guestAmount": 90,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-23",
-      "amount": 51,
-      "guestAmount": 58,
+      "amount": 53,
+      "guestAmount": 61,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 23 (1n, 1.95×) + April 2025 day 23 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-04-24",
+      "amount": 53,
+      "guestAmount": 61,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-04-25",
+      "amount": 75,
+      "guestAmount": 85,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-04-26",
+      "amount": 75,
+      "guestAmount": 85,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-04-27",
+      "amount": 75,
+      "guestAmount": 85,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-04-28",
+      "amount": 75,
+      "guestAmount": 85,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-04-29",
+      "amount": 64,
+      "guestAmount": 73,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-04-30",
+      "amount": 67,
+      "guestAmount": 77,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-05-01",
+      "amount": 67,
+      "guestAmount": 77,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-05-02",
+      "amount": 82,
+      "guestAmount": 93,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-05-03",
+      "amount": 82,
+      "guestAmount": 93,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-05-04",
+      "amount": 82,
+      "guestAmount": 93,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-05-05",
+      "amount": 82,
+      "guestAmount": 93,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-05-06",
+      "amount": 82,
+      "guestAmount": 93,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-05-07",
+      "amount": 82,
+      "guestAmount": 93,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-05-08",
+      "amount": 82,
+      "guestAmount": 93,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-05-09",
+      "amount": 85,
+      "guestAmount": 97,
+      "currency": "EUR",
+      "status": "open",
+      "basis": "same day, prior years"
+    },
+    {
+      "date": "2027-05-10",
       "amount": 51,
       "guestAmount": 58,
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 day 24 (1n, 1.95×) + April 2025 day 24 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-04-25",
-      "amount": 77,
-      "guestAmount": 88,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "April 2026 day 25 (1n, 1.95×) + April 2025 day 25 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-04-26",
-      "amount": 77,
-      "guestAmount": 88,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "April 2026 day 26 (1n, 1.95×) + April 2025 day 26 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-04-27",
-      "amount": 77,
-      "guestAmount": 88,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "April 2026 day 27 (1n, 1.95×) + April 2025 day 27 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-04-28",
-      "amount": 77,
-      "guestAmount": 88,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "April 2026 day 28 (1n, 1.95×) + April 2025 day 28 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-04-29",
-      "amount": 69,
-      "guestAmount": 79,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)"
-    },
-    {
-      "date": "2027-04-30",
-      "amount": 71,
-      "guestAmount": 81,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "April 2026 day 30 (1n, 1.95×) + April 2025 day 30 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-05-01",
-      "amount": 71,
-      "guestAmount": 81,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "May 2026 day 01 (1n, 1.95×) + May 2025 day 01 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-05-02",
-      "amount": 83,
-      "guestAmount": 94,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "May 2026 day 02 (1n, 1.95×) + May 2025 day 02 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-05-03",
-      "amount": 83,
-      "guestAmount": 94,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "May 2026 day 03 (1n, 1.95×) + May 2025 day 03 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-05-04",
-      "amount": 83,
-      "guestAmount": 94,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "May 2026 day 04 (1n, 1.95×) + May 2025 day 04 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-05-05",
-      "amount": 83,
-      "guestAmount": 94,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "May 2026 day 05 (1n, 1.95×) + May 2025 day 05 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-05-06",
-      "amount": 83,
-      "guestAmount": 94,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "May 2026 day 06 (1n, 1.95×) + May 2025 day 06 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-05-07",
-      "amount": 83,
-      "guestAmount": 94,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "May 2026 day 07 (1n, 1.95×) + May 2025 day 07 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-05-08",
-      "amount": 83,
-      "guestAmount": 94,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "May 2026 day 08 (1n, 1.95×) + May 2025 day 08 (1n, 1.27×)"
-    },
-    {
-      "date": "2027-05-09",
-      "amount": 75,
-      "guestAmount": 86,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "May 2026 (22n, 1.95×) + May 2025 (30n, 1.27×)"
-    },
-    {
-      "date": "2027-05-10",
-      "amount": 52,
-      "guestAmount": 59,
-      "currency": "EUR",
-      "status": "open",
-      "basis": "May 2026 day 10 (1n, 1.95×) + May 2025 day 10 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-11",
-      "amount": 75,
-      "guestAmount": 85,
+      "amount": 70,
+      "guestAmount": 79,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 11 (1n, 1.95×) + May 2025 day 11 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-12",
-      "amount": 75,
-      "guestAmount": 85,
+      "amount": 70,
+      "guestAmount": 79,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 12 (1n, 1.95×) + May 2025 day 12 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-13",
-      "amount": 86,
-      "guestAmount": 98,
+      "amount": 84,
+      "guestAmount": 95,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 13 (1n, 1.95×) + May 2025 day 13 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-14",
-      "amount": 86,
-      "guestAmount": 98,
+      "amount": 84,
+      "guestAmount": 95,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 14 (1n, 1.95×) + May 2025 day 14 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-15",
-      "amount": 86,
-      "guestAmount": 98,
+      "amount": 84,
+      "guestAmount": 95,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 15 (1n, 1.95×) + May 2025 day 15 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-16",
-      "amount": 86,
-      "guestAmount": 98,
+      "amount": 84,
+      "guestAmount": 95,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 16 (1n, 1.95×) + May 2025 day 16 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-17",
-      "amount": 86,
-      "guestAmount": 98,
+      "amount": 84,
+      "guestAmount": 95,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 17 (1n, 1.95×) + May 2025 day 17 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-18",
-      "amount": 64,
-      "guestAmount": 72,
+      "amount": 65,
+      "guestAmount": 74,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 18 (1n, 1.95×) + May 2025 day 18 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-19",
-      "amount": 64,
-      "guestAmount": 72,
+      "amount": 65,
+      "guestAmount": 74,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 19 (1n, 1.95×) + May 2025 day 19 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-20",
-      "amount": 85,
-      "guestAmount": 96,
+      "amount": 83,
+      "guestAmount": 94,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 20 (1n, 1.95×) + May 2025 day 20 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-21",
-      "amount": 74,
-      "guestAmount": 84,
+      "amount": 69,
+      "guestAmount": 78,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 21 (1n, 1.95×) + May 2025 day 21 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-22",
-      "amount": 74,
-      "guestAmount": 84,
+      "amount": 69,
+      "guestAmount": 78,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 22 (1n, 1.95×) + May 2025 day 22 (1n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-23",
-      "amount": 75,
-      "guestAmount": 86,
+      "amount": 63,
+      "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (22n, 1.95×) + May 2025 (30n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-24",
-      "amount": 75,
-      "guestAmount": 86,
+      "amount": 63,
+      "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (22n, 1.95×) + May 2025 (30n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-25",
-      "amount": 75,
-      "guestAmount": 86,
+      "amount": 63,
+      "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (22n, 1.95×) + May 2025 (30n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-26",
-      "amount": 75,
-      "guestAmount": 86,
+      "amount": 63,
+      "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (22n, 1.95×) + May 2025 (30n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-27",
-      "amount": 75,
-      "guestAmount": 86,
+      "amount": 63,
+      "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (22n, 1.95×) + May 2025 (30n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-28",
-      "amount": 75,
-      "guestAmount": 86,
+      "amount": 63,
+      "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (22n, 1.95×) + May 2025 (30n, 1.27×)"
+      "basis": "same day, prior years"
     },
     {
       "date": "2027-05-29",
-      "amount": 75,
-      "guestAmount": 86,
+      "amount": 63,
+      "guestAmount": 72,
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (22n, 1.95×) + May 2025 (30n, 1.27×)"
+      "basis": "same day, prior years"
     }
   ]
 }
