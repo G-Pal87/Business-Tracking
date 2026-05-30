@@ -1,3 +1,9 @@
 {
-  "entries": {}
+  "entries": {
+    "Giorgos": {
+      "view": "payments",
+      "t": 1780132887477,
+      "name": "Giorgos"
+    }
+  }
 }
