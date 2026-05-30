@@ -98,7 +98,11 @@ export async function fetchDb() {
   const { owner, repo, branch, dbPath, token } = state.github;
   if (!owner || !repo) throw new Error('GitHub not configured');
 
-  const headers = { 'Accept': 'application/vnd.github+json' };
+  const headers = {
+    'Accept':        'application/vnd.github+json',
+    'Cache-Control': 'no-cache',
+    'Pragma':        'no-cache'
+  };
   if (token) headers['Authorization'] = `token ${token}`;
 
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}?ref=${encodeURIComponent(branch || 'main')}&_=${Date.now()}`;
@@ -156,9 +160,13 @@ async function doPushDb(message = 'Update data') {
 
   const apiBase  = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}`;
   const ghHeaders = {
-    'Accept':        'application/vnd.github+json',
-    'Authorization': `token ${token}`,
-    'Content-Type':  'application/json'
+    'Accept':           'application/vnd.github+json',
+    'Authorization':    `token ${token}`,
+    'Content-Type':     'application/json',
+    // Tell GitHub's Fastly CDN to bypass its cache — 'no-store' on the fetch
+    // option controls browser cache only; Fastly respects these request headers.
+    'Cache-Control':    'no-cache',
+    'Pragma':           'no-cache'
   };
 
   const snapshot = structuredClone(state.db);
