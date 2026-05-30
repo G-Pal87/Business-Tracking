@@ -829,14 +829,26 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
       status = blocked.has(date) ? 'blocked' : 'open';
     }
     if (amount != null) {
-      rates.push({
-        date,
-        amount: Math.round(amount),                  // net nightly rate (host earns)
-        guestAmount: Math.round(amount * guestMult), // guest nightly price, fees included (no cleaning)
-        currency: ccy,
-        status,
-        basis
-      });
+      const entry = { date, currency: ccy, status, basis };
+      if (!hist) {
+        const mo      = date.slice(0, 7);
+        const target  = getConfirmedTarget(propertyId, mo);
+        const discPct = target?.discountPct || 0;
+        if (discPct > 0) {
+          const discounted = Math.round(amount * (1 - discPct / 100));
+          entry.originalAmount = Math.round(amount);          // host rate before discount
+          entry.discountPct    = discPct;                     // % off
+          entry.amount         = discounted;                  // host net after discount
+          entry.guestAmount    = Math.round(discounted * guestMult); // guest pays (fees included, no cleaning)
+        } else {
+          entry.amount      = Math.round(amount);
+          entry.guestAmount = Math.round(amount * guestMult);
+        }
+      } else {
+        entry.amount      = Math.round(amount);
+        entry.guestAmount = Math.round(amount * guestMult);
+      }
+      rates.push(entry);
     }
     date = addDays(date, 1);
   }
@@ -1668,7 +1680,6 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
       adjResult.textContent = '';
     }
   };
-  targetInp.oninput = () => { adjInp.value = ''; adjResult.textContent = ''; };
 
   formRow2.appendChild(adjWrap);
   formRow2.appendChild(arrowEl);
@@ -1676,23 +1687,82 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
   formRow2.appendChild(targetWrap);
   wrap.appendChild(formRow2);
 
+  // ── Discount row ──────────────────────────────────────────────────────────
+  const discountSection = el('div', { style: 'margin-bottom:12px;padding:10px 12px;border-radius:6px;background:var(--bg-alt,rgba(0,0,0,.04));border:1px solid var(--border)' });
+  discountSection.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:8px' }, 'Promotional Discount'));
+
+  const discRow = el('div', { style: 'display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap' });
+
+  const discWrap = el('div', {});
+  discWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, 'Discount %'));
+  const discInp = input({ value: confirmed?.discountPct != null ? String(confirmed.discountPct) : '0', placeholder: '0', style: 'width:70px' });
+  discWrap.appendChild(discInp);
+
+  const discArrow = el('div', { style: 'font-size:18px;color:var(--text-muted);padding-bottom:6px;line-height:1' }, '→');
+
+  const discNetWrap = el('div', {});
+  discNetWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, 'Host net (discounted)'));
+  const discNetEl = el('div', { style: 'font-size:13px;font-weight:600;color:var(--text);padding-bottom:8px;min-width:60px' }, '');
+
+  const discArrow2 = el('div', { style: 'font-size:18px;color:var(--text-muted);padding-bottom:6px;line-height:1' }, '→');
+
+  const guestPriceWrap = el('div', {});
+  guestPriceWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, 'Guest price (+14% fee)'));
+  const guestPriceEl = el('div', { style: 'font-size:14px;font-weight:700;color:#6366f1;padding-bottom:6px;min-width:70px' }, '');
+
+  const af = state.db.settings?.airbnb || {};
+  const feePct  = af.guestFeePct != null ? af.guestFeePct : 14;
+  const taxPct  = af.taxPct      != null ? af.taxPct      : 0;
+  const guestMult = 1 + (feePct + taxPct) / 100;
+
+  function updateDiscountPreview() {
+    const base = parseFloat(targetInp.value) || confirmed?.targetADR || 0;
+    const disc = parseFloat(discInp.value) || 0;
+    if (base > 0) {
+      const net = Math.round(base * (1 - disc / 100));
+      const guest = Math.round(net * guestMult);
+      discNetEl.textContent = fmt(net);
+      guestPriceEl.textContent = fmt(guest);
+    } else {
+      discNetEl.textContent = '';
+      guestPriceEl.textContent = '';
+    }
+  }
+  discInp.oninput  = updateDiscountPreview;
+  targetInp.oninput = () => { adjInp.value = ''; adjResult.textContent = ''; updateDiscountPreview(); };
+
+  discRow.appendChild(discWrap);
+  discRow.appendChild(discArrow);
+  discRow.appendChild(discNetWrap);
+  discRow.appendChild(discArrow2);
+  discRow.appendChild(guestPriceWrap);
+  discNetWrap.appendChild(discNetEl);
+  guestPriceWrap.appendChild(guestPriceEl);
+  discountSection.appendChild(discRow);
+  wrap.appendChild(discountSection);
+
+  updateDiscountPreview();
+
   // Buttons
   const btnRow = el('div', { style: 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px' });
 
   const saveTarget = (targetADR) => {
-    const adjPct = parseFloat(adjInp.value);
-    const base   = confirmed ? { ...confirmed } : {};
+    const adjPct  = parseFloat(adjInp.value);
+    const discPct = parseFloat(discInp.value) || 0;
+    const base    = confirmed ? { ...confirmed } : {};
     if (!base.id) base.id = newId('srt');
     Object.assign(base, {
       propertyId, month: anchor,
       recommendedADR: recommendedADR || null,
       adjustmentPct: !isNaN(adjPct) ? adjPct : 0,
       targetADR,
+      discountPct: discPct,
       confirmedAt: todayStr()
     });
     delete base.deletedAt;
     upsert('strRateTargets', base);
-    toast(`ADR target set to ${fmt(targetADR)} for ${monthName}`, 'success');
+    const discMsg = discPct > 0 ? ` · ${discPct}% discount applied` : '';
+    toast(`ADR target set to ${fmt(targetADR)} for ${monthName}${discMsg}`, 'success');
     onRerender?.();
   };
 
@@ -1727,7 +1797,18 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     statusEl.appendChild(el('span', { style: 'color:#10b981;font-weight:600' }, '✓ Confirmed '));
     statusEl.appendChild(el('strong', {}, fmt(confirmed.targetADR)));
     statusEl.appendChild(el('span', {}, ` · set on ${fmtDate(confirmed.confirmedAt)}`));
-    if (confirmed.adjustmentPct) statusEl.appendChild(el('span', {}, ` · ${confirmed.adjustmentPct > 0 ? '+' : ''}${confirmed.adjustmentPct}% applied to recommendation`));
+    if (confirmed.adjustmentPct) statusEl.appendChild(el('span', {}, ` · ${confirmed.adjustmentPct > 0 ? '+' : ''}${confirmed.adjustmentPct}% adj`));
+    if (confirmed.discountPct > 0) {
+      const net   = Math.round(confirmed.targetADR * (1 - confirmed.discountPct / 100));
+      const guest = Math.round(net * guestMult);
+      statusEl.appendChild(el('span', { style: 'color:#f59e0b;font-weight:600' }, ` · ${confirmed.discountPct}% discount`));
+      statusEl.appendChild(el('span', {}, ` → host net ${fmt(net)} · `));
+      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `guest pays ${fmt(guest)}`));
+    } else {
+      const guest = Math.round(confirmed.targetADR * guestMult);
+      statusEl.appendChild(el('span', {}, ' · '));
+      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `guest pays ${fmt(guest)}`));
+    }
     wrap.appendChild(statusEl);
   }
 

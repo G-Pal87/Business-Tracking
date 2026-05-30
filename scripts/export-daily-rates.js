@@ -135,14 +135,25 @@ function buildRatesFeed(db, prop) {
       status = blocked.has(date) ? 'blocked' : 'open';
     }
     if (amount != null) {
-      rates.push({
-        date,
-        amount: Math.round(amount),
-        guestAmount: Math.round(amount * guestMult),
-        currency: ccy,
-        status,
-        basis
-      });
+      const entry = { date, currency: ccy, status, basis };
+      if (!hist) {
+        const target  = getConfirmedTarget(db.strRateTargets, prop.id, date.slice(0, 7));
+        const discPct = target?.discountPct || 0;
+        if (discPct > 0) {
+          const discounted     = Math.round(amount * (1 - discPct / 100));
+          entry.originalAmount = Math.round(amount);
+          entry.discountPct    = discPct;
+          entry.amount         = discounted;
+          entry.guestAmount    = Math.round(discounted * guestMult);
+        } else {
+          entry.amount      = Math.round(amount);
+          entry.guestAmount = Math.round(amount * guestMult);
+        }
+      } else {
+        entry.amount      = Math.round(amount);
+        entry.guestAmount = Math.round(amount * guestMult);
+      }
+      rates.push(entry);
     }
     date = addDays(date, 1);
   }
