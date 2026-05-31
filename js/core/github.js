@@ -386,6 +386,38 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
   return result;
 }
 
+// ── Background-resync merge (last-writer-wins, no 3-way base) ────────────────
+// Used by backgroundResync ONLY. Unlike mergeDb, this has no concept of a
+// "base" — it simply keeps whichever version of each record has the higher
+// updatedAt timestamp. This correctly handles CDN-stale responses: if GitHub's
+// CDN returns an old version of a record (low updatedAt), the locally-held
+// newer version wins. If another user genuinely updated a record (high updatedAt),
+// the remote wins.
+export function resyncDb(remote, local) {
+  const result = structuredClone(remote);
+  for (const col of Object.keys(local)) {
+    const localArr = local[col];
+    if (!Array.isArray(localArr)) {
+      // Non-array fields (settings, config, etc.) — prefer local.
+      result[col] = localArr;
+      continue;
+    }
+    const remoteArr = result[col];
+    if (!Array.isArray(remoteArr)) { result[col] = localArr; continue; }
+    const map = new Map(remoteArr.map(x => [x.id, x]));
+    for (const item of localArr) {
+      const rv = map.get(item.id);
+      if (!rv || (item.updatedAt || 0) > (rv.updatedAt || 0)) {
+        // Local is newer or remote doesn't have it → keep local.
+        map.set(item.id, item);
+      }
+      // else: remote is same-age or newer → already in map, keep remote.
+    }
+    result[col] = [...map.values()];
+  }
+  return result;
+}
+
 // ── Local cache ───────────────────────────────────────────────────────────────
 
 export async function fetchLocalDb() {

@@ -278,20 +278,17 @@ async function boot() {
     if (document.querySelector('.modal-overlay.open')) return; // don't disrupt an open form/dialog
     resyncing = true;
     try {
-      // Capture the last-known remote BEFORE fetchDb() overwrites state.github.remoteDb.
-      // We use it as the merge base so that local records with a newer updatedAt
-      // (e.g. a recently saved ADR target) are never clobbered by a stale CDN response.
-      const prevRemoteDb = state.github.remoteDb;
       const remoteDb = await github.fetchDb();          // also refreshes sha + remoteDb base
       // Re-check after the await — the user may have started editing meanwhile.
       if (state.dirty || pushPending || state.saving || document.querySelector('.modal-overlay.open')) return;
-      // Merge instead of replacing: keeps any local record whose updatedAt is newer
-      // than the fetched remote, preventing CDN-stale responses from rolling back
-      // recently saved changes in the UI (and triggering a re-push of old data).
-      const merged = github.mergeDb(remoteDb, state.db, prevRemoteDb);
-      merged._syncedAt = Date.now();
-      setDb(merged);                                    // triggers data-loaded → view refresh
-      github.saveLocalCache(merged);
+      // resyncDb: pure last-writer-wins by updatedAt — no 3-way base.
+      // This prevents CDN-stale responses from overwriting locally-held records
+      // that were saved more recently. If local.updatedAt > remote.updatedAt,
+      // local wins regardless of whether the base (remoteDb) is fresh or stale.
+      const synced = github.resyncDb(remoteDb, state.db);
+      synced._syncedAt = Date.now();
+      setDb(synced);                                    // triggers data-loaded → view refresh
+      github.saveLocalCache(synced);
       updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
     } catch { /* offline / transient — keep working from current state */ }
     finally { resyncing = false; }
