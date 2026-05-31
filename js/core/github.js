@@ -409,6 +409,11 @@ export function resyncDb(remote, local) {
     const map = new Map(remoteArr.map(x => [x.id, x]));
     for (const item of localArr) {
       const rv = map.get(item.id);
+      // Local-only soft-deleted record that's absent from remote was purged
+      // remotely (auto-purge of old deletions) — don't resurrect it, or the DB
+      // re-bloats with dead records every sync. A genuine offline soft-delete
+      // still exists on remote as active, so it takes the rv branch below.
+      if (!rv && item.deletedAt) continue;
       if (!rv || (item.updatedAt || 0) > (rv.updatedAt || 0)) {
         // Local is newer or remote doesn't have it → keep local.
         map.set(item.id, item);
