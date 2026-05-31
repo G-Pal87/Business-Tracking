@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-05-31T00:18:04.223Z",
+  "generatedAt": "2026-05-31T07:09:06.754Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -26,240 +26,240 @@
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-02",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-03",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-04",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-05",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-06",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-07",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-08",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-09",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-10",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-11",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-12",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-13",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-14",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-15",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-16",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-17",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-18",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-19",
       "currency": "EUR",
       "status": "blocked",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-20",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-21",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-22",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-23",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-24",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-25",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-26",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-27",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-28",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-29",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-06-30",
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
-      "amount": 165,
-      "guestAmount": 188
+      "amount": 365,
+      "guestAmount": 416
     },
     {
       "date": "2026-07-01",
