@@ -913,19 +913,22 @@ export async function autoPublishRatesFeeds() {
 
   _publishing = true;
   try {
-    const manifestProps = [];
-    let changed = false;
-    for (const p of stProps) {
-      const feed = buildRatesFeed(p.id);
-      manifestProps.push({ id: p.id, name: p.name, currency: p.currency || 'EUR', file: `${p.id}.json`, nights: feed.rates.length });
-      const sig = feedSig(feed);
-      if (_lastFeedSig.get(p.id) === sig) continue; // unchanged → skip upload
+    const feeds = stProps.map(p => ({ p, feed: buildRatesFeed(p.id), sig: '' }));
+    for (const f of feeds) f.sig = feedSig(f.feed);
+    const manifestProps = feeds.map(({ p, feed }) => ({
+      id: p.id, name: p.name, currency: p.currency || 'EUR', file: `${p.id}.json`, nights: feed.rates.length
+    }));
+
+    // Upload all changed property feeds in parallel.
+    const changed = await Promise.all(feeds.map(async ({ p, feed, sig }) => {
+      if (_lastFeedSig.get(p.id) === sig) return false;
       await uploadGithubFile(`${FEED_DIR}/${p.id}.json`, toB64(JSON.stringify(feed, null, 2)), `Update daily-rate feed: ${p.name}`);
       _lastFeedSig.set(p.id, sig);
-      changed = true;
-    }
+      return true;
+    }));
+
     const manifestSig = JSON.stringify(manifestProps);
-    if (changed || manifestSig !== _lastManifestSig) {
+    if (changed.some(Boolean) || manifestSig !== _lastManifestSig) {
       const manifest = { schema: 'str-daily-rates-index/v1', generatedAt: new Date().toISOString(), properties: manifestProps };
       await uploadGithubFile(`${FEED_DIR}/index.json`, toB64(JSON.stringify(manifest, null, 2)), 'Update daily-rate feed index');
       _lastManifestSig = manifestSig;

@@ -235,7 +235,9 @@ async function doPushDb(message = 'Update data') {
 
     if (putRes.status === 409) {
       lastError = 'SHA conflict';
-      if (attempt < 8) { await sleep(backoff(attempt)); continue; }
+      // Each retry re-GETs the current SHA, so we don't need to wait for CDN
+      // expiry — just pause briefly to avoid hammering and retry immediately.
+      if (attempt < 8) { await sleep(150 + Math.random() * 100); continue; }
       break; // exhausted — fall through to ConflictError below
     }
 

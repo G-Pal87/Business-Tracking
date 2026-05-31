@@ -200,7 +200,7 @@ async function boot() {
       import(`./modules/str-rates.js?v=${VERSION}`)
         .then(m => m.autoPublishRatesFeeds?.())
         .catch(() => { /* best-effort; never block sync */ });
-    }, 4000);
+    }, 1000);
   };
 
   const doSave = async () => {
@@ -335,7 +335,7 @@ async function boot() {
           // No push in flight — start the debounce timer.
           updateSyncStatus('syncing', 'Changes pending — pushing soon…');
           clearTimeout(pushTimer);
-          pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 1500);
+          pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 300);
         }
         // If pushPending, the in-flight push will detect state.dirty and re-push
         // automatically — no need to schedule another timer.
