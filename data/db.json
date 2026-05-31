@@ -32071,9 +32071,9 @@
           "summary": "Reserved"
         },
         {
-          "start": "2027-05-26",
+          "start": "2027-05-27",
           "end": "2027-06-01",
-          "uid": "7f662ec65913-9f153e13598d9940b5ed360d1d4ca715@airbnb.com",
+          "uid": "7f662ec65913-626e99b97311cbcc958bac54339496a8@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -32082,7 +32082,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780097524179,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-05-31T19:39:25.736Z"
+      "lastFetched": "2026-05-31T21:42:07.693Z"
     },
     {
       "id": "stc_5c75cde224e04bef95883c5126497766",
@@ -32126,9 +32126,9 @@
           "summary": "Airbnb (Not available)"
         },
         {
-          "start": "2027-05-26",
+          "start": "2027-05-27",
           "end": "2027-06-01",
-          "uid": "7f662ec65913-9f153e13598d9940b5ed360d1d4ca715@airbnb.com",
+          "uid": "7f662ec65913-626e99b97311cbcc958bac54339496a8@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -32136,7 +32136,8 @@
       "createdAt": 1780170579035,
       "createdBy": "Giorgos",
       "updatedAt": 1780251216377,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "lastFetched": "2026-05-31T21:42:08.124Z"
     },
     {
       "id": "stc_371e30d84db64e0d9c7e47be2cc97d42",
@@ -32204,9 +32205,9 @@
           "summary": "Airbnb (Not available)"
         },
         {
-          "start": "2027-05-26",
+          "start": "2027-05-27",
           "end": "2027-06-01",
-          "uid": "7f662ec65913-9f153e13598d9940b5ed360d1d4ca715@airbnb.com",
+          "uid": "7f662ec65913-626e99b97311cbcc958bac54339496a8@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -32214,7 +32215,8 @@
       "createdAt": 1780214639783,
       "createdBy": "Giorgos",
       "updatedAt": 1780214639783,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "lastFetched": "2026-05-31T21:42:08.536Z"
     }
   ],
   "strRateTargets": [
