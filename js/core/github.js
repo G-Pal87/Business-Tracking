@@ -563,27 +563,44 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
     'Content-Type':  'application/json'
   };
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
+  const ATTEMPTS = 6;
 
-  // Check if the file already exists so we can include its SHA (required for
-  // updates). A 404 here means the file doesn't exist yet — that is expected
-  // for new files and handled by omitting the sha field from the PUT body.
-  // GitHub creates parent directories automatically, so a missing folder is
-  // never an error here.
-  let existingSha = null;
-  try {
-    const check = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`, { headers, cache: 'no-store' });
-    if (check.ok) {
-      const d = await check.json();
-      existingSha = d.sha;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    // Re-read the file's current SHA on every attempt (required for updates).
+    // A 404 means the file doesn't exist yet — create it by omitting the sha.
+    // If-None-Match forces the CDN to revalidate so we don't PUT against a stale
+    // SHA. GitHub creates parent directories automatically.
+    let existingSha = null;
+    try {
+      const check = await fetch(
+        `${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`,
+        { headers: { ...headers, 'If-None-Match': `"${Date.now()}"` }, cache: 'no-store' }
+      );
+      if (check.ok) {
+        const d = await check.json();
+        existingSha = d.sha;
+      }
+      // 404 → file does not exist yet; proceed to create without sha
+    } catch { /* network error during existence check — proceed anyway */ }
+
+    const body = { message, content: b64Content, branch: branch || 'main' };
+    if (existingSha) body.sha = existingSha;
+
+    const res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+    if (res.ok) {
+      const data = await res.json();
+      return { sha: data.content.sha };
     }
-    // 404 → file does not exist yet; proceed to create without sha
-  } catch { /* network error during existence check — proceed anyway */ }
 
-  const body = { message, content: b64Content, branch: branch || 'main' };
-  if (existingSha) body.sha = existingSha;
+    // 409 = the file changed between our GET and PUT (concurrent/parallel upload
+    // or stale CDN SHA). Re-read the fresh SHA and retry instead of failing.
+    if (res.status === 409 && attempt < ATTEMPTS) {
+      lastErr = '409 SHA conflict';
+      await sleep(150 + Math.random() * 200);
+      continue;
+    }
 
-  const res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
-  if (!res.ok) {
     let errBody = '';
     try { errBody = await res.text(); } catch { /* ignore */ }
     console.error(`GitHub file upload failed (${res.status}) for path "${cleanPath}":`, errBody);
@@ -591,8 +608,8 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
     if (res.status === 404) throw new Error(`Repository or branch not found (404). Check owner/repo/branch settings. Path: ${cleanPath}`);
     throw new Error(`File upload failed (${res.status}): ${errBody}`);
   }
-  const data = await res.json();
-  return { sha: data.content.sha };
+
+  throw new Error(`File upload failed after ${ATTEMPTS} attempts (${lastErr}) for path "${cleanPath}"`);
 }
 
 /**
