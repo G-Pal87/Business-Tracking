@@ -1706,14 +1706,14 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
 
   const discArrow2 = el('div', { style: 'font-size:18px;color:var(--text-muted);padding-bottom:6px;line-height:1' }, '→');
 
-  const guestPriceWrap = el('div', {});
-  guestPriceWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, 'Guest price (+14% fee)'));
-  const guestPriceEl = el('div', { style: 'font-size:14px;font-weight:700;color:#6366f1;padding-bottom:6px;min-width:70px' }, '');
-
   const af = state.db.settings?.airbnb || {};
   const feePct  = af.guestFeePct != null ? af.guestFeePct : 14;
   const taxPct  = af.taxPct      != null ? af.taxPct      : 0;
   const guestMult = 1 + (feePct + taxPct) / 100;
+
+  const guestPriceWrap = el('div', {});
+  guestPriceWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, `Airbnb checkout price (incl. ${feePct + taxPct}% fees)`));
+  const guestPriceEl = el('div', { style: 'font-size:14px;font-weight:700;color:#6366f1;padding-bottom:6px;min-width:70px' }, '');
 
   function updateDiscountPreview() {
     const base = parseFloat(targetInp.value) || confirmed?.targetADR || 0;
@@ -1803,11 +1803,11 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
       const guest = Math.round(net * guestMult);
       statusEl.appendChild(el('span', { style: 'color:#f59e0b;font-weight:600' }, ` · ${confirmed.discountPct}% discount`));
       statusEl.appendChild(el('span', {}, ` → host net ${fmt(net)} · `));
-      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `guest pays ${fmt(guest)}`));
+      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `Airbnb checkout ${fmt(guest)}`));
     } else {
       const guest = Math.round(confirmed.targetADR * guestMult);
       statusEl.appendChild(el('span', {}, ' · '));
-      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `guest pays ${fmt(guest)}`));
+      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `Airbnb checkout ${fmt(guest)}`));
     }
     wrap.appendChild(statusEl);
   }
