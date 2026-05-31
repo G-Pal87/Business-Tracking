@@ -1015,7 +1015,7 @@ function build() {
   bar.appendChild(publishBtn);
   wrap.appendChild(bar);
 
-  const kpiRow     = el('div', { style: 'display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px' });
+  const kpiRow     = el('div', { style: 'display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:16px' });
   const calCard    = el('div', { class: 'card' });
   const analysisEl = el('div', {});
   wrap.appendChild(kpiRow);
@@ -1094,9 +1094,25 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
     sub ? el('div', { class: 'fx-hint' }, sub) : null
   );
 
+  // Published (pushed) rate = confirmed target after promo discount,
+  // plus the total saving a guest gets vs the full Airbnb checkout price.
+  const af = state.db.settings?.airbnb || {};
+  const feePct    = af.guestFeePct != null ? af.guestFeePct : 14;
+  const taxPct    = af.taxPct      != null ? af.taxPct      : 0;
+  const guestMult = 1 + (feePct + taxPct) / 100;
+  let published = null, saving = null, savingPct = null;
+  if (confirmed) {
+    published  = Math.round(confirmed.targetADR * (1 - (confirmed.discountPct || 0) / 100));
+    const full = Math.round(confirmed.targetADR * guestMult);
+    saving     = full - published;
+    savingPct  = Math.round((saving / full) * 100);
+  }
+
   row.appendChild(card('ADR', avgADR != null ? formatMoney(avgADR, ccy, { maxFrac: 0 }) : '—', `incl. cleaning · ${MONTHS[month1 - 1]}, all years`));
   row.appendChild(card('Net Nightly Rate', avgNet != null ? formatMoney(avgNet, ccy, { maxFrac: 0 }) : '—', `excl. cleaning · ${netRates.length} night(s)`));
   row.appendChild(card('Confirmed Target', confirmed ? formatMoney(confirmed.targetADR, ccy, { maxFrac: 0 }) : '—', confirmed ? `set ${fmtDate(confirmed.confirmedAt)}` : 'not set', confirmed ? 'success' : ''));
+  row.appendChild(card('Published Rate', published != null ? formatMoney(published, ccy, { maxFrac: 0 }) : '—', confirmed ? (confirmed.discountPct > 0 ? `${confirmed.discountPct}% promo · pushed to feed` : 'pushed to feed') : 'no target', confirmed ? 'success' : ''));
+  row.appendChild(card('Guest Saving', saving != null ? formatMoney(saving, ccy, { maxFrac: 0 }) : '—', savingPct != null ? `${savingPct}% off Airbnb checkout` : 'no target', saving != null ? 'success' : ''));
   row.appendChild(card('Booked Nights', String(booked), `of ${dim} · ${occ}% occupancy`, occ >= 70 ? 'success' : ''));
   row.appendChild(card('Open Nights', String(dim - booked), 'awaiting bookings', (dim - booked) > 0 ? 'warning' : ''));
 }
