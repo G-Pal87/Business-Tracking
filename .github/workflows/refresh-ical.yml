@@ -31,8 +31,9 @@ jobs:
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Pull latest to avoid push rejection when the app is also writing
-          git pull --rebase origin main
+          # Pull latest before committing. --autostash temporarily stashes the
+          # script's written files so the rebase can apply cleanly, then re-applies them.
+          git pull --rebase --autostash origin main
 
           git add data/db.json exports/daily-rates/
           if git diff --staged --quiet; then
