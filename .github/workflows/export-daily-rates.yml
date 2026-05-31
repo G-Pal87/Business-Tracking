@@ -44,3 +44,11 @@ jobs:
             git commit -m "Update daily-rate feeds [skip ci]"
             git push
           fi
+
+      - name: Trigger Short-Term-Rentals site rebuild
+        run: |
+          curl -s -X POST https://api.github.com/repos/G-Pal87/Short-Term-Rentals/dispatches \
+            -H "Authorization: token ${{ secrets.STR_DEPLOY_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            -d '{"event_type":"rates-updated"}'
