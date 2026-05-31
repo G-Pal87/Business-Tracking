@@ -1729,12 +1729,11 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
       const net        = Math.round(base * (1 - disc / 100));
       const fullGuest  = Math.round(base * guestMult);
       const discGuest  = Math.round(net  * guestMult);
-      const saving     = fullGuest - discGuest;
+      const saving     = fullGuest - net;
+      const savingPct  = Math.round((saving / fullGuest) * 100);
       discNetEl.textContent    = fmt(net);
       guestPriceEl.textContent = fmt(discGuest);
-      guestSavingEl.textContent = disc > 0
-        ? `${fmt(saving)} less (${disc}% off ${fmt(fullGuest)})`
-        : '—';
+      guestSavingEl.textContent = `${fmt(saving)} less (${savingPct}% off Airbnb)`;
     } else {
       discNetEl.textContent     = '';
       guestPriceEl.textContent  = '';
@@ -1814,19 +1813,20 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     statusEl.appendChild(el('strong', {}, fmt(confirmed.targetADR)));
     statusEl.appendChild(el('span', {}, ` · set on ${fmtDate(confirmed.confirmedAt)}`));
     if (confirmed.adjustmentPct) statusEl.appendChild(el('span', {}, ` · ${confirmed.adjustmentPct > 0 ? '+' : ''}${confirmed.adjustmentPct}% adj`));
-    if (confirmed.discountPct > 0) {
-      const published  = Math.round(confirmed.targetADR * (1 - confirmed.discountPct / 100));
+    {
+      const published  = Math.round(confirmed.targetADR * (1 - (confirmed.discountPct || 0) / 100));
       const fullGuest  = Math.round(confirmed.targetADR * guestMult);
       const discGuest  = Math.round(published * guestMult);
-      const saving     = fullGuest - discGuest;
-      statusEl.appendChild(el('span', { style: 'color:#f59e0b;font-weight:600' }, ` · ${confirmed.discountPct}% promo`));
-      statusEl.appendChild(el('span', {}, ` → published rate ${fmt(published)} · `));
+      const saving     = fullGuest - published;
+      const savingPct  = Math.round((saving / fullGuest) * 100);
+      if (confirmed.discountPct > 0) {
+        statusEl.appendChild(el('span', { style: 'color:#f59e0b;font-weight:600' }, ` · ${confirmed.discountPct}% promo`));
+        statusEl.appendChild(el('span', {}, ` → published rate ${fmt(published)} · `));
+      } else {
+        statusEl.appendChild(el('span', {}, ' · '));
+      }
       statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `Airbnb checkout ${fmt(discGuest)}`));
-      statusEl.appendChild(el('span', { style: 'color:#10b981;font-weight:600' }, ` · guest saves ${fmt(saving)}`));
-    } else {
-      const guest = Math.round(confirmed.targetADR * guestMult);
-      statusEl.appendChild(el('span', {}, ' · '));
-      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `Airbnb checkout ${fmt(guest)}`));
+      statusEl.appendChild(el('span', { style: 'color:#10b981;font-weight:600' }, ` · guest saves ${fmt(saving)} (${savingPct}% off Airbnb)`));
     }
     wrap.appendChild(statusEl);
   }
