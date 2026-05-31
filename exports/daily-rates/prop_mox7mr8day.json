@@ -1,11 +1,11 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-05-31T08:15:55.254Z",
+  "generatedAt": "2026-05-31T08:18:40.718Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
     "currency": "EUR",
-    "airbnbCalUrl": "https://www.airbnb.gr/calendar/ical/1389855941514317769.ics?t=a2520714c5a34b1daa3b808b6c1bfd0e"
+    "airbnbCalUrl": ""
   },
   "guestFeePct": 14,
   "taxPct": 0,
@@ -25,241 +25,241 @@
       "date": "2026-06-01",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-02",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-03",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-04",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-05",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-06",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-07",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-08",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-09",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-10",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-11",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-12",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-13",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-14",
       "currency": "EUR",
       "status": "open",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-15",
       "currency": "EUR",
       "status": "open",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-16",
       "currency": "EUR",
       "status": "open",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-17",
       "currency": "EUR",
       "status": "open",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-18",
       "currency": "EUR",
       "status": "open",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-19",
       "currency": "EUR",
       "status": "open",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-20",
       "currency": "EUR",
       "status": "open",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-21",
       "currency": "EUR",
       "status": "open",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-22",
       "currency": "EUR",
       "status": "open",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-23",
       "currency": "EUR",
       "status": "open",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-24",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-25",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-26",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-27",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-28",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-29",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-06-30",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "confirmed target",
-      "amount": 1000,
-      "guestAmount": 1140
+      "basis": "June 2025 (29 nights)",
+      "amount": 84,
+      "guestAmount": 95
     },
     {
       "date": "2026-07-01",
