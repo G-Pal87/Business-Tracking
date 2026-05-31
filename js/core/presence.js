@@ -5,6 +5,10 @@ import { state } from './state.js';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const PRESENCE_PATH  = 'data/presence.json';
+// Presence is ephemeral, high-churn data — keep it on a dedicated orphan branch
+// so its constant commits never touch main's history and never compete with
+// db.json pushes for the same ref. See: orphan branch created via commit-tree.
+const PRESENCE_BRANCH = 'presence';
 const STALE_MS       = 2 * 60 * 1000;   // entry expires after 2 min of inactivity
 const HEARTBEAT_MS   = 50 * 1000;       // refresh own entry every 50 s while active
 const POLL_MS        = 30 * 1000;       // conflict check interval
@@ -145,12 +149,12 @@ async function poll() {
 // ── GitHub I/O ────────────────────────────────────────────────────────────────
 
 async function readPresence() {
-  const { owner, repo, branch, token } = state.github;
+  const { owner, repo, token } = state.github;
   const headers = { 'Accept': 'application/vnd.github+json' };
   if (token) headers['Authorization'] = `token ${token}`;
   const enc = PRESENCE_PATH.split('/').map(encodeURIComponent).join('/');
   const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/contents/${enc}?ref=${encodeURIComponent(branch || 'main')}`,
+    `https://api.github.com/repos/${owner}/${repo}/contents/${enc}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`,
     { headers, cache: 'no-store' }
   );
   if (res.status === 404) return { entries: {} };
@@ -166,7 +170,7 @@ async function readPresence() {
 // our GET and PUT) we re-read and re-apply rather than silently losing the
 // update — this is what was producing the swallowed 409s and lost presence.
 async function updatePresence(mutator, attempts = 4) {
-  const { owner, repo, branch, token } = state.github;
+  const { owner, repo, token } = state.github;
   if (!owner || !repo || !token) return false;
   const enc    = PRESENCE_PATH.split('/').map(encodeURIComponent).join('/');
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${enc}`;
@@ -182,7 +186,7 @@ async function updatePresence(mutator, attempts = 4) {
     let sha = null, entries = {};
     try {
       const getRes = await fetch(
-        `${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`,
+        `${apiUrl}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`,
         { headers: { ...headers, 'If-None-Match': `"${Date.now()}"` }, cache: 'no-store' }
       );
       if (getRes.ok) {
@@ -203,7 +207,7 @@ async function updatePresence(mutator, attempts = 4) {
     const body = {
       message: 'Presence update',
       content: btoa(unescape(encodeURIComponent(json))),
-      branch:  branch || 'main',
+      branch:  PRESENCE_BRANCH,
       ...(sha ? { sha } : {})
     };
     try {
