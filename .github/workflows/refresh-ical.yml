@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Refresh iCal blocks and rebuild rate feeds
         run: node .github/scripts/refresh-ical.js
