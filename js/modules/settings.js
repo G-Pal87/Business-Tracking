@@ -517,18 +517,24 @@ function buildStrSettingsCard() {
   ));
   body.appendChild(formRow('Cleaning fee (flat, per booking)', cleanI, 'Flat fee the guest pays for cleaning, once per booking (no guest fee/tax added). Published in the daily-rate feed for the Short-Term-Rentals repo.'));
 
+  const globalDiscI = input({ value: af.globalDiscountPct != null ? af.globalDiscountPct : '', type: 'number', min: '0', max: '100', placeholder: '0' });
+  body.appendChild(formRow('Global promotional discount %', globalDiscI, 'Applied to all properties and months when publishing rates. Override per month in STR Rates → Promotional Discount.'));
+
   const save = button('Save', { variant: 'primary', onClick: () => {
     const fee = parseFloat(feeI.value);
     const tax = parseFloat(taxI.value);
     const clean = parseFloat(cleanI.value);
+    const globalDisc = parseFloat(globalDiscI.value);
     if (feeI.value !== '' && (isNaN(fee) || fee < 0)) { toast('Guest fee % must be a positive number', 'warning'); return; }
     if (taxI.value !== '' && (isNaN(tax) || tax < 0)) { toast('Tax % must be a positive number', 'warning'); return; }
     if (cleanI.value !== '' && (isNaN(clean) || clean < 0)) { toast('Cleaning fee must be a positive number', 'warning'); return; }
+    if (globalDiscI.value !== '' && (isNaN(globalDisc) || globalDisc < 0 || globalDisc > 100)) { toast('Global discount must be between 0 and 100', 'warning'); return; }
     state.db.settings.airbnb = {
       ...af,
-      guestFeePct: feeI.value === '' ? AIRBNB_GUEST_FEE_PCT : fee,
-      taxPct:      taxI.value === '' ? AIRBNB_TAX_PCT : tax,
-      cleaningFee: cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean
+      guestFeePct:       feeI.value === '' ? AIRBNB_GUEST_FEE_PCT : fee,
+      taxPct:            taxI.value === '' ? AIRBNB_TAX_PCT : tax,
+      cleaningFee:       cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean,
+      globalDiscountPct: globalDiscI.value === '' ? 0 : globalDisc
     };
     markDirty();
     toast('Saved', 'success');

@@ -810,11 +810,12 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
   const blocked = blockedDateSet(propertyId);
 
   // Guest service fee + tax used to gross the net rate up to the full guest price.
-  const af      = state.db.settings?.airbnb || {};
-  const feePct  = af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT;
-  const taxPct  = af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT;
-  const cleanFee = af.cleaningFee != null ? af.cleaningFee : AIRBNB_CLEANING_FEE;
-  const guestMult = 1 + (feePct + taxPct) / 100;
+  const af         = state.db.settings?.airbnb || {};
+  const feePct     = af.guestFeePct     != null ? af.guestFeePct     : AIRBNB_GUEST_FEE_PCT;
+  const taxPct     = af.taxPct          != null ? af.taxPct          : AIRBNB_TAX_PCT;
+  const cleanFee   = af.cleaningFee     != null ? af.cleaningFee     : AIRBNB_CLEANING_FEE;
+  const globalDisc = af.globalDiscountPct || 0;
+  const guestMult  = 1 + (feePct + taxPct) / 100;
 
   const rates = [];
   let date = todayStr();
@@ -833,18 +834,19 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
     if (amount != null) {
       const entry = { date, currency: ccy, status, basis };
       if (!hist) {
-        const mo      = date.slice(0, 7);
-        const target  = getConfirmedTarget(propertyId, mo);
-        const discPct = target?.discountPct || 0;
+        const mo     = date.slice(0, 7);
+        const target = getConfirmedTarget(propertyId, mo);
+        // Monthly discountPct (explicit, incl. 0) overrides global; null/undefined falls back to global
+        const discPct = target?.discountPct != null ? target.discountPct : globalDisc;
+        const rawAmt  = Math.round(amount);
         if (discPct > 0) {
-          const discounted = Math.round(amount * (1 - discPct / 100));
-          entry.originalAmount = Math.round(amount);
+          entry.originalAmount = rawAmt;
           entry.discountPct    = discPct;
-          entry.amount         = discounted;
-          entry.airbnbCheckout = Math.round(amount * guestMult);
+          entry.amount         = Math.round(rawAmt * (1 - discPct / 100));
+          entry.airbnbCheckout = Math.round(rawAmt * guestMult);
         } else {
-          entry.amount         = Math.round(amount);
-          entry.airbnbCheckout = Math.round(amount * guestMult);
+          entry.amount         = rawAmt;
+          entry.airbnbCheckout = Math.round(rawAmt * guestMult);
         }
       } else {
         entry.amount         = Math.round(amount);
@@ -1096,24 +1098,31 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
     sub ? el('div', { class: 'fx-hint' }, sub) : null
   );
 
-  // Published (pushed) rate = confirmed target after promo discount,
-  // plus the total saving a guest gets vs the full Airbnb checkout price.
-  const af = state.db.settings?.airbnb || {};
-  const feePct    = af.guestFeePct != null ? af.guestFeePct : 14;
-  const taxPct    = af.taxPct      != null ? af.taxPct      : 0;
+  // Published (pushed) rate = confirmed target after effective promo discount
+  // (monthly override if set, else global).
+  const af        = state.db.settings?.airbnb || {};
+  const feePct    = af.guestFeePct     != null ? af.guestFeePct     : 14;
+  const taxPct    = af.taxPct          != null ? af.taxPct          : 0;
+  const kpiGlobal = af.globalDiscountPct || 0;
   const guestMult = 1 + (feePct + taxPct) / 100;
-  let published = null, saving = null, savingPct = null;
+  let published = null, saving = null, savingPct = null, effDisc = 0;
   if (confirmed) {
-    published  = Math.round(confirmed.targetADR * (1 - (confirmed.discountPct || 0) / 100));
+    effDisc   = confirmed.discountPct != null ? confirmed.discountPct : kpiGlobal;
+    published = Math.round(confirmed.targetADR * (1 - effDisc / 100));
     const full = Math.round(confirmed.targetADR * guestMult);
     saving     = full - published;
     savingPct  = Math.round((saving / full) * 100);
   }
+  const pubSub = confirmed
+    ? (effDisc > 0
+        ? `${effDisc}% promo${confirmed.discountPct == null ? ' (global)' : ''} · pushed to feed`
+        : 'pushed to feed')
+    : 'no target';
 
   row.appendChild(card('ADR', avgADR != null ? formatMoney(avgADR, ccy, { maxFrac: 0 }) : '—', `incl. cleaning · ${MONTHS[month1 - 1]}, all years`));
   row.appendChild(card('Net Nightly Rate', avgNet != null ? formatMoney(avgNet, ccy, { maxFrac: 0 }) : '—', `excl. cleaning · ${netRates.length} night(s)`));
   row.appendChild(card('Confirmed Target', confirmed ? formatMoney(confirmed.targetADR, ccy, { maxFrac: 0 }) : '—', confirmed ? `set ${fmtDate(confirmed.confirmedAt)}` : 'not set', confirmed ? 'success' : ''));
-  row.appendChild(card('Published Rate', published != null ? formatMoney(published, ccy, { maxFrac: 0 }) : '—', confirmed ? (confirmed.discountPct > 0 ? `${confirmed.discountPct}% promo · pushed to feed` : 'pushed to feed') : 'no target', confirmed ? 'success' : ''));
+  row.appendChild(card('Published Rate', published != null ? formatMoney(published, ccy, { maxFrac: 0 }) : '—', pubSub, confirmed ? 'success' : ''));
   row.appendChild(card('Guest Saving', saving != null ? formatMoney(saving, ccy, { maxFrac: 0 }) : '—', savingPct != null ? `${savingPct}% off Airbnb checkout` : 'no target', saving != null ? 'success' : ''));
   row.appendChild(card('Booked Nights', String(booked), `of ${dim} · ${occ}% occupancy`, occ >= 70 ? 'success' : ''));
   row.appendChild(card('Open Nights', String(dim - booked), 'awaiting bookings', (dim - booked) > 0 ? 'warning' : ''));
@@ -1714,9 +1723,12 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
 
   const discRow = el('div', { style: 'display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap' });
 
+  const _globalDisc = state.db.settings?.airbnb?.globalDiscountPct || 0;
   const discWrap = el('div', {});
-  discWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, 'Discount %'));
-  const discInp = input({ value: confirmed?.discountPct != null ? String(confirmed.discountPct) : '0', placeholder: '0', style: 'width:70px' });
+  discWrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' },
+    _globalDisc > 0 ? `Discount % (global: ${_globalDisc}%)` : 'Discount %'));
+  const discInp = input({ value: confirmed?.discountPct != null ? String(confirmed.discountPct) : '',
+    placeholder: _globalDisc > 0 ? `${_globalDisc} (global)` : '0', style: 'width:70px' });
   discWrap.appendChild(discInp);
 
   const discArrow = el('div', { style: 'font-size:18px;color:var(--text-muted);padding-bottom:6px;line-height:1' }, '→');
@@ -1742,16 +1754,19 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
 
   function updateDiscountPreview() {
     const base = parseFloat(targetInp.value) || confirmed?.targetADR || 0;
-    const disc = parseFloat(discInp.value) || 0;
+    // Empty input = use global discount; explicit value = monthly override
+    const isGlobal = discInp.value.trim() === '';
+    const disc     = isGlobal ? _globalDisc : (parseFloat(discInp.value) || 0);
     if (base > 0) {
       const net        = Math.round(base * (1 - disc / 100));
       const fullGuest  = Math.round(base * guestMult);
-      const discGuest  = Math.round(net  * guestMult);
       const saving     = fullGuest - net;
       const savingPct  = Math.round((saving / fullGuest) * 100);
       discNetEl.textContent    = fmt(net);
-      guestPriceEl.textContent = fmt(discGuest);
-      guestSavingEl.textContent = `${fmt(saving)} less (${savingPct}% off Airbnb)`;
+      guestPriceEl.textContent = fmt(fullGuest);
+      guestSavingEl.textContent = saving > 0
+        ? `${fmt(saving)} less (${savingPct}% off Airbnb${isGlobal && _globalDisc > 0 ? ' · global' : ''})`
+        : '—';
     } else {
       discNetEl.textContent     = '';
       guestPriceEl.textContent  = '';
@@ -1781,7 +1796,8 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
 
   const saveTarget = (targetADR) => {
     const adjPct  = parseFloat(adjInp.value);
-    const discPct = parseFloat(discInp.value) || 0;
+    // null = use global discount; explicit number (incl. 0) = monthly override
+    const discPct = discInp.value.trim() === '' ? null : (parseFloat(discInp.value) || 0);
     const base    = confirmed ? { ...confirmed } : {};
     if (!base.id) base.id = newId('srt');
     Object.assign(base, {
@@ -1794,7 +1810,10 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     });
     delete base.deletedAt;
     upsert('strRateTargets', base);
-    const discMsg = discPct > 0 ? ` · ${discPct}% discount applied` : '';
+    const effDisc = discPct != null ? discPct : _globalDisc;
+    const discMsg = effDisc > 0
+      ? ` · ${effDisc}% discount${discPct == null ? ' (global)' : ''}`
+      : '';
     toast(`ADR target set to ${fmt(targetADR)} for ${monthName}${discMsg}`, 'success');
     onRerender?.();
   };
@@ -1832,18 +1851,20 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     statusEl.appendChild(el('span', {}, ` · set on ${fmtDate(confirmed.confirmedAt)}`));
     if (confirmed.adjustmentPct) statusEl.appendChild(el('span', {}, ` · ${confirmed.adjustmentPct > 0 ? '+' : ''}${confirmed.adjustmentPct}% adj`));
     {
-      const published  = Math.round(confirmed.targetADR * (1 - (confirmed.discountPct || 0) / 100));
+      const statusGlobal = state.db.settings?.airbnb?.globalDiscountPct || 0;
+      const statusEffDisc = confirmed.discountPct != null ? confirmed.discountPct : statusGlobal;
+      const published  = Math.round(confirmed.targetADR * (1 - statusEffDisc / 100));
       const fullGuest  = Math.round(confirmed.targetADR * guestMult);
-      const discGuest  = Math.round(published * guestMult);
       const saving     = fullGuest - published;
       const savingPct  = Math.round((saving / fullGuest) * 100);
-      if (confirmed.discountPct > 0) {
-        statusEl.appendChild(el('span', { style: 'color:#f59e0b;font-weight:600' }, ` · ${confirmed.discountPct}% promo`));
+      if (statusEffDisc > 0) {
+        const promoLabel = confirmed.discountPct == null ? `${statusEffDisc}% promo (global)` : `${statusEffDisc}% promo`;
+        statusEl.appendChild(el('span', { style: 'color:#f59e0b;font-weight:600' }, ` · ${promoLabel}`));
         statusEl.appendChild(el('span', {}, ` → published rate ${fmt(published)} · `));
       } else {
         statusEl.appendChild(el('span', {}, ' · '));
       }
-      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `Airbnb checkout ${fmt(discGuest)}`));
+      statusEl.appendChild(el('span', { style: 'color:#6366f1;font-weight:600' }, `Airbnb checkout ${fmt(fullGuest)}`));
       statusEl.appendChild(el('span', { style: 'color:#10b981;font-weight:600' }, ` · guest saves ${fmt(saving)} (${savingPct}% off Airbnb)`));
     }
     wrap.appendChild(statusEl);

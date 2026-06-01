@@ -265,11 +265,12 @@ function buildRatesFeed(db, propertyId) {
   const suggest = buildSuggester(histMap);
   const blocked = blockedDateSet(db, propertyId);
 
-  const af       = db.settings?.airbnb || {};
-  const feePct   = af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT;
-  const taxPct   = af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT;
-  const cleanFee = af.cleaningFee != null ? af.cleaningFee : AIRBNB_CLEANING_FEE;
-  const guestMult = 1 + (feePct + taxPct) / 100;
+  const af         = db.settings?.airbnb || {};
+  const feePct     = af.guestFeePct     != null ? af.guestFeePct     : AIRBNB_GUEST_FEE_PCT;
+  const taxPct     = af.taxPct          != null ? af.taxPct          : AIRBNB_TAX_PCT;
+  const cleanFee   = af.cleaningFee     != null ? af.cleaningFee     : AIRBNB_CLEANING_FEE;
+  const globalDisc = af.globalDiscountPct || 0;
+  const guestMult  = 1 + (feePct + taxPct) / 100;
 
   const rates = [];
   let date = todayStr();
@@ -291,17 +292,17 @@ function buildRatesFeed(db, propertyId) {
       const entry = { date, currency: ccy, status, basis };
       if (!hist) {
         const mo     = date.slice(0, 7);
-        const target = getConfirmedTarget(db, propertyId, mo);
-        const discPct = target?.discountPct || 0;
+        const target  = getConfirmedTarget(db, propertyId, mo);
+        const discPct = target?.discountPct != null ? target.discountPct : globalDisc;
+        const rawAmt  = Math.round(amount);
         if (discPct > 0) {
-          const discounted = Math.round(amount * (1 - discPct / 100));
-          entry.originalAmount = Math.round(amount);
+          entry.originalAmount = rawAmt;
           entry.discountPct    = discPct;
-          entry.amount         = discounted;
-          entry.airbnbCheckout = Math.round(amount * guestMult);
+          entry.amount         = Math.round(rawAmt * (1 - discPct / 100));
+          entry.airbnbCheckout = Math.round(rawAmt * guestMult);
         } else {
-          entry.amount         = Math.round(amount);
-          entry.airbnbCheckout = Math.round(amount * guestMult);
+          entry.amount         = rawAmt;
+          entry.airbnbCheckout = Math.round(rawAmt * guestMult);
         }
       } else {
         entry.amount         = Math.round(amount);
