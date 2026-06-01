@@ -295,17 +295,20 @@ function buildRatesFeed(db, propertyId) {
         const discPct = target?.discountPct || 0;
         if (discPct > 0) {
           const discounted = Math.round(amount * (1 - discPct / 100));
-          entry.originalAmount = Math.round(amount);
-          entry.discountPct    = discPct;
-          entry.amount         = discounted;
-          entry.guestAmount    = Math.round(discounted * guestMult);
+          entry.originalAmount  = Math.round(amount);
+          entry.discountPct     = discPct;
+          entry.amount          = discounted;
+          entry.airbnbCheckout  = Math.round(amount * guestMult);
+          entry.guestAmount     = Math.round(discounted * guestMult);
         } else {
-          entry.amount      = Math.round(amount);
-          entry.guestAmount = Math.round(amount * guestMult);
+          entry.amount         = Math.round(amount);
+          entry.airbnbCheckout = Math.round(amount * guestMult);
+          entry.guestAmount    = Math.round(amount * guestMult);
         }
       } else {
-        entry.amount      = Math.round(amount);
-        entry.guestAmount = Math.round(amount * guestMult);
+        entry.amount         = Math.round(amount);
+        entry.airbnbCheckout = Math.round(amount * guestMult);
+        entry.guestAmount    = Math.round(amount * guestMult);
       }
       rates.push(entry);
     }

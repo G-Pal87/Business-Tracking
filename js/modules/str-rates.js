@@ -836,13 +836,15 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
         const discPct = target?.discountPct || 0;
         if (discPct > 0) {
           const discounted = Math.round(amount * (1 - discPct / 100));
-          entry.originalAmount = Math.round(amount);          // host rate before discount
-          entry.discountPct    = discPct;                     // % off
-          entry.amount         = discounted;                  // host net after discount
-          entry.guestAmount    = Math.round(discounted * guestMult); // guest pays (fees included, no cleaning)
+          entry.originalAmount  = Math.round(amount);
+          entry.discountPct     = discPct;
+          entry.amount          = discounted;
+          entry.airbnbCheckout  = Math.round(amount * guestMult);     // full Airbnb price (no promo)
+          entry.guestAmount     = Math.round(discounted * guestMult); // direct booking incl. fees
         } else {
-          entry.amount      = Math.round(amount);
-          entry.guestAmount = Math.round(amount * guestMult);
+          entry.amount         = Math.round(amount);
+          entry.airbnbCheckout = Math.round(amount * guestMult);
+          entry.guestAmount    = Math.round(amount * guestMult);
         }
       } else {
         entry.amount      = Math.round(amount);
