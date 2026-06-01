@@ -1,9 +1,13 @@
 {
   "schema": "str-daily-rates/v1",
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
   "generatedAt": "2026-06-01T04:22:08.702Z",
 =======
   "generatedAt": "2026-06-01T06:24:58.533Z",
+>>>>>>> Stashed changes
+=======
+  "generatedAt": "2026-06-01T06:29:46.319Z",
 >>>>>>> Stashed changes
   "property": {
     "id": "prop_mox7ipfiam",
