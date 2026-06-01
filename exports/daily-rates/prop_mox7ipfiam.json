@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-01T07:40:37.452Z",
+  "generatedAt": "2026-06-01T07:52:39.647Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -21,7 +21,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-02",
@@ -31,7 +31,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-03",
@@ -41,7 +41,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-04",
@@ -51,7 +51,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-05",
@@ -61,7 +61,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-06",
@@ -71,7 +71,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-07",
@@ -81,7 +81,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-08",
@@ -91,7 +91,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-09",
@@ -101,7 +101,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-10",
@@ -111,7 +111,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-11",
@@ -121,7 +121,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-12",
@@ -131,7 +131,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-13",
@@ -141,7 +141,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-14",
@@ -151,7 +151,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-15",
@@ -161,7 +161,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-16",
@@ -171,7 +171,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-17",
@@ -181,7 +181,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-18",
@@ -191,7 +191,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-19",
@@ -201,7 +201,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-20",
@@ -211,7 +211,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-21",
@@ -221,7 +221,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-22",
@@ -231,7 +231,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-23",
@@ -241,7 +241,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-24",
@@ -251,7 +251,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-25",
@@ -261,7 +261,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-26",
@@ -271,7 +271,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-27",
@@ -281,7 +281,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-28",
@@ -291,7 +291,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-29",
@@ -301,7 +301,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-06-30",
@@ -311,7 +311,7 @@
       "originalAmount": 100,
       "discountPct": 20,
       "amount": 80,
-      "guestAmount": 91
+      "airbnbCheckout": 114
     },
     {
       "date": "2026-07-01",
@@ -319,7 +319,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-02",
@@ -327,7 +327,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-03",
@@ -335,7 +335,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-04",
@@ -343,7 +343,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-05",
@@ -351,7 +351,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-06",
@@ -359,7 +359,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-07",
@@ -367,7 +367,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-08",
@@ -375,7 +375,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-09",
@@ -383,7 +383,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-10",
@@ -391,7 +391,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-11",
@@ -399,7 +399,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-12",
@@ -407,7 +407,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-13",
@@ -415,7 +415,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-14",
@@ -423,7 +423,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-15",
@@ -431,7 +431,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-16",
@@ -439,7 +439,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-17",
@@ -447,7 +447,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-18",
@@ -455,7 +455,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-19",
@@ -463,7 +463,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-20",
@@ -471,7 +471,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-21",
@@ -479,7 +479,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-22",
@@ -487,7 +487,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-23",
@@ -495,7 +495,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-24",
@@ -503,7 +503,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-25",
@@ -511,7 +511,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-26",
@@ -519,7 +519,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-27",
@@ -527,7 +527,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-28",
@@ -535,7 +535,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-29",
@@ -543,7 +543,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-30",
@@ -551,7 +551,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-07-31",
@@ -559,7 +559,7 @@
       "status": "open",
       "basis": "July 2025 (30 nights)",
       "amount": 57,
-      "guestAmount": 65
+      "airbnbCheckout": 65
     },
     {
       "date": "2026-08-01",
@@ -567,7 +567,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-02",
@@ -575,7 +575,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-03",
@@ -583,7 +583,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-04",
@@ -591,7 +591,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-05",
@@ -599,7 +599,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-06",
@@ -607,7 +607,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-07",
@@ -615,7 +615,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-08",
@@ -623,7 +623,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-09",
@@ -631,7 +631,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-10",
@@ -639,7 +639,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-11",
@@ -647,7 +647,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-12",
@@ -655,7 +655,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-13",
@@ -663,7 +663,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-14",
@@ -671,7 +671,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-15",
@@ -679,7 +679,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-16",
@@ -687,7 +687,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-17",
@@ -695,7 +695,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-18",
@@ -703,7 +703,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-19",
@@ -711,7 +711,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-20",
@@ -719,7 +719,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-21",
@@ -727,7 +727,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-22",
@@ -735,7 +735,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-23",
@@ -743,7 +743,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-24",
@@ -751,7 +751,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-25",
@@ -759,7 +759,7 @@
       "status": "open",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-26",
@@ -767,7 +767,7 @@
       "status": "blocked",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-27",
@@ -775,7 +775,7 @@
       "status": "blocked",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-28",
@@ -783,7 +783,7 @@
       "status": "blocked",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-29",
@@ -791,7 +791,7 @@
       "status": "blocked",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-30",
@@ -799,7 +799,7 @@
       "status": "blocked",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-08-31",
@@ -807,7 +807,7 @@
       "status": "blocked",
       "basis": "August 2025 (31 nights)",
       "amount": 63,
-      "guestAmount": 72
+      "airbnbCheckout": 72
     },
     {
       "date": "2026-09-01",
@@ -815,7 +815,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-02",
@@ -823,7 +823,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-03",
@@ -831,7 +831,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-04",
@@ -839,7 +839,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-05",
@@ -847,7 +847,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-06",
@@ -855,7 +855,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-07",
@@ -863,7 +863,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-08",
@@ -871,7 +871,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-09",
@@ -879,7 +879,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-10",
@@ -887,7 +887,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-11",
@@ -895,7 +895,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-12",
@@ -903,7 +903,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-13",
@@ -911,7 +911,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-14",
@@ -919,7 +919,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-15",
@@ -927,7 +927,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-16",
@@ -935,7 +935,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-17",
@@ -943,7 +943,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-18",
@@ -951,7 +951,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-19",
@@ -959,7 +959,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-20",
@@ -967,7 +967,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-21",
@@ -975,7 +975,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-22",
@@ -983,7 +983,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-23",
@@ -991,7 +991,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-24",
@@ -999,7 +999,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-25",
@@ -1007,7 +1007,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-26",
@@ -1015,7 +1015,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-27",
@@ -1023,7 +1023,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-28",
@@ -1031,7 +1031,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-29",
@@ -1039,7 +1039,7 @@
       "status": "open",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-09-30",
@@ -1047,7 +1047,7 @@
       "status": "blocked",
       "basis": "September 2025 (29 nights)",
       "amount": 56,
-      "guestAmount": 64
+      "airbnbCheckout": 64
     },
     {
       "date": "2026-10-01",
@@ -1055,7 +1055,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-02",
@@ -1063,7 +1063,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-03",
@@ -1071,7 +1071,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-04",
@@ -1079,7 +1079,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-05",
@@ -1087,7 +1087,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-06",
@@ -1095,7 +1095,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-07",
@@ -1103,7 +1103,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-08",
@@ -1111,7 +1111,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-09",
@@ -1119,7 +1119,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-10",
@@ -1127,7 +1127,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-11",
@@ -1135,7 +1135,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-12",
@@ -1143,7 +1143,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-13",
@@ -1151,7 +1151,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-14",
@@ -1159,7 +1159,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-15",
@@ -1167,7 +1167,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-16",
@@ -1175,7 +1175,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-17",
@@ -1183,7 +1183,7 @@
       "status": "blocked",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-18",
@@ -1191,7 +1191,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-19",
@@ -1199,7 +1199,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-20",
@@ -1207,7 +1207,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-21",
@@ -1215,7 +1215,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-22",
@@ -1223,7 +1223,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-23",
@@ -1231,7 +1231,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-24",
@@ -1239,7 +1239,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-25",
@@ -1247,7 +1247,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-26",
@@ -1255,7 +1255,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-27",
@@ -1263,7 +1263,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-28",
@@ -1271,7 +1271,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-29",
@@ -1279,7 +1279,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-30",
@@ -1287,7 +1287,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-10-31",
@@ -1295,7 +1295,7 @@
       "status": "open",
       "basis": "October 2025 (27 nights)",
       "amount": 47,
-      "guestAmount": 54
+      "airbnbCheckout": 54
     },
     {
       "date": "2026-11-01",
@@ -1303,7 +1303,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-02",
@@ -1311,7 +1311,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-03",
@@ -1319,7 +1319,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-04",
@@ -1327,7 +1327,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-05",
@@ -1335,7 +1335,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-06",
@@ -1343,7 +1343,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-07",
@@ -1351,7 +1351,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-08",
@@ -1359,7 +1359,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-09",
@@ -1367,7 +1367,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-10",
@@ -1375,7 +1375,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-11",
@@ -1383,7 +1383,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-12",
@@ -1391,7 +1391,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-13",
@@ -1399,7 +1399,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-14",
@@ -1407,7 +1407,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-15",
@@ -1415,7 +1415,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-16",
@@ -1423,7 +1423,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-17",
@@ -1431,7 +1431,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-18",
@@ -1439,7 +1439,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-19",
@@ -1447,7 +1447,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-20",
@@ -1455,7 +1455,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-21",
@@ -1463,7 +1463,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-22",
@@ -1471,7 +1471,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-23",
@@ -1479,7 +1479,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-24",
@@ -1487,7 +1487,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-25",
@@ -1495,7 +1495,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-26",
@@ -1503,7 +1503,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-27",
@@ -1511,7 +1511,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-28",
@@ -1519,7 +1519,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-29",
@@ -1527,7 +1527,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-11-30",
@@ -1535,7 +1535,7 @@
       "status": "open",
       "basis": "November 2025 (25 nights)",
       "amount": 40,
-      "guestAmount": 46
+      "airbnbCheckout": 46
     },
     {
       "date": "2026-12-01",
@@ -1543,7 +1543,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-02",
@@ -1551,7 +1551,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-03",
@@ -1559,7 +1559,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-04",
@@ -1567,7 +1567,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-05",
@@ -1575,7 +1575,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-06",
@@ -1583,7 +1583,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-07",
@@ -1591,7 +1591,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-08",
@@ -1599,7 +1599,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-09",
@@ -1607,7 +1607,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-10",
@@ -1615,7 +1615,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-11",
@@ -1623,7 +1623,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-12",
@@ -1631,7 +1631,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-13",
@@ -1639,7 +1639,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-14",
@@ -1647,7 +1647,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-15",
@@ -1655,7 +1655,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-16",
@@ -1663,7 +1663,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-17",
@@ -1671,7 +1671,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-18",
@@ -1679,7 +1679,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-19",
@@ -1687,7 +1687,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-20",
@@ -1695,7 +1695,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-21",
@@ -1703,7 +1703,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-22",
@@ -1711,7 +1711,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-23",
@@ -1719,7 +1719,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-24",
@@ -1727,7 +1727,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-25",
@@ -1735,7 +1735,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-26",
@@ -1743,7 +1743,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-27",
@@ -1751,7 +1751,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-28",
@@ -1759,7 +1759,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-29",
@@ -1767,7 +1767,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-30",
@@ -1775,7 +1775,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2026-12-31",
@@ -1783,7 +1783,7 @@
       "status": "open",
       "basis": "December 2025 (10 nights)",
       "amount": 38,
-      "guestAmount": 43
+      "airbnbCheckout": 43
     },
     {
       "date": "2027-01-01",
@@ -1791,7 +1791,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-02",
@@ -1799,7 +1799,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-03",
@@ -1807,7 +1807,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-04",
@@ -1815,7 +1815,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-05",
@@ -1823,7 +1823,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-06",
@@ -1831,7 +1831,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-07",
@@ -1839,7 +1839,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-08",
@@ -1847,7 +1847,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-09",
@@ -1855,7 +1855,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-10",
@@ -1863,7 +1863,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-11",
@@ -1871,7 +1871,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-12",
@@ -1879,7 +1879,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-13",
@@ -1887,7 +1887,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-14",
@@ -1895,7 +1895,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-15",
@@ -1903,7 +1903,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-16",
@@ -1911,7 +1911,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-17",
@@ -1919,7 +1919,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-18",
@@ -1927,7 +1927,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-19",
@@ -1935,7 +1935,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-20",
@@ -1943,7 +1943,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-21",
@@ -1951,7 +1951,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-22",
@@ -1959,7 +1959,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-23",
@@ -1967,7 +1967,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-24",
@@ -1975,7 +1975,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-25",
@@ -1983,7 +1983,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-26",
@@ -1991,7 +1991,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-27",
@@ -1999,7 +1999,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-28",
@@ -2007,7 +2007,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-29",
@@ -2015,7 +2015,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-30",
@@ -2023,7 +2023,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-01-31",
@@ -2031,7 +2031,7 @@
       "status": "open",
       "basis": "January 2026 (18 nights)",
       "amount": 39,
-      "guestAmount": 44
+      "airbnbCheckout": 44
     },
     {
       "date": "2027-02-01",
@@ -2039,7 +2039,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-02",
@@ -2047,7 +2047,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-03",
@@ -2055,7 +2055,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-04",
@@ -2063,7 +2063,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-05",
@@ -2071,7 +2071,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-06",
@@ -2079,7 +2079,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-07",
@@ -2087,7 +2087,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-08",
@@ -2095,7 +2095,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-09",
@@ -2103,7 +2103,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-10",
@@ -2111,7 +2111,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-11",
@@ -2119,7 +2119,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-12",
@@ -2127,7 +2127,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-13",
@@ -2135,7 +2135,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-14",
@@ -2143,7 +2143,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-15",
@@ -2151,7 +2151,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-16",
@@ -2159,7 +2159,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-17",
@@ -2167,7 +2167,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-18",
@@ -2175,7 +2175,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-19",
@@ -2183,7 +2183,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-20",
@@ -2191,7 +2191,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-21",
@@ -2199,7 +2199,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-22",
@@ -2207,7 +2207,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-23",
@@ -2215,7 +2215,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-24",
@@ -2223,7 +2223,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-25",
@@ -2231,7 +2231,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-26",
@@ -2239,7 +2239,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-27",
@@ -2247,7 +2247,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-02-28",
@@ -2255,7 +2255,7 @@
       "status": "open",
       "basis": "February 2026 (26 nights)",
       "amount": 35,
-      "guestAmount": 40
+      "airbnbCheckout": 40
     },
     {
       "date": "2027-03-01",
@@ -2263,7 +2263,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-02",
@@ -2271,7 +2271,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-03",
@@ -2279,7 +2279,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-04",
@@ -2287,7 +2287,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-05",
@@ -2295,7 +2295,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-06",
@@ -2303,7 +2303,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-07",
@@ -2311,7 +2311,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-08",
@@ -2319,7 +2319,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-09",
@@ -2327,7 +2327,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-10",
@@ -2335,7 +2335,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-11",
@@ -2343,7 +2343,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-12",
@@ -2351,7 +2351,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-13",
@@ -2359,7 +2359,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-14",
@@ -2367,7 +2367,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-15",
@@ -2375,7 +2375,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-16",
@@ -2383,7 +2383,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-17",
@@ -2391,7 +2391,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-18",
@@ -2399,7 +2399,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-19",
@@ -2407,7 +2407,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-20",
@@ -2415,7 +2415,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-21",
@@ -2423,7 +2423,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-22",
@@ -2431,7 +2431,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-23",
@@ -2439,7 +2439,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-24",
@@ -2447,7 +2447,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-25",
@@ -2455,7 +2455,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-26",
@@ -2463,7 +2463,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-27",
@@ -2471,7 +2471,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-28",
@@ -2479,7 +2479,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-29",
@@ -2487,7 +2487,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-30",
@@ -2495,7 +2495,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-03-31",
@@ -2503,7 +2503,7 @@
       "status": "open",
       "basis": "March 2026 (20 nights)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-04-01",
@@ -2511,7 +2511,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-02",
@@ -2519,7 +2519,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-03",
@@ -2527,7 +2527,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-04",
@@ -2535,7 +2535,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-05",
@@ -2543,7 +2543,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-06",
@@ -2551,7 +2551,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-07",
@@ -2559,7 +2559,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-08",
@@ -2567,7 +2567,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-09",
@@ -2575,7 +2575,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-10",
@@ -2583,7 +2583,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-11",
@@ -2591,7 +2591,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-12",
@@ -2599,7 +2599,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-13",
@@ -2607,7 +2607,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-14",
@@ -2615,7 +2615,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-15",
@@ -2623,7 +2623,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-16",
@@ -2631,7 +2631,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-17",
@@ -2639,7 +2639,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-18",
@@ -2647,7 +2647,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-19",
@@ -2655,7 +2655,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-20",
@@ -2663,7 +2663,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-21",
@@ -2671,7 +2671,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-22",
@@ -2679,7 +2679,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-23",
@@ -2687,7 +2687,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-24",
@@ -2695,7 +2695,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-25",
@@ -2703,7 +2703,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-26",
@@ -2711,7 +2711,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-27",
@@ -2719,7 +2719,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-28",
@@ -2727,7 +2727,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-29",
@@ -2735,7 +2735,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-04-30",
@@ -2743,7 +2743,7 @@
       "status": "open",
       "basis": "April 2026 (17 nights)",
       "amount": 50,
-      "guestAmount": 57
+      "airbnbCheckout": 57
     },
     {
       "date": "2027-05-01",
@@ -2751,7 +2751,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-02",
@@ -2759,7 +2759,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-03",
@@ -2767,7 +2767,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-04",
@@ -2775,7 +2775,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-05",
@@ -2783,7 +2783,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-06",
@@ -2791,7 +2791,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-07",
@@ -2799,7 +2799,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-08",
@@ -2807,7 +2807,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-09",
@@ -2815,7 +2815,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-10",
@@ -2823,7 +2823,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-11",
@@ -2831,7 +2831,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-12",
@@ -2839,7 +2839,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-13",
@@ -2847,7 +2847,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-14",
@@ -2855,7 +2855,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-15",
@@ -2863,7 +2863,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-16",
@@ -2871,7 +2871,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-17",
@@ -2879,7 +2879,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-18",
@@ -2887,7 +2887,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-19",
@@ -2895,7 +2895,7 @@
       "status": "open",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-20",
@@ -2903,7 +2903,7 @@
       "status": "open",
       "basis": "May 2026 day 20 (1n, 1.95×) + May 2025 day 20 (1n, 1.27×)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-05-21",
@@ -2911,7 +2911,7 @@
       "status": "open",
       "basis": "May 2026 day 21 (1n, 1.95×) + May 2025 day 21 (1n, 1.27×)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-05-22",
@@ -2919,7 +2919,7 @@
       "status": "open",
       "basis": "May 2026 day 22 (1n, 1.95×) + May 2025 day 22 (1n, 1.27×)",
       "amount": 44,
-      "guestAmount": 50
+      "airbnbCheckout": 50
     },
     {
       "date": "2027-05-23",
@@ -2927,7 +2927,7 @@
       "status": "open",
       "basis": "May 2026 day 23 (1n, 1.95×) + May 2025 day 23 (1n, 1.27×)",
       "amount": 55,
-      "guestAmount": 62
+      "airbnbCheckout": 62
     },
     {
       "date": "2027-05-24",
@@ -2935,7 +2935,7 @@
       "status": "open",
       "basis": "May 2026 day 24 (1n, 1.95×) + May 2025 day 24 (1n, 1.27×)",
       "amount": 53,
-      "guestAmount": 60
+      "airbnbCheckout": 60
     },
     {
       "date": "2027-05-25",
@@ -2943,7 +2943,7 @@
       "status": "open",
       "basis": "May 2026 day 25 (1n, 1.95×) + May 2025 day 25 (1n, 1.27×)",
       "amount": 53,
-      "guestAmount": 60
+      "airbnbCheckout": 60
     },
     {
       "date": "2027-05-26",
@@ -2951,7 +2951,7 @@
       "status": "open",
       "basis": "May 2026 day 26 (1n, 1.95×) + May 2025 day 26 (1n, 1.27×)",
       "amount": 55,
-      "guestAmount": 62
+      "airbnbCheckout": 62
     },
     {
       "date": "2027-05-27",
@@ -2959,7 +2959,7 @@
       "status": "blocked",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-28",
@@ -2967,7 +2967,7 @@
       "status": "blocked",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-29",
@@ -2975,7 +2975,7 @@
       "status": "blocked",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-30",
@@ -2983,7 +2983,7 @@
       "status": "blocked",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     },
     {
       "date": "2027-05-31",
@@ -2991,7 +2991,7 @@
       "status": "blocked",
       "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
       "amount": 51,
-      "guestAmount": 58
+      "airbnbCheckout": 58
     }
   ]
 }
