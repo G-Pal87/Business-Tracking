@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-01T15:54:32.009Z",
+  "generatedAt": "2026-06-01T16:10:08.484Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -9,8 +9,8 @@
   },
   "guestFeePct": 14,
   "taxPct": 0,
-  "cleaningFee": 60,
-  "cleaningGuestTotal": 60,
+  "cleaningFee": 230,
+  "cleaningGuestTotal": 230,
   "horizonDays": 365,
   "rates": [
     {
