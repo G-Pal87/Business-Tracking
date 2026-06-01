@@ -32082,7 +32082,11 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780097524179,
       "updatedBy": "Giorgos",
+<<<<<<< Updated upstream
       "lastFetched": "2026-06-01T04:22:07.853Z"
+=======
+      "lastFetched": "2026-06-01T06:24:57.230Z"
+>>>>>>> Stashed changes
     },
     {
       "id": "stc_5c75cde224e04bef95883c5126497766",
@@ -32137,7 +32141,11 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780251216377,
       "updatedBy": "Giorgos",
+<<<<<<< Updated upstream
       "lastFetched": "2026-06-01T04:22:08.299Z"
+=======
+      "lastFetched": "2026-06-01T06:24:57.994Z"
+>>>>>>> Stashed changes
     },
     {
       "id": "stc_371e30d84db64e0d9c7e47be2cc97d42",
@@ -32216,7 +32224,11 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780214639783,
       "updatedBy": "Giorgos",
+<<<<<<< Updated upstream
       "lastFetched": "2026-06-01T04:22:08.684Z"
+=======
+      "lastFetched": "2026-06-01T06:24:58.515Z"
+>>>>>>> Stashed changes
     }
   ],
   "strRateTargets": [

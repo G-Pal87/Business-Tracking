@@ -1,6 +1,10 @@
 {
   "schema": "str-daily-rates/v1",
+<<<<<<< Updated upstream
   "generatedAt": "2026-06-01T04:22:08.717Z",
+=======
+  "generatedAt": "2026-06-01T06:24:58.548Z",
+>>>>>>> Stashed changes
   "property": {
     "id": "prop_mox7p43s8o",
     "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",

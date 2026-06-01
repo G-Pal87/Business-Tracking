@@ -1,6 +1,10 @@
 {
   "schema": "str-daily-rates-index/v1",
+<<<<<<< Updated upstream
   "generatedAt": "2026-06-01T04:22:08.692Z",
+=======
+  "generatedAt": "2026-06-01T06:24:58.524Z",
+>>>>>>> Stashed changes
   "properties": [
     {
       "id": "prop_mohfv8np89",
