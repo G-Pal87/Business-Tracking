@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-01T16:19:13.377Z",
+  "generatedAt": "2026-06-01T16:26:07.939Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
@@ -9,8 +9,8 @@
   },
   "guestFeePct": 14,
   "taxPct": 0,
-  "cleaningFee": 230,
-  "cleaningGuestTotal": 230,
+  "cleaningFee": 60,
+  "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": [
     {
