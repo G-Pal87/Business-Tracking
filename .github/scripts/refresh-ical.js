@@ -351,9 +351,16 @@ async function main() {
       const events = parseICal(text);
       const newBlocks = events
         .filter(e => e.start && e.end)
-        .map(e => ({ start: e.start, end: e.end, uid: e.uid || '', summary: e.summary || '' }));
+        .map(e => ({ start: e.start, end: e.end, uid: (e.uid || '').trim(), summary: (e.summary || '').trim() }))
+        .sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
 
-      const oldSig = JSON.stringify(cal.blocks || []);
+      // Normalise existing blocks the same way before comparing so ordering
+      // differences in the iCal feed don't trigger a spurious commit every run.
+      const normOld = (cal.blocks || [])
+        .map(b => ({ start: b.start, end: b.end, uid: (b.uid || '').trim(), summary: (b.summary || '').trim() }))
+        .sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
+
+      const oldSig = JSON.stringify(normOld);
       const newSig = JSON.stringify(newBlocks);
       if (oldSig === newSig) {
         console.log(`  No changes (${newBlocks.length} block(s))`);
