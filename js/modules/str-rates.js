@@ -796,8 +796,10 @@ function toB64(str) { return btoa(unescape(encodeURIComponent(str))); }
 // Build the per-property rate feed: actual rate on booked nights, suggested rate
 // on open/blocked nights, for the next FEED_HORIZON_DAYS days from today.
 // Each night carries the NIGHTLY price only:
-//   amount      — net nightly rate (what the host earns)
-//   guestAmount — guest-facing nightly price, guest fee + tax included
+//   amount          — published/direct booking rate (after any promo discount)
+//   airbnbCheckout  — full price if booked on Airbnb (originalAmount × guestMult)
+//   originalAmount  — target ADR before promo discount (only present when discountPct > 0)
+//   discountPct     — promo discount applied (only present when > 0)
 // The cleaning fee is charged ONCE PER BOOKING — see feed-level `cleaningFee` /
 // `cleaningGuestTotal`, which the consumer adds once per stay.
 function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
@@ -836,19 +838,17 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
         const discPct = target?.discountPct || 0;
         if (discPct > 0) {
           const discounted = Math.round(amount * (1 - discPct / 100));
-          entry.originalAmount  = Math.round(amount);
-          entry.discountPct     = discPct;
-          entry.amount          = discounted;
-          entry.airbnbCheckout  = Math.round(amount * guestMult);     // full Airbnb price (no promo)
-          entry.guestAmount     = Math.round(discounted * guestMult); // direct booking incl. fees
+          entry.originalAmount = Math.round(amount);
+          entry.discountPct    = discPct;
+          entry.amount         = discounted;
+          entry.airbnbCheckout = Math.round(amount * guestMult);
         } else {
           entry.amount         = Math.round(amount);
           entry.airbnbCheckout = Math.round(amount * guestMult);
-          entry.guestAmount    = Math.round(amount * guestMult);
         }
       } else {
-        entry.amount      = Math.round(amount);
-        entry.guestAmount = Math.round(amount * guestMult);
+        entry.amount         = Math.round(amount);
+        entry.airbnbCheckout = Math.round(amount * guestMult);
       }
       rates.push(entry);
     }
