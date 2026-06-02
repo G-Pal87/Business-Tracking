@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-02T04:55:58.178Z",
+  "generatedAt": "2026-06-02T09:13:21.298Z",
   "property": {
     "id": "prop_mox7p43s8o",
     "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
@@ -296,7 +296,7 @@
     {
       "date": "2026-06-30",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "June (29 nights)",
       "originalAmount": 70,
       "discountPct": 20,
@@ -306,7 +306,7 @@
     {
       "date": "2026-07-01",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July (31 nights)",
       "originalAmount": 86,
       "discountPct": 20,
@@ -316,7 +316,7 @@
     {
       "date": "2026-07-02",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July (31 nights)",
       "originalAmount": 86,
       "discountPct": 20,
@@ -326,7 +326,7 @@
     {
       "date": "2026-07-03",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July (31 nights)",
       "originalAmount": 86,
       "discountPct": 20,
@@ -336,7 +336,7 @@
     {
       "date": "2026-07-04",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July (31 nights)",
       "originalAmount": 86,
       "discountPct": 20,
@@ -346,7 +346,7 @@
     {
       "date": "2026-07-05",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July (31 nights)",
       "originalAmount": 86,
       "discountPct": 20,
@@ -356,7 +356,7 @@
     {
       "date": "2026-07-06",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July (31 nights)",
       "originalAmount": 86,
       "discountPct": 20,
