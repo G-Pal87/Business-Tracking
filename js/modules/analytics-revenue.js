@@ -761,11 +761,23 @@ function renderConcentration({ payments, invoices }) {
     data:   [...top5.map(v => Math.round(v.eur)), ...(rest > 0 ? [Math.round(rest)] : [])],
     colors: colors.slice(0, top5.length + (rest > 0 ? 1 : 0)),
     onClickItem: (_, idx) => {
-      if (idx >= top5.length) return;
-      const e = top5[idx];
-      drillDownModal(`Revenue — ${e.name}`,
-        e.isPay ? drillRevRows(payments.filter(p => p.propertyId === e.id), [])
-                : drillRevRows([], invoices.filter(i => i.clientId === e.id)),
+      if (idx < top5.length) {
+        const e = top5[idx];
+        drillDownModal(`Revenue — ${e.name}`,
+          e.isPay ? drillRevRows(payments.filter(p => p.propertyId === e.id), [])
+                  : drillRevRows([], invoices.filter(i => i.clientId === e.id)),
+          REV_COLS);
+        return;
+      }
+      // "Others" slice — combined revenue of every contributor beyond the Top 5.
+      const restEntities  = sorted.slice(5);
+      const restPropIds   = new Set(restEntities.filter(e => e.isPay).map(e => e.id));
+      const restClientIds = new Set(restEntities.filter(e => !e.isPay).map(e => e.id));
+      drillDownModal(`Revenue — Others (${restEntities.length} beyond Top 5)`,
+        drillRevRows(
+          payments.filter(p => restPropIds.has(p.propertyId)),
+          invoices.filter(i => restClientIds.has(i.clientId))
+        ),
         REV_COLS);
     }
   });
