@@ -162,6 +162,10 @@ export function confirmDialog(message, { title = 'Confirm', okLabel = 'OK', dang
 export async function confirmDeleteTwice(label) {
   const first = await confirmDialog(`Delete ${label}? This cannot be undone.`, { danger: true, okLabel: 'Delete' });
   if (!first) return false;
+  // Wait for the first modal's close animation to fully complete (openModal clears
+  // overlay.innerHTML after 200ms) before opening the second dialog, otherwise that
+  // delayed cleanup fires mid-second-dialog and auto-dismisses it.
+  await new Promise(r => setTimeout(r, 250));
   return confirmDialog(`Permanently delete ${label}? This is your final confirmation — the record will be gone.`, {
     title: 'Final confirmation', danger: true, okLabel: 'Yes, delete permanently'
   });
