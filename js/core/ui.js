@@ -156,6 +156,17 @@ export function confirmDialog(message, { title = 'Confirm', okLabel = 'OK', dang
   });
 }
 
+// Two-step delete confirmation. First dialog asks the standard "delete X?" question;
+// second asks for explicit final confirmation. Returns true only if both are accepted.
+// Pass `label` as a short description of what's being deleted (e.g. "INV-001" or "3 invoices").
+export async function confirmDeleteTwice(label) {
+  const first = await confirmDialog(`Delete ${label}? This cannot be undone.`, { danger: true, okLabel: 'Delete' });
+  if (!first) return false;
+  return confirmDialog(`Permanently delete ${label}? This is your final confirmation — the record will be gone.`, {
+    title: 'Final confirmation', danger: true, okLabel: 'Yes, delete permanently'
+  });
+}
+
 // ========== Toast ==========
 export function toast(message, type = 'info', duration = 3000) {
   let wrap = document.getElementById('toasts');

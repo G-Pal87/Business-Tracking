@@ -1,6 +1,6 @@
 // Invoices module - builder + repository
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, confirmDeleteTwice, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
 const _pdfMod = () => import(`../core/pdf.js?v=${window._appV || Date.now()}`);
@@ -325,7 +325,7 @@ function build() {
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
     const count = selected.size;
     if (!count) return;
-    const ok = await confirmDialog(`Delete ${count} invoice(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
+    const ok = await confirmDeleteTwice(`${count} invoice(s)`);
     if (!ok) return;
     for (const id of [...selected]) softDelete('invoices', id);
     selected.clear();
@@ -521,7 +521,7 @@ function build() {
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: (e) => { e.stopPropagation(); openBuilder(r); }}));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async (e) => {
         e.stopPropagation();
-        const ok = await confirmDialog(`Delete ${r.number}?`, { danger: true, okLabel: 'Delete' });
+        const ok = await confirmDeleteTwice(r.number || 'this invoice');
         if (ok) { _invStatCache = new Map(); softDelete('invoices', r.id); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
