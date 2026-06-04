@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-04T00:02:25.567Z",
+  "generatedAt": "2026-06-04T22:12:08.331Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
@@ -3562,7 +3562,7 @@
     {
       "date": "2027-05-30",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "May 2027 blended (22n) + May 2027 blended (30n)",
       "originalAmount": 75,
       "discountPct": 20,
