@@ -137,7 +137,7 @@ function buildOccupancySets(propId, blocks) {
 // where available excludes owner-blocked days that weren't sold. Returns counts,
 // per-month tallies, and (if rateFn given) published-rate revenue over occupied days.
 function rangeOccupancy(occupiedSet, ownerBlockSet, start, end, rateFn) {
-  let totalDays = 0, available = 0, occupied = 0, rev = 0;
+  let totalDays = 0, available = 0, occupied = 0, blocked = 0, rev = 0;
   const occByMonth = new Map(), availByMonth = new Map();
   const d   = new Date(start + 'T00:00:00');
   const lim = new Date(end + 'T00:00:00');
@@ -146,7 +146,8 @@ function rangeOccupancy(occupiedSet, ownerBlockSet, start, end, rateFn) {
     totalDays++;
     const isOcc     = occupiedSet.has(ds);
     const isUnavail = !isOcc && ownerBlockSet.has(ds); // payment/reservation wins
-    if (!isUnavail) { available++; availByMonth.set(mk, (availByMonth.get(mk) || 0) + 1); }
+    if (isUnavail) { blocked++; }
+    else { available++; availByMonth.set(mk, (availByMonth.get(mk) || 0) + 1); }
     if (isOcc) {
       occupied++;
       occByMonth.set(mk, (occByMonth.get(mk) || 0) + 1);
@@ -154,7 +155,7 @@ function rangeOccupancy(occupiedSet, ownerBlockSet, start, end, rateFn) {
     }
     d.setDate(d.getDate() + 1);
   }
-  return { totalDays, available, occupied, occByMonth, availByMonth, rev };
+  return { totalDays, available, occupied, blocked, occByMonth, availByMonth, rev };
 }
 
 // Historic achieved-ADR suggester for a property — same priority as the daily-
@@ -252,8 +253,8 @@ function getPortfolioData(curRange, cmpRange) {
     // Expected ("target") revenue values each occupied night at the published
     // rate (confirmed target if set, else historic suggestion) — no more €0 for
     // properties/months without a confirmed target.
-    const { available, occupied, rev } = rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end, rateForNight);
-    occByProp.set(p.id, { occupied, available, pct: available > 0 ? occupied / available * 100 : 0 });
+    const { available, occupied, blocked, rev } = rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end, rateForNight);
+    occByProp.set(p.id, { occupied, available, blocked, open: Math.max(0, available - occupied), pct: available > 0 ? occupied / available * 100 : 0 });
     targetRevByProp.set(p.id, rev);
     targetRev += rev;
   });
@@ -537,14 +538,22 @@ function buildOccupancyCard(data) {
   const { occByProp, props } = data;
   const card = el('div', { class: 'card' });
   card.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Occupancy Rate by Property')
+    el('div', { class: 'card-title' }, 'Occupancy Rate by Property'),
+    el('div', { style: 'font-size:11px;color:var(--text-muted)' }, 'Rate = Occupied ÷ Available')
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
+
+  // Terminology legend so the three night types are unambiguous.
+  body.appendChild(el('div', { style: 'display:flex;flex-wrap:wrap;gap:12px;font-size:11px;color:var(--text-muted);padding:8px 0 4px' },
+    el('span', {}, '● Occupied — sold or reserved (earns revenue)'),
+    el('span', {}, '○ Open — available but unsold'),
+    el('span', {}, '▦ Blocked — owner-closed, off-market (no revenue, excluded from rate)')
+  ));
 
   // Mini occupancy bars
   const list = el('div', { style: 'display:flex;flex-direction:column;gap:10px;padding:8px 0' });
   props.forEach((p, i) => {
-    const occ = occByProp.get(p.id) || { pct: 0, occupied: 0, available: 0 };
+    const occ = occByProp.get(p.id) || { pct: 0, occupied: 0, available: 0, open: 0, blocked: 0 };
     const row = el('div');
     const labelRow = el('div', { style: 'display:flex;justify-content:space-between;margin-bottom:4px' });
     labelRow.appendChild(el('span', { style: 'font-size:12px;color:var(--text)' }, shortName(p.name)));
@@ -554,7 +563,7 @@ function buildOccupancyCard(data) {
     row.appendChild(labelRow);
     row.appendChild(mkProgressBar(occ.pct, PROP_COLORS[i % PROP_COLORS.length]));
     const sub = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:3px' },
-      `${occ.occupied} occupied / ${occ.available} available`
+      `${occ.occupied} occupied · ${occ.open} open · ${occ.blocked} blocked`
     );
     row.appendChild(sub);
     list.appendChild(row);
@@ -969,13 +978,16 @@ function openOccModal(data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   body.appendChild(mkModalTable(
-    ['Property', 'Occupancy %', 'Occupied Nights', 'Available Nights'],
+    ['Property', 'Occupancy %', 'Occupied', 'Open', 'Blocked (off-market)', 'Available'],
     props.map(p => {
-      const occ = occByProp.get(p.id) || { pct: 0, occupied: 0, available: 0 };
-      return [shortName(p.name), occ.pct.toFixed(1) + '%', occ.occupied.toString(), occ.available.toString()];
+      const occ = occByProp.get(p.id) || { pct: 0, occupied: 0, available: 0, open: 0, blocked: 0 };
+      return [shortName(p.name), occ.pct.toFixed(1) + '%', occ.occupied.toString(), occ.open.toString(), occ.blocked.toString(), occ.available.toString()];
     }),
     { highlight: 1 }
   ));
+
+  body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
+    'Occupied = sold or reserved · Open = available but unsold · Blocked = owner-closed / off-market (no revenue, excluded from the rate). Occupancy % = Occupied ÷ Available.'));
 
   openModal({ title: `Occupancy — ${data.rangeLabel}`, body, large: true });
 }
