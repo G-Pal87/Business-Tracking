@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-08T19:05:02.334Z",
+  "generatedAt": "2026-06-08T19:05:16.408Z",
   "property": {
     "id": "prop_mox7p43s8o",
     "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
@@ -867,301 +867,301 @@
       "date": "2026-09-01",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-02",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-03",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-04",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-05",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-06",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-07",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-08",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-09",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-10",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-11",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-12",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-13",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-14",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-15",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-16",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-17",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-18",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-19",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-20",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-21",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-22",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-23",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-24",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-25",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-26",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-27",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-28",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-29",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-09-30",
       "currency": "EUR",
       "status": "open",
-      "basis": "September 2025 (30 nights)",
-      "originalAmount": 87,
+      "basis": "confirmed target",
+      "originalAmount": 98,
       "discountPct": 20,
-      "amount": 70,
-      "airbnbCheckout": 99
+      "amount": 78,
+      "airbnbCheckout": 112
     },
     {
       "date": "2026-10-01",
