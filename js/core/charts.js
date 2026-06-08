@@ -87,7 +87,7 @@ export function line(id, { labels, datasets, onClickItem }) {
   registry.set(id, c);
 }
 
-export function bar(id, { labels, datasets, stacked = false, horizontal = false, onClickItem }) {
+export function bar(id, { labels, datasets, stacked = false, horizontal = false, onClickItem, showTotals = false }) {
   destroy(id);
   const canvas = document.getElementById(id);
   if (!canvas) return;
@@ -105,13 +105,49 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
     };
     canvas.style.cursor = 'pointer';
   }
+
+  // Per-category total (sum of the stack at each index) — shown as a tooltip
+  // footer and, for vertical charts, drawn above each bar.
+  const localPlugins = [];
+  if (showTotals) {
+    const sumAt = (chart, i) => chart.data.datasets.reduce(
+      (s, ds, di) => s + (chart.isDatasetVisible(di) ? (ds.data[i] || 0) : 0), 0);
+    opts.plugins.tooltip.callbacks = {
+      footer: items => items.length
+        ? 'Total: €' + Math.round(sumAt(items[0].chart, items[0].dataIndex)).toLocaleString('de-DE')
+        : ''
+    };
+    if (!horizontal) {
+      localPlugins.push({
+        id: 'stackTotals',
+        afterDatasetsDraw(chart) {
+          const meta = chart.getDatasetMeta(0);
+          if (!meta?.data) return;
+          const g = chart.ctx;
+          g.save();
+          g.font = '600 11px sans-serif';
+          g.fillStyle = '#e4e8f1';
+          g.textAlign = 'center';
+          g.textBaseline = 'bottom';
+          meta.data.forEach((bar, i) => {
+            const total = sumAt(chart, i);
+            if (total <= 0) return;
+            g.fillText('€' + Math.round(total).toLocaleString('de-DE'), bar.x, chart.scales.y.getPixelForValue(total) - 3);
+          });
+          g.restore();
+        }
+      });
+    }
+  }
+
   const c = new Chart(ctx, {
     type: 'bar',
     data: {
       labels,
       datasets: datasets.map(d => ({ borderRadius: 4, ...d }))
     },
-    options: opts
+    options: opts,
+    plugins: localPlugins
   });
   registry.set(id, c);
 }
