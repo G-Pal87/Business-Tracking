@@ -522,6 +522,7 @@ function buildRevTrendCard(data) {
     charts.bar('str-rev-trend', {
       labels: monthKeys.map(k => k.label),
       stacked: true,
+      showTotals: true,
       datasets: props.map((p, i) => ({
         label: shortName(p.name),
         data: revByMonth.map(mo => mo[p.id] || 0),
