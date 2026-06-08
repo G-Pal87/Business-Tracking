@@ -323,6 +323,9 @@ function rebuildView() {
 // ── Main view builder ─────────────────────────────────────────────────────────
 function buildView() {
   _container = el('div', { class: 'view-content' });
+  // Lock the stream to short-term so the shared filter bar only offers STR
+  // properties/owners (re-applied each build so Reset can't widen it).
+  gF.streams = new Set(['short_term_rental']);
   const curRange = getCurrentPeriodRange(gF);
   const cmpRange = getComparisonRange(gF, curRange);
   const data = getPortfolioData(curRange, cmpRange);
