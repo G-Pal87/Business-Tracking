@@ -4,6 +4,7 @@ import * as charts from '../core/charts.js';
 import { state } from '../core/state.js';
 import { formatEUR, listActive, listActivePayments, byId } from '../core/data.js';
 import { OWNERS } from '../core/config.js';
+import { buildComparisonLine } from './analytics-filters.js';
 import {
   mkKpiCard, mkSummaryGrid, mkSummaryBox, mkModalTable, mkSectionLabel,
   mkEmptyState, mkVarianceBadge, mkProgressBar, fmtK, safePct
@@ -17,6 +18,7 @@ const PROP_COLORS = ['#6366f1','#14b8a6','#f59e0b','#ec4899','#22c55e'];
 // ── State ─────────────────────────────────────────────────────────────────────
 let gYear = String(new Date().getFullYear());
 let gSpotlightPropId = null;
+let gCompare = 'prev-year'; // 'none' | 'prev-year' | a specific 'YYYY'
 
 // Dimension filters (persisted). Empty set = no filter on that dimension.
 const _sf = { props: new Set(), owners: new Set(), regions: new Set() };
@@ -29,12 +31,19 @@ function loadStrFilters() {
       _sf.props   = new Set(o.props   || []);
       _sf.owners  = new Set(o.owners  || []);
       _sf.regions = new Set(o.regions || []);
+      if (o.compare) gCompare = o.compare;
     }
   } catch { /* ignore corrupt data */ }
 }
 function saveStrFilters() {
-  try { localStorage.setItem(SF_KEY, JSON.stringify({ props: [..._sf.props], owners: [..._sf.owners], regions: [..._sf.regions] })); }
+  try { localStorage.setItem(SF_KEY, JSON.stringify({ props: [..._sf.props], owners: [..._sf.owners], regions: [..._sf.regions], compare: gCompare })); }
   catch { /* quota — ignore */ }
+}
+// Resolve the comparison year from the current selection (null = no comparison).
+function compareYear() {
+  if (gCompare === 'none') return null;
+  if (gCompare === 'prev-year') return String(parseInt(gYear, 10) - 1);
+  return gCompare;
 }
 // True if property passes all active filters except the one named `skip`.
 function matchesStrExcept(p, skip) {
@@ -108,7 +117,7 @@ function daysInMonth(year, monthIdx) {
 }
 
 // ── Portfolio-level data ──────────────────────────────────────────────────────
-function getPortfolioData(year) {
+function getPortfolioData(year, cmpYear) {
   const yr = parseInt(year, 10);
   const props    = getStrProps();
   const propIds  = new Set(props.map(p => p.id));
@@ -172,16 +181,19 @@ function getPortfolioData(year) {
     }
   });
 
-  // Prev year for deltas
-  const prevYearPayments = getPaymentsForYear(String(yr - 1));
-  const prevRev = prevYearPayments.reduce((s, p) => s + p.amount, 0);
-  let prevNights = 0;
-  prevYearPayments.forEach(p => { prevNights += (p.airbnbNights || 0); });
+  // Comparison period (chosen year) for KPI deltas — respects the active
+  // property/owner filters. Null when comparison is turned off.
+  let prevRev = null, prevNights = null;
+  if (cmpYear) {
+    const cmpPayments = getPaymentsForYear(cmpYear).filter(p => propIds.has(p.propertyId));
+    prevRev = cmpPayments.reduce((s, p) => s + p.amount, 0);
+    prevNights = cmpPayments.reduce((s, p) => s + (p.airbnbNights || 0), 0);
+  }
 
   return {
     payments, props, revByProp, totalRev, revByMonth,
     totalNights, avgADR, avgOcc, occByProp, targetRev,
-    prevRev, prevNights
+    prevRev, prevNights, cmpYear
   };
 }
 
@@ -295,9 +307,10 @@ function rebuildView() {
 // ── Main view builder ─────────────────────────────────────────────────────────
 function buildView() {
   _container = el('div', { class: 'view-content' });
-  const data = getPortfolioData(gYear);
+  const cmpYear = compareYear();
+  const data = getPortfolioData(gYear, cmpYear);
 
-  // ── Page header + year filter
+  // ── Page header + year / comparison filters
   const header = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px' });
   const titleWrap = el('div');
   titleWrap.appendChild(el('h2', { style: 'margin:0;font-size:20px;font-weight:700' }, 'STR Performance'));
@@ -306,21 +319,43 @@ function buildView() {
   ));
   header.appendChild(titleWrap);
 
-  const yearSel = el('select', {
-    style: 'background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer'
-  });
+  const selStyle = 'background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer';
+  const controls = el('div', { style: 'display:flex;align-items:center;gap:8px;flex-wrap:wrap' });
   const years = getDataYears();
+
+  // Period (year)
+  const yearSel = el('select', { style: selStyle });
   years.forEach(y => {
     const o = el('option', { value: y }, y);
     if (y === gYear) o.selected = true;
     yearSel.appendChild(o);
   });
-  yearSel.addEventListener('change', () => { gYear = yearSel.value; rebuildView(); });
-  header.appendChild(yearSel);
+  yearSel.addEventListener('change', () => { gYear = yearSel.value; saveStrFilters(); rebuildView(); });
+
+  // Comparison (year-based)
+  const cmpSel = el('select', { style: selStyle });
+  const cmpOpts = [['none', 'No Comparison'], ['prev-year', 'Previous Year'],
+    ...years.filter(y => y !== gYear).map(y => [y, `vs ${y}`])];
+  cmpOpts.forEach(([v, lbl]) => {
+    const o = el('option', { value: v }, lbl);
+    if (v === gCompare) o.selected = true;
+    cmpSel.appendChild(o);
+  });
+  cmpSel.addEventListener('change', () => { gCompare = cmpSel.value; saveStrFilters(); rebuildView(); });
+
+  controls.appendChild(yearSel);
+  controls.appendChild(cmpSel);
+  header.appendChild(controls);
   _container.appendChild(header);
 
   // Dimension filters (property / owner / region) — dynamic + interdependent.
   _container.appendChild(buildStrFilterBar());
+
+  // Comparison line — reuses the shared helper (e.g. "Comparing 2026 vs 2025").
+  const thisYear = String(new Date().getFullYear());
+  const curRange = { start: `${gYear}-01-01`, end: `${gYear}-12-31`, label: gYear, isIncomplete: gYear === thisYear };
+  const cmpRange = cmpYear ? { start: `${cmpYear}-01-01`, end: `${cmpYear}-12-31`, label: cmpYear } : null;
+  _container.appendChild(buildComparisonLine(curRange, cmpRange));
 
   if (!data.props.length) {
     _container.appendChild(mkEmptyState('No short-term rental properties found.'));
@@ -401,9 +436,10 @@ function getDataYears() {
 
 // ── Portfolio KPI row ─────────────────────────────────────────────────────────
 function buildPortfolioKpis(data) {
-  const { totalRev, prevRev, totalNights, prevNights, avgADR, avgOcc, targetRev, payments, props } = data;
+  const { totalRev, prevRev, totalNights, prevNights, avgADR, avgOcc, targetRev, payments, props, cmpYear } = data;
   const vsTarget = targetRev > 0 ? (totalRev / targetRev) * 100 : null;
   const propCount = props.length;
+  const hasCmp = !!cmpYear;
 
   const grid = el('div', {
     style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:16px'
@@ -414,9 +450,9 @@ function buildPortfolioKpis(data) {
     label: 'Total Revenue',
     value: formatEUR(totalRev),
     subtitle: `${gYear} · ${payments.length} bookings`,
-    delta: safePct(totalRev, prevRev),
-    compLabel: String(parseInt(gYear) - 1),
-    compValue: prevRev > 0 ? formatEUR(prevRev) : undefined,
+    delta: hasCmp && prevRev != null ? safePct(totalRev, prevRev) : undefined,
+    compLabel: hasCmp ? cmpYear : undefined,
+    compValue: hasCmp && prevRev > 0 ? formatEUR(prevRev) : undefined,
     onClick: () => openRevenueModal(data)
   }));
 
@@ -425,8 +461,8 @@ function buildPortfolioKpis(data) {
     label: 'Nights Sold',
     value: totalNights.toLocaleString(),
     subtitle: `${propCount} propert${propCount !== 1 ? 'ies' : 'y'}`,
-    delta: safePct(totalNights, prevNights),
-    compLabel: String(parseInt(gYear) - 1),
+    delta: hasCmp && prevNights != null ? safePct(totalNights, prevNights) : undefined,
+    compLabel: hasCmp ? cmpYear : undefined,
     onClick: () => openNightsModal(data)
   }));
 
