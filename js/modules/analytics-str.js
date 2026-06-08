@@ -105,6 +105,22 @@ function buildBlockedDateSet(blocks) {
   return set;
 }
 
+// Dates considered occupied for occupancy %: actual booked nights (from paid
+// bookings' check-in → check-out) UNION iCal-blocked nights. Payments cover the
+// past (the Airbnb iCal export only carries current/future reservations); the
+// iCal covers the future. Overlapping dates dedupe via the Set.
+function buildOccupiedDateSet(propId, blocks) {
+  const set = buildBlockedDateSet(blocks);
+  listActivePayments().forEach(p => {
+    if (p.propertyId !== propId || p.stream !== 'short_term_rental' || p.status !== 'paid') return;
+    const ci = p.airbnbCheckIn || p.checkIn, co = p.airbnbCheckOut || p.checkOut;
+    if (!ci || !co) return;
+    const d = new Date(ci + 'T00:00:00'), e = new Date(co + 'T00:00:00');
+    while (d < e) { set.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+  });
+  return set;
+}
+
 // Iterate each day in [start,end] inclusive. Returns { total, blocked } plus a
 // per-month-key blocked tally (keyed 'YYYY-MM') for target / heatmap reuse.
 function rangeOccupancy(blockedSet, start, end) {
@@ -168,8 +184,8 @@ function getPortfolioData(curRange, cmpRange) {
   const blockedByMonthByProp = new Map();
   props.forEach(p => {
     const cal = getCalendar(p.id);
-    const blockedSet = buildBlockedDateSet(cal?.blocks || []);
-    const { total, blocked, blockedByMonth } = rangeOccupancy(blockedSet, curRange.start, curRange.end);
+    const occSet = buildOccupiedDateSet(p.id, cal?.blocks || []);
+    const { total, blocked, blockedByMonth } = rangeOccupancy(occSet, curRange.start, curRange.end);
     occByProp.set(p.id, { blocked, total, pct: total > 0 ? blocked / total * 100 : 0 });
     blockedByMonthByProp.set(p.id, blockedByMonth);
   });
@@ -210,9 +226,9 @@ function getPortfolioData(curRange, cmpRange) {
 function getSpotlightData(propId, curRange) {
   const payments = getPaymentsInRange(curRange.start, curRange.end, new Set([propId]));
   const cal = getCalendar(propId);
-  const blockedSet = buildBlockedDateSet(cal?.blocks || []);
+  const occSet = buildOccupiedDateSet(propId, cal?.blocks || []);
   const monthKeys = getMonthKeysForRange(curRange.start, curRange.end).keys;
-  const { blockedByMonth } = rangeOccupancy(blockedSet, curRange.start, curRange.end);
+  const { blockedByMonth } = rangeOccupancy(occSet, curRange.start, curRange.end);
 
   // Per-month "total days" must respect the range bounds (a partial first/last month).
   const months = monthKeys.map(k => {
@@ -424,7 +440,7 @@ function buildPortfolioKpis(data) {
   grid.appendChild(mkKpiCard({
     label: 'Avg Occupancy',
     value: avgOcc > 0 ? avgOcc.toFixed(1) + '%' : '—',
-    subtitle: 'Blocked nights ÷ total days (iCal)',
+    subtitle: 'Booked + blocked nights ÷ days',
     variant: avgOcc >= 70 ? 'success' : avgOcc >= 40 ? undefined : 'warning',
     onClick: () => openOccModal(data)
   }));
@@ -723,7 +739,7 @@ function buildSpotlightContent(propId, curRange) {
   const blockedTotal = months.reduce((s, m) => s + m.blocked, 0);
   const daysTotal    = months.reduce((s, m) => s + m.total, 0);
   const periodOcc = daysTotal > 0 ? (blockedTotal / daysTotal * 100).toFixed(1) + '%' : '—';
-  occSummary.appendChild(mkSummaryBox('Period Occupancy', periodOcc, 'iCal blocked nights'));
+  occSummary.appendChild(mkSummaryBox('Period Occupancy', periodOcc, 'booked + iCal nights'));
   const bookings = getPaymentsInRange(curRange.start, curRange.end, new Set([propId])).length;
   occSummary.appendChild(mkSummaryBox('Bookings', bookings.toString(), curRange.label));
   occBody.appendChild(occSummary);
@@ -918,7 +934,7 @@ function openOccModal(data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   body.appendChild(mkModalTable(
-    ['Property', 'Occupancy %', 'Blocked Nights', 'Total Days'],
+    ['Property', 'Occupancy %', 'Occupied Nights', 'Total Days'],
     props.map(p => {
       const occ = occByProp.get(p.id) || { pct: 0, blocked: 0, total: 0 };
       return [shortName(p.name), occ.pct.toFixed(1) + '%', occ.blocked.toString(), occ.total.toString()];
@@ -1006,7 +1022,7 @@ function openMonthSpotlightModal(monthIdx, propId, months, curRange) {
     { label: 'Achieved ADR',   value: mo.adr > 0 ? formatEUR(mo.adr) : '—' },
     { label: 'Target ADR',     value: mo.target != null ? formatEUR(mo.target) : '—' },
     { label: 'Occupancy',      value: mo.occ.toFixed(1) + '%' },
-    { label: 'Blocked Nights', value: mo.blocked.toString() },
+    { label: 'Occupied Nights', value: mo.blocked.toString() },
     { label: 'Total Days',     value: mo.total.toString() }
   ], 3));
 
