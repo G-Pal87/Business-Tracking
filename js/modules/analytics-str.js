@@ -88,29 +88,29 @@ function daysInMonth(year, monthIdx) {
   return new Date(year, monthIdx + 1, 0).getDate();
 }
 
-// Build a Set of every blocked (booked/reserved) date 'YYYY-MM-DD' from iCal
-// blocks. Each block covers [start, end) — the end (check-out) day is open.
-function buildBlockedDateSet(blocks) {
-  const set = new Set();
-  if (!blocks?.length) return set;
-  for (const b of blocks) {
-    if (!b.start || !b.end) continue;
-    const d  = new Date(b.start);
-    const be = new Date(b.end);
-    while (d < be) {
-      set.add(d.toISOString().slice(0, 10));
-      d.setDate(d.getDate() + 1);
-    }
-  }
-  return set;
+// Classify an iCal block by its summary: owner-block (manually closed /
+// unavailable, never sold) vs a guest reservation. Airbnb exports "Reserved"
+// for bookings and "Airbnb (Not available)" for owner-blocks.
+function isOwnerBlock(summary) {
+  return /not available|unavailable|\bblocked\b|closed/i.test(summary || '');
 }
 
-// Dates considered occupied for occupancy %: actual booked nights (from paid
-// bookings' check-in → check-out) UNION iCal-blocked nights. Payments cover the
-// past (the Airbnb iCal export only carries current/future reservations); the
-// iCal covers the future. Overlapping dates dedupe via the Set.
-function buildOccupiedDateSet(propId, blocks) {
-  const set = buildBlockedDateSet(blocks);
+// Split iCal blocks into { reserved, owner } date sets (each [start,end) → nights).
+function buildBlockDateSets(blocks) {
+  const reserved = new Set(), owner = new Set();
+  for (const b of blocks || []) {
+    if (!b.start || !b.end) continue;
+    const target = isOwnerBlock(b.summary) ? owner : reserved;
+    const d = new Date(b.start), be = new Date(b.end);
+    while (d < be) { target.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+  }
+  return { reserved, owner };
+}
+
+// Booked nights from paid bookings' check-in → check-out (covers off-platform
+// sales recorded as payments, and past stays the Airbnb iCal no longer carries).
+function buildBookedDateSet(propId) {
+  const set = new Set();
   listActivePayments().forEach(p => {
     if (p.propertyId !== propId || p.stream !== 'short_term_rental' || p.status !== 'paid') return;
     const ci = p.airbnbCheckIn || p.checkIn, co = p.airbnbCheckOut || p.checkOut;
@@ -121,26 +121,40 @@ function buildOccupiedDateSet(propId, blocks) {
   return set;
 }
 
-// Iterate each day in [start,end] inclusive. Returns { total, blocked } plus a
-// per-month-key blocked tally (keyed 'YYYY-MM') for target / heatmap reuse.
-// If rateFn is supplied, also sums the published rate over occupied days (rev).
-function rangeOccupancy(blockedSet, start, end, rateFn) {
-  let total = 0, blocked = 0, rev = 0;
-  const blockedByMonth = new Map();
+// Occupancy sets for a property:
+//   occupiedSet  — booked (payments) ∪ "Reserved" iCal nights (revenue nights)
+//   ownerBlockSet — manually-closed nights, EXCLUDED from available (you can't
+//                   sell a day you closed). A payment on such a day wins (it
+//                   becomes occupied), so off-platform sales count normally.
+function buildOccupancySets(propId, blocks) {
+  const { reserved, owner } = buildBlockDateSets(blocks);
+  const occupiedSet = buildBookedDateSet(propId);
+  for (const d of reserved) occupiedSet.add(d);
+  return { occupiedSet, ownerBlockSet: owner };
+}
+
+// Iterate each day in [start,end] inclusive. Occupancy = occupied ÷ available,
+// where available excludes owner-blocked days that weren't sold. Returns counts,
+// per-month tallies, and (if rateFn given) published-rate revenue over occupied days.
+function rangeOccupancy(occupiedSet, ownerBlockSet, start, end, rateFn) {
+  let totalDays = 0, available = 0, occupied = 0, rev = 0;
+  const occByMonth = new Map(), availByMonth = new Map();
   const d   = new Date(start + 'T00:00:00');
   const lim = new Date(end + 'T00:00:00');
   while (d <= lim) {
-    const ds = d.toISOString().slice(0, 10);
-    total++;
-    if (blockedSet.has(ds)) {
-      blocked++;
-      const mk = ds.slice(0, 7);
-      blockedByMonth.set(mk, (blockedByMonth.get(mk) || 0) + 1);
+    const ds = d.toISOString().slice(0, 10), mk = ds.slice(0, 7);
+    totalDays++;
+    const isOcc     = occupiedSet.has(ds);
+    const isUnavail = !isOcc && ownerBlockSet.has(ds); // payment/reservation wins
+    if (!isUnavail) { available++; availByMonth.set(mk, (availByMonth.get(mk) || 0) + 1); }
+    if (isOcc) {
+      occupied++;
+      occByMonth.set(mk, (occByMonth.get(mk) || 0) + 1);
       if (rateFn) rev += rateFn(ds, false);
     }
     d.setDate(d.getDate() + 1);
   }
-  return { total, blocked, blockedByMonth, rev };
+  return { totalDays, available, occupied, occByMonth, availByMonth, rev };
 }
 
 // Historic achieved-ADR suggester for a property — same priority as the daily-
@@ -229,25 +243,23 @@ function getPortfolioData(curRange, cmpRange) {
   // Occupancy: blocked nights from iCal vs total days, range-accurate (the range
   // may start / end mid-month). Keep a per-month blocked tally for the target calc.
   const occByProp = new Map();
-  const blockedByMonthByProp = new Map();
   const targetRevByProp = new Map();
   let targetRev = 0;
   props.forEach(p => {
     const cal = getCalendar(p.id);
-    const occSet = buildOccupiedDateSet(p.id, cal?.blocks || []);
+    const { occupiedSet, ownerBlockSet } = buildOccupancySets(p.id, cal?.blocks || []);
     const rateForNight = makeRateForNight(p.id);
     // Expected ("target") revenue values each occupied night at the published
     // rate (confirmed target if set, else historic suggestion) — no more €0 for
     // properties/months without a confirmed target.
-    const { total, blocked, blockedByMonth, rev } = rangeOccupancy(occSet, curRange.start, curRange.end, rateForNight);
-    occByProp.set(p.id, { blocked, total, pct: total > 0 ? blocked / total * 100 : 0 });
-    blockedByMonthByProp.set(p.id, blockedByMonth);
+    const { available, occupied, rev } = rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end, rateForNight);
+    occByProp.set(p.id, { occupied, available, pct: available > 0 ? occupied / available * 100 : 0 });
     targetRevByProp.set(p.id, rev);
     targetRev += rev;
   });
-  const totalDays    = [...occByProp.values()].reduce((s, v) => s + v.total, 0);
-  const totalBlocked = [...occByProp.values()].reduce((s, v) => s + v.blocked, 0);
-  const avgOcc = totalDays > 0 ? totalBlocked / totalDays * 100 : 0;
+  const totalAvail = [...occByProp.values()].reduce((s, v) => s + v.available, 0);
+  const totalOcc   = [...occByProp.values()].reduce((s, v) => s + v.occupied, 0);
+  const avgOcc = totalAvail > 0 ? totalOcc / totalAvail * 100 : 0;
 
   // Comparison range for KPI deltas — same active prop ids. Null when off.
   let prevRev = null, prevNights = null;
@@ -259,7 +271,7 @@ function getPortfolioData(curRange, cmpRange) {
 
   return {
     payments, props, revByProp, totalRev, revByMonth, monthKeys, keyIndex,
-    blockedByMonthByProp, targetRevByProp,
+    targetRevByProp,
     totalNights, avgADR, avgOcc, occByProp, targetRev,
     prevRev, prevNights,
     rangeLabel: curRange.label,
@@ -271,11 +283,10 @@ function getPortfolioData(curRange, cmpRange) {
 function getSpotlightData(propId, curRange) {
   const payments = getPaymentsInRange(curRange.start, curRange.end, new Set([propId]));
   const cal = getCalendar(propId);
-  const occSet = buildOccupiedDateSet(propId, cal?.blocks || []);
+  const { occupiedSet, ownerBlockSet } = buildOccupancySets(propId, cal?.blocks || []);
   const monthKeys = getMonthKeysForRange(curRange.start, curRange.end).keys;
-  const { blockedByMonth } = rangeOccupancy(occSet, curRange.start, curRange.end);
+  const { occByMonth, availByMonth } = rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end);
 
-  // Per-month "total days" must respect the range bounds (a partial first/last month).
   const months = monthKeys.map(k => {
     const mk       = k.key;
     const target   = getTargetADR(propId, mk);
@@ -283,21 +294,16 @@ function getSpotlightData(propId, curRange) {
     const rev      = paysInMo.reduce((s, p) => s + p.amount, 0);
     const nights   = paysInMo.reduce((s, p) => s + (p.airbnbNights || 0), 0);
     const adr      = nights > 0 ? paysInMo.reduce((s, p) => s + (p.avgNightlyRate || 0) * (p.airbnbNights || 0), 0) / nights : 0;
-    const blocked  = blockedByMonth.get(mk) || 0;
-    // Days of this month that fall inside the range.
-    const monthStart = `${mk}-01`;
-    const monthEnd   = `${mk}-${String(daysInMonth(+k.y, k.m - 1)).padStart(2, '0')}`;
-    const lo = monthStart > curRange.start ? monthStart : curRange.start;
-    const hi = monthEnd   < curRange.end   ? monthEnd   : curRange.end;
-    const total = lo <= hi ? Math.round((new Date(hi + 'T00:00:00') - new Date(lo + 'T00:00:00')) / 86400000) + 1 : 0;
-    const occ   = total > 0 ? blocked / total * 100 : 0;
-    return { mk, label: k.label, target: target?.targetADR || null, rev, nights, adr, blocked, total, occ };
+    const occupied  = occByMonth.get(mk) || 0;    // occupied nights in range
+    const available = availByMonth.get(mk) || 0;  // available nights in range (excl. owner-blocks)
+    const occ       = available > 0 ? occupied / available * 100 : 0;
+    return { mk, label: k.label, target: target?.targetADR || null, rev, nights, adr, occupied, available, occ };
   });
 
   const totalRev    = months.reduce((s, m) => s + m.rev, 0);
   const totalNights = months.reduce((s, m) => s + m.nights, 0);
   const avgADR      = totalNights > 0 ? months.reduce((s, m) => s + m.adr * m.nights, 0) / totalNights : 0;
-  const targetRev   = months.reduce((s, m) => s + (m.target || 0) * m.blocked, 0);
+  const targetRev   = months.reduce((s, m) => s + (m.target || 0) * m.occupied, 0);
 
   return { months, totalRev, totalNights, avgADR, targetRev };
 }
@@ -538,7 +544,7 @@ function buildOccupancyCard(data) {
   // Mini occupancy bars
   const list = el('div', { style: 'display:flex;flex-direction:column;gap:10px;padding:8px 0' });
   props.forEach((p, i) => {
-    const occ = occByProp.get(p.id) || { pct: 0, blocked: 0, total: 0 };
+    const occ = occByProp.get(p.id) || { pct: 0, occupied: 0, available: 0 };
     const row = el('div');
     const labelRow = el('div', { style: 'display:flex;justify-content:space-between;margin-bottom:4px' });
     labelRow.appendChild(el('span', { style: 'font-size:12px;color:var(--text)' }, shortName(p.name)));
@@ -548,7 +554,7 @@ function buildOccupancyCard(data) {
     row.appendChild(labelRow);
     row.appendChild(mkProgressBar(occ.pct, PROP_COLORS[i % PROP_COLORS.length]));
     const sub = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:3px' },
-      `${occ.blocked} booked / ${occ.total} days`
+      `${occ.occupied} occupied / ${occ.available} available`
     );
     row.appendChild(sub);
     list.appendChild(row);
@@ -638,7 +644,7 @@ function buildComparisonTable(data) {
 
   const rows = props.map((p, i) => {
     const rev   = revByProp.get(p.id) || 0;
-    const occ   = occByProp.get(p.id) || { pct: 0, blocked: 0 };
+    const occ   = occByProp.get(p.id) || { pct: 0 };
     const pPays = payments.filter(pay => pay.propertyId === p.id);
     const nights = pPays.reduce((s, pay) => s + (pay.airbnbNights || 0), 0);
     const adr   = nights > 0
@@ -765,10 +771,10 @@ function buildSpotlightContent(propId, curRange) {
 
   const occSummary = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px' });
   occSummary.appendChild(mkSummaryBox('Nights Sold', totalNights.toString(), 'from bookings'));
-  const blockedTotal = months.reduce((s, m) => s + m.blocked, 0);
-  const daysTotal    = months.reduce((s, m) => s + m.total, 0);
-  const periodOcc = daysTotal > 0 ? (blockedTotal / daysTotal * 100).toFixed(1) + '%' : '—';
-  occSummary.appendChild(mkSummaryBox('Period Occupancy', periodOcc, 'booked + iCal nights'));
+  const occupiedTotal = months.reduce((s, m) => s + m.occupied, 0);
+  const availTotal    = months.reduce((s, m) => s + m.available, 0);
+  const periodOcc = availTotal > 0 ? (occupiedTotal / availTotal * 100).toFixed(1) + '%' : '—';
+  occSummary.appendChild(mkSummaryBox('Period Occupancy', periodOcc, 'occupied ÷ available'));
   const bookings = getPaymentsInRange(curRange.start, curRange.end, new Set([propId])).length;
   occSummary.appendChild(mkSummaryBox('Bookings', bookings.toString(), curRange.label));
   occBody.appendChild(occSummary);
@@ -963,10 +969,10 @@ function openOccModal(data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   body.appendChild(mkModalTable(
-    ['Property', 'Occupancy %', 'Occupied Nights', 'Total Days'],
+    ['Property', 'Occupancy %', 'Occupied Nights', 'Available Nights'],
     props.map(p => {
-      const occ = occByProp.get(p.id) || { pct: 0, blocked: 0, total: 0 };
-      return [shortName(p.name), occ.pct.toFixed(1) + '%', occ.blocked.toString(), occ.total.toString()];
+      const occ = occByProp.get(p.id) || { pct: 0, occupied: 0, available: 0 };
+      return [shortName(p.name), occ.pct.toFixed(1) + '%', occ.occupied.toString(), occ.available.toString()];
     }),
     { highlight: 1 }
   ));
@@ -1046,8 +1052,8 @@ function openMonthSpotlightModal(monthIdx, propId, months, curRange) {
     { label: 'Achieved ADR',   value: mo.adr > 0 ? formatEUR(mo.adr) : '—' },
     { label: 'Target ADR',     value: mo.target != null ? formatEUR(mo.target) : '—' },
     { label: 'Occupancy',      value: mo.occ.toFixed(1) + '%' },
-    { label: 'Occupied Nights', value: mo.blocked.toString() },
-    { label: 'Total Days',     value: mo.total.toString() }
+    { label: 'Occupied Nights',  value: mo.occupied.toString() },
+    { label: 'Available Nights', value: mo.available.toString() }
   ], 3));
 
   if (pays.length) {
