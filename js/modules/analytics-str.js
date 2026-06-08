@@ -1,8 +1,9 @@
 // STR Performance Dashboard — portfolio summary, property spotlight, forward pipeline
-import { el, openModal, fmtDate } from '../core/ui.js';
+import { el, openModal, fmtDate, buildMultiSelect, button } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { state } from '../core/state.js';
 import { formatEUR, listActive, listActivePayments, byId } from '../core/data.js';
+import { OWNERS } from '../core/config.js';
 import {
   mkKpiCard, mkSummaryGrid, mkSummaryBox, mkModalTable, mkSectionLabel,
   mkEmptyState, mkVarianceBadge, mkProgressBar, fmtK, safePct
@@ -17,19 +18,52 @@ const PROP_COLORS = ['#6366f1','#14b8a6','#f59e0b','#ec4899','#22c55e'];
 let gYear = String(new Date().getFullYear());
 let gSpotlightPropId = null;
 
+// Dimension filters (persisted). Empty set = no filter on that dimension.
+const _sf = { props: new Set(), owners: new Set(), regions: new Set() };
+const SF_KEY = 'btf:str_filters';
+function loadStrFilters() {
+  try {
+    const raw = localStorage.getItem(SF_KEY);
+    if (raw) {
+      const o = JSON.parse(raw);
+      _sf.props   = new Set(o.props   || []);
+      _sf.owners  = new Set(o.owners  || []);
+      _sf.regions = new Set(o.regions || []);
+    }
+  } catch { /* ignore corrupt data */ }
+}
+function saveStrFilters() {
+  try { localStorage.setItem(SF_KEY, JSON.stringify({ props: [..._sf.props], owners: [..._sf.owners], regions: [..._sf.regions] })); }
+  catch { /* quota — ignore */ }
+}
+// True if property passes all active filters except the one named `skip`.
+function matchesStrExcept(p, skip) {
+  if (skip !== 'props'   && _sf.props.size   && !_sf.props.has(p.id))            return false;
+  if (skip !== 'owners'  && _sf.owners.size  && !_sf.owners.has(p.owner || '')) return false;
+  if (skip !== 'regions' && _sf.regions.size && !_sf.regions.has(p.country || '')) return false;
+  return true;
+}
+
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
   id: 'analytics-str',
   label: 'STR Performance',
   icon: '⌂',
-  render(container) { container.appendChild(buildView()); },
+  render(container) { loadStrFilters(); container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }
 };
 
 // ── Data helpers ──────────────────────────────────────────────────────────────
-function getStrProps() {
+// All short-term properties (unfiltered — used to build filter options).
+function allStrProps() {
   return listActive('properties').filter(p => p.type === 'short_term');
+}
+// Short-term properties passing the active dimension filters. Everything
+// downstream (portfolio, pipeline, spotlight) builds on this, so the filters
+// flow through the whole dashboard.
+function getStrProps() {
+  return allStrProps().filter(p => matchesStrExcept(p, null));
 }
 
 function getPaymentsForYear(year) {
@@ -76,8 +110,9 @@ function daysInMonth(year, monthIdx) {
 // ── Portfolio-level data ──────────────────────────────────────────────────────
 function getPortfolioData(year) {
   const yr = parseInt(year, 10);
-  const payments = getPaymentsForYear(year);
   const props    = getStrProps();
+  const propIds  = new Set(props.map(p => p.id));
+  const payments = getPaymentsForYear(year).filter(p => propIds.has(p.propertyId));
 
   // Revenue per property
   const revByProp = new Map();
@@ -284,6 +319,9 @@ function buildView() {
   header.appendChild(yearSel);
   _container.appendChild(header);
 
+  // Dimension filters (property / owner / region) — dynamic + interdependent.
+  _container.appendChild(buildStrFilterBar());
+
   if (!data.props.length) {
     _container.appendChild(mkEmptyState('No short-term rental properties found.'));
     return _container;
@@ -314,6 +352,44 @@ function buildView() {
 }
 
 // ── Helper: available years from STR payments
+// Dynamic, interdependent filter bar. Each filter's options are computed from
+// properties passing all OTHER active filters, so selecting one narrows the rest.
+function buildStrFilterBar() {
+  const all = allStrProps();
+  const uniq = (a) => [...new Set(a)].sort();
+  const validProps   = all.filter(p => matchesStrExcept(p, 'props'));
+  const validOwners  = uniq(all.filter(p => matchesStrExcept(p, 'owners')).map(p => p.owner).filter(Boolean));
+  const validRegions = uniq(all.filter(p => matchesStrExcept(p, 'regions')).map(p => p.country).filter(Boolean));
+
+  // Prune selections no longer valid given the other active filters.
+  [..._sf.props].forEach(v => { if (!validProps.some(p => p.id === v)) _sf.props.delete(v); });
+  [..._sf.owners].forEach(v => { if (!validOwners.includes(v)) _sf.owners.delete(v); });
+  [..._sf.regions].forEach(v => { if (!validRegions.includes(v)) _sf.regions.delete(v); });
+  saveStrFilters();
+
+  const onChange = () => { saveStrFilters(); rebuildView(); };
+  const propMS   = buildMultiSelect(validProps.map(p => ({ value: p.id, label: shortName(p.name) })), _sf.props, 'All Properties', onChange);
+  const ownerMS  = buildMultiSelect(validOwners.map(v => ({ value: v, label: OWNERS[v] || v })), _sf.owners, 'All Owners', onChange);
+  const regionMS = buildMultiSelect(validRegions.map(v => ({ value: v, label: v })), _sf.regions, 'All Regions', onChange);
+
+  const resetBtn = button('Reset Filters', {
+    variant: 'sm ghost',
+    onClick: () => {
+      propMS.reset(); ownerMS.reset(); regionMS.reset();
+      _sf.props.clear(); _sf.owners.clear(); _sf.regions.clear();
+      saveStrFilters();
+      rebuildView();
+    }
+  });
+
+  const bar = el('div', { class: 'flex gap-8', style: 'flex-wrap:wrap;align-items:center;margin-bottom:16px' });
+  bar.appendChild(propMS);
+  bar.appendChild(ownerMS);
+  bar.appendChild(regionMS);
+  bar.appendChild(resetBtn);
+  return bar;
+}
+
 function getDataYears() {
   const y = new Set();
   listActivePayments()
@@ -594,7 +670,8 @@ function mkTd(text) {
 
 // ── Property spotlight section ────────────────────────────────────────────────
 function buildSpotlightSection(props) {
-  if (!gSpotlightPropId && props.length) gSpotlightPropId = props[0].id;
+  // Reset the spotlight if its property was filtered out (or none chosen yet).
+  if (props.length && !props.some(p => p.id === gSpotlightPropId)) gSpotlightPropId = props[0].id;
 
   const wrap = el('div', { style: 'margin-bottom:16px' });
   const sectionHeader = el('div', { style: 'display:flex;align-items:center;gap:12px;margin-bottom:12px' });
