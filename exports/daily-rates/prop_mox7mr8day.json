@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-08T18:59:17.279Z",
+  "generatedAt": "2026-06-08T18:59:57.511Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
@@ -511,311 +511,311 @@
       "date": "2026-08-01",
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-02",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-03",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-04",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-05",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-06",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-07",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-08",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-09",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-10",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-11",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-12",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-13",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-14",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-15",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-16",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-17",
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-18",
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-19",
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-20",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-21",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-22",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-23",
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-24",
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-25",
       "currency": "EUR",
       "status": "open",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-26",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-27",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-28",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-29",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-30",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-08-31",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
-      "originalAmount": 80,
+      "basis": "confirmed target",
+      "originalAmount": 84,
       "discountPct": 20,
-      "amount": 64,
-      "airbnbCheckout": 91
+      "amount": 67,
+      "airbnbCheckout": 96
     },
     {
       "date": "2026-09-01",
