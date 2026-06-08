@@ -835,102 +835,7 @@ function buildLeaseExpiryCard() {
   return card;
 }
 
-// ── STR Occupancy Heatmap ─────────────────────────────────────────────────────
-function buildOccupancyHeatmap(propData, monthKeys) {
-  const strProps = propData.filter(d => d.prop.type === 'short_term');
-  const wrap = el('div', { class: 'card mb-16' });
-  wrap.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'STR Occupancy Heatmap'),
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Nights booked ÷ 30 available nights per month')
-  ));
-  if (!strProps.length) {
-    wrap.appendChild(mkEmptyState('No short-term rental properties found.'));
-    return wrap;
-  }
-
-  // Check whether any STR property has airbnbNights data at all
-  let anyNightsData = false;
-  for (const d of strProps) {
-    for (const p of d.propPayments) {
-      if ((p.airbnbNights || 0) > 0) { anyNightsData = true; break; }
-    }
-    if (anyNightsData) break;
-  }
-
-  const body = el('div', { style: 'padding:0 16px 16px;overflow-x:auto' });
-
-  const table = el('table', { class: 'table', style: 'min-width:600px' });
-  // Header row
-  const htr = el('tr');
-  htr.appendChild(el('th', {}, 'Property'));
-  monthKeys.forEach(m => htr.appendChild(el('th', { class: 'right', style: 'white-space:nowrap' }, m.label)));
-  table.appendChild(el('thead', {}, htr));
-
-  const tbody = el('tbody');
-  for (const d of strProps) {
-    const tr = el('tr');
-    // Property name cell with status badge if needed
-    const nameTd = el('td', { style: 'white-space:nowrap;font-weight:600' }, d.prop.name);
-    const propStatus = d.prop.status || 'active';
-    if (propStatus !== 'active') {
-      const statusBadge = buildStatusBadge(propStatus);
-      if (statusBadge) { nameTd.appendChild(document.createTextNode(' ')); nameTd.appendChild(statusBadge); }
-    }
-    tr.appendChild(nameTd);
-
-    for (const m of monthKeys) {
-      const monthPays = d.propPayments.filter(p => (p.date || '').slice(0, 7) === m.key);
-      const nights = monthPays.reduce((s, p) => s + (p.airbnbNights || 0), 0);
-      const hasNightsField = monthPays.some(p => p.airbnbNights !== undefined && p.airbnbNights !== null);
-      const pct = Math.min(100, (nights / 30) * 100);
-
-      const td = el('td', { class: 'right', style: 'cursor:pointer' });
-      if (!hasNightsField || nights === 0) {
-        td.textContent = monthPays.length > 0 ? '—' : '';
-        td.style.color = 'var(--text-muted)';
-      } else {
-        td.textContent = pct.toFixed(0) + '%';
-        if      (pct >= 70) td.style.color = 'var(--success)';
-        else if (pct >= 40) td.style.color = '#f59e0b';
-        else                td.style.color = 'var(--danger)';
-      }
-
-      // Cell click: modal with payments for that property+month
-      if (monthPays.length > 0) {
-        td.title = 'Click for payments';
-        td.onclick = () => {
-          const modalBody = el('div');
-          modalBody.appendChild(mkSectionLabel(`${d.prop.name} — ${m.label}`));
-          modalBody.appendChild(mkModalTable(
-            [{ label: 'Date' }, { label: 'Nights', right: true }, { label: 'Amount (EUR)', right: true }],
-            [...monthPays].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(p => [
-              fmtDate(p.date),
-              p.airbnbNights != null ? String(p.airbnbNights) : '—',
-              formatEUR(toEUR(p.amount, p.currency, p.date))
-            ])
-          ));
-          openModal({ title: `Occupancy — ${d.prop.name} · ${m.label}`, body: modalBody, large: true });
-        };
-      }
-      tr.appendChild(td);
-    }
-    tbody.appendChild(tr);
-  }
-  table.appendChild(tbody);
-
-  const tableWrap = el('div', { class: 'table-wrap' });
-  tableWrap.appendChild(table);
-  body.appendChild(tableWrap);
-
-  if (!anyNightsData) {
-    body.appendChild(el('div', {
-      style: 'margin-top:10px;padding:10px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:12px;color:#92400e'
-    }, '⚠ Occupancy data requires Airbnb nights. Import an Airbnb CSV in the Payments section to populate this field.'));
-  }
-
-  wrap.appendChild(body);
-  return wrap;
-}
+// (STR Occupancy Heatmap moved to the STR Performance dashboard — analytics-str.js)
 
 // ── Status badge helper ───────────────────────────────────────────────────────
 function buildStatusBadge(status) {
@@ -1157,76 +1062,10 @@ function buildView() {
   const opData  = getOperationalData({ propData, payments, start, end });
   const opKpiRow = el('div', { class: 'grid grid-4 mb-16' });
 
-  // 1. Occupancy Rate
-  const occ = opData.occupancy;
-  opKpiRow.appendChild(mkKpiCard({
-    label:   'Occupancy Rate',
-    value:   occ.nightsDataAvail && occ.rate !== null ? occ.rate.toFixed(1) + '%' : 'N/A',
-    subtitle: occ.nightsDataAvail
-      ? `${Math.round(occ.nightsBooked)} / ${occ.availNights} nights · ${occ.strCount} STR prop${occ.strCount !== 1 ? 's' : ''}`
-      : 'Nights data unavailable',
-    variant: occ.nightsDataAvail && occ.rate !== null
-      ? (occ.rate >= 70 ? 'success' : occ.rate >= 50 ? 'warning' : 'danger') : '',
-    onClick: () => {
-      const body = el('div');
-      if (!occ.nightsDataAvail) {
-        body.appendChild(el('p', { style: 'color:var(--text-muted);font-size:13px' },
-          'Nights data is unavailable. To track occupancy, import Airbnb CSV exports or enter check-in / check-out dates on STR payments.'
-        ));
-      } else {
-        body.appendChild(mkSummaryBox('Portfolio Occupancy', occ.rate !== null ? occ.rate.toFixed(1) + '%' : '—', `${Math.round(occ.nightsBooked)} booked of ${occ.availNights} available nights`));
-        body.appendChild(el('div', { style: 'margin-top:16px' }));
-        body.appendChild(mkSectionLabel('Per Property'));
-        body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Nights Booked', right: true }, { label: 'Available', right: true }, { label: 'Occupancy %', right: true }],
-          occ.perProp.map(p => [
-            p.name,
-            p.hasData ? String(Math.round(p.booked)) : '—',
-            String(p.available),
-            p.pct !== null ? p.pct.toFixed(1) + '%' : '—'
-          ])
-        ));
-      }
-      openModal({ title: 'Occupancy Rate — STR Properties', body, large: true });
-    }
-  }));
+  // Occupancy Rate and Avg Nightly Rate (ADR) KPIs intentionally live only in
+  // the STR Performance dashboard — Property Performance is portfolio/financial.
 
-  // 2. Average Daily Rate (ADR)
-  const adrData = opData.adr;
-  opKpiRow.appendChild(mkKpiCard({
-    label:    'Avg Nightly Rate (ADR)',
-    value:    adrData.nightsDataAvail && adrData.value !== null ? formatEUR(adrData.value) : 'N/A',
-    subtitle: adrData.nightsDataAvail
-      ? `${formatEUR(adrData.strRevenue)} STR revenue ÷ ${Math.round(adrData.totalNightsBooked)} nights`
-      : 'Nights data unavailable',
-    onClick: () => {
-      const body = el('div');
-      if (!adrData.nightsDataAvail) {
-        body.appendChild(el('p', { style: 'color:var(--text-muted);font-size:13px' },
-          'Nights data is unavailable. ADR requires check-in / check-out dates or Airbnb CSV imports.'
-        ));
-      } else {
-        const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
-        sgrid.appendChild(mkSummaryBox('STR Revenue', formatEUR(adrData.strRevenue), null));
-        sgrid.appendChild(mkSummaryBox('Total Nights', String(Math.round(adrData.totalNightsBooked)), null));
-        sgrid.appendChild(mkSummaryBox('Portfolio ADR', adrData.value !== null ? formatEUR(adrData.value) : '—', null));
-        body.appendChild(sgrid);
-        body.appendChild(mkSectionLabel('Per Property ADR'));
-        body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Revenue', right: true }, { label: 'Nights', right: true }, { label: 'ADR', right: true }],
-          adrData.perProp.map(p => [
-            p.name,
-            formatEUR(p.rev),
-            p.hasData ? String(Math.round(p.booked)) : '—',
-            p.adr !== null ? formatEUR(p.adr) : '—'
-          ])
-        ));
-      }
-      openModal({ title: 'Average Nightly Rate (ADR) — STR Properties', body, large: true });
-    }
-  }));
-
-  // 3. Rental Yield (gross + net)
+  // 1. Rental Yield (gross + net)
   const ryData = opData.rentalYield;
   // Compute net yield: netIncome / totalInvested * 100, averaged across props with totalInvested > 0
   const netYieldItems = propData.filter(d => d.totalInvested > 0);
@@ -1284,7 +1123,7 @@ function buildView() {
     }
   }));
 
-  // 4. Vacancy / Dead Months
+  // 2. Vacancy / Dead Months
   const vacData = opData.vacancy;
   opKpiRow.appendChild(mkKpiCard({
     label:   'Vacancy / Dead Months',
@@ -1376,9 +1215,7 @@ function buildView() {
   // ── Lease Expiry Alerts ────────────────────────────────────────────────────
   wrap.appendChild(buildLeaseExpiryCard());
 
-  // ── STR Occupancy Heatmap ──────────────────────────────────────────────────
-  const { keys: heatmapMonthKeys } = getMonthKeysForRange(start, end);
-  wrap.appendChild(buildOccupancyHeatmap(propData, heatmapMonthKeys));
+  // STR Occupancy Heatmap moved to the STR Performance dashboard.
 
   // ── Portfolio Acquisition & Growth ─────────────────────────────────────────
   const acqData = getAcquisitionData(allProps);
@@ -1661,7 +1498,7 @@ function buildComparisonSection({ propData, avgROI, best, worst }) {
   if (!best) return null;
   const section = el('div', { class: 'card mb-16' });
   section.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Property Comparison'),
+    el('div', { class: 'card-title' }, 'Property P&L & ROI Comparison'),
     el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click tiles for transactions')
   ));
   const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;padding:16px' });

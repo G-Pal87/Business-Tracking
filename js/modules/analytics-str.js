@@ -1,5 +1,5 @@
 // STR Performance Dashboard — portfolio summary, property spotlight, forward pipeline
-import { el, openModal } from '../core/ui.js';
+import { el, openModal, fmtDate } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { state } from '../core/state.js';
 import { formatEUR, listActive, listActivePayments, byId } from '../core/data.js';
@@ -298,6 +298,9 @@ function buildView() {
   twoCol.appendChild(buildOccupancyCard(data));
   _container.appendChild(twoCol);
 
+  // ── Section 2b: Occupancy heatmap (property × month)
+  _container.appendChild(buildStrOccupancyHeatmap(data));
+
   // ── Section 3: Property comparison table
   _container.appendChild(buildComparisonTable(data));
 
@@ -453,12 +456,82 @@ function buildOccupancyCard(data) {
   return card;
 }
 
+// ── Occupancy heatmap (property × month, booked nights) ───────────────────────
+function buildStrOccupancyHeatmap(data) {
+  const { props, payments } = data;
+  const yr = parseInt(gYear, 10);
+  const card = el('div', { class: 'card', style: 'margin-bottom:16px' });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, 'Occupancy Heatmap'),
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Booked nights ÷ days per month')
+  ));
+  if (!props.length) { card.appendChild(mkEmptyState('No short-term rental properties found.')); return card; }
+
+  const body = el('div', { style: 'padding:0 16px 16px;overflow-x:auto' });
+  const table = el('table', { class: 'table', style: 'min-width:600px' });
+  const htr = el('tr');
+  htr.appendChild(el('th', {}, 'Property'));
+  for (let m = 0; m < 12; m++) htr.appendChild(el('th', { class: 'right', style: 'white-space:nowrap' }, ML[m]));
+  table.appendChild(el('thead', {}, htr));
+
+  let anyNights = false;
+  const tbody = el('tbody');
+  for (const p of props) {
+    const tr = el('tr');
+    tr.appendChild(el('td', { style: 'white-space:nowrap;font-weight:600' }, shortName(p.name)));
+    for (let m = 0; m < 12; m++) {
+      const mk = `${gYear}-${String(m + 1).padStart(2, '0')}`;
+      const monthPays = payments.filter(pay => pay.propertyId === p.id && (pay.date || '').slice(0, 7) === mk);
+      const nights = monthPays.reduce((s, pay) => s + (pay.airbnbNights || 0), 0);
+      const hasField = monthPays.some(pay => pay.airbnbNights != null);
+      if (nights > 0) anyNights = true;
+      const dim = daysInMonth(yr, m);
+      const pct = Math.min(100, dim > 0 ? nights / dim * 100 : 0);
+      const td = el('td', { class: 'right', style: 'cursor:pointer' });
+      if (!hasField || nights === 0) {
+        td.textContent = monthPays.length > 0 ? '—' : '';
+        td.style.color = 'var(--text-muted)';
+      } else {
+        td.textContent = pct.toFixed(0) + '%';
+        td.style.color = pct >= 70 ? 'var(--success)' : pct >= 40 ? '#f59e0b' : 'var(--danger)';
+      }
+      if (monthPays.length > 0) {
+        td.title = 'Click for payments';
+        td.onclick = () => {
+          const mb = el('div');
+          mb.appendChild(mkSectionLabel(`${shortName(p.name)} — ${ML[m]} ${gYear}`));
+          mb.appendChild(mkModalTable(
+            [{ label: 'Date' }, { label: 'Nights', right: true }, { label: 'Amount', right: true }],
+            [...monthPays].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(pay => [
+              fmtDate(pay.date),
+              pay.airbnbNights != null ? String(pay.airbnbNights) : '—',
+              formatEUR(pay.amount)
+            ])
+          ));
+          openModal({ title: `Occupancy — ${shortName(p.name)} · ${ML[m]} ${gYear}`, body: mb, large: true });
+        };
+      }
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  const tw = el('div', { class: 'table-wrap' }); tw.appendChild(table); body.appendChild(tw);
+  if (!anyNights) {
+    body.appendChild(el('div', {
+      style: 'margin-top:10px;padding:10px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:12px;color:#92400e'
+    }, '⚠ Occupancy data requires Airbnb nights. Import an Airbnb CSV in the Payments section to populate this field.'));
+  }
+  card.appendChild(body);
+  return card;
+}
+
 // ── Property comparison table ─────────────────────────────────────────────────
 function buildComparisonTable(data) {
   const { props, revByProp, occByProp, payments, totalRev } = data;
   const card = el('div', { class: 'card', style: 'margin-bottom:16px' });
   card.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Property Comparison')
+    el('div', { class: 'card-title' }, 'STR Property Comparison (Occupancy & ADR)')
   ));
   const body = el('div', { style: 'padding:0 16px 16px;overflow-x:auto' });
 
