@@ -33133,12 +33133,6 @@
       "url": "https://www.airbnb.co.uk/calendar/ical/1341854905555812998.ics?t=1e2c75c8b84645a4ac88669d8ec7bdda",
       "blocks": [
         {
-          "start": "2026-06-03",
-          "end": "2026-06-06",
-          "uid": "1418fb94e984-ddb3567c1700b5402d3efead2c8c27ae@airbnb.com",
-          "summary": "Reserved"
-        },
-        {
           "start": "2026-06-06",
           "end": "2026-06-12",
           "uid": "1418fb94e984-f2d64e5e718bfc8ff6693f41a89504b7@airbnb.com",
@@ -33176,7 +33170,7 @@
         },
         {
           "start": "2027-06-03",
-          "end": "2027-06-08",
+          "end": "2027-06-09",
           "uid": "7f662ec65913-80d6d2e9572bd652f8e1c60bb8efcf95@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
@@ -33186,7 +33180,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780328020776,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-07T21:16:46.666Z"
+      "lastFetched": "2026-06-08T04:17:37.903Z"
     },
     {
       "id": "stc_5c75cde224e04bef95883c5126497766",
@@ -33231,7 +33225,7 @@
         },
         {
           "start": "2027-06-03",
-          "end": "2027-06-08",
+          "end": "2027-06-09",
           "uid": "7f662ec65913-80d6d2e9572bd652f8e1c60bb8efcf95@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
@@ -33241,19 +33235,13 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780328947373,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-07T21:16:47.721Z"
+      "lastFetched": "2026-06-08T04:17:38.588Z"
     },
     {
       "id": "stc_371e30d84db64e0d9c7e47be2cc97d42",
       "propertyId": "prop_mox7mr8day",
       "url": "https://www.airbnb.gr/calendar/ical/1389855941514317769.ics?t=a2520714c5a34b1daa3b808b6c1bfd0e",
       "blocks": [
-        {
-          "start": "2026-05-31",
-          "end": "2026-06-06",
-          "uid": "1418fb94e984-d29e02cd47aa2144506aa593470eacbd@airbnb.com",
-          "summary": "Reserved"
-        },
         {
           "start": "2026-06-06",
           "end": "2026-06-14",
@@ -33316,7 +33304,7 @@
         },
         {
           "start": "2027-06-03",
-          "end": "2027-06-08",
+          "end": "2027-06-09",
           "uid": "7f662ec65913-80d6d2e9572bd652f8e1c60bb8efcf95@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
@@ -33326,7 +33314,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780351571406,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-07T21:16:48.566Z"
+      "lastFetched": "2026-06-08T04:17:38.968Z"
     }
   ],
   "strRateTargets": [
