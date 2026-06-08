@@ -123,8 +123,9 @@ function buildOccupiedDateSet(propId, blocks) {
 
 // Iterate each day in [start,end] inclusive. Returns { total, blocked } plus a
 // per-month-key blocked tally (keyed 'YYYY-MM') for target / heatmap reuse.
-function rangeOccupancy(blockedSet, start, end) {
-  let total = 0, blocked = 0;
+// If rateFn is supplied, also sums the published rate over occupied days (rev).
+function rangeOccupancy(blockedSet, start, end, rateFn) {
+  let total = 0, blocked = 0, rev = 0;
   const blockedByMonth = new Map();
   const d   = new Date(start + 'T00:00:00');
   const lim = new Date(end + 'T00:00:00');
@@ -135,10 +136,57 @@ function rangeOccupancy(blockedSet, start, end) {
       blocked++;
       const mk = ds.slice(0, 7);
       blockedByMonth.set(mk, (blockedByMonth.get(mk) || 0) + 1);
+      if (rateFn) rev += rateFn(ds, false);
     }
     d.setDate(d.getDate() + 1);
   }
-  return { total, blocked, blockedByMonth };
+  return { total, blocked, blockedByMonth, rev };
+}
+
+// Historic achieved-ADR suggester for a property — same priority as the daily-
+// rate feed: same calendar day across prior years → same month → overall average.
+function buildAdrSuggester(propId) {
+  const byMonthDay = new Map(), byMonth = new Map(), all = [];
+  listActivePayments().forEach(p => {
+    if (p.propertyId !== propId || p.stream !== 'short_term_rental' || p.status !== 'paid') return;
+    const rate = p.avgNightExclCleaning != null ? p.avgNightExclCleaning
+               : (p.avgNightlyRate != null ? p.avgNightlyRate : null);
+    if (rate == null || rate <= 0) return;
+    const ci = p.airbnbCheckIn || p.checkIn, co = p.airbnbCheckOut || p.checkOut;
+    if (!ci || !co) return;
+    const d = new Date(ci + 'T00:00:00'), e = new Date(co + 'T00:00:00');
+    while (d < e) {
+      const ds = d.toISOString().slice(0, 10), md = ds.slice(5), mo = ds.slice(5, 7);
+      (byMonthDay.get(md) || byMonthDay.set(md, []).get(md)).push(rate);
+      (byMonth.get(mo)    || byMonth.set(mo, []).get(mo)).push(rate);
+      all.push(rate);
+      d.setDate(d.getDate() + 1);
+    }
+  });
+  const avg = a => a.reduce((s, r) => s + r, 0) / a.length;
+  const overall = all.length ? avg(all) : null;
+  return (date) => {
+    const md = byMonthDay.get(date.slice(5));   if (md && md.length) return avg(md);
+    const mo = byMonth.get(date.slice(5, 7));   if (mo && mo.length) return avg(mo);
+    return overall;
+  };
+}
+
+// Published nightly rate for a property on a date — mirrors the daily-rate feed:
+// confirmed target ADR (optionally after promo discount) when set, otherwise the
+// historic suggestion. Keeps dashboard revenue tied to the rates we actually push
+// instead of zeroing months that have no confirmed target.
+function makeRateForNight(propId) {
+  const globalDisc = state.db.settings?.airbnb?.globalDiscountPct ?? 0;
+  const suggest = buildAdrSuggester(propId);
+  return (date, applyDiscount) => {
+    const t = getTargetADR(propId, date.slice(0, 7));
+    if (t) {
+      const disc = (t.discountPct != null ? t.discountPct : globalDisc) / 100;
+      return (t.targetADR || 0) * (applyDiscount ? (1 - disc) : 1);
+    }
+    return suggest(date) || 0;
+  };
 }
 
 // ── Portfolio-level data ──────────────────────────────────────────────────────
@@ -182,27 +230,24 @@ function getPortfolioData(curRange, cmpRange) {
   // may start / end mid-month). Keep a per-month blocked tally for the target calc.
   const occByProp = new Map();
   const blockedByMonthByProp = new Map();
+  const targetRevByProp = new Map();
+  let targetRev = 0;
   props.forEach(p => {
     const cal = getCalendar(p.id);
     const occSet = buildOccupiedDateSet(p.id, cal?.blocks || []);
-    const { total, blocked, blockedByMonth } = rangeOccupancy(occSet, curRange.start, curRange.end);
+    const rateForNight = makeRateForNight(p.id);
+    // Expected ("target") revenue values each occupied night at the published
+    // rate (confirmed target if set, else historic suggestion) — no more €0 for
+    // properties/months without a confirmed target.
+    const { total, blocked, blockedByMonth, rev } = rangeOccupancy(occSet, curRange.start, curRange.end, rateForNight);
     occByProp.set(p.id, { blocked, total, pct: total > 0 ? blocked / total * 100 : 0 });
     blockedByMonthByProp.set(p.id, blockedByMonth);
+    targetRevByProp.set(p.id, rev);
+    targetRev += rev;
   });
   const totalDays    = [...occByProp.values()].reduce((s, v) => s + v.total, 0);
   const totalBlocked = [...occByProp.values()].reduce((s, v) => s + v.blocked, 0);
   const avgOcc = totalDays > 0 ? totalBlocked / totalDays * 100 : 0;
-
-  // Target revenue: sum of confirmed targetADR × blocked nights per month within
-  // the range. Reuse the per-month blocked tally from the occupancy step.
-  let targetRev = 0;
-  props.forEach(prop => {
-    const blockedByMonth = blockedByMonthByProp.get(prop.id) || new Map();
-    monthKeys.forEach(k => {
-      const t = getTargetADR(prop.id, k.key);
-      if (t) targetRev += (t.targetADR || 0) * (blockedByMonth.get(k.key) || 0);
-    });
-  });
 
   // Comparison range for KPI deltas — same active prop ids. Null when off.
   let prevRev = null, prevNights = null;
@@ -214,7 +259,7 @@ function getPortfolioData(curRange, cmpRange) {
 
   return {
     payments, props, revByProp, totalRev, revByMonth, monthKeys, keyIndex,
-    blockedByMonthByProp,
+    blockedByMonthByProp, targetRevByProp,
     totalNights, avgADR, avgOcc, occByProp, targetRev,
     prevRev, prevNights,
     rangeLabel: curRange.label,
@@ -265,8 +310,6 @@ function getForwardPipeline() {
   end90.setDate(today.getDate() + 90);
 
   const props = getStrProps();
-  const globalDisc = state.db.settings?.airbnb?.globalDiscountPct ?? 0;
-  const targets = state.db.strRateTargets || [];
   const results = [];
 
   props.forEach(prop => {
@@ -279,37 +322,23 @@ function getForwardPipeline() {
     });
 
     let lockedNights = 0;
-    let lockedRevMin = 0; // at published rate
+    let lockedRevMin = 0; // booked nights × published rate (after promo discount)
     let openNights   = 0;
-    let potRevMax    = 0; // open nights × best available target
+    let potRevMax    = 0; // open nights × published rate (full)
 
-    // Count locked nights from iCal blocks
-    blocks.forEach(b => {
-      const bs = new Date(b.start > today.toISOString().slice(0,10) ? b.start : today.toISOString().slice(0,10));
-      const be = new Date(b.end);
-      const clampedEnd = be < end90 ? be : end90;
-      const nights = Math.round((clampedEnd - bs) / 86400000);
-      if (nights > 0) {
-        lockedNights += nights;
-        // Get target ADR for the month of check-in
-        const mk = b.start.slice(0, 7);
-        const t  = targets.find(t => t.propertyId === prop.id && t.month === mk);
-        const disc = (t?.discountPct != null ? t.discountPct : globalDisc) / 100;
-        const rate = t ? (t.targetADR || 0) * (1 - disc) : 0;
-        lockedRevMin += rate * nights;
-      }
-    });
-
-    // Count open nights (not blocked) in next 90 days
+    // Value every night in the next 90 days at the published rate (confirmed
+    // target if set, otherwise the historic suggestion) — same as the feed.
+    const rateForNight = makeRateForNight(prop.id);
     const d = new Date(today);
     while (d < end90) {
       const ds = d.toISOString().slice(0, 10);
       const isBlocked = blocks.some(b => ds >= b.start && ds < b.end);
-      if (!isBlocked) {
+      if (isBlocked) {
+        lockedNights++;
+        lockedRevMin += rateForNight(ds, true);
+      } else {
         openNights++;
-        const mk = ds.slice(0, 7);
-        const t  = targets.find(t => t.propertyId === prop.id && t.month === mk);
-        if (t) potRevMax += (t.targetADR || 0);
+        potRevMax += rateForNight(ds, false);
       }
       d.setDate(d.getDate() + 1);
     }
@@ -946,7 +975,7 @@ function openOccModal(data) {
 }
 
 function openTargetModal(data) {
-  const { props, revByProp, targetRev, totalRev, monthKeys, blockedByMonthByProp } = data;
+  const { props, revByProp, targetRev, totalRev } = data;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   body.appendChild(mkSummaryGrid([
@@ -957,17 +986,12 @@ function openTargetModal(data) {
   ], 4));
 
   body.appendChild(mkSectionLabel('By Property'));
-  const targets = state.db.strRateTargets || [];
+  const { targetRevByProp } = data;
   body.appendChild(mkModalTable(
     ['Property', 'Actual', 'Target', 'Achievement'],
     props.map(p => {
-      const rev    = revByProp.get(p.id) || 0;
-      const blockedByMonth = blockedByMonthByProp.get(p.id) || new Map();
-      let propTarget = 0;
-      monthKeys.forEach(k => {
-        const t = targets.find(t => t.propertyId === p.id && t.month === k.key);
-        if (t) propTarget += (t.targetADR || 0) * (blockedByMonth.get(k.key) || 0);
-      });
+      const rev = revByProp.get(p.id) || 0;
+      const propTarget = targetRevByProp.get(p.id) || 0;
       const ach = propTarget > 0 ? (rev / propTarget * 100).toFixed(1) + '%' : '—';
       return [shortName(p.name), formatEUR(rev), propTarget > 0 ? formatEUR(propTarget) : '—', ach];
     }),
