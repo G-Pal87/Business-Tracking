@@ -1,10 +1,12 @@
 // STR Performance Dashboard — portfolio summary, property spotlight, forward pipeline
-import { el, openModal, fmtDate, buildMultiSelect, button } from '../core/ui.js';
+import { el, openModal, fmtDate } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { state } from '../core/state.js';
 import { formatEUR, listActive, listActivePayments, byId } from '../core/data.js';
-import { OWNERS } from '../core/config.js';
-import { buildComparisonLine } from './analytics-filters.js';
+import {
+  createFilterState, getCurrentPeriodRange, getComparisonRange,
+  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
+} from './analytics-filters.js';
 import {
   mkKpiCard, mkSummaryGrid, mkSummaryBox, mkModalTable, mkSectionLabel,
   mkEmptyState, mkVarianceBadge, mkProgressBar, fmtK, safePct
@@ -12,53 +14,18 @@ import {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = ['str-rev-trend', 'str-occ-bar', 'str-adr-line', 'str-prop-rev-donut', 'str-spotlight-adr', 'str-spotlight-occ'];
-const ML = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const PROP_COLORS = ['#6366f1','#14b8a6','#f59e0b','#ec4899','#22c55e'];
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let gYear = String(new Date().getFullYear());
+let gF = createFilterState({ period: 'this-year', compareTo: 'prev-year' });
 let gSpotlightPropId = null;
-let gCompare = 'prev-year'; // 'none' | 'prev-year' | a specific 'YYYY'
-
-// Dimension filters (persisted). Empty set = no filter on that dimension.
-const _sf = { props: new Set(), owners: new Set(), regions: new Set() };
-const SF_KEY = 'btf:str_filters';
-function loadStrFilters() {
-  try {
-    const raw = localStorage.getItem(SF_KEY);
-    if (raw) {
-      const o = JSON.parse(raw);
-      _sf.props   = new Set(o.props   || []);
-      _sf.owners  = new Set(o.owners  || []);
-      _sf.regions = new Set(o.regions || []);
-      if (o.compare) gCompare = o.compare;
-    }
-  } catch { /* ignore corrupt data */ }
-}
-function saveStrFilters() {
-  try { localStorage.setItem(SF_KEY, JSON.stringify({ props: [..._sf.props], owners: [..._sf.owners], regions: [..._sf.regions], compare: gCompare })); }
-  catch { /* quota — ignore */ }
-}
-// Resolve the comparison year from the current selection (null = no comparison).
-function compareYear() {
-  if (gCompare === 'none') return null;
-  if (gCompare === 'prev-year') return String(parseInt(gYear, 10) - 1);
-  return gCompare;
-}
-// True if property passes all active filters except the one named `skip`.
-function matchesStrExcept(p, skip) {
-  if (skip !== 'props'   && _sf.props.size   && !_sf.props.has(p.id))            return false;
-  if (skip !== 'owners'  && _sf.owners.size  && !_sf.owners.has(p.owner || '')) return false;
-  if (skip !== 'regions' && _sf.regions.size && !_sf.regions.has(p.country || '')) return false;
-  return true;
-}
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
   id: 'analytics-str',
   label: 'STR Performance',
   icon: '⌂',
-  render(container) { loadStrFilters(); container.appendChild(buildView()); },
+  render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }
 };
@@ -68,19 +35,24 @@ export default {
 function allStrProps() {
   return listActive('properties').filter(p => p.type === 'short_term');
 }
-// Short-term properties passing the active dimension filters. Everything
-// downstream (portfolio, pipeline, spotlight) builds on this, so the filters
-// flow through the whole dashboard.
+// Short-term properties passing the active owner / property dimension filters.
+// Everything downstream (portfolio, pipeline, spotlight) builds on this, so the
+// filters flow through the whole dashboard.
 function getStrProps() {
-  return allStrProps().filter(p => matchesStrExcept(p, null));
+  const { mOwner } = makeMatchers(gF);
+  return allStrProps().filter(p =>
+    mOwner(p) && (!gF.propertyIds.size || gF.propertyIds.has(p.id))
+  );
 }
 
-function getPaymentsForYear(year) {
-  const prefix = year + '-';
+// Paid STR payments inside an inclusive [start,end] date range, restricted to
+// the supplied property ids.
+function getPaymentsInRange(start, end, propIds) {
   return listActivePayments().filter(p =>
     p.stream === 'short_term_rental' &&
     p.status === 'paid' &&
-    (p.date || '').startsWith(prefix)
+    (p.date || '') >= start && (p.date || '') <= end &&
+    p.propertyId && propIds.has(p.propertyId)
   );
 }
 
@@ -116,12 +88,50 @@ function daysInMonth(year, monthIdx) {
   return new Date(year, monthIdx + 1, 0).getDate();
 }
 
+// Build a Set of every blocked (booked/reserved) date 'YYYY-MM-DD' from iCal
+// blocks. Each block covers [start, end) — the end (check-out) day is open.
+function buildBlockedDateSet(blocks) {
+  const set = new Set();
+  if (!blocks?.length) return set;
+  for (const b of blocks) {
+    if (!b.start || !b.end) continue;
+    const d  = new Date(b.start);
+    const be = new Date(b.end);
+    while (d < be) {
+      set.add(d.toISOString().slice(0, 10));
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  return set;
+}
+
+// Iterate each day in [start,end] inclusive. Returns { total, blocked } plus a
+// per-month-key blocked tally (keyed 'YYYY-MM') for target / heatmap reuse.
+function rangeOccupancy(blockedSet, start, end) {
+  let total = 0, blocked = 0;
+  const blockedByMonth = new Map();
+  const d   = new Date(start + 'T00:00:00');
+  const lim = new Date(end + 'T00:00:00');
+  while (d <= lim) {
+    const ds = d.toISOString().slice(0, 10);
+    total++;
+    if (blockedSet.has(ds)) {
+      blocked++;
+      const mk = ds.slice(0, 7);
+      blockedByMonth.set(mk, (blockedByMonth.get(mk) || 0) + 1);
+    }
+    d.setDate(d.getDate() + 1);
+  }
+  return { total, blocked, blockedByMonth };
+}
+
 // ── Portfolio-level data ──────────────────────────────────────────────────────
-function getPortfolioData(year, cmpYear) {
-  const yr = parseInt(year, 10);
+function getPortfolioData(curRange, cmpRange) {
   const props    = getStrProps();
   const propIds  = new Set(props.map(p => p.id));
-  const payments = getPaymentsForYear(year).filter(p => propIds.has(p.propertyId));
+  const payments = getPaymentsInRange(curRange.start, curRange.end, propIds);
+  const monthKeys = getMonthKeysForRange(curRange.start, curRange.end).keys;
+  const keyIndex = new Map(monthKeys.map((k, i) => [k.key, i]));
 
   // Revenue per property
   const revByProp = new Map();
@@ -131,12 +141,13 @@ function getPortfolioData(year, cmpYear) {
   });
   const totalRev = [...revByProp.values()].reduce((s, v) => s + v, 0);
 
-  // Revenue by month (for trend chart)
-  const revByMonth = Array.from({ length: 12 }, () => ({}));
+  // Revenue by month-key (for trend chart) — one object per month in the range.
+  const revByMonth = monthKeys.map(() => ({}));
   payments.forEach(p => {
-    const mo = parseInt((p.date || '').slice(5, 7), 10) - 1;
-    if (mo >= 0 && mo < 12 && p.propertyId) {
-      revByMonth[mo][p.propertyId] = (revByMonth[mo][p.propertyId] || 0) + p.amount;
+    const mk  = (p.date || '').slice(0, 7);
+    const idx = keyIndex.get(mk);
+    if (idx != null && p.propertyId) {
+      revByMonth[idx][p.propertyId] = (revByMonth[idx][p.propertyId] || 0) + p.amount;
     }
   });
 
@@ -151,70 +162,75 @@ function getPortfolioData(year, cmpYear) {
   });
   const avgADR = nightsWithADR > 0 ? adrSum / nightsWithADR : 0;
 
-  // Occupancy: blocked nights from iCal vs total days in year
+  // Occupancy: blocked nights from iCal vs total days, range-accurate (the range
+  // may start / end mid-month). Keep a per-month blocked tally for the target calc.
   const occByProp = new Map();
+  const blockedByMonthByProp = new Map();
   props.forEach(p => {
     const cal = getCalendar(p.id);
-    const blocks = cal?.blocks || [];
-    let blocked = 0, total = 0;
-    for (let m = 0; m < 12; m++) {
-      total   += daysInMonth(yr, m);
-      blocked += countBlockedNights(blocks, yr, m);
-    }
+    const blockedSet = buildBlockedDateSet(cal?.blocks || []);
+    const { total, blocked, blockedByMonth } = rangeOccupancy(blockedSet, curRange.start, curRange.end);
     occByProp.set(p.id, { blocked, total, pct: total > 0 ? blocked / total * 100 : 0 });
+    blockedByMonthByProp.set(p.id, blockedByMonth);
   });
   const totalDays    = [...occByProp.values()].reduce((s, v) => s + v.total, 0);
   const totalBlocked = [...occByProp.values()].reduce((s, v) => s + v.blocked, 0);
   const avgOcc = totalDays > 0 ? totalBlocked / totalDays * 100 : 0;
 
-  // Target revenue: sum of confirmed targetADR × blocked nights per month
+  // Target revenue: sum of confirmed targetADR × blocked nights per month within
+  // the range. Reuse the per-month blocked tally from the occupancy step.
   let targetRev = 0;
   props.forEach(prop => {
-    const cal = getCalendar(prop.id);
-    for (let m = 0; m < 12; m++) {
-      const mk = `${year}-${String(m + 1).padStart(2, '0')}`;
-      const t  = getTargetADR(prop.id, mk);
-      if (t) {
-        const nights = countBlockedNights(cal?.blocks || [], yr, m);
-        targetRev += (t.targetADR || 0) * nights;
-      }
-    }
+    const blockedByMonth = blockedByMonthByProp.get(prop.id) || new Map();
+    monthKeys.forEach(k => {
+      const t = getTargetADR(prop.id, k.key);
+      if (t) targetRev += (t.targetADR || 0) * (blockedByMonth.get(k.key) || 0);
+    });
   });
 
-  // Comparison period (chosen year) for KPI deltas — respects the active
-  // property/owner filters. Null when comparison is turned off.
+  // Comparison range for KPI deltas — same active prop ids. Null when off.
   let prevRev = null, prevNights = null;
-  if (cmpYear) {
-    const cmpPayments = getPaymentsForYear(cmpYear).filter(p => propIds.has(p.propertyId));
+  if (cmpRange) {
+    const cmpPayments = getPaymentsInRange(cmpRange.start, cmpRange.end, propIds);
     prevRev = cmpPayments.reduce((s, p) => s + p.amount, 0);
     prevNights = cmpPayments.reduce((s, p) => s + (p.airbnbNights || 0), 0);
   }
 
   return {
-    payments, props, revByProp, totalRev, revByMonth,
+    payments, props, revByProp, totalRev, revByMonth, monthKeys, keyIndex,
+    blockedByMonthByProp,
     totalNights, avgADR, avgOcc, occByProp, targetRev,
-    prevRev, prevNights, cmpYear
+    prevRev, prevNights,
+    rangeLabel: curRange.label,
+    cmpLabel: cmpRange ? cmpRange.label : null
   };
 }
 
 // ── Property spotlight data ───────────────────────────────────────────────────
-function getSpotlightData(propId, year) {
-  const yr = parseInt(year, 10);
-  const payments = getPaymentsForYear(year).filter(p => p.propertyId === propId);
+function getSpotlightData(propId, curRange) {
+  const payments = getPaymentsInRange(curRange.start, curRange.end, new Set([propId]));
   const cal = getCalendar(propId);
-  const blocks = cal?.blocks || [];
+  const blockedSet = buildBlockedDateSet(cal?.blocks || []);
+  const monthKeys = getMonthKeysForRange(curRange.start, curRange.end).keys;
+  const { blockedByMonth } = rangeOccupancy(blockedSet, curRange.start, curRange.end);
 
-  const months = Array.from({ length: 12 }, (_, m) => {
-    const mk       = `${year}-${String(m + 1).padStart(2, '0')}`;
+  // Per-month "total days" must respect the range bounds (a partial first/last month).
+  const months = monthKeys.map(k => {
+    const mk       = k.key;
     const target   = getTargetADR(propId, mk);
     const paysInMo = payments.filter(p => (p.date || '').startsWith(mk));
     const rev      = paysInMo.reduce((s, p) => s + p.amount, 0);
     const nights   = paysInMo.reduce((s, p) => s + (p.airbnbNights || 0), 0);
     const adr      = nights > 0 ? paysInMo.reduce((s, p) => s + (p.avgNightlyRate || 0) * (p.airbnbNights || 0), 0) / nights : 0;
-    const blocked  = countBlockedNights(blocks, yr, m);
-    const total    = daysInMonth(yr, m);
-    const occ      = total > 0 ? blocked / total * 100 : 0;
-    return { mk, label: ML[m], target: target?.targetADR || null, rev, nights, adr, blocked, total, occ };
+    const blocked  = blockedByMonth.get(mk) || 0;
+    // Days of this month that fall inside the range.
+    const monthStart = `${mk}-01`;
+    const monthEnd   = `${mk}-${String(daysInMonth(+k.y, k.m - 1)).padStart(2, '0')}`;
+    const lo = monthStart > curRange.start ? monthStart : curRange.start;
+    const hi = monthEnd   < curRange.end   ? monthEnd   : curRange.end;
+    const total = lo <= hi ? Math.round((new Date(hi + 'T00:00:00') - new Date(lo + 'T00:00:00')) / 86400000) + 1 : 0;
+    const occ   = total > 0 ? blocked / total * 100 : 0;
+    return { mk, label: k.label, target: target?.targetADR || null, rev, nights, adr, blocked, total, occ };
   });
 
   const totalRev    = months.reduce((s, m) => s + m.rev, 0);
@@ -307,10 +323,11 @@ function rebuildView() {
 // ── Main view builder ─────────────────────────────────────────────────────────
 function buildView() {
   _container = el('div', { class: 'view-content' });
-  const cmpYear = compareYear();
-  const data = getPortfolioData(gYear, cmpYear);
+  const curRange = getCurrentPeriodRange(gF);
+  const cmpRange = getComparisonRange(gF, curRange);
+  const data = getPortfolioData(curRange, cmpRange);
 
-  // ── Page header + year / comparison filters
+  // ── Page header
   const header = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px' });
   const titleWrap = el('div');
   titleWrap.appendChild(el('h2', { style: 'margin:0;font-size:20px;font-weight:700' }, 'STR Performance'));
@@ -318,43 +335,17 @@ function buildView() {
     `${data.props.length} short-term rental propert${data.props.length !== 1 ? 'ies' : 'y'} · ${data.payments.length} bookings`
   ));
   header.appendChild(titleWrap);
-
-  const selStyle = 'background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer';
-  const controls = el('div', { style: 'display:flex;align-items:center;gap:8px;flex-wrap:wrap' });
-  const years = getDataYears();
-
-  // Period (year)
-  const yearSel = el('select', { style: selStyle });
-  years.forEach(y => {
-    const o = el('option', { value: y }, y);
-    if (y === gYear) o.selected = true;
-    yearSel.appendChild(o);
-  });
-  yearSel.addEventListener('change', () => { gYear = yearSel.value; saveStrFilters(); rebuildView(); });
-
-  // Comparison (year-based)
-  const cmpSel = el('select', { style: selStyle });
-  const cmpOpts = [['none', 'No Comparison'], ['prev-year', 'Previous Year'],
-    ...years.filter(y => y !== gYear).map(y => [y, `vs ${y}`])];
-  cmpOpts.forEach(([v, lbl]) => {
-    const o = el('option', { value: v }, lbl);
-    if (v === gCompare) o.selected = true;
-    cmpSel.appendChild(o);
-  });
-  cmpSel.addEventListener('change', () => { gCompare = cmpSel.value; saveStrFilters(); rebuildView(); });
-
-  controls.appendChild(yearSel);
-  controls.appendChild(cmpSel);
-  header.appendChild(controls);
   _container.appendChild(header);
 
-  // Dimension filters (property / owner / region) — dynamic + interdependent.
-  _container.appendChild(buildStrFilterBar());
+  // Shared filter bar (range/period + comparison + owner + property). Stream is
+  // off because STR is a single stream.
+  const filterBar = buildFilterBar(gF, {
+    showOwner: true, showStream: false, showProperty: true, showClient: false,
+    storagePrefix: 'str'
+  }, (newState) => { if (newState) Object.assign(gF, newState); rebuildView(); });
+  _container.appendChild(filterBar);
 
-  // Comparison line — reuses the shared helper (e.g. "Comparing 2026 vs 2025").
-  const thisYear = String(new Date().getFullYear());
-  const curRange = { start: `${gYear}-01-01`, end: `${gYear}-12-31`, label: gYear, isIncomplete: gYear === thisYear };
-  const cmpRange = cmpYear ? { start: `${cmpYear}-01-01`, end: `${cmpYear}-12-31`, label: cmpYear } : null;
+  // Comparison line — reuses the shared helper.
   _container.appendChild(buildComparisonLine(curRange, cmpRange));
 
   if (!data.props.length) {
@@ -378,7 +369,7 @@ function buildView() {
   _container.appendChild(buildComparisonTable(data));
 
   // ── Section 4: Property spotlight
-  _container.appendChild(buildSpotlightSection(data.props));
+  _container.appendChild(buildSpotlightSection(data.props, curRange));
 
   // ── Section 5: Forward pipeline
   _container.appendChild(buildForwardPipelineCard());
@@ -386,60 +377,12 @@ function buildView() {
   return _container;
 }
 
-// ── Helper: available years from STR payments
-// Dynamic, interdependent filter bar. Each filter's options are computed from
-// properties passing all OTHER active filters, so selecting one narrows the rest.
-function buildStrFilterBar() {
-  const all = allStrProps();
-  const uniq = (a) => [...new Set(a)].sort();
-  const validProps   = all.filter(p => matchesStrExcept(p, 'props'));
-  const validOwners  = uniq(all.filter(p => matchesStrExcept(p, 'owners')).map(p => p.owner).filter(Boolean));
-  const validRegions = uniq(all.filter(p => matchesStrExcept(p, 'regions')).map(p => p.country).filter(Boolean));
-
-  // Prune selections no longer valid given the other active filters.
-  [..._sf.props].forEach(v => { if (!validProps.some(p => p.id === v)) _sf.props.delete(v); });
-  [..._sf.owners].forEach(v => { if (!validOwners.includes(v)) _sf.owners.delete(v); });
-  [..._sf.regions].forEach(v => { if (!validRegions.includes(v)) _sf.regions.delete(v); });
-  saveStrFilters();
-
-  const onChange = () => { saveStrFilters(); rebuildView(); };
-  const propMS   = buildMultiSelect(validProps.map(p => ({ value: p.id, label: shortName(p.name) })), _sf.props, 'All Properties', onChange);
-  const ownerMS  = buildMultiSelect(validOwners.map(v => ({ value: v, label: OWNERS[v] || v })), _sf.owners, 'All Owners', onChange);
-  const regionMS = buildMultiSelect(validRegions.map(v => ({ value: v, label: v })), _sf.regions, 'All Regions', onChange);
-
-  const resetBtn = button('Reset Filters', {
-    variant: 'sm ghost',
-    onClick: () => {
-      propMS.reset(); ownerMS.reset(); regionMS.reset();
-      _sf.props.clear(); _sf.owners.clear(); _sf.regions.clear();
-      saveStrFilters();
-      rebuildView();
-    }
-  });
-
-  const bar = el('div', { class: 'flex gap-8', style: 'flex-wrap:wrap;align-items:center;margin-bottom:16px' });
-  bar.appendChild(propMS);
-  bar.appendChild(ownerMS);
-  bar.appendChild(regionMS);
-  bar.appendChild(resetBtn);
-  return bar;
-}
-
-function getDataYears() {
-  const y = new Set();
-  listActivePayments()
-    .filter(p => p.stream === 'short_term_rental')
-    .forEach(p => { const yr = (p.date || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
-  if (!y.size) y.add(String(new Date().getFullYear()));
-  return [...y].sort().reverse();
-}
-
 // ── Portfolio KPI row ─────────────────────────────────────────────────────────
 function buildPortfolioKpis(data) {
-  const { totalRev, prevRev, totalNights, prevNights, avgADR, avgOcc, targetRev, payments, props, cmpYear } = data;
+  const { totalRev, prevRev, totalNights, prevNights, avgADR, avgOcc, targetRev, payments, props, rangeLabel, cmpLabel } = data;
   const vsTarget = targetRev > 0 ? (totalRev / targetRev) * 100 : null;
   const propCount = props.length;
-  const hasCmp = !!cmpYear;
+  const hasCmp = !!cmpLabel;
 
   const grid = el('div', {
     style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:16px'
@@ -449,9 +392,9 @@ function buildPortfolioKpis(data) {
   grid.appendChild(mkKpiCard({
     label: 'Total Revenue',
     value: formatEUR(totalRev),
-    subtitle: `${gYear} · ${payments.length} bookings`,
+    subtitle: `${rangeLabel} · ${payments.length} bookings`,
     delta: hasCmp && prevRev != null ? safePct(totalRev, prevRev) : undefined,
-    compLabel: hasCmp ? cmpYear : undefined,
+    compLabel: hasCmp ? cmpLabel : undefined,
     compValue: hasCmp && prevRev > 0 ? formatEUR(prevRev) : undefined,
     onClick: () => openRevenueModal(data)
   }));
@@ -462,7 +405,7 @@ function buildPortfolioKpis(data) {
     value: totalNights.toLocaleString(),
     subtitle: `${propCount} propert${propCount !== 1 ? 'ies' : 'y'}`,
     delta: hasCmp && prevNights != null ? safePct(totalNights, prevNights) : undefined,
-    compLabel: hasCmp ? cmpYear : undefined,
+    compLabel: hasCmp ? cmpLabel : undefined,
     onClick: () => openNightsModal(data)
   }));
 
@@ -508,7 +451,7 @@ function buildPortfolioKpis(data) {
 
 // ── Revenue trend chart card ──────────────────────────────────────────────────
 function buildRevTrendCard(data) {
-  const { revByMonth, props } = data;
+  const { revByMonth, props, monthKeys } = data;
   const card = el('div', { class: 'card' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Monthly Revenue')
@@ -522,14 +465,14 @@ function buildRevTrendCard(data) {
   // Render chart after DOM insertion
   requestAnimationFrame(() => {
     charts.bar('str-rev-trend', {
-      labels: ML,
+      labels: monthKeys.map(k => k.label),
       stacked: true,
       datasets: props.map((p, i) => ({
         label: shortName(p.name),
         data: revByMonth.map(mo => mo[p.id] || 0),
         backgroundColor: PROP_COLORS[i % PROP_COLORS.length] + 'cc'
       })),
-      onClickItem: (label, idx) => openMonthRevenueModal(label, idx, data)
+      onClickItem: (label, idx) => openMonthRevenueModal(idx, data)
     });
   });
   return card;
@@ -538,7 +481,6 @@ function buildRevTrendCard(data) {
 // ── Occupancy chart card ──────────────────────────────────────────────────────
 function buildOccupancyCard(data) {
   const { occByProp, props } = data;
-  const yr = parseInt(gYear, 10);
   const card = el('div', { class: 'card' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Occupancy Rate by Property')
@@ -570,8 +512,7 @@ function buildOccupancyCard(data) {
 
 // ── Occupancy heatmap (property × month, booked nights) ───────────────────────
 function buildStrOccupancyHeatmap(data) {
-  const { props, payments } = data;
-  const yr = parseInt(gYear, 10);
+  const { props, payments, monthKeys } = data;
   const card = el('div', { class: 'card', style: 'margin-bottom:16px' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Occupancy Heatmap'),
@@ -583,7 +524,7 @@ function buildStrOccupancyHeatmap(data) {
   const table = el('table', { class: 'table', style: 'min-width:600px' });
   const htr = el('tr');
   htr.appendChild(el('th', {}, 'Property'));
-  for (let m = 0; m < 12; m++) htr.appendChild(el('th', { class: 'right', style: 'white-space:nowrap' }, ML[m]));
+  monthKeys.forEach(k => htr.appendChild(el('th', { class: 'right', style: 'white-space:nowrap' }, k.label)));
   table.appendChild(el('thead', {}, htr));
 
   let anyNights = false;
@@ -591,13 +532,13 @@ function buildStrOccupancyHeatmap(data) {
   for (const p of props) {
     const tr = el('tr');
     tr.appendChild(el('td', { style: 'white-space:nowrap;font-weight:600' }, shortName(p.name)));
-    for (let m = 0; m < 12; m++) {
-      const mk = `${gYear}-${String(m + 1).padStart(2, '0')}`;
+    monthKeys.forEach(k => {
+      const mk = k.key;
       const monthPays = payments.filter(pay => pay.propertyId === p.id && (pay.date || '').slice(0, 7) === mk);
       const nights = monthPays.reduce((s, pay) => s + (pay.airbnbNights || 0), 0);
       const hasField = monthPays.some(pay => pay.airbnbNights != null);
       if (nights > 0) anyNights = true;
-      const dim = daysInMonth(yr, m);
+      const dim = daysInMonth(+k.y, k.m - 1);
       const pct = Math.min(100, dim > 0 ? nights / dim * 100 : 0);
       const td = el('td', { class: 'right', style: 'cursor:pointer' });
       if (!hasField || nights === 0) {
@@ -611,7 +552,7 @@ function buildStrOccupancyHeatmap(data) {
         td.title = 'Click for payments';
         td.onclick = () => {
           const mb = el('div');
-          mb.appendChild(mkSectionLabel(`${shortName(p.name)} — ${ML[m]} ${gYear}`));
+          mb.appendChild(mkSectionLabel(`${shortName(p.name)} — ${k.label}`));
           mb.appendChild(mkModalTable(
             [{ label: 'Date' }, { label: 'Nights', right: true }, { label: 'Amount', right: true }],
             [...monthPays].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(pay => [
@@ -620,11 +561,11 @@ function buildStrOccupancyHeatmap(data) {
               formatEUR(pay.amount)
             ])
           ));
-          openModal({ title: `Occupancy — ${shortName(p.name)} · ${ML[m]} ${gYear}`, body: mb, large: true });
+          openModal({ title: `Occupancy — ${shortName(p.name)} · ${k.label}`, body: mb, large: true });
         };
       }
       tr.appendChild(td);
-    }
+    });
     tbody.appendChild(tr);
   }
   table.appendChild(tbody);
@@ -705,7 +646,7 @@ function mkTd(text) {
 }
 
 // ── Property spotlight section ────────────────────────────────────────────────
-function buildSpotlightSection(props) {
+function buildSpotlightSection(props, curRange) {
   // Reset the spotlight if its property was filtered out (or none chosen yet).
   if (props.length && !props.some(p => p.id === gSpotlightPropId)) gSpotlightPropId = props[0].id;
 
@@ -725,7 +666,7 @@ function buildSpotlightSection(props) {
     gSpotlightPropId = sel.value;
     const existing = document.getElementById('str-spotlight-content');
     if (existing) {
-      const newContent = buildSpotlightContent(gSpotlightPropId);
+      const newContent = buildSpotlightContent(gSpotlightPropId, curRange);
       newContent.id = 'str-spotlight-content';
       existing.replaceWith(newContent);
     }
@@ -733,15 +674,15 @@ function buildSpotlightSection(props) {
   sectionHeader.appendChild(sel);
   wrap.appendChild(sectionHeader);
 
-  const content = buildSpotlightContent(gSpotlightPropId);
+  const content = buildSpotlightContent(gSpotlightPropId, curRange);
   content.id = 'str-spotlight-content';
   wrap.appendChild(content);
   return wrap;
 }
 
-function buildSpotlightContent(propId) {
+function buildSpotlightContent(propId, curRange) {
   if (!propId) return el('div');
-  const data = getSpotlightData(propId, gYear);
+  const data = getSpotlightData(propId, curRange);
   const { months, totalRev, totalNights, avgADR, targetRev } = data;
 
   const wrap = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' });
@@ -758,7 +699,7 @@ function buildSpotlightContent(propId) {
 
   // Summary row below chart
   const adrSummary = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px' });
-  adrSummary.appendChild(mkSummaryBox('Total Revenue', formatEUR(totalRev, { maxFrac: 0 }), gYear));
+  adrSummary.appendChild(mkSummaryBox('Total Revenue', formatEUR(totalRev, { maxFrac: 0 }), curRange.label));
   adrSummary.appendChild(mkSummaryBox('Target Revenue', targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—', 'confirmed months'));
   adrSummary.appendChild(mkSummaryBox('Avg ADR', avgADR > 0 ? formatEUR(avgADR, { maxFrac: 0 }) : '—', 'from bookings'));
   adrBody.appendChild(adrSummary);
@@ -778,10 +719,10 @@ function buildSpotlightContent(propId) {
   occSummary.appendChild(mkSummaryBox('Nights Sold', totalNights.toString(), 'from bookings'));
   const blockedTotal = months.reduce((s, m) => s + m.blocked, 0);
   const daysTotal    = months.reduce((s, m) => s + m.total, 0);
-  const yearOcc = daysTotal > 0 ? (blockedTotal / daysTotal * 100).toFixed(1) + '%' : '—';
-  occSummary.appendChild(mkSummaryBox('Year Occupancy', yearOcc, 'iCal blocked nights'));
-  const bookings = getPaymentsForYear(gYear).filter(p => p.propertyId === propId).length;
-  occSummary.appendChild(mkSummaryBox('Bookings', bookings.toString(), gYear));
+  const periodOcc = daysTotal > 0 ? (blockedTotal / daysTotal * 100).toFixed(1) + '%' : '—';
+  occSummary.appendChild(mkSummaryBox('Period Occupancy', periodOcc, 'iCal blocked nights'));
+  const bookings = getPaymentsInRange(curRange.start, curRange.end, new Set([propId])).length;
+  occSummary.appendChild(mkSummaryBox('Bookings', bookings.toString(), curRange.label));
   occBody.appendChild(occSummary);
   occCard.appendChild(occBody);
 
@@ -817,13 +758,13 @@ function buildSpotlightContent(propId) {
       });
     }
     charts.bar('str-spotlight-adr', {
-      labels: ML,
+      labels: months.map(m => m.label),
       datasets: adrDatasets,
-      onClickItem: (label, idx) => openMonthSpotlightModal(label, idx, propId, months)
+      onClickItem: (label, idx) => openMonthSpotlightModal(idx, propId, months, curRange)
     });
 
     charts.bar('str-spotlight-occ', {
-      labels: ML,
+      labels: months.map(m => m.label),
       datasets: [{
         label: 'Occupancy %',
         data: months.map(m => m.occ),
@@ -831,7 +772,7 @@ function buildSpotlightContent(propId) {
           m.occ >= 70 ? '#22c55ecc' : m.occ >= 40 ? '#6366f1cc' : '#f59e0bcc'
         )
       }],
-      onClickItem: (label, idx) => openMonthSpotlightModal(label, idx, propId, months)
+      onClickItem: (label, idx) => openMonthSpotlightModal(idx, propId, months, curRange)
     });
   });
 
@@ -906,7 +847,7 @@ function openRevenueModal(data) {
     { highlight: 1 }
   ));
 
-  body.appendChild(mkSectionLabel(`Top Bookings — ${gYear}`));
+  body.appendChild(mkSectionLabel(`Top Bookings — ${data.rangeLabel}`));
   const top = [...payments].sort((a, b) => b.amount - a.amount).slice(0, 10);
   body.appendChild(mkModalTable(
     ['Date', 'Property', 'Nights', 'Amount'],
@@ -919,11 +860,11 @@ function openRevenueModal(data) {
     { highlight: 3 }
   ));
 
-  openModal({ title: `STR Revenue — ${gYear}`, body, large: true });
+  openModal({ title: `STR Revenue — ${data.rangeLabel}`, body, large: true });
 }
 
 function openNightsModal(data) {
-  const { payments, props } = data;
+  const { payments, props, monthKeys, keyIndex } = data;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   const rows = props.map(p => {
@@ -933,20 +874,19 @@ function openNightsModal(data) {
   });
   body.appendChild(mkModalTable(['Property', 'Nights Sold', 'Bookings'], rows, { highlight: 1 }));
 
-  const totalNights = data.totalNights;
   body.appendChild(mkSectionLabel('Monthly Breakdown (All Properties)'));
-  const byMonth = Array(12).fill(0);
+  const byMonth = monthKeys.map(() => 0);
   payments.forEach(p => {
-    const m = parseInt((p.date || '').slice(5, 7), 10) - 1;
-    if (m >= 0 && m < 12) byMonth[m] += (p.airbnbNights || 0);
+    const idx = keyIndex.get((p.date || '').slice(0, 7));
+    if (idx != null) byMonth[idx] += (p.airbnbNights || 0);
   });
   body.appendChild(mkModalTable(
     ['Month', 'Nights Sold'],
-    byMonth.map((n, i) => [ML[i], n > 0 ? n.toString() : '—']),
+    byMonth.map((n, i) => [monthKeys[i].label, n > 0 ? n.toString() : '—']),
     { highlight: 1 }
   ));
 
-  openModal({ title: `Nights Sold — ${gYear}`, body, large: true });
+  openModal({ title: `Nights Sold — ${data.rangeLabel}`, body, large: true });
 }
 
 function openADRModal(data) {
@@ -967,7 +907,7 @@ function openADRModal(data) {
     { highlight: 1 }
   ));
 
-  openModal({ title: `ADR Breakdown — ${gYear}`, body, large: true });
+  openModal({ title: `ADR Breakdown — ${data.rangeLabel}`, body, large: true });
 }
 
 function openOccModal(data) {
@@ -983,11 +923,11 @@ function openOccModal(data) {
     { highlight: 1 }
   ));
 
-  openModal({ title: `Occupancy — ${gYear}`, body, large: true });
+  openModal({ title: `Occupancy — ${data.rangeLabel}`, body, large: true });
 }
 
 function openTargetModal(data) {
-  const { props, revByProp, targetRev, totalRev } = data;
+  const { props, revByProp, targetRev, totalRev, monthKeys, blockedByMonthByProp } = data;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   body.appendChild(mkSummaryGrid([
@@ -1003,27 +943,26 @@ function openTargetModal(data) {
     ['Property', 'Actual', 'Target', 'Achievement'],
     props.map(p => {
       const rev    = revByProp.get(p.id) || 0;
-      const cal    = getCalendar(p.id);
-      const yr = parseInt(gYear, 10);
+      const blockedByMonth = blockedByMonthByProp.get(p.id) || new Map();
       let propTarget = 0;
-      for (let m = 0; m < 12; m++) {
-        const mk = `${gYear}-${String(m + 1).padStart(2, '0')}`;
-        const t  = targets.find(t => t.propertyId === p.id && t.month === mk);
-        if (t) propTarget += (t.targetADR || 0) * countBlockedNights(cal?.blocks || [], yr, m);
-      }
+      monthKeys.forEach(k => {
+        const t = targets.find(t => t.propertyId === p.id && t.month === k.key);
+        if (t) propTarget += (t.targetADR || 0) * (blockedByMonth.get(k.key) || 0);
+      });
       const ach = propTarget > 0 ? (rev / propTarget * 100).toFixed(1) + '%' : '—';
       return [shortName(p.name), formatEUR(rev), propTarget > 0 ? formatEUR(propTarget) : '—', ach];
     }),
     { highlight: 2 }
   ));
 
-  openModal({ title: `Revenue vs Target — ${gYear}`, body, large: true });
+  openModal({ title: `Revenue vs Target — ${data.rangeLabel}`, body, large: true });
 }
 
-function openMonthRevenueModal(monthLabel, monthIdx, data) {
-  const { payments, props } = data;
-  const mk = `${gYear}-${String(monthIdx + 1).padStart(2, '0')}`;
-  const moPays = payments.filter(p => (p.date || '').startsWith(mk));
+function openMonthRevenueModal(monthIdx, data) {
+  const { payments, monthKeys } = data;
+  const k = monthKeys[monthIdx];
+  if (!k) return;
+  const moPays = payments.filter(p => (p.date || '').startsWith(k.key));
   const moRev  = moPays.reduce((s, p) => s + p.amount, 0);
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -1047,15 +986,15 @@ function openMonthRevenueModal(monthLabel, monthIdx, data) {
     body.appendChild(mkEmptyState('No bookings in this month.'));
   }
 
-  openModal({ title: `${monthLabel} ${gYear} — STR Revenue`, body, large: true });
+  openModal({ title: `${k.label} — STR Revenue`, body, large: true });
 }
 
-function openMonthSpotlightModal(monthLabel, monthIdx, propId, months) {
+function openMonthSpotlightModal(monthIdx, propId, months, curRange) {
   const mo = months[monthIdx];
   if (!mo) return;
   const prop = byId('properties', propId);
-  const pays = getPaymentsForYear(gYear).filter(p =>
-    p.propertyId === propId && (p.date || '').startsWith(mo.mk)
+  const pays = getPaymentsInRange(curRange.start, curRange.end, new Set([propId])).filter(p =>
+    (p.date || '').startsWith(mo.mk)
   );
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -1085,7 +1024,7 @@ function openMonthSpotlightModal(monthLabel, monthIdx, propId, months) {
     body.appendChild(mkEmptyState('No bookings recorded for this month.'));
   }
 
-  openModal({ title: `${shortName(prop?.name || '')} — ${monthLabel} ${gYear}`, body, large: true });
+  openModal({ title: `${shortName(prop?.name || '')} — ${mo.label}`, body, large: true });
 }
 
 // ── Utility ───────────────────────────────────────────────────────────────────
