@@ -12,6 +12,7 @@ const initialData = {
   clients: [],
   services: [],
   invoices: [],
+  timeOff: [],
   people: [],
   users: [],
   settings: {
@@ -20,6 +21,7 @@ const initialData = {
     defaultTaxRate: 0,
     business: { name: '', email: '', address: '', vatNumber: '', iban: '', bic: '' },
     team: [],
+    engagements: [],
     dividendSettings: []
   },
   appConfig: {
@@ -112,7 +114,9 @@ export function setDb(db) {
   if (!state.db.settings.fxRates.yearRates) state.db.settings.fxRates.yearRates = {};
   if (!state.db.users) state.db.users = [];
   if (!state.db.people) state.db.people = [];
+  if (!state.db.timeOff) state.db.timeOff = [];
   if (!state.db.settings.dividendSettings) state.db.settings.dividendSettings = [];
+  if (!state.db.settings.engagements) state.db.settings.engagements = [];
   state._ix = new Map();
   for (const [key, val] of Object.entries(state.db)) {
     if (Array.isArray(val)) {

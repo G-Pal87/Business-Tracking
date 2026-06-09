@@ -29,6 +29,7 @@ async function boot() {
     { default: analyticsTax },
     { default: clients },
     { default: invoices },
+    { default: timeOff },
     { default: settings },
     { default: vendors },
     { default: users },
@@ -57,6 +58,7 @@ async function boot() {
     import(`./modules/analytics-tax.js?v=${VERSION}`),
     import(`./modules/clients.js?v=${VERSION}`),
     import(`./modules/invoices.js?v=${VERSION}`),
+    import(`./modules/time-off.js?v=${VERSION}`),
     import(`./modules/settings.js?v=${VERSION}`),
     import(`./modules/vendors.js?v=${VERSION}`),
     import(`./modules/users.js?v=${VERSION}`),
@@ -70,7 +72,7 @@ async function boot() {
 
   const MODULES = [
     properties, payments, strRates, expenses, dividends, tenants, vendors, inventory, companyStructure,
-    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsPersonal, analyticsTax, analyticsStr, clients, invoices, settings, users
+    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsPersonal, analyticsTax, analyticsStr, clients, invoices, timeOff, settings, users
   ];
 
   MODULES.forEach(router.registerModule);
@@ -398,7 +400,7 @@ async function boot() {
 function migrateDb() {
   const COLLECTIONS = [
     'payments', 'expenses', 'invoices', 'properties', 'tenants',
-    'vendors', 'clients', 'services', 'inventory', 'forecasts'
+    'vendors', 'clients', 'services', 'inventory', 'forecasts', 'timeOff'
   ];
   const now = Date.now();
   const actor = state.session?.username || 'system';
@@ -468,7 +470,7 @@ function buildUserFooter() {
 function buildSidebar(MODULES) {
   const navGroups = [
     { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-str', 'analytics-services', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-personal', 'analytics-tax'] },
-    { title: 'Operations', items: ['properties', 'payments', 'str-rates', 'expenses', 'dividends', 'tenants', 'vendors', 'inventory', 'company-structure', 'clients', 'invoices', 'forecast'] },
+    { title: 'Operations', items: ['properties', 'payments', 'str-rates', 'expenses', 'dividends', 'tenants', 'vendors', 'inventory', 'company-structure', 'clients', 'invoices', 'time-off', 'forecast'] },
     { title: 'System', items: ['settings', 'users'] }
   ];
   const nav = document.getElementById('nav');
