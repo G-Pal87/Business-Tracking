@@ -7,6 +7,7 @@ const initialData = {
   expenses: [],
   vendors: [],
   inventory: [],
+  strCalendars: [],
   tenants: [],
   clients: [],
   services: [],
@@ -31,6 +32,12 @@ const initialData = {
 export const state = {
   db: structuredClone(initialData),
   _ix: new Map(),
+  // Cache of active (non-deleted) records per collection. Populated lazily by
+  // listActive() and invalidated whenever a collection mutates (markDirty) or
+  // the whole db is replaced (setDb). Safe to share references: no caller
+  // mutates a listActive() return in place (all .sort/.splice/.push operate on
+  // .filter()-derived or locally-built arrays).
+  _activeCache: new Map(),
   github: {
     token: '', owner: '', repo: '', branch: 'main', dbPath: 'data/db.json',
     sha: null, connected: false, remoteDb: null,
@@ -53,8 +60,51 @@ export function subscribe(fn) {
   return () => listeners.delete(fn);
 }
 
+// ── Notification batching ──────────────────────────────────────────────────
+// Bulk operations (CSV import, multi-row delete) call markDirty()/notify() once
+// per record. runBatch() suspends fan-out and re-emits each distinct event once
+// at the end, collapsing thousands of save/refresh schedules into one. Supports
+// nesting and async work (await-able fn). markDirty's cache invalidation still
+// runs per call, so derived data stays correct inside the batch.
+let _notifyDepth = 0;
+let _batchedEvents = null;
+
 export function notify(event = 'change') {
+  if (_notifyDepth > 0) { _batchedEvents.add(event); return; }
   listeners.forEach(fn => { try { fn(event); } catch (e) { console.error(e); } });
+}
+
+export function runBatch(fn) {
+  if (_notifyDepth === 0) _batchedEvents = new Set();
+  _notifyDepth++;
+  const finish = () => {
+    _notifyDepth--;
+    if (_notifyDepth === 0) {
+      const events = _batchedEvents;
+      _batchedEvents = null;
+      events.forEach(ev => notify(ev));
+    }
+  };
+  let result;
+  try {
+    result = fn();
+  } catch (e) {
+    finish();
+    throw e;
+  }
+  if (result && typeof result.then === 'function') {
+    return result.finally(finish);
+  }
+  finish();
+  return result;
+}
+
+// Invalidate the cached active-record list(s). Pass a collection name to clear
+// just that one, or omit to clear all. Used by mutators that bypass markDirty
+// (e.g. github sync adopting remote records).
+export function invalidateActiveCache(collection) {
+  if (collection) state._activeCache.delete(collection);
+  else state._activeCache.clear();
 }
 
 export function setDb(db) {
@@ -73,12 +123,14 @@ export function setDb(db) {
       state._ix.set(key, new Map(val.map(item => [item.id, item])));
     }
   }
+  state._activeCache = new Map();
   state.dirty = false;
   notify('data-loaded');
 }
 
 export function markDirty() {
   state.dirty = true;
+  state._activeCache.clear();
   notify('dirty');
 }
 

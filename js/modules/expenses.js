@@ -1,6 +1,6 @@
 // Expenses module
-import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, attachSortFilter, drillDownModal, buildMultiSelect } from '../core/ui.js';
+import { state, runBatch } from '../core/state.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod, getPeopleOwners, getPersonName } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
@@ -39,14 +39,23 @@ function receiptRepoPath(expenseId, filename) {
 }
 
 let _sortCol = -1, _sortDir = 1;
+let _expPage = 0, _expPageSize = 100, _expSearch = '';
+let _updateFn = null;
 
 export default {
   id: 'expenses',
   label: 'Expenses',
   icon: 'E',
-  render(container) { container.appendChild(build()); },
-  refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
-  destroy() { charts.destroyAll(); }
+  render(container) { const { element, update } = build(); _updateFn = update; container.appendChild(element); },
+  refresh() {
+    if (_updateFn) { _updateFn(); return; }
+    const c = document.getElementById('content');
+    c.innerHTML = '';
+    const { element, update } = build();
+    _updateFn = update;
+    c.appendChild(element);
+  },
+  destroy() { _updateFn = null; charts.destroyAll(); }
 };
 
 function addPeriod(date, period) {
@@ -93,18 +102,24 @@ function build() {
 
   let selected = new Set();
   let _filterTimer;
+  let _expFieldCache = new Map();
+  let yearMS, monthMS, streamMS, propMS, catMS, typeMS, recMS;
+  const onFilter = () => { clearTimeout(_filterTimer); _filterTimer = setTimeout(() => { rebuildFilters(); renderAll(); }, 250); };
 
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
     const count = selected.size;
     if (!count) return;
     const ok = await confirmDialog(`Delete ${count} expense(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
-    for (const id of [...selected]) {
-      const exp = listActive('expenses').find(e => e.id === id);
-      if (exp) restoreInventoryStock(exp);
-      softDelete('expenses', id);
-    }
+    runBatch(() => {
+      for (const id of [...selected]) {
+        const exp = byId('expenses', id);
+        if (exp) restoreInventoryStock(exp);
+        softDelete('expenses', id);
+      }
+    });
     selected.clear();
+    _expFieldCache = new Map();
     toast(`Deleted ${count} expense(s)`, 'success');
     rebuildFilters(); renderAll();
   }});
@@ -130,13 +145,32 @@ function build() {
   function rebuildFilters() {
     const all = listActive('expenses');
 
-    const validYrs  = new Set(all.filter(e => matchesAll(e, 'year')).map(e => (e.date || '').slice(0, 4)).filter(Boolean));
-    const validMos  = new Set(all.filter(e => matchesAll(e, 'month')).map(e => (e.date || '').slice(5, 7)).filter(Boolean));
-    const validSts  = new Set(all.filter(e => matchesAll(e, 'stream')).map(e => e.stream || '').filter(Boolean));
-    const validPrs  = new Set(all.filter(e => matchesAll(e, 'prop')).map(e => e.propertyId).filter(Boolean));
-    const validCats = new Set(all.filter(e => matchesAll(e, 'cat')).map(e => e.category).filter(Boolean));
-    const validTps  = new Set(all.filter(e => matchesAll(e, 'type')).map(e => resolveExpenseFields(e).accountingType).filter(Boolean));
-    const validRecs = new Set(all.filter(e => matchesAll(e, 'rec')).map(e => resolveExpenseFields(e).recurrence).filter(Boolean));
+    // Build field cache once so every consumer in this render cycle pays zero extra calls
+    _expFieldCache = new Map(all.map(e => [e.id, resolveExpenseFields(e)]));
+
+    // Single pass: inline filter checks so resolveExpenseFields is called once per expense
+    const validYrs = new Set(), validMos = new Set(), validSts = new Set(),
+          validPrs = new Set(), validCats = new Set(), validTps = new Set(), validRecs = new Set();
+    for (const e of all) {
+      const res = _expFieldCache.get(e.id);
+      const yr  = (e.date || '').slice(0, 4);
+      const mo  = (e.date || '').slice(5, 7);
+      const st  = e.stream || '';
+      const passYr  = yearFilter.size           === 0 || yearFilter.has(yr);
+      const passMo  = monthFilter.size          === 0 || monthFilter.has(mo);
+      const passSt  = streamFilter.size         === 0 || streamFilter.has(st);
+      const passPr  = propFilter.size           === 0 || propFilter.has(e.propertyId);
+      const passCat = catFilter.size            === 0 || catFilter.has(e.category);
+      const passTp  = accountingTypeFilter.size === 0 || accountingTypeFilter.has(res.accountingType);
+      const passRec = recurrenceFilter.size     === 0 || recurrenceFilter.has(res.recurrence);
+      if (passMo && passSt && passPr  && passCat && passTp  && passRec) { if (yr) validYrs.add(yr); }
+      if (passYr && passSt && passPr  && passCat && passTp  && passRec) { if (mo) validMos.add(mo); }
+      if (passYr && passMo && passPr  && passCat && passTp  && passRec) { if (st) validSts.add(st); }
+      if (passYr && passMo && passSt  && passCat && passTp  && passRec) { if (e.propertyId)        validPrs.add(e.propertyId); }
+      if (passYr && passMo && passSt  && passPr  && passTp  && passRec) { if (e.category)          validCats.add(e.category); }
+      if (passYr && passMo && passSt  && passPr  && passCat && passRec) { if (res.accountingType)  validTps.add(res.accountingType); }
+      if (passYr && passMo && passSt  && passPr  && passCat && passTp)  { if (res.recurrence)      validRecs.add(res.recurrence); }
+    }
 
     // Prune stale selections
     for (const v of [...yearFilter])           if (!validYrs.has(v))  yearFilter.delete(v);
@@ -147,8 +181,6 @@ function build() {
     for (const v of [...accountingTypeFilter]) if (!validTps.has(v))  accountingTypeFilter.delete(v);
     for (const v of [...recurrenceFilter])     if (!validRecs.has(v)) recurrenceFilter.delete(v);
 
-    const onFilter = () => { clearTimeout(_filterTimer); _filterTimer = setTimeout(() => { rebuildFilters(); renderAll(); }, 250); };
-
     const yearOpts   = [...validYrs].sort().reverse().map(y => ({ value: y, label: y }));
     const monthOpts  = [...validMos].sort().map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] }));
     const streamOpts = [...validSts].sort().map(s => ({ value: s, label: STREAMS[s]?.label || s }));
@@ -157,47 +189,66 @@ function build() {
     const typeOpts   = [...validTps].sort().map(t => ({ value: t, label: ACCOUNTING_TYPES[t]?.label || t }));
     const recOpts    = [...validRecs].sort().map(r => ({ value: r, label: RECURRENCE_TYPES[r]?.label || r }));
 
-    filterBar.innerHTML = '';
-    filterBar.appendChild(buildMultiSelect(yearOpts,   yearFilter,           'All Years',      onFilter, 'exp_years'));
-    filterBar.appendChild(buildMultiSelect(monthOpts,  monthFilter,          'All Months',     onFilter, 'exp_months'));
-    filterBar.appendChild(buildMultiSelect(streamOpts, streamFilter,         'All Streams',    onFilter, 'exp_streams'));
-    filterBar.appendChild(buildMultiSelect(propOpts,   propFilter,           'All Properties', onFilter, 'exp_props'));
-    filterBar.appendChild(buildMultiSelect(catOpts,    catFilter,            'All Expenses',   onFilter, 'exp_cats'));
-    filterBar.appendChild(buildMultiSelect(typeOpts,   accountingTypeFilter, 'All Types',      onFilter, 'exp_types'));
-    filterBar.appendChild(buildMultiSelect(recOpts,    recurrenceFilter,     'All Recurrence', onFilter, 'exp_recurrence'));
-    filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => {
-      yearFilter.clear(); monthFilter.clear(); streamFilter.clear(); propFilter.clear();
-      catFilter.clear(); accountingTypeFilter.clear(); recurrenceFilter.clear();
-      ['exp_years','exp_months','exp_streams','exp_props','exp_cats','exp_types','exp_recurrence']
-        .forEach(k => { try { localStorage.removeItem(`btf:${k}`); } catch {} });
-      rebuildFilters(); renderAll();
-    }}));
-    filterBar.appendChild(el('div', { class: 'flex-1' }));
-    filterBar.appendChild(deleteSelBtn);
-    filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
+    if (!yearMS) {
+      // First build: create multiselects and assemble the filter bar once
+      yearMS   = buildMultiSelect(yearOpts,   yearFilter,           'All Years',      onFilter, 'exp_years');
+      monthMS  = buildMultiSelect(monthOpts,  monthFilter,          'All Months',     onFilter, 'exp_months');
+      streamMS = buildMultiSelect(streamOpts, streamFilter,         'All Streams',    onFilter, 'exp_streams');
+      propMS   = buildMultiSelect(propOpts,   propFilter,           'All Properties', onFilter, 'exp_props');
+      catMS    = buildMultiSelect(catOpts,    catFilter,            'All Expenses',   onFilter, 'exp_cats');
+      typeMS   = buildMultiSelect(typeOpts,   accountingTypeFilter, 'All Types',      onFilter, 'exp_types');
+      recMS    = buildMultiSelect(recOpts,    recurrenceFilter,     'All Recurrence', onFilter, 'exp_recurrence');
+
+      filterBar.appendChild(yearMS);
+      filterBar.appendChild(monthMS);
+      filterBar.appendChild(streamMS);
+      filterBar.appendChild(propMS);
+      filterBar.appendChild(catMS);
+      filterBar.appendChild(typeMS);
+      filterBar.appendChild(recMS);
+      filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => {
+        yearFilter.clear(); monthFilter.clear(); streamFilter.clear(); propFilter.clear();
+        catFilter.clear(); accountingTypeFilter.clear(); recurrenceFilter.clear();
+        ['exp_years','exp_months','exp_streams','exp_props','exp_cats','exp_types','exp_recurrence']
+          .forEach(k => { try { localStorage.removeItem(`btf:${k}`); } catch {} });
+        yearMS.reset(); monthMS.reset(); streamMS.reset(); propMS.reset(); catMS.reset(); typeMS.reset(); recMS.reset();
+        rebuildFilters(); renderAll();
+      }}));
+      filterBar.appendChild(el('div', { class: 'flex-1' }));
+      filterBar.appendChild(deleteSelBtn);
+      filterBar.appendChild(button('+ Add Expense', { variant: 'primary', onClick: () => openForm() }));
+    } else {
+      // Subsequent calls: update options in place — no DOM teardown
+      yearMS.setItems(yearOpts);
+      monthMS.setItems(monthOpts);
+      streamMS.setItems(streamOpts);
+      propMS.setItems(propOpts);
+      catMS.setItems(catOpts);
+      typeMS.setItems(typeOpts);
+      recMS.setItems(recOpts);
+    }
   }
 
   wrap.appendChild(filterBar);
   wrap.appendChild(chartsGrid);
 
+  // Data-level search box (filters the whole dataset, not just the visible page)
+  const searchWrap = el('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:8px' });
+  const searchInput = el('input', { type: 'search', class: 'input', placeholder: 'Filter expenses…', style: 'max-width:220px;font-size:13px' });
+  searchInput.value = _expSearch;
+  searchWrap.appendChild(searchInput);
+  wrap.appendChild(searchWrap);
+
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap, {
-    initialCol: _sortCol,
-    initialDir: _sortDir,
-    onSortChange: (col, dir) => { _sortCol = col; _sortDir = dir; }
-  });
-  tableWrap.addEventListener('sf:filter', () => {
-    const countEl  = tableWrap.querySelector('.table-footer-count');
-    const capexEl  = tableWrap.querySelector('.table-footer-capex');
-    const totalEl  = tableWrap.querySelector('.table-footer-total');
-    if (!countEl || !totalEl) return;
-    const vis = [...tableWrap.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none');
-    const total = vis.reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0);
-    const capex = vis.filter(tr => tr.dataset.capex === '1').reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0);
-    countEl.textContent = `${vis.length} expense(s)`;
-    if (capexEl) capexEl.textContent = formatEUR(capex);
-    totalEl.textContent = formatEUR(total);
+
+  const pagerWrap = el('div', { class: 'flex justify-between', style: 'align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px' });
+  wrap.appendChild(pagerWrap);
+
+  let _searchTimer;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(() => { _expSearch = searchInput.value.trim().toLowerCase(); _expPage = 0; renderTable(); }, 200);
   });
 
   const syncDeleteBtn = () => {
@@ -209,76 +260,148 @@ function build() {
     }
   };
 
+  const PAGE_SIZES = [50, 100, 250, 500];
+
+  // Derive an expense's display + sort/search values once, reused by every consumer.
+  const derive = (r) => {
+    const res  = _expFieldCache.get(r.id) || resolveExpenseFields(r);
+    const prop = byId('properties', r.propertyId);
+    const cat  = EXPENSE_CATEGORIES[r.category];
+    const catLabel = cat?.label || r.category;
+    const vendorPerson = r.personId
+      ? ((state.db.people || []).find(p => p.id === r.personId || (p.legacyKey || p.id) === r.personId)?.name || r.personId)
+      : (r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || ''));
+    const eur = toEUR(r.amount, r.currency);
+    // No property → business-line allocation: show the stream label instead of "-"
+    const allocName = prop?.name || (r.stream ? (STREAMS[r.stream]?.label || 'Company') : 'Company');
+    return {
+      r, res, prop, cat, catLabel, vendorPerson, eur,
+      propName: allocName,
+      isCapex: res.accountingType === 'capex',
+      searchText: [fmtDate(r.date), allocName, catLabel, r.description, vendorPerson, r.currency].filter(Boolean).join(' ').toLowerCase()
+    };
+  };
+
+  // Sort accessors, one per data column (matches the header order below).
+  const colAccessors = [
+    d => d.r.date, d => d.propName, d => d.catLabel, d => (d.r.description || ''), d => d.vendorPerson, d => d.eur, d => d.eur
+  ];
+  const HEADERS = [
+    ['Date', ''], ['Property', ''], ['Category', ''], ['Description', ''], ['Vendor / Person', ''],
+    ['Amount', 'right'], ['EUR', 'right']
+  ];
+
   const renderTable = () => {
     selected.clear();
     syncDeleteBtn();
     tableWrap.innerHTML = '';
+    pagerWrap.innerHTML = '';
 
-    let rows = [...listActive('expenses')];
-    if (yearFilter.size > 0)           rows = rows.filter(r => yearFilter.has((r.date || '').slice(0, 4)));
-    if (monthFilter.size > 0)          rows = rows.filter(r => monthFilter.has((r.date || '').slice(5, 7)));
-    if (streamFilter.size > 0)         rows = rows.filter(r => streamFilter.has(r.stream || ''));
-    if (propFilter.size > 0)           rows = rows.filter(r => propFilter.has(r.propertyId));
-    if (catFilter.size > 0)            rows = rows.filter(r => catFilter.has(r.category));
-    if (accountingTypeFilter.size > 0) rows = rows.filter(r => accountingTypeFilter.has(resolveExpenseFields(r).accountingType));
-    if (recurrenceFilter.size > 0)     rows = rows.filter(r => recurrenceFilter.has(resolveExpenseFields(r).recurrence));
-    rows.sort((a, b) => (b.date || '').localeCompare(a.date));
+    const allExpenses = listActive('expenses');
+    // Ensure cache is warm (may be empty when renderTable is called directly after a delete/edit)
+    if (_expFieldCache.size === 0) {
+      _expFieldCache = new Map(allExpenses.map(e => [e.id, resolveExpenseFields(e)]));
+    }
 
-    if (rows.length === 0) {
-      tableWrap.appendChild(el('div', { class: 'empty' }, 'No expenses'));
+    // 1. Facet filters
+    let derived = allExpenses.filter(r => {
+      if (yearFilter.size > 0           && !yearFilter.has((r.date || '').slice(0, 4)))                return false;
+      if (monthFilter.size > 0          && !monthFilter.has((r.date || '').slice(5, 7)))               return false;
+      if (streamFilter.size > 0         && !streamFilter.has(r.stream || ''))                          return false;
+      if (propFilter.size > 0           && !propFilter.has(r.propertyId))                              return false;
+      if (catFilter.size > 0            && !catFilter.has(r.category))                                 return false;
+      const res = _expFieldCache.get(r.id);
+      if (accountingTypeFilter.size > 0 && !accountingTypeFilter.has(res?.accountingType))             return false;
+      if (recurrenceFilter.size > 0     && !recurrenceFilter.has(res?.recurrence))                     return false;
+      return true;
+    }).map(derive);
+
+    // 2. Text search (whole dataset)
+    if (_expSearch) derived = derived.filter(d => d.searchText.includes(_expSearch));
+
+    // 3. Sort (date desc by default, otherwise by clicked column)
+    if (_sortCol >= 0 && colAccessors[_sortCol]) {
+      const acc = colAccessors[_sortCol], dir = _sortDir;
+      derived.sort((a, b) => {
+        const av = acc(a), bv = acc(b);
+        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+        return String(av ?? '').localeCompare(String(bv ?? '')) * dir;
+      });
+    } else {
+      derived.sort((a, b) => (b.r.date || '').localeCompare(a.r.date || ''));
+    }
+
+    const total = derived.length;
+    if (total === 0) {
+      tableWrap.appendChild(el('div', { class: 'empty' }, _expSearch ? 'No expenses match your search' : 'No expenses'));
       return;
     }
 
-    const t = el('table', { class: 'table' });
+    // Footer totals computed over the full filtered set
+    let totalEUR = 0, capexEUR = 0;
+    for (const d of derived) { totalEUR += d.eur; if (d.isCapex) capexEUR += d.eur; }
 
+    // 4. Paginate
+    const pageCount = Math.max(1, Math.ceil(total / _expPageSize));
+    if (_expPage >= pageCount) _expPage = pageCount - 1;
+    if (_expPage < 0) _expPage = 0;
+    const startIdx = _expPage * _expPageSize;
+    const pageRows = derived.slice(startIdx, startIdx + _expPageSize);
+
+    const t = el('table', { class: 'table' });
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr', {});
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    ['Date', 'Property', 'Category', 'Description', 'Vendor / Person'].forEach(h => htr.appendChild(el('th', {}, h)));
-    htr.appendChild(el('th', { class: 'right' }, 'Amount'));
-    htr.appendChild(el('th', { class: 'right' }, 'EUR'));
+    HEADERS.forEach(([label, cls], i) => {
+      const th = el('th', cls ? { class: cls } : {}, label);
+      th.style.cursor = 'pointer';
+      th.style.userSelect = 'none';
+      const arr = el('span', { style: 'margin-left:4px;font-size:10px;opacity:' + (_sortCol === i ? '1' : '0.4') },
+        _sortCol === i ? (_sortDir > 0 ? ' ▲' : ' ▼') : ' ⇅');
+      th.appendChild(arr);
+      th.onclick = () => {
+        if (_sortCol === i) _sortDir *= -1; else { _sortCol = i; _sortDir = 1; }
+        _expPage = 0;
+        renderTable();
+      };
+      htr.appendChild(th);
+    });
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
-
     const tb = el('tbody');
+    t.appendChild(tb);
+
     const rowChks = [];
 
-    for (const r of rows) {
-      const prop = byId('properties', r.propertyId);
-      const cat  = EXPENSE_CATEGORIES[r.category];
-
+    const buildRow = (d) => {
+      const { r, res, cat } = d;
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
       rowChks.push(chk);
       chk.onchange = () => {
         if (chk.checked) selected.add(r.id); else selected.delete(r.id);
         const n = rowChks.filter(c => c.checked).length;
-        selectAllChk.indeterminate = n > 0 && n < rows.length;
-        selectAllChk.checked = n === rows.length;
+        selectAllChk.indeterminate = n > 0 && n < pageRows.length;
+        selectAllChk.checked = n === pageRows.length;
         syncDeleteBtn();
       };
-
       const tr = el('tr');
-      tr.dataset.eur = String(toEUR(r.amount, r.currency));
-      tr.dataset.capex = resolveExpenseFields(r).accountingType === 'capex' ? '1' : '0';
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       tr.appendChild(chkTd);
       tr.appendChild(el('td', {}, fmtDate(r.date)));
-      tr.appendChild(el('td', {}, prop?.name || '-'));
+      tr.appendChild(el('td', {}, d.propName));
       const catCell = el('td', {});
-      catCell.appendChild(el('span', { class: 'badge ' + (r.category === 'renovation' ? 'warning' : '') }, cat?.label || r.category));
-      if (resolveExpenseFields(r).accountingType === 'capex' && r.category !== 'renovation')
+      catCell.appendChild(el('span', { class: 'badge ' + (r.category === 'renovation' ? 'warning' : '') }, d.catLabel));
+      if (res.accountingType === 'capex' && r.category !== 'renovation')
         catCell.appendChild(el('span', { class: 'badge warning', style: 'margin-left:4px;font-size:10px' }, 'CapEx'));
       tr.appendChild(catCell);
       const descCell = el('td', {});
       if (r.recurringGroupId) descCell.appendChild(el('span', { class: 'badge', style: 'margin-right:4px;font-size:10px' }, '↻'));
       descCell.appendChild(document.createTextNode(r.description || ''));
       tr.appendChild(descCell);
-      tr.appendChild(el('td', {}, r.personId
-        ? ((state.db.people || []).find(p => p.id === r.personId || (p.legacyKey || p.id) === r.personId)?.name || r.personId)
-        : (r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || ''))));
+      tr.appendChild(el('td', {}, d.vendorPerson));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.amount, r.currency, { maxFrac: 0 })));
-      tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(r.amount, r.currency))));
+      tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(d.eur)));
       const actions = el('td', { class: 'right' });
       if (r.receipt) {
         const rcptBtn = button('📎', { variant: 'sm ghost' });
@@ -291,26 +414,41 @@ function build() {
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog('Delete expense?', { danger: true, okLabel: 'Delete' });
-        if (ok) { restoreInventoryStock(r); softDelete('expenses', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (ok) { restoreInventoryStock(r); softDelete('expenses', r.id); _expFieldCache = new Map(); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
-      tb.appendChild(tr);
-    }
-    t.appendChild(tb);
+      return tr;
+    };
+
+    const frag = document.createDocumentFragment();
+    for (const d of pageRows) frag.appendChild(buildRow(d));
+    tb.appendChild(frag);
     tableWrap.appendChild(t);
 
     selectAllChk.onchange = () => {
       rowChks.forEach(c => { c.checked = selectAllChk.checked; });
       selectAllChk.indeterminate = false;
-      if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
+      if (selectAllChk.checked) pageRows.forEach(d => selected.add(d.r.id)); else selected.clear();
       syncDeleteBtn();
     };
 
-    const totalEUR = rows.reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
-    const capexEUR = rows.filter(r => resolveExpenseFields(r).accountingType === 'capex').reduce((s, r) => s + toEUR(r.amount, r.currency), 0);
     tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted' }, el('span', { class: 'table-footer-count' }, `${rows.length} expense(s)`), ' · CapEx: ', el('span', { class: 'table-footer-capex' }, formatEUR(capexEUR))),
-      el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
+      el('span', { class: 'muted' }, `${total} expense(s) · CapEx: `, formatEUR(capexEUR)),
+      el('span', {}, 'Total: ', el('strong', { class: 'num' }, formatEUR(totalEUR)))
+    ));
+
+    // Pagination controls
+    const endIdx = Math.min(startIdx + _expPageSize, total);
+    const prevBtn = button('‹ Prev', { variant: 'sm ghost', onClick: () => { if (_expPage > 0) { _expPage--; renderTable(); } } });
+    const nextBtn = button('Next ›', { variant: 'sm ghost', onClick: () => { if (_expPage < pageCount - 1) { _expPage++; renderTable(); } } });
+    prevBtn.disabled = _expPage === 0;
+    nextBtn.disabled = _expPage >= pageCount - 1;
+    const sizeSel = select(PAGE_SIZES.map(n => ({ value: String(n), label: `${n} / page` })), String(_expPageSize));
+    sizeSel.style.maxWidth = '120px';
+    sizeSel.onchange = () => { _expPageSize = Number(sizeSel.value); _expPage = 0; renderTable(); };
+    pagerWrap.appendChild(el('span', { class: 'muted', style: 'font-size:13px' }, `Showing ${startIdx + 1}–${endIdx} of ${total}`));
+    pagerWrap.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center;flex-wrap:wrap' },
+      sizeSel, prevBtn, el('span', { style: 'font-size:13px' }, `Page ${_expPage + 1} / ${pageCount}`), nextBtn
     ));
   };
 
@@ -344,19 +482,27 @@ function build() {
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   const renderDash = () => {
-    let bkRows = listActive('expenses');
-    if (yearFilter.size > 0)           bkRows = bkRows.filter(r => yearFilter.has((r.date || '').slice(0, 4)));
-    if (monthFilter.size > 0)          bkRows = bkRows.filter(r => monthFilter.has((r.date || '').slice(5, 7)));
-    if (streamFilter.size > 0)         bkRows = bkRows.filter(r => streamFilter.has(r.stream || ''));
-    if (propFilter.size > 0)           bkRows = bkRows.filter(r => propFilter.has(r.propertyId));
-    if (catFilter.size > 0)            bkRows = bkRows.filter(r => catFilter.has(r.category));
-    if (accountingTypeFilter.size > 0) bkRows = bkRows.filter(r => accountingTypeFilter.has(resolveExpenseFields(r).accountingType));
-    if (recurrenceFilter.size > 0)     bkRows = bkRows.filter(r => recurrenceFilter.has(resolveExpenseFields(r).recurrence));
+    const allExp = listActive('expenses');
+    // Cache may be stale if expenses were added externally; rebuild if needed
+    if (_expFieldCache.size === 0) {
+      _expFieldCache = new Map(allExp.map(e => [e.id, resolveExpenseFields(e)]));
+    }
+    const bkRows = allExp.filter(r => {
+      if (yearFilter.size > 0           && !yearFilter.has((r.date || '').slice(0, 4)))                return false;
+      if (monthFilter.size > 0          && !monthFilter.has((r.date || '').slice(5, 7)))               return false;
+      if (streamFilter.size > 0         && !streamFilter.has(r.stream || ''))                          return false;
+      if (propFilter.size > 0           && !propFilter.has(r.propertyId))                              return false;
+      if (catFilter.size > 0            && !catFilter.has(r.category))                                 return false;
+      const res = _expFieldCache.get(r.id);
+      if (accountingTypeFilter.size > 0 && !accountingTypeFilter.has(res?.accountingType))             return false;
+      if (recurrenceFilter.size > 0     && !recurrenceFilter.has(res?.recurrence))                     return false;
+      return true;
+    });
 
     // By Cost Category doughnut (groups by resolved costCategory for correct OpEx/CapEx separation)
     const byCostCat = new Map();
     for (const r of bkRows) {
-      const k = resolveExpenseFields(r).costCategory;
+      const k = _expFieldCache.get(r.id)?.costCategory;
       byCostCat.set(k, (byCostCat.get(k) || 0) + toEUR(r.amount, r.currency));
     }
     const catLabels = [], catData = [], catColors = [], catKeys = [];
@@ -373,7 +519,7 @@ function build() {
         const key = catKeys[idx];
         drillDownModal(
           `Expenses — ${COST_CATEGORIES[key]?.label || key}`,
-          toDrillRows(bkRows.filter(r => resolveExpenseFields(r).costCategory === key)),
+          toDrillRows(bkRows.filter(r => (_expFieldCache.get(r.id) || resolveExpenseFields(r)).costCategory === key)),
           drillCols
         );
       }
@@ -404,13 +550,12 @@ function build() {
     });
   };
 
-  const renderAll = () => { renderTable(); renderDash(); };
+  const renderAll = () => { renderTable(); requestAnimationFrame(() => renderDash()); };
 
   rebuildFilters();
-  renderTable();
-  requestAnimationFrame(() => renderDash());
+  requestAnimationFrame(() => { renderTable(); requestAnimationFrame(() => renderDash()); });
 
-  return wrap;
+  return { element: wrap, update: () => { _expFieldCache = new Map(); rebuildFilters(); renderAll(); } };
 }
 
 function findCleaningRates(propertyId, date) {
@@ -460,7 +605,17 @@ function openForm(existing, defaults = {}, onSave = null) {
   };
 
   const body = el('div', {});
-  const propS = select((state.db.properties || []).map(p => ({ value: p.id, label: p.name })), r.propertyId);
+  // "Allocated To" — a specific property, or a business line (stream) for
+  const COMPANY_VALUE = '__company__';
+  const allocS = el('select', { class: 'select' });
+  {
+    const propOg = el('optgroup', { label: 'Properties' });
+    for (const p of (state.db.properties || [])) propOg.appendChild(el('option', { value: p.id }, p.name));
+    if (propOg.children.length) allocS.appendChild(propOg);
+    allocS.appendChild(el('option', { value: COMPANY_VALUE }, 'Company'));
+  }
+  allocS.value = r.propertyId ? r.propertyId : COMPANY_VALUE;
+  const allocPid = () => allocS.value === COMPANY_VALUE ? '' : allocS.value;
   const catS = buildCategorySelect(r.category);
   const resolved = resolveExpenseFields(r);
   const accountingTypeS = select(Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label })), resolved.accountingType);
@@ -528,7 +683,7 @@ function openForm(existing, defaults = {}, onSave = null) {
   const invRow   = el('div', { class: 'form-row horizontal' }, formRow('Item', invItemS), formRow('Qty', invQtyI));
 
   const updateInvItemOpts = () => {
-    const pid   = propS.value;
+    const pid   = allocPid();
     const items = listActive('inventory').filter(i => !pid || i.propertyId === pid);
     invItemS.innerHTML = '';
     const placeholder = el('option', { value: '' }, '— Select item —');
@@ -561,7 +716,7 @@ function openForm(existing, defaults = {}, onSave = null) {
 
   const accountingTypeRow = el('div', { class: 'form-row horizontal' }, formRow('Expense Type', accountingTypeS));
 
-  body.appendChild(formRow('Property', propS));
+  body.appendChild(formRow('Allocated To', allocS));
   body.appendChild(formRow('Category', catS));
   body.appendChild(accountingTypeRow);
   body.appendChild(invRow);
@@ -639,7 +794,7 @@ function openForm(existing, defaults = {}, onSave = null) {
     cleaningHint.textContent = '';
 
     if (catS.value === 'cleaning') {
-      const propId = propS.value;
+      const propId = allocPid();
       const date   = dateI.value;
       if (!propId || !date) return;
 
@@ -668,7 +823,7 @@ function openForm(existing, defaults = {}, onSave = null) {
 
     // Non-cleaning: auto-fill from vendor flat rate or property utility defaults
     if (Number(amountI.value) > 0) return;
-    const prop = byId('properties', propS.value);
+    const prop = byId('properties', allocPid());
     if (!prop) return;
     if (vendorS.value) {
       const vendor = byId('vendors', vendorS.value);
@@ -722,16 +877,17 @@ function openForm(existing, defaults = {}, onSave = null) {
   };
   vendorS.onchange = autoFillAmount;
   dateI.onchange   = autoFillAmount;
-  propS.onchange = () => {
-    const p = byId('properties', propS.value);
-    if (p) { currencyS.value = p.currency; autoFillAmount(); }
+  allocS.onchange = () => {
+    const p = byId('properties', allocPid());
+    if (p) currencyS.value = p.currency;
+    autoFillAmount();
     updateInvItemOpts();
   };
   invItemS.onchange = syncInventoryAmount;
   invQtyI.oninput   = syncInventoryAmount;
 
   const save = button('Save', { variant: 'primary', onClick: async () => {
-    if (!propS.value) { toast('Select property', 'danger'); return; }
+    if (!allocS.value) { toast('Select what this expense is allocated to', 'danger'); return; }
 
     if (catS.value === 'inventory') {
       const itemId = invItemS.value;
@@ -770,13 +926,13 @@ function openForm(existing, defaults = {}, onSave = null) {
 
     if (catS.value !== 'inventory' && Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
     const selectedVendor = vendorS.value ? byId('vendors', vendorS.value) : null;
-    const prop = byId('properties', propS.value);
+    const prop = byId('properties', allocPid());
     const autoStream = prop?.type === 'short_term' ? 'short_term_rental'
       : prop?.type === 'long_term' ? 'long_term_rental'
-      : r.stream || 'short_term_rental';
+      : (r.stream || null);
     const appliedFee = catS.value === 'cleaning' && Number(amountI.value) > 0 ? Number(amountI.value) : undefined;
     Object.assign(r, {
-      propertyId:    propS.value,
+      propertyId:    allocPid(),
       category:      catS.value,
       accountingType: catS.value === 'renovation' ? 'capex' : accountingTypeS.value,
       costCategory:   catS.value === 'renovation' ? 'renovation' : costCategoryS.value,
@@ -833,6 +989,33 @@ function openForm(existing, defaults = {}, onSave = null) {
         count++;
       }
       toast(`${count} recurring expense(s) added`, 'success');
+    } else if (existing?.recurringGroupId) {
+      const choice = await new Promise(resolve => {
+        let settled = false;
+        const settle = v => { if (!settled) { settled = true; resolve(v); } };
+        const thisBtn = button('This instance only', { variant: 'primary', onClick: () => { close(); settle('one'); } });
+        const allBtn  = button('All occurrences',    { variant: 'primary', onClick: () => { close(); settle('all'); } });
+        const cancelBtn = button('Cancel', { onClick: () => { close(); settle(null); } });
+        const { close } = openModal({
+          title: 'Edit Recurring Expense',
+          body: el('p', {}, 'Do you want to apply this change to this instance only, or to all occurrences in the group?'),
+          footer: [cancelBtn, thisBtn, allBtn],
+          onClose: () => settle(null),
+        });
+      });
+      if (!choice) return;
+      if (choice === 'all') {
+        const siblings = listActive('expenses').filter(e => e.recurringGroupId === existing.recurringGroupId);
+        const { id: _id, date: _date, recurringGroupId: _grp, isGenerated: _gen, manualOverride: _mo, ...sharedFields } = r;
+        for (const sib of siblings) {
+          upsert('expenses', { ...sib, ...sharedFields });
+        }
+        toast(`${siblings.length} occurrence(s) updated`, 'success');
+      } else {
+        if (existing.isGenerated) r.manualOverride = true;
+        upsert('expenses', r);
+        toast('Expense updated', 'success');
+      }
     } else {
       if (existing?.isGenerated) r.manualOverride = true;
       upsert('expenses', r);

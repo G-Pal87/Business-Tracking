@@ -1,21 +1,30 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
-import { state } from '../core/state.js';
+import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth, applyReservationExpenseRules, removeReservationExpenses, deletePayment } from '../core/data.js';
-import { CURRENCIES, PAYMENT_STATUSES, STREAMS } from '../core/config.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildReservationExpenseRefMap } from '../core/data.js';
+import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
 let _allPaySortCol = -1, _allPaySortDir = 1;
+let _allPayPage = 0, _allPayPageSize = 100, _allPaySearch = '';
 let _schedSortCol  = -1, _schedSortDir  = 1;
 let _upcomSortCol  = -1, _upcomSortDir  = 1;
+let _payUpdateFn = null;
 
 export default {
   id: 'payments',
-  label: 'Payments',
+  label: 'Property Payments',
   icon: 'P',
-  render(container) { container.appendChild(build()); },
-  refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
-  destroy() {}
+  render(container) { const { element, update } = build(); _payUpdateFn = update; container.appendChild(element); },
+  refresh() {
+    if (_payUpdateFn) { _payUpdateFn(); return; }
+    const c = document.getElementById('content');
+    c.innerHTML = '';
+    const { element, update } = build();
+    _payUpdateFn = update;
+    c.appendChild(element);
+  },
+  destroy() { _payUpdateFn = null; }
 };
 
 function build() {
@@ -28,16 +37,19 @@ function build() {
 
   const sections = [allSection, scheduleSection, upcomingSection];
   const tabEls = [
-    el('div', { class: 'tab active' }, 'Short term Payments'),
+    el('div', { class: 'tab active' }, 'All Payments'),
     el('div', { class: 'tab' }, 'Rent Schedule'),
     el('div', { class: 'tab' }, 'Upcoming')
   ];
+
+  let schedUpdate = null, upcomUpdate = null;
+
   tabEls.forEach((t, i) => {
     t.onclick = () => {
       tabEls.forEach(x => x.classList.remove('active')); t.classList.add('active');
       sections.forEach((s, j) => { s.style.display = j === i ? '' : 'none'; });
-      if (i === 1 && !scheduleSection.dataset.built) { scheduleSection.dataset.built = '1'; buildScheduleSection(scheduleSection); }
-      if (i === 2 && !upcomingSection.dataset.built) { upcomingSection.dataset.built = '1'; buildUpcomingSection(upcomingSection); }
+      if (i === 1 && !scheduleSection.dataset.built) { scheduleSection.dataset.built = '1'; schedUpdate = buildScheduleSection(scheduleSection); }
+      if (i === 2 && !upcomingSection.dataset.built) { upcomingSection.dataset.built = '1'; upcomUpdate = buildUpcomingSection(upcomingSection); }
     };
     tabs.appendChild(t);
   });
@@ -45,14 +57,66 @@ function build() {
   wrap.appendChild(tabs);
   sections.forEach(s => wrap.appendChild(s));
 
-  buildAllPayments(allSection);
-  return wrap;
+  const allPayUpdate = buildAllPayments(allSection);
+
+  return {
+    element: wrap,
+    update: () => {
+      allPayUpdate();
+      if (schedUpdate) schedUpdate();
+      if (upcomUpdate) upcomUpdate();
+    }
+  };
 }
 
 function buildAllPayments(wrap) {
+  // Column headers. Defined up here so the "Columns" show/hide control can be
+  // built alongside the other filters. Order must match colAccessors + buildRow.
+  const HEADERS = [
+    // Context
+    ['Date', ''], ['Property', ''], ['Type', ''], ['Source', ''], ['Status', ''], ['Conf. Code', ''], ['Guest', ''],
+    // Stay
+    ['Check-in', 'right'], ['Check-out', 'right'], ['Nights', 'right'],
+    // Host earnings: gross → deductions → net payout → master currency
+    ['Gross', 'right'], ['Service Fee', 'right'], ['Cleaning Fee', 'right'], ['Amount', 'right'], ['EUR', 'right'],
+    // Per-night host metrics
+    ['Avg/Night', 'right'], ['Avg Gross/N', 'right'],
+    // Estimated guest-facing price
+    ['Guest Fee', 'right'], ['Guest Total', 'right'], ['Guest/Night', 'right']
+  ];
+  // Visible-column set (empty = all visible). A column is shown when the set is
+  // empty or contains its label.
+  const colVisible = new Set();
+  const colShown = (i) => colVisible.size === 0 || colVisible.has(HEADERS[i][0]);
+
+  // Hover descriptions shown as a tooltip on each column header.
+  const COL_DESC = {
+    'Date':         'Payout / transaction date',
+    'Property':     'Property this payment belongs to',
+    'Type':         'Transaction type (reservation, payout, adjustment, …)',
+    'Source':       'Where the payment came from (Airbnb, manual, …)',
+    'Status':       'Payment status (paid, pending, overdue, …)',
+    'Conf. Code':   'Airbnb confirmation / reservation code',
+    'Guest':        'Guest name',
+    'Check-in':     'Booking check-in date',
+    'Check-out':    'Booking check-out date',
+    'Nights':       'Number of nights booked',
+    'Gross':        "Gross earnings before Airbnb's host service fee (includes the cleaning fee)",
+    'Service Fee':  'Airbnb host service fee deducted from your earnings',
+    'Cleaning Fee': 'Cleaning fee charged on the booking',
+    'Amount':       'Your payout — what Airbnb actually pays you (after the host fee, includes cleaning)',
+    'EUR':          'Payout converted to EUR (master currency)',
+    'Avg/Night':    'Average nightly rate excluding cleaning = (Amount − Cleaning Fee) ÷ Nights',
+    'Avg Gross/N':  'Average gross earnings per night = Gross ÷ Nights',
+    'Guest Fee':    'Estimated guest service fee + tax added on top of your gross (Guest Total − Gross)',
+    'Guest Total':  'Estimated all-in price the guest paid = Gross × (1 + guest fee % + tax %)',
+    'Guest/Night':  'Estimated guest total ÷ nights — what each night costs the guest'
+  };
+
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
   const yearFilter   = new Set();
   const monthFilter  = new Set();
+  const streamFilter = new Set();
   const propFilter   = new Set();
   const typeFilter   = new Set();
   const statusFilter = new Set();
@@ -67,9 +131,12 @@ function buildAllPayments(wrap) {
 
   const getPayType = p => p.source === 'airbnb' ? (p.airbnbType || p.type || 'other') : (p.type || 'other');
 
+  const STREAM_LABELS = { short_term_rental: 'Short Term', long_term_rental: 'Long Term' };
+
   const matchesExcept = (p, skip) => {
     if (skip !== 'year'   && yearFilter.size   > 0 && !yearFilter.has(p.date?.slice(0, 4)))  return false;
     if (skip !== 'month'  && monthFilter.size  > 0 && !monthFilter.has(p.date?.slice(5, 7))) return false;
+    if (skip !== 'stream' && streamFilter.size > 0 && !streamFilter.has(p.stream || ''))     return false;
     if (skip !== 'prop'   && propFilter.size   > 0 && !propFilter.has(p.propertyId))          return false;
     if (skip !== 'type'   && typeFilter.size   > 0 && !typeFilter.has(getPayType(p)))          return false;
     if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(p.status))             return false;
@@ -80,23 +147,34 @@ function buildAllPayments(wrap) {
   const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => { rebuildFilters(); renderTable(); }, 250); };
   const yearMS   = buildMultiSelect([], yearFilter,   'All Years',      debouncedRT, 'pay_years');
   const monthMS  = buildMultiSelect([], monthFilter,  'All Months',     debouncedRT, 'pay_months');
+  const streamMS = buildMultiSelect([], streamFilter, 'All Streams',    debouncedRT, 'pay_streams');
   const propMS   = buildMultiSelect([], propFilter,   'All Properties', debouncedRT, 'pay_props');
   const typeMS   = buildMultiSelect([], typeFilter,   'All Types',      debouncedRT, 'pay_types');
   const statusMS = buildMultiSelect([], statusFilter, 'All Statuses',   debouncedRT, 'pay_statuses');
+  // Column show/hide. Reuses the multi-select: empty set = all columns visible.
+  const colMS = buildMultiSelect(
+    HEADERS.map(([label]) => ({ value: label, label })),
+    colVisible, 'Columns', () => renderTable(), 'pay_cols'
+  );
 
   const rebuildFilters = () => {
     const allPayments = listActivePayments();
     const allProps    = listActive('properties');
-    const ys  = [...new Set(allPayments.filter(p => matchesExcept(p, 'year'))  .map(p => p.date?.slice(0, 4)).filter(Boolean))].sort().reverse();
-    const ms  = [...new Set(allPayments.filter(p => matchesExcept(p, 'month')) .map(p => p.date?.slice(5, 7)).filter(Boolean))].sort();
-    const ps  = [...new Set(allPayments.filter(p => matchesExcept(p, 'prop'))  .map(p => p.propertyId).filter(Boolean))];
-    const ts  = [...new Set(allPayments.filter(p => matchesExcept(p, 'type'))  .map(p => getPayType(p)))].sort();
-    const ss  = [...new Set(allPayments.filter(p => matchesExcept(p, 'status')).map(p => p.status).filter(Boolean))].sort();
-    yearMS.setItems(ys.map(y => ({ value: y, label: y })));
-    monthMS.setItems(ms.map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] })));
-    propMS.setItems(ps.map(id => allProps.find(pr => pr.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(pr => ({ value: pr.id, label: pr.name })));
-    typeMS.setItems(ts.map(t => ({ value: t, label: t })));
-    statusMS.setItems(ss.map(s => { const m = STATUS_META[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
+    const ys = new Set(), ms = new Set(), strs = new Set(), ps = new Set(), ts = new Set(), ss = new Set();
+    for (const p of allPayments) {
+      if (matchesExcept(p, 'year'))   { if (p.date?.slice(0, 4)) ys.add(p.date.slice(0, 4)); }
+      if (matchesExcept(p, 'month'))  { if (p.date?.slice(5, 7)) ms.add(p.date.slice(5, 7)); }
+      if (matchesExcept(p, 'stream')) { strs.add(p.stream || ''); }
+      if (matchesExcept(p, 'prop'))   { if (p.propertyId) ps.add(p.propertyId); }
+      if (matchesExcept(p, 'type'))   { ts.add(getPayType(p)); }
+      if (matchesExcept(p, 'status')) { if (p.status) ss.add(p.status); }
+    }
+    yearMS.setItems([...ys].sort().reverse().map(y => ({ value: y, label: y })));
+    monthMS.setItems([...ms].sort().map(m => ({ value: m, label: MONTH_LABELS[parseInt(m, 10) - 1] })));
+    streamMS.setItems([...strs].filter(Boolean).sort().map(s => ({ value: s, label: STREAM_LABELS[s] || s })));
+    propMS.setItems([...ps].map(id => allProps.find(pr => pr.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(pr => ({ value: pr.id, label: pr.name })));
+    typeMS.setItems([...ts].sort().map(t => ({ value: t, label: t })));
+    statusMS.setItems([...ss].sort().map(s => { const m = STATUS_META[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
   };
 
   let selected = new Set();
@@ -116,27 +194,32 @@ function buildAllPayments(wrap) {
         if (mk) affectedForecast.add(`${p.propertyId}|${mk}`);
       }
     }
-    for (const id of [...selected]) {
-      const p = payMap.get(id);
-      if (p) removeReservationExpenses(p);
-      softDelete('payments', id);
-    }
-    for (const key of affectedForecast) {
-      const [propId, monthKey] = key.split('|');
-      recalcPendingAirbnbForecast(propId, monthKey);
-    }
+    const refMap = buildReservationExpenseRefMap();
+    runBatch(() => {
+      for (const id of [...selected]) {
+        const p = payMap.get(id);
+        if (p) removeReservationExpenses(p, refMap);
+        softDelete('payments', id);
+      }
+      for (const key of affectedForecast) {
+        const [propId, monthKey] = key.split('|');
+        recalcPendingAirbnbForecast(propId, monthKey);
+      }
+    });
     selected.clear();
     toast(`Deleted ${count} payment(s)`, 'success');
     renderTable();
   }});
   deleteSelBtn.style.display = 'none';
 
-  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); propMS.reset(); typeMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); streamMS.reset(); propMS.reset(); typeMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
   filterBar.appendChild(yearMS);
   filterBar.appendChild(monthMS);
+  filterBar.appendChild(streamMS);
   filterBar.appendChild(propMS);
   filterBar.appendChild(typeMS);
   filterBar.appendChild(statusMS);
+  filterBar.appendChild(colMS);
   filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(deleteSelBtn);
@@ -145,16 +228,23 @@ function buildAllPayments(wrap) {
   filterBar.appendChild(button('+ Add Payment', { variant: 'primary', onClick: () => openForm() }));
   wrap.appendChild(filterBar);
 
+  // Data-level search box (filters the whole dataset, not just the visible page)
+  const searchWrap = el('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:8px' });
+  const searchInput = el('input', { type: 'search', class: 'input', placeholder: 'Filter payments…', style: 'max-width:220px;font-size:13px' });
+  searchInput.value = _allPaySearch;
+  searchWrap.appendChild(searchInput);
+  wrap.appendChild(searchWrap);
+
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _allPaySortCol, initialDir: _allPaySortDir, onSortChange: (c, d) => { _allPaySortCol = c; _allPaySortDir = d; } });
-  tableWrap.addEventListener('sf:filter', () => {
-    const countEl = tableWrap.querySelector('.table-footer-count');
-    const totalEl = tableWrap.querySelector('.table-footer-total');
-    if (!countEl || !totalEl) return;
-    const vis = [...tableWrap.querySelectorAll('tbody tr')].filter(tr => tr.style.display !== 'none');
-    countEl.textContent = `${vis.length} payment(s)`;
-    totalEl.textContent = formatEUR(vis.reduce((s, tr) => s + parseFloat(tr.dataset.eur || 0), 0));
+
+  const pagerWrap = el('div', { class: 'flex justify-between', style: 'align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px' });
+  wrap.appendChild(pagerWrap);
+
+  let _searchTimer;
+  searchInput.addEventListener('input', () => {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(() => { _allPaySearch = searchInput.value.trim().toLowerCase(); _allPayPage = 0; renderTable(); }, 200);
   });
 
   const syncDeleteBtn = () => {
@@ -166,82 +256,176 @@ function buildAllPayments(wrap) {
     }
   };
 
+  const PAGE_SIZES = [50, 100, 250, 500];
+
+  // Derive a payment's display + sort/search values once, reused by every consumer.
+  const derive = (r) => {
+    const prop  = byId('properties', r.propertyId);
+    const sMeta = STATUS_META[r.status] || { label: r.status, css: '' };
+    const rType = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
+    const isNegDisplay  = rType === 'resolution adjustment' || rType === 'adjustment';
+    const isReservation = rType === 'reservation';
+    const dispAmt   = isNegDisplay ? -Math.abs(r.amount) : r.amount;
+    const dispGross = r.airbnbGrossEarnings != null ? (isNegDisplay ? -Math.abs(r.airbnbGrossEarnings) : r.airbnbGrossEarnings) : null;
+    const typeLabel = r.source === 'airbnb' ? (r.airbnbType || r.type || '-') : (r.type || '-');
+    const source    = r.source || 'manual';
+    const conf      = r.confirmationCode || r.airbnbRef || '';
+    const guest     = r.source === 'airbnb' ? (r.notes || '').split(' · ')[0] : (r.notes || '');
+    const eur       = toEUR(dispAmt, r.currency);
+    // Estimated guest-facing price. The host CSV has no guest total, so we gross
+    // up the host gross earnings by the configured guest service fee + tax.
+    const af        = state.db.settings?.airbnb || {};
+    const feePct    = af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT;
+    const taxPct    = af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT;
+    const guestBase = r.airbnbGrossEarnings != null ? r.airbnbGrossEarnings : r.amount;
+    const nightsVal = isReservation && r.airbnbNights ? r.airbnbNights : null;
+    const guestTotal = isReservation && guestBase != null
+      ? Math.round(guestBase * (1 + (feePct + taxPct) / 100) * 100) / 100
+      : null;
+    const guestPerNight = guestTotal != null && nightsVal ? guestTotal / nightsVal : null;
+    // The estimated service-fee + tax markup the guest pays on top of the host's gross.
+    const guestFee = guestTotal != null && guestBase != null
+      ? Math.round((guestTotal - guestBase) * 100) / 100
+      : null;
+    return {
+      r, prop, sMeta, isReservation, dispAmt, dispGross,
+      propName: prop?.name || '-', typeLabel, source, statusLabel: sMeta.label, conf, guest, eur,
+      serviceFee:  r.airbnbServiceFee  != null ? (isNegDisplay ? -Math.abs(r.airbnbServiceFee)  : r.airbnbServiceFee)  : null,
+      cleaningFee: r.airbnbCleaningFee != null ? (isNegDisplay ? -Math.abs(r.airbnbCleaningFee) : r.airbnbCleaningFee) : null,
+      checkIn:  r.airbnbCheckIn || '',
+      checkOut: r.airbnbCheckOut || '',
+      nights:   nightsVal,
+      avgNight: isReservation ? (r.avgNightExclCleaning != null ? r.avgNightExclCleaning : (r.avgNightlyRate != null ? r.avgNightlyRate : null)) : null,
+      avgGross: isReservation && r.avgGross != null ? r.avgGross : null,
+      guestFee, guestTotal, guestPerNight,
+      searchText: [fmtDate(r.date), prop?.name, typeLabel, source, sMeta.label, conf, guest, r.currency].filter(Boolean).join(' ').toLowerCase()
+    };
+  };
+
+  // Sort accessors, one per data column (matches the header order below).
+  const colAccessors = [
+    d => d.r.date, d => d.propName, d => d.typeLabel, d => d.source, d => d.statusLabel,
+    d => d.conf, d => d.guest,
+    d => d.checkIn, d => d.checkOut, d => (d.nights ?? -Infinity),
+    d => (d.dispGross ?? -Infinity), d => (d.serviceFee ?? -Infinity), d => (d.cleaningFee ?? -Infinity), d => d.eur, d => d.eur,
+    d => (d.avgNight ?? -Infinity), d => (d.avgGross ?? -Infinity),
+    d => (d.guestFee ?? -Infinity), d => (d.guestTotal ?? -Infinity), d => (d.guestPerNight ?? -Infinity)
+  ];
+
   const renderTable = () => {
     selected.clear();
     syncDeleteBtn();
     tableWrap.innerHTML = '';
+    pagerWrap.innerHTML = '';
 
-    let rows = [...listActivePayments()];
-    if (yearFilter.size > 0)   rows = rows.filter(r => r.date && yearFilter.has(r.date.slice(0, 4)));
-    if (monthFilter.size > 0)  rows = rows.filter(r => r.date && monthFilter.has(r.date.slice(5, 7)));
-    if (propFilter.size > 0)   rows = rows.filter(r => propFilter.has(r.propertyId));
-    if (typeFilter.size > 0)   rows = rows.filter(r => typeFilter.has(r.source === 'airbnb' ? (r.airbnbType || r.type || 'other') : (r.type || 'other')));
-    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(r.status));
-    rows.sort((a, b) => (b.date || '').localeCompare(a.date));
+    // 1. Facet filters
+    let derived = listActivePayments().filter(r => {
+      if (yearFilter.size > 0   && !(r.date && yearFilter.has(r.date.slice(0, 4))))  return false;
+      if (monthFilter.size > 0  && !(r.date && monthFilter.has(r.date.slice(5, 7)))) return false;
+      if (streamFilter.size > 0 && !streamFilter.has(r.stream || ''))                return false;
+      if (propFilter.size > 0   && !propFilter.has(r.propertyId))                    return false;
+      if (typeFilter.size > 0   && !typeFilter.has(getPayType(r)))                   return false;
+      if (statusFilter.size > 0 && !statusFilter.has(r.status))                      return false;
+      return true;
+    }).map(derive);
 
-    if (rows.length === 0) {
-      tableWrap.appendChild(el('div', { class: 'empty' }, 'No payments match your filters'));
+    // 2. Text search (whole dataset)
+    if (_allPaySearch) derived = derived.filter(d => d.searchText.includes(_allPaySearch));
+
+    // 3. Sort (date desc by default, otherwise by clicked column)
+    if (_allPaySortCol >= 0 && colAccessors[_allPaySortCol]) {
+      const acc = colAccessors[_allPaySortCol], dir = _allPaySortDir;
+      derived.sort((a, b) => {
+        const av = acc(a), bv = acc(b);
+        if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
+        return String(av ?? '').localeCompare(String(bv ?? '')) * dir;
+      });
+    } else {
+      derived.sort((a, b) => (b.r.date || '').localeCompare(a.r.date || ''));
+    }
+
+    const total = derived.length;
+    if (total === 0) {
+      tableWrap.appendChild(el('div', { class: 'empty' }, _allPaySearch ? 'No payments match your search' : 'No payments match your filters'));
       return;
     }
 
-    const t = el('table', { class: 'table' });
+    const totalEUR = derived.reduce((s, d) => s + d.eur, 0);
 
-    // Header with select-all checkbox
+    // 4. Paginate
+    const pageCount = Math.max(1, Math.ceil(total / _allPayPageSize));
+    if (_allPayPage >= pageCount) _allPayPage = pageCount - 1;
+    if (_allPayPage < 0) _allPayPage = 0;
+    const startIdx = _allPayPage * _allPayPageSize;
+    const pageRows = derived.slice(startIdx, startIdx + _allPayPageSize);
+
+    const t = el('table', { class: 'table table-compact' });
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr', {});
-    const chkTh = el('th', { style: 'width:36px' });
-    chkTh.appendChild(selectAllChk);
+    const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    ['Date', 'Property', 'Type', 'Source', 'Status', 'Conf. Code', 'Guest'].forEach(h => htr.appendChild(el('th', {}, h)));
-    htr.appendChild(el('th', { class: 'right' }, 'Amount'));
-    htr.appendChild(el('th', { class: 'right' }, 'EUR'));
-    htr.appendChild(el('th', { class: 'right' }, 'Gross'));
-    ['Check-in', 'Check-out', 'Nights', 'Avg/Night', 'Avg Gross/N'].forEach(h => htr.appendChild(el('th', { class: 'right' }, h)));
+    HEADERS.forEach(([label, cls], i) => {
+      if (!colShown(i)) return;
+      const th = el('th', cls ? { class: cls } : {}, label);
+      if (COL_DESC[label]) th.title = COL_DESC[label];
+      th.style.cursor = 'pointer';
+      th.style.userSelect = 'none';
+      const arr = el('span', { style: 'margin-left:4px;font-size:10px;opacity:' + (_allPaySortCol === i ? '1' : '0.4') },
+        _allPaySortCol === i ? (_allPaySortDir > 0 ? ' ▲' : ' ▼') : ' ⇅');
+      th.appendChild(arr);
+      th.onclick = () => {
+        if (_allPaySortCol === i) _allPaySortDir *= -1; else { _allPaySortCol = i; _allPaySortDir = 1; }
+        _allPayPage = 0;
+        renderTable();
+      };
+      htr.appendChild(th);
+    });
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
-
     const tb = el('tbody');
+    t.appendChild(tb);
+
     const rowChks = [];
 
-    for (const r of rows) {
-      const prop  = byId('properties', r.propertyId);
-      const sMeta = STATUS_META[r.status] || { label: r.status, css: '' };
-
+    const buildRow = (d) => {
+      const { r, sMeta } = d;
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
       rowChks.push(chk);
       chk.onchange = () => {
         if (chk.checked) selected.add(r.id); else selected.delete(r.id);
         const n = rowChks.filter(c => c.checked).length;
-        selectAllChk.indeterminate = n > 0 && n < rows.length;
-        selectAllChk.checked = n === rows.length;
+        selectAllChk.indeterminate = n > 0 && n < pageRows.length;
+        selectAllChk.checked = n === pageRows.length;
         syncDeleteBtn();
       };
 
       const tr = el('tr');
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       tr.appendChild(chkTd);
-      tr.appendChild(el('td', {}, fmtDate(r.date)));
-      tr.appendChild(el('td', {}, prop?.name || '-'));
-      tr.appendChild(el('td', {}, r.source === 'airbnb' ? (r.airbnbType || r.type || '-') : (r.type || '-')));
-      tr.appendChild(el('td', {}, el('span', { class: 'badge' }, r.source || 'manual')));
-      tr.appendChild(el('td', {}, el('span', { class: `badge ${sMeta.css}` }, sMeta.label)));
-      tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px' }, r.confirmationCode || r.airbnbRef || ''));
-      const guestName = r.source === 'airbnb' ? (r.notes || '').split(' · ')[0] : (r.notes || '');
-      tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, guestName));
-      const rType = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
-      const isNegDisplay = rType === 'resolution adjustment' || rType === 'adjustment';
-      const isReservation = rType === 'reservation';
-      const dispAmt   = isNegDisplay ? -Math.abs(r.amount) : r.amount;
-      const dispGross = r.airbnbGrossEarnings != null ? (isNegDisplay ? -Math.abs(r.airbnbGrossEarnings) : r.airbnbGrossEarnings) : null;
-      tr.dataset.eur = String(toEUR(dispAmt, r.currency));
-      tr.appendChild(el('td', { class: 'right num' }, formatMoney(dispAmt, r.currency, { maxFrac: 0 })));
-      tr.appendChild(el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(toEUR(dispAmt, r.currency))));
-      tr.appendChild(el('td', { class: 'right num muted' }, dispGross != null ? formatMoney(dispGross, r.currency, { maxFrac: 0 }) : ''));
-      tr.appendChild(el('td', { class: 'right muted' }, r.airbnbCheckIn ? fmtDate(r.airbnbCheckIn) : ''));
-      tr.appendChild(el('td', { class: 'right muted' }, r.airbnbCheckOut ? fmtDate(r.airbnbCheckOut) : ''));
-      tr.appendChild(el('td', { class: 'right muted' }, isReservation && r.airbnbNights ? String(r.airbnbNights) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, isReservation ? (r.avgNightExclCleaning != null ? formatMoney(r.avgNightExclCleaning, r.currency, { maxFrac: 0 }) : (r.avgNightlyRate ? formatMoney(r.avgNightlyRate, r.currency, { maxFrac: 0 }) : '')) : ''));
-      tr.appendChild(el('td', { class: 'right num muted' }, isReservation && r.avgGross != null ? formatMoney(r.avgGross, r.currency, { maxFrac: 0 }) : ''));
+      // One cell per HEADERS entry, in the same order. Only visible columns are appended.
+      const cells = [
+        el('td', {}, fmtDate(r.date)),
+        el('td', {}, d.propName),
+        el('td', {}, d.typeLabel),
+        el('td', {}, el('span', { class: 'badge' }, d.source)),
+        el('td', {}, el('span', { class: `badge ${sMeta.css}` }, d.statusLabel)),
+        el('td', { class: 'muted', style: 'font-size:11px' }, d.conf),
+        el('td', { class: 'muted', style: 'font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, d.guest),
+        el('td', { class: 'right muted' }, d.checkIn ? fmtDate(d.checkIn) : ''),
+        el('td', { class: 'right muted' }, d.checkOut ? fmtDate(d.checkOut) : ''),
+        el('td', { class: 'right muted' }, d.nights != null ? String(d.nights) : ''),
+        el('td', { class: 'right num muted' }, d.dispGross != null ? formatMoney(d.dispGross, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num muted' }, d.serviceFee  != null ? formatMoney(d.serviceFee,  r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num muted' }, d.cleaningFee != null ? formatMoney(d.cleaningFee, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num' }, formatMoney(d.dispAmt, r.currency, { maxFrac: 0 })),
+        el('td', { class: 'right num muted' }, r.currency === 'EUR' ? '' : formatEUR(d.eur)),
+        el('td', { class: 'right num muted' }, d.avgNight != null ? formatMoney(d.avgNight, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num muted' }, d.avgGross != null ? formatMoney(d.avgGross, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num muted' }, d.guestFee != null ? formatMoney(d.guestFee, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num' }, d.guestTotal != null ? formatMoney(d.guestTotal, r.currency, { maxFrac: 0 }) : ''),
+        el('td', { class: 'right num muted' }, d.guestPerNight != null ? formatMoney(d.guestPerNight, r.currency, { maxFrac: 0 }) : '')
+      ];
+      cells.forEach((td, i) => { if (colShown(i)) tr.appendChild(td); });
       const actions = el('td', { class: 'right' });
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
@@ -257,31 +441,44 @@ function buildAllPayments(wrap) {
         renderTable();
       }}));
       tr.appendChild(actions);
-      tb.appendChild(tr);
-    }
-    t.appendChild(tb);
+      return tr;
+    };
+
+    const frag = document.createDocumentFragment();
+    for (const d of pageRows) frag.appendChild(buildRow(d));
+    tb.appendChild(frag);
     tableWrap.appendChild(t);
 
     selectAllChk.onchange = () => {
       rowChks.forEach(c => { c.checked = selectAllChk.checked; });
       selectAllChk.indeterminate = false;
-      if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
+      if (selectAllChk.checked) pageRows.forEach(d => selected.add(d.r.id)); else selected.clear();
       syncDeleteBtn();
     };
 
-    const totalEUR = rows.reduce((s, r) => {
-      const t = (r.source === 'airbnb' ? (r.airbnbType || r.type) : (r.type || '')).toLowerCase();
-      const neg = t === 'resolution adjustment' || t === 'adjustment';
-      return s + toEUR(neg ? -Math.abs(r.amount) : r.amount, r.currency);
-    }, 0);
     tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted table-footer-count' }, `${rows.length} payment(s)`),
-      el('span', {}, 'Total: ', el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)))
+      el('span', { class: 'muted' }, `${total} payment(s)`),
+      el('span', {}, 'Total: ', el('strong', { class: 'num' }, formatEUR(totalEUR)))
+    ));
+
+    // Pagination controls
+    const endIdx = Math.min(startIdx + _allPayPageSize, total);
+    const prevBtn = button('‹ Prev', { variant: 'sm ghost', onClick: () => { if (_allPayPage > 0) { _allPayPage--; renderTable(); } } });
+    const nextBtn = button('Next ›', { variant: 'sm ghost', onClick: () => { if (_allPayPage < pageCount - 1) { _allPayPage++; renderTable(); } } });
+    prevBtn.disabled = _allPayPage === 0;
+    nextBtn.disabled = _allPayPage >= pageCount - 1;
+    const sizeSel = select(PAGE_SIZES.map(n => ({ value: String(n), label: `${n} / page` })), String(_allPayPageSize));
+    sizeSel.style.maxWidth = '120px';
+    sizeSel.onchange = () => { _allPayPageSize = Number(sizeSel.value); _allPayPage = 0; renderTable(); };
+    pagerWrap.appendChild(el('span', { class: 'muted', style: 'font-size:13px' }, `Showing ${startIdx + 1}–${endIdx} of ${total}`));
+    pagerWrap.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center;flex-wrap:wrap' },
+      sizeSel, prevBtn, el('span', { style: 'font-size:13px' }, `Page ${_allPayPage + 1} / ${pageCount}`), nextBtn
     ));
   };
 
   rebuildFilters();
-  renderTable();
+  requestAnimationFrame(() => renderTable());
+  return () => { rebuildFilters(); renderTable(); };
 }
 
 function recordRentPayment(prop, entry, onDone) {
@@ -303,14 +500,32 @@ function recordRentPayment(prop, entry, onDone) {
 }
 
 function buildScheduleSection(wrap) {
-  const ltProps = (listActive('properties')).filter(p => p.type === 'long_term');
-  if (ltProps.length === 0) {
+  const allLtProps = (listActive('properties')).filter(p => p.type === 'long_term');
+  if (allLtProps.length === 0) {
     wrap.appendChild(el('div', { class: 'empty' }, 'No long-term rental properties configured'));
     return;
   }
 
-  const propSel = select(ltProps.map(p => ({ value: p.id, label: p.name })), ltProps[0].id);
-  propSel.onchange = () => render();
+  const MONTH_LABELS_S = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const SCHED_STATUS = {
+    paid:           { label: 'Paid',           css: 'success' },
+    overdue:        { label: 'Overdue',         css: 'danger'  },
+    'due-this-month': { label: 'Due This Month', css: 'warning' },
+    upcoming:       { label: 'Upcoming',        css: ''        }
+  };
+
+  const yearFilter   = new Set();
+  const monthFilter  = new Set();
+  const propFilter   = new Set();
+  const statusFilter = new Set();
+
+  let _schedTimer;
+  const debouncedRender = () => { clearTimeout(_schedTimer); _schedTimer = setTimeout(render, 150); };
+
+  const yearMS   = buildMultiSelect([], yearFilter,   'All Years',      debouncedRender, 'sched_years');
+  const monthMS  = buildMultiSelect([], monthFilter,  'All Months',     debouncedRender, 'sched_months');
+  const propMS   = buildMultiSelect([], propFilter,   'All Properties', debouncedRender, 'sched_props');
+  const statusMS = buildMultiSelect([], statusFilter, 'All Statuses',   debouncedRender, 'sched_statuses');
 
   const showUnpaidOnly = el('label', { class: 'flex gap-8', style: 'align-items:center;cursor:pointer;font-size:13px' });
   const unpaidChk = el('input', { type: 'checkbox' });
@@ -318,7 +533,11 @@ function buildScheduleSection(wrap) {
   showUnpaidOnly.appendChild(document.createTextNode('Unpaid only'));
 
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
-  bar.appendChild(propSel);
+  bar.appendChild(yearMS);
+  bar.appendChild(monthMS);
+  bar.appendChild(propMS);
+  bar.appendChild(statusMS);
+  bar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); propMS.reset(); statusMS.reset(); render(); } }));
   bar.appendChild(el('div', { class: 'flex-1' }));
   bar.appendChild(showUnpaidOnly);
   wrap.appendChild(bar);
@@ -341,29 +560,70 @@ function buildScheduleSection(wrap) {
     }
   };
 
+  const getSchedStatus = (s, thisMonthKey) =>
+    s.paid ? 'paid' : s.overdue ? 'overdue' : s.monthKey === thisMonthKey ? 'due-this-month' : 'upcoming';
+
+  const rebuildSchedFilters = (allEntries, thisMonthKey) => {
+    const matchesExceptSched = (e, skip) => {
+      const st = getSchedStatus(e, thisMonthKey);
+      if (skip !== 'year'   && yearFilter.size   > 0 && !yearFilter.has(e.monthKey.slice(0, 4)))  return false;
+      if (skip !== 'month'  && monthFilter.size  > 0 && !monthFilter.has(e.monthKey.slice(5, 7))) return false;
+      if (skip !== 'prop'   && propFilter.size   > 0 && !propFilter.has(e.propId))                return false;
+      if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(st))                    return false;
+      return true;
+    };
+    const ys = new Set(), ms = new Set(), ps = new Set(), ss = new Set();
+    for (const e of allEntries) {
+      if (matchesExceptSched(e, 'year'))   ys.add(e.monthKey.slice(0, 4));
+      if (matchesExceptSched(e, 'month'))  ms.add(e.monthKey.slice(5, 7));
+      if (matchesExceptSched(e, 'prop'))   ps.add(e.propId);
+      if (matchesExceptSched(e, 'status')) ss.add(getSchedStatus(e, thisMonthKey));
+    }
+    yearMS.setItems([...ys].sort().reverse().map(y => ({ value: y, label: y })));
+    monthMS.setItems([...ms].sort().map(m => ({ value: m, label: MONTH_LABELS_S[parseInt(m, 10) - 1] })));
+    propMS.setItems(allLtProps.filter(p => ps.has(p.id)).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name })));
+    statusMS.setItems([...ss].sort().map(s => { const m = SCHED_STATUS[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
+  };
+
   const render = () => {
     selected.clear();
     syncDeleteBtn();
 
-    // Resolve which property to show: selected value, else first ltProp
-    const propId = propSel.value || ltProps[0].id;
-    const prop = byId('properties', propId);
-    if (!prop) return;
-    const schedule = generatePaymentSchedule(prop);
     const now = new Date();
     const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    const paidThisYear = schedule.filter(s => s.paid && s.monthKey.startsWith(String(now.getFullYear())));
-    const overdue      = schedule.filter(s => s.overdue);
-    const upcoming     = schedule.filter(s => !s.paid && !s.overdue);
-    const next         = upcoming[0];
+    // Collect all schedule entries from all LT properties
+    const allEntries = [];
+    for (const prop of allLtProps) {
+      for (const e of generatePaymentSchedule(prop)) {
+        allEntries.push({ ...e, prop, propId: prop.id });
+      }
+    }
+
+    rebuildSchedFilters(allEntries, thisMonthKey);
+
+    // Apply filters
+    let rows = allEntries;
+    if (yearFilter.size   > 0) rows = rows.filter(e => yearFilter.has(e.monthKey.slice(0, 4)));
+    if (monthFilter.size  > 0) rows = rows.filter(e => monthFilter.has(e.monthKey.slice(5, 7)));
+    if (propFilter.size   > 0) rows = rows.filter(e => propFilter.has(e.propId));
+    if (statusFilter.size > 0) rows = rows.filter(e => statusFilter.has(getSchedStatus(e, thisMonthKey)));
+    if (unpaidChk.checked) rows = rows.filter(s => !s.paid);
+    rows.sort((a, b) => a.date.localeCompare(b.date));
+
+    // KPI cards computed from ALL entries (not filtered) for accurate global view
+    const paidThisYear = allEntries.filter(e => e.paid && e.monthKey.startsWith(String(now.getFullYear())));
+    const overdueAll   = allEntries.filter(e => e.overdue);
+    const upcomingAll  = allEntries.filter(e => !e.paid && !e.overdue);
+    const next         = [...upcomingAll].sort((a, b) => a.date.localeCompare(b.date))[0];
     const daysToNext   = next ? Math.ceil((new Date(next.date) - now) / 86400000) : null;
 
     const tenants = listActive('tenants');
     const toRows = entries => entries.map(e => {
       const t = tenants.find(t => t.id === e.tenantId);
       return {
-        tenant: t ? t.name : (prop.tenantName || prop.name),
+        property: e.prop.name,
+        tenant: t ? t.name : (e.prop.tenantName || e.prop.name),
         dueDate: e.date,
         amount: e.amount,
         currency: e.currency,
@@ -371,6 +631,7 @@ function buildScheduleSection(wrap) {
       };
     });
     const schedCols = [
+      { key: 'property', label: 'Property' },
       { key: 'tenant', label: 'Tenant' },
       { key: 'dueDate', label: 'Due Date', format: v => fmtDate(v) },
       { key: 'amount', label: 'Amount', right: true, format: (v, row) => formatMoney(v, row.currency, { maxFrac: 0 }) },
@@ -378,36 +639,33 @@ function buildScheduleSection(wrap) {
     ];
 
     kpiRow.innerHTML = '';
-    kpiRow.appendChild(kpiCard('Paid This Year', String(paidThisYear.length), `${formatEUR(paidThisYear.reduce((s, e) => s + e.amountEUR, 0))}`, 'success',
-      () => drillDownModal('Paid This Year', toRows(paidThisYear), schedCols)));
-    kpiRow.appendChild(kpiCard('Overdue', String(overdue.length), overdue.length ? formatEUR(overdue.reduce((s, e) => s + e.amountEUR, 0)) : '—', overdue.length ? 'danger' : '',
-      overdue.length ? () => drillDownModal('Overdue Payments', toRows(overdue), schedCols) : null));
-    kpiRow.appendChild(kpiCard('Upcoming', String(upcoming.length), upcoming.length ? formatEUR(upcoming.reduce((s, e) => s + e.amountEUR, 0)) : '—', '',
-      upcoming.length ? () => drillDownModal('Upcoming Payments', toRows(upcoming), schedCols) : null));
+    kpiRow.appendChild(kpiCard('Paid This Year', String(paidThisYear.length), formatEUR(paidThisYear.reduce((s, e) => s + e.amountEUR, 0)), 'success',
+      paidThisYear.length ? () => drillDownModal('Paid This Year', toRows(paidThisYear), schedCols) : null));
+    kpiRow.appendChild(kpiCard('Overdue', String(overdueAll.length), overdueAll.length ? formatEUR(overdueAll.reduce((s, e) => s + e.amountEUR, 0)) : '—', overdueAll.length ? 'danger' : '',
+      overdueAll.length ? () => drillDownModal('Overdue Payments', toRows(overdueAll), schedCols) : null));
+    kpiRow.appendChild(kpiCard('Upcoming', String(upcomingAll.length), upcomingAll.length ? formatEUR(upcomingAll.reduce((s, e) => s + e.amountEUR, 0)) : '—', '',
+      upcomingAll.length ? () => drillDownModal('Upcoming Payments', toRows(upcomingAll), schedCols) : null));
     kpiRow.appendChild(kpiCard('Next Due', next ? fmtDate(next.date) : '—', daysToNext !== null ? (daysToNext <= 0 ? 'Today!' : daysToNext === 1 ? 'Tomorrow' : `In ${daysToNext} days`) : '—', daysToNext !== null && daysToNext <= 3 ? 'warning' : '',
       next ? () => drillDownModal('Next Due', toRows([next]), schedCols) : null));
 
     tableWrap.innerHTML = '';
-    let rows = schedule;
-    if (unpaidChk.checked) rows = rows.filter(s => !s.paid);
-    if (rows.length === 0) { tableWrap.appendChild(el('div', { class: 'empty' }, 'No entries')); return; }
+    if (rows.length === 0) { tableWrap.appendChild(el('div', { class: 'empty' }, 'No entries match your filters')); return; }
 
     const t = el('table', { class: 'table' });
-
     const hasSelectable = rows.some(s => !!s.linkedPaymentId);
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr');
     const chkTh = el('th', { style: 'width:36px' });
     if (hasSelectable) chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    [['Due Date', ''], ['Month', ''], ['Amount', 'right'], ['Cur.', ''], ['Status', ''], ['', '']].forEach(([h, cls]) => {
+    [['Property', ''], ['Tenant', ''], ['Due Date', ''], ['Month', ''], ['Amount', 'right'], ['Cur.', ''], ['Status', ''], ['', '']].forEach(([h, cls]) => {
       htr.appendChild(el('th', cls ? { class: cls } : {}, h));
     });
     const thead = el('thead'); thead.appendChild(htr); t.appendChild(thead);
-
     const tb = el('tbody');
 
     for (const s of rows) {
+      const { prop } = s;
       const isThisMonth = s.monthKey === thisMonthKey;
       const tr = el('tr');
 
@@ -435,7 +693,9 @@ function buildScheduleSection(wrap) {
           chkTd.appendChild(chk);
         }
         tr.appendChild(chkTd);
-
+        tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, prop.name));
+        const tenantObj = s.tenantId ? tenants.find(t => t.id === s.tenantId) : null;
+        tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, tenantObj?.name || prop.tenantName || '—'));
         tr.appendChild(el('td', {}, fmtDate(s.date)));
         tr.appendChild(el('td', { class: 'muted' }, s.monthKey));
         tr.appendChild(el('td', { class: 'right num' }, formatMoney(s.amount, s.currency, { maxFrac: 0 })));
@@ -468,36 +728,24 @@ function buildScheduleSection(wrap) {
         tr.classList.add('row-editing');
         tr.style.background = '';
 
-        tr.appendChild(el('td', {})); // checkbox column placeholder
+        tr.appendChild(el('td', {})); // checkbox placeholder
+        tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, prop.name)); // property read-only
+        tr.appendChild(el('td', {})); // tenant placeholder
 
-        const linked = s.linkedPaymentId
-          ? byId('payments', s.linkedPaymentId) || null
-          : null;
+        const linked = s.linkedPaymentId ? byId('payments', s.linkedPaymentId) || null : null;
 
-        const dateI = el('input', {
-          type: 'date', class: 'input',
-          value: linked?.date || s.date,
-          style: 'min-width:130px;width:100%'
-        });
-        const amtI = el('input', {
-          type: 'number', class: 'input',
-          value: String(linked?.amount ?? s.amount),
-          min: '0', step: '0.01',
-          style: 'min-width:80px;width:100%'
-        });
-        const curS = el('select', { class: 'select', style: 'width:100%' });
+        const dateI = el('input', { type: 'date', class: 'input', value: linked?.date || s.date, style: 'min-width:130px;width:100%' });
+        const amtI  = el('input', { type: 'number', class: 'input', value: String(linked?.amount ?? s.amount), min: '0', step: '0.01', style: 'min-width:80px;width:100%' });
+        const curS  = el('select', { class: 'select', style: 'width:100%' });
         for (const c of CURRENCIES) {
           const o = el('option', { value: c }, c);
           if (c === (linked?.currency || s.currency)) o.selected = true;
           curS.appendChild(o);
         }
 
-        const statusOpts = [
-          { value: 'paid', label: 'Paid' },
-          { value: 'pending', label: 'Pending' }
-        ];
+        const statusOpts = [{ value: 'paid', label: 'Paid' }, { value: 'pending', label: 'Pending' }];
         if (s.linkedPaymentId) statusOpts.push({ value: 'revert', label: 'Revert to Scheduled' });
-        const currentStatus = linked?.status === 'paid' ? 'paid' : linked ? 'pending' : 'pending';
+        const currentStatus = linked?.status === 'paid' ? 'paid' : 'pending';
         const statusS = el('select', { class: 'select', style: 'width:100%' });
         for (const o of statusOpts) {
           const opt = el('option', { value: o.value }, o.label);
@@ -505,36 +753,22 @@ function buildScheduleSection(wrap) {
           statusS.appendChild(opt);
         }
 
-        const notesI = el('input', {
-          type: 'text', class: 'input',
-          value: linked?.notes || `Rent ${s.monthKey}`,
-          placeholder: 'Notes',
-          style: 'width:100%;margin-bottom:6px'
-        });
+        const notesI = el('input', { type: 'text', class: 'input', value: linked?.notes || `Rent ${s.monthKey}`, placeholder: 'Notes', style: 'width:100%;margin-bottom:6px' });
 
         tr.addEventListener('cancel-edit', renderViewRow);
 
         const saveBtn = button('Save', { variant: 'sm primary', onClick: () => {
-          const newDate  = dateI.value;
-          const newAmt   = Number(amtI.value);
-          const newCur   = curS.value;
-          const newStat  = statusS.value;
-          const newNotes = notesI.value.trim() || `Rent ${s.monthKey}`;
-
+          const newDate  = dateI.value, newAmt = Number(amtI.value), newCur = curS.value;
+          const newStat  = statusS.value, newNotes = notesI.value.trim() || `Rent ${s.monthKey}`;
           if (!newDate) { toast('Date is required', 'danger'); return; }
           if (newAmt <= 0) { toast('Amount must be greater than zero', 'danger'); return; }
-
           if (newStat === 'revert') {
             if (s.linkedPaymentId) deletePayment(s.linkedPaymentId);
             toast('Payment record removed — row reverted to scheduled state', 'success');
           } else {
             const pay = linked ? { ...linked } : {
-              id: newId('pay'),
-              propertyId: prop.id,
-              tenantId: s.tenantId || null,
-              stream: 'long_term_rental',
-              source: 'manual',
-              type: 'rental'
+              id: newId('pay'), propertyId: prop.id, tenantId: s.tenantId || null,
+              stream: 'long_term_rental', source: 'manual', type: 'rental'
             };
             Object.assign(pay, { amount: newAmt, currency: newCur, date: newDate, status: newStat, notes: newNotes });
             upsert('payments', pay);
@@ -544,8 +778,6 @@ function buildScheduleSection(wrap) {
         }});
 
         const cancelBtn = button('Cancel', { variant: 'sm ghost', onClick: renderViewRow });
-
-        // Col 1: checkbox placeholder | Col 2: date | Col 3: month | Col 4: amount | Col 5: currency | Col 6: status | Col 7: notes + buttons
         tr.appendChild(el('td', {}, dateI));
         tr.appendChild(el('td', { class: 'muted', style: 'font-size:11px;white-space:nowrap' }, s.monthKey));
         tr.appendChild(el('td', {}, amtI));
@@ -581,11 +813,9 @@ function buildScheduleSection(wrap) {
       };
     }
 
-    const activeTenant = (listActive('tenants')).find(t => t.propertyId === prop.id && t.status === 'active');
-    const tenantLabel = activeTenant?.name || prop.tenantName || '';
     const totalEUR = rows.reduce((s, e) => s + e.amountEUR, 0);
     tableWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
-      el('span', { class: 'muted' }, `${tenantLabel ? tenantLabel + ' · ' : ''}${rows.length} month(s) shown`),
+      el('span', { class: 'muted' }, `${rows.length} month(s) shown`),
       el('strong', { class: 'num' }, `Total: ${formatEUR(totalEUR)}`)
     ));
   };
@@ -601,10 +831,11 @@ function buildScheduleSection(wrap) {
     render();
   }});
   deleteSelBtn.style.display = 'none';
-  bar.insertBefore(deleteSelBtn, showUnpaidOnly);
+  bar.insertBefore(deleteSelBtn, yearMS);
 
   unpaidChk.onchange = render;
   render();
+  return render;
 }
 
 function kpiCard(label, value, sub, variant, onClick) {
@@ -736,6 +967,7 @@ function buildUpcomingSection(wrap) {
 
   horizonSel.onchange = render;
   render();
+  return render;
 }
 
 function openForm(existing) {
@@ -850,13 +1082,13 @@ function openCSVImport() {
       const rows = mergeReservationRows(parseAirbnbCSV(text));
       let added = 0, updated = 0, skipped = 0;
       const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
-      const toDelete = listActivePayments().filter(p => p.source === 'airbnb' && p.airbnbKey && !csvKeys.has(p.airbnbKey)).length;
+      const allPays = listActivePayments();
+      const existingKeySet = new Set(allPays.filter(p => p.airbnbKey).map(p => p.airbnbKey));
+      const toDelete = allPays.filter(p => p.source === 'airbnb' && p.airbnbKey && !csvKeys.has(p.airbnbKey)).length;
       for (const row of rows) {
         const pmatch = findProp(row.listing);
         if (!pmatch) { skipped++; continue; }
-        const exists = row.airbnbKey
-          ? listActivePayments().some(p => p.airbnbKey === row.airbnbKey)
-          : false;
+        const exists = row.airbnbKey ? existingKeySet.has(row.airbnbKey) : false;
         if (exists) updated++; else added++;
       }
       const badge = el('span', { class: 'badge success' }, 'Paid');
@@ -902,6 +1134,9 @@ function openCSVImport() {
 
     let totalAdded = 0, totalUpdated = 0, totalRemoved = 0;
 
+    // Batch all the per-row mutations into a single save/refresh cycle instead
+    // of one per upsert (thousands during a large import).
+    await runBatch(async () => {
     // ── Completed CSV (airbnb_.csv): full sync / overwrite ──────────────────
     const completedFile = completedFileI.files?.[0];
     if (completedFile) {
@@ -917,9 +1152,12 @@ function openCSVImport() {
       // Remove orphaned completed payments (airbnbKey set but not in CSV).
       // Never delete pending payments — they come from a separate CSV and aren't
       // in the completed export until after payout.
+      // Pre-index generated expenses by reservationRef so each removal is O(1)
+      // instead of scanning all expenses per orphaned payment.
+      const orphanRefMap = buildReservationExpenseRefMap();
       for (const p of listActivePayments()) {
         if (p.source === 'airbnb' && p.status !== 'pending' && p.airbnbKey && !csvKeys.has(p.airbnbKey)) {
-          removeReservationExpenses(p);
+          removeReservationExpenses(p, orphanRefMap);
           softDelete('payments', p.id);
           totalRemoved++;
         }
@@ -935,6 +1173,9 @@ function openCSVImport() {
           if (p.airbnbRef && p.airbnbRef !== p.confirmationCode) pendingByCode.set(p.airbnbRef, p);
         }
       }
+      // Index existing generated expenses once so rule application can find an
+      // already-generated expense in O(1) (otherwise O(rows × rules × expenses)).
+      const genIndex = buildGeneratedExpenseIndex();
 
       // Upsert each row as a separate payment line item (one per type per code)
       for (const row of rows) {
@@ -974,7 +1215,7 @@ function openCSVImport() {
         upsert('payments', pay);
         if (existing) totalUpdated++; else totalAdded++;
 
-        if (row.type.toLowerCase() === 'reservation') applyReservationExpenseRules(pay);
+        if (row.type.toLowerCase() === 'reservation') applyReservationExpenseRules(pay, genIndex);
 
         // Materialize any matching pending reservation so it no longer counts
         // in active forecast calculations while remaining visible for history.
@@ -1021,6 +1262,7 @@ function openCSVImport() {
           .filter(p => p.status === 'paid' && p.confirmationCode)
           .map(p => [p.confirmationCode, p])
       );
+      const genIndexP = buildGeneratedExpenseIndex();
 
       for (const row of rows) {
         const matched = findProp(row.listing);
@@ -1086,7 +1328,7 @@ function openCSVImport() {
         }
         upsert('payments', pay);
 
-        if (row.type?.toLowerCase() === 'reservation') applyReservationExpenseRules(pay);
+        if (row.type?.toLowerCase() === 'reservation') applyReservationExpenseRules(pay, genIndexP);
 
         // Accumulate forecast total for this property+month
         const refDate = row.checkIn || row.date;
@@ -1108,6 +1350,7 @@ function openCSVImport() {
         saveForecastMonth(fc.id, monthKey, { revenue: total });
       }
     }
+    });
 
     const parts = [`${totalAdded} new`, `${totalUpdated} updated`];
     if (totalRemoved > 0) parts.push(`${totalRemoved} removed`);

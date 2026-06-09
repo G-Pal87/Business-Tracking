@@ -1,0 +1,47 @@
+name: Refresh Airbnb iCal blocks
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub Actions min interval is 5 min;
+    # 15 min is a good balance between freshness and noise.
+    - cron: '*/15 * * * *'
+  workflow_dispatch: # allow manual run from the Actions tab
+
+permissions:
+  contents: write   # needed to commit db.json + feed files back to main
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Always start from the very latest commit so the script reads
+          # up-to-date db.json and the push won't conflict with the app.
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Pull latest main
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull origin main
+
+      - name: Refresh iCal blocks and rebuild rate feeds
+        run: node .github/scripts/refresh-ical.js
+
+      - name: Commit and push if anything changed
+        run: |
+          git add data/db.json exports/daily-rates/
+          if git diff --staged --quiet; then
+            echo "No iCal changes — skipping commit."
+          else
+            git commit -m "Auto-sync: refresh Airbnb iCal blocks"
+            # Retry once on push rejection (app may have pushed between our
+            # pull and this push — just rebase and try again).
+            git push origin main || (git pull --rebase origin main && git push origin main)
+          fi

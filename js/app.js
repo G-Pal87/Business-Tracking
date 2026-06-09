@@ -1,5 +1,6 @@
 // Application bootstrap - registers modules and loads data
 import { state, subscribe, setDb, markDirty } from './core/state.js';
+import { autoPurgeOldDeleted } from './core/data.js';
 import * as github from './core/github.js';
 import * as router from './core/router.js';
 import { toast } from './core/ui.js';
@@ -35,7 +36,9 @@ async function boot() {
     { default: inventory },
     { default: tenants },
     { default: dividends },
-    { default: companyStructure }
+    { default: companyStructure },
+    { default: strRates },
+    { default: analyticsStr }
   ] = await Promise.all([
     import(`./modules/properties.js?v=${VERSION}`),
     import(`./modules/payments.js?v=${VERSION}`),
@@ -62,12 +65,14 @@ async function boot() {
     import(`./modules/inventory.js?v=${VERSION}`),
     import(`./modules/tenants.js?v=${VERSION}`),
     import(`./modules/dividends.js?v=${VERSION}`),
-    import(`./modules/company-structure.js?v=${VERSION}`)
+    import(`./modules/company-structure.js?v=${VERSION}`),
+    import(`./modules/str-rates.js?v=${VERSION}`),
+    import(`./modules/analytics-str.js?v=${VERSION}`)
   ]);
 
   const MODULES = [
-    properties, payments, expenses, dividends, tenants, vendors, inventory, companyStructure,
-    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsPersonal, analyticsTax, clients, invoices, timeOff, settings, users
+    properties, payments, strRates, expenses, dividends, tenants, vendors, inventory, companyStructure,
+    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsPersonal, analyticsTax, analyticsStr, clients, invoices, timeOff, settings, users
   ];
 
   MODULES.forEach(router.registerModule);
@@ -187,6 +192,20 @@ async function boot() {
   let pushTimer = null;
   let saveFailCount = 0;
   let pushPending = false; // true while doSave is queued or running
+  let ratesFeedTimer = null; // debounce for auto-publishing the STR daily-rate feeds
+
+  // After a real data push, re-publish the STR daily-rate feeds. Debounced so a
+  // burst of edits results in a single publish; the publisher itself only
+  // uploads feeds whose rates actually changed, so unrelated edits are no-ops.
+  const scheduleRatesFeedPublish = () => {
+    clearTimeout(ratesFeedTimer);
+    ratesFeedTimer = setTimeout(() => {
+      ratesFeedTimer = null;
+      import(`./modules/str-rates.js?v=${VERSION}`)
+        .then(m => m.autoPublishRatesFeeds?.())
+        .catch(() => { /* best-effort; never block sync */ });
+    }, 1000);
+  };
 
   const doSave = async () => {
     if (!initialSyncDone) {
@@ -207,6 +226,7 @@ async function boot() {
       state.dirty = false;
       saveFailCount = 0;
       state.github.lastSyncError = null;
+      scheduleRatesFeedPublish(); // keep the public daily-rate feeds current
       if (!hadNewChanges) {
         updateSyncStatus('online', `Pushed to GitHub at ${new Date().toLocaleTimeString()}`);
       }
@@ -246,6 +266,49 @@ async function boot() {
 
   state.github.syncNow = doSave;
 
+  // ── Live convergence: re-pull others' changes when it's safe to do so ───────
+  // A full re-pull replaces the local view with everyone's latest. We only do it
+  // when there is nothing to lose: no unsaved/dirty edits, no push in flight, the
+  // tab is visible, and no modal/form is open (so we never yank the UI out from
+  // under the user). When the user IS dirty, the imminent push already fetches +
+  // 3-way-merges the current remote, so their changes converge safely there.
+  let resyncing = false;
+  const backgroundResync = async () => {
+    if (resyncing) return;
+    if (!initialSyncDone) return;
+    if (!state.github.token || !state.github.owner || !state.github.repo) return;
+    if (state.dirty || pushPending || state.saving || pendingSaveBeforeSync) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (document.querySelector('.modal-overlay.open')) return; // don't disrupt an open form/dialog
+    resyncing = true;
+    try {
+      const remoteDb = await github.fetchDb();          // also refreshes sha + remoteDb base
+      // Re-check after the await — the user may have started editing meanwhile.
+      if (state.dirty || pushPending || state.saving || document.querySelector('.modal-overlay.open')) return;
+      // resyncDb: pure last-writer-wins by updatedAt — no 3-way base.
+      // This prevents CDN-stale responses from overwriting locally-held records
+      // that were saved more recently. If local.updatedAt > remote.updatedAt,
+      // local wins regardless of whether the base (remoteDb) is fresh or stale.
+      const synced = github.resyncDb(remoteDb, state.db);
+      synced._syncedAt = Date.now();
+      setDb(synced);                                    // triggers data-loaded → view refresh
+      github.saveLocalCache(synced);
+      updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
+    } catch { /* offline / transient — keep working from current state */ }
+    finally { resyncing = false; }
+  };
+
+  // Reconnecting: push pending offline edits (which merge against fresh remote),
+  // otherwise pull everyone else's changes.
+  window.addEventListener('online', () => {
+    if (state.dirty || pendingSaveBeforeSync) { if (!pushPending) doSave().catch(() => {}); }
+    else backgroundResync();
+  });
+  // Returning to the tab — surface anything that changed while it was hidden.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) backgroundResync(); });
+  // Steady-state polling so long-lived sessions converge on multi-user edits.
+  setInterval(backgroundResync, 60000);
+
   const retryBtn = document.getElementById('sync-retry');
   if (retryBtn) {
     retryBtn.onclick = () => {
@@ -276,7 +339,7 @@ async function boot() {
           // No push in flight — start the debounce timer.
           updateSyncStatus('syncing', 'Changes pending — pushing soon…');
           clearTimeout(pushTimer);
-          pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 1500);
+          pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 300);
         }
         // If pushPending, the in-flight push will detect state.dirty and re-push
         // automatically — no need to schedule another timer.
@@ -369,6 +432,14 @@ function migrateDb() {
   }
 
   if (changed) markDirty();
+
+  // Reclaim space from long-deleted records (kept >5 days), preserving any
+  // still referenced by an active record. Runs once per load on authoritative
+  // data; the resulting markDirty() schedules a normal debounced push.
+  try {
+    const purged = autoPurgeOldDeleted({ maxAgeDays: 5 });
+    if (purged > 0) console.info(`[BT] Auto-purged ${purged} record(s) deleted over 5 days ago`);
+  } catch (e) { console.warn('autoPurgeOldDeleted failed', e); }
 }
 
 function buildUserFooter() {
@@ -398,8 +469,8 @@ function buildUserFooter() {
 
 function buildSidebar(MODULES) {
   const navGroups = [
-    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-services', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-personal', 'analytics-tax'] },
-    { title: 'Operations', items: ['properties', 'payments', 'expenses', 'dividends', 'tenants', 'vendors', 'inventory', 'company-structure', 'clients', 'invoices', 'time-off', 'forecast'] },
+    { title: 'Analysis', items: ['analytics', 'analytics-revenue', 'analytics-expenses', 'analytics-properties', 'analytics-str', 'analytics-services', 'analytics-cashflow', 'reconciliation', 'analytics-forecast', 'analytics-owner', 'analytics-personal', 'analytics-tax'] },
+    { title: 'Operations', items: ['properties', 'payments', 'str-rates', 'expenses', 'dividends', 'tenants', 'vendors', 'inventory', 'company-structure', 'clients', 'invoices', 'time-off', 'forecast'] },
     { title: 'System', items: ['settings', 'users'] }
   ];
   const nav = document.getElementById('nav');

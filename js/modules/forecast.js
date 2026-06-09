@@ -307,9 +307,7 @@ function buildPropertySection(wrap) {
         gridWrap.appendChild(buildAggregatedGrid(selIds, year));
       }
     }
-    renderChart(aggCache);
-    renderSummary(aggCache);
-    renderBreakdown(selIds);
+    requestAnimationFrame(() => { renderChart(aggCache); renderSummary(aggCache); renderBreakdown(selIds); });
   };
 
   const renderBreakdown = (selIds) => {
@@ -354,10 +352,7 @@ function buildPropertySection(wrap) {
     let allMonths = [];
     for (const year of years) {
       const agg = aggCache?.get(year) ?? getAggregated(year);
-      forecastRev += agg.months.reduce((s, m) => s + m.forecastRev, 0);
-      forecastExp += agg.months.reduce((s, m) => s + m.forecastExp, 0);
-      actualRev   += agg.months.reduce((s, m) => s + m.actualRev, 0);
-      actualExp   += agg.months.reduce((s, m) => s + m.actualExp, 0);
+      for (const m of agg.months) { forecastRev += m.forecastRev; forecastExp += m.forecastExp; actualRev += m.actualRev; actualExp += m.actualExp; }
       yearTarget.revenue  += agg.yearTarget?.revenue  || 0;
       yearTarget.expenses += agg.yearTarget?.expenses || 0;
       allMonths = allMonths.concat(agg.months);
@@ -398,9 +393,9 @@ function buildPropertySection(wrap) {
     streamChks.forEach(c => { c.checked = true; });
     allStreamChk.checked = true; allStreamChk.indeterminate = false;
     syncStreamSel(); // → syncPropertyVisibility → syncPropSel + updateYearOptions
-    const curYear = String(new Date().getFullYear());
-    yearChks.forEach(c => { c.checked = c.dataset.year === curYear; });
-    if (yearChks.every(c => !c.checked) && yearChks.length > 0) yearChks[yearChks.length - 1].checked = true;
+    yearChks.forEach(c => { c.checked = true; });
+    const allYearChkEl = yearMenu.querySelector('input');
+    if (allYearChkEl) { allYearChkEl.checked = true; allYearChkEl.indeterminate = false; }
     syncYearSel();
     render();
   }});
@@ -588,9 +583,9 @@ function buildServiceSection(wrap) {
     svcChks.forEach(c => { c.checked = true; });
     allSvcChk.checked = true; allSvcChk.indeterminate = false;
     syncSvcSel();
-    const curYear = String(new Date().getFullYear());
-    svcYearChks.forEach(c => { c.checked = c.dataset.year === curYear; });
-    if (svcYearChks.every(c => !c.checked) && svcYearChks.length > 0) svcYearChks[svcYearChks.length - 1].checked = true;
+    svcYearChks.forEach(c => { c.checked = true; });
+    const allYrChkEl = svcYearMenu.querySelector('input');
+    if (allYrChkEl) { allYrChkEl.checked = true; allYrChkEl.indeterminate = false; }
     syncSvcYearSel();
     render();
   }});
@@ -654,8 +649,7 @@ function buildServiceSection(wrap) {
         gridWrap.appendChild(buildAggregatedGrid(selIds, year, 'service'));
       }
     }
-    renderChart(aggCache);
-    renderSummary(aggCache);
+    requestAnimationFrame(() => { renderChart(aggCache); renderSummary(aggCache); });
   };
 
   const renderChart = (aggCache) => {
@@ -678,8 +672,7 @@ function buildServiceSection(wrap) {
     let allMonths = [];
     for (const year of years) {
       const agg = aggCache?.get(year) ?? getAggregated(year);
-      forecastRev += agg.months.reduce((s, m) => s + m.forecastRev, 0);
-      actualRev   += agg.months.reduce((s, m) => s + m.actualRev,   0);
+      for (const m of agg.months) { forecastRev += m.forecastRev; actualRev += m.actualRev; }
       yearTarget.revenue += agg.yearTarget?.revenue || 0;
       allMonths = allMonths.concat(agg.months);
     }

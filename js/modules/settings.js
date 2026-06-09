@@ -5,8 +5,9 @@ import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fet
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
 import { setDb } from '../core/state.js';
-import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
-import { generateInvoicePDF, PDF_TEMPLATES } from '../core/pdf.js';
+import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
+import { PDF_TEMPLATES } from '../core/pdf.js';
+const generateInvoicePDF = (...a) => import(`../core/pdf.js?v=${window._appV || Date.now()}`).then(m => m.generateInvoicePDF(...a));
 import { openPreview as openInvoicePreview, invoicePdfPath } from './invoices.js';
 import { openDetail as openClientDetail } from './clients.js';
 import { openDetail as openPropertyDetail } from './properties.js';
@@ -27,6 +28,7 @@ function build() {
   wrap.appendChild(buildGithubCard());
   wrap.appendChild(buildCurrencyCard());
   wrap.appendChild(buildBusinessCard());
+  wrap.appendChild(buildStrSettingsCard());
   wrap.appendChild(buildServicesCard());
   wrap.appendChild(buildReservationExpenseRulesCard());
   wrap.appendChild(buildRepositoryMaintenanceCard());
@@ -473,6 +475,66 @@ function buildBusinessCard() {
       bic,
       swift,
       invoiceTemplate: tplS.value
+    };
+    markDirty();
+    toast('Saved', 'success');
+  }});
+  body.appendChild(save);
+  return card;
+}
+
+function buildStrSettingsCard() {
+  const card = el('div', { class: 'card mb-16' });
+  const af = state.db.settings?.airbnb || {};
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {}, el('div', { class: 'card-title' }, 'STR / Airbnb (guest price estimate)')),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+  });
+
+  body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px' },
+    'The Airbnb host export only contains host-side money (payout / gross). The guest-facing total ' +
+    'is estimated by grossing up the gross earnings: Guest Total = Gross × (1 + guest fee % + tax %). ' +
+    'Adjust these to match your market.'));
+
+  const feeI = input({ value: af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT, type: 'number', placeholder: String(AIRBNB_GUEST_FEE_PCT) });
+  const taxI = input({ value: af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT,      type: 'number', placeholder: String(AIRBNB_TAX_PCT) });
+  const cleanI = input({ value: af.cleaningFee != null ? af.cleaningFee : AIRBNB_CLEANING_FEE, type: 'number', placeholder: String(AIRBNB_CLEANING_FEE) });
+  body.appendChild(el('div', { class: 'form-row horizontal' },
+    formRow('Guest service fee %', feeI, 'Airbnb charges this to the guest on top of your price (typically ~14%).'),
+    formRow('Occupancy / tourist tax %', taxI, 'Any tax added to the guest total. Leave 0 if not applicable.')
+  ));
+  body.appendChild(formRow('Cleaning fee (flat, per booking)', cleanI, 'Flat fee the guest pays for cleaning, once per booking (no guest fee/tax added). Published in the daily-rate feed for the Short-Term-Rentals repo.'));
+
+  const globalDiscI = input({ value: af.globalDiscountPct != null ? af.globalDiscountPct : '', type: 'number', min: '0', max: '100', placeholder: '0' });
+  body.appendChild(formRow('Global promotional discount %', globalDiscI, 'Applied to all properties and months when publishing rates. Override per month in STR Rates → Promotional Discount.'));
+
+  const save = button('Save', { variant: 'primary', onClick: () => {
+    const fee = parseFloat(feeI.value);
+    const tax = parseFloat(taxI.value);
+    const clean = parseFloat(cleanI.value);
+    const globalDisc = parseFloat(globalDiscI.value);
+    if (feeI.value !== '' && (isNaN(fee) || fee < 0)) { toast('Guest fee % must be a positive number', 'warning'); return; }
+    if (taxI.value !== '' && (isNaN(tax) || tax < 0)) { toast('Tax % must be a positive number', 'warning'); return; }
+    if (cleanI.value !== '' && (isNaN(clean) || clean < 0)) { toast('Cleaning fee must be a positive number', 'warning'); return; }
+    if (globalDiscI.value !== '' && (isNaN(globalDisc) || globalDisc < 0 || globalDisc > 100)) { toast('Global discount must be between 0 and 100', 'warning'); return; }
+    state.db.settings.airbnb = {
+      ...af,
+      guestFeePct:       feeI.value === '' ? AIRBNB_GUEST_FEE_PCT : fee,
+      taxPct:            taxI.value === '' ? AIRBNB_TAX_PCT : tax,
+      cleaningFee:       cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean,
+      globalDiscountPct: globalDiscI.value === '' ? 0 : globalDisc
     };
     markDirty();
     toast('Saved', 'success');

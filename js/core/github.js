@@ -1,5 +1,5 @@
 // GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
-import { state, notify } from './state.js';
+import { state, notify, invalidateActiveCache } from './state.js';
 
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
@@ -98,7 +98,7 @@ export async function fetchDb() {
   const { owner, repo, branch, dbPath, token } = state.github;
   if (!owner || !repo) throw new Error('GitHub not configured');
 
-  const headers = { 'Accept': 'application/vnd.github+json' };
+  const headers = { 'Accept': 'application/vnd.github+json', 'If-None-Match': `"${Date.now()}"` };
   if (token) headers['Authorization'] = `token ${token}`;
 
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}?ref=${encodeURIComponent(branch || 'main')}`;
@@ -120,7 +120,10 @@ export async function fetchDb() {
   if (content) {
     parsed = safeParseDb(b64decode(content));
   } else if (download_url) {
-    const raw = await fetch(download_url).then(r => {
+    const bustUrl = download_url.includes('?')
+      ? `${download_url}&_=${Date.now()}`
+      : `${download_url}?_=${Date.now()}`;
+    const raw = await fetch(bustUrl, { cache: 'no-store' }).then(r => {
       if (!r.ok) throw new Error(`Download failed (${r.status})`);
       return r.text();
     });
@@ -161,18 +164,24 @@ async function doPushDb(message = 'Update data') {
   const snapshot = structuredClone(state.db);
   // Never push the token to GitHub — strip it from appConfig before computing content
   if (snapshot.appConfig?.github?.token) delete snapshot.appConfig.github.token;
-  const base     = state.github.remoteDb ? structuredClone(state.github.remoteDb) : null;
+  // mergeDb only reads `base` (the last-synced snapshot), so we can reference
+  // remoteDb directly instead of cloning the whole DB again on every push.
+  const base     = state.github.remoteDb || null;
   let   lastError = null;
 
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    // GET current SHA + content
+  for (let attempt = 1; attempt <= 8; attempt++) {
+    // GET current SHA + content — append timestamp to bypass GitHub's edge-cache,
+    // which can return a stale SHA even when cache: 'no-store' is set.
+    // If-None-Match with a unique value forces GitHub's Fastly CDN to revalidate
+    // with origin on every attempt — it's in GitHub's CORS allow-list unlike Cache-Control.
+    const getHeaders = { ...ghHeaders, 'If-None-Match': `"${Date.now()}"` };
     let getRes;
     try {
       getRes = await fetch(`${apiBase}?ref=${encodeURIComponent(branch || 'main')}`, {
-        headers: ghHeaders, cache: 'no-store'
+        headers: getHeaders, cache: 'no-store'
       });
     } catch {
-      if (attempt < 5) { await sleep(500 * attempt); continue; }
+      if (attempt < 8) { await sleep(backoff(attempt)); continue; }
       throw new Error('Cannot reach GitHub');
     }
 
@@ -187,7 +196,11 @@ async function doPushDb(message = 'Update data') {
     if (getData.content) {
       freshDb = safeParseDb(b64decode(getData.content));
     } else if (getData.download_url) {
-      const raw = await fetch(getData.download_url).then(r => {
+      // Bust CDN cache on the raw download URL too, same as the API GET above.
+      const bustUrl = getData.download_url.includes('?')
+        ? `${getData.download_url}&_=${Date.now()}`
+        : `${getData.download_url}?_=${Date.now()}`;
+      const raw = await fetch(bustUrl, { cache: 'no-store' }).then(r => {
         if (!r.ok) throw new Error(`Download failed (${r.status})`);
         return r.text();
       });
@@ -216,13 +229,15 @@ async function doPushDb(message = 'Update data') {
         })
       });
     } catch {
-      if (attempt < 5) { await sleep(500 * attempt); continue; }
+      if (attempt < 8) { await sleep(backoff(attempt)); continue; }
       throw new Error('Cannot reach GitHub');
     }
 
     if (putRes.status === 409) {
       lastError = 'SHA conflict';
-      if (attempt < 5) { await sleep(500 * attempt); continue; }
+      // Each retry re-GETs the current SHA, so we don't need to wait for CDN
+      // expiry — just pause briefly to avoid hammering and retry immediately.
+      if (attempt < 8) { await sleep(150 + Math.random() * 100); continue; }
       break; // exhausted — fall through to ConflictError below
     }
 
@@ -240,6 +255,10 @@ async function doPushDb(message = 'Update data') {
     state.github.lastSyncError = null;
     state.github.connected    = true;
     state.github.usingCache   = false;
+    // Local state is now consistent with this remote — advance the sync marker so
+    // the next reload's mergeLocalPending only treats genuinely newer local edits
+    // as offline changes.
+    state.db._syncedAt = Date.now();
 
     // Adopt remote-only additions, but never re-add items permanently deleted
     // during this push (items that were in snapshot but are now gone from state.db).
@@ -252,15 +271,22 @@ async function doPushDb(message = 'Update data') {
       }
     }
 
+    let adopted = false;
     for (const [col, items] of Object.entries(merged)) {
       if (!Array.isArray(items) || !Array.isArray(state.db[col])) continue;
       const localIds = new Set(state.db[col].map(x => x.id));
       for (const item of items) {
         if (!localIds.has(item.id) && !permanentlyDeletedDuringPush.has(`${col}:${item.id}`)) {
           state.db[col].push(item);
+          // Keep the id index in sync — this path bypasses upsert/markDirty,
+          // so byId() would otherwise miss remote-adopted records until reload.
+          state._ix?.get(col)?.set(item.id, item);
+          adopted = true;
         }
       }
     }
+    // Adopting records changes the active set without going through markDirty.
+    if (adopted) invalidateActiveCache();
 
     saveLocalCache(state.db);
     return { sha: newSha };
@@ -275,7 +301,7 @@ async function doPushDb(message = 'Update data') {
 
 // ── Three-way merge ───────────────────────────────────────────────────────────
 
-function mergeDb(freshRemote, localCurrent, lastSynced) {
+export function mergeDb(freshRemote, localCurrent, lastSynced) {
   const result    = {};
   const conflicts = [];
   const cols = new Set([
@@ -301,25 +327,52 @@ function mergeDb(freshRemote, localCurrent, lastSynced) {
       const remoteItem = merged.get(item.id);
       const baseItem   = baseMap.get(item.id);
 
-      // Local unchanged since last sync → remote may be newer, keep it
-      if (baseItem && item.updatedAt && baseItem.updatedAt && item.updatedAt === baseItem.updatedAt) {
+      const localChanged  = !baseItem || item.updatedAt !== baseItem.updatedAt;
+
+      // Local copy is unchanged since the common ancestor → remote is authoritative.
+      if (baseItem && !localChanged) continue;
+
+      if (!remoteItem) {
+        // Remote no longer has this record.
+        if (baseItem) {
+          // It existed at the ancestor and remote removed it (delete/purge). Only
+          // a genuine local edit should resurrect it; otherwise respect the remote
+          // removal (and never re-add a record we ourselves soft-deleted).
+          if (localChanged && !item.deletedAt) merged.set(item.id, item);
+        } else {
+          // Brand-new local record the remote has never seen → add it.
+          merged.set(item.id, item);
+        }
         continue;
       }
 
-      if (
-        remoteItem && baseItem &&
-        item.updatedAt && remoteItem.updatedAt && baseItem.updatedAt &&
-        item.updatedAt !== baseItem.updatedAt &&
-        remoteItem.updatedAt !== baseItem.updatedAt
-      ) {
+      const remoteChanged = !baseItem || remoteItem.updatedAt !== baseItem.updatedAt;
+
+      if (localChanged && remoteChanged && baseItem) {
+        // Both sides edited a known common ancestor → genuine concurrent-edit conflict.
         conflicts.push({ collection: col, id: item.id });
         continue;
       }
-      merged.set(item.id, item);
+
+      // Either only the local side changed, or there is no ancestor to arbitrate
+      // (e.g. a push after a failed initial pull). Fall back to last-writer-wins
+      // by updatedAt so a STALE local cache can never overwrite a fresher remote
+      // record — this is the root fix for the cross-user data-loss bug.
+      if ((item.updatedAt || 0) >= (remoteItem.updatedAt || 0)) {
+        merged.set(item.id, item);
+      }
+      // else: remote is newer → keep it.
     }
 
+    // Propagate local hard-deletes/purges, but never let a local deletion wipe a
+    // record the remote has independently modified since the common ancestor.
     for (const id of baseMap.keys()) {
-      if (!localMap.has(id)) merged.delete(id);
+      if (localMap.has(id)) continue;
+      const remoteItem = merged.get(id);
+      const baseItem   = baseMap.get(id);
+      if (!remoteItem || !baseItem || remoteItem.updatedAt === baseItem.updatedAt) {
+        merged.delete(id);
+      }
     }
 
     result[col] = [...merged.values()];
@@ -332,6 +385,43 @@ function mergeDb(freshRemote, localCurrent, lastSynced) {
     throw err;
   }
 
+  return result;
+}
+
+// ── Background-resync merge (last-writer-wins, no 3-way base) ────────────────
+// Used by backgroundResync ONLY. Unlike mergeDb, this has no concept of a
+// "base" — it simply keeps whichever version of each record has the higher
+// updatedAt timestamp. This correctly handles CDN-stale responses: if GitHub's
+// CDN returns an old version of a record (low updatedAt), the locally-held
+// newer version wins. If another user genuinely updated a record (high updatedAt),
+// the remote wins.
+export function resyncDb(remote, local) {
+  const result = structuredClone(remote);
+  for (const col of Object.keys(local)) {
+    const localArr = local[col];
+    if (!Array.isArray(localArr)) {
+      // Non-array fields (settings, config, etc.) — prefer local.
+      result[col] = localArr;
+      continue;
+    }
+    const remoteArr = result[col];
+    if (!Array.isArray(remoteArr)) { result[col] = localArr; continue; }
+    const map = new Map(remoteArr.map(x => [x.id, x]));
+    for (const item of localArr) {
+      const rv = map.get(item.id);
+      // Local-only soft-deleted record that's absent from remote was purged
+      // remotely (auto-purge of old deletions) — don't resurrect it, or the DB
+      // re-bloats with dead records every sync. A genuine offline soft-delete
+      // still exists on remote as active, so it takes the rv branch below.
+      if (!rv && item.deletedAt) continue;
+      if (!rv || (item.updatedAt || 0) > (rv.updatedAt || 0)) {
+        // Local is newer or remote doesn't have it → keep local.
+        map.set(item.id, item);
+      }
+      // else: remote is same-age or newer → already in map, keep remote.
+    }
+    result[col] = [...map.values()];
+  }
   return result;
 }
 
@@ -418,8 +508,22 @@ export function saveLocalCache(db) {
     _pendingSaveDb = null;
     try {
       const safe = { ...toSave };
+      // Strip heavy fields that are already externalized to the GitHub repo
+      // (invoice PDFs, expense receipt blobs, document blobs). They're
+      // re-fetchable on demand and would otherwise blow the localStorage quota.
+      // Soft-deleted records are intentionally kept so unpushed local deletions
+      // survive an offline reload + merge.
       if (Array.isArray(safe.invoices)) {
         safe.invoices = safe.invoices.map(({ pdfData, ...rest }) => rest);
+      }
+      if (Array.isArray(safe.expenses)) {
+        safe.expenses = safe.expenses.map(e => {
+          if (!e.receipt?.data && !e.documents) return e;
+          const copy = { ...e };
+          if (copy.receipt?.data) copy.receipt = { ...copy.receipt, data: undefined };
+          if (Array.isArray(copy.documents)) copy.documents = copy.documents.map(({ data, ...rest }) => rest);
+          return copy;
+        });
       }
       localStorage.setItem(DB_LS_KEY, JSON.stringify(safe));
     } catch (e) {
@@ -459,27 +563,44 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
     'Content-Type':  'application/json'
   };
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`;
+  const ATTEMPTS = 6;
 
-  // Check if the file already exists so we can include its SHA (required for
-  // updates). A 404 here means the file doesn't exist yet — that is expected
-  // for new files and handled by omitting the sha field from the PUT body.
-  // GitHub creates parent directories automatically, so a missing folder is
-  // never an error here.
-  let existingSha = null;
-  try {
-    const check = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`, { headers, cache: 'no-store' });
-    if (check.ok) {
-      const d = await check.json();
-      existingSha = d.sha;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    // Re-read the file's current SHA on every attempt (required for updates).
+    // A 404 means the file doesn't exist yet — create it by omitting the sha.
+    // If-None-Match forces the CDN to revalidate so we don't PUT against a stale
+    // SHA. GitHub creates parent directories automatically.
+    let existingSha = null;
+    try {
+      const check = await fetch(
+        `${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`,
+        { headers: { ...headers, 'If-None-Match': `"${Date.now()}"` }, cache: 'no-store' }
+      );
+      if (check.ok) {
+        const d = await check.json();
+        existingSha = d.sha;
+      }
+      // 404 → file does not exist yet; proceed to create without sha
+    } catch { /* network error during existence check — proceed anyway */ }
+
+    const body = { message, content: b64Content, branch: branch || 'main' };
+    if (existingSha) body.sha = existingSha;
+
+    const res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+    if (res.ok) {
+      const data = await res.json();
+      return { sha: data.content.sha };
     }
-    // 404 → file does not exist yet; proceed to create without sha
-  } catch { /* network error during existence check — proceed anyway */ }
 
-  const body = { message, content: b64Content, branch: branch || 'main' };
-  if (existingSha) body.sha = existingSha;
+    // 409 = the file changed between our GET and PUT (concurrent/parallel upload
+    // or stale CDN SHA). Re-read the fresh SHA and retry instead of failing.
+    if (res.status === 409 && attempt < ATTEMPTS) {
+      lastErr = '409 SHA conflict';
+      await sleep(150 + Math.random() * 200);
+      continue;
+    }
 
-  const res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
-  if (!res.ok) {
     let errBody = '';
     try { errBody = await res.text(); } catch { /* ignore */ }
     console.error(`GitHub file upload failed (${res.status}) for path "${cleanPath}":`, errBody);
@@ -487,8 +608,8 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
     if (res.status === 404) throw new Error(`Repository or branch not found (404). Check owner/repo/branch settings. Path: ${cleanPath}`);
     throw new Error(`File upload failed (${res.status}): ${errBody}`);
   }
-  const data = await res.json();
-  return { sha: data.content.sha };
+
+  throw new Error(`File upload failed after ${ATTEMPTS} attempts (${lastErr}) for path "${cleanPath}"`);
 }
 
 /**
@@ -584,3 +705,10 @@ export async function deleteGithubFile(path, sha = null, message = 'Delete file'
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// Exponential backoff with jitter — avoids a thundering herd when several
+// clients hit the same SHA conflict and all retry in lockstep.
+function backoff(attempt) {
+  const base = Math.min(8000, 250 * 2 ** attempt);
+  return base + Math.random() * 400;
+}

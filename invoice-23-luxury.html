@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice #23 — M&amp;W Prime Solutions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --parchment: #faf7f2;
+      --ink:       #2a2118;
+      --gold:      #b8935a;
+      --hairline:  #d6c9b0;
+      --row:       #ede6d6;
+      --ghost:     #e8d9b8;
+      --muted:     #999;
+      --footer:    #888;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: var(--parchment);
+      font-size: 16px;
+    }
+
+    @page { size: A4; margin: 0; }
+
+    .page {
+      background: var(--parchment);
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 60px 56px;
+      position: relative;
+      min-height: 1123px;
+    }
+
+    .page::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto 0;
+      height: 4px;
+      background: var(--gold);
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 32px;
+    }
+
+    .company {
+      font: 600 21px/1 "Cormorant Garamond", serif;
+      letter-spacing: 0.04em;
+      color: var(--ink);
+      white-space: nowrap;
+    }
+
+    .company-sub {
+      margin-top: 3px;
+      font: 400 11px/1 "DM Sans", sans-serif;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+
+    .invoice-block {
+      text-align: right;
+    }
+
+    .invoice-word {
+      font: italic 300 36px/1 "Cormorant Garamond", serif;
+      color: var(--gold);
+    }
+
+    .invoice-num {
+      font: 600 72px/1 "Cormorant Garamond", serif;
+      letter-spacing: -0.02em;
+      color: var(--ghost);
+      margin-top: -8px;
+    }
+
+    /* ── Rule ── */
+    hr.rule {
+      border: 0;
+      border-top: 0.5px solid var(--hairline);
+      margin: 0 0 44px 0;
+    }
+
+    /* ── Meta grid ── */
+    .meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 36px;
+    }
+
+    .meta > div { min-width: 0; }
+
+    .meta .label {
+      margin-bottom: 6px;
+      font: 400 10px/1 "DM Sans", sans-serif;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+
+    .meta .value {
+      font: 400 14px/1.5 "Cormorant Garamond", serif;
+      color: var(--ink);
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+
+    /* ── Line-items table ── */
+    table.items {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    table.items th {
+      text-align: left;
+      padding: 9px 0;
+      border-bottom: 0.5px solid var(--hairline);
+      font: 400 10px/1 "DM Sans", sans-serif;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+
+    table.items th.right,
+    table.items td.right {
+      text-align: right;
+    }
+
+    table.items td {
+      padding: 16px 0;
+      border-bottom: 0.5px solid var(--row);
+      font: 400 15px/1.2 "Cormorant Garamond", serif;
+      color: var(--ink);
+      vertical-align: middle;
+    }
+
+    table.items tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    table.items .sub {
+      display: block;
+      margin-top: 2px;
+      font: italic 400 12px/1 "Cormorant Garamond", serif;
+      color: var(--gold);
+    }
+
+    /* ── Totals ── */
+    .totals-wrap {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 18px;
+    }
+
+    .totals {
+      width: 230px;
+      border-top: 0.5px solid var(--hairline);
+      padding-top: 14px;
+    }
+
+    .totals .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      padding: 4px 0;
+      font: 400 12px/1 "DM Sans", sans-serif;
+      color: var(--muted);
+    }
+
+    .totals .row.total {
+      font: 400 21px/1 "Cormorant Garamond", serif;
+      color: var(--gold);
+      border-top: 0.5px solid var(--hairline);
+      margin-top: 6px;
+      padding-top: 12px;
+    }
+
+    /* ── Footer ── */
+    footer {
+      display: flex;
+      gap: 32px;
+      margin-top: 40px;
+      padding-top: 18px;
+      border-top: 0.5px solid var(--hairline);
+    }
+
+    footer .item .label {
+      margin-bottom: 4px;
+      font: 400 10px/1 "DM Sans", sans-serif;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--gold);
+    }
+
+    footer .item .value {
+      font: 400 12px/1.2 "DM Sans", sans-serif;
+      color: var(--footer);
+    }
+
+    /* ── Print ── */
+    @media print {
+      html, body { background: var(--parchment); }
+      .page { box-shadow: none; margin: 0; max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <div class="company">M&amp;W Prime Solutions</div>
+        <div class="company-sub">Limited · Reg HE 461745</div>
+      </div>
+      <div class="invoice-block">
+        <div class="invoice-word">Invoice</div>
+        <div class="invoice-num">#23</div>
+      </div>
+    </div>
+
+    <!-- Rule -->
+    <hr class="rule">
+
+    <!-- Meta grid -->
+    <div class="meta">
+      <div>
+        <div class="label">Billed to</div>
+        <div class="value">Zollhof Holding GmbH<br>Zollhof 7, 90443 Nürnberg<br>Deutschland</div>
+      </div>
+      <div>
+        <div class="label">Issued</div>
+        <div class="value">May 27, 2026</div>
+      </div>
+      <div>
+        <div class="label">Due</div>
+        <div class="value">Jun 10, 2026</div>
+      </div>
+    </div>
+
+    <!-- Line-items table -->
+    <table class="items">
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Qty</th>
+          <th>Rate</th>
+          <th class="right">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            Marketing Services
+            <span class="sub">Apr 20 – May 19, 2026</span>
+          </td>
+          <td>1 month</td>
+          <td>€4,200.00</td>
+          <td class="right">€4,200.00</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Totals -->
+    <div class="totals-wrap">
+      <div class="totals">
+        <div class="row"><span>Subtotal</span><span>€4,200.00</span></div>
+        <div class="row"><span>Tax (0%)</span><span>€0.00</span></div>
+        <div class="row total"><span>Total</span><span>€4,200.00</span></div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+      <div class="item">
+        <div class="label">IBAN</div>
+        <div class="value">LT283250049546458651</div>
+      </div>
+      <div class="item">
+        <div class="label">BIC</div>
+        <div class="value">REVOLT21</div>
+      </div>
+      <div class="item">
+        <div class="label">SWIFT</div>
+        <div class="value">CHASDEFX</div>
+      </div>
+    </footer>
+
+  </div>
+</body>
+</html>

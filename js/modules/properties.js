@@ -1,10 +1,10 @@
 // Properties module
-import { state } from '../core/state.js';
+import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect } from '../core/ui.js';
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI,
-  getPeopleOwners, getPersonName, restoreInventoryStock, removeReservationExpenses
+  getPeopleOwners, getPersonName, restoreInventoryStock, removeReservationExpenses, buildReservationExpenseRefMap
 } from '../core/data.js';
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { fetchICal, parseICal, nights } from '../core/ical.js';
@@ -377,7 +377,7 @@ export function openDetail(id, preStats) {
     body.appendChild(el('div', { class: 'card mb-16' },
       el('div', { class: 'card-header' },
         el('div', { class: 'card-title' }, 'Airbnb Calendar Sync'),
-        el('div', { class: 'actions' }, button('Import iCal', { variant: 'primary', onClick: () => doImportICal(p) }))
+        el('div', { class: 'actions' }, button('Sync Calendar', { variant: 'primary', onClick: () => doImportICal(p) }))
       ),
       el('div', { class: 'form-row' },
         el('label', { class: 'form-label' }, 'iCal URL (Airbnb export)'),
@@ -877,14 +877,17 @@ function openForm(existing) {
     });
     // Soft-delete unpaid payments within vacant periods (keep paid history intact)
     if (pendingVacantPeriods.length > 0) {
-      for (const pmt of (state.db.payments || [])) {
-        if (pmt.propertyId !== p.id || pmt.status === 'paid' || pmt.deletedAt) continue;
-        const d = pmt.date?.slice(0, 10) || '';
-        if (pendingVacantPeriods.some(vp => vp.startDate && d >= vp.startDate && d <= (vp.endDate || '9999-12-31'))) {
-          removeReservationExpenses(pmt);
-          softDelete('payments', pmt.id);
+      const refMap = buildReservationExpenseRefMap();
+      runBatch(() => {
+        for (const pmt of (state.db.payments || [])) {
+          if (pmt.propertyId !== p.id || pmt.status === 'paid' || pmt.deletedAt) continue;
+          const d = pmt.date?.slice(0, 10) || '';
+          if (pendingVacantPeriods.some(vp => vp.startDate && d >= vp.startDate && d <= (vp.endDate || '9999-12-31'))) {
+            removeReservationExpenses(pmt, refMap);
+            softDelete('payments', pmt.id);
+          }
         }
-      }
+      });
     }
     upsert('properties', p);
     if ((channelS.value || 'company') === 'company' && pendingRentHistory.length > 0) {

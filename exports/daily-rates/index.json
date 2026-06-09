@@ -1,0 +1,41 @@
+{
+  "schema": "str-daily-rates-index/v1",
+  "generatedAt": "2026-06-09T11:40:12.948Z",
+  "properties": [
+    {
+      "id": "prop_mohfv8np89",
+      "name": "Rooftop Tenerife",
+      "currency": "EUR",
+      "file": "prop_mohfv8np89.json",
+      "nights": 0
+    },
+    {
+      "id": "prop_mohfwhqrgj",
+      "name": "Studio Tenerife",
+      "currency": "EUR",
+      "file": "prop_mohfwhqrgj.json",
+      "nights": 0
+    },
+    {
+      "id": "prop_mox7ipfiam",
+      "name": "Poolside Central Studio | Balcony & Beach Walk",
+      "currency": "EUR",
+      "file": "prop_mox7ipfiam.json",
+      "nights": 365
+    },
+    {
+      "id": "prop_mox7mr8day",
+      "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
+      "currency": "EUR",
+      "file": "prop_mox7mr8day.json",
+      "nights": 365
+    },
+    {
+      "id": "prop_mox7p43s8o",
+      "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
+      "currency": "EUR",
+      "file": "prop_mox7p43s8o.json",
+      "nights": 365
+    }
+  ]
+}

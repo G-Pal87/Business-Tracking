@@ -1,5 +1,5 @@
 // Data layer: CRUD + aggregations + currency conversion
-import { state, markDirty } from './state.js';
+import { state, markDirty, runBatch } from './state.js';
 import { MASTER_CURRENCY } from './config.js';
 
 const _fmtCache    = new Map();
@@ -69,15 +69,25 @@ export function upsert(collection, item) {
   const now = Date.now();
   const actor = state.session?.username || 'system';
   const arr = state.db[collection] || (state.db[collection] = []);
-  const idx = arr.findIndex(x => x.id === item.id);
-  if (idx < 0) {
+  const ix  = state._ix?.get(collection);
+  // Use the id index (when available) to decide insert vs. replace in O(1).
+  // Only fall back to the O(n) findIndex for the rarer in-place replace, and
+  // skip the scan entirely for brand-new records — this is what makes bulk
+  // imports O(n) instead of O(n²).
+  const isNew = ix ? !ix.has(item.id) : arr.findIndex(x => x.id === item.id) < 0;
+  if (isNew) {
     item.createdAt = now;
     item.createdBy = actor;
   }
   item.updatedAt = now;
   item.updatedBy = actor;
-  if (idx >= 0) arr[idx] = item; else arr.push(item);
-  state._ix?.get(collection)?.set(item.id, item);
+  if (isNew) {
+    arr.push(item);
+  } else {
+    const idx = arr.findIndex(x => x.id === item.id);
+    if (idx >= 0) arr[idx] = item; else arr.push(item);
+  }
+  ix?.set(item.id, item);
   markDirty();
   return item;
 }
@@ -97,8 +107,8 @@ export function remove(collection, id) {
 }
 
 export function softDelete(collection, id) {
-  const arr = state.db[collection] || [];
-  const item = arr.find(x => x.id === id);
+  // Locate via the id index (O(1)) instead of scanning the array.
+  const item = state._ix?.get(collection)?.get(id) || (state.db[collection] || []).find(x => x.id === id);
   if (!item) return false;
   const now = Date.now();
   const actor = state.session?.username || 'system';
@@ -111,6 +121,19 @@ export function softDelete(collection, id) {
 }
 
 export function listActive(collection) {
+  // Memoized: the filtered array is cached per collection and reused until the
+  // collection mutates (state.markDirty/setDb clear state._activeCache). This
+  // collapses the many listActive() calls per render into one scan per data
+  // version — critical as soft-deleted records accumulate. Returning the shared
+  // reference is safe: no caller mutates a listActive() return in place.
+  const cache = state._activeCache;
+  if (cache) {
+    const hit = cache.get(collection);
+    if (hit) return hit;
+    const arr = (state.db[collection] || []).filter(x => !x.deletedAt);
+    cache.set(collection, arr);
+    return arr;
+  }
   return (state.db[collection] || []).filter(x => !x.deletedAt);
 }
 
@@ -885,6 +908,7 @@ export function permanentlyDeleteRecord(collection, id) {
   const index = arr.findIndex(x => x && x.id === id);
   if (index === -1) return false;
   arr.splice(index, 1);
+  state._ix?.get(collection)?.delete(id);
   markDirty();
   return true;
 }
@@ -914,6 +938,7 @@ export function permanentlyDeleteRecords(records) {
     const index = arr.findIndex(x => x && x.id === id);
     if (index === -1) return;
     arr.splice(index, 1);
+    state._ix?.get(collection)?.delete(id);
     count++;
   });
   if (count > 0) markDirty();
@@ -927,7 +952,65 @@ export function purgeDeletedRecords() {
     const before = state.db[collection].length;
     state.db[collection] = state.db[collection].filter(item => !item.deletedAt);
     count += before - state.db[collection].length;
+    // Rebuild the id index so byId() can't return purged records.
+    if (state._ix) state._ix.set(collection, new Map(state.db[collection].map(item => [item.id, item])));
   });
+  if (count > 0) markDirty();
+  return count;
+}
+
+// Collect every string value held by a record (depth-limited) into `set`.
+// Any of these may be a foreign key pointing at another record's id, so a
+// deleted record whose id appears here must not be purged (would orphan a ref).
+function _collectStringValues(value, set, depth = 0) {
+  if (value == null || depth > 5) return;
+  const t = typeof value;
+  if (t === 'string') { set.add(value); return; }
+  if (t !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const v of value) _collectStringValues(v, set, depth + 1);
+    return;
+  }
+  for (const k in value) _collectStringValues(value[k], set, depth + 1);
+}
+
+/**
+ * Permanently remove records that were soft-deleted longer than `maxAgeDays`
+ * ago, EXCEPT any whose id is still referenced by an active (non-deleted)
+ * record — keeping referential integrity intact. Runs at load after the
+ * authoritative data is in place. Returns the number of records purged.
+ */
+export function autoPurgeOldDeleted({ maxAgeDays = 90 } = {}) {
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+
+  // 1) Build the set of ids referenced by any active record.
+  const referenced = new Set();
+  for (const col of Object.keys(state.db)) {
+    const arr = state.db[col];
+    if (!Array.isArray(arr)) continue;
+    for (const rec of arr) {
+      if (rec && rec.deletedAt) continue; // only active records can hold live refs
+      _collectStringValues(rec, referenced);
+    }
+  }
+
+  // 2) Purge old soft-deleted records that nothing active points at.
+  let count = 0;
+  for (const col of Object.keys(state.db)) {
+    const arr = state.db[col];
+    if (!Array.isArray(arr)) continue;
+    let changed = false;
+    const kept = [];
+    for (const rec of arr) {
+      const purgeable = rec && rec.deletedAt && rec.deletedAt < cutoff && !referenced.has(rec.id);
+      if (purgeable) { changed = true; count++; continue; }
+      kept.push(rec);
+    }
+    if (changed) {
+      state.db[col] = kept;
+      if (state._ix) state._ix.set(col, new Map(kept.map(r => [r.id, r])));
+    }
+  }
   if (count > 0) markDirty();
   return count;
 }
@@ -1003,19 +1086,35 @@ export function findVendorRateByPeriod(propertyId, date, vendorId = '') {
   return out;
 }
 
-export function applyReservationExpenseRules(payment) {
+// Build a lookup of generated expenses keyed by `ruleId|reservationRef`, used to
+// find an already-generated expense in O(1). Pass this into
+// applyReservationExpenseRules during bulk imports to avoid a full expense scan
+// per rule per row (otherwise O(rows × rules × expenses)).
+export function buildGeneratedExpenseIndex() {
+  const m = new Map();
+  for (const e of (state.db.expenses || [])) {
+    if (e.isGenerated && !e.deletedAt && e.reservationRuleId && e.reservationRef) {
+      m.set(e.reservationRuleId + '|' + e.reservationRef, e);
+    }
+  }
+  return m;
+}
+
+export function applyReservationExpenseRules(payment, genIndex = null) {
   const reservationRef = payment.confirmationCode || payment.id;
   if (!reservationRef || !payment.propertyId) return;
   const rules = listActive('reservationExpenseRules').filter(r =>
     r.enabled && (!r.propertyId || r.propertyId === payment.propertyId)
   );
-  for (const rule of rules) _applyOneRule(rule, payment, reservationRef);
+  for (const rule of rules) _applyOneRule(rule, payment, reservationRef, genIndex);
 }
 
-function _applyOneRule(rule, payment, reservationRef) {
-  const existing = (state.db.expenses || []).find(e =>
-    e.isGenerated && e.reservationRuleId === rule.id && e.reservationRef === reservationRef && !e.deletedAt
-  );
+function _applyOneRule(rule, payment, reservationRef, genIndex = null) {
+  const existing = genIndex
+    ? (genIndex.get(rule.id + '|' + reservationRef) || null)
+    : (state.db.expenses || []).find(e =>
+        e.isGenerated && e.reservationRuleId === rule.id && e.reservationRef === reservationRef && !e.deletedAt
+      );
   if (existing?.manualOverride) return;
 
   let amount = 0, currency = rule.fixedCurrency || payment.currency || 'EUR';
@@ -1115,14 +1214,31 @@ export function getPersonName(ownerKey) {
   return OWNERS_FALLBACK[ownerKey] || ownerKey;
 }
 
-export function removeReservationExpenses(payment) {
+// Build a lookup of generated expenses grouped by reservationRef, so delete/
+// import loops can find a payment's generated expenses in O(1) instead of
+// scanning all expenses per payment (otherwise O(payments × expenses)).
+export function buildReservationExpenseRefMap() {
+  const m = new Map();
+  for (const e of (state.db.expenses || [])) {
+    if (e.isGenerated && !e.deletedAt && e.reservationRef) {
+      let list = m.get(e.reservationRef);
+      if (!list) { list = []; m.set(e.reservationRef, list); }
+      list.push(e);
+    }
+  }
+  return m;
+}
+
+export function removeReservationExpenses(payment, refMap = null) {
   const reservationRef = payment.confirmationCode || payment.id;
   if (!reservationRef) return;
-  for (const e of (state.db.expenses || [])) {
-    if (e.isGenerated && e.reservationRef === reservationRef && !e.deletedAt) {
-      restoreInventoryStock(e);
-      softDelete('expenses', e.id);
-    }
+  const matches = refMap
+    ? (refMap.get(reservationRef) || [])
+    : (state.db.expenses || []).filter(e => e.isGenerated && e.reservationRef === reservationRef && !e.deletedAt);
+  for (const e of matches) {
+    if (e.deletedAt) continue;
+    restoreInventoryStock(e);
+    softDelete('expenses', e.id);
   }
 }
 
@@ -1140,5 +1256,10 @@ export function reapplyRuleToAllPayments(rule) {
     (!rule.propertyId || rule.propertyId === p.propertyId) &&
     (p.confirmationCode || p.id)
   );
-  for (const pay of payments) applyReservationExpenseRules(pay);
+  // Index generated expenses once and batch the mutations — avoids an
+  // O(payments × expenses) scan and a per-payment save/refresh cycle.
+  const genIndex = buildGeneratedExpenseIndex();
+  runBatch(() => {
+    for (const pay of payments) applyReservationExpenseRules(pay, genIndex);
+  });
 }

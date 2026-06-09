@@ -528,10 +528,16 @@ export function buildFilterBar(gF, opts, onChange) {
     ));
   }
 
-  // Reset
+  // Reset — must clear localStorage first, otherwise buildMultiSelect will
+  // restore the old selections from storage the moment the bar is rebuilt.
   bar.appendChild(button('Reset', {
     variant: 'sm ghost',
-    onClick: () => onChange(createFilterState()),
+    onClick: () => {
+      ['_owners', '_streams', '_props', '_clients'].forEach(k => {
+        try { localStorage.removeItem(`btf:${storagePrefix}${k}`); } catch {}
+      });
+      onChange(createFilterState({ period: 'all' }));
+    },
   }));
 
   return bar;

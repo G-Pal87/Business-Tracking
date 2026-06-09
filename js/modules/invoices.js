@@ -1,9 +1,11 @@
 // Invoices module - builder + repository
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, confirmDeleteTwice, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
-import { downloadInvoicePDF, generateInvoicePDF } from '../core/pdf.js';
+const _pdfMod = () => import(`../core/pdf.js?v=${window._appV || Date.now()}`);
+const downloadInvoicePDF  = (...a) => _pdfMod().then(m => m.downloadInvoicePDF(...a));
+const generateInvoicePDF  = (...a) => _pdfMod().then(m => m.generateInvoicePDF(...a));
 import { navigate } from '../core/router.js';
 import { uploadGithubFile, fetchGithubFile, deleteGithubFile } from '../core/github.js';
 
@@ -63,14 +65,22 @@ function invDrillRows(invs) {
 }
 
 let _sortCol = -1, _sortDir = 1;
+let _invUpdateFn = null;
 
 export default {
   id: 'invoices',
   label: 'Invoices',
   icon: 'I',
-  render(container) { container.appendChild(build()); scheduleMigration(); schedulePathMigration(); },
-  refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
-  destroy() {}
+  render(container) { const { element, update } = build(); _invUpdateFn = update; container.appendChild(element); scheduleMigration(); schedulePathMigration(); },
+  refresh() {
+    if (_invUpdateFn) { _invUpdateFn(); return; }
+    const c = document.getElementById('content');
+    c.innerHTML = '';
+    const { element, update } = build();
+    _invUpdateFn = update;
+    c.appendChild(element);
+  },
+  destroy() { _invUpdateFn = null; }
 };
 
 // Canonical PDF filename: purely numeric numbers get {num}_{CLIENT}_{DDMMYY},
@@ -250,10 +260,11 @@ function build() {
   const wrap = el('div', { class: 'view active' });
 
   let filteredRows = [];
+  let _invStatCache = new Map(); // effectiveStatus cache — rebuilt each renderTable cycle
   const totalKpi   = makeKpiCard('Total Issued', null,      () => drillDownModal('All Invoices',          invDrillRows(filteredRows), INV_COLS));
-  const paidKpi    = makeKpiCard('Paid',          'success', () => drillDownModal('Paid Invoices',          invDrillRows(filteredRows.filter(i => effectiveStatus(i) === 'paid')), INV_COLS));
-  const openKpi    = makeKpiCard('Outstanding',   'warning', () => drillDownModal('Outstanding Invoices',   invDrillRows(filteredRows.filter(i => effectiveStatus(i) === 'sent')), INV_COLS));
-  const overdueKpi = makeKpiCard('Overdue',       'danger',  () => drillDownModal('Overdue Invoices',       invDrillRows(filteredRows.filter(i => effectiveStatus(i) === 'overdue')), INV_COLS));
+  const paidKpi    = makeKpiCard('Paid',          'success', () => drillDownModal('Paid Invoices',          invDrillRows(filteredRows.filter(i => _invStatCache.get(i.id) === 'paid')), INV_COLS));
+  const openKpi    = makeKpiCard('Outstanding',   'warning', () => drillDownModal('Outstanding Invoices',   invDrillRows(filteredRows.filter(i => _invStatCache.get(i.id) === 'sent')), INV_COLS));
+  const overdueKpi = makeKpiCard('Overdue',       'danger',  () => drillDownModal('Overdue Invoices',       invDrillRows(filteredRows.filter(i => _invStatCache.get(i.id) === 'overdue')), INV_COLS));
   wrap.appendChild(el('div', { class: 'grid grid-4 mb-16' }, totalKpi.node, paidKpi.node, openKpi.node, overdueKpi.node));
 
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
@@ -264,15 +275,15 @@ function build() {
   const statusFilter = new Set();
 
   const matchesExcept = (inv, skip) => {
-    if (skip !== 'year'   && yearFilter.size   > 0 && !yearFilter.has(inv.issueDate?.slice(0, 4)))  return false;
-    if (skip !== 'month'  && monthFilter.size  > 0 && !monthFilter.has(inv.issueDate?.slice(5, 7))) return false;
-    if (skip !== 'client' && clientFilter.size > 0 && !clientFilter.has(inv.clientId))               return false;
-    if (skip !== 'owner'  && ownerFilter.size  > 0 && !ownerFilter.has(inv.owner))                   return false;
-    if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(effectiveStatus(inv)))       return false;
+    if (skip !== 'year'   && yearFilter.size   > 0 && !yearFilter.has(inv.issueDate?.slice(0, 4)))    return false;
+    if (skip !== 'month'  && monthFilter.size  > 0 && !monthFilter.has(inv.issueDate?.slice(5, 7)))   return false;
+    if (skip !== 'client' && clientFilter.size > 0 && !clientFilter.has(inv.clientId))                 return false;
+    if (skip !== 'owner'  && ownerFilter.size  > 0 && !ownerFilter.has(inv.owner))                     return false;
+    if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(_invStatCache.get(inv.id) || effectiveStatus(inv))) return false;
     return true;
   };
 
-  let _rtTimer;
+  let _rtTimer, _invRenderToken = 0;
   const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => { rebuildFilters(); renderTable(); }, 250); };
   const yearMS   = buildMultiSelect([], yearFilter,   'All Years',    debouncedRT, 'inv_years');
   const monthMS  = buildMultiSelect([], monthFilter,  'All Months',   debouncedRT, 'inv_months');
@@ -285,16 +296,21 @@ function build() {
     const allInvs    = listActive('invoices');
     const allClients = listActive('clients');
     const allOwners  = getPeopleOwners();
-    const ys  = [...new Set(allInvs.filter(i => matchesExcept(i, 'year'))  .map(i => i.issueDate?.slice(0, 4)).filter(Boolean))].sort().reverse();
-    const ms  = [...new Set(allInvs.filter(i => matchesExcept(i, 'month')) .map(i => i.issueDate?.slice(5, 7)).filter(Boolean))].sort();
-    const cs  = [...new Set(allInvs.filter(i => matchesExcept(i, 'client')).map(i => i.clientId).filter(Boolean))];
-    const ows = new Set(allInvs.filter(i => matchesExcept(i, 'owner')).map(i => i.owner).filter(Boolean));
-    const ss  = [...new Set(allInvs.filter(i => matchesExcept(i, 'status')).map(i => effectiveStatus(i)).filter(Boolean))].sort();
-    yearMS.setItems(ys.map(y => ({ value: y, label: y })));
-    monthMS.setItems(ms.map(m => ({ value: m, label: MONTH_NAMES[parseInt(m, 10) - 1] })));
-    clientMS.setItems(cs.map(id => allClients.find(c => c.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(c => ({ value: c.id, label: c.name })));
+    // Rebuild status cache so matchesExcept and renderTable share the same computed values
+    _invStatCache = new Map(allInvs.map(i => [i.id, effectiveStatus(i)]));
+    const ys = new Set(), ms = new Set(), cs = new Set(), ows = new Set(), ss = new Set();
+    for (const i of allInvs) {
+      if (matchesExcept(i, 'year'))   { if (i.issueDate?.slice(0, 4)) ys.add(i.issueDate.slice(0, 4)); }
+      if (matchesExcept(i, 'month'))  { if (i.issueDate?.slice(5, 7)) ms.add(i.issueDate.slice(5, 7)); }
+      if (matchesExcept(i, 'client')) { if (i.clientId) cs.add(i.clientId); }
+      if (matchesExcept(i, 'owner'))  { if (i.owner) ows.add(i.owner); }
+      if (matchesExcept(i, 'status')) { const s = _invStatCache.get(i.id); if (s) ss.add(s); }
+    }
+    yearMS.setItems([...ys].sort().reverse().map(y => ({ value: y, label: y })));
+    monthMS.setItems([...ms].sort().map(m => ({ value: m, label: MONTH_NAMES[parseInt(m, 10) - 1] })));
+    clientMS.setItems([...cs].map(id => allClients.find(c => c.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(c => ({ value: c.id, label: c.name })));
     ownerMS.setItems(allOwners.filter(o => ows.has(o.value)));
-    statusMS.setItems(ss.map(s => { const m = INVOICE_STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
+    statusMS.setItems([...ss].sort().map(s => { const m = INVOICE_STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
   };
 
   const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); clientMS.reset(); ownerMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
@@ -309,7 +325,7 @@ function build() {
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
     const count = selected.size;
     if (!count) return;
-    const ok = await confirmDialog(`Delete ${count} invoice(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
+    const ok = await confirmDeleteTwice(`${count} invoice(s)`);
     if (!ok) return;
     for (const id of [...selected]) softDelete('invoices', id);
     selected.clear();
@@ -385,41 +401,56 @@ function build() {
   };
 
   const renderTable = () => {
+    const token = ++_invRenderToken;
     selected.clear();
     syncBulkActions();
     tableWrap.innerHTML = '';
-    let rows = [...listActive('invoices')];
+
+    const allInvs = listActive('invoices');
+    // Ensure status cache is warm (may be empty when called after delete/edit)
+    if (_invStatCache.size === 0) {
+      _invStatCache = new Map(allInvs.map(i => [i.id, effectiveStatus(i)]));
+    }
+
+    let rows = [...allInvs];
     if (yearFilter.size > 0)   rows = rows.filter(r => yearFilter.has(r.issueDate?.slice(0, 4)));
     if (monthFilter.size > 0)  rows = rows.filter(r => monthFilter.has(r.issueDate?.slice(5, 7)));
     if (clientFilter.size > 0) rows = rows.filter(r => clientFilter.has(r.clientId));
     if (ownerFilter.size > 0)  rows = rows.filter(r => ownerFilter.has(r.owner));
-    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(effectiveStatus(r)));
+    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(_invStatCache.get(r.id)));
     rows.sort((a, b) => {
       const d = (b.issueDate || '').localeCompare(a.issueDate);
       if (d !== 0) return d;
       return parseInt(b.number || '0', 10) - parseInt(a.number || '0', 10);
     });
 
-    // Update KPI cards to reflect current filter
+    // Update KPI cards — single pass using cached statuses
     filteredRows = rows;
-    const paidRows    = rows.filter(r => effectiveStatus(r) === 'paid');
-    const sentRows    = rows.filter(r => effectiveStatus(r) === 'sent');
-    const overdueRows = rows.filter(r => effectiveStatus(r) === 'overdue');
-    totalKpi.valEl.textContent   = formatEUR(rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
+    let totalV = 0, paidV = 0, sentV = 0, overdueV = 0, paidN = 0, sentN = 0, overdueN = 0;
+    const paidRows = [], sentRows = [], overdueRows = [];
+    for (const r of rows) {
+      const eur = toEUR(r.total, r.currency);
+      totalV += eur;
+      const st = _invStatCache.get(r.id);
+      if (st === 'paid')    { paidV += eur; paidN++;    paidRows.push(r); }
+      else if (st === 'sent')    { sentV += eur; sentN++;    sentRows.push(r); }
+      else if (st === 'overdue') { overdueV += eur; overdueN++; overdueRows.push(r); }
+    }
+    totalKpi.valEl.textContent   = formatEUR(totalV);
     totalKpi.subEl.textContent   = `${rows.length} invoices`;
-    paidKpi.valEl.textContent    = formatEUR(paidRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
-    paidKpi.subEl.textContent    = String(paidRows.length);
-    openKpi.valEl.textContent    = formatEUR(sentRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
-    openKpi.subEl.textContent    = String(sentRows.length);
-    overdueKpi.valEl.textContent = formatEUR(overdueRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0));
-    overdueKpi.subEl.textContent = String(overdueRows.length);
+    paidKpi.valEl.textContent    = formatEUR(paidV);
+    paidKpi.subEl.textContent    = String(paidN);
+    openKpi.valEl.textContent    = formatEUR(sentV);
+    openKpi.subEl.textContent    = String(sentN);
+    overdueKpi.valEl.textContent = formatEUR(overdueV);
+    overdueKpi.subEl.textContent = String(overdueN);
 
     if (rows.length === 0) {
       tableWrap.appendChild(el('div', { class: 'empty' }, 'No invoices'));
       return;
     }
-    const t = el('table', { class: 'table' });
 
+    const t = el('table', { class: 'table' });
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr', {});
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
@@ -428,14 +459,31 @@ function build() {
     htr.appendChild(el('th', { class: 'right' }, 'Total'));
     htr.appendChild(el('th', {}));
     const thead = el('thead', {}); thead.appendChild(htr); t.appendChild(thead);
-
     const tb = el('tbody');
+    t.appendChild(tb);
+    tableWrap.appendChild(t);
+
+    // Footer computed upfront from already-calculated totals
+    const paidSpan = el('span', { style: 'cursor:pointer', title: 'Drill down' });
+    paidSpan.appendChild(document.createTextNode('Paid: '));
+    paidSpan.appendChild(el('strong', { class: 'num table-footer-paid' }, formatEUR(paidV)));
+    paidSpan.onclick = () => drillDownModal('Paid Invoices (filtered)', invDrillRows(paidRows), INV_COLS);
+    const totalSpanEl = el('span', { style: 'cursor:pointer', title: 'Drill down' });
+    totalSpanEl.appendChild(document.createTextNode('Total: '));
+    totalSpanEl.appendChild(el('strong', { class: 'num table-footer-total' }, formatEUR(totalV)));
+    totalSpanEl.onclick = () => drillDownModal('All Invoices (filtered)', invDrillRows(rows), INV_COLS);
+    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px;flex-wrap:wrap;gap:8px' },
+      el('span', { class: 'muted table-footer-count' }, `${rows.length} invoice(s)`),
+      el('div', { class: 'flex gap-16' }, paidSpan, totalSpanEl)
+    ));
+
     const rowChks = [];
     const clientMap = new Map(listActive('clients').map(c => [c.id, c]));
+    let idx = 0;
 
-    for (const r of rows) {
+    const buildRow = (r) => {
       const client = clientMap.get(r.clientId);
-      const eff = effectiveStatus(r);
+      const eff = _invStatCache.get(r.id);
       const st = INVOICE_STATUSES[eff] || { label: eff, css: '' };
 
       const chk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
@@ -473,41 +521,40 @@ function build() {
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: (e) => { e.stopPropagation(); openBuilder(r); }}));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async (e) => {
         e.stopPropagation();
-        const ok = await confirmDialog(`Delete ${r.number}?`, { danger: true, okLabel: 'Delete' });
-        if (ok) { softDelete('invoices', r.id); toast('Deleted', 'success'); renderTable(); }
+        const ok = await confirmDeleteTwice(r.number || 'this invoice');
+        if (ok) { _invStatCache = new Map(); softDelete('invoices', r.id); toast('Deleted', 'success'); renderTable(); }
       }}));
       tr.appendChild(actions);
       tr.onclick = () => openPreview(r.id);
-      tb.appendChild(tr);
-    }
-    t.appendChild(tb);
-    tableWrap.appendChild(t);
-
-    selectAllChk.onchange = () => {
-      rowChks.forEach(c => { c.checked = selectAllChk.checked; });
-      selectAllChk.indeterminate = false;
-      if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
-      syncBulkActions();
+      return tr;
     };
-    // Totals footer
-    const totalEUR = rows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
-    const paidEUR = paidRows.reduce((s, r) => s + toEUR(r.total, r.currency), 0);
-    const paidSpan = el('span', { style: 'cursor:pointer', title: 'Drill down' });
-    paidSpan.appendChild(document.createTextNode('Paid: '));
-    paidSpan.appendChild(el('strong', { class: 'num table-footer-paid' }, formatEUR(paidEUR)));
-    paidSpan.onclick = () => drillDownModal('Paid Invoices (filtered)', invDrillRows(paidRows), INV_COLS);
-    const totalSpanEl = el('span', { style: 'cursor:pointer', title: 'Drill down' });
-    totalSpanEl.appendChild(document.createTextNode('Total: '));
-    totalSpanEl.appendChild(el('strong', { class: 'num table-footer-total' }, formatEUR(totalEUR)));
-    totalSpanEl.onclick = () => drillDownModal('All Invoices (filtered)', invDrillRows(rows), INV_COLS);
-    tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px;flex-wrap:wrap;gap:8px' },
-      el('span', { class: 'muted table-footer-count' }, `${rows.length} invoice(s)`),
-      el('div', { class: 'flex gap-16' }, paidSpan, totalSpanEl)
-    ));
+
+    // Build rows into a detached fragment across frames, then attach in a single
+    // append. Appending to a live <tbody> chunk-by-chunk forces the browser to
+    // re-layout the whole table (table-layout:auto) on every chunk — O(n²) reflow
+    // that froze the view with large datasets. One final append = one reflow.
+    const frag = document.createDocumentFragment();
+    const renderChunk = () => {
+      if (token !== _invRenderToken) return;
+      const end = Math.min(idx + 120, rows.length);
+      for (; idx < end; idx++) frag.appendChild(buildRow(rows[idx]));
+      if (idx < rows.length) {
+        requestAnimationFrame(renderChunk);
+      } else {
+        tb.appendChild(frag);
+        selectAllChk.onchange = () => {
+          rowChks.forEach(c => { c.checked = selectAllChk.checked; });
+          selectAllChk.indeterminate = false;
+          if (selectAllChk.checked) rows.forEach(r => selected.add(r.id)); else selected.clear();
+          syncBulkActions();
+        };
+      }
+    };
+    renderChunk();
   };
   rebuildFilters();
-  renderTable();
-  return wrap;
+  requestAnimationFrame(() => renderTable());
+  return { element: wrap, update: () => { _invStatCache = new Map(); rebuildFilters(); renderTable(); } };
 }
 
 
@@ -827,12 +874,156 @@ export function openPreview(id) {
   previewInvoice(inv, inv.clientId);
 }
 
+function ensureLuxuryFonts() {
+  if (document.querySelector('link[data-luxury-fonts]')) return;
+  const pc1 = document.createElement('link');
+  pc1.rel = 'preconnect'; pc1.href = 'https://fonts.googleapis.com';
+  pc1.dataset.luxuryFonts = '1';
+  document.head.appendChild(pc1);
+  const pc2 = document.createElement('link');
+  pc2.rel = 'preconnect'; pc2.href = 'https://fonts.gstatic.com';
+  pc2.crossOrigin = 'anonymous'; pc2.dataset.luxuryFonts = '1';
+  document.head.appendChild(pc2);
+  const lnk = document.createElement('link');
+  lnk.rel = 'stylesheet';
+  lnk.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap';
+  lnk.dataset.luxuryFonts = '1';
+  document.head.appendChild(lnk);
+}
+
+function renderLuxuryPreview(inv, client, biz) {
+  const subLine = [
+    biz.legalSuffix || '',
+    biz.registrationNumber ? `Reg ${biz.registrationNumber}` : '',
+  ].filter(Boolean).join(' · ');
+
+  const bizDetails = [
+    biz.vatNumber ? `VAT: ${biz.vatNumber}` : '',
+    biz.address || '',
+  ].filter(Boolean);
+
+  const billLines = [
+    client.name || '',
+    ...(client.address || '').split(/\n|,/).map(s => s.trim()).filter(Boolean),
+    client.email || '',
+    client.vatNumber ? `VAT: ${client.vatNumber}` : '',
+    client.registrationNumber ? `Reg: ${client.registrationNumber}` : '',
+  ].filter(Boolean);
+
+  const items = (inv.lineItems || []).map((li, i, arr) => {
+    const isLast = i === arr.length - 1;
+    const parts  = (li.description || '').split('\n');
+    const main   = escape(parts[0] || '');
+    const sub    = parts.slice(1).join(' ').trim();
+    const subHtml = sub ? `<span class="lux-sub">${escape(sub)}</span>` : '';
+    return `<tr class="${isLast ? 'lux-last' : ''}">
+      <td>${main}${subHtml}</td>
+      <td>${escape(`${li.quantity} ${li.unit || ''}`.trim())}</td>
+      <td>${escape(formatMoney(li.rate, inv.currency))}</td>
+      <td class="lux-right">${escape(formatMoney(li.total, inv.currency))}</td>
+    </tr>`;
+  }).join('');
+
+  const footerFields = [
+    biz.iban  && { label: 'IBAN',  value: biz.iban },
+    biz.bic   && { label: 'BIC',   value: biz.bic },
+    biz.swift && biz.swift !== biz.bic && { label: 'SWIFT', value: biz.swift },
+  ].filter(Boolean);
+
+  const footerHtml = footerFields.map(f => `
+    <div class="lux-item">
+      <div class="lux-label">${escape(f.label)}</div>
+      <div class="lux-value">${escape(f.value)}</div>
+    </div>`).join('');
+
+  return `
+    <style>
+      .lux-page{background:#faf7f2;max-width:800px;margin:0 auto;padding:60px 56px;position:relative;min-height:1123px;font-size:16px;color:#2a2118;box-sizing:border-box}
+      .lux-page *,.lux-page *::before,.lux-page *::after{box-sizing:border-box}
+      .lux-page::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:#b8935a}
+      .lux-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px}
+      .lux-company{font:600 21px/1 "Cormorant Garamond",serif;letter-spacing:.04em;white-space:nowrap}
+      .lux-company-sub{margin-top:3px;font:400 11px/1 "DM Sans",sans-serif;letter-spacing:.2em;text-transform:uppercase;color:#b8935a}
+      .lux-invoice-block{text-align:right}
+      .lux-invoice-word{font:italic 300 36px/1 "Cormorant Garamond",serif;color:#b8935a}
+      .lux-invoice-num{font:600 72px/1 "Cormorant Garamond",serif;letter-spacing:-.02em;color:#e8d9b8;margin-top:-8px}
+      .lux-biz-details{margin-top:4px;font:400 10px/1.6 "DM Sans",sans-serif;color:#999}
+      .lux-rule{border:0;border-top:.5px solid #d6c9b0;margin:0 0 44px 0}
+      .lux-meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;margin-bottom:36px}
+      .lux-meta .lux-label{margin-bottom:6px;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.18em;text-transform:uppercase;color:#b8935a}
+      .lux-meta .lux-value{font:400 14px/1.5 "Cormorant Garamond",serif;color:#2a2118;overflow-wrap:break-word;word-break:break-word}
+      table.lux-items{width:100%;border-collapse:collapse}
+      table.lux-items th{text-align:left;padding:9px 0;border-bottom:.5px solid #d6c9b0;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#b8935a}
+      table.lux-items th.lux-right,table.lux-items td.lux-right{text-align:right}
+      table.lux-items td{padding:16px 0;border-bottom:.5px solid #ede6d6;font:400 15px/1.2 "Cormorant Garamond",serif;vertical-align:middle}
+      table.lux-items tr.lux-last td{border-bottom:0}
+      table.lux-items .lux-sub{display:block;margin-top:2px;font:italic 400 12px/1 "Cormorant Garamond",serif;color:#b8935a}
+      .lux-totals-wrap{display:flex;justify-content:flex-end;margin-top:18px}
+      .lux-totals{width:230px;border-top:.5px solid #d6c9b0;padding-top:14px}
+      .lux-totals .lux-row{display:flex;justify-content:space-between;align-items:baseline;padding:4px 0;font:400 12px/1 "DM Sans",sans-serif;color:#999}
+      .lux-totals .lux-row.lux-total{font:400 21px/1 "Cormorant Garamond",serif;color:#b8935a;border-top:.5px solid #d6c9b0;margin-top:6px;padding-top:12px}
+      .lux-footer{display:flex;gap:32px;margin-top:40px;padding-top:18px;border-top:.5px solid #d6c9b0}
+      .lux-footer .lux-label{margin-bottom:4px;font:400 10px/1 "DM Sans",sans-serif;letter-spacing:.16em;text-transform:uppercase;color:#b8935a}
+      .lux-footer .lux-value{font:400 12px/1.2 "DM Sans",sans-serif;color:#888}
+    </style>
+    <div class="lux-page">
+      <div class="lux-header">
+        <div>
+          <div class="lux-company">${escape(biz.name || 'Your Company')}</div>
+          ${subLine ? `<div class="lux-company-sub">${escape(subLine)}</div>` : ''}
+          ${bizDetails.length ? `<div class="lux-biz-details">${bizDetails.map(escape).join('<br>')}</div>` : ''}
+        </div>
+        <div class="lux-invoice-block">
+          <div class="lux-invoice-word">Invoice</div>
+          <div class="lux-invoice-num">#${escape(inv.number || 'DRAFT')}</div>
+        </div>
+      </div>
+      <hr class="lux-rule">
+      <div class="lux-meta">
+        <div>
+          <div class="lux-label">Billed to</div>
+          <div class="lux-value">${billLines.map(escape).join('<br>')}</div>
+        </div>
+        <div>
+          <div class="lux-label">Issued</div>
+          <div class="lux-value">${escape(fmtDate(inv.issueDate))}</div>
+        </div>
+        <div>
+          <div class="lux-label">Due</div>
+          <div class="lux-value">${escape(fmtDate(inv.dueDate))}</div>
+        </div>
+      </div>
+      <table class="lux-items">
+        <thead>
+          <tr>
+            <th>Description</th><th>Qty</th><th>Rate</th><th class="lux-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${items}</tbody>
+      </table>
+      <div class="lux-totals-wrap">
+        <div class="lux-totals">
+          <div class="lux-row"><span>Subtotal</span><span>${escape(formatMoney(inv.subtotal, inv.currency))}</span></div>
+          <div class="lux-row"><span>Tax (${inv.taxRate || 0}%)</span><span>${escape(formatMoney(inv.tax || 0, inv.currency))}</span></div>
+          <div class="lux-row lux-total"><span>Total</span><span>${escape(formatMoney(inv.total, inv.currency))}</span></div>
+        </div>
+      </div>
+      ${footerFields.length ? `<footer class="lux-footer">${footerHtml}</footer>` : ''}
+    </div>`;
+}
+
 function previewInvoice(inv, clientId) {
   const client = byId('clients', clientId) || {};
-  const biz = state.db.settings?.business || {};
-  const body = el('div', {});
+  const biz    = state.db.settings?.business || {};
+  const tpl    = state.db.settings?.business?.invoiceTemplate || 'standard';
+  const body   = el('div', {});
   const preview = el('div', { class: 'invoice-preview' });
-  preview.innerHTML = `
+
+  if (tpl === 'luxury') {
+    ensureLuxuryFonts();
+    preview.innerHTML = renderLuxuryPreview(inv, client, biz);
+  } else {
+    preview.innerHTML = `
     <div class="inv-hdr">
       <div>
         <h1>INVOICE</h1>
@@ -879,6 +1070,7 @@ function previewInvoice(inv, clientId) {
     </div>
     ${inv.notes ? `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#666">${escape(inv.notes)}</div>` : ''}
   `;
+  }
   body.appendChild(preview);
 
   // PDF attachment section (only for imported invoices)
@@ -1360,7 +1552,10 @@ async function openPDFViewer(inv) {
   const loadMsg = el('div', { style: 'padding:24px;text-align:center;color:var(--text-muted)' }, 'Loading PDF…');
   const bodyWrap = el('div', {}, hasAttached ? loadMsg : frame);
 
-  const dlBtn = button('Download', { variant: 'primary', onClick: () => downloadOriginalPDF(inv) });
+  const dlBtn = button('Download', { variant: 'primary', onClick: () => {
+    if (inv.source === 'pdf_import' && hasAttached) downloadOriginalPDF(inv);
+    else downloadInvoicePDF(inv, `${invoicePdfFilename(inv)}.pdf`);
+  }});
   const { close } = openModal({ title: titleLabel, body: bodyWrap, footer: [button('Close', { onClick: () => close() }), dlBtn], large: true });
 
   let objectUrl = null;

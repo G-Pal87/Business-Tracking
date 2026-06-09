@@ -89,7 +89,8 @@ export function drillDownModal(title, rows, columns) {
     tr.appendChild(el('td', { colspan: String(columns.length), style: 'text-align:center;padding:24px;color:var(--text-muted)' }, 'No records'));
     tbody.appendChild(tr);
   }
-  for (const row of rows) {
+
+  const buildRow = (row) => {
     const tr = el('tr');
     for (const col of columns) {
       const raw = row[col.key];
@@ -99,8 +100,23 @@ export function drillDownModal(title, rows, columns) {
       else cell.appendChild(document.createTextNode(String(display ?? '—')));
       tr.appendChild(cell);
     }
-    tbody.appendChild(tr);
-  }
+    return tr;
+  };
+
+  // Render in pages so a drill-down with thousands of records doesn't freeze the
+  // UI building one DOM node per cell synchronously. All rows remain reachable
+  // via "Show more". Each page is appended in a single DocumentFragment.
+  const PAGE = 200;
+  let shown = 0;
+  const renderPage = () => {
+    const frag = document.createDocumentFragment();
+    const end = Math.min(shown + PAGE, rows.length);
+    for (let i = shown; i < end; i++) frag.appendChild(buildRow(rows[i]));
+    tbody.appendChild(frag);
+    shown = end;
+  };
+  renderPage();
+
   table.appendChild(tbody);
   const tw = el('div', { class: 'table-wrap' });
   tw.appendChild(table);
@@ -109,6 +125,17 @@ export function drillDownModal(title, rows, columns) {
   const body = el('div');
   body.appendChild(meta);
   body.appendChild(tw);
+  if (rows.length > PAGE) {
+    const moreBtn = el('button', { class: 'btn', style: 'margin-top:12px' });
+    const updateLabel = () => { moreBtn.textContent = `Show more (${shown} of ${rows.length})`; };
+    updateLabel();
+    moreBtn.onclick = () => {
+      renderPage();
+      updateLabel();
+      if (shown >= rows.length) moreBtn.remove();
+    };
+    body.appendChild(moreBtn);
+  }
   openModal({ title, body, large: true });
 }
 
@@ -126,6 +153,21 @@ export function confirmDialog(message, { title = 'Confirm', okLabel = 'OK', dang
     });
     okBtn.onclick = () => { close(); settle(true); };
     cancelBtn.onclick = () => { close(); settle(false); };
+  });
+}
+
+// Two-step delete confirmation. First dialog asks the standard "delete X?" question;
+// second asks for explicit final confirmation. Returns true only if both are accepted.
+// Pass `label` as a short description of what's being deleted (e.g. "INV-001" or "3 invoices").
+export async function confirmDeleteTwice(label) {
+  const first = await confirmDialog(`Delete ${label}? This cannot be undone.`, { danger: true, okLabel: 'Delete' });
+  if (!first) return false;
+  // Wait for the first modal's close animation to fully complete (openModal clears
+  // overlay.innerHTML after 200ms) before opening the second dialog, otherwise that
+  // delayed cleanup fires mid-second-dialog and auto-dismisses it.
+  await new Promise(r => setTimeout(r, 250));
+  return confirmDialog(`Permanently delete ${label}? This is your final confirmation — the record will be gone.`, {
+    title: 'Final confirmation', danger: true, okLabel: 'Yes, delete permanently'
   });
 }
 
