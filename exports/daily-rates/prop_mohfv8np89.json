@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-09T11:39:44.584Z",
+  "generatedAt": "2026-06-10T08:31:56.966Z",
   "property": {
     "id": "prop_mohfv8np89",
     "name": "Rooftop Tenerife",
@@ -9,8 +9,8 @@
   },
   "guestFeePct": 14,
   "taxPct": 0,
-  "cleaningFee": 50,
-  "cleaningGuestTotal": 50,
+  "cleaningFee": 60,
+  "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": []
 }
