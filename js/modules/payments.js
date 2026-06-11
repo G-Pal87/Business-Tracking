@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildReservationExpenseRefMap } from '../core/data.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildReservationExpenseRefMap, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -516,6 +516,7 @@ function buildScheduleSection(wrap) {
 
   const yearFilter   = new Set();
   const monthFilter  = new Set();
+  const ownerFilter  = new Set();
   const propFilter   = new Set();
   const statusFilter = new Set();
 
@@ -524,6 +525,7 @@ function buildScheduleSection(wrap) {
 
   const yearMS   = buildMultiSelect([], yearFilter,   'All Years',      debouncedRender, 'sched_years');
   const monthMS  = buildMultiSelect([], monthFilter,  'All Months',     debouncedRender, 'sched_months');
+  const ownerMS  = buildMultiSelect([], ownerFilter,  'All Owners',     debouncedRender, 'sched_owners');
   const propMS   = buildMultiSelect([], propFilter,   'All Properties', debouncedRender, 'sched_props');
   const statusMS = buildMultiSelect([], statusFilter, 'All Statuses',   debouncedRender, 'sched_statuses');
 
@@ -535,9 +537,10 @@ function buildScheduleSection(wrap) {
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center;flex-wrap:wrap' });
   bar.appendChild(yearMS);
   bar.appendChild(monthMS);
+  bar.appendChild(ownerMS);
   bar.appendChild(propMS);
   bar.appendChild(statusMS);
-  bar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); propMS.reset(); statusMS.reset(); render(); } }));
+  bar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); ownerMS.reset(); propMS.reset(); statusMS.reset(); render(); } }));
   bar.appendChild(el('div', { class: 'flex-1' }));
   bar.appendChild(showUnpaidOnly);
   wrap.appendChild(bar);
@@ -564,23 +567,28 @@ function buildScheduleSection(wrap) {
     s.paid ? 'paid' : s.overdue ? 'overdue' : s.monthKey === thisMonthKey ? 'due-this-month' : 'upcoming';
 
   const rebuildSchedFilters = (allEntries, thisMonthKey) => {
-    const matchesExceptSched = (e, skip) => {
+    const matchesExcept = (e, skip) => {
       const st = getSchedStatus(e, thisMonthKey);
       if (skip !== 'year'   && yearFilter.size   > 0 && !yearFilter.has(e.monthKey.slice(0, 4)))  return false;
       if (skip !== 'month'  && monthFilter.size  > 0 && !monthFilter.has(e.monthKey.slice(5, 7))) return false;
+      if (skip !== 'owner'  && ownerFilter.size  > 0 && !ownerFilter.has(e.prop.owner))           return false;
       if (skip !== 'prop'   && propFilter.size   > 0 && !propFilter.has(e.propId))                return false;
       if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(st))                    return false;
       return true;
     };
-    const ys = new Set(), ms = new Set(), ps = new Set(), ss = new Set();
+    const ys = new Set(), ms = new Set(), os = new Set(), ps = new Set(), ss = new Set();
     for (const e of allEntries) {
-      if (matchesExceptSched(e, 'year'))   ys.add(e.monthKey.slice(0, 4));
-      if (matchesExceptSched(e, 'month'))  ms.add(e.monthKey.slice(5, 7));
-      if (matchesExceptSched(e, 'prop'))   ps.add(e.propId);
-      if (matchesExceptSched(e, 'status')) ss.add(getSchedStatus(e, thisMonthKey));
+      if (matchesExcept(e, 'year'))   ys.add(e.monthKey.slice(0, 4));
+      if (matchesExcept(e, 'month'))  ms.add(e.monthKey.slice(5, 7));
+      if (matchesExcept(e, 'owner'))  os.add(e.prop.owner);
+      if (matchesExcept(e, 'prop'))   ps.add(e.propId);
+      if (matchesExcept(e, 'status')) ss.add(getSchedStatus(e, thisMonthKey));
     }
     yearMS.setItems([...ys].sort().reverse().map(y => ({ value: y, label: y })));
     monthMS.setItems([...ms].sort().map(m => ({ value: m, label: MONTH_LABELS_S[parseInt(m, 10) - 1] })));
+    // Owner options built from all known people owners, filtered to those present in visible entries
+    ownerMS.setItems(getPeopleOwners({ includeBoth: false }).filter(o => os.has(o.value)));
+    // Property options: only properties whose owner matches the current owner filter (interdependent)
     propMS.setItems(allLtProps.filter(p => ps.has(p.id)).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name })));
     statusMS.setItems([...ss].sort().map(s => { const m = SCHED_STATUS[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
   };
@@ -606,6 +614,7 @@ function buildScheduleSection(wrap) {
     let rows = allEntries;
     if (yearFilter.size   > 0) rows = rows.filter(e => yearFilter.has(e.monthKey.slice(0, 4)));
     if (monthFilter.size  > 0) rows = rows.filter(e => monthFilter.has(e.monthKey.slice(5, 7)));
+    if (ownerFilter.size  > 0) rows = rows.filter(e => ownerFilter.has(e.prop.owner));
     if (propFilter.size   > 0) rows = rows.filter(e => propFilter.has(e.propId));
     if (statusFilter.size > 0) rows = rows.filter(e => statusFilter.has(getSchedStatus(e, thisMonthKey)));
     if (unpaidChk.checked) rows = rows.filter(s => !s.paid);
