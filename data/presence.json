@@ -6,8 +6,8 @@
       "name": "Rita"
     },
     "Giorgos": {
-      "view": "payments",
-      "t": 1781257588630,
+      "view": "invoices",
+      "t": 1781257610737,
       "name": "Giorgos"
     }
   }
