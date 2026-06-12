@@ -9,7 +9,7 @@ let _sortCol = -1, _sortDir = 1;
 export default {
   id: 'inventory',
   label: 'Inventory',
-  icon: 'Inv',
+  icon: '📦',
   render(container) { migrateInventoryData(); container.appendChild(build()); },
   refresh() { migrateInventoryData(); const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() {}

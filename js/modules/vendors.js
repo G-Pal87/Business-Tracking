@@ -7,7 +7,7 @@ import { navigate } from '../core/router.js';
 export default {
   id: 'vendors',
   label: 'Vendors',
-  icon: 'V',
+  icon: '🔧',
   render(container) { container.appendChild(build()); },
   refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() {}

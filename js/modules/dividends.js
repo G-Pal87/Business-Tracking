@@ -26,7 +26,7 @@ let gYear = null;
 export default {
   id:    'dividends',
   label: 'Dividends',
-  icon:  '₾',
+  icon:  '💰',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }

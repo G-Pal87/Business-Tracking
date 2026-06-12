@@ -7,7 +7,7 @@ import { PERSON_ROLES, DIVIDEND_METHODS } from '../core/config.js';
 export default {
   id: 'company-structure',
   label: 'Company Structure',
-  icon: '⊞',
+  icon: '🏢',
   render(container) { container.appendChild(buildView()); },
   refresh() {
     const c = document.getElementById('content');

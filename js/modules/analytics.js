@@ -25,7 +25,7 @@ let gScope = 'company'; // 'company' | 'all'
 export default {
   id: 'analytics',
   label: 'Executive',
-  icon: 'A',
+  icon: '📊',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }

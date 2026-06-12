@@ -25,7 +25,7 @@ let _sumSortCol = -1, _sumSortDir = 1;
 export default {
   id:    'analytics-properties',
   label: 'Properties',
-  icon:  'P',
+  icon:  '🏘️',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }

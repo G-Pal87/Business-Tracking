@@ -24,7 +24,7 @@ let gSpotlightPropId = null;
 export default {
   id: 'analytics-str',
   label: 'STR Performance',
-  icon: '⌂',
+  icon: '🏖️',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }

@@ -70,7 +70,7 @@ let _invUpdateFn = null;
 export default {
   id: 'invoices',
   label: 'Invoices',
-  icon: 'I',
+  icon: '🧾',
   render(container) { const { element, update } = build(); _invUpdateFn = update; container.appendChild(element); scheduleMigration(); schedulePathMigration(); },
   refresh() {
     if (_invUpdateFn) { _invUpdateFn(); return; }

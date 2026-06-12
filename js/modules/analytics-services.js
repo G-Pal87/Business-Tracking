@@ -25,7 +25,7 @@ let _invoiceTableSortCol = -1, _invoiceTableSortDir = 1;
 export default {
   id:    'analytics-services',
   label: 'Services',
-  icon:  'S',
+  icon:  '🛠️',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }

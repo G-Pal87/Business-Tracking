@@ -14,7 +14,7 @@ let _payUpdateFn = null;
 export default {
   id: 'payments',
   label: 'Property Payments',
-  icon: 'P',
+  icon: '💳',
   render(container) { const { element, update } = build(); _payUpdateFn = update; container.appendChild(element); },
   refresh() {
     if (_payUpdateFn) { _payUpdateFn(); return; }

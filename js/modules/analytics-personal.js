@@ -44,7 +44,7 @@ let gF = createFilterState();
 export default {
   id: 'analytics-personal',
   label: 'Personal Income',
-  icon: '₱',
+  icon: '💼',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }
