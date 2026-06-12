@@ -96,7 +96,7 @@ function docIcon(type) {
 export default {
   id: 'properties',
   label: 'Properties',
-  icon: 'H',
+  icon: '🏠',
 
   render(container) {
     container.appendChild(build());

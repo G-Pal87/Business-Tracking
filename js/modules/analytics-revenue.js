@@ -35,7 +35,7 @@ let _revSortCol = -1, _revSortDir = 1;
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
-  id: 'analytics-revenue', label: 'Revenue', icon: '₊',
+  id: 'analytics-revenue', label: 'Revenue', icon: '📈',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }

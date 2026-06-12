@@ -25,7 +25,7 @@ let gScope = 'company'; // 'company' | 'all'
 export default {
   id:    'analytics-tax',
   label: 'Tax',
-  icon:  '₪',
+  icon:  '🏛️',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }

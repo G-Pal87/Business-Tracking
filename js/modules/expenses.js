@@ -45,7 +45,7 @@ let _updateFn = null;
 export default {
   id: 'expenses',
   label: 'Expenses',
-  icon: 'E',
+  icon: '💸',
   render(container) { const { element, update } = build(); _updateFn = update; container.appendChild(element); },
   refresh() {
     if (_updateFn) { _updateFn(); return; }

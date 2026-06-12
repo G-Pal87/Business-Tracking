@@ -5,7 +5,7 @@ import { availableYears, formatEUR, buildReconciliationData, listActivePayments,
 export default {
   id: 'reconciliation',
   label: 'Reconciliation',
-  icon: '⇌',
+  icon: '⚖️',
   render(container) { container.appendChild(build()); },
   refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() {}

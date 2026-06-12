@@ -25,7 +25,7 @@ let _cfSortCol = -1, _cfSortDir = 1;
 export default {
   id:    'analytics-cashflow',
   label: 'Cash Flow',
-  icon:  '≈',
+  icon:  '💹',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }

@@ -16,7 +16,7 @@ import { openExpenseForm } from './expenses.js';
 export default {
   id: 'settings',
   label: 'Settings',
-  icon: 'G',
+  icon: '⚙️',
   render(container) { container.appendChild(build()); },
   refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() {}

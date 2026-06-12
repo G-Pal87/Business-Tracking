@@ -9,7 +9,7 @@ let _sortCol = -1, _sortDir = 1;
 export default {
   id: 'users',
   label: 'Users',
-  icon: 'U',
+  icon: '👤',
   render(container) { container.appendChild(build()); },
   refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() {}

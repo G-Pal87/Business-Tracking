@@ -13,7 +13,7 @@ let _fcStreamSortCol = -1, _fcStreamSortDir = 1;
 export default {
   id: 'forecast',
   label: 'Forecast',
-  icon: 'F',
+  icon: '🔭',
   render(container) {
     container.appendChild(build());
   },

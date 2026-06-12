@@ -57,7 +57,7 @@ function sanitizeName(str) {
 export default {
   id: 'clients',
   label: 'Clients',
-  icon: 'C',
+  icon: '🤝',
   render(container) { container.appendChild(build()); },
   refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() {}

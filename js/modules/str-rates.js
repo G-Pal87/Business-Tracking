@@ -21,7 +21,7 @@ const _icalRefreshing = new Set();
 export default {
   id: 'str-rates',
   label: 'STR Daily Rates',
-  icon: '€',
+  icon: '🛏️',
   render(container) { container.appendChild(build()); },
   refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() {}

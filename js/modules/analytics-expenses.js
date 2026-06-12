@@ -42,7 +42,7 @@ let _expTableSortCol = -1, _expTableSortDir = 1;
 export default {
   id:    'analytics-expenses',
   label: 'Expenses',
-  icon:  '−',
+  icon:  '📉',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
   destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }
