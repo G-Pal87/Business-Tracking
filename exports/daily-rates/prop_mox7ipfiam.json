@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-14T17:45:21.892Z",
+  "generatedAt": "2026-06-14T21:40:37.963Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -435,7 +435,7 @@
       "date": "2026-08-01",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -443,7 +443,7 @@
       "date": "2026-08-02",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -451,7 +451,7 @@
       "date": "2026-08-03",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -459,7 +459,7 @@
       "date": "2026-08-04",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -467,7 +467,7 @@
       "date": "2026-08-05",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -475,7 +475,7 @@
       "date": "2026-08-06",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -483,7 +483,7 @@
       "date": "2026-08-07",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -491,7 +491,7 @@
       "date": "2026-08-08",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -499,7 +499,7 @@
       "date": "2026-08-09",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -507,7 +507,7 @@
       "date": "2026-08-10",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -515,7 +515,7 @@
       "date": "2026-08-11",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -523,7 +523,7 @@
       "date": "2026-08-12",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -531,7 +531,7 @@
       "date": "2026-08-13",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -539,7 +539,7 @@
       "date": "2026-08-14",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -547,7 +547,7 @@
       "date": "2026-08-15",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -555,7 +555,7 @@
       "date": "2026-08-16",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -563,7 +563,7 @@
       "date": "2026-08-17",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -571,7 +571,7 @@
       "date": "2026-08-18",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -579,7 +579,7 @@
       "date": "2026-08-19",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -587,7 +587,7 @@
       "date": "2026-08-20",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -595,7 +595,7 @@
       "date": "2026-08-21",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -603,7 +603,7 @@
       "date": "2026-08-22",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -611,7 +611,7 @@
       "date": "2026-08-23",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -619,7 +619,7 @@
       "date": "2026-08-24",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -627,7 +627,7 @@
       "date": "2026-08-25",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -635,7 +635,7 @@
       "date": "2026-08-26",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -643,7 +643,7 @@
       "date": "2026-08-27",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -651,7 +651,7 @@
       "date": "2026-08-28",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -659,7 +659,7 @@
       "date": "2026-08-29",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -667,7 +667,7 @@
       "date": "2026-08-30",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -675,7 +675,7 @@
       "date": "2026-08-31",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "August 2025 (31 nights)",
+      "basis": "August (31 nights)",
       "amount": 63,
       "airbnbCheckout": 72
     },
@@ -1781,7 +1781,7 @@
       "date": "2027-01-01",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1789,7 +1789,7 @@
       "date": "2027-01-02",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1797,7 +1797,7 @@
       "date": "2027-01-03",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1805,7 +1805,7 @@
       "date": "2027-01-04",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1813,7 +1813,7 @@
       "date": "2027-01-05",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1821,7 +1821,7 @@
       "date": "2027-01-06",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1829,7 +1829,7 @@
       "date": "2027-01-07",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1837,7 +1837,7 @@
       "date": "2027-01-08",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1845,7 +1845,7 @@
       "date": "2027-01-09",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1853,7 +1853,7 @@
       "date": "2027-01-10",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1861,7 +1861,7 @@
       "date": "2027-01-11",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1869,7 +1869,7 @@
       "date": "2027-01-12",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1877,7 +1877,7 @@
       "date": "2027-01-13",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1885,7 +1885,7 @@
       "date": "2027-01-14",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1893,7 +1893,7 @@
       "date": "2027-01-15",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1901,7 +1901,7 @@
       "date": "2027-01-16",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1909,7 +1909,7 @@
       "date": "2027-01-17",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1917,7 +1917,7 @@
       "date": "2027-01-18",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1925,7 +1925,7 @@
       "date": "2027-01-19",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1933,7 +1933,7 @@
       "date": "2027-01-20",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1941,7 +1941,7 @@
       "date": "2027-01-21",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1949,7 +1949,7 @@
       "date": "2027-01-22",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1957,7 +1957,7 @@
       "date": "2027-01-23",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1965,7 +1965,7 @@
       "date": "2027-01-24",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1973,7 +1973,7 @@
       "date": "2027-01-25",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1981,7 +1981,7 @@
       "date": "2027-01-26",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1989,7 +1989,7 @@
       "date": "2027-01-27",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -1997,7 +1997,7 @@
       "date": "2027-01-28",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -2005,7 +2005,7 @@
       "date": "2027-01-29",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -2013,7 +2013,7 @@
       "date": "2027-01-30",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -2021,7 +2021,7 @@
       "date": "2027-01-31",
       "currency": "EUR",
       "status": "open",
-      "basis": "January 2026 (18 nights)",
+      "basis": "January (18 nights)",
       "amount": 39,
       "airbnbCheckout": 44
     },
@@ -2029,7 +2029,7 @@
       "date": "2027-02-01",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2037,7 +2037,7 @@
       "date": "2027-02-02",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2045,7 +2045,7 @@
       "date": "2027-02-03",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2053,7 +2053,7 @@
       "date": "2027-02-04",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2061,7 +2061,7 @@
       "date": "2027-02-05",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2069,7 +2069,7 @@
       "date": "2027-02-06",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2077,7 +2077,7 @@
       "date": "2027-02-07",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2085,7 +2085,7 @@
       "date": "2027-02-08",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2093,7 +2093,7 @@
       "date": "2027-02-09",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2101,7 +2101,7 @@
       "date": "2027-02-10",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2109,7 +2109,7 @@
       "date": "2027-02-11",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2117,7 +2117,7 @@
       "date": "2027-02-12",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2125,7 +2125,7 @@
       "date": "2027-02-13",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2133,7 +2133,7 @@
       "date": "2027-02-14",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2141,7 +2141,7 @@
       "date": "2027-02-15",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2149,7 +2149,7 @@
       "date": "2027-02-16",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2157,7 +2157,7 @@
       "date": "2027-02-17",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2165,7 +2165,7 @@
       "date": "2027-02-18",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2173,7 +2173,7 @@
       "date": "2027-02-19",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2181,7 +2181,7 @@
       "date": "2027-02-20",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2189,7 +2189,7 @@
       "date": "2027-02-21",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2197,7 +2197,7 @@
       "date": "2027-02-22",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2205,7 +2205,7 @@
       "date": "2027-02-23",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2213,7 +2213,7 @@
       "date": "2027-02-24",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2221,7 +2221,7 @@
       "date": "2027-02-25",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2229,7 +2229,7 @@
       "date": "2027-02-26",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2237,7 +2237,7 @@
       "date": "2027-02-27",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2245,7 +2245,7 @@
       "date": "2027-02-28",
       "currency": "EUR",
       "status": "open",
-      "basis": "February 2026 (26 nights)",
+      "basis": "February (26 nights)",
       "amount": 35,
       "airbnbCheckout": 40
     },
@@ -2253,7 +2253,7 @@
       "date": "2027-03-01",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2261,7 +2261,7 @@
       "date": "2027-03-02",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2269,7 +2269,7 @@
       "date": "2027-03-03",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2277,7 +2277,7 @@
       "date": "2027-03-04",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2285,7 +2285,7 @@
       "date": "2027-03-05",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2293,7 +2293,7 @@
       "date": "2027-03-06",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2301,7 +2301,7 @@
       "date": "2027-03-07",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2309,7 +2309,7 @@
       "date": "2027-03-08",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2317,7 +2317,7 @@
       "date": "2027-03-09",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2325,7 +2325,7 @@
       "date": "2027-03-10",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2333,7 +2333,7 @@
       "date": "2027-03-11",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2341,7 +2341,7 @@
       "date": "2027-03-12",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2349,7 +2349,7 @@
       "date": "2027-03-13",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2357,7 +2357,7 @@
       "date": "2027-03-14",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2365,7 +2365,7 @@
       "date": "2027-03-15",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2373,7 +2373,7 @@
       "date": "2027-03-16",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2381,7 +2381,7 @@
       "date": "2027-03-17",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2389,7 +2389,7 @@
       "date": "2027-03-18",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2397,7 +2397,7 @@
       "date": "2027-03-19",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2405,7 +2405,7 @@
       "date": "2027-03-20",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2413,7 +2413,7 @@
       "date": "2027-03-21",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2421,7 +2421,7 @@
       "date": "2027-03-22",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2429,7 +2429,7 @@
       "date": "2027-03-23",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2437,7 +2437,7 @@
       "date": "2027-03-24",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2445,7 +2445,7 @@
       "date": "2027-03-25",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2453,7 +2453,7 @@
       "date": "2027-03-26",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2461,7 +2461,7 @@
       "date": "2027-03-27",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2469,7 +2469,7 @@
       "date": "2027-03-28",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2477,7 +2477,7 @@
       "date": "2027-03-29",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2485,7 +2485,7 @@
       "date": "2027-03-30",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2493,7 +2493,7 @@
       "date": "2027-03-31",
       "currency": "EUR",
       "status": "open",
-      "basis": "March 2026 (20 nights)",
+      "basis": "March (20 nights)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2501,7 +2501,7 @@
       "date": "2027-04-01",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2509,7 +2509,7 @@
       "date": "2027-04-02",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2517,7 +2517,7 @@
       "date": "2027-04-03",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2525,7 +2525,7 @@
       "date": "2027-04-04",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2533,7 +2533,7 @@
       "date": "2027-04-05",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2541,7 +2541,7 @@
       "date": "2027-04-06",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2549,7 +2549,7 @@
       "date": "2027-04-07",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2557,7 +2557,7 @@
       "date": "2027-04-08",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2565,7 +2565,7 @@
       "date": "2027-04-09",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2573,7 +2573,7 @@
       "date": "2027-04-10",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2581,7 +2581,7 @@
       "date": "2027-04-11",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2589,7 +2589,7 @@
       "date": "2027-04-12",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2597,7 +2597,7 @@
       "date": "2027-04-13",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2605,7 +2605,7 @@
       "date": "2027-04-14",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2613,7 +2613,7 @@
       "date": "2027-04-15",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2621,7 +2621,7 @@
       "date": "2027-04-16",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2629,7 +2629,7 @@
       "date": "2027-04-17",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2637,7 +2637,7 @@
       "date": "2027-04-18",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2645,7 +2645,7 @@
       "date": "2027-04-19",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2653,7 +2653,7 @@
       "date": "2027-04-20",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2661,7 +2661,7 @@
       "date": "2027-04-21",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2669,7 +2669,7 @@
       "date": "2027-04-22",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2677,7 +2677,7 @@
       "date": "2027-04-23",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2685,7 +2685,7 @@
       "date": "2027-04-24",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2693,7 +2693,7 @@
       "date": "2027-04-25",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2701,7 +2701,7 @@
       "date": "2027-04-26",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2709,7 +2709,7 @@
       "date": "2027-04-27",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2717,7 +2717,7 @@
       "date": "2027-04-28",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2725,7 +2725,7 @@
       "date": "2027-04-29",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2733,7 +2733,7 @@
       "date": "2027-04-30",
       "currency": "EUR",
       "status": "open",
-      "basis": "April 2026 (17 nights)",
+      "basis": "April (17 nights)",
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2741,7 +2741,7 @@
       "date": "2027-05-01",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2749,7 +2749,7 @@
       "date": "2027-05-02",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2757,7 +2757,7 @@
       "date": "2027-05-03",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2765,7 +2765,7 @@
       "date": "2027-05-04",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2773,7 +2773,7 @@
       "date": "2027-05-05",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2781,7 +2781,7 @@
       "date": "2027-05-06",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2789,7 +2789,7 @@
       "date": "2027-05-07",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2797,7 +2797,7 @@
       "date": "2027-05-08",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2805,7 +2805,7 @@
       "date": "2027-05-09",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2813,7 +2813,7 @@
       "date": "2027-05-10",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2821,7 +2821,7 @@
       "date": "2027-05-11",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2829,7 +2829,7 @@
       "date": "2027-05-12",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2837,7 +2837,7 @@
       "date": "2027-05-13",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2845,7 +2845,7 @@
       "date": "2027-05-14",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2853,7 +2853,7 @@
       "date": "2027-05-15",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2861,7 +2861,7 @@
       "date": "2027-05-16",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2869,7 +2869,7 @@
       "date": "2027-05-17",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2877,7 +2877,7 @@
       "date": "2027-05-18",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2885,7 +2885,7 @@
       "date": "2027-05-19",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2893,7 +2893,7 @@
       "date": "2027-05-20",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 20 (1n, 1.95×) + May 2025 day 20 (1n, 1.27×)",
+      "basis": "May 2027 blended (1n) + May 2027 blended (1n)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2901,7 +2901,7 @@
       "date": "2027-05-21",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 21 (1n, 1.95×) + May 2025 day 21 (1n, 1.27×)",
+      "basis": "May 2027 blended (1n) + May 2027 blended (1n)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2909,7 +2909,7 @@
       "date": "2027-05-22",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 22 (1n, 1.95×) + May 2025 day 22 (1n, 1.27×)",
+      "basis": "May 2027 blended (1n) + May 2027 blended (1n)",
       "amount": 44,
       "airbnbCheckout": 50
     },
@@ -2917,7 +2917,7 @@
       "date": "2027-05-23",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 23 (1n, 1.95×) + May 2025 day 23 (1n, 1.27×)",
+      "basis": "May 2027 blended (1n) + May 2027 blended (1n)",
       "amount": 55,
       "airbnbCheckout": 63
     },
@@ -2925,7 +2925,7 @@
       "date": "2027-05-24",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 24 (1n, 1.95×) + May 2025 day 24 (1n, 1.27×)",
+      "basis": "May 2027 blended (1n) + May 2027 blended (1n)",
       "amount": 53,
       "airbnbCheckout": 60
     },
@@ -2933,7 +2933,7 @@
       "date": "2027-05-25",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 25 (1n, 1.95×) + May 2025 day 25 (1n, 1.27×)",
+      "basis": "May 2027 blended (1n) + May 2027 blended (1n)",
       "amount": 53,
       "airbnbCheckout": 60
     },
@@ -2941,7 +2941,7 @@
       "date": "2027-05-26",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 day 26 (1n, 1.95×) + May 2025 day 26 (1n, 1.27×)",
+      "basis": "May 2027 blended (1n) + May 2027 blended (1n)",
       "amount": 55,
       "airbnbCheckout": 63
     },
@@ -2949,7 +2949,7 @@
       "date": "2027-05-27",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2957,7 +2957,7 @@
       "date": "2027-05-28",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2965,7 +2965,7 @@
       "date": "2027-05-29",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2973,7 +2973,7 @@
       "date": "2027-05-30",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2981,7 +2981,7 @@
       "date": "2027-05-31",
       "currency": "EUR",
       "status": "open",
-      "basis": "May 2026 (26n, 1.95×) + May 2025 (11n, 1.27×)",
+      "basis": "May 2027 blended (26n) + May 2027 blended (11n)",
       "amount": 51,
       "airbnbCheckout": 58
     },
@@ -2989,7 +2989,7 @@
       "date": "2027-06-01",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
@@ -2997,7 +2997,7 @@
       "date": "2027-06-02",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
@@ -3005,7 +3005,7 @@
       "date": "2027-06-03",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
@@ -3013,7 +3013,7 @@
       "date": "2027-06-04",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
@@ -3021,7 +3021,7 @@
       "date": "2027-06-05",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
@@ -3029,7 +3029,7 @@
       "date": "2027-06-06",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
@@ -3037,7 +3037,7 @@
       "date": "2027-06-07",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
@@ -3045,15 +3045,15 @@
       "date": "2027-06-08",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
     {
       "date": "2027-06-09",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "June 2025 (24 nights)",
+      "status": "open",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
@@ -3061,7 +3061,7 @@
       "date": "2027-06-10",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
@@ -3069,7 +3069,7 @@
       "date": "2027-06-11",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
@@ -3077,7 +3077,7 @@
       "date": "2027-06-12",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     },
@@ -3085,7 +3085,7 @@
       "date": "2027-06-13",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "June 2025 (24 nights)",
+      "basis": "June (24 nights)",
       "amount": 49,
       "airbnbCheckout": 56
     }
