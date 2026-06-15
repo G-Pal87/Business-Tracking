@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-15T00:14:26.720Z",
+  "generatedAt": "2026-06-15T20:16:06.335Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
@@ -48,7 +48,7 @@
     {
       "date": "2026-06-19",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 79,
       "airbnbCheckout": 90
@@ -56,7 +56,7 @@
     {
       "date": "2026-06-20",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 79,
       "airbnbCheckout": 90
@@ -64,7 +64,7 @@
     {
       "date": "2026-06-21",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 79,
       "airbnbCheckout": 90
@@ -72,7 +72,7 @@
     {
       "date": "2026-06-22",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 79,
       "airbnbCheckout": 90
