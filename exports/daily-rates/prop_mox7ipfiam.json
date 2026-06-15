@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-14T21:40:37.963Z",
+  "generatedAt": "2026-06-15T00:14:26.715Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -13,16 +13,6 @@
   "cleaningGuestTotal": 50,
   "horizonDays": 365,
   "rates": [
-    {
-      "date": "2026-06-14",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 57,
-      "discountPct": 20,
-      "amount": 46,
-      "airbnbCheckout": 65
-    },
     {
       "date": "2026-06-15",
       "currency": "EUR",
@@ -3083,6 +3073,14 @@
     },
     {
       "date": "2027-06-13",
+      "currency": "EUR",
+      "status": "blocked",
+      "basis": "June (24 nights)",
+      "amount": 49,
+      "airbnbCheckout": 56
+    },
+    {
+      "date": "2027-06-14",
       "currency": "EUR",
       "status": "blocked",
       "basis": "June (24 nights)",
