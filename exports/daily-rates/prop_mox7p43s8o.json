@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-15T00:14:26.726Z",
+  "generatedAt": "2026-06-15T22:34:01.716Z",
   "property": {
     "id": "prop_mox7p43s8o",
     "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
@@ -3018,7 +3018,7 @@
     {
       "date": "2027-06-10",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "June (29 nights)",
       "amount": 70,
       "airbnbCheckout": 80
