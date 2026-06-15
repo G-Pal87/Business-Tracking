@@ -4,6 +4,11 @@
       "view": "properties",
       "t": 1781508964702,
       "name": "Rita"
+    },
+    "Giorgos": {
+      "view": "forecast",
+      "t": 1781535513049,
+      "name": "Giorgos"
     }
   }
 }
