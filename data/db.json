@@ -33195,6 +33195,12 @@
       "url": "https://www.airbnb.co.uk/calendar/ical/1341854905555812998.ics?t=1e2c75c8b84645a4ac88669d8ec7bdda",
       "blocks": [
         {
+          "start": "2026-06-17",
+          "end": "2026-06-19",
+          "uid": "1418fb94e984-5b208411a49c4bc515260fe41d387efd@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
           "start": "2026-06-19",
           "end": "2026-06-27",
           "uid": "1418fb94e984-47f78ba52a5d8aa3f3570286c9edc276@airbnb.com",
@@ -33236,7 +33242,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780945292474,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-17T04:22:49.816Z"
+      "lastFetched": "2026-06-17T13:01:00.869Z"
     },
     {
       "id": "stc_5c75cde224e04bef95883c5126497766",
@@ -33244,9 +33250,9 @@
       "url": "https://www.airbnb.gr/calendar/ical/1417130109923067210.ics?t=e8ec8f5e94b845b6817598eeaa30df0e",
       "blocks": [
         {
-          "start": "2026-06-19",
+          "start": "2026-06-17",
           "end": "2026-06-21",
-          "uid": "7f662ec65913-0ecc729a80fec9ea7f73fd09a99647a5@airbnb.com",
+          "uid": "7f662ec65913-5eafbd903142e6cde7e449b7361e5771@airbnb.com",
           "summary": "Airbnb (Not available)"
         },
         {
@@ -33285,7 +33291,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780944563432,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-17T09:19:09.956Z"
+      "lastFetched": "2026-06-17T13:01:01.448Z"
     },
     {
       "id": "stc_371e30d84db64e0d9c7e47be2cc97d42",
