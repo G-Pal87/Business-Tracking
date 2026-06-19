@@ -33232,7 +33232,7 @@
         },
         {
           "start": "2027-06-14",
-          "end": "2027-06-19",
+          "end": "2027-06-20",
           "uid": "7f662ec65913-d669eb0b545c6de4bd4b45605ab86b68@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
@@ -33242,7 +33242,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780945292474,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-18T21:29:44.570Z"
+      "lastFetched": "2026-06-19T02:18:20.627Z"
     },
     {
       "id": "stc_5c75cde224e04bef95883c5126497766",
@@ -33281,7 +33281,7 @@
         },
         {
           "start": "2027-06-14",
-          "end": "2027-06-19",
+          "end": "2027-06-20",
           "uid": "7f662ec65913-d669eb0b545c6de4bd4b45605ab86b68@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
@@ -33291,19 +33291,92 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780944563432,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-18T21:29:45.148Z"
+      "lastFetched": "2026-06-19T02:18:21.000Z"
     },
     {
       "id": "stc_371e30d84db64e0d9c7e47be2cc97d42",
       "propertyId": "prop_mox7mr8day",
       "url": "https://www.airbnb.gr/calendar/ical/1389855941514317769.ics?t=a2520714c5a34b1daa3b808b6c1bfd0e",
-      "blocks": [],
+      "blocks": [
+        {
+          "start": "2026-06-14",
+          "end": "2026-06-18",
+          "uid": "1418fb94e984-a2cc2a5c3002a632fe5bf0a21ac757b5@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
+          "start": "2026-06-19",
+          "end": "2026-06-23",
+          "uid": "1418fb94e984-f6397a6672c4c30f887b413eaf5688b2@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
+          "start": "2026-06-24",
+          "end": "2026-07-04",
+          "uid": "1418fb94e984-7d5b74039151dfb8161b41f70e997abc@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
+          "start": "2026-07-05",
+          "end": "2026-07-19",
+          "uid": "1418fb94e984-5615f668f1f5cbe7e36b876dbbb7acac@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
+          "start": "2026-08-02",
+          "end": "2026-08-08",
+          "uid": "1418fb94e984-3a6f95ee7cf949f97a6278d10dccbd16@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
+          "start": "2026-08-08",
+          "end": "2026-08-17",
+          "uid": "1418fb94e984-e656f44c6f9106922bd216189ff3b87d@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
+          "start": "2026-08-20",
+          "end": "2026-08-23",
+          "uid": "1418fb94e984-0564a7028f6292e808e1512c99e41f56@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
+          "start": "2026-08-26",
+          "end": "2026-09-02",
+          "uid": "1418fb94e984-36b350b302c193d892ce69ec47e9f3a7@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
+          "start": "2026-10-02",
+          "end": "2026-10-10",
+          "uid": "1418fb94e984-1bf0b86489e8d08e6279eb2b50ebefb1@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
+          "start": "2026-10-10",
+          "end": "2026-10-17",
+          "uid": "1418fb94e984-8ff47f6fd6bff1b6dafa5fe9abbe22af@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
+          "start": "2026-10-27",
+          "end": "2026-11-10",
+          "uid": "7f662ec65913-7491dd33aafb5e7c3e75d9fbd1a0f704@airbnb.com",
+          "summary": "Airbnb (Not available)"
+        },
+        {
+          "start": "2027-06-14",
+          "end": "2027-06-20",
+          "uid": "7f662ec65913-d669eb0b545c6de4bd4b45605ab86b68@airbnb.com",
+          "summary": "Airbnb (Not available)"
+        }
+      ],
       "importedAt": "2026-06-08",
       "createdAt": 1780214639783,
       "createdBy": "Giorgos",
       "updatedAt": 1780945029397,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-18T23:21:34.135Z"
+      "lastFetched": "2026-06-19T02:18:21.261Z"
     }
   ],
   "strRateTargets": [
