@@ -36744,7 +36744,7 @@
         },
         {
           "start": "2027-06-17",
-          "end": "2027-06-22",
+          "end": "2027-06-23",
           "uid": "7f662ec65913-5f136ec4040ff03aab9ff7e2b85228d8@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
@@ -36754,7 +36754,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780945292474,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-21T21:42:50.593Z"
+      "lastFetched": "2026-06-22T00:14:47.303Z"
     },
     {
       "id": "stc_5c75cde224e04bef95883c5126497766",
@@ -36762,9 +36762,9 @@
       "url": "https://www.airbnb.gr/calendar/ical/1417130109923067210.ics?t=e8ec8f5e94b845b6817598eeaa30df0e",
       "blocks": [
         {
-          "start": "2026-06-19",
+          "start": "2026-06-20",
           "end": "2026-06-21",
-          "uid": "7f662ec65913-0ecc729a80fec9ea7f73fd09a99647a5@airbnb.com",
+          "uid": "7f662ec65913-7d732347662e5420dd0a5cb498fa32f7@airbnb.com",
           "summary": "Airbnb (Not available)"
         },
         {
@@ -36793,7 +36793,7 @@
         },
         {
           "start": "2027-06-17",
-          "end": "2027-06-22",
+          "end": "2027-06-23",
           "uid": "7f662ec65913-5f136ec4040ff03aab9ff7e2b85228d8@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
@@ -36803,7 +36803,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780944563432,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-21T21:42:51.136Z"
+      "lastFetched": "2026-06-22T00:14:47.773Z"
     },
     {
       "id": "stc_371e30d84db64e0d9c7e47be2cc97d42",
@@ -36878,7 +36878,7 @@
         },
         {
           "start": "2027-06-17",
-          "end": "2027-06-22",
+          "end": "2027-06-23",
           "uid": "7f662ec65913-5f136ec4040ff03aab9ff7e2b85228d8@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
@@ -36888,7 +36888,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780945029397,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-21T21:42:51.657Z"
+      "lastFetched": "2026-06-22T00:14:48.044Z"
     }
   ],
   "strRateTargets": [
