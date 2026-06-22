@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-20T07:20:09.599Z",
+  "generatedAt": "2026-06-22T08:11:53.829Z",
   "property": {
     "id": "prop_mohfwhqrgj",
     "name": "Studio Tenerife",
@@ -9,8 +9,8 @@
   },
   "guestFeePct": 14,
   "taxPct": 0,
-  "cleaningFee": 60,
-  "cleaningGuestTotal": 60,
+  "cleaningFee": 50,
+  "cleaningGuestTotal": 50,
   "horizonDays": 365,
   "rates": []
 }
