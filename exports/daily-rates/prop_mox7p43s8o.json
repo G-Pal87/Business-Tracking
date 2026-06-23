@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-23T01:49:06.143Z",
+  "generatedAt": "2026-06-23T06:10:18.775Z",
   "property": {
     "id": "prop_mox7p43s8o",
     "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
@@ -946,7 +946,7 @@
     {
       "date": "2026-10-15",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
       "discountPct": 30,
