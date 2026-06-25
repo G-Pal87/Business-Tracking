@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-25T01:27:16.622Z",
+  "generatedAt": "2026-06-25T19:27:59.866Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
@@ -592,7 +592,7 @@
     {
       "date": "2026-09-05",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
@@ -600,7 +600,7 @@
     {
       "date": "2026-09-06",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
@@ -608,7 +608,7 @@
     {
       "date": "2026-09-07",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
@@ -616,7 +616,7 @@
     {
       "date": "2026-09-08",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
@@ -624,7 +624,7 @@
     {
       "date": "2026-09-09",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
@@ -632,7 +632,7 @@
     {
       "date": "2026-09-10",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
@@ -640,7 +640,7 @@
     {
       "date": "2026-09-11",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
@@ -648,7 +648,7 @@
     {
       "date": "2026-09-12",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
@@ -656,7 +656,7 @@
     {
       "date": "2026-09-13",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
@@ -664,7 +664,7 @@
     {
       "date": "2026-09-14",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
@@ -672,7 +672,7 @@
     {
       "date": "2026-09-15",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
@@ -680,7 +680,7 @@
     {
       "date": "2026-09-16",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "amount": 70,
       "airbnbCheckout": 80
