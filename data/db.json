@@ -36781,9 +36781,9 @@
           "summary": "Reserved"
         },
         {
-          "start": "2027-06-22",
+          "start": "2027-06-23",
           "end": "2027-06-28",
-          "uid": "7f662ec65913-d6cbd5a10c985d9d93ecf869f8e51131@airbnb.com",
+          "uid": "7f662ec65913-73292da19d39e2eebb13ff08482c3b35@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -36792,7 +36792,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780945292474,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-27T00:11:05.764Z"
+      "lastFetched": "2026-06-27T21:19:33.231Z"
     },
     {
       "id": "stc_5c75cde224e04bef95883c5126497766",
@@ -36824,9 +36824,9 @@
           "summary": "Reserved"
         },
         {
-          "start": "2027-06-22",
+          "start": "2027-06-23",
           "end": "2027-06-28",
-          "uid": "7f662ec65913-d6cbd5a10c985d9d93ecf869f8e51131@airbnb.com",
+          "uid": "7f662ec65913-73292da19d39e2eebb13ff08482c3b35@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -36835,7 +36835,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780944563432,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-27T00:11:06.088Z"
+      "lastFetched": "2026-06-27T21:19:33.572Z"
     },
     {
       "id": "stc_371e30d84db64e0d9c7e47be2cc97d42",
@@ -36903,9 +36903,9 @@
           "summary": "Airbnb (Not available)"
         },
         {
-          "start": "2027-06-22",
+          "start": "2027-06-23",
           "end": "2027-06-28",
-          "uid": "7f662ec65913-d6cbd5a10c985d9d93ecf869f8e51131@airbnb.com",
+          "uid": "7f662ec65913-73292da19d39e2eebb13ff08482c3b35@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -36914,7 +36914,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780945029397,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-27T00:11:06.438Z"
+      "lastFetched": "2026-06-27T21:19:33.897Z"
     }
   ],
   "strRateTargets": [
