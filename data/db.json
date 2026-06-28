@@ -36787,9 +36787,9 @@
           "summary": "Airbnb (Not available)"
         },
         {
-          "start": "2027-06-23",
+          "start": "2027-06-24",
           "end": "2027-06-29",
-          "uid": "7f662ec65913-73292da19d39e2eebb13ff08482c3b35@airbnb.com",
+          "uid": "7f662ec65913-b667032f7c9d9c384933e90585d2bfa9@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -36798,7 +36798,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780945292474,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-28T09:41:57.101Z"
+      "lastFetched": "2026-06-28T21:38:31.305Z"
     },
     {
       "id": "stc_5c75cde224e04bef95883c5126497766",
@@ -36830,9 +36830,9 @@
           "summary": "Reserved"
         },
         {
-          "start": "2027-06-23",
+          "start": "2027-06-24",
           "end": "2027-06-29",
-          "uid": "7f662ec65913-73292da19d39e2eebb13ff08482c3b35@airbnb.com",
+          "uid": "7f662ec65913-b667032f7c9d9c384933e90585d2bfa9@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -36841,7 +36841,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780944563432,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-28T01:54:45.094Z"
+      "lastFetched": "2026-06-28T21:38:31.870Z"
     },
     {
       "id": "stc_371e30d84db64e0d9c7e47be2cc97d42",
@@ -36909,9 +36909,9 @@
           "summary": "Airbnb (Not available)"
         },
         {
-          "start": "2027-06-23",
+          "start": "2027-06-24",
           "end": "2027-06-29",
-          "uid": "7f662ec65913-73292da19d39e2eebb13ff08482c3b35@airbnb.com",
+          "uid": "7f662ec65913-b667032f7c9d9c384933e90585d2bfa9@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -36920,7 +36920,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780945029397,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-28T09:41:57.692Z"
+      "lastFetched": "2026-06-28T21:38:32.369Z"
     }
   ],
   "strRateTargets": [
