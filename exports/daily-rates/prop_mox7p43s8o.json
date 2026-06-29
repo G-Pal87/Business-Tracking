@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-06-29T04:12:49.968Z",
+  "generatedAt": "2026-06-29T09:11:10.179Z",
   "property": {
     "id": "prop_mox7p43s8o",
     "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
@@ -1140,7 +1140,7 @@
     {
       "date": "2026-10-26",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
       "discountPct": 30,
@@ -1150,7 +1150,7 @@
     {
       "date": "2026-10-27",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
       "discountPct": 30,
@@ -1160,7 +1160,7 @@
     {
       "date": "2026-10-28",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
       "discountPct": 30,
@@ -1170,7 +1170,7 @@
     {
       "date": "2026-10-29",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
       "discountPct": 30,
@@ -1180,7 +1180,7 @@
     {
       "date": "2026-10-30",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
       "discountPct": 30,
@@ -1190,7 +1190,7 @@
     {
       "date": "2026-10-31",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
       "discountPct": 30,

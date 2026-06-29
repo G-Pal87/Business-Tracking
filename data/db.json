@@ -36781,6 +36781,12 @@
           "summary": "Airbnb (Not available)"
         },
         {
+          "start": "2026-10-26",
+          "end": "2026-11-01",
+          "uid": "1418fb94e984-d82d7c7cd99188577bc593a254998e2e@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
           "start": "2027-06-24",
           "end": "2027-06-30",
           "uid": "7f662ec65913-b667032f7c9d9c384933e90585d2bfa9@airbnb.com",
@@ -36792,7 +36798,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780945292474,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-29T04:12:48.911Z"
+      "lastFetched": "2026-06-29T09:11:09.477Z"
     },
     {
       "id": "stc_5c75cde224e04bef95883c5126497766",
