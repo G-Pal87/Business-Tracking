@@ -36867,7 +36867,7 @@
         },
         {
           "start": "2027-06-25",
-          "end": "2027-06-30",
+          "end": "2027-07-01",
           "uid": "7f662ec65913-f8420b7cc9e4e74d1b5ad6929ef22dd4@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
@@ -36877,7 +36877,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780945292474,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-29T22:15:03.548Z"
+      "lastFetched": "2026-06-30T01:32:51.489Z"
     },
     {
       "id": "stc_5c75cde224e04bef95883c5126497766",
@@ -36910,7 +36910,7 @@
         },
         {
           "start": "2027-06-25",
-          "end": "2027-06-30",
+          "end": "2027-07-01",
           "uid": "7f662ec65913-f8420b7cc9e4e74d1b5ad6929ef22dd4@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
@@ -36920,7 +36920,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780944563432,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-29T22:15:04.085Z"
+      "lastFetched": "2026-06-30T01:32:52.143Z"
     },
     {
       "id": "stc_371e30d84db64e0d9c7e47be2cc97d42",
@@ -36989,7 +36989,7 @@
         },
         {
           "start": "2027-06-25",
-          "end": "2027-06-30",
+          "end": "2027-07-01",
           "uid": "7f662ec65913-f8420b7cc9e4e74d1b5ad6929ef22dd4@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
@@ -36999,7 +36999,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1780945029397,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-06-29T22:15:04.620Z"
+      "lastFetched": "2026-06-30T01:32:52.458Z"
     }
   ],
   "strRateTargets": [
