@@ -802,28 +802,21 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     compValue: cmpData ? formatEUR(cmpData.actualNet) : undefined,
   }));
 
-  // 9. Pending Pipeline — period scoped, across all streams (STR + LTR + Services)
+  // 9. Pending Pipeline — period scoped, across all CONFIRMED streams (STR + LTR + Services)
   grid.appendChild(mkKpiCard({
     label: 'Pending Pipeline',
-    subtitle: 'All streams',
+    subtitle: 'Confirmed — all streams',
     value: pendingPipeline > 0 ? formatEUR(pendingPipeline) : '—',
     variant: pendingPipeline > 0 ? 'info' : '',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
-      body.appendChild(mkSectionLabel('Confirmed — Signed Lease, Confirmed Booking, or Actual Invoice'));
       body.appendChild(mkSummaryGrid([
         { label: 'Short-Term Rental', value: pendingSTRTotal > 0 ? formatEUR(pendingSTRTotal) : '—', sub: `${pendingReservations.length} reservation${pendingReservations.length !== 1 ? 's' : ''}` },
         { label: 'Long-Term Rental',  value: ltrPendingTotal > 0 ? formatEUR(ltrPendingTotal) : '—', sub: `${ltrPendingItems.length} month${ltrPendingItems.length !== 1 ? 's' : ''}` },
         { label: 'Services',          value: svcPendingTotal > 0 ? formatEUR(svcPendingTotal) : '—', sub: `${svcPendingItems.length} invoice${svcPendingItems.length !== 1 ? 's' : ''}` },
-        { label: 'Confirmed Total',   value: formatEUR(pendingPipeline) }
+        { label: 'Total Pipeline',    value: formatEUR(pendingPipeline) }
       ], 4));
-
-      body.appendChild(mkSectionLabel('Projected — Forecasted, Not Yet Invoiced (excluded from the KPI total above)'));
-      body.appendChild(mkSummaryGrid([
-        { label: 'Services (Forecast)',        value: svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', sub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}` },
-        { label: 'Confirmed + Projected', value: formatEUR(pendingPipeline + svcProjectedTotal) }
-      ], 2));
 
       if (pendingReservations.length > 0) {
         body.appendChild(mkSectionLabel('Short-Term Rental — Pending Airbnb Reservations'));
@@ -867,6 +860,34 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         ));
       }
 
+      if (!pendingReservations.length && !ltrPendingItems.length && !svcPendingItems.length) {
+        body.appendChild(mkEmptyState('No confirmed pending revenue found for the selected period and filters.'));
+      }
+
+      openModal({ title: 'Pending Pipeline — Confirmed Revenue', body, large: true });
+    },
+    delta: cmpData ? safePct(pendingPipeline, cmpData.pendingPipeline) : null,
+    invertDelta: false, compLabel: cmpLabel,
+    compValue: cmpData ? formatEUR(cmpData.pendingPipeline) : undefined,
+  }));
+
+  // 10. Projected Services — forecasted service revenue with no invoice raised
+  // yet. Kept as its own card (not folded into Pending Pipeline) since it's a
+  // typed-in target, not a signed contract, confirmed booking, or invoice —
+  // a meaningfully different confidence level from the card above.
+  grid.appendChild(mkKpiCard({
+    label: 'Projected Services',
+    subtitle: 'Forecasted — not yet invoiced',
+    value: svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—',
+    variant: '',
+    onClick: () => {
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+      body.appendChild(mkSummaryGrid([
+        { label: 'Projected Total',       value: svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', sub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}` },
+        { label: 'Pipeline + Projected',  value: formatEUR(pendingPipeline + svcProjectedTotal) }
+      ], 2));
+
       if (svcProjectedItems.length > 0) {
         body.appendChild(mkSectionLabel('Services — Forecasted, Not Yet Invoiced'));
         body.appendChild(mkModalTable(
@@ -877,20 +898,18 @@ function buildKpiGrid(data, cmpData, cmpRange) {
             .map(i => [i.label, i.detail, i.overdue ? 'Past — no invoice raised' : 'Future projection', formatEUR(i.amountEUR)]),
           { highlight: 3 }
         ));
+      } else {
+        body.appendChild(mkEmptyState('No forecasted service revenue is missing an invoice for the selected period.'));
       }
 
-      if (!pendingReservations.length && !ltrPendingItems.length && !svcPendingItems.length && !svcProjectedItems.length) {
-        body.appendChild(mkEmptyState('No pending or projected revenue found for the selected period and filters.'));
-      }
-
-      openModal({ title: 'Pending Pipeline — All Streams', body, large: true });
+      openModal({ title: 'Projected Services — Forecasted Revenue', body, large: true });
     },
-    delta: cmpData ? safePct(pendingPipeline, cmpData.pendingPipeline) : null,
+    delta: cmpData ? safePct(svcProjectedTotal, cmpData.svcProjectedTotal) : null,
     invertDelta: false, compLabel: cmpLabel,
-    compValue: cmpData ? formatEUR(cmpData.pendingPipeline) : undefined,
+    compValue: cmpData ? formatEUR(cmpData.svcProjectedTotal) : undefined,
   }));
 
-  // 10. CapEx Budget vs Actual — forecast model has no CapEx field; show actuals with explanatory subtitle
+  // 11. CapEx Budget vs Actual — forecast model has no CapEx field; show actuals with explanatory subtitle
   grid.appendChild(mkKpiCard({
     label: 'Actual CapEx',
     subtitle: 'No CapEx forecast data',
@@ -947,7 +966,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     invertDelta: true, compLabel: cmpLabel
   }));
 
-  // 11. Forecast Accuracy (MAPE)
+  // 12. Forecast Accuracy (MAPE)
   const mapeVariant = mape === null ? '' : mape < 10 ? 'success' : mape < 25 ? 'warning' : 'danger';
   const mapeValue   = mape === null ? '—' : mape.toFixed(1) + '%';
   const mapeSubtitle = mapeMonthCount > 0 ? `avg error over ${mapeMonthCount} month${mapeMonthCount !== 1 ? 's' : ''}` : 'no forecast months';
