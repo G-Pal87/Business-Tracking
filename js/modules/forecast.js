@@ -10,6 +10,20 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 let _fcBreakSortCol  = -1, _fcBreakSortDir  = 1;
 let _fcStreamSortCol = -1, _fcStreamSortDir = 1;
 
+// Property/Service Forecast filter selections — persisted at module scope so
+// they survive refresh() calls triggered by background data syncs (initial
+// GitHub pull, periodic resync). Without this, buildPropertySection/
+// buildServiceSection re-declare fresh local state on every rebuild, so any
+// sync landing while a filter is set silently resets it back to "all
+// selected". null means "not yet touched by the user" so the first render
+// still defaults to "all selected" rather than an empty, everything-hidden
+// state.
+let gPropSelectedIds   = null;
+let gPropStreamIds     = new Set();
+let gPropSelectedYears = new Set();
+let gSvcSelectedIds    = null;
+let gSvcSelectedYears  = new Set();
+
 export default {
   id: 'forecast',
   label: 'Forecast',
@@ -63,9 +77,14 @@ function buildPropertySection(wrap) {
   const props = listActive('properties');
   if (props.length === 0) { wrap.appendChild(el('div', { class: 'empty' }, 'No active properties to forecast')); return; }
 
-  let selectedPropIds = new Set(props.map(p => p.id));
-  let selectedStreamIds = new Set(); // empty = all
-  let selectedYears = new Set();
+  // Restore persisted filter selections (see module-level vars near the top
+  // of this file); prune any property ids deleted since the last visit.
+  if (gPropSelectedIds === null) gPropSelectedIds = new Set(props.map(p => p.id));
+  gPropSelectedIds = new Set([...gPropSelectedIds].filter(id => props.some(p => p.id === id)));
+  if (gPropSelectedIds.size === 0) gPropSelectedIds = new Set(props.map(p => p.id));
+  let selectedPropIds = gPropSelectedIds;
+  let selectedStreamIds = gPropStreamIds; // empty = all
+  let selectedYears = gPropSelectedYears;
   let yearChks = [];
 
   const MENU_STYLE = 'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300;background:var(--bg-elev-2);border:1px solid var(--border);border-radius:var(--radius-sm);min-width:200px;box-shadow:0 4px 16px rgba(0,0,0,0.35);padding:4px 0;max-height:320px;overflow-y:auto';
@@ -81,12 +100,12 @@ function buildPropertySection(wrap) {
   const streamTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:140px;user-select:none' }, streamTrigLabel);
   const streamMenu = el('div', { style: MENU_STYLE });
   const allStreamChk = el('input', { type: 'checkbox' });
-  allStreamChk.checked = true;
+  allStreamChk.checked = selectedStreamIds.size === 0;
   streamMenu.appendChild(el('label', { style: LABEL_STYLE + ';border-bottom:1px solid var(--border)' }, allStreamChk, el('span', {}, 'All Streams')));
   const streamChks = streamOpts.map(opt => {
     const chk = el('input', { type: 'checkbox' });
     chk.dataset.value = opt.value;
-    chk.checked = true;
+    chk.checked = selectedStreamIds.size === 0 || selectedStreamIds.has(opt.value);
     streamMenu.appendChild(el('label', { style: LABEL_STYLE }, chk, el('span', {}, opt.label)));
     return chk;
   });
@@ -97,12 +116,12 @@ function buildPropertySection(wrap) {
   const propTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:160px;user-select:none' }, trigLabel);
   const propMenu = el('div', { style: MENU_STYLE.replace('200px', '240px') });
   const allChk = el('input', { type: 'checkbox' });
-  allChk.checked = true;
+  allChk.checked = selectedPropIds.size === props.length;
   propMenu.appendChild(el('label', { style: LABEL_STYLE + ';border-bottom:1px solid var(--border)' }, allChk, el('span', {}, 'All Properties')));
   const propChks = props.map(p => {
     const chk = el('input', { type: 'checkbox' });
     chk.dataset.id = p.id;
-    chk.checked = true;
+    chk.checked = selectedPropIds.has(p.id);
     propMenu.appendChild(el('label', { style: LABEL_STYLE }, chk, el('span', {}, p.name)));
     return chk;
   });
@@ -123,6 +142,7 @@ function buildPropertySection(wrap) {
       : sel.length === 1 ? sel[0].dataset.year
       : `${sel.length} Years`;
     selectedYears = new Set(sel.map(c => c.dataset.year));
+    gPropSelectedYears = selectedYears;
   };
 
   const syncPropSel = () => {
@@ -135,6 +155,7 @@ function buildPropertySection(wrap) {
       : sel.length === 1 ? (props.find(p => p.id === sel[0].dataset.id)?.name || '1 Property')
       : `${sel.length} Properties`;
     selectedPropIds = new Set(propChks.filter(c => c.checked).map(c => c.dataset.id));
+    gPropSelectedIds = selectedPropIds;
   };
 
   // Rebuilds year checkboxes from data available for the selected properties
@@ -214,6 +235,7 @@ function buildPropertySection(wrap) {
       : n === 1 ? (streamOpts.find(o => o.value === sel[0].dataset.value)?.label || '')
       : `${n} Streams`;
     selectedStreamIds = n === streamChks.length ? new Set() : new Set(sel.map(c => c.dataset.value));
+    gPropStreamIds = selectedStreamIds;
     syncPropertyVisibility();
   };
 
@@ -444,7 +466,10 @@ function buildServiceSection(wrap) {
   ];
 
   // --- Service checklist dropdown (matches Property Forecast / Reports pattern) ---
-  let selectedStreamIds = new Set(serviceEntities.map(s => s.id));
+  // Restore persisted selection (module-level — see top of file) so a
+  // background sync landing mid-edit doesn't reset it.
+  if (gSvcSelectedIds === null) gSvcSelectedIds = new Set(serviceEntities.map(s => s.id));
+  let selectedStreamIds = gSvcSelectedIds;
 
   const getSelIds = () => selectedStreamIds.size > 0 ? [...selectedStreamIds] : [serviceEntities[0].id];
 
@@ -460,14 +485,14 @@ function buildServiceSection(wrap) {
   });
 
   const allSvcChk = el('input', { type: 'checkbox' });
-  allSvcChk.checked = true;
+  allSvcChk.checked = selectedStreamIds.size === serviceEntities.length;
   svcMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px' },
     allSvcChk, el('span', {}, 'All Services')));
 
   const svcChks = serviceEntities.map(s => {
     const chk = el('input', { type: 'checkbox' });
     chk.dataset.id = s.id;
-    chk.checked = true;
+    chk.checked = selectedStreamIds.has(s.id);
     svcMenu.appendChild(el('label', { style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px' },
       chk, el('span', {}, s.label)));
     return chk;
@@ -483,6 +508,7 @@ function buildServiceSection(wrap) {
       : n === 1 ? (serviceEntities.find(s => s.id === sel[0].dataset.id)?.label || '1 Service')
       : `${n} Services`;
     selectedStreamIds = new Set(sel.map(c => c.dataset.id));
+    gSvcSelectedIds = selectedStreamIds;
   };
 
   allSvcChk.onchange = () => { svcChks.forEach(c => { c.checked = allSvcChk.checked; }); allSvcChk.indeterminate = false; syncSvcSel(); render(); };
@@ -497,7 +523,7 @@ function buildServiceSection(wrap) {
 
   // ── Year multi-select (service forecast) ──────────────────────────────────
   let svcYearChks = [];
-  let selectedSvcYears = new Set();
+  let selectedSvcYears = gSvcSelectedYears;
 
   const svcYearWrapper = el('div', { style: 'position:relative' });
   const svcYearTrigLabel = el('span', {}, String(new Date().getFullYear()));
@@ -513,6 +539,7 @@ function buildServiceSection(wrap) {
       : sel.length === 1 ? sel[0].dataset.year
       : `${sel.length} Years`;
     selectedSvcYears = new Set(sel.map(c => c.dataset.year));
+    gSvcSelectedYears = selectedSvcYears;
   };
 
   const updateSvcYearOptions = () => {
