@@ -7,7 +7,7 @@ import {
   listActive, listActivePayments,
   isCapEx, drillRevRows, drillExpRows,
   sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR,
-  softDelete, upsert, newId, companyPropIds
+  softDelete, upsert, newId, companyPropIds, generatePaymentSchedule
 } from '../core/data.js';
 import { markDirty } from '../core/state.js';
 import {
@@ -96,13 +96,60 @@ function fmtVar(actual, forecast) {
   return (v >= 0 ? '+' : '') + formatEUR(v);
 }
 
-// ── Forecast stream resolver ──────────────────────────────────────────────────
-function resolveFcStream(fc) {
-  if (fc.type === 'service') return fc.entityId;
-  const p = byId('properties', fc.entityId);
-  if (!p) return null;
-  return p.type === 'short_term' ? 'short_term_rental'
-       : p.type === 'long_term'  ? 'long_term_rental' : null;
+// ── Property forecast filter predicate ────────────────────────────────────────
+// Shared by buildFcMaps / computeStreamBreakdown / computePropertyBreakdown so
+// a property's eligibility for the current owner/stream/property/scope filters
+// is decided in exactly one place.
+function propMatchesForecastFilters(prop) {
+  if (!prop) return false;
+  if (gF.propertyIds.size > 0 && !gF.propertyIds.has(prop.id)) return false;
+  if (gScope !== 'all' && (prop.channel || 'company') !== 'company') return false;
+  if (gF.streams.size > 0) {
+    const s = prop.type === 'short_term' ? 'short_term_rental'
+            : prop.type === 'long_term'  ? 'long_term_rental' : null;
+    if (!s || !gF.streams.has(s)) return false;
+  }
+  if (gF.owners.size > 0) {
+    const ow = prop.owner || 'both';
+    if (ow !== 'both' && !gF.owners.has(ow)) return false;
+  }
+  return true;
+}
+
+// ── Long-term rent-schedule fallback ──────────────────────────────────────────
+// Mirrors getForecastVsActual() in core/data.js: a long-term property with no
+// manual monthly forecast entry still projects revenue from its lease/rent
+// schedule, so Operations → Forecast and Analytics → Forecast agree. Cached
+// per (propertyId, year) since generatePaymentSchedule() rebuilds the full
+// lease schedule and is called repeatedly across the three functions below.
+let _ltRentCache = new Map();
+function getLtRentByMonth(propertyId, year) {
+  const cacheKey = propertyId + ':' + year;
+  if (_ltRentCache.has(cacheKey)) return _ltRentCache.get(cacheKey);
+  const prop = byId('properties', propertyId);
+  let map = null;
+  if (prop?.type === 'long_term') {
+    map = {};
+    for (const entry of generatePaymentSchedule(prop)) {
+      if (entry.monthKey?.startsWith(String(year))) {
+        map[entry.monthKey] = toEUR(entry.amount, entry.currency, year);
+      }
+    }
+  }
+  _ltRentCache.set(cacheKey, map);
+  return map;
+}
+
+// Resolves a property forecast's revenue for one month: a manual entry wins;
+// otherwise long-term properties fall back to their lease-schedule projection.
+function resolvePropertyMonthRevenue(propertyId, year, mk, md) {
+  const entries = Array.isArray(md?.entries) ? md.entries : [];
+  const manual = entries.length > 0
+    ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+    : Number(md?.revenue) || 0;
+  if (manual > 0) return manual;
+  const ltMap = getLtRentByMonth(propertyId, year);
+  return ltMap ? (ltMap[mk] || 0) : 0;
 }
 
 // ── Forecast map builder (filtered, multi-year) ───────────────────────────────
@@ -115,35 +162,58 @@ function buildFcMaps(startY, endY) {
   const fcPropMonthlyRev = new Map();
   const fcMonthlyExp     = new Map();
   const allFcs = listActive('forecasts');
+  const fcByEntityYear = new Map(allFcs.map(fc => [fc.entityId + ':' + fc.year, fc]));
 
   for (let y = startY; y <= endY; y++) {
-    allFcs.filter(fc => fc.year === y).forEach(fc => {
-      if (gF.propertyIds.size > 0 && fc.type === 'property' && !gF.propertyIds.has(fc.entityId)) return;
-      if (fc.type === 'property') {
-        const prop = byId('properties', fc.entityId);
-        if (gScope !== 'all' && (prop?.channel || 'company') !== 'company') return;
+    // Property forecasts — long-term properties are walked month-by-month so a
+    // lease schedule can fill in months with no manual entry (and properties
+    // with no forecast record at all still get a lease-derived projection).
+    // Short-term properties have no schedule fallback, so they're skipped
+    // entirely when no forecast record exists.
+    listActive('properties').forEach(prop => {
+      if (!propMatchesForecastFilters(prop)) return;
+      const fc = fcByEntityYear.get(prop.id + ':' + y);
+
+      if (prop.type === 'long_term') {
+        for (let m = 1; m <= 12; m++) {
+          const mk = `${y}-${String(m).padStart(2, '0')}`;
+          const md = fc?.months?.[mk];
+          const rev = resolvePropertyMonthRevenue(prop.id, y, mk, md);
+          if (rev > 0) {
+            fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
+            const propKey = mk + '_' + prop.id;
+            fcPropMonthlyRev.set(propKey, (fcPropMonthlyRev.get(propKey) || 0) + rev);
+          }
+          const exp = Number(md?.expenses) || 0;
+          if (exp > 0) fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
+        }
+      } else if (fc) {
+        Object.entries(fc.months || {}).forEach(([mk, md]) => {
+          const entries = Array.isArray(md.entries) ? md.entries : [];
+          const rev = entries.length > 0
+            ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+            : Number(md.revenue) || 0;
+          if (rev > 0) {
+            fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
+            const propKey = mk + '_' + prop.id;
+            fcPropMonthlyRev.set(propKey, (fcPropMonthlyRev.get(propKey) || 0) + rev);
+          }
+          const exp = Number(md.expenses) || 0;
+          if (exp > 0) fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
+        });
       }
-      if (gF.streams.size > 0) {
-        const s = resolveFcStream(fc);
-        if (!s || !gF.streams.has(s)) return;
-      }
-      if (gF.owners.size > 0 && fc.type === 'property') {
-        const prop = byId('properties', fc.entityId);
-        const ow = prop?.owner || 'both';
-        if (ow !== 'both' && !gF.owners.has(ow)) return;
-      }
+    });
+
+    // Service forecasts (customer_success, marketing_services) — unaffected
+    // by the property scope/owner filters.
+    allFcs.filter(fc => fc.year === y && fc.type === 'service').forEach(fc => {
+      if (gF.streams.size > 0 && !gF.streams.has(fc.entityId)) return;
       Object.entries(fc.months || {}).forEach(([mk, md]) => {
         const entries = Array.isArray(md.entries) ? md.entries : [];
         const rev = entries.length > 0
           ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
           : Number(md.revenue) || 0;
-        if (rev > 0) {
-          fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
-          if (fc.type === 'property') {
-            const propKey = mk + '_' + fc.entityId;
-            fcPropMonthlyRev.set(propKey, (fcPropMonthlyRev.get(propKey) || 0) + rev);
-          }
-        }
+        if (rev > 0) fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
         const exp = Number(md.expenses) || 0;
         if (exp > 0) fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
       });
@@ -283,29 +353,46 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
     actByStream.set(s, (actByStream.get(s) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date));
   });
 
-  const fcsByYear = new Map();
-  listActive('forecasts').forEach(fc => {
-    const arr = fcsByYear.get(fc.year) || [];
-    arr.push(fc);
-    fcsByYear.set(fc.year, arr);
-  });
+  const fcByEntityYear = new Map(listActive('forecasts').map(fc => [fc.entityId + ':' + fc.year, fc]));
 
   const fcByStream = new Map();
-  months.forEach(m => {
-    const mk = m.key;
-    const fcYear = parseInt(mk.slice(0, 4));
-    (fcsByYear.get(fcYear) || []).forEach(fc => {
-      if (gF.propertyIds.size > 0 && fc.type === 'property' && !gF.propertyIds.has(fc.entityId)) return;
-      const stream = resolveFcStream(fc);
-      if (!stream) return;
-      if (gF.streams.size > 0 && !gF.streams.has(stream)) return;
+
+  // Property-type forecasts (with the long-term lease-schedule fallback).
+  listActive('properties').forEach(prop => {
+    if (!propMatchesForecastFilters(prop)) return;
+    const stream = prop.type === 'short_term' ? 'short_term_rental'
+                 : prop.type === 'long_term'  ? 'long_term_rental' : null;
+    if (!stream) return;
+    months.forEach(m => {
+      const mk = m.key;
+      const y  = parseInt(mk.slice(0, 4));
+      const fc = fcByEntityYear.get(prop.id + ':' + y);
+      let val;
+      if (prop.type === 'long_term') {
+        val = resolvePropertyMonthRevenue(prop.id, y, mk, fc?.months?.[mk]);
+      } else {
+        const md = fc?.months?.[mk];
+        if (!md) return;
+        const entries = Array.isArray(md.entries) ? md.entries : [];
+        val = entries.length > 0 ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0) : Number(md.revenue) || 0;
+      }
+      if (val > 0) fcByStream.set(stream, (fcByStream.get(stream) || 0) + val);
+    });
+  });
+
+  // Service-type forecasts (customer_success, marketing_services).
+  listActive('forecasts').filter(fc => fc.type === 'service').forEach(fc => {
+    if (gF.streams.size > 0 && !gF.streams.has(fc.entityId)) return;
+    months.forEach(m => {
+      const mk = m.key;
+      if (parseInt(mk.slice(0, 4)) !== fc.year) return;
       const md = fc.months?.[mk];
       if (!md) return;
       const entries = Array.isArray(md.entries) ? md.entries : [];
       const val = entries.length > 0
         ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
         : Number(md.revenue) || 0;
-      if (val > 0) fcByStream.set(stream, (fcByStream.get(stream) || 0) + val);
+      if (val > 0) fcByStream.set(fc.entityId, (fcByStream.get(fc.entityId) || 0) + val);
     });
   });
 
@@ -324,35 +411,27 @@ function computePropertyBreakdown(actPayments, months, pendingReservations) {
     actByProp.set(p.propertyId, (actByProp.get(p.propertyId) || 0) + toEUR(p.amount, p.currency, p.date));
   });
 
-  const fcsByYear = new Map();
-  listActive('forecasts').filter(fc => fc.type === 'property').forEach(fc => {
-    const arr = fcsByYear.get(fc.year) || [];
-    arr.push(fc);
-    fcsByYear.set(fc.year, arr);
-  });
+  const fcByEntityYear = new Map(
+    listActive('forecasts').filter(fc => fc.type === 'property').map(fc => [fc.entityId + ':' + fc.year, fc])
+  );
 
   const fcByProp = new Map();
-  months.forEach(m => {
-    const mk = m.key;
-    const fcYear = parseInt(mk.slice(0, 4));
-    (fcsByYear.get(fcYear) || []).forEach(fc => {
-      if (gF.propertyIds.size > 0 && !gF.propertyIds.has(fc.entityId)) return;
-      if (gF.owners.size > 0) {
-        const p = byId('properties', fc.entityId);
-        const ow = p?.owner || 'both';
-        if (ow !== 'both' && !gF.owners.has(ow)) return;
+  listActive('properties').forEach(prop => {
+    if (!propMatchesForecastFilters(prop)) return;
+    months.forEach(m => {
+      const mk = m.key;
+      const y  = parseInt(mk.slice(0, 4));
+      const fc = fcByEntityYear.get(prop.id + ':' + y);
+      let val;
+      if (prop.type === 'long_term') {
+        val = resolvePropertyMonthRevenue(prop.id, y, mk, fc?.months?.[mk]);
+      } else {
+        const md = fc?.months?.[mk];
+        if (!md) return;
+        const entries = Array.isArray(md.entries) ? md.entries : [];
+        val = entries.length > 0 ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0) : Number(md.revenue) || 0;
       }
-      if (gF.streams.size > 0) {
-        const s = resolveFcStream(fc);
-        if (!s || !gF.streams.has(s)) return;
-      }
-      const md = fc.months?.[mk];
-      if (!md) return;
-      const entries = Array.isArray(md.entries) ? md.entries : [];
-      const val = entries.length > 0
-        ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-        : Number(md.revenue) || 0;
-      if (val > 0) fcByProp.set(fc.entityId, (fcByProp.get(fc.entityId) || 0) + val);
+      if (val > 0) fcByProp.set(prop.id, (fcByProp.get(prop.id) || 0) + val);
     });
   });
 
@@ -1608,6 +1687,7 @@ function renderCharts(data) {
 
 // ── Main view builder ─────────────────────────────────────────────────────────
 function buildView() {
+  _ltRentCache = new Map(); // drop any stale lease-schedule projections from a prior render
   const wrap = el('div', { class: 'view active' });
 
   wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
