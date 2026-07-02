@@ -943,62 +943,154 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         return cell;
       }
 
-      // Property forecast revenue: drill-down if pending Airbnb payments exist,
-      // otherwise falls back to inline edit. Always shows a pencil icon for manual edit.
-      function makeForecastRevCell(current, mk, monthIdx) {
+      // Property forecast revenue: shows Airbnb pending reservations (automatic,
+      // read-only reference) plus itemized manual entries for anything Airbnb
+      // doesn't know about — off-platform / direct bookings. Manual entries use
+      // the same entries[] mechanism as Service Forecast, so Analytics →
+      // Forecast picks them up automatically. A flat quick-edit stays available
+      // for months with no itemized entries yet.
+      function makePropertyRevCell(current, mk, monthIdx) {
         const pending = getPendingAirbnbRows(entityId, mk);
+        const entries = getForecastEntries(fc.id, mk);
         const cell = el('td', { class: 'right num', style: 'white-space:nowrap' });
 
         const amtSpan = el('span', {}, formatEUR(current));
         cell.appendChild(amtSpan);
 
-        // Edit icon — always present; stops propagation so it doesn't trigger drill-down
-        const editIcon = el('span', {
-          title: 'Edit forecast value',
-          style: 'margin-left:6px;opacity:0.35;font-size:11px;cursor:pointer;user-select:none'
-        }, '✎');
-        editIcon.onmouseenter = () => { editIcon.style.opacity = '1'; };
-        editIcon.onmouseleave = () => { editIcon.style.opacity = '0.35'; };
-        editIcon.onclick = e => {
-          e.stopPropagation();
-          cell.innerHTML = '';
-          const inp = el('input', { type: 'number', value: current, min: 0,
-            style: 'width:100px;text-align:right;background:var(--bg-elev-3);border:1px solid var(--accent);border-radius:4px;padding:4px 6px;color:var(--text)' });
-          cell.appendChild(inp); inp.focus(); inp.select();
-          const commit = () => {
-            const val = Number(inp.value) || 0;
-            saveForecastMonth(fc.id, mk, { revenue: val });
-            current = val;
+        // Quick-edit icon — only meaningful while no itemized entries exist;
+        // once entries exist they're the source of truth (mirrors Services).
+        if (entries.length === 0) {
+          const editIcon = el('span', {
+            title: 'Edit forecast value',
+            style: 'margin-left:6px;opacity:0.35;font-size:11px;cursor:pointer;user-select:none'
+          }, '✎');
+          editIcon.onmouseenter = () => { editIcon.style.opacity = '1'; };
+          editIcon.onmouseleave = () => { editIcon.style.opacity = '0.35'; };
+          editIcon.onclick = e => {
+            e.stopPropagation();
             cell.innerHTML = '';
-            amtSpan.textContent = formatEUR(val);
-            cell.appendChild(amtSpan);
-            cell.appendChild(editIcon);
-            rebuildTotals();
-            if (onChange) onChange();
+            const inp = el('input', { type: 'number', value: current, min: 0,
+              style: 'width:100px;text-align:right;background:var(--bg-elev-3);border:1px solid var(--accent);border-radius:4px;padding:4px 6px;color:var(--text)' });
+            cell.appendChild(inp); inp.focus(); inp.select();
+            const commit = () => {
+              const val = Number(inp.value) || 0;
+              saveForecastMonth(fc.id, mk, { revenue: val });
+              current = val;
+              cell.innerHTML = '';
+              amtSpan.textContent = formatEUR(val);
+              cell.appendChild(amtSpan);
+              cell.appendChild(editIcon);
+              rebuildTotals();
+              if (onChange) onChange();
+            };
+            inp.onblur = commit;
+            inp.onkeydown = ev => { if (ev.key === 'Enter') commit(); if (ev.key === 'Escape') { cell.innerHTML = ''; cell.appendChild(amtSpan); cell.appendChild(editIcon); } };
           };
-          inp.onblur = commit;
-          inp.onkeydown = ev => { if (ev.key === 'Enter') commit(); if (ev.key === 'Escape') { cell.innerHTML = ''; cell.appendChild(amtSpan); cell.appendChild(editIcon); } };
-        };
-        cell.appendChild(editIcon);
-
-        if (pending.length > 0) {
-          // Sub-label showing reservation count
-          const sub = el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' },
-            `${pending.length} reservation${pending.length === 1 ? '' : 's'}`);
-          cell.appendChild(sub);
-          cell.style.cursor = 'pointer';
-          cell.title = 'Click to see pending reservations';
-          cell.onclick = () => drillDownModal(
-            `Forecast Revenue — ${MONTHS[monthIdx]} ${year}`, pending, FC_PENDING_COLS);
+          cell.appendChild(editIcon);
         }
+
+        const subParts = [];
+        if (pending.length > 0) subParts.push(`${pending.length} Airbnb reservation${pending.length === 1 ? '' : 's'}`);
+        if (entries.length > 0) subParts.push(`${entries.length} manual entr${entries.length === 1 ? 'y' : 'ies'}`);
+        if (subParts.length) {
+          cell.appendChild(el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' }, subParts.join(' · ')));
+        }
+
+        cell.style.cursor = 'pointer';
+        cell.title = 'Click to manage off-platform / manual bookings';
+        cell.onclick = () => openPropertyEntriesEditor(mk, `${MONTHS[monthIdx]} ${year}`);
         return cell;
+      }
+
+      function openPropertyEntriesEditor(monthKey, monthLabel) {
+        const body = el('div', {});
+
+        const pending = getPendingAirbnbRows(entityId, monthKey);
+        if (pending.length > 0) {
+          const refBox = el('div', {
+            style: 'padding:10px 12px;margin-bottom:12px;border-radius:4px;background:rgba(99,102,241,0.06);border-left:3px solid #6366f1;font-size:12px;color:var(--text-muted)'
+          }, `${pending.length} Airbnb reservation${pending.length === 1 ? '' : 's'} already captured automatically for this month — no need to add them below.`);
+          body.appendChild(refBox);
+        }
+
+        const listWrap = el('div', {});
+        body.appendChild(listWrap);
+
+        const refresh = () => {
+          listWrap.innerHTML = '';
+          const entries = getForecastEntries(fc.id, monthKey);
+
+          if (entries.length === 0) {
+            listWrap.appendChild(el('div', { class: 'empty', style: 'padding:24px' }, 'No off-platform bookings yet — click "Add Booking" below.'));
+          } else {
+            const t = el('table', { class: 'table' });
+            t.innerHTML = '<thead><tr><th>Description</th><th class="right" style="width:130px">Amount (€)</th><th>Notes / Status</th><th style="width:60px"></th></tr></thead>';
+            const tb2 = el('tbody');
+            for (const e of entries) {
+              const tr = el('tr');
+              const descI = input({ value: e.description || '', placeholder: 'e.g. Direct booking — Guest name' });
+              const amtI  = input({ type: 'number', value: e.amount || 0, min: 0, step: 0.01, style: 'text-align:right' });
+              const noteI = input({ value: e.notes || '', placeholder: 'e.g. Confirmed, bank transfer' });
+              const commit = () => {
+                e.description = descI.value.trim();
+                e.amount = Number(amtI.value) || 0;
+                e.notes = noteI.value.trim();
+                upsertForecastEntry(fc.id, monthKey, e);
+                rebuildTotals();
+                if (onChange) onChange();
+                refresh();
+              };
+              descI.onchange = commit;
+              amtI.onchange  = commit;
+              noteI.onchange = commit;
+              tr.appendChild(el('td', {}, descI));
+              tr.appendChild(el('td', { class: 'right' }, amtI));
+              tr.appendChild(el('td', {}, noteI));
+              tr.appendChild(el('td', { class: 'right' }, button('Del', { variant: 'sm ghost', onClick: () => {
+                removeForecastEntry(fc.id, monthKey, e.id);
+                refresh();
+                rebuildTotals();
+                if (onChange) onChange();
+              }})));
+              tb2.appendChild(tr);
+            }
+            t.appendChild(tb2);
+            const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+            listWrap.appendChild(tw);
+          }
+
+          const total = getForecastEntries(fc.id, monthKey).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+          listWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:12px 16px;margin-top:12px;border-top:1px solid var(--border);font-weight:600' },
+            el('span', {}, 'Manual Bookings Total'),
+            el('span', { class: 'num' }, formatEUR(total))
+          ));
+        };
+
+        refresh();
+
+        const addBtn = button('+ Add Booking', { variant: 'primary', onClick: () => {
+          // Migrate an existing flat forecast number into the first entry so
+          // switching to itemized mode never silently drops it.
+          const existing = getForecastEntries(fc.id, monthKey);
+          if (existing.length === 0) {
+            const flat = Number(fc.months?.[monthKey]?.revenue) || 0;
+            if (flat > 0) upsertForecastEntry(fc.id, monthKey, { description: 'Existing forecast', amount: flat, notes: '' });
+          }
+          upsertForecastEntry(fc.id, monthKey, { description: '', amount: 0, notes: '' });
+          refresh();
+          rebuildTotals();
+          if (onChange) onChange();
+        }});
+        const doneBtn = button('Done', { onClick: () => { closeModal(); renderRows(); } });
+
+        openModal({ title: `Off-Platform Bookings — ${monthLabel}`, body, footer: [addBtn, doneBtn], large: true });
       }
 
       const net = mData.forecastRev - mData.forecastExp;
       if (type === 'service') {
         tr.appendChild(makeEntriesCell(monthKey, mData.forecastRev, i));
       } else {
-        tr.appendChild(makeForecastRevCell(mData.forecastRev, monthKey, i));
+        tr.appendChild(makePropertyRevCell(mData.forecastRev, monthKey, i));
       }
       tr.appendChild(makeExpEntriesCell(monthKey, mData.forecastExp, i));
       tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
