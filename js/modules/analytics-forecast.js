@@ -152,6 +152,53 @@ function resolvePropertyMonthRevenue(propertyId, year, mk, md) {
   return ltMap ? (ltMap[mk] || 0) : 0;
 }
 
+// ── Pending pipeline (all streams) ────────────────────────────────────────────
+// Long-term rental: unpaid months from each matching property's lease/rent
+// schedule, clamped to `range` by scheduled due date. Mirrors the STR pending
+// concept (confirmed revenue not yet collected) using the same schedule the
+// forecast fallback above relies on.
+function getLtRentPendingItems(range) {
+  const items = [];
+  listActive('properties').filter(p => p.type === 'long_term' && propMatchesForecastFilters(p)).forEach(prop => {
+    generatePaymentSchedule(prop).forEach(entry => {
+      if (entry.paid) return;
+      if (entry.date < range.start || entry.date > range.end) return;
+      items.push({
+        stream: 'long_term_rental',
+        propertyId: prop.id,
+        label: prop.name,
+        detail: byId('tenants', entry.tenantId)?.name || 'Tenant',
+        dueDate: entry.date,
+        amountEUR: entry.amountEUR,
+        overdue: entry.overdue
+      });
+    });
+  });
+  return items;
+}
+
+// Services (customer_success, marketing_services): invoices already issued but
+// not yet paid, clamped to `range` by issue date — the same date field used to
+// bucket Actual Revenue, so a service's actual and pending totals reconcile.
+function getServicesPendingItems(range, mStream, mOwner, mClient) {
+  const inRange = d => d && d >= range.start && d <= range.end;
+  const today = new Date().toISOString().slice(0, 10);
+  return listActive('invoices')
+    .filter(i => !['paid', 'cancelled', 'void'].includes(i.status) && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i))
+    .map(i => {
+      const dueDate = i.dueDate || i.issueDate;
+      return {
+        stream: resolveStream(i) || 'other',
+        clientId: i.clientId,
+        label: byId('clients', i.clientId)?.name || byId('clients', i.clientId)?.company || i.number || '—',
+        detail: i.number || '—',
+        dueDate,
+        amountEUR: toEUR(i.total ?? i.amount, i.currency, i.issueDate),
+        overdue: dueDate < today
+      };
+    });
+}
+
 // ── Forecast map builder (filtered, multi-year) ───────────────────────────────
 // Returns:
 //   fcMonthlyRev    Map<"YYYY-MM",        EUR>  — total portfolio forecast revenue per month
@@ -261,7 +308,13 @@ function calculateDashboardData(range) {
   const variance    = actualRev - forecastRev;
   const variancePct = safeVariancePct(actualRev, forecastRev);
 
-  // Pending pipeline — period scoped by airbnbCheckIn (fallback: date) — used for KPI, table, insights
+  // Pending pipeline — confirmed but not-yet-collected revenue across all
+  // streams: STR (Airbnb reservations awaiting payout), LTR (unpaid months on
+  // an active lease schedule), and Services (invoices issued but unpaid).
+  // pendingReservations/allPendingReservations stay STR-only — they still feed
+  // the Airbnb-specific pending table/charts further down — while
+  // ltrPendingItems/svcPendingItems extend the headline KPI and property
+  // breakdown to the other streams.
   const pendingReservations = listActivePayments().filter(p => {
     if (p.source !== 'airbnb' || p.status !== 'pending') return false;
     const checkDate = p.airbnbCheckIn || p.date;
@@ -275,9 +328,6 @@ function calculateDashboardData(range) {
     }
     return isCoRec(p);
   });
-  const pendingPipeline = pendingReservations.reduce(
-    (s, p) => s + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date), 0
-  );
 
   // All entity-filtered pending — not date-clamped, used for forward-looking charts
   const allPendingReservations = listActivePayments().filter(p => {
@@ -291,6 +341,23 @@ function calculateDashboardData(range) {
     }
     return isCoRec(p);
   });
+
+  const ltrPendingItems = getLtRentPendingItems(range);
+  const svcPendingItems = getServicesPendingItems(range, mStream, mOwner, mClient);
+
+  const pendingSTRTotal = pendingReservations.reduce(
+    (s, p) => s + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date), 0
+  );
+  const ltrPendingTotal = ltrPendingItems.reduce((s, i) => s + i.amountEUR, 0);
+  const svcPendingTotal = svcPendingItems.reduce((s, i) => s + i.amountEUR, 0);
+  const pendingPipeline = pendingSTRTotal + ltrPendingTotal + svcPendingTotal;
+
+  // Combined property-level pending (STR + LTR only — services are client-based,
+  // not property-based, so they don't belong in a per-property breakdown).
+  const combinedPropPending = [
+    ...pendingReservations.map(p => ({ propertyId: p.propertyId, amountEUR: toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date) })),
+    ...ltrPendingItems.map(i => ({ propertyId: i.propertyId, amountEUR: i.amountEUR }))
+  ];
 
   // Pre-group payments/invoices/expenses by month key for efficiency
   const paysByMk = new Map(), invsByMk = new Map(), expsByMk = new Map(), capexByMk = new Map();
@@ -328,13 +395,14 @@ function calculateDashboardData(range) {
   }
 
   const streamBreakdown   = computeStreamBreakdown(actPayments, actInvoices, months);
-  const propertyBreakdown = computePropertyBreakdown(actPayments, months, pendingReservations);
+  const propertyBreakdown = computePropertyBreakdown(actPayments, months, combinedPropPending);
 
   return {
     actualRev, actualExp, actualCapEx, actualNet,
     forecastRev, forecastExp, forecastNet,
     variance, variancePct,
     pendingPipeline, pendingReservations, allPendingReservations,
+    pendingSTRTotal, ltrPendingItems, ltrPendingTotal, svcPendingItems, svcPendingTotal,
     actPayments, actInvoices, actOpExpenses, actCapExpenses,
     months, fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp,
     monthlyBreakdown, streamBreakdown, propertyBreakdown,
@@ -404,7 +472,7 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
   }).sort((a, b) => b.actRev - a.actRev);
 }
 
-function computePropertyBreakdown(actPayments, months, pendingReservations) {
+function computePropertyBreakdown(actPayments, months, pendingItems) {
   const actByProp = new Map();
   actPayments.forEach(p => {
     if (!p.propertyId) return;
@@ -436,9 +504,9 @@ function computePropertyBreakdown(actPayments, months, pendingReservations) {
   });
 
   const pendingByProp = new Map();
-  pendingReservations.forEach(p => {
+  pendingItems.forEach(p => {
     if (!p.propertyId) return;
-    pendingByProp.set(p.propertyId, (pendingByProp.get(p.propertyId) || 0) + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date));
+    pendingByProp.set(p.propertyId, (pendingByProp.get(p.propertyId) || 0) + p.amountEUR);
   });
 
   // Include properties with actual revenue, forecast revenue, or pending pipeline
@@ -503,6 +571,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     actualRev, actualExp, actualCapEx, actualNet,
     forecastRev, forecastExp, forecastNet,
     variance, pendingPipeline, pendingReservations,
+    pendingSTRTotal, ltrPendingItems, ltrPendingTotal, svcPendingItems, svcPendingTotal,
     actPayments, actInvoices, actOpExpenses, actCapExpenses,
     monthlyBreakdown, mape, mapeMonthCount
   } = data;
@@ -685,28 +754,69 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     compValue: cmpData ? formatEUR(cmpData.actualNet) : undefined,
   }));
 
-  // 9. Pending Pipeline — period scoped
+  // 9. Pending Pipeline — period scoped, across all streams (STR + LTR + Services)
   grid.appendChild(mkKpiCard({
     label: 'Pending Pipeline',
+    subtitle: 'All streams',
     value: pendingPipeline > 0 ? formatEUR(pendingPipeline) : '—',
     variant: pendingPipeline > 0 ? 'info' : '',
     onClick: () => {
-      const rows = pendingReservations.map(p => ({
-        prop:    byId('properties', p.propertyId)?.name || '—',
-        code:    p.confirmationCode || p.airbnbRef || '—',
-        guest:   (p.notes || '').split(' · ')[0] || '—',
-        checkIn: p.airbnbCheckIn || '—',
-        nights:  String(p.airbnbNights || '—'),
-        eur:     toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date)
-      })).sort((a, b) => (a.checkIn || '').localeCompare(b.checkIn || ''));
-      drillDownModal('Pending Pipeline', rows, [
-        { key: 'prop',    label: 'Property' },
-        { key: 'code',    label: 'Confirmation' },
-        { key: 'guest',   label: 'Guest' },
-        { key: 'checkIn', label: 'Check-in' },
-        { key: 'nights',  label: 'Nights',  right: true },
-        { key: 'eur',     label: 'Amount',  right: true, format: v => formatEUR(v) }
-      ]);
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+      body.appendChild(mkSummaryGrid([
+        { label: 'Short-Term Rental', value: pendingSTRTotal > 0 ? formatEUR(pendingSTRTotal) : '—', sub: `${pendingReservations.length} reservation${pendingReservations.length !== 1 ? 's' : ''}` },
+        { label: 'Long-Term Rental',  value: ltrPendingTotal > 0 ? formatEUR(ltrPendingTotal) : '—', sub: `${ltrPendingItems.length} month${ltrPendingItems.length !== 1 ? 's' : ''}` },
+        { label: 'Services',          value: svcPendingTotal > 0 ? formatEUR(svcPendingTotal) : '—', sub: `${svcPendingItems.length} invoice${svcPendingItems.length !== 1 ? 's' : ''}` },
+        { label: 'Total Pipeline',    value: formatEUR(pendingPipeline) }
+      ], 4));
+
+      if (pendingReservations.length > 0) {
+        body.appendChild(mkSectionLabel('Short-Term Rental — Pending Airbnb Reservations'));
+        body.appendChild(mkModalTable(
+          ['Property', 'Confirmation', 'Check-in', 'Nights', 'Amount'],
+          pendingReservations
+            .slice()
+            .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
+            .map(p => [
+              byId('properties', p.propertyId)?.name || '—',
+              p.confirmationCode || p.airbnbRef || '—',
+              p.airbnbCheckIn || '—',
+              String(p.airbnbNights || '—'),
+              formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
+            ]),
+          { highlight: 4 }
+        ));
+      }
+
+      if (ltrPendingItems.length > 0) {
+        body.appendChild(mkSectionLabel('Long-Term Rental — Unpaid Scheduled Rent'));
+        body.appendChild(mkModalTable(
+          ['Property', 'Tenant', 'Due Date', 'Status', 'Amount'],
+          ltrPendingItems
+            .slice()
+            .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+            .map(i => [i.label, i.detail, i.dueDate, i.overdue ? 'Overdue' : 'Upcoming', formatEUR(i.amountEUR)]),
+          { highlight: 4 }
+        ));
+      }
+
+      if (svcPendingItems.length > 0) {
+        body.appendChild(mkSectionLabel('Services — Outstanding Invoices'));
+        body.appendChild(mkModalTable(
+          ['Client', 'Invoice #', 'Due Date', 'Status', 'Amount'],
+          svcPendingItems
+            .slice()
+            .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+            .map(i => [i.label, i.detail, i.dueDate, i.overdue ? 'Overdue' : 'Upcoming', formatEUR(i.amountEUR)]),
+          { highlight: 4 }
+        ));
+      }
+
+      if (!pendingReservations.length && !ltrPendingItems.length && !svcPendingItems.length) {
+        body.appendChild(mkEmptyState('No pending revenue found for the selected period and filters.'));
+      }
+
+      openModal({ title: 'Pending Pipeline — All Streams', body, large: true });
     },
     delta: cmpData ? safePct(pendingPipeline, cmpData.pendingPipeline) : null,
     invertDelta: false, compLabel: cmpLabel,
@@ -822,6 +932,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
 // ── Forecast Performance Insights ─────────────────────────────────────────────
 function buildForecastInsights(data, cmpData) {
   const { actualRev, forecastRev, variancePct, pendingPipeline,
+          pendingSTRTotal, ltrPendingTotal, svcPendingTotal,
           streamBreakdown, propertyBreakdown } = data;
 
   const signals = [];
@@ -890,13 +1001,17 @@ function buildForecastInsights(data, cmpData) {
     }
   }
 
-  // Pending pipeline visibility
+  // Pending pipeline visibility — across all streams
   if (pendingPipeline > 0) {
+    const parts = [];
+    if (pendingSTRTotal > 0) parts.push(`${formatEUR(pendingSTRTotal)} short-term`);
+    if (ltrPendingTotal > 0) parts.push(`${formatEUR(ltrPendingTotal)} long-term`);
+    if (svcPendingTotal > 0) parts.push(`${formatEUR(svcPendingTotal)} services`);
     signals.push({
       title: 'Pending Pipeline',
-      text: `${formatEUR(pendingPipeline)} in pending Airbnb reservations for the selected period.`,
+      text: `${formatEUR(pendingPipeline)} in pending/upcoming revenue for the selected period (${parts.join(', ')}).`,
       severity: 'info',
-      inspect: 'Pending Airbnb Reservations'
+      inspect: 'Pending Pipeline'
     });
   }
 
