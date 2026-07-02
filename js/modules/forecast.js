@@ -1367,6 +1367,11 @@ function buildAggregatedGrid(entityIds, year, type = 'property') {
     el('div', { class: 'card-title' }, `Aggregated Forecast — ${year}`),
     el('div', { class: 'muted', style: 'font-size:12px' }, label)
   ));
+  if (type === 'property' && entityIds.length > 1) {
+    card.appendChild(el('div', {
+      style: 'padding:8px 16px;font-size:12px;color:var(--text-muted);background:rgba(99,102,241,0.06);border-bottom:1px solid var(--border)'
+    }, 'This is a read-only summary across multiple properties. Select a single property above to edit its monthly forecast or add off-platform / manual bookings.'));
+  }
 
   const results = entityIds.map(id => getForecastVsActual(type, id, year));
   const months = results[0].months.map((_, i) => ({
