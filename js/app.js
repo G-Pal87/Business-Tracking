@@ -7,7 +7,7 @@ import { toast } from './core/ui.js';
 import { requireAuth, clearSession } from './core/auth.js';
 import { startPresence } from './core/presence.js';
 
-const VERSION = window._appV || '20260525';
+const VERSION = window._appV || '20260702';
 
 async function boot() {
   const [
