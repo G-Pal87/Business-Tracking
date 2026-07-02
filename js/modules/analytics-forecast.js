@@ -199,6 +199,48 @@ function getServicesPendingItems(range, mStream, mOwner, mClient) {
     });
 }
 
+// Services — PROJECTED (not confirmed): forecasted service revenue for months
+// with no invoice raised yet (paid, sent, or draft). Unlike the other three
+// pending components, this isn't backed by a signed lease, a confirmed
+// booking, or an actual invoice — it's just a target the user typed into the
+// Service Forecast. Kept in a separate bucket, excluded from the confirmed
+// "Pending Pipeline" total, and clearly labelled in the drill-down so it's
+// never mistaken for confirmed near-term cash.
+function getServicesProjectedItems(range) {
+  const invoicedStreamMonths = new Set();
+  listActive('invoices').forEach(i => {
+    const mk = (i.issueDate || '').slice(0, 7);
+    if (mk) invoicedStreamMonths.add((i.stream || '') + ':' + mk);
+  });
+
+  const startMk = range.start.slice(0, 7);
+  const endMk   = range.end.slice(0, 7);
+  const todayMk = new Date().toISOString().slice(0, 7);
+
+  const items = [];
+  listActive('forecasts').filter(fc => fc.type === 'service').forEach(fc => {
+    if (gF.streams.size > 0 && !gF.streams.has(fc.entityId)) return;
+    Object.entries(fc.months || {}).forEach(([mk, md]) => {
+      if (mk < startMk || mk > endMk) return;
+      if (invoicedStreamMonths.has(fc.entityId + ':' + mk)) return; // already invoiced (any status) — don't double count
+      const entries = Array.isArray(md.entries) ? md.entries : [];
+      const rev = entries.length > 0
+        ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+        : Number(md.revenue) || 0;
+      if (rev <= 0) return;
+      items.push({
+        stream: fc.entityId,
+        label: STREAMS[fc.entityId]?.label || fc.entityId,
+        detail: mk,
+        dueDate: mk + '-01',
+        amountEUR: rev,
+        overdue: mk < todayMk // forecasted month already passed with no invoice raised
+      });
+    });
+  });
+  return items;
+}
+
 // ── Forecast map builder (filtered, multi-year) ───────────────────────────────
 // Returns:
 //   fcMonthlyRev    Map<"YYYY-MM",        EUR>  — total portfolio forecast revenue per month
@@ -344,12 +386,16 @@ function calculateDashboardData(range) {
 
   const ltrPendingItems = getLtRentPendingItems(range);
   const svcPendingItems = getServicesPendingItems(range, mStream, mOwner, mClient);
+  const svcProjectedItems = getServicesProjectedItems(range);
 
   const pendingSTRTotal = pendingReservations.reduce(
     (s, p) => s + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date), 0
   );
   const ltrPendingTotal = ltrPendingItems.reduce((s, i) => s + i.amountEUR, 0);
   const svcPendingTotal = svcPendingItems.reduce((s, i) => s + i.amountEUR, 0);
+  const svcProjectedTotal = svcProjectedItems.reduce((s, i) => s + i.amountEUR, 0);
+  // Confirmed pipeline only — projected/forecasted service revenue is shown
+  // separately and excluded from this total (see getServicesProjectedItems).
   const pendingPipeline = pendingSTRTotal + ltrPendingTotal + svcPendingTotal;
 
   // Combined property-level pending (STR + LTR only — services are client-based,
@@ -403,6 +449,7 @@ function calculateDashboardData(range) {
     variance, variancePct,
     pendingPipeline, pendingReservations, allPendingReservations,
     pendingSTRTotal, ltrPendingItems, ltrPendingTotal, svcPendingItems, svcPendingTotal,
+    svcProjectedItems, svcProjectedTotal,
     actPayments, actInvoices, actOpExpenses, actCapExpenses,
     months, fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp,
     monthlyBreakdown, streamBreakdown, propertyBreakdown,
@@ -572,6 +619,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     forecastRev, forecastExp, forecastNet,
     variance, pendingPipeline, pendingReservations,
     pendingSTRTotal, ltrPendingItems, ltrPendingTotal, svcPendingItems, svcPendingTotal,
+    svcProjectedItems, svcProjectedTotal,
     actPayments, actInvoices, actOpExpenses, actCapExpenses,
     monthlyBreakdown, mape, mapeMonthCount
   } = data;
@@ -763,12 +811,19 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
+      body.appendChild(mkSectionLabel('Confirmed — Signed Lease, Confirmed Booking, or Actual Invoice'));
       body.appendChild(mkSummaryGrid([
         { label: 'Short-Term Rental', value: pendingSTRTotal > 0 ? formatEUR(pendingSTRTotal) : '—', sub: `${pendingReservations.length} reservation${pendingReservations.length !== 1 ? 's' : ''}` },
         { label: 'Long-Term Rental',  value: ltrPendingTotal > 0 ? formatEUR(ltrPendingTotal) : '—', sub: `${ltrPendingItems.length} month${ltrPendingItems.length !== 1 ? 's' : ''}` },
         { label: 'Services',          value: svcPendingTotal > 0 ? formatEUR(svcPendingTotal) : '—', sub: `${svcPendingItems.length} invoice${svcPendingItems.length !== 1 ? 's' : ''}` },
-        { label: 'Total Pipeline',    value: formatEUR(pendingPipeline) }
+        { label: 'Confirmed Total',   value: formatEUR(pendingPipeline) }
       ], 4));
+
+      body.appendChild(mkSectionLabel('Projected — Forecasted, Not Yet Invoiced (excluded from the KPI total above)'));
+      body.appendChild(mkSummaryGrid([
+        { label: 'Services (Forecast)',        value: svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', sub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}` },
+        { label: 'Confirmed + Projected', value: formatEUR(pendingPipeline + svcProjectedTotal) }
+      ], 2));
 
       if (pendingReservations.length > 0) {
         body.appendChild(mkSectionLabel('Short-Term Rental — Pending Airbnb Reservations'));
@@ -812,8 +867,20 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         ));
       }
 
-      if (!pendingReservations.length && !ltrPendingItems.length && !svcPendingItems.length) {
-        body.appendChild(mkEmptyState('No pending revenue found for the selected period and filters.'));
+      if (svcProjectedItems.length > 0) {
+        body.appendChild(mkSectionLabel('Services — Forecasted, Not Yet Invoiced'));
+        body.appendChild(mkModalTable(
+          ['Stream', 'Month', 'Status', 'Amount'],
+          svcProjectedItems
+            .slice()
+            .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+            .map(i => [i.label, i.detail, i.overdue ? 'Past — no invoice raised' : 'Future projection', formatEUR(i.amountEUR)]),
+          { highlight: 3 }
+        ));
+      }
+
+      if (!pendingReservations.length && !ltrPendingItems.length && !svcPendingItems.length && !svcProjectedItems.length) {
+        body.appendChild(mkEmptyState('No pending or projected revenue found for the selected period and filters.'));
       }
 
       openModal({ title: 'Pending Pipeline — All Streams', body, large: true });
@@ -932,7 +999,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
 // ── Forecast Performance Insights ─────────────────────────────────────────────
 function buildForecastInsights(data, cmpData) {
   const { actualRev, forecastRev, variancePct, pendingPipeline,
-          pendingSTRTotal, ltrPendingTotal, svcPendingTotal,
+          pendingSTRTotal, ltrPendingTotal, svcPendingTotal, svcProjectedTotal,
           streamBreakdown, propertyBreakdown } = data;
 
   const signals = [];
@@ -1009,7 +1076,18 @@ function buildForecastInsights(data, cmpData) {
     if (svcPendingTotal > 0) parts.push(`${formatEUR(svcPendingTotal)} services`);
     signals.push({
       title: 'Pending Pipeline',
-      text: `${formatEUR(pendingPipeline)} in pending/upcoming revenue for the selected period (${parts.join(', ')}).`,
+      text: `${formatEUR(pendingPipeline)} in confirmed pending/upcoming revenue for the selected period (${parts.join(', ')}).`,
+      severity: 'info',
+      inspect: 'Pending Pipeline'
+    });
+  }
+
+  // Projected (forecasted, not yet invoiced) service revenue — separate from
+  // the confirmed pipeline signal above so it's never read as guaranteed cash.
+  if (svcProjectedTotal > 0) {
+    signals.push({
+      title: 'Projected Services',
+      text: `${formatEUR(svcProjectedTotal)} in forecasted service revenue has no invoice raised yet — not included in the confirmed Pending Pipeline total.`,
       severity: 'info',
       inspect: 'Pending Pipeline'
     });
