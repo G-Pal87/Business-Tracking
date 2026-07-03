@@ -333,6 +333,11 @@ function openForm(existing) {
 
   // Documents upload
   let pendingDocs = [...(c.documents || [])];
+  // Files removed from the list in this session, but not yet deleted from
+  // the repo — the actual deleteGithubFile() call is deferred to Save, so
+  // clicking the ✕ by mistake and then Cancel doesn't leave a 404'd
+  // reference behind (the record's documents array is untouched until Save).
+  let pendingRemovals = [];
   const fileInput = el('input', {
     type: 'file',
     accept: '.pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx',
@@ -353,11 +358,10 @@ function openForm(existing) {
       row.appendChild(el('span', { class: 'doc-size' }, fmtSize(d.size)));
       row.appendChild(el('button', {
         class: 'btn ghost sm', type: 'button', title: 'Remove',
-        onClick: async () => {
-          if (d.path) {
-            try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
-            catch (e) { toast(`Repo cleanup failed: ${e.message}`, 'warning', 5000); }
-          }
+        onClick: () => {
+          // Defer the actual repo delete to Save (see pendingRemovals above)
+          // instead of deleting immediately — Cancel now truly cancels.
+          if (d.path) pendingRemovals.push({ path: d.path, name: d.name });
           pendingDocs = pendingDocs.filter(x => x.id !== d.id);
           renderDocList();
         }
@@ -396,9 +400,27 @@ function openForm(existing) {
   body.appendChild(docsCard);
 
   const save = button('Save', { variant: 'primary', onClick: async () => {
+    if (save.disabled) return;
+    save.disabled = true;
+    try {
+      await doSave();
+    } finally {
+      save.disabled = false;
+    }
+  }});
+
+  async function doSave() {
     if (!nameI.value.trim()) { toast('Name required', 'danger'); return; }
+    if (emailI.value.trim() && !emailI.checkValidity()) { toast('Enter a valid email address', 'danger'); return; }
     const clientName = nameI.value.trim();
     const safeClientName = sanitizeName(clientName);
+
+    // Now that Save was actually clicked, delete anything the user removed
+    // from the list during this session (see pendingRemovals above).
+    for (const rem of pendingRemovals) {
+      try { await deleteGithubFile(rem.path, null, `Remove document: ${rem.name}`); }
+      catch (e) { toast(`Repo cleanup failed for ${rem.name}: ${e.message}`, 'warning', 5000); }
+    }
 
     // Upload any pending new files to the repo; keep only metadata in db.json
     const docsToSave = [];
@@ -438,7 +460,7 @@ function openForm(existing) {
     toast(existing ? 'Client updated' : 'Client added', 'success');
     closeModal();
     setTimeout(() => navigate('clients'), 200);
-  }});
+  }
   const cancel = button('Cancel', { onClick: closeModal });
   openModal({ title: existing ? 'Edit Client' : 'New Client', body, footer: [cancel, save] });
 }

@@ -166,6 +166,7 @@ function openPersonForm(existing, onSave) {
     if (!nameI.value.trim()) { toast('Name required', 'danger'); return; }
     const newShare = ['partner', 'director'].includes(roleS.value) ? (Number(shareI.value) || 0) : null;
     if (newShare != null) {
+      if (newShare < 0) { toast('Share % cannot be negative', 'danger'); return; }
       const othersTotal = getPeople()
         .filter(x => x.id !== p.id && ['partner', 'director'].includes(x.role) && x.sharePercent != null)
         .reduce((sum, x) => sum + x.sharePercent, 0);
@@ -233,12 +234,19 @@ function buildDividendSettingsCard() {
     const addBtn = button('Add / Update', { variant: 'primary sm', onClick: () => {
       const yr = Number(yearI.value) | 0;
       if (!yr || yr < 2000) { toast('Enter a valid year', 'danger'); return; }
+      // dividendSettings entries are keyed by year, not id, so they don't go
+      // through upsert() — stamp the same who/when metadata by hand instead
+      // of leaving this the only collection with no audit trail at all.
+      const now = Date.now();
+      const actor = state.session?.username || 'system';
       const existing = getDividendSettings().find(s => s.year === yr);
       if (existing) {
         existing.method = methodS.value;
+        existing.updatedAt = now;
+        existing.updatedBy = actor;
       } else {
         if (!state.db.settings.dividendSettings) state.db.settings.dividendSettings = [];
-        state.db.settings.dividendSettings.push({ year: yr, method: methodS.value });
+        state.db.settings.dividendSettings.push({ year: yr, method: methodS.value, createdAt: now, createdBy: actor, updatedAt: now, updatedBy: actor });
       }
       markDirty();
       toast(`${yr} dividend method saved`, 'success');

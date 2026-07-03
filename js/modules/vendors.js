@@ -49,9 +49,12 @@ function build() {
 function card(v) {
   const roleMeta = VENDOR_ROLES[v.role] || { label: v.role };
   const isClean = v.role === 'cleaner';
+  // Count only still-active properties — byId() doesn't filter soft-deleted
+  // records, so a deleted property used to keep inflating this count.
+  const activePropIds = new Set(listActive('properties').map(p => p.id));
   const propCount = isClean
-    ? new Set((v.cleaningPeriods || []).map(p => p.propertyId)).size
-    : Object.keys(v.rates || {}).length;
+    ? new Set((v.cleaningPeriods || []).map(p => p.propertyId).filter(id => activePropIds.has(id))).size
+    : Object.keys(v.rates || {}).filter(id => activePropIds.has(id)).length;
   const node = el('div', { class: 'prop-card' });
   node.onclick = () => openDetail(v.id);
   node.appendChild(el('div', { class: 'prop-card-header' },
@@ -139,7 +142,9 @@ function openDetail(id) {
         const prop = byId('properties', period.propertyId);
         if (!prop) continue;
         const tr = el('tr');
-        tr.appendChild(el('td', {}, prop.name));
+        // byId() doesn't filter soft-deleted records — flag it explicitly
+        // instead of silently showing a deleted property as if still active.
+        tr.appendChild(el('td', {}, prop.name + (prop.deletedAt ? ' (deleted)' : '')));
         tr.appendChild(el('td', {}, period.startDate || '—'));
         tr.appendChild(el('td', {}, period.endDate || 'Open-ended'));
         tr.appendChild(el('td', { class: 'right num' }, formatMoney(period.fee, prop.currency, { maxFrac: 0 })));
@@ -278,6 +283,20 @@ function openCleaningPeriodForm(vendor, existingPeriodId, onDone) {
       if (endI.value && endI.value < startI.value) { toast('End date must be after start date', 'danger'); return; }
 
       if (!vendor.cleaningPeriods) vendor.cleaningPeriods = [];
+
+      // Two overlapping periods for the same property leave no deterministic
+      // way to know which fee applies on a given date — treat an empty
+      // endDate as open-ended (extends indefinitely) for this check.
+      const newEnd = endI.value || '9999-12-31';
+      const overlap = vendor.cleaningPeriods.find(p => {
+        if (p.propertyId !== propS.value || p.id === existingPeriodId) return false;
+        const pEnd = p.endDate || '9999-12-31';
+        return startI.value <= pEnd && p.startDate <= newEnd;
+      });
+      if (overlap) {
+        toast(`This overlaps an existing rate for this property (${overlap.startDate} – ${overlap.endDate || 'ongoing'}). Adjust the dates or edit that rate instead.`, 'danger', 7000);
+        return;
+      }
 
       if (existing) {
         const idx = vendor.cleaningPeriods.findIndex(p => p.id === existingPeriodId);

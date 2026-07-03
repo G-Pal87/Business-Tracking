@@ -490,7 +490,16 @@ function buildAddForm(year) {
       return;
     }
     upsert('dividends', { id: newId('div'), date: formDate, grossAmount: formAmount, recipient: formRecipient, notes: formNotes });
-    toast('Dividend recorded', 'success');
+    // The date picker isn't constrained to the year currently being viewed —
+    // without this, saving a dividend for a different year made it vanish
+    // from the list the instant the view rebuilt, reading as a failed save.
+    const savedYear = formDate.slice(0, 4);
+    if (savedYear !== String(year)) {
+      gYear = savedYear;
+      toast(`Dividend recorded for ${savedYear} — switched the view to that year`, 'success', 5000);
+    } else {
+      toast('Dividend recorded', 'success');
+    }
     rebuildView();
   };
 

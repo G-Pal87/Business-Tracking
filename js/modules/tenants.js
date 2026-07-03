@@ -173,6 +173,7 @@ function openForm(existing, onSave) {
     if (!nameI.value.trim()) { toast('Name is required', 'danger'); return; }
     if (!propS.value) { toast('Select a property', 'danger'); return; }
     if (Number(rentI.value) <= 0) { toast('Monthly rent must be greater than zero', 'danger'); return; }
+    if (Number(depositI.value) < 0) { toast('Deposit cannot be negative', 'danger'); return; }
 
     const updated = {
       ...r,
@@ -291,6 +292,7 @@ function openTerminationModal(tenant, onSave) {
   body.appendChild(formRow('Comments', commentsT));
 
   const terminateBtn = button('Terminate Lease', { variant: 'primary', onClick: async () => {
+    if (Number(addPayI.value) < 0) { toast('Additional payment cannot be negative', 'danger'); return; }
     const termDate    = termDateI.value || today();
     const addPay      = Number(addPayI.value) || 0;
     const comments    = commentsT.value.trim();

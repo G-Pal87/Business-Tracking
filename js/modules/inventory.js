@@ -1,5 +1,5 @@
 // Inventory module — batch-based stock with FIFO deduction
-import { state, markDirty } from '../core/state.js';
+import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, totalRemaining } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
@@ -24,7 +24,6 @@ export const INVENTORY_ITEMS = [
 
 function migrateInventoryData() {
   const items = state.db.inventory || [];
-  let changed = false;
   for (const item of items) {
     if (item.deletedAt || item.batches) continue;
     item.batches = [{
@@ -42,9 +41,11 @@ function migrateInventoryData() {
     delete item.currency;
     delete item.dateBought;
     delete item.comments;
-    changed = true;
+    // Route through upsert() instead of a bare markDirty() so this
+    // migration gets an updatedAt/updatedBy stamp like every other write —
+    // previously there was no record of when/who ran it.
+    upsert('inventory', item);
   }
-  if (changed) markDirty();
 }
 
 // ── Computed helpers ──────────────────────────────────────────────────────────
@@ -326,13 +327,21 @@ function openBatchEditForm(item, batch, onSave) {
   body.appendChild(formRow('Comments', commentsT));
 
   const saveBtn = button('Save', { variant: 'primary', onClick: () => {
+    const qty = Number(qtyI.value) || 0;
+    const remaining = Number(remI.value);
+    const unitPrice = Number(priceI.value) || 0;
+    // Matches the validation openAddForm already applies — this form let all
+    // of these through unchecked, corrupting stock totals and demand/coverage
+    // insights that assume non-negative, qty-bounded values.
+    if (qty <= 0)          { toast('Quantity must be > 0', 'danger'); return; }
+    if (unitPrice <= 0)    { toast('Unit price must be > 0', 'danger'); return; }
+    if (remaining < 0)     { toast('Remaining cannot be negative', 'danger'); return; }
+    if (remaining > qty)   { toast('Remaining cannot exceed quantity purchased', 'danger'); return; }
     const fresh = byId('inventory', item.id);
     if (!fresh) { toast('Item not found', 'danger'); return; }
     const updated = {
       ...batch,
-      qty:        Number(qtyI.value)   || 0,
-      remaining:  Number(remI.value),
-      unitPrice:  Number(priceI.value) || 0,
+      qty, remaining, unitPrice,
       currency:   currencyS.value,
       dateBought: dateI.value,
       comments:   commentsT.value.trim()
