@@ -3,7 +3,7 @@
 // days can be overlaid from an Airbnb iCal feed.
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, toast, select, input, button, formRow, fmtDate, confirmDialog } from '../core/ui.js';
-import { listActive, listActivePayments, byId, upsert, newId, formatMoney } from '../core/data.js';
+import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney } from '../core/data.js';
 import { fetchICal, parseICal } from '../core/ical.js';
 import { uploadGithubFile } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
@@ -1798,6 +1798,12 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     const adjPct  = parseFloat(adjInp.value);
     // null = use global discount; explicit number (incl. 0) = monthly override
     const discPct = discInp.value.trim() === '' ? null : (parseFloat(discInp.value) || 0);
+    if (discPct != null && (discPct < 0 || discPct > 100)) {
+      // Unbounded, this could publish a negative nightly rate to the public
+      // feed the external booking site reads (rate × (1 − discPct/100)).
+      toast('Discount % must be between 0 and 100', 'warning');
+      return;
+    }
     const base    = confirmed ? { ...confirmed } : {};
     if (!base.id) base.id = newId('srt');
     Object.assign(base, {
@@ -1835,8 +1841,16 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     }}));
   }
   if (confirmed) {
-    btnRow.appendChild(button('Clear', { variant: 'sm ghost', onClick: () => {
-      upsert('strRateTargets', { ...confirmed, deletedAt: todayStr() });
+    btnRow.appendChild(button('Clear', { variant: 'sm ghost', onClick: async () => {
+      // Every other destructive action in this module confirms first — this
+      // one didn't. Also route through softDelete() instead of hand-rolling
+      // deletedAt as a date *string*: the app's purge-by-cutoff logic
+      // compares deletedAt numerically (epoch ms), so a string value can
+      // never satisfy `deletedAt < cutoff` and these records would never
+      // get cleaned up.
+      const ok = await confirmDialog(`Clear the confirmed ${fmt(confirmed.targetADR)} target for ${monthName}?`, { danger: true, okLabel: 'Clear' });
+      if (!ok) return;
+      softDelete('strRateTargets', confirmed.id);
       toast('ADR target cleared', 'success');
       onRerender?.();
     }}));
