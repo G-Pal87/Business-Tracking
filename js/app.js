@@ -191,8 +191,21 @@ async function boot() {
 
   let pushTimer = null;
   let saveFailCount = 0;
+  let lastFailToastAt = 0;
+  const FAIL_TOAST_INTERVAL_MS = 2 * 60 * 1000; // re-remind at most every 2 min while sync stays broken
   let pushPending = false; // true while doSave is queued or running
   let ratesFeedTimer = null; // debounce for auto-publishing the STR daily-rate feeds
+
+  // Warn before closing/navigating away with edits that haven't been
+  // confirmed-pushed to GitHub yet — without this, an edit made in the last
+  // moment before closing the tab could be lost silently (the push is
+  // debounced 300ms, the local-cache write 500ms).
+  window.addEventListener('beforeunload', e => {
+    if (state.dirty) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 
   // After a real data push, re-publish the STR daily-rate feeds. Debounced so a
   // burst of edits results in a single publish; the publisher itself only
@@ -239,15 +252,27 @@ async function boot() {
         updateSyncStatus('offline', 'Push conflict — refresh required', true);
         const cols = [...new Set((e.conflicts || []).map(c => c.collection))];
         const detail = cols.length ? ` Affected: ${cols.join(', ')}.` : '';
+        // Reloading resolves this by keeping whichever side has the later
+        // timestamp — it does not re-check for the conflict. If the other
+        // person's edit happens to be newer, reloading can silently discard
+        // yours with no further warning, so say that plainly rather than
+        // implying "refresh" is a clean, lossless fix.
         toast(
-          `Another user modified the same data.${detail} Refresh the page to load the latest — your unsaved changes may need to be re-entered.`,
+          `Another user modified the same data.${detail} Reloading will keep whichever edit was made more recently — it won't ask you to choose. ` +
+          `Check with them before reloading if you want to make sure your change isn't the one that gets dropped.`,
           'danger',
-          15000
+          20000
         );
       } else {
         updateSyncStatus('offline', 'Push failed — changes saved locally only', true);
-        if (saveFailCount === 1) {
-          toast('Save failed: ' + e.message, 'danger', 6000);
+        // Re-remind periodically instead of only once ever — a persistently
+        // broken sync (expired token, revoked access) previously announced
+        // itself exactly once and then went silent for the rest of the
+        // session, with only a small sidebar dot indicating anything was wrong.
+        const now = Date.now();
+        if (saveFailCount === 1 || now - lastFailToastAt > FAIL_TOAST_INTERVAL_MS) {
+          lastFailToastAt = now;
+          toast('Save failed: ' + e.message + ' — changes are only saved to this browser until this is fixed.', 'danger', 8000);
         }
       }
       throw e;

@@ -154,6 +154,16 @@ async function doPushDb(message = 'Update data') {
   if (!owner || !repo) throw new Error('GitHub not configured');
   if (!token) throw new Error('GitHub token not configured — add it in Settings');
 
+  // Without a remoteDb base, mergeDb() below can't tell a genuine concurrent
+  // edit from an unrelated one and falls back to plain last-writer-wins for
+  // this entire push. That normally only happens once per session (Phase 4
+  // in app.js sets remoteDb on the first successful pull) — but if that
+  // pull failed or was skipped, this push would otherwise go out with no
+  // conflict protection at all. One extra fetch here is worth the latency.
+  if (!state.github.remoteDb) {
+    try { await fetchDb(); } catch { /* best-effort — push still proceeds without a base */ }
+  }
+
   const apiBase  = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}`;
   const ghHeaders = {
     'Accept':        'application/vnd.github+json',

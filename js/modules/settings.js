@@ -226,6 +226,9 @@ function buildGithubCard() {
     setupSection.appendChild(el('div', {
       style: 'font-size:12px;color:var(--text-muted);margin-bottom:10px'
     }, 'New browsers/devices see empty settings because the config lives in your localStorage. Generate a one-click setup link and share it — anyone who opens it gets auto-configured instantly.'));
+    setupSection.appendChild(el('div', {
+      style: 'font-size:12px;color:var(--warning, #d97706);margin-bottom:10px;padding:8px 10px;background:rgba(217,119,6,0.08);border-left:3px solid var(--warning, #d97706);border-radius:0 4px 4px 0'
+    }, '"Copy Link" alone does NOT let the recipient save changes — it only shares which repo to connect to. They still need their own GitHub Personal Access Token, entered in their own Settings, before anything they do here will actually sync. Without one, they can browse (if the repo is public) but every edit stays stuck in their browser and is never pushed. Use "Copy Link + Token" below to skip that step for someone you trust with write access.'));
 
     const setupLinkInput = el('input', {
       type: 'text',
@@ -258,7 +261,7 @@ function buildGithubCard() {
 
     const copyBtn = button('Copy Link', { variant: 'primary', onClick: () => {
       setupLinkInput.select();
-      doCopy(setupUrl, 'Setup link copied — share it with any new user');
+      doCopy(setupUrl, 'Link copied — tell the recipient to add their own GitHub token in Settings, or their edits won’t sync');
     }});
 
     const linkRow = el('div', { class: 'flex gap-8', style: 'align-items:center' });

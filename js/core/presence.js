@@ -59,7 +59,7 @@ function scheduleHeartbeat() {
   heartbeatTimer = setInterval(heartbeat, HEARTBEAT_MS);
 }
 
-async function heartbeat() {
+async function heartbeat(isRetry = false) {
   if (document.hidden) return;
   const view = currentView();
   if (!TRACKED.has(view)) return;
@@ -67,11 +67,19 @@ async function heartbeat() {
   const { owner, repo, token } = state.github;
   if (!username || !owner || !repo || !token) return;
   // Only refresh timestamp — and only if a write is actually needed.
-  await updatePresence(entries => {
+  const ok = await updatePresence(entries => {
     if (entries[username]?.view !== view) return false; // nothing to refresh
     entries[username].t = Date.now();
     return true;
   });
+  // A failed heartbeat used to wait the full 50s before trying again, during
+  // which this user's own entry could go stale (2 min) while they're still
+  // actively editing — silently hiding a real conflict from everyone else.
+  // One bounded retry closes most of that gap without hammering the API if
+  // it stays down (falls back to the normal cadence after this one attempt).
+  if (!ok && !isRetry) {
+    setTimeout(() => heartbeat(true), 8000);
+  }
 }
 
 // ── Clear own presence on tab close / hide ────────────────────────────────────
@@ -132,6 +140,10 @@ async function poll() {
 
   try {
     const { entries = {} } = await readPresence();
+    // Collect every currently-conflicting viewer instead of stopping at the
+    // first match — with 3+ people on the same view, the others used to
+    // never be mentioned at all.
+    const conflicting = [];
     for (const [user, entry] of Object.entries(entries)) {
       if (user === username) continue;
       if (!entry.view || !entry.t) continue;
@@ -140,9 +152,9 @@ async function poll() {
       const key = `${user}:${view}`;
       if (now - (notified.get(key) || 0) < THROTTLE_MS) continue;
       notified.set(key, now);
-      showBanner(entry.name || user, LABELS[view] || view);
-      break;
+      conflicting.push(entry.name || user);
     }
+    if (conflicting.length > 0) showBanner(conflicting, LABELS[view] || view);
   } catch { /* silent */ }
 }
 
@@ -222,8 +234,14 @@ async function updatePresence(mutator, attempts = 4) {
 
 // ── Banner ────────────────────────────────────────────────────────────────────
 
-function showBanner(otherName, viewLabel) {
+function showBanner(otherNames, viewLabel) {
   banner?.remove();
+
+  const names = Array.isArray(otherNames) ? otherNames : [otherNames];
+  const namesText = names.length === 1 ? names[0]
+    : names.length === 2 ? `${names[0]} and ${names[1]}`
+    : `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+  const verb = names.length === 1 ? 'is' : 'are';
 
   const b = document.createElement('div');
   b.id = 'presence-banner';
@@ -241,7 +259,7 @@ function showBanner(otherName, viewLabel) {
   ].join(';');
 
   const msg = document.createElement('span');
-  msg.textContent = `⚠️  ${otherName} is also viewing ${viewLabel} — edits may conflict`;
+  msg.textContent = `⚠️  ${namesText} ${verb} also viewing ${viewLabel} — edits may conflict`;
   b.appendChild(msg);
 
   const btn = document.createElement('button');

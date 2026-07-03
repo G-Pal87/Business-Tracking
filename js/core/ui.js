@@ -4,7 +4,6 @@ export function el(tag, attrs = {}, ...children) {
   for (const [k, v] of Object.entries(attrs || {})) {
     if (k === 'class') node.className = v;
     else if (k === 'style' && typeof v === 'object') Object.assign(node.style, v);
-    else if (k === 'html') node.innerHTML = v;
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2).toLowerCase(), v);
     else if (k === 'dataset') Object.assign(node.dataset, v);
     else if (v !== undefined && v !== null && v !== false) node.setAttribute(k, v === true ? '' : v);
@@ -23,6 +22,7 @@ export function escapeHtml(str) {
 
 // ========== Modal ==========
 let modalOverlay = null;
+let _activeModal = null; // { onClose, escHandler } for whichever modal is currently open, if any
 
 function ensureOverlay() {
   if (!modalOverlay) {
@@ -37,6 +37,18 @@ function ensureOverlay() {
 
 export function openModal({ title, body, footer, large = false, onClose } = {}) {
   const overlay = ensureOverlay();
+  // A modal already open when a new one is requested (e.g. a rapid
+  // double-click on a confirm-gated delete) gets force-closed first \u2014 firing
+  // its onClose so any pending confirmDialog promise resolves as `false`
+  // instead of hanging forever, which used to happen because the innerHTML
+  // reset below silently wiped its buttons out from under it without ever
+  // invoking its close().
+  if (_activeModal) {
+    document.removeEventListener('keydown', _activeModal.escHandler);
+    const prevOnClose = _activeModal.onClose;
+    _activeModal = null;
+    if (prevOnClose) prevOnClose();
+  }
   overlay.innerHTML = '';
   const modal = el('div', { class: 'modal' + (large ? ' lg' : '') });
   const closeBtn = el('button', { class: 'modal-close', title: 'Close' }, '\u00d7');
@@ -45,7 +57,7 @@ export function openModal({ title, body, footer, large = false, onClose } = {}) 
     closeBtn
   );
   const bodyEl = el('div', { class: 'modal-body' });
-  if (typeof body === 'string') bodyEl.innerHTML = body;
+  if (typeof body === 'string') bodyEl.appendChild(document.createTextNode(body));
   else if (body instanceof Node) bodyEl.appendChild(body);
 
   modal.appendChild(header);
@@ -64,17 +76,26 @@ export function openModal({ title, body, footer, large = false, onClose } = {}) 
   }
   const close = () => {
     document.removeEventListener('keydown', escHandler);
+    if (_activeModal && _activeModal.escHandler === escHandler) _activeModal = null;
     overlay.classList.remove('open');
     setTimeout(() => { overlay.innerHTML = ''; if (onClose) onClose(); }, 200);
   };
   closeBtn.onclick = close;
   overlay.onclick = e => { if (e.target === overlay) close(); };
   document.addEventListener('keydown', escHandler);
+  _activeModal = { onClose, escHandler };
   return { modal, close, body: bodyEl };
 }
 
 export function closeModal() {
   const o = document.getElementById('modal-overlay');
+  // Drop the tracked Escape-key listener so it doesn't leak (and so the next
+  // openModal() call doesn't try to force-close a modal that was already
+  // closed through this path instead of its own close()).
+  if (_activeModal) {
+    document.removeEventListener('keydown', _activeModal.escHandler);
+    _activeModal = null;
+  }
   if (o) { o.classList.remove('open'); setTimeout(() => { o.innerHTML = ''; }, 200); }
 }
 
