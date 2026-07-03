@@ -53,9 +53,14 @@ function getData(start, end) {
   );
   const propIds = new Set(allProps.map(p => p.id));
 
+  // Compare full dates, not month keys — comparing a 7-char "YYYY-MM" key
+  // against the 10-char "YYYY-MM-DD" start/end boundaries meant a record
+  // dated exactly in the period's start month always failed the `>= start`
+  // check (a prefix string sorts before the longer string it's a prefix
+  // of), silently dropping that entire month from every KPI/chart here.
   const matchDate = row => {
-    const mk = (row.date || '').slice(0, 7);
-    return mk >= start && mk <= end;
+    const d = row.date || '';
+    return d >= start && d <= end;
   };
 
   const payments    = listActivePayments().filter(p =>

@@ -80,9 +80,11 @@ function getData(start, end) {
     return { ...p, _resolvedOwner: p.owner || prop?.owner || 'both', _eur: toEUR(p.amount, p.currency, p.date) };
   });
 
-  // Invoices — service income
+  // Invoices — service income. mProperty is applied for consistency with the
+  // payments/expenses filters just above — a property-linked invoice used to
+  // count toward revenue/splits regardless of which property was selected.
   const invoices = listActive('invoices').filter(i =>
-    i.status === 'paid' && inRange(i.issueDate) && mStream(i)
+    i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mProperty(i)
   );
   const annotatedInvoices = invoices.map(i => ({
     ...i,

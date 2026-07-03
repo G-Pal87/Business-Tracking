@@ -630,7 +630,7 @@ function renderClientBar({ invoices }) {
   });
 }
 
-function renderMixEvolution({ payByMonth, invByMonth }, months) {
+function renderMixEvolution({ payments, invoices, payByMonth, invByMonth }, months) {
   const rental  = months.map(m => Math.round((payByMonth.get(m.key) || []).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)));
   const service = months.map(m => Math.round((invByMonth.get(m.key) || []).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0)));
   if (!rental.some(v => v > 0) && !service.some(v => v > 0)) return;
