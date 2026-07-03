@@ -1,14 +1,53 @@
 // Auth: session management + login/setup screen
 import { state } from './state.js';
 import { el, input, formRow, button } from './ui.js';
-import { newId, upsert } from './data.js';
+import { newId, upsert, listActive } from './data.js';
 
 const SESSION_KEY = 'bt_session';
+const PBKDF2_ITERATIONS = 150000;
 
-export async function hashPassword(password) {
+function b64encode(bytes) { return btoa(String.fromCharCode(...bytes)); }
+function b64decode(str) { return Uint8Array.from(atob(str), c => c.charCodeAt(0)); }
+
+// Legacy scheme (pre-hardening): a single unsalted SHA-256 round. Kept only
+// so accounts created before this shipped can still log in once — never
+// used for new accounts or password changes.
+async function legacySha256(password) {
   const data = new TextEncoder().encode(password);
   const hash = await crypto.subtle.digest('SHA-256', data);
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Salted PBKDF2-HMAC-SHA256 (150k iterations) — resistant to offline
+// rainbow-table/brute-force attacks against the shared, GitHub-committed
+// db.json, unlike the single unsalted SHA-256 round this replaces. Entirely
+// client-side via Web Crypto, no new dependency.
+export async function hashPassword(password, saltB64 = null) {
+  const salt = saltB64 ? b64decode(saltB64) : crypto.getRandomValues(new Uint8Array(16));
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    keyMaterial, 256
+  );
+  const hash = Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return { hash, salt: b64encode(salt) };
+}
+
+// Verifies a password against a user record. Supports both the current
+// salted scheme and the legacy unsalted one, so pre-existing accounts don't
+// need a forced reset — a successful legacy login is transparently upgraded
+// (caller should upsert the returned newHash/newSalt onto the user record).
+export async function verifyPassword(password, user) {
+  if (user.passwordSalt) {
+    const { hash } = await hashPassword(password, user.passwordSalt);
+    return { ok: hash === user.passwordHash, needsUpgrade: false };
+  }
+  const legacyHash = await legacySha256(password);
+  if (legacyHash !== user.passwordHash) return { ok: false, needsUpgrade: false };
+  const { hash, salt } = await hashPassword(password);
+  return { ok: true, needsUpgrade: true, newHash: hash, newSalt: salt };
 }
 
 export function getSession() {
@@ -31,13 +70,22 @@ export function clearSession() {
 
 export function requireAuth() {
   return new Promise(resolve => {
-    const users = state.db.users || [];
+    // listActive() excludes soft-deleted accounts, so a "removed" user's
+    // already-open session is rejected on the next reload instead of
+    // continuing to pass this check indefinitely.
+    const users = listActive('users');
     const stored = getSession();
-    if (stored && users.find(u => u.id === stored.userId)) {
-      state.session = stored;
+    const liveUser = stored ? users.find(u => u.id === stored.userId) : null;
+    if (liveUser) {
+      // Re-sync from the live record so a role/name change an admin makes
+      // takes effect the next time this user's session is checked, instead
+      // of being stuck with whatever was cached in localStorage at login.
+      state.session = { userId: liveUser.id, username: liveUser.username, role: liveUser.role, name: liveUser.name };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(state.session));
       resolve(state.session);
       return;
     }
+    if (stored) clearSession(); // session pointed at a deleted/missing account
     const screen = el('div', { id: 'login-screen', class: 'login-screen' });
     document.body.appendChild(screen);
     const hasGithubConfig = !!(state.github?.owner && state.github?.repo);
@@ -74,9 +122,12 @@ function renderLogin(screen, resolve) {
     errEl.textContent = '';
     btn.disabled = true;
     try {
-      const hash = await hashPassword(password);
-      const user = (state.db.users || []).find(u => u.username === username && u.passwordHash === hash);
-      if (!user) { errEl.textContent = 'Invalid username or password'; passwordI.value = ''; btn.disabled = false; return; }
+      const user = listActive('users').find(u => u.username === username);
+      const result = user ? await verifyPassword(password, user) : { ok: false };
+      if (!result.ok) { errEl.textContent = 'Invalid username or password'; passwordI.value = ''; btn.disabled = false; return; }
+      if (result.needsUpgrade) {
+        upsert('users', { ...user, passwordHash: result.newHash, passwordSalt: result.newSalt });
+      }
       setSession(user);
       screen.remove();
       resolve(state.session);
@@ -136,8 +187,8 @@ function renderSetup(screen, resolve) {
     errEl.textContent = '';
     btn.disabled = true;
     try {
-      const hash = await hashPassword(password);
-      const user = { id: newId('usr'), username, name, role: 'admin', passwordHash: hash };
+      const { hash, salt } = await hashPassword(password);
+      const user = { id: newId('usr'), username, name, role: 'admin', passwordHash: hash, passwordSalt: salt };
       upsert('users', user);
       setSession(user);
       screen.remove();

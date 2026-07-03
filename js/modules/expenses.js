@@ -496,6 +496,9 @@ function build() {
       const res = _expFieldCache.get(r.id);
       if (accountingTypeFilter.size > 0 && !accountingTypeFilter.has(res?.accountingType))             return false;
       if (recurrenceFilter.size > 0     && !recurrenceFilter.has(res?.recurrence))                     return false;
+      // Keep in sync with renderTable's filtering — otherwise the dashboard
+      // charts and the table footer show different totals while searching.
+      if (_expSearch && !derive(r).searchText.includes(_expSearch))                                    return false;
       return true;
     });
 
@@ -838,9 +841,15 @@ function openForm(existing, defaults = {}, onSave = null) {
     if (!item) return;
     const qty = Number(invQtyI.value) || 1;
     if (item.batches) {
-      const { totalCost } = fifoDeduct(item, qty);
-      amountI.value = totalCost.toFixed(2);
-      currencyS.value = item.batches.find(b => b.currency)?.currency || 'EUR';
+      const { totalCost, totalCostEUR, mixedCurrency, consumed } = fifoDeduct(item, qty, dateI.value);
+      if (mixedCurrency) {
+        amountI.value = totalCostEUR.toFixed(2);
+        currencyS.value = 'EUR';
+        toast('This quantity spans batches in different currencies — amount converted to EUR', 'warning', 6000);
+      } else {
+        amountI.value = totalCost.toFixed(2);
+        currencyS.value = consumed[0]?.currency || item.batches.find(b => b.currency)?.currency || 'EUR';
+      }
     } else {
       // Legacy flat item
       amountI.value = ((item.unitPrice || 0) * qty).toFixed(2);
@@ -887,6 +896,16 @@ function openForm(existing, defaults = {}, onSave = null) {
   invQtyI.oninput   = syncInventoryAmount;
 
   const save = button('Save', { variant: 'primary', onClick: async () => {
+    if (save.disabled) return; // guard against a second click firing before the button visually disables
+    save.disabled = true;
+    try {
+      await doSave();
+    } finally {
+      save.disabled = false;
+    }
+  }});
+
+  async function doSave() {
     if (!allocS.value) { toast('Select what this expense is allocated to', 'danger'); return; }
 
     if (catS.value === 'inventory') {
@@ -910,10 +929,16 @@ function openForm(existing, defaults = {}, onSave = null) {
         if (!ok) return;
       }
 
-      const { updatedBatches, consumed, totalCost } = fifoDeduct(item, qty);
+      const { updatedBatches, consumed, totalCost, totalCostEUR, mixedCurrency, deficit } = fifoDeduct(item, qty, dateI.value);
       upsert('inventory', { ...item, batches: updatedBatches });
-      amountI.value = totalCost.toFixed(2);
-      currencyS.value = consumed[0]?.currency || item.batches?.[0]?.currency || 'EUR';
+      if (mixedCurrency) {
+        amountI.value = totalCostEUR.toFixed(2);
+        currencyS.value = 'EUR';
+      } else {
+        amountI.value = totalCost.toFixed(2);
+        currencyS.value = consumed[0]?.currency || item.batches?.[0]?.currency || 'EUR';
+      }
+      if (deficit > 0) toast(`Stock ran short by ${deficit} — recorded cost may be understated`, 'warning', 6000);
       r.inventoryItemId  = itemId;
       r.inventoryQty     = qty;
       r.inventoryBatches = consumed;
@@ -1024,7 +1049,7 @@ function openForm(existing, defaults = {}, onSave = null) {
     closeModal();
     if (onSave) setTimeout(onSave, 200);
     else setTimeout(() => navigate('expenses'), 200);
-  }});
+  }
   const cancel = button('Cancel', { onClick: closeModal });
   openModal({ title: existing ? 'Edit Expense' : 'New Expense', body, footer: [cancel, save] });
 }

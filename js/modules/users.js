@@ -60,6 +60,10 @@ function renderTable(container, wrap) {
       variant: 'sm ghost',
       onClick: async () => {
         if (u.id === state.session?.userId) { toast('Cannot delete your own account', 'warning'); return; }
+        if (u.role === 'admin' && listActive('users').filter(x => x.role === 'admin' && x.id !== u.id).length === 0) {
+          toast('Cannot delete the last admin account — promote another user first', 'danger');
+          return;
+        }
         const ok = await confirmDialog(`Delete user "${u.username}"?`, { danger: true, okLabel: 'Delete' });
         if (!ok) return;
         softDelete('users', u.id);
@@ -97,22 +101,39 @@ function openForm(existing, wrap) {
   const saveBtn = button('Save', {
     variant: 'primary',
     onClick: async () => {
-      const name = nameI.value.trim();
-      const username = usernameI.value.trim();
-      const password = passwordI.value;
-      if (!name || !username) { toast('Name and username are required', 'danger'); return; }
-      if (isNew && !password) { toast('Password is required', 'danger'); return; }
-      if (password && password.length < 6) { toast('Password must be at least 6 characters', 'danger'); return; }
-      const dup = listActive('users').find(x => x.username === username && x.id !== u.id);
-      if (dup) { toast('Username already taken', 'danger'); return; }
-      Object.assign(u, { name, username, role: roleS.value });
-      if (password) u.passwordHash = await hashPassword(password);
-      upsert('users', u);
-      toast(isNew ? 'User created' : 'User updated', 'success');
-      closeModal();
-      const c = document.getElementById('content');
-      c.innerHTML = '';
-      c.appendChild(build());
+      if (saveBtn.disabled) return;
+      saveBtn.disabled = true;
+      try {
+        const name = nameI.value.trim();
+        const username = usernameI.value.trim();
+        const password = passwordI.value;
+        if (!name || !username) { toast('Name and username are required', 'danger'); return; }
+        if (isNew && !password) { toast('Password is required', 'danger'); return; }
+        if (password && password.length < 6) { toast('Password must be at least 6 characters', 'danger'); return; }
+        const dup = listActive('users').find(x => x.username === username && x.id !== u.id);
+        if (dup) { toast('Username already taken', 'danger'); return; }
+        // Prevent locking everyone out of user management: block demoting
+        // the last remaining admin (including demoting yourself, since a
+        // sole admin doing this would still leave zero admins afterward).
+        if (!isNew && existing.role === 'admin' && roleS.value !== 'admin') {
+          const otherAdmins = listActive('users').filter(x => x.role === 'admin' && x.id !== u.id).length;
+          if (otherAdmins === 0) { toast('Cannot demote the last admin account — promote another user first', 'danger'); return; }
+        }
+        Object.assign(u, { name, username, role: roleS.value });
+        if (password) {
+          const { hash, salt } = await hashPassword(password);
+          u.passwordHash = hash;
+          u.passwordSalt = salt;
+        }
+        upsert('users', u);
+        toast(isNew ? 'User created' : 'User updated', 'success');
+        closeModal();
+        const c = document.getElementById('content');
+        c.innerHTML = '';
+        c.appendChild(build());
+      } finally {
+        saveBtn.disabled = false;
+      }
     }
   });
 

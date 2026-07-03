@@ -4,8 +4,6 @@ import { MASTER_CURRENCY } from './config.js';
 
 const _fmtCache    = new Map();
 const _numFmtCache = new Map();
-let _fxKeysCache   = null;
-let _fxRatesRef    = null;
 
 // ============== Currency ==============
 export function toEUR(amount, currency, dateOrYear) {
@@ -13,19 +11,26 @@ export function toEUR(amount, currency, dateOrYear) {
   if (currency === 'EUR' || !currency) return Number(amount);
   if (currency === 'HUF') {
     const yearRates = state.db.settings?.fxRates?.yearRates || {};
-    const raw = String(dateOrYear || '');
-    const y = raw.slice(0, 4);
-    let rate;
-    if (y && yearRates[y] !== undefined) {
-      rate = yearRates[y];
-    } else {
-      if (_fxRatesRef !== yearRates) {
-        _fxKeysCache = Object.keys(yearRates).sort();
-        _fxRatesRef  = yearRates;
-      }
-      rate = _fxKeysCache.length ? yearRates[_fxKeysCache[_fxKeysCache.length - 1]] : undefined;
+    const years = Object.keys(yearRates);
+    if (years.length === 0) {
+      // No FX table configured at all — returning the raw HUF number as if
+      // it were EUR would silently inflate totals ~300-400x. 0 undercounts,
+      // but it's the safer failure mode for a financial aggregate.
+      console.warn('[BT] toEUR: no HUF FX rates configured — treating amount as 0 EUR instead of guessing');
+      return 0;
     }
-    if (rate !== undefined) return Number(amount) * rate;
+    const exactYear = String(dateOrYear || '').slice(0, 4);
+    let rate = exactYear ? yearRates[exactYear] : undefined;
+    if (rate === undefined) {
+      // Fall back to the nearest configured year by absolute distance (not
+      // always the most recent), so a record older than the earliest
+      // configured year doesn't get converted with a much-later rate.
+      const sorted = years.map(Number).sort((a, b) => a - b);
+      const target = exactYear ? Number(exactYear) : sorted[sorted.length - 1];
+      const nearest = sorted.reduce((best, yr) => Math.abs(yr - target) < Math.abs(best - target) ? yr : best);
+      rate = yearRates[String(nearest)];
+    }
+    return Number(amount) * rate;
   }
   return Number(amount);
 }
@@ -66,6 +71,21 @@ export function newId(prefix) {
 
 // ============== Generic CRUD ==============
 export function upsert(collection, item) {
+  if (collection === 'users' && item.role === 'admin') {
+    // Defense-in-depth against the trivial self-escalation path (calling
+    // upsert('users', {role:'admin'}) from the console): block granting NEW
+    // admin status unless the acting session is already an admin, or this
+    // is the very first account ever created (no users exist yet). This is
+    // NOT a real security boundary — there's no backend, so a determined
+    // attacker could still bypass it — but it closes the trivial case.
+    const existingUsers = state.db.users || [];
+    const priorRecord = existingUsers.find(u => u.id === item.id);
+    const grantingAdmin = !priorRecord || priorRecord.role !== 'admin';
+    const isBootstrap = existingUsers.length === 0;
+    if (grantingAdmin && !isBootstrap && state.session?.role !== 'admin') {
+      throw new Error('Only an existing admin can grant admin access');
+    }
+  }
   const now = Date.now();
   const actor = state.session?.username || 'system';
   const arr = state.db[collection] || (state.db[collection] = []);
@@ -199,9 +219,13 @@ export function applyFilters(rows, { year, years, stream, owner, propertyId, cli
       if (!r.date.startsWith(String(y))) return false;
     }
     if (s && s !== 'all' && r.stream && r.stream !== s) return false;
-    if (o && o !== 'all' && r.owner && r.owner !== o && r.owner !== 'both' && o !== 'both') {
-      // property/invoice owner filter
-      return false;
+    if (o && o !== 'all' && o !== 'both') {
+      // A record with no owner assigned defaults to 'both' (shared) — same
+      // convention used by mOwner() in analytics-filters.js — so it's an
+      // explicit rule here too, not an accidental pass-through of falsy
+      // `r.owner`.
+      const ro = r.owner || 'both';
+      if (ro !== 'both' && ro !== o) return false;
     }
     if (propertyId && r.propertyId !== propertyId) return false;
     if (clientId && r.clientId !== clientId) return false;
@@ -340,7 +364,10 @@ export function propertyROI(propertyId) {
   const prop = byId('properties', propertyId);
   if (!prop) return 0;
   const purchaseEUR = toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate);
-  const renoEUR = renovationCapexEUR({ propertyId });
+  // "Total invested" is a lifetime figure — pin year:'all' explicitly so it
+  // doesn't inherit whatever year happens to be selected in the ambient
+  // dashboard filter (state.ui.filters.year).
+  const renoEUR = renovationCapexEUR({ propertyId, year: 'all' });
   const totalInvested = purchaseEUR + renoEUR;
   if (!totalInvested) return 0;
   const now = new Date().getFullYear();
@@ -360,7 +387,8 @@ export function simplePropertyROI(propertyId, { netIncome, totalInvested } = {})
   const invested = totalInvested !== undefined ? totalInvested : (() => {
     const purchaseEUR = prop.purchasePrice
       ? toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) : 0;
-    return purchaseEUR + renovationCapexEUR({ propertyId });
+    // Lifetime figure — see propertyROI() above for why year is pinned to 'all'.
+    return purchaseEUR + renovationCapexEUR({ propertyId, year: 'all' });
   })();
   if (invested <= 0) return null;
 
@@ -559,6 +587,10 @@ export function getForecastVsActual(type, entityId, year) {
     entityExpenses = listActive('expenses').filter(e => e.propertyId === entityId && !isCapEx(e) && (e.date || '').startsWith(yearStr));
   } else {
     entityInvoices = listActive('invoices').filter(i => i.stream === entityId && i.status === 'paid' && (i.issueDate || '').startsWith(yearStr));
+    // Service-stream expenses match by e.stream (same convention as
+    // getActualExpRows in forecast.js) — this used to be left unset, so
+    // actualExp was hardcoded to 0 for every service-forecast month below.
+    entityExpenses = listActive('expenses').filter(e => e.stream === entityId && !isCapEx(e) && (e.date || '').startsWith(yearStr));
   }
 
   const months = [];
@@ -569,10 +601,10 @@ export function getForecastVsActual(type, entityId, year) {
     let actualRev = 0, actualExp = 0;
     if (type === 'property') {
       actualRev = entityPayments.filter(p => p.date >= start && p.date <= end).reduce((s, p) => s + toEUR(p.amount, p.currency, year), 0);
-      actualExp = entityExpenses.filter(e => e.date >= start && e.date <= end).reduce((s, e) => s + toEUR(e.amount, e.currency, year), 0);
     } else {
       actualRev = entityInvoices.filter(i => i.issueDate >= start && i.issueDate <= end).reduce((s, i) => s + toEUR(i.total, i.currency, year), 0);
     }
+    actualExp = entityExpenses.filter(e => e.date >= start && e.date <= end).reduce((s, e) => s + toEUR(e.amount, e.currency, year), 0);
     const fd = fc?.months?.[key] || {};
     // Fall back to scheduled LT rent when no manual forecast entry exists for this month
     const forecastRev = fd.revenue || (ltRentByMonth?.[key] ?? 0);
@@ -706,12 +738,18 @@ export function generatePaymentSchedule(property) {
   const vacantPeriods = property.vacantPeriods || [];
   const soldDate = (property.status === 'sold' && property.soldDate) ? property.soldDate : null;
 
-  // Merge segments from all tenants, deduplicate by monthKey (earlier lease wins)
+  // Merge segments from all tenants (already sorted earlier-lease-first
+  // above), deduplicate by monthKey BEFORE re-ordering chronologically.
+  // Dedup must see entries in tenant-priority order so "earlier lease wins"
+  // is decided by lease start date — sorting by due-date string first (as
+  // this used to do) let day-of-month decide instead, since e.g. "05" sorts
+  // before "25" regardless of which tenant's lease actually started earlier.
   const all = [];
   for (const t of tenants) all.push(..._scheduleSegment(property.id, t, t.id, vacantPeriods, soldDate, paysByMonth));
-  all.sort((a, b) => a.date.localeCompare(b.date));
   const seen = new Set();
-  return all.filter(e => { if (seen.has(e.monthKey)) return false; seen.add(e.monthKey); return true; });
+  const deduped = all.filter(e => { if (seen.has(e.monthKey)) return false; seen.add(e.monthKey); return true; });
+  deduped.sort((a, b) => a.date.localeCompare(b.date));
+  return deduped;
 }
 
 // ============== Reconciliation ==============
@@ -727,6 +765,13 @@ export function buildReconciliationData(year) {
     const arr = tenantsByProp.get(t.propertyId) || [];
     arr.push(t);
     tenantsByProp.set(t.propertyId, arr);
+  }
+  // Sort each property's tenants by lease start date so an overlapping-month
+  // lookup below (.find()) resolves to the earlier lease first — same
+  // "earlier lease wins" convention generatePaymentSchedule() uses, so the
+  // two views agree on which tenant's rent is "expected" in a transition month.
+  for (const arr of tenantsByProp.values()) {
+    arr.sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || ''));
   }
   const paysByProp = new Map();
   for (const p of listActivePayments()) {
@@ -1028,12 +1073,19 @@ export function totalRemaining(item) {
  * Returns { updatedBatches, consumed: [{batchId, qty, unitPrice, currency}], totalCost, deficit }.
  * deficit > 0 means available stock was less than requested qty.
  */
-export function fifoDeduct(item, qty) {
-  if (!item?.batches?.length) return { updatedBatches: item?.batches || [], consumed: [], totalCost: 0, deficit: qty };
+/**
+ * dateForFx (optional): date/year used to convert each consumed batch's cost
+ * to EUR. Batches can carry different currencies, so `totalCost` (raw sum,
+ * kept for callers that already know all batches share one currency) is
+ * unsafe to use whenever `mixedCurrency` is true — use `totalCostEUR` instead.
+ */
+export function fifoDeduct(item, qty, dateForFx = null) {
+  if (!item?.batches?.length) return { updatedBatches: item?.batches || [], consumed: [], totalCost: 0, totalCostEUR: 0, mixedCurrency: false, deficit: qty };
   const sorted = [...item.batches].sort((a, b) => (a.dateBought || '').localeCompare(b.dateBought || ''));
   let need = qty;
   const consumed = [];
   let totalCost = 0;
+  let totalCostEUR = 0;
   const patchMap = new Map();
 
   for (const b of sorted) {
@@ -1041,8 +1093,11 @@ export function fifoDeduct(item, qty) {
     const avail = b.remaining ?? b.qty ?? 0;
     const take  = Math.min(avail, need);
     if (take <= 0) continue;
-    consumed.push({ batchId: b.id, qty: take, unitPrice: b.unitPrice || 0, currency: b.currency || 'EUR' });
-    totalCost += take * (b.unitPrice || 0);
+    const currency = b.currency || 'EUR';
+    const lineCost = take * (b.unitPrice || 0);
+    consumed.push({ batchId: b.id, qty: take, unitPrice: b.unitPrice || 0, currency });
+    totalCost += lineCost;
+    totalCostEUR += toEUR(lineCost, currency, dateForFx);
     patchMap.set(b.id, avail - take);
     need -= take;
   }
@@ -1050,7 +1105,8 @@ export function fifoDeduct(item, qty) {
   const updatedBatches = item.batches.map(b =>
     patchMap.has(b.id) ? { ...b, remaining: patchMap.get(b.id) } : b
   );
-  return { updatedBatches, consumed, totalCost, deficit: need };
+  const mixedCurrency = new Set(consumed.map(c => c.currency)).size > 1;
+  return { updatedBatches, consumed, totalCost, totalCostEUR, mixedCurrency, deficit: need };
 }
 
 // ============== Reservation Expense Rules ==============
@@ -1142,13 +1198,20 @@ function _applyOneRule(rule, payment, reservationRef, genIndex = null) {
     const item = byId('inventory', rule.inventoryItemId);
     if (!item) return;
     const qty = rule.inventoryQty || 1;
-    const { updatedBatches, consumed, totalCost } = fifoDeduct(item, qty);
+    const invDate = payment.checkIn || payment.airbnbCheckIn || payment.date || '';
+    const { updatedBatches, consumed, totalCostEUR, deficit } = fifoDeduct(item, qty, invDate);
     upsert('inventory', { ...item, batches: updatedBatches });
-    amount = totalCost;
-    currency = consumed[0]?.currency || item.batches?.[0]?.currency || 'EUR';
+    // Always normalized to EUR — consumed batches can span multiple
+    // currencies, and there's no human review on this auto-generated path.
+    amount = totalCostEUR;
+    currency = 'EUR';
     inventoryItemId = rule.inventoryItemId;
     inventoryQty = qty;
     inventoryBatches = consumed;
+    if (deficit > 0) {
+      reviewNeeded = true;
+      reviewReason = `Insufficient stock — short by ${deficit} unit${deficit === 1 ? '' : 's'}; cost may be understated`;
+    }
   } else if (rule.amountSource === 'vendor_rate') {
     const refDate = payment.checkIn || payment.airbnbCheckIn || payment.date || '';
     const matches = refDate ? findVendorRateByPeriod(payment.propertyId, refDate, rule.vendorId || '') : [];
