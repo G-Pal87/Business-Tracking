@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-03T07:01:40.555Z",
+  "generatedAt": "2026-07-03T07:22:52.417Z",
   "property": {
     "id": "prop_mox7p43s8o",
     "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
@@ -3287,21 +3287,21 @@
       "date": "2027-06-01",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2026 (23n, 1.95×) + June 2025 (29n, 1.27×)",
-      "originalAmount": 71,
+      "basis": "June 2026 (26n, 1.95×) + June 2025 (29n, 1.27×)",
+      "originalAmount": 70,
       "discountPct": 20,
-      "amount": 57,
-      "airbnbCheckout": 81
+      "amount": 56,
+      "airbnbCheckout": 80
     },
     {
       "date": "2027-06-02",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2026 (23n, 1.95×) + June 2025 (29n, 1.27×)",
-      "originalAmount": 71,
+      "basis": "June 2026 (26n, 1.95×) + June 2025 (29n, 1.27×)",
+      "originalAmount": 70,
       "discountPct": 20,
-      "amount": 57,
-      "airbnbCheckout": 81
+      "amount": 56,
+      "airbnbCheckout": 80
     },
     {
       "date": "2027-06-03",
@@ -3407,11 +3407,11 @@
       "date": "2027-06-13",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2026 (23n, 1.95×) + June 2025 (29n, 1.27×)",
-      "originalAmount": 71,
+      "basis": "June 2026 (26n, 1.95×) + June 2025 (29n, 1.27×)",
+      "originalAmount": 70,
       "discountPct": 20,
-      "amount": 57,
-      "airbnbCheckout": 81
+      "amount": 56,
+      "airbnbCheckout": 80
     },
     {
       "date": "2027-06-14",
@@ -3427,21 +3427,21 @@
       "date": "2027-06-15",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2026 (23n, 1.95×) + June 2025 (29n, 1.27×)",
-      "originalAmount": 71,
+      "basis": "June 2026 (26n, 1.95×) + June 2025 (29n, 1.27×)",
+      "originalAmount": 70,
       "discountPct": 20,
-      "amount": 57,
-      "airbnbCheckout": 81
+      "amount": 56,
+      "airbnbCheckout": 80
     },
     {
       "date": "2027-06-16",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2026 (23n, 1.95×) + June 2025 (29n, 1.27×)",
-      "originalAmount": 71,
+      "basis": "June 2026 (26n, 1.95×) + June 2025 (29n, 1.27×)",
+      "originalAmount": 70,
       "discountPct": 20,
-      "amount": 57,
-      "airbnbCheckout": 81
+      "amount": 56,
+      "airbnbCheckout": 80
     },
     {
       "date": "2027-06-17",
@@ -3547,31 +3547,31 @@
       "date": "2027-06-27",
       "currency": "EUR",
       "status": "open",
-      "basis": "June 2026 (23n, 1.95×) + June 2025 (29n, 1.27×)",
-      "originalAmount": 71,
+      "basis": "June 2026 day 27 (1n, 1.95×) + June 2025 day 27 (1n, 1.27×)",
+      "originalAmount": 53,
       "discountPct": 20,
-      "amount": 57,
-      "airbnbCheckout": 81
+      "amount": 42,
+      "airbnbCheckout": 60
     },
     {
       "date": "2027-06-28",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "June 2026 (23n, 1.95×) + June 2025 (29n, 1.27×)",
-      "originalAmount": 71,
+      "basis": "June 2026 day 28 (1n, 1.95×) + June 2025 day 28 (1n, 1.27×)",
+      "originalAmount": 53,
       "discountPct": 20,
-      "amount": 57,
-      "airbnbCheckout": 81
+      "amount": 42,
+      "airbnbCheckout": 60
     },
     {
       "date": "2027-06-29",
       "currency": "EUR",
       "status": "blocked",
-      "basis": "June 2026 (23n, 1.95×) + June 2025 (29n, 1.27×)",
-      "originalAmount": 71,
+      "basis": "June 2026 day 29 (1n, 1.95×) + June 2025 day 29 (1n, 1.27×)",
+      "originalAmount": 68,
       "discountPct": 20,
-      "amount": 57,
-      "airbnbCheckout": 81
+      "amount": 54,
+      "airbnbCheckout": 78
     },
     {
       "date": "2027-06-30",
