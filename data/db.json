@@ -37302,6 +37302,12 @@
           "summary": "Reserved"
         },
         {
+          "start": "2026-07-05",
+          "end": "2026-07-07",
+          "uid": "1418fb94e984-d82fd9f3c2e7f0bbd34476f9a8055589@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
           "start": "2026-07-19",
           "end": "2026-07-22",
           "uid": "1418fb94e984-87ebf4a55dfc94baae9364c885037058@airbnb.com",
@@ -37337,7 +37343,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1783023632149,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-07-05T01:26:45.850Z"
+      "lastFetched": "2026-07-05T14:16:55.576Z"
     },
     {
       "id": "stc_371e30d84db64e0d9c7e47be2cc97d42",
