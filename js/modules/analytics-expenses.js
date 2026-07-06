@@ -1,5 +1,5 @@
 // Expense Analytics Dashboard — understand cost structure
-import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter, openModal } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, monthLabel, drillDownModal, attachSortFilter, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, COST_CATEGORIES, ACCOUNTING_TYPES } from '../core/config.js';
 import {
@@ -102,7 +102,7 @@ function getRevenue(start, end) {
   const services = listActive('invoices')
     .filter(i => i.status === 'paid' && (i.issueDate || '') >= start && (i.issueDate || '') <= end && mStream(i) && mOwner(i) && mClient(i))
     .reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-  return rentals + services;
+  return { total: rentals + services, rentals, services };
 }
 
 // ── Rebuild ───────────────────────────────────────────────────────────────────
@@ -268,11 +268,23 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
     if (recurringPatterns.length > 0) {
       recurringPatterns.sort((a, b) => b.avg - a.avg);
       const examples = recurringPatterns.slice(0, 3).map(p => `${p.key} monthly avg ${formatEUR(p.avg)}`).join(', ');
+      const recurringRows = [];
+      recurringPatterns.forEach(p => {
+        const mMap = vendorMonthMap.get(p.key);
+        [...mMap.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([mk, amts]) => {
+          recurringRows.push({ vendor: p.key, month: mk, eur: amts.reduce((s, v) => s + v, 0) });
+        });
+      });
       signals.push({
         title:    'Recurring Expenses',
         text:     `${recurringPatterns.length} recurring expense pattern${recurringPatterns.length !== 1 ? 's' : ''} detected — ${examples}`,
         severity: 'Note',
-        inspect:  null
+        inspect:  'Recurring Vendors',
+        onClick:  () => drillDownModal('Recurring Expenses', recurringRows, [
+          { key: 'vendor', label: 'Vendor' },
+          { key: 'month',  label: 'Month', format: v => monthLabel(v) },
+          { key: 'eur',    label: 'EUR',   right: true, format: v => formatEUR(v) }
+        ])
       });
     }
   }
@@ -337,8 +349,10 @@ function buildView() {
   // Data
   const cur = getData(curRange.start, curRange.end);
   const cmp = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
-  const revenue    = getRevenue(curRange.start, curRange.end);
-  const cmpRevenue = cmpRange ? getRevenue(cmpRange.start, cmpRange.end) : 0;
+  const revenueData    = getRevenue(curRange.start, curRange.end);
+  const cmpRevenueData = cmpRange ? getRevenue(cmpRange.start, cmpRange.end) : null;
+  const revenue    = revenueData.total;
+  const cmpRevenue = cmpRevenueData ? cmpRevenueData.total : 0;
   const { allExp, opEx, capEx, opTotal, capTotal, total } = cur;
   const capExCats = getCapExCatKeys(allExp);
   const cmpLabel = cmpRange?.label;
@@ -512,6 +526,37 @@ function buildView() {
     openModal({ title: `CapEx — ${formatEUR(capTotal)}`, body, large: true });
   };
 
+  const expRatioDrill = () => {
+    const body = el('div');
+    body.appendChild(mkSummaryGrid([
+      { label: 'Revenue',              value: formatEUR(revenue) },
+      { label: 'Operating Expenses',   value: formatEUR(opTotal) },
+      { label: 'Expense Ratio',        value: expRatio !== null ? `${expRatio.toFixed(1)}%` : '—', sub: 'OpEx / Revenue' }
+    ], 3));
+    if (revenue > 0) {
+      body.appendChild(mkSectionLabel('Revenue Composition'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Source' }, { label: 'Amount', right: true }, { label: '% of Revenue', right: true, muted: true }],
+        [
+          ['Rentals',  formatEUR(revenueData.rentals),  (revenueData.rentals  / revenue * 100).toFixed(1) + '%'],
+          ['Services', formatEUR(revenueData.services), (revenueData.services / revenue * 100).toFixed(1) + '%']
+        ]
+      ));
+    }
+    const catMap = new Map();
+    opEx.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+    const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+    if (cats.length) {
+      body.appendChild(el('div', { style: 'margin-top:20px' }));
+      body.appendChild(mkSectionLabel('OpEx by Category'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of OpEx', right: true, muted: true }],
+        cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—'])
+      ));
+    }
+    openModal({ title: `Expense Ratio — ${expRatio !== null ? expRatio.toFixed(1) + '%' : '—'}`, body, large: true });
+  };
+
   // 1. Total Expenses
   kpiRow1.appendChild(mkKpiCard({
     label:       'Total Expenses',
@@ -563,14 +608,7 @@ function buildView() {
     invertDelta: true,
     compLabel:   cmpLabel,
     variant:     expRatio !== null && expRatio > 80 ? 'danger' : '',
-    onClick:     () => drillDownModal('Expense Ratio Breakdown', [
-      { metric: 'Revenue',                        value: formatEUR(revenue) },
-      { metric: 'Operating Expenses',             value: formatEUR(opTotal) },
-      { metric: 'Expense Ratio (OpEx / Revenue)', value: expRatio !== null ? `${expRatio.toFixed(1)}%` : '—' }
-    ], [
-      { key: 'metric', label: 'Metric' },
-      { key: 'value',  label: 'Value', right: true }
-    ])
+    onClick:     expRatioDrill
   }));
 
   wrap.appendChild(kpiRow1);
@@ -589,7 +627,7 @@ function buildView() {
     delta:     capShareDelta,
     deltaIsPp: true,
     compLabel: cmpLabel,
-    onClick:   () => drillDownModal('CapEx Records', toExpDrillRows(capEx), DRILL_COLS)
+    onClick:   capExDrill
   }));
 
   // 6. Top Vendor
