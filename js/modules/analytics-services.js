@@ -178,7 +178,10 @@ const ACTIVE_CLIENT_DRILL_COLS = [
 ];
 
 // ── Service Performance Insights ──────────────────────────────────────────────
-function computeServiceInsights({ paidTotal, invoicedTotal, outstandingTotal, overdueTotal, concentration, topClient, collectionRate, nonDraft, cmpData, cmpRange }) {
+function computeServiceInsights({
+  paidTotal, invoicedTotal, outstandingTotal, overdueTotal, concentration, topClient, collectionRate, nonDraft, cmpData, cmpRange,
+  onClickClientConcentration, onClickCollectionRate, onClickOverdue, onClickOutstanding, onClickPaidRevenue
+}) {
   const signals = [];
 
   if (nonDraft.length === 0) {
@@ -198,14 +201,16 @@ function computeServiceInsights({ paidTotal, invoicedTotal, outstandingTotal, ov
         severity: 'At Risk',
         title: 'CLIENT CONCENTRATION',
         text: `${topClient.name} drives ${concentration.toFixed(0)}% of paid service revenue — high dependency risk.`,
-        inspect: 'Revenue by Client'
+        inspect: 'Revenue by Client',
+        onClick: onClickClientConcentration
       });
     } else if (concentration > 40) {
       signals.push({
         severity: 'Watch',
         title: 'CLIENT CONCENTRATION',
         text: `${topClient.name} accounts for ${concentration.toFixed(0)}% of paid service revenue. Consider diversifying.`,
-        inspect: 'Revenue by Client'
+        inspect: 'Revenue by Client',
+        onClick: onClickClientConcentration
       });
     }
   }
@@ -217,14 +222,16 @@ function computeServiceInsights({ paidTotal, invoicedTotal, outstandingTotal, ov
         severity: 'At Risk',
         title: 'COLLECTION HEALTH',
         text: `Collection rate is ${collectionRate.toFixed(0)}% — less than 60% of invoiced revenue has been paid.`,
-        inspect: 'Invoice Records'
+        inspect: 'Invoice Records',
+        onClick: onClickCollectionRate
       });
     } else if (collectionRate < 80) {
       signals.push({
         severity: 'Watch',
         title: 'COLLECTION HEALTH',
         text: `Collection rate is ${collectionRate.toFixed(0)}%. A portion of invoiced revenue remains uncollected.`,
-        inspect: 'Invoice Records'
+        inspect: 'Invoice Records',
+        onClick: onClickCollectionRate
       });
     }
   }
@@ -236,7 +243,8 @@ function computeServiceInsights({ paidTotal, invoicedTotal, outstandingTotal, ov
       severity: sev,
       title: 'OVERDUE INVOICES',
       text: `${formatEUR(overdueTotal)} in overdue invoices require follow-up.`,
-      inspect: 'Invoice Records'
+      inspect: 'Invoice Records',
+      onClick: onClickOverdue
     });
   }
 
@@ -246,7 +254,8 @@ function computeServiceInsights({ paidTotal, invoicedTotal, outstandingTotal, ov
       severity: 'Watch',
       title: 'OUTSTANDING RISK',
       text: `${formatEUR(outstandingTotal)} outstanding — more than 50% of paid revenue. Monitor collection closely.`,
-      inspect: 'Outstanding per Client'
+      inspect: 'Outstanding per Client',
+      onClick: onClickOutstanding
     });
   }
 
@@ -258,14 +267,16 @@ function computeServiceInsights({ paidTotal, invoicedTotal, outstandingTotal, ov
         severity: 'Watch',
         title: 'REVENUE DECLINE',
         text: `Paid service revenue is down ${Math.abs(growth).toFixed(0)}% vs ${cmpRange.label}. Investigate service demand.`,
-        inspect: 'Monthly Revenue by Stream'
+        inspect: 'Monthly Revenue by Stream',
+        onClick: onClickPaidRevenue
       });
     } else if (growth !== null && growth > 20) {
       signals.push({
         severity: 'Note',
         title: 'REVENUE GROWTH',
         text: `Paid service revenue grew ${growth.toFixed(0)}% vs ${cmpRange.label}.`,
-        inspect: 'Monthly Revenue by Stream'
+        inspect: 'Monthly Revenue by Stream',
+        onClick: onClickPaidRevenue
       });
     }
   }
@@ -312,7 +323,10 @@ function buildStreamPerformanceCard(kpiBase) {
       }
     }
 
-    return { k, streamPaid, streamInvoiced, streamOutstanding, streamCollectionRate, topClient, invoiceCount };
+    return {
+      k, streamPaid, streamInvoiced, streamOutstanding, streamCollectionRate, topClient, invoiceCount,
+      streamPaidInv, streamNonDraft, streamOutInv
+    };
   });
 
   // Skip if both streams have zero invoiced revenue
@@ -340,20 +354,111 @@ function buildStreamPerformanceCard(kpiBase) {
       style: `font-size:12px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:${color};padding-bottom:4px;border-bottom:2px solid ${color}`
     }, label));
 
-    // Summary boxes grid
+    // Summary boxes grid — each opens the stream-filtered version of the matching top-level modal
     const boxGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px' });
 
-    boxGrid.appendChild(mkSummaryBox('Paid Revenue', formatEUR(d.streamPaid),
-      d.invoiceCount > 0 ? `${d.invoiceCount} invoice${d.invoiceCount !== 1 ? 's' : ''}` : null));
-
     const rateVariant = d.streamCollectionRate === null ? '' :
-      d.streamCollectionRate >= 80 ? 'good' :
-      d.streamCollectionRate >= 60 ? 'warn' : 'danger';
+      d.streamCollectionRate >= 80 ? 'success' :
+      d.streamCollectionRate >= 60 ? 'warning' : 'danger';
     const rateLabel = d.streamCollectionRate !== null ? d.streamCollectionRate.toFixed(0) + '%' : '—';
-    boxGrid.appendChild(mkSummaryBox('Collection Rate', rateLabel, 'Paid / invoiced', rateVariant));
 
-    boxGrid.appendChild(mkSummaryBox('Invoiced', formatEUR(d.streamInvoiced), null));
-    boxGrid.appendChild(mkSummaryBox('Outstanding', formatEUR(d.streamOutstanding), null));
+    boxGrid.appendChild(mkKpiCard({
+      label:   'Paid Revenue',
+      value:   formatEUR(d.streamPaid),
+      subtitle: d.invoiceCount > 0 ? `${d.invoiceCount} invoice${d.invoiceCount !== 1 ? 's' : ''}` : null,
+      onClick: () => {
+        const body = el('div');
+        const clientMap = new Map();
+        d.streamPaidInv.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
+        const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
+        if (clients.length) {
+          body.appendChild(mkSectionLabel('By Client'));
+          body.appendChild(mkModalTable(
+            ['Client', 'Invoices', 'Revenue', '% of Paid'],
+            clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), d.streamPaid > 0 ? (c.v / d.streamPaid * 100).toFixed(1) + '%' : '—'])
+          ));
+        } else {
+          body.appendChild(mkEmptyState('No paid invoices for this stream in the selected period.'));
+        }
+        openModal({ title: `Paid Revenue — ${label} — ${formatEUR(d.streamPaid)}`, body, large: true });
+      }
+    }));
+
+    boxGrid.appendChild(mkKpiCard({
+      label:   'Collection Rate',
+      value:   rateLabel,
+      variant: rateVariant,
+      subtitle: 'Paid / invoiced',
+      onClick: () => {
+        const body = el('div');
+        const streamOverdueTotal = sum(d.streamOutInv.filter(i => i.status === 'overdue'));
+        const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
+        sgrid.appendChild(mkSummaryBox('Paid', formatEUR(d.streamPaid), d.streamCollectionRate != null ? `${d.streamCollectionRate.toFixed(0)}% collected` : null));
+        sgrid.appendChild(mkSummaryBox('Outstanding', formatEUR(d.streamOutstanding), d.streamInvoiced > 0 ? `${(d.streamOutstanding / d.streamInvoiced * 100).toFixed(0)}% of invoiced` : null));
+        sgrid.appendChild(mkSummaryBox('Overdue', formatEUR(streamOverdueTotal), d.streamOutstanding > 0 ? `${(streamOverdueTotal / d.streamOutstanding * 100).toFixed(0)}% of outstanding` : null));
+        body.appendChild(sgrid);
+        const clientMap = new Map();
+        d.streamNonDraft.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, paid: 0, total: 0 }; x.total += toEUR(i.total, i.currency, i.issueDate); if (i.status === 'paid') x.paid += toEUR(i.total, i.currency, i.issueDate); clientMap.set(id, x); });
+        const clients = [...clientMap.values()].sort((a, b) => b.total - a.total);
+        if (clients.length) {
+          body.appendChild(mkSectionLabel('Collection by Client'));
+          body.appendChild(mkModalTable(
+            ['Client', 'Invoiced', 'Paid', 'Rate'],
+            clients.map(c => [c.n, formatEUR(c.total), formatEUR(c.paid), c.total > 0 ? (c.paid / c.total * 100).toFixed(0) + '%' : '—'])
+          ));
+        }
+        openModal({ title: `Collection Rate — ${label} — ${d.streamCollectionRate != null ? d.streamCollectionRate.toFixed(0) + '%' : 'N/A'}`, body, large: true });
+      }
+    }));
+
+    boxGrid.appendChild(mkKpiCard({
+      label:   'Invoiced',
+      value:   formatEUR(d.streamInvoiced),
+      onClick: () => {
+        const body = el('div');
+        const statusMap = new Map();
+        d.streamNonDraft.forEach(i => { statusMap.set(i.status, (statusMap.get(i.status) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+        const statuses = [...statusMap.entries()].sort((a, b) => b[1] - a[1]);
+        if (statuses.length) {
+          const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${Math.min(statuses.length, 4)},1fr);gap:10px;margin-bottom:20px` });
+          statuses.forEach(([s, v]) => sgrid.appendChild(mkSummaryBox(INVOICE_STATUSES[s]?.label || s, formatEUR(v), d.streamInvoiced > 0 ? `${(v / d.streamInvoiced * 100).toFixed(0)}%` : null)));
+          body.appendChild(sgrid);
+        }
+        const clientMap = new Map();
+        d.streamNonDraft.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
+        const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
+        if (clients.length) {
+          body.appendChild(mkSectionLabel('By Client'));
+          body.appendChild(mkModalTable(
+            ['Client', 'Invoices', 'Invoiced', '% of Total'],
+            clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), d.streamInvoiced > 0 ? (c.v / d.streamInvoiced * 100).toFixed(1) + '%' : '—'])
+          ));
+        }
+        openModal({ title: `Invoiced Revenue — ${label} — ${formatEUR(d.streamInvoiced)}`, body, large: true });
+      }
+    }));
+
+    boxGrid.appendChild(mkKpiCard({
+      label:   'Outstanding',
+      value:   formatEUR(d.streamOutstanding),
+      variant: d.streamOutstanding > 0 ? 'warning' : '',
+      onClick: () => {
+        const body = el('div');
+        const clientMap = new Map();
+        d.streamOutInv.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, overdue: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); if (i.status === 'overdue') x.overdue += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
+        const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
+        if (clients.length) {
+          body.appendChild(mkSectionLabel('Outstanding by Client'));
+          body.appendChild(mkModalTable(
+            ['Client', 'Invoices', 'Outstanding', 'Overdue'],
+            clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), c.overdue > 0 ? formatEUR(c.overdue) : '—'])
+          ));
+        } else {
+          body.appendChild(mkEmptyState('No outstanding invoices for this stream.'));
+        }
+        openModal({ title: `Outstanding — ${label} — ${formatEUR(d.streamOutstanding)}`, body, large: true });
+      }
+    }));
 
     col.appendChild(boxGrid);
 
@@ -436,6 +541,28 @@ function buildView() {
 
   // ── KPI row 1: Paid Revenue, Invoiced Revenue, Collection Rate, Outstanding ─
   const kpiRow1 = el('div', { class: 'grid grid-4 mb-16' });
+  const onClickPaidRevenue = () => {
+    const body = el('div');
+    const streamMap = new Map();
+    paid.forEach(i => { const s = i.stream; streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+    const streams = [...streamMap.entries()].sort((a, b) => b[1] - a[1]);
+    if (streams.length > 1) {
+      const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${Math.min(streams.length, 3)},1fr);gap:10px;margin-bottom:20px` });
+      streams.forEach(([s, v]) => sgrid.appendChild(mkSummaryBox(STREAMS[s]?.label || s, formatEUR(v), paidTotal > 0 ? `${(v / paidTotal * 100).toFixed(0)}%` : null)));
+      body.appendChild(sgrid);
+    }
+    const clientMap = new Map();
+    paid.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
+    const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
+    if (clients.length) {
+      body.appendChild(mkSectionLabel('By Client'));
+      body.appendChild(mkModalTable(
+        ['Client', 'Invoices', 'Revenue', '% of Paid'],
+        clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), paidTotal > 0 ? (c.v / paidTotal * 100).toFixed(1) + '%' : '—'])
+      ));
+    }
+    openModal({ title: `Paid Revenue — ${formatEUR(paidTotal)}`, body, large: true });
+  };
   kpiRow1.appendChild(mkKpiCard({
     label:     'Paid Revenue',
     value:     formatEUR(paidTotal),
@@ -443,28 +570,7 @@ function buildView() {
     delta:     deltaPaid,
     compLabel: cmpRange?.label,
     compValue: cmpData ? formatEUR(cmpData.paidTotal) : undefined,
-    onClick:   () => {
-      const body = el('div');
-      const streamMap = new Map();
-      paid.forEach(i => { const s = i.stream; streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
-      const streams = [...streamMap.entries()].sort((a, b) => b[1] - a[1]);
-      if (streams.length > 1) {
-        const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${Math.min(streams.length, 3)},1fr);gap:10px;margin-bottom:20px` });
-        streams.forEach(([s, v]) => sgrid.appendChild(mkSummaryBox(STREAMS[s]?.label || s, formatEUR(v), paidTotal > 0 ? `${(v / paidTotal * 100).toFixed(0)}%` : null)));
-        body.appendChild(sgrid);
-      }
-      const clientMap = new Map();
-      paid.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
-      const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
-      if (clients.length) {
-        body.appendChild(mkSectionLabel('By Client'));
-        body.appendChild(mkModalTable(
-          ['Client', 'Invoices', 'Revenue', '% of Paid'],
-          clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), paidTotal > 0 ? (c.v / paidTotal * 100).toFixed(1) + '%' : '—'])
-        ));
-      }
-      openModal({ title: `Paid Revenue — ${formatEUR(paidTotal)}`, body, large: true });
-    }
+    onClick:   onClickPaidRevenue
   }));
   kpiRow1.appendChild(mkKpiCard({
     label:     'Invoiced Revenue',
@@ -495,6 +601,25 @@ function buildView() {
       openModal({ title: `Invoiced Revenue — ${formatEUR(invoicedTotal)}`, body, large: true });
     }
   }));
+  const onClickCollectionRate = () => {
+    const body = el('div');
+    const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
+    sgrid.appendChild(mkSummaryBox('Paid', formatEUR(paidTotal), collectionRate != null ? `${collectionRate.toFixed(0)}% collected` : null));
+    sgrid.appendChild(mkSummaryBox('Outstanding', formatEUR(outstandingTotal), invoicedTotal > 0 ? `${(outstandingTotal / invoicedTotal * 100).toFixed(0)}% of invoiced` : null));
+    sgrid.appendChild(mkSummaryBox('Overdue', formatEUR(overdueTotal), outstandingTotal > 0 ? `${(overdueTotal / outstandingTotal * 100).toFixed(0)}% of outstanding` : null));
+    body.appendChild(sgrid);
+    const clientMap = new Map();
+    nonDraft.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, paid: 0, total: 0 }; x.total += toEUR(i.total, i.currency, i.issueDate); if (i.status === 'paid') x.paid += toEUR(i.total, i.currency, i.issueDate); clientMap.set(id, x); });
+    const clients = [...clientMap.values()].sort((a, b) => b.total - a.total);
+    if (clients.length) {
+      body.appendChild(mkSectionLabel('Collection by Client'));
+      body.appendChild(mkModalTable(
+        ['Client', 'Invoiced', 'Paid', 'Rate'],
+        clients.map(c => [c.n, formatEUR(c.total), formatEUR(c.paid), c.total > 0 ? (c.paid / c.total * 100).toFixed(0) + '%' : '—'])
+      ));
+    }
+    openModal({ title: `Collection Rate — ${collectionRate != null ? collectionRate.toFixed(0) + '%' : 'N/A'}`, body, large: true });
+  };
   kpiRow1.appendChild(mkKpiCard({
     label:     'Collection Rate',
     value:     collectionRate !== null ? collectionRate.toFixed(0) + '%' : '—',
@@ -504,26 +629,22 @@ function buildView() {
     deltaIsPp: true,
     compLabel: cmpRange?.label,
     compValue: cmpData?.collectionRate != null ? cmpData.collectionRate.toFixed(0) + '%' : undefined,
-    onClick:   () => {
-      const body = el('div');
-      const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
-      sgrid.appendChild(mkSummaryBox('Paid', formatEUR(paidTotal), collectionRate != null ? `${collectionRate.toFixed(0)}% collected` : null));
-      sgrid.appendChild(mkSummaryBox('Outstanding', formatEUR(outstandingTotal), invoicedTotal > 0 ? `${(outstandingTotal / invoicedTotal * 100).toFixed(0)}% of invoiced` : null));
-      sgrid.appendChild(mkSummaryBox('Overdue', formatEUR(overdueTotal), outstandingTotal > 0 ? `${(overdueTotal / outstandingTotal * 100).toFixed(0)}% of outstanding` : null));
-      body.appendChild(sgrid);
-      const clientMap = new Map();
-      nonDraft.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, paid: 0, total: 0 }; x.total += toEUR(i.total, i.currency, i.issueDate); if (i.status === 'paid') x.paid += toEUR(i.total, i.currency, i.issueDate); clientMap.set(id, x); });
-      const clients = [...clientMap.values()].sort((a, b) => b.total - a.total);
-      if (clients.length) {
-        body.appendChild(mkSectionLabel('Collection by Client'));
-        body.appendChild(mkModalTable(
-          ['Client', 'Invoiced', 'Paid', 'Rate'],
-          clients.map(c => [c.n, formatEUR(c.total), formatEUR(c.paid), c.total > 0 ? (c.paid / c.total * 100).toFixed(0) + '%' : '—'])
-        ));
-      }
-      openModal({ title: `Collection Rate — ${collectionRate != null ? collectionRate.toFixed(0) + '%' : 'N/A'}`, body, large: true });
-    }
+    onClick:   onClickCollectionRate
   }));
+  const onClickOutstanding = () => {
+    const body = el('div');
+    const clientMap = new Map();
+    outstanding.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, overdue: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); if (i.status === 'overdue') x.overdue += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
+    const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
+    if (clients.length) {
+      body.appendChild(mkSectionLabel('Outstanding by Client'));
+      body.appendChild(mkModalTable(
+        ['Client', 'Invoices', 'Outstanding', 'Overdue'],
+        clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), c.overdue > 0 ? formatEUR(c.overdue) : '—'])
+      ));
+    }
+    openModal({ title: `Outstanding — ${formatEUR(outstandingTotal)}`, body, large: true });
+  };
   kpiRow1.appendChild(mkKpiCard({
     label:       'Outstanding',
     value:       formatEUR(outstandingTotal),
@@ -532,53 +653,42 @@ function buildView() {
     invertDelta: true,
     compLabel:   cmpRange?.label,
     compValue:   cmpData ? formatEUR(cmpData.outstandingTotal) : undefined,
-    onClick:     () => {
-      const body = el('div');
-      const clientMap = new Map();
-      outstanding.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, overdue: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); if (i.status === 'overdue') x.overdue += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
-      const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
-      if (clients.length) {
-        body.appendChild(mkSectionLabel('Outstanding by Client'));
-        body.appendChild(mkModalTable(
-          ['Client', 'Invoices', 'Outstanding', 'Overdue'],
-          clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), c.overdue > 0 ? formatEUR(c.overdue) : '—'])
-        ));
-      }
-      openModal({ title: `Outstanding — ${formatEUR(outstandingTotal)}`, body, large: true });
-    }
+    onClick:     onClickOutstanding
   }));
   wrap.appendChild(kpiRow1);
 
   // ── KPI row 2: Overdue, Client Concentration, Top Client, Active Clients ───
   const concVariant = concentration === null ? '' : concentration > 60 ? 'danger' : concentration > 40 ? 'warning' : 'success';
   const kpiRow2 = el('div', { class: 'grid grid-4 mb-16' });
+  const onClickOverdue = () => {
+    const body = el('div');
+    const clientMap = new Map();
+    overdue.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
+    const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
+    if (clients.length) {
+      body.appendChild(mkSectionLabel('Overdue by Client'));
+      body.appendChild(mkModalTable(
+        ['Client', 'Invoices', 'Overdue Amount', '% of Total Overdue'],
+        clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), overdueTotal > 0 ? (c.v / overdueTotal * 100).toFixed(1) + '%' : '—'])
+      ));
+    } else {
+      body.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px' }, 'No overdue invoices for the selected period.'));
+    }
+    openModal({ title: `Overdue — ${formatEUR(overdueTotal)}`, body, large: true });
+  };
   kpiRow2.appendChild(mkKpiCard({
     label:   'Overdue',
     value:   formatEUR(overdueTotal),
     variant: overdueTotal > 0 ? 'danger' : '',
-    onClick: () => {
-      const body = el('div');
-      const clientMap = new Map();
-      overdue.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
-      const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
-      if (clients.length) {
-        body.appendChild(mkSectionLabel('Overdue by Client'));
-        body.appendChild(mkModalTable(
-          ['Client', 'Invoices', 'Overdue Amount', '% of Total Overdue'],
-          clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), overdueTotal > 0 ? (c.v / overdueTotal * 100).toFixed(1) + '%' : '—'])
-        ));
-      } else {
-        body.appendChild(el('div', { style: 'color:var(--text-muted);font-size:13px' }, 'No overdue invoices for the selected period.'));
-      }
-      openModal({ title: `Overdue — ${formatEUR(overdueTotal)}`, body, large: true });
-    }
+    onClick: onClickOverdue
   }));
+  const onClickClientConcentration = () => drillDownModal('Revenue by Client', toClientConcentrationRows(clientRevMap, paidTotal), CONCENTRATION_DRILL_COLS);
   kpiRow2.appendChild(mkKpiCard({
     label:   'Client Concentration',
     value:   concentration !== null ? concentration.toFixed(0) + '%' : '—',
     variant: concVariant,
     subtitle: 'Top client share of paid revenue',
-    onClick: () => drillDownModal('Revenue by Client', toClientConcentrationRows(clientRevMap, paidTotal), CONCENTRATION_DRILL_COLS)
+    onClick: onClickClientConcentration
   }));
   kpiRow2.appendChild(mkKpiCard({
     label:   'Top Client',
@@ -860,7 +970,8 @@ function buildView() {
   // ── Service Performance Insights ──────────────────────────────────────────
   const signals = computeServiceInsights({
     paidTotal, invoicedTotal, outstandingTotal, overdueTotal,
-    concentration, topClient, collectionRate, nonDraft, cmpData, cmpRange
+    concentration, topClient, collectionRate, nonDraft, cmpData, cmpRange,
+    onClickClientConcentration, onClickCollectionRate, onClickOverdue, onClickOutstanding, onClickPaidRevenue
   });
   wrap.appendChild(mkInsightsBanner(signals, 'Service Performance Insights'));
 
@@ -1018,15 +1129,13 @@ function renderMonthBar({ base }, monthKeys) {
       const sk = orderedKeys[dsIdx];
       const streamRows = base.filter(i => (i.issueDate || i.date || '').slice(0, 7) === mk && i.stream === sk);
       const streamTotal = streamRows.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-      const allMonthRows = base.filter(i => (i.issueDate || i.date || '').slice(0, 7) === mk);
       const body = el('div');
       const statusMap = new Map();
-      allMonthRows.forEach(i => { statusMap.set(i.status, (statusMap.get(i.status) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+      streamRows.forEach(i => { statusMap.set(i.status, (statusMap.get(i.status) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
       const statuses = [...statusMap.entries()].sort((a, b) => b[1] - a[1]);
       if (statuses.length) {
-        const monthTotal = allMonthRows.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
         const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${Math.min(statuses.length, 4)},1fr);gap:10px;margin-bottom:20px` });
-        statuses.forEach(([s, v]) => sgrid.appendChild(mkSummaryBox(INVOICE_STATUSES[s]?.label || s, formatEUR(v), monthTotal > 0 ? `${(v / monthTotal * 100).toFixed(0)}%` : null)));
+        statuses.forEach(([s, v]) => sgrid.appendChild(mkSummaryBox(INVOICE_STATUSES[s]?.label || s, formatEUR(v), streamTotal > 0 ? `${(v / streamTotal * 100).toFixed(0)}%` : null)));
         body.appendChild(sgrid);
       }
       const clientMap = new Map();
