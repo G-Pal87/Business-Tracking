@@ -238,6 +238,7 @@ function getYearData(year, ownerFilter) {
 
   return {
     payments, invoices, opExpenses, capExpenses,
+    rentalPaymentsSTR, rentalPaymentsLTR, invoicesCS, invoicesMkt, invoicesOther,
     revSTR, revLTR, revCS, revMkt, revOther, totalRevenue,
     catMap, totalOpEx, totalCapEx, opProfit, netCash,
     monthly,
@@ -310,7 +311,7 @@ function buildPnLTable(data, taxRate, year) {
   const tbody = el('tbody');
 
   const mkRow = (label, value, opts = {}) => {
-    const { isSectionHeader = false, isSectionTotal = false, isSubtotal = false, isSeparator = false, isPositive = null, indent = 0 } = opts;
+    const { isSectionHeader = false, isSectionTotal = false, isSubtotal = false, isSeparator = false, isPositive = null, indent = 0, onClick = null } = opts;
     if (isSeparator) {
       const tr = el('tr');
       tr.appendChild(el('td', { colspan: '2', style: 'padding:4px 16px;border-bottom:1px solid rgba(255,255,255,0.12)' }));
@@ -334,15 +335,22 @@ function buildPnLTable(data, taxRate, year) {
     }
     tr.appendChild(el('td', { style: labelStyle }, label));
     if (!isSectionHeader) tr.appendChild(el('td', { style: valueStyle }, formatEUR(value)));
+    if (onClick) {
+      tr.style.cursor = 'pointer';
+      tr.title = 'Click for breakdown';
+      tr.addEventListener('mouseenter', () => { tr.style.background = 'rgba(255,255,255,0.05)'; });
+      tr.addEventListener('mouseleave', () => { tr.style.background = ''; });
+      tr.onclick = onClick;
+    }
     return tr;
   };
 
   tbody.appendChild(mkRow('INCOME', 0, { isSectionHeader: true }));
-  if (revSTR   > 0) tbody.appendChild(mkRow('Rental Revenue (STR)',       revSTR,   { indent: 1 }));
-  if (revLTR   > 0) tbody.appendChild(mkRow('Rental Revenue (LTR)',       revLTR,   { indent: 1 }));
-  if (revCS    > 0) tbody.appendChild(mkRow('Service Revenue (CS)',        revCS,    { indent: 1 }));
-  if (revMkt   > 0) tbody.appendChild(mkRow('Service Revenue (Marketing)', revMkt,   { indent: 1 }));
-  if (revOther > 0) tbody.appendChild(mkRow('Other Services',              revOther, { indent: 1 }));
+  if (revSTR   > 0) tbody.appendChild(mkRow('Rental Revenue (STR)',       revSTR,   { indent: 1, onClick: () => openPnLRevenueModal('Rental Revenue (STR)', data.rentalPaymentsSTR, false, year) }));
+  if (revLTR   > 0) tbody.appendChild(mkRow('Rental Revenue (LTR)',       revLTR,   { indent: 1, onClick: () => openPnLRevenueModal('Rental Revenue (LTR)', data.rentalPaymentsLTR, false, year) }));
+  if (revCS    > 0) tbody.appendChild(mkRow('Service Revenue (CS)',        revCS,    { indent: 1, onClick: () => openPnLRevenueModal('Service Revenue (CS)', data.invoicesCS, true, year) }));
+  if (revMkt   > 0) tbody.appendChild(mkRow('Service Revenue (Marketing)', revMkt,   { indent: 1, onClick: () => openPnLRevenueModal('Service Revenue (Marketing)', data.invoicesMkt, true, year) }));
+  if (revOther > 0) tbody.appendChild(mkRow('Other Services',              revOther, { indent: 1, onClick: () => openPnLRevenueModal('Other Services', data.invoicesOther, true, year) }));
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
   tbody.appendChild(mkRow('Total Revenue', totalRevenue, { isSectionTotal: true, isPositive: totalRevenue >= 0 }));
 
@@ -372,6 +380,47 @@ function buildPnLTable(data, taxRate, year) {
   tbl.appendChild(tbody);
   wrap.appendChild(el('div', { style: 'padding:0 0 16px' }, tbl));
   return wrap;
+}
+
+function openPnLRevenueModal(streamLabel, records, isInvoice, year) {
+  if (!records || !records.length) { emptyModal(streamLabel, `No ${isInvoice ? 'invoices' : 'payments'} found for this stream in ${year}.`); return; }
+  const propMap   = new Map(listActive('properties').map(p => [p.id, p]));
+  const clientMap = new Map(listActive('clients').map(c => [c.id, c]));
+  const byEntity = new Map(), byMonth = new Map();
+  for (const r of records) {
+    const amt  = isInvoice ? toEUR(r.total, r.currency, r.issueDate || r.date) : toEUR(r.amount, r.currency, r.date);
+    const date = isInvoice ? (r.issueDate || r.date) : r.date;
+    const eid  = isInvoice ? (r.clientId || '_') : (r.propertyId || '_');
+    const cur  = byEntity.get(eid) || { rev: 0, n: 0 };
+    cur.rev += amt; cur.n++;
+    byEntity.set(eid, cur);
+    const mo = (date || '').slice(0, 7);
+    if (mo) byMonth.set(mo, (byMonth.get(mo) || 0) + amt);
+  }
+  const total    = [...byEntity.values()].reduce((a, d) => a + d.rev, 0);
+  const entRows  = [...byEntity.entries()].sort(([, a], [, b]) => b.rev - a.rev);
+  const moRows   = [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b));
+
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([
+    { label: 'Total Revenue', value: formatEUR(total) },
+    { label: isInvoice ? 'Invoices' : 'Payments', value: String(records.length) },
+    { label: 'Avg', value: formatEUR(total / records.length) },
+    { label: isInvoice ? 'Clients' : 'Properties', value: String(entRows.length) }
+  ], 4));
+  body.appendChild(mkSectionLabel(`Revenue by ${isInvoice ? 'Client' : 'Property'}`));
+  body.appendChild(mkModalTable(
+    [{ label: isInvoice ? 'Client' : 'Property' }, { label: isInvoice ? 'Invoices' : 'Pmts', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
+    entRows.map(([id, d]) => {
+      const name = isInvoice ? (clientMap.get(id)?.name || clientMap.get(id)?.company || 'Unknown') : (propMap.get(id)?.name || propMap.get(id)?.address || 'Unknown');
+      return [name, String(d.n), formatEUR(d.rev), total > 0 ? `${(d.rev / total * 100).toFixed(1)}%` : '—'];
+    })
+  ));
+  if (moRows.length) {
+    body.appendChild(mkSectionLabel('Monthly Breakdown'));
+    body.appendChild(mkModalTable([{ label: 'Month' }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }], moRows.map(([mo, v]) => [mo, formatEUR(v), total > 0 ? `${(v / total * 100).toFixed(1)}%` : '—'])));
+  }
+  openModal({ title: `${streamLabel} — ${year}`, body, large: true });
 }
 
 function buildKpiCards(data, year, taxRate) {
@@ -1145,12 +1194,40 @@ function modalInstalment(which) {
   const amount  = isJuly ? c.julyPayment : c.decPayment;
   const body = el('div');
   body.appendChild(mkSummaryGrid([{ label: 'Amount Due', value: fmtE(amount) }, { label: 'Due Date', value: isJuly ? `31 Jul ${year}` : `31 Dec ${year}` }, { label: 'Deadline Status', value: daysLabel(dueDate) }, { label: 'Total Corp Tax', value: fmtE(c.corpTax), sub: 'Both instalments combined' }], 4));
-  body.appendChild(el('div', { style: 'margin-top:4px;padding:12px;border-radius:6px;background:rgba(251,191,36,0.08);border-left:3px solid var(--warning);font-size:12px;color:var(--text-muted);line-height:1.6' },
+
+  body.appendChild(mkSectionLabel('How This Amount Was Calculated'));
+  const calcRows = [
+    ['Est. Annual Revenue',      '',  fmtE(c.totalRevenue)],
+    ['Est. Deductible Expenses', '−', fmtE(c.totalDeductible)],
+  ];
+  if (safeN(s.nonDeductibleExpenses) > 0) calcRows.push(['Non-deductible add-back', '+', fmtE(safeN(s.nonDeductibleExpenses))]);
+  if (safeN(s.taxAllowances)         > 0) calcRows.push(['Tax allowances',          '−', fmtE(safeN(s.taxAllowances))]);
+  calcRows.push(['Est. Taxable Profit', '=', fmtE(c.estProfit)]);
+  if (c.bufEnabled) calcRows.push([`Safety Buffer (+${c.bufPct}%)`, '+', fmtE(c.taxableProfit - c.estProfit)]);
+  calcRows.push([`Corporation Tax @ ${c.rate}%`, '=', fmtE(c.corpTax)]);
+  calcRows.push([isJuly ? '1st Instalment (50%)' : '2nd Instalment (50%)', '=', fmtE(amount)]);
+  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], calcRows));
+
+  body.appendChild(mkSectionLabel('Underlying Figures'));
+  const linkRow = (label, value, onClick) => {
+    const row = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding:6px 4px;margin:0 -4px;border-radius:4px;cursor:pointer' },
+      el('span', { style: 'font-size:12px;color:var(--text-muted);text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px' }, label),
+      el('span', { style: 'font-size:12px;color:var(--text);font-weight:600' }, value)
+    );
+    row.addEventListener('mouseenter', () => { row.style.background = 'rgba(255,255,255,0.05)'; });
+    row.addEventListener('mouseleave', () => { row.style.background = ''; });
+    row.onclick = onClick;
+    return row;
+  };
+  body.appendChild(linkRow('↳ Revenue breakdown', fmtE(c.totalRevenue), modalRevenueDetail));
+  body.appendChild(linkRow('↳ Expense breakdown', fmtE(c.totalDeductible), modalExpensesDetail));
+
+  body.appendChild(el('div', { style: 'margin-top:12px;padding:12px;border-radius:6px;background:rgba(251,191,36,0.08);border-left:3px solid var(--warning);font-size:12px;color:var(--text-muted);line-height:1.6' },
     isJuly
       ? `Pay ${fmtE(amount)} to the Cyprus Tax Department by 31 July ${year}. Late payment attracts a 10% additional charge. The 2nd instalment is due 31 December ${year}.`
       : `Pay ${fmtE(amount)} by 31 December ${year}. Before paying, use the December Revision section to check whether this amount needs adjusting based on updated year-end estimates. Late payment attracts a 10% additional charge.`
   ));
-  openModal({ title: `${isJuly ? '1st' : '2nd'} Instalment — ${isJuly ? '31 Jul' : '31 Dec'} ${year}`, body });
+  openModal({ title: `${isJuly ? '1st' : '2nd'} Instalment — ${isJuly ? '31 Jul' : '31 Dec'} ${year}`, body, large: true });
 }
 
 function modalFinalBalance() {
@@ -1158,10 +1235,19 @@ function modalFinalBalance() {
   const c        = calcAll(s);
   const year     = s.year || String(new Date().getFullYear());
   const nextYear = String(Number(year) + 1);
+  const today    = new Date().toISOString().slice(0, 10);
+  const paidSoFar = (today > `${year}-07-31` ? c.julyPayment : 0) + (today > `${year}-12-31` ? c.decPayment : 0);
+  const targetTax = c.finalTax > 0 ? c.finalTax : (c.revisedAnnualTax > 0 ? c.revisedAnnualTax : c.corpTax);
+  const coverage  = targetTax > 0 ? (paidSoFar / targetTax * 100) : 0;
   const body = el('div');
-  body.appendChild(mkSummaryGrid([{ label: 'Provisional Tax Paid', value: fmtE(c.corpTax), sub: 'Jul + Dec instalments' }, { label: 'Current Estimate', value: fmtE(c.corpTax), sub: 'Based on your inputs' }, { label: 'Final Balance', value: '—', sub: 'Determined after audit' }, { label: 'Deadline', value: `1 Aug ${nextYear}` }], 4));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Provisional Tax Paid',           value: fmtE(paidSoFar), sub: paidSoFar > 0 ? 'Instalments due so far' : 'No instalments due yet' },
+    { label: '% of Est. Tax Covered',          value: targetTax > 0 ? `${coverage.toFixed(1)}%` : '—', sub: `vs ${fmtE(targetTax)} estimated liability` },
+    { label: 'Final Balance',                  value: 'Pending audit', sub: 'Determined after year-end filing' },
+    { label: 'Deadline',                       value: `1 Aug ${nextYear}` }
+  ], 4));
   body.appendChild(el('div', { style: 'margin-top:4px;padding:12px;border-radius:6px;background:rgba(99,102,241,0.08);border-left:3px solid var(--accent);font-size:12px;color:var(--text-muted);line-height:1.6' },
-    `The final balance is settled after submitting audited accounts. If actual profit exceeded estimates, pay the difference plus any applicable interest. If lower, you receive a credit or refund. The deadline for the final balance payment is 1 August ${nextYear}.`
+    `The final balance is settled after submitting audited accounts, so it cannot be shown as a number here — it depends on the actual audited profit for ${year}. If actual profit exceeded estimates, pay the difference plus any applicable interest. If lower, you receive a credit or refund. The deadline for the final balance payment is 1 August ${nextYear}.`
   ));
   openModal({ title: `Final Balance — 1 Aug ${nextYear}`, body });
 }
@@ -1217,6 +1303,39 @@ function modalReqDecPayment() {
     c.reqDecPayment > 0 ? `Pay ${fmtE(c.reqDecPayment)} by 31 December ${year}. Failure to pay the correct amount results in a 10% surcharge on the underpaid portion.` : `Your July payment fully covers the revised annual tax liability. No December payment is required.`
   ));
   openModal({ title: `Required December Payment — 31 Dec ${year}`, body });
+}
+
+function modalSafetyCheck() {
+  const s    = cfg();
+  const c    = calcAll(s);
+  const year = s.year || String(new Date().getFullYear());
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([
+    { label: 'Estimated Final Tax',     value: fmtE(c.finalTax),      sub: 'Your year-end estimate' },
+    { label: 'Planned Provisional Tax', value: fmtE(c.corpTax),       sub: 'Jul + Dec instalments' },
+    { label: 'Minimum Required (75%)',  value: fmtE(c.minRequired75), sub: `75% of ${fmtE(c.finalTax)}` },
+    { label: 'Shortfall',               value: fmtE(c.shortfall),     sub: c.shortfall > 0 ? 'Additional tax needed' : 'None' }
+  ], 4));
+  body.appendChild(mkSectionLabel('How the 75% Safe Harbor Is Calculated'));
+  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], [
+    ['Estimated Final Tax Liability',       '',  fmtE(c.finalTax)],
+    ['× 75% Safe Harbor Threshold',         '×', '75%'],
+    ['Minimum Required Provisional Tax',    '=', fmtE(c.minRequired75)],
+    ['Planned Provisional Tax (Jul + Dec)', '−', fmtE(c.corpTax)],
+    ['Shortfall (if positive)',             '=', fmtE(c.shortfall)],
+  ]));
+  body.appendChild(mkSectionLabel('Contributing Instalments'));
+  body.appendChild(mkModalTable([{ label: 'Instalment' }, { label: 'Due Date' }, { label: 'Amount', right: true }], [
+    ['1st — 50%', `31 Jul ${year}`, fmtE(c.julyPayment)],
+    ['2nd — 50%', `31 Dec ${year}`, fmtE(c.decPayment)],
+  ]));
+  const safe = c.safe;
+  body.appendChild(el('div', { style: `margin-top:4px;padding:12px;border-radius:6px;border-left:4px solid var(--${safe ? 'success' : 'danger'});background:rgba(${safe ? '16,185,129' : '239,68,68'},0.07);font-size:12px;color:var(--text-muted);line-height:1.6` },
+    safe
+      ? `Your planned provisional tax of ${fmtE(c.corpTax)} covers at least 75% of your estimated final tax liability of ${fmtE(c.finalTax)}. Cyprus imposes a 10% surcharge on any provisional tax shortfall below the 75% threshold — you are currently protected from that charge.`
+      : `Your planned provisional tax of ${fmtE(c.corpTax)} falls short of the 75% threshold (${fmtE(c.minRequired75)}) by ${fmtE(c.shortfall)}. Increase your 2nd instalment (or make a top-up payment) to reach ${fmtE(c.minRequired75)} and avoid the 10% additional charge on the shortfall.`
+  ));
+  openModal({ title: '75% Safety Check — Explanation', body, large: true });
 }
 
 function modalOverpayment() {
@@ -1543,9 +1662,9 @@ function buildProvisionalTax() {
       return;
     }
     safetyDisplayEl.appendChild(el('div', { class: 'grid grid-3', style: 'margin-bottom:12px' },
-      mkKpiCard({ label: 'Planned Provisional Tax', value: fmtE(c.corpTax) }),
-      mkKpiCard({ label: 'Minimum Required (75%)',  value: fmtE(c.minRequired75), subtitle: `75% of ${fmtE(c.finalTax)}` }),
-      mkKpiCard({ label: 'Shortfall',               value: fmtE(c.shortfall), variant: c.shortfall > 0 ? 'danger' : 'success' })
+      mkKpiCard({ label: 'Planned Provisional Tax', value: fmtE(c.corpTax), onClick: modalSafetyCheck }),
+      mkKpiCard({ label: 'Minimum Required (75%)',  value: fmtE(c.minRequired75), subtitle: `75% of ${fmtE(c.finalTax)}`, onClick: modalSafetyCheck }),
+      mkKpiCard({ label: 'Shortfall',               value: fmtE(c.shortfall), variant: c.shortfall > 0 ? 'danger' : 'success', onClick: modalSafetyCheck })
     ));
     const safe = c.safe;
     safetyDisplayEl.appendChild(el('div', { style: `padding:12px 14px;border-radius:var(--radius-sm);border-left:4px solid var(--${safe ? 'success' : 'danger'});background:rgba(${safe ? '16,185,129' : '239,68,68'},0.07)` },
