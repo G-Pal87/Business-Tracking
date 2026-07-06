@@ -4,7 +4,7 @@
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, toast, select, input, button, formRow, fmtDate, confirmDialog } from '../core/ui.js';
 import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney } from '../core/data.js';
-import { fetchICal, parseICal } from '../core/ical.js';
+import { fetchICal, parseICal, mergeBlocks } from '../core/ical.js';
 import { uploadGithubFile } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 
@@ -1445,9 +1445,10 @@ async function autoRefreshICal(propertyId, onDone, { force = false } = {}) {
   try {
     const text   = await fetchICal(url);
     const events = parseICal(text);
-    const blocks = events
+    const fresh  = events
       .filter(e => e.start && e.end)
       .map(e => ({ start: e.start, end: e.end, uid: e.uid || '', summary: e.summary || '' }));
+    const blocks = mergeBlocks(existing?.blocks, fresh, todayStr());
     const rec = existing
       ? { ...existing, url, blocks, importedAt: todayStr() }
       : { id: newId('stc'), propertyId, url, blocks, importedAt: todayStr() };

@@ -46,6 +46,20 @@ export function nights(startStr, endStr) {
   return Math.max(0, Math.round((e - s) / (1000 * 60 * 60 * 24)));
 }
 
+// Merge freshly-fetched blocks with the previous snapshot so blocks that have
+// already elapsed and dropped off Airbnb's live iCal feed aren't lost. Airbnb's
+// feed only reflects current/future state — once a booking or owner-block is in
+// the past, Airbnb can prune it from the feed entirely. Future/current blocks
+// always defer to the fresh feed (so cancellations there are still reflected);
+// only already-elapsed blocks that vanished from the feed get carried forward.
+export function mergeBlocks(existingBlocks, freshBlocks, today) {
+  const freshUids = new Set(freshBlocks.filter(b => b.uid).map(b => b.uid));
+  const preserved = (existingBlocks || []).filter(b =>
+    b.end && b.end <= today && !freshUids.has(b.uid)
+  );
+  return [...preserved, ...freshBlocks];
+}
+
 // Fetches an iCal URL (through a CORS proxy if needed)
 export async function fetchICal(url) {
   // Direct fetch attempt first
