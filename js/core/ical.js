@@ -60,16 +60,35 @@ export function mergeBlocks(existingBlocks, freshBlocks, today) {
   return [...preserved, ...freshBlocks];
 }
 
-// Fetches an iCal URL (through a CORS proxy if needed)
+// Fetches an iCal URL (through a CORS proxy if needed). Airbnb blocks direct
+// cross-origin browser requests, so the direct attempt is expected to fail —
+// the browser will log that CORS block to the console regardless of this
+// try/catch handling it, that's normal. Tries several proxies in turn (not
+// just one) since public CORS proxies are individually unreliable — this
+// mirrors the fallback chain .github/scripts/refresh-ical.js already uses for
+// the scheduled sync, so the browser-side refresh is equally resilient.
 export async function fetchICal(url) {
-  // Direct fetch attempt first
   try {
     const res = await fetch(url);
     if (res.ok) return await res.text();
-  } catch (e) { /* CORS */ }
-  // Fallback to public CORS proxy
-  const proxied = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-  const res = await fetch(proxied);
-  if (!res.ok) throw new Error('Failed to fetch iCal (CORS)');
-  return await res.text();
+  } catch (e) { /* CORS — expected, fall through to proxies */ }
+
+  const proxies = [
+    `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    `https://cors.eu.org/${url}`,
+  ];
+  for (const proxyUrl of proxies) {
+    try {
+      const res = await fetch(proxyUrl);
+      if (!res.ok) continue;
+      const body = await res.text();
+      // allorigins.win wraps the response in { contents: "…" }
+      if (proxyUrl.includes('allorigins')) {
+        try { return JSON.parse(body).contents; } catch { continue; }
+      }
+      return body;
+    } catch (e) { /* try the next proxy */ }
+  }
+  throw new Error('Failed to fetch iCal — direct request and all proxy fallbacks failed');
 }
