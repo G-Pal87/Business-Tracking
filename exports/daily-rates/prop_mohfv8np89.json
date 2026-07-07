@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-07T21:54:02.377Z",
+  "generatedAt": "2026-07-07T23:04:16.908Z",
   "property": {
     "id": "prop_mohfv8np89",
     "name": "Rooftop Tenerife",
@@ -2716,7 +2716,7 @@
     {
       "date": "2027-04-03",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2027 blended (25n) + April 2027 blended (23n) + April 2027 blended (15n) + April 2027 blended (4n)",
       "originalAmount": 51,
       "discountPct": 10,

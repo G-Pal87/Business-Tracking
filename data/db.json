@@ -48789,6 +48789,12 @@
           "summary": "Reserved"
         },
         {
+          "start": "2026-07-11",
+          "end": "2026-07-15",
+          "uid": "7f662ec65913-bbd7583a3450b1e03259b837a7580620@airbnb.com",
+          "summary": "Airbnb (Not available)"
+        },
+        {
           "start": "2026-07-15",
           "end": "2026-07-19",
           "uid": "1418fb94e984-64af3bf5b079e1ac2b40f2d94b450c22@airbnb.com",
@@ -48831,28 +48837,16 @@
           "summary": "Reserved"
         },
         {
-          "start": "2026-09-24",
-          "end": "2026-09-30",
-          "uid": "1418fb94e984-5cd657bf385d462808185be41a86ea26@airbnb.com",
-          "summary": "Reserved"
-        },
-        {
-          "start": "2026-12-28",
-          "end": "2027-01-03",
-          "uid": "1418fb94e984-bc32735c5868f73871e5f3b2e9e2f49f@airbnb.com",
-          "summary": "Reserved"
-        },
-        {
-          "start": "2026-07-11",
-          "end": "2026-07-15",
-          "uid": "7f662ec65913-bbd7583a3450b1e03259b837a7580620@airbnb.com",
-          "summary": "Airbnb (Not available)"
-        },
-        {
           "start": "2026-09-17",
           "end": "2026-09-24",
           "uid": "7f662ec65913-5bc56dcf4ed57f743dda41d3834e4c29@airbnb.com",
           "summary": "Airbnb (Not available)"
+        },
+        {
+          "start": "2026-09-24",
+          "end": "2026-09-30",
+          "uid": "1418fb94e984-5cd657bf385d462808185be41a86ea26@airbnb.com",
+          "summary": "Reserved"
         },
         {
           "start": "2026-10-01",
@@ -48861,9 +48855,15 @@
           "summary": "Airbnb (Not available)"
         },
         {
-          "start": "2027-04-03",
+          "start": "2026-12-28",
+          "end": "2027-01-03",
+          "uid": "1418fb94e984-bc32735c5868f73871e5f3b2e9e2f49f@airbnb.com",
+          "summary": "Reserved"
+        },
+        {
+          "start": "2027-04-04",
           "end": "2027-07-08",
-          "uid": "7f662ec65913-b81f77ff8c13f0dde282c9cc16184f1d@airbnb.com",
+          "uid": "7f662ec65913-a42f51171e556b10a39f9bfe14970b26@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -48871,13 +48871,20 @@
       "createdAt": 1783441917543,
       "createdBy": "Giorgos",
       "updatedAt": 1783441917543,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "lastFetched": "2026-07-07T23:04:16.541Z"
     },
     {
       "id": "stc_11cb38b7462b46e4ada3764396ccdb4e",
       "propertyId": "prop_mohfv8np89",
       "url": "https://www.airbnb.com/calendar/ical/720194839435246794.ics?t=3da4aac00c9d4eb6bbe7f3496aa22ee8",
       "blocks": [
+        {
+          "start": "2026-07-05",
+          "end": "2026-07-18",
+          "uid": "7f662ec65913-8ef69b0f7c4ca493c0bfcf3c347f2e1f@airbnb.com",
+          "summary": "Airbnb (Not available)"
+        },
         {
           "start": "2026-07-21",
           "end": "2026-07-27",
@@ -48969,15 +48976,9 @@
           "summary": "Reserved"
         },
         {
-          "start": "2026-07-05",
-          "end": "2026-07-18",
-          "uid": "7f662ec65913-8ef69b0f7c4ca493c0bfcf3c347f2e1f@airbnb.com",
-          "summary": "Airbnb (Not available)"
-        },
-        {
-          "start": "2027-04-03",
+          "start": "2027-04-04",
           "end": "2027-07-08",
-          "uid": "7f662ec65913-b81f77ff8c13f0dde282c9cc16184f1d@airbnb.com",
+          "uid": "7f662ec65913-a42f51171e556b10a39f9bfe14970b26@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -48985,7 +48986,8 @@
       "createdAt": 1783453945058,
       "createdBy": "Giorgos",
       "updatedAt": 1783453945058,
-      "updatedBy": "Giorgos"
+      "updatedBy": "Giorgos",
+      "lastFetched": "2026-07-07T23:04:16.878Z"
     }
   ],
   "strRateTargets": [

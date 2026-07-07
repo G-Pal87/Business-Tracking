@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-07T21:54:02.394Z",
+  "generatedAt": "2026-07-07T23:04:16.918Z",
   "property": {
     "id": "prop_mohfwhqrgj",
     "name": "Studio Tenerife",
@@ -2716,7 +2716,7 @@
     {
       "date": "2027-04-03",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2027 blended (1n) + April 2027 blended (1n) + April 2027 blended (1n)",
       "originalAmount": 43,
       "discountPct": 10,
