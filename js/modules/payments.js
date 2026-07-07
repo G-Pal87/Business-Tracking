@@ -632,6 +632,7 @@ function buildScheduleSection(wrap) {
       const t = tenants.find(t => t.id === e.tenantId);
       return {
         property: e.prop.name,
+        owner: getPersonName(e.prop.owner),
         tenant: t ? t.name : (e.prop.tenantName || e.prop.name),
         dueDate: e.date,
         amount: e.amount,
@@ -641,6 +642,7 @@ function buildScheduleSection(wrap) {
     });
     const schedCols = [
       { key: 'property', label: 'Property' },
+      { key: 'owner', label: 'Owner' },
       { key: 'tenant', label: 'Tenant' },
       { key: 'dueDate', label: 'Due Date', format: v => fmtDate(v) },
       { key: 'amount', label: 'Amount', right: true, format: (v, row) => formatMoney(v, row.currency, { maxFrac: 0 }) },
@@ -909,6 +911,7 @@ function buildUpcomingSection(wrap) {
 
     const toRows = entries => entries.map(e => ({
       property: e.prop.name,
+      owner: getPersonName(e.prop.owner),
       tenant: e.tenantId ? (byId('tenants', e.tenantId)?.name || e.prop.tenantName || '—') : (e.prop.tenantName || '—'),
       dueDate: e.date,
       amount: e.amount,
@@ -917,6 +920,7 @@ function buildUpcomingSection(wrap) {
     }));
     const upcomingCols = [
       { key: 'property', label: 'Property' },
+      { key: 'owner', label: 'Owner' },
       { key: 'tenant', label: 'Tenant' },
       { key: 'dueDate', label: 'Due Date', format: v => fmtDate(v) },
       { key: 'amount', label: 'Amount', right: true, format: (v, row) => formatMoney(v, row.currency, { maxFrac: 0 }) },
