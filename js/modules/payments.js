@@ -74,7 +74,7 @@ function buildAllPayments(wrap) {
   // built alongside the other filters. Order must match colAccessors + buildRow.
   const HEADERS = [
     // Context
-    ['Date', ''], ['Property', ''], ['Type', ''], ['Source', ''], ['Status', ''], ['Conf. Code', ''], ['Guest', ''],
+    ['Date', ''], ['Property', ''], ['Owner', ''], ['Type', ''], ['Source', ''], ['Status', ''], ['Conf. Code', ''], ['Guest', ''],
     // Stay
     ['Check-in', 'right'], ['Check-out', 'right'], ['Nights', 'right'],
     // Host earnings: gross → deductions → net payout → master currency
@@ -84,6 +84,11 @@ function buildAllPayments(wrap) {
     // Estimated guest-facing price
     ['Guest Fee', 'right'], ['Guest Total', 'right'], ['Guest/Night', 'right']
   ];
+  // Frozen (sticky) leading columns so Property + Owner stay visible while
+  // scrolling through the many financial columns to the right. Offsets are
+  // computed per-render since either can be hidden via the Columns picker.
+  const PROP_IDX = 1, OWNER_IDX = 2;
+  const CHK_W = 36, PROP_W = 180, OWNER_W = 90;
   // Visible-column set (empty = all visible). A column is shown when the set is
   // empty or contains its label.
   const colVisible = new Set();
@@ -93,6 +98,7 @@ function buildAllPayments(wrap) {
   const COL_DESC = {
     'Date':         'Payout / transaction date',
     'Property':     'Property this payment belongs to',
+    'Owner':        'Which partner owns this property',
     'Type':         'Transaction type (reservation, payout, adjustment, …)',
     'Source':       'Where the payment came from (Airbnb, manual, …)',
     'Status':       'Payment status (paid, pending, overdue, …)',
@@ -287,9 +293,10 @@ function buildAllPayments(wrap) {
     const guestFee = guestTotal != null && guestBase != null
       ? Math.round((guestTotal - guestBase) * 100) / 100
       : null;
+    const ownerName = prop ? getPersonName(prop.owner) : '-';
     return {
       r, prop, sMeta, isReservation, dispAmt, dispGross,
-      propName: prop?.name || '-', typeLabel, source, statusLabel: sMeta.label, conf, guest, eur,
+      propName: prop?.name || '-', ownerName, typeLabel, source, statusLabel: sMeta.label, conf, guest, eur,
       serviceFee:  r.airbnbServiceFee  != null ? (isNegDisplay ? -Math.abs(r.airbnbServiceFee)  : r.airbnbServiceFee)  : null,
       cleaningFee: r.airbnbCleaningFee != null ? (isNegDisplay ? -Math.abs(r.airbnbCleaningFee) : r.airbnbCleaningFee) : null,
       checkIn:  r.airbnbCheckIn || '',
@@ -298,13 +305,13 @@ function buildAllPayments(wrap) {
       avgNight: isReservation ? (r.avgNightExclCleaning != null ? r.avgNightExclCleaning : (r.avgNightlyRate != null ? r.avgNightlyRate : null)) : null,
       avgGross: isReservation && r.avgGross != null ? r.avgGross : null,
       guestFee, guestTotal, guestPerNight,
-      searchText: [fmtDate(r.date), prop?.name, typeLabel, source, sMeta.label, conf, guest, r.currency].filter(Boolean).join(' ').toLowerCase()
+      searchText: [fmtDate(r.date), prop?.name, ownerName, typeLabel, source, sMeta.label, conf, guest, r.currency].filter(Boolean).join(' ').toLowerCase()
     };
   };
 
   // Sort accessors, one per data column (matches the header order below).
   const colAccessors = [
-    d => d.r.date, d => d.propName, d => d.typeLabel, d => d.source, d => d.statusLabel,
+    d => d.r.date, d => d.propName, d => d.ownerName, d => d.typeLabel, d => d.source, d => d.statusLabel,
     d => d.conf, d => d.guest,
     d => d.checkIn, d => d.checkOut, d => (d.nights ?? -Infinity),
     d => (d.dispGross ?? -Infinity), d => (d.serviceFee ?? -Infinity), d => (d.cleaningFee ?? -Infinity), d => d.eur, d => d.eur,
@@ -359,10 +366,26 @@ function buildAllPayments(wrap) {
     const startIdx = _allPayPage * _allPayPageSize;
     const pageRows = derived.slice(startIdx, startIdx + _allPayPageSize);
 
-    const t = el('table', { class: 'table table-compact' });
+    // Frozen (sticky) leading columns — Property + Owner stay in view while
+    // scrolling through the many financial columns. Offsets depend on which
+    // of them are currently visible via the Columns picker.
+    const propShown  = colShown(PROP_IDX);
+    const ownerShown = colShown(OWNER_IDX);
+    const frozenLeft = { chk: 0, [PROP_IDX]: CHK_W, [OWNER_IDX]: CHK_W + (propShown ? PROP_W : 0) };
+    const lastFrozenKey = ownerShown ? OWNER_IDX : (propShown ? PROP_IDX : 'chk');
+    const applyFrozen = (elm, key, width) => {
+      elm.classList.add('frozen-col');
+      elm.style.position = 'sticky';
+      elm.style.left = frozenLeft[key] + 'px';
+      if (width) { elm.style.width = width + 'px'; elm.style.maxWidth = width + 'px'; elm.style.overflow = 'hidden'; elm.style.textOverflow = 'ellipsis'; elm.style.whiteSpace = 'nowrap'; }
+      if (key === lastFrozenKey) elm.classList.add('frozen-col-last');
+    };
+
+    const t = el('table', { class: 'table table-compact table-frozen' });
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr', {});
     const chkTh = el('th', { style: 'width:36px' }); chkTh.appendChild(selectAllChk);
+    applyFrozen(chkTh, 'chk');
     htr.appendChild(chkTh);
     HEADERS.forEach(([label, cls], i) => {
       if (!colShown(i)) return;
@@ -370,6 +393,8 @@ function buildAllPayments(wrap) {
       if (COL_DESC[label]) th.title = COL_DESC[label];
       th.style.cursor = 'pointer';
       th.style.userSelect = 'none';
+      if (i === PROP_IDX) applyFrozen(th, PROP_IDX, PROP_W);
+      else if (i === OWNER_IDX) applyFrozen(th, OWNER_IDX, OWNER_W);
       const arr = el('span', { style: 'margin-left:4px;font-size:10px;opacity:' + (_allPaySortCol === i ? '1' : '0.4') },
         _allPaySortCol === i ? (_allPaySortDir > 0 ? ' ▲' : ' ▼') : ' ⇅');
       th.appendChild(arr);
@@ -401,11 +426,15 @@ function buildAllPayments(wrap) {
 
       const tr = el('tr');
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
+      applyFrozen(chkTd, 'chk');
       tr.appendChild(chkTd);
+      const propTd = el('td', {}, d.propName);
+      propTd.title = d.propName;
       // One cell per HEADERS entry, in the same order. Only visible columns are appended.
       const cells = [
         el('td', {}, fmtDate(r.date)),
-        el('td', {}, d.propName),
+        propTd,
+        el('td', { class: 'muted' }, d.ownerName),
         el('td', {}, d.typeLabel),
         el('td', {}, el('span', { class: 'badge' }, d.source)),
         el('td', {}, el('span', { class: `badge ${sMeta.css}` }, d.statusLabel)),
@@ -425,6 +454,8 @@ function buildAllPayments(wrap) {
         el('td', { class: 'right num' }, d.guestTotal != null ? formatMoney(d.guestTotal, r.currency, { maxFrac: 0 }) : ''),
         el('td', { class: 'right num muted' }, d.guestPerNight != null ? formatMoney(d.guestPerNight, r.currency, { maxFrac: 0 }) : '')
       ];
+      if (propShown)  applyFrozen(propTd, PROP_IDX, PROP_W);
+      if (ownerShown) applyFrozen(cells[OWNER_IDX], OWNER_IDX, OWNER_W);
       cells.forEach((td, i) => { if (colShown(i)) tr.appendChild(td); });
       const actions = el('td', { class: 'right' });
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
