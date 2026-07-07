@@ -260,14 +260,24 @@ function buildAllPayments(wrap) {
   filterBar.appendChild(button('+ Add Payment', { variant: 'primary', onClick: () => openForm() }));
   wrap.appendChild(filterBar);
 
+  // Table declared before the search bar (but appended after) so the
+  // "scroll columns" buttons below can reference it.
+  const tableWrap = el('div', { class: 'table-wrap' });
+
   // Data-level search box (filters the whole dataset, not just the visible page)
-  const searchWrap = el('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:8px' });
+  const searchWrap = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:8px' });
+  const scrollLeftBtn  = button('‹ Columns', { variant: 'sm ghost' });
+  const scrollRightBtn = button('Columns ›', { variant: 'sm ghost' });
+  scrollLeftBtn.title  = 'Scroll the table left — this table has many columns; scroll to see the rest';
+  scrollRightBtn.title = 'Scroll the table right — this table has many columns; scroll to see the rest';
+  scrollLeftBtn.onclick  = () => tableWrap.scrollBy({ left: -360, behavior: 'smooth' });
+  scrollRightBtn.onclick = () => tableWrap.scrollBy({ left: 360, behavior: 'smooth' });
+  searchWrap.appendChild(el('div', { class: 'flex gap-4' }, scrollLeftBtn, scrollRightBtn));
   const searchInput = el('input', { type: 'search', class: 'input', placeholder: 'Filter payments…', style: 'max-width:220px;font-size:13px' });
   searchInput.value = _allPaySearch;
   searchWrap.appendChild(searchInput);
   wrap.appendChild(searchWrap);
 
-  const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
 
   const pagerWrap = el('div', { class: 'flex justify-between', style: 'align-items:center;margin-top:10px;flex-wrap:wrap;gap:8px' });
