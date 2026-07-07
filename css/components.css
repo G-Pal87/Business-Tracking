@@ -196,6 +196,26 @@
 .table.table-compact thead th { padding: 8px 10px; white-space: nowrap; }
 .table.table-compact tbody td { padding: 8px 10px; white-space: nowrap; }
 
+/* Frozen leading columns for very wide tables (e.g. All Payments) — keeps
+   the identifying columns (checkbox/Property/Owner) in view while scrolling
+   horizontally through many data columns. `position` and `left` are set
+   inline per-render since column visibility is user-toggleable; this just
+   supplies the shared visual treatment. */
+.table-frozen .frozen-col {
+  z-index: 1;
+  background: var(--bg-elev-1);
+}
+.table-frozen thead th.frozen-col {
+  z-index: 2;
+  background: var(--bg-elev-2);
+}
+.table-frozen tbody tr:hover .frozen-col {
+  background: var(--bg-elev-2);
+}
+.table-frozen .frozen-col-last {
+  box-shadow: 2px 0 4px -2px rgba(0, 0, 0, 0.35);
+}
+
 /* Badges */
 .badge {
   display: inline-flex;
