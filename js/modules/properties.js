@@ -7,7 +7,6 @@ import {
   getPeopleOwners, getPersonName, restoreInventoryStock, removeReservationExpenses, buildReservationExpenseRefMap
 } from '../core/data.js';
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES } from '../core/config.js';
-import { fetchICal, parseICal, nights } from '../core/ical.js';
 import { openExpenseForm } from './expenses.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
@@ -371,19 +370,6 @@ export function openDetail(id, preStats) {
     vpT.appendChild(vpTb); vpTw.appendChild(vpT);
     vpCard.appendChild(vpTw);
     body.appendChild(vpCard);
-  }
-
-  if (p.type === 'short_term') {
-    body.appendChild(el('div', { class: 'card mb-16' },
-      el('div', { class: 'card-header' },
-        el('div', { class: 'card-title' }, 'Airbnb Calendar Sync'),
-        el('div', { class: 'actions' }, button('Sync Calendar', { variant: 'primary', onClick: () => doImportICal(p) }))
-      ),
-      el('div', { class: 'form-row' },
-        el('label', { class: 'form-label' }, 'iCal URL (Airbnb export)'),
-        input({ id: 'ical-url', value: p.airbnbCalUrl || '', placeholder: 'https://airbnb.com/calendar/ical/...' })
-      )
-    ));
   }
 
   // Vendors with rates for this property
@@ -908,44 +894,3 @@ function openForm(existing) {
   openModal({ title: existing ? 'Edit Property' : 'New Property', body, footer: [cancelBtn, saveBtn], large: true });
 }
 
-async function doImportICal(prop) {
-  const urlEl = document.getElementById('ical-url');
-  const url = urlEl ? urlEl.value.trim() : prop.airbnbCalUrl;
-  if (!url) { toast('Enter iCal URL', 'warning'); return; }
-  try {
-    toast('Fetching calendar...', 'info');
-    const text = await fetchICal(url);
-    const events = parseICal(text);
-    let added = 0;
-    const existingIcal = listActivePayments().filter(p => p.propertyId === prop.id && p.source === 'airbnb');
-    for (const ev of events) {
-      if (!ev.start || !ev.end) continue;
-      const n = nights(ev.start, ev.end);
-      if (n <= 0) continue;
-      const amount = n * (prop.nightlyRate || 0);
-      // avoid duplicates
-      if (existingIcal.some(p => p.date === ev.start && p.notes?.includes(ev.uid || ''))) continue;
-      const pay = {
-        id: newId('pay'),
-        propertyId: prop.id,
-        amount,
-        currency: prop.currency,
-        date: ev.start,
-        type: 'rental',
-        status: ev.start > new Date().toISOString().slice(0, 10) ? 'pending' : 'paid',
-        source: 'airbnb',
-        stream: 'short_term_rental',
-        notes: `iCal: ${n} nights${ev.uid ? ' / ' + ev.uid : ''}`
-      };
-      upsert('payments', pay);
-      added++;
-    }
-    prop.airbnbCalUrl = url;
-    upsert('properties', prop);
-    toast(`Imported ${added} booking(s)`, 'success');
-    closeModal();
-    setTimeout(() => navigate('properties'),200);
-  } catch (e) {
-    toast(`iCal import failed: ${e.message}`, 'danger', 5000);
-  }
-}
