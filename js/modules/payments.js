@@ -1156,6 +1156,73 @@ function openCSVImport() {
   body.appendChild(pendingWrap);
   body.appendChild(preview);
 
+  // Shared columns for the inline detail tables toggled from the preview
+  // counts below — one config for CSV rows (new/updated/skipped/pending/
+  // materialized), one for existing payment records slated for removal.
+  const CSV_ROW_COLS = [
+    { key: 'date', label: 'Date' },
+    { key: 'propName', label: 'Property' },
+    { key: 'listing', label: 'Listing (CSV)' },
+    { key: 'guest', label: 'Guest' },
+    { key: 'confirmationCode', label: 'Conf. Code' },
+    { key: 'amount', label: 'Amount', right: true, format: (v, r) => v != null ? formatMoney(v, r.currency || 'EUR') : '—' }
+  ];
+  const REMOVE_COLS = [
+    { key: 'date', label: 'Date' },
+    { key: 'propName', label: 'Property' },
+    { key: 'notes', label: 'Guest / Listing' },
+    { key: 'confirmationCode', label: 'Conf. Code' },
+    { key: 'amount', label: 'Amount', right: true, format: (v, r) => formatMoney(v, r.currency || 'EUR') }
+  ];
+
+  // Renders a small table for a list of preview rows. Kept inline (not a
+  // drillDownModal) because this whole preview already lives inside the
+  // Import modal, and the app has a single shared modal overlay — opening
+  // another modal on top would destroy this one, along with the selected
+  // files. Capped at 200 rows shown; the summary line already states the
+  // real total.
+  const buildInlineTable = (rowsArr, cols) => {
+    const wrap = el('div', { class: 'table-wrap', style: 'margin:6px 0 10px;max-height:240px;overflow:auto' });
+    const table = el('table', { class: 'table table-compact' });
+    const headRow = el('tr');
+    for (const c of cols) headRow.appendChild(el('th', { class: c.right ? 'right' : '' }, c.label));
+    table.appendChild(el('thead', {}, headRow));
+    const tbody = el('tbody');
+    for (const row of rowsArr.slice(0, 200)) {
+      const tr = el('tr');
+      for (const c of cols) {
+        const raw = row[c.key];
+        const display = c.format ? c.format(raw, row) : (raw ?? '—');
+        const td = el('td', { class: c.right ? 'right num' : '' });
+        td.appendChild(display instanceof Node ? display : document.createTextNode(String(display ?? '—')));
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    if (rowsArr.length > 200) {
+      wrap.appendChild(el('div', { style: 'padding:4px 8px;font-size:11px;color:var(--text-muted)' }, `Showing first 200 of ${rowsArr.length}`));
+    }
+    return wrap;
+  };
+
+  // Renders a count as plain text when zero, or a toggle that expands/
+  // collapses an inline table of the actual affected records into `panelHost`
+  // when non-zero — so "24 skipped" or "248 to remove" isn't just a number
+  // you have to trust.
+  const countToggle = (panelHost, count, text, rowsArr, cols) => {
+    if (!count) return document.createTextNode(text);
+    const span = el('span', { style: 'text-decoration:underline;text-decoration-style:dotted;cursor:pointer;color:var(--accent)' }, text);
+    let panel = null;
+    span.onclick = () => {
+      if (panel) { panel.remove(); panel = null; return; }
+      panel = buildInlineTable(rowsArr, cols);
+      panelHost.appendChild(panel);
+    };
+    return span;
+  };
+
   const updatePreview = async () => {
     preview.innerHTML = '';
 
@@ -1163,23 +1230,43 @@ function openCSVImport() {
     if (completedFile) {
       const text = await completedFile.text();
       const rows = mergeReservationRows(parseAirbnbCSV(text));
-      let added = 0, updated = 0, skipped = 0;
       const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
       const allPays = listActivePayments();
       const existingKeySet = new Set(allPays.filter(p => p.airbnbKey).map(p => p.airbnbKey));
-      const toDelete = allPays.filter(p => p.source === 'airbnb' && p.airbnbKey && !csvKeys.has(p.airbnbKey)).length;
+      const toDeleteRows = allPays
+        .filter(p => p.source === 'airbnb' && p.airbnbKey && !csvKeys.has(p.airbnbKey))
+        .map(p => ({ ...p, propName: byId('properties', p.propertyId)?.name || '—' }));
+
+      const addedRows = [], updatedRows = [], skippedRows = [];
       for (const row of rows) {
         const pmatch = findProp(row.listing);
-        if (!pmatch) { skipped++; continue; }
+        if (!pmatch) { skippedRows.push({ ...row, propName: '—' }); continue; }
+        const entry = { ...row, propName: pmatch.name, currency: row.currency || pmatch.currency };
         const exists = row.airbnbKey ? existingKeySet.has(row.airbnbKey) : false;
-        if (exists) updated++; else added++;
+        (exists ? updatedRows : addedRows).push(entry);
       }
+
+      const fileBlock = el('div', { style: 'margin-bottom:10px' });
       const badge = el('span', { class: 'badge success' }, 'Paid');
-      preview.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center;margin-bottom:6px' },
+      const summary = el('span', { class: 'muted' });
+      summary.appendChild(document.createTextNode(`— ${rows.length} rows · `));
+      summary.appendChild(countToggle(fileBlock, addedRows.length, `${addedRows.length} new`, addedRows, CSV_ROW_COLS));
+      summary.appendChild(document.createTextNode(' · '));
+      summary.appendChild(countToggle(fileBlock, updatedRows.length, `${updatedRows.length} update`, updatedRows, CSV_ROW_COLS));
+      if (skippedRows.length) {
+        summary.appendChild(document.createTextNode(' · '));
+        summary.appendChild(countToggle(fileBlock, skippedRows.length, `${skippedRows.length} skipped`, skippedRows, CSV_ROW_COLS));
+      }
+      if (toDeleteRows.length) {
+        summary.appendChild(document.createTextNode(' · '));
+        summary.appendChild(countToggle(fileBlock, toDeleteRows.length, `${toDeleteRows.length} to remove`, toDeleteRows, REMOVE_COLS));
+      }
+      fileBlock.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center' },
         badge,
         el('span', { style: 'font-weight:500' }, completedFile.name),
-        el('span', { class: 'muted' }, `— ${rows.length} rows · ${added} new · ${updated} update${skipped ? ` · ${skipped} skipped` : ''}${toDelete ? ` · ${toDelete} to remove` : ''}`)
+        summary
       ));
+      preview.appendChild(fileBlock);
     }
 
     const pendingFile = pendingFileI.files?.[0];
@@ -1189,21 +1276,37 @@ function openCSVImport() {
       const allPays = listActivePayments();
       const existingKeySet = new Set(allPays.filter(p => p.airbnbKey).map(p => p.airbnbKey));
       const paidCodeSet = new Set(allPays.filter(p => p.status === 'paid' && p.confirmationCode).map(p => p.confirmationCode));
-      let added = 0, skipped = 0, willMaterialize = 0;
+
+      const addedRows = [], skippedRows = [], materializedRows = [];
       for (const row of rows) {
         const pmatch = findProp(row.listing);
-        if (!pmatch) { skipped++; continue; }
-        if (row.confirmationCode && paidCodeSet.has(row.confirmationCode)) { willMaterialize++; continue; }
+        if (!pmatch) { skippedRows.push({ ...row, propName: '—' }); continue; }
+        const entry = { ...row, propName: pmatch.name, currency: row.currency || pmatch.currency };
+        if (row.confirmationCode && paidCodeSet.has(row.confirmationCode)) { materializedRows.push(entry); continue; }
         const exists = row.airbnbKey ? existingKeySet.has(row.airbnbKey) : false;
-        if (!exists) added++;
+        if (!exists) addedRows.push(entry);
       }
+
+      const fileBlock = el('div', { style: 'margin-bottom:10px' });
       const badge = el('span', { class: 'badge warning' }, 'Pending');
-      const matText = willMaterialize ? ` · ${willMaterialize} already paid → materialized` : '';
-      preview.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center;margin-bottom:6px' },
+      const summary = el('span', { class: 'muted' });
+      summary.appendChild(document.createTextNode(`— ${rows.length} rows · `));
+      summary.appendChild(countToggle(fileBlock, addedRows.length, `${addedRows.length} new`, addedRows, CSV_ROW_COLS));
+      summary.appendChild(document.createTextNode(' · forecast updated'));
+      if (skippedRows.length) {
+        summary.appendChild(document.createTextNode(' · '));
+        summary.appendChild(countToggle(fileBlock, skippedRows.length, `${skippedRows.length} skipped`, skippedRows, CSV_ROW_COLS));
+      }
+      if (materializedRows.length) {
+        summary.appendChild(document.createTextNode(' · '));
+        summary.appendChild(countToggle(fileBlock, materializedRows.length, `${materializedRows.length} already paid → materialized`, materializedRows, CSV_ROW_COLS));
+      }
+      fileBlock.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center' },
         badge,
         el('span', { style: 'font-weight:500' }, pendingFile.name),
-        el('span', { class: 'muted' }, `— ${rows.length} rows · ${added} new · forecast updated${skipped ? ` · ${skipped} skipped` : ''}${matText}`)
+        summary
       ));
+      preview.appendChild(fileBlock);
     }
   };
 
