@@ -667,7 +667,7 @@ function buildScheduleSection(wrap) {
     const chkTh = el('th', { style: 'width:36px' });
     if (hasSelectable) chkTh.appendChild(selectAllChk);
     htr.appendChild(chkTh);
-    [['Property', ''], ['Tenant', ''], ['Due Date', ''], ['Month', ''], ['Amount', 'right'], ['Cur.', ''], ['Status', ''], ['', '']].forEach(([h, cls]) => {
+    [['Property', ''], ['Owner', ''], ['Tenant', ''], ['Due Date', ''], ['Month', ''], ['Amount', 'right'], ['Cur.', ''], ['Status', ''], ['', '']].forEach(([h, cls]) => {
       htr.appendChild(el('th', cls ? { class: cls } : {}, h));
     });
     const thead = el('thead'); thead.appendChild(htr); t.appendChild(thead);
@@ -703,6 +703,7 @@ function buildScheduleSection(wrap) {
         }
         tr.appendChild(chkTd);
         tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, prop.name));
+        tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, getPersonName(prop.owner)));
         const tenantObj = s.tenantId ? tenants.find(t => t.id === s.tenantId) : null;
         tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, tenantObj?.name || prop.tenantName || '—'));
         tr.appendChild(el('td', {}, fmtDate(s.date)));
@@ -739,6 +740,7 @@ function buildScheduleSection(wrap) {
 
         tr.appendChild(el('td', {})); // checkbox placeholder
         tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, prop.name)); // property read-only
+        tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, getPersonName(prop.owner))); // owner read-only
         tr.appendChild(el('td', {})); // tenant placeholder
 
         const linked = s.linkedPaymentId ? byId('payments', s.linkedPaymentId) || null : null;
@@ -938,7 +940,7 @@ function buildUpcomingSection(wrap) {
     }
 
     const t = el('table', { class: 'table' });
-    t.innerHTML = `<thead><tr><th>Due Date</th><th>Property</th><th>Tenant</th><th class="right">Amount</th><th class="right">EUR</th><th>Status</th><th></th></tr></thead>`;
+    t.innerHTML = `<thead><tr><th>Due Date</th><th>Property</th><th>Owner</th><th>Tenant</th><th class="right">Amount</th><th class="right">EUR</th><th>Status</th><th></th></tr></thead>`;
     const tb = el('tbody');
     for (const entry of allEntries) {
       const { prop } = entry;
@@ -955,6 +957,7 @@ function buildUpcomingSection(wrap) {
       const tr = el('tr', entry.overdue ? { style: 'background:rgba(239,68,68,.04)' } : {});
       tr.appendChild(el('td', {}, fmtDate(entry.date)));
       tr.appendChild(el('td', {}, prop.name));
+      tr.appendChild(el('td', { class: 'muted' }, getPersonName(prop.owner)));
       const entryTenant = entry.tenantId ? byId('tenants', entry.tenantId) : null;
       tr.appendChild(el('td', { class: 'muted' }, entryTenant?.name || prop.tenantName || '—'));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(entry.amount, entry.currency, { maxFrac: 0 })));
