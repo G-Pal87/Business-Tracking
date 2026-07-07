@@ -607,11 +607,14 @@ function openForm(existing) {
   const bedsI = input({ type: 'number', value: p.bedrooms, min: 0 });
   const bathsI = input({ type: 'number', value: p.bathrooms, min: 0 });
   const icalI = input({ value: p.airbnbCalUrl || '', placeholder: 'https://airbnb.com/calendar/ical/...' });
+  const listingNameI = input({ value: p.airbnbListingName || '', placeholder: 'e.g. Colorful 2-Bedroom House|Walk to Beach&ViewTerrace' });
   const soldDateI = input({ type: 'date', value: p.soldDate || '' });
 
   // ── Personal-LT tenant rent row ─────────────────────────────────────────────
   const ltRow   = el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Payment Due Day (1–28)', payDayI));
   const icalRow = formRow('Airbnb iCal URL', icalI);
+  const listingNameRow = formRow('Airbnb Listing Name', listingNameI,
+    'Exact "Listing" title as it appears in your Airbnb CSV exports — often very different from this property\'s name here. Set this so CSV imports match the right property instead of skipping or guessing by name.');
 
   // ── Owner rent history (company-channel) ────────────────────────────────────
   let pendingRentHistory = [...(p.ownerRentHistory || [])];
@@ -683,6 +686,7 @@ function openForm(existing) {
     ownerRentCard.style.display = isCompany ? '' : 'none';
     ltRow.style.display         = !isCompany && isLT ? '' : 'none';
     icalRow.style.display       = !isLT ? '' : 'none';
+    listingNameRow.style.display = !isLT ? '' : 'none';
   };
   typeS.onchange    = updateTypeFields;
   channelS.onchange = updateTypeFields;
@@ -707,6 +711,7 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Mortgage Amount', mAmtI), formRow('Monthly Payment', mMoI)));
   body.appendChild(formRow('Interest Rate %', mRateI));
   body.appendChild(icalRow);
+  body.appendChild(listingNameRow);
 
   // Vacant periods editor
   let pendingVacantPeriods = [...(p.vacantPeriods || [])];
@@ -870,6 +875,7 @@ function openForm(existing) {
       mortgageMonthly: Number(mMoI.value) || 0,
       mortgageRate: Number(mRateI.value) || 0,
       airbnbCalUrl: icalI.value.trim(),
+      airbnbListingName: listingNameI.value.trim(),
       notes: notesT.value.trim(),
       soldDate: soldDateI.value,
       vacantPeriods: pendingVacantPeriods,
