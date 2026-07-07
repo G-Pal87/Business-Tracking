@@ -9,7 +9,7 @@ import {
 } from './analytics-filters.js?v=20260519';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge,
-  mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK
+  mkEmptyState, mkKpiCard, mkCmpGrid, mkInsightsBanner, safePct, fmtK
 } from './analytics-helpers.js';
 import { EXPENSE_CATEGORIES } from '../core/config.js';
 
@@ -200,23 +200,7 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(combined, cmpCombined),
     compLabel: cmpRange?.label,
     compValue: cmpCombined !== null ? formatEUR(cmpCombined) : undefined,
-    onClick: () => {
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      if (youCmp && ritaCmp && cmpRange) {
-        body.appendChild(mkCmpGrid([
-          { label: YOU_LABEL,  curVal: formatEUR(youData.total),  cmpVal: formatEUR(youCmp.total)  },
-          { label: RITA_LABEL, curVal: formatEUR(ritaData.total), cmpVal: formatEUR(ritaCmp.total) },
-          { label: 'Combined', curVal: formatEUR(combined),       cmpVal: formatEUR(cmpCombined)   },
-        ], 'Current Period', cmpRange.label));
-      } else {
-        body.appendChild(mkSummaryGrid([
-          { label: YOU_LABEL,  value: formatEUR(youData.total),  sub: null },
-          { label: RITA_LABEL, value: formatEUR(ritaData.total), sub: null },
-          { label: 'Combined', value: formatEUR(combined) }
-        ], 3));
-      }
-      openModal({ title: 'Combined Gross Income', body, large: true });
-    }
+    onClick: () => showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange)
   }));
 
   // Avg / Month with annualised run-rate
@@ -233,6 +217,7 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(avgMonth, cmpAvg),
     compLabel: cmpRange?.label,
     compValue: cmpAvg ? formatEUR(cmpAvg) : undefined,
+    onClick: () => showAvgMonthModal(youData, ritaData, months)
   }));
 
   // Recurring Income card
@@ -248,6 +233,7 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(recurring, cmpRecurring),
     compLabel: cmpRange?.label,
     compValue: cmpRecurring ? formatEUR(cmpRecurring) : undefined,
+    onClick: () => showRecurringModal(youData, ritaData)
   }));
 
   // Dividends (Combined) card
@@ -262,15 +248,7 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(divsCombined, cmpDivsCombined),
     compLabel: cmpRange?.label,
     compValue: cmpDivsCombined && cmpDivsCombined > 0 ? formatEUR(cmpDivsCombined) : undefined,
-    onClick: () => {
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      body.appendChild(mkSummaryGrid([
-        { label: `${YOU_LABEL} Net`,  value: formatEUR(youData.netDivs) },
-        { label: `${RITA_LABEL} Net`, value: formatEUR(ritaData.netDivs) },
-        { label: 'SDC Total',         value: formatEUR(youData.sdcAmount + ritaData.sdcAmount) },
-      ], 3));
-      openModal({ title: 'Dividends — Combined', body, large: false });
-    }
+    onClick: () => showDivCombinedModal(youData, ritaData)
   }));
 
   return grid;
@@ -304,6 +282,160 @@ function showPersonModal(label, data) {
     ));
   }
   openModal({ title: `${label} — Full Gross Income`, body, large: true });
+}
+
+// ── Combined gross drill-down ─────────────────────────────────────────────────
+function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
+  const combined    = youData.total + ritaData.total;
+  const cmpCombined = youCmp && ritaCmp ? youCmp.total + ritaCmp.total : null;
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  if (youCmp && ritaCmp && cmpRange) {
+    body.appendChild(mkCmpGrid([
+      { label: YOU_LABEL,  curVal: formatEUR(youData.total),  cmpVal: formatEUR(youCmp.total)  },
+      { label: RITA_LABEL, curVal: formatEUR(ritaData.total), cmpVal: formatEUR(ritaCmp.total) },
+      { label: 'Combined', curVal: formatEUR(combined),       cmpVal: formatEUR(cmpCombined)   },
+    ], 'Current Period', cmpRange.label));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: YOU_LABEL,  value: formatEUR(youData.total),  sub: null },
+      { label: RITA_LABEL, value: formatEUR(ritaData.total), sub: null },
+      { label: 'Combined', value: formatEUR(combined) }
+    ], 3));
+  }
+  body.appendChild(mkSectionLabel('Combined Breakdown'));
+  body.appendChild(mkModalTable(
+    ['Source', YOU_LABEL, RITA_LABEL, 'Combined'],
+    [
+      ['Director Salary',       formatEUR(youData.salary),         formatEUR(ritaData.salary),         formatEUR(youData.salary + ritaData.salary)],
+      ['Property Rent (Owner)', formatEUR(youData.ownerRentTotal), formatEUR(ritaData.ownerRentTotal), formatEUR(youData.ownerRentTotal + ritaData.ownerRentTotal)],
+      ['Reimbursements',        formatEUR(youData.reimb),          formatEUR(ritaData.reimb),          formatEUR(youData.reimb + ritaData.reimb)],
+      ['Dividends (Net SDC)',   formatEUR(youData.netDivs),        formatEUR(ritaData.netDivs),        formatEUR(youData.netDivs + ritaData.netDivs)],
+      ['Personal Properties',   formatEUR(youData.personalIncome), formatEUR(ritaData.personalIncome), formatEUR(youData.personalIncome + ritaData.personalIncome)],
+    ],
+    { highlight: 3 }
+  ));
+  openModal({ title: 'Combined Gross Income', body, large: true });
+}
+
+// ── Avg / Month drill-down ────────────────────────────────────────────────────
+function showAvgMonthModal(youData, ritaData, months) {
+  const combined = youData.total + ritaData.total;
+  const avg      = months.length > 0 ? combined / months.length : 0;
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  body.appendChild(mkSummaryGrid([
+    { label: 'Avg / Month',  value: formatEUR(avg) },
+    { label: 'Total Period', value: formatEUR(combined) },
+    { label: 'Months',       value: String(months.length) }
+  ], 3));
+  if (months.length > 0) {
+    body.appendChild(mkSectionLabel('Combined Income by Month'));
+    const rows = months.map(m => {
+      const mk = m.key;
+      const sal = youData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
+                + ritaData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+      const rent = (youData.ownerRentByMonth[mk] || 0) + (ritaData.ownerRentByMonth[mk] || 0);
+      const reimb = youData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
+                  + ritaData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+      const divs = youData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk).reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0)
+                 + ritaData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk).reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0);
+      const pers = youData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
+                 + ritaData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+      return [m.label, formatEUR(sal + rent + reimb + divs + pers)];
+    });
+    body.appendChild(mkModalTable(['Month', 'Combined Income'], rows, { highlight: 1 }));
+  }
+  openModal({ title: 'Average Monthly Income', body, large: true });
+}
+
+// ── Recurring income drill-down ───────────────────────────────────────────────
+function showRecurringModal(youData, ritaData) {
+  const combined     = youData.total + ritaData.total;
+  const recurring    = (youData.salary + youData.ownerRentTotal) + (ritaData.salary + ritaData.ownerRentTotal);
+  const nonRecurring = combined - recurring;
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  body.appendChild(mkSummaryGrid([
+    { label: 'Recurring',     value: formatEUR(recurring) },
+    { label: 'Non-Recurring', value: formatEUR(nonRecurring) },
+    { label: '% Recurring',   value: combined > 0 ? (recurring / combined * 100).toFixed(0) + '%' : '—' }
+  ], 3));
+  body.appendChild(mkSectionLabel('Recurring — Salary + Owner Rent'));
+  body.appendChild(mkModalTable(
+    ['Source', YOU_LABEL, RITA_LABEL, 'Combined'],
+    [
+      ['Director Salary',       formatEUR(youData.salary),         formatEUR(ritaData.salary),         formatEUR(youData.salary + ritaData.salary)],
+      ['Property Rent (Owner)', formatEUR(youData.ownerRentTotal), formatEUR(ritaData.ownerRentTotal), formatEUR(youData.ownerRentTotal + ritaData.ownerRentTotal)],
+    ],
+    { highlight: 3 }
+  ));
+  body.appendChild(mkSectionLabel('Non-Recurring — Everything Else'));
+  body.appendChild(mkModalTable(
+    ['Source', YOU_LABEL, RITA_LABEL, 'Combined'],
+    [
+      ['Reimbursements',      formatEUR(youData.reimb),          formatEUR(ritaData.reimb),          formatEUR(youData.reimb + ritaData.reimb)],
+      ['Dividends (Net SDC)', formatEUR(youData.netDivs),        formatEUR(ritaData.netDivs),        formatEUR(youData.netDivs + ritaData.netDivs)],
+      ['Personal Properties', formatEUR(youData.personalIncome), formatEUR(ritaData.personalIncome), formatEUR(youData.personalIncome + ritaData.personalIncome)],
+    ],
+    { highlight: 3 }
+  ));
+  openModal({ title: 'Recurring vs Non-Recurring Income', body, large: true });
+}
+
+// ── Combined dividends drill-down ─────────────────────────────────────────────
+function showDivCombinedModal(youData, ritaData) {
+  const grossCombined = youData.grossDivs + ritaData.grossDivs;
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  body.appendChild(mkSummaryGrid([
+    { label: 'Gross Combined',    value: formatEUR(grossCombined) },
+    { label: `${YOU_LABEL} Net`,  value: formatEUR(youData.netDivs) },
+    { label: `${RITA_LABEL} Net`, value: formatEUR(ritaData.netDivs) },
+    { label: 'SDC Total',         value: formatEUR(youData.sdcAmount + ritaData.sdcAmount) },
+  ], 4));
+  const merged = [
+    ...youData.divRecords.map(d => ({ ...d, _label: YOU_LABEL })),
+    ...ritaData.divRecords.map(d => ({ ...d, _label: RITA_LABEL })),
+  ];
+  if (merged.length > 0) {
+    body.appendChild(mkSectionLabel('Dividend Records'));
+    const rows = merged
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .map(d => [
+        d.date || '—',
+        d._label,
+        formatEUR(d.grossAmount || 0),
+        formatEUR((d.grossAmount || 0) * SDC_RATE),
+        formatEUR((d.grossAmount || 0) * (1 - SDC_RATE)),
+      ]);
+    body.appendChild(mkModalTable(['Date', 'Person', 'Gross', 'SDC', 'Net'], rows, { highlight: 4 }));
+  } else {
+    body.appendChild(mkEmptyState('No dividends for this period. Add dividends in the Tax → Dividends tab.'));
+  }
+  openModal({ title: 'Dividends — Combined', body, large: true });
+}
+
+// ── GESY / social contributions drill-down ────────────────────────────────────
+function showGesyModal(youData, ritaData) {
+  const gesyTotal   = youData.gesyTotal + ritaData.gesyTotal;
+  const salaryTotal = youData.salary + ritaData.salary;
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  body.appendChild(mkSummaryGrid([
+    { label: 'GESY Total',            value: formatEUR(gesyTotal) },
+    { label: 'Combined Salary',       value: formatEUR(salaryTotal) },
+    { label: 'True Employment Cost',  value: formatEUR(salaryTotal + gesyTotal) }
+  ], 3));
+  const merged = [
+    ...youData.gesyExps.map(e => ({ ...e, _label: YOU_LABEL })),
+    ...ritaData.gesyExps.map(e => ({ ...e, _label: RITA_LABEL })),
+  ];
+  if (merged.length > 0) {
+    body.appendChild(mkSectionLabel('Social Contribution Records'));
+    const rows = merged
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .map(e => [e.date || '—', e._label, formatEUR(toEUR(e.amount, e.currency, e.date)), e.description || '—']);
+    body.appendChild(mkModalTable(['Date', 'Person', 'Amount (EUR)', 'Description'], rows, { highlight: 2 }));
+  } else {
+    body.appendChild(mkEmptyState('No GESY / social contribution records this period.'));
+  }
+  openModal({ title: 'Employer GESY Cost', body, large: true });
 }
 
 // ── Salary drill-down ─────────────────────────────────────────────────────────
@@ -361,6 +493,20 @@ function showRentModal(label, data, months) {
   openModal({ title: `${label} — Owner Rent Income`, body, large: true });
 }
 
+// ── Reimbursements drill-down ─────────────────────────────────────────────────
+function showReimbModal(label, data) {
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
+  if (data.reimbExps.length > 0) {
+    const rows = data.reimbExps
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), e.description || '—']);
+    body.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Description'], rows, { highlight: 1 }));
+  } else {
+    body.appendChild(mkEmptyState('No reimbursements this period.'));
+  }
+  openModal({ title: `${label} — Reimbursements`, body, large: true });
+}
+
 // ── Dividends drill-down ──────────────────────────────────────────────────────
 function showDivModal(label, data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
@@ -406,6 +552,19 @@ function showPersonalPropsModal(label, data) {
     body.appendChild(mkEmptyState('No personal-channel properties. Mark properties as Personal in the Properties form.'));
   }
   openModal({ title: `${label} — Personal Properties`, body, large: true });
+}
+
+// ── Combined personal properties drill-down ───────────────────────────────────
+function showPersonalPropsCombinedModal(youData, ritaData) {
+  const propMap = new Map();
+  for (const p of [...youData.personalProps, ...ritaData.personalProps]) propMap.set(p.id, p);
+  const merged = {
+    personalIncome:   youData.personalIncome + ritaData.personalIncome,
+    personalProps:    [...propMap.values()],
+    personalPayments: [...youData.personalPayments, ...ritaData.personalPayments],
+    personalByProp:   new Map([...youData.personalByProp, ...ritaData.personalByProp]),
+  };
+  showPersonalPropsModal('Combined', merged);
 }
 
 // ── Person column ─────────────────────────────────────────────────────────────
@@ -471,18 +630,7 @@ function buildPersonColumn(label, color, data, months, cmpData) {
   col.appendChild(makeRow(
     'Reimbursements', formatEUR(data.reimb),
     data.reimbExps.length > 0,
-    () => {
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
-      if (data.reimbExps.length > 0) {
-        const rows = data.reimbExps
-          .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-          .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), e.description || '—']);
-        body.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Description'], rows, { highlight: 1 }));
-      } else {
-        body.appendChild(mkEmptyState('No reimbursements this period.'));
-      }
-      openModal({ title: `${label} — Reimbursements`, body, large: true });
-    },
+    () => showReimbModal(label, data),
     [
       data.reimbExps.length > 0 ? `${data.reimbExps.length} records` : null,
       pctOf(data.reimb)
@@ -608,6 +756,7 @@ function buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange) {
     severity: recPct >= 70 ? 'Note' : 'Watch',
     text:     `${recPct.toFixed(0)}% of combined income is recurring (salary + owner rent = ${formatEUR(recurring)}). ` +
               (recPct >= 70 ? 'Good stability — most income is predictable.' : 'Consider increasing recurring income streams.'),
+    onClick:  () => showRecurringModal(youData, ritaData)
   });
 
   // 2. Income balance between partners
@@ -617,6 +766,7 @@ function buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange) {
       title:    'Partner Income Balance',
       severity: 'Watch',
       text:     `${YOU_LABEL} receives ${youShare.toFixed(0)}% of combined income (${formatEUR(youData.total)}) vs ${RITA_LABEL} at ${(100 - youShare).toFixed(0)}% (${formatEUR(ritaData.total)}). Review if intentional.`,
+      onClick:  () => showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange)
     });
   }
 
@@ -626,6 +776,7 @@ function buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange) {
       title:    'No Dividends',
       severity: 'Note',
       text:     'No dividends declared this period. Dividends (after 2.65% SDC) can be a tax-efficient way to extract company profits when surplus exists.',
+      onClick:  () => showDivCombinedModal(youData, ritaData)
     });
   } else {
     const sdcTotal   = youData.sdcAmount + ritaData.sdcAmount;
@@ -634,6 +785,7 @@ function buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange) {
       title:    'Dividends & SDC',
       severity: 'Note',
       text:     `${formatEUR(grossTotal)} gross dividends paid. SDC withheld: ${formatEUR(sdcTotal)} (2.65%). Net to directors: ${formatEUR(divs)}.`,
+      onClick:  () => showDivCombinedModal(youData, ritaData)
     });
   }
 
@@ -644,6 +796,7 @@ function buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange) {
       title:    'Personal Properties',
       severity: 'Note',
       text:     `Personal-channel properties contribute ${formatEUR(pers)} (${persPct}% of combined income) — ${youData.personalProps.length + ritaData.personalProps.length} properties, ${youData.personalPayments.length + ritaData.personalPayments.length} payments.`,
+      onClick:  () => showPersonalPropsCombinedModal(youData, ritaData)
     });
   }
 
@@ -654,33 +807,11 @@ function buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange) {
       title:    'Employer GESY Cost',
       severity: 'Note',
       text:     `Company paid ${formatEUR(gesyTotal)} in GESY / social contributions on top of salaries — the true employment cost is ${formatEUR(salary + gesyTotal)}.`,
+      onClick:  () => showGesyModal(youData, ritaData)
     });
   }
 
-  // Render using analytics-helpers mkInsightsBanner pattern
-  const SEV_COLOR = { 'At Risk': '#ef4444', 'Watch': '#f59e0b', 'Note': '#6366f1' };
-  const SEV_BG    = { 'At Risk': 'rgba(239,68,68,0.06)', 'Watch': 'rgba(245,158,11,0.06)', 'Note': 'rgba(99,102,241,0.06)' };
-
-  const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Income Insights')
-  ));
-  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding:16px' });
-  for (const sig of signals) {
-    const color = SEV_COLOR[sig.severity] || SEV_COLOR['Note'];
-    const bg    = SEV_BG[sig.severity]    || SEV_BG['Note'];
-    const block = el('div', {
-      style: `background:${bg};border-left:3px solid ${color};border-radius:0 var(--radius-sm) var(--radius-sm) 0;padding:12px 14px`
-    });
-    const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:6px' });
-    titleRow.appendChild(el('span', { style: `font-size:11px;font-weight:700;letter-spacing:0.5px;color:${color}` }, sig.title));
-    titleRow.appendChild(el('span', { style: `font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;background:${color};color:#fff` }, sig.severity));
-    block.appendChild(titleRow);
-    block.appendChild(el('p', { style: 'margin:0;font-size:12px;color:var(--text);line-height:1.4' }, sig.text));
-    grid.appendChild(block);
-  }
-  card.appendChild(grid);
-  return card;
+  return mkInsightsBanner(signals, 'Income Insights');
 }
 
 // ── Charts ────────────────────────────────────────────────────────────────────
@@ -831,7 +962,7 @@ function renderPersonMonthly(youData, ritaData, months) {
   });
 }
 
-function renderCompositionDonut(canvasId, data, label, color) {
+function renderCompositionDonut(canvasId, data, label, color, months) {
   const slices = [
     { key: 'salary',   label: 'Salary',          value: data.salary,        color: INCOME_COLORS.salary  },
     { key: 'rent',     label: 'Property Rent',    value: data.ownerRentTotal,color: INCOME_COLORS.rent    },
@@ -849,12 +980,13 @@ function renderCompositionDonut(canvasId, data, label, color) {
     onClickItem: (sliceLabel) => {
       const s = slices.find(x => x.label === sliceLabel);
       if (!s) return;
-      const body = el('div');
-      body.appendChild(mkSummaryGrid([
-        { label: sliceLabel,     value: formatEUR(s.value) },
-        { label: '% of Total',   value: data.total > 0 ? (s.value / data.total * 100).toFixed(1) + '%' : '—' }
-      ], 2));
-      openModal({ title: `${label} — ${sliceLabel}`, body, large: false });
+      switch (s.key) {
+        case 'salary':   return showSalaryModal(label, data);
+        case 'rent':     return showRentModal(label, data, months);
+        case 'reimb':    return showReimbModal(label, data);
+        case 'divs':     return showDivModal(label, data);
+        case 'personal': return showPersonalPropsModal(label, data);
+      }
     }
   });
 }
@@ -955,8 +1087,8 @@ function buildView() {
   setTimeout(() => {
     renderStreamMonthly(youData, ritaData, months);
     renderPersonMonthly(youData, ritaData, months);
-    renderCompositionDonut('pi-giorgos-donut', youData, YOU_LABEL, YOU_HEX);
-    renderCompositionDonut('pi-rita-donut',    ritaData, RITA_LABEL, RITA_HEX);
+    renderCompositionDonut('pi-giorgos-donut', youData, YOU_LABEL, YOU_HEX, months);
+    renderCompositionDonut('pi-rita-donut',    ritaData, RITA_LABEL, RITA_HEX, months);
   }, 0);
 
   return wrap;

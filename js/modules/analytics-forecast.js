@@ -612,6 +612,69 @@ function netMoDrillRows(monthlyBreakdown) {
     }));
 }
 
+// ── Pending pipeline modal ────────────────────────────────────────────────────
+// Shared by the Pending Pipeline KPI and the Forecast Performance Insights
+// signals that point at it, so both open the identical breakdown.
+function openPendingPipelineModal(data) {
+  const { pendingPipeline, pendingReservations, pendingSTRTotal, ltrPendingItems, ltrPendingTotal, svcPendingItems, svcPendingTotal } = data;
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+  body.appendChild(mkSummaryGrid([
+    { label: 'Short-Term Rental', value: pendingSTRTotal > 0 ? formatEUR(pendingSTRTotal) : '—', sub: `${pendingReservations.length} reservation${pendingReservations.length !== 1 ? 's' : ''}` },
+    { label: 'Long-Term Rental',  value: ltrPendingTotal > 0 ? formatEUR(ltrPendingTotal) : '—', sub: `${ltrPendingItems.length} month${ltrPendingItems.length !== 1 ? 's' : ''}` },
+    { label: 'Services',          value: svcPendingTotal > 0 ? formatEUR(svcPendingTotal) : '—', sub: `${svcPendingItems.length} invoice${svcPendingItems.length !== 1 ? 's' : ''}` },
+    { label: 'Total Pipeline',    value: formatEUR(pendingPipeline) }
+  ], 4));
+
+  if (pendingReservations.length > 0) {
+    body.appendChild(mkSectionLabel('Short-Term Rental — Pending Airbnb Reservations'));
+    body.appendChild(mkModalTable(
+      ['Property', 'Confirmation', 'Check-in', 'Nights', 'Amount'],
+      pendingReservations
+        .slice()
+        .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
+        .map(p => [
+          byId('properties', p.propertyId)?.name || '—',
+          p.confirmationCode || p.airbnbRef || '—',
+          p.airbnbCheckIn || '—',
+          String(p.airbnbNights || '—'),
+          formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
+        ]),
+      { highlight: 4 }
+    ));
+  }
+
+  if (ltrPendingItems.length > 0) {
+    body.appendChild(mkSectionLabel('Long-Term Rental — Unpaid Scheduled Rent'));
+    body.appendChild(mkModalTable(
+      ['Property', 'Tenant', 'Due Date', 'Status', 'Amount'],
+      ltrPendingItems
+        .slice()
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+        .map(i => [i.label, i.detail, i.dueDate, i.overdue ? 'Overdue' : 'Upcoming', formatEUR(i.amountEUR)]),
+      { highlight: 4 }
+    ));
+  }
+
+  if (svcPendingItems.length > 0) {
+    body.appendChild(mkSectionLabel('Services — Outstanding Invoices'));
+    body.appendChild(mkModalTable(
+      ['Client', 'Invoice #', 'Due Date', 'Status', 'Amount'],
+      svcPendingItems
+        .slice()
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+        .map(i => [i.label, i.detail, i.dueDate, i.overdue ? 'Overdue' : 'Upcoming', formatEUR(i.amountEUR)]),
+      { highlight: 4 }
+    ));
+  }
+
+  if (!pendingReservations.length && !ltrPendingItems.length && !svcPendingItems.length) {
+    body.appendChild(mkEmptyState('No confirmed pending revenue found for the selected period and filters.'));
+  }
+
+  openModal({ title: 'Pending Pipeline — Confirmed Revenue', body, large: true });
+}
+
 // ── KPI grid ──────────────────────────────────────────────────────────────────
 function buildKpiGrid(data, cmpData, cmpRange) {
   const {
@@ -785,7 +848,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     label: 'Forecast Net',
     value: forecastNet !== 0 || forecastRev > 0 ? formatEUR(forecastNet) : '—',
     variant: forecastNet >= 0 ? 'success' : 'danger',
-    onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS),
+    onClick: () => drillDownModal('Forecast Net Breakdown', netMoDrillRows(monthlyBreakdown), NET_MO_COLS),
     delta: cmpData ? safePct(forecastNet, cmpData.forecastNet) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.forecastNet) : undefined,
@@ -808,64 +871,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     subtitle: 'Confirmed — all streams',
     value: pendingPipeline > 0 ? formatEUR(pendingPipeline) : '—',
     variant: pendingPipeline > 0 ? 'info' : '',
-    onClick: () => {
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-
-      body.appendChild(mkSummaryGrid([
-        { label: 'Short-Term Rental', value: pendingSTRTotal > 0 ? formatEUR(pendingSTRTotal) : '—', sub: `${pendingReservations.length} reservation${pendingReservations.length !== 1 ? 's' : ''}` },
-        { label: 'Long-Term Rental',  value: ltrPendingTotal > 0 ? formatEUR(ltrPendingTotal) : '—', sub: `${ltrPendingItems.length} month${ltrPendingItems.length !== 1 ? 's' : ''}` },
-        { label: 'Services',          value: svcPendingTotal > 0 ? formatEUR(svcPendingTotal) : '—', sub: `${svcPendingItems.length} invoice${svcPendingItems.length !== 1 ? 's' : ''}` },
-        { label: 'Total Pipeline',    value: formatEUR(pendingPipeline) }
-      ], 4));
-
-      if (pendingReservations.length > 0) {
-        body.appendChild(mkSectionLabel('Short-Term Rental — Pending Airbnb Reservations'));
-        body.appendChild(mkModalTable(
-          ['Property', 'Confirmation', 'Check-in', 'Nights', 'Amount'],
-          pendingReservations
-            .slice()
-            .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
-            .map(p => [
-              byId('properties', p.propertyId)?.name || '—',
-              p.confirmationCode || p.airbnbRef || '—',
-              p.airbnbCheckIn || '—',
-              String(p.airbnbNights || '—'),
-              formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
-            ]),
-          { highlight: 4 }
-        ));
-      }
-
-      if (ltrPendingItems.length > 0) {
-        body.appendChild(mkSectionLabel('Long-Term Rental — Unpaid Scheduled Rent'));
-        body.appendChild(mkModalTable(
-          ['Property', 'Tenant', 'Due Date', 'Status', 'Amount'],
-          ltrPendingItems
-            .slice()
-            .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-            .map(i => [i.label, i.detail, i.dueDate, i.overdue ? 'Overdue' : 'Upcoming', formatEUR(i.amountEUR)]),
-          { highlight: 4 }
-        ));
-      }
-
-      if (svcPendingItems.length > 0) {
-        body.appendChild(mkSectionLabel('Services — Outstanding Invoices'));
-        body.appendChild(mkModalTable(
-          ['Client', 'Invoice #', 'Due Date', 'Status', 'Amount'],
-          svcPendingItems
-            .slice()
-            .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-            .map(i => [i.label, i.detail, i.dueDate, i.overdue ? 'Overdue' : 'Upcoming', formatEUR(i.amountEUR)]),
-          { highlight: 4 }
-        ));
-      }
-
-      if (!pendingReservations.length && !ltrPendingItems.length && !svcPendingItems.length) {
-        body.appendChild(mkEmptyState('No confirmed pending revenue found for the selected period and filters.'));
-      }
-
-      openModal({ title: 'Pending Pipeline — Confirmed Revenue', body, large: true });
-    },
+    onClick: () => openPendingPipelineModal(data),
     delta: cmpData ? safePct(pendingPipeline, cmpData.pendingPipeline) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.pendingPipeline) : undefined,
@@ -1019,7 +1025,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
 function buildForecastInsights(data, cmpData) {
   const { actualRev, forecastRev, variancePct, pendingPipeline,
           pendingSTRTotal, ltrPendingTotal, svcPendingTotal, svcProjectedTotal,
-          streamBreakdown, propertyBreakdown } = data;
+          streamBreakdown, propertyBreakdown, monthlyBreakdown } = data;
 
   const signals = [];
 
@@ -1030,14 +1036,16 @@ function buildForecastInsights(data, cmpData) {
         title: 'Forecast Gap',
         text: `Actual revenue is ${Math.abs(variancePct).toFixed(0)}% below forecast (${fmtVar(actualRev, forecastRev)} variance).`,
         severity: 'At Risk',
-        inspect: 'Monthly Forecast Breakdown'
+        inspect: 'Monthly Forecast Breakdown',
+        onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS)
       });
     } else if (variancePct < -10) {
       signals.push({
         title: 'Forecast Gap',
         text: `Actual revenue is ${Math.abs(variancePct).toFixed(0)}% below forecast (${fmtVar(actualRev, forecastRev)} variance).`,
         severity: 'Watch',
-        inspect: 'Monthly Forecast Breakdown'
+        inspect: 'Monthly Forecast Breakdown',
+        onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS)
       });
     }
   } else if (actualRev > 0 && forecastRev === 0) {
@@ -1045,14 +1053,16 @@ function buildForecastInsights(data, cmpData) {
       title: 'Missing Forecast',
       text: `Actual revenue of ${formatEUR(actualRev)} exists but no forecast was set for the selected period.`,
       severity: 'Watch',
-      inspect: 'Monthly Forecast Breakdown'
+      inspect: 'Monthly Forecast Breakdown',
+      onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS)
     });
   } else if (forecastRev > 0 && actualRev === 0) {
     signals.push({
       title: 'Forecast Without Actuals',
       text: `Forecast revenue of ${formatEUR(forecastRev)} exists but no actual revenue has been recorded yet.`,
       severity: 'Watch',
-      inspect: 'Stream Breakdown'
+      inspect: 'Stream Breakdown',
+      onClick: () => openModal({ title: 'Stream Breakdown', body: buildStreamTable(data), large: true })
     });
   }
 
@@ -1067,7 +1077,8 @@ function buildForecastInsights(data, cmpData) {
         title: 'Stream Variance',
         text: `${worst.label} is ${formatEUR(Math.abs(worst.variance))} below forecast${pct}.`,
         severity: 'Watch',
-        inspect: 'Stream Breakdown'
+        inspect: 'Stream Breakdown',
+        onClick: () => openModal({ title: 'Stream Breakdown', body: buildStreamTable(data), large: true })
       });
     }
   }
@@ -1082,7 +1093,8 @@ function buildForecastInsights(data, cmpData) {
         title: 'Property Variance',
         text: `${worst.label} is the largest negative variance (${formatEUR(Math.abs(worst.variance))} below forecast).`,
         severity: 'Watch',
-        inspect: 'Property Breakdown'
+        inspect: 'Property Breakdown',
+        onClick: () => openModal({ title: 'Property Breakdown', body: buildPropertyTable(data), large: true })
       });
     }
   }
@@ -1097,7 +1109,8 @@ function buildForecastInsights(data, cmpData) {
       title: 'Pending Pipeline',
       text: `${formatEUR(pendingPipeline)} in confirmed pending/upcoming revenue for the selected period (${parts.join(', ')}).`,
       severity: 'info',
-      inspect: 'Pending Pipeline'
+      inspect: 'Pending Pipeline',
+      onClick: () => openPendingPipelineModal(data)
     });
   }
 
@@ -1108,7 +1121,8 @@ function buildForecastInsights(data, cmpData) {
       title: 'Projected Services',
       text: `${formatEUR(svcProjectedTotal)} in forecasted service revenue has no invoice raised yet — not included in the confirmed Pending Pipeline total.`,
       severity: 'info',
-      inspect: 'Pending Pipeline'
+      inspect: 'Pending Pipeline',
+      onClick: () => openPendingPipelineModal(data)
     });
   }
 
@@ -1133,7 +1147,15 @@ function buildForecastInsights(data, cmpData) {
   for (const sig of signals) {
     const color = SEV_COLOR[sig.severity] || '#6b7280';
     const bg    = SEV_BG[sig.severity]    || 'transparent';
-    const block = el('div', { style: `padding:10px 12px;border-radius:4px;border-left:3px solid ${color};background:${bg}` });
+    const block = el('div', {
+      style: `padding:10px 12px;border-radius:4px;border-left:3px solid ${color};background:${bg}${sig.onClick ? ';cursor:pointer' : ''}`,
+      title: sig.onClick ? 'Click for breakdown' : ''
+    });
+    if (sig.onClick) {
+      block.addEventListener('mouseenter', () => { block.style.boxShadow = '0 0 0 2px var(--accent)'; });
+      block.addEventListener('mouseleave', () => { block.style.boxShadow = ''; });
+      block.onclick = sig.onClick;
+    }
     const titleRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px' });
     titleRow.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)' }, sig.title));
     if (sig.severity !== 'info') {
@@ -1988,8 +2010,8 @@ function buildView() {
   ]));
 
   wrap.appendChild(makeChartSection('Pending Pipeline', [
-    ['Pending Pipeline by Month', 'anf-pending-pipeline'],
-    ['Pending by Property',       'anf-pending-by-prop']
+    ['STR Pending Pipeline by Month',    'anf-pending-pipeline'],
+    ['STR Pending Pipeline by Property', 'anf-pending-by-prop']
   ]));
 
   wrap.appendChild(makeChartSection('Forecast Accuracy', [

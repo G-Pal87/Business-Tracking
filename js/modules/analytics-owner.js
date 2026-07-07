@@ -160,11 +160,12 @@ function getPropertiesData(filterState) {
 
 // ── Shared KPI modal body builder (Giorgos / Rita — avoids duplication) ──────
 function buildShareKpiModal(owner, partnerLabel, revenue, pct, allRecords) {
-  const relevant = allRecords
+  const filtered = allRecords
     .filter(r => r._resolvedOwner === owner || r._resolvedOwner === 'both')
     .map(r => ({ ...r, _shareEur: r._resolvedOwner === 'both' ? r._eur * 0.5 : r._eur }))
-    .sort((a, b) => b._shareEur - a._shareEur)
-    .slice(0, 5);
+    .sort((a, b) => b._shareEur - a._shareEur);
+  const total = filtered.length;
+  const relevant = filtered.slice(0, 5);
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
@@ -172,7 +173,9 @@ function buildShareKpiModal(owner, partnerLabel, revenue, pct, allRecords) {
     { label: '% of Portfolio',          value: pct.toFixed(1) + '%' }
   ], 2));
   if (relevant.length > 0) {
-    body.appendChild(mkSectionLabel('Top 5 Records by Amount'));
+    body.appendChild(mkSectionLabel(
+      relevant.length < total ? `Top ${relevant.length} of ${total} Records by Amount` : `All ${total} Records by Amount`
+    ));
     body.appendChild(mkModalTable(
       ['Date', 'Entity', 'Attribution', 'EUR'],
       relevant.map(r => {
@@ -187,6 +190,43 @@ function buildShareKpiModal(owner, partnerLabel, revenue, pct, allRecords) {
   return body;
 }
 
+// ── Shared drill-down modal openers (reused by KPI cards, charts, and the
+//    partner columns so identical numbers always open identical modals) ──────
+function openRevenueSplitModal(data, cmpData, cmpRange) {
+  const { total, revSplit } = data;
+  const youPct  = total > 0 ? revSplit.you  / total * 100 : 0;
+  const ritaPct = total > 0 ? revSplit.rita / total * 100 : 0;
+  const cl = cmpRange?.label || '';
+
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  if (cmpData) {
+    const cmpYou  = cmpData.revSplit.you;
+    const cmpRita = cmpData.revSplit.rita;
+    body.appendChild(mkCmpGrid([
+      { label: YOU_LABEL,  curVal: formatEUR(revSplit.you),  cmpVal: formatEUR(cmpYou)  },
+      { label: RITA_LABEL, curVal: formatEUR(revSplit.rita), cmpVal: formatEUR(cmpRita) },
+      { label: 'Total',    curVal: formatEUR(total),          cmpVal: formatEUR(cmpData.total) },
+    ], 'Current Period', cl));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: YOU_LABEL,  value: formatEUR(revSplit.you),  sub: youPct.toFixed(1) + '%' },
+      { label: RITA_LABEL, value: formatEUR(revSplit.rita), sub: ritaPct.toFixed(1) + '%' },
+      { label: 'Total',    value: formatEUR(total) }
+    ], 3));
+  }
+  body.appendChild(mkSectionLabel('Revenue Split'));
+  body.appendChild(mkModalTable(
+    ['Partner', 'Revenue', '% of Total'],
+    [
+      [YOU_LABEL,  formatEUR(revSplit.you),  youPct.toFixed(1)  + '%'],
+      [RITA_LABEL, formatEUR(revSplit.rita), ritaPct.toFixed(1) + '%'],
+      ['Total',    formatEUR(total),          '100%']
+    ],
+    { highlight: 1 }
+  ));
+  openModal({ title: 'Total Portfolio Revenue — Breakdown', body, large: true });
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function safePctStr(val, total) {
   if (!total || !isFinite(total)) return '—';
@@ -198,7 +238,7 @@ function netColor(val) {
 }
 
 // ── Partner column card ───────────────────────────────────────────────────────
-function buildPartnerColumn(label, color, data, propsData, isYou) {
+function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cmpRange, isYou) {
   const rev    = isYou ? data.revSplit.you  : data.revSplit.rita;
   const exp    = isYou ? data.expSplit.you  : data.expSplit.rita;
   const net    = isYou ? data.netSplit.you  : data.netSplit.rita;
@@ -215,15 +255,24 @@ function buildPartnerColumn(label, color, data, propsData, isYou) {
   }, label));
 
   const rows = [
-    { label: 'Revenue',                        value: formatEUR(rev),   sub: null },
+    { label: 'Revenue',                        value: formatEUR(rev),   sub: null, onClick: () => openRevenueSplitModal(data, cmpData, cmpRange) },
     { label: 'Operating Expenses (excl. CapEx)', value: formatEUR(exp),   sub: null },
-    { label: 'Net Profit',          value: formatEUR(net),   sub: null, netVal: net },
+    { label: 'Net Profit',          value: formatEUR(net),   sub: null, netVal: net, onClick: () => openSettlementModal(data, curRange) },
     { label: 'Portfolio Properties',value: String(count),    sub: null },
-    { label: 'Portfolio Book Value', value: formatEUR(value), sub: null },
+    { label: 'Portfolio Book Value', value: formatEUR(value), sub: null, onClick: () => openValueSplitModal(label, isYou ? 0 : 1, propsData) },
   ];
 
   for (const row of rows) {
-    const item = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04)' });
+    const item = el('div', {
+      style: 'display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04)' +
+             (row.onClick ? ';cursor:pointer' : '')
+    });
+    if (row.onClick) {
+      item.title = 'Click for breakdown';
+      item.addEventListener('mouseenter', () => { item.style.background = 'rgba(255,255,255,0.04)'; });
+      item.addEventListener('mouseleave', () => { item.style.background = ''; });
+      item.onclick = row.onClick;
+    }
     item.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, row.label));
     const valStyle = row.netVal !== undefined
       ? `font-size:13px;font-weight:600;color:${netColor(row.netVal)}`
@@ -255,35 +304,7 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     delta: safePct(total, cmpData?.total),
     compLabel: cl,
     compValue: cmpData ? formatEUR(cmpData.total) : undefined,
-    onClick: () => {
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      if (cmpData) {
-        const cmpYou  = cmpData.revSplit.you;
-        const cmpRita = cmpData.revSplit.rita;
-        body.appendChild(mkCmpGrid([
-          { label: YOU_LABEL,  curVal: formatEUR(revSplit.you),  cmpVal: formatEUR(cmpYou)  },
-          { label: RITA_LABEL, curVal: formatEUR(revSplit.rita), cmpVal: formatEUR(cmpRita) },
-          { label: 'Total',    curVal: formatEUR(total),          cmpVal: formatEUR(cmpData.total) },
-        ], 'Current Period', cl));
-      } else {
-        body.appendChild(mkSummaryGrid([
-          { label: YOU_LABEL,  value: formatEUR(revSplit.you),  sub: youPct.toFixed(1) + '%' },
-          { label: RITA_LABEL, value: formatEUR(revSplit.rita), sub: ritaPct.toFixed(1) + '%' },
-          { label: 'Total',    value: formatEUR(total) }
-        ], 3));
-      }
-      body.appendChild(mkSectionLabel('Revenue Split'));
-      body.appendChild(mkModalTable(
-        ['Partner', 'Revenue', '% of Total'],
-        [
-          [YOU_LABEL,  formatEUR(revSplit.you),  youPct.toFixed(1)  + '%'],
-          [RITA_LABEL, formatEUR(revSplit.rita), ritaPct.toFixed(1) + '%'],
-          ['Total',    formatEUR(total),          '100%']
-        ],
-        { highlight: 1 }
-      ));
-      openModal({ title: 'Total Portfolio Revenue — Breakdown', body, large: true });
-    }
+    onClick: () => openRevenueSplitModal(data, cmpData, cmpRange)
   }));
 
   // Compute comparison period share percentages for delta
@@ -362,13 +383,13 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
 }
 
 // ── Partner comparison layout ─────────────────────────────────────────────────
-function buildPartnerComparison(data, propsData) {
+function buildPartnerComparison(data, cmpData, propsData, curRange, cmpRange) {
   const section = el('div', { class: 'mb-16' });
   section.appendChild(mkSectionLabel('Partner Overview'));
 
   const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' });
-  grid.appendChild(buildPartnerColumn(YOU_LABEL, YOU_COLOR, data, propsData, true));
-  grid.appendChild(buildPartnerColumn(RITA_LABEL, RITA_COLOR, data, propsData, false));
+  grid.appendChild(buildPartnerColumn(YOU_LABEL, YOU_COLOR, data, cmpData, propsData, curRange, cmpRange, true));
+  grid.appendChild(buildPartnerColumn(RITA_LABEL, RITA_COLOR, data, cmpData, propsData, curRange, cmpRange, false));
   section.appendChild(grid);
   return section;
 }
@@ -424,15 +445,8 @@ function buildServiceStreamSection(annotatedInvoices, curRange) {
 }
 
 // ── Settlement section ────────────────────────────────────────────────────────
-function buildSettlementSection(data, curRange) {
+function buildSettlementBody(data) {
   const { revSplit, expSplit, netSplit } = data;
-  const periodLabel = curRange.label;
-
-  const section = el('div', { class: 'card mb-16' });
-  section.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, `Settlement Summary — ${periodLabel}`)
-  ));
-
   const body = el('div', { style: 'padding:0 16px 16px' });
 
   // Summary grid
@@ -506,8 +520,20 @@ function buildSettlementSection(data, curRange) {
     ));
   }
 
-  section.appendChild(body);
+  return body;
+}
+
+function buildSettlementSection(data, curRange) {
+  const section = el('div', { class: 'card mb-16' });
+  section.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, `Settlement Summary — ${curRange.label}`)
+  ));
+  section.appendChild(buildSettlementBody(data));
   return section;
+}
+
+function openSettlementModal(data, curRange) {
+  openModal({ title: `Settlement Summary — ${curRange.label}`, body: buildSettlementBody(data), large: true });
 }
 
 // ── Charts ────────────────────────────────────────────────────────────────────
@@ -655,6 +681,27 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
   });
 }
 
+function openValueSplitModal(label, idx, propsData) {
+  const isYou  = idx === 0;
+  const ownedOwners = isYou ? ['you', 'both'] : ['rita', 'both'];
+  const props  = propsData.allProps.filter(p => ownedOwners.includes(p.owner || 'both'));
+  const rows   = props.map(p => {
+    const fullEur = toEUR(p.purchasePrice || 0, p.currency || 'EUR', p.purchaseDate || null);
+    const share   = (p.owner === 'both' || !p.owner) ? fullEur * 0.5 : fullEur;
+    return [p.name, p.owner === 'both' ? 'Shared (50%)' : isYou ? 'Giorgos' : 'Rita', formatEUR(share)];
+  });
+  const totalValue = isYou ? propsData.youValue : propsData.ritaValue;
+
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([
+    { label: 'Total Book Value', value: formatEUR(totalValue) },
+    { label: 'Properties',       value: String(props.length) }
+  ], 2));
+  body.appendChild(mkSectionLabel('Properties'));
+  body.appendChild(mkModalTable(['Property', 'Attribution', 'Book Value (EUR)'], rows, { highlight: 2 }));
+  openModal({ title: `${label} — Book Value Breakdown`, body, large: true });
+}
+
 function renderValueDonut(propsData) {
   const { youValue, ritaValue } = propsData;
   if (!youValue && !ritaValue) return;
@@ -663,19 +710,7 @@ function renderValueDonut(propsData) {
     labels: [YOU_LABEL, RITA_LABEL],
     data:   [Math.round(youValue), Math.round(ritaValue)],
     colors: [YOU_HEX, RITA_HEX],
-    onClickItem: (label, idx) => {
-      const isYou  = idx === 0;
-      const ownedOwners = isYou ? ['you', 'both'] : ['rita', 'both'];
-      const props  = propsData.allProps.filter(p => ownedOwners.includes(p.owner || 'both'));
-      const body   = el('div');
-      const rows   = props.map(p => {
-        const fullEur = toEUR(p.purchasePrice || 0, p.currency || 'EUR', p.purchaseDate || null);
-        const share   = (p.owner === 'both' || !p.owner) ? fullEur * 0.5 : fullEur;
-        return [p.name, p.owner === 'both' ? 'Shared (50%)' : isYou ? 'Giorgos' : 'Rita', formatEUR(share)];
-      });
-      body.appendChild(mkModalTable(['Property', 'Attribution', 'Book Value (EUR)'], rows, { highlight: 2 }));
-      openModal({ title: `Portfolio Value — ${label}`, body, large: true });
-    }
+    onClickItem: (label, idx) => openValueSplitModal(label, idx, propsData)
   });
 }
 
@@ -741,7 +776,7 @@ function buildView() {
   wrap.appendChild(buildKpiSection(data, cmpData, propsData, cmpRange));
 
   // Partner side-by-side columns
-  wrap.appendChild(buildPartnerComparison(data, propsData));
+  wrap.appendChild(buildPartnerComparison(data, cmpData, propsData, curRange, cmpRange));
 
   // ── Charts row 1: Revenue by Owner (monthly bar) ──────────────────────────
   const row1 = el('div', { class: 'grid grid-2 mb-16' });

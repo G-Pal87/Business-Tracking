@@ -245,6 +245,7 @@ function getPortfolioData(curRange, cmpRange) {
   // may start / end mid-month). Keep a per-month blocked tally for the target calc.
   const occByProp = new Map();
   const targetRevByProp = new Map();
+  const occByMonth = new Map(), availByMonth = new Map();
   let targetRev = 0;
   props.forEach(p => {
     const cal = getCalendar(p.id);
@@ -253,10 +254,13 @@ function getPortfolioData(curRange, cmpRange) {
     // Expected ("target") revenue values each occupied night at the published
     // rate (confirmed target if set, else historic suggestion) — no more €0 for
     // properties/months without a confirmed target.
-    const { available, occupied, blocked, rev } = rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end, rateForNight);
+    const { available, occupied, blocked, rev, occByMonth: propOccByMonth, availByMonth: propAvailByMonth } =
+      rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end, rateForNight);
     occByProp.set(p.id, { occupied, available, blocked, open: Math.max(0, available - occupied), pct: available > 0 ? occupied / available * 100 : 0 });
     targetRevByProp.set(p.id, rev);
     targetRev += rev;
+    for (const [mk, n] of propOccByMonth) occByMonth.set(mk, (occByMonth.get(mk) || 0) + n);
+    for (const [mk, n] of propAvailByMonth) availByMonth.set(mk, (availByMonth.get(mk) || 0) + n);
   });
   const totalAvail = [...occByProp.values()].reduce((s, v) => s + v.available, 0);
   const totalOcc   = [...occByProp.values()].reduce((s, v) => s + v.occupied, 0);
@@ -274,6 +278,7 @@ function getPortfolioData(curRange, cmpRange) {
     payments, props, revByProp, totalRev, revByMonth, monthKeys, keyIndex,
     targetRevByProp,
     totalNights, avgADR, avgOcc, occByProp, targetRev,
+    occByMonth, availByMonth,
     prevRev, prevNights,
     rangeLabel: curRange.label,
     cmpLabel: cmpRange ? cmpRange.label : null
@@ -335,20 +340,33 @@ function getForwardPipeline() {
 
     // Value every night in the next 90 days at the published rate (confirmed
     // target if set, otherwise the historic suggestion) — same as the feed.
+    // Also group consecutive same-type nights into date-range segments (with
+    // the revenue-derived avg published rate) so the totals are auditable.
     const rateForNight = makeRateForNight(prop.id);
+    const segments = [];
+    let cur = null;
     const d = new Date(today);
     while (d < end90) {
       const ds = d.toISOString().slice(0, 10);
       const isBlocked = blocks.some(b => ds >= b.start && ds < b.end);
+      const rate = isBlocked ? rateForNight(ds, true) : rateForNight(ds, false);
       if (isBlocked) {
         lockedNights++;
-        lockedRevMin += rateForNight(ds, true);
+        lockedRevMin += rate;
       } else {
         openNights++;
-        potRevMax += rateForNight(ds, false);
+        potRevMax += rate;
+      }
+      const type = isBlocked ? 'locked' : 'open';
+      if (cur && cur.type === type) {
+        cur.end = ds; cur.nights++; cur.rev += rate;
+      } else {
+        if (cur) segments.push(cur);
+        cur = { type, start: ds, end: ds, nights: 1, rev: rate };
       }
       d.setDate(d.getDate() + 1);
     }
+    if (cur) segments.push(cur);
 
     results.push({
       propId: prop.id,
@@ -356,7 +374,8 @@ function getForwardPipeline() {
       lockedNights,
       lockedRevMin,
       openNights,
-      potRevMax
+      potRevMax,
+      segments
     });
   });
 
@@ -414,14 +433,14 @@ function buildView() {
   // ── Section 2: Revenue trend + Occupancy side-by-side
   const twoCol = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
   twoCol.appendChild(buildRevTrendCard(data));
-  twoCol.appendChild(buildOccupancyCard(data));
+  twoCol.appendChild(buildOccupancyCard(data, curRange));
   _container.appendChild(twoCol);
 
   // ── Section 2b: Occupancy heatmap (property × month)
   _container.appendChild(buildStrOccupancyHeatmap(data));
 
   // ── Section 3: Property comparison table
-  _container.appendChild(buildComparisonTable(data));
+  _container.appendChild(buildComparisonTable(data, curRange));
 
   // ── Section 4: Property spotlight
   _container.appendChild(buildSpotlightSection(data.props, curRange));
@@ -535,7 +554,7 @@ function buildRevTrendCard(data) {
 }
 
 // ── Occupancy chart card ──────────────────────────────────────────────────────
-function buildOccupancyCard(data) {
+function buildOccupancyCard(data, curRange) {
   const { occByProp, props } = data;
   const card = el('div', { class: 'card' });
   card.appendChild(el('div', { class: 'card-header' },
@@ -555,7 +574,8 @@ function buildOccupancyCard(data) {
   const list = el('div', { style: 'display:flex;flex-direction:column;gap:10px;padding:8px 0' });
   props.forEach((p, i) => {
     const occ = occByProp.get(p.id) || { pct: 0, occupied: 0, available: 0, open: 0, blocked: 0 };
-    const row = el('div');
+    const row = el('div', { style: 'cursor:pointer', title: 'Click for property detail' });
+    row.onclick = () => openPropertyRangeModal(p.id, curRange);
     const labelRow = el('div', { style: 'display:flex;justify-content:space-between;margin-bottom:4px' });
     labelRow.appendChild(el('span', { style: 'font-size:12px;color:var(--text)' }, shortName(p.name)));
     labelRow.appendChild(el('span', { style: 'font-size:12px;font-weight:600;color:var(--text)' },
@@ -613,10 +633,25 @@ function buildStrOccupancyHeatmap(data) {
         td.style.color = pct >= 70 ? 'var(--success)' : pct >= 40 ? '#f59e0b' : 'var(--danger)';
       }
       if (monthPays.length > 0) {
-        td.title = 'Click for payments';
+        td.title = 'Click for occupancy detail';
         td.onclick = () => {
-          const mb = el('div');
+          const monthStart = `${mk}-01`;
+          const monthEnd   = `${mk}-${String(dim).padStart(2, '0')}`;
+          const cal = getCalendar(p.id);
+          const { occupiedSet, ownerBlockSet } = buildOccupancySets(p.id, cal?.blocks || []);
+          const occ = rangeOccupancy(occupiedSet, ownerBlockSet, monthStart, monthEnd);
+          const monthOpen = Math.max(0, occ.available - occ.occupied);
+          const monthPct  = occ.available > 0 ? occ.occupied / occ.available * 100 : 0;
+
+          const mb = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
           mb.appendChild(mkSectionLabel(`${shortName(p.name)} — ${k.label}`));
+          mb.appendChild(mkSummaryGrid([
+            { label: 'Occupied', value: occ.occupied.toString() },
+            { label: 'Open', value: monthOpen.toString() },
+            { label: 'Blocked', value: occ.blocked.toString() },
+            { label: 'Occupancy %', value: occ.available > 0 ? monthPct.toFixed(1) + '%' : '—' }
+          ], 4));
+          mb.appendChild(mkSectionLabel('Payments'));
           mb.appendChild(mkModalTable(
             [{ label: 'Date' }, { label: 'Nights', right: true }, { label: 'Amount', right: true }],
             [...monthPays].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(pay => [
@@ -644,7 +679,7 @@ function buildStrOccupancyHeatmap(data) {
 }
 
 // ── Property comparison table ─────────────────────────────────────────────────
-function buildComparisonTable(data) {
+function buildComparisonTable(data, curRange) {
   const { props, revByProp, occByProp, payments, totalRev } = data;
   const card = el('div', { class: 'card', style: 'margin-bottom:16px' });
   card.appendChild(el('div', { class: 'card-header' },
@@ -675,7 +710,10 @@ function buildComparisonTable(data) {
     barWrap.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted);white-space:nowrap' }, formatEUR(rev, { maxFrac: 0 })));
     revBar.appendChild(barWrap);
 
-    return el('tr', { style: i % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : '' },
+    const tr = el('tr', {
+      style: `cursor:pointer;${i % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : ''}`,
+      title: 'Click for property detail'
+    },
       nameCell,
       revBar,
       mkTd(nights > 0 ? nights.toString() : '—'),
@@ -683,6 +721,8 @@ function buildComparisonTable(data) {
       mkTd(occ.pct.toFixed(1) + '%'),
       mkTd(pPays.length.toString())
     );
+    tr.onclick = () => openPropertyRangeModal(p.id, curRange);
+    return tr;
   });
 
   const thead = el('thead');
@@ -858,36 +898,103 @@ function buildForwardPipelineCard() {
   const totalOpen = pipeline.reduce((s, r) => s + r.openNights, 0);
   const totalPot  = pipeline.reduce((s, r) => s + r.potRevMax, 0);
 
-  // Summary row
+  // Summary row — Locked Revenue / Revenue Potential drill into the underlying
+  // date-range segments so the totals are auditable.
   const sumGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px' });
   sumGrid.appendChild(mkSummaryBox('Locked Nights', totalLocked.toString(), 'confirmed bookings'));
-  sumGrid.appendChild(mkSummaryBox('Locked Revenue', totalLockedRev > 0 ? formatEUR(totalLockedRev, { maxFrac: 0 }) : '—', 'at published rate'));
+  const lockedRevBox = mkSummaryBox('Locked Revenue', totalLockedRev > 0 ? formatEUR(totalLockedRev, { maxFrac: 0 }) : '—', 'at published rate');
+  lockedRevBox.style.cursor = 'pointer';
+  lockedRevBox.title = 'Click for locked date ranges';
+  lockedRevBox.onclick = () => openPipelineDetailModal(pipeline, { type: 'locked', title: 'Forward Pipeline — Locked Nights (Next 90 Days)' });
+  sumGrid.appendChild(lockedRevBox);
   sumGrid.appendChild(mkSummaryBox('Open Nights', totalOpen.toString(), 'available to book'));
-  sumGrid.appendChild(mkSummaryBox('Revenue Potential', totalPot > 0 ? formatEUR(totalPot, { maxFrac: 0 }) : '—', 'open × target ADR'));
+  const potRevBox = mkSummaryBox('Revenue Potential', totalPot > 0 ? formatEUR(totalPot, { maxFrac: 0 }) : '—', 'open × target ADR');
+  potRevBox.style.cursor = 'pointer';
+  potRevBox.title = 'Click for open date ranges';
+  potRevBox.onclick = () => openPipelineDetailModal(pipeline, { type: 'open', title: 'Forward Pipeline — Open Nights (Next 90 Days)' });
+  sumGrid.appendChild(potRevBox);
   body.appendChild(sumGrid);
 
-  // Per-property breakdown
+  // Per-property breakdown — each row drills into that property's date ranges.
   if (pipeline.length) {
-    body.appendChild(mkModalTable(
-      [
-        { label: 'Property', right: false },
-        { label: 'Locked Nights', right: true },
-        { label: 'Locked Rev', right: true },
-        { label: 'Open Nights', right: true },
-        { label: 'Rev Potential', right: true }
-      ],
-      pipeline.map(r => [
-        shortName(r.propName),
-        r.lockedNights.toString(),
-        r.lockedRevMin > 0 ? formatEUR(r.lockedRevMin, { maxFrac: 0 }) : '—',
-        r.openNights.toString(),
-        r.potRevMax > 0 ? formatEUR(r.potRevMax, { maxFrac: 0 }) : '—'
-      ])
-    ));
+    const hrow = el('tr');
+    [
+      { label: 'Property', right: false },
+      { label: 'Locked Nights', right: true },
+      { label: 'Locked Rev', right: true },
+      { label: 'Open Nights', right: true },
+      { label: 'Rev Potential', right: true }
+    ].forEach(h => {
+      hrow.appendChild(el('th', {
+        style: `padding:6px 8px;text-align:${h.right ? 'right' : 'left'};font-size:11px;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap`
+      }, h.label));
+    });
+    const tbody = el('tbody');
+    pipeline.forEach((r, i) => {
+      const tr = el('tr', {
+        style: `cursor:pointer;${i % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : ''}`,
+        title: 'Click for date-range detail'
+      },
+        el('td', { style: 'padding:8px;font-size:12px;color:var(--text)' }, shortName(r.propName)),
+        mkTd(r.lockedNights.toString()),
+        mkTd(r.lockedRevMin > 0 ? formatEUR(r.lockedRevMin, { maxFrac: 0 }) : '—'),
+        mkTd(r.openNights.toString()),
+        mkTd(r.potRevMax > 0 ? formatEUR(r.potRevMax, { maxFrac: 0 }) : '—')
+      );
+      tr.onclick = () => openPipelineDetailModal(pipeline, { propId: r.propId, title: `${shortName(r.propName)} — Forward Pipeline Detail` });
+      tbody.appendChild(tr);
+    });
+    const table = el('table', { style: 'width:100%;border-collapse:collapse;font-size:12px' },
+      el('thead', {}, hrow), tbody
+    );
+    body.appendChild(table);
   }
 
   card.appendChild(body);
   return card;
+}
+
+// Lists the underlying open/locked date-range segments (and the published
+// rate used for each) behind the Forward Pipeline totals — filterable by
+// property and/or segment type so both the summary boxes and table rows can
+// drill into the same data.
+function openPipelineDetailModal(pipeline, { propId = null, type = null, title } = {}) {
+  const rows = [];
+  pipeline.forEach(r => {
+    if (propId && r.propId !== propId) return;
+    r.segments.forEach(seg => {
+      if (type && seg.type !== type) return;
+      rows.push({ propName: r.propName, ...seg });
+    });
+  });
+  rows.sort((a, b) => a.start.localeCompare(b.start) || a.propName.localeCompare(b.propName));
+
+  const body = el('div');
+  if (!rows.length) {
+    body.appendChild(mkEmptyState('No dates in this category.'));
+  } else {
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Property' },
+        { label: 'Type' },
+        { label: 'Dates' },
+        { label: 'Nights', right: true },
+        { label: 'Avg Published Rate', right: true },
+        { label: 'Total Value', right: true }
+      ],
+      rows.map(r => [
+        shortName(r.propName),
+        r.type === 'locked' ? 'Locked' : 'Open',
+        `${fmtDate(r.start)} – ${fmtDate(r.end)}`,
+        r.nights.toString(),
+        r.nights > 0 ? formatEUR(r.rev / r.nights) : '—',
+        formatEUR(r.rev, { maxFrac: 0 })
+      ]),
+      { highlight: 5 }
+    ));
+  }
+
+  openModal({ title, body, large: true });
 }
 
 // ── Modal drill-downs ─────────────────────────────────────────────────────────
@@ -975,7 +1082,7 @@ function openADRModal(data) {
 }
 
 function openOccModal(data) {
-  const { props, occByProp } = data;
+  const { props, occByProp, monthKeys, occByMonth, availByMonth } = data;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   body.appendChild(mkModalTable(
@@ -985,6 +1092,17 @@ function openOccModal(data) {
       return [shortName(p.name), occ.pct.toFixed(1) + '%', occ.occupied.toString(), occ.open.toString(), occ.blocked.toString(), occ.available.toString()];
     }),
     { highlight: 1 }
+  ));
+
+  body.appendChild(mkSectionLabel('Monthly Occupancy Trend (All Properties)'));
+  body.appendChild(mkModalTable(
+    [{ label: 'Month' }, { label: 'Occupied', right: true }, { label: 'Available', right: true }, { label: 'Occupancy %', right: true }],
+    monthKeys.map(k => {
+      const occ = occByMonth.get(k.key) || 0;
+      const avail = availByMonth.get(k.key) || 0;
+      return [k.label, occ.toString(), avail.toString(), avail > 0 ? (occ / avail * 100).toFixed(1) + '%' : '—'];
+    }),
+    { highlight: 3 }
   ));
 
   body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
@@ -1018,6 +1136,54 @@ function openTargetModal(data) {
   ));
 
   openModal({ title: `Revenue vs Target — ${data.rangeLabel}`, body, large: true });
+}
+
+// Full-range breakdown for a single property — shared by the mini occupancy
+// bars and the Property Comparison table so both entry points open the same
+// modal (ADR/target/occupancy/bookings per month, mirroring openMonthSpotlightModal
+// but covering the whole current range instead of a single month).
+function openPropertyRangeModal(propId, curRange) {
+  const prop = byId('properties', propId);
+  const { months, totalRev, totalNights, avgADR, targetRev } = getSpotlightData(propId, curRange);
+  const bookings = getPaymentsInRange(curRange.start, curRange.end, new Set([propId])).length;
+  const occupiedTotal = months.reduce((s, m) => s + m.occupied, 0);
+  const availTotal    = months.reduce((s, m) => s + m.available, 0);
+  const periodOccPct  = availTotal > 0 ? occupiedTotal / availTotal * 100 : 0;
+
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  body.appendChild(mkSummaryGrid([
+    { label: 'Total Revenue', value: formatEUR(totalRev, { maxFrac: 0 }), sub: curRange.label },
+    { label: 'Nights Sold', value: totalNights.toString() },
+    { label: 'Avg ADR', value: avgADR > 0 ? formatEUR(avgADR, { maxFrac: 0 }) : '—' },
+    { label: 'Occupancy', value: availTotal > 0 ? periodOccPct.toFixed(1) + '%' : '—' },
+    { label: 'Target Revenue', value: targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—' },
+    { label: 'Bookings', value: bookings.toString() }
+  ], 3));
+
+  body.appendChild(mkSectionLabel('Monthly Breakdown'));
+  body.appendChild(mkModalTable(
+    [
+      { label: 'Month' },
+      { label: 'Revenue', right: true },
+      { label: 'Achieved ADR', right: true },
+      { label: 'Target ADR', right: true },
+      { label: 'Occupied', right: true },
+      { label: 'Available', right: true },
+      { label: 'Occupancy %', right: true }
+    ],
+    months.map(m => [
+      m.label,
+      m.rev > 0 ? formatEUR(m.rev, { maxFrac: 0 }) : '—',
+      m.adr > 0 ? formatEUR(m.adr, { maxFrac: 0 }) : '—',
+      m.target != null ? formatEUR(m.target, { maxFrac: 0 }) : '—',
+      m.occupied.toString(),
+      m.available.toString(),
+      m.available > 0 ? m.occ.toFixed(1) + '%' : '—'
+    ]),
+    { highlight: 1 }
+  ));
+
+  openModal({ title: `${shortName(prop?.name || '')} — ${curRange.label}`, body, large: true });
 }
 
 function openMonthRevenueModal(monthIdx, data) {

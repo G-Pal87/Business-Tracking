@@ -113,6 +113,21 @@ async function fetchWithTimeout(url, ms) {
   }
 }
 
+// Merge freshly-fetched blocks with the previous snapshot so blocks that have
+// already elapsed and dropped off Airbnb's live iCal feed aren't lost (mirrors
+// js/core/ical.js). Airbnb's feed only reflects current/future state — once a
+// booking or owner-block is in the past, Airbnb can prune it from the feed
+// entirely. Future/current blocks always defer to the fresh feed (so
+// cancellations there are still reflected); only already-elapsed blocks that
+// vanished from the feed get carried forward.
+function mergeBlocks(existingBlocks, freshBlocks, today) {
+  const freshUids = new Set(freshBlocks.filter(b => b.uid).map(b => b.uid));
+  const preserved = (existingBlocks || []).filter(b =>
+    b.end && b.end <= today && !freshUids.has(b.uid)
+  );
+  return [...preserved, ...freshBlocks];
+}
+
 // ── DB helpers ────────────────────────────────────────────────────────────────
 function listActive(db, col) {
   return (db[col] || []).filter(x => !x.deletedAt);
@@ -350,9 +365,10 @@ async function main() {
     try {
       const text = await fetchICal(cal.url);
       const events = parseICal(text);
-      const newBlocks = events
+      const freshBlocks = events
         .filter(e => e.start && e.end)
-        .map(e => ({ start: e.start, end: e.end, uid: (e.uid || '').trim(), summary: (e.summary || '').trim() }))
+        .map(e => ({ start: e.start, end: e.end, uid: (e.uid || '').trim(), summary: (e.summary || '').trim() }));
+      const mergedBlocks = mergeBlocks(cal.blocks, freshBlocks, todayStr())
         .sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
 
       // Normalise existing blocks the same way before comparing so ordering
@@ -362,12 +378,12 @@ async function main() {
         .sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
 
       const oldSig = JSON.stringify(normOld);
-      const newSig = JSON.stringify(newBlocks);
+      const newSig = JSON.stringify(mergedBlocks);
       if (oldSig === newSig) {
-        console.log(`  No changes (${newBlocks.length} block(s))`);
+        console.log(`  No changes (${mergedBlocks.length} block(s))`);
       } else {
-        console.log(`  Updated: ${(cal.blocks||[]).length} → ${newBlocks.length} block(s)`);
-        cal.blocks      = newBlocks;
+        console.log(`  Updated: ${(cal.blocks||[]).length} → ${mergedBlocks.length} block(s)`);
+        cal.blocks      = mergedBlocks;
         cal.lastFetched = new Date().toISOString();
         dbChanged = true;
         changedPropIds.add(cal.propertyId);
