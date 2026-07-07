@@ -9,8 +9,9 @@
 // Airbnb blocks cloud IPs, so we try direct then fall back to corsproxy.io,
 // matching the same fetch strategy the browser app uses in ical.js.
 
-const fs   = require('fs');
-const path = require('path');
+const fs     = require('fs');
+const path   = require('path');
+const crypto = require('crypto');
 
 // ── Constants (mirrors config.js / str-rates.js) ──────────────────────────────
 const AIRBNB_GUEST_FEE_PCT = 14;
@@ -349,13 +350,37 @@ async function main() {
   const dbPath = path.join(root, 'data', 'db.json');
   const db     = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
 
+  // Bootstrap strCalendars records for properties that have an airbnbCalUrl
+  // but have never gotten a first successful browser-side sync (the only
+  // other place a record is created). Without this, a property whose first
+  // fetch attempt fails (dead proxy, CORS hiccup, tab never opened) has no
+  // strCalendars entry — and since this loop only refreshes *existing*
+  // entries, it would silently never be picked up by any future cron run.
+  db.strCalendars = db.strCalendars || [];
+  const stPropsWithUrl = listActive(db, 'properties')
+    .filter(p => p.type === 'short_term' && p.airbnbCalUrl);
+  let bootstrapped = false;
+  for (const prop of stPropsWithUrl) {
+    const existing = db.strCalendars.find(c => c.propertyId === prop.id && !c.deletedAt);
+    if (!existing) {
+      db.strCalendars.push({
+        id: `stc_${crypto.randomUUID().replace(/-/g, '')}`,
+        propertyId: prop.id,
+        url: prop.airbnbCalUrl,
+        blocks: []
+      });
+      console.log(`Bootstrapped missing strCalendars record for ${prop.id} (${prop.name})`);
+      bootstrapped = true;
+    }
+  }
+
   const calendars = (db.strCalendars || []).filter(c => !c.deletedAt && c.url);
   if (!calendars.length) {
     console.log('No active strCalendar entries with URLs — nothing to refresh.');
     return;
   }
 
-  let dbChanged = false;
+  let dbChanged = bootstrapped;
   const changedPropIds = new Set();
 
   for (const cal of calendars) {
