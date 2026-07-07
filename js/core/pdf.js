@@ -22,7 +22,18 @@ function arrayBufToBase64(buf) {
   return btoa(binary);
 }
 
-async function loadFont(doc, filename, family, style) {
+// Only fetches + caches the font bytes — does NOT register them with `doc`.
+// Registration (addFileToVFS/addFont) happens separately in a fixed order in
+// loadAllFonts, because jsPDF assigns each font's internal PDF resource
+// number (/F1, /F2, ...) in first-registered order. Registering while fonts
+// are still resolving concurrently (the old Promise.all approach) let the
+// network's completion order — inherently nondeterministic — decide resource
+// numbering, so re-generating byte-identical invoice content produced a
+// different (though equally valid) PDF on every cold-cache run. Content
+// hashing (e.g. to skip a no-op re-upload) needs the same input to always
+// produce the same output, so fetch can stay concurrent but registration order
+// must not depend on it.
+async function fetchFont(filename, family, style) {
   const cacheKey = `${family}:${style}`;
   if (!_fontCache[cacheKey]) {
     const base = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
@@ -31,22 +42,26 @@ async function loadFont(doc, filename, family, style) {
     if (!res.ok) throw new Error(`Font fetch failed: ${filename} (${res.status})`);
     _fontCache[cacheKey] = arrayBufToBase64(await res.arrayBuffer());
   }
-  doc.addFileToVFS(filename, _fontCache[cacheKey]);
-  doc.addFont(filename, family, style);
 }
 
+const FONT_SPECS = [
+  ['CormorantGaramond-Light.ttf',       'Cormorant',     'normal'],
+  ['CormorantGaramond-LightItalic.ttf', 'Cormorant',     'italic'],
+  ['CormorantGaramond-Regular.ttf',     'CormorantReg',  'normal'],
+  ['CormorantGaramond-SemiBold.ttf',    'CormorantBold', 'normal'],
+  ['DMSans-Regular.ttf',                'DMSans',        'normal'],
+  ['DMSans-Medium.ttf',                 'DMSans',        'bold'],
+  ['Gelasio-Regular.ttf',               'Georgia',       'normal'],
+  ['Gelasio-Italic.ttf',                'Georgia',       'italic'],
+  ['Gelasio-BoldItalic.ttf',            'Georgia',       'bolditalic'],
+];
+
 async function loadAllFonts(doc) {
-  await Promise.all([
-    loadFont(doc, 'CormorantGaramond-Light.ttf',      'Cormorant', 'normal'),
-    loadFont(doc, 'CormorantGaramond-LightItalic.ttf','Cormorant', 'italic'),
-    loadFont(doc, 'CormorantGaramond-Regular.ttf',    'CormorantReg', 'normal'),
-    loadFont(doc, 'CormorantGaramond-SemiBold.ttf',   'CormorantBold', 'normal'),
-    loadFont(doc, 'DMSans-Regular.ttf',               'DMSans', 'normal'),
-    loadFont(doc, 'DMSans-Medium.ttf',                'DMSans', 'bold'),
-    loadFont(doc, 'Gelasio-Regular.ttf',              'Georgia', 'normal'),
-    loadFont(doc, 'Gelasio-Italic.ttf',               'Georgia', 'italic'),
-    loadFont(doc, 'Gelasio-BoldItalic.ttf',           'Georgia', 'bolditalic'),
-  ]);
+  await Promise.all(FONT_SPECS.map(([filename, family, style]) => fetchFont(filename, family, style)));
+  for (const [filename, family, style] of FONT_SPECS) {
+    doc.addFileToVFS(filename, _fontCache[`${family}:${style}`]);
+    doc.addFont(filename, family, style);
+  }
 }
 
 
