@@ -452,9 +452,22 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
       } else {
         content = el('span', {}, label);
       }
+      // "only" isolates this single row — without it, clicking a row that's
+      // already checked (the default "show all" state has every row checked)
+      // unchecks it instead of narrowing the filter to just it, which reads as
+      // "select just this one" but actually does the opposite.
+      const onlyBtn = el('span', {
+        style: 'margin-left:auto;padding-left:8px;font-size:11px;color:var(--text-muted);text-decoration:underline;flex-shrink:0'
+      }, 'only');
+      onlyBtn.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        chks.forEach(c => { c.checked = (c === chk); });
+        sync();
+      });
       menu.appendChild(el('label', {
         style: 'display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;font-size:13px'
-      }, chk, content));
+      }, chk, content, onlyBtn));
       chk.onchange = () => sync();
       return chk;
     });
