@@ -103,6 +103,16 @@ export function invoicePdfPath(inv) {
   return `invoices/${safe}.pdf`;
 }
 
+// Content hash of the generated PDF (base64), stored on the invoice as
+// pdfHash so a save that doesn't change the rendered PDF (e.g. editing an
+// internal note field the template doesn't print) can skip the upload +
+// commit entirely instead of re-uploading byte-identical output every time.
+async function sha256Hex(str) {
+  const data = new TextEncoder().encode(str);
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 async function deleteInvoiceFile(inv) {
   if (inv.pdfPath) {
     try { await deleteGithubFile(inv.pdfPath, null, `Delete PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
@@ -831,19 +841,31 @@ export function openBuilder(existing, { onSaved } = {}) {
       const invLabel = inv.number || inv.id;
       const origText = save.textContent;
       save.disabled = true;
-      save.textContent = 'Uploading PDF…';
+      save.textContent = 'Checking PDF…';
       try {
         const pdfDoc = await generateInvoicePDF(inv);
         const dataUri = pdfDoc.output('datauristring');
         const b64 = dataUri.split(',')[1];
         if (!b64) throw new Error('PDF generation produced empty content');
-        await uploadGithubFile(pdfPath, b64, `${existing ? 'Update' : 'Create'} PDF for invoice ${invLabel}`);
-        // Delete the old file if the path changed (e.g. number, client, or date was edited)
-        if (existing?.pdfPath && existing.pdfPath !== pdfPath) {
-          try { await deleteGithubFile(existing.pdfPath, null, `Rename PDF for invoice ${invLabel}`); } catch { /* old file already gone */ }
+        const newHash = await sha256Hex(b64);
+
+        if (existing?.pdfPath === pdfPath && existing?.pdfHash === newHash) {
+          // Rendered PDF is byte-identical to what's already uploaded — skip
+          // the upload + commit, the edit only touched fields the PDF doesn't print.
+          inv.pdfPath = pdfPath;
+          inv.pdfHash = newHash;
+          pdfUploadStatus = 'unchanged';
+        } else {
+          save.textContent = 'Uploading PDF…';
+          await uploadGithubFile(pdfPath, b64, `${existing ? 'Update' : 'Create'} PDF for invoice ${invLabel}`);
+          // Delete the old file if the path changed (e.g. number, client, or date was edited)
+          if (existing?.pdfPath && existing.pdfPath !== pdfPath) {
+            try { await deleteGithubFile(existing.pdfPath, null, `Rename PDF for invoice ${invLabel}`); } catch { /* old file already gone */ }
+          }
+          inv.pdfPath = pdfPath;
+          inv.pdfHash = newHash;
+          pdfUploadStatus = 'success';
         }
-        inv.pdfPath = pdfPath;
-        pdfUploadStatus = 'success';
       } catch (err) {
         console.error('Invoice PDF upload failed:', err);
         pdfUploadStatus = err.message || 'unknown error';
@@ -853,11 +875,11 @@ export function openBuilder(existing, { onSaved } = {}) {
       }
     }
 
-    // Single upsert — pdfPath is already set if upload succeeded
+    // Single upsert — pdfPath/pdfHash are already set if upload succeeded or was skipped
     upsert('invoices', inv);
 
     if (pdfUploadStatus === 'success') toast(`Invoice ${inv.number || inv.id} was successfully uploaded to the repo.`, 'success', 4000);
-    else if (pdfUploadStatus) toast(`Invoice ${inv.number || inv.id} could not be uploaded to the repo.`, 'danger', 6000);
+    else if (pdfUploadStatus && pdfUploadStatus !== 'unchanged') toast(`Invoice ${inv.number || inv.id} could not be uploaded to the repo.`, 'danger', 6000);
     toast(existing ? 'Invoice updated' : 'Invoice saved', 'success');
     closeModal();
     if (onSaved) setTimeout(onSaved, 220);
