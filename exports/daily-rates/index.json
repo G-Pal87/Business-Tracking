@@ -1,20 +1,20 @@
 {
   "schema": "str-daily-rates-index/v1",
-  "generatedAt": "2026-07-07T19:10:13.270Z",
+  "generatedAt": "2026-07-07T19:12:09.346Z",
   "properties": [
     {
       "id": "prop_mohfv8np89",
       "name": "Rooftop Tenerife",
       "currency": "EUR",
       "file": "prop_mohfv8np89.json",
-      "nights": 0
+      "nights": 365
     },
     {
       "id": "prop_mohfwhqrgj",
       "name": "Studio Tenerife",
       "currency": "EUR",
       "file": "prop_mohfwhqrgj.json",
-      "nights": 0
+      "nights": 365
     },
     {
       "id": "prop_mox7ipfiam",
