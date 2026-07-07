@@ -119,6 +119,7 @@ function buildRatesFeed(db, prop) {
   const feePct = af.guestFeePct != null ? af.guestFeePct : DEFAULT_GUEST_FEE_PCT;
   const taxPct = af.taxPct != null ? af.taxPct : DEFAULT_TAX_PCT;
   const cleanFee = af.cleaningFee != null ? af.cleaningFee : DEFAULT_CLEANING_FEE;
+  const globalDisc = af.globalDiscountPct || 0;
   const guestMult = 1 + (feePct + taxPct) / 100;
 
   const rates = [];
@@ -135,24 +136,22 @@ function buildRatesFeed(db, prop) {
       status = blocked.has(date) ? 'blocked' : 'open';
     }
     if (amount != null) {
-      const entry = { date, currency: ccy, status, basis };
+      const entry  = { date, currency: ccy, status, basis };
+      const rawAmt = Math.round(amount);
+      // Effective discount for this night: monthly override (explicit, incl.
+      // 0) beats the global default; historic/booked nights are actuals, not
+      // a forward-looking offer, so no discount applies to them. Always set
+      // on every entry (even 0%) so a consumer can read "what's on offer
+      // right now" unconditionally instead of treating a missing field as 0%.
+      let discPct = 0;
       if (!hist) {
-        const target  = getConfirmedTarget(db.strRateTargets, prop.id, date.slice(0, 7));
-        const discPct = target?.discountPct || 0;
-        if (discPct > 0) {
-          const discounted     = Math.round(amount * (1 - discPct / 100));
-          entry.originalAmount = Math.round(amount);
-          entry.discountPct    = discPct;
-          entry.amount         = discounted;
-          entry.guestAmount    = Math.round(discounted * guestMult);
-        } else {
-          entry.amount      = Math.round(amount);
-          entry.guestAmount = Math.round(amount * guestMult);
-        }
-      } else {
-        entry.amount      = Math.round(amount);
-        entry.guestAmount = Math.round(amount * guestMult);
+        const target = getConfirmedTarget(db.strRateTargets, prop.id, date.slice(0, 7));
+        discPct = target?.discountPct != null ? target.discountPct : globalDisc;
       }
+      entry.originalAmount = rawAmt;
+      entry.discountPct    = discPct;
+      entry.amount         = discPct > 0 ? Math.round(rawAmt * (1 - discPct / 100)) : rawAmt;
+      entry.airbnbCheckout = Math.round(rawAmt * guestMult);
       rates.push(entry);
     }
     date = addDays(date, 1);

@@ -304,25 +304,24 @@ function buildRatesFeed(db, propertyId) {
     }
 
     if (amount != null) {
-      const entry = { date, currency: ccy, status, basis };
+      const entry  = { date, currency: ccy, status, basis };
+      const rawAmt = Math.round(amount);
+      // Effective discount for this night: monthly override (explicit, incl.
+      // 0) beats the global default; historic/booked nights are actuals, not
+      // a forward-looking offer, so no discount applies to them. Always set
+      // on every entry (even 0%) — omitting it when there's no discount left
+      // a consumer with no reliable field to read "what's on offer right now"
+      // from, since a missing field and an explicit 0% are indistinguishable.
+      let discPct = 0;
       if (!hist) {
         const mo     = date.slice(0, 7);
-        const target  = getConfirmedTarget(db, propertyId, mo);
-        const discPct = target?.discountPct != null ? target.discountPct : globalDisc;
-        const rawAmt  = Math.round(amount);
-        if (discPct > 0) {
-          entry.originalAmount = rawAmt;
-          entry.discountPct    = discPct;
-          entry.amount         = Math.round(rawAmt * (1 - discPct / 100));
-          entry.airbnbCheckout = Math.round(rawAmt * guestMult);
-        } else {
-          entry.amount         = rawAmt;
-          entry.airbnbCheckout = Math.round(rawAmt * guestMult);
-        }
-      } else {
-        entry.amount         = Math.round(amount);
-        entry.airbnbCheckout = Math.round(amount * guestMult);
+        const target = getConfirmedTarget(db, propertyId, mo);
+        discPct = target?.discountPct != null ? target.discountPct : globalDisc;
       }
+      entry.originalAmount = rawAmt;
+      entry.discountPct    = discPct;
+      entry.amount         = discPct > 0 ? Math.round(rawAmt * (1 - discPct / 100)) : rawAmt;
+      entry.airbnbCheckout = Math.round(rawAmt * guestMult);
       rates.push(entry);
     }
     date = addDays(date, 1);
