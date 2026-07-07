@@ -685,9 +685,27 @@ async function renderLuxury(doc, invoice) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
+// jsPDF also stamps a random 32-hex-char file ID into the PDF trailer's /ID on
+// every output() call (see setFileId), independent of /CreationDate. Deriving
+// it from the invoice's own id keeps it deterministic per invoice (so
+// re-generating unchanged data is byte-identical) while still varying between
+// different invoices, same as a real per-document ID would.
+async function stableFileId(seed) {
+  const data = new TextEncoder().encode(String(seed || ''));
+  const hash = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hash)).slice(0, 16).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export async function generateInvoicePDF(invoice, templateOverride) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  // jsPDF stamps the wall-clock time into the PDF's /CreationDate metadata by
+  // default, so re-generating byte-identical invoice content still produces
+  // different output on every call. Pin it to the invoice's own issue date so
+  // regenerating unchanged data yields byte-identical PDFs (content hashing,
+  // e.g. to skip a no-op re-upload, relies on this).
+  doc.setCreationDate(invoice.issueDate ? new Date(invoice.issueDate) : new Date(0));
+  doc.setFileId(await stableFileId(invoice.id));
 
   const tpl = templateOverride || state.db.settings?.business?.invoiceTemplate || 'standard';
 
