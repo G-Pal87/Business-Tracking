@@ -1124,7 +1124,13 @@ function openCSVImport() {
   const findProp = listing => {
     const n = normName(listing);
     if (!n) return null;
-    return stProps.find(p => normName(p.name) === n)
+    // Airbnb's own "Listing" title in a CSV export is often nothing like the
+    // short internal name a host tracks a property under (e.g. "Rooftop
+    // Tenerife" vs. "Colorful 2-Bedroom House|Walk to Beach&ViewTerrace") —
+    // an explicit, exact-match alias set on the property beats guessing by
+    // name overlap, and prevents a false non-match from ever occurring once set.
+    return stProps.find(p => p.airbnbListingName && normName(p.airbnbListingName) === n)
+      || stProps.find(p => normName(p.name) === n)
       || stProps.find(p => n.includes(normName(p.name)) || normName(p.name).includes(n))
       || null;
   };
@@ -1231,10 +1237,17 @@ function openCSVImport() {
       const text = await completedFile.text();
       const rows = mergeReservationRows(parseAirbnbCSV(text));
       const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
+      // Only properties this CSV actually mentions can have orphans detected
+      // against it — a per-listing/per-account export naturally won't include
+      // every other property's transactions, and that's not evidence they
+      // were removed from Airbnb. Without this, importing a CSV that only
+      // covers e.g. 2 of your 5 properties would wipe out real payment
+      // history for the other 3, since none of their codes appear here.
+      const csvPropertyIds = new Set(rows.map(r => findProp(r.listing)?.id).filter(Boolean));
       const allPays = listActivePayments();
       const existingKeySet = new Set(allPays.filter(p => p.airbnbKey).map(p => p.airbnbKey));
       const toDeleteRows = allPays
-        .filter(p => p.source === 'airbnb' && p.airbnbKey && !csvKeys.has(p.airbnbKey))
+        .filter(p => p.source === 'airbnb' && p.airbnbKey && csvPropertyIds.has(p.propertyId) && !csvKeys.has(p.airbnbKey))
         .map(p => ({ ...p, propName: byId('properties', p.propertyId)?.name || '—' }));
 
       const addedRows = [], updatedRows = [], skippedRows = [];
@@ -1334,6 +1347,11 @@ function openCSVImport() {
       const csvReservationCodes = new Set(
         rows.filter(r => r.type.toLowerCase() === 'reservation').map(r => r.confirmationCode).filter(Boolean)
       );
+      // Only properties this CSV actually mentions can have orphans detected
+      // against it — see matching comment in updatePreview above. Otherwise a
+      // CSV covering only some properties would wipe out real payment history
+      // for every other property, since none of their codes appear here.
+      const csvPropertyIds = new Set(rows.map(r => findProp(r.listing)?.id).filter(Boolean));
 
       // Remove orphaned completed payments (airbnbKey set but not in CSV).
       // Never delete pending payments — they come from a separate CSV and aren't
@@ -1342,7 +1360,7 @@ function openCSVImport() {
       // instead of scanning all expenses per orphaned payment.
       const orphanRefMap = buildReservationExpenseRefMap();
       for (const p of listActivePayments()) {
-        if (p.source === 'airbnb' && p.status !== 'pending' && p.airbnbKey && !csvKeys.has(p.airbnbKey)) {
+        if (p.source === 'airbnb' && p.status !== 'pending' && p.airbnbKey && csvPropertyIds.has(p.propertyId) && !csvKeys.has(p.airbnbKey)) {
           removeReservationExpenses(p, orphanRefMap);
           softDelete('payments', p.id);
           totalRemoved++;
