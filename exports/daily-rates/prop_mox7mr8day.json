@@ -1,11 +1,11 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-07T19:04:44.037Z",
+  "generatedAt": "2026-07-07T19:10:05.682Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
     "currency": "EUR",
-    "airbnbCalUrl": ""
+    "airbnbCalUrl": "https://www.airbnb.gr/calendar/ical/1389855941514317769.ics?t=a2520714c5a34b1daa3b808b6c1bfd0e"
   },
   "guestFeePct": 14,
   "taxPct": 0,
