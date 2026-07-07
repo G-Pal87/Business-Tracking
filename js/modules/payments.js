@@ -158,6 +158,32 @@ function buildAllPayments(wrap) {
   const typeMS   = buildMultiSelect([], typeFilter,   'All Types',      debouncedRT, 'pay_types');
   const statusMS = buildMultiSelect([], statusFilter, 'All Statuses',   debouncedRT, 'pay_statuses');
   // Column show/hide. Reuses the multi-select: empty set = all columns visible.
+  // A saved selection only ever stores "which columns to show" — so a column
+  // added to HEADERS after a user already narrowed that selection (e.g. this
+  // Owner column) is absent from their saved list and silently defaults to
+  // hidden, even though they never chose to hide it. Track which labels
+  // existed at last save so genuinely-new ones get grandfathered in as
+  // visible instead of disappearing on anyone with a pre-existing selection.
+  try {
+    const knownRaw = localStorage.getItem('btf:pay_cols_known');
+    const known = knownRaw ? new Set(JSON.parse(knownRaw)) : null;
+    const savedRaw = localStorage.getItem('btf:pay_cols');
+    const saved = savedRaw ? JSON.parse(savedRaw) : null;
+    const allLabels = HEADERS.map(([label]) => label);
+    if (Array.isArray(saved) && saved.length > 0) {
+      // Columns introduced since the last recorded baseline. The very first
+      // time this runs there's no baseline yet, so fall back to the specific
+      // label introduced by this change — anyone with an existing narrowed
+      // selection necessarily predates it.
+      const newLabels = known ? allLabels.filter(l => !known.has(l)) : ['Owner'];
+      const toAdd = newLabels.filter(l => !saved.includes(l));
+      if (toAdd.length) {
+        localStorage.setItem('btf:pay_cols', JSON.stringify([...saved, ...toAdd]));
+      }
+    }
+    localStorage.setItem('btf:pay_cols_known', JSON.stringify(allLabels));
+  } catch { /* localStorage unavailable/quota — falls back to normal behavior */ }
+
   const colMS = buildMultiSelect(
     HEADERS.map(([label]) => ({ value: label, label })),
     colVisible, 'Columns', () => renderTable(), 'pay_cols'
