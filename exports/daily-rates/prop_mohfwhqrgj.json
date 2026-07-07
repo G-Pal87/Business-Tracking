@@ -1,13 +1,13 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-07T17:53:12.155Z",
+  "generatedAt": "2026-07-07T18:01:35.511Z",
   "property": {
     "id": "prop_mohfwhqrgj",
     "name": "Studio Tenerife",
     "currency": "EUR",
     "airbnbCalUrl": "https://www.airbnb.com/calendar/ical/888793861213418554.ics?t=130346559a814283901a9b2280797a38"
   },
-  "guestFeePct": 14,
+  "guestFeePct": 0,
   "taxPct": 0,
   "cleaningFee": 60,
   "cleaningGuestTotal": 60,
