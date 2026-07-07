@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-07T18:16:23.248Z",
+  "generatedAt": "2026-07-07T19:04:44.031Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -168,6 +168,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -176,6 +178,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -184,6 +188,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -192,6 +198,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -200,6 +208,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -208,6 +218,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -216,6 +228,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -224,6 +238,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -232,6 +248,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -240,6 +258,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -248,6 +268,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -256,6 +278,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -264,6 +288,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -272,6 +298,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -280,6 +308,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -288,6 +318,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -296,6 +328,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -304,6 +338,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -312,6 +348,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -320,6 +358,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -328,6 +368,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -336,6 +378,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -344,6 +388,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -352,6 +398,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -360,6 +408,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -368,6 +418,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -376,6 +428,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -384,6 +438,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -392,6 +448,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -400,6 +458,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -408,6 +468,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -416,6 +478,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -424,6 +488,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -432,6 +498,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -440,6 +508,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 8,
+      "discountPct": 0,
       "amount": 8,
       "airbnbCheckout": 9
     },
@@ -448,6 +518,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 69,
+      "discountPct": 0,
       "amount": 69,
       "airbnbCheckout": 79
     },
@@ -456,6 +528,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 69,
+      "discountPct": 0,
       "amount": 69,
       "airbnbCheckout": 79
     },
@@ -464,6 +538,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 69,
+      "discountPct": 0,
       "amount": 69,
       "airbnbCheckout": 79
     },
@@ -472,6 +548,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 69,
+      "discountPct": 0,
       "amount": 69,
       "airbnbCheckout": 79
     },
@@ -480,6 +558,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 69,
+      "discountPct": 0,
       "amount": 69,
       "airbnbCheckout": 79
     },
@@ -488,6 +568,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 69,
+      "discountPct": 0,
       "amount": 69,
       "airbnbCheckout": 79
     },
@@ -786,6 +868,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -794,6 +878,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -802,6 +888,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -810,6 +898,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -818,6 +908,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -826,6 +918,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -834,6 +928,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -842,6 +938,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -850,6 +948,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -858,6 +958,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -866,6 +968,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -874,6 +978,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -882,6 +988,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -890,6 +998,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -898,6 +1008,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -906,6 +1018,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -914,6 +1028,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -922,6 +1038,8 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
+      "originalAmount": 58,
+      "discountPct": 0,
       "amount": 58,
       "airbnbCheckout": 66
     },
@@ -1990,6 +2108,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -1998,6 +2118,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2006,6 +2128,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2014,6 +2138,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2022,6 +2148,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2030,6 +2158,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2038,6 +2168,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2046,6 +2178,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2054,6 +2188,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2062,6 +2198,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2070,6 +2208,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2078,6 +2218,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2086,6 +2228,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2094,6 +2238,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2102,6 +2248,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2110,6 +2258,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2118,6 +2268,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2126,6 +2278,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2134,6 +2288,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2142,6 +2298,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2150,6 +2308,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2158,6 +2318,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2166,6 +2328,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2174,6 +2338,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2182,6 +2348,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2190,6 +2358,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2198,6 +2368,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
@@ -2206,6 +2378,8 @@
       "currency": "EUR",
       "status": "open",
       "basis": "confirmed target",
+      "originalAmount": 50,
+      "discountPct": 0,
       "amount": 50,
       "airbnbCheckout": 57
     },
