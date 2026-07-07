@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-07T18:08:04.521Z",
+  "generatedAt": "2026-07-07T18:14:22.202Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
@@ -115,8 +115,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -125,8 +125,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -135,8 +135,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -145,8 +145,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -155,8 +155,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -165,8 +165,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -175,8 +175,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -185,8 +185,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -195,8 +195,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -205,8 +205,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -215,8 +215,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -225,8 +225,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -235,8 +235,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 105,
-      "discountPct": 5,
-      "amount": 100,
+      "discountPct": 10,
+      "amount": 95,
       "airbnbCheckout": 120
     },
     {
@@ -245,8 +245,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 110,
-      "discountPct": 5,
-      "amount": 105,
+      "discountPct": 10,
+      "amount": 99,
       "airbnbCheckout": 125
     },
     {
@@ -375,8 +375,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 110,
-      "discountPct": 5,
-      "amount": 105,
+      "discountPct": 10,
+      "amount": 99,
       "airbnbCheckout": 125
     },
     {
@@ -385,8 +385,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 110,
-      "discountPct": 5,
-      "amount": 105,
+      "discountPct": 10,
+      "amount": 99,
       "airbnbCheckout": 125
     },
     {
@@ -395,8 +395,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 110,
-      "discountPct": 5,
-      "amount": 105,
+      "discountPct": 10,
+      "amount": 99,
       "airbnbCheckout": 125
     },
     {
@@ -429,8 +429,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 110,
-      "discountPct": 5,
-      "amount": 105,
+      "discountPct": 10,
+      "amount": 99,
       "airbnbCheckout": 125
     },
     {
@@ -439,8 +439,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 110,
-      "discountPct": 5,
-      "amount": 105,
+      "discountPct": 10,
+      "amount": 99,
       "airbnbCheckout": 125
     },
     {
@@ -449,8 +449,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 110,
-      "discountPct": 5,
-      "amount": 105,
+      "discountPct": 10,
+      "amount": 99,
       "airbnbCheckout": 125
     },
     {
@@ -515,8 +515,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -525,8 +525,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -535,8 +535,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -545,8 +545,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -555,8 +555,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -565,8 +565,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -575,8 +575,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -585,8 +585,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -595,8 +595,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -605,8 +605,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -615,8 +615,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -625,8 +625,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -635,8 +635,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -645,8 +645,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -655,8 +655,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -665,8 +665,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -675,8 +675,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -685,8 +685,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -695,8 +695,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -705,8 +705,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -715,8 +715,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -725,8 +725,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -735,8 +735,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -745,8 +745,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -755,8 +755,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -765,8 +765,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -775,8 +775,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -785,8 +785,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -795,8 +795,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 70,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 63,
       "airbnbCheckout": 80
     },
     {
@@ -805,8 +805,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -935,8 +935,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -945,8 +945,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -955,8 +955,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -965,8 +965,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -975,8 +975,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -985,8 +985,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -995,8 +995,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -1005,8 +1005,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -1015,8 +1015,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -1025,8 +1025,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -1035,8 +1035,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -1045,8 +1045,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -1055,8 +1055,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -1065,8 +1065,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -1075,8 +1075,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 72,
-      "discountPct": 5,
-      "amount": 68,
+      "discountPct": 10,
+      "amount": 65,
       "airbnbCheckout": 82
     },
     {
@@ -1085,8 +1085,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1095,8 +1095,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1105,8 +1105,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1115,8 +1115,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1125,8 +1125,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1135,8 +1135,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1145,8 +1145,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1155,8 +1155,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1165,8 +1165,8 @@
       "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1175,8 +1175,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1185,8 +1185,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1195,8 +1195,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1205,8 +1205,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1215,8 +1215,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1225,8 +1225,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1235,8 +1235,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1245,8 +1245,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1255,8 +1255,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1265,8 +1265,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1275,8 +1275,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1285,8 +1285,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1295,8 +1295,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1305,8 +1305,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1315,8 +1315,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1325,8 +1325,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1335,8 +1335,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1345,8 +1345,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1355,8 +1355,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1365,8 +1365,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1375,8 +1375,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -1385,8 +1385,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1395,8 +1395,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1405,8 +1405,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1415,8 +1415,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1425,8 +1425,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1435,8 +1435,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1445,8 +1445,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1455,8 +1455,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1465,8 +1465,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1475,8 +1475,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1485,8 +1485,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1495,8 +1495,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1505,8 +1505,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1515,8 +1515,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1525,8 +1525,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1535,8 +1535,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1545,8 +1545,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1555,8 +1555,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1565,8 +1565,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1575,8 +1575,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1585,8 +1585,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1595,8 +1595,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1605,8 +1605,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1615,8 +1615,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1625,8 +1625,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1635,8 +1635,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1645,8 +1645,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1655,8 +1655,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1665,8 +1665,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1675,8 +1675,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1685,8 +1685,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 54,
-      "discountPct": 5,
-      "amount": 51,
+      "discountPct": 10,
+      "amount": 49,
       "airbnbCheckout": 62
     },
     {
@@ -1695,8 +1695,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1705,8 +1705,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1715,8 +1715,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1725,8 +1725,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1735,8 +1735,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1745,8 +1745,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1755,8 +1755,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1765,8 +1765,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1775,8 +1775,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1785,8 +1785,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1795,8 +1795,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1805,8 +1805,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1815,8 +1815,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1825,8 +1825,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1835,8 +1835,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1845,8 +1845,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1855,8 +1855,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1865,8 +1865,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1875,8 +1875,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1885,8 +1885,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1895,8 +1895,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1905,8 +1905,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1915,8 +1915,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1925,8 +1925,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1935,8 +1935,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1945,8 +1945,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1955,8 +1955,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1965,8 +1965,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1975,8 +1975,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1985,8 +1985,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -1995,8 +1995,8 @@
       "status": "open",
       "basis": "January 2026 (16 nights)",
       "originalAmount": 53,
-      "discountPct": 5,
-      "amount": 50,
+      "discountPct": 10,
+      "amount": 48,
       "airbnbCheckout": 60
     },
     {
@@ -2005,8 +2005,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2015,8 +2015,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2025,8 +2025,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2035,8 +2035,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2045,8 +2045,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2055,8 +2055,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2065,8 +2065,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2075,8 +2075,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2085,8 +2085,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2095,8 +2095,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2105,8 +2105,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2115,8 +2115,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2125,8 +2125,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2135,8 +2135,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2145,8 +2145,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2155,8 +2155,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2165,8 +2165,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2175,8 +2175,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2185,8 +2185,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2195,8 +2195,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2205,8 +2205,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2215,8 +2215,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2225,8 +2225,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2235,8 +2235,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2245,8 +2245,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2255,8 +2255,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2265,8 +2265,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2275,8 +2275,8 @@
       "status": "open",
       "basis": "February 2026 (20 nights)",
       "originalAmount": 48,
-      "discountPct": 5,
-      "amount": 46,
+      "discountPct": 10,
+      "amount": 43,
       "airbnbCheckout": 55
     },
     {
@@ -2285,8 +2285,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2295,8 +2295,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2305,8 +2305,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2315,8 +2315,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2325,8 +2325,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2335,8 +2335,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2345,8 +2345,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2355,8 +2355,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2365,8 +2365,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2375,8 +2375,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2385,8 +2385,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2395,8 +2395,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2405,8 +2405,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2415,8 +2415,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2425,8 +2425,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2435,8 +2435,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2445,8 +2445,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2455,8 +2455,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2465,8 +2465,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2475,8 +2475,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2485,8 +2485,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2495,8 +2495,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2505,8 +2505,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2515,8 +2515,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2525,8 +2525,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2535,8 +2535,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2545,8 +2545,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2555,8 +2555,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2565,8 +2565,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2575,8 +2575,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2585,8 +2585,8 @@
       "status": "open",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
-      "discountPct": 5,
-      "amount": 56,
+      "discountPct": 10,
+      "amount": 53,
       "airbnbCheckout": 67
     },
     {
@@ -2595,8 +2595,8 @@
       "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2605,8 +2605,8 @@
       "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2615,8 +2615,8 @@
       "status": "open",
       "basis": "April 2026 day 03 (1n, 1.95×) + April 2025 day 03 (1n, 1.27×)",
       "originalAmount": 67,
-      "discountPct": 5,
-      "amount": 64,
+      "discountPct": 10,
+      "amount": 60,
       "airbnbCheckout": 76
     },
     {
@@ -2625,8 +2625,8 @@
       "status": "open",
       "basis": "April 2026 day 04 (1n, 1.95×) + April 2025 day 04 (1n, 1.27×)",
       "originalAmount": 67,
-      "discountPct": 5,
-      "amount": 64,
+      "discountPct": 10,
+      "amount": 60,
       "airbnbCheckout": 76
     },
     {
@@ -2635,8 +2635,8 @@
       "status": "open",
       "basis": "April 2026 day 05 (1n, 1.95×) + April 2025 day 05 (1n, 1.27×)",
       "originalAmount": 67,
-      "discountPct": 5,
-      "amount": 64,
+      "discountPct": 10,
+      "amount": 60,
       "airbnbCheckout": 76
     },
     {
@@ -2645,8 +2645,8 @@
       "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2655,8 +2655,8 @@
       "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2665,8 +2665,8 @@
       "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2675,8 +2675,8 @@
       "status": "open",
       "basis": "April 2026 day 09 (1n, 1.95×) + April 2025 day 09 (1n, 1.27×)",
       "originalAmount": 71,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 64,
       "airbnbCheckout": 81
     },
     {
@@ -2685,8 +2685,8 @@
       "status": "open",
       "basis": "April 2026 day 10 (1n, 1.95×) + April 2025 day 10 (1n, 1.27×)",
       "originalAmount": 71,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 64,
       "airbnbCheckout": 81
     },
     {
@@ -2695,8 +2695,8 @@
       "status": "open",
       "basis": "April 2026 day 11 (1n, 1.95×) + April 2025 day 11 (1n, 1.27×)",
       "originalAmount": 71,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 64,
       "airbnbCheckout": 81
     },
     {
@@ -2705,8 +2705,8 @@
       "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2715,8 +2715,8 @@
       "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2725,8 +2725,8 @@
       "status": "open",
       "basis": "April 2026 day 14 (1n, 1.95×) + April 2025 day 14 (1n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2735,8 +2735,8 @@
       "status": "open",
       "basis": "April 2026 day 15 (1n, 1.95×) + April 2025 day 15 (1n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2745,8 +2745,8 @@
       "status": "open",
       "basis": "April 2026 day 16 (1n, 1.95×) + April 2025 day 16 (1n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2755,8 +2755,8 @@
       "status": "open",
       "basis": "April 2026 day 17 (1n, 1.95×) + April 2025 day 17 (1n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2765,8 +2765,8 @@
       "status": "open",
       "basis": "April 2026 day 18 (1n, 1.95×) + April 2025 day 18 (1n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2775,8 +2775,8 @@
       "status": "open",
       "basis": "April 2026 day 19 (1n, 1.95×) + April 2025 day 19 (1n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2785,8 +2785,8 @@
       "status": "open",
       "basis": "April 2026 day 20 (1n, 1.95×) + April 2025 day 20 (1n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2795,8 +2795,8 @@
       "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2805,8 +2805,8 @@
       "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2815,8 +2815,8 @@
       "status": "open",
       "basis": "April 2026 day 23 (1n, 1.95×) + April 2025 day 23 (1n, 1.27×)",
       "originalAmount": 51,
-      "discountPct": 5,
-      "amount": 48,
+      "discountPct": 10,
+      "amount": 46,
       "airbnbCheckout": 58
     },
     {
@@ -2825,8 +2825,8 @@
       "status": "open",
       "basis": "April 2026 day 24 (1n, 1.95×) + April 2025 day 24 (1n, 1.27×)",
       "originalAmount": 51,
-      "discountPct": 5,
-      "amount": 48,
+      "discountPct": 10,
+      "amount": 46,
       "airbnbCheckout": 58
     },
     {
@@ -2835,8 +2835,8 @@
       "status": "open",
       "basis": "April 2026 day 25 (1n, 1.95×) + April 2025 day 25 (1n, 1.27×)",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -2845,8 +2845,8 @@
       "status": "open",
       "basis": "April 2026 day 26 (1n, 1.95×) + April 2025 day 26 (1n, 1.27×)",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -2855,8 +2855,8 @@
       "status": "open",
       "basis": "April 2026 day 27 (1n, 1.95×) + April 2025 day 27 (1n, 1.27×)",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -2865,8 +2865,8 @@
       "status": "open",
       "basis": "April 2026 day 28 (1n, 1.95×) + April 2025 day 28 (1n, 1.27×)",
       "originalAmount": 77,
-      "discountPct": 5,
-      "amount": 73,
+      "discountPct": 10,
+      "amount": 69,
       "airbnbCheckout": 88
     },
     {
@@ -2875,8 +2875,8 @@
       "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (21n, 1.27×)",
       "originalAmount": 69,
-      "discountPct": 5,
-      "amount": 66,
+      "discountPct": 10,
+      "amount": 62,
       "airbnbCheckout": 79
     },
     {
@@ -2885,8 +2885,8 @@
       "status": "open",
       "basis": "April 2026 day 30 (1n, 1.95×) + April 2025 day 30 (1n, 1.27×)",
       "originalAmount": 71,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 64,
       "airbnbCheckout": 81
     },
     {
@@ -2895,8 +2895,8 @@
       "status": "open",
       "basis": "May 2026 day 01 (1n, 1.95×) + May 2025 day 01 (1n, 1.27×)",
       "originalAmount": 71,
-      "discountPct": 5,
-      "amount": 67,
+      "discountPct": 10,
+      "amount": 64,
       "airbnbCheckout": 81
     },
     {
@@ -2905,8 +2905,8 @@
       "status": "open",
       "basis": "May 2026 day 02 (1n, 1.95×) + May 2025 day 02 (1n, 1.27×)",
       "originalAmount": 83,
-      "discountPct": 5,
-      "amount": 79,
+      "discountPct": 10,
+      "amount": 75,
       "airbnbCheckout": 95
     },
     {
@@ -2915,8 +2915,8 @@
       "status": "open",
       "basis": "May 2026 day 03 (1n, 1.95×) + May 2025 day 03 (1n, 1.27×)",
       "originalAmount": 83,
-      "discountPct": 5,
-      "amount": 79,
+      "discountPct": 10,
+      "amount": 75,
       "airbnbCheckout": 95
     },
     {
@@ -2925,8 +2925,8 @@
       "status": "open",
       "basis": "May 2026 day 04 (1n, 1.95×) + May 2025 day 04 (1n, 1.27×)",
       "originalAmount": 83,
-      "discountPct": 5,
-      "amount": 79,
+      "discountPct": 10,
+      "amount": 75,
       "airbnbCheckout": 95
     },
     {
@@ -2935,8 +2935,8 @@
       "status": "open",
       "basis": "May 2026 day 05 (1n, 1.95×) + May 2025 day 05 (1n, 1.27×)",
       "originalAmount": 83,
-      "discountPct": 5,
-      "amount": 79,
+      "discountPct": 10,
+      "amount": 75,
       "airbnbCheckout": 95
     },
     {
@@ -2945,8 +2945,8 @@
       "status": "open",
       "basis": "May 2026 day 06 (1n, 1.95×) + May 2025 day 06 (1n, 1.27×)",
       "originalAmount": 83,
-      "discountPct": 5,
-      "amount": 79,
+      "discountPct": 10,
+      "amount": 75,
       "airbnbCheckout": 95
     },
     {
@@ -2955,8 +2955,8 @@
       "status": "open",
       "basis": "May 2026 day 07 (1n, 1.95×) + May 2025 day 07 (1n, 1.27×)",
       "originalAmount": 83,
-      "discountPct": 5,
-      "amount": 79,
+      "discountPct": 10,
+      "amount": 75,
       "airbnbCheckout": 95
     },
     {
@@ -2965,8 +2965,8 @@
       "status": "open",
       "basis": "May 2026 day 08 (1n, 1.95×) + May 2025 day 08 (1n, 1.27×)",
       "originalAmount": 83,
-      "discountPct": 5,
-      "amount": 79,
+      "discountPct": 10,
+      "amount": 75,
       "airbnbCheckout": 95
     },
     {
@@ -2975,8 +2975,8 @@
       "status": "open",
       "basis": "May 2026 (23n, 1.95×) + May 2025 (30n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -2985,8 +2985,8 @@
       "status": "open",
       "basis": "May 2026 day 10 (1n, 1.95×) + May 2025 day 10 (1n, 1.27×)",
       "originalAmount": 52,
-      "discountPct": 5,
-      "amount": 49,
+      "discountPct": 10,
+      "amount": 47,
       "airbnbCheckout": 59
     },
     {
@@ -2995,8 +2995,8 @@
       "status": "open",
       "basis": "May 2026 day 11 (1n, 1.95×) + May 2025 day 11 (1n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3005,8 +3005,8 @@
       "status": "open",
       "basis": "May 2026 day 12 (1n, 1.95×) + May 2025 day 12 (1n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3015,8 +3015,8 @@
       "status": "open",
       "basis": "May 2026 day 13 (1n, 1.95×) + May 2025 day 13 (1n, 1.27×)",
       "originalAmount": 86,
-      "discountPct": 5,
-      "amount": 82,
+      "discountPct": 10,
+      "amount": 77,
       "airbnbCheckout": 98
     },
     {
@@ -3025,8 +3025,8 @@
       "status": "open",
       "basis": "May 2026 day 14 (1n, 1.95×) + May 2025 day 14 (1n, 1.27×)",
       "originalAmount": 86,
-      "discountPct": 5,
-      "amount": 82,
+      "discountPct": 10,
+      "amount": 77,
       "airbnbCheckout": 98
     },
     {
@@ -3035,8 +3035,8 @@
       "status": "open",
       "basis": "May 2026 day 15 (1n, 1.95×) + May 2025 day 15 (1n, 1.27×)",
       "originalAmount": 86,
-      "discountPct": 5,
-      "amount": 82,
+      "discountPct": 10,
+      "amount": 77,
       "airbnbCheckout": 98
     },
     {
@@ -3045,8 +3045,8 @@
       "status": "open",
       "basis": "May 2026 day 16 (1n, 1.95×) + May 2025 day 16 (1n, 1.27×)",
       "originalAmount": 86,
-      "discountPct": 5,
-      "amount": 82,
+      "discountPct": 10,
+      "amount": 77,
       "airbnbCheckout": 98
     },
     {
@@ -3055,8 +3055,8 @@
       "status": "open",
       "basis": "May 2026 day 17 (1n, 1.95×) + May 2025 day 17 (1n, 1.27×)",
       "originalAmount": 86,
-      "discountPct": 5,
-      "amount": 82,
+      "discountPct": 10,
+      "amount": 77,
       "airbnbCheckout": 98
     },
     {
@@ -3065,8 +3065,8 @@
       "status": "open",
       "basis": "May 2026 day 18 (1n, 1.95×) + May 2025 day 18 (1n, 1.27×)",
       "originalAmount": 64,
-      "discountPct": 5,
-      "amount": 61,
+      "discountPct": 10,
+      "amount": 58,
       "airbnbCheckout": 73
     },
     {
@@ -3075,8 +3075,8 @@
       "status": "open",
       "basis": "May 2026 day 19 (1n, 1.95×) + May 2025 day 19 (1n, 1.27×)",
       "originalAmount": 64,
-      "discountPct": 5,
-      "amount": 61,
+      "discountPct": 10,
+      "amount": 58,
       "airbnbCheckout": 73
     },
     {
@@ -3085,8 +3085,8 @@
       "status": "open",
       "basis": "May 2026 day 20 (1n, 1.95×) + May 2025 day 20 (1n, 1.27×)",
       "originalAmount": 85,
-      "discountPct": 5,
-      "amount": 81,
+      "discountPct": 10,
+      "amount": 77,
       "airbnbCheckout": 97
     },
     {
@@ -3095,8 +3095,8 @@
       "status": "open",
       "basis": "May 2026 day 21 (1n, 1.95×) + May 2025 day 21 (1n, 1.27×)",
       "originalAmount": 74,
-      "discountPct": 5,
-      "amount": 70,
+      "discountPct": 10,
+      "amount": 67,
       "airbnbCheckout": 84
     },
     {
@@ -3105,8 +3105,8 @@
       "status": "open",
       "basis": "May 2026 day 22 (1n, 1.95×) + May 2025 day 22 (1n, 1.27×)",
       "originalAmount": 74,
-      "discountPct": 5,
-      "amount": 70,
+      "discountPct": 10,
+      "amount": 67,
       "airbnbCheckout": 84
     },
     {
@@ -3115,8 +3115,8 @@
       "status": "open",
       "basis": "May 2026 (23n, 1.95×) + May 2025 (30n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3125,8 +3125,8 @@
       "status": "open",
       "basis": "May 2026 (23n, 1.95×) + May 2025 (30n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3135,8 +3135,8 @@
       "status": "open",
       "basis": "May 2026 (23n, 1.95×) + May 2025 (30n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3145,8 +3145,8 @@
       "status": "open",
       "basis": "May 2026 (23n, 1.95×) + May 2025 (30n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3155,8 +3155,8 @@
       "status": "open",
       "basis": "May 2026 (23n, 1.95×) + May 2025 (30n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3165,8 +3165,8 @@
       "status": "open",
       "basis": "May 2026 (23n, 1.95×) + May 2025 (30n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3175,8 +3175,8 @@
       "status": "open",
       "basis": "May 2026 (23n, 1.95×) + May 2025 (30n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3185,8 +3185,8 @@
       "status": "open",
       "basis": "May 2026 (23n, 1.95×) + May 2025 (30n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3195,8 +3195,8 @@
       "status": "open",
       "basis": "May 2026 day 31 (1n, 1.95×) + May 2025 day 31 (1n, 1.27×)",
       "originalAmount": 57,
-      "discountPct": 5,
-      "amount": 54,
+      "discountPct": 10,
+      "amount": 51,
       "airbnbCheckout": 65
     },
     {
@@ -3205,8 +3205,8 @@
       "status": "open",
       "basis": "June 2026 day 01 (1n, 1.95×) + June 2025 day 01 (1n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3215,8 +3215,8 @@
       "status": "open",
       "basis": "June 2026 day 02 (1n, 1.95×) + June 2025 day 02 (1n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3225,8 +3225,8 @@
       "status": "open",
       "basis": "June 2026 day 03 (1n, 1.95×) + June 2025 day 03 (1n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3235,8 +3235,8 @@
       "status": "open",
       "basis": "June 2026 day 04 (1n, 1.95×) + June 2025 day 04 (1n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3245,8 +3245,8 @@
       "status": "open",
       "basis": "June 2026 day 05 (1n, 1.95×) + June 2025 day 05 (1n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3255,8 +3255,8 @@
       "status": "open",
       "basis": "June 2026 day 06 (1n, 1.95×) + June 2025 day 06 (1n, 1.27×)",
       "originalAmount": 92,
-      "discountPct": 5,
-      "amount": 87,
+      "discountPct": 10,
+      "amount": 83,
       "airbnbCheckout": 105
     },
     {
@@ -3265,8 +3265,8 @@
       "status": "open",
       "basis": "June 2026 day 07 (1n, 1.95×) + June 2025 day 07 (1n, 1.27×)",
       "originalAmount": 92,
-      "discountPct": 5,
-      "amount": 87,
+      "discountPct": 10,
+      "amount": 83,
       "airbnbCheckout": 105
     },
     {
@@ -3275,8 +3275,8 @@
       "status": "open",
       "basis": "June 2026 day 08 (1n, 1.95×) + June 2025 day 08 (1n, 1.27×)",
       "originalAmount": 92,
-      "discountPct": 5,
-      "amount": 87,
+      "discountPct": 10,
+      "amount": 83,
       "airbnbCheckout": 105
     },
     {
@@ -3285,8 +3285,8 @@
       "status": "open",
       "basis": "June 2026 day 09 (1n, 1.95×) + June 2025 day 09 (1n, 1.27×)",
       "originalAmount": 92,
-      "discountPct": 5,
-      "amount": 87,
+      "discountPct": 10,
+      "amount": 83,
       "airbnbCheckout": 105
     },
     {
@@ -3295,8 +3295,8 @@
       "status": "open",
       "basis": "June 2026 day 10 (1n, 1.95×) + June 2025 day 10 (1n, 1.27×)",
       "originalAmount": 92,
-      "discountPct": 5,
-      "amount": 87,
+      "discountPct": 10,
+      "amount": 83,
       "airbnbCheckout": 105
     },
     {
@@ -3305,8 +3305,8 @@
       "status": "open",
       "basis": "June 2026 day 11 (1n, 1.95×) + June 2025 day 11 (1n, 1.27×)",
       "originalAmount": 92,
-      "discountPct": 5,
-      "amount": 87,
+      "discountPct": 10,
+      "amount": 83,
       "airbnbCheckout": 105
     },
     {
@@ -3315,8 +3315,8 @@
       "status": "open",
       "basis": "June 2026 day 12 (1n, 1.95×) + June 2025 day 12 (1n, 1.27×)",
       "originalAmount": 92,
-      "discountPct": 5,
-      "amount": 87,
+      "discountPct": 10,
+      "amount": 83,
       "airbnbCheckout": 105
     },
     {
@@ -3325,8 +3325,8 @@
       "status": "open",
       "basis": "June 2026 day 13 (1n, 1.95×) + June 2025 day 13 (1n, 1.27×)",
       "originalAmount": 92,
-      "discountPct": 5,
-      "amount": 87,
+      "discountPct": 10,
+      "amount": 83,
       "airbnbCheckout": 105
     },
     {
@@ -3335,8 +3335,8 @@
       "status": "open",
       "basis": "June 2026 day 14 (1n, 1.95×) + June 2025 day 14 (1n, 1.27×)",
       "originalAmount": 62,
-      "discountPct": 5,
-      "amount": 59,
+      "discountPct": 10,
+      "amount": 56,
       "airbnbCheckout": 71
     },
     {
@@ -3345,8 +3345,8 @@
       "status": "open",
       "basis": "June 2026 day 15 (1n, 1.95×) + June 2025 day 15 (1n, 1.27×)",
       "originalAmount": 80,
-      "discountPct": 5,
-      "amount": 76,
+      "discountPct": 10,
+      "amount": 72,
       "airbnbCheckout": 91
     },
     {
@@ -3355,8 +3355,8 @@
       "status": "open",
       "basis": "June 2026 day 16 (1n, 1.95×) + June 2025 day 16 (1n, 1.27×)",
       "originalAmount": 80,
-      "discountPct": 5,
-      "amount": 76,
+      "discountPct": 10,
+      "amount": 72,
       "airbnbCheckout": 91
     },
     {
@@ -3365,8 +3365,8 @@
       "status": "open",
       "basis": "June 2026 day 17 (1n, 1.95×) + June 2025 day 17 (1n, 1.27×)",
       "originalAmount": 80,
-      "discountPct": 5,
-      "amount": 76,
+      "discountPct": 10,
+      "amount": 72,
       "airbnbCheckout": 91
     },
     {
@@ -3375,8 +3375,8 @@
       "status": "open",
       "basis": "June 2026 (28n, 1.95×) + June 2025 (29n, 1.27×)",
       "originalAmount": 85,
-      "discountPct": 5,
-      "amount": 81,
+      "discountPct": 10,
+      "amount": 77,
       "airbnbCheckout": 97
     },
     {
@@ -3385,8 +3385,8 @@
       "status": "open",
       "basis": "June 2026 day 19 (1n, 1.95×) + June 2025 day 19 (1n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3395,8 +3395,8 @@
       "status": "open",
       "basis": "June 2026 day 20 (1n, 1.95×) + June 2025 day 20 (1n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3405,8 +3405,8 @@
       "status": "open",
       "basis": "June 2026 day 21 (1n, 1.95×) + June 2025 day 21 (1n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3415,8 +3415,8 @@
       "status": "open",
       "basis": "June 2026 day 22 (1n, 1.95×) + June 2025 day 22 (1n, 1.27×)",
       "originalAmount": 75,
-      "discountPct": 5,
-      "amount": 71,
+      "discountPct": 10,
+      "amount": 68,
       "airbnbCheckout": 86
     },
     {
@@ -3425,8 +3425,8 @@
       "status": "open",
       "basis": "June 2026 (28n, 1.95×) + June 2025 (29n, 1.27×)",
       "originalAmount": 85,
-      "discountPct": 5,
-      "amount": 81,
+      "discountPct": 10,
+      "amount": 77,
       "airbnbCheckout": 97
     },
     {
@@ -3435,8 +3435,8 @@
       "status": "open",
       "basis": "June 2026 day 24 (1n, 1.95×) + June 2025 day 24 (1n, 1.27×)",
       "originalAmount": 95,
-      "discountPct": 5,
-      "amount": 90,
+      "discountPct": 10,
+      "amount": 86,
       "airbnbCheckout": 108
     },
     {
@@ -3445,8 +3445,8 @@
       "status": "open",
       "basis": "June 2026 day 25 (1n, 1.95×) + June 2025 day 25 (1n, 1.27×)",
       "originalAmount": 95,
-      "discountPct": 5,
-      "amount": 90,
+      "discountPct": 10,
+      "amount": 86,
       "airbnbCheckout": 108
     },
     {
@@ -3455,8 +3455,8 @@
       "status": "open",
       "basis": "June 2026 day 26 (1n, 1.95×) + June 2025 day 26 (1n, 1.27×)",
       "originalAmount": 95,
-      "discountPct": 5,
-      "amount": 90,
+      "discountPct": 10,
+      "amount": 86,
       "airbnbCheckout": 108
     },
     {
@@ -3465,8 +3465,8 @@
       "status": "open",
       "basis": "June 2026 day 27 (1n, 1.95×) + June 2025 day 27 (1n, 1.27×)",
       "originalAmount": 95,
-      "discountPct": 5,
-      "amount": 90,
+      "discountPct": 10,
+      "amount": 86,
       "airbnbCheckout": 108
     },
     {
@@ -3475,8 +3475,8 @@
       "status": "open",
       "basis": "June 2026 day 28 (1n, 1.95×) + June 2025 day 28 (1n, 1.27×)",
       "originalAmount": 95,
-      "discountPct": 5,
-      "amount": 90,
+      "discountPct": 10,
+      "amount": 86,
       "airbnbCheckout": 108
     },
     {
@@ -3485,8 +3485,8 @@
       "status": "open",
       "basis": "June 2026 (28n, 1.95×) + June 2025 (29n, 1.27×)",
       "originalAmount": 85,
-      "discountPct": 5,
-      "amount": 81,
+      "discountPct": 10,
+      "amount": 77,
       "airbnbCheckout": 97
     },
     {
@@ -3495,8 +3495,8 @@
       "status": "open",
       "basis": "June 2026 day 30 (1n, 1.95×) + June 2025 day 30 (1n, 1.27×)",
       "originalAmount": 91,
-      "discountPct": 5,
-      "amount": 86,
+      "discountPct": 10,
+      "amount": 82,
       "airbnbCheckout": 104
     },
     {
@@ -3505,8 +3505,8 @@
       "status": "open",
       "basis": "July 2026 day 01 (1n, 1.95×) + July 2025 day 01 (1n, 1.27×)",
       "originalAmount": 91,
-      "discountPct": 5,
-      "amount": 86,
+      "discountPct": 10,
+      "amount": 82,
       "airbnbCheckout": 104
     },
     {
@@ -3515,8 +3515,8 @@
       "status": "blocked",
       "basis": "July 2026 day 02 (1n, 1.95×) + July 2025 day 02 (1n, 1.27×)",
       "originalAmount": 91,
-      "discountPct": 5,
-      "amount": 86,
+      "discountPct": 10,
+      "amount": 82,
       "airbnbCheckout": 104
     },
     {
@@ -3525,8 +3525,8 @@
       "status": "blocked",
       "basis": "July 2026 day 03 (1n, 1.95×) + July 2025 day 03 (1n, 1.27×)",
       "originalAmount": 81,
-      "discountPct": 5,
-      "amount": 77,
+      "discountPct": 10,
+      "amount": 73,
       "airbnbCheckout": 92
     },
     {
@@ -3535,8 +3535,8 @@
       "status": "blocked",
       "basis": "July 2026 (17n, 1.95×) + July 2025 (31n, 1.27×)",
       "originalAmount": 99,
-      "discountPct": 5,
-      "amount": 94,
+      "discountPct": 10,
+      "amount": 89,
       "airbnbCheckout": 113
     },
     {
@@ -3545,8 +3545,8 @@
       "status": "blocked",
       "basis": "July 2026 day 05 (1n, 1.95×) + July 2025 day 05 (1n, 1.27×)",
       "originalAmount": 92,
-      "discountPct": 5,
-      "amount": 87,
+      "discountPct": 10,
+      "amount": 83,
       "airbnbCheckout": 105
     },
     {
@@ -3555,8 +3555,8 @@
       "status": "blocked",
       "basis": "July 2026 day 06 (1n, 1.95×) + July 2025 day 06 (1n, 1.27×)",
       "originalAmount": 92,
-      "discountPct": 5,
-      "amount": 87,
+      "discountPct": 10,
+      "amount": 83,
       "airbnbCheckout": 105
     }
   ]
