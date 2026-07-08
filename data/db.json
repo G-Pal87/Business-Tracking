@@ -48636,9 +48636,9 @@
           "summary": "Reserved"
         },
         {
-          "start": "2027-07-03",
+          "start": "2027-07-04",
           "end": "2027-07-09",
-          "uid": "7f662ec65913-6826181f4975e33954508c4f847ebd1b@airbnb.com",
+          "uid": "7f662ec65913-9189dbd6c34ee3072a8e4950f8f6b245@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -48647,7 +48647,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1783453255799,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-07-08T00:11:46.262Z"
+      "lastFetched": "2026-07-08T21:42:16.933Z"
     },
     {
       "id": "stc_5c75cde224e04bef95883c5126497766",
@@ -48691,9 +48691,9 @@
           "summary": "Reserved"
         },
         {
-          "start": "2027-07-03",
+          "start": "2027-07-04",
           "end": "2027-07-09",
-          "uid": "7f662ec65913-6826181f4975e33954508c4f847ebd1b@airbnb.com",
+          "uid": "7f662ec65913-9189dbd6c34ee3072a8e4950f8f6b245@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -48702,7 +48702,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1783441678713,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-07-08T11:18:09.664Z"
+      "lastFetched": "2026-07-08T21:42:17.732Z"
     },
     {
       "id": "stc_371e30d84db64e0d9c7e47be2cc97d42",
@@ -48770,9 +48770,9 @@
           "summary": "Airbnb (Not available)"
         },
         {
-          "start": "2027-07-03",
+          "start": "2027-07-04",
           "end": "2027-07-09",
-          "uid": "7f662ec65913-6826181f4975e33954508c4f847ebd1b@airbnb.com",
+          "uid": "7f662ec65913-9189dbd6c34ee3072a8e4950f8f6b245@airbnb.com",
           "summary": "Airbnb (Not available)"
         }
       ],
@@ -48781,7 +48781,7 @@
       "createdBy": "Giorgos",
       "updatedAt": 1783442231221,
       "updatedBy": "Giorgos",
-      "lastFetched": "2026-07-08T15:35:24.508Z"
+      "lastFetched": "2026-07-08T21:42:18.154Z"
     },
     {
       "id": "stc_8ba80cd3970a4acb988485d9701953e6",
