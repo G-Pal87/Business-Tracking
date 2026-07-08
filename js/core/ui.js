@@ -419,7 +419,15 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
   let items = [];
   let chks  = [];
 
-  const sync = () => {
+  // Reflects current checkbox state into the trigger label / "All" checkbox
+  // WITHOUT touching filterSet. Used when rebuilding rows for a narrower
+  // (leave-one-out faceted) item list, where "every visible row is checked"
+  // must NOT be reinterpreted as "no filter" — that reading would silently
+  // erase an explicit selection (e.g. narrowing Properties to one item can
+  // narrow the Streams options down to just the one that item belongs to,
+  // and since that lone option is checked, n === chks.length there too — but
+  // the user's real, explicit "just this stream" choice must survive).
+  const refreshUI = () => {
     const sel = chks.filter(c => c.checked);
     const n   = sel.length;
     allChk.checked       = n === chks.length;
@@ -428,8 +436,15 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
       n === chks.length || n === 0 ? allLabel
       : n === 1 ? (items.find(i => i.value === sel[0].dataset.value)?.label || '')
       : `${n} selected`;
+  };
+
+  // Recomputes filterSet from checkbox state — only call this from a real
+  // user interaction (checkbox/"All"/"only" click), never from buildRows().
+  const sync = () => {
+    refreshUI();
+    const sel = chks.filter(c => c.checked);
     filterSet.clear();
-    if (n > 0 && n < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
+    if (sel.length > 0 && sel.length < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
   };
 
   // Builds (or rebuilds) the item rows in the menu
@@ -471,7 +486,7 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
       chk.onchange = () => sync();
       return chk;
     });
-    sync();
+    refreshUI();
   };
 
   const persist = () => {
