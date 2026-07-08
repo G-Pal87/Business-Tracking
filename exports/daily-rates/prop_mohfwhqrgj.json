@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-08T00:11:48.295Z",
+  "generatedAt": "2026-07-08T13:06:39.492Z",
   "property": {
     "id": "prop_mohfwhqrgj",
     "name": "Studio Tenerife",
@@ -726,7 +726,7 @@
     {
       "date": "2026-09-17",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "September 2026 blended (1n) + September 2026 blended (1n)",
       "originalAmount": 37,
       "discountPct": 10,
@@ -736,7 +736,7 @@
     {
       "date": "2026-09-18",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "September 2026 blended (1n) + September 2026 blended (1n)",
       "originalAmount": 37,
       "discountPct": 10,
@@ -746,7 +746,7 @@
     {
       "date": "2026-09-19",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "September 2026 blended (17n) + September 2026 blended (24n) + September 2026 blended (14n)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -756,7 +756,7 @@
     {
       "date": "2026-09-20",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "September 2026 blended (17n) + September 2026 blended (24n) + September 2026 blended (14n)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -766,7 +766,7 @@
     {
       "date": "2026-09-21",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "September 2026 blended (1n) + September 2026 blended (1n)",
       "originalAmount": 35,
       "discountPct": 10,
@@ -776,7 +776,7 @@
     {
       "date": "2026-09-22",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "September 2026 blended (1n) + September 2026 blended (1n)",
       "originalAmount": 35,
       "discountPct": 10,
@@ -786,7 +786,7 @@
     {
       "date": "2026-09-23",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "September 2026 blended (1n) + September 2026 blended (1n)",
       "originalAmount": 35,
       "discountPct": 10,
