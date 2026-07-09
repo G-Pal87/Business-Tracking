@@ -161,7 +161,24 @@ async function doPushDb(message = 'Update data') {
   // pull failed or was skipped, this push would otherwise go out with no
   // conflict protection at all. One extra fetch here is worth the latency.
   if (!state.github.remoteDb) {
-    try { await fetchDb(); } catch { /* best-effort — push still proceeds without a base */ }
+    try {
+      const freshBase = await fetchDb();
+      // mergeDb's delete-propagation compares this new base against state.db: any
+      // id present in base but absent from local is treated as a genuine local
+      // deletion and stripped from what gets pushed. Without this reconciliation,
+      // a record this session's state.db has simply never seen (e.g. added by
+      // another session/device moments ago) reads as "deleted by me" the instant
+      // this fallback hands mergeDb a base that already contains it — and the
+      // very next push silently erases someone else's just-saved data.
+      for (const [col, items] of Object.entries(freshBase)) {
+        if (!Array.isArray(items) || !Array.isArray(state.db[col])) continue;
+        const localIds = new Set(state.db[col].map(x => x.id));
+        for (const item of items) {
+          if (!localIds.has(item.id)) { state.db[col].push(item); localIds.add(item.id); }
+        }
+      }
+      invalidateActiveCache();
+    } catch { /* best-effort — push still proceeds without a base */ }
   }
 
   const apiBase  = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}`;
