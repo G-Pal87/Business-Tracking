@@ -4,10 +4,12 @@ import { state, notify, invalidateActiveCache } from './state.js';
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
 
-// Shared by mergeLocalPending() and resyncDb(): a record's sync marker is
-// treated as this much earlier than it claims before trusting it to decide
-// whether a local-only addition is genuine or a remote-absence is a real
-// delete. See mergeLocalPending() below for the full rationale.
+// Used by mergeLocalPending(): a record's sync marker is treated as this much
+// earlier than it claims before trusting it to decide whether a local-only
+// addition is a genuine offline edit. Deliberately NOT used for delete
+// propagation (in either mergeLocalPending or resyncDb) — see the comments
+// at each function's delete-propagation step for why. See mergeLocalPending()
+// below for the full rationale.
 const SYNC_SAFETY_MARGIN_MS = 15 * 60 * 1000; // 15 minutes
 
 let pushQueue = Promise.resolve();
@@ -461,8 +463,7 @@ export function resyncDb(remote, local) {
   // saw it on GitHub, and the next reload's mergeLocalPending would then read
   // that false confirmation as "remote must have deleted this" and drop it.
   let staleFetch = false;
-  const syncedAt    = local?._syncedAt ?? null;
-  const effSyncedAt = syncedAt ? syncedAt - SYNC_SAFETY_MARGIN_MS : null;
+  const syncedAt = local?._syncedAt ?? null;
   for (const col of Object.keys(local)) {
     const localArr = local[col];
     if (!Array.isArray(localArr)) {
@@ -493,14 +494,16 @@ export function resyncDb(remote, local) {
     // Settings → "Delete Permanently") that haven't reached remote yet — this
     // runs every 60s in the background, not just on reload, so an unpushed
     // delete could otherwise resurrect mid-session with no refresh at all.
-    // Same conservative rule as mergeLocalPending: only when remote's copy
-    // hasn't changed since (the margin-adjusted) last known sync — if remote
-    // is newer, local's absence just means local hasn't seen it, not a delete.
-    if (effSyncedAt) {
+    // Same rule as mergeLocalPending, deliberately using the RAW syncedAt (not
+    // the margin-adjusted effSyncedAt) for the same reason: the margin exists
+    // to protect additions from a stale post-push read, not to arbitrate
+    // deletes, and reusing it here would make deleting anything touched in
+    // the last 15 minutes silently fail to stick.
+    if (syncedAt) {
       for (const id of map.keys()) {
         if (localIds.has(id)) continue;
         const remoteItem = map.get(id);
-        if ((remoteItem.updatedAt || 0) <= effSyncedAt) map.delete(id);
+        if ((remoteItem.updatedAt || 0) <= syncedAt) map.delete(id);
       }
     }
     result[col] = [...map.values()];
@@ -593,11 +596,23 @@ export function mergeLocalPending(remoteDb, localCache) {
     // Only safe to infer "local deleted this" when we have real sync history
     // AND remote's copy hasn't changed since that last known sync — if remote
     // is newer, local's absence just means the cache predates it, not a delete.
-    if (effSyncedAt) {
+    //
+    // Deliberately compares against the RAW syncedAt here, not the margin-
+    // adjusted effSyncedAt — matching mergeDb's own (margin-free) delete
+    // propagation. The margin exists to protect ADDITIONS from a stale
+    // post-push read that momentarily doesn't show them yet; applying the
+    // same margin here instead breaks the common case of deleting something
+    // that was itself touched recently (e.g. import it, then delete it) — a
+    // delete on a record last changed 1-14 minutes ago would silently fail to
+    // stick on the very next reload. Withholding a genuine delete is merely
+    // annoying (redo it, or it propagates on the next successful push); it
+    // carries none of the addition case's silent-data-loss risk, so it
+    // doesn't need the same conservative padding.
+    if (syncedAt) {
       for (const id of merged.keys()) {
         if (localMap.has(id)) continue;
         const remoteItem = merged.get(id);
-        if ((remoteItem.updatedAt || 0) <= effSyncedAt) {
+        if ((remoteItem.updatedAt || 0) <= syncedAt) {
           merged.delete(id);
           hasLocalChanges = true;
         }
