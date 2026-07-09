@@ -1247,25 +1247,31 @@ function openCSVImport() {
       // history for the other 3, since none of their codes appear here.
       const csvPropertyIds = new Set(rows.map(r => findProp(r.listing)?.id).filter(Boolean));
       const allPays = listActivePayments();
-      const existingKeySet = new Set(allPays.filter(p => p.airbnbKey).map(p => p.airbnbKey));
+      const byAirbnbKeyPreview = new Map(allPays.filter(p => p.airbnbKey).map(p => [p.airbnbKey, p]));
       const toDeleteRows = allPays
         .filter(p => p.source === 'airbnb' && p.airbnbKey && csvPropertyIds.has(p.propertyId) && !csvKeys.has(p.airbnbKey))
         .map(p => ({ ...p, propName: byId('properties', p.propertyId)?.name || '—',
           reason: 'Airbnb key no longer present in this completed-payout export — reservation appears cancelled/removed on Airbnb' }));
 
-      const addedRows = [], updatedRows = [], skippedRows = [];
+      const addedRows = [], updatedRows = [], unchangedRows = [], skippedRows = [];
       for (const row of rows) {
         const pmatch = findProp(row.listing);
         if (!pmatch) {
           skippedRows.push({ ...row, propName: '—', reason: `No property matches listing "${row.listing || '—'}" — check property mapping` });
           continue;
         }
-        const exists = row.airbnbKey ? existingKeySet.has(row.airbnbKey) : false;
-        const reason = exists
-          ? 'Existing payment matched by Airbnb key — will be overwritten with the latest CSV values'
-          : 'No existing payment matches this Airbnb key — recorded as a new paid transaction';
-        const entry = { ...row, propName: pmatch.name, currency: row.currency || pmatch.currency, reason };
-        (exists ? updatedRows : addedRows).push(entry);
+        const existing = row.airbnbKey ? (byAirbnbKeyPreview.get(row.airbnbKey) ?? null) : null;
+        if (!existing) {
+          addedRows.push({ ...row, propName: pmatch.name, currency: row.currency || pmatch.currency,
+            reason: 'No existing payment matches this Airbnb key — recorded as a new paid transaction' });
+          continue;
+        }
+        const changed = fieldsChanged(existing, buildCompletedPayFields(row, pmatch));
+        const entry = { ...row, propName: pmatch.name, currency: row.currency || pmatch.currency,
+          reason: changed
+            ? 'Existing payment matched by Airbnb key — values differ from the CSV and will be overwritten'
+            : 'Existing payment matched by Airbnb key — CSV values are identical, nothing to change' };
+        (changed ? updatedRows : unchangedRows).push(entry);
       }
 
       const fileBlock = el('div', { style: 'margin-bottom:10px' });
@@ -1275,6 +1281,10 @@ function openCSVImport() {
       summary.appendChild(countToggle(fileBlock, addedRows.length, `${addedRows.length} new`, addedRows, CSV_ROW_COLS));
       summary.appendChild(document.createTextNode(' · '));
       summary.appendChild(countToggle(fileBlock, updatedRows.length, `${updatedRows.length} update`, updatedRows, CSV_ROW_COLS));
+      if (unchangedRows.length) {
+        summary.appendChild(document.createTextNode(' · '));
+        summary.appendChild(countToggle(fileBlock, unchangedRows.length, `${unchangedRows.length} unchanged`, unchangedRows, CSV_ROW_COLS));
+      }
       if (skippedRows.length) {
         summary.appendChild(document.createTextNode(' · '));
         summary.appendChild(countToggle(fileBlock, skippedRows.length, `${skippedRows.length} skipped`, skippedRows, CSV_ROW_COLS));
@@ -1402,29 +1412,7 @@ function openCSVImport() {
         if (!matched) continue;
 
         const existing = row.airbnbKey ? (byAirbnbKey.get(row.airbnbKey) ?? null) : null;
-        const newFields = {
-          amount: row.amount,
-          currency: row.currency || matched.currency,
-          date: row.date,
-          type: 'rental',
-          status: 'paid',
-          airbnbKey: row.airbnbKey,
-          confirmationCode: row.confirmationCode,
-          airbnbRef: row.confirmationCode,
-          airbnbType: row.type,
-          airbnbBookingDate: row.bookingDate,
-          airbnbCheckIn: row.checkIn,
-          airbnbCheckOut: row.checkOut,
-          airbnbNights: row.nights,
-          airbnbServiceFee: row.serviceFee,
-          airbnbCleaningFee: row.cleaningFee,
-          airbnbGrossEarnings: row.grossEarnings,
-          avgGross: row.avgGross,
-          avgNightlyRate: row.avgNightExclCleaning,
-          avgNightInclCleaning: row.avgNightInclCleaning,
-          avgNightExclCleaning: row.avgNightExclCleaning,
-          notes: [row.guest, row.listing].filter(Boolean).join(' · ')
-        };
+        const newFields = buildCompletedPayFields(row, matched);
         const pay = existing ? { ...existing, ...newFields } : {
           id: newId('pay'),
           propertyId: matched.id,
@@ -1436,8 +1424,10 @@ function openCSVImport() {
         // changed — upsert() always stamps a fresh updatedAt, so re-running the
         // same CSV was bumping every matched payment's timestamp on every
         // import, needlessly churning the sync history (same root cause as the
-        // reservation-expense-rule no-op fix above).
-        const changed = !existing || Object.keys(newFields).some(k => (existing[k] ?? null) !== (newFields[k] ?? null));
+        // reservation-expense-rule no-op fix above). Uses the same
+        // buildCompletedPayFields/fieldsChanged the preview above uses, so the
+        // preview's counts and what actually gets written can't disagree.
+        const changed = fieldsChanged(existing, newFields);
         if (changed) {
           upsert('payments', pay);
           if (existing) totalUpdated++; else totalAdded++;
@@ -1601,6 +1591,43 @@ function openCSVImport() {
     footer: [button('Cancel', { onClick: closeModal }), importBtn],
     large: true
   });
+}
+
+// Builds the field set a completed-CSV row would write onto a payment, shared
+// between the preview (which needs to know whether a match will actually
+// change anything) and the apply step (which needs the same fields to write).
+// Keeping this in one place is what lets the preview's "update" count and the
+// apply step's actual write count agree — they were computed independently
+// before, which is why a byte-identical re-import could preview "232 update"
+// while genuinely changing zero records.
+function buildCompletedPayFields(row, matched) {
+  return {
+    amount: row.amount,
+    currency: row.currency || matched.currency,
+    date: row.date,
+    type: 'rental',
+    status: 'paid',
+    airbnbKey: row.airbnbKey,
+    confirmationCode: row.confirmationCode,
+    airbnbRef: row.confirmationCode,
+    airbnbType: row.type,
+    airbnbBookingDate: row.bookingDate,
+    airbnbCheckIn: row.checkIn,
+    airbnbCheckOut: row.checkOut,
+    airbnbNights: row.nights,
+    airbnbServiceFee: row.serviceFee,
+    airbnbCleaningFee: row.cleaningFee,
+    airbnbGrossEarnings: row.grossEarnings,
+    avgGross: row.avgGross,
+    avgNightlyRate: row.avgNightExclCleaning,
+    avgNightInclCleaning: row.avgNightInclCleaning,
+    avgNightExclCleaning: row.avgNightExclCleaning,
+    notes: [row.guest, row.listing].filter(Boolean).join(' · ')
+  };
+}
+
+function fieldsChanged(existing, newFields) {
+  return !existing || Object.keys(newFields).some(k => (existing[k] ?? null) !== (newFields[k] ?? null));
 }
 
 // RFC-4180-compliant CSV parser with flexible Airbnb column mapping
