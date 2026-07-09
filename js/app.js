@@ -403,7 +403,18 @@ async function boot() {
       try {
         const remoteDb = await github.fetchDb();
         const merged = github.mergeLocalPending(remoteDb, localSnapshot);
-        merged._syncedAt = Date.now(); // stamp pull time so next merge knows what's a real offline edit
+        // Read-and-strip the merge's flag rather than leaving it on the object —
+        // setDb + the next push would otherwise persist it into the repo's db.json.
+        const hasLocalChanges = merged._hasLocalChanges;
+        delete merged._hasLocalChanges;
+        // Advance the sync marker to "now" ONLY when the merge kept nothing local.
+        // When unpushed local records survived the merge (hasLocalChanges), they are
+        // NOT on remote yet — stamping Date.now() here would make them compare as
+        // older than the marker, so if the follow-up push below fails, the NEXT
+        // reload's mergeLocalPending would judge them already-synced and silently
+        // drop them (refresh twice during a sync outage → data loss). Keep the old
+        // marker instead; the successful push stamps the real value itself.
+        merged._syncedAt = hasLocalChanges ? (localSnapshot?._syncedAt ?? null) : Date.now();
         setDb(merged);                              // triggers data-loaded → view refresh
         github.applyDbConfig(merged.appConfig?.github);
         github.saveLocalCache(merged);
@@ -418,7 +429,7 @@ async function boot() {
         // initialSyncDone=true and the normal 1.5s debounce pushes it cleanly.
         migrateDb();
         // If local had genuinely newer records that won the merge, push them now.
-        if (merged._hasLocalChanges && state.github.token && !pushPending) {
+        if (hasLocalChanges && state.github.token && !pushPending) {
           doSave().catch(() => {});
         }
       } catch (e) {
