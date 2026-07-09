@@ -342,10 +342,26 @@ async function boot() {
       // that were saved more recently. If local.updatedAt > remote.updatedAt,
       // local wins regardless of whether the base (remoteDb) is fresh or stale.
       const synced = github.resyncDb(remoteDb, state.db);
-      synced._syncedAt = Date.now();
+      // resyncDb flags _staleFetch when this fetch turned out to be missing
+      // something local already had (e.g. a just-imported record GitHub's read
+      // path hasn't caught up to yet). In that case do NOT advance _syncedAt to
+      // now — that would mark those records "confirmed synced" when this fetch
+      // never actually saw them, and the next reload's mergeLocalPending would
+      // then read that false confirmation as "remote deleted this" and drop it.
+      // Carrying the old marker forward keeps them looking genuinely unsynced
+      // until a push actually confirms them.
+      const staleFetch = synced._staleFetch;
+      delete synced._staleFetch; // never persist this transient flag
+      synced._syncedAt = staleFetch ? (state.db._syncedAt ?? null) : Date.now();
       setDb(synced);                                    // triggers data-loaded → view refresh
       github.saveLocalCache(synced);
       updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
+      // A stale fetch means local has something this push cycle should confirm
+      // properly — nudge a real push rather than leaving it to the next edit.
+      if (staleFetch && state.github.token && !pushPending) {
+        clearTimeout(pushTimer);
+        pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 300);
+      }
     } catch { /* offline / transient — keep working from current state */ }
     finally { resyncing = false; }
   };

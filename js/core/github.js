@@ -436,6 +436,13 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
 // the remote wins.
 export function resyncDb(remote, local) {
   const result = structuredClone(remote);
+  // True if this fetch of `remote` turned out to be missing/behind something
+  // local already had — i.e. the fetch was stale relative to local. The
+  // caller MUST NOT advance _syncedAt to "now" when this is true: it would
+  // mark a record as confirmed-synced when this specific fetch never actually
+  // saw it on GitHub, and the next reload's mergeLocalPending would then read
+  // that false confirmation as "remote must have deleted this" and drop it.
+  let staleFetch = false;
   for (const col of Object.keys(local)) {
     const localArr = local[col];
     if (!Array.isArray(localArr)) {
@@ -454,13 +461,16 @@ export function resyncDb(remote, local) {
       // still exists on remote as active, so it takes the rv branch below.
       if (!rv && item.deletedAt) continue;
       if (!rv || (item.updatedAt || 0) > (rv.updatedAt || 0)) {
-        // Local is newer or remote doesn't have it → keep local.
+        // Local is newer or remote doesn't have it → keep local, and this
+        // fetch is stale with respect to that record.
         map.set(item.id, item);
+        staleFetch = true;
       }
       // else: remote is same-age or newer → already in map, keep remote.
     }
     result[col] = [...map.values()];
   }
+  result._staleFetch = staleFetch;
   return result;
 }
 
