@@ -23,6 +23,29 @@ export default {
   destroy() {}
 };
 
+// refresh() (above) tears down and rebuilds the ENTIRE settings page from
+// scratch on every 'data-loaded' event — which fires from the background
+// sync poll roughly every 60s, not just on a real navigation. Every
+// collapsible card is a brand-new DOM element each time, so without this its
+// open/closed state would silently reset to closed mid-interaction (e.g. the
+// user has Trash open with items selected, a background sync tick fires,
+// and the card slams shut). Module-scope so it survives across build() calls
+// for the life of the page; only a hard reload clears it, which is fine.
+const _expandedCards = new Set();
+
+function wireCollapsible(key, header, body, chevron) {
+  if (_expandedCards.has(key)) {
+    body.style.display = '';
+    chevron.classList.add('open');
+  }
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+    if (open) _expandedCards.delete(key); else _expandedCards.add(key);
+  });
+}
+
 function build() {
   const wrap = el('div', { class: 'view active' });
 
@@ -98,11 +121,7 @@ function buildGithubCard() {
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
 
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
+  wireCollapsible('github', header, body, chevron);
 
   // \u2500\u2500 Error banner \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
   if (g.lastSyncError) {
@@ -367,11 +386,7 @@ function buildCurrencyCard() {
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
 
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
+  wireCollapsible('huf-eur-rates', header, body, chevron);
 
   const renderCard = () => {
     body.innerHTML = '';
@@ -459,11 +474,7 @@ function buildBusinessCard() {
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
 
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
+  wireCollapsible('business-info', header, body, chevron);
 
   const nameI = input({ value: b.name });
   const emailI = input({ value: b.email });
@@ -537,11 +548,7 @@ function buildStrSettingsCard() {
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
 
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
+  wireCollapsible('str-airbnb', header, body, chevron);
 
   body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px' },
     'The Airbnb host export only contains host-side money (payout / gross). The guest-facing total ' +
@@ -603,11 +610,7 @@ function buildServicesCard() {
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
 
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
+  wireCollapsible('service-catalog', header, body, chevron);
 
   const renderCard = () => {
     body.innerHTML = '';
@@ -694,11 +697,7 @@ function buildReservationExpenseRulesCard() {
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
 
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
+  wireCollapsible('reservation-expense-rules', header, body, chevron);
 
   const renderCard = () => {
     body.innerHTML = '';
@@ -878,11 +877,7 @@ function buildTrashCard() {
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
 
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
+  wireCollapsible('trash', header, body, chevron);
 
   const renderCard = (activeCol = 'all') => {
     body.innerHTML = '';
@@ -2074,7 +2069,7 @@ function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLa
   }
 }
 
-function makeSubSection(title, subtitle) {
+function makeSubSection(key, title, subtitle) {
   const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
   const header = el('div', { class: 'sub-section-header' },
     el('div', {},
@@ -2084,11 +2079,7 @@ function makeSubSection(title, subtitle) {
     chevron
   );
   const body = el('div', { class: 'sub-section-body', style: 'display:none' });
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
+  wireCollapsible(key, header, body, chevron);
   const wrap = el('div', { class: 'sub-section' });
   wrap.appendChild(header);
   wrap.appendChild(body);
@@ -2327,16 +2318,12 @@ function buildRepositoryMaintenanceCard() {
   card.appendChild(header);
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
+  wireCollapsible('repository-maintenance', header, body, chevron);
 
-  const invSub  = makeSubSection('Invoices',         'PDF files stored in the invoice repository');
-  const expSub  = makeSubSection('Expense Receipts', 'Receipt files stored under expenses/receipts/');
-  const propSub = makeSubSection('Properties',       'Document files stored under Properties/');
-  const cliSub  = makeSubSection('Clients',          'Document files stored under Clients/');
+  const invSub  = makeSubSection('repo-invoices',  'Invoices',         'PDF files stored in the invoice repository');
+  const expSub  = makeSubSection('repo-expenses',  'Expense Receipts', 'Receipt files stored under expenses/receipts/');
+  const propSub = makeSubSection('repo-properties', 'Properties',      'Document files stored under Properties/');
+  const cliSub  = makeSubSection('repo-clients',   'Clients',          'Document files stored under Clients/');
 
   fillInvoiceRepoBody(invSub.body);
   fillExpenseReceiptRepoBody(expSub.body);
@@ -2424,11 +2411,7 @@ function buildDangerCard() {
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
 
-  header.addEventListener('click', () => {
-    const open = body.style.display !== 'none';
-    body.style.display = open ? 'none' : '';
-    chevron.classList.toggle('open', !open);
-  });
+  wireCollapsible('data', header, body, chevron);
 
   const statusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
 
