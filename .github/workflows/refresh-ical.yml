@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write   # needed to commit db.json + feed files back to main
 
+concurrency:
+  group: refresh-ical
+  cancel-in-progress: false
+
 jobs:
   refresh:
     runs-on: ubuntu-latest

@@ -842,8 +842,13 @@ function renderAging({ outstanding }) {
     // Use dueDate if available; otherwise compute due date as issueDate + 30 days
     let dueDate = i.dueDate;
     if (!dueDate && i.issueDate) {
+      // `new Date(i.issueDate)` parses a date-only string as UTC midnight;
+      // setDate/getDate operate in local time, so in negative-UTC-offset
+      // timezones this could shift the computed due date a day off once
+      // re-serialized via toISOString (which is UTC). Do the whole
+      // computation in UTC to match how it was parsed and re-serialized.
       const d = new Date(i.issueDate);
-      d.setDate(d.getDate() + 30);
+      d.setUTCDate(d.getUTCDate() + 30);
       dueDate = d.toISOString().slice(0, 10);
     }
     const ref  = dueDate || today;

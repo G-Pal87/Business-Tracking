@@ -12,7 +12,17 @@ import {
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const SDC_RATE  = 0.0265;
+// This 2.65% withholding is the General Healthcare System (GHS/GESY)
+// contribution, which applies to dividend income for ALL Cyprus tax
+// residents regardless of domicile status, capped at the first €180,000 of
+// a person's annual GHS-able income (~€4,770/year max). It is NOT the
+// Special Defence Contribution (SDC) — SDC is a separate charge (5% from
+// 2026) that applies only to Cyprus-domiciled residents; non-domiciled
+// residents are exempt from SDC on dividends entirely. This module only
+// tracks GHS; if a recipient is Cyprus-domiciled, SDC liability is not
+// modelled here and should be handled with a tax adviser.
+const GHS_RATE       = 0.0265;
+const GHS_ANNUAL_CAP = 180000; // EUR — GHS contributions stop accruing above this per recipient per year
 const CHART_IDS = ['div-history-bar', 'div-recipient-donut'];
 const G_COLOR   = '#6366f1';
 const R_COLOR   = '#ec4899';
@@ -67,6 +77,39 @@ function inYear(date, year) {
   return !!date && date.startsWith(year + '-');
 }
 
+// GHS applies to the first €180,000 of a recipient's capped income each
+// year, not per-payment — so contributions must be computed cumulatively in
+// date order per recipient, not as a flat rate on each dividend in isolation.
+// Returns a Map of dividend.id -> actual GHS amount for that dividend.
+function ghsScheduleForYear(divsForYear) {
+  const cumByRecipient = {};
+  const sorted = [...divsForYear].sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.id).localeCompare(String(b.id)));
+  const ghsById = new Map();
+  for (const d of sorted) {
+    const key = d.recipient || '_';
+    const priorCum = cumByRecipient[key] || 0;
+    const amt = d.grossAmount || 0;
+    const capacity = Math.max(0, GHS_ANNUAL_CAP - priorCum);
+    ghsById.set(d.id, Math.min(amt, capacity) * GHS_RATE);
+    cumByRecipient[key] = priorCum + amt;
+  }
+  return ghsById;
+}
+
+// Cumulative gross dividends already recorded for a recipient in a given
+// year (excluding one dividend by id, e.g. the one currently being edited).
+// Used to preview GHS for a not-yet-saved amount against the cap.
+function priorCumForRecipientYear(year, recipient, excludeId) {
+  return listActive('dividends')
+    .filter(d => d.id !== excludeId && d.recipient === recipient && inYear(d.date, year))
+    .reduce((s, d) => s + (d.grossAmount || 0), 0);
+}
+
+function ghsForAmount(amount, priorCum) {
+  const capacity = Math.max(0, GHS_ANNUAL_CAP - priorCum);
+  return Math.min(amount, capacity) * GHS_RATE;
+}
+
 function getOpProfit(year) {
   const coPropIds = companyPropIds();
   const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
@@ -101,10 +144,14 @@ function getCorpTaxEst(year) {
   const rate = safeN(s.corpTaxRate);
   const totalRevenue = safeN(s.actualRevenue) + safeN(s.forecastRevenue);
   const totalDeductible = safeN(s.actualExpenses) + safeN(s.forecastExpenses);
-  const bufferedProfit = s.bufferEnabled
-    ? Math.max(0, totalRevenue - totalDeductible + safeN(s.nonDeductibleExpenses) - safeN(s.taxAllowances)) * (1 + safeN(s.bufferPct) / 100)
-    : Math.max(0, totalRevenue - totalDeductible + safeN(s.nonDeductibleExpenses) - safeN(s.taxAllowances));
-  return bufferedProfit * (rate / 100);
+  // Deliberately ignores the Provisional Tax tab's safety buffer: that buffer
+  // only pads what gets pre-paid in instalments to avoid the 75%-underpayment
+  // penalty (and is reconciled back down at the December revision) — it is
+  // not part of the real expected tax liability. Dividend decisions (After-Tax
+  // Profit, Retained Earnings, Payout Ratio) need the true unbuffered estimate,
+  // or the safety margin silently overstates tax and understates profit here.
+  const taxableProfit = Math.max(0, totalRevenue - totalDeductible + safeN(s.nonDeductibleExpenses) - safeN(s.taxAllowances));
+  return taxableProfit * (rate / 100);
 }
 
 const mkCurrencyInput = (val, style, onValue) => {
@@ -132,7 +179,7 @@ function buildView() {
   wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
     el('h2', { style: 'margin:0 0 4px;font-size:20px;font-weight:700' }, 'Dividends'),
     el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' },
-      'Record, review and analyse dividend distributions with SDC liability tracking')
+      'Record, review and analyse dividend distributions with GHS liability tracking')
   ));
 
   // Year bar
@@ -160,8 +207,9 @@ function buildView() {
   const corpTaxEst = getCorpTaxEst(gYear);
 
   const totalGross = yearDivs.reduce((s, d) => s + (d.grossAmount || 0), 0);
-  const sdcAmount  = totalGross * SDC_RATE;
-  const netTotal   = totalGross - sdcAmount;
+  const ghsById    = ghsScheduleForYear(yearDivs);
+  const ghsAmount  = [...ghsById.values()].reduce((s, v) => s + v, 0);
+  const netTotal   = totalGross - ghsAmount;
   const gTotal     = yearDivs.filter(d => d.recipient === 'giorgos').reduce((s, d) => s + (d.grossAmount || 0), 0);
   const rTotal     = yearDivs.filter(d => d.recipient === 'rita').reduce((s, d) => s + (d.grossAmount || 0), 0);
   const afterTax   = corpTaxEst !== null ? pnlData.opProfit - corpTaxEst : pnlData.opProfit;
@@ -200,7 +248,7 @@ function buildView() {
             { label: 'Operating Profit',   value: fmtE(pnlData.opProfit) },
             { label: 'Est. Corporation Tax', value: fmtE(corpTaxEst) },
             { label: 'After-Tax Profit',   value: fmtE(Math.max(0, afterTax)) },
-            { label: 'Tax Rate Applied',   value: `${state.db.settings?.cyprusTax?.corpTaxRate ?? 12.5}%` },
+            { label: 'Tax Rate Applied',   value: `${state.db.settings?.cyprusTax?.corpTaxRate ?? 15}%` },
           ], 2));
         } else {
           body.appendChild(el('p', { style: 'font-size:13px;color:var(--text-muted);line-height:1.6;margin:0' },
@@ -219,29 +267,29 @@ function buildView() {
         body.appendChild(mkSummaryGrid([
           { label: G_LABEL, value: fmtE(gTotal), sub: `${yearDivs.filter(d => d.recipient === 'giorgos').length} payment(s)` },
           { label: R_LABEL, value: fmtE(rTotal), sub: `${yearDivs.filter(d => d.recipient === 'rita').length} payment(s)` },
-          { label: 'SDC (2.65%)', value: fmtE(sdcAmount) },
+          { label: 'GHS (2.65%)', value: fmtE(ghsAmount) },
           { label: 'Net Total',   value: fmtE(netTotal) },
         ], 2));
         openModal({ title: `Gross Dividends — ${gYear}`, body });
       } : null
     }),
     mkKpiCard({
-      label: 'SDC Liability (2.65%)',
-      value: fmtE(sdcAmount),
+      label: 'GHS Contribution (2.65%)',
+      value: fmtE(ghsAmount),
       subtitle: totalGross > 0 ? `On ${fmtE(totalGross)} gross` : 'No dividends declared',
-      variant: sdcAmount > 0 ? 'warning' : '',
+      variant: ghsAmount > 0 ? 'warning' : '',
       onClick: () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
         body.appendChild(mkSummaryGrid([
           { label: 'Gross Dividends', value: fmtE(totalGross) },
-          { label: 'SDC Rate',        value: '2.65%' },
-          { label: 'SDC Amount',      value: fmtE(sdcAmount) },
+          { label: 'GHS Rate',        value: '2.65%' },
+          { label: 'GHS Amount',      value: fmtE(ghsAmount) },
           { label: 'Net to Shareholders', value: fmtE(netTotal) },
         ], 2));
         body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);padding:10px 12px;background:rgba(251,191,36,0.07);border-left:2px solid var(--warning,#f59e0b);border-radius:4px;line-height:1.6' },
-          'Special Defence Contribution (SDC) of 2.65% is withheld at source on dividends paid to non-domicile Cyprus tax residents and remitted to the Cyprus Tax Department. Non-dom status must be declared annually by 31 July.'
+          `General Healthcare System (GHS/GESY) contribution of 2.65% is withheld at source on dividends for ALL Cyprus tax residents, regardless of domicile status, on the first €${GHS_ANNUAL_CAP.toLocaleString('en-US')} of a recipient's annual GHS-able income (max ~${fmtE(GHS_ANNUAL_CAP * GHS_RATE)}/year). Non-domiciled residents are separately exempt from Special Defence Contribution (SDC) on dividends — this module does not model SDC for domiciled recipients.`
         ));
-        openModal({ title: `SDC — Special Defence Contribution ${gYear}`, body });
+        openModal({ title: `GHS Contribution — ${gYear}`, body });
       }
     }),
     mkKpiCard({
@@ -287,7 +335,7 @@ function buildView() {
   ));
 
   // ── Insights ──────────────────────────────────────────────────────────────────
-  const insights = buildInsights(gYear, yearDivs, pnlData, corpTaxEst, retained, payoutRatio, afterTax);
+  const insights = buildInsights(gYear, yearDivs, pnlData, corpTaxEst, retained, payoutRatio, afterTax, ghsAmount);
   if (insights) wrap.appendChild(insights);
 
   // ── Charts ────────────────────────────────────────────────────────────────────
@@ -297,13 +345,13 @@ function buildView() {
   wrap.appendChild(buildAddForm(gYear));
 
   // ── Dividend log ──────────────────────────────────────────────────────────────
-  wrap.appendChild(buildLogTable(gYear, yearDivs, gTotal, rTotal, totalGross, sdcAmount, netTotal));
+  wrap.appendChild(buildLogTable(gYear, yearDivs, gTotal, rTotal, totalGross, ghsAmount, netTotal, ghsById));
 
   // ── Footnote ──────────────────────────────────────────────────────────────────
   wrap.appendChild(el('div', { style: 'margin-top:12px;font-size:11px;color:var(--text-muted);padding:10px 14px;background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);line-height:1.7' },
-    '⚖️  SDC at 2.65% is withheld at source on dividends paid to non-domicile Cyprus tax residents. ' +
-    'Non-dom status must be declared annually by 31 July. ' +
-    'Gross amounts entered here are the declared distribution; net = gross × 97.35%. ' +
+    `⚖️  GHS (GESY) at 2.65% is withheld at source on dividends for all Cyprus tax residents, capped at the first €${GHS_ANNUAL_CAP.toLocaleString('en-US')} of a recipient's annual GHS-able income per year. ` +
+    'Non-domiciled residents are separately exempt from Special Defence Contribution (SDC) on dividends (not modelled here); domiciled residents may owe SDC in addition to GHS — check with your adviser. ' +
+    'Gross amounts entered here are the declared distribution; net = gross − GHS. ' +
     'This module does not constitute tax advice — consult your Cyprus-licensed tax adviser.'
   ));
 
@@ -311,7 +359,7 @@ function buildView() {
 }
 
 // ── Insights section ──────────────────────────────────────────────────────────
-function buildInsights(year, yearDivs, pnlData, corpTaxEst, retained, payoutRatio, afterTax) {
+function buildInsights(year, yearDivs, pnlData, corpTaxEst, retained, payoutRatio, afterTax, ghsAmount) {
   const items = [];
 
   if (!yearDivs.length) {
@@ -332,15 +380,14 @@ function buildInsights(year, yearDivs, pnlData, corpTaxEst, retained, payoutRati
     items.push({ type: 'warning', text: `No corporation tax estimate set for ${year}. Open Tax → Provisional Tax tab to configure it, then the Payout Ratio and Retained Earnings here will reflect the full picture.` });
   }
 
-  const sdcAmount = yearDivs.reduce((s, d) => s + (d.grossAmount || 0), 0) * SDC_RATE;
-  if (sdcAmount > 0) {
-    items.push({ type: 'info', text: `SDC due: ${fmtE(sdcAmount)} for ${year}. Remit to the Cyprus Tax Department promptly; late payment incurs interest and penalties.` });
+  if (ghsAmount > 0) {
+    items.push({ type: 'info', text: `GHS due: ${fmtE(ghsAmount)} for ${year}. Remit to the Cyprus Tax Department promptly; late payment incurs interest and penalties.` });
   }
 
   // Non-dom reminder — show in Q2/Q3
   const month = new Date().getMonth() + 1;
   if (month >= 4 && month <= 8) {
-    items.push({ type: 'info', text: `Reminder: non-domicile status must be declared annually by 31 July using the TD98 form to maintain the 2.65% SDC rate.` });
+    items.push({ type: 'info', text: `Reminder: non-domicile status must be declared annually by 31 July using the TD98 form to maintain SDC exemption on dividends (separate from the 2.65% GHS contribution, which applies regardless of domicile).` });
   }
 
   if (!items.length) return null;
@@ -457,25 +504,26 @@ function buildAddForm(year) {
   const dateI = input({ type: 'date', value: formDate, style: 'width:150px' });
   dateI.oninput = () => { formDate = dateI.value; };
 
-  const sdcPreviewEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;min-height:16px;transition:opacity 120ms' });
-  const updateSdcPreview = v => {
+  const ghsPreviewEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;min-height:16px;transition:opacity 120ms' });
+  const updateGhsPreview = v => {
     if (v > 0) {
-      const sdc = v * SDC_RATE;
-      sdcPreviewEl.textContent = `SDC ${fmtE(sdc)} · Net received ${fmtE(v - sdc)}`;
-      sdcPreviewEl.style.opacity = '1';
+      const prior = priorCumForRecipientYear(year, formRecipient, null);
+      const ghs   = ghsForAmount(v, prior);
+      ghsPreviewEl.textContent = `GHS ${fmtE(ghs)} · Net received ${fmtE(v - ghs)}`;
+      ghsPreviewEl.style.opacity = '1';
     } else {
-      sdcPreviewEl.textContent = '';
-      sdcPreviewEl.style.opacity = '0';
+      ghsPreviewEl.textContent = '';
+      ghsPreviewEl.style.opacity = '0';
     }
   };
 
   const amountWrap = el('div');
-  const amountI    = mkCurrencyInput(0, 'width:160px', v => { formAmount = v; updateSdcPreview(v); });
+  const amountI    = mkCurrencyInput(0, 'width:160px', v => { formAmount = v; updateGhsPreview(v); });
   amountWrap.appendChild(amountI);
-  amountWrap.appendChild(sdcPreviewEl);
+  amountWrap.appendChild(ghsPreviewEl);
 
   const recipientSel = select([{ value: 'giorgos', label: G_LABEL }, { value: 'rita', label: R_LABEL }], 'giorgos');
-  recipientSel.onchange = () => { formRecipient = recipientSel.value; };
+  recipientSel.onchange = () => { formRecipient = recipientSel.value; updateGhsPreview(formAmount); };
 
   const notesI = input({ type: 'text', placeholder: 'Notes (optional)', style: 'flex:1;min-width:140px' });
   notesI.oninput = () => { formNotes = notesI.value; };
@@ -512,7 +560,7 @@ function buildAddForm(year) {
   ));
 
   formBody.appendChild(el('div', { style: 'margin-top:10px;font-size:12px;color:var(--text-muted);padding:8px 12px;background:rgba(99,102,241,0.06);border-left:2px solid var(--accent);border-radius:4px' },
-    `SDC of 2.65% (non-dom rate) is withheld on the gross dividend. Net received = gross × 97.35%.`
+    `GHS (GESY) of 2.65% is withheld on the gross dividend, up to the recipient's €${GHS_ANNUAL_CAP.toLocaleString('en-US')} annual cap. Net received = gross − GHS.`
   ));
 
   formCard.appendChild(formBody);
@@ -520,12 +568,12 @@ function buildAddForm(year) {
 }
 
 // ── Dividend log table ────────────────────────────────────────────────────────
-function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, sdcAmount, netTotal) {
+function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, ghsAmount, netTotal, ghsById) {
   const logCard = el('div', { class: 'card mb-16' });
   logCard.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, `Dividend Log — ${year}`),
     el('div', { style: 'font-size:12px;color:var(--text-muted)' },
-      `${yearDivs.length} payment${yearDivs.length !== 1 ? 's' : ''} · SDC rate 2.65%`)
+      `${yearDivs.length} payment${yearDivs.length !== 1 ? 's' : ''} · GHS rate 2.65% (capped)`)
   ));
 
   if (!yearDivs.length) {
@@ -537,7 +585,7 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, sdcAmount, ne
 
   const tbl  = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
   const hrow = el('tr');
-  [['Date', 'left'], ['Recipient', 'left'], ['Gross Amount', 'right'], ['SDC (2.65%)', 'right'], ['Net Amount', 'right'], ['Notes', 'left'], ['', 'right']].forEach(([h, align]) => {
+  [['Date', 'left'], ['Recipient', 'left'], ['Gross Amount', 'right'], ['GHS (2.65%)', 'right'], ['Net Amount', 'right'], ['Notes', 'left'], ['', 'right']].forEach(([h, align]) => {
     hrow.appendChild(el('th', {
       style: `padding:8px 12px;text-align:${align};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08)`
     }, h));
@@ -546,8 +594,8 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, sdcAmount, ne
 
   const tbody = el('tbody');
   yearDivs.forEach((d, ri) => {
-    const sdc  = (d.grossAmount || 0) * SDC_RATE;
-    const net  = (d.grossAmount || 0) - sdc;
+    const ghs  = ghsById.get(d.id) || 0;
+    const net  = (d.grossAmount || 0) - ghs;
     const isG  = d.recipient === 'giorgos';
     const tr   = el('tr', { style: ri % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : '' });
 
@@ -555,7 +603,7 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, sdcAmount, ne
       [d.date || '—',            'left',  'var(--text-muted)'],
       [isG ? G_LABEL : R_LABEL,  'left',  isG ? 'var(--accent)' : '#f472b6'],
       [fmtE(d.grossAmount || 0), 'right', 'var(--text)'],
-      [fmtE(sdc),                'right', 'var(--text-muted)'],
+      [fmtE(ghs),                'right', 'var(--text-muted)'],
       [fmtE(net),                'right', 'var(--success,#10b981)'],
       [d.notes || '—',           'left',  'var(--text-muted)'],
     ].forEach(([text, align, color]) => {
@@ -581,7 +629,7 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, sdcAmount, ne
 
   // Totals row
   const totRow = el('tr', { style: 'border-top:2px solid var(--border);font-weight:700' });
-  [['Total', 'left', ''], ['', 'left', ''], [fmtE(totalGross), 'right', ''], [fmtE(sdcAmount), 'right', ''], [fmtE(netTotal), 'right', 'var(--success,#10b981)'], ['', 'left', ''], ['', 'right', '']].forEach(([text, align, color]) => {
+  [['Total', 'left', ''], ['', 'left', ''], [fmtE(totalGross), 'right', ''], [fmtE(ghsAmount), 'right', ''], [fmtE(netTotal), 'right', 'var(--success,#10b981)'], ['', 'left', ''], ['', 'right', '']].forEach(([text, align, color]) => {
     totRow.appendChild(el('td', { style: `padding:8px 12px;text-align:${align};color:${color || 'var(--text)'}` }, text));
   });
   tbody.appendChild(totRow);
@@ -590,11 +638,13 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, sdcAmount, ne
 
   // Per-recipient split footer
   if (gTotal > 0 || rTotal > 0) {
+    const gGhs = yearDivs.filter(d => d.recipient === 'giorgos').reduce((s, d) => s + (ghsById.get(d.id) || 0), 0);
+    const rGhs = yearDivs.filter(d => d.recipient === 'rita').reduce((s, d) => s + (ghsById.get(d.id) || 0), 0);
     const parts = [];
-    if (gTotal > 0) parts.push(el('span', {}, `${G_LABEL}: ${fmtE(gTotal)} gross · ${fmtE(gTotal * (1 - SDC_RATE))} net`));
-    if (rTotal > 0) parts.push(el('span', {}, `${R_LABEL}: ${fmtE(rTotal)} gross · ${fmtE(rTotal * (1 - SDC_RATE))} net`));
+    if (gTotal > 0) parts.push(el('span', {}, `${G_LABEL}: ${fmtE(gTotal)} gross · ${fmtE(gTotal - gGhs)} net`));
+    if (rTotal > 0) parts.push(el('span', {}, `${R_LABEL}: ${fmtE(rTotal)} gross · ${fmtE(rTotal - rGhs)} net`));
     if (gTotal > 0 && rTotal > 0) {
-      parts.push(el('span', { style: 'color:var(--text-muted);font-style:italic' }, 'SDC applies to all dividends'));
+      parts.push(el('span', { style: 'color:var(--text-muted);font-style:italic' }, 'GHS applies to all dividends, capped per recipient'));
     }
     logCard.appendChild(el('div', { style: 'padding:0 16px 16px;display:flex;gap:24px;flex-wrap:wrap;font-size:12px;color:var(--text-muted)' }, ...parts));
   }
@@ -612,27 +662,28 @@ function openEditModal(d) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   const dateI = input({ type: 'date', value: editDate, style: 'width:160px' });
-  dateI.oninput = () => { editDate = dateI.value; };
+  dateI.oninput = () => { editDate = dateI.value; updateGhsPreview(editAmount); };
 
-  const sdcPreviewEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;min-height:16px;transition:opacity 120ms' });
-  const updateSdcPreview = v => {
-    if (v > 0) {
-      const sdc = v * SDC_RATE;
-      sdcPreviewEl.textContent = `SDC ${fmtE(sdc)} · Net received ${fmtE(v - sdc)}`;
-      sdcPreviewEl.style.opacity = '1';
+  const ghsPreviewEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;min-height:16px;transition:opacity 120ms' });
+  const updateGhsPreview = v => {
+    if (v > 0 && editDate) {
+      const prior = priorCumForRecipientYear(editDate.slice(0, 4), editRecipient, d.id);
+      const ghs   = ghsForAmount(v, prior);
+      ghsPreviewEl.textContent = `GHS ${fmtE(ghs)} · Net received ${fmtE(v - ghs)}`;
+      ghsPreviewEl.style.opacity = '1';
     } else {
-      sdcPreviewEl.textContent = '';
-      sdcPreviewEl.style.opacity = '0';
+      ghsPreviewEl.textContent = '';
+      ghsPreviewEl.style.opacity = '0';
     }
   };
   const amountWrap = el('div');
-  const amountI    = mkCurrencyInput(editAmount, 'width:160px', v => { editAmount = v; updateSdcPreview(v); });
+  const amountI    = mkCurrencyInput(editAmount, 'width:160px', v => { editAmount = v; updateGhsPreview(v); });
   amountWrap.appendChild(amountI);
-  amountWrap.appendChild(sdcPreviewEl);
-  updateSdcPreview(editAmount);
+  amountWrap.appendChild(ghsPreviewEl);
+  updateGhsPreview(editAmount);
 
   const recipientSel = select([{ value: 'giorgos', label: G_LABEL }, { value: 'rita', label: R_LABEL }], editRecipient);
-  recipientSel.onchange = () => { editRecipient = recipientSel.value; };
+  recipientSel.onchange = () => { editRecipient = recipientSel.value; updateGhsPreview(editAmount); };
 
   const notesI = input({ type: 'text', value: editNotes, placeholder: 'Notes (optional)', style: 'width:100%' });
   notesI.oninput = () => { editNotes = notesI.value; };

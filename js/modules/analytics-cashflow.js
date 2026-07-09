@@ -609,6 +609,12 @@ function buildView() {
     cashIn, opExCashOut, investCashOut, cashOut, opCashFlow, net, avgMonthlyNet
   } = curData;
 
+  // Months with actual opex activity — NOT curData.activeMonthCount, which
+  // also counts months with only revenue/capex and no opex at all. Dividing
+  // opExCashOut by that broader count understates average monthly opex,
+  // which in turn overstates Net Coverage Days and Cash Runway.
+  const opexMonthCount = new Set(opExpenses.map(e => e.date?.slice(0, 7)).filter(Boolean)).size;
+
   // Comparison line
   const compLine = buildComparisonLine(curRange, cmpRange);
   if (compLine) wrap.appendChild(compLine);
@@ -815,7 +821,7 @@ function buildView() {
     let running = 0;
     const monthlyPositions = sortedMks.map(mk => { running += netByMk.get(mk); return { mk, balance: running }; });
     const isNegativeBalance = running < 0;
-    const avgMonthlyOpex = curData.activeMonthCount > 0 ? opExCashOut / curData.activeMonthCount : 0;
+    const avgMonthlyOpex = opexMonthCount > 0 ? opExCashOut / opexMonthCount : 0;
     // When period net is negative, coverage is 0 — do not clamp silently, surface it as danger
     const daysOnHand = isNegativeBalance ? 0 : (avgMonthlyOpex > 0 ? Math.round(running / avgMonthlyOpex * 30) : null);
 
@@ -831,7 +837,7 @@ function buildView() {
         // Summary boxes
         const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
         summaryGrid.appendChild(mkSummaryBox('Cumulative Cash Balance', formatEUR(running), running >= 0 ? 'net positive' : 'net shortfall'));
-        summaryGrid.appendChild(mkSummaryBox('Avg Monthly OpEx', formatEUR(avgMonthlyOpex), `${curData.activeMonthCount} active month${curData.activeMonthCount !== 1 ? 's' : ''}`));
+        summaryGrid.appendChild(mkSummaryBox('Avg Monthly OpEx', formatEUR(avgMonthlyOpex), `${opexMonthCount} opex-active month${opexMonthCount !== 1 ? 's' : ''}`));
         summaryGrid.appendChild(mkSummaryBox('Net Coverage Days', isNegativeBalance ? '0 days (shortfall)' : (daysOnHand !== null ? `${daysOnHand} days` : 'N/A'), '(Period Net ÷ Avg Monthly OpEx) × 30'));
         body.appendChild(summaryGrid);
 
@@ -938,7 +944,7 @@ function buildView() {
 
   // Cash Runway
   {
-    const avgMonthlyOpEx = curData.activeMonthCount > 0 ? opExCashOut / curData.activeMonthCount : 0;
+    const avgMonthlyOpEx = opexMonthCount > 0 ? opExCashOut / opexMonthCount : 0;
     const runwayMonths   = avgMonthlyOpEx > 0 ? net / avgMonthlyOpEx : null;
     const runwayVariant  = runwayMonths === null ? '' : runwayMonths < 0 ? 'danger' : runwayMonths < 3 ? 'danger' : runwayMonths < 6 ? 'warning' : 'success';
     const runwayValue    = runwayMonths === null ? 'N/A' : runwayMonths < 0 ? 'Negative' : `${runwayMonths.toFixed(1)} mo`;
@@ -952,7 +958,7 @@ function buildView() {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
         const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
-        summaryGrid.appendChild(mkSummaryBox('Avg Monthly OpEx', formatEUR(avgMonthlyOpEx), `${curData.activeMonthCount} active month${curData.activeMonthCount !== 1 ? 's' : ''}`));
+        summaryGrid.appendChild(mkSummaryBox('Avg Monthly OpEx', formatEUR(avgMonthlyOpEx), `${opexMonthCount} opex-active month${opexMonthCount !== 1 ? 's' : ''}`));
         summaryGrid.appendChild(mkSummaryBox('Avg Monthly Net', formatEUR(avgMonthlyNet), net >= 0 ? 'surplus' : 'deficit'));
         summaryGrid.appendChild(mkSummaryBox('Runway', runwayValue, runwayMonths !== null && runwayMonths >= 0 ? 'months of OpEx covered' : 'negative period net'));
         body.appendChild(summaryGrid);

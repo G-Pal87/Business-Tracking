@@ -1,12 +1,16 @@
 // Cyprus Provisional Corporation Tax Calculator
 import { state, markDirty } from '../core/state.js';
 import { el, input, select, button, formRow, toast, openModal } from '../core/ui.js';
-import { formatEUR, toEUR, listActivePayments, listActive, availableYears, isCapEx, byId } from '../core/data.js';
+import { formatEUR, toEUR, listActivePayments, listActive, availableYears, isCapEx, byId, companyPropIds } from '../core/data.js';
 import { mkKpiCard, mkModalTable, mkSectionLabel, mkSummaryGrid } from './analytics-helpers.js';
 
 const DEFAULTS = {
   year: String(new Date().getFullYear()),
-  corpTaxRate: 12.5,
+  // Cyprus's standard corporate tax rate rose from 12.5% to 15% for tax years
+  // starting 1 January 2026 (OECD Pillar Two alignment). Existing saved
+  // configs keep whatever rate they were set to — this only affects the
+  // default a brand-new (never-configured) year starts from.
+  corpTaxRate: 15,
   bufferEnabled: true,
   bufferPct: 10,
   actualRevenue: 0,
@@ -87,10 +91,40 @@ function calcAll(s) {
 const pct = (v, tot) => tot > 0 ? `${((v / tot) * 100).toFixed(1)}%` : '—';
 
 function daysLabel(dateStr) {
-  const diff = Math.round((new Date(dateStr) - new Date()) / 86400000);
+  // Compare local calendar dates only (both at local midnight) so the result
+  // doesn't depend on what time of day "now" is or the machine's UTC offset —
+  // parsing dateStr with `new Date(dateStr)` treats it as UTC midnight, which
+  // can read as "overdue" a day early in UTC+ timezones (e.g. Cyprus) well
+  // before the deadline day has actually finished locally.
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const due   = new Date(y, m - 1, d);
+  const now   = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diff  = Math.round((due - today) / 86400000);
   if (diff > 0)  return `${diff}d remaining`;
   if (diff === 0) return 'Due today';
   return `${Math.abs(diff)}d overdue`;
+}
+
+// Fraction of the current month still ahead of `cutoff` (the last date
+// already folded into "actuals"). Used so a forecast entry for the current,
+// still-in-progress month contributes only its not-yet-elapsed portion to
+// "forecast remaining" — counting the whole month would double-count days
+// already in actuals; excluding the month entirely (the old `mk > curMonth`
+// check) silently dropped its remaining days from both totals.
+function monthRemainingFraction(cutoff) {
+  const y = Number(cutoff.slice(0, 4)), m = Number(cutoff.slice(5, 7)), d = Number(cutoff.slice(8, 10));
+  const daysInMonth = new Date(y, m, 0).getDate();
+  return Math.max(0, (daysInMonth - d) / daysInMonth);
+}
+
+// Records without a propertyId (service invoices, salary expenses, etc.) are
+// always company-scope; records tied to a 'personal'-channel property are
+// excluded — corporation tax is a company-only liability, and Dividends
+// (getOpProfit) already applies this same filter.
+function isCoRec(r) {
+  const coPropIds = companyPropIds();
+  return !r.propertyId || coPropIds.has(r.propertyId);
 }
 
 function getActualsForYear(year) {
@@ -98,9 +132,9 @@ function getActualsForYear(year) {
   const cutoff = today < `${year}-12-31` ? today : `${year}-12-31`;
   const s1     = `${year}-01-01`;
   return {
-    pays:   listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff),
+    pays:   listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff && isCoRec(p)),
     invs:   listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff),
-    exps:   listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff),
+    exps:   listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff && isCoRec(e)),
     cutoff, year,
   };
 }
@@ -230,15 +264,17 @@ function modalForecastEntities(forRevenue) {
   const propMap  = Object.fromEntries((state.db.properties || []).map(p => [p.id, p]));
   const humanize = id => id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
+  const curMonthFrac = monthRemainingFraction(cutoff);
   const fcData = {};
   for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
     const eid = fc.entityId || fc.propertyId || fc.id;
     if (!fcData[eid]) fcData[eid] = { rev: 0, exp: 0, months: 0, type: fc.type };
     for (const [mk, md] of Object.entries(fc.months || {})) {
-      if (mk > curMonth) {
-        const rev = Number(md.revenue) || 0, exp = Number(md.expenses) || 0;
-        if (rev > 0 || exp > 0) { fcData[eid].rev += rev; fcData[eid].exp += exp; fcData[eid].months++; }
-      }
+      if (mk < curMonth) continue;
+      const frac = mk === curMonth ? curMonthFrac : 1;
+      if (frac <= 0) continue;
+      const rev = (Number(md.revenue) || 0) * frac, exp = (Number(md.expenses) || 0) * frac;
+      if (rev > 0 || exp > 0) { fcData[eid].rev += rev; fcData[eid].exp += exp; fcData[eid].months++; }
     }
   }
 
@@ -256,7 +292,7 @@ function modalForecastEntities(forRevenue) {
     { label: forRevenue ? 'Forecast Revenue' : 'Forecast Expenses', value: fmtE(total) },
     { label: 'Properties', value: String(propCount) },
     { label: 'Services', value: String(svcCount) },
-    { label: 'From Month', value: `> ${curMonth}` },
+    { label: 'From Month', value: `${curMonth} (partial) onwards` },
   ], 4));
   body.appendChild(mkSectionLabel(`${forRevenue ? 'Revenue' : 'Expense'} Forecast by Entity`));
   body.appendChild(mkModalTable(
@@ -666,7 +702,7 @@ function buildSettingsCard(onChange) {
   const yearSel = select(years.map(y => ({ value: y, label: y })), s.year || curYear);
   yearSel.onchange = () => { persist({ year: yearSel.value }); onChange(); };
 
-  const rateI = input({ type: 'number', value: s.corpTaxRate ?? 12.5, min: 0, max: 100, step: 0.1, style: 'width:110px' });
+  const rateI = input({ type: 'number', value: s.corpTaxRate ?? 15, min: 0, max: 100, step: 0.1, style: 'width:110px' });
   rateI.oninput = () => { persist({ corpTaxRate: safeN(rateI.value) }); onChange(); };
 
   const bufChk = el('input', { type: 'checkbox' });
@@ -679,7 +715,7 @@ function buildSettingsCard(onChange) {
     formRow('Tax Year', yearSel),
     formRow('Corporate Tax Rate',
       el('div', { style: 'display:flex;align-items:center;gap:6px' }, rateI, el('span', { style: 'color:var(--text-muted);font-size:13px' }, '%')),
-      'Cyprus default: 12.5%'),
+      'Cyprus standard rate: 15% from tax year 2026 onwards (12.5% for years before 2026)'),
     formRow('Safety Buffer',
       el('div', { style: 'display:flex;align-items:center;gap:10px' },
         el('label', { style: 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap' }, bufChk, 'Enable'),
@@ -815,9 +851,9 @@ function prefillFromActuals(onChange) {
   const curMonth = cutoff.slice(0, 7);
   const s1       = `${year}-01-01`;
 
-  const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff);
+  const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff && isCoRec(p));
   const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff);
-  const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff);
+  const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff && isCoRec(e));
 
   const rnd = v => Math.round(v * 100) / 100;
   const paysRevenue = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
@@ -834,15 +870,17 @@ function prefillFromActuals(onChange) {
   let forecastRevenue = 0, forecastExpenses = 0;
   const fcRevIds = new Set(), fcExpIds = new Set();
   const propIds  = new Set((state.db.properties || []).map(p => p.id));
+  const curMonthFrac = monthRemainingFraction(cutoff);
   for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
     const eid = fc.entityId || fc.propertyId || fc.id;
     for (const [mk, md] of Object.entries(fc.months || {})) {
-      if (mk > curMonth) {
-        const rev = Number(md.revenue) || 0;
-        const exp = Number(md.expenses) || 0;
-        if (rev > 0) { fcRevIds.add(eid); forecastRevenue  += rev; }
-        if (exp > 0) { fcExpIds.add(eid); forecastExpenses += exp; }
-      }
+      if (mk < curMonth) continue;
+      const frac = mk === curMonth ? curMonthFrac : 1;
+      if (frac <= 0) continue;
+      const rev = (Number(md.revenue) || 0) * frac;
+      const exp = (Number(md.expenses) || 0) * frac;
+      if (rev > 0) { fcRevIds.add(eid); forecastRevenue  += rev; }
+      if (exp > 0) { fcExpIds.add(eid); forecastExpenses += exp; }
     }
   }
 
