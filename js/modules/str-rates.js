@@ -2,9 +2,9 @@
 // into a month calendar with suggested prices for open days. Booked/blocked
 // days can be overlaid from an Airbnb iCal feed.
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, toast, select, input, button, formRow, fmtDate, confirmDialog } from '../core/ui.js';
-import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney } from '../core/data.js';
-import { fetchICal, parseICal, mergeBlocks } from '../core/ical.js';
+import { el, openModal, closeModal, toast, select, input, textarea, button, formRow, fmtDate, confirmDialog } from '../core/ui.js';
+import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney, isReservationNight } from '../core/data.js';
+import { fetchICal, parseICal, mergeBlocks, isOwnerBlockSummary } from '../core/ical.js';
 import { uploadGithubFile } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 
@@ -42,14 +42,6 @@ function daysInMonth(year, month1) { return new Date(Date.UTC(year, month1, 0)).
 function checkInOf(p)  { return p.airbnbCheckIn  || p.checkIn  || ''; }
 function checkOutOf(p) { return p.airbnbCheckOut || p.checkOut || ''; }
 
-// Airbnb payout adjustments (Resolution Adjustment, Resolution Payout, Cancellation
-// Fee, Adjustment) share the same check-in/check-out dates as the "Reservation"
-// record they adjust. Counting them as separate nights double-counts occupancy
-// and revenue for that stay.
-function isReservationNight(p) {
-  return !(p.source === 'airbnb' && p.airbnbType && p.airbnbType !== 'Reservation');
-}
-
 function avgNightOf(p) {
   if (p.avgNightExclCleaning != null) return p.avgNightExclCleaning;
   if (p.avgNightlyRate != null)       return p.avgNightlyRate;
@@ -75,7 +67,8 @@ function historicNightMap(propertyId) {
     p.propertyId === propertyId &&
     p.stream === 'short_term_rental' &&
     p.status !== 'materialized' &&          // materialized duplicates a paid record
-    checkInOf(p) && checkOutOf(p)
+    checkInOf(p) && checkOutOf(p) &&
+    isReservationNight(p)
   );
   for (const p of bookings) {
     const rate = avgNightOf(p);
@@ -794,6 +787,191 @@ function blockedDateSet(propertyId) {
   return set;
 }
 
+// ── Calendar ↔ Payment reconciliation ─────────────────────────────────────────
+// The Airbnb iCal feed and Payments are two independent, asynchronously-updated
+// sources: a "Reserved" block can show up on the calendar well before (or,
+// occasionally, without ever) a matching paid/pending payment gets recorded.
+// This surfaces that gap instead of letting it go unnoticed, while excluding
+// owner-blocks (maintenance/personal-use/availability syncs), which never
+// expect a payment in the first place.
+
+const GAP_REASONS = [
+  { value: 'maintenance',     label: 'Maintenance / unavailable' },
+  { value: 'personal_stay',   label: 'Personal stay' },
+  { value: 'payment_pending', label: 'Guest stay — payment pending' },
+  { value: 'other',           label: 'Other' }
+];
+const GAP_REASON_LABEL = new Map(GAP_REASONS.map(r => [r.value, r.label]));
+
+function getBlockAnnotation(propertyId, uid) {
+  return listActive('strBlockAnnotations').find(a => a.propertyId === propertyId && a.uid === uid) || null;
+}
+
+// Per-date classification of every iCal block, for calendar rendering: 'owner'
+// (closed/unavailable, never expects a payment) or 'reserved' (a guest
+// booking — should eventually have a matching payment), plus that block's
+// annotation if one has been assigned.
+function classifyBlockedDates(propertyId) {
+  const map = new Map();
+  const cal = calendarFor(propertyId);
+  if (!cal) return map;
+  for (const b of cal.blocks || []) {
+    if (!b.start || !b.end || !b.uid) continue;
+    const type = isOwnerBlockSummary(b.summary) ? 'owner' : 'reserved';
+    const annotation = type === 'reserved' ? getBlockAnnotation(propertyId, b.uid) : null;
+    for (let cur = b.start; cur < b.end; cur = addDays(cur, 1)) {
+      map.set(cur, { type, uid: b.uid, summary: b.summary, annotation });
+    }
+  }
+  return map;
+}
+
+// "Reserved" blocks whose nights aren't fully covered by a paid/pending
+// payment (historicNightMap already excludes payout-adjustment records, so a
+// covered night here always means a real booked night). Owner-blocks are
+// excluded — they never expect a payment.
+function findCalendarPaymentGaps(propertyId) {
+  const cal = calendarFor(propertyId);
+  if (!cal) return [];
+  const covered = historicNightMap(propertyId);
+  const today = todayStr();
+  const gaps = [];
+  for (const b of cal.blocks || []) {
+    if (!b.start || !b.end || !b.uid || isOwnerBlockSummary(b.summary)) continue;
+    let total = 0, missing = 0;
+    for (let cur = b.start; cur < b.end; cur = addDays(cur, 1)) {
+      total++;
+      if (!covered.has(cur)) missing++;
+    }
+    if (missing === 0) continue;
+    gaps.push({
+      uid: b.uid, start: b.start, end: b.end,
+      nights: missing, totalNights: total,
+      isPast: b.end <= today,
+      annotation: getBlockAnnotation(propertyId, b.uid)
+    });
+  }
+  return gaps.sort((a, b) => a.start.localeCompare(b.start));
+}
+
+// Total unmatched nights, across every short-term property, that haven't been
+// given a reason yet. Drives the sidebar nav badge.
+export function countUnresolvedGapNights() {
+  const props = listActive('properties').filter(p => p.type === 'short_term');
+  let total = 0;
+  for (const p of props) {
+    for (const gap of findCalendarPaymentGaps(p.id)) {
+      if (!gap.annotation) total += gap.nights;
+    }
+  }
+  return total;
+}
+
+// Warning banner listing "Reserved" blocks with no matching payment for the
+// selected property, so a real gap in Payments doesn't go unnoticed just
+// because the two systems sync independently. Silent when clean.
+function renderGapBanner(container, propertyId, onRerender) {
+  container.innerHTML = '';
+  const gaps = findCalendarPaymentGaps(propertyId);
+  if (!gaps.length) return;
+
+  const unresolvedCount = gaps.filter(g => !g.annotation).length;
+  const card  = el('div', { class: 'card', style: 'margin-bottom:16px;border-left:3px solid #ef4444' });
+  const inner = el('div', { style: 'padding:14px 16px' });
+  inner.appendChild(el('div', { style: 'font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;display:flex;align-items:center;gap:6px' },
+    el('span', { style: 'color:#ef4444' }, '⚠'),
+    `${gaps.length} reserved night range${gaps.length !== 1 ? 's' : ''} on Airbnb with no matching payment`
+  ));
+  inner.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px' },
+    unresolvedCount > 0
+      ? `${unresolvedCount} still need${unresolvedCount === 1 ? 's' : ''} a reason — assign one below, or record the payment in Payments if it just hasn't been imported yet.`
+      : 'All accounted for — reasons assigned below.'
+  ));
+
+  // Most urgent first: already-checked-out & unresolved, then upcoming &
+  // unresolved, then already-reviewed ranges last.
+  const rank = g => g.annotation ? 2 : (g.isPast ? 0 : 1);
+  const ranked = [...gaps].sort((a, b) => rank(a) - rank(b) || a.start.localeCompare(b.start));
+
+  const list = el('div', { style: 'display:flex;flex-direction:column;gap:8px' });
+  for (const gap of ranked) list.appendChild(renderGapRow(gap, propertyId, onRerender));
+  inner.appendChild(list);
+  card.appendChild(inner);
+  container.appendChild(card);
+}
+
+function renderGapRow(gap, propertyId, onRerender) {
+  const severity = gap.annotation ? 'resolved' : (gap.isPast ? 'urgent' : 'pending');
+  const barColor = severity === 'urgent' ? '#ef4444' : severity === 'pending' ? '#f59e0b' : '#8b5cf6';
+  const row = el('div', { style: `border-left:3px solid ${barColor};background:rgba(0,0,0,0.03);border-radius:6px;padding:10px 12px` });
+
+  const nightsLabel = gap.nights === gap.totalNights
+    ? `${gap.nights} night${gap.nights !== 1 ? 's' : ''} unmatched`
+    : `${gap.nights} of ${gap.totalNights} nights unmatched`;
+
+  const head = el('div', { style: 'display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap' });
+  head.appendChild(el('div', { style: 'font-size:13px;font-weight:600;color:var(--text)' }, `${fmtDate(gap.start)} – ${fmtDate(gap.end)}`));
+  head.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted)' },
+    `${nightsLabel} · ${gap.isPast ? 'already checked out' : 'upcoming'}`));
+  row.appendChild(head);
+
+  const formHost = el('div', { style: 'margin-top:8px' });
+  row.appendChild(formHost);
+
+  const renderForm = (editing) => {
+    formHost.innerHTML = '';
+    if (gap.annotation && !editing) {
+      const summary = el('div', { style: 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px' });
+      summary.appendChild(el('span', { style: 'font-weight:600;color:var(--text)' },
+        GAP_REASON_LABEL.get(gap.annotation.reason) || gap.annotation.reason));
+      if (gap.annotation.note) summary.appendChild(el('span', { style: 'color:var(--text-muted)' }, `— ${gap.annotation.note}`));
+      const editLink = el('span', { style: 'color:var(--accent,#6366f1);cursor:pointer;text-decoration:underline;font-size:11px' }, 'Edit');
+      editLink.onclick = () => renderForm(true);
+      summary.appendChild(editLink);
+      formHost.appendChild(summary);
+      return;
+    }
+
+    const options = gap.annotation ? GAP_REASONS : [{ value: '', label: 'Choose a reason…' }, ...GAP_REASONS];
+    const reasonSel = select(options, gap.annotation?.reason || '');
+    reasonSel.style.maxWidth = '220px';
+    const noteInp = textarea({ placeholder: 'Optional note — what happened here?', rows: 2 });
+    noteInp.style.width = '100%';
+    noteInp.style.marginTop = '6px';
+    noteInp.style.fontSize = '12px';
+    noteInp.value = gap.annotation?.note || '';
+
+    const btnRow = el('div', { style: 'display:flex;gap:8px;margin-top:8px' });
+    const saveBtn = button('Save', { variant: 'primary sm', onClick: () => {
+      const reason = reasonSel.value;
+      if (!reason) { toast('Choose a reason', 'warning'); return; }
+      const record = gap.annotation ? { ...gap.annotation } : { id: newId('sba'), propertyId, uid: gap.uid };
+      delete record.deletedAt;
+      Object.assign(record, { start: gap.start, end: gap.end, reason, note: noteInp.value.trim() });
+      upsert('strBlockAnnotations', record);
+      toast('Reason saved', 'success');
+      onRerender?.();
+    }});
+    btnRow.appendChild(saveBtn);
+    if (gap.annotation) {
+      btnRow.appendChild(button('Cancel', { variant: 'sm ghost', onClick: () => renderForm(false) }));
+      btnRow.appendChild(button('Clear', { variant: 'sm ghost', onClick: async () => {
+        const ok = await confirmDialog('Remove this reason? The range will show as unresolved again.', { danger: true, okLabel: 'Clear' });
+        if (!ok) return;
+        softDelete('strBlockAnnotations', gap.annotation.id);
+        toast('Reason cleared', 'success');
+        onRerender?.();
+      }}));
+    }
+    formHost.appendChild(reasonSel);
+    formHost.appendChild(noteInp);
+    formHost.appendChild(btnRow);
+  };
+  renderForm(false);
+
+  return row;
+}
+
 // ── Daily-rate feed export (consumed read-only by the Short-Term-Rentals repo) ─
 // Publishes one JSON file per short-term property mapping each upcoming date to
 // the rate amount to push into a channel/iCal. The external repo only needs the
@@ -1028,9 +1206,11 @@ function build() {
   bar.appendChild(publishBtn);
   wrap.appendChild(bar);
 
+  const gapBanner  = el('div', {});
   const kpiRow     = el('div', { style: 'display:grid;grid-template-columns:repeat(7,1fr);gap:12px;margin-bottom:16px' });
   const calCard    = el('div', { class: 'card' });
   const analysisEl = el('div', {});
+  wrap.appendChild(gapBanner);
   wrap.appendChild(kpiRow);
   wrap.appendChild(calCard);
   wrap.appendChild(analysisEl);
@@ -1043,9 +1223,10 @@ function build() {
     const year = Number(yStr), month1 = Number(mStr);
     monthLbl.textContent = `${MONTHS[month1 - 1]} ${year}`;
 
-    const histMap = historicNightMap(_propId);
-    const suggest = buildSuggester(histMap);
-    const blocked = blockedDateSet(_propId);
+    const histMap   = historicNightMap(_propId);
+    const suggest   = buildSuggester(histMap);
+    const blocked   = blockedDateSet(_propId);
+    const blockInfo = classifyBlockedDates(_propId);
 
     // Auto-refresh iCal whenever URL is known but record is missing or stale (>4 h).
     // Silently re-fetches and calls rerender() on success so blocks update automatically.
@@ -1055,8 +1236,9 @@ function build() {
     const minR = rates.length ? Math.min(...rates) : 0;
     const maxR = rates.length ? Math.max(...rates) : 0;
 
+    renderGapBanner(gapBanner, _propId, rerender);
     renderKpis(kpiRow, { histMap, suggest, blocked, year, month1, ccy, propertyId: _propId });
-    renderCalendar(calCard, { histMap, suggest, blocked, year, month1, ccy, minR, maxR, propertyId: _propId, onAutoRefresh: rerender });
+    renderCalendar(calCard, { histMap, suggest, blocked, blockInfo, year, month1, ccy, minR, maxR, propertyId: _propId, onAutoRefresh: rerender });
     renderAnalysis(analysisEl, { propertyId: _propId, year, month1, ccy, onRerender: rerender });
   }
 
@@ -1138,7 +1320,7 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
 }
 
 // ── Calendar grid ───────────────────────────────────────────────────────────
-function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, minR, maxR, propertyId, onAutoRefresh }) {
+function renderCalendar(card, { histMap, suggest, blocked, blockInfo, year, month1, ccy, minR, maxR, propertyId, onAutoRefresh }) {
   card.innerHTML = '';
   const mo  = String(month1).padStart(2, '0');
   const dim = daysInMonth(year, month1);
@@ -1163,6 +1345,7 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
     const date = `${year}-${mo}-${String(d).padStart(2, '0')}`;
     const hist = histMap.get(date);
     const isBlocked = blocked.has(date);
+    const info = blockInfo?.get(date);
     const isToday = date === tStr;
 
     let bg = 'transparent', border = '1px solid var(--border)', rateEl, badge = '';
@@ -1174,12 +1357,32 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
       border = '1px solid rgba(16,185,129,0.45)';
       rateEl = el('div', { style: 'font-size:13px;font-weight:700;color:var(--text)' }, formatMoney(hist.rate, hist.currency, { maxFrac: 0 }));
       badge = 'booked';
-    } else if (isBlocked) {
+    } else if (info?.type === 'reserved' && !info.annotation) {
+      // Reserved on Airbnb, no matching payment, no reason assigned yet — the
+      // gap the banner above is flagging. Same alarm color the old "blocked"
+      // state used, now specifically meaning "needs your attention".
       bg = 'rgba(239,68,68,0.15)';
       border = '1px solid rgba(239,68,68,0.55)';
       const rateVal = target ? target.targetADR : suggest(date)?.rate;
       rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
-      badge = 'blocked';
+      badge = 'gap';
+    } else if (info?.type === 'reserved' && info.annotation) {
+      // Reserved, no payment, but you've already told us why — accounted for.
+      bg = 'rgba(139,92,246,0.14)';
+      border = '1px solid rgba(139,92,246,0.5)';
+      const rateVal = target ? target.targetADR : suggest(date)?.rate;
+      rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
+      badge = 'noted';
+    } else if (info?.type === 'owner' || isBlocked) {
+      // Owner block (maintenance/personal-use/availability sync) — never
+      // expects a payment, so it's neutral rather than alarming. The
+      // isBlocked fallback covers blocks with no uid, which classifyBlockedDates
+      // can't type but blockedDateSet still counts as unavailable.
+      bg = 'rgba(100,116,139,0.12)';
+      border = '1px solid rgba(100,116,139,0.4)';
+      const rateVal = target ? target.targetADR : suggest(date)?.rate;
+      rateEl = el('div', { style: 'font-size:12px;font-style:italic;color:var(--text-muted)' }, rateVal != null ? formatMoney(rateVal, ccy, { maxFrac: 0 }) : '—');
+      badge = 'closed';
     } else if (target) {
       // Confirmed target overrides the suggestion — show it as the published rate.
       rateEl = el('div', { style: 'font-size:13px;font-weight:700;color:var(--text)' }, formatMoney(target.targetADR, ccy, { maxFrac: 0 }));
@@ -1194,14 +1397,14 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
       style: `position:relative;min-height:66px;padding:6px;border-radius:6px;border:${border};background:${bg};cursor:pointer;` +
              (isToday ? 'box-shadow:0 0 0 2px var(--accent,#6366f1) inset;' : '')
     });
-    const badgeColor = badge === 'booked' ? '#10b981' : badge === 'blocked' ? '#ef4444' : badge === 'target' ? '#6366f1' : badge === 'low' ? '#f59e0b' : 'var(--text-muted)';
-    const badgeText  = badge === 'booked' ? 'booked' : badge === 'blocked' ? 'blocked' : badge === 'target' ? 'target' : badge === 'low' ? '?' : badge === 'medium' ? '~' : badge === 'high' ? 'sugg' : badge ? 'sugg' : '';
+    const badgeColor = badge === 'booked' ? '#10b981' : badge === 'gap' ? '#ef4444' : badge === 'noted' ? '#8b5cf6' : badge === 'closed' ? '#64748b' : badge === 'target' ? '#6366f1' : badge === 'low' ? '#f59e0b' : 'var(--text-muted)';
+    const badgeText  = badge === 'booked' ? 'booked' : badge === 'gap' ? 'gap' : badge === 'noted' ? 'noted' : badge === 'closed' ? 'closed' : badge === 'target' ? 'target' : badge === 'low' ? '?' : badge === 'medium' ? '~' : badge === 'high' ? 'sugg' : badge ? 'sugg' : '';
     cell.appendChild(el('div', { style: 'display:flex;justify-content:space-between;align-items:center' },
       el('span', { style: 'font-size:12px;font-weight:600;color:var(--text-muted)' }, String(d)),
       badgeText ? el('span', { style: `font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${badgeColor}` }, badgeText) : null
     ));
     cell.appendChild(el('div', { style: 'margin-top:8px;text-align:center' }, rateEl));
-    cell.onclick = () => openDayDetail(date, { hist, isBlocked, suggest, ccy, target });
+    cell.onclick = () => openDayDetail(date, { hist, isBlocked, blockInfo: info, suggest, ccy, target });
     grid.appendChild(cell);
   }
 
@@ -1214,7 +1417,9 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
     el('span', {}, label)
   );
   legend.appendChild(chip('rgba(16,185,129,0.30)', 'Booked (actual rate)'));
-  legend.appendChild(chip('rgba(239,68,68,0.20)', 'Blocked (iCal)'));
+  legend.appendChild(chip('rgba(239,68,68,0.20)', 'Reserved, no payment — needs a reason'));
+  legend.appendChild(chip('rgba(139,92,246,0.25)', 'Reserved, no payment — reason noted'));
+  legend.appendChild(chip('rgba(100,116,139,0.20)', 'Owner block (maintenance/personal/unavailable)'));
   if (target) legend.appendChild(chip('#6366f1', `target = confirmed ${formatMoney(target.targetADR, ccy, { maxFrac: 0 })} (published rate)`));
   legend.appendChild(chip('transparent', 'Open · sugg = high confidence · ~ = medium · ? = low'));
   body.appendChild(legend);
@@ -1247,7 +1452,7 @@ function renderCalendar(card, { histMap, suggest, blocked, year, month1, ccy, mi
 }
 
 // ── Day detail modal ──────────────────────────────────────────────────────────
-function openDayDetail(date, { hist, isBlocked, suggest, ccy, target }) {
+function openDayDetail(date, { hist, isBlocked, blockInfo, suggest, ccy, target }) {
   const body = el('div', {});
   const row = (label, value, muted) => {
     const v = el('strong', {}, value);
@@ -1286,7 +1491,26 @@ function openDayDetail(date, { hist, isBlocked, suggest, ccy, target }) {
       }
     }
   } else {
-    body.appendChild(row('Status', isBlocked ? 'Reserved / blocked (iCal)' : 'Open'));
+    const statusLabel = blockInfo?.type === 'owner' ? 'Closed (owner block)'
+      : blockInfo?.type === 'reserved' ? 'Reserved on Airbnb — no payment recorded'
+      : isBlocked ? 'Reserved / blocked (iCal)' : 'Open';
+    body.appendChild(row('Status', statusLabel));
+    if (blockInfo?.type === 'reserved') {
+      const box = el('div', {
+        style: `margin:8px 0;padding:8px 10px;border-radius:6px;font-size:12px;border-left:3px solid ${blockInfo.annotation ? '#8b5cf6' : '#ef4444'};` +
+               `background:${blockInfo.annotation ? 'rgba(139,92,246,0.10)' : 'rgba(239,68,68,0.10)'}`
+      });
+      if (blockInfo.annotation) {
+        box.appendChild(el('div', { style: 'font-weight:700;color:var(--text);margin-bottom:2px' },
+          `Noted: ${GAP_REASON_LABEL.get(blockInfo.annotation.reason) || blockInfo.annotation.reason}`));
+        if (blockInfo.annotation.note) box.appendChild(el('div', { style: 'color:var(--text-muted)' }, blockInfo.annotation.note));
+      } else {
+        box.appendChild(el('div', { style: 'font-weight:700;color:var(--text);margin-bottom:2px' }, 'No matching payment for this reservation'));
+        box.appendChild(el('div', { style: 'color:var(--text-muted)' },
+          'Assign a reason in the banner above the calendar, or record the payment in Payments if it just hasn\'t been imported yet.'));
+      }
+      body.appendChild(box);
+    }
     if (target) {
       const mo1 = Number(date.slice(5, 7));
       const box = el('div', { style: 'margin:8px 0;padding:8px 10px;border-radius:6px;background:rgba(99,102,241,0.10);border-left:3px solid #6366f1;font-size:12px' });

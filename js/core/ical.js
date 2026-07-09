@@ -46,6 +46,15 @@ export function nights(startStr, endStr) {
   return Math.max(0, Math.round((e - s) / (1000 * 60 * 60 * 24)));
 }
 
+// Classifies an iCal block by its SUMMARY: an owner-block (manually closed /
+// unavailable, never sold) vs a guest reservation. Airbnb exports "Reserved"
+// for bookings and "Airbnb (Not available)" for owner-blocks/other-listing
+// availability syncs — only the latter should ever be expected to have no
+// matching payment.
+export function isOwnerBlockSummary(summary) {
+  return /not available|unavailable|\bblocked\b|closed/i.test(summary || '');
+}
+
 // Merge freshly-fetched blocks with the previous snapshot so blocks that have
 // already elapsed and dropped off Airbnb's live iCal feed aren't lost. Airbnb's
 // feed only reflects current/future state — once a booking or owner-block is in

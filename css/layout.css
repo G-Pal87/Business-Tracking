@@ -71,10 +71,15 @@
 .nav-item-badge {
   margin-left: auto;
   font-size: 10px;
+  font-weight: 700;
   padding: 2px 6px;
   background: var(--bg-elev-2);
   border-radius: 10px;
   color: var(--text-muted);
+}
+.nav-item-badge.danger {
+  background: #ef4444;
+  color: #fff;
 }
 
 .sidebar-footer {

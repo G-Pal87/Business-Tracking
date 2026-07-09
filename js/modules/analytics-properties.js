@@ -4,7 +4,7 @@ import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, PROPERTY_STREAMS, PROPERTY_STATUSES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
-  listActive, listActivePayments, isCapEx,
+  listActive, listActivePayments, isCapEx, isReservationNight,
   simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
 import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js?v=20260519';
@@ -149,9 +149,13 @@ function getData(start, end) {
 
 /**
  * Extract nights from a payment record.
- * Returns null if the record doesn't carry enough date/nights info.
+ * Returns null if the record doesn't carry enough date/nights info, and for
+ * Airbnb payout adjustments (Resolution Adjustment, Resolution Payout,
+ * Cancellation Fee, Adjustment) — these repeat the same check-in/check-out as
+ * their originating Reservation and would otherwise double-count nights.
  */
 function paymentNights(p) {
+  if (!isReservationNight(p)) return null;
   if (p.airbnbNights > 0) return p.airbnbNights;
   const ci = p.airbnbCheckIn  || p.checkIn;
   const co = p.airbnbCheckOut || p.checkOut;

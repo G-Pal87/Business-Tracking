@@ -167,6 +167,16 @@ export function listActiveClients()    { return listActive('clients'); }
 export function listActiveServices()   { return listActive('services'); }
 export function listActiveInventory()  { return listActive('inventory'); }
 
+// ============== STR (short-term rental) helpers ==============
+// Airbnb payout adjustments (Resolution Adjustment, Resolution Payout,
+// Cancellation Fee, Adjustment) share the same check-in/check-out dates as the
+// "Reservation" record they adjust. Treating them as separate booked nights
+// double-counts occupancy/nights-sold and skews ADR-per-night wherever nights
+// are summed or iterated directly from payment records.
+export function isReservationNight(p) {
+  return !(p.source === 'airbnb' && p.airbnbType && p.airbnbType !== 'Reservation');
+}
+
 function deepMerge(target, source) {
   const result = { ...target };
   for (const key of Object.keys(source)) {

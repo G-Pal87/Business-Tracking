@@ -2,7 +2,8 @@
 import { el, openModal, fmtDate } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { state } from '../core/state.js';
-import { formatEUR, listActive, listActivePayments, byId } from '../core/data.js';
+import { formatEUR, listActive, listActivePayments, byId, isReservationNight } from '../core/data.js';
+import { isOwnerBlockSummary } from '../core/ical.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
@@ -88,11 +89,18 @@ function daysInMonth(year, monthIdx) {
   return new Date(year, monthIdx + 1, 0).getDate();
 }
 
-// Classify an iCal block by its summary: owner-block (manually closed /
-// unavailable, never sold) vs a guest reservation. Airbnb exports "Reserved"
-// for bookings and "Airbnb (Not available)" for owner-blocks.
-function isOwnerBlock(summary) {
-  return /not available|unavailable|\bblocked\b|closed/i.test(summary || '');
+// Nights actually sold for a payment record — 0 for Airbnb payout adjustments
+// (Resolution Adjustment, Resolution Payout, Cancellation Fee, Adjustment),
+// which repeat the same check-in/check-out as their originating Reservation
+// and would otherwise double-count nights and skew ADR wherever summed.
+function bookedNights(p) {
+  return isReservationNight(p) ? (p.airbnbNights || 0) : 0;
+}
+function sumNights(payments) {
+  return payments.reduce((s, p) => s + bookedNights(p), 0);
+}
+function sumNightRevenue(payments) {
+  return payments.reduce((s, p) => s + (p.avgNightlyRate || 0) * bookedNights(p), 0);
 }
 
 // Split iCal blocks into { reserved, owner } date sets (each [start,end) → nights).
@@ -100,7 +108,7 @@ function buildBlockDateSets(blocks) {
   const reserved = new Set(), owner = new Set();
   for (const b of blocks || []) {
     if (!b.start || !b.end) continue;
-    const target = isOwnerBlock(b.summary) ? owner : reserved;
+    const target = isOwnerBlockSummary(b.summary) ? owner : reserved;
     const d = new Date(b.start), be = new Date(b.end);
     while (d < be) { target.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
   }
@@ -235,7 +243,7 @@ function getPortfolioData(curRange, cmpRange) {
   let nightsWithADR = 0;
   let adrSum = 0;
   payments.forEach(p => {
-    const n = p.airbnbNights || 0;
+    const n = bookedNights(p);
     totalNights += n;
     if (n > 0 && p.avgNightlyRate) { adrSum += p.avgNightlyRate * n; nightsWithADR += n; }
   });
@@ -271,7 +279,7 @@ function getPortfolioData(curRange, cmpRange) {
   if (cmpRange) {
     const cmpPayments = getPaymentsInRange(cmpRange.start, cmpRange.end, propIds);
     prevRev = cmpPayments.reduce((s, p) => s + p.amount, 0);
-    prevNights = cmpPayments.reduce((s, p) => s + (p.airbnbNights || 0), 0);
+    prevNights = sumNights(cmpPayments);
   }
 
   return {
@@ -298,8 +306,8 @@ function getSpotlightData(propId, curRange) {
     const target   = getTargetADR(propId, mk);
     const paysInMo = payments.filter(p => (p.date || '').startsWith(mk));
     const rev      = paysInMo.reduce((s, p) => s + p.amount, 0);
-    const nights   = paysInMo.reduce((s, p) => s + (p.airbnbNights || 0), 0);
-    const adr      = nights > 0 ? paysInMo.reduce((s, p) => s + (p.avgNightlyRate || 0) * (p.airbnbNights || 0), 0) / nights : 0;
+    const nights   = sumNights(paysInMo);
+    const adr      = nights > 0 ? sumNightRevenue(paysInMo) / nights : 0;
     const occupied  = occByMonth.get(mk) || 0;    // occupied nights in range
     const available = availByMonth.get(mk) || 0;  // available nights in range (excl. owner-blocks)
     const occ       = available > 0 ? occupied / available * 100 : 0;
@@ -619,7 +627,7 @@ function buildStrOccupancyHeatmap(data) {
     monthKeys.forEach(k => {
       const mk = k.key;
       const monthPays = payments.filter(pay => pay.propertyId === p.id && (pay.date || '').slice(0, 7) === mk);
-      const nights = monthPays.reduce((s, pay) => s + (pay.airbnbNights || 0), 0);
+      const nights = sumNights(monthPays);
       const hasField = monthPays.some(pay => pay.airbnbNights != null);
       if (nights > 0) anyNights = true;
       const dim = daysInMonth(+k.y, k.m - 1);
@@ -691,10 +699,8 @@ function buildComparisonTable(data, curRange) {
     const rev   = revByProp.get(p.id) || 0;
     const occ   = occByProp.get(p.id) || { pct: 0 };
     const pPays = payments.filter(pay => pay.propertyId === p.id);
-    const nights = pPays.reduce((s, pay) => s + (pay.airbnbNights || 0), 0);
-    const adr   = nights > 0
-      ? pPays.reduce((s, pay) => s + (pay.avgNightlyRate || 0) * (pay.airbnbNights || 0), 0) / nights
-      : 0;
+    const nights = sumNights(pPays);
+    const adr   = nights > 0 ? sumNightRevenue(pPays) / nights : 0;
     const revPct = totalRev > 0 ? rev / totalRev * 100 : 0;
 
     const nameCell = el('td', { style: 'padding:8px;font-size:12px;color:var(--text)' });
@@ -1040,7 +1046,7 @@ function openNightsModal(data) {
 
   const rows = props.map(p => {
     const pPays = payments.filter(pay => pay.propertyId === p.id);
-    const nights = pPays.reduce((s, pay) => s + (pay.airbnbNights || 0), 0);
+    const nights = sumNights(pPays);
     return [shortName(p.name), nights.toString(), pPays.length.toString()];
   });
   body.appendChild(mkModalTable(['Property', 'Nights Sold', 'Bookings'], rows, { highlight: 1 }));
@@ -1049,7 +1055,7 @@ function openNightsModal(data) {
   const byMonth = monthKeys.map(() => 0);
   payments.forEach(p => {
     const idx = keyIndex.get((p.date || '').slice(0, 7));
-    if (idx != null) byMonth[idx] += (p.airbnbNights || 0);
+    if (idx != null) byMonth[idx] += bookedNights(p);
   });
   body.appendChild(mkModalTable(
     ['Month', 'Nights Sold'],
@@ -1069,10 +1075,8 @@ function openADRModal(data) {
     ['Property', 'Avg ADR', 'Nights', 'Bookings'],
     props.map(p => {
       const pPays = payments.filter(pay => pay.propertyId === p.id);
-      const nights = pPays.reduce((s, pay) => s + (pay.airbnbNights || 0), 0);
-      const adr = nights > 0
-        ? pPays.reduce((s, pay) => s + (pay.avgNightlyRate || 0) * (pay.airbnbNights || 0), 0) / nights
-        : 0;
+      const nights = sumNights(pPays);
+      const adr = nights > 0 ? sumNightRevenue(pPays) / nights : 0;
       return [shortName(p.name), adr > 0 ? formatEUR(adr) : '—', nights.toString(), pPays.length.toString()];
     }),
     { highlight: 1 }
