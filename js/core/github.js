@@ -4,6 +4,12 @@ import { state, notify, invalidateActiveCache } from './state.js';
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
 
+// Shared by mergeLocalPending() and resyncDb(): a record's sync marker is
+// treated as this much earlier than it claims before trusting it to decide
+// whether a local-only addition is genuine or a remote-absence is a real
+// delete. See mergeLocalPending() below for the full rationale.
+const SYNC_SAFETY_MARGIN_MS = 15 * 60 * 1000; // 15 minutes
+
 let pushQueue = Promise.resolve();
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -455,6 +461,8 @@ export function resyncDb(remote, local) {
   // saw it on GitHub, and the next reload's mergeLocalPending would then read
   // that false confirmation as "remote must have deleted this" and drop it.
   let staleFetch = false;
+  const syncedAt    = local?._syncedAt ?? null;
+  const effSyncedAt = syncedAt ? syncedAt - SYNC_SAFETY_MARGIN_MS : null;
   for (const col of Object.keys(local)) {
     const localArr = local[col];
     if (!Array.isArray(localArr)) {
@@ -464,6 +472,7 @@ export function resyncDb(remote, local) {
     }
     const remoteArr = result[col];
     if (!Array.isArray(remoteArr)) { result[col] = localArr; continue; }
+    const localIds = new Set(localArr.map(x => x.id));
     const map = new Map(remoteArr.map(x => [x.id, x]));
     for (const item of localArr) {
       const rv = map.get(item.id);
@@ -479,6 +488,20 @@ export function resyncDb(remote, local) {
         staleFetch = true;
       }
       // else: remote is same-age or newer → already in map, keep remote.
+    }
+    // Propagate hard deletes (records fully removed from state.db, e.g. via
+    // Settings → "Delete Permanently") that haven't reached remote yet — this
+    // runs every 60s in the background, not just on reload, so an unpushed
+    // delete could otherwise resurrect mid-session with no refresh at all.
+    // Same conservative rule as mergeLocalPending: only when remote's copy
+    // hasn't changed since (the margin-adjusted) last known sync — if remote
+    // is newer, local's absence just means local hasn't seen it, not a delete.
+    if (effSyncedAt) {
+      for (const id of map.keys()) {
+        if (localIds.has(id)) continue;
+        const remoteItem = map.get(id);
+        if ((remoteItem.updatedAt || 0) <= effSyncedAt) map.delete(id);
+      }
     }
     result[col] = [...map.values()];
   }
@@ -520,7 +543,6 @@ export function mergeLocalPending(remoteDb, localCache) {
   // window still isn't assumed confirmed. A push (or purge) that's genuinely
   // this stale is already a separate problem the retry/conflict UI surfaces;
   // this margin only protects against silently discarding real data.
-  const SYNC_SAFETY_MARGIN_MS = 15 * 60 * 1000; // 15 minutes
   const effSyncedAt = syncedAt ? syncedAt - SYNC_SAFETY_MARGIN_MS : null;
 
   for (const col of cols) {
@@ -537,7 +559,8 @@ export function mergeLocalPending(remoteDb, localCache) {
     }
 
     // Remote is authoritative by default
-    const merged = new Map(remote.map(x => [x.id, x]));
+    const merged   = new Map(remote.map(x => [x.id, x]));
+    const localMap = new Map(local.map(x => [x.id, x]));
 
     for (const item of local) {
       const remoteItem = merged.get(item.id);
@@ -560,6 +583,25 @@ export function mergeLocalPending(remoteDb, localCache) {
         hasLocalChanges = true;
       }
       // Otherwise: remote is same age or newer, or we have no sync baseline → remote wins
+    }
+
+    // Propagate hard deletes (records fully removed from state.db, e.g. via
+    // Settings → "Delete Permanently") that never made it to remote — e.g. the
+    // push that would have carried the delete failed or hadn't fired yet before
+    // this reload. Without this, mergeLocalPending only ever ADDS records from
+    // local on top of remote and a not-yet-pushed hard delete comes right back.
+    // Only safe to infer "local deleted this" when we have real sync history
+    // AND remote's copy hasn't changed since that last known sync — if remote
+    // is newer, local's absence just means the cache predates it, not a delete.
+    if (effSyncedAt) {
+      for (const id of merged.keys()) {
+        if (localMap.has(id)) continue;
+        const remoteItem = merged.get(id);
+        if ((remoteItem.updatedAt || 0) <= effSyncedAt) {
+          merged.delete(id);
+          hasLocalChanges = true;
+        }
+      }
     }
 
     result[col] = [...merged.values()];
