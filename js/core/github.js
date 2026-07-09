@@ -499,6 +499,17 @@ export function mergeLocalPending(remoteDb, localCache) {
   // or any other metadata backfill. Without _syncedAt (old or corrupted cache)
   // remote is fully authoritative and no local record can override it.
   const syncedAt = localCache?._syncedAt ?? null;
+  // Defense-in-depth: this exact bug shape (some other code path stamping
+  // _syncedAt a little too aggressively — e.g. a background poll that read a
+  // stale copy of GitHub right after a push, before its write had propagated)
+  // has recurred across several different sync paths in this codebase. Rather
+  // than trust every future caller to get the stamping perfectly right, treat
+  // the marker as this much earlier than it claims: a record created in that
+  // window still isn't assumed confirmed. A push (or purge) that's genuinely
+  // this stale is already a separate problem the retry/conflict UI surfaces;
+  // this margin only protects against silently discarding real data.
+  const SYNC_SAFETY_MARGIN_MS = 15 * 60 * 1000; // 15 minutes
+  const effSyncedAt = syncedAt ? syncedAt - SYNC_SAFETY_MARGIN_MS : null;
 
   for (const col of cols) {
     if (col.startsWith('_')) continue; // skip internal meta fields
@@ -522,13 +533,13 @@ export function mergeLocalPending(remoteDb, localCache) {
         // Local-only item: only keep if it was created after the last known sync,
         // which proves it's a genuine offline addition. Without sync history we
         // can't trust it — remote is authoritative (item may have been deleted remotely).
-        if (!item.deletedAt && syncedAt && item.createdAt && item.createdAt > syncedAt) {
+        if (!item.deletedAt && effSyncedAt && item.createdAt && item.createdAt > effSyncedAt) {
           merged.set(item.id, item);
           hasLocalChanges = true;
         }
       } else if (
-        syncedAt &&
-        item.updatedAt && item.updatedAt > syncedAt &&
+        effSyncedAt &&
+        item.updatedAt && item.updatedAt > effSyncedAt &&
         remoteItem.updatedAt && item.updatedAt > remoteItem.updatedAt
       ) {
         // Local record was modified after the last sync AND is newer than remote:
