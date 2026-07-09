@@ -1402,13 +1402,7 @@ function openCSVImport() {
         if (!matched) continue;
 
         const existing = row.airbnbKey ? (byAirbnbKey.get(row.airbnbKey) ?? null) : null;
-        const pay = existing ? { ...existing } : {
-          id: newId('pay'),
-          propertyId: matched.id,
-          stream: 'short_term_rental',
-          source: 'airbnb'
-        };
-        Object.assign(pay, {
+        const newFields = {
           amount: row.amount,
           currency: row.currency || matched.currency,
           date: row.date,
@@ -1430,9 +1424,24 @@ function openCSVImport() {
           avgNightInclCleaning: row.avgNightInclCleaning,
           avgNightExclCleaning: row.avgNightExclCleaning,
           notes: [row.guest, row.listing].filter(Boolean).join(' · ')
-        });
-        upsert('payments', pay);
-        if (existing) totalUpdated++; else totalAdded++;
+        };
+        const pay = existing ? { ...existing, ...newFields } : {
+          id: newId('pay'),
+          propertyId: matched.id,
+          stream: 'short_term_rental',
+          source: 'airbnb',
+          ...newFields
+        };
+        // Skip the write entirely when re-importing a row that hasn't actually
+        // changed — upsert() always stamps a fresh updatedAt, so re-running the
+        // same CSV was bumping every matched payment's timestamp on every
+        // import, needlessly churning the sync history (same root cause as the
+        // reservation-expense-rule no-op fix above).
+        const changed = !existing || Object.keys(newFields).some(k => (existing[k] ?? null) !== (newFields[k] ?? null));
+        if (changed) {
+          upsert('payments', pay);
+          if (existing) totalUpdated++; else totalAdded++;
+        }
 
         if (row.type.toLowerCase() === 'reservation') applyReservationExpenseRules(pay, genIndex);
 
@@ -1537,15 +1546,23 @@ function openCSVImport() {
 
         let pay;
         if (existing) {
+          // Skip the write when re-importing a row that hasn't actually
+          // changed — upsert() always stamps a fresh updatedAt, so re-running
+          // the same CSV was bumping every matched pending payment's timestamp
+          // on every import for no real reason.
+          const changed = Object.keys(payFields).some(k => (existing[k] ?? null) !== (payFields[k] ?? null));
           // Migrate old-format records (no airbnbKey) to new format
           Object.assign(existing, payFields);
           pay = existing;
-          totalUpdated++;
+          if (changed) {
+            upsert('payments', pay);
+            totalUpdated++;
+          }
         } else {
           pay = { id: newId('pay'), propertyId: matched.id, stream: 'short_term_rental', source: 'airbnb', ...payFields };
+          upsert('payments', pay);
           totalAdded++;
         }
-        upsert('payments', pay);
 
         if (row.type?.toLowerCase() === 'reservation') applyReservationExpenseRules(pay, genIndexP);
 
