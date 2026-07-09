@@ -1248,8 +1248,14 @@ function openCSVImport() {
       const csvPropertyIds = new Set(rows.map(r => findProp(r.listing)?.id).filter(Boolean));
       const allPays = listActivePayments();
       const byAirbnbKeyPreview = new Map(allPays.filter(p => p.airbnbKey).map(p => [p.airbnbKey, p]));
+      // status !== 'pending' matches the apply step's own removal loop below —
+      // pending payments come from the separate pending-CSV and are never
+      // touched by a completed-CSV import. Without this guard here, the
+      // preview counted them as "to remove" even though the apply step always
+      // skips them, so the preview's count never matched what actually got
+      // removed after confirming.
       const toDeleteRows = allPays
-        .filter(p => p.source === 'airbnb' && p.airbnbKey && csvPropertyIds.has(p.propertyId) && !csvKeys.has(p.airbnbKey))
+        .filter(p => p.source === 'airbnb' && p.status !== 'pending' && p.airbnbKey && csvPropertyIds.has(p.propertyId) && !csvKeys.has(p.airbnbKey))
         .map(p => ({ ...p, propName: byId('properties', p.propertyId)?.name || '—',
           reason: 'Airbnb key no longer present in this completed-payout export — reservation appears cancelled/removed on Airbnb' }));
 
