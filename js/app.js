@@ -9,6 +9,10 @@ import { startPresence } from './core/presence.js';
 
 const VERSION = window._appV || '20260702c';
 
+// Set once str-rates.js resolves in boot() — updateStrGapBadge (a top-level
+// sibling, not nested in boot) needs a reference it can call independently.
+let _countUnresolvedGapNights = null;
+
 async function boot() {
   const [
     { default: properties },
@@ -37,7 +41,7 @@ async function boot() {
     { default: tenants },
     { default: dividends },
     { default: companyStructure },
-    { default: strRates },
+    { default: strRates, countUnresolvedGapNights },
     { default: analyticsStr }
   ] = await Promise.all([
     import(`./modules/properties.js?v=${VERSION}`),
@@ -75,8 +79,11 @@ async function boot() {
     reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsServices, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsPersonal, analyticsTax, analyticsStr, clients, invoices, timeOff, settings, users
   ];
 
+  _countUnresolvedGapNights = countUnresolvedGapNights;
+
   MODULES.forEach(router.registerModule);
   buildSidebar(MODULES);
+  updateStrGapBadge();
   initMobileNav();
 
   github.loadConfig();
@@ -179,6 +186,11 @@ async function boot() {
       updateSyncStatus('offline', 'Local only — configure GitHub in Settings');
     }
   }
+
+  // The subscribe() 'data-loaded' hook below is registered after this point,
+  // so it can't catch the setDb() calls above — refresh explicitly now that
+  // real data (if any) has landed.
+  updateStrGapBadge();
 
   // ── Phase 3: auth + render — runs immediately when local cache was available
   await requireAuth();
@@ -353,6 +365,9 @@ async function boot() {
     if (evt === 'cache-quota-exceeded') {
       updateSyncStatus('offline', 'Local cache full — purge deleted records in Settings → Data', true);
     }
+    if (evt === 'data-loaded' || evt === 'dirty') {
+      updateStrGapBadge();
+    }
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
       if (state.github.token && state.github.owner && state.github.repo) {
@@ -518,10 +533,29 @@ function buildSidebar(MODULES) {
       item.dataset.route = id;
       item.innerHTML = `<span class="nav-item-icon">${mod.icon || ''}</span><span>${mod.label}</span>`;
       item.onclick = () => router.navigate(id);
+      if (id === 'str-rates') {
+        const badge = document.createElement('span');
+        badge.id = 'nav-str-gap-badge';
+        badge.className = 'nav-item-badge danger';
+        badge.style.display = 'none';
+        item.appendChild(badge);
+      }
       list.appendChild(item);
     }
     nav.appendChild(list);
   }
+}
+
+// Reflects how many reserved-on-Airbnb nights across all STR properties have
+// no matching payment and no reason assigned yet — the sidebar-level cue that
+// something needs a look in STR Daily Rates, without having to open it first.
+function updateStrGapBadge() {
+  const badge = document.getElementById('nav-str-gap-badge');
+  if (!badge || !_countUnresolvedGapNights) return;
+  let count = 0;
+  try { count = _countUnresolvedGapNights(); } catch (e) { console.error(e); }
+  badge.textContent = String(count);
+  badge.style.display = count > 0 ? '' : 'none';
 }
 
 function initMobileNav() {
