@@ -191,8 +191,21 @@ function getYearData(year, ownerFilter) {
   const capExpenses = allExp.filter(e =>  isCapEx(e));
 
   const propMap = new Map(listActive('properties').map(p => [p.id, p]));
-  const rentalPaymentsSTR = payments.filter(p => { const prop = p.propertyId ? propMap.get(p.propertyId) : null; return p.stream === 'short_term_rental' || prop?.type === 'short_term'; });
-  const rentalPaymentsLTR = payments.filter(p => { const prop = p.propertyId ? propMap.get(p.propertyId) : null; return p.stream === 'long_term_rental'  || prop?.type === 'long_term';  });
+  // Resolve each payment to exactly one stream — stream field takes priority,
+  // falling back to property type only when unset — mirroring expStream()'s
+  // precedence for expenses. An OR of the two independent fields (the prior
+  // behaviour) could double-count a payment into both STR and LTR revenue
+  // whenever a property was reclassified after the payment was recorded.
+  const paymentStream = p => {
+    if (p.stream) return p.stream;
+    const prop = p.propertyId ? propMap.get(p.propertyId) : null;
+    if (prop?.type === 'short_term') return 'short_term_rental';
+    if (prop?.type === 'long_term')  return 'long_term_rental';
+    return null;
+  };
+  const rentalPaymentsSTR   = payments.filter(p => paymentStream(p) === 'short_term_rental');
+  const rentalPaymentsLTR   = payments.filter(p => paymentStream(p) === 'long_term_rental');
+  const rentalPaymentsOther = payments.filter(p => { const s = paymentStream(p); return s !== 'short_term_rental' && s !== 'long_term_rental'; });
   const invoicesCS    = invoices.filter(i => i.stream === 'customer_success');
   const invoicesMkt   = invoices.filter(i => i.stream === 'marketing_services');
   const invoicesOther = invoices.filter(i => !['customer_success','marketing_services'].includes(i.stream));
@@ -205,7 +218,9 @@ function getYearData(year, ownerFilter) {
   const revLTR   = sum(rentalPaymentsLTR, p => p.amount, p => p.date);
   const revCS    = sum(invoicesCS,        i => i.total,  i => i.issueDate || i.date);
   const revMkt   = sum(invoicesMkt,       i => i.total,  i => i.issueDate || i.date);
-  const revOther = sum(invoicesOther,     i => i.total,  i => i.issueDate || i.date);
+  // Includes any unresolvable-stream payments so totalRevenue always matches
+  // the sum of `monthly` (which sums all paid payments/invoices unfiltered).
+  const revOther = sum(invoicesOther, i => i.total, i => i.issueDate || i.date) + sum(rentalPaymentsOther, p => p.amount, p => p.date);
   const totalRevenue = revSTR + revLTR + revCS + revMkt + revOther;
 
   const catMap = new Map();
@@ -238,7 +253,7 @@ function getYearData(year, ownerFilter) {
 
   return {
     payments, invoices, opExpenses, capExpenses,
-    rentalPaymentsSTR, rentalPaymentsLTR, invoicesCS, invoicesMkt, invoicesOther,
+    rentalPaymentsSTR, rentalPaymentsLTR, rentalPaymentsOther, invoicesCS, invoicesMkt, invoicesOther,
     revSTR, revLTR, revCS, revMkt, revOther, totalRevenue,
     catMap, totalOpEx, totalCapEx, opProfit, netCash,
     monthly,

@@ -1,6 +1,6 @@
 // Forecast module: monthly grid per property/service
 import { state, markDirty } from '../core/state.js';
-import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, confirmDialog, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, getForecastEntries, upsertForecastEntry, removeForecastEntry, listActive, listActivePayments } from '../core/data.js';
 import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
@@ -922,16 +922,32 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
       grp.appendChild(valSpan);
       annualBar.appendChild(grp);
     }
-    annualBar.appendChild(button('Distribute evenly', { variant: 'sm ghost', onClick: () => {
+    annualBar.appendChild(button('Distribute evenly', { variant: 'sm ghost', onClick: async () => {
       const yt = fc.yearTarget || {};
       const rev12 = Math.round((yt.revenue || 0) / 12);
-      for (let m = 1; m <= 12; m++) {
-        const data = { revenue: rev12 };
+      const monthKeys = Array.from({ length: 12 }, (_, m) => `${year}-${String(m + 1).padStart(2, '0')}`);
+      // Itemized revenue entries (manual + the Airbnb auto-entry) and, for
+      // properties, itemized expense entries both get silently wiped by the
+      // flat overwrite below — check first and confirm, since this can
+      // discard real recorded bookings/expenses with no way to undo it.
+      const hasItemized = monthKeys.some(mk => {
+        const m = fc.months?.[mk] || {};
+        return (m.entries && m.entries.length > 0) || (type === 'property' && m.expenseEntries && m.expenseEntries.length > 0);
+      });
+      if (hasItemized) {
+        const ok = await confirmDialog(
+          'Some months have itemized revenue and/or expense entries. Distributing evenly will replace them all with flat 1/12 amounts and cannot be undone. Continue?',
+          { danger: true, okLabel: 'Distribute Evenly' }
+        );
+        if (!ok) return;
+      }
+      for (const mk of monthKeys) {
+        const data = { revenue: rev12, entries: [] };
         if (type === 'property') {
           data.expenses = Math.round((yt.expenses || 0) / 12);
           data.expenseEntries = [];
         }
-        saveForecastMonth(fc.id, `${year}-${String(m).padStart(2, '0')}`, data);
+        saveForecastMonth(fc.id, mk, data);
       }
       renderRows();
       if (onChange) onChange();
@@ -1016,9 +1032,10 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
           cell.appendChild(editIcon);
         }
 
+        const manualCount = entries.filter(e => !e.auto).length;
         const subParts = [];
         if (pending.length > 0) subParts.push(`${pending.length} Airbnb reservation${pending.length === 1 ? '' : 's'}`);
-        if (entries.length > 0) subParts.push(`${entries.length} manual entr${entries.length === 1 ? 'y' : 'ies'}`);
+        if (manualCount > 0) subParts.push(`${manualCount} manual entr${manualCount === 1 ? 'y' : 'ies'}`);
         if (subParts.length) {
           cell.appendChild(el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' }, subParts.join(' · ')));
         }
@@ -1034,18 +1051,24 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
 
         const pending = getPendingAirbnbRows(entityId, monthKey);
         if (pending.length > 0) {
+          const autoEntry = getForecastEntries(fc.id, monthKey).find(e => e.auto);
           const refBox = el('div', {
             style: 'padding:10px 12px;margin-bottom:12px;border-radius:4px;background:rgba(99,102,241,0.06);border-left:3px solid #6366f1;font-size:12px;color:var(--text-muted)'
-          }, `${pending.length} Airbnb reservation${pending.length === 1 ? '' : 's'} already captured automatically for this month — no need to add them below.`);
+          }, `${pending.length} Airbnb reservation${pending.length === 1 ? '' : 's'} already captured automatically for this month` +
+             (autoEntry ? ` (${formatEUR(autoEntry.amount)})` : '') + ' — no need to add them below.');
           body.appendChild(refBox);
         }
 
         const listWrap = el('div', {});
         body.appendChild(listWrap);
 
+        // The Airbnb auto-entry (id: 'airbnb-auto') is machine-managed by the
+        // CSV import / pending-payment recalculation — it's shown above in the
+        // reference box, not in this editable list, so it can't be hand-edited
+        // out of sync with the actual Airbnb data.
         const refresh = () => {
           listWrap.innerHTML = '';
-          const entries = getForecastEntries(fc.id, monthKey);
+          const entries = getForecastEntries(fc.id, monthKey).filter(e => !e.auto);
 
           if (entries.length === 0) {
             listWrap.appendChild(el('div', { class: 'empty', style: 'padding:24px' }, 'No off-platform bookings yet — click "Add Booking" below.'));
@@ -1086,7 +1109,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
             listWrap.appendChild(tw);
           }
 
-          const total = getForecastEntries(fc.id, monthKey).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+          const total = getForecastEntries(fc.id, monthKey).filter(e => !e.auto).reduce((s, e) => s + (Number(e.amount) || 0), 0);
           listWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:12px 16px;margin-top:12px;border-top:1px solid var(--border);font-weight:600' },
             el('span', {}, 'Manual Bookings Total'),
             el('span', { class: 'num' }, formatEUR(total))

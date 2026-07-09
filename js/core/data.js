@@ -616,8 +616,11 @@ export function getForecastVsActual(type, entityId, year) {
     }
     actualExp = entityExpenses.filter(e => e.date >= start && e.date <= end).reduce((s, e) => s + toEUR(e.amount, e.currency, year), 0);
     const fd = fc?.months?.[key] || {};
-    // Fall back to scheduled LT rent when no manual forecast entry exists for this month
-    const forecastRev = fd.revenue || (ltRentByMonth?.[key] ?? 0);
+    // Fall back to scheduled LT rent only when no forecast entry exists at all
+    // for this month — `!= null` (not `||`) so an explicit revenue of 0 (e.g.
+    // "tenant moving out, no rent expected") is respected instead of being
+    // silently replaced by the scheduled rent.
+    const forecastRev = fd.revenue != null ? fd.revenue : (ltRentByMonth?.[key] ?? 0);
     const forecastExp = fd.expenses || 0;
     months.push({ key, forecastRev, forecastExp, actualRev, actualExp, revVariance: actualRev - forecastRev, expVariance: actualExp - forecastExp });
   }

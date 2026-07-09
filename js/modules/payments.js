@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, saveForecastMonth, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildReservationExpenseRefMap, getPeopleOwners, getPersonName } from '../core/data.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, upsertForecastEntry, removeForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildReservationExpenseRefMap, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -1304,6 +1304,10 @@ function openCSVImport() {
         el('span', { style: 'font-weight:500' }, completedFile.name),
         summary
       ));
+      if (rows.unrecognizedHeaders?.length) {
+        fileBlock.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:4px' },
+          `⚠ Column${rows.unrecognizedHeaders.length === 1 ? '' : 's'} not recognized (ignored): ${rows.unrecognizedHeaders.join(', ')}`));
+      }
       preview.appendChild(fileBlock);
     }
 
@@ -1350,6 +1354,10 @@ function openCSVImport() {
         el('span', { style: 'font-weight:500' }, pendingFile.name),
         summary
       ));
+      if (rows.unrecognizedHeaders?.length) {
+        fileBlock.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:4px' },
+          `⚠ Column${rows.unrecognizedHeaders.length === 1 ? '' : 's'} not recognized (ignored): ${rows.unrecognizedHeaders.join(', ')}`));
+      }
       preview.appendChild(fileBlock);
     }
   };
@@ -1579,7 +1587,7 @@ function openCSVImport() {
       // so re-importing the same CSV never double-counts.
       for (const { year, propertyId, monthKey, total } of forecastMap.values()) {
         const fc = getOrCreateForecast('property', propertyId, year);
-        saveForecastMonth(fc.id, monthKey, { revenue: total });
+        upsertAirbnbAutoForecastEntry(fc.id, monthKey, total);
       }
     }
     });
@@ -1640,56 +1648,70 @@ function fieldsChanged(existing, newFields) {
 function parseAirbnbCSV(text) {
   // Strip BOM, normalise line endings
   const clean = text.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const lines = clean.split('\n');
 
-  const parseLine = (line) => {
-    const fields = [];
-    let cur = '', inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const c = line[i];
-      if (c === '"') {
-        if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
-        else inQuote = !inQuote;
-      } else if (c === ',' && !inQuote) {
-        fields.push(cur.trim()); cur = '';
+  // Parse the whole file into rows of raw fields in a single pass, only
+  // splitting a row on '\n' when outside a quoted field. Splitting on '\n'
+  // first (the previous approach) breaks any quoted field that itself
+  // contains a newline (e.g. a multi-line guest note) — the remainder gets
+  // parsed as its own row with columns shifted out of alignment.
+  const rawRows = [];
+  {
+    let field = '', row = [], inQuote = false;
+    for (let i = 0; i < clean.length; i++) {
+      const c = clean[i];
+      if (inQuote) {
+        if (c === '"') { if (clean[i + 1] === '"') { field += '"'; i++; } else inQuote = false; }
+        else field += c;
+      } else if (c === '"') {
+        inQuote = true;
+      } else if (c === ',') {
+        row.push(field.trim()); field = '';
+      } else if (c === '\n') {
+        row.push(field.trim()); rawRows.push(row); row = []; field = '';
       } else {
-        cur += c;
+        field += c;
       }
     }
-    fields.push(cur.trim());
-    return fields;
-  };
+    if (field.length > 0 || row.length > 0) { row.push(field.trim()); rawRows.push(row); }
+  }
 
   const parseAmt = str => Math.abs(parseFloat((str || '').replace(/[^0-9.-]/g, '')) || 0);
 
-  // Find the header row (first non-empty line)
-  const headerLine = lines.find(l => l.trim());
-  if (!headerLine) return [];
-  const headers = parseLine(headerLine).map(h =>
+  // Find the header row (first row with any non-empty field)
+  const headerRowIdx = rawRows.findIndex(r => r.some(f => f));
+  if (headerRowIdx === -1) return [];
+  const headers = rawRows[headerRowIdx].map(h =>
     h.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
   );
 
-  // Flexible column lookup — tries each name until a match is found
+  // Flexible column lookup — tries each name until a match is found.
+  // recognizedIdx records every header index any candidate list actually
+  // matches (exact or prefix), independent of the per-row bounds check, so
+  // we can report which CSV columns the importer doesn't understand at all —
+  // those are silently dropped otherwise, with no signal to the user.
   const headerIdx = new Map(headers.map((h, i) => [h, i]));
+  const recognizedIdx = new Set();
   const col = (row, ...candidates) => {
     for (const name of candidates) {
       const exact = headerIdx.get(name);
-      if (exact != null && exact < row.length) return (row[exact] ?? '').trim();
+      if (exact != null) {
+        recognizedIdx.add(exact);
+        if (exact < row.length) return (row[exact] ?? '').trim();
+      }
       for (const [h, i] of headerIdx) {
-        if (h.startsWith(name) && i < row.length) return (row[i] ?? '').trim();
+        if (h.startsWith(name)) {
+          recognizedIdx.add(i);
+          if (i < row.length) return (row[i] ?? '').trim();
+        }
       }
     }
     return '';
   };
 
   const results = [];
-  let foundHeader = false;
 
-  for (const line of lines) {
-    if (!foundHeader) { if (line.trim() === headerLine.trim()) { foundHeader = true; } continue; }
-    if (!line.trim()) continue;
-
-    const row = parseLine(line);
+  for (const row of rawRows.slice(headerRowIdx + 1)) {
+    if (!row.some(f => f)) continue;
 
     // Transaction type — skip "Payout" rows (settlement rows, not reservation data)
     const type = col(row, 'type', 'transaction type') || 'Reservation';
@@ -1697,7 +1719,6 @@ function parseAirbnbCSV(text) {
 
     // Confirmation Code is the reservation idempotency key; combined with type for uniqueness
     const confirmationCode = col(row, 'confirmation code', 'confirmation', 'reservation code', 'reference', 'transaction id', 'trans id', 'code');
-    const airbnbKey = confirmationCode ? `${confirmationCode}|${type}` : null;
 
     // Dates
     const dateRaw        = col(row, 'date', 'paid date', 'payout date', 'transaction date');
@@ -1716,6 +1737,16 @@ function parseAirbnbCSV(text) {
     // Use the CSV's own "Gross earnings" column when present; otherwise amount + serviceFee
     const grossRaw    = col(row, 'gross earnings', 'gross earning', 'gross');
     const grossEarnings = grossRaw ? parseAmt(grossRaw) : (amount + serviceFee);
+    const listing = col(row, 'listing', 'listing name', 'property');
+
+    // Rows without a confirmation code (e.g. "Adjustment"/"Resolution
+    // Adjustment" rows Airbnb doesn't code) always fell through the airbnbKey
+    // match as brand-new, duplicating on every re-import of the same file.
+    // Fall back to a composite key from fields that are stable across
+    // identical re-exports of the same historical data.
+    const airbnbKey = confirmationCode
+      ? `${confirmationCode}|${type}`
+      : `noref|${type}|${date}|${amount.toFixed(2)}|${listing}`;
 
     results.push({
       date,
@@ -1735,10 +1766,15 @@ function parseAirbnbCSV(text) {
       avgNightExclCleaning: nights > 0 ? Math.round(((amount - cleaningFee) / nights) * 100) / 100 : 0,
       currency:             col(row, 'currency', 'currency code') || 'EUR',
       guest:                col(row, 'guest', 'guest name'),
-      listing:              col(row, 'listing', 'listing name', 'property')
+      listing
     });
   }
 
+  // Attached as a property on the array (rather than changing the return
+  // shape) so every existing call site — which all treat the result as a
+  // plain array of rows — keeps working unchanged; callers that want to
+  // surface the warning (the import preview) can opt in via this property.
+  results.unrecognizedHeaders = headers.filter((h, i) => h && !recognizedIdx.has(i));
   return results;
 }
 
@@ -1778,6 +1814,7 @@ function mergeReservationRows(rows) {
     }
   }
 
+  out.unrecognizedHeaders = rows.unrecognizedHeaders;
   return out;
 }
 
@@ -1795,6 +1832,24 @@ function parseDateStr(raw) {
   return null;
 }
 
+// Property forecast revenue is the sum of manual off-platform entries[] plus
+// one auto-managed entry tracking Airbnb pending totals — both use the same
+// entries[] mechanism (see core/data.js upsertForecastEntry, which derives
+// `revenue` from entries.reduce()), identified by a stable id so re-imports
+// update this one slot instead of either creating duplicates or (the prior
+// bug) overwriting the whole `revenue` field and silently discarding
+// whatever the other writer had contributed.
+const AIRBNB_AUTO_ENTRY_ID = 'airbnb-auto';
+
+function upsertAirbnbAutoForecastEntry(forecastId, monthKey, totalEUR) {
+  const rounded = Math.round(totalEUR * 100) / 100;
+  if (rounded > 0) {
+    upsertForecastEntry(forecastId, monthKey, { id: AIRBNB_AUTO_ENTRY_ID, description: 'Airbnb reservations (auto)', amount: rounded, notes: '', auto: true });
+  } else {
+    removeForecastEntry(forecastId, monthKey, AIRBNB_AUTO_ENTRY_ID);
+  }
+}
+
 // Recalculate forecast revenue for a property/month from remaining pending Airbnb payments.
 // Call after deleting any pending Airbnb payment so the forecast stays in sync.
 function recalcPendingAirbnbForecast(propertyId, monthKey) {
@@ -1802,9 +1857,9 @@ function recalcPendingAirbnbForecast(propertyId, monthKey) {
   const total = listActivePayments()
     .filter(p => p.propertyId === propertyId && p.source === 'airbnb' && p.status === 'pending'
       && (p.airbnbCheckIn || p.date || '').slice(0, 7) === monthKey)
-    .reduce((s, p) => s + (p.amount || 0), 0);
+    .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
   const fc = getOrCreateForecast('property', propertyId, year);
-  saveForecastMonth(fc.id, monthKey, { revenue: total });
+  upsertAirbnbAutoForecastEntry(fc.id, monthKey, total);
 }
 
 function exportCSV() {
