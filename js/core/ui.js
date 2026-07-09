@@ -509,6 +509,19 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
   trigger.onclick = e => { e.stopPropagation(); menu.style.display === 'none' ? (menu.style.display = '') : closeMenu(); };
   menu.onclick    = e => e.stopPropagation();
   document.addEventListener('click', closeMenu);
+  // Modules rebuild their DOM wholesale (innerHTML = '') on every refresh —
+  // including the ~60s background sync poll — so a fresh widget attaches a
+  // new listener above on every cycle. closeMenu's own self-removal only
+  // runs on the NEXT document click, so on an idle tab with no clicks these
+  // pile up indefinitely, each one holding this whole widget's DOM alive via
+  // its closure. Detect removal proactively instead of waiting for a click.
+  const detachObserver = new MutationObserver(() => {
+    if (!wrapper.isConnected) {
+      document.removeEventListener('click', closeMenu);
+      detachObserver.disconnect();
+    }
+  });
+  detachObserver.observe(document.body, { childList: true, subtree: true });
 
   wrapper.appendChild(trigger);
   wrapper.appendChild(menu);

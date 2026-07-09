@@ -5,6 +5,13 @@ import { newId, upsert, listActive } from './data.js';
 
 const SESSION_KEY = 'bt_session';
 const PBKDF2_ITERATIONS = 150000;
+// A session with no expiry at all (the previous behavior) never ends, so a
+// forged/leaked/abandoned localStorage session on a shared machine stays
+// valid indefinitely. Rolling idle timeout: every requireAuth() check that
+// finds a still-valid session extends it another SESSION_IDLE_MS, so an
+// actively-used app never logs anyone out — only a session untouched for
+// this long expires.
+const SESSION_IDLE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 function b64encode(bytes) { return btoa(String.fromCharCode(...bytes)); }
 function b64decode(str) { return Uint8Array.from(atob(str), c => c.charCodeAt(0)); }
@@ -58,7 +65,7 @@ export function getSession() {
 }
 
 export function setSession(user) {
-  const s = { userId: user.id, username: user.username, role: user.role, name: user.name };
+  const s = { userId: user.id, username: user.username, role: user.role, name: user.name, expiresAt: Date.now() + SESSION_IDLE_MS };
   localStorage.setItem(SESSION_KEY, JSON.stringify(s));
   state.session = s;
 }
@@ -75,17 +82,23 @@ export function requireAuth() {
     // continuing to pass this check indefinitely.
     const users = listActive('users');
     const stored = getSession();
-    const liveUser = stored ? users.find(u => u.id === stored.userId) : null;
+    // Sessions saved before expiresAt existed have no such field at all —
+    // `!= null` (not a plain falsy/undefined check) so those are treated as
+    // not-yet-expired and simply gain a real expiry on this check, rather
+    // than every existing user being logged out the moment this shipped.
+    const expired = stored?.expiresAt != null && Date.now() > stored.expiresAt;
+    const liveUser = (stored && !expired) ? users.find(u => u.id === stored.userId) : null;
     if (liveUser) {
       // Re-sync from the live record so a role/name change an admin makes
       // takes effect the next time this user's session is checked, instead
       // of being stuck with whatever was cached in localStorage at login.
-      state.session = { userId: liveUser.id, username: liveUser.username, role: liveUser.role, name: liveUser.name };
+      // Also rolls the idle-timeout expiry forward — see SESSION_IDLE_MS.
+      state.session = { userId: liveUser.id, username: liveUser.username, role: liveUser.role, name: liveUser.name, expiresAt: Date.now() + SESSION_IDLE_MS };
       localStorage.setItem(SESSION_KEY, JSON.stringify(state.session));
       resolve(state.session);
       return;
     }
-    if (stored) clearSession(); // session pointed at a deleted/missing account
+    if (stored) clearSession(); // session pointed at a deleted/missing account, or expired
     const screen = el('div', { id: 'login-screen', class: 'login-screen' });
     document.body.appendChild(screen);
     const hasGithubConfig = !!(state.github?.owner && state.github?.repo);

@@ -550,7 +550,7 @@ function buildUserFooter() {
   logoutBtn.className = 'btn';
   logoutBtn.style.cssText = 'width:100%;font-size:11px;padding:4px 8px';
   logoutBtn.textContent = 'Sign Out';
-  logoutBtn.onclick = () => { clearSession(); location.reload(); };
+  logoutBtn.onclick = () => { clearSession(); github.clearCachedDb(); location.reload(); };
   wrap.appendChild(nameEl);
   wrap.appendChild(roleEl);
   wrap.appendChild(logoutBtn);

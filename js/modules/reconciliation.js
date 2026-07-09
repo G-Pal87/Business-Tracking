@@ -1,5 +1,5 @@
 // Reconciliation – best-in-class heatmap dashboard
-import { el, fmtDate, drillDownModal } from '../core/ui.js';
+import { el, fmtDate, drillDownModal, escapeHtml } from '../core/ui.js';
 import { availableYears, formatEUR, buildReconciliationData, listActivePayments, listActive, toEUR } from '../core/data.js';
 
 export default {
@@ -483,7 +483,7 @@ function build() {
         tr.onmouseleave = () => tr.style.opacity = '';
         tr.onclick = () => openEntityModal(ent, yr);
         tr.innerHTML = `
-          <td style="font-weight:500">${ent.label}</td>
+          <td style="font-weight:500">${escapeHtml(ent.label)}</td>
           <td><span class="badge ${badgeCls}">${kindLabel}</span></td>
           <td class="right num">${formatEUR(ent.totExp)}</td>
           <td class="right num">${formatEUR(ent.totAct)}</td>
