@@ -4,7 +4,7 @@ import { el, openModal, closeModal, confirmDialog, toast, input, select, formRow
 import { upsert, softDelete, listActive, newId } from '../core/data.js';
 import { hashPassword } from '../core/auth.js';
 
-let _sortCol = -1, _sortDir = 1;
+let _sortCol = -1, _sortDir = 1, _usrSearch = '';
 
 export default {
   id: 'users',
@@ -80,7 +80,7 @@ function renderTable(container, wrap) {
   t.appendChild(tb);
   tw.appendChild(t);
   container.appendChild(tw);
-  attachSortFilter(tw, { initialCol: _sortCol, initialDir: _sortDir, onSortChange: (c, d) => { _sortCol = c; _sortDir = d; } });
+  attachSortFilter(tw, { initialCol: _sortCol, initialDir: _sortDir, initialSearch: _usrSearch, onSortChange: (c, d) => { _sortCol = c; _sortDir = d; }, onSearchChange: v => { _usrSearch = v; } });
 }
 
 function openForm(existing, wrap) {

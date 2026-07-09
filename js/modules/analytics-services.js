@@ -19,7 +19,7 @@ let gStatusFilter = new Set(); // Invoice Status — local, service-specific
 const CHART_IDS     = ['svc-client-bar', 'svc-month-bar', 'svc-status-donut', 'svc-outstanding-bar', 'svc-aging-bar'];
 const STATUS_COLORS = { draft: '#8b93b0', sent: '#f59e0b', paid: '#10b981', overdue: '#ef4444' };
 
-let _invoiceTableSortCol = -1, _invoiceTableSortDir = 1;
+let _invoiceTableSortCol = -1, _invoiceTableSortDir = 1, _invoiceTableSearch = '';
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -1400,7 +1400,7 @@ function buildInvoiceTable(container, { base }) {
   const tableWrap = el('div', { class: 'table-wrap' });
   tableWrap.appendChild(table);
   container.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _invoiceTableSortCol, initialDir: _invoiceTableSortDir, onSortChange: (c, d) => { _invoiceTableSortCol = c; _invoiceTableSortDir = d; } });
+  attachSortFilter(tableWrap, { initialCol: _invoiceTableSortCol, initialDir: _invoiceTableSortDir, initialSearch: _invoiceTableSearch, onSortChange: (c, d) => { _invoiceTableSortCol = c; _invoiceTableSortDir = d; }, onSearchChange: v => { _invoiceTableSearch = v; } });
 
   const totalEUR = rows.reduce((s, r) => s + r._eur, 0);
   container.appendChild(el('div', {

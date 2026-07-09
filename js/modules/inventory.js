@@ -4,7 +4,7 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import { upsert, softDelete, listActive, byId, newId, formatMoney, totalRemaining } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
 
-let _sortCol = -1, _sortDir = 1;
+let _sortCol = -1, _sortDir = 1, _invSearch = '';
 
 export default {
   id: 'inventory',
@@ -197,7 +197,7 @@ function build() {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _sortCol, initialDir: _sortDir, onSortChange: (c, d) => { _sortCol = c; _sortDir = d; } });
+  attachSortFilter(tableWrap, { initialCol: _sortCol, initialDir: _sortDir, initialSearch: _invSearch, onSortChange: (c, d) => { _sortCol = c; _sortDir = d; }, onSearchChange: v => { _invSearch = v; } });
 
   const render = () => {
     insightsWrap.innerHTML = '';

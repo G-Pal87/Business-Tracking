@@ -7,8 +7,8 @@ import { navigate } from '../core/router.js';
 
 let _allPaySortCol = -1, _allPaySortDir = 1;
 let _allPayPage = 0, _allPayPageSize = 100, _allPaySearch = '';
-let _schedSortCol  = -1, _schedSortDir  = 1;
-let _upcomSortCol  = -1, _upcomSortDir  = 1;
+let _schedSortCol  = -1, _schedSortDir  = 1, _schedSearch = '';
+let _upcomSortCol  = -1, _upcomSortDir  = 1, _upcomSearch = '';
 let _payUpdateFn = null;
 
 export default {
@@ -617,7 +617,7 @@ function buildScheduleSection(wrap) {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _schedSortCol, initialDir: _schedSortDir, onSortChange: (c, d) => { _schedSortCol = c; _schedSortDir = d; } });
+  attachSortFilter(tableWrap, { initialCol: _schedSortCol, initialDir: _schedSortDir, initialSearch: _schedSearch, onSortChange: (c, d) => { _schedSortCol = c; _schedSortDir = d; }, onSearchChange: v => { _schedSearch = v; } });
 
   let selected = new Set();
 
@@ -952,7 +952,7 @@ function buildUpcomingSection(wrap) {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _upcomSortCol, initialDir: _upcomSortDir, onSortChange: (c, d) => { _upcomSortCol = c; _upcomSortDir = d; } });
+  attachSortFilter(tableWrap, { initialCol: _upcomSortCol, initialDir: _upcomSortDir, initialSearch: _upcomSearch, onSortChange: (c, d) => { _upcomSortCol = c; _upcomSortDir = d; }, onSearchChange: v => { _upcomSearch = v; } });
 
   const render = () => {
     const now = new Date();

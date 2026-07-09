@@ -31,7 +31,7 @@ const REV_COLS = [
 let gF = createFilterState();
 let gScope = 'company'; // 'company' | 'all'
 
-let _revSortCol = -1, _revSortDir = 1;
+let _revSortCol = -1, _revSortDir = 1, _revSearch = '';
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -972,7 +972,7 @@ function buildRevenueTable(container, { payments, invoices }) {
   const wrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(table);
   container.appendChild(wrap);
-  attachSortFilter(wrap, { initialCol: _revSortCol, initialDir: _revSortDir, onSortChange: (c, d) => { _revSortCol = c; _revSortDir = d; } });
+  attachSortFilter(wrap, { initialCol: _revSortCol, initialDir: _revSortDir, initialSearch: _revSearch, onSortChange: (c, d) => { _revSortCol = c; _revSortDir = d; }, onSearchChange: v => { _revSearch = v; } });
   container.appendChild(el('div', { style: 'display:flex;justify-content:space-between;margin-top:8px;font-size:13px' },
     el('span', { style: 'color:var(--text-muted)' }, `${rows.length} record(s)`),
     el('strong', { class: 'num' }, `Total: ${formatEUR(rows.reduce((s, r) => s + (r._eur || 0), 0))}`)

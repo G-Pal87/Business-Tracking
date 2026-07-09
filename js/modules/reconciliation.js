@@ -13,6 +13,13 @@ export default {
 
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+// Filter selections persisted at module scope so they survive refresh()/
+// re-navigation — build() otherwise recreates yearSel/kindFilter/statusFilter
+// from scratch on every visit, silently resetting them to today's defaults.
+let _recYear   = null; // null = not yet chosen; falls back to curYear
+let _recKind   = 'all';
+let _recStatus = 'all';
+
 const ENT_COLS = [
   { key: 'entity',      label: 'Entity' },
   { key: 'type',        label: 'Type' },
@@ -160,18 +167,17 @@ function build() {
   // Only show years with actual data, capped at current year (future years have nothing to reconcile)
   const yearOpts = [...new Set([curYear, ...availableYears().filter(y => y <= curYear)])].sort().reverse();
 
+  if (_recYear === null || !yearOpts.includes(_recYear)) _recYear = curYear;
+
   const yearSel = document.createElement('select');
   yearSel.className = 'form-control';
   yearSel.style.cssText = 'width:90px;font-size:13px';
   for (const y of yearOpts) {
     const opt = document.createElement('option');
     opt.value = y; opt.textContent = y;
-    if (y === curYear) opt.selected = true;
+    if (y === _recYear) opt.selected = true;
     yearSel.appendChild(opt);
   }
-
-  let kindFilter   = 'all';
-  let statusFilter = 'all';
 
   function makeFilterGroup(items, getVal, setVal) {
     const grp = el('div', { style: 'display:inline-flex;border:1px solid var(--border);border-radius:6px;overflow:hidden' });
@@ -197,11 +203,11 @@ function build() {
 
   const kindGrp = makeFilterGroup(
     [{ key: 'all', label: 'All' }, { key: 'lt', label: 'LT' }, { key: 'st', label: 'ST' }, { key: 'service', label: 'Services' }],
-    () => kindFilter, v => kindFilter = v
+    () => _recKind, v => _recKind = v
   );
   const statusGrp = makeFilterGroup(
     [{ key: 'all', label: 'All' }, { key: 'problem', label: 'Problems' }, { key: 'reconciled', label: 'Reconciled' }],
-    () => statusFilter, v => statusFilter = v
+    () => _recStatus, v => _recStatus = v
   );
 
   const sep = el('div', { style: 'width:1px;height:24px;background:var(--border)' });
@@ -230,9 +236,9 @@ function build() {
     const withData    = allEntities.filter(e => e.totExp > 0 || e.totAct > 0);
 
     const filtered = withData.filter(e => {
-      if (kindFilter !== 'all' && e.kind !== kindFilter) return false;
-      if (statusFilter === 'problem')    return e.months.some(m => { const s = cellStatus(m); return s === 'missing' || s === 'partial'; });
-      if (statusFilter === 'reconciled') return e.months.every(m => { const s = cellStatus(m); return s !== 'missing' && s !== 'partial'; }) && (e.totAct > 0 || e.totExp > 0);
+      if (_recKind !== 'all' && e.kind !== _recKind) return false;
+      if (_recStatus === 'problem')    return e.months.some(m => { const s = cellStatus(m); return s === 'missing' || s === 'partial'; });
+      if (_recStatus === 'reconciled') return e.months.every(m => { const s = cellStatus(m); return s !== 'missing' && s !== 'partial'; }) && (e.totAct > 0 || e.totExp > 0);
       return true;
     });
 
@@ -524,7 +530,7 @@ function build() {
     container.appendChild(el('div', { class: 'table-wrap' }, t));
   }
 
-  yearSel.onchange = render;
+  yearSel.onchange = () => { _recYear = yearSel.value; render(); };
   render();
   return wrap;
 }

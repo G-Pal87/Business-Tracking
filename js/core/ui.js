@@ -278,11 +278,11 @@ export function monthLabel(yyyymm) {
 }
 
 // ========== Table sort + filter ==========
-export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', initialCol = -1, initialDir = 1, onSortChange = null } = {}) {
-  let sortCol = initialCol, sortDir = initialDir, searchTerm = '';
+export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', initialCol = -1, initialDir = 1, initialSearch = '', onSortChange = null, onSearchChange = null } = {}) {
+  let sortCol = initialCol, sortDir = initialDir, searchTerm = initialSearch.toLowerCase();
 
   const searchWrap = el('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:8px' });
-  const searchInput = el('input', { type: 'search', class: 'input', placeholder, style: 'max-width:220px;font-size:13px' });
+  const searchInput = el('input', { type: 'search', class: 'input', placeholder, value: initialSearch, style: 'max-width:220px;font-size:13px' });
   searchWrap.appendChild(searchInput);
   tableWrap.parentNode.insertBefore(searchWrap, tableWrap);
 
@@ -365,6 +365,7 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
 
   searchInput.addEventListener('input', () => {
     searchTerm = searchInput.value.toLowerCase();
+    onSearchChange?.(searchInput.value);
     applyFilter();
   });
 

@@ -7,8 +7,8 @@ import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
-let _fcBreakSortCol  = -1, _fcBreakSortDir  = 1;
-let _fcStreamSortCol = -1, _fcStreamSortDir = 1;
+let _fcBreakSortCol  = -1, _fcBreakSortDir  = 1, _fcBreakSearch  = '';
+let _fcStreamSortCol = -1, _fcStreamSortDir = 1, _fcStreamSearch = '';
 
 // Property/Service Forecast filter selections — persisted at module scope so
 // they survive refresh() calls triggered by background data syncs (initial
@@ -340,12 +340,12 @@ function buildPropertySection(wrap) {
     const bCard = buildPropertyBreakdownCard(selIds, year, fcCache);
     breakdownWrap.appendChild(bCard);
     const bTw = bCard.querySelector('.table-wrap');
-    if (bTw) attachSortFilter(bTw, { initialCol: _fcBreakSortCol, initialDir: _fcBreakSortDir, onSortChange: (c, d) => { _fcBreakSortCol = c; _fcBreakSortDir = d; } });
+    if (bTw) attachSortFilter(bTw, { initialCol: _fcBreakSortCol, initialDir: _fcBreakSortDir, initialSearch: _fcBreakSearch, onSortChange: (c, d) => { _fcBreakSortCol = c; _fcBreakSortDir = d; }, onSearchChange: v => { _fcBreakSearch = v; } });
     const sCard = buildStreamBreakdownCard(selIds, year, fcCache);
     if (sCard) {
       breakdownWrap.appendChild(sCard);
       const sTw = sCard.querySelector('.table-wrap');
-      if (sTw) attachSortFilter(sTw, { initialCol: _fcStreamSortCol, initialDir: _fcStreamSortDir, onSortChange: (c, d) => { _fcStreamSortCol = c; _fcStreamSortDir = d; } });
+      if (sTw) attachSortFilter(sTw, { initialCol: _fcStreamSortCol, initialDir: _fcStreamSortDir, initialSearch: _fcStreamSearch, onSortChange: (c, d) => { _fcStreamSortCol = c; _fcStreamSortDir = d; }, onSearchChange: v => { _fcStreamSearch = v; } });
     }
   };
 
