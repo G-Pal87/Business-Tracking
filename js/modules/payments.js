@@ -1171,14 +1171,16 @@ function openCSVImport() {
     { key: 'listing', label: 'Listing (CSV)' },
     { key: 'guest', label: 'Guest' },
     { key: 'confirmationCode', label: 'Conf. Code' },
-    { key: 'amount', label: 'Amount', right: true, format: (v, r) => v != null ? formatMoney(v, r.currency || 'EUR') : '—' }
+    { key: 'amount', label: 'Amount', right: true, format: (v, r) => v != null ? formatMoney(v, r.currency || 'EUR') : '—' },
+    { key: 'reason', label: 'Reason' }
   ];
   const REMOVE_COLS = [
     { key: 'date', label: 'Date' },
     { key: 'propName', label: 'Property' },
     { key: 'notes', label: 'Guest / Listing' },
     { key: 'confirmationCode', label: 'Conf. Code' },
-    { key: 'amount', label: 'Amount', right: true, format: (v, r) => formatMoney(v, r.currency || 'EUR') }
+    { key: 'amount', label: 'Amount', right: true, format: (v, r) => formatMoney(v, r.currency || 'EUR') },
+    { key: 'reason', label: 'Reason' }
   ];
 
   // Renders a small table for a list of preview rows. Kept inline (not a
@@ -1248,14 +1250,21 @@ function openCSVImport() {
       const existingKeySet = new Set(allPays.filter(p => p.airbnbKey).map(p => p.airbnbKey));
       const toDeleteRows = allPays
         .filter(p => p.source === 'airbnb' && p.airbnbKey && csvPropertyIds.has(p.propertyId) && !csvKeys.has(p.airbnbKey))
-        .map(p => ({ ...p, propName: byId('properties', p.propertyId)?.name || '—' }));
+        .map(p => ({ ...p, propName: byId('properties', p.propertyId)?.name || '—',
+          reason: 'Airbnb key no longer present in this completed-payout export — reservation appears cancelled/removed on Airbnb' }));
 
       const addedRows = [], updatedRows = [], skippedRows = [];
       for (const row of rows) {
         const pmatch = findProp(row.listing);
-        if (!pmatch) { skippedRows.push({ ...row, propName: '—' }); continue; }
-        const entry = { ...row, propName: pmatch.name, currency: row.currency || pmatch.currency };
+        if (!pmatch) {
+          skippedRows.push({ ...row, propName: '—', reason: `No property matches listing "${row.listing || '—'}" — check property mapping` });
+          continue;
+        }
         const exists = row.airbnbKey ? existingKeySet.has(row.airbnbKey) : false;
+        const reason = exists
+          ? 'Existing payment matched by Airbnb key — will be overwritten with the latest CSV values'
+          : 'No existing payment matches this Airbnb key — recorded as a new paid transaction';
+        const entry = { ...row, propName: pmatch.name, currency: row.currency || pmatch.currency, reason };
         (exists ? updatedRows : addedRows).push(entry);
       }
 
@@ -1293,11 +1302,17 @@ function openCSVImport() {
       const addedRows = [], skippedRows = [], materializedRows = [];
       for (const row of rows) {
         const pmatch = findProp(row.listing);
-        if (!pmatch) { skippedRows.push({ ...row, propName: '—' }); continue; }
+        if (!pmatch) {
+          skippedRows.push({ ...row, propName: '—', reason: `No property matches listing "${row.listing || '—'}" — check property mapping` });
+          continue;
+        }
         const entry = { ...row, propName: pmatch.name, currency: row.currency || pmatch.currency };
-        if (row.confirmationCode && paidCodeSet.has(row.confirmationCode)) { materializedRows.push(entry); continue; }
+        if (row.confirmationCode && paidCodeSet.has(row.confirmationCode)) {
+          materializedRows.push({ ...entry, reason: 'Confirmation code is already recorded as paid — marked as materialized instead of pending' });
+          continue;
+        }
         const exists = row.airbnbKey ? existingKeySet.has(row.airbnbKey) : false;
-        if (!exists) addedRows.push(entry);
+        if (!exists) addedRows.push({ ...entry, reason: 'No existing pending payment matches this Airbnb key — recorded as a new pending reservation' });
       }
 
       const fileBlock = el('div', { style: 'margin-bottom:10px' });
