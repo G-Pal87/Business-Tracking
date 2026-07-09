@@ -389,7 +389,19 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
 
       if (localChanged && remoteChanged && baseItem) {
         // Both sides edited a known common ancestor → genuine concurrent-edit conflict.
-        conflicts.push({ collection: col, id: item.id });
+        // Carry enough detail to diagnose from the console without reproducing —
+        // this exact 3-way check has been the source of confusing false positives
+        // (e.g. a write that re-stamps updatedAt without changing any real field).
+        conflicts.push({
+          collection: col,
+          id: item.id,
+          localUpdatedAt:  item.updatedAt ?? null,
+          localUpdatedBy:  item.updatedBy ?? null,
+          remoteUpdatedAt: remoteItem.updatedAt ?? null,
+          remoteUpdatedBy: remoteItem.updatedBy ?? null,
+          baseUpdatedAt:   baseItem.updatedAt ?? null,
+          baseUpdatedBy:   baseItem.updatedBy ?? null
+        });
         continue;
       }
 

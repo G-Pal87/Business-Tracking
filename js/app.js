@@ -278,6 +278,10 @@ async function boot() {
         updateSyncStatus('offline', 'Push conflict — refresh required', true);
         const cols = [...new Set((e.conflicts || []).map(c => c.collection))];
         const detail = cols.length ? ` Affected: ${cols.join(', ')}.` : '';
+        // Full per-record detail so a real conflict can be diagnosed straight from
+        // the console — copy/paste this table if reporting the issue.
+        console.error('[BT] Sync conflict — conflicting records:', e.conflicts);
+        if (typeof console.table === 'function' && (e.conflicts || []).length) console.table(e.conflicts);
         // Reloading resolves this by keeping whichever side has the later
         // timestamp — it does not re-check for the conflict. If the other
         // person's edit happens to be newer, reloading can silently discard
