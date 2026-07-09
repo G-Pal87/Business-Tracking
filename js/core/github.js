@@ -393,7 +393,16 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
         continue;
       }
 
-      const remoteChanged = !baseItem || remoteItem.updatedAt !== baseItem.updatedAt;
+      // Deliberately direction-sensitive: only a remote timestamp NEWER than the
+      // known base proves someone else genuinely edited this record since we
+      // last saw it. A remote read that comes back OLDER than base is GitHub's
+      // read path serving a stale/lagging replica of a write we already know
+      // succeeded (confirmed directly: a live conflict here showed 232 records
+      // all reading a remote updatedAt from over an hour earlier than the base
+      // this same session had already confirmed) — not a real edit by anyone.
+      // Treating "different" as "changed" regardless of direction is what
+      // manufactured a "concurrent edit" conflict out of nothing but CDN lag.
+      const remoteChanged = !baseItem || remoteItem.updatedAt > baseItem.updatedAt;
 
       if (localChanged && remoteChanged && baseItem) {
         // Both sides edited a known common ancestor → genuine concurrent-edit conflict.
@@ -425,11 +434,14 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
 
     // Propagate local hard-deletes/purges, but never let a local deletion wipe a
     // record the remote has independently modified since the common ancestor.
+    // Same direction-sensitivity as above: only a remote updatedAt NEWER than
+    // base means it was genuinely touched since; a stale/lagging read that
+    // comes back older (or exactly equal) hasn't, so the delete still applies.
     for (const id of baseMap.keys()) {
       if (localMap.has(id)) continue;
       const remoteItem = merged.get(id);
       const baseItem   = baseMap.get(id);
-      if (!remoteItem || !baseItem || remoteItem.updatedAt === baseItem.updatedAt) {
+      if (!remoteItem || !baseItem || remoteItem.updatedAt <= baseItem.updatedAt) {
         merged.delete(id);
       }
     }
