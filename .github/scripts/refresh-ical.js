@@ -12,6 +12,7 @@
 const fs     = require('fs');
 const path   = require('path');
 const crypto = require('crypto');
+const { execSync } = require('child_process');
 
 // ── Constants (mirrors config.js / str-rates.js) ──────────────────────────────
 const AIRBNB_GUEST_FEE_PCT = 14;
@@ -345,21 +346,78 @@ function feedSig(feed) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+//
+// Split deliberately into two phases so the only db.json this script ever
+// bases a write decision on is one read a moment before that write — never
+// the one from before the network fetches below, which can take minutes
+// (15-40s timeouts times several proxy fallbacks, times however many
+// properties). Reading once at the top and writing the same in-memory object
+// back at the end (the original design) meant any real edit the app pushed
+// during that window — including a permanent delete — was silently
+// overwritten by this script's stale copy of everything except strCalendars.
+//
+// Phase 1 (slow): figure out which calendars to fetch, and fetch each one's
+// raw iCal data. Deliberately does not decide what to write yet.
+// Phase 2 (fast): re-pull the absolute latest main, re-read db.json fresh,
+// and apply Phase 1's fetch results to THAT copy. No network I/O in this
+// phase, so the window between "fresh read" and "write" is milliseconds.
 async function main() {
   const root   = path.resolve(__dirname, '..', '..');
   const dbPath = path.join(root, 'data', 'db.json');
-  const db     = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+
+  const initialDb = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+  initialDb.strCalendars = initialDb.strCalendars || [];
+
+  const stPropsWithUrl = listActive(initialDb, 'properties')
+    .filter(p => p.type === 'short_term' && p.airbnbCalUrl);
+  const calendarsToFetch = initialDb.strCalendars.filter(c => !c.deletedAt && c.url);
+
+  if (!calendarsToFetch.length && stPropsWithUrl.every(p =>
+    initialDb.strCalendars.some(c => c.propertyId === p.id && !c.deletedAt)
+  )) {
+    console.log('No active strCalendar entries with URLs — nothing to refresh.');
+    return;
+  }
+
+  // Phase 1: fetch raw iCal data only — no db.json decisions made here.
+  const fetchResults = new Map(); // propertyId -> { freshBlocks } | { error }
+  for (const cal of calendarsToFetch) {
+    const shortUrl = cal.url.slice(0, 70) + (cal.url.length > 70 ? '…' : '');
+    console.log(`\nFetching iCal for ${cal.propertyId} (${shortUrl})`);
+    try {
+      const text = await fetchICal(cal.url);
+      const events = parseICal(text);
+      const freshBlocks = events
+        .filter(e => e.start && e.end)
+        .map(e => ({ start: e.start, end: e.end, uid: (e.uid || '').trim(), summary: (e.summary || '').trim() }));
+      fetchResults.set(cal.propertyId, { freshBlocks });
+    } catch (err) {
+      console.error(`  FAILED: ${err.message}`);
+      fetchResults.set(cal.propertyId, { error: err.message });
+    }
+  }
+
+  // Phase 2: re-pull + re-read fresh, right before any write decision.
+  try {
+    execSync('git pull --ff-only origin main', { cwd: root, stdio: 'inherit' });
+  } catch (err) {
+    console.error('git pull failed — aborting rather than write against a stale checkout:', err.message);
+    process.exit(1);
+  }
+  const db = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+  db.strCalendars = db.strCalendars || [];
+
+  let dbChanged = false;
+  const changedPropIds = new Set();
 
   // Bootstrap strCalendars records for properties that have an airbnbCalUrl
   // but have never gotten a first successful browser-side sync (the only
   // other place a record is created). Without this, a property whose first
   // fetch attempt fails (dead proxy, CORS hiccup, tab never opened) has no
-  // strCalendars entry — and since this loop only refreshes *existing*
+  // strCalendars entry — and since the loop below only refreshes *existing*
   // entries, it would silently never be picked up by any future cron run.
-  db.strCalendars = db.strCalendars || [];
-  const stPropsWithUrl = listActive(db, 'properties')
-    .filter(p => p.type === 'short_term' && p.airbnbCalUrl);
-  let bootstrapped = false;
+  // Re-checked against the FRESH db so this can never create a duplicate
+  // entry the app (or a concurrent run of this same script) already added.
   for (const prop of stPropsWithUrl) {
     const existing = db.strCalendars.find(c => c.propertyId === prop.id && !c.deletedAt);
     if (!existing) {
@@ -370,50 +428,36 @@ async function main() {
         blocks: []
       });
       console.log(`Bootstrapped missing strCalendars record for ${prop.id} (${prop.name})`);
-      bootstrapped = true;
+      dbChanged = true;
     }
   }
 
-  const calendars = (db.strCalendars || []).filter(c => !c.deletedAt && c.url);
-  if (!calendars.length) {
-    console.log('No active strCalendar entries with URLs — nothing to refresh.');
-    return;
-  }
+  for (const cal of db.strCalendars.filter(c => !c.deletedAt && c.url)) {
+    const result = fetchResults.get(cal.propertyId);
+    if (!result || result.error) continue; // never fetched, or fetch failed — leave untouched
 
-  let dbChanged = bootstrapped;
-  const changedPropIds = new Set();
+    // Merged against THIS calendar's blocks as they stand in the fresh
+    // read — not the (possibly now-stale) copy from Phase 1 — so a browser-
+    // side sync that landed during the fetch window is never clobbered.
+    const mergedBlocks = mergeBlocks(cal.blocks, result.freshBlocks, todayStr())
+      .sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
 
-  for (const cal of calendars) {
-    const shortUrl = cal.url.slice(0, 70) + (cal.url.length > 70 ? '…' : '');
-    console.log(`\nFetching iCal for ${cal.propertyId} (${shortUrl})`);
-    try {
-      const text = await fetchICal(cal.url);
-      const events = parseICal(text);
-      const freshBlocks = events
-        .filter(e => e.start && e.end)
-        .map(e => ({ start: e.start, end: e.end, uid: (e.uid || '').trim(), summary: (e.summary || '').trim() }));
-      const mergedBlocks = mergeBlocks(cal.blocks, freshBlocks, todayStr())
-        .sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
+    // Normalise existing blocks the same way before comparing so ordering
+    // differences in the iCal feed don't trigger a spurious commit every run.
+    const normOld = (cal.blocks || [])
+      .map(b => ({ start: b.start, end: b.end, uid: (b.uid || '').trim(), summary: (b.summary || '').trim() }))
+      .sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
 
-      // Normalise existing blocks the same way before comparing so ordering
-      // differences in the iCal feed don't trigger a spurious commit every run.
-      const normOld = (cal.blocks || [])
-        .map(b => ({ start: b.start, end: b.end, uid: (b.uid || '').trim(), summary: (b.summary || '').trim() }))
-        .sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
-
-      const oldSig = JSON.stringify(normOld);
-      const newSig = JSON.stringify(mergedBlocks);
-      if (oldSig === newSig) {
-        console.log(`  No changes (${mergedBlocks.length} block(s))`);
-      } else {
-        console.log(`  Updated: ${(cal.blocks||[]).length} → ${mergedBlocks.length} block(s)`);
-        cal.blocks      = mergedBlocks;
-        cal.lastFetched = new Date().toISOString();
-        dbChanged = true;
-        changedPropIds.add(cal.propertyId);
-      }
-    } catch (err) {
-      console.error(`  FAILED: ${err.message}`);
+    const oldSig = JSON.stringify(normOld);
+    const newSig = JSON.stringify(mergedBlocks);
+    if (oldSig === newSig) {
+      console.log(`${cal.propertyId}: no changes (${mergedBlocks.length} block(s))`);
+    } else {
+      console.log(`${cal.propertyId}: updated ${(cal.blocks || []).length} → ${mergedBlocks.length} block(s)`);
+      cal.blocks      = mergedBlocks;
+      cal.lastFetched = new Date().toISOString();
+      dbChanged = true;
+      changedPropIds.add(cal.propertyId);
     }
   }
 
