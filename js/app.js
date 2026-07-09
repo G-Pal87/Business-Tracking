@@ -239,6 +239,14 @@ async function boot() {
   };
 
   const doSave = async () => {
+    // Kicked by Settings → "Disconnect other sessions" from elsewhere. This
+    // tab must not push again — it's exactly what let a stale, pre-fix session
+    // keep reverting someone else's saves; local edits still exist, they just
+    // wait for the user to reload rather than fight over data/db.json.
+    if (state.github.disconnected) {
+      updateSyncStatus('offline', 'Disconnected remotely — reload to resync', true);
+      return;
+    }
     if (!initialSyncDone) {
       pendingSaveBeforeSync = true;
       updateSyncStatus('syncing', 'Waiting for pull before pushing…');
@@ -317,6 +325,7 @@ async function boot() {
   // 3-way-merges the current remote, so their changes converge safely there.
   let resyncing = false;
   const backgroundResync = async () => {
+    if (state.github.disconnected) return; // kicked — no further GitHub activity from this tab
     if (resyncing) return;
     if (!initialSyncDone) return;
     if (!state.github.token || !state.github.owner || !state.github.repo) return;
