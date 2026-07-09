@@ -171,6 +171,16 @@ async function doPushDb(message = 'Update data') {
     'Content-Type':  'application/json'
   };
 
+  // Captured now, before the network round-trip below (which can take several
+  // retries under contention) — this is the instant that actually reflects what
+  // `snapshot` contains. Stamping state.db._syncedAt with Date.now() AFTER the
+  // round-trip instead would mark this moment as "confirmed synced" even though
+  // it includes edits made *after* snapshot was taken (which were never part of
+  // this push's payload) — mergeLocalPending compares a record's createdAt against
+  // _syncedAt to decide whether it's a genuine unsynced edit, so a too-late
+  // _syncedAt makes a real new record made mid-push look already-synced and
+  // silently discards it on the next reload.
+  const snapshotTakenAt = Date.now();
   const snapshot = structuredClone(state.db);
   // Never push the token to GitHub — strip it from appConfig before computing content
   if (snapshot.appConfig?.github?.token) delete snapshot.appConfig.github.token;
@@ -265,10 +275,12 @@ async function doPushDb(message = 'Update data') {
     state.github.lastSyncError = null;
     state.github.connected    = true;
     state.github.usingCache   = false;
-    // Local state is now consistent with this remote — advance the sync marker so
-    // the next reload's mergeLocalPending only treats genuinely newer local edits
-    // as offline changes.
-    state.db._syncedAt = Date.now();
+    // Local state is now consistent with this remote as of snapshotTakenAt — NOT
+    // Date.now(). Anything created/edited after that instant (mid-flight, during
+    // the retries above) was never part of `snapshot`/this push's payload, and
+    // must still compare as newer than _syncedAt so mergeLocalPending treats it
+    // as a genuine unsynced edit on the next reload instead of discarding it.
+    state.db._syncedAt = snapshotTakenAt;
 
     // Adopt remote-only additions, but never re-add items permanently deleted
     // during this push (items that were in snapshot but are now gone from state.db).
