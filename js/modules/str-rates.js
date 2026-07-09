@@ -42,6 +42,14 @@ function daysInMonth(year, month1) { return new Date(Date.UTC(year, month1, 0)).
 function checkInOf(p)  { return p.airbnbCheckIn  || p.checkIn  || ''; }
 function checkOutOf(p) { return p.airbnbCheckOut || p.checkOut || ''; }
 
+// Airbnb payout adjustments (Resolution Adjustment, Resolution Payout, Cancellation
+// Fee, Adjustment) share the same check-in/check-out dates as the "Reservation"
+// record they adjust. Counting them as separate nights double-counts occupancy
+// and revenue for that stay.
+function isReservationNight(p) {
+  return !(p.source === 'airbnb' && p.airbnbType && p.airbnbType !== 'Reservation');
+}
+
 function avgNightOf(p) {
   if (p.avgNightExclCleaning != null) return p.avgNightExclCleaning;
   if (p.avgNightlyRate != null)       return p.avgNightlyRate;
@@ -285,7 +293,8 @@ function buildMonthlyStats(propertyId, anchor, numMonths = 12) {
     p.propertyId === propertyId &&
     p.stream === 'short_term_rental' &&
     p.status !== 'materialized' &&
-    checkInOf(p) && checkOutOf(p)
+    checkInOf(p) && checkOutOf(p) &&
+    isReservationNight(p)
   );
   const months = [];
   let cur = anchor;
@@ -323,7 +332,8 @@ function buildOccupancyByYear(propertyId, month1) {
   const mo = String(month1).padStart(2, '0');
   const bookings = listActivePayments().filter(p =>
     p.propertyId === propertyId && p.stream === 'short_term_rental' &&
-    p.status !== 'materialized' && checkInOf(p) && checkOutOf(p)
+    p.status !== 'materialized' && checkInOf(p) && checkOutOf(p) &&
+    isReservationNight(p)
   );
   const byYear = new Map();
   for (const p of bookings) {
@@ -391,8 +401,8 @@ function renderYearComparisonTable(data, month1, ccy) {
 
     // Occupancy + progress bar
     const occWrap = el('div', { style: 'display:flex;align-items:center;gap:6px' });
-    const track = el('div', { style: 'flex:1;height:6px;border-radius:3px;background:var(--border)' });
-    const fill  = el('div', { style: `height:6px;border-radius:3px;background:${occColor};width:${Math.round(d.occ * 100)}%` });
+    const track = el('div', { style: 'flex:1;height:6px;border-radius:3px;background:var(--border);overflow:hidden' });
+    const fill  = el('div', { style: `height:6px;border-radius:3px;background:${occColor};width:${Math.min(100, Math.round(d.occ * 100))}%` });
     track.appendChild(fill);
     occWrap.appendChild(track);
     occWrap.appendChild(el('div', { style: 'font-size:12px;font-weight:600;color:var(--text);min-width:36px;text-align:right' },
@@ -746,7 +756,8 @@ function computeRecommendedADR(propertyId, month1) {
   const mo = String(month1).padStart(2, '0');
   const bookings = listActivePayments().filter(p =>
     p.propertyId === propertyId && p.stream === 'short_term_rental' &&
-    p.status !== 'materialized' && checkInOf(p) && checkOutOf(p)
+    p.status !== 'materialized' && checkInOf(p) && checkOutOf(p) &&
+    isReservationNight(p)
   );
   let sum = 0, n = 0;
   for (const p of bookings) {
