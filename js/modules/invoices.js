@@ -64,7 +64,7 @@ function invDrillRows(invs) {
   return invs.map(i => ({ ...i, clientName: byId('clients', i.clientId)?.name || '-', eur: toEUR(i.total, i.currency) }));
 }
 
-let _sortCol = -1, _sortDir = 1;
+let _sortCol = -1, _sortDir = 1, _invSearch = '';
 let _invUpdateFn = null;
 
 export default {
@@ -384,7 +384,7 @@ function build() {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _sortCol, initialDir: _sortDir, onSortChange: (c, d) => { _sortCol = c; _sortDir = d; } });
+  attachSortFilter(tableWrap, { initialCol: _sortCol, initialDir: _sortDir, initialSearch: _invSearch, onSortChange: (c, d) => { _sortCol = c; _sortDir = d; }, onSearchChange: v => { _invSearch = v; } });
   tableWrap.addEventListener('sf:filter', () => {
     const countEl = tableWrap.querySelector('.table-footer-count');
     const paidEl  = tableWrap.querySelector('.table-footer-paid');

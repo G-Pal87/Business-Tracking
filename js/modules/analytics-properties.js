@@ -18,8 +18,8 @@ let gStatusFilter = new Set(); // 'active' | 'renovation' | 'vacant' | 'sold'
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-rev-donut', 'prop-value-hbar', 'prop-value-owner-donut', 'prop-value-stream-donut', 'prop-acq-bar', 'prop-growth-line', 'prop-capital-line', 'prop-single-trend'];
 
-let _finSortCol = -1, _finSortDir = 1;
-let _sumSortCol = -1, _sumSortDir = 1;
+let _finSortCol = -1, _finSortDir = 1, _finSearch = '';
+let _sumSortCol = -1, _sumSortDir = 1, _sumSearch = '';
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -1880,7 +1880,7 @@ function buildFinancingTable(container, finData) {
   const tableWrap = el('div', { class: 'table-wrap' });
   tableWrap.appendChild(table);
   container.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _finSortCol, initialDir: _finSortDir, onSortChange: (c, d) => { _finSortCol = c; _finSortDir = d; } });
+  attachSortFilter(tableWrap, { initialCol: _finSortCol, initialDir: _finSortDir, initialSearch: _finSearch, onSortChange: (c, d) => { _finSortCol = c; _finSortDir = d; }, onSearchChange: v => { _finSearch = v; } });
 }
 
 // ── Chart: Per-property Monthly P&L Trend ────────────────────────────────────
@@ -2057,5 +2057,5 @@ function buildSummaryTable(container, propData) {
   const tableWrap = el('div', { class: 'table-wrap' });
   tableWrap.appendChild(table);
   container.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _sumSortCol, initialDir: _sumSortDir, onSortChange: (c, d) => { _sumSortCol = c; _sumSortDir = d; } });
+  attachSortFilter(tableWrap, { initialCol: _sumSortCol, initialDir: _sumSortDir, initialSearch: _sumSearch, onSortChange: (c, d) => { _sumSortCol = c; _sumSortDir = d; }, onSearchChange: v => { _sumSearch = v; } });
 }

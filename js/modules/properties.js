@@ -13,6 +13,10 @@ import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/git
 
 let selectedId = null;
 let _propRebuildTimer = null;
+// Remembers the last year chosen in each property's detail view, per property
+// id, so reopening it (e.g. after navigating elsewhere and back) doesn't
+// silently reset to the current year.
+const _propDetailYear = new Map();
 
 // ── Filter + sort state (persists across navigation via localStorage) ─────────
 const _pf = { years: new Set(), channels: new Set(), owners: new Set(), types: new Set(), countries: new Set() };
@@ -289,11 +293,14 @@ export function openDetail(id, preStats) {
   selectedId = id;
   const p = byId('properties', id);
   if (!p) return;
-  const year = new Date().getFullYear();
-  const rev  = preStats?.rev ?? propertyRevenueEUR(id, { year });
-  const exp  = preStats?.exp ?? propertyExpensesEUR(id, { year }, { includeRenovation: false });
+  const currentYear = new Date().getFullYear();
+  const year = _propDetailYear.get(id) ?? currentYear;
+  // preStats was computed by the caller for the current year — only usable
+  // as a shortcut when that's actually the year we're about to show.
+  const rev  = (year === currentYear && preStats?.rev != null) ? preStats.rev : propertyRevenueEUR(id, { year });
+  const exp  = (year === currentYear && preStats?.exp != null) ? preStats.exp : propertyExpensesEUR(id, { year }, { includeRenovation: false });
   const reno = renovationCapexEUR({ propertyId: id });
-  const roi  = preStats?.roi ?? propertyROI(id);
+  const roi  = (year === currentYear && preStats?.roi != null) ? preStats.roi : propertyROI(id);
   const net = rev - exp;
 
   const body = el('div', {});
@@ -337,7 +344,7 @@ export function openDetail(id, preStats) {
     statsGrid2.appendChild(smallStat('Renovation CapEx', formatEUR(re)));
     statsGrid2.appendChild(smallStat('Annual ROI', `${ri.toFixed(2)}%`));
   };
-  yearSel.onchange = updateStats;
+  yearSel.onchange = () => { _propDetailYear.set(id, Number(yearSel.value)); updateStats(); };
   updateStats();
 
   body.appendChild(el('div', { class: 'flex gap-8 mb-8', style: 'align-items:center' },
