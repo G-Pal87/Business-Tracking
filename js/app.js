@@ -213,6 +213,12 @@ async function boot() {
   // moment before closing the tab could be lost silently (the push is
   // debounced 300ms, the local-cache write 500ms).
   window.addEventListener('beforeunload', e => {
+    // Force the debounced local-cache write to happen NOW. Without this, a
+    // refresh/close inside its 500ms window abandons the write entirely —
+    // the warning below doesn't block a user who dismisses it (and many
+    // browsers skip the prompt outright without recent interaction), so the
+    // flush must not depend on the warning actually stopping anything.
+    github.flushLocalCache();
     if (state.dirty) {
       e.preventDefault();
       e.returnValue = '';
@@ -342,7 +348,11 @@ async function boot() {
     else backgroundResync();
   });
   // Returning to the tab — surface anything that changed while it was hidden.
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) backgroundResync(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) github.flushLocalCache(); // tab backgrounded/closing — beforeunload alone isn't reliable (esp. mobile)
+    else backgroundResync();
+  });
+  window.addEventListener('pagehide', () => github.flushLocalCache());
   // Steady-state polling so long-lived sessions converge on multi-user edits.
   setInterval(backgroundResync, 60000);
 

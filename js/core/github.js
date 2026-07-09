@@ -521,6 +521,40 @@ export function mergeLocalPending(remoteDb, localCache) {
 
 let _saveCacheTimer = null;
 let _pendingSaveDb  = null;
+
+function writeLocalCacheNow(db) {
+  try {
+    const safe = { ...db };
+    // Strip heavy fields that are already externalized to the GitHub repo
+    // (invoice PDFs, expense receipt blobs, document blobs). They're
+    // re-fetchable on demand and would otherwise blow the localStorage quota.
+    // Soft-deleted records are intentionally kept so unpushed local deletions
+    // survive an offline reload + merge.
+    if (Array.isArray(safe.invoices)) {
+      safe.invoices = safe.invoices.map(({ pdfData, ...rest }) => rest);
+    }
+    if (Array.isArray(safe.expenses)) {
+      safe.expenses = safe.expenses.map(e => {
+        if (!e.receipt?.data && !e.documents) return e;
+        const copy = { ...e };
+        if (copy.receipt?.data) copy.receipt = { ...copy.receipt, data: undefined };
+        if (Array.isArray(copy.documents)) copy.documents = copy.documents.map(({ data, ...rest }) => rest);
+        return copy;
+      });
+    }
+    localStorage.setItem(DB_LS_KEY, JSON.stringify(safe));
+  } catch (e) {
+    console.warn('saveLocalCache:', e);
+    if (e.name === 'QuotaExceededError') {
+      state.github.cacheQuotaFull = true;
+      notify('cache-quota-exceeded');
+      import('./ui.js').then(({ toast }) =>
+        toast('Local cache full — offline access may use stale data. Purge deleted records in Settings → Data to free space.', 'warning', 8000)
+      ).catch(() => {});
+    }
+  }
+}
+
 export function saveLocalCache(db) {
   _pendingSaveDb = db;
   clearTimeout(_saveCacheTimer);
@@ -528,37 +562,24 @@ export function saveLocalCache(db) {
     _saveCacheTimer = null;
     const toSave = _pendingSaveDb;
     _pendingSaveDb = null;
-    try {
-      const safe = { ...toSave };
-      // Strip heavy fields that are already externalized to the GitHub repo
-      // (invoice PDFs, expense receipt blobs, document blobs). They're
-      // re-fetchable on demand and would otherwise blow the localStorage quota.
-      // Soft-deleted records are intentionally kept so unpushed local deletions
-      // survive an offline reload + merge.
-      if (Array.isArray(safe.invoices)) {
-        safe.invoices = safe.invoices.map(({ pdfData, ...rest }) => rest);
-      }
-      if (Array.isArray(safe.expenses)) {
-        safe.expenses = safe.expenses.map(e => {
-          if (!e.receipt?.data && !e.documents) return e;
-          const copy = { ...e };
-          if (copy.receipt?.data) copy.receipt = { ...copy.receipt, data: undefined };
-          if (Array.isArray(copy.documents)) copy.documents = copy.documents.map(({ data, ...rest }) => rest);
-          return copy;
-        });
-      }
-      localStorage.setItem(DB_LS_KEY, JSON.stringify(safe));
-    } catch (e) {
-      console.warn('saveLocalCache:', e);
-      if (e.name === 'QuotaExceededError') {
-        state.github.cacheQuotaFull = true;
-        notify('cache-quota-exceeded');
-        import('./ui.js').then(({ toast }) =>
-          toast('Local cache full — offline access may use stale data. Purge deleted records in Settings → Data to free space.', 'warning', 8000)
-        ).catch(() => {});
-      }
-    }
+    writeLocalCacheNow(toSave);
   }, 500);
+}
+
+// Synchronously writes whatever saveLocalCache() has queued, bypassing its
+// 500ms debounce. A refresh/close within that window otherwise loses the
+// write entirely: state.dirty warns the tab is closing with unsaved changes,
+// but that warning doesn't stop a user who dismisses it (and many browsers
+// don't even show it without recent interaction) — the debounce timer is
+// simply abandoned mid-air, and next load reads the pre-edit cache with no
+// record that anything newer ever existed. Call this from beforeunload.
+export function flushLocalCache() {
+  if (!_saveCacheTimer) return;
+  clearTimeout(_saveCacheTimer);
+  _saveCacheTimer = null;
+  const toSave = _pendingSaveDb;
+  _pendingSaveDb = null;
+  if (toSave) writeLocalCacheNow(toSave);
 }
 
 // ── File storage (invoice PDFs, etc.) ────────────────────────────────────────
