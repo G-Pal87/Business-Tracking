@@ -991,8 +991,10 @@ function openForm(existing, defaults = {}, onSave = null) {
         try {
           await uploadGithubFile(repoPath, b64, `Upload receipt for expense ${r.id}`);
           r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, path: repoPath };
-        } catch {
+        } catch (err) {
+          console.error('Receipt upload failed:', err);
           r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, data: b64 };
+          toast(`Receipt "${pendingReceiptFile.name}" could not be uploaded to the repo — kept locally instead.`, 'danger', 6000);
         }
       } else {
         r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, data: b64 };

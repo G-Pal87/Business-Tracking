@@ -13,6 +13,7 @@ const CFG_LS_KEY = 'bt_github_config';
 const SYNC_SAFETY_MARGIN_MS = 15 * 60 * 1000; // 15 minutes
 
 let pushQueue = Promise.resolve();
+let _sizeWarned = false; // throttles the db.json size-warning toast to once per session per threshold-crossing
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
@@ -102,6 +103,24 @@ function safeParseDb(content) {
   catch (e) { throw new Error(`db.json contains invalid JSON: ${e.message}`); }
 }
 
+// A 403 from GitHub can mean either a genuine token/permission problem OR
+// rate limiting (primary: quota exhausted; secondary: too many requests too
+// fast) — both surface as the same status code. Treating every 403 as an
+// auth failure was misleading during heavy multi-tab/team usage: a transient,
+// self-clearing rate limit got reported (and acted on) as if the token itself
+// were broken. Retry-After (seconds) signals a secondary limit; an exhausted
+// x-ratelimit-remaining signals the primary one, resetting at x-ratelimit-reset.
+function rateLimitWaitMs(res) {
+  const retryAfter = res.headers.get('retry-after');
+  if (retryAfter && !isNaN(Number(retryAfter))) return Number(retryAfter) * 1000;
+  if (res.headers.get('x-ratelimit-remaining') === '0') {
+    const resetAt = Number(res.headers.get('x-ratelimit-reset'));
+    if (resetAt) return Math.min(5 * 60 * 1000, Math.max(0, resetAt * 1000 - Date.now()));
+    return 60 * 1000;
+  }
+  return 0;
+}
+
 export async function fetchDb() {
   const { owner, repo, branch, dbPath, token } = state.github;
   if (!owner || !repo) throw new Error('GitHub not configured');
@@ -110,14 +129,26 @@ export async function fetchDb() {
   if (token) headers['Authorization'] = `token ${token}`;
 
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}?ref=${encodeURIComponent(branch || 'main')}`;
+
+  const ATTEMPTS = 3;
   let res;
-  try { res = await fetch(url, { headers, cache: 'no-store' }); }
-  catch { throw new Error('Cannot reach GitHub — check your internet connection'); }
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    try { res = await fetch(url, { headers, cache: 'no-store' }); }
+    catch { throw new Error('Cannot reach GitHub — check your internet connection'); }
+
+    if (res.status === 403 && attempt < ATTEMPTS) {
+      const waitMs = rateLimitWaitMs(res);
+      if (waitMs > 0) { await sleep(waitMs); continue; }
+    }
+    break;
+  }
 
   if (!res.ok) {
     if (res.status === 404) throw new Error('db.json not found in repo. Create data/db.json first.');
     if (res.status === 401) throw new Error(token ? 'GitHub auth failed — token is invalid or expired' : 'GitHub token required — enter a Personal Access Token in Settings → GitHub Storage');
-    if (res.status === 403) throw new Error('GitHub access denied — check token permissions');
+    if (res.status === 403) {
+      throw new Error(rateLimitWaitMs(res) > 0 ? 'GitHub rate limit exceeded — try again shortly' : 'GitHub access denied — check token permissions');
+    }
     throw new Error(`GitHub fetch failed (${res.status})`);
   }
 
@@ -241,7 +272,12 @@ async function doPushDb(message = 'Update data') {
     }
 
     if (!getRes.ok) {
-      if (getRes.status === 401 || getRes.status === 403) throw new Error('GitHub auth failed — check your token');
+      if (getRes.status === 403) {
+        const waitMs = rateLimitWaitMs(getRes);
+        if (waitMs > 0 && attempt < 8) { await sleep(waitMs); continue; }
+        throw new Error(waitMs > 0 ? 'GitHub rate limit exceeded — try again shortly' : 'GitHub auth failed — check your token');
+      }
+      if (getRes.status === 401) throw new Error('GitHub auth failed — check your token');
       throw new Error(`GitHub fetch failed (${getRes.status})`);
     }
 
@@ -269,7 +305,19 @@ async function doPushDb(message = 'Update data') {
     // PUT merged content
     const jsonStr = JSON.stringify(merged);
     if (jsonStr.length > 8 * 1024 * 1024) {
-      console.warn(`[BT] DB is ${(jsonStr.length / 1024 / 1024).toFixed(1)} MB — consider purging deleted records in Settings → Data`);
+      const mb = (jsonStr.length / 1024 / 1024).toFixed(1);
+      console.warn(`[BT] DB is ${mb} MB — consider purging deleted records in Settings → Data`);
+      // console.warn alone is invisible to anyone but a developer with devtools
+      // open — surface it to the user too, throttled to once per session per
+      // size-threshold crossing so it doesn't toast on every single push.
+      if (!_sizeWarned) {
+        _sizeWarned = true;
+        import('./ui.js').then(({ toast }) =>
+          toast(`Data file is ${mb} MB and approaching GitHub's size limits — consider purging deleted records in Settings → Data.`, 'warning', 8000)
+        ).catch(() => {});
+      }
+    } else {
+      _sizeWarned = false;
     }
     let putRes;
     try {
@@ -297,7 +345,12 @@ async function doPushDb(message = 'Update data') {
     }
 
     if (!putRes.ok) {
-      if (putRes.status === 401 || putRes.status === 403) throw new Error('Token lacks write access');
+      if (putRes.status === 403) {
+        const waitMs = rateLimitWaitMs(putRes);
+        if (waitMs > 0 && attempt < 8) { await sleep(waitMs); continue; }
+        throw new Error(waitMs > 0 ? 'GitHub rate limit exceeded — try again shortly' : 'Token lacks write access');
+      }
+      if (putRes.status === 401) throw new Error('Token lacks write access');
       throw new Error(`Push failed (${putRes.status})`);
     }
 
@@ -564,6 +617,18 @@ export function resyncDb(remote, local) {
 
 // ── Local cache ───────────────────────────────────────────────────────────────
 
+// Called on sign-out so the full cached business dataset (payments, tenant
+// PII, invoices, etc.) doesn't linger in localStorage — readable by anyone
+// with access to the browser — after the user has logged out of the app.
+// Deliberately does NOT also clear bt_github_config/the token: owner/repo/
+// branch/path re-derive from the committed data/github-config.json fallback
+// on next load either way, but wiping the token here risks the next login
+// finding no local cache AND no token to refetch with, which would lock
+// everyone out until an admin re-enters it in Settings.
+export function clearCachedDb() {
+  try { localStorage.removeItem(DB_LS_KEY); } catch { /* ignore */ }
+}
+
 export async function fetchLocalDb() {
   const cached = localStorage.getItem(DB_LS_KEY);
   if (cached) {
@@ -801,7 +866,16 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
     const body = { message, content: b64Content, branch: branch || 'main' };
     if (existingSha) body.sha = existingSha;
 
-    const res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+    let res;
+    try {
+      res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+    } catch {
+      // A dropped connection here threw a raw TypeError that skipped this
+      // retry loop entirely — the surrounding ATTEMPTS loop only covered the
+      // 409-conflict path, not the upload PUT itself failing outright.
+      if (attempt < ATTEMPTS) { lastErr = 'network error'; await sleep(backoff(attempt)); continue; }
+      throw new Error(`Cannot reach GitHub while uploading "${cleanPath}"`);
+    }
     if (res.ok) {
       const data = await res.json();
       return { sha: data.content.sha };
@@ -813,6 +887,12 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
       lastErr = '409 SHA conflict';
       await sleep(150 + Math.random() * 200);
       continue;
+    }
+
+    if (res.status === 403) {
+      const waitMs = rateLimitWaitMs(res);
+      if (waitMs > 0 && attempt < ATTEMPTS) { lastErr = 'rate limited'; await sleep(waitMs); continue; }
+      if (waitMs > 0) throw new Error('GitHub rate limit exceeded — try again shortly');
     }
 
     let errBody = '';
@@ -865,12 +945,16 @@ export async function fetchGithubFile(path) {
   if (token) headers['Authorization'] = `token ${token}`;
 
   const encodedPath = path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
-  const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`,
-    { headers, cache: 'no-store' }
-  );
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`;
+
+  let res = await fetch(url, { headers, cache: 'no-store' });
+  if (res.status === 403) {
+    const waitMs = rateLimitWaitMs(res);
+    if (waitMs > 0) { await sleep(waitMs); res = await fetch(url, { headers, cache: 'no-store' }); }
+  }
   if (!res.ok) {
     if (res.status === 404) throw new Error('File not found in repository');
+    if (res.status === 403 && rateLimitWaitMs(res) > 0) throw new Error('GitHub rate limit exceeded — try again shortly');
     if (res.status === 401 || res.status === 403) throw new Error('GitHub auth failed — check your token');
     throw new Error(`File fetch failed (${res.status})`);
   }
@@ -906,14 +990,46 @@ export async function deleteGithubFile(path, sha = null, message = 'Delete file'
     } catch { return; }
   }
 
-  const res = await fetch(apiUrl, {
-    method:  'DELETE',
-    headers,
-    body:    JSON.stringify({ message, sha, branch: branch || 'main' })
-  });
-  if (!res.ok && res.status !== 404) {
+  // Unlike uploadGithubFile, this had no retry loop at all — a single dropped
+  // connection failed the delete outright with no chance to recover.
+  const ATTEMPTS = 4;
+  let lastErr = null;
+  for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    let res;
+    try {
+      res = await fetch(apiUrl, {
+        method:  'DELETE',
+        headers,
+        body:    JSON.stringify({ message, sha, branch: branch || 'main' })
+      });
+    } catch {
+      if (attempt < ATTEMPTS) { lastErr = 'network error'; await sleep(backoff(attempt)); continue; }
+      throw new Error(`Cannot reach GitHub while deleting "${path}"`);
+    }
+    if (res.ok || res.status === 404) return;
+
+    // 409 = sha went stale between lookup and delete — re-resolve and retry
+    if (res.status === 409 && attempt < ATTEMPTS) {
+      lastErr = '409 SHA conflict';
+      try {
+        const check = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`, { headers, cache: 'no-store' });
+        if (!check.ok) return; // gone now
+        sha = (await check.json()).sha;
+      } catch { /* keep existing sha, retry with it anyway */ }
+      await sleep(150 + Math.random() * 200);
+      continue;
+    }
+
+    if (res.status === 403) {
+      const waitMs = rateLimitWaitMs(res);
+      if (waitMs > 0 && attempt < ATTEMPTS) { lastErr = 'rate limited'; await sleep(waitMs); continue; }
+      if (waitMs > 0) throw new Error('GitHub rate limit exceeded — try again shortly');
+    }
+
     throw new Error(`File delete failed (${res.status})`);
   }
+
+  throw new Error(`File delete failed after ${ATTEMPTS} attempts (${lastErr}) for path "${path}"`);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

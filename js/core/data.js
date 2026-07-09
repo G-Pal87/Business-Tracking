@@ -977,10 +977,16 @@ export function recordTombstone(collection, id) {
   state.db._tombstones[`${collection}:${id}`] = Date.now();
 }
 
-// Bounds tombstone growth — kept for maxAgeDays since a stale GitHub read
-// lagging further behind than that would be a much bigger problem on its
-// own, well past what this safety net is meant to catch.
-export function pruneTombstones(maxAgeDays = 2) {
+// Bounds tombstone growth — kept for maxAgeDays. Must comfortably exceed
+// autoPurgeOldDeleted's own maxAgeDays (5, see app.js): a tombstone is only
+// created once a soft-deleted record is hard-purged at that point, so its
+// total protection window is 5 days + this value. A device offline for
+// longer than that total — plausible for weeks-long trips, not just a lagging
+// GitHub read — that made a genuine edit to a record before it was deleted
+// elsewhere could resurrect it once reconnected, if the tombstone has
+// already expired by then. 30 days keeps that combined window realistic
+// while tombstones themselves stay tiny (a timestamp per deleted id).
+export function pruneTombstones(maxAgeDays = 30) {
   const tombstones = state.db._tombstones;
   if (!tombstones) return 0;
   const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
