@@ -2,6 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, deleteGithubFile } from '../core/github.js';
+import { requestDisconnectOtherSessions } from '../core/presence.js';
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
 import { setDb } from '../core/state.js';
@@ -214,6 +215,42 @@ function buildGithubCard() {
   }
 
   body.appendChild(btnRow);
+
+  // Remote session-kill — a stale tab (yours or someone else's) that still has
+  // old code loaded, or has simply gone stale, keeps pushing whatever it has
+  // in memory. There's no way to force another browser to reload, but this at
+  // least stops it from writing: every other session polls for this signal
+  // every 30s and, on seeing it, stops pushing to GitHub until *it* reloads.
+  if (effToken) {
+    const killSection = el('div', {
+      style: 'margin-top:16px;padding:12px 14px;background:var(--danger-light,#fff0f0);border:1px solid var(--danger,#dc3545);border-radius:var(--radius-sm)'
+    });
+    killSection.appendChild(el('div', {
+      style: 'font-size:12px;font-weight:600;color:var(--danger,#dc3545);margin-bottom:6px'
+    }, '⚠️ Disconnect Other Sessions'));
+    killSection.appendChild(el('div', {
+      style: 'font-size:12px;color:var(--text-muted);margin-bottom:10px'
+    }, 'If another tab, device, or user has this app open and is still saving with old data (e.g. their edits keep reverting yours), use this to stop every other session from pushing to GitHub. It does not delete anything or force anyone to reload — their local edits stay put, they just stop syncing until they refresh. This browser stays connected.'));
+
+    const killBtn = button('Disconnect Other Sessions', { variant: 'danger', onClick: async () => {
+      const ok = await confirmDialog(
+        'This will stop every OTHER open session (other tabs, devices, or users) from saving to GitHub until they reload. Their local, unsaved edits are not deleted — they just stop syncing. Use this only if you suspect another session is actively conflicting with yours.',
+        { danger: true, okLabel: 'Disconnect Others' }
+      );
+      if (!ok) return;
+      killBtn.disabled = true;
+      killBtn.textContent = 'Disconnecting…';
+      const sent = await requestDisconnectOtherSessions();
+      killBtn.disabled = false;
+      killBtn.textContent = 'Disconnect Other Sessions';
+      toast(
+        sent ? 'Signal sent — other sessions will disconnect within ~30 seconds.' : 'Failed to send — check your connection and try again.',
+        sent ? 'success' : 'danger'
+      );
+    }});
+    killSection.appendChild(killBtn);
+    body.appendChild(killSection);
+  }
 
   // Setup Link section — prominent, separate from action buttons
   if (effOwner && effRepo) {

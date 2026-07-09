@@ -127,6 +127,8 @@ function schedulePoll() {
 }
 
 async function poll() {
+  await checkDisconnectSignal(); // regardless of view — a kicked session must stop everywhere, not just tracked pages
+
   const view = currentView();
   if (!TRACKED.has(view)) return;
   const username = state.session?.username;
@@ -275,6 +277,109 @@ function showBanner(otherNames, viewLabel) {
 
   banner = b;
   setTimeout(() => { if (banner === b) { b.remove(); banner = null; } }, 30000);
+}
+
+// ── Remote session-kill (Settings → "Disconnect other sessions") ─────────────
+// Static hosting has no channel to push a signal into another open tab — the
+// 30s poll every session already runs is the only way one browser can learn
+// anything about another. A disconnected session stops pushing to GitHub (so
+// it can't keep reverting someone else's saves the way a stale tab running
+// pre-fix code was doing) but never touches its own local data or forces a
+// reload — the user chooses when, so nothing of theirs gets discarded.
+const SIGNAL_PATH = 'data/session-signal.json';
+let disconnectBanner = null;
+
+export async function requestDisconnectOtherSessions() {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) return false;
+  const headers = {
+    'Accept':        'application/vnd.github+json',
+    'Authorization': `token ${token}`,
+    'Content-Type':  'application/json'
+  };
+  const enc    = SIGNAL_PATH.split('/').map(encodeURIComponent).join('/');
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${enc}`;
+
+  let sha = null;
+  try {
+    const get = await fetch(`${apiUrl}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`, { headers, cache: 'no-store' });
+    if (get.ok) sha = (await get.json()).sha;
+  } catch { /* file doesn't exist yet — create it */ }
+
+  const payload = {
+    disconnectAt:    Date.now(),
+    exceptSessionId: state.github.sessionId, // the issuing tab must not disconnect itself
+    issuedBy:        state.session?.name || state.session?.username || 'someone'
+  };
+  const body = {
+    message: 'Disconnect other sessions',
+    content: btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2)))),
+    branch:  PRESENCE_BRANCH,
+    ...(sha ? { sha } : {})
+  };
+  try {
+    const put = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+    return put.ok;
+  } catch { return false; }
+}
+
+async function checkDisconnectSignal() {
+  if (state.github.disconnected) return; // already applied — no need to keep checking
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) return;
+  const headers = { 'Accept': 'application/vnd.github+json', 'Authorization': `token ${token}` };
+  const enc = SIGNAL_PATH.split('/').map(encodeURIComponent).join('/');
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${enc}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`,
+      { headers, cache: 'no-store' }
+    );
+    if (!res.ok) return; // 404 = no disconnect ever issued
+    const d = await res.json();
+    const bytes  = Uint8Array.from(atob(d.content.replace(/\s/g, '')), c => c.charCodeAt(0));
+    const signal = JSON.parse(new TextDecoder().decode(bytes));
+    if (!signal.disconnectAt) return;
+    if (signal.exceptSessionId === state.github.sessionId) return; // this tab issued it
+    if (signal.disconnectAt <= state.github.connectedAt) return;   // predates this session — a fresh reload after an old signal, ignore
+    applyDisconnect(signal.issuedBy);
+  } catch { /* offline — check again next poll */ }
+}
+
+function applyDisconnect(issuedBy) {
+  state.github.disconnected = true;
+  clearTimeout(heartbeatTimer);
+  clearTimeout(pollTimer);
+  showDisconnectBanner(issuedBy);
+}
+
+function showDisconnectBanner(issuedBy) {
+  disconnectBanner?.remove();
+  const b = document.createElement('div');
+  b.id = 'session-disconnect-banner';
+  b.style.cssText = [
+    'background:var(--danger,#ef4444)', 'color:#fff', 'padding:10px 16px',
+    'display:flex', 'align-items:center', 'justify-content:space-between',
+    'gap:12px', 'font-size:13px', 'font-weight:600'
+  ].join(';');
+
+  const msg = document.createElement('span');
+  msg.textContent = `⚠️ This session was disconnected remotely by ${issuedBy} — your edits are safe on this device but won't sync until you reload.`;
+  b.appendChild(msg);
+
+  const btn = document.createElement('button');
+  btn.textContent = 'Reload now';
+  btn.style.cssText = 'background:#fff;color:#991b1b;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-weight:700;flex-shrink:0';
+  btn.onclick = () => location.reload();
+  b.appendChild(btn);
+
+  const content = document.getElementById('content');
+  const main    = document.getElementById('main');
+  if (content && main) main.insertBefore(b, content);
+  else document.body.prepend(b);
+
+  disconnectBanner = b;
+  // No auto-dismiss — unlike the conflict banner, this one means saving is
+  // actually disabled, so it must stay until the user reloads.
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

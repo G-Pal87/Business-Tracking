@@ -47,7 +47,14 @@ export const state = {
     lastSyncError: null,
     lastPulledAt:  null,
     lastPushedAt:  null,
-    syncNow: null
+    syncNow: null,
+    // Identifies this specific tab/load for the remote-disconnect feature
+    // (Settings → "Disconnect other sessions"). A fresh id every page load —
+    // deliberately not persisted — so a reloaded tab counts as a new session,
+    // never as a leftover one still bound to an old disconnect signal.
+    sessionId: crypto.randomUUID(),
+    connectedAt: Date.now(),
+    disconnected: false
   },
   ui: { currentRoute: 'analytics', filters: { year: 'all', stream: 'all', owner: 'all' } },
   session: null,
