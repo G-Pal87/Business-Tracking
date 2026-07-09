@@ -1196,13 +1196,27 @@ function _applyOneRule(rule, payment, reservationRef, genIndex = null) {
     currency = payment.currency || 'EUR';
   } else if (rule.amountSource === 'inventory' && rule.inventoryItemId) {
     if (existing) {
-      // Don't re-deduct; only refresh metadata fields to stay in sync
-      upsert('expenses', {
-        ...existing,
-        date: payment.checkIn || payment.airbnbCheckIn || payment.date || existing.date,
-        vendorId: rule.vendorId || existing.vendorId || '',
-        description: rule.description || existing.description || ''
-      });
+      // Don't re-deduct; only refresh metadata fields to stay in sync. Skip the
+      // write entirely when nothing would actually change — upsert() always
+      // stamps a fresh updatedAt, and re-running an import over reservations it
+      // already generated expenses for otherwise bumps every one of them on
+      // every run, manufacturing a "this was edited" signal (feeding spurious
+      // 3-way sync conflicts) out of a genuine no-op.
+      const refreshedDate        = payment.checkIn || payment.airbnbCheckIn || payment.date || existing.date;
+      const refreshedVendorId    = rule.vendorId || existing.vendorId || '';
+      const refreshedDescription = rule.description || existing.description || '';
+      if (
+        refreshedDate        !== existing.date ||
+        refreshedVendorId    !== existing.vendorId ||
+        refreshedDescription !== existing.description
+      ) {
+        upsert('expenses', {
+          ...existing,
+          date: refreshedDate,
+          vendorId: refreshedVendorId,
+          description: refreshedDescription
+        });
+      }
       return;
     }
     const item = byId('inventory', rule.inventoryItemId);
@@ -1240,7 +1254,7 @@ function _applyOneRule(rule, payment, reservationRef, genIndex = null) {
     }
   }
 
-  upsert('expenses', {
+  const candidate = {
     id: existing?.id || newId('exp'),
     propertyId: payment.propertyId,
     category: rule.category || 'cleaning',
@@ -1257,7 +1271,25 @@ function _applyOneRule(rule, payment, reservationRef, genIndex = null) {
     manualOverride: existing?.manualOverride || false,
     ...(inventoryItemId ? { inventoryItemId, inventoryQty, inventoryBatches } : {}),
     ...(reviewNeeded ? { reviewNeeded, reviewReason } : {})
-  });
+  };
+
+  // Skip the write when re-running over a reservation produces an identical
+  // result to what's already stored — upsert() always stamps a fresh
+  // updatedAt, and bumping unchanged records on every re-import manufactures
+  // a spurious "this was edited" signal that feeds false 3-way sync conflicts.
+  if (existing && _sameExpenseFields(existing, candidate)) return;
+
+  upsert('expenses', candidate);
+}
+
+function _sameExpenseFields(existing, candidate) {
+  const keys = [
+    'propertyId', 'category', 'amount', 'currency', 'date', 'vendorId', 'vendor',
+    'description', 'stream', 'reservationRuleId', 'reservationRef', 'isGenerated',
+    'manualOverride', 'inventoryItemId', 'inventoryQty', 'reviewNeeded', 'reviewReason'
+  ];
+  return keys.every(k => (existing[k] ?? null) === (candidate[k] ?? null))
+    && JSON.stringify(existing.inventoryBatches ?? null) === JSON.stringify(candidate.inventoryBatches ?? null);
 }
 
 // ============== People / Owner helpers ==============
