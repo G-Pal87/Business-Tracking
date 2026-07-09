@@ -178,11 +178,21 @@ async function doPushDb(message = 'Update data') {
       // another session/device moments ago) reads as "deleted by me" the instant
       // this fallback hands mergeDb a base that already contains it — and the
       // very next push silently erases someone else's just-saved data.
+      //
+      // Never adopt a tombstoned id, though — this loop bypasses mergeDb's own
+      // tombstone backstop entirely, so without this check a permanently-
+      // deleted record that this fresh GET happens to still show (a stale
+      // read, or simply the very first fetch of a session that never saw the
+      // delete) would get pushed straight into state.db and resurrected.
+      const tombstones = { ...freshBase._tombstones, ...state.db._tombstones };
       for (const [col, items] of Object.entries(freshBase)) {
         if (!Array.isArray(items) || !Array.isArray(state.db[col])) continue;
         const localIds = new Set(state.db[col].map(x => x.id));
         for (const item of items) {
-          if (!localIds.has(item.id)) { state.db[col].push(item); localIds.add(item.id); }
+          if (!localIds.has(item.id) && tombstones[`${col}:${item.id}`] === undefined) {
+            state.db[col].push(item);
+            localIds.add(item.id);
+          }
         }
       }
       invalidateActiveCache();
@@ -356,7 +366,14 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
     ...Object.keys(localCurrent || {})
   ]);
 
+  // Union of every id ever permanently deleted, from either side — see
+  // recordTombstone() in data.js for why this exists. Always a union, never
+  // "pick one side", since either side may know about a delete the other
+  // doesn't yet.
+  const tombstones = { ...(freshRemote?._tombstones), ...(lastSynced?._tombstones), ...(localCurrent?._tombstones) };
+
   for (const col of cols) {
+    if (col === '_tombstones') { result._tombstones = tombstones; continue; }
     const fresh = freshRemote[col];
     const local = localCurrent[col];
     const base  = lastSynced ? lastSynced[col] : undefined;
@@ -446,6 +463,18 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
       }
     }
 
+    // Final, unconditional backstop: never let a permanently-deleted id back
+    // in, no matter what a stale fresh-fetch claims. This is what actually
+    // closes the bug the comments above were guarding against with
+    // timestamps alone — a stale `fresh` read can include an id neither
+    // `base` nor `local` have anymore (both correctly reflect an earlier
+    // successful delete), and nothing else in this function would catch
+    // that, since the delete-propagation loop above only ever looks at ids
+    // still present in `baseMap`.
+    for (const id of merged.keys()) {
+      if (tombstones[`${col}:${id}`] !== undefined) merged.delete(id);
+    }
+
     result[col] = [...merged.values()];
   }
 
@@ -476,7 +505,11 @@ export function resyncDb(remote, local) {
   // that false confirmation as "remote must have deleted this" and drop it.
   let staleFetch = false;
   const syncedAt = local?._syncedAt ?? null;
+  // Union of every id ever permanently deleted, from either side — see
+  // recordTombstone() in data.js.
+  const tombstones = { ...remote?._tombstones, ...local?._tombstones };
   for (const col of Object.keys(local)) {
+    if (col === '_tombstones') { result._tombstones = tombstones; continue; }
     const localArr = local[col];
     if (!Array.isArray(localArr)) {
       // Non-array fields (settings, config, etc.) — prefer local.
@@ -517,6 +550,11 @@ export function resyncDb(remote, local) {
         const remoteItem = map.get(id);
         if ((remoteItem.updatedAt || 0) <= syncedAt) map.delete(id);
       }
+    }
+    // Final, unconditional backstop, independent of sync history — see the
+    // matching comment in mergeDb().
+    for (const id of map.keys()) {
+      if (tombstones[`${col}:${id}`] !== undefined) map.delete(id);
     }
     result[col] = [...map.values()];
   }
@@ -560,7 +598,14 @@ export function mergeLocalPending(remoteDb, localCache) {
   // this margin only protects against silently discarding real data.
   const effSyncedAt = syncedAt ? syncedAt - SYNC_SAFETY_MARGIN_MS : null;
 
+  // Union of every id ever permanently deleted, from either side — see
+  // recordTombstone() in data.js. Must survive this merge (it's excluded by
+  // the "skip internal meta fields" line below like other `_`-prefixed keys)
+  // so it keeps protecting future merges, not just this one.
+  const tombstones = { ...remoteDb?._tombstones, ...localCache?._tombstones };
+
   for (const col of cols) {
+    if (col === '_tombstones') { result._tombstones = tombstones; continue; }
     if (col.startsWith('_')) continue; // skip internal meta fields
     const remote = remoteDb[col];
     const local  = localCache[col];
@@ -629,6 +674,13 @@ export function mergeLocalPending(remoteDb, localCache) {
           hasLocalChanges = true;
         }
       }
+    }
+
+    // Final, unconditional backstop, independent of sync history — see the
+    // matching comment in mergeDb(). A remote-only id that's tombstoned is
+    // never resurrected here regardless of timestamps.
+    for (const id of merged.keys()) {
+      if (tombstones[`${col}:${id}`] !== undefined) merged.delete(id);
     }
 
     result[col] = [...merged.values()];

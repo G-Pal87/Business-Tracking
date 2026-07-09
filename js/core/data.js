@@ -957,6 +957,37 @@ export function restoreRecord(collection, id) {
   return true;
 }
 
+// Permanent-delete tombstones: every id ever hard-deleted is recorded here
+// (synced as part of db.json, same as any other field) so mergeDb/
+// mergeLocalPending/resyncDb can refuse to resurrect it no matter what a
+// stale/lagging GitHub read claims. Without this, a hard delete that already
+// pushed successfully could still come back: any LATER push (for something
+// completely unrelated) that happens to fetch a lagging copy of GitHub —
+// one still showing the old, deleted record — had no way to know the record
+// was gone for a *reason* rather than just "not yet in this snapshot", so it
+// flowed straight through into the merge and got written back to remote,
+// resurrecting it both there and locally. A permanent, explicit tombstone
+// closes that off entirely instead of relying on timestamp heuristics, which
+// this exact bug shape has broken more than once tonight.
+export function recordTombstone(collection, id) {
+  if (!state.db._tombstones) state.db._tombstones = {};
+  state.db._tombstones[`${collection}:${id}`] = Date.now();
+}
+
+// Bounds tombstone growth — kept for maxAgeDays since a stale GitHub read
+// lagging further behind than that would be a much bigger problem on its
+// own, well past what this safety net is meant to catch.
+export function pruneTombstones(maxAgeDays = 2) {
+  const tombstones = state.db._tombstones;
+  if (!tombstones) return 0;
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+  let count = 0;
+  for (const key of Object.keys(tombstones)) {
+    if (tombstones[key] < cutoff) { delete tombstones[key]; count++; }
+  }
+  return count;
+}
+
 export function permanentlyDeleteRecord(collection, id) {
   const arr = state.db[collection];
   if (!Array.isArray(arr)) return false;
@@ -964,6 +995,7 @@ export function permanentlyDeleteRecord(collection, id) {
   if (index === -1) return false;
   arr.splice(index, 1);
   state._ix?.get(collection)?.delete(id);
+  recordTombstone(collection, id);
   markDirty();
   return true;
 }
@@ -994,6 +1026,7 @@ export function permanentlyDeleteRecords(records) {
     if (index === -1) return;
     arr.splice(index, 1);
     state._ix?.get(collection)?.delete(id);
+    recordTombstone(collection, id);
     count++;
   });
   if (count > 0) markDirty();
@@ -1005,6 +1038,9 @@ export function purgeDeletedRecords() {
   Object.keys(state.db).forEach(collection => {
     if (!Array.isArray(state.db[collection])) return;
     const before = state.db[collection].length;
+    for (const item of state.db[collection]) {
+      if (item.deletedAt) recordTombstone(collection, item.id);
+    }
     state.db[collection] = state.db[collection].filter(item => !item.deletedAt);
     count += before - state.db[collection].length;
     // Rebuild the id index so byId() can't return purged records.
@@ -1058,7 +1094,7 @@ export function autoPurgeOldDeleted({ maxAgeDays = 90 } = {}) {
     const kept = [];
     for (const rec of arr) {
       const purgeable = rec && rec.deletedAt && rec.deletedAt < cutoff && !referenced.has(rec.id);
-      if (purgeable) { changed = true; count++; continue; }
+      if (purgeable) { changed = true; count++; recordTombstone(col, rec.id); continue; }
       kept.push(rec);
     }
     if (changed) {
@@ -1066,6 +1102,7 @@ export function autoPurgeOldDeleted({ maxAgeDays = 90 } = {}) {
       if (state._ix) state._ix.set(col, new Map(kept.map(r => [r.id, r])));
     }
   }
+  pruneTombstones();
   if (count > 0) markDirty();
   return count;
 }
