@@ -7,7 +7,7 @@ import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
   resolveExpenseFields, isCapEx,
-  newId, upsert, softDelete, companyPropIds,
+  newId, upsert, softDelete, companyPropIds, isCompanyRecord,
   getPersonName
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
@@ -179,7 +179,7 @@ function getYearData(year, ownerFilter) {
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
-    : r => !r.propertyId || coPropIds.has(r.propertyId);
+    : r => isCompanyRecord(r, coPropIds);
   const payments = listActivePayments().filter(p =>
     p.status === 'paid' && inYear(p.date, year) && ownerMatches(p, ownerFilter) && isCoRec(p)
   );

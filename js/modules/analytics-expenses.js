@@ -5,7 +5,7 @@ import { STREAMS, COST_CATEGORIES, ACCOUNTING_TYPES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActiveVendors, listActivePayments,
-  isCapEx, resolveExpenseFields, companyPropIds
+  isCapEx, resolveExpenseFields, companyPropIds, isCompanyRecord
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -60,7 +60,7 @@ function getData(start, end) {
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
-    : r => !r.propertyId || coPropIds.has(r.propertyId);
+    : r => isCompanyRecord(r, coPropIds);
   const vendors = listActiveVendors();
   const vMap    = new Map(vendors.map(v => [v.name, v.id]));
 
@@ -94,7 +94,7 @@ function getRevenue(start, end) {
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
-    : r => !r.propertyId || coPropIds.has(r.propertyId);
+    : r => isCompanyRecord(r, coPropIds);
   const rentals = listActivePayments()
     .filter(p => p.status === 'paid' && (p.date || '') >= start && (p.date || '') <= end && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p))
     .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);

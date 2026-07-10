@@ -1,7 +1,7 @@
 // Owner/Partner Analytics Dashboard — partner P&L, settlement, portfolio split
 import { el, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, listActive, listActivePayments, isCapEx, getPersonName } from '../core/data.js';
+import { formatEUR, toEUR, byId, listActive, listActivePayments, isCapEx, getPersonName, companyPropIds, isCompanyRecord } from '../core/data.js';
 import {
   createFilterState, buildFilterBar, buildComparisonLine,
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers
@@ -67,11 +67,12 @@ function getData(start, end) {
   // Build Map once so annotation loops use O(1) lookups instead of O(n) byId scans
   const propMap = new Map(listActive('properties').map(p => [p.id, p]));
 
-  const scopeOk = p => gScope === 'all' || (propMap.get(p.propertyId)?.channel || 'company') === 'company';
+  const coPropIds = companyPropIds();
+  const isCoRec = r => gScope === 'all' || isCompanyRecord(r, coPropIds);
 
   // Payments — rental income (no owner filter, we split manually)
   const payments = listActivePayments().filter(p =>
-    p.status === 'paid' && inRange(p.date) && mStream(p) && mProperty(p) && (!p.propertyId || scopeOk(p))
+    p.status === 'paid' && inRange(p.date) && mStream(p) && mProperty(p) && isCoRec(p)
   );
 
   // Annotate payments with resolved owner
@@ -95,7 +96,7 @@ function getData(start, end) {
   // Expenses (OpEx only for profit)
   const expenses = listActive('expenses').filter(e => {
     const d = e.date || '';
-    return d >= start && d <= end && !isCapEx(e) && mProperty(e) && mStream(e) && (!e.propertyId || scopeOk(e));
+    return d >= start && d <= end && !isCapEx(e) && mProperty(e) && mStream(e) && isCoRec(e);
   });
   const annotatedExpenses = expenses.map(e => {
     const prop = e.propertyId ? propMap.get(e.propertyId) : null;

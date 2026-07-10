@@ -1,7 +1,7 @@
 // Cyprus Provisional Corporation Tax Calculator
 import { state, markDirty } from '../core/state.js';
 import { el, input, select, button, formRow, toast, openModal } from '../core/ui.js';
-import { formatEUR, toEUR, listActivePayments, listActive, availableYears, isCapEx, byId, companyPropIds } from '../core/data.js';
+import { formatEUR, toEUR, listActivePayments, listActive, availableYears, isCapEx, byId, companyPropIds, isCompanyRecord } from '../core/data.js';
 import { mkKpiCard, mkModalTable, mkSectionLabel, mkSummaryGrid } from './analytics-helpers.js';
 
 const DEFAULTS = {
@@ -119,12 +119,13 @@ function monthRemainingFraction(cutoff) {
 }
 
 // Records without a propertyId (service invoices, salary expenses, etc.) are
-// always company-scope; records tied to a 'personal'-channel property are
+// always company-scope; records tied to a 'personal'-channel property, or
+// individually flagged `personal` (e.g. off-platform bookings), are
 // excluded — corporation tax is a company-only liability, and Dividends
 // (getOpProfit) already applies this same filter.
 function isCoRec(r) {
   const coPropIds = companyPropIds();
-  return !r.propertyId || coPropIds.has(r.propertyId);
+  return isCompanyRecord(r, coPropIds);
 }
 
 function getActualsForYear(year) {

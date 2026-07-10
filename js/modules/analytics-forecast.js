@@ -7,7 +7,7 @@ import {
   listActive, listActivePayments,
   isCapEx, drillRevRows, drillExpRows,
   sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR,
-  softDelete, upsert, newId, companyPropIds, generatePaymentSchedule
+  softDelete, upsert, newId, companyPropIds, isCompanyRecord, generatePaymentSchedule
 } from '../core/data.js';
 import { markDirty } from '../core/state.js';
 import {
@@ -318,7 +318,7 @@ function calculateDashboardData(range) {
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
-    : r => !r.propertyId || coPropIds.has(r.propertyId);
+    : r => isCompanyRecord(r, coPropIds);
   const inRange = d => d && d >= range.start && d <= range.end;
 
   const actPayments = listActivePayments().filter(p =>

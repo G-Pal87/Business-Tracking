@@ -3,7 +3,7 @@ import { el, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import {
   formatEUR, toEUR, byId,
-  listActive, listActivePayments, isCapEx, companyPropIds
+  listActive, listActivePayments, isCapEx, companyPropIds, isCompanyRecord
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -38,7 +38,7 @@ function getData(start, end) {
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
-    : r => !r.propertyId || coPropIds.has(r.propertyId);
+    : r => isCompanyRecord(r, coPropIds);
 
   // Paid rental income
   const payments = listActivePayments().filter(p =>

@@ -904,6 +904,15 @@ export function buildReportData(filters = {}) {
   return { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net: rev - exp };
 }
 
+// Returns true if a record counts as "company" scope: payments explicitly
+// flagged `personal` (e.g. off-platform bookings that don't go through the
+// company) are always excluded, regardless of their property's channel;
+// otherwise scope follows the property's channel as before.
+export function isCompanyRecord(r, coPropIds) {
+  if (r.personal) return false;
+  return !r.propertyId || coPropIds.has(r.propertyId);
+}
+
 // Returns a Set of property IDs whose channel is 'company' (or unset, which defaults to company).
 // Records without a propertyId (e.g. salary expenses, service invoices) are always company-scope.
 export function companyPropIds() {
