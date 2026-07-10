@@ -125,6 +125,7 @@ function buildAllPayments(wrap) {
   const streamFilter = new Set();
   const propFilter   = new Set();
   const typeFilter   = new Set();
+  const sourceFilter = new Set();
   const statusFilter = new Set();
 
   const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -138,6 +139,7 @@ function buildAllPayments(wrap) {
   const getPayType = p => p.source === 'airbnb' ? (p.airbnbType || p.type || 'other') : (p.type || 'other');
 
   const STREAM_LABELS = { short_term_rental: 'Short Term', long_term_rental: 'Long Term' };
+  const SOURCE_LABELS = { manual: 'Manual', airbnb: 'Airbnb' };
 
   const matchesExcept = (p, skip) => {
     if (skip !== 'year'   && yearFilter.size   > 0 && !yearFilter.has(p.date?.slice(0, 4)))  return false;
@@ -145,6 +147,7 @@ function buildAllPayments(wrap) {
     if (skip !== 'stream' && streamFilter.size > 0 && !streamFilter.has(p.stream || ''))     return false;
     if (skip !== 'prop'   && propFilter.size   > 0 && !propFilter.has(p.propertyId))          return false;
     if (skip !== 'type'   && typeFilter.size   > 0 && !typeFilter.has(getPayType(p)))          return false;
+    if (skip !== 'source' && sourceFilter.size > 0 && !sourceFilter.has(p.source || 'manual')) return false;
     if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(p.status))             return false;
     return true;
   };
@@ -156,6 +159,7 @@ function buildAllPayments(wrap) {
   const streamMS = buildMultiSelect([], streamFilter, 'All Streams',    debouncedRT, 'pay_streams');
   const propMS   = buildMultiSelect([], propFilter,   'All Properties', debouncedRT, 'pay_props');
   const typeMS   = buildMultiSelect([], typeFilter,   'All Types',      debouncedRT, 'pay_types');
+  const sourceMS = buildMultiSelect([], sourceFilter, 'All Sources',    debouncedRT, 'pay_sources');
   const statusMS = buildMultiSelect([], statusFilter, 'All Statuses',   debouncedRT, 'pay_statuses');
   // Column show/hide. Reuses the multi-select: empty set = all columns visible.
   // A saved selection only ever stores "which columns to show" — so a column
@@ -192,13 +196,14 @@ function buildAllPayments(wrap) {
   const rebuildFilters = () => {
     const allPayments = listActivePayments();
     const allProps    = listActive('properties');
-    const ys = new Set(), ms = new Set(), strs = new Set(), ps = new Set(), ts = new Set(), ss = new Set();
+    const ys = new Set(), ms = new Set(), strs = new Set(), ps = new Set(), ts = new Set(), srcs = new Set(), ss = new Set();
     for (const p of allPayments) {
       if (matchesExcept(p, 'year'))   { if (p.date?.slice(0, 4)) ys.add(p.date.slice(0, 4)); }
       if (matchesExcept(p, 'month'))  { if (p.date?.slice(5, 7)) ms.add(p.date.slice(5, 7)); }
       if (matchesExcept(p, 'stream')) { strs.add(p.stream || ''); }
       if (matchesExcept(p, 'prop'))   { if (p.propertyId) ps.add(p.propertyId); }
       if (matchesExcept(p, 'type'))   { ts.add(getPayType(p)); }
+      if (matchesExcept(p, 'source')) { srcs.add(p.source || 'manual'); }
       if (matchesExcept(p, 'status')) { if (p.status) ss.add(p.status); }
     }
     yearMS.setItems([...ys].sort().reverse().map(y => ({ value: y, label: y })));
@@ -206,6 +211,7 @@ function buildAllPayments(wrap) {
     streamMS.setItems([...strs].filter(Boolean).sort().map(s => ({ value: s, label: STREAM_LABELS[s] || s })));
     propMS.setItems([...ps].map(id => allProps.find(pr => pr.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(pr => ({ value: pr.id, label: pr.name })));
     typeMS.setItems([...ts].sort().map(t => ({ value: t, label: t })));
+    sourceMS.setItems([...srcs].sort().map(s => ({ value: s, label: SOURCE_LABELS[s] || s })));
     statusMS.setItems([...ss].sort().map(s => { const m = STATUS_META[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
   };
 
@@ -244,12 +250,13 @@ function buildAllPayments(wrap) {
   }});
   deleteSelBtn.style.display = 'none';
 
-  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); streamMS.reset(); propMS.reset(); typeMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { yearMS.reset(); monthMS.reset(); streamMS.reset(); propMS.reset(); typeMS.reset(); sourceMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
   filterBar.appendChild(yearMS);
   filterBar.appendChild(monthMS);
   filterBar.appendChild(streamMS);
   filterBar.appendChild(propMS);
   filterBar.appendChild(typeMS);
+  filterBar.appendChild(sourceMS);
   filterBar.appendChild(statusMS);
   filterBar.appendChild(colMS);
   filterBar.appendChild(resetFiltersBtn);
@@ -368,6 +375,7 @@ function buildAllPayments(wrap) {
       if (streamFilter.size > 0 && !streamFilter.has(r.stream || ''))                return false;
       if (propFilter.size > 0   && !propFilter.has(r.propertyId))                    return false;
       if (typeFilter.size > 0   && !typeFilter.has(getPayType(r)))                   return false;
+      if (sourceFilter.size > 0 && !sourceFilter.has(r.source || 'manual'))          return false;
       if (statusFilter.size > 0 && !statusFilter.has(r.status))                      return false;
       return true;
     }).map(derive);
