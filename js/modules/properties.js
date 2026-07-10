@@ -116,8 +116,9 @@ function build() {
   loadPropFilters();
   const wrap = el('div', { class: 'view active' });
 
+  const titleEl = el('div', { class: 'card-title' }, `${listActive('properties').length} Properties`);
   const header = el('div', { class: 'section-header' },
-    el('div', { class: 'card-title' }, `${listActive('properties').length} Properties`),
+    titleEl,
     el('div', { class: 'actions' },
       button('+ Add Property', { variant: 'primary', onClick: () => openForm() })
     )
@@ -130,7 +131,7 @@ function build() {
   const grid = el('div', { class: 'prop-grid' });
   wrap.appendChild(grid);
 
-  rebuildPropFilters(filterBar, grid);
+  rebuildPropFilters(filterBar, grid, titleEl);
 
   return wrap;
 }
@@ -138,7 +139,7 @@ function build() {
 // Builds (or rebuilds) the filter bar with interdependent multi-selects.
 // Valid options for each filter are computed from properties that pass all
 // OTHER active filters, so selecting one filter narrows the others.
-function rebuildPropFilters(filterBar, grid) {
+function rebuildPropFilters(filterBar, grid, titleEl) {
   filterBar.innerHTML = '';
   const all = listActive('properties');
 
@@ -167,7 +168,7 @@ function rebuildPropFilters(filterBar, grid) {
   [..._pf.countries].forEach(v => { if (!validCountries.includes(v)) _pf.countries.delete(v); });
   savePropFilters();
 
-  const onChange = () => { savePropFilters(); clearTimeout(_propRebuildTimer); _propRebuildTimer = setTimeout(() => rebuildPropFilters(filterBar, grid), 250); };
+  const onChange = () => { savePropFilters(); clearTimeout(_propRebuildTimer); _propRebuildTimer = setTimeout(() => rebuildPropFilters(filterBar, grid, titleEl), 250); };
 
   const yearMS    = buildMultiSelect(validYears.map(y => ({ value: y, label: y })), _pf.years, 'All Years', onChange);
   const channelMS = buildMultiSelect(validChannels.map(v => ({ value: v, label: PROPERTY_CHANNELS[v] || v })), _pf.channels, 'All Channels', onChange);
@@ -182,7 +183,7 @@ function rebuildPropFilters(filterBar, grid) {
       _pf.years.clear(); _pf.channels.clear(); _pf.owners.clear(); _pf.types.clear(); _pf.countries.clear();
       _pSortDir = 1; _pSortKey = 'name';
       savePropFilters();
-      rebuildPropFilters(filterBar, grid);
+      rebuildPropFilters(filterBar, grid, titleEl);
     }
   });
 
@@ -195,7 +196,7 @@ function rebuildPropFilters(filterBar, grid) {
         if (_pSortKey === key) _pSortDir *= -1;
         else { _pSortKey = key; _pSortDir = 1; }
         savePropFilters();
-        rebuildPropFilters(filterBar, grid);
+        rebuildPropFilters(filterBar, grid, titleEl);
       }
     });
   };
@@ -211,19 +212,25 @@ function rebuildPropFilters(filterBar, grid) {
   filterBar.appendChild(mkSortBtn('type', 'Type'));
   filterBar.appendChild(mkSortBtn('revenue', 'Revenue'));
   filterBar.appendChild(mkSortBtn('roi', 'ROI'));
-  renderPropGrid(grid, all);
+  renderPropGrid(grid, all, titleEl);
 }
 
 // Applies active filters + sort to the property grid, replacing its contents.
-function renderPropGrid(grid, preloaded) {
+function renderPropGrid(grid, preloaded, titleEl) {
   grid.innerHTML = '';
-  let props = preloaded || listActive('properties');
+  const total = preloaded || listActive('properties');
+  let props = total;
 
   if (_pf.years.size)     props = props.filter(p => _pf.years.has(p.purchaseDate?.slice(0, 4) || ''));
   if (_pf.channels.size)  props = props.filter(p => _pf.channels.has(p.channel || 'company'));
   if (_pf.owners.size)    props = props.filter(p => _pf.owners.has(p.owner || ''));
   if (_pf.types.size)     props = props.filter(p => _pf.types.has(p.type || ''));
   if (_pf.countries.size) props = props.filter(p => _pf.countries.has(p.country || ''));
+
+  if (titleEl) {
+    const hasFilter = _pf.years.size || _pf.channels.size || _pf.owners.size || _pf.types.size || _pf.countries.size;
+    titleEl.textContent = hasFilter ? `${props.length} of ${total.length} Properties` : `${total.length} Properties`;
+  }
 
   const year = new Date().getFullYear();
   const statsMap = new Map();
