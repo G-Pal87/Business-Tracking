@@ -64,7 +64,8 @@ function getData(start, end) {
   };
 
   const payments    = listActivePayments().filter(p =>
-    p.status === 'paid' && matchDate(p) && propIds.has(p.propertyId)
+    p.status === 'paid' && matchDate(p) && propIds.has(p.propertyId) &&
+    (gScope === 'all' || !p.personal)
   );
   const opExpenses  = listActive('expenses').filter(e =>
     !isCapEx(e) && matchDate(e) && propIds.has(e.propertyId)
@@ -581,7 +582,8 @@ function buildCapExImpactSection({ propData, curRange }) {
 
       prePayments = listActivePayments().filter(p =>
         p.status === 'paid' && p.propertyId === d.prop.id &&
-        p.date >= preStartStr && p.date < preEnd
+        p.date >= preStartStr && p.date < preEnd &&
+        (gScope === 'all' || !p.personal)
       );
       preRev = prePayments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
       postPayments = d.propPayments.filter(p => p.date >= firstCapExDate);
