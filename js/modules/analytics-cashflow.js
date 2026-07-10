@@ -4,7 +4,7 @@ import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, COST_CATEGORIES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
-  listActive, listActivePayments, isCapEx, resolveExpenseFields, companyPropIds
+  listActive, listActivePayments, isCapEx, resolveExpenseFields, companyPropIds, isCompanyRecord
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -51,7 +51,7 @@ function getData(start, end) {
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
-    : r => !r.propertyId || coPropIds.has(r.propertyId);
+    : r => isCompanyRecord(r, coPropIds);
 
   const payments = listActivePayments().filter(p =>
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)

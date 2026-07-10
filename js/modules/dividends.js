@@ -6,7 +6,7 @@ import {
   formatEUR, toEUR,
   listActive, listActivePayments,
   resolveExpenseFields, isCapEx,
-  newId, upsert, softDelete, companyPropIds,
+  newId, upsert, softDelete, companyPropIds, isCompanyRecord,
   getPersonName
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
@@ -112,7 +112,7 @@ function ghsForAmount(amount, priorCum) {
 
 function getOpProfit(year) {
   const coPropIds = companyPropIds();
-  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
+  const isCoRec   = r => isCompanyRecord(r, coPropIds);
 
   const payments = listActivePayments().filter(p =>
     p.status === 'paid' && inYear(p.date, year) && isCoRec(p)

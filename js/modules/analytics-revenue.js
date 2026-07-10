@@ -5,7 +5,7 @@ import { STREAMS, OWNERS } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
-  drillRevRows, companyPropIds
+  drillRevRows, companyPropIds, isCompanyRecord
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -48,7 +48,7 @@ function getData(start, end) {
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
-    : r => !r.propertyId || coPropIds.has(r.propertyId);
+    : r => isCompanyRecord(r, coPropIds);
 
   // Property filter → isolate rental revenue (exclude invoices entirely)
   // Client filter   → isolate service revenue (exclude payments entirely)
@@ -883,7 +883,7 @@ function renderAging({ outstanding }) {
 function buildSeasonalityHeatmap() {
   const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
   const coPropIds = companyPropIds();
-  const isCoRec   = r => !r.propertyId || coPropIds.has(r.propertyId);
+  const isCoRec   = r => isCompanyRecord(r, coPropIds);
   const pays = listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p));
   const invs = gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i => i.status === 'paid' && mStream(i) && mOwner(i) && mClient(i));
   const years = [...new Set([...pays.map(p => p.date?.slice(0, 4)), ...invs.map(i => i.issueDate?.slice(0, 4))].filter(Boolean))].sort();

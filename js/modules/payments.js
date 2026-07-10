@@ -1079,11 +1079,21 @@ function openForm(existing) {
   const sourceS = select(['manual', 'airbnb'], r.source);
   const notesT = textarea(); notesT.value = r.notes || '';
 
+  const personalChk = el('input', { type: 'checkbox' });
+  personalChk.checked = !!r.personal;
+  personalChk.id = 'payPersonalChk_' + r.id;
+  const personalRow = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-top:6px;padding:6px 10px;background:rgba(99,102,241,0.07);border-radius:4px;border:1px solid rgba(99,102,241,0.15)' },
+    personalChk,
+    el('label', { for: personalChk.id, style: 'font-size:12px;color:var(--text);cursor:pointer;user-select:none' },
+      'Personal / off-platform booking — exclude from company revenue, tax & dividends')
+  );
+
   body.appendChild(formRow('Property', propS));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Amount', amountI), formRow('Currency', currencyS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Check-in Date', checkInI), formRow('Check-out Date', checkOutI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Status', statusS), formRow('Source', sourceS)));
+  body.appendChild(personalRow);
   body.appendChild(formRow('Notes', notesT));
 
   propS.onchange = () => {
@@ -1111,7 +1121,8 @@ function openForm(existing) {
       propertyId: propS.value, amount: Number(amountI.value),
       currency: currencyS.value, date: dateI.value, type: 'off_platform_reservation',
       status: statusS.value, source: sourceS.value, stream: 'short_term_rental',
-      notes: notesT.value.trim(), checkIn: checkInI.value, checkOut: checkOutI.value
+      notes: notesT.value.trim(), checkIn: checkInI.value, checkOut: checkOutI.value,
+      personal: personalChk.checked
     });
     upsert('payments', r);
     if (r.stream === 'short_term_rental') applyReservationExpenseRules(r);
