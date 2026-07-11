@@ -5,5 +5,18 @@
       "t": 1783757024383,
       "name": "Rita"
     }
+  },
+  "devices": {
+    "39680200-77d1-4abb-b253-91e008f416f6": {
+      "username": "Giorgos",
+      "name": "Giorgos",
+      "role": "admin",
+      "device": "Chrome on Windows",
+      "deviceType": "desktop",
+      "hasKey": true,
+      "keyConfigured": true,
+      "connectedAt": 1783768787948,
+      "lastSeen": 1783768798241
+    }
   }
 }
