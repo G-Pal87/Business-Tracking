@@ -106,7 +106,11 @@ export function requireAuth() {
       if (hasWrappedKeyConfigured() && !isUnlocked()) {
         const screen = el('div', { id: 'login-screen', class: 'login-screen' });
         document.body.appendChild(screen);
-        renderUnlock(screen, liveUser, () => { screen.remove(); resolve(state.session); });
+        renderUnlock(
+          screen, liveUser,
+          () => { screen.remove(); resolve(state.session); },
+          () => { clearSession(); screen.remove(); requireAuth().then(resolve); }
+        );
         return;
       }
       resolve(state.session);
@@ -184,7 +188,7 @@ function renderBootstrapUnlock(screen, resolve) {
 // Shown once per browser tab when a session resumed without re-entering a
 // password (see requireAuth) but this device has an encryption key
 // configured — needs the password once to unwrap it into memory.
-function renderUnlock(screen, user, done) {
+function renderUnlock(screen, user, done, onSwitchUser) {
   screen.innerHTML = '';
   const card = el('div', { class: 'login-card' });
   card.appendChild(el('div', { class: 'login-brand' }, 'BT'));
@@ -199,6 +203,12 @@ function renderUnlock(screen, user, done) {
   const btn = button('Unlock', { variant: 'primary' });
   btn.style.cssText = 'width:100%;margin-top:8px';
   card.appendChild(btn);
+
+  const switchBtn = button('Not you? Switch user', { variant: 'ghost' });
+  switchBtn.style.cssText = 'width:100%;margin-top:4px;font-size:12px';
+  switchBtn.onclick = onSwitchUser;
+  card.appendChild(switchBtn);
+
   screen.appendChild(card);
 
   const doUnlock = async () => {
