@@ -132,11 +132,18 @@ export function setDb(db) {
   }
   state._activeCache = new Map();
   state.dirty = false;
+  state.editSeq = 0;
   notify('data-loaded');
 }
 
+// editSeq increments on every edit and never resets while the app is open — it lets
+// a push distinguish "an edit landed after my snapshot was taken" (compare against
+// the value captured at snapshot time) from the single boolean `dirty`, which stays
+// true across an entire push attempt so the tab-close warning keeps working correctly
+// if that push fails.
 export function markDirty() {
   state.dirty = true;
+  state.editSeq = (state.editSeq || 0) + 1;
   state._activeCache.clear();
   notify('dirty');
 }

@@ -255,6 +255,13 @@ async function doPushDb(message = 'Update data') {
   // silently discards it on the next reload.
   const snapshotTakenAt = Date.now();
   const snapshot = structuredClone(state.db);
+  // Recorded here, at the instant it stops being true of `snapshot` — not after the
+  // network round-trip below. doSave() compares state.editSeq against this once the
+  // push resolves to tell "a new edit landed mid-push" apart from "the edit that
+  // triggered this very push is still sitting in state.dirty" (which was always true,
+  // since nothing had cleared it yet, and previously made doSave() re-push every
+  // single time — turning one save into two full GET+merge+PUT cycles).
+  const editSeqAtSnapshot = state.editSeq;
   // Never push the token to GitHub — strip it from appConfig before computing content
   if (snapshot.appConfig?.github?.token) delete snapshot.appConfig.github.token;
   // mergeDb only reads `base` (the last-synced snapshot), so we can reference
@@ -410,7 +417,7 @@ async function doPushDb(message = 'Update data') {
     if (adopted) invalidateActiveCache();
 
     saveLocalCache(state.db);
-    return { sha: newSha };
+    return { sha: newSha, editSeqAtSnapshot };
   }
 
   // All retries exhausted with SHA conflicts — treat as ConflictError so

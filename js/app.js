@@ -261,9 +261,14 @@ async function boot() {
     let hadNewChanges = false;
     try {
       updateSyncStatus('syncing', 'Pushing to GitHub…');
-      await github.pushDb('Auto-sync from app');
-      hadNewChanges = state.dirty; // true if markDirty() fired during the push
-      state.dirty = false;
+      const result = await github.pushDb('Auto-sync from app');
+      // state.dirty alone can't tell "still true from the edit that triggered this
+      // push" apart from "a new edit landed mid-push" — it's only ever set true,
+      // never touched again until here, so it reads true after every push regardless.
+      // Comparing editSeq against the value pushDb captured at snapshot time detects
+      // genuinely new edits instead, so an unrelated push no longer re-triggers itself.
+      hadNewChanges = state.editSeq !== result.editSeqAtSnapshot;
+      state.dirty = hadNewChanges;
       saveFailCount = 0;
       state.github.lastSyncError = null;
       scheduleRatesFeedPublish(); // keep the public daily-rate feeds current
