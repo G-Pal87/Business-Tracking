@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates-index/v1",
-  "generatedAt": "2026-07-11T12:27:20.155Z",
+  "generatedAt": "2026-07-11T12:28:06.768Z",
   "properties": [
     {
       "id": "prop_mohfv8np89",
@@ -36,6 +36,13 @@
       "currency": "EUR",
       "file": "prop_mox7p43s8o.json",
       "nights": 365
+    },
+    {
+      "id": "prop_2f621b47e84542e3a0682001ac037dcd",
+      "name": "test",
+      "currency": "EUR",
+      "file": "prop_2f621b47e84542e3a0682001ac037dcd.json",
+      "nights": 0
     }
   ]
 }
