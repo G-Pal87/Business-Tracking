@@ -4,7 +4,7 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
-import { requestDisconnectOtherSessions, listDevices, killDevice } from '../core/presence.js';
+import { requestDisconnectOtherSessions, listDevices, killDevice, listSessionHistory } from '../core/presence.js';
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
 import { setDb } from '../core/state.js';
@@ -55,6 +55,8 @@ function build() {
   wrap.appendChild(buildEncryptionCard());
   const devicesCard = buildDevicesCard();
   if (devicesCard) wrap.appendChild(devicesCard);
+  const historyCard = buildSessionHistoryCard();
+  if (historyCard) wrap.appendChild(historyCard);
   wrap.appendChild(buildCurrencyCard());
   wrap.appendChild(buildBusinessCard());
   wrap.appendChild(buildStrSettingsCard());
@@ -579,7 +581,9 @@ function buildDevicesCard() {
         d.name || d.username || 'Unknown',
         isSelf ? el('span', { class: 'badge', style: 'margin-left:6px' }, 'This device') : null
       ));
-      tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' }, d.device || '—'));
+      tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' },
+        d.deviceType ? `${capitalizeFirst(d.deviceType)} · ${d.device || 'Unknown'}` : (d.device || '—')
+      ));
       tr.appendChild(el('td', {},
         online
           ? el('span', { class: 'badge success' }, 'Online')
@@ -614,6 +618,78 @@ function buildDevicesCard() {
     t.appendChild(tb);
     tw.appendChild(t);
     body.appendChild(tw);
+  };
+
+  renderList();
+  return card;
+}
+
+const HISTORY_EVENT_LABELS = { login: 'Logged in', logout: 'Logged out', disconnected: 'Disconnected remotely' };
+
+// Admin-only: append-only log of login/logout/kill events, written by
+// recordSessionEvent() in js/core/presence.js from auth.js (login) and
+// app.js (logout), plus presence.js itself on a remote-kill.
+function buildSessionHistoryCard() {
+  const isAdmin = state.session?.role === 'admin';
+  if (!isAdmin) return null;
+
+  const card = el('div', { class: 'card mb-16' });
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Login History'),
+      el('div', { class: 'card-subtitle' }, 'Recent logins, logouts, and remote disconnects')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+  wireCollapsible('session-history', header, body, chevron);
+
+  const renderList = async () => {
+    body.innerHTML = '';
+    body.appendChild(el('div', { class: 'empty' }, 'Loading…'));
+    const events = (await listSessionHistory()).slice().reverse(); // newest first
+    body.innerHTML = '';
+
+    body.appendChild(el('div', { style: 'margin-bottom:10px;text-align:right' },
+      button('Refresh', { variant: 'sm ghost', onClick: renderList })
+    ));
+
+    if (events.length === 0) {
+      body.appendChild(el('div', { class: 'empty' }, 'No login activity recorded yet'));
+      return;
+    }
+
+    const tw = el('div', { class: 'table-wrap' });
+    const t  = el('table', { class: 'table' });
+    const thead = el('thead');
+    const htr = el('tr');
+    ['Event', 'User', 'Device', 'When'].forEach(label => htr.appendChild(el('th', {}, label)));
+    thead.appendChild(htr);
+    t.appendChild(thead);
+
+    const tb = el('tbody');
+    for (const ev of events.slice(0, 200)) {
+      const tr = el('tr');
+      const badgeClass = ev.type === 'login' ? 'success' : ev.type === 'disconnected' ? 'danger' : '';
+      tr.appendChild(el('td', {}, el('span', { class: `badge ${badgeClass}` }, HISTORY_EVENT_LABELS[ev.type] || ev.type)));
+      tr.appendChild(el('td', {}, ev.name || ev.username || 'Unknown'));
+      tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' },
+        ev.deviceType ? `${capitalizeFirst(ev.deviceType)} · ${ev.device || 'Unknown'}` : (ev.device || '—')
+      ));
+      tr.appendChild(el('td', { style: 'font-size:12px;white-space:nowrap' }, ev.at ? new Date(ev.at).toLocaleString() : '—'));
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    tw.appendChild(t);
+    body.appendChild(tw);
+    if (events.length > 200) {
+      body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:8px' },
+        `Showing the 200 most recent of ${events.length} events.`));
+    }
   };
 
   renderList();

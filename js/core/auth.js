@@ -3,6 +3,7 @@ import { state, setDb } from './state.js';
 import { el, input, formRow, button } from './ui.js';
 import { newId, upsert, listActive } from './data.js';
 import { unlockOnLogin, lockOnLogout, hasWrappedKeyConfigured, isUnlocked, setBootstrapDataKey, importDataKeyFromBase64 } from './crypto.js';
+import { recordSessionEvent } from './presence.js';
 
 const SESSION_KEY = 'bt_session';
 const PBKDF2_ITERATIONS = 150000;
@@ -253,6 +254,7 @@ function renderLogin(screen, resolve) {
       }
       await unlockOnLogin(password);
       setSession(user);
+      recordSessionEvent('login').catch(() => {});
       screen.remove();
       resolve(state.session);
     } catch (e) { errEl.textContent = 'Sign in error'; btn.disabled = false; }
@@ -316,6 +318,7 @@ function renderSetup(screen, resolve) {
       upsert('users', user);
       await unlockOnLogin(password);
       setSession(user);
+      recordSessionEvent('login').catch(() => {});
       screen.remove();
       resolve(state.session);
     } catch (e) { errEl.textContent = 'Error creating account'; btn.disabled = false; }
