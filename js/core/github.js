@@ -647,7 +647,20 @@ export async function fetchLocalDb() {
   }
   try {
     const res = await fetch('data/db.json', { cache: 'no-store' });
-    if (res.ok) return await res.json();
+    if (res.ok) {
+      const parsed = await res.json();
+      if (isEncryptedEnvelope(parsed)) {
+        // No local cache (e.g. right after sign-out) means this static-file
+        // read is the only source we have — but without a key we can't turn
+        // it into real data. Returning the raw envelope here would make the
+        // caller think a valid (if empty/garbage) db loaded, skipping the
+        // fetchDb() path that actually surfaces NO_ENC_KEY and prompts for
+        // the key. Returning null instead defers to that path.
+        if (!isUnlocked()) return null;
+        return await decryptEnvelopeToJson(parsed);
+      }
+      return parsed;
+    }
   } catch { /* ignore */ }
   return null;
 }
