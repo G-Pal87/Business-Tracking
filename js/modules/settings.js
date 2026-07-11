@@ -1280,16 +1280,25 @@ function fillInvoiceRepoBody(body) {
   const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
   const deleteStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
   const reencryptStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const zipStatusEl      = el('div', { style: 'font-size:12px;margin-top:8px' });
+
+  const listInvoicePdfs = () => listGithubFolder('invoices').then(all => all.filter(f => f.name.toLowerCase().endsWith('.pdf')));
 
   const checkBtn        = button('Check Invoice Repository', { onClick: runCheck });
   const backupBtn       = button('Backup Invoices', { onClick: runBackup });
   const deleteBackupBtn = button('Delete Invoice Backups', { variant: 'danger', onClick: runDeleteBackups });
-  const reencryptBtn    = button('Re-encrypt Existing Invoice PDFs', { onClick: runReencrypt });
-  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn, reencryptBtn));
+  const reencryptBtn    = button('Re-encrypt Existing Invoice PDFs', {
+    onClick: () => runReencryptFiles(listInvoicePdfs, reencryptStatusEl, reencryptBtn, 'Invoice PDFs')
+  });
+  const zipBtn = button('Download All (Decrypted ZIP)', {
+    onClick: () => runDownloadZip(listInvoicePdfs, 'invoices', zipStatusEl, zipBtn)
+  });
+  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn, reencryptBtn, zipBtn));
   body.appendChild(resultEl);
   body.appendChild(backupStatusEl);
   body.appendChild(deleteStatusEl);
   body.appendChild(reencryptStatusEl);
+  body.appendChild(zipStatusEl);
 
   // Mirrors invoicePdfPath() + invoicePdfFilename() in invoices.js exactly
   const canonicalPath = invoicePdfPath;
@@ -1654,79 +1663,6 @@ function fillInvoiceRepoBody(body) {
     return null;
   }
 
-  // ── Re-encrypt existing (pre-encryption) files ──────────────────────────────
-  // One-time migration: fetches each PDF (transparently decrypting if it's
-  // already encrypted — safe to re-run) and re-uploads it through the
-  // encrypted path, so files uploaded before encryption existed get covered
-  // too instead of only new/regenerated ones going forward.
-
-  async function runReencrypt() {
-    const { owner, repo, token } = state.github;
-    if (!owner || !repo || !token) {
-      reencryptStatusEl.textContent = 'GitHub not configured.';
-      reencryptStatusEl.style.color = 'var(--danger,#dc3545)';
-      return;
-    }
-    if (!isUnlocked()) {
-      reencryptStatusEl.textContent = 'Encryption key not set up on this device — configure it in the Encryption section above first.';
-      reencryptStatusEl.style.color = 'var(--danger,#dc3545)';
-      return;
-    }
-
-    const ok = await confirmDialog(
-      'Re-encrypt every existing invoice PDF in place? Each file is fetched, decrypted if needed, and re-uploaded encrypted — this may take a while for many files and creates one commit per file.',
-      { okLabel: 'Re-encrypt' }
-    );
-    if (!ok) return;
-
-    reencryptBtn.disabled = true;
-    reencryptBtn.textContent = 'Listing files…';
-    reencryptStatusEl.style.color = 'var(--text-muted)';
-
-    let files;
-    try {
-      const all = await listGithubFolder('invoices');
-      files = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
-    } catch (err) {
-      reencryptStatusEl.textContent = `Failed to list files: ${err.message}`;
-      reencryptStatusEl.style.color = 'var(--danger,#dc3545)';
-      reencryptBtn.disabled = false;
-      reencryptBtn.textContent = 'Re-encrypt Existing Invoice PDFs';
-      return;
-    }
-
-    if (files.length === 0) {
-      reencryptStatusEl.textContent = 'No PDF files found in invoice repository.';
-      reencryptStatusEl.style.color = 'var(--text-muted)';
-      reencryptBtn.disabled = false;
-      reencryptBtn.textContent = 'Re-encrypt Existing Invoice PDFs';
-      return;
-    }
-
-    let done = 0, failed = 0;
-    for (const file of files) {
-      reencryptStatusEl.textContent = `Re-encrypting ${done + failed + 1} / ${files.length}: ${file.name}…`;
-      try {
-        const fileData = await fetchGithubFileEncrypted(file.path); // decrypts if already encrypted, returns as-is otherwise
-        await uploadGithubFileEncrypted(file.path, fileData.content, `Re-encrypt: ${file.name}`);
-        done++;
-      } catch (err) {
-        console.warn(`[re-encrypt] Failed for ${file.name}:`, err.message);
-        failed++;
-      }
-    }
-
-    reencryptBtn.disabled = false;
-    reencryptBtn.textContent = 'Re-encrypt Existing Invoice PDFs';
-    if (failed > 0) {
-      reencryptStatusEl.textContent = `Done: ${done} re-encrypted, ${failed} failed. Check browser console for details.`;
-      reencryptStatusEl.style.color = 'var(--danger,#dc3545)';
-    } else {
-      reencryptStatusEl.textContent = `Complete: ${done} file${done !== 1 ? 's' : ''} now encrypted.`;
-      reencryptStatusEl.style.color = 'var(--success,#198754)';
-    }
-  }
-
   // ── Backup ───────────────────────────────────────────────────────────────────
 
   async function runBackup() {
@@ -1893,11 +1829,28 @@ async function listBackupFiles(backupPath) {
   return files;
 }
 
+// List root folder, then recurse one level into sub-folders (skip 'backup').
+// listGithubFolder() always filters its result to files only (by design, for
+// its typical flat-folder callers) — so the top-level listing here needs its
+// own raw fetch to see the per-entity sub-directories at all (mirrors
+// listBackupFiles above, which gets this right for the same reason).
 async function listDocRepoFiles(rootFolder) {
-  // List root folder, then recurse one level into sub-folders (skip 'backup')
+  const { owner, repo, branch, token } = state.github;
+  if (!owner || !repo) return [];
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (token) headers['Authorization'] = `token ${token}`;
+  const cleanPath = rootFolder.replace(/^\/+|\/+$/g, '');
+  const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
   let topItems;
   try {
-    topItems = await listGithubFolder(rootFolder);
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`,
+      { headers, cache: 'no-store' }
+    );
+    if (res.status === 404) return [];
+    if (!res.ok) throw new Error(`Folder listing failed (${res.status})`);
+    const data = await res.json();
+    topItems = Array.isArray(data) ? data : [];
   } catch (err) {
     if (err.message && (err.message.includes('404') || err.message.includes('Not Found'))) return [];
     throw err;
@@ -1916,18 +1869,179 @@ async function listDocRepoFiles(rootFolder) {
   return files;
 }
 
+// ── Shared: re-encrypt every file a lister returns, in place ────────────────
+// Fetches each file (transparently decrypting if it's already encrypted, so
+// this is safe to re-run) and re-uploads it through the encrypted path.
+async function runReencryptFiles(listFn, statusEl, btn, label) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) {
+    statusEl.textContent = 'GitHub not configured.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  if (!isUnlocked()) {
+    statusEl.textContent = 'Encryption key not set up on this device — configure it in the Encryption section above first.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+
+  const ok = await confirmDialog(
+    `Re-encrypt every existing ${label} in place? Each file is fetched, decrypted if needed, and re-uploaded encrypted — this may take a while for many files and creates one commit per file.`,
+    { okLabel: 'Re-encrypt' }
+  );
+  if (!ok) return;
+
+  const defaultLabel = `Re-encrypt Existing ${label}`;
+  btn.disabled = true;
+  btn.textContent = 'Listing files…';
+  statusEl.style.color = 'var(--text-muted)';
+
+  let files;
+  try {
+    files = await listFn();
+  } catch (err) {
+    statusEl.textContent = `Failed to list files: ${err.message}`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  if (files.length === 0) {
+    statusEl.textContent = 'No files found.';
+    statusEl.style.color = 'var(--text-muted)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  let done = 0, failed = 0;
+  for (const file of files) {
+    btn.textContent = `Re-encrypting ${done + failed + 1} / ${files.length}…`;
+    try {
+      const fileData = await fetchGithubFileEncrypted(file.path);
+      await uploadGithubFileEncrypted(file.path, fileData.content, `Re-encrypt: ${file.name}`);
+      done++;
+    } catch (err) {
+      console.warn(`[re-encrypt] Failed for ${file.name}:`, err.message);
+      failed++;
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = defaultLabel;
+  if (failed > 0) {
+    statusEl.textContent = `Done: ${done} re-encrypted, ${failed} failed. Check browser console for details.`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } else {
+    statusEl.textContent = `Complete: ${done} file${done !== 1 ? 's' : ''} now encrypted.`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }
+}
+
+// ── Shared: download every file a lister returns as a single decrypted ZIP ──
+async function runDownloadZip(listFn, zipBaseName, statusEl, btn) {
+  const { owner, repo } = state.github;
+  if (!owner || !repo) {
+    statusEl.textContent = 'GitHub not configured.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  const JSZip = window.JSZip;
+  if (!JSZip) {
+    statusEl.textContent = 'ZIP library not loaded — refresh and try again.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+
+  const defaultLabel = 'Download All (Decrypted ZIP)';
+  btn.disabled = true;
+  btn.textContent = 'Listing files…';
+  statusEl.style.color = 'var(--text-muted)';
+
+  let files;
+  try {
+    files = await listFn();
+  } catch (err) {
+    statusEl.textContent = `Failed to list files: ${err.message}`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  if (files.length === 0) {
+    statusEl.textContent = 'No files found.';
+    statusEl.style.color = 'var(--text-muted)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  const zip = new JSZip();
+  let ok = 0, failed = 0;
+  for (const file of files) {
+    btn.textContent = `Fetching ${ok + failed + 1} / ${files.length}…`;
+    try {
+      const fileData = await fetchGithubFileEncrypted(file.path);
+      const bytes = Uint8Array.from(atob(fileData.content.replace(/\s/g, '')), c => c.charCodeAt(0));
+      zip.file(file.path, bytes); // full repo-relative path, so per-entity subfolders are preserved
+      ok++;
+    } catch (err) {
+      console.warn(`[zip] Could not fetch ${file.path}:`, err.message);
+      failed++;
+    }
+  }
+
+  if (ok === 0) {
+    statusEl.textContent = 'Could not fetch any files.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const filename = `${zipBaseName}-${ts}.zip`;
+  const url = URL.createObjectURL(content);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  btn.disabled = false;
+  btn.textContent = defaultLabel;
+  if (failed > 0) {
+    statusEl.textContent = `Downloaded ${ok}, ${failed} failed. Check browser console for details.`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } else {
+    statusEl.textContent = `Downloaded ${ok} file${ok !== 1 ? 's' : ''} as ${filename}.`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }
+}
+
 function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLabel, backupBtnLabel, deleteBackupBtnLabel, openRecord }) {
   const resultEl        = el('div', { style: 'margin-top:12px' });
   const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
   const deleteStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const reencryptStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const zipStatusEl      = el('div', { style: 'font-size:12px;margin-top:8px' });
 
   const checkBtn        = button(checkBtnLabel,  { onClick: runCheck });
   const backupBtn       = button(backupBtnLabel, { onClick: runBackup });
   const deleteBackupBtn = button(deleteBackupBtnLabel, { variant: 'danger', onClick: runDeleteBackups });
-  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn));
+  const reencryptBtn    = button(`Re-encrypt Existing ${entityLabel} Documents`, {
+    onClick: () => runReencryptFiles(() => listDocRepoFiles(rootFolder), reencryptStatusEl, reencryptBtn, `${entityLabel} Documents`)
+  });
+  const zipBtn = button('Download All (Decrypted ZIP)', {
+    onClick: () => runDownloadZip(() => listDocRepoFiles(rootFolder), rootFolder.toLowerCase(), zipStatusEl, zipBtn)
+  });
+  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn, reencryptBtn, zipBtn));
   body.appendChild(resultEl);
   body.appendChild(backupStatusEl);
   body.appendChild(deleteStatusEl);
+  body.appendChild(reencryptStatusEl);
+  body.appendChild(zipStatusEl);
 
   // ── Check ─────────────────────────────────────────────────────────────────
 
@@ -2301,9 +2415,22 @@ function makeSubSection(key, title, subtitle) {
 
 function fillExpenseReceiptRepoBody(body) {
   const resultEl = el('div', { style: 'margin-top:12px' });
-  const checkBtn = button('Check Expense Receipts', { onClick: runCheck });
-  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn));
+  const reencryptStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const zipStatusEl       = el('div', { style: 'font-size:12px;margin-top:8px' });
+
+  const listReceipts = () => listGithubFolder('expenses/receipts');
+
+  const checkBtn     = button('Check Expense Receipts', { onClick: runCheck });
+  const reencryptBtn = button('Re-encrypt Existing Receipts', {
+    onClick: () => runReencryptFiles(listReceipts, reencryptStatusEl, reencryptBtn, 'Expense Receipts')
+  });
+  const zipBtn = button('Download All (Decrypted ZIP)', {
+    onClick: () => runDownloadZip(listReceipts, 'expense-receipts', zipStatusEl, zipBtn)
+  });
+  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, reencryptBtn, zipBtn));
   body.appendChild(resultEl);
+  body.appendChild(reencryptStatusEl);
+  body.appendChild(zipStatusEl);
 
   async function runCheck() {
     const { owner, repo, token } = state.github;
