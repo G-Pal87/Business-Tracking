@@ -1,5 +1,6 @@
 // GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
 import { state, notify, invalidateActiveCache } from './state.js';
+import { isEncryptedEnvelope, decryptEnvelopeToJson, encryptJsonToEnvelope, isUnlocked } from './crypto.js';
 
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
@@ -171,6 +172,12 @@ export async function fetchDb() {
     throw new Error('GitHub returned no content');
   }
 
+  // Transparent decrypt: db.json is either a legacy plain object (pre-
+  // encryption / no key ever configured) or the { enc: 1, iv, ct } envelope —
+  // decryptEnvelopeToJson throws a clear error if this device has no data
+  // key configured yet rather than silently returning ciphertext as "data".
+  if (isEncryptedEnvelope(parsed)) parsed = await decryptEnvelopeToJson(parsed);
+
   state.github.sha           = sha;
   state.github.connected     = true;
   state.github.lastPullOk    = true;
@@ -299,11 +306,15 @@ async function doPushDb(message = 'Update data') {
     } else {
       throw new Error('GitHub returned no content for db.json');
     }
+    if (isEncryptedEnvelope(freshDb)) freshDb = await decryptEnvelopeToJson(freshDb);
     const merged  = mergeDb(freshDb, snapshot, base);
     if (merged.appConfig?.github?.token) delete merged.appConfig.github.token;
 
-    // PUT merged content
-    const jsonStr = JSON.stringify(merged);
+    // PUT merged content — encrypted if this device has a data key configured,
+    // otherwise pushed as plain JSON (pre-encryption rollout / not yet set up).
+    const jsonStr = isUnlocked()
+      ? JSON.stringify(await encryptJsonToEnvelope(merged))
+      : JSON.stringify(merged);
     if (jsonStr.length > 8 * 1024 * 1024) {
       const mb = (jsonStr.length / 1024 / 1024).toFixed(1);
       console.warn(`[BT] DB is ${mb} MB — consider purging deleted records in Settings → Data`);

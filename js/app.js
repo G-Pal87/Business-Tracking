@@ -166,6 +166,7 @@ async function boot() {
       updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
     } catch (e) {
       console.warn('GitHub load failed, no local cache available', e);
+      if (e.code === 'NO_ENC_KEY') state.github.needsEncKey = true;
       state.github.lastSyncError = normalizeNetworkError(e.message);
       initialSyncDone = true; // unblock saves — GitHub is unreachable, not a sync issue
     }

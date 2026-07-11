@@ -1,7 +1,8 @@
 // Auth: session management + login/setup screen
-import { state } from './state.js';
+import { state, setDb } from './state.js';
 import { el, input, formRow, button } from './ui.js';
 import { newId, upsert, listActive } from './data.js';
+import { unlockOnLogin, lockOnLogout, hasWrappedKeyConfigured, isUnlocked, setBootstrapDataKey, importDataKeyFromBase64 } from './crypto.js';
 
 const SESSION_KEY = 'bt_session';
 const PBKDF2_ITERATIONS = 150000;
@@ -73,6 +74,7 @@ export function setSession(user) {
 export function clearSession() {
   localStorage.removeItem(SESSION_KEY);
   state.session = null;
+  lockOnLogout();
 }
 
 export function requireAuth() {
@@ -95,17 +97,125 @@ export function requireAuth() {
       // Also rolls the idle-timeout expiry forward — see SESSION_IDLE_MS.
       state.session = { userId: liveUser.id, username: liveUser.username, role: liveUser.role, name: liveUser.name, expiresAt: Date.now() + SESSION_IDLE_MS };
       localStorage.setItem(SESSION_KEY, JSON.stringify(state.session));
+      // A resumed session never re-enters the password, so the encryption
+      // data key (only ever unwrapped from a plaintext password) isn't in
+      // memory yet on a fresh page load/tab — prompt for it once per tab
+      // before handing control back, rather than silently failing to
+      // decrypt data later.
+      if (hasWrappedKeyConfigured() && !isUnlocked()) {
+        const screen = el('div', { id: 'login-screen', class: 'login-screen' });
+        document.body.appendChild(screen);
+        renderUnlock(screen, liveUser, () => { screen.remove(); resolve(state.session); });
+        return;
+      }
       resolve(state.session);
       return;
     }
     if (stored) clearSession(); // session pointed at a deleted/missing account, or expired
     const screen = el('div', { id: 'login-screen', class: 'login-screen' });
     document.body.appendChild(screen);
+    // A brand-new device (no local cache yet) that failed its first fetch
+    // specifically because db.json is encrypted and this device has no key
+    // — as opposed to a genuine connectivity/token problem — needs a chance
+    // to paste the key before anything else can render, since there's no
+    // user list yet to check a normal login against.
+    if (state.github?.needsEncKey) { renderBootstrapUnlock(screen, resolve); return; }
     const hasGithubConfig = !!(state.github?.owner && state.github?.repo);
     if (users.length === 0 && hasGithubConfig) renderNoData(screen, resolve);
     else if (users.length === 0) renderSetup(screen, resolve);
     else renderLogin(screen, resolve);
   });
+}
+
+// Shown on a brand-new device when the very first data fetch failed because
+// db.json is encrypted and no key has been entered here yet (see app.js
+// Phase 2 and crypto.js's NO_ENC_KEY). Unlike renderUnlock, there is no known
+// user yet to check a password against — this only unblocks the data fetch;
+// a normal login/setup screen renders afterward once real user records exist.
+function renderBootstrapUnlock(screen, resolve) {
+  screen.innerHTML = '';
+  const card = el('div', { class: 'login-card' });
+  card.appendChild(el('div', { class: 'login-brand' }, 'BT'));
+  card.appendChild(el('div', { class: 'login-title' }, 'Business Tracking'));
+  card.appendChild(el('div', { class: 'login-sub' }, 'This device needs the encryption key to continue'));
+  card.appendChild(el('div', {
+    style: 'font-size:13px;color:var(--text-muted);margin:8px 0 16px;line-height:1.5;text-align:center'
+  }, 'Data is encrypted. Get the key from whoever set this up, through a secure channel — never email/chat/URL.'));
+
+  const keyI = input({ type: 'password', placeholder: 'Encryption key' });
+  const errEl = el('div', { class: 'login-error' });
+  card.appendChild(formRow('Encryption Key', keyI));
+  card.appendChild(errEl);
+
+  const btn = button('Continue', { variant: 'primary' });
+  btn.style.cssText = 'width:100%;margin-top:8px';
+  card.appendChild(btn);
+  screen.appendChild(card);
+
+  const doContinue = async () => {
+    const raw = keyI.value.trim();
+    if (!raw) { errEl.textContent = 'Paste the encryption key'; return; }
+    errEl.textContent = '';
+    btn.disabled = true;
+    try {
+      const key = await importDataKeyFromBase64(raw);
+      setBootstrapDataKey(key);
+      const github = await import('./github.js');
+      const remoteDb = await github.fetchDb();
+      state.github.needsEncKey = false;
+      setDb(remoteDb);
+      github.applyDbConfig(remoteDb.appConfig?.github);
+      github.saveLocalCache(remoteDb);
+      screen.remove();
+      requireAuth().then(resolve);
+    } catch (e) {
+      state.github.needsEncKey = true;
+      errEl.textContent = 'Incorrect key, or could not load data: ' + e.message;
+      btn.disabled = false;
+    }
+  };
+
+  btn.onclick = doContinue;
+  keyI.addEventListener('keydown', e => { if (e.key === 'Enter') doContinue(); });
+  setTimeout(() => keyI.focus(), 50);
+}
+
+// Shown once per browser tab when a session resumed without re-entering a
+// password (see requireAuth) but this device has an encryption key
+// configured — needs the password once to unwrap it into memory.
+function renderUnlock(screen, user, done) {
+  screen.innerHTML = '';
+  const card = el('div', { class: 'login-card' });
+  card.appendChild(el('div', { class: 'login-brand' }, 'BT'));
+  card.appendChild(el('div', { class: 'login-title' }, 'Business Tracking'));
+  card.appendChild(el('div', { class: 'login-sub' }, `Welcome back, ${user.name || user.username} — unlock to continue`));
+
+  const passwordI = input({ type: 'password', placeholder: 'Password', autocomplete: 'current-password' });
+  const errEl = el('div', { class: 'login-error' });
+  card.appendChild(formRow('Password', passwordI));
+  card.appendChild(errEl);
+
+  const btn = button('Unlock', { variant: 'primary' });
+  btn.style.cssText = 'width:100%;margin-top:8px';
+  card.appendChild(btn);
+  screen.appendChild(card);
+
+  const doUnlock = async () => {
+    const password = passwordI.value;
+    if (!password) { errEl.textContent = 'Enter your password'; return; }
+    errEl.textContent = '';
+    btn.disabled = true;
+    try {
+      const result = await verifyPassword(password, user);
+      if (!result.ok) { errEl.textContent = 'Incorrect password'; passwordI.value = ''; btn.disabled = false; return; }
+      await unlockOnLogin(password);
+      done();
+    } catch (e) { errEl.textContent = 'Unlock error'; btn.disabled = false; }
+  };
+
+  btn.onclick = doUnlock;
+  passwordI.addEventListener('keydown', e => { if (e.key === 'Enter') doUnlock(); });
+  setTimeout(() => passwordI.focus(), 50);
 }
 
 function renderLogin(screen, resolve) {
@@ -141,6 +251,7 @@ function renderLogin(screen, resolve) {
       if (result.needsUpgrade) {
         upsert('users', { ...user, passwordHash: result.newHash, passwordSalt: result.newSalt });
       }
+      await unlockOnLogin(password);
       setSession(user);
       screen.remove();
       resolve(state.session);
@@ -203,6 +314,7 @@ function renderSetup(screen, resolve) {
       const { hash, salt } = await hashPassword(password);
       const user = { id: newId('usr'), username, name, role: 'admin', passwordHash: hash, passwordSalt: salt };
       upsert('users', user);
+      await unlockOnLogin(password);
       setSession(user);
       screen.remove();
       resolve(state.session);

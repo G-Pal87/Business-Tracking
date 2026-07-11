@@ -2,6 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, deleteGithubFile } from '../core/github.js';
+import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured } from '../core/crypto.js';
 import { requestDisconnectOtherSessions } from '../core/presence.js';
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
@@ -50,6 +51,7 @@ function build() {
   const wrap = el('div', { class: 'view active' });
 
   wrap.appendChild(buildGithubCard());
+  wrap.appendChild(buildEncryptionCard());
   wrap.appendChild(buildCurrencyCard());
   wrap.appendChild(buildBusinessCard());
   wrap.appendChild(buildStrSettingsCard());
@@ -361,6 +363,106 @@ function buildGithubCard() {
     const retryRow = el('div', { style: 'margin-top:8px' });
     retryRow.appendChild(retryBtn);
     body.appendChild(retryRow);
+  }
+
+  return card;
+}
+
+function buildEncryptionCard() {
+  const card = el('div', { class: 'card mb-16' });
+  const isAdmin = state.session?.role === 'admin';
+
+  const unlocked = isUnlocked();
+  const configured = hasWrappedKeyConfigured();
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const statusBadge = unlocked
+    ? el('span', { class: 'badge success' }, 'Enabled on this device')
+    : configured
+      ? el('span', { class: 'badge warning' }, 'Locked')
+      : el('span', { class: 'badge' }, 'Not configured');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Encryption'),
+      el('div', { class: 'card-subtitle' }, 'Keeps data unreadable to anyone without this key, even though the repo is public')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, statusBadge, chevron)
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+  wireCollapsible('encryption', header, body, chevron);
+
+  const refreshAfterKeyChange = () => { toast('Encryption key updated', 'success'); setTimeout(() => navigate('settings'), 200); };
+
+  if (unlocked) {
+    body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:12px' },
+      'This device can read and write encrypted data. Nothing further is needed here unless you’re rotating the key.'));
+  } else {
+    body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:12px' },
+      'This device does not have the team’s encryption key yet. Paste it below — get it from whoever set up encryption, through a secure channel (password manager, in person), never email/chat/URL.'));
+  }
+
+  const keyI = input({ type: 'password', placeholder: 'Paste encryption key…' });
+  const saveKeyBtn = button('Save Key', { variant: 'primary', onClick: async () => {
+    const raw = keyI.value.trim();
+    if (!raw) { toast('Paste a key first', 'danger'); return; }
+    saveKeyBtn.disabled = true;
+    try {
+      const key = await importDataKeyFromBase64(raw);
+      await installDataKey(key);
+      refreshAfterKeyChange();
+    } catch (e) {
+      toast('Invalid key: ' + e.message, 'danger', 5000);
+      saveKeyBtn.disabled = false;
+    }
+  }});
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Encryption Key', keyI), saveKeyBtn));
+
+  if (isAdmin) {
+    const genBtn = button(configured ? 'Generate New Key (rotates — re-encrypts on next save)' : 'Generate Key', {
+      variant: configured ? 'danger' : 'primary',
+      onClick: async () => {
+        const ok = await confirmDialog(
+          configured
+            ? 'Generating a new key replaces the current one on THIS device and re-encrypts data on the next save. Every other device/user will need the new key or they will be unable to read or save data. Continue?'
+            : 'Generate a new random encryption key for this app? You’ll need to save a secure backup of it and share it with every authorized user.',
+          { danger: configured, okLabel: 'Generate' }
+        );
+        if (!ok) return;
+        // The confirm dialog's own close() clears the modal overlay ~200ms
+        // after resolving — opening the next modal before that finishes lets
+        // the delayed cleanup wipe it out from under us (same pitfall as
+        // confirmDeleteTwice above). Let it fully settle first.
+        await new Promise(r => setTimeout(r, 250));
+        try {
+          const { key, base64 } = await generateDataKey();
+          await installDataKey(key);
+          if (state.github.syncNow) { try { await state.github.syncNow(); } catch { /* toast below still shows the key regardless */ } }
+          const body2 = el('div');
+          body2.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px' },
+            'Save this now — it will not be shown again. Store it in a password manager, then share it with every authorized user through a secure channel.'));
+          const keyOut = input({ value: base64, readonly: true, style: 'width:100%;font-family:monospace;font-size:12px' });
+          body2.appendChild(keyOut);
+          openModal({ title: 'New Encryption Key', body: body2, footer: [button('Done', { variant: 'primary', onClick: () => { closeModal(); refreshAfterKeyChange(); } })] });
+        } catch (e) {
+          toast('Failed to generate key: ' + e.message, 'danger', 5000);
+        }
+      }
+    });
+    body.appendChild(el('div', { style: 'margin-top:10px' }, genBtn));
+  }
+
+  if (configured) {
+    const removeBtn = button('Remove Key From This Device', { variant: 'sm ghost', onClick: async () => {
+      const ok = await confirmDialog('Remove the encryption key from this device? You will need to paste it again to read or save data here.', { danger: true, okLabel: 'Remove' });
+      if (!ok) return;
+      clearDataKey();
+      toast('Key removed from this device', 'info');
+      setTimeout(() => navigate('settings'), 150);
+    }});
+    body.appendChild(el('div', { style: 'margin-top:10px' }, removeBtn));
   }
 
   return card;
