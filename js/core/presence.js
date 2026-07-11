@@ -396,6 +396,40 @@ export async function listSessionHistory() {
   } catch { return []; }
 }
 
+// Wipes the login/logout audit log. Re-reads the current sha immediately before
+// writing (rather than trusting a sha from an earlier listSessionHistory() call)
+// so this doesn't clobber an event recorded moments ago by another login/logout.
+export async function clearSessionHistory() {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) return false;
+  const headers = {
+    'Accept':        'application/vnd.github+json',
+    'Authorization': `token ${token}`,
+    'Content-Type':  'application/json'
+  };
+  const enc    = SESSION_HISTORY_PATH.split('/').map(encodeURIComponent).join('/');
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${enc}`;
+
+  let sha = null;
+  try {
+    const get = await fetch(`${apiUrl}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`, { headers, cache: 'no-store' });
+    if (get.ok) sha = (await get.json()).sha;
+    else if (get.status !== 404) return false;
+  } catch { return false; }
+  if (!sha) return true; // already empty/nonexistent
+
+  const body = {
+    message: 'Clear session history',
+    content: btoa(unescape(encodeURIComponent(JSON.stringify({ events: [] }, null, 2)))),
+    branch:  PRESENCE_BRANCH,
+    sha
+  };
+  try {
+    const put = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+    return put.ok;
+  } catch { return false; }
+}
+
 // ── Banner ────────────────────────────────────────────────────────────────────
 
 function showBanner(otherNames, viewLabel) {
