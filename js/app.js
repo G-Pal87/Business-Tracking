@@ -5,7 +5,7 @@ import * as github from './core/github.js';
 import * as router from './core/router.js';
 import { toast } from './core/ui.js';
 import { requireAuth, clearSession } from './core/auth.js';
-import { startPresence } from './core/presence.js';
+import { startPresence, recordSessionEvent } from './core/presence.js';
 
 const VERSION = window._appV || '20260702c';
 
@@ -551,7 +551,14 @@ function buildUserFooter() {
   logoutBtn.className = 'btn';
   logoutBtn.style.cssText = 'width:100%;font-size:11px;padding:4px 8px';
   logoutBtn.textContent = 'Sign Out';
-  logoutBtn.onclick = () => { clearSession(); github.clearCachedDb(); location.reload(); };
+  logoutBtn.onclick = async () => {
+    // Recorded before clearSession() wipes state.session — reload() below
+    // would otherwise abort this fetch mid-flight if fired afterward.
+    await recordSessionEvent('logout').catch(() => {});
+    clearSession();
+    github.clearCachedDb();
+    location.reload();
+  };
   wrap.appendChild(nameEl);
   wrap.appendChild(roleEl);
   wrap.appendChild(logoutBtn);

@@ -21,6 +21,13 @@ const DEVICE_HEARTBEAT_MS = HEARTBEAT_MS;
 const DEVICES_STALE_MS    = 30 * 24 * 60 * 60 * 1000; // prune a device unseen for 30 days
 const KILL_TTL_MS         = 7 * 24 * 60 * 60 * 1000;  // prune a per-device kill signal after 7 days
 
+// Login/logout audit log — a separate file from presence.json since this one
+// only grows on discrete events (login/logout/kill), never on the 50s
+// heartbeat, and is capped rather than pruned by age so a quiet team doesn't
+// lose its whole history, an active one doesn't grow the file forever.
+const SESSION_HISTORY_PATH = 'data/session-history.json';
+const HISTORY_MAX_EVENTS   = 500;
+
 // Operations + System nav groups (read-write views where conflicts matter)
 const TRACKED = new Set([
   'properties', 'payments', 'expenses', 'tenants', 'vendors',
@@ -256,13 +263,26 @@ function deviceLabel() {
   else if (/Chrome\//.test(ua)) browser = 'Chrome';
   else if (/Firefox\//.test(ua)) browser = 'Firefox';
   else if (/Safari\//.test(ua)) browser = 'Safari';
-  let os = 'Unknown OS';
-  if (/Windows/.test(ua)) os = 'Windows';
-  else if (/Mac OS X/.test(ua)) os = 'macOS';
-  else if (/Android/.test(ua)) os = 'Android';
-  else if (/iPhone|iPad|iPod/.test(ua)) os = 'iOS';
-  else if (/Linux/.test(ua)) os = 'Linux';
-  return `${browser} on ${os}`;
+  return `${browser} on ${osLabel()}`;
+}
+
+function osLabel() {
+  const ua = navigator.userAgent || '';
+  if (/Windows/.test(ua)) return 'Windows';
+  if (/Mac OS X/.test(ua)) return /iPad|Macintosh.*Mobile/.test(ua) ? 'iPadOS' : 'macOS';
+  if (/Android/.test(ua)) return 'Android';
+  if (/iPhone|iPad|iPod/.test(ua)) return 'iOS';
+  if (/Linux/.test(ua)) return 'Linux';
+  return 'Unknown OS';
+}
+
+// Coarse category only (mobile / tablet / desktop) — no device model, no
+// hardware identifiers, nothing that singles out a specific physical unit.
+function deviceType() {
+  const ua = navigator.userAgent || '';
+  if (/iPad/.test(ua) || (/Android/.test(ua) && !/Mobile/.test(ua))) return 'tablet';
+  if (/Mobi|iPhone|iPod/.test(ua)) return 'mobile';
+  return 'desktop';
 }
 
 function scheduleDeviceReport() {
@@ -289,6 +309,7 @@ async function reportDevice() {
       name:          state.session?.name || state.session?.username || 'Unknown',
       role:          state.session?.role || null,
       device:        deviceLabel(),
+      deviceType:    deviceType(),
       hasKey:        isUnlocked(),
       keyConfigured: hasWrappedKeyConfigured(),
       connectedAt:   state.github.connectedAt,
@@ -304,6 +325,75 @@ export async function listDevices() {
     const { devices } = await readPresence();
     return devices;
   } catch { return {}; }
+}
+
+// ── Login/logout history (Settings → Active Devices) ───────────────────────
+// Appends one event per login/logout/kill — not the read-modify-write-with-
+// retry treatment presence.json gets, since a lost event here (rare 409 on
+// two logins landing in the same instant) is a cosmetic gap in a log, not a
+// stuck banner or state.
+
+export async function recordSessionEvent(type, extra = {}) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) return false;
+  const headers = {
+    'Accept':        'application/vnd.github+json',
+    'Authorization': `token ${token}`,
+    'Content-Type':  'application/json'
+  };
+  const enc    = SESSION_HISTORY_PATH.split('/').map(encodeURIComponent).join('/');
+  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${enc}`;
+
+  let sha = null, events = [];
+  try {
+    const get = await fetch(`${apiUrl}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`, { headers, cache: 'no-store' });
+    if (get.ok) {
+      const d = await get.json();
+      sha = d.sha;
+      const bytes = Uint8Array.from(atob(d.content.replace(/\s/g, '')), c => c.charCodeAt(0));
+      events = JSON.parse(new TextDecoder().decode(bytes)).events || [];
+    }
+  } catch { /* file doesn't exist yet — create it */ }
+
+  events.push({
+    type, // 'login' | 'logout' | 'disconnected'
+    sessionId: state.github.sessionId,
+    username:  state.session?.username || null,
+    name:      state.session?.name || state.session?.username || 'Unknown',
+    device:    deviceLabel(),
+    deviceType: deviceType(),
+    at:        Date.now(),
+    ...extra
+  });
+  if (events.length > HISTORY_MAX_EVENTS) events = events.slice(events.length - HISTORY_MAX_EVENTS);
+
+  const body = {
+    message: `Session ${type}`,
+    content: btoa(unescape(encodeURIComponent(JSON.stringify({ events }, null, 2)))),
+    branch:  PRESENCE_BRANCH,
+    ...(sha ? { sha } : {})
+  };
+  try {
+    const put = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+    return put.ok;
+  } catch { return false; }
+}
+
+export async function listSessionHistory() {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) return [];
+  const headers = { 'Accept': 'application/vnd.github+json', 'Authorization': `token ${token}` };
+  const enc = SESSION_HISTORY_PATH.split('/').map(encodeURIComponent).join('/');
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${enc}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`,
+      { headers, cache: 'no-store' }
+    );
+    if (!res.ok) return [];
+    const d = await res.json();
+    const bytes = Uint8Array.from(atob(d.content.replace(/\s/g, '')), c => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes)).events || [];
+  } catch { return []; }
 }
 
 // ── Banner ────────────────────────────────────────────────────────────────────
@@ -472,6 +562,8 @@ function applyDisconnect(issuedBy) {
   state.github.disconnected = true;
   clearTimeout(heartbeatTimer);
   clearTimeout(pollTimer);
+  clearTimeout(deviceTimer);
+  recordSessionEvent('disconnected', { by: issuedBy }).catch(() => {});
   showDisconnectBanner(issuedBy);
 }
 
