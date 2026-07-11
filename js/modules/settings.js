@@ -2,7 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
-import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson } from '../core/crypto.js';
+import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
 import { requestDisconnectOtherSessions } from '../core/presence.js';
 import { navigate } from '../core/router.js';
@@ -11,7 +11,7 @@ import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { PDF_TEMPLATES } from '../core/pdf.js';
 const generateInvoicePDF = (...a) => import(`../core/pdf.js?v=${window._appV || Date.now()}`).then(m => m.generateInvoicePDF(...a));
-import { openPreview as openInvoicePreview, invoicePdfPath } from './invoices.js';
+import { openPreview as openInvoicePreview, invoicePdfPath, invoicePdfCanonicalName } from './invoices.js';
 import { openDetail as openClientDetail } from './clients.js';
 import { openDetail as openPropertyDetail } from './properties.js';
 import { openExpenseForm } from './expenses.js';
@@ -1300,9 +1300,6 @@ function fillInvoiceRepoBody(body) {
   body.appendChild(reencryptStatusEl);
   body.appendChild(zipStatusEl);
 
-  // Mirrors invoicePdfPath() + invoicePdfFilename() in invoices.js exactly
-  const canonicalPath = invoicePdfPath;
-
   // ── Check ────────────────────────────────────────────────────────────────────
 
   async function runCheck() {
@@ -1330,17 +1327,39 @@ function fillInvoiceRepoBody(body) {
     checkBtn.textContent = 'Check Invoice Repository';
 
     // Top-level PDFs only; backup/ subfolder is type:'dir' so filtered out by listGithubFolder
-    const pdfFiles   = repoFiles.filter(f => f.name.toLowerCase().endsWith('.pdf'));
-    const repoByName = new Map(pdfFiles.map(f => [f.name.toLowerCase(), f]));
+    const pdfFiles = repoFiles.filter(f => f.name.toLowerCase().endsWith('.pdf'));
 
-    const invoices     = listActive('invoices');
+    // Filenames are encrypted (non-deterministic — a fresh encryption of the
+    // same name never equals a previous one), so matching can't compare
+    // paths/ciphertext directly. Decrypt each repo file's name back to
+    // plaintext once, then compare THAT against each invoice's canonical
+    // name. decryptFilename() returns null for a legacy plain (unencrypted)
+    // name, which falls back to being used as-is.
+    let decryptError = null;
+    const decryptedNameOf = new Map(); // file -> plain name
+    const byDecryptedName  = new Map(); // plain name (lowercase) -> file
+    for (const f of pdfFiles) {
+      const base = f.name.replace(/\.pdf$/i, '');
+      let plain;
+      try { plain = await decryptFilename(base); }
+      catch (err) { decryptError = err; break; }
+      plain = plain !== null ? plain : base;
+      decryptedNameOf.set(f, plain);
+      if (!byDecryptedName.has(plain.toLowerCase())) byDecryptedName.set(plain.toLowerCase(), f);
+    }
+    if (decryptError) {
+      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not decrypt filenames: ${decryptError.message}</div>`;
+      return;
+    }
+
+    const invoices      = listActive('invoices');
     const discrepancies = [];
-    const matchedNames  = new Set();
+    const matchedFiles  = new Set();
 
-    // Detect two invoice records that would produce the same canonical filename
+    // Detect two invoice records that would produce the same canonical name
     const canonicalCount = new Map();
     for (const inv of invoices) {
-      const cn = canonicalPath(inv).toLowerCase();
+      const cn = invoicePdfCanonicalName(inv).toLowerCase();
       if (!canonicalCount.has(cn)) canonicalCount.set(cn, []);
       canonicalCount.get(cn).push(inv);
     }
@@ -1354,44 +1373,46 @@ function fillInvoiceRepoBody(body) {
       }
     }
 
-    // Match each invoice to a repo file
+    // Match each invoice to a repo file, by comparing canonical names
+    // against each repo file's DECRYPTED name (see above for why).
     for (const inv of invoices) {
-      const expPath  = canonicalPath(inv);
-      const expName  = expPath.split('/').pop();
-      const expLow   = expName.toLowerCase();
+      const canonicalName = invoicePdfCanonicalName(inv);
+      const file = byDecryptedName.get(canonicalName.toLowerCase());
 
-      if (repoByName.has(expLow)) {
+      if (file) {
         // File exists at the canonical name
-        matchedNames.add(expLow);
-        if (inv.pdfPath !== expPath) {
+        matchedFiles.add(file);
+        if (inv.pdfPath !== file.path) {
           // pdfPath is wrong or missing, but the file itself is already correct
           discrepancies.push({
             type: 'filename_mismatch',
             subtype: 'pdfpath_only',
-            detail: `Invoice "${inv.number || inv.id}": pdfPath "${inv.pdfPath || '(none)'}" should point to "${expPath}" (file already correctly named)`,
+            detail: `Invoice "${inv.number || inv.id}": pdfPath "${inv.pdfPath || '(none)'}" should point to "${file.path}" (file already correctly named)`,
             inv,
-            expPath
+            expPath: file.path
           });
         }
       } else {
-        const storedName = (inv.pdfPath || '').split('/').pop();
-        const storedLow  = storedName.toLowerCase();
-        if (storedLow && repoByName.has(storedLow)) {
-          // File exists but under the wrong name
-          const repoFile = repoByName.get(storedLow);
-          matchedNames.add(storedLow);
+        // No file decrypts to the canonical name -- check whether the
+        // invoice's own stored pdfPath still points at a real (but stale-
+        // named) file before concluding it's missing entirely.
+        const storedFile = inv.pdfPath ? pdfFiles.find(f => f.path === inv.pdfPath) : null;
+        if (storedFile) {
+          matchedFiles.add(storedFile);
+          const expPath = await invoicePdfPath(inv);
           discrepancies.push({
             type: 'filename_mismatch',
             subtype: 'wrong_name',
-            detail: `Invoice "${inv.number || inv.id}": file found as "${storedName}" but should be "${expName}"`,
+            detail: `Invoice "${inv.number || inv.id}": file found as "${decryptedNameOf.get(storedFile)}" but should be "${canonicalName}"`,
             inv,
             expPath,
-            wrongPath: repoFile.path,
-            wrongSha:  repoFile.sha
+            wrongPath: storedFile.path,
+            wrongSha:  storedFile.sha
           });
         } else {
           // No file found anywhere for this invoice
           const canRegen = inv.source !== 'pdf_import';
+          const expPath = await invoicePdfPath(inv);
           discrepancies.push({
             type: 'missing_file',
             detail: canRegen
@@ -1406,25 +1427,26 @@ function fillInvoiceRepoBody(body) {
     }
 
     // Files in the repo with no matching invoice record
-    for (const [nameLow, file] of repoByName) {
-      if (!matchedNames.has(nameLow)) {
+    for (const f of pdfFiles) {
+      if (!matchedFiles.has(f)) {
         discrepancies.push({
           type: 'orphan_file',
-          detail: `"${file.name}" has no matching invoice record`,
-          file
+          detail: `"${f.name}" has no matching invoice record`,
+          file: f
         });
       }
     }
 
-    // PDFs still in the repo that belong to soft-deleted invoices
+    // PDFs still in the repo that belong to soft-deleted invoices — matched
+    // by exact stored path, no decryption needed since the path is already known.
     const deletedInvoices = (state.db.invoices || []).filter(i => i.deletedAt && i.pdfPath);
     for (const inv of deletedInvoices) {
-      const fname = inv.pdfPath.split('/').pop().toLowerCase();
-      if (repoByName.has(fname)) {
+      const file = pdfFiles.find(f => f.path === inv.pdfPath);
+      if (file) {
         discrepancies.push({
           type: 'deleted_invoice_pdf',
-          detail: `"${inv.pdfPath.split('/').pop()}" belongs to deleted invoice "${inv.number || inv.id}" — safe to remove`,
-          file: repoByName.get(fname),
+          detail: `"${file.name}" belongs to deleted invoice "${inv.number || inv.id}" — safe to remove`,
+          file,
           inv
         });
       }

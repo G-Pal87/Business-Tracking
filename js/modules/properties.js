@@ -10,6 +10,7 @@ import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PR
 import { openExpenseForm } from './expenses.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
+import { isUnlocked } from '../core/crypto.js';
 
 let selectedId = null;
 let _propRebuildTimer = null;
@@ -830,14 +831,20 @@ function openForm(existing) {
   const saveBtn = button('Save', { variant: 'primary', onClick: async () => {
     if (!nameI.value.trim()) { toast('Name is required', 'danger'); return; }
     const propName = nameI.value.trim();
-    const safePropName = sanitizeName(propName);
 
-    // Upload any pending new files to GitHub; keep metadata only in db.json
+    // Upload any pending new files to GitHub; keep metadata only in db.json.
+    // Path uses the property's and document's own stable, already-opaque IDs
+    // (never the property/file name) rather than encrypting the name itself:
+    // unlike invoice filenames, nothing ever needs to reconstruct or compare
+    // a canonical name for these (Check Property Documents matches by exact
+    // stored path already), and AES-GCM's random-IV-per-call behavior would
+    // otherwise scatter one property's documents across a different-looking
+    // folder on every save.
     const docsToSave = [];
     for (const d of pendingDocs) {
       if (d._file) {
-        const safeFileName = sanitizeName(d.name);
-        const repoPath = `Properties/${safePropName}/${safeFileName}`;
+        const ext = (d.name.match(/\.[^.]+$/) || [''])[0];
+        const repoPath = isUnlocked() ? `Properties/${p.id}/${d.id}${ext}` : `Properties/${sanitizeName(propName)}/${sanitizeName(d.name)}`;
         try {
           const b64 = await readFileAsBase64(d._file);
           await uploadGithubFileEncrypted(repoPath, b64, `Upload document: ${d.name}`);
