@@ -339,6 +339,18 @@ export async function removeDevice(targetSessionId) {
   });
 }
 
+// Bulk counterpart for multi-select delete — one read-modify-write instead of
+// one round trip per device.
+export async function removeDevices(targetSessionIds) {
+  return updatePresence(doc => {
+    let changed = false;
+    for (const id of targetSessionIds) {
+      if (doc.devices?.[id]) { delete doc.devices[id]; changed = true; }
+    }
+    return changed;
+  });
+}
+
 // ── Login/logout history (Settings → Active Devices) ───────────────────────
 // Appends one event per login/logout/kill — not the read-modify-write-with-
 // retry treatment presence.json gets, since a lost event here (rare 409 on

@@ -4,7 +4,7 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
-import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, listSessionHistory, clearSessionHistory } from '../core/presence.js';
+import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, removeDevices, listSessionHistory, clearSessionHistory } from '../core/presence.js';
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
 import { setDb } from '../core/state.js';
@@ -562,21 +562,74 @@ function buildDevicesCard() {
       return;
     }
 
+    const now = Date.now();
+    // Only offline, non-self rows are selectable — an online row's "Kill
+    // Session" is a different action (a live signal, not a delete), and you
+    // can't remove your own device out from under yourself.
+    const selectableIds = entries
+      .filter(([sessionId, d]) => sessionId !== state.github.sessionId && (now - (d.lastSeen || 0)) >= ONLINE_MS)
+      .map(([sessionId]) => sessionId);
+    const selected = new Set();
+
+    const bulkBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px' });
+    const bulkBtn = button('Delete Selected', { variant: 'sm danger', onClick: async () => {
+      const ids = [...selected];
+      const ok = await confirmDialog(
+        `Remove ${ids.length} offline device(s) from the list? They're offline, so this only clears their rows — nothing is disconnected.`,
+        { danger: true, okLabel: 'Remove' }
+      );
+      if (!ok) return;
+      const removed = await removeDevices(ids);
+      toast(removed ? `${ids.length} device(s) removed` : 'Failed to remove — check your connection and try again.', removed ? 'success' : 'danger');
+      if (removed) renderAll();
+    }});
+    bulkBtn.disabled = true;
+    bulkBar.appendChild(bulkBtn);
+    if (selectableIds.length > 0) container.appendChild(bulkBar);
+
+    const updateBulkBtn = () => {
+      bulkBtn.disabled = selected.size === 0;
+      bulkBtn.textContent = selected.size > 0 ? `Delete Selected (${selected.size})` : 'Delete Selected';
+    };
+
     const tw = el('div', { class: 'table-wrap' });
     const t  = el('table', { class: 'table' });
     const thead = el('thead');
     const htr = el('tr');
+    const selectAllCb = el('input', { type: 'checkbox' });
+    selectAllCb.disabled = selectableIds.length === 0;
+    selectAllCb.onchange = () => {
+      selected.clear();
+      if (selectAllCb.checked) selectableIds.forEach(id => selected.add(id));
+      for (const cb of tb.querySelectorAll('input[type=checkbox][data-session-id]')) {
+        cb.checked = selectAllCb.checked;
+      }
+      updateBulkBtn();
+    };
+    htr.appendChild(el('th', {}, selectableIds.length > 0 ? selectAllCb : null));
     ['User', 'Device', 'Status', 'Encryption Key', ''].forEach(label => htr.appendChild(el('th', {}, label)));
     thead.appendChild(htr);
     t.appendChild(thead);
 
     const tb = el('tbody');
-    const now = Date.now();
     for (const [sessionId, d] of entries) {
       const isSelf = sessionId === state.github.sessionId;
       const online = (now - (d.lastSeen || 0)) < ONLINE_MS;
+      const selectable = !isSelf && !online;
 
       const tr = el('tr');
+      const selectCell = el('td', {});
+      if (selectable) {
+        const cb = el('input', { type: 'checkbox' });
+        cb.dataset.sessionId = sessionId;
+        cb.onchange = () => {
+          if (cb.checked) selected.add(sessionId); else selected.delete(sessionId);
+          selectAllCb.checked = selected.size === selectableIds.length;
+          updateBulkBtn();
+        };
+        selectCell.appendChild(cb);
+      }
+      tr.appendChild(selectCell);
       tr.appendChild(el('td', {},
         d.name || d.username || 'Unknown',
         isSelf ? el('span', { class: 'badge', style: 'margin-left:6px' }, 'This device') : null
