@@ -166,22 +166,30 @@ export async function decryptEnvelopeToJson(envelope) {
 
 // ── Encrypt / decrypt raw bytes (uploaded documents/invoices) ──────────────
 
-// Returns a small binary container: 12-byte IV followed by ciphertext, so
-// encrypted files can be stored/transferred as a single opaque blob (base64
-// for the GitHub Contents API, same as today's uploadGithubFile).
+// Container: 4-byte magic marker + 12-byte IV + ciphertext. Unlike the JSON
+// envelope (which is self-describing via `enc: 1`), an arbitrary file's bytes
+// have no natural "is this encrypted" signal — the marker lets callers detect
+// legacy unencrypted files already in the repo without guessing from content.
+const BYTES_MAGIC = new Uint8Array([0x42, 0x54, 0x58, 0x31]); // "BTX1"
+
+export function isEncryptedBytes(bytes) {
+  if (!bytes || bytes.length < BYTES_MAGIC.length) return false;
+  return BYTES_MAGIC.every((b, i) => bytes[i] === b);
+}
+
 export async function encryptBytes(bytes) {
   if (!_dataKey) throw new Error('No encryption key configured on this device');
   const iv = randomBytes(12);
   const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _dataKey, bytes));
-  const out = new Uint8Array(iv.length + ct.length);
-  out.set(iv, 0); out.set(ct, iv.length);
+  const out = new Uint8Array(BYTES_MAGIC.length + iv.length + ct.length);
+  out.set(BYTES_MAGIC, 0); out.set(iv, BYTES_MAGIC.length); out.set(ct, BYTES_MAGIC.length + iv.length);
   return out;
 }
 
 export async function decryptBytes(container) {
   if (!_dataKey) throw new Error('File is encrypted but no encryption key is configured on this device — add it in Settings');
-  const iv = container.slice(0, 12);
-  const ct = container.slice(12);
+  const iv = container.slice(BYTES_MAGIC.length, BYTES_MAGIC.length + 12);
+  const ct = container.slice(BYTES_MAGIC.length + 12);
   const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, _dataKey, ct);
   return new Uint8Array(plaintext);
 }

@@ -9,7 +9,7 @@ import {
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { openExpenseForm } from './expenses.js';
 import { navigate } from '../core/router.js';
-import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
+import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
 
 let selectedId = null;
 let _propRebuildTimer = null;
@@ -68,7 +68,7 @@ async function previewDoc(doc) {
   const mime = doc.type || 'application/octet-stream';
   let b64;
   if (doc.path) {
-    const file = await fetchGithubFile(doc.path);
+    const file = await fetchGithubFileEncrypted(doc.path);
     b64 = file.content.replace(/\n/g, '');
   } else {
     b64 = doc.data;
@@ -840,7 +840,7 @@ function openForm(existing) {
         const repoPath = `Properties/${safePropName}/${safeFileName}`;
         try {
           const b64 = await readFileAsBase64(d._file);
-          await uploadGithubFile(repoPath, b64, `Upload document: ${d.name}`);
+          await uploadGithubFileEncrypted(repoPath, b64, `Upload document: ${d.name}`);
           docsToSave.push({ id: d.id, name: d.name, type: d.type, size: d.size, uploadedAt: d.uploadedAt, path: repoPath, propertyId: p.id });
         } catch (e) {
           toast(`Failed to upload ${d.name}: ${e.message}`, 'danger', 6000);

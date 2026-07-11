@@ -1,8 +1,8 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
-import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, deleteGithubFile } from '../core/github.js';
-import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin } from '../core/crypto.js';
+import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
+import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
 import { requestDisconnectOtherSessions } from '../core/presence.js';
 import { navigate } from '../core/router.js';
@@ -1607,7 +1607,7 @@ function fillInvoiceRepoBody(body) {
       return async () => {
         const b64 = (await generateInvoicePDF(d.inv)).output('datauristring').split(',')[1];
         if (!b64) throw new Error('PDF generation produced empty content');
-        await uploadGithubFile(d.expPath, b64, `Regenerate PDF for invoice ${d.inv.number || d.inv.id}`);
+        await uploadGithubFileEncrypted(d.expPath, b64, `Regenerate PDF for invoice ${d.inv.number || d.inv.id}`);
         upsert('invoices', { ...d.inv, pdfPath: d.expPath });
         markDirty();
       };
@@ -2415,7 +2415,7 @@ function fillExpenseReceiptRepoBody(body) {
       return async () => {
         const ext = (d.receipt.name || 'file').split('.').pop().toLowerCase();
         const repoPath = `expenses/receipts/${d.exp.id}.${ext}`;
-        await uploadGithubFile(repoPath, d.receipt.data, `Upload receipt for expense ${d.exp.id}`);
+        await uploadGithubFileEncrypted(repoPath, d.receipt.data, `Upload receipt for expense ${d.exp.id}`);
         upsert('expenses', { ...d.exp, receipt: { name: d.receipt.name, type: d.receipt.type, path: repoPath } });
         markDirty();
       };
@@ -2698,7 +2698,12 @@ function buildDangerCard() {
     statusEl.textContent = 'Uploading backup to GitHub…';
     try {
       const snapshot = buildSnapshot();
-      const json = JSON.stringify(snapshot, null, 2);
+      // Same envelope as db.json — this snapshot holds the exact same
+      // sensitive data (all records + password hashes), so it must not sit
+      // in the public repo as plaintext just because it's a "backup".
+      const json = isUnlocked()
+        ? JSON.stringify(await encryptJsonToEnvelope(snapshot))
+        : JSON.stringify(snapshot, null, 2);
       const b64  = btoa(unescape(encodeURIComponent(json)));
       const ts   = new Date().toISOString().slice(0, 16).replace(':', '-');
       const filename = `bt-backup-${ts}.json`;
@@ -2853,6 +2858,7 @@ function buildDangerCard() {
       const bytes = Uint8Array.from(atob(fileData.content.replace(/\s/g, '')), c => c.charCodeAt(0));
       const text  = new TextDecoder().decode(bytes);
       raw = JSON.parse(text);
+      if (isEncryptedEnvelope(raw)) raw = await decryptEnvelopeToJson(raw);
     } catch (e) {
       statusEl.textContent = `Failed to fetch backup: ${e.message}`;
       statusEl.style.color = 'var(--danger,#dc3545)';

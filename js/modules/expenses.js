@@ -5,7 +5,7 @@ import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, to
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
-import { uploadGithubFile, deleteGithubFile, fetchGithubFile } from '../core/github.js';
+import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
 
 function readFileAsBase64(file) {
   return new Promise((resolve, reject) => {
@@ -19,7 +19,7 @@ function readFileAsBase64(file) {
 async function openReceipt(receipt) {
   let b64;
   if (receipt.path) {
-    const file = await fetchGithubFile(receipt.path);
+    const file = await fetchGithubFileEncrypted(receipt.path);
     b64 = file.content.replace(/\s/g, '');
   } else {
     b64 = receipt.data;
@@ -989,7 +989,7 @@ function openForm(existing, defaults = {}, onSave = null) {
           try { await deleteGithubFile(r.receipt.path, null, `Replace receipt for expense ${r.id}`); } catch { /* ignore */ }
         }
         try {
-          await uploadGithubFile(repoPath, b64, `Upload receipt for expense ${r.id}`);
+          await uploadGithubFileEncrypted(repoPath, b64, `Upload receipt for expense ${r.id}`);
           r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, path: repoPath };
         } catch (err) {
           console.error('Receipt upload failed:', err);

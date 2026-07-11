@@ -1,6 +1,6 @@
 // GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
 import { state, notify, invalidateActiveCache } from './state.js';
-import { isEncryptedEnvelope, decryptEnvelopeToJson, encryptJsonToEnvelope, isUnlocked } from './crypto.js';
+import { isEncryptedEnvelope, decryptEnvelopeToJson, encryptJsonToEnvelope, isUnlocked, encryptBytes, decryptBytes, isEncryptedBytes } from './crypto.js';
 
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
@@ -917,6 +917,34 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
   throw new Error(`File upload failed after ${ATTEMPTS} attempts (${lastErr}) for path "${cleanPath}"`);
 }
 
+function rawBytesToBase64(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function base64ToRawBytes(b64) {
+  const binary = atob(b64.replace(/\s/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/**
+ * Same as uploadGithubFile, but encrypts the file's bytes first when this
+ * device has a data key configured — use for anything holding business data
+ * (documents, invoice PDFs, receipts). Do NOT use for files meant to stay
+ * plain (the public daily-rate feed, the bootstrap config file).
+ * @param {string} path      - repo-relative path
+ * @param {string} b64Content - base64-encoded file content (same shape callers already produce)
+ * @param {string} message   - commit message
+ */
+export async function uploadGithubFileEncrypted(path, b64Content, message = 'Upload file') {
+  if (!isUnlocked()) return uploadGithubFile(path, b64Content, message);
+  const encrypted = await encryptBytes(base64ToRawBytes(b64Content));
+  return uploadGithubFile(path, rawBytesToBase64(encrypted), message);
+}
+
 /**
  * List files directly inside a folder in the GitHub repo.
  * Returns an empty array if the folder does not exist (404).
@@ -970,6 +998,22 @@ export async function fetchGithubFile(path) {
     throw new Error(`File fetch failed (${res.status})`);
   }
   return res.json(); // { content (b64), sha, download_url, ... }
+}
+
+/**
+ * Same as fetchGithubFile, but transparently decrypts the content when it
+ * was encrypted (auto-detected via isEncryptedBytes) — pairs with
+ * uploadGithubFileEncrypted. A legacy/never-encrypted file is returned as-is,
+ * so this is safe to use on old data during migration.
+ * @param {string} path - repo-relative path
+ * @returns {Promise<{content: string, sha: string, download_url: string}>}
+ */
+export async function fetchGithubFileEncrypted(path) {
+  const fileData = await fetchGithubFile(path);
+  const bytes = base64ToRawBytes(fileData.content);
+  if (!isEncryptedBytes(bytes)) return fileData;
+  const decrypted = await decryptBytes(bytes);
+  return { ...fileData, content: rawBytesToBase64(decrypted) };
 }
 
 /**
