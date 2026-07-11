@@ -105,6 +105,17 @@
       "keyConfigured": true,
       "connectedAt": 1783772154979,
       "lastSeen": 1783772464535
+    },
+    "38e2ad89-808e-4865-be10-26d3478eda41": {
+      "username": "Giorgos",
+      "name": "Giorgos",
+      "role": "admin",
+      "device": "Chrome on Windows",
+      "deviceType": "desktop",
+      "hasKey": true,
+      "keyConfigured": true,
+      "connectedAt": 1783772520708,
+      "lastSeen": 1783772530940
     }
   }
 }
