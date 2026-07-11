@@ -62,6 +62,15 @@
       "device": "Chrome on Windows",
       "deviceType": "desktop",
       "at": 1783779999232
+    },
+    {
+      "type": "logout",
+      "sessionId": "fd9b77d3-dc30-4dd1-bfe0-51f377701f94",
+      "username": "RitaK",
+      "name": "Rita",
+      "device": "Chrome on Windows",
+      "deviceType": "desktop",
+      "at": 1783780085196
     }
   ]
 }
