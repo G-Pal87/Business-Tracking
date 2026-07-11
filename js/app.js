@@ -155,6 +155,7 @@ async function boot() {
 
   // ── Phase 2: if no local cache, block on GitHub once (first-ever load)
   if (!loaded && state.github.owner && state.github.repo) {
+    updateSyncStatus('syncing', 'Pulling from GitHub…');
     try {
       const remoteDb = await github.fetchDb();
       remoteDb._syncedAt = Date.now();
