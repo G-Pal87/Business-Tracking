@@ -523,7 +523,10 @@ function relativeTime(ts) {
 // killDevice() for what "disconnect" actually means on static hosting — it
 // stops that session from syncing within ~30s, it does not force a reload
 // or touch its local data.
-const HISTORY_EVENT_LABELS = { login: 'Logged in', logout: 'Logged out', disconnected: 'Disconnected remotely' };
+const HISTORY_EVENT_LABELS = {
+  login: 'Logged in', logout: 'Logged out', disconnected: 'Disconnected remotely',
+  failed_login: 'Failed login attempt'
+};
 
 // Admin-only: one section covering both live sessions (js/core/presence.js's
 // device registry) and the login/logout/kill audit log
@@ -635,7 +638,8 @@ function buildDevicesCard() {
     const tb = el('tbody');
     for (const ev of sorted.slice(0, 200)) {
       const tr = el('tr');
-      const badgeClass = ev.type === 'login' ? 'success' : ev.type === 'disconnected' ? 'danger' : '';
+      const badgeClass = ev.type === 'login' ? 'success'
+        : (ev.type === 'disconnected' || ev.type === 'failed_login') ? 'danger' : '';
       tr.appendChild(el('td', {}, el('span', { class: `badge ${badgeClass}` }, HISTORY_EVENT_LABELS[ev.type] || ev.type)));
       tr.appendChild(el('td', {}, ev.name || ev.username || 'Unknown'));
       tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' },

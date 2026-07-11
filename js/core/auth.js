@@ -248,7 +248,16 @@ function renderLogin(screen, resolve) {
     try {
       const user = listActive('users').find(u => u.username === username);
       const result = user ? await verifyPassword(password, user) : { ok: false };
-      if (!result.ok) { errEl.textContent = 'Invalid username or password'; passwordI.value = ''; btn.disabled = false; return; }
+      if (!result.ok) {
+        errEl.textContent = 'Invalid username or password';
+        passwordI.value = '';
+        btn.disabled = false;
+        // Logged under the attempted username, not a real session — this can
+        // be someone mistyping their own password or an actual intrusion
+        // attempt, and admins have no other way to tell which without this.
+        recordSessionEvent('failed_login', { username, name: user?.name || username }).catch(() => {});
+        return;
+      }
       if (result.needsUpgrade) {
         upsert('users', { ...user, passwordHash: result.newHash, passwordSalt: result.newSalt });
       }
