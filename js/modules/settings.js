@@ -4,7 +4,7 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
-import { requestDisconnectOtherSessions, listDevices, killDevice, listSessionHistory } from '../core/presence.js';
+import { requestDisconnectOtherSessions, listDevices, killDevice, listSessionHistory, clearSessionHistory } from '../core/presence.js';
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
 import { setDb } from '../core/state.js';
@@ -670,7 +670,19 @@ function buildDevicesCard() {
     body.appendChild(el('div', { class: 'card-subtitle', style: 'margin-bottom:8px' }, 'Active Devices'));
     renderDevicesTable(body, devices);
 
-    body.appendChild(el('div', { class: 'card-subtitle', style: 'margin:20px 0 8px' }, 'Login History'));
+    body.appendChild(el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin:20px 0 8px' },
+      el('div', { class: 'card-subtitle' }, 'Login History'),
+      history.length > 0 ? button('Clear History', { variant: 'sm ghost', onClick: async () => {
+        const ok = await confirmDialog(
+          `Permanently delete all ${history.length} login history event(s)? This cannot be undone.`,
+          { danger: true, okLabel: 'Clear' }
+        );
+        if (!ok) return;
+        const cleared = await clearSessionHistory();
+        toast(cleared ? 'Login history cleared' : 'Failed to clear — check your connection and try again.', cleared ? 'success' : 'danger');
+        if (cleared) renderAll();
+      }}) : null
+    ));
     renderHistoryTable(body, history);
   };
 
