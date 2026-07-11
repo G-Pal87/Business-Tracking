@@ -72,6 +72,17 @@
       "keyConfigured": true,
       "connectedAt": 1783771506686,
       "lastSeen": 1783771531310
+    },
+    "e21edf63-dc47-40d8-9c30-b4f8932e4757": {
+      "username": "RitaK",
+      "name": "Rita",
+      "role": "admin",
+      "device": "Safari on macOS",
+      "deviceType": "desktop",
+      "hasKey": true,
+      "keyConfigured": true,
+      "connectedAt": 1783771548003,
+      "lastSeen": 1783771568329
     }
   }
 }
