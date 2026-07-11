@@ -2,7 +2,8 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, deleteGithubFile } from '../core/github.js';
-import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured } from '../core/crypto.js';
+import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin } from '../core/crypto.js';
+import { verifyPassword } from '../core/auth.js';
 import { requestDisconnectOtherSessions } from '../core/presence.js';
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
@@ -368,6 +369,37 @@ function buildGithubCard() {
   return card;
 }
 
+// Installing/rotating the data key requires a wrap-key derived from the
+// login password (see crypto.js) — normally set at login time, but a
+// long-lived resumed session (no password re-entry since before encryption
+// existed on this device) never derived one. Prompts for the password once
+// in that case, verifies it against the real account, then derives it.
+// Resolves true if a wrap-key is now available, false if cancelled/wrong.
+function promptForPasswordAndUnlock() {
+  if (hasSessionWrapKey()) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const user = byId('users', state.session?.userId);
+    const body = el('div');
+    body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:10px' },
+      'Confirm your password to continue.'));
+    const passI = input({ type: 'password', placeholder: 'Password' });
+    body.appendChild(formRow('Password', passI));
+    let settled = false;
+    const settle = v => { if (!settled) { settled = true; resolve(v); } };
+    const confirmBtn = button('Confirm', { variant: 'primary', onClick: async () => {
+      const pw = passI.value;
+      if (!pw) { toast('Enter your password', 'danger'); return; }
+      const result = user ? await verifyPassword(pw, user) : { ok: false };
+      if (!result.ok) { toast('Incorrect password', 'danger'); return; }
+      await unlockOnLogin(pw);
+      closeModal();
+      settle(true);
+    }});
+    const cancelBtn = button('Cancel', { onClick: () => { closeModal(); settle(false); } });
+    openModal({ title: 'Confirm Password', body, footer: [cancelBtn, confirmBtn], onClose: () => settle(false) });
+  });
+}
+
 function buildEncryptionCard() {
   const card = el('div', { class: 'card mb-16' });
   const isAdmin = state.session?.role === 'admin';
@@ -411,6 +443,7 @@ function buildEncryptionCard() {
     saveKeyBtn.disabled = true;
     try {
       const key = await importDataKeyFromBase64(raw);
+      if (!(await promptForPasswordAndUnlock())) { saveKeyBtn.disabled = false; return; }
       await installDataKey(key);
       refreshAfterKeyChange();
     } catch (e) {
@@ -424,6 +457,8 @@ function buildEncryptionCard() {
     const genBtn = button(configured ? 'Generate New Key (rotates — re-encrypts on next save)' : 'Generate Key', {
       variant: configured ? 'danger' : 'primary',
       onClick: async () => {
+        if (!(await promptForPasswordAndUnlock())) return;
+        await new Promise(r => setTimeout(r, 250)); // let that modal's close() settle — see note below
         const ok = await confirmDialog(
           configured
             ? 'Generating a new key replaces the current one on THIS device and re-encrypts data on the next save. Every other device/user will need the new key or they will be unable to read or save data. Continue?'
