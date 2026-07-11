@@ -1,0 +1,13 @@
+{
+  "events": [
+    {
+      "type": "logout",
+      "sessionId": "39680200-77d1-4abb-b253-91e008f416f6",
+      "username": "Giorgos",
+      "name": "Giorgos",
+      "device": "Chrome on Windows",
+      "deviceType": "desktop",
+      "at": 1783768851903
+    }
+  ]
+}
