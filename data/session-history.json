@@ -8,6 +8,15 @@
       "device": "Chrome on Windows",
       "deviceType": "desktop",
       "at": 1783768851903
+    },
+    {
+      "type": "login",
+      "sessionId": "b15f84ce-0dc4-43d1-a35a-26493cc0876b",
+      "username": "Giorgos",
+      "name": "Giorgos",
+      "device": "Chrome on Windows",
+      "deviceType": "desktop",
+      "at": 1783768904633
     }
   ]
 }
