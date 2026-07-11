@@ -1,7 +1,7 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
-import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
+import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
 import { requestDisconnectOtherSessions } from '../core/presence.js';
@@ -1279,14 +1279,17 @@ function fillInvoiceRepoBody(body) {
   const resultEl        = el('div', { style: 'margin-top:12px' });
   const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
   const deleteStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const reencryptStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
 
   const checkBtn        = button('Check Invoice Repository', { onClick: runCheck });
   const backupBtn       = button('Backup Invoices', { onClick: runBackup });
   const deleteBackupBtn = button('Delete Invoice Backups', { variant: 'danger', onClick: runDeleteBackups });
-  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn));
+  const reencryptBtn    = button('Re-encrypt Existing Invoice PDFs', { onClick: runReencrypt });
+  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn, reencryptBtn));
   body.appendChild(resultEl);
   body.appendChild(backupStatusEl);
   body.appendChild(deleteStatusEl);
+  body.appendChild(reencryptStatusEl);
 
   // Mirrors invoicePdfPath() + invoicePdfFilename() in invoices.js exactly
   const canonicalPath = invoicePdfPath;
@@ -1649,6 +1652,79 @@ function fillInvoiceRepoBody(body) {
 
     // duplicate / db_size_warning: no safe auto-resolve
     return null;
+  }
+
+  // ── Re-encrypt existing (pre-encryption) files ──────────────────────────────
+  // One-time migration: fetches each PDF (transparently decrypting if it's
+  // already encrypted — safe to re-run) and re-uploads it through the
+  // encrypted path, so files uploaded before encryption existed get covered
+  // too instead of only new/regenerated ones going forward.
+
+  async function runReencrypt() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      reencryptStatusEl.textContent = 'GitHub not configured.';
+      reencryptStatusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+    if (!isUnlocked()) {
+      reencryptStatusEl.textContent = 'Encryption key not set up on this device — configure it in the Encryption section above first.';
+      reencryptStatusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
+    const ok = await confirmDialog(
+      'Re-encrypt every existing invoice PDF in place? Each file is fetched, decrypted if needed, and re-uploaded encrypted — this may take a while for many files and creates one commit per file.',
+      { okLabel: 'Re-encrypt' }
+    );
+    if (!ok) return;
+
+    reencryptBtn.disabled = true;
+    reencryptBtn.textContent = 'Listing files…';
+    reencryptStatusEl.style.color = 'var(--text-muted)';
+
+    let files;
+    try {
+      const all = await listGithubFolder('invoices');
+      files = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    } catch (err) {
+      reencryptStatusEl.textContent = `Failed to list files: ${err.message}`;
+      reencryptStatusEl.style.color = 'var(--danger,#dc3545)';
+      reencryptBtn.disabled = false;
+      reencryptBtn.textContent = 'Re-encrypt Existing Invoice PDFs';
+      return;
+    }
+
+    if (files.length === 0) {
+      reencryptStatusEl.textContent = 'No PDF files found in invoice repository.';
+      reencryptStatusEl.style.color = 'var(--text-muted)';
+      reencryptBtn.disabled = false;
+      reencryptBtn.textContent = 'Re-encrypt Existing Invoice PDFs';
+      return;
+    }
+
+    let done = 0, failed = 0;
+    for (const file of files) {
+      reencryptStatusEl.textContent = `Re-encrypting ${done + failed + 1} / ${files.length}: ${file.name}…`;
+      try {
+        const fileData = await fetchGithubFileEncrypted(file.path); // decrypts if already encrypted, returns as-is otherwise
+        await uploadGithubFileEncrypted(file.path, fileData.content, `Re-encrypt: ${file.name}`);
+        done++;
+      } catch (err) {
+        console.warn(`[re-encrypt] Failed for ${file.name}:`, err.message);
+        failed++;
+      }
+    }
+
+    reencryptBtn.disabled = false;
+    reencryptBtn.textContent = 'Re-encrypt Existing Invoice PDFs';
+    if (failed > 0) {
+      reencryptStatusEl.textContent = `Done: ${done} re-encrypted, ${failed} failed. Check browser console for details.`;
+      reencryptStatusEl.style.color = 'var(--danger,#dc3545)';
+    } else {
+      reencryptStatusEl.textContent = `Complete: ${done} file${done !== 1 ? 's' : ''} now encrypted.`;
+      reencryptStatusEl.style.color = 'var(--success,#198754)';
+    }
   }
 
   // ── Backup ───────────────────────────────────────────────────────────────────
