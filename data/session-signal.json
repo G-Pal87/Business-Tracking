@@ -1,5 +1,11 @@
 {
   "disconnectAt": 1783602200989,
   "exceptSessionId": "e6b95f97-8ba0-44c6-b81b-493ea3807af3",
-  "issuedBy": "Giorgos"
+  "issuedBy": "Giorgos",
+  "kills": {
+    "39680200-77d1-4abb-b253-91e008f416f6": {
+      "at": 1783769563812,
+      "by": "Giorgos"
+    }
+  }
 }
