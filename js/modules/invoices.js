@@ -7,7 +7,7 @@ const _pdfMod = () => import(`../core/pdf.js?v=${window._appV || Date.now()}`);
 const downloadInvoicePDF  = (...a) => _pdfMod().then(m => m.downloadInvoicePDF(...a));
 const generateInvoicePDF  = (...a) => _pdfMod().then(m => m.generateInvoicePDF(...a));
 import { navigate } from '../core/router.js';
-import { uploadGithubFile, fetchGithubFile, deleteGithubFile } from '../core/github.js';
+import { uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFile, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
 
 // Returns the display status for an invoice. Sent invoices past their due date
 // are shown as overdue without changing the stored value.
@@ -138,7 +138,7 @@ async function migrateEmbeddedPDFs(pending) {
   for (const inv of pending) {
     try {
       const pdfPath = invoicePdfPath(inv);
-      await uploadGithubFile(pdfPath, inv.pdfData, `Migrate PDF for invoice ${inv.number || inv.id}`);
+      await uploadGithubFileEncrypted(pdfPath, inv.pdfData, `Migrate PDF for invoice ${inv.number || inv.id}`);
       const updated = { ...inv, pdfPath };
       delete updated.pdfData;
       upsert('invoices', updated);
@@ -857,7 +857,7 @@ export function openBuilder(existing, { onSaved } = {}) {
           pdfUploadStatus = 'unchanged';
         } else {
           save.textContent = 'Uploading PDF…';
-          await uploadGithubFile(pdfPath, b64, `${existing ? 'Update' : 'Create'} PDF for invoice ${invLabel}`);
+          await uploadGithubFileEncrypted(pdfPath, b64, `${existing ? 'Update' : 'Create'} PDF for invoice ${invLabel}`);
           // Delete the old file if the path changed (e.g. number, client, or date was edited)
           if (existing?.pdfPath && existing.pdfPath !== pdfPath) {
             try { await deleteGithubFile(existing.pdfPath, null, `Rename PDF for invoice ${invLabel}`); } catch { /* old file already gone */ }
@@ -1130,7 +1130,7 @@ function previewInvoice(inv, clientId) {
           try { await deleteGithubFile(inv.pdfPath, null, `Replace PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
         }
         const newPath = invoicePdfPath(inv);
-        await uploadGithubFile(newPath, b64, `Upload PDF for invoice ${inv.number || inv.id}`);
+        await uploadGithubFileEncrypted(newPath, b64, `Upload PDF for invoice ${inv.number || inv.id}`);
         const updated = { ...inv, pdfPath: newPath };
         delete updated.pdfData;
         upsert('invoices', updated);
@@ -1400,7 +1400,7 @@ function openPDFImport() {
           reader.readAsDataURL(file);
         });
         const pdfPath = invoicePdfPath(inv);
-        await uploadGithubFile(pdfPath, b64, `Upload invoice PDF ${inv.number || inv.id}`);
+        await uploadGithubFileEncrypted(pdfPath, b64, `Upload invoice PDF ${inv.number || inv.id}`);
         inv.pdfPath = pdfPath;
       } catch (err) {
         // GitHub not configured or upload failed — warn but still save the record.
@@ -1543,7 +1543,7 @@ function b64toBlob(b64, mimeType = 'application/pdf') {
 
 async function resolveInvoiceBlob(inv) {
   if (inv.pdfPath) {
-    const data = await fetchGithubFile(inv.pdfPath);
+    const data = await fetchGithubFileEncrypted(inv.pdfPath);
     const b64  = (data.content || '').replace(/\s/g, '');
     return b64toBlob(b64);
   }
