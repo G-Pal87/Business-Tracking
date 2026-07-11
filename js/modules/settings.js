@@ -4,7 +4,7 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
-import { requestDisconnectOtherSessions } from '../core/presence.js';
+import { requestDisconnectOtherSessions, listDevices, killDevice } from '../core/presence.js';
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
 import { setDb } from '../core/state.js';
@@ -53,6 +53,8 @@ function build() {
 
   wrap.appendChild(buildGithubCard());
   wrap.appendChild(buildEncryptionCard());
+  const devicesCard = buildDevicesCard();
+  if (devicesCard) wrap.appendChild(devicesCard);
   wrap.appendChild(buildCurrencyCard());
   wrap.appendChild(buildBusinessCard());
   wrap.appendChild(buildStrSettingsCard());
@@ -500,6 +502,121 @@ function buildEncryptionCard() {
     body.appendChild(el('div', { style: 'margin-top:10px' }, removeBtn));
   }
 
+  return card;
+}
+
+function relativeTime(ts) {
+  if (!ts) return 'never';
+  const diffMs = Date.now() - ts;
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
+// Admin-only: lists every browser session that has reported into the shared
+// device registry (js/core/presence.js), whether it currently has the
+// encryption key, and lets an admin disconnect one remotely. See
+// killDevice() for what "disconnect" actually means on static hosting — it
+// stops that session from syncing within ~30s, it does not force a reload
+// or touch its local data.
+function buildDevicesCard() {
+  const isAdmin = state.session?.role === 'admin';
+  if (!isAdmin) return null;
+
+  const card = el('div', { class: 'card mb-16' });
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Active Devices'),
+      el('div', { class: 'card-subtitle' }, 'Sessions that have connected recently, and whether they have the encryption key')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+  wireCollapsible('devices', header, body, chevron);
+
+  const ONLINE_MS = 2 * 60 * 1000; // matches presence.js's own STALE_MS
+
+  const renderList = async () => {
+    body.innerHTML = '';
+    body.appendChild(el('div', { class: 'empty' }, 'Loading…'));
+    const devices = await listDevices();
+    body.innerHTML = '';
+
+    body.appendChild(el('div', { style: 'margin-bottom:10px;text-align:right' },
+      button('Refresh', { variant: 'sm ghost', onClick: renderList })
+    ));
+
+    const entries = Object.entries(devices).sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0));
+    if (entries.length === 0) {
+      body.appendChild(el('div', { class: 'empty' }, 'No devices reported yet — they appear here a few seconds after logging in.'));
+      return;
+    }
+
+    const tw = el('div', { class: 'table-wrap' });
+    const t  = el('table', { class: 'table' });
+    const thead = el('thead');
+    const htr = el('tr');
+    ['User', 'Device', 'Status', 'Encryption Key', ''].forEach(label => htr.appendChild(el('th', {}, label)));
+    thead.appendChild(htr);
+    t.appendChild(thead);
+
+    const tb = el('tbody');
+    const now = Date.now();
+    for (const [sessionId, d] of entries) {
+      const isSelf = sessionId === state.github.sessionId;
+      const online = (now - (d.lastSeen || 0)) < ONLINE_MS;
+
+      const tr = el('tr');
+      tr.appendChild(el('td', {},
+        d.name || d.username || 'Unknown',
+        isSelf ? el('span', { class: 'badge', style: 'margin-left:6px' }, 'This device') : null
+      ));
+      tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' }, d.device || '—'));
+      tr.appendChild(el('td', {},
+        online
+          ? el('span', { class: 'badge success' }, 'Online')
+          : el('span', { class: 'badge' }, `Last seen ${relativeTime(d.lastSeen)}`)
+      ));
+      tr.appendChild(el('td', {},
+        d.hasKey
+          ? el('span', { class: 'badge success' }, 'Unlocked')
+          : d.keyConfigured
+            ? el('span', { class: 'badge warning' }, 'Locked')
+            : el('span', { class: 'badge' }, 'Not configured')
+      ));
+
+      const actions = el('td', { class: 'right' });
+      if (!isSelf) {
+        actions.appendChild(button('Kill Session', { variant: 'sm ghost', onClick: async () => {
+          const ok = await confirmDialog(
+            `Disconnect ${d.name || d.username || 'this device'}? It stops syncing to GitHub within ~30 seconds — nothing is deleted, and it isn't forced to reload.`,
+            { danger: true, okLabel: 'Disconnect' }
+          );
+          if (!ok) return;
+          const sent = await killDevice(sessionId);
+          toast(
+            sent ? 'Signal sent — that device disconnects within ~30 seconds.' : 'Failed to send — check your connection and try again.',
+            sent ? 'success' : 'danger'
+          );
+        }}));
+      }
+      tr.appendChild(actions);
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    tw.appendChild(t);
+    body.appendChild(tw);
+  };
+
+  renderList();
   return card;
 }
 
