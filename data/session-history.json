@@ -35,6 +35,15 @@
       "device": "Safari on macOS",
       "deviceType": "desktop",
       "at": 1783771544127
+    },
+    {
+      "type": "login",
+      "sessionId": "e21edf63-dc47-40d8-9c30-b4f8932e4757",
+      "username": "RitaK",
+      "name": "Rita",
+      "device": "Safari on macOS",
+      "deviceType": "desktop",
+      "at": 1783771565441
     }
   ]
 }
