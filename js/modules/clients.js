@@ -1,4 +1,5 @@
 // Clients module
+import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, newId, formatMoney, formatEUR, toEUR, byId, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
@@ -55,11 +56,61 @@ function sanitizeName(str) {
   return str.replace(/[/\\:*?"<>|]/g, '-').trim();
 }
 
+// ── Background migration: move legacy embedded document blobs → GitHub files ──
+// Same rationale as properties.js's scheduleDocumentMigration/invoices.js's
+// pdfData migration: old documents carry their bytes inline as doc.data
+// instead of a repo path (see previewDoc's doc.path ? fetch : doc.data
+// fallback above), which bloats db.json.
+let docMigrationScheduled = false;
+function scheduleDocumentMigration() {
+  if (docMigrationScheduled) return;
+  const pending = [];
+  for (const c of listActive('clients')) {
+    for (const d of (c.documents || [])) {
+      if (d.data && !d.path) pending.push({ clientId: c.id, docId: d.id });
+    }
+  }
+  if (pending.length === 0) return;
+  docMigrationScheduled = true;
+  setTimeout(() => migrateEmbeddedDocuments(pending), 2000);
+}
+
+async function migrateEmbeddedDocuments(pending) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) return;
+
+  let done = 0;
+  for (const { clientId, docId } of pending) {
+    // Re-read fresh each iteration: an earlier doc in this same loop may
+    // already have updated this client's documents array.
+    const c = byId('clients', clientId);
+    const doc = c?.documents?.find(x => x.id === docId);
+    if (!doc || doc.path || !doc.data) continue; // already migrated/removed
+    try {
+      const ext = (doc.name.match(/\.[^.]+$/) || [''])[0];
+      const repoPath = isUnlocked()
+        ? `Clients/${c.id}/${doc.id}${ext}`
+        : `Clients/${sanitizeName(c.name)}/${sanitizeName(doc.name)}`;
+      await uploadGithubFileEncrypted(repoPath, doc.data, `Migrate document: ${doc.name}`);
+      const newDocs = c.documents.map(x => {
+        if (x.id !== docId) return x;
+        const { data, ...rest } = x;
+        return { ...rest, path: repoPath };
+      });
+      upsert('clients', { ...c, documents: newDocs });
+      done++;
+    } catch (err) {
+      console.warn(`[Doc migrate] could not upload document ${docId} for client ${clientId}:`, err);
+    }
+  }
+  if (done > 0) toast(`Migrated ${done} document${done > 1 ? 's' : ''} to GitHub repository`, 'success', 5000);
+}
+
 export default {
   id: 'clients',
   label: 'Clients',
   icon: '🤝',
-  render(container) { container.appendChild(build()); },
+  render(container) { container.appendChild(build()); scheduleDocumentMigration(); },
   refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() {}
 };

@@ -38,6 +38,39 @@ function receiptRepoPath(expenseId, filename) {
   return `expenses/receipts/${expenseId}.${ext}`;
 }
 
+// ── Background migration: move embedded receipt blobs → GitHub files ─────────
+// A receipt only ever embeds its bytes (receipt.data) when the upload
+// couldn't reach GitHub at save time (offline, or a failed request — see the
+// upload catch block below) or GitHub wasn't configured yet. Same db.json-
+// bloat problem invoices.js's pdfData migration exists to fix.
+let receiptMigrationScheduled = false;
+function scheduleReceiptMigration() {
+  if (receiptMigrationScheduled) return;
+  const pending = (state.db.expenses || []).filter(e => e.receipt?.data && !e.receipt?.path && !e.deletedAt);
+  if (pending.length === 0) return;
+  receiptMigrationScheduled = true;
+  setTimeout(() => migrateEmbeddedReceipts(pending), 2000);
+}
+
+async function migrateEmbeddedReceipts(pending) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) return;
+
+  let done = 0;
+  for (const exp of pending) {
+    try {
+      const repoPath = receiptRepoPath(exp.id, exp.receipt.name);
+      await uploadGithubFileEncrypted(repoPath, exp.receipt.data, `Migrate receipt for expense ${exp.id}`);
+      const { data, ...rest } = exp.receipt;
+      upsert('expenses', { ...exp, receipt: { ...rest, path: repoPath } });
+      done++;
+    } catch (err) {
+      console.warn(`[Receipt migrate] could not upload receipt for expense ${exp.id}:`, err);
+    }
+  }
+  if (done > 0) toast(`Migrated ${done} receipt${done > 1 ? 's' : ''} to GitHub repository`, 'success', 5000);
+}
+
 let _sortCol = -1, _sortDir = 1;
 let _expPage = 0, _expPageSize = 100, _expSearch = '';
 let _updateFn = null;
@@ -46,7 +79,7 @@ export default {
   id: 'expenses',
   label: 'Expenses',
   icon: '💸',
-  render(container) { const { element, update } = build(); _updateFn = update; container.appendChild(element); },
+  render(container) { const { element, update } = build(); _updateFn = update; container.appendChild(element); scheduleReceiptMigration(); },
   refresh() {
     if (_updateFn) { _updateFn(); return; }
     const c = document.getElementById('content');

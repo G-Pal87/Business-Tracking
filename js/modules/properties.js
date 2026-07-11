@@ -88,6 +88,55 @@ function sanitizeName(str) {
   return str.replace(/[/\\:*?"<>|]/g, '-').trim();
 }
 
+// ── Background migration: move legacy embedded document blobs → GitHub files ──
+// Documents from before repo-backed uploads existed carry their bytes inline
+// as doc.data (see previewDoc's doc.path ? fetch : doc.data fallback above) --
+// same db.json-bloat problem invoices.js's pdfData migration exists to fix.
+let docMigrationScheduled = false;
+function scheduleDocumentMigration() {
+  if (docMigrationScheduled) return;
+  const pending = [];
+  for (const p of listActive('properties')) {
+    for (const d of (p.documents || [])) {
+      if (d.data && !d.path) pending.push({ propertyId: p.id, docId: d.id });
+    }
+  }
+  if (pending.length === 0) return;
+  docMigrationScheduled = true;
+  setTimeout(() => migrateEmbeddedDocuments(pending), 2000);
+}
+
+async function migrateEmbeddedDocuments(pending) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) return;
+
+  let done = 0;
+  for (const { propertyId, docId } of pending) {
+    // Re-read fresh each iteration: an earlier doc in this same loop may
+    // already have updated this property's documents array.
+    const p = byId('properties', propertyId);
+    const doc = p?.documents?.find(x => x.id === docId);
+    if (!doc || doc.path || !doc.data) continue; // already migrated/removed
+    try {
+      const ext = (doc.name.match(/\.[^.]+$/) || [''])[0];
+      const repoPath = isUnlocked()
+        ? `Properties/${p.id}/${doc.id}${ext}`
+        : `Properties/${sanitizeName(p.name)}/${sanitizeName(doc.name)}`;
+      await uploadGithubFileEncrypted(repoPath, doc.data, `Migrate document: ${doc.name}`);
+      const newDocs = p.documents.map(x => {
+        if (x.id !== docId) return x;
+        const { data, ...rest } = x;
+        return { ...rest, path: repoPath };
+      });
+      upsert('properties', { ...p, documents: newDocs });
+      done++;
+    } catch (err) {
+      console.warn(`[Doc migrate] could not upload document ${docId} for property ${propertyId}:`, err);
+    }
+  }
+  if (done > 0) toast(`Migrated ${done} document${done > 1 ? 's' : ''} to GitHub repository`, 'success', 5000);
+}
+
 function docIcon(type) {
   if (!type) return '\u{1F4CE}';
   if (type.startsWith('image/')) return '\u{1F5BC}';
@@ -104,6 +153,7 @@ export default {
 
   render(container) {
     container.appendChild(build());
+    scheduleDocumentMigration();
   },
   refresh() {
     const c = document.getElementById('content');
