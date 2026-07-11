@@ -195,6 +195,14 @@ async function boot() {
 
   // ── Phase 3: auth + render — runs immediately when local cache was available
   await requireAuth();
+  // requireAuth() may have retried and successfully loaded real data along the
+  // way (e.g. this device needed the encryption key, entered via the bootstrap
+  // unlock screen) — but that retry lives in auth.js and never touches this
+  // sidebar status, so without this it stays stuck showing Phase 2's earlier
+  // failure ("GitHub unreachable") even though the data actually loaded fine.
+  if (state.github.connected) {
+    updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+  }
   buildUserFooter();
 
   router.init(document.getElementById('content'));
