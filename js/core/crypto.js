@@ -22,7 +22,17 @@ let _sessionWrapKey = null;    // CryptoKey, derived from the login password
 let _dataKey = null;           // CryptoKey, the actual AES-256-GCM data key once unlocked
 let _pendingBootstrapKey = null; // set when a key is entered on a brand-new device, before login
 
-function b64encode(bytes) { return btoa(String.fromCharCode(...bytes)); }
+function b64encode(bytes) {
+  // Avoid String.fromCharCode(...bytes) — spreading a large byte array (e.g.
+  // the whole encrypted db.json) as call arguments overflows the JS engine's
+  // argument/stack limit. Chunk it instead.
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
 function b64decode(str) { return Uint8Array.from(atob(str), c => c.charCodeAt(0)); }
 
 function randomBytes(n) { return crypto.getRandomValues(new Uint8Array(n)); }
