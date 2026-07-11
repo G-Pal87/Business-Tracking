@@ -203,3 +203,49 @@ export async function decryptBytes(container) {
   const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, _dataKey, ct);
   return new Uint8Array(plaintext);
 }
+
+// ── Encrypt / decrypt file/folder NAMES ─────────────────────────────────────
+// Same container as encryptBytes (BTX1 magic + IV + ciphertext), just
+// base64url-encoded (RFC 4648 §5: '+'/'/' -> '-'/'_', no padding) so the
+// result is safe to use as a path segment. AES-GCM's IV is random per call,
+// so encrypting the same name twice gives two different results — there is
+// no way to "encrypt and string-compare"; matching a name found in the repo
+// against an expected name means decrypting the repo's name back to
+// plaintext first (see decryptFilename), then comparing plaintext strings.
+
+function toBase64Url(bytes) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function fromBase64Url(str) {
+  const padded = str.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - str.length % 4) % 4);
+  return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+}
+
+export async function encryptFilename(name) {
+  const container = await encryptBytes(new TextEncoder().encode(name));
+  return toBase64Url(container);
+}
+
+// Returns null (not the original throwing) when `encoded` doesn't look like
+// one of our encrypted names — callers should treat that as "this is a
+// legacy plain name, use it as-is" rather than an error, since encrypted and
+// not-yet-migrated plain filenames are expected to coexist during rollout.
+export async function decryptFilename(encoded) {
+  let container;
+  try { container = fromBase64Url(encoded); } catch { return null; }
+  if (!isEncryptedBytes(container)) return null;
+  if (!_dataKey) {
+    const err = new Error('Filename is encrypted but no encryption key is configured on this device');
+    err.code = 'NO_ENC_KEY';
+    throw err;
+  }
+  try {
+    const plaintext = await decryptBytes(container);
+    return new TextDecoder().decode(plaintext);
+  } catch {
+    return null; // wrong key or corrupted -- treat as unrecognized rather than crash the caller
+  }
+}

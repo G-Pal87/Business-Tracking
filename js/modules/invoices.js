@@ -8,6 +8,7 @@ const downloadInvoicePDF  = (...a) => _pdfMod().then(m => m.downloadInvoicePDF(.
 const generateInvoicePDF  = (...a) => _pdfMod().then(m => m.generateInvoicePDF(...a));
 import { navigate } from '../core/router.js';
 import { uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFile, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
+import { encryptFilename, decryptFilename, isUnlocked } from '../core/crypto.js';
 
 // Returns the display status for an invoice. Sent invoices past their due date
 // are shown as overdue without changing the stored value.
@@ -98,9 +99,21 @@ function invoicePdfFilename(inv) {
   return `${num}_${clientPart}_${dateFmt}`;
 }
 
-export function invoicePdfPath(inv) {
-  const safe = invoicePdfFilename(inv).replace(/[/\\:*?"<>|#&%]/g, '_').replace(/\s+/g, '_');
-  return `invoices/${safe}.pdf`;
+// The plain (unencrypted) canonical name -- used both to compute the actual
+// (encrypted) repo path below, and by Settings' "Check Invoice Repository"
+// to compare against names it has decrypted back from the repo.
+export function invoicePdfCanonicalName(inv) {
+  return invoicePdfFilename(inv).replace(/[/\\:*?"<>|#&%]/g, '_').replace(/\s+/g, '_');
+}
+
+// Async because the actual filename stored in the repo is the canonical name
+// encrypted -- invoice number, client, and date are exactly the kind of
+// identifying metadata this feature exists to hide, so only the extension
+// stays in the clear (recognizable as a PDF; not sensitive on its own).
+export async function invoicePdfPath(inv) {
+  const safe = invoicePdfCanonicalName(inv);
+  if (!isUnlocked()) return `invoices/${safe}.pdf`; // migration/pre-encryption fallback
+  return `invoices/${await encryptFilename(safe)}.pdf`;
 }
 
 // Content hash of the generated PDF (base64), stored on the invoice as
@@ -137,7 +150,7 @@ async function migrateEmbeddedPDFs(pending) {
   let done = 0;
   for (const inv of pending) {
     try {
-      const pdfPath = invoicePdfPath(inv);
+      const pdfPath = await invoicePdfPath(inv);
       await uploadGithubFileEncrypted(pdfPath, inv.pdfData, `Migrate PDF for invoice ${inv.number || inv.id}`);
       const updated = { ...inv, pdfPath };
       delete updated.pdfData;
@@ -153,12 +166,27 @@ async function migrateEmbeddedPDFs(pending) {
 
 // ── Retrospective migration: rename id-based paths → number-based paths ────────
 
+// True when the invoice's stored pdfPath no longer matches its current
+// canonical name -- either because its number/client/date changed after
+// upload (the original reason this existed), or it's still on a legacy
+// plain (unencrypted) name. Encrypted names are non-deterministic (random
+// IV per encryption), so this can't compare paths directly -- it decrypts
+// the stored name back to plaintext first, then compares that.
+async function invoiceNeedsPathUpdate(inv) {
+  if (!inv.pdfPath) return false;
+  const storedBase = inv.pdfPath.replace(/^invoices\//, '').replace(/\.pdf$/, '');
+  const decrypted = await decryptFilename(storedBase);
+  return (decrypted !== null ? decrypted : storedBase) !== invoicePdfCanonicalName(inv);
+}
+
 let pathMigrationRunning = false;
-function schedulePathMigration() {
+async function schedulePathMigration() {
   if (pathMigrationRunning) return;
   const { owner, repo, token } = state.github;
   if (!owner || !repo || !token) return;
-  const pending = (state.db.invoices || []).filter(i => !i.deletedAt && i.pdfPath && i.pdfPath !== invoicePdfPath(i));
+  const candidates = (state.db.invoices || []).filter(i => !i.deletedAt && i.pdfPath);
+  const pending = [];
+  for (const inv of candidates) { if (await invoiceNeedsPathUpdate(inv)) pending.push(inv); }
   if (pending.length === 0) return;
   pathMigrationRunning = true;
   setTimeout(async () => { await migrateInvoicePdfPaths(pending); pathMigrationRunning = false; }, 4000);
@@ -167,7 +195,7 @@ function schedulePathMigration() {
 async function migrateInvoicePdfPaths(pending) {
   let done = 0;
   for (const inv of pending) {
-    const correctPath = invoicePdfPath(inv);
+    const correctPath = await invoicePdfPath(inv);
     if (inv.pdfPath === correctPath) continue;
     console.log(`[PDF rename] ${inv.pdfPath} → ${correctPath}`);
     try {
@@ -837,7 +865,7 @@ export function openBuilder(existing, { onSaved } = {}) {
     // branch cause GitHub to cancel one of them).
     let pdfUploadStatus = null;
     if (inv.source !== 'pdf_import') {
-      const pdfPath = invoicePdfPath(inv);
+      const pdfPath = await invoicePdfPath(inv);
       const invLabel = inv.number || inv.id;
       const origText = save.textContent;
       save.disabled = true;
@@ -1129,7 +1157,7 @@ function previewInvoice(inv, clientId) {
         if (inv.pdfPath) {
           try { await deleteGithubFile(inv.pdfPath, null, `Replace PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
         }
-        const newPath = invoicePdfPath(inv);
+        const newPath = await invoicePdfPath(inv);
         await uploadGithubFileEncrypted(newPath, b64, `Upload PDF for invoice ${inv.number || inv.id}`);
         const updated = { ...inv, pdfPath: newPath };
         delete updated.pdfData;
@@ -1399,7 +1427,7 @@ function openPDFImport() {
           reader.onerror = reject;
           reader.readAsDataURL(file);
         });
-        const pdfPath = invoicePdfPath(inv);
+        const pdfPath = await invoicePdfPath(inv);
         await uploadGithubFileEncrypted(pdfPath, b64, `Upload invoice PDF ${inv.number || inv.id}`);
         inv.pdfPath = pdfPath;
       } catch (err) {

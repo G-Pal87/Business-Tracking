@@ -4,6 +4,7 @@ import { upsert, softDelete, listActive, newId, formatMoney, formatEUR, toEUR, b
 import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
+import { isUnlocked } from '../core/crypto.js';
 
 // ── Document helpers (same pattern as properties.js) ─────────────────────────
 
@@ -413,7 +414,6 @@ function openForm(existing) {
     if (!nameI.value.trim()) { toast('Name required', 'danger'); return; }
     if (emailI.value.trim() && !emailI.checkValidity()) { toast('Enter a valid email address', 'danger'); return; }
     const clientName = nameI.value.trim();
-    const safeClientName = sanitizeName(clientName);
 
     // Now that Save was actually clicked, delete anything the user removed
     // from the list during this session (see pendingRemovals above).
@@ -422,12 +422,15 @@ function openForm(existing) {
       catch (e) { toast(`Repo cleanup failed for ${rem.name}: ${e.message}`, 'warning', 5000); }
     }
 
-    // Upload any pending new files to the repo; keep only metadata in db.json
+    // Upload any pending new files to the repo; keep only metadata in db.json.
+    // Path uses the client's and document's own stable, already-opaque IDs
+    // (never the client/file name) -- see the matching comment in
+    // properties.js for why this differs from the invoice-name approach.
     const docsToSave = [];
     for (const d of pendingDocs) {
       if (d._file) {
-        const safeFileName = sanitizeName(d.name);
-        const repoPath = `Clients/${safeClientName}/${safeFileName}`;
+        const ext = (d.name.match(/\.[^.]+$/) || [''])[0];
+        const repoPath = isUnlocked() ? `Clients/${c.id}/${d.id}${ext}` : `Clients/${sanitizeName(clientName)}/${sanitizeName(d.name)}`;
         try {
           const b64 = await readFileAsBase64(d._file);
           await uploadGithubFileEncrypted(repoPath, b64, `Upload document: ${d.name}`);
