@@ -1627,13 +1627,20 @@ function fillInvoiceRepoBody(body) {
       }
     }
 
-    // db.json size warning — GitHub Contents API has a hard 1 MB limit
-    const dbBytes = JSON.stringify(state.db).length;
+    // db.json size warning — GitHub Contents API has a hard 1 MB limit.
+    // Measure what actually gets pushed, not the raw plaintext: once
+    // encryption is on, the pushed file is { enc, iv, ct } with ct being
+    // base64 (⅓ larger than the raw ciphertext bytes it encodes) — plaintext
+    // JSON.stringify(state.db).length understates the real pushed size by
+    // roughly that much and can miss the file already being over 1 MB.
+    const dbBytes = isUnlocked()
+      ? JSON.stringify(await encryptJsonToEnvelope(state.db)).length
+      : JSON.stringify(state.db).length;
     const DB_WARN_BYTES = 800_000;
     if (dbBytes > DB_WARN_BYTES) {
       discrepancies.push({
         type: 'db_size_warning',
-        detail: `db.json is ${(dbBytes / 1024).toFixed(0)} KB — approaching GitHub's 1 MB API limit. Consider purging old soft-deleted records or moving pdfData to GitHub files.`,
+        detail: `db.json is ${(dbBytes / 1024).toFixed(0)} KB (as actually pushed${isUnlocked() ? ', encrypted' : ''}) — ${dbBytes > 1_000_000 ? 'already over' : 'approaching'} GitHub's 1 MB API limit. Consider purging old soft-deleted records or moving pdfData to GitHub files.`,
         noResolve: true
       });
     }
