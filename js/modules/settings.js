@@ -55,8 +55,6 @@ function build() {
   wrap.appendChild(buildEncryptionCard());
   const devicesCard = buildDevicesCard();
   if (devicesCard) wrap.appendChild(devicesCard);
-  const historyCard = buildSessionHistoryCard();
-  if (historyCard) wrap.appendChild(historyCard);
   wrap.appendChild(buildCurrencyCard());
   wrap.appendChild(buildBusinessCard());
   wrap.appendChild(buildStrSettingsCard());
@@ -525,6 +523,14 @@ function relativeTime(ts) {
 // killDevice() for what "disconnect" actually means on static hosting — it
 // stops that session from syncing within ~30s, it does not force a reload
 // or touch its local data.
+const HISTORY_EVENT_LABELS = { login: 'Logged in', logout: 'Logged out', disconnected: 'Disconnected remotely' };
+
+// Admin-only: one section covering both live sessions (js/core/presence.js's
+// device registry) and the login/logout/kill audit log
+// (recordSessionEvent(), written from auth.js on login, app.js on logout,
+// and presence.js itself on a remote-kill) — kept together since they're
+// two views of the same underlying question ("who's using this app, from
+// where, and when").
 function buildDevicesCard() {
   const isAdmin = state.session?.role === 'admin';
   if (!isAdmin) return null;
@@ -533,8 +539,8 @@ function buildDevicesCard() {
   const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
   const header = el('div', { class: 'card-header card-header--toggle' },
     el('div', {},
-      el('div', { class: 'card-title' }, 'Active Devices'),
-      el('div', { class: 'card-subtitle' }, 'Sessions that have connected recently, and whether they have the encryption key')
+      el('div', { class: 'card-title' }, 'Active Devices & Login History'),
+      el('div', { class: 'card-subtitle' }, 'Sessions that have connected recently, encryption key status, and a log of logins/logouts')
     ),
     el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
   );
@@ -546,19 +552,10 @@ function buildDevicesCard() {
 
   const ONLINE_MS = 2 * 60 * 1000; // matches presence.js's own STALE_MS
 
-  const renderList = async () => {
-    body.innerHTML = '';
-    body.appendChild(el('div', { class: 'empty' }, 'Loading…'));
-    const devices = await listDevices();
-    body.innerHTML = '';
-
-    body.appendChild(el('div', { style: 'margin-bottom:10px;text-align:right' },
-      button('Refresh', { variant: 'sm ghost', onClick: renderList })
-    ));
-
+  const renderDevicesTable = (container, devices) => {
     const entries = Object.entries(devices).sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0));
     if (entries.length === 0) {
-      body.appendChild(el('div', { class: 'empty' }, 'No devices reported yet — they appear here a few seconds after logging in.'));
+      container.appendChild(el('div', { class: 'empty' }, 'No devices reported yet — they appear here a few seconds after logging in.'));
       return;
     }
 
@@ -617,49 +614,13 @@ function buildDevicesCard() {
     }
     t.appendChild(tb);
     tw.appendChild(t);
-    body.appendChild(tw);
+    container.appendChild(tw);
   };
 
-  renderList();
-  return card;
-}
-
-const HISTORY_EVENT_LABELS = { login: 'Logged in', logout: 'Logged out', disconnected: 'Disconnected remotely' };
-
-// Admin-only: append-only log of login/logout/kill events, written by
-// recordSessionEvent() in js/core/presence.js from auth.js (login) and
-// app.js (logout), plus presence.js itself on a remote-kill.
-function buildSessionHistoryCard() {
-  const isAdmin = state.session?.role === 'admin';
-  if (!isAdmin) return null;
-
-  const card = el('div', { class: 'card mb-16' });
-  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
-  const header = el('div', { class: 'card-header card-header--toggle' },
-    el('div', {},
-      el('div', { class: 'card-title' }, 'Login History'),
-      el('div', { class: 'card-subtitle' }, 'Recent logins, logouts, and remote disconnects')
-    ),
-    el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
-  );
-  card.appendChild(header);
-
-  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
-  card.appendChild(body);
-  wireCollapsible('session-history', header, body, chevron);
-
-  const renderList = async () => {
-    body.innerHTML = '';
-    body.appendChild(el('div', { class: 'empty' }, 'Loading…'));
-    const events = (await listSessionHistory()).slice().reverse(); // newest first
-    body.innerHTML = '';
-
-    body.appendChild(el('div', { style: 'margin-bottom:10px;text-align:right' },
-      button('Refresh', { variant: 'sm ghost', onClick: renderList })
-    ));
-
-    if (events.length === 0) {
-      body.appendChild(el('div', { class: 'empty' }, 'No login activity recorded yet'));
+  const renderHistoryTable = (container, events) => {
+    const sorted = events.slice().reverse(); // newest first
+    if (sorted.length === 0) {
+      container.appendChild(el('div', { class: 'empty' }, 'No login activity recorded yet'));
       return;
     }
 
@@ -672,7 +633,7 @@ function buildSessionHistoryCard() {
     t.appendChild(thead);
 
     const tb = el('tbody');
-    for (const ev of events.slice(0, 200)) {
+    for (const ev of sorted.slice(0, 200)) {
       const tr = el('tr');
       const badgeClass = ev.type === 'login' ? 'success' : ev.type === 'disconnected' ? 'danger' : '';
       tr.appendChild(el('td', {}, el('span', { class: `badge ${badgeClass}` }, HISTORY_EVENT_LABELS[ev.type] || ev.type)));
@@ -685,14 +646,31 @@ function buildSessionHistoryCard() {
     }
     t.appendChild(tb);
     tw.appendChild(t);
-    body.appendChild(tw);
-    if (events.length > 200) {
-      body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:8px' },
-        `Showing the 200 most recent of ${events.length} events.`));
+    container.appendChild(tw);
+    if (sorted.length > 200) {
+      container.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:8px' },
+        `Showing the 200 most recent of ${sorted.length} events.`));
     }
   };
 
-  renderList();
+  const renderAll = async () => {
+    body.innerHTML = '';
+    body.appendChild(el('div', { class: 'empty' }, 'Loading…'));
+    const [devices, history] = await Promise.all([listDevices(), listSessionHistory()]);
+    body.innerHTML = '';
+
+    body.appendChild(el('div', { style: 'margin-bottom:10px;text-align:right' },
+      button('Refresh', { variant: 'sm ghost', onClick: renderAll })
+    ));
+
+    body.appendChild(el('div', { class: 'card-subtitle', style: 'margin-bottom:8px' }, 'Active Devices'));
+    renderDevicesTable(body, devices);
+
+    body.appendChild(el('div', { class: 'card-subtitle', style: 'margin:20px 0 8px' }, 'Login History'));
+    renderHistoryTable(body, history);
+  };
+
+  renderAll();
   return card;
 }
 
