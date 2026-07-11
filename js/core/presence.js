@@ -195,13 +195,28 @@ async function readPresence() {
   return { entries: parsed.entries || {}, devices: parsed.devices || {} };
 }
 
+// Serializes every read-modify-write against presence.json. heartbeat() and
+// reportDevice() run on the exact same 50s interval, both scheduled moments
+// apart at startup (see startPresence()) — without this queue, a single
+// device's own two timers would race each other's GET+PUT cycle and
+// SHA-conflict against themselves on every cycle, not just when another
+// device is genuinely active. handleNavigate() and clearOwnPresence() go
+// through the same queue for the same reason.
+let presenceQueue = Promise.resolve();
+
+async function updatePresence(mutator, attempts = 4) {
+  const result = presenceQueue.catch(() => null).then(() => doUpdatePresence(mutator, attempts));
+  presenceQueue = result;
+  return result;
+}
+
 // Conflict-tolerant read-modify-write for presence.json.
 // `mutator(doc)` applies this client's change to the freshest {entries,
 // devices} doc and returns true if a write is needed. On a 409 (another
 // tab/user wrote between our GET and PUT) we re-read and re-apply rather
 // than silently losing the update — this is what was producing the
 // swallowed 409s and lost presence.
-async function updatePresence(mutator, attempts = 4) {
+async function doUpdatePresence(mutator, attempts = 4) {
   const { owner, repo, token } = state.github;
   if (!owner || !repo || !token) return false;
   const enc    = PRESENCE_PATH.split('/').map(encodeURIComponent).join('/');
