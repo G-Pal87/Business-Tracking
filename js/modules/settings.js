@@ -4,7 +4,7 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
-import { requestDisconnectOtherSessions, listDevices, killDevice, listSessionHistory, clearSessionHistory } from '../core/presence.js';
+import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, listSessionHistory, clearSessionHistory } from '../core/presence.js';
 import { navigate } from '../core/router.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
 import { setDb } from '../core/state.js';
@@ -598,7 +598,7 @@ function buildDevicesCard() {
       ));
 
       const actions = el('td', { class: 'right' });
-      if (!isSelf) {
+      if (!isSelf && online) {
         actions.appendChild(button('Kill Session', { variant: 'sm ghost', onClick: async () => {
           const ok = await confirmDialog(
             `Disconnect ${d.name || d.username || 'this device'}? It stops syncing to GitHub within ~30 seconds — nothing is deleted, and it isn't forced to reload.`,
@@ -610,6 +610,19 @@ function buildDevicesCard() {
             sent ? 'Signal sent — that device disconnects within ~30 seconds.' : 'Failed to send — check your connection and try again.',
             sent ? 'success' : 'danger'
           );
+        }}));
+      } else if (!isSelf) {
+        // Offline — no live tab left for a kill signal to reach, so this just
+        // clears the stale row instead.
+        actions.appendChild(button('Remove', { variant: 'sm ghost', onClick: async () => {
+          const ok = await confirmDialog(
+            `Remove ${d.name || d.username || 'this device'} from the list? It's offline, so this only clears its row — nothing is disconnected.`,
+            { danger: true, okLabel: 'Remove' }
+          );
+          if (!ok) return;
+          const removed = await removeDevice(sessionId);
+          toast(removed ? 'Device removed' : 'Failed to remove — check your connection and try again.', removed ? 'success' : 'danger');
+          if (removed) renderAll();
         }}));
       }
       tr.appendChild(actions);
