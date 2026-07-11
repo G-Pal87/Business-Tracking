@@ -131,11 +131,19 @@ export async function fetchDb() {
 
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}?ref=${encodeURIComponent(branch || 'main')}`;
 
+  // ATTEMPTS covers both the 403-rate-limit retry below AND a raw network
+  // failure (dropped connection, DNS hiccup) — a transient blip during the
+  // page-load burst (this fetch competes with ~26 other module downloads)
+  // used to throw on the very first try with no retry at all, surfacing as
+  // "GitHub unreachable" even though a retry moments later would succeed.
   const ATTEMPTS = 3;
   let res;
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     try { res = await fetch(url, { headers, cache: 'no-store' }); }
-    catch { throw new Error('Cannot reach GitHub — check your internet connection'); }
+    catch {
+      if (attempt < ATTEMPTS) { await sleep(backoff(attempt)); continue; }
+      throw new Error('Cannot reach GitHub — check your internet connection');
+    }
 
     if (res.status === 403 && attempt < ATTEMPTS) {
       const waitMs = rateLimitWaitMs(res);
