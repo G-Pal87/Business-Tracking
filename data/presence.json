@@ -4,6 +4,11 @@
       "view": "settings",
       "t": 1783771572226,
       "name": "Rita"
+    },
+    "Giorgos": {
+      "view": "users",
+      "t": 1783771649376,
+      "name": "Giorgos"
     }
   },
   "devices": {
