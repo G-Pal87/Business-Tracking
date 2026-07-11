@@ -1288,7 +1288,7 @@ function fillInvoiceRepoBody(body) {
   const backupBtn       = button('Backup Invoices', { onClick: runBackup });
   const deleteBackupBtn = button('Delete Invoice Backups', { variant: 'danger', onClick: runDeleteBackups });
   const reencryptBtn    = button('Re-encrypt Existing Invoice PDFs', {
-    onClick: () => runReencryptFiles(listInvoicePdfs, reencryptStatusEl, reencryptBtn, 'Invoice PDFs')
+    onClick: () => runReencryptAndRenameInvoices(reencryptStatusEl, reencryptBtn)
   });
   const zipBtn = button('Download All (Decrypted ZIP)', {
     onClick: () => runDownloadZip(listInvoicePdfs, 'invoices', zipStatusEl, zipBtn)
@@ -1891,6 +1891,155 @@ async function listDocRepoFiles(rootFolder) {
   return files;
 }
 
+// ── Re-encrypt + rename existing invoice PDFs ───────────────────────────────
+// Unlike runReencryptFiles below (content-only, same path), this one also
+// fixes filenames still on the old plain naming convention -- it iterates
+// invoice RECORDS (not raw repo files) so it always knows which invoice a
+// path belongs to, rather than needing to guess from a legacy plain name.
+// Orphaned repo files with no invoice pointing at them are deliberately left
+// alone here -- that's what "Check Invoice Repository" -> resolve is for.
+async function runReencryptAndRenameInvoices(statusEl, btn) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) {
+    statusEl.textContent = 'GitHub not configured.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  if (!isUnlocked()) {
+    statusEl.textContent = 'Encryption key not set up on this device — configure it in the Encryption section above first.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+
+  const ok = await confirmDialog(
+    'Re-encrypt every existing invoice PDF, and rename any still using the old plain filename to an encrypted one? This may take a while for many files and creates one or two commits per file.',
+    { okLabel: 'Re-encrypt' }
+  );
+  if (!ok) return;
+
+  const defaultLabel = 'Re-encrypt Existing Invoice PDFs';
+  btn.disabled = true;
+  btn.textContent = 'Listing invoices…';
+  statusEl.style.color = 'var(--text-muted)';
+
+  const invoices = listActive('invoices').filter(i => i.pdfPath);
+  if (invoices.length === 0) {
+    statusEl.textContent = 'No invoice PDFs found.';
+    statusEl.style.color = 'var(--text-muted)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  let done = 0, renamed = 0, failed = 0;
+  for (const inv of invoices) {
+    btn.textContent = `Processing ${done + failed + 1} / ${invoices.length}…`;
+    try {
+      const base = inv.pdfPath.replace(/^invoices\//, '').replace(/\.pdf$/i, '');
+      const alreadyEncrypted = (await decryptFilename(base)) !== null;
+      const fileData = await fetchGithubFileEncrypted(inv.pdfPath);
+      if (alreadyEncrypted) {
+        await uploadGithubFileEncrypted(inv.pdfPath, fileData.content, `Re-encrypt: ${inv.number || inv.id}`);
+      } else {
+        const newPath = await invoicePdfPath(inv);
+        await uploadGithubFileEncrypted(newPath, fileData.content, `Re-encrypt + rename: ${inv.number || inv.id}`);
+        await deleteGithubFile(inv.pdfPath, fileData.sha, `Remove old plain-named path for invoice ${inv.number || inv.id}`);
+        upsert('invoices', { ...inv, pdfPath: newPath });
+        renamed++;
+      }
+      done++;
+    } catch (err) {
+      console.warn(`[re-encrypt] Failed for invoice ${inv.number || inv.id}:`, err.message);
+      failed++;
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = defaultLabel;
+  if (failed > 0) {
+    statusEl.textContent = `Done: ${done} processed (${renamed} renamed), ${failed} failed. Check browser console for details.`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } else {
+    statusEl.textContent = `Complete: ${done} file${done !== 1 ? 's' : ''} encrypted${renamed > 0 ? ` (${renamed} renamed to the new naming convention)` : ''}.`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }
+}
+
+// ── Re-encrypt + rename existing property/client documents ──────────────────
+// Same idea as above but for the ID-based doc naming convention -- iterates
+// each entity's document records (not raw repo files), fixing any doc.path
+// still on an old human-readable name.
+async function runReencryptAndRenameDocs(rootFolder, collection, entityLabel, statusEl, btn) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) {
+    statusEl.textContent = 'GitHub not configured.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  if (!isUnlocked()) {
+    statusEl.textContent = 'Encryption key not set up on this device — configure it in the Encryption section above first.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+
+  const ok = await confirmDialog(
+    `Re-encrypt every existing ${entityLabel} document, and rename any still using the old naming convention? This may take a while for many files and creates one or two commits per file.`,
+    { okLabel: 'Re-encrypt' }
+  );
+  if (!ok) return;
+
+  const defaultLabel = `Re-encrypt Existing ${entityLabel} Documents`;
+  btn.disabled = true;
+  btn.textContent = 'Listing documents…';
+  statusEl.style.color = 'var(--text-muted)';
+
+  const items = [];
+  for (const entity of listActive(collection)) {
+    for (const doc of (entity.documents || [])) { if (doc.path) items.push({ entity, doc }); }
+  }
+
+  if (items.length === 0) {
+    statusEl.textContent = 'No documents found.';
+    statusEl.style.color = 'var(--text-muted)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  let done = 0, renamed = 0, failed = 0;
+  for (const { entity, doc } of items) {
+    btn.textContent = `Processing ${done + failed + 1} / ${items.length}…`;
+    try {
+      const ext = (doc.path.match(/\.[^.]+$/) || [''])[0];
+      const correctPath = `${rootFolder}/${entity.id}/${doc.id}${ext}`;
+      const fileData = await fetchGithubFileEncrypted(doc.path);
+      if (doc.path === correctPath) {
+        await uploadGithubFileEncrypted(doc.path, fileData.content, `Re-encrypt: ${doc.name}`);
+      } else {
+        await uploadGithubFileEncrypted(correctPath, fileData.content, `Re-encrypt + rename: ${doc.name}`);
+        await deleteGithubFile(doc.path, fileData.sha, `Remove old path for ${doc.name}`);
+        const updatedDocs = entity.documents.map(d => d.id === doc.id ? { ...d, path: correctPath } : d);
+        upsert(collection, { ...entity, documents: updatedDocs });
+        renamed++;
+      }
+      done++;
+    } catch (err) {
+      console.warn(`[re-encrypt] Failed for ${doc.name}:`, err.message);
+      failed++;
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = defaultLabel;
+  if (failed > 0) {
+    statusEl.textContent = `Done: ${done} processed (${renamed} renamed), ${failed} failed. Check browser console for details.`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } else {
+    statusEl.textContent = `Complete: ${done} file${done !== 1 ? 's' : ''} encrypted${renamed > 0 ? ` (${renamed} renamed to the new naming convention)` : ''}.`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }
+}
+
 // ── Shared: re-encrypt every file a lister returns, in place ────────────────
 // Fetches each file (transparently decrypting if it's already encrypted, so
 // this is safe to re-run) and re-uploads it through the encrypted path.
@@ -2053,7 +2202,7 @@ function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLa
   const backupBtn       = button(backupBtnLabel, { onClick: runBackup });
   const deleteBackupBtn = button(deleteBackupBtnLabel, { variant: 'danger', onClick: runDeleteBackups });
   const reencryptBtn    = button(`Re-encrypt Existing ${entityLabel} Documents`, {
-    onClick: () => runReencryptFiles(() => listDocRepoFiles(rootFolder), reencryptStatusEl, reencryptBtn, `${entityLabel} Documents`)
+    onClick: () => runReencryptAndRenameDocs(rootFolder, collection, entityLabel, reencryptStatusEl, reencryptBtn)
   });
   const zipBtn = button('Download All (Decrypted ZIP)', {
     onClick: () => runDownloadZip(() => listDocRepoFiles(rootFolder), rootFolder.toLowerCase(), zipStatusEl, zipBtn)
