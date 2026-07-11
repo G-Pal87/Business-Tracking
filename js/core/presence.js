@@ -327,6 +327,18 @@ export async function listDevices() {
   } catch { return {}; }
 }
 
+// Deletes one row from the device registry — for an offline device, where
+// "Kill Session" (a live-tab signal) has nothing to reach. Unlike killDevice(),
+// this doesn't touch session-signal.json: there's no tab left to disconnect,
+// just a stale row to clear out.
+export async function removeDevice(targetSessionId) {
+  return updatePresence(doc => {
+    if (!doc.devices?.[targetSessionId]) return false;
+    delete doc.devices[targetSessionId];
+    return true;
+  });
+}
+
 // ── Login/logout history (Settings → Active Devices) ───────────────────────
 // Appends one event per login/logout/kill — not the read-modify-write-with-
 // retry treatment presence.json gets, since a lost event here (rare 409 on

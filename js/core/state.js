@@ -1,6 +1,24 @@
 // Global state store with subscribe pattern
 const listeners = new Set();
 
+const DEVICE_ID_KEY = 'bt_device_id';
+
+// One stable id per browser, generated once and reused across reloads — falls
+// back to a fresh id (not persisted) if localStorage is unavailable (private
+// browsing, quota, etc.) rather than failing the whole app over this.
+function getOrCreateDeviceId() {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
 const initialData = {
   properties: [],
   payments: [],
@@ -48,11 +66,14 @@ export const state = {
     lastPulledAt:  null,
     lastPushedAt:  null,
     syncNow: null,
-    // Identifies this specific tab/load for the remote-disconnect feature
-    // (Settings → "Disconnect other sessions"). A fresh id every page load —
-    // deliberately not persisted — so a reloaded tab counts as a new session,
-    // never as a leftover one still bound to an old disconnect signal.
-    sessionId: crypto.randomUUID(),
+    // Identifies this browser for the remote-disconnect feature (Settings →
+    // "Disconnect other sessions") and the Active Devices registry. Persisted in
+    // localStorage so reloading/reopening the same browser updates its existing
+    // device-registry row instead of adding a new one every time — a reload
+    // still can't be tricked into ignoring a stale kill/disconnect signal aimed
+    // at an earlier load, because that check compares the signal's timestamp
+    // against connectedAt (always Date.now() at this load), not sessionId.
+    sessionId: getOrCreateDeviceId(),
     connectedAt: Date.now(),
     disconnected: false
   },
