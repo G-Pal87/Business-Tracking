@@ -18,10 +18,10 @@
       "role": "admin",
       "device": "Chrome on Windows",
       "deviceType": "desktop",
-      "hasKey": false,
+      "hasKey": true,
       "keyConfigured": true,
       "connectedAt": 1783833336926,
-      "lastSeen": 1783833356944
+      "lastSeen": 1783833415993
     }
   }
 }
