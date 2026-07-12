@@ -173,6 +173,23 @@ function renderBootstrapUnlock(screen, resolve) {
       github.saveLocalCache(remoteDb);
       screen.remove();
       requireAuth().then(resolve);
+
+      // Same protection as Phase 2's fetch in app.js: GitHub's Contents API can
+      // occasionally serve a read a few seconds behind the latest commit, and
+      // this is a brand-new device's very first load, with nothing local yet
+      // to catch that lag. A confirmatory re-pull moments later, merged the
+      // same way the app's own background sync does, self-heals it silently.
+      const firstLoadSnapshot = structuredClone(remoteDb);
+      setTimeout(async () => {
+        try {
+          const confirmDb = await github.fetchDb();
+          const reconciled = github.mergeLocalPending(confirmDb, firstLoadSnapshot);
+          delete reconciled._hasLocalChanges;
+          reconciled._syncedAt = Date.now();
+          setDb(reconciled);
+          github.saveLocalCache(reconciled);
+        } catch { /* best-effort — the regular 60s backgroundResync will catch it anyway */ }
+      }, 4000);
     } catch (e) {
       state.github.needsEncKey = true;
       errEl.textContent = 'Incorrect key, or could not load data: ' + e.message;
