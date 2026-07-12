@@ -473,22 +473,29 @@ function buildEncryptionCard() {
     // invoices need a new path generated (and the old one deleted) once the
     // key switches, or "Check Invoice Repository" would fail to decrypt
     // every existing filename afterward.
+    //
+    // Deliberately reads state.db[collection] directly instead of
+    // listActive() — listActive() filters out anything currently in Trash
+    // (deletedAt set), but a trashed record's attachment is still sitting on
+    // GitHub under the old key and is fully restorable for up to 90 days
+    // (autoPurgeOldDeleted); skipping it here would leave it silently
+    // undecryptable the moment someone restores it after rotation.
     const collectAttachments = () => {
       const items = [];
-      for (const inv of listActive('invoices')) {
+      for (const inv of (state.db.invoices || [])) {
         if (inv.pdfPath) items.push({ path: inv.pdfPath, label: `invoice ${inv.number || inv.id}`, kind: 'invoice', invoice: inv });
       }
-      for (const prop of listActive('properties')) {
+      for (const prop of (state.db.properties || [])) {
         for (const doc of (prop.documents || [])) {
           if (doc.path) items.push({ path: doc.path, label: `document "${doc.name}"`, kind: 'simple' });
         }
       }
-      for (const client of listActive('clients')) {
+      for (const client of (state.db.clients || [])) {
         for (const doc of (client.documents || [])) {
           if (doc.path) items.push({ path: doc.path, label: `document "${doc.name}"`, kind: 'simple' });
         }
       }
-      for (const exp of listActive('expenses')) {
+      for (const exp of (state.db.expenses || [])) {
         if (exp.receipt?.path) items.push({ path: exp.receipt.path, label: `receipt for expense ${exp.id}`, kind: 'simple' });
       }
       return items;
@@ -513,6 +520,28 @@ function buildEncryptionCard() {
         } catch (err) {
           console.warn(`[key rotation] Could not list ${folder}:`, err.message);
         }
+      }
+      return items;
+    };
+
+    // "Backup Now" (Danger Zone) writes a FULL db.json-style snapshot to
+    // backups/*.json using the same JSON envelope as db.json itself
+    // (encryptJsonToEnvelope), not the raw-bytes format the file attachments
+    // above use — so these need their own fetch/upload handling (kind:
+    // 'backup-snapshot' below). Every one of these predates the rotation and
+    // holds the exact same sensitive data as db.json; left unmigrated, every
+    // pre-rotation backup becomes permanently unrestorable the moment the
+    // key switches, right when a disaster-recovery backup is most likely to
+    // be needed.
+    const collectBackupSnapshots = async () => {
+      const items = [];
+      try {
+        const files = await listGithubFolder('backups');
+        for (const f of files) {
+          if (f.name.endsWith('.json')) items.push({ path: f.path, label: `backup snapshot "${f.name}"`, kind: 'backup-snapshot' });
+        }
+      } catch (err) {
+        console.warn('[key rotation] Could not list backups/:', err.message);
       }
       return items;
     };
@@ -582,7 +611,7 @@ function buildEncryptionCard() {
         let attachments;
         try {
           await fetchDb();
-          attachments = [...collectAttachments(), ...(await collectBackupAttachments())];
+          attachments = [...collectAttachments(), ...(await collectBackupAttachments()), ...(await collectBackupSnapshots())];
         } catch (e) {
           genBtn.disabled = false;
           genBtn.textContent = defaultGenLabel;
@@ -600,12 +629,23 @@ function buildEncryptionCard() {
         const plaintexts = [];
         let fetchFailed = 0;
         for (let i = 0; i < attachments.length; i++) {
+          const item = attachments[i];
           genBtn.textContent = `Fetching attachment ${i + 1} / ${attachments.length}…`;
           try {
-            const fileData = await fetchGithubFileEncrypted(attachments[i].path);
-            plaintexts.push({ ...attachments[i], content: fileData.content });
+            if (item.kind === 'backup-snapshot') {
+              // Same envelope format as db.json, not the raw-bytes format
+              // fetchGithubFileEncrypted expects — decode + parse manually.
+              const fileData = await fetchGithubFile(item.path);
+              const bytes = Uint8Array.from(atob(fileData.content.replace(/\s/g, '')), c => c.charCodeAt(0));
+              let snapshotJson = JSON.parse(new TextDecoder().decode(bytes));
+              if (isEncryptedEnvelope(snapshotJson)) snapshotJson = await decryptEnvelopeToJson(snapshotJson);
+              plaintexts.push({ ...item, snapshotJson });
+            } else {
+              const fileData = await fetchGithubFileEncrypted(item.path);
+              plaintexts.push({ ...item, content: fileData.content });
+            }
           } catch (err) {
-            console.warn(`[key rotation] Could not fetch ${attachments[i].label}:`, err.message);
+            console.warn(`[key rotation] Could not fetch ${item.label}:`, err.message);
             fetchFailed++;
           }
           progressStep();
@@ -649,6 +689,15 @@ function buildEncryptionCard() {
                 try { await deleteGithubFile(item.path, null, `Remove old-key path for ${item.label}`); } catch { /* old file already gone */ }
                 upsert('invoices', { ...item.invoice, pdfPath: newPath });
               }
+            } else if (item.kind === 'backup-snapshot') {
+              // Same envelope format as db.json (see collectBackupSnapshots) —
+              // build it manually rather than through uploadGithubFileEncrypted,
+              // which only knows the raw-bytes attachment format.
+              const json = isUnlocked()
+                ? JSON.stringify(await encryptJsonToEnvelope(item.snapshotJson))
+                : JSON.stringify(item.snapshotJson, null, 2);
+              const b64 = btoa(unescape(encodeURIComponent(json)));
+              await uploadGithubFile(item.path, b64, `Re-encrypt backup under new key: ${item.label}`);
             } else {
               await uploadGithubFileEncrypted(item.path, item.content, `Re-encrypt under new key: ${item.label}`);
             }
