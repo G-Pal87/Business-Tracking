@@ -467,24 +467,52 @@ function buildEncryptionCard() {
 
     // Every entity type that stores an encrypted attachment path — kept in
     // one place so key rotation and any future attachment-wide operation
-    // can't silently miss one.
+    // can't silently miss one. Invoice PDFs are marked `kind: 'invoice'`
+    // because their PATH itself is an encrypted filename (invoicePdfPath →
+    // encryptFilename) — everything else uses a plain ID-based path, so only
+    // invoices need a new path generated (and the old one deleted) once the
+    // key switches, or "Check Invoice Repository" would fail to decrypt
+    // every existing filename afterward.
     const collectAttachments = () => {
       const items = [];
       for (const inv of listActive('invoices')) {
-        if (inv.pdfPath) items.push({ path: inv.pdfPath, label: `invoice ${inv.number || inv.id}` });
+        if (inv.pdfPath) items.push({ path: inv.pdfPath, label: `invoice ${inv.number || inv.id}`, kind: 'invoice', invoice: inv });
       }
       for (const prop of listActive('properties')) {
         for (const doc of (prop.documents || [])) {
-          if (doc.path) items.push({ path: doc.path, label: `document "${doc.name}"` });
+          if (doc.path) items.push({ path: doc.path, label: `document "${doc.name}"`, kind: 'simple' });
         }
       }
       for (const client of listActive('clients')) {
         for (const doc of (client.documents || [])) {
-          if (doc.path) items.push({ path: doc.path, label: `document "${doc.name}"` });
+          if (doc.path) items.push({ path: doc.path, label: `document "${doc.name}"`, kind: 'simple' });
         }
       }
       for (const exp of listActive('expenses')) {
-        if (exp.receipt?.path) items.push({ path: exp.receipt.path, label: `receipt for expense ${exp.id}` });
+        if (exp.receipt?.path) items.push({ path: exp.receipt.path, label: `receipt for expense ${exp.id}`, kind: 'simple' });
+      }
+      return items;
+    };
+
+    // "Backup Invoices"/"Backup Property Documents"/"Backup Client Documents"
+    // create raw copies of whatever was encrypted at the time, sitting in a
+    // backup/ folder with no database record pointing at them — invisible to
+    // collectAttachments() above. listBackupFiles() already tolerates a
+    // missing folder (returns []), so this is safe to call even if nothing's
+    // ever been backed up.
+    const collectBackupAttachments = async () => {
+      const items = [];
+      for (const [label, folder] of [
+        ['invoice backup', 'invoices/backup'],
+        ['property backup', 'Properties/backup'],
+        ['client backup', 'Clients/backup']
+      ]) {
+        try {
+          const files = await listBackupFiles(folder);
+          for (const f of files) items.push({ path: f.path, label: `${label} "${f.name}"`, kind: 'simple' });
+        } catch (err) {
+          console.warn(`[key rotation] Could not list ${folder}:`, err.message);
+        }
       }
       return items;
     };
@@ -551,20 +579,20 @@ function buildEncryptionCard() {
         // device out of sync with what's still on GitHub under the old key.
         genBtn.disabled = true;
         genBtn.textContent = 'Checking connection…';
-        const attachments = collectAttachments();
-        // Steps: connection check, one fetch + one upload per attachment,
-        // installing the new key, and the final data push.
-        progressStart(1 + attachments.length * 2 + 1 + 1);
+        let attachments;
         try {
           await fetchDb();
-          progressStep();
+          attachments = [...collectAttachments(), ...(await collectBackupAttachments())];
         } catch (e) {
           genBtn.disabled = false;
           genBtn.textContent = defaultGenLabel;
-          progressEnd();
           toast('Cannot reach GitHub right now — try again once connected. Nothing has changed.', 'danger', 6000);
           return;
         }
+        // Steps: connection check, one fetch + one upload per attachment,
+        // installing the new key, and the final data push.
+        progressStart(1 + attachments.length * 2 + 1 + 1);
+        progressStep();
 
         // Phase 1: fetch + decrypt every attachment while the OLD key is
         // still active, before touching anything. A failure here aborts
@@ -607,11 +635,25 @@ function buildEncryptionCard() {
 
         let uploadFailed = 0;
         for (let i = 0; i < plaintexts.length; i++) {
+          const item = plaintexts[i];
           genBtn.textContent = `Re-encrypting ${i + 1} / ${plaintexts.length}…`;
           try {
-            await uploadGithubFileEncrypted(plaintexts[i].path, plaintexts[i].content, `Re-encrypt under new key: ${plaintexts[i].label}`);
+            if (item.kind === 'invoice') {
+              // The invoice's path IS an encrypted filename (invoicePdfPath),
+              // not just encrypted content at a stable ID-based path like
+              // everything else — regenerate it under the new key so nothing
+              // is left pointing at a filename only the old key can decrypt.
+              const newPath = await invoicePdfPath(item.invoice);
+              await uploadGithubFileEncrypted(newPath, item.content, `Re-encrypt under new key: ${item.label}`);
+              if (newPath !== item.path) {
+                try { await deleteGithubFile(item.path, null, `Remove old-key path for ${item.label}`); } catch { /* old file already gone */ }
+                upsert('invoices', { ...item.invoice, pdfPath: newPath });
+              }
+            } else {
+              await uploadGithubFileEncrypted(item.path, item.content, `Re-encrypt under new key: ${item.label}`);
+            }
           } catch (err) {
-            console.warn(`[key rotation] Could not re-upload ${plaintexts[i].label}:`, err.message);
+            console.warn(`[key rotation] Could not re-upload ${item.label}:`, err.message);
             uploadFailed++;
           }
           progressStep();
