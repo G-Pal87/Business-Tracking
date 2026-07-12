@@ -489,6 +489,29 @@ function buildEncryptionCard() {
       return items;
     };
 
+    const progressTrack = el('div', {
+      style: 'height:6px;background:var(--bg-elev-1);border-radius:3px;overflow:hidden;margin-top:8px;display:none'
+    });
+    const progressFill = el('div', {
+      style: 'height:100%;width:0%;background:var(--info,#3b82f6);transition:width 0.15s ease'
+    });
+    progressTrack.appendChild(progressFill);
+    // total/done tracked via closures below rather than DOM reads, so
+    // fractional progress survives across the connection-check/fetch/
+    // key-switch/upload/push phases without recomputing from scratch.
+    let progressTotal = 0, progressDone = 0;
+    const progressStart = (total) => {
+      progressTotal = Math.max(total, 1);
+      progressDone = 0;
+      progressFill.style.width = '0%';
+      progressTrack.style.display = '';
+    };
+    const progressStep = () => {
+      progressDone++;
+      progressFill.style.width = `${Math.min(100, Math.round((progressDone / progressTotal) * 100))}%`;
+    };
+    const progressEnd = () => { progressTrack.style.display = 'none'; };
+
     const genBtn = button(defaultGenLabel, {
       variant: configured ? 'danger' : 'primary',
       onClick: async () => {
@@ -509,7 +532,7 @@ function buildEncryptionCard() {
 
         if (!configured) {
           // First-ever key: nothing is encrypted yet, so there's nothing to
-          // migrate — keep this path simple.
+          // migrate — keep this path simple, no progress bar needed.
           try {
             const { key, base64 } = await generateDataKey();
             await installDataKey(key);
@@ -528,11 +551,17 @@ function buildEncryptionCard() {
         // device out of sync with what's still on GitHub under the old key.
         genBtn.disabled = true;
         genBtn.textContent = 'Checking connection…';
+        const attachments = collectAttachments();
+        // Steps: connection check, one fetch + one upload per attachment,
+        // installing the new key, and the final data push.
+        progressStart(1 + attachments.length * 2 + 1 + 1);
         try {
           await fetchDb();
+          progressStep();
         } catch (e) {
           genBtn.disabled = false;
           genBtn.textContent = defaultGenLabel;
+          progressEnd();
           toast('Cannot reach GitHub right now — try again once connected. Nothing has changed.', 'danger', 6000);
           return;
         }
@@ -540,7 +569,6 @@ function buildEncryptionCard() {
         // Phase 1: fetch + decrypt every attachment while the OLD key is
         // still active, before touching anything. A failure here aborts
         // cleanly — the key hasn't been switched yet, so nothing is broken.
-        const attachments = collectAttachments();
         const plaintexts = [];
         let fetchFailed = 0;
         for (let i = 0; i < attachments.length; i++) {
@@ -552,10 +580,12 @@ function buildEncryptionCard() {
             console.warn(`[key rotation] Could not fetch ${attachments[i].label}:`, err.message);
             fetchFailed++;
           }
+          progressStep();
         }
         if (fetchFailed > 0) {
           genBtn.disabled = false;
           genBtn.textContent = defaultGenLabel;
+          progressEnd();
           toast(`Could not read ${fetchFailed} of ${attachments.length} attachment(s) — aborted before changing anything. Check your connection and try again.`, 'danger', 8000);
           return;
         }
@@ -566,9 +596,11 @@ function buildEncryptionCard() {
         try {
           ({ key, base64 } = await generateDataKey());
           await installDataKey(key);
+          progressStep();
         } catch (e) {
           genBtn.disabled = false;
           genBtn.textContent = defaultGenLabel;
+          progressEnd();
           toast('Failed to generate/install the new key: ' + e.message, 'danger', 6000);
           return;
         }
@@ -582,6 +614,7 @@ function buildEncryptionCard() {
             console.warn(`[key rotation] Could not re-upload ${plaintexts[i].label}:`, err.message);
             uploadFailed++;
           }
+          progressStep();
         }
 
         genBtn.textContent = 'Pushing data…';
@@ -589,9 +622,11 @@ function buildEncryptionCard() {
         if (state.github.syncNow) {
           try { await state.github.syncNow(); } catch { pushFailed = true; }
         }
+        progressStep();
 
         genBtn.disabled = false;
         genBtn.textContent = defaultGenLabel;
+        progressEnd();
 
         if (uploadFailed > 0 || pushFailed) {
           const parts = [];
@@ -603,7 +638,7 @@ function buildEncryptionCard() {
         showNewKeyModal(base64);
       }
     });
-    body.appendChild(el('div', { style: 'margin-top:10px' }, genBtn));
+    body.appendChild(el('div', { style: 'margin-top:10px' }, genBtn, progressTrack));
   }
 
   if (configured) {
