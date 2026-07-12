@@ -321,8 +321,27 @@ async function doPushDb(message = 'Update data') {
     } else {
       throw new Error('GitHub returned no content for db.json');
     }
-    if (isEncryptedEnvelope(freshDb)) freshDb = await decryptEnvelopeToJson(freshDb);
-    const merged  = mergeDb(freshDb, snapshot, base);
+    if (isEncryptedEnvelope(freshDb)) {
+      try {
+        freshDb = await decryptEnvelopeToJson(freshDb);
+      } catch (err) {
+        // The remote copy is encrypted under a DIFFERENT key than the one
+        // active right now. In normal operation this can't happen — it only
+        // occurs mid-key-rotation, in the exact window after this device has
+        // switched to a new key but before any push has actually landed on
+        // GitHub with it yet. There's nothing to merge against since we can't
+        // read it; without this fallback every attempt (and every future
+        // save) hits this same unreadable remote and never makes progress,
+        // since the remote never changes until some push finally succeeds.
+        // Falling back to "push our own snapshot, unmerged" breaks that
+        // deadlock — an acceptable tradeoff for a rare, deliberate,
+        // admin-initiated operation against the alternative of bricking sync
+        // for everyone until someone manually intervenes.
+        console.warn('[BT] Could not decrypt remote db.json for merge — pushing local snapshot without merging:', err.message);
+        freshDb = null;
+      }
+    }
+    const merged  = freshDb ? mergeDb(freshDb, snapshot, base) : snapshot;
     if (merged.appConfig?.github?.token) delete merged.appConfig.github.token;
 
     // PUT merged content — encrypted if this device has a data key configured,
