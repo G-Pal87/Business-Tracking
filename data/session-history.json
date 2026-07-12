@@ -251,6 +251,15 @@
       "device": "Chrome on Windows",
       "deviceType": "desktop",
       "at": 1783842604086
+    },
+    {
+      "type": "login",
+      "sessionId": "8d9eedd3-e62c-47e3-8865-9ed8a1a0288b",
+      "username": "RitaK",
+      "name": "Rita",
+      "device": "Safari on macOS",
+      "deviceType": "mobile",
+      "at": 1783842931409
     }
   ]
 }
