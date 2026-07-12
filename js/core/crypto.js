@@ -147,6 +147,16 @@ export function clearDataKey() {
   _dataKey = null;
 }
 
+// Lets an admin retrieve the currently active key on demand — e.g. if the
+// one-time reveal shown at generation time was missed, or a new device/user
+// needs it later. Works because every data key here is created with
+// extractable: true.
+export async function exportActiveDataKeyBase64() {
+  if (!_dataKey) throw new Error('No encryption key active on this device');
+  const raw = await crypto.subtle.exportKey('raw', _dataKey);
+  return b64encode(new Uint8Array(raw));
+}
+
 // ── Encrypt / decrypt JSON (db.json) ────────────────────────────────────────
 
 export function isEncryptedEnvelope(parsed) {

@@ -2,7 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
-import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename } from '../core/crypto.js';
+import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64 } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
 import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, removeDevices, listSessionHistory, clearSessionHistory } from '../core/presence.js';
 import { navigate } from '../core/router.js';
@@ -456,14 +456,25 @@ function buildEncryptionCard() {
 
   if (isAdmin) {
     const defaultGenLabel = configured ? 'Generate New Key (rotates — re-encrypts on next save)' : 'Generate Key';
-    const showNewKeyModal = (base64) => {
+    // changed=true is the one-time reveal right after generating/rotating a
+    // key; changed=false is a plain "look it up again" reveal (e.g. the
+    // one-time modal got missed, or a new device needs it) — same layout,
+    // but it must not claim the key changed or navigate away.
+    const showKeyModal = (base64, { changed = true } = {}) => {
       const body2 = el('div');
       body2.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px' },
-        'Save this now — it will not be shown again. Store it in a password manager, then share it with every authorized user through a secure channel.'));
+        changed
+          ? 'Save this now — it will not be shown again. Store it in a password manager, then share it with every authorized user through a secure channel.'
+          : 'This is the key currently active on this device. Store it in a password manager, then share it with every authorized user through a secure channel.'));
       const keyOut = input({ value: base64, readonly: true, style: 'width:100%;font-family:monospace;font-size:12px' });
       body2.appendChild(keyOut);
-      openModal({ title: 'New Encryption Key', body: body2, footer: [button('Done', { variant: 'primary', onClick: () => { closeModal(); refreshAfterKeyChange(); } })] });
+      openModal({
+        title: changed ? 'New Encryption Key' : 'Current Encryption Key',
+        body: body2,
+        footer: [button('Done', { variant: 'primary', onClick: () => { closeModal(); if (changed) refreshAfterKeyChange(); } })]
+      });
     };
+    const showNewKeyModal = (base64) => showKeyModal(base64, { changed: true });
 
     // Every entity type that stores an encrypted attachment path — kept in
     // one place so key rotation and any future attachment-wide operation
@@ -730,6 +741,18 @@ function buildEncryptionCard() {
       }
     });
     body.appendChild(el('div', { style: 'margin-top:10px' }, genBtn, progressTrack));
+
+    if (unlocked) {
+      const revealBtn = button('Reveal Current Key', { variant: 'sm ghost', onClick: async () => {
+        try {
+          const base64 = await exportActiveDataKeyBase64();
+          showKeyModal(base64, { changed: false });
+        } catch (e) {
+          toast('Could not read the current key: ' + e.message, 'danger', 5000);
+        }
+      }});
+      body.appendChild(el('div', { style: 'margin-top:8px' }, revealBtn));
+    }
   }
 
   if (configured) {
