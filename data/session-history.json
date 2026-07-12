@@ -188,6 +188,15 @@
       "device": "Chrome on Windows",
       "deviceType": "desktop",
       "at": 1783831900163
+    },
+    {
+      "type": "failed_login",
+      "sessionId": "fd9b77d3-dc30-4dd1-bfe0-51f377701f94",
+      "username": "RiitaK",
+      "name": "RiitaK",
+      "device": "Chrome on Windows",
+      "deviceType": "desktop",
+      "at": 1783831938878
     }
   ]
 }
