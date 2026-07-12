@@ -18,10 +18,10 @@
       "role": "admin",
       "device": "Chrome on Windows",
       "deviceType": "desktop",
-      "hasKey": false,
+      "hasKey": true,
       "keyConfigured": true,
       "connectedAt": 1783832120880,
-      "lastSeen": 1783832135694
+      "lastSeen": 1783832195774
     },
     "e6ee8a00-c5c3-402a-8e0d-0621e8122b77": {
       "username": "RitaK",
