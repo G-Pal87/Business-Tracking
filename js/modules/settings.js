@@ -455,14 +455,48 @@ function buildEncryptionCard() {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Encryption Key', keyI), saveKeyBtn));
 
   if (isAdmin) {
-    const genBtn = button(configured ? 'Generate New Key (rotates — re-encrypts on next save)' : 'Generate Key', {
+    const defaultGenLabel = configured ? 'Generate New Key (rotates — re-encrypts on next save)' : 'Generate Key';
+    const showNewKeyModal = (base64) => {
+      const body2 = el('div');
+      body2.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px' },
+        'Save this now — it will not be shown again. Store it in a password manager, then share it with every authorized user through a secure channel.'));
+      const keyOut = input({ value: base64, readonly: true, style: 'width:100%;font-family:monospace;font-size:12px' });
+      body2.appendChild(keyOut);
+      openModal({ title: 'New Encryption Key', body: body2, footer: [button('Done', { variant: 'primary', onClick: () => { closeModal(); refreshAfterKeyChange(); } })] });
+    };
+
+    // Every entity type that stores an encrypted attachment path — kept in
+    // one place so key rotation and any future attachment-wide operation
+    // can't silently miss one.
+    const collectAttachments = () => {
+      const items = [];
+      for (const inv of listActive('invoices')) {
+        if (inv.pdfPath) items.push({ path: inv.pdfPath, label: `invoice ${inv.number || inv.id}` });
+      }
+      for (const prop of listActive('properties')) {
+        for (const doc of (prop.documents || [])) {
+          if (doc.path) items.push({ path: doc.path, label: `document "${doc.name}"` });
+        }
+      }
+      for (const client of listActive('clients')) {
+        for (const doc of (client.documents || [])) {
+          if (doc.path) items.push({ path: doc.path, label: `document "${doc.name}"` });
+        }
+      }
+      for (const exp of listActive('expenses')) {
+        if (exp.receipt?.path) items.push({ path: exp.receipt.path, label: `receipt for expense ${exp.id}` });
+      }
+      return items;
+    };
+
+    const genBtn = button(defaultGenLabel, {
       variant: configured ? 'danger' : 'primary',
       onClick: async () => {
         if (!(await promptForPasswordAndUnlock())) return;
         await new Promise(r => setTimeout(r, 250)); // let that modal's close() settle — see note below
         const ok = await confirmDialog(
           configured
-            ? 'Generating a new key replaces the current one on THIS device and re-encrypts data on the next save. Every other device/user will need the new key or they will be unable to read or save data. Continue?'
+            ? 'Generating a new key replaces the current one, re-encrypting your data AND every existing invoice PDF / property / client / expense attachment under it. Every other device/user will need the new key afterward or they will be unable to read or save data. Continue?'
             : 'Generate a new random encryption key for this app? You’ll need to save a secure backup of it and share it with every authorized user.',
           { danger: configured, okLabel: 'Generate' }
         );
@@ -472,19 +506,101 @@ function buildEncryptionCard() {
         // the delayed cleanup wipe it out from under us (same pitfall as
         // confirmDeleteTwice above). Let it fully settle first.
         await new Promise(r => setTimeout(r, 250));
-        try {
-          const { key, base64 } = await generateDataKey();
-          await installDataKey(key);
-          if (state.github.syncNow) { try { await state.github.syncNow(); } catch { /* toast below still shows the key regardless */ } }
-          const body2 = el('div');
-          body2.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px' },
-            'Save this now — it will not be shown again. Store it in a password manager, then share it with every authorized user through a secure channel.'));
-          const keyOut = input({ value: base64, readonly: true, style: 'width:100%;font-family:monospace;font-size:12px' });
-          body2.appendChild(keyOut);
-          openModal({ title: 'New Encryption Key', body: body2, footer: [button('Done', { variant: 'primary', onClick: () => { closeModal(); refreshAfterKeyChange(); } })] });
-        } catch (e) {
-          toast('Failed to generate key: ' + e.message, 'danger', 5000);
+
+        if (!configured) {
+          // First-ever key: nothing is encrypted yet, so there's nothing to
+          // migrate — keep this path simple.
+          try {
+            const { key, base64 } = await generateDataKey();
+            await installDataKey(key);
+            if (state.github.syncNow) { try { await state.github.syncNow(); } catch { /* toast below still shows the key regardless */ } }
+            showNewKeyModal(base64);
+          } catch (e) {
+            toast('Failed to generate key: ' + e.message, 'danger', 5000);
+          }
+          return;
         }
+
+        // Rotating an existing key. Refuse to even start unless GitHub is
+        // actually reachable right now — rotating while disconnected used to
+        // install the new key locally with no way to know the push that
+        // re-encrypts everything else had silently failed, leaving this
+        // device out of sync with what's still on GitHub under the old key.
+        genBtn.disabled = true;
+        genBtn.textContent = 'Checking connection…';
+        try {
+          await fetchDb();
+        } catch (e) {
+          genBtn.disabled = false;
+          genBtn.textContent = defaultGenLabel;
+          toast('Cannot reach GitHub right now — try again once connected. Nothing has changed.', 'danger', 6000);
+          return;
+        }
+
+        // Phase 1: fetch + decrypt every attachment while the OLD key is
+        // still active, before touching anything. A failure here aborts
+        // cleanly — the key hasn't been switched yet, so nothing is broken.
+        const attachments = collectAttachments();
+        const plaintexts = [];
+        let fetchFailed = 0;
+        for (let i = 0; i < attachments.length; i++) {
+          genBtn.textContent = `Fetching attachment ${i + 1} / ${attachments.length}…`;
+          try {
+            const fileData = await fetchGithubFileEncrypted(attachments[i].path);
+            plaintexts.push({ ...attachments[i], content: fileData.content });
+          } catch (err) {
+            console.warn(`[key rotation] Could not fetch ${attachments[i].label}:`, err.message);
+            fetchFailed++;
+          }
+        }
+        if (fetchFailed > 0) {
+          genBtn.disabled = false;
+          genBtn.textContent = defaultGenLabel;
+          toast(`Could not read ${fetchFailed} of ${attachments.length} attachment(s) — aborted before changing anything. Check your connection and try again.`, 'danger', 8000);
+          return;
+        }
+
+        // Phase 2: everything is safely decrypted in memory — now switch to
+        // the new key and re-upload each attachment (same path) under it.
+        let key, base64;
+        try {
+          ({ key, base64 } = await generateDataKey());
+          await installDataKey(key);
+        } catch (e) {
+          genBtn.disabled = false;
+          genBtn.textContent = defaultGenLabel;
+          toast('Failed to generate/install the new key: ' + e.message, 'danger', 6000);
+          return;
+        }
+
+        let uploadFailed = 0;
+        for (let i = 0; i < plaintexts.length; i++) {
+          genBtn.textContent = `Re-encrypting ${i + 1} / ${plaintexts.length}…`;
+          try {
+            await uploadGithubFileEncrypted(plaintexts[i].path, plaintexts[i].content, `Re-encrypt under new key: ${plaintexts[i].label}`);
+          } catch (err) {
+            console.warn(`[key rotation] Could not re-upload ${plaintexts[i].label}:`, err.message);
+            uploadFailed++;
+          }
+        }
+
+        genBtn.textContent = 'Pushing data…';
+        let pushFailed = false;
+        if (state.github.syncNow) {
+          try { await state.github.syncNow(); } catch { pushFailed = true; }
+        }
+
+        genBtn.disabled = false;
+        genBtn.textContent = defaultGenLabel;
+
+        if (uploadFailed > 0 || pushFailed) {
+          const parts = [];
+          if (uploadFailed > 0) parts.push(`${uploadFailed} attachment(s) could not be re-encrypted`);
+          if (pushFailed) parts.push('the data push failed');
+          toast(`New key is active on this device, but ${parts.join(' and ')} — check your connection, then use Push Now and re-check the console for which attachments to retry. Save the new key below regardless.`, 'danger', 10000);
+        }
+
+        showNewKeyModal(base64);
       }
     });
     body.appendChild(el('div', { style: 'margin-top:10px' }, genBtn));
