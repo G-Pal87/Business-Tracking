@@ -276,7 +276,12 @@ function buildGithubCard() {
     body.appendChild(killSection);
   }
 
-  // Setup Link section — prominent, separate from action buttons
+  // Setup Link section — prominent, separate from action buttons. A plain
+  // "no token" link used to be offered alongside this one, but it's now
+  // redundant: app.js Phase 1.5 already auto-configures owner/repo/branch/path
+  // for any brand-new visitor straight from data/github-config.json (kept
+  // current by Save & Pull below), so a bare link adds nothing over just
+  // sharing the site's normal URL. The token is the only thing worth a link.
   if (effOwner && effRepo) {
     const setupSection = el('div', {
       style: 'margin-top:16px;padding:12px 14px;background:var(--info-soft);border:1px solid var(--info);border-radius:var(--radius-sm)'
@@ -286,21 +291,28 @@ function buildGithubCard() {
     }, '🔗 Share Access with New Users'));
     setupSection.appendChild(el('div', {
       style: 'font-size:12px;color:var(--text-muted);margin-bottom:10px'
-    }, 'New browsers/devices see empty settings because the config lives in your localStorage. Generate a one-click setup link and share it — anyone who opens it gets auto-configured instantly.'));
-    setupSection.appendChild(el('div', {
-      style: 'font-size:12px;color:var(--warning, #d97706);margin-bottom:10px;padding:8px 10px;background:rgba(217,119,6,0.08);border-left:3px solid var(--warning, #d97706);border-radius:0 4px 4px 0'
-    }, '"Copy Link" alone does NOT let the recipient save changes — it only shares which repo to connect to. They still need their own GitHub Personal Access Token, entered in their own Settings, before anything they do here will actually sync. Without one, they can browse (if the repo is public) but every edit stays stuck in their browser and is never pushed. Use "Copy Link + Token" below to skip that step for someone you trust with write access.'));
+    }, 'Generate a one-click setup link and share it — anyone who opens it gets auto-configured instantly.'));
+
+    if (effToken) {
+      setupSection.appendChild(el('div', {
+        style: 'font-size:12px;color:var(--warning, #d97706);margin-bottom:10px;padding:8px 10px;background:rgba(217,119,6,0.08);border-left:3px solid var(--warning, #d97706);border-radius:0 4px 4px 0'
+      }, '⚠️ This link includes your GitHub token, giving full write access with no further setup — treat it like a password and share only with someone you trust with write access.'));
+    } else {
+      setupSection.appendChild(el('div', {
+        style: 'font-size:12px;color:var(--text-muted);margin-bottom:10px'
+      }, 'This link shares which repo to connect to, but not a token — the recipient still needs their own GitHub Personal Access Token, entered in their own Settings, before anything they do here will actually sync.'));
+    }
+
+    const params = new URLSearchParams({ owner: effOwner, repo: effRepo, branch: effBranch, path: effPath });
+    if (effToken) params.set('token', effToken);
+    const setupUrl = `${window.location.origin}${window.location.pathname}#/setup?${params}`;
 
     const setupLinkInput = el('input', {
       type: 'text',
       readonly: true,
       style: 'width:100%;font-size:11px;margin-bottom:8px',
-      value: ''
+      value: setupUrl
     });
-
-    const params = new URLSearchParams({ owner: effOwner, repo: effRepo, branch: effBranch, path: effPath });
-    const setupUrl = `${window.location.origin}${window.location.pathname}#/setup?${params}`;
-    setupLinkInput.value = setupUrl;
 
     const doCopy = (text, msg) => {
       const fallback = () => {
@@ -320,29 +332,16 @@ function buildGithubCard() {
       }
     };
 
-    const copyBtn = button('Copy Link', { variant: 'primary', onClick: () => {
+    const copyBtn = button('Copy Setup Link', { variant: 'primary', onClick: () => {
       setupLinkInput.select();
-      doCopy(setupUrl, 'Link copied — tell the recipient to add their own GitHub token in Settings, or their edits won’t sync');
+      doCopy(setupUrl, effToken
+        ? '⚠️ Link includes your token — share only with trusted users'
+        : 'Link copied — tell the recipient to add their own GitHub token in Settings, or their edits won’t sync');
     }});
 
     const linkRow = el('div', { class: 'flex gap-8', style: 'align-items:center' });
     linkRow.appendChild(setupLinkInput);
     linkRow.appendChild(copyBtn);
-
-    if (effToken) {
-      const paramsWithToken = new URLSearchParams({ owner: effOwner, repo: effRepo, branch: effBranch, path: effPath, token: effToken });
-      const setupUrlWithToken = `${window.location.origin}${window.location.pathname}#/setup?${paramsWithToken}`;
-      const copyTokenBtn = button('Copy Link + Token', { onClick: () => {
-        doCopy(setupUrlWithToken, '⚠️ Link includes your token — share only with trusted users');
-      }});
-      copyTokenBtn.title = 'Includes the GitHub token — one-click setup for private repos. Share only with trusted users.';
-      linkRow.appendChild(copyTokenBtn);
-
-      setupSection.appendChild(el('div', {
-        style: 'font-size:11px;color:var(--text-muted);margin-top:6px'
-      }, 'Private repo? Use "Copy Link + Token" so the recipient can pull without entering credentials. Treat that link like a password.'));
-    }
-
     setupSection.appendChild(linkRow);
     body.appendChild(setupSection);
   }
