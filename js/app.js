@@ -176,18 +176,29 @@ async function boot() {
       // nothing to catch it, so a lagging read here just silently became the
       // permanent view with no self-correction, looking like the save was lost.
       // A confirmatory re-pull moments later, merged the same way Phase 4
-      // already does, catches up if the first read was stale.
+      // already does, catches up if the first read was stale. The lag isn't a
+      // fixed duration though — a single retry at a fixed delay can itself
+      // land inside the lag window, which is exactly why "log out, log back
+      // in" could still show stale data while a later manual refresh
+      // (naturally further past the write) did not. Retrying several times
+      // over a longer window self-heals regardless of how long that
+      // particular lag turns out to be, instead of requiring the user to
+      // notice and refresh by hand.
       const firstLoadSnapshot = structuredClone(remoteDb);
-      setTimeout(async () => {
-        try {
-          const confirmDb = await github.fetchDb();
-          const reconciled = github.mergeLocalPending(confirmDb, firstLoadSnapshot);
-          delete reconciled._hasLocalChanges;
-          reconciled._syncedAt = Date.now();
-          setDb(reconciled);
-          github.saveLocalCache(reconciled);
-        } catch { /* best-effort — the regular 60s backgroundResync will catch it anyway */ }
-      }, 4000);
+      let confirmBase = firstLoadSnapshot;
+      for (const delay of [3000, 8000, 20000]) {
+        setTimeout(async () => {
+          try {
+            const confirmDb = await github.fetchDb();
+            const reconciled = github.mergeLocalPending(confirmDb, confirmBase);
+            delete reconciled._hasLocalChanges;
+            reconciled._syncedAt = Date.now();
+            setDb(reconciled);
+            github.saveLocalCache(reconciled);
+            confirmBase = reconciled;
+          } catch { /* best-effort — the regular 60s backgroundResync will catch it anyway */ }
+        }, delay);
+      }
     } catch (e) {
       console.warn('GitHub load failed, no local cache available', e);
       if (e.code === 'NO_ENC_KEY') state.github.needsEncKey = true;
