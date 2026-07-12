@@ -13,15 +13,15 @@
   },
   "devices": {
     "fd9b77d3-dc30-4dd1-bfe0-51f377701f94": {
-      "username": "RitaK",
-      "name": "Rita",
+      "username": "Giorgos",
+      "name": "Giorgos",
       "role": "admin",
       "device": "Chrome on Windows",
       "deviceType": "desktop",
-      "hasKey": true,
+      "hasKey": false,
       "keyConfigured": true,
-      "connectedAt": 1783784204521,
-      "lastSeen": 1783796743616
+      "connectedAt": 1783831786702,
+      "lastSeen": 1783831801520
     },
     "e6ee8a00-c5c3-402a-8e0d-0621e8122b77": {
       "username": "RitaK",
