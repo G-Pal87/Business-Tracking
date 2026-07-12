@@ -165,6 +165,29 @@ async function boot() {
       loaded = true;
       initialSyncDone = true;
       updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+
+      // GitHub's Contents API can occasionally serve a read that lags a few
+      // seconds behind the very latest commit — documented eventual-consistency
+      // behavior on their end, confirmed elsewhere in this file (see mergeDb's
+      // "232 records reading a remote updatedAt from over an hour earlier"
+      // comment). Every OTHER pull path in this app has a follow-up check for
+      // exactly this (backgroundResync's _staleFetch, Phase 4's own merge below)
+      // — this was the one exception: a brand-new device's very first load had
+      // nothing to catch it, so a lagging read here just silently became the
+      // permanent view with no self-correction, looking like the save was lost.
+      // A confirmatory re-pull moments later, merged the same way Phase 4
+      // already does, catches up if the first read was stale.
+      const firstLoadSnapshot = structuredClone(remoteDb);
+      setTimeout(async () => {
+        try {
+          const confirmDb = await github.fetchDb();
+          const reconciled = github.mergeLocalPending(confirmDb, firstLoadSnapshot);
+          delete reconciled._hasLocalChanges;
+          reconciled._syncedAt = Date.now();
+          setDb(reconciled);
+          github.saveLocalCache(reconciled);
+        } catch { /* best-effort — the regular 60s backgroundResync will catch it anyway */ }
+      }, 4000);
     } catch (e) {
       console.warn('GitHub load failed, no local cache available', e);
       if (e.code === 'NO_ENC_KEY') state.github.needsEncKey = true;
