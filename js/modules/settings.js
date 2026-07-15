@@ -6,7 +6,7 @@ import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey,
 import { verifyPassword } from '../core/auth.js';
 import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, removeDevices, listSessionHistory, clearSessionHistory } from '../core/presence.js';
 import { navigate } from '../core/router.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, formatRuleConflictWarning } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { PDF_TEMPLATES } from '../core/pdf.js';
@@ -1336,12 +1336,31 @@ function buildReservationExpenseRulesCard() {
 
   const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
   const addRuleBtn = button('+ Add Rule', { variant: 'primary', onClick: (e) => { e.stopPropagation(); openReservationExpenseRuleForm(null, renderCard); } });
+  const runAllBtn = button('Run All Rules', { variant: 'sm ghost', onClick: async (e) => {
+    e.stopPropagation();
+    const rules = listActive('reservationExpenseRules').filter(r => r.enabled);
+    if (rules.length === 0) { toast('No enabled rules to run', 'warning'); return; }
+    const hasInventory = rules.some(r => r.amountSource === 'inventory');
+    const inventoryNote = hasInventory
+      ? ' This includes inventory-sourced rule(s), which will deduct stock for any matching reservation that doesn’t already have an expense from that rule.'
+      : '';
+    const ok = await confirmDialog(
+      `Run all ${rules.length} enabled rule${rules.length === 1 ? '' : 's'} against every matching reservation now? Missing expenses will be created; existing ones won't be duplicated.${inventoryNote}`,
+      { okLabel: 'Run All' }
+    );
+    if (!ok) return;
+    const { rulesRun, processed, created, conflicts } = runAllReservationExpenseRules({ allowInventory: true });
+    const warning = formatRuleConflictWarning(conflicts);
+    toast(`Ran ${rulesRun} rule${rulesRun === 1 ? '' : 's'} against ${processed} reservation${processed === 1 ? '' : 's'} — ${created} new expense${created === 1 ? '' : 's'} created.`, 'success');
+    if (warning) toast(warning, 'warning', 8000);
+  }});
   const header = el('div', { class: 'card-header card-header--toggle' },
     el('div', {},
       el('div', { class: 'card-title' }, 'Reservation Expense Rules'),
       el('div', { class: 'card-subtitle' }, 'Auto-generate expenses for each reservation (historical & future, imported & manual)')
     ),
     el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      runAllBtn,
       addRuleBtn,
       chevron
     )
