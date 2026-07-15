@@ -326,7 +326,7 @@ function buildPropertySection(wrap) {
           renderChart(fc); renderSummary(fc);
         }));
       } else {
-        gridWrap.appendChild(buildAggregatedGrid(selIds, year));
+        gridWrap.appendChild(buildAggregatedGrid(selIds, year, 'property', () => render()));
       }
     }
     requestAnimationFrame(() => { renderChart(aggCache); renderSummary(aggCache); renderBreakdown(selIds); });
@@ -673,7 +673,7 @@ function buildServiceSection(wrap) {
           renderChart(fc); renderSummary(fc);
         }));
       } else {
-        gridWrap.appendChild(buildAggregatedGrid(selIds, year, 'service'));
+        gridWrap.appendChild(buildAggregatedGrid(selIds, year, 'service', () => render()));
       }
     }
     requestAnimationFrame(() => { renderChart(aggCache); renderSummary(aggCache); });
@@ -1409,19 +1409,43 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
   }
 }
 
-// ===== AGGREGATED GRID (multi-select, read-only — property and service) =====
-function buildAggregatedGrid(entityIds, year, type = 'property') {
+// Human-readable label for a forecast entity, property name or service stream label.
+function entityLabel(id, type) {
+  return type === 'service' ? (STREAMS[id]?.label || id) : (byId('properties', id)?.name || id);
+}
+
+// ===== AGGREGATED GRID (multi-select summary, property and service) =====
+// The totals table below stays a read-only aggregate across everything
+// currently selected — but any one of the selected entities can still be
+// opened for full editing (monthly forecast + itemized entries + annual
+// target) via the picker below, without narrowing the outer filter down to
+// a single selection first.
+function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
   const card = el('div', { class: 'card' });
   const label = type === 'service' ? `${entityIds.length} services selected` : `${entityIds.length} properties selected`;
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, `Aggregated Forecast — ${year}`),
     el('div', { class: 'muted', style: 'font-size:12px' }, label)
   ));
-  if (type === 'property' && entityIds.length > 1) {
-    card.appendChild(el('div', {
-      style: 'padding:8px 16px;font-size:12px;color:var(--text-muted);background:rgba(99,102,241,0.06);border-bottom:1px solid var(--border)'
-    }, 'This is a read-only summary across multiple properties. Select a single property above to edit its monthly forecast or add off-platform / manual bookings.'));
-  }
+
+  const editBar = el('div', {
+    style: 'display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--bg-elev-2);border-bottom:1px solid var(--border);flex-wrap:wrap'
+  });
+  editBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Edit forecast for:'));
+  const entitySel = select(entityIds.map(id => ({ value: id, label: entityLabel(id, type) })), entityIds[0]);
+  editBar.appendChild(entitySel);
+  editBar.appendChild(button('Edit Monthly Forecast', { variant: 'sm primary', onClick: () => {
+    const chosenId = entitySel.value;
+    const modalBody = el('div', {});
+    modalBody.appendChild(buildMonthlyGrid(chosenId, year, type, onChange));
+    openModal({
+      title: `${entityLabel(chosenId, type)} — ${year} Forecast`,
+      body: modalBody,
+      footer: [button('Done', { variant: 'primary', onClick: () => { closeModal(); if (onChange) onChange(); } })],
+      large: true
+    });
+  }}));
+  card.appendChild(editBar);
 
   const results = entityIds.map(id => getForecastVsActual(type, id, year));
   const months = results[0].months.map((_, i) => ({
