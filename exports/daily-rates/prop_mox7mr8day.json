@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-15T08:03:21.406Z",
+  "generatedAt": "2026-07-15T08:34:39.899Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
@@ -66,52 +66,52 @@
     {
       "date": "2026-07-20",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 105,
-      "discountPct": 10,
-      "amount": 95,
-      "airbnbCheckout": 120
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 101,
+      "discountPct": 0,
+      "amount": 101,
+      "airbnbCheckout": 115
     },
     {
       "date": "2026-07-21",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 105,
-      "discountPct": 10,
-      "amount": 95,
-      "airbnbCheckout": 120
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 101,
+      "discountPct": 0,
+      "amount": 101,
+      "airbnbCheckout": 115
     },
     {
       "date": "2026-07-22",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 105,
-      "discountPct": 10,
-      "amount": 95,
-      "airbnbCheckout": 120
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 101,
+      "discountPct": 0,
+      "amount": 101,
+      "airbnbCheckout": 115
     },
     {
       "date": "2026-07-23",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 105,
-      "discountPct": 10,
-      "amount": 95,
-      "airbnbCheckout": 120
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 101,
+      "discountPct": 0,
+      "amount": 101,
+      "airbnbCheckout": 115
     },
     {
       "date": "2026-07-24",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 105,
-      "discountPct": 10,
-      "amount": 95,
-      "airbnbCheckout": 120
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 101,
+      "discountPct": 0,
+      "amount": 101,
+      "airbnbCheckout": 115
     },
     {
       "date": "2026-07-25",
@@ -3557,7 +3557,7 @@
       "date": "2027-07-04",
       "currency": "EUR",
       "status": "open",
-      "basis": "July 2026 (22n, 1.95×) + July 2025 (31n, 1.27×)",
+      "basis": "July 2026 (27n, 1.95×) + July 2025 (31n, 1.27×)",
       "originalAmount": 100,
       "discountPct": 10,
       "amount": 90,
