@@ -1282,11 +1282,12 @@ function _applyRuleGuarded(rule, payment, reservationRef, genIndex, tracker) {
 // alongside a new "Vendor rate" rule, both categorized "cleaning") only let
 // the first one through; different categories (e.g. cleaning + maintenance)
 // are unaffected — each owns its own category independently.
-export function applyReservationExpenseRules(payment, genIndex = null, categoryIndex = null) {
+export function applyReservationExpenseRules(payment, genIndex = null, categoryIndex = null, { allowInventory = true } = {}) {
   const reservationRef = payment.confirmationCode || payment.id;
   if (!reservationRef || !payment.propertyId) return [];
   const rules = listActive('reservationExpenseRules').filter(r =>
-    r.enabled && (!r.propertyId || r.propertyId === payment.propertyId)
+    r.enabled && (!r.propertyId || r.propertyId === payment.propertyId) &&
+    (allowInventory || r.amountSource !== 'inventory')
   );
   const tracker = _makeClaimTracker(reservationRef, categoryIndex);
   const conflicts = [];
@@ -1534,4 +1535,30 @@ export function reapplyRuleToAllPayments(rule, { allowInventory = false } = {}) 
   });
   const after = (state.db.expenses || []).filter(e => e.isGenerated && !e.deletedAt && e.reservationRuleId === rule.id).length;
   return { processed: payments.length, created: Math.max(0, after - before), conflicts };
+}
+
+// Apply every enabled rule to every matching short-term payment in one pass
+// — the "Run All Rules" bulk action. Reuses applyReservationExpenseRules's
+// per-payment "every matching rule, cross-rule same-category guard" logic,
+// so the result is exactly what re-importing every reservation from scratch
+// would produce, just without touching payments themselves.
+//
+// Inventory-sourced rules are skipped by default, same rationale as
+// reapplyRuleToAllPayments — pass `allowInventory: true` for an explicit,
+// user-initiated run.
+export function runAllReservationExpenseRules({ allowInventory = false } = {}) {
+  const rules = listActive('reservationExpenseRules').filter(r => r.enabled);
+  if (rules.length === 0) return { rulesRun: 0, processed: 0, created: 0, conflicts: [] };
+  const payments = listActive('payments').filter(p =>
+    p.stream === 'short_term_rental' && (p.confirmationCode || p.id)
+  );
+  const genIndex = buildGeneratedExpenseIndex();
+  const categoryIndex = buildGeneratedExpenseCategoryIndex();
+  const before = (state.db.expenses || []).filter(e => e.isGenerated && !e.deletedAt).length;
+  const conflicts = [];
+  runBatch(() => {
+    for (const pay of payments) conflicts.push(...applyReservationExpenseRules(pay, genIndex, categoryIndex, { allowInventory }));
+  });
+  const after = (state.db.expenses || []).filter(e => e.isGenerated && !e.deletedAt).length;
+  return { rulesRun: rules.length, processed: payments.length, created: Math.max(0, after - before), conflicts };
 }
