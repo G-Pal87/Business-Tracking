@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, upsertForecastEntry, removeForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildReservationExpenseRefMap, getPeopleOwners, getPersonName } from '../core/data.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, upsertForecastEntry, removeForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildGeneratedExpenseCategoryIndex, buildReservationExpenseRefMap, formatRuleConflictWarning, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -1125,7 +1125,10 @@ function openForm(existing) {
       personal: personalChk.checked
     });
     upsert('payments', r);
-    if (r.stream === 'short_term_rental') applyReservationExpenseRules(r);
+    if (r.stream === 'short_term_rental') {
+      const warning = formatRuleConflictWarning(applyReservationExpenseRules(r));
+      if (warning) toast(warning, 'warning', 8000);
+    }
     toast(existing ? 'Payment updated' : 'Payment added', 'success');
     closeModal();
     setTimeout(() => navigate('payments'), 200);
@@ -1390,6 +1393,11 @@ function openCSVImport() {
     }
 
     let totalAdded = 0, totalUpdated = 0, totalRemoved = 0;
+    const ruleConflicts = [];
+    // Shared across both CSV passes below so a reservation appearing in both
+    // (e.g. transitioning from pending to paid) still gets cross-rule
+    // same-category dedup — see applyReservationExpenseRules in core/data.js.
+    const categoryIndex = buildGeneratedExpenseCategoryIndex();
 
     // Batch all the per-row mutations into a single save/refresh cycle instead
     // of one per upsert (thousands during a large import).
@@ -1466,7 +1474,7 @@ function openCSVImport() {
           if (existing) totalUpdated++; else totalAdded++;
         }
 
-        if (row.type.toLowerCase() === 'reservation') applyReservationExpenseRules(pay, genIndex);
+        if (row.type.toLowerCase() === 'reservation') ruleConflicts.push(...applyReservationExpenseRules(pay, genIndex, categoryIndex));
 
         // Materialize any matching pending reservation so it no longer counts
         // in active forecast calculations while remaining visible for history.
@@ -1587,7 +1595,7 @@ function openCSVImport() {
           totalAdded++;
         }
 
-        if (row.type?.toLowerCase() === 'reservation') applyReservationExpenseRules(pay, genIndexP);
+        if (row.type?.toLowerCase() === 'reservation') ruleConflicts.push(...applyReservationExpenseRules(pay, genIndexP, categoryIndex));
 
         // Accumulate forecast total for this property+month
         const refDate = row.checkIn || row.date;
@@ -1614,6 +1622,8 @@ function openCSVImport() {
     const parts = [`${totalAdded} new`, `${totalUpdated} updated`];
     if (totalRemoved > 0) parts.push(`${totalRemoved} removed`);
     toast(`Imported: ${parts.join(', ')}`, 'success');
+    const ruleWarning = formatRuleConflictWarning(ruleConflicts);
+    if (ruleWarning) toast(ruleWarning, 'warning', 8000);
     closeModal();
     setTimeout(() => navigate('payments'), 200);
   }});
