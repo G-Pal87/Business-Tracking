@@ -130,13 +130,22 @@ function build() {
   const streamFilter     = new Set();
   const propFilter       = new Set();
   const catFilter        = new Set();
+  const vendorFilter     = new Set();
   const accountingTypeFilter = new Set();
   const recurrenceFilter = new Set();
 
   let selected = new Set();
   let _filterTimer;
   let _expFieldCache = new Map();
-  let yearMS, monthMS, streamMS, propMS, catMS, typeMS, recMS;
+  let yearMS, monthMS, streamMS, propMS, catMS, vendorMS, typeMS, recMS;
+
+  // Single source of truth for a resolved vendor/person display name, shared
+  // by the filter facet and the table's derived row data.
+  function vendorNameOf(e) {
+    return e.personId
+      ? ((state.db.people || []).find(p => p.id === e.personId || (p.legacyKey || p.id) === e.personId)?.name || e.personId)
+      : (e.vendorId ? (byId('vendors', e.vendorId)?.name || e.vendor || '') : (e.vendor || ''));
+  }
   const onFilter = () => { clearTimeout(_filterTimer); _filterTimer = setTimeout(() => { rebuildFilters(); renderAll(); }, 250); };
 
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
@@ -170,6 +179,7 @@ function build() {
       (skip === 'stream' || streamFilter.size === 0         || streamFilter.has(e.stream || '')) &&
       (skip === 'prop'   || propFilter.size === 0           || propFilter.has(e.propertyId)) &&
       (skip === 'cat'    || catFilter.size === 0            || catFilter.has(e.category)) &&
+      (skip === 'vendor' || vendorFilter.size === 0         || vendorFilter.has(vendorNameOf(e))) &&
       (skip === 'type'   || accountingTypeFilter.size === 0 || accountingTypeFilter.has(res.accountingType)) &&
       (skip === 'rec'    || recurrenceFilter.size === 0     || recurrenceFilter.has(res.recurrence))
     );
@@ -183,26 +193,29 @@ function build() {
 
     // Single pass: inline filter checks so resolveExpenseFields is called once per expense
     const validYrs = new Set(), validMos = new Set(), validSts = new Set(),
-          validPrs = new Set(), validCats = new Set(), validTps = new Set(), validRecs = new Set();
+          validPrs = new Set(), validCats = new Set(), validVens = new Set(), validTps = new Set(), validRecs = new Set();
     for (const e of all) {
       const res = _expFieldCache.get(e.id);
       const yr  = (e.date || '').slice(0, 4);
       const mo  = (e.date || '').slice(5, 7);
       const st  = e.stream || '';
+      const ven = vendorNameOf(e);
       const passYr  = yearFilter.size           === 0 || yearFilter.has(yr);
       const passMo  = monthFilter.size          === 0 || monthFilter.has(mo);
       const passSt  = streamFilter.size         === 0 || streamFilter.has(st);
       const passPr  = propFilter.size           === 0 || propFilter.has(e.propertyId);
       const passCat = catFilter.size            === 0 || catFilter.has(e.category);
+      const passVen = vendorFilter.size         === 0 || vendorFilter.has(ven);
       const passTp  = accountingTypeFilter.size === 0 || accountingTypeFilter.has(res.accountingType);
       const passRec = recurrenceFilter.size     === 0 || recurrenceFilter.has(res.recurrence);
-      if (passMo && passSt && passPr  && passCat && passTp  && passRec) { if (yr) validYrs.add(yr); }
-      if (passYr && passSt && passPr  && passCat && passTp  && passRec) { if (mo) validMos.add(mo); }
-      if (passYr && passMo && passPr  && passCat && passTp  && passRec) { if (st) validSts.add(st); }
-      if (passYr && passMo && passSt  && passCat && passTp  && passRec) { if (e.propertyId)        validPrs.add(e.propertyId); }
-      if (passYr && passMo && passSt  && passPr  && passTp  && passRec) { if (e.category)          validCats.add(e.category); }
-      if (passYr && passMo && passSt  && passPr  && passCat && passRec) { if (res.accountingType)  validTps.add(res.accountingType); }
-      if (passYr && passMo && passSt  && passPr  && passCat && passTp)  { if (res.recurrence)      validRecs.add(res.recurrence); }
+      if (passMo && passSt && passPr  && passCat && passVen && passTp  && passRec) { if (yr) validYrs.add(yr); }
+      if (passYr && passSt && passPr  && passCat && passVen && passTp  && passRec) { if (mo) validMos.add(mo); }
+      if (passYr && passMo && passPr  && passCat && passVen && passTp  && passRec) { if (st) validSts.add(st); }
+      if (passYr && passMo && passSt  && passCat && passVen && passTp  && passRec) { if (e.propertyId)        validPrs.add(e.propertyId); }
+      if (passYr && passMo && passSt  && passPr  && passVen && passTp  && passRec) { if (e.category)          validCats.add(e.category); }
+      if (passYr && passMo && passSt  && passPr  && passCat && passTp  && passRec) { if (ven)                 validVens.add(ven); }
+      if (passYr && passMo && passSt  && passPr  && passCat && passVen && passRec) { if (res.accountingType)  validTps.add(res.accountingType); }
+      if (passYr && passMo && passSt  && passPr  && passCat && passVen && passTp)  { if (res.recurrence)      validRecs.add(res.recurrence); }
     }
 
     // Prune stale selections
@@ -211,6 +224,7 @@ function build() {
     for (const v of [...streamFilter])         if (!validSts.has(v))  streamFilter.delete(v);
     for (const v of [...propFilter])           if (!validPrs.has(v))  propFilter.delete(v);
     for (const v of [...catFilter])            if (!validCats.has(v)) catFilter.delete(v);
+    for (const v of [...vendorFilter])         if (!validVens.has(v)) vendorFilter.delete(v);
     for (const v of [...accountingTypeFilter]) if (!validTps.has(v))  accountingTypeFilter.delete(v);
     for (const v of [...recurrenceFilter])     if (!validRecs.has(v)) recurrenceFilter.delete(v);
 
@@ -219,6 +233,7 @@ function build() {
     const streamOpts = [...validSts].sort().map(s => ({ value: s, label: STREAMS[s]?.label || s }));
     const propOpts   = [...validPrs].map(id => byId('properties', id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name }));
     const catOpts    = [...validCats].sort().map(c => ({ value: c, label: EXPENSE_CATEGORIES[c]?.label || c }));
+    const vendorOpts = [...validVens].sort((a, b) => a.localeCompare(b)).map(v => ({ value: v, label: v }));
     const typeOpts   = [...validTps].sort().map(t => ({ value: t, label: ACCOUNTING_TYPES[t]?.label || t }));
     const recOpts    = [...validRecs].sort().map(r => ({ value: r, label: RECURRENCE_TYPES[r]?.label || r }));
 
@@ -229,6 +244,7 @@ function build() {
       streamMS = buildMultiSelect(streamOpts, streamFilter,         'All Streams',    onFilter, 'exp_streams');
       propMS   = buildMultiSelect(propOpts,   propFilter,           'All Properties', onFilter, 'exp_props');
       catMS    = buildMultiSelect(catOpts,    catFilter,            'All Expenses',   onFilter, 'exp_cats');
+      vendorMS = buildMultiSelect(vendorOpts, vendorFilter,         'All Vendors',    onFilter, 'exp_vendors');
       typeMS   = buildMultiSelect(typeOpts,   accountingTypeFilter, 'All Types',      onFilter, 'exp_types');
       recMS    = buildMultiSelect(recOpts,    recurrenceFilter,     'All Recurrence', onFilter, 'exp_recurrence');
 
@@ -237,14 +253,15 @@ function build() {
       filterBar.appendChild(streamMS);
       filterBar.appendChild(propMS);
       filterBar.appendChild(catMS);
+      filterBar.appendChild(vendorMS);
       filterBar.appendChild(typeMS);
       filterBar.appendChild(recMS);
       filterBar.appendChild(button('Reset Filters', { variant: 'sm ghost', onClick: () => {
         yearFilter.clear(); monthFilter.clear(); streamFilter.clear(); propFilter.clear();
-        catFilter.clear(); accountingTypeFilter.clear(); recurrenceFilter.clear();
-        ['exp_years','exp_months','exp_streams','exp_props','exp_cats','exp_types','exp_recurrence']
+        catFilter.clear(); vendorFilter.clear(); accountingTypeFilter.clear(); recurrenceFilter.clear();
+        ['exp_years','exp_months','exp_streams','exp_props','exp_cats','exp_vendors','exp_types','exp_recurrence']
           .forEach(k => { try { localStorage.removeItem(`btf:${k}`); } catch {} });
-        yearMS.reset(); monthMS.reset(); streamMS.reset(); propMS.reset(); catMS.reset(); typeMS.reset(); recMS.reset();
+        yearMS.reset(); monthMS.reset(); streamMS.reset(); propMS.reset(); catMS.reset(); vendorMS.reset(); typeMS.reset(); recMS.reset();
         rebuildFilters(); renderAll();
       }}));
       filterBar.appendChild(el('div', { class: 'flex-1' }));
@@ -257,6 +274,7 @@ function build() {
       streamMS.setItems(streamOpts);
       propMS.setItems(propOpts);
       catMS.setItems(catOpts);
+      vendorMS.setItems(vendorOpts);
       typeMS.setItems(typeOpts);
       recMS.setItems(recOpts);
     }
@@ -301,9 +319,7 @@ function build() {
     const prop = byId('properties', r.propertyId);
     const cat  = EXPENSE_CATEGORIES[r.category];
     const catLabel = cat?.label || r.category;
-    const vendorPerson = r.personId
-      ? ((state.db.people || []).find(p => p.id === r.personId || (p.legacyKey || p.id) === r.personId)?.name || r.personId)
-      : (r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '') : (r.vendor || ''));
+    const vendorPerson = vendorNameOf(r);
     const eur = toEUR(r.amount, r.currency);
     // No property → business-line allocation: show the stream label instead of "-"
     const allocName = prop?.name || (r.stream ? (STREAMS[r.stream]?.label || 'Company') : 'Company');
@@ -343,6 +359,7 @@ function build() {
       if (streamFilter.size > 0         && !streamFilter.has(r.stream || ''))                          return false;
       if (propFilter.size > 0           && !propFilter.has(r.propertyId))                              return false;
       if (catFilter.size > 0            && !catFilter.has(r.category))                                 return false;
+      if (vendorFilter.size > 0         && !vendorFilter.has(vendorNameOf(r)))                          return false;
       const res = _expFieldCache.get(r.id);
       if (accountingTypeFilter.size > 0 && !accountingTypeFilter.has(res?.accountingType))             return false;
       if (recurrenceFilter.size > 0     && !recurrenceFilter.has(res?.recurrence))                     return false;
@@ -506,9 +523,7 @@ function build() {
         accountingType: ACCOUNTING_TYPES[res.accountingType]?.label || res.accountingType,
         recurrence:    RECURRENCE_TYPES[res.recurrence]?.label || res.recurrence,
         desc:          r.description || '—',
-        vendor:        r.personId
-          ? ((state.db.people || []).find(p => p.id === r.personId || (p.legacyKey || p.id) === r.personId)?.name || r.personId)
-          : (r.vendorId ? (byId('vendors', r.vendorId)?.name || r.vendor || '—') : (r.vendor || '—')),
+        vendor:        vendorNameOf(r) || '—',
         eur:           toEUR(r.amount, r.currency),
       };
     })
@@ -526,6 +541,7 @@ function build() {
       if (streamFilter.size > 0         && !streamFilter.has(r.stream || ''))                          return false;
       if (propFilter.size > 0           && !propFilter.has(r.propertyId))                              return false;
       if (catFilter.size > 0            && !catFilter.has(r.category))                                 return false;
+      if (vendorFilter.size > 0         && !vendorFilter.has(vendorNameOf(r)))                          return false;
       const res = _expFieldCache.get(r.id);
       if (accountingTypeFilter.size > 0 && !accountingTypeFilter.has(res?.accountingType))             return false;
       if (recurrenceFilter.size > 0     && !recurrenceFilter.has(res?.recurrence))                     return false;
