@@ -1,6 +1,6 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, attachSortFilter } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64 } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
@@ -34,6 +34,12 @@ export default {
 // and the card slams shut). Module-scope so it survives across build() calls
 // for the life of the page; only a hard reload clears it, which is fine.
 const _expandedCards = new Set();
+
+// Same rationale as _expandedCards above — the Reservation Expense Rules
+// table is rebuilt from scratch by renderCard() (every Add/Edit/Delete/Run)
+// and by the whole-page refresh() on background syncs, so sort/search state
+// needs to live at module scope to survive that instead of resetting.
+let _rerSortCol = -1, _rerSortDir = 1, _rerSearch = '';
 
 function wireCollapsible(key, header, body, chevron) {
   if (_expandedCards.has(key)) {
@@ -1427,6 +1433,12 @@ function buildReservationExpenseRulesCard() {
       t.appendChild(tb);
       const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
       body.appendChild(tw);
+      attachSortFilter(tw, {
+        placeholder: 'Filter rules…',
+        initialCol: _rerSortCol, initialDir: _rerSortDir, initialSearch: _rerSearch,
+        onSortChange: (c, d) => { _rerSortCol = c; _rerSortDir = d; },
+        onSearchChange: v => { _rerSearch = v; }
+      });
     }
   };
 
