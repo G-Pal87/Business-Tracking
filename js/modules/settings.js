@@ -6,7 +6,7 @@ import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey,
 import { verifyPassword } from '../core/auth.js';
 import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, removeDevices, listSessionHistory, clearSessionHistory } from '../core/presence.js';
 import { navigate } from '../core/router.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, formatRuleConflictWarning } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { PDF_TEMPLATES } from '../core/pdf.js';
@@ -1376,6 +1376,24 @@ function buildReservationExpenseRulesCard() {
         tr.appendChild(el('td', {}, srcLabel));
         tr.appendChild(el('td', {}, el('span', { class: `badge ${rule.enabled ? 'success' : ''}` }, rule.enabled ? 'On' : 'Off')));
         const acts = el('td', { class: 'right' });
+        acts.appendChild(button('Run', {
+          variant: 'sm ghost',
+          onClick: async () => {
+            if (!rule.enabled) { toast('Enable the rule first', 'warning'); return; }
+            const inventoryNote = rule.amountSource === 'inventory'
+              ? ' This will deduct stock for any matching reservation that doesn’t already have an expense from this rule.'
+              : '';
+            const ok = await confirmDialog(
+              `Run rule "${rule.name}" against all matching reservations now? Missing expenses will be created; existing ones won't be duplicated.${inventoryNote}`,
+              { okLabel: 'Run Rule' }
+            );
+            if (!ok) return;
+            const { processed, created, conflicts } = reapplyRuleToAllPayments(rule, { allowInventory: true });
+            const warning = formatRuleConflictWarning(conflicts);
+            toast(`Checked ${processed} reservation${processed === 1 ? '' : 's'} — ${created} new expense${created === 1 ? '' : 's'} created.`, 'success');
+            if (warning) toast(warning, 'warning', 8000);
+          }
+        }));
         acts.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openReservationExpenseRuleForm(rule, renderCard) }));
         acts.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
           const ok = await confirmDialog(`Delete rule "${rule.name}"?`, { danger: true, okLabel: 'Delete' });
@@ -1488,8 +1506,11 @@ function openReservationExpenseRuleForm(existing, onSave) {
     upsert('reservationExpenseRules', rule);
     toast('Rule saved', 'success');
     closeModal();
-    // Retroactively apply to existing payments (non-inventory sources only)
-    reapplyRuleToAllPayments(rule);
+    // Retroactively apply to existing payments (non-inventory sources only —
+    // see reapplyRuleToAllPayments for why inventory needs an explicit "Run")
+    const { conflicts } = reapplyRuleToAllPayments(rule);
+    const warning = formatRuleConflictWarning(conflicts);
+    if (warning) toast(warning, 'warning', 8000);
     onSave?.();
   }});
 
