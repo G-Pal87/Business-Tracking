@@ -1,6 +1,6 @@
 // Inventory module — batch-based stock with FIFO deduction
 import { state } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, addDays, attachSortFilter } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, totalRemaining } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
 
@@ -92,6 +92,18 @@ function consumptionRate(item, now) {
   return { ratePerDay: recentUsed / spanDays, recentUsed, spanDays };
 }
 
+// Projects the calendar date current stock runs out at the recent
+// consumption rate, assuming no further restocking — returns null when
+// there's no recent usage to project from (nothing to warn about).
+function projectedStockout(item, now) {
+  const rate = consumptionRate(item, now);
+  if (!rate || rate.ratePerDay <= 0) return null;
+  const stock = totalRemaining(item);
+  if (stock <= 0) return { date: now, daysCover: 0, ratePerDay: rate.ratePerDay };
+  const daysCover = stock / rate.ratePerDay;
+  return { date: addDays(now, Math.floor(daysCover)), daysCover, ratePerDay: rate.ratePerDay };
+}
+
 function buildInventoryInsights(onInspect) {
   const now = today();
   const items = listActive('inventory');
@@ -118,16 +130,18 @@ function buildInventoryInsights(onInspect) {
     // Only surface items that won't cover the demand horizon.
     if (stock > 0 && daysCover >= COVERAGE_DAYS) continue;
 
+    const stockoutDate = stock <= 0 ? now : addDays(now, Math.floor(daysCover));
+
     let severity, lead;
     if (stock <= 0) {
       severity = 'At Risk';
       lead = `Out of stock with active demand (~${perWeek.toFixed(1)}/week).`;
     } else if (daysCover < 14) {
       severity = 'At Risk';
-      lead = `Only ~${Math.floor(daysCover)} days of cover left at ~${perWeek.toFixed(1)}/week usage.`;
+      lead = `Only ~${Math.floor(daysCover)} days of cover left (runs out ~${fmtDate(stockoutDate)}) at ~${perWeek.toFixed(1)}/week usage.`;
     } else {
       severity = 'Watch';
-      lead = `~${Math.floor(daysCover)} days of cover at ~${perWeek.toFixed(1)}/week usage.`;
+      lead = `~${Math.floor(daysCover)} days of cover (runs out ~${fmtDate(stockoutDate)}) at ~${perWeek.toFixed(1)}/week usage.`;
     }
 
     const reorder = shortfall > 0
@@ -208,8 +222,9 @@ function build() {
       tableWrap.appendChild(el('div', { class: 'empty' }, 'No inventory items'));
       return;
     }
+    const now = today();
     const t = el('table', { class: 'table' });
-    t.innerHTML = '<thead><tr><th>Name</th><th>Property</th><th class="right">Stock</th><th class="right">Value</th><th>Last Purchase</th><th></th></tr></thead>';
+    t.innerHTML = '<thead><tr><th>Name</th><th>Property</th><th class="right">Stock</th><th class="right">Value</th><th>Last Purchase</th><th>Runs Out</th><th></th></tr></thead>';
     const tb = el('tbody');
     for (const item of rows) {
       const stock = totalRemaining(item);
@@ -217,6 +232,7 @@ function build() {
       const last  = latestDate(item);
       const ccy   = firstCurrency(item);
       const prop  = byId('properties', item.propertyId);
+      const stockout = projectedStockout(item, now);
 
       const tr = el('tr', { style: 'cursor:pointer' });
       tr.onclick = e => { if (!e.target.closest('button')) openBatchesModal(item, render); };
@@ -226,6 +242,12 @@ function build() {
       tr.appendChild(el('td', { class: stockCls }, String(stock)));
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(value, ccy)));
       tr.appendChild(el('td', {}, fmtDate(last)));
+      if (stockout) {
+        const soonCls = stockout.daysCover < 14 ? 'warning' : '';
+        tr.appendChild(el('td', { class: soonCls }, `${fmtDate(stockout.date)} (~${Math.floor(stockout.daysCover)}d)`));
+      } else {
+        tr.appendChild(el('td', { class: 'muted' }, 'No usage data'));
+      }
 
       const acts = el('td', { class: 'right' });
       acts.appendChild(button('Restock', { variant: 'sm ghost', onClick: () => openAddForm(item, render) }));
