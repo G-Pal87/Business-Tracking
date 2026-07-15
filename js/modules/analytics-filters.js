@@ -169,8 +169,11 @@ export function getCurrentPeriodRange(gF) {
       return { start: fmtD(s), end: today, label: 'Last 12 Months', isIncomplete: false };
     }
 
-    case 'all':
-      return { start: '2000-01-01', end: today, label: 'All Time', isIncomplete: false };
+    case 'all': {
+      const years = getDataYears();
+      const earliestYear = years.length ? years[years.length - 1] : String(y);
+      return { start: `${earliestYear}-01-01`, end: today, label: 'All Time', isIncomplete: false };
+    }
 
     case 'custom':
       if (gF.customStart && gF.customEnd && gF.customStart <= gF.customEnd)
@@ -412,12 +415,10 @@ export function buildComparisonLine(curRange, cmpRange) {
     if (!r) return '';
     const d1   = new Date(r.start + 'T00:00:00');
     const d2   = new Date(r.end   + 'T00:00:00');
-    const sameM = d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth();
+    const sameY = d1.getFullYear() === d2.getFullYear();
     const short = { day: 'numeric', month: 'short' };
     const full  = { day: 'numeric', month: 'short', year: 'numeric' };
-    return sameM
-      ? `${d1.toLocaleDateString('en-GB', short)} – ${d2.toLocaleDateString('en-GB', full)}`
-      : `${d1.toLocaleDateString('en-GB', short)} – ${d2.toLocaleDateString('en-GB', full)}`;
+    return `${d1.toLocaleDateString('en-GB', sameY ? short : full)} – ${d2.toLocaleDateString('en-GB', full)}`;
   };
   const curStr = `${fmtR(curRange)}${curRange.isIncomplete ? ' (in progress)' : ''}`;
   const text   = cmpRange
