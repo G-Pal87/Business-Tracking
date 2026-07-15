@@ -1236,30 +1236,14 @@ export function buildGeneratedExpenseCategoryIndex() {
   return m;
 }
 
-// Applies every enabled rule matching this payment's property, returning any
-// same-category conflicts that were skipped (see below) so callers can warn
-// the user instead of silently duplicating an expense.
-export function applyReservationExpenseRules(payment, genIndex = null, categoryIndex = null) {
-  const reservationRef = payment.confirmationCode || payment.id;
-  if (!reservationRef || !payment.propertyId) return [];
-  const rules = listActive('reservationExpenseRules').filter(r =>
-    r.enabled && (!r.propertyId || r.propertyId === payment.propertyId)
-  );
-
-  // Guard against two enabled rules generating an expense in the SAME
-  // category for the SAME reservation (e.g. an old "Airbnb cleaning fee"
-  // rule left enabled alongside a new "Vendor rate" rule, both categorized
-  // "cleaning") — whichever rule already owns that category for this
-  // reservation (or the first one processed here) gets to auto-generate;
-  // any other same-category rule is skipped rather than silently
-  // duplicating the expense. Different categories (e.g. cleaning +
-  // maintenance) are unaffected — each owns its own category independently.
-  //
-  // `categoryIndex`, when supplied by a bulk caller, is a shared map across
-  // the whole run (built once via buildGeneratedExpenseCategoryIndex) —
-  // O(1) per rule instead of rescanning every expense for every payment.
-  // Falls back to a scan of just this reservation's own expenses when called
-  // standalone (e.g. a single manual payment save).
+// Shared claim-tracking for the "one auto-generated expense per category per
+// reservation" guard: `categoryIndex`, when supplied by a bulk caller, is a
+// map shared across the whole run (built once via
+// buildGeneratedExpenseCategoryIndex) — O(1) per rule instead of rescanning
+// every expense per payment. Falls back to a fresh scan of just this
+// reservation's own expenses when called standalone (e.g. a single manual
+// payment save or a single "Run" click).
+function _makeClaimTracker(reservationRef, categoryIndex) {
   const keyOf = category => reservationRef + '|' + category;
   const localClaims = categoryIndex ? null : new Map();
   if (localClaims) {
@@ -1269,22 +1253,61 @@ export function applyReservationExpenseRules(payment, genIndex = null, categoryI
       }
     }
   }
-  const getOwner = category => categoryIndex ? categoryIndex.get(keyOf(category)) : localClaims.get(category);
-  const setOwner = (category, ruleId) => categoryIndex ? categoryIndex.set(keyOf(category), ruleId) : localClaims.set(category, ruleId);
+  return {
+    getOwner: category => categoryIndex ? categoryIndex.get(keyOf(category)) : localClaims.get(category),
+    setOwner: (category, ruleId) => categoryIndex ? categoryIndex.set(keyOf(category), ruleId) : localClaims.set(category, ruleId)
+  };
+}
 
+// Applies a single rule to a single payment, guarded by the same "don't
+// duplicate a category another rule already owns" check used everywhere
+// else. Returns a conflict descriptor (or null) instead of applying when
+// another rule already claimed this reservation's category.
+function _applyRuleGuarded(rule, payment, reservationRef, genIndex, tracker) {
+  const category = rule.category || 'cleaning';
+  const owner = tracker.getOwner(category);
+  if (owner && owner !== rule.id) {
+    const ownerRule = byId('reservationExpenseRules', owner);
+    return { category, reservationRef, ruleId: rule.id, ruleName: rule.name, ownerRuleId: owner, ownerRuleName: ownerRule?.name || owner };
+  }
+  _applyOneRule(rule, payment, reservationRef, genIndex);
+  tracker.setOwner(category, rule.id);
+  return null;
+}
+
+// Applies every enabled rule matching this payment's property, returning any
+// same-category conflicts that were skipped so callers can warn the user
+// instead of silently duplicating an expense. Two enabled rules mapping to
+// the same category (e.g. an old "Airbnb cleaning fee" rule left on
+// alongside a new "Vendor rate" rule, both categorized "cleaning") only let
+// the first one through; different categories (e.g. cleaning + maintenance)
+// are unaffected — each owns its own category independently.
+export function applyReservationExpenseRules(payment, genIndex = null, categoryIndex = null) {
+  const reservationRef = payment.confirmationCode || payment.id;
+  if (!reservationRef || !payment.propertyId) return [];
+  const rules = listActive('reservationExpenseRules').filter(r =>
+    r.enabled && (!r.propertyId || r.propertyId === payment.propertyId)
+  );
+  const tracker = _makeClaimTracker(reservationRef, categoryIndex);
   const conflicts = [];
   for (const rule of rules) {
-    const category = rule.category || 'cleaning';
-    const owner = getOwner(category);
-    if (owner && owner !== rule.id) {
-      const ownerRule = byId('reservationExpenseRules', owner);
-      conflicts.push({ category, reservationRef, ruleId: rule.id, ruleName: rule.name, ownerRuleId: owner, ownerRuleName: ownerRule?.name || owner });
-      continue;
-    }
-    _applyOneRule(rule, payment, reservationRef, genIndex);
-    setOwner(category, rule.id);
+    const conflict = _applyRuleGuarded(rule, payment, reservationRef, genIndex, tracker);
+    if (conflict) conflicts.push(conflict);
   }
   return conflicts;
+}
+
+// Applies ONLY the given rule to a single payment — unlike
+// applyReservationExpenseRules, this never touches any OTHER rule even if
+// other enabled rules also match the payment's property. Used by the
+// explicit per-rule "Run" action and reapplyRuleToAllPayments, so clicking
+// "Run" on one rule can't silently re-trigger a different one.
+export function applyRuleToPayment(rule, payment, genIndex = null, categoryIndex = null) {
+  const reservationRef = payment.confirmationCode || payment.id;
+  if (!reservationRef || !payment.propertyId) return [];
+  const tracker = _makeClaimTracker(reservationRef, categoryIndex);
+  const conflict = _applyRuleGuarded(rule, payment, reservationRef, genIndex, tracker);
+  return conflict ? [conflict] : [];
 }
 
 // Formats a de-duplicated, human-readable warning for conflicts returned by
@@ -1480,10 +1503,12 @@ export function deletePayment(id) {
   return softDelete('payments', id);
 }
 
-// Apply a rule to all existing short-term payments — fills in any missing
-// generated expense for a matching reservation without duplicating ones that
-// already exist (existing-expense dedup lives in _applyOneRule; cross-rule
-// same-category dedup lives in applyReservationExpenseRules above).
+// Apply ONLY the given rule to all its matching short-term payments — fills
+// in any missing generated expense for a matching reservation without
+// duplicating ones that already exist (existing-expense dedup lives in
+// _applyOneRule; cross-rule same-category dedup lives in
+// applyRuleToPayment/applyReservationExpenseRules above). Never touches any
+// OTHER rule, even one matching the same property.
 //
 // Inventory-sourced rules are skipped by default (retroactively deducting
 // stock for every historical reservation is a real, irreversible side effect
@@ -1505,7 +1530,7 @@ export function reapplyRuleToAllPayments(rule, { allowInventory = false } = {}) 
   const before = (state.db.expenses || []).filter(e => e.isGenerated && !e.deletedAt && e.reservationRuleId === rule.id).length;
   const conflicts = [];
   runBatch(() => {
-    for (const pay of payments) conflicts.push(...applyReservationExpenseRules(pay, genIndex, categoryIndex));
+    for (const pay of payments) conflicts.push(...applyRuleToPayment(rule, pay, genIndex, categoryIndex));
   });
   const after = (state.db.expenses || []).filter(e => e.isGenerated && !e.deletedAt && e.reservationRuleId === rule.id).length;
   return { processed: payments.length, created: Math.max(0, after - before), conflicts };
