@@ -376,6 +376,16 @@ async function boot() {
   // tab is visible, and no modal/form is open (so we never yank the UI out from
   // under the user). When the user IS dirty, the imminent push already fetches +
   // 3-way-merges the current remote, so their changes converge safely there.
+  // Cheap check for "did this poll actually bring back different data" — lets
+  // backgroundResync skip the setDb()/data-loaded rebuild (which tears down
+  // whatever dashboard is currently open) when the remote is unchanged, which
+  // is the common case for a 60s steady-state poll.
+  function sameDbContent(a, b) {
+    const strip = db => { const { _syncedAt, ...rest } = db; return rest; };
+    try { return JSON.stringify(strip(a)) === JSON.stringify(strip(b)); }
+    catch { return false; } // be conservative — treat as changed on any comparison failure
+  }
+
   let resyncing = false;
   const backgroundResync = async () => {
     if (state.github.disconnected) return; // kicked — no further GitHub activity from this tab
@@ -406,6 +416,16 @@ async function boot() {
       const staleFetch = synced._staleFetch;
       delete synced._staleFetch; // never persist this transient flag
       synced._syncedAt = staleFetch ? (state.db._syncedAt ?? null) : Date.now();
+
+      if (!staleFetch && sameDbContent(synced, state.db)) {
+        // Remote matches what's already on screen — just advance the
+        // confirmed-synced marker, skip the rebuild entirely.
+        state.db._syncedAt = synced._syncedAt;
+        github.saveLocalCache(state.db);
+        updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
+        return;
+      }
+
       setDb(synced);                                    // triggers data-loaded → view refresh
       github.saveLocalCache(synced);
       updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
