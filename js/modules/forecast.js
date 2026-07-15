@@ -849,7 +849,7 @@ function getPendingAirbnbRows(propertyId, monthKey) {
       && (p.airbnbCheckIn || p.date || '').slice(0, 7) === monthKey)
     .map(p => ({
       date:   p.airbnbCheckIn || p.date,
-      guest:  (p.notes || '').split(' · ')[0] || '—',
+      guest:  p.guestName || (p.notes || '').split(' · ')[0] || '—',
       code:   p.confirmationCode || p.airbnbRef || '—',
       nights: p.airbnbNights || 0,
       eur:    toEUR(p.amount, p.currency || 'EUR', p.date)

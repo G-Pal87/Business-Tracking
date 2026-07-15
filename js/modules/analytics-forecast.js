@@ -1453,7 +1453,7 @@ function buildPendingTable(data) {
     .map(p => ({
       prop:     byId('properties', p.propertyId)?.name || '—',
       code:     p.confirmationCode || p.airbnbRef || '—',
-      guest:    (p.notes || '').split(' · ')[0] || '—',
+      guest:    p.guestName || (p.notes || '').split(' · ')[0] || '—',
       checkIn:  p.airbnbCheckIn || '—',
       checkOut: p.airbnbCheckOut || '—',
       nights:   String(p.airbnbNights || '—'),

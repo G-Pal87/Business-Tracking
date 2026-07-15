@@ -7,6 +7,7 @@ import { listActive, listActivePayments, byId, upsert, softDelete, newId, format
 import { fetchICal, parseICal, mergeBlocks, isOwnerBlockSummary } from '../core/ical.js';
 import { uploadGithubFile } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
+import { openPaymentForm } from './payments.js';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const WEEKDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -76,7 +77,7 @@ function historicNightMap(propertyId) {
     const ci = checkInOf(p), co = checkOutOf(p);
     const nights = p.airbnbNights || Math.max(0, Math.round((parseYMD(co) - parseYMD(ci)) / 86400000));
     const adr  = adrNightOf(p) || rate;
-    const guest = (p.notes || '').split(' · ')[0] || '';
+    const guest = p.guestName || (p.notes || '').split(' · ')[0] || '';
     for (let cur = ci; cur < co; cur = addDays(cur, 1)) {
       map.set(cur, {
         rate, adr,
@@ -914,6 +915,21 @@ function renderGapRow(gap, propertyId, onRerender) {
   head.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted)' },
     `${nightsLabel} · ${gap.isPast ? 'already checked out' : 'upcoming'}`));
   row.appendChild(head);
+
+  // The real fix for a genuine off-platform (non-Airbnb-payout) booking is a
+  // real Payment record, not a cosmetic reason tag below — this opens the
+  // same Add Payment form pre-filled with this property/date range, and once
+  // saved the matching dates make the gap disappear on its own (see
+  // historicNightMap/findCalendarPaymentGaps above), no annotation needed.
+  const actionsRow = el('div', { style: 'margin-top:6px' });
+  actionsRow.appendChild(button('Record Off-Platform Booking →', {
+    variant: 'sm ghost',
+    onClick: () => openPaymentForm(null, {
+      defaults: { propertyId, checkIn: gap.start, checkOut: gap.end, date: gap.start },
+      onSaved: () => onRerender?.()
+    })
+  }));
+  row.appendChild(actionsRow);
 
   const formHost = el('div', { style: 'margin-top:8px' });
   row.appendChild(formHost);

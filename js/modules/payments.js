@@ -264,7 +264,7 @@ function buildAllPayments(wrap) {
   filterBar.appendChild(deleteSelBtn);
   filterBar.appendChild(button('Import Airbnb CSV', { onClick: () => openCSVImport() }));
   filterBar.appendChild(button('Export CSV', { onClick: () => exportCSV() }));
-  filterBar.appendChild(button('+ Add Payment', { variant: 'primary', onClick: () => openForm() }));
+  filterBar.appendChild(button('+ Add Payment', { variant: 'primary', onClick: () => openPaymentForm() }));
   wrap.appendChild(filterBar);
 
   // Table declared before the search bar (but appended after) so the
@@ -319,7 +319,7 @@ function buildAllPayments(wrap) {
     const typeLabel = r.source === 'airbnb' ? (r.airbnbType || r.type || '-') : (r.type || '-');
     const source    = r.source || 'manual';
     const conf      = r.confirmationCode || r.airbnbRef || '';
-    const guest     = r.source === 'airbnb' ? (r.notes || '').split(' · ')[0] : (r.notes || '');
+    const guest     = r.guestName || (r.source === 'airbnb' ? (r.notes || '').split(' · ')[0] : (r.notes || ''));
     const eur       = toEUR(dispAmt, r.currency);
     // Estimated guest-facing price. The host CSV has no guest total, so we gross
     // up the host gross earnings by the configured guest service fee + tax.
@@ -502,7 +502,7 @@ function buildAllPayments(wrap) {
       if (ownerShown) applyFrozen(cells[OWNER_IDX], OWNER_IDX, OWNER_W);
       cells.forEach((td, i) => { if (colShown(i)) tr.appendChild(td); });
       const actions = el('td', { class: 'right' });
-      actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r) }));
+      actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openPaymentForm(r) }));
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog('Delete this payment?', { danger: true, okLabel: 'Delete' });
         if (!ok) return;
@@ -1061,12 +1061,19 @@ function buildUpcomingSection(wrap) {
   return render;
 }
 
-function openForm(existing) {
+// `defaults` prefills a NEW record (ignored when editing `existing`) — used
+// by callers like the STR gap-resolution flow to open this straight from a
+// specific property/date range instead of a blank form. `onSaved(record)`
+// overrides the default "close + jump to Payments" behavior for callers
+// that want to stay put and re-render their own view instead (e.g. the STR
+// gap banner, which needs to re-check whether the gap is now covered).
+export function openPaymentForm(existing, { defaults = {}, onSaved } = {}) {
   const r = existing ? { ...existing } : {
     id: newId('pay'), propertyId: state.db.properties?.[0]?.id || '',
     amount: 0, currency: 'EUR', date: today(), type: 'off_platform_reservation',
-    status: 'paid', source: 'manual', stream: 'short_term_rental', notes: '',
-    checkIn: '', checkOut: ''
+    status: 'paid', source: 'manual', stream: 'short_term_rental', notes: '', guestName: '',
+    checkIn: '', checkOut: '',
+    ...defaults
   };
   const body = el('div', {});
   const propS = select((listActive('properties')).map(p => ({ value: p.id, label: p.name })), r.propertyId);
@@ -1077,6 +1084,7 @@ function openForm(existing) {
   const checkOutI = input({ type: 'date', value: r.checkOut || '' });
   const statusS = select(Object.keys(PAYMENT_STATUSES), r.status);
   const sourceS = select(['manual', 'airbnb'], r.source);
+  const guestNameI = input({ value: r.guestName || '', placeholder: 'Optional' });
   const notesT = textarea(); notesT.value = r.notes || '';
 
   const personalChk = el('input', { type: 'checkbox' });
@@ -1094,6 +1102,7 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Check-in Date', checkInI), formRow('Check-out Date', checkOutI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Status', statusS), formRow('Source', sourceS)));
   body.appendChild(personalRow);
+  body.appendChild(formRow('Guest Name', guestNameI));
   body.appendChild(formRow('Notes', notesT));
 
   propS.onchange = () => {
@@ -1121,7 +1130,8 @@ function openForm(existing) {
       propertyId: propS.value, amount: Number(amountI.value),
       currency: currencyS.value, date: dateI.value, type: 'off_platform_reservation',
       status: statusS.value, source: sourceS.value, stream: 'short_term_rental',
-      notes: notesT.value.trim(), checkIn: checkInI.value, checkOut: checkOutI.value,
+      guestName: guestNameI.value.trim(), notes: notesT.value.trim(),
+      checkIn: checkInI.value, checkOut: checkOutI.value,
       personal: personalChk.checked
     });
     upsert('payments', r);
@@ -1131,7 +1141,8 @@ function openForm(existing) {
     }
     toast(existing ? 'Payment updated' : 'Payment added', 'success');
     closeModal();
-    setTimeout(() => navigate('payments'), 200);
+    if (onSaved) onSaved(r);
+    else setTimeout(() => navigate('payments'), 200);
   }});
   openModal({ title: existing ? 'Edit Payment' : 'New Payment', body, footer: [button('Cancel', { onClick: closeModal }), save] });
 }
