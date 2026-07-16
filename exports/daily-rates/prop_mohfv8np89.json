@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-15T14:46:29.468Z",
+  "generatedAt": "2026-07-16T04:02:05.217Z",
   "property": {
     "id": "prop_mohfv8np89",
     "name": "Rooftop Tenerife",
@@ -13,16 +13,6 @@
   "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": [
-    {
-      "date": "2026-07-15",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "July 2026 (3n, 3×) + July 2025 (27n, 1.95×) + July 2024 (15n, 1.27×) + July 2023 (27n, 0.82×)",
-      "originalAmount": 53,
-      "discountPct": 10,
-      "amount": 48,
-      "airbnbCheckout": 60
-    },
     {
       "date": "2026-07-16",
       "currency": "EUR",
@@ -2716,7 +2706,7 @@
     {
       "date": "2027-04-11",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 11 (1n, 1.95×) + April 2025 day 11 (1n, 1.27×)",
       "originalAmount": 61,
       "discountPct": 10,
@@ -3662,6 +3652,16 @@
       "discountPct": 10,
       "amount": 59,
       "airbnbCheckout": 75
+    },
+    {
+      "date": "2027-07-15",
+      "currency": "EUR",
+      "status": "blocked",
+      "basis": "July 2025 day 15 (1n, 1.27×) + July 2024 day 15 (1n, 0.82×)",
+      "originalAmount": 68,
+      "discountPct": 10,
+      "amount": 61,
+      "airbnbCheckout": 78
     }
   ]
 }
