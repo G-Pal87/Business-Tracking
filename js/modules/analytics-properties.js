@@ -167,11 +167,31 @@ function paymentNights(p) {
   return null;
 }
 
+// Annualizes a raw figure (revenue, net income) for ONE property, capping the
+// denominator at that property's own ownership span (purchaseDate..soldDate)
+// intersected with the selected range — never the portfolio-wide range
+// itself. Without this cap, selecting "All Time" divides a property's real
+// revenue by however many months the OLDEST property in the whole portfolio
+// has existed, deflating every other property's "annualized" figure well
+// below its true run-rate. For an incomplete period (YTD, this-month, etc. —
+// still accumulating, see getCurrentPeriodRange's isIncomplete flag), returns
+// the raw actual figure unprojected instead, since scaling partial-year data
+// up to a full year isn't what "year to date" should show.
+function annualizeForProperty(prop, rawValue, range) {
+  if (range.isIncomplete) return rawValue;
+  const ownedStart = (prop.purchaseDate && prop.purchaseDate > range.start) ? prop.purchaseDate : range.start;
+  const ownedEnd = (prop.soldDate && prop.soldDate < range.end) ? prop.soldDate : range.end;
+  if (ownedStart > ownedEnd) return 0;
+  const s = ownedStart.split('-'), e = ownedEnd.split('-');
+  const ownedMonths = Math.max(1, (parseInt(e[0]) - parseInt(s[0])) * 12 + (parseInt(e[1]) - parseInt(s[1])) + 1);
+  return (rawValue / ownedMonths) * 12;
+}
+
 /**
  * Compute operational KPI data for the selected period.
  * Returns: { occupancy, adr, rentalYield, vacancy }
  */
-function getOperationalData({ propData, payments, start, end }) {
+function getOperationalData({ propData, payments, start, end, isIncomplete }) {
   // ── STR nights: Occupancy & ADR ───────────────────────────────────────────
   const strPropIds = new Set(
     propData.filter(d => d.prop.type === 'short_term').map(d => d.prop.id)
@@ -230,16 +250,13 @@ function getOperationalData({ propData, payments, start, end }) {
   });
 
   // ── Rental Yield ─────────────────────────────────────────────────────────
-  // Annualize revenue for the current period length
-  const periodMonths = (() => {
-    const s = start.split('-'), e = end.split('-');
-    return (parseInt(e[0]) - parseInt(s[0])) * 12 + (parseInt(e[1]) - parseInt(s[1])) + 1;
-  })();
-
+  // Annualize revenue per property (see annualizeForProperty) rather than by
+  // a single portfolio-wide period length.
+  const yieldRange = { start, end, isIncomplete };
   const yieldData = propData
     .filter(d => d.purchaseEUR > 0)
     .map(d => {
-      const annualRev = periodMonths > 0 ? (d.rev / periodMonths) * 12 : 0;
+      const annualRev = annualizeForProperty(d.prop, d.rev, yieldRange);
       return {
         name:      d.prop.name,
         annualRev,
@@ -1183,7 +1200,7 @@ function buildView() {
   wrap.appendChild(kpiRow);
 
   // ── Section 3: Operational KPIs ───────────────────────────────────────────
-  const opData  = getOperationalData({ propData, payments, start, end });
+  const opData  = getOperationalData({ propData, payments, start, end, isIncomplete: curRange.isIncomplete });
   const opKpiRow = el('div', { class: 'grid grid-4 mb-16' });
 
   // Occupancy Rate and Avg Nightly Rate (ADR) KPIs intentionally live only in
@@ -1191,15 +1208,16 @@ function buildView() {
 
   // 1. Rental Yield (gross + net)
   const ryData = opData.rentalYield;
-  // Compute net yield: netIncome / totalInvested * 100, averaged across props with totalInvested > 0
+  // Compute net yield: netIncome / totalInvested * 100, averaged across props with totalInvested > 0.
+  // annualizeForProperty caps each property's own denominator at its ownership span (see its comment
+  // for why — otherwise "All Time" divides every property's revenue by however long the OLDEST
+  // property in the portfolio has existed) and returns the raw actual figure, unprojected, for an
+  // incomplete period like YTD rather than scaling partial-year data up to a full year.
   const netYieldItems = propData.filter(d => d.totalInvested > 0);
-  const periodMonthsForYield = (() => {
-    const s = start.split('-'), e = end.split('-');
-    return (parseInt(e[0]) - parseInt(s[0])) * 12 + (parseInt(e[1]) - parseInt(s[1])) + 1;
-  })();
+  const yieldLabel = curRange.isIncomplete ? 'Actual' : 'Annualized';
   const avgNetYield = netYieldItems.length > 0
     ? netYieldItems.reduce((sum, d) => {
-        const annualNet = periodMonthsForYield > 0 ? (d.netIncome / periodMonthsForYield) * 12 : 0;
+        const annualNet = annualizeForProperty(d.prop, d.netIncome, curRange);
         return sum + (d.totalInvested > 0 ? (annualNet / d.totalInvested) * 100 : 0);
       }, 0) / netYieldItems.length
     : null;
@@ -1207,8 +1225,8 @@ function buildView() {
     label:   'Rental Yield',
     value:   ryData.avg !== null ? ryData.avg.toFixed(1) + '%' : '—',
     subtitle: avgNetYield !== null
-      ? `Gross avg · Net: ${avgNetYield.toFixed(1)}% (annualized)`
-      : 'Annualized · portfolio avg',
+      ? `Gross avg · Net: ${avgNetYield.toFixed(1)}% (${yieldLabel.toLowerCase()})`
+      : `${yieldLabel} · portfolio avg`,
     variant: ryData.avg !== null ? (ryData.avg >= 5 ? 'success' : ryData.avg >= 3 ? 'warning' : 'danger') : '',
     onClick: () => {
       const body = el('div');
@@ -1218,22 +1236,22 @@ function buildView() {
         ));
       } else {
         const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px' });
-        sgrid.appendChild(mkSummaryBox('Gross Yield (avg)', ryData.avg !== null ? ryData.avg.toFixed(1) + '%' : '—', 'Annualized revenue ÷ purchase price'));
-        sgrid.appendChild(mkSummaryBox('Net Yield (avg)', avgNetYield !== null ? avgNetYield.toFixed(1) + '%' : '—', 'Annualized net income ÷ total invested'));
+        sgrid.appendChild(mkSummaryBox('Gross Yield (avg)', ryData.avg !== null ? ryData.avg.toFixed(1) + '%' : '—', `${yieldLabel} revenue ÷ purchase price`));
+        sgrid.appendChild(mkSummaryBox('Net Yield (avg)', avgNetYield !== null ? avgNetYield.toFixed(1) + '%' : '—', `${yieldLabel} net income ÷ total invested`));
         body.appendChild(sgrid);
         body.appendChild(mkSectionLabel('Per Property — Gross vs Net Yield'));
         // Build per-property net yield
         const perPropWithNet = [...ryData.perProp].map(y => {
           const pd = propData.find(d => d.prop.name === y.name);
           let netYieldPct = null;
-          if (pd && pd.totalInvested > 0 && periodMonthsForYield > 0) {
-            const annualNet = (pd.netIncome / periodMonthsForYield) * 12;
+          if (pd && pd.totalInvested > 0) {
+            const annualNet = annualizeForProperty(pd.prop, pd.netIncome, curRange);
             netYieldPct = (annualNet / pd.totalInvested) * 100;
           }
           return { ...y, netYieldPct };
         }).sort((a, b) => (b.yieldPct ?? -Infinity) - (a.yieldPct ?? -Infinity));
         body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Annual Rev (est.)', right: true }, { label: 'Purchase Price', right: true }, { label: 'Gross Yield', right: true }, { label: 'Net Yield', right: true }],
+          [{ label: 'Property' }, { label: curRange.isIncomplete ? 'Revenue (actual)' : 'Annual Rev (est.)', right: true }, { label: 'Purchase Price', right: true }, { label: 'Gross Yield', right: true }, { label: 'Net Yield', right: true }],
           perPropWithNet.map(y => [
             y.name,
             formatEUR(y.annualRev),
