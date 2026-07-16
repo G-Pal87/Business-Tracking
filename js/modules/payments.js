@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, upsertForecastEntry, removeForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildGeneratedExpenseCategoryIndex, buildReservationExpenseRefMap, formatRuleConflictWarning, getPeopleOwners, getPersonName } from '../core/data.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, getForecastEntries, upsertForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildGeneratedExpenseCategoryIndex, buildReservationExpenseRefMap, formatRuleConflictWarning, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT } from '../core/config.js';
 import { navigate } from '../core/router.js';
 
@@ -222,14 +222,14 @@ function buildAllPayments(wrap) {
     if (!count) return;
     const ok = await confirmDialog(`Delete ${count} payment(s)? This cannot be undone.`, { danger: true, okLabel: `Delete ${count}` });
     if (!ok) return;
-    // Collect affected pending Airbnb months before deleting
-    const affectedForecast = new Set();
+    // Collect affected pending Airbnb bookings before deleting
+    const affectedForecast = [];
     const payMap = new Map(listActivePayments().map(p => [p.id, p]));
     for (const id of [...selected]) {
       const p = payMap.get(id);
-      if (p?.source === 'airbnb' && p?.status === 'pending') {
+      if (p?.source === 'airbnb' && p?.status === 'pending' && p.airbnbKey) {
         const mk = (p.airbnbCheckIn || p.date || '').slice(0, 7);
-        if (mk) affectedForecast.add(`${p.propertyId}|${mk}`);
+        if (mk) affectedForecast.push({ propId: p.propertyId, monthKey: mk, bookingKey: p.airbnbKey });
       }
     }
     const refMap = buildReservationExpenseRefMap();
@@ -239,9 +239,8 @@ function buildAllPayments(wrap) {
         if (p) removeReservationExpenses(p, refMap);
         softDelete('payments', id);
       }
-      for (const key of affectedForecast) {
-        const [propId, monthKey] = key.split('|');
-        recalcPendingAirbnbForecast(propId, monthKey);
+      for (const { propId, monthKey, bookingKey } of affectedForecast) {
+        cancelAirbnbForecastEntry(propId, monthKey, bookingKey, { userInitiated: true });
       }
     });
     selected.clear();
@@ -506,12 +505,12 @@ function buildAllPayments(wrap) {
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
         const ok = await confirmDialog('Delete this payment?', { danger: true, okLabel: 'Delete' });
         if (!ok) return;
-        const isAirbnbPending = r.source === 'airbnb' && r.status === 'pending';
+        const isAirbnbPending = r.source === 'airbnb' && r.status === 'pending' && r.airbnbKey;
         const propId = r.propertyId;
         const monthKey = (r.airbnbCheckIn || r.date || '').slice(0, 7);
         removeReservationExpenses(r);
         softDelete('payments', r.id);
-        if (isAirbnbPending && propId && monthKey) recalcPendingAirbnbForecast(propId, monthKey);
+        if (isAirbnbPending && propId && monthKey) cancelAirbnbForecastEntry(propId, monthKey, r.airbnbKey, { userInitiated: true });
         toast('Deleted', 'success');
         renderTable();
       }}));
@@ -1368,6 +1367,16 @@ function openCSVImport() {
         if (!exists) addedRows.push({ ...entry, reason: 'No existing pending payment matches this Airbnb key — recorded as a new pending reservation' });
       }
 
+      // Cancellation preview — see detectAirbnbCancellations for the full rule.
+      const cancelledRows = detectAirbnbCancellations(rows, findProp).map(p => ({
+        date: p.airbnbCheckIn || p.date, propName: byId('properties', p.propertyId)?.name || '—',
+        notes: p.notes || '', confirmationCode: p.confirmationCode || p.airbnbRef || '—',
+        amount: p.amount, currency: p.currency,
+        reason: (p.airbnbCheckIn || p.date || '') > today()
+          ? 'No longer present in this pending export — reservation appears cancelled on Airbnb'
+          : `Checkout was more than ${CANCEL_GRACE_DAYS} days ago and never materialized — treated as cancelled`
+      }));
+
       const fileBlock = el('div', { style: 'margin-bottom:10px' });
       const badge = el('span', { class: 'badge warning' }, 'Pending');
       const summary = el('span', { class: 'muted' });
@@ -1381,6 +1390,10 @@ function openCSVImport() {
       if (materializedRows.length) {
         summary.appendChild(document.createTextNode(' · '));
         summary.appendChild(countToggle(fileBlock, materializedRows.length, `${materializedRows.length} already paid → materialized`, materializedRows, CSV_ROW_COLS));
+      }
+      if (cancelledRows.length) {
+        summary.appendChild(document.createTextNode(' · '));
+        summary.appendChild(countToggle(fileBlock, cancelledRows.length, `${cancelledRows.length} cancelled`, cancelledRows, REMOVE_COLS));
       }
       fileBlock.appendChild(el('div', { class: 'flex gap-8', style: 'align-items:center' },
         badge,
@@ -1487,8 +1500,9 @@ function openCSVImport() {
 
         if (row.type.toLowerCase() === 'reservation') ruleConflicts.push(...applyReservationExpenseRules(pay, genIndex, categoryIndex));
 
-        // Materialize any matching pending reservation so it no longer counts
-        // in active forecast calculations while remaining visible for history.
+        // Materialize any matching pending reservation — its forecast entry
+        // freezes at whatever it was forecasted at, instead of being
+        // recalculated away, so past months keep their forecast history.
         if (row.confirmationCode) {
           const pending = row.confirmationCode ? (pendingByCode.get(row.confirmationCode) ?? null) : null;
           if (pending) {
@@ -1501,8 +1515,8 @@ function openCSVImport() {
             });
             if (pending.confirmationCode) pendingByCode.delete(pending.confirmationCode);
             if (pending.airbnbRef) pendingByCode.delete(pending.airbnbRef);
-            if (pending.propertyId && pendingMonthKey) {
-              recalcPendingAirbnbForecast(pending.propertyId, pendingMonthKey);
+            if (pending.propertyId && pendingMonthKey && pending.airbnbKey) {
+              freezeAirbnbForecastEntry(pending.propertyId, pendingMonthKey, pending.airbnbKey);
             }
           }
         }
@@ -1515,9 +1529,12 @@ function openCSVImport() {
       const text = await pendingFile.text();
       const rows = mergeReservationRows(parseAirbnbCSV(text));
 
-      // Accumulate totals per (property, month) so we can set the forecast in
-      // one pass — prevents double-counting when the same CSV is re-imported.
-      const forecastMap = new Map(); // "propertyId|monthKey" → { year, propertyId, monthKey, total }
+      // Auto-cancellation sweep — run before the upsert loop so a booking that
+      // both disappeared from the export AND would otherwise match by key is
+      // handled once, consistently. See detectAirbnbCancellations.
+      const cancelled = detectAirbnbCancellations(rows, findProp);
+      applyAirbnbCancellations(cancelled);
+      totalRemoved += cancelled.length;
 
       const byAirbnbKeyP = new Map(
         listActivePayments().filter(p => p.airbnbKey).map(p => [p.airbnbKey, p])
@@ -1548,7 +1565,7 @@ function openCSVImport() {
         // (mirrors the completed-CSV logic that materializes a pending when its paid counterpart arrives)
         const paidMatch = !existing && row.confirmationCode ? (paidByCodeP.get(row.confirmationCode) ?? null) : null;
         if (paidMatch) {
-          upsert('payments', {
+          const freshPay = {
             id: newId('pay'), propertyId: matched.id, stream: 'short_term_rental', source: 'airbnb',
             amount: row.amount, currency: row.currency || matched.currency, date: row.date,
             type: 'rental', status: 'materialized',
@@ -1557,8 +1574,17 @@ function openCSVImport() {
             airbnbNights: row.nights, airbnbGrossEarnings: row.grossEarnings,
             notes: [row.guest, row.listing].filter(Boolean).join(' · '),
             materializedPaymentId: paidMatch.id, materializedAt: new Date().toISOString().slice(0, 10)
-          });
+          };
+          upsert('payments', freshPay);
           totalAdded++;
+          // First time we're seeing this booking, already paid out — create its
+          // forecast entry straight from the pending CSV's own estimate, then
+          // freeze it immediately (mirrors the normal pending→materialize path).
+          if (row.airbnbKey) {
+            syncAirbnbForecastEntry({ ...freshPay, status: 'pending' });
+            const monthKey = (row.checkIn || row.date || '').slice(0, 7);
+            if (monthKey) freezeAirbnbForecastEntry(matched.id, monthKey, row.airbnbKey);
+          }
           continue;
         }
 
@@ -1608,24 +1634,7 @@ function openCSVImport() {
 
         if (row.type?.toLowerCase() === 'reservation') ruleConflicts.push(...applyReservationExpenseRules(pay, genIndexP, categoryIndex));
 
-        // Accumulate forecast total for this property+month
-        const refDate = row.checkIn || row.date;
-        if (refDate && matched.id) {
-          const year = refDate.slice(0, 4);
-          const monthKey = `${year}-${refDate.slice(5, 7)}`;
-          const fKey = `${matched.id}|${monthKey}`;
-          if (!forecastMap.has(fKey)) {
-            forecastMap.set(fKey, { year, propertyId: matched.id, monthKey, total: 0 });
-          }
-          forecastMap.get(fKey).total += toEUR(row.amount, row.currency, refDate);
-        }
-      }
-
-      // Write forecast once per (property, month) — set rather than accumulate
-      // so re-importing the same CSV never double-counts.
-      for (const { year, propertyId, monthKey, total } of forecastMap.values()) {
-        const fc = getOrCreateForecast('property', propertyId, year);
-        upsertAirbnbAutoForecastEntry(fc.id, monthKey, total);
+        syncAirbnbForecastEntry(pay);
       }
     }
     });
@@ -1872,34 +1881,155 @@ function parseDateStr(raw) {
   return null;
 }
 
+// ── Property forecast revenue: one itemized entry per Airbnb booking ───────
+//
 // Property forecast revenue is the sum of manual off-platform entries[] plus
-// one auto-managed entry tracking Airbnb pending totals — both use the same
-// entries[] mechanism (see core/data.js upsertForecastEntry, which derives
-// `revenue` from entries.reduce()), identified by a stable id so re-imports
-// update this one slot instead of either creating duplicates or (the prior
-// bug) overwriting the whole `revenue` field and silently discarding
-// whatever the other writer had contributed.
-const AIRBNB_AUTO_ENTRY_ID = 'airbnb-auto';
+// one entry per Airbnb booking — all sharing the same entries[] mechanism
+// (see core/data.js upsertForecastEntry, which derives `revenue` from their
+// sum). Each Airbnb-sourced entry is keyed by a stable `bookingKey` (the
+// payment's airbnbKey) rather than by month, so it can be found and updated
+// across re-imports without being confused with any other booking, and so it
+// can survive independently of any other booking in the same month.
+//
+// Lifecycle (entry.bookingStatus):
+//   'pending'     — booking not yet paid out; amount keeps syncing from the
+//                   pending CSV on every re-import (unless entry.overridden).
+//   'materialized'— booking paid out; the entry FREEZES here permanently at
+//                   whatever amount it last held as 'pending' — this is what
+//                   lets a past month keep its forecast instead of the old
+//                   behavior of recalculating it away to zero.
+//   'cancelled'   — system-detected cancellation (see cancelAirbnbForecastEntry).
+//   'removed'     — user manually deleted this line.
+// 'cancelled'/'removed' entries are kept as tombstones (excluded from the
+// revenue sum by core/data.js, but never spliced out) so a later re-import of
+// the same booking can never resurrect a line the data/user already settled.
 
-function upsertAirbnbAutoForecastEntry(forecastId, monthKey, totalEUR) {
-  const rounded = Math.round(totalEUR * 100) / 100;
-  if (rounded > 0) {
-    upsertForecastEntry(forecastId, monthKey, { id: AIRBNB_AUTO_ENTRY_ID, description: 'Airbnb reservations (auto)', amount: rounded, notes: '', auto: true });
-  } else {
-    removeForecastEntry(forecastId, monthKey, AIRBNB_AUTO_ENTRY_ID);
+function findAirbnbForecastEntry(forecastId, monthKey, bookingKey) {
+  return getForecastEntries(forecastId, monthKey).find(e => e.bookingKey === bookingKey);
+}
+
+function airbnbEntryFieldsFromPayment(payment) {
+  const guest = payment.guestName || (payment.notes || '').split(' · ')[0] || '';
+  const nights = payment.airbnbNights || 0;
+  return {
+    description: [guest, payment.confirmationCode].filter(Boolean).join(' — ') || 'Airbnb reservation',
+    notes: `${nights} night${nights === 1 ? '' : 's'} · ${payment.airbnbCheckIn || ''} – ${payment.airbnbCheckOut || ''}`,
+    guest, confirmationCode: payment.confirmationCode || '',
+    nights, checkIn: payment.airbnbCheckIn || payment.date || '', checkOut: payment.airbnbCheckOut || ''
+  };
+}
+
+// Create or refresh a single booking's forecast line while it's still
+// pending. No-ops once the line has frozen (materialized) or been tombstoned
+// (cancelled/removed), and no-ops on the amount/description if the user has
+// manually overridden this specific line — so re-importing the same pending
+// CSV can keep updating every other booking without clobbering an edit.
+function syncAirbnbForecastEntry(payment) {
+  if (!payment?.propertyId || payment.source !== 'airbnb' || !payment.airbnbKey) return;
+  const monthKey = (payment.airbnbCheckIn || payment.date || '').slice(0, 7);
+  if (!monthKey) return;
+  const fc = getOrCreateForecast('property', payment.propertyId, monthKey.slice(0, 4));
+  const existing = findAirbnbForecastEntry(fc.id, monthKey, payment.airbnbKey);
+  if (existing && existing.bookingStatus !== 'pending') return; // frozen or tombstoned
+  if (existing?.overridden) return;
+  const amount = Math.round(toEUR(payment.amount, payment.currency, payment.date) * 100) / 100;
+  upsertForecastEntry(fc.id, monthKey, {
+    id: existing?.id, bookingKey: payment.airbnbKey, amount, auto: true, bookingStatus: 'pending',
+    ...airbnbEntryFieldsFromPayment(payment)
+  });
+}
+
+// Freeze a booking's forecast line once its payment materializes/pays out —
+// stops it from ever being recalculated again, preserving whatever it was
+// forecasted at rather than deleting or zeroing it.
+function freezeAirbnbForecastEntry(propertyId, monthKey, bookingKey) {
+  if (!propertyId || !monthKey || !bookingKey) return;
+  const fc = getOrCreateForecast('property', propertyId, monthKey.slice(0, 4));
+  const existing = findAirbnbForecastEntry(fc.id, monthKey, bookingKey);
+  if (!existing || existing.bookingStatus === 'cancelled' || existing.bookingStatus === 'removed') return;
+  upsertForecastEntry(fc.id, monthKey, { ...existing, bookingStatus: 'materialized' });
+}
+
+// Tombstone a booking's forecast line — used both for an auto-detected
+// cancellation (userInitiated: false) and a user manually deleting an
+// Airbnb-sourced line (userInitiated: true). Never touches an already-
+// materialized (settled/real) entry — a genuine payout is never retracted.
+function cancelAirbnbForecastEntry(propertyId, monthKey, bookingKey, { userInitiated = false } = {}) {
+  if (!propertyId || !monthKey || !bookingKey) return;
+  const fc = getOrCreateForecast('property', propertyId, monthKey.slice(0, 4));
+  const existing = findAirbnbForecastEntry(fc.id, monthKey, bookingKey);
+  if (!existing || existing.bookingStatus === 'materialized') return;
+  upsertForecastEntry(fc.id, monthKey, { ...existing, bookingStatus: userInitiated ? 'removed' : 'cancelled', overridden: userInitiated || existing.overridden });
+}
+
+// One-time-per-load, idempotent backfill: reconstructs itemized forecast
+// entries for any active/materialized Airbnb payment that doesn't have one
+// yet — covers bookings imported before this itemized model existed (whose
+// forecast contribution had already been recalculated away to zero under the
+// old single-lump-sum-per-month behavior). Safe to call repeatedly; a
+// booking that already has an entry is left untouched.
+export function backfillAirbnbForecastEntries(propertyId) {
+  for (const p of listActivePayments()) {
+    if (p.propertyId !== propertyId || p.source !== 'airbnb' || !p.airbnbKey) continue;
+    if (p.status !== 'pending' && p.status !== 'materialized') continue;
+    const monthKey = (p.airbnbCheckIn || p.date || '').slice(0, 7);
+    if (!monthKey) continue;
+    const fc = getOrCreateForecast('property', propertyId, monthKey.slice(0, 4));
+    if (findAirbnbForecastEntry(fc.id, monthKey, p.airbnbKey)) continue;
+    syncAirbnbForecastEntry(p);
+    if (p.status === 'materialized') freezeAirbnbForecastEntry(propertyId, monthKey, p.airbnbKey);
   }
 }
 
-// Recalculate forecast revenue for a property/month from remaining pending Airbnb payments.
-// Call after deleting any pending Airbnb payment so the forecast stays in sync.
-function recalcPendingAirbnbForecast(propertyId, monthKey) {
-  const year = monthKey.slice(0, 4);
-  const total = listActivePayments()
-    .filter(p => p.propertyId === propertyId && p.source === 'airbnb' && p.status === 'pending'
-      && (p.airbnbCheckIn || p.date || '').slice(0, 7) === monthKey)
-    .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-  const fc = getOrCreateForecast('property', propertyId, year);
-  upsertAirbnbAutoForecastEntry(fc.id, monthKey, total);
+// Auto-cancellation detection for still-pending Airbnb bookings, evaluated
+// each time a pending CSV is imported. Two independent signals, combined:
+//   1. Proactive: a pending booking with a FUTURE check-in whose key is
+//      missing from the freshly imported pending CSV — Airbnb no longer
+//      lists it as upcoming. Scoped to properties the CSV actually covers
+//      (csvPropertyIds) so a partial/per-property export can't wrongly
+//      cancel bookings for properties it doesn't mention, and scoped to
+//      future check-in only because the pending export is inherently
+//      forward-looking — a past-dated pending record is always "missing"
+//      regardless of whether it was cancelled, so that's not a real signal.
+//   2. Safety-net: a pending booking whose checkout is more than
+//      CANCEL_GRACE_DAYS in the past and that never materialized — catches
+//      anything rule 1 missed (e.g. a skipped reimport), independent of
+//      property scope since it's purely time-based. The grace period avoids
+//      mistaking Airbnb's normal payout lag after checkout for a cancellation.
+// Either signal is overridden by a paid-match guard: if a `paid` payment
+// already exists for the same confirmation code (e.g. a partial refund under
+// a cancellation policy — Airbnb still pays the host something), this is a
+// real, if reduced, transaction, not a cancellation — freeze instead of cancel.
+const CANCEL_GRACE_DAYS = 7;
+
+function detectAirbnbCancellations(rows, findProp) {
+  const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
+  const csvPropertyIds = new Set(rows.map(r => findProp(r.listing)?.id).filter(Boolean));
+  const paidCodes = new Set(listActivePayments().filter(p => p.status === 'paid' && p.confirmationCode).map(p => p.confirmationCode));
+  const todayStr = today();
+  const graceMs = CANCEL_GRACE_DAYS * 86400000;
+
+  return listActivePayments().filter(p => {
+    if (!(p.source === 'airbnb' && p.status === 'pending' && p.airbnbKey)) return false;
+    if (p.confirmationCode && paidCodes.has(p.confirmationCode)) return false; // paid-match guard
+    const checkIn = p.airbnbCheckIn || p.date || '';
+    const checkOut = p.airbnbCheckOut || '';
+    const isFutureCheckIn = checkIn > todayStr;
+    const missingFromFreshExport = csvPropertyIds.has(p.propertyId) && !csvKeys.has(p.airbnbKey);
+    if (isFutureCheckIn && missingFromFreshExport) return true;
+    if (checkOut && (new Date(`${todayStr}T00:00:00Z`).getTime() - new Date(`${checkOut}T00:00:00Z`).getTime()) > graceMs) return true;
+    return false;
+  });
+}
+
+function applyAirbnbCancellations(cancelledPayments) {
+  const refMap = buildReservationExpenseRefMap();
+  for (const p of cancelledPayments) {
+    const monthKey = (p.airbnbCheckIn || p.date || '').slice(0, 7);
+    removeReservationExpenses(p, refMap);
+    softDelete('payments', p.id);
+    if (monthKey) cancelAirbnbForecastEntry(p.propertyId, monthKey, p.airbnbKey);
+  }
 }
 
 function exportCSV() {

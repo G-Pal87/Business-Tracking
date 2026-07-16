@@ -534,6 +534,20 @@ export function getForecastEntries(forecastId, month) {
   return fc?.months?.[month]?.entries || [];
 }
 
+// A booking-linked entry (entry.bookingStatus set) that's been cancelled or
+// manually removed is kept in entries[] as a tombstone — so a later re-import
+// never resurrects it — but must not count toward revenue. Plain manual
+// entries (no bookingStatus) are unaffected and always count, same as before.
+// Exported so every place that independently re-sums entries[] (analytics
+// dashboards mirroring this same data) excludes tombstones consistently
+// instead of each re-implementing the same filter inline.
+export function sumForecastEntries(entries) {
+  return entries.reduce((s, e) => {
+    if (e.bookingStatus === 'cancelled' || e.bookingStatus === 'removed') return s;
+    return s + (Number(e.amount) || 0);
+  }, 0);
+}
+
 export function upsertForecastEntry(forecastId, month, entry) {
   const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
   if (!fc) return null;
@@ -543,7 +557,7 @@ export function upsertForecastEntry(forecastId, month, entry) {
   if (!entry.id) entry.id = newId('fce');
   const idx = m.entries.findIndex(e => e.id === entry.id);
   if (idx >= 0) m.entries[idx] = entry; else m.entries.push(entry);
-  m.revenue = m.entries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  m.revenue = sumForecastEntries(m.entries);
   upsert('forecasts', fc);
   return entry;
 }
@@ -553,7 +567,7 @@ export function removeForecastEntry(forecastId, month, entryId) {
   const m = fc?.months?.[month];
   if (!m?.entries) return;
   m.entries = m.entries.filter(e => e.id !== entryId);
-  m.revenue = m.entries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+  m.revenue = sumForecastEntries(m.entries);
   upsert('forecasts', fc);
 }
 
@@ -633,7 +647,7 @@ export function forecastedRevenueEUR(year) {
     return sum + Object.values(fc.months || {}).reduce((ms, md) => {
       const entries = Array.isArray(md.entries) ? md.entries : [];
       return ms + (entries.length > 0
-        ? entries.reduce((es, e) => es + (Number(e.amount) || 0), 0)
+        ? sumForecastEntries(entries)
         : Number(md.revenue) || 0);
     }, 0);
   }, 0);
@@ -646,9 +660,7 @@ export function forecastMonthlyEUR(year) {
   for (const fc of forecasts) {
     for (const [mk, md] of Object.entries(fc.months || {})) {
       const entries = Array.isArray(md.entries) ? md.entries : [];
-      const val = entries.length > 0
-        ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-        : Number(md.revenue) || 0;
+      const val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
       if (val > 0) map.set(mk, (map.get(mk) || 0) + val);
     }
   }

@@ -7,7 +7,8 @@ import {
   listActive, listActivePayments,
   isCapEx, drillRevRows, drillExpRows,
   sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR,
-  softDelete, upsert, newId, companyPropIds, isCompanyRecord, generatePaymentSchedule
+  softDelete, upsert, newId, companyPropIds, isCompanyRecord, generatePaymentSchedule,
+  sumForecastEntries
 } from '../core/data.js';
 import { markDirty } from '../core/state.js';
 import {
@@ -142,11 +143,12 @@ function getLtRentByMonth(propertyId, year) {
 
 // Resolves a property forecast's revenue for one month: a manual entry wins;
 // otherwise long-term properties fall back to their lease-schedule projection.
+// Uses the same sumForecastEntries() as core/data.js so a cancelled/removed
+// Airbnb booking entry (a tombstone kept only so a re-import can't resurrect
+// it — see payments.js cancelAirbnbForecastEntry) is excluded consistently.
 function resolvePropertyMonthRevenue(propertyId, year, mk, md) {
   const entries = Array.isArray(md?.entries) ? md.entries : [];
-  const manual = entries.length > 0
-    ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-    : Number(md?.revenue) || 0;
+  const manual = entries.length > 0 ? sumForecastEntries(entries) : Number(md?.revenue) || 0;
   if (manual > 0) return manual;
   const ltMap = getLtRentByMonth(propertyId, year);
   return ltMap ? (ltMap[mk] || 0) : 0;
@@ -224,9 +226,7 @@ function getServicesProjectedItems(range) {
       if (mk < startMk || mk > endMk) return;
       if (invoicedStreamMonths.has(fc.entityId + ':' + mk)) return; // already invoiced (any status) — don't double count
       const entries = Array.isArray(md.entries) ? md.entries : [];
-      const rev = entries.length > 0
-        ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-        : Number(md.revenue) || 0;
+      const rev = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
       if (rev <= 0) return;
       items.push({
         stream: fc.entityId,
@@ -279,9 +279,7 @@ function buildFcMaps(startY, endY) {
       } else if (fc) {
         Object.entries(fc.months || {}).forEach(([mk, md]) => {
           const entries = Array.isArray(md.entries) ? md.entries : [];
-          const rev = entries.length > 0
-            ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-            : Number(md.revenue) || 0;
+          const rev = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
           if (rev > 0) {
             fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
             const propKey = mk + '_' + prop.id;
@@ -299,9 +297,7 @@ function buildFcMaps(startY, endY) {
       if (gF.streams.size > 0 && !gF.streams.has(fc.entityId)) return;
       Object.entries(fc.months || {}).forEach(([mk, md]) => {
         const entries = Array.isArray(md.entries) ? md.entries : [];
-        const rev = entries.length > 0
-          ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-          : Number(md.revenue) || 0;
+        const rev = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
         if (rev > 0) fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
         const exp = Number(md.expenses) || 0;
         if (exp > 0) fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
@@ -489,7 +485,7 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
         const md = fc?.months?.[mk];
         if (!md) return;
         const entries = Array.isArray(md.entries) ? md.entries : [];
-        val = entries.length > 0 ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0) : Number(md.revenue) || 0;
+        val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
       }
       if (val > 0) fcByStream.set(stream, (fcByStream.get(stream) || 0) + val);
     });
@@ -504,9 +500,7 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
       const md = fc.months?.[mk];
       if (!md) return;
       const entries = Array.isArray(md.entries) ? md.entries : [];
-      const val = entries.length > 0
-        ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0)
-        : Number(md.revenue) || 0;
+      const val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
       if (val > 0) fcByStream.set(fc.entityId, (fcByStream.get(fc.entityId) || 0) + val);
     });
   });
@@ -544,7 +538,7 @@ function computePropertyBreakdown(actPayments, months, pendingItems) {
         const md = fc?.months?.[mk];
         if (!md) return;
         const entries = Array.isArray(md.entries) ? md.entries : [];
-        val = entries.length > 0 ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0) : Number(md.revenue) || 0;
+        val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
       }
       if (val > 0) fcByProp.set(prop.id, (fcByProp.get(prop.id) || 0) + val);
     });
@@ -1390,7 +1384,7 @@ function openForecastEditModal(propRow, data) {
   if (existing?.months) {
     Object.values(existing.months).forEach(md => {
       const entries = Array.isArray(md.entries) ? md.entries : [];
-      curFcRev += entries.length > 0 ? entries.reduce((s, e) => s + (Number(e.amount) || 0), 0) : Number(md.revenue) || 0;
+      curFcRev += entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
       curFcExp += Number(md.expenses) || 0;
     });
   }

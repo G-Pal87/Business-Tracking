@@ -2,8 +2,9 @@
 import { state, markDirty } from '../core/state.js';
 import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, confirmDialog, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, getForecastEntries, upsertForecastEntry, removeForecastEntry, listActive, listActivePayments } from '../core/data.js';
+import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, getForecastEntries, upsertForecastEntry, removeForecastEntry, sumForecastEntries, listActive, listActivePayments } from '../core/data.js';
 import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
+import { backfillAirbnbForecastEntries } from './payments.js';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -835,30 +836,41 @@ const FC_VAR_COLS = [
   { key: 'pct',   label: '%',   right: true }
 ];
 const FC_PENDING_COLS = [
-  { key: 'date',   label: 'Check-in',     format: v => fmtDate(v) },
-  { key: 'guest',  label: 'Guest' },
-  { key: 'code',   label: 'Conf. Code' },
-  { key: 'nights', label: 'Nights',        right: true },
-  { key: 'eur',    label: 'Amount',        right: true, format: v => formatEUR(v) }
+  { key: 'date',        label: 'Check-in',  format: v => fmtDate(v) },
+  { key: 'guest',       label: 'Guest' },
+  { key: 'code',        label: 'Conf. Code' },
+  { key: 'nights',      label: 'Nights',    right: true },
+  { key: 'eur',         label: 'Amount',    right: true, format: v => formatEUR(v) },
+  { key: 'statusLabel', label: 'Status' }
 ];
 
-function getPendingAirbnbRows(propertyId, monthKey) {
-  return listActivePayments()
-    .filter(p => p.source === 'airbnb' && p.status === 'pending'
-      && p.propertyId === propertyId
-      && (p.airbnbCheckIn || p.date || '').slice(0, 7) === monthKey)
-    .map(p => ({
-      date:   p.airbnbCheckIn || p.date,
-      guest:  p.guestName || (p.notes || '').split(' · ')[0] || '—',
-      code:   p.confirmationCode || p.airbnbRef || '—',
-      nights: p.airbnbNights || 0,
-      eur:    toEUR(p.amount, p.currency || 'EUR', p.date)
+const BOOKING_STATUS_LABELS = { pending: 'Pending', materialized: 'Paid', cancelled: 'Cancelled', removed: 'Removed' };
+
+// Reads the persisted, itemized Airbnb-sourced forecast entries for a
+// property/month — one row per booking, however it currently stands
+// (pending / materialized / cancelled / removed). Unlike the old approach of
+// live-querying payments with status === 'pending', this works identically
+// for past and future months, since a booking's entry sticks around (frozen
+// or tombstoned) instead of vanishing once it pays out or gets cancelled.
+function getAirbnbForecastEntries(propertyId, monthKey) {
+  const fc = getOrCreateForecast('property', propertyId, monthKey.slice(0, 4));
+  return getForecastEntries(fc.id, monthKey)
+    .filter(e => e.auto)
+    .map(e => ({
+      id: e.id, date: e.checkIn, guest: e.guest || '—', code: e.confirmationCode || '—',
+      nights: e.nights || 0, eur: e.amount, bookingStatus: e.bookingStatus,
+      statusLabel: BOOKING_STATUS_LABELS[e.bookingStatus] || e.bookingStatus || '—'
     }))
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 }
 
 // ===== SHARED MONTHLY GRID =====
 function buildMonthlyGrid(entityId, year, type, onChange) {
+  // Idempotent, self-healing backfill: reconstructs any missing itemized
+  // Airbnb forecast entry (e.g. from before this itemized model existed, or
+  // from a past month whose entry had already been recalculated away to
+  // zero) so past months keep their forecast instead of showing zero.
+  if (type === 'property') backfillAirbnbForecastEntries(entityId);
   const fc = getOrCreateForecast(type, entityId, year);
   const now = new Date();
 
@@ -986,14 +998,15 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         return cell;
       }
 
-      // Property forecast revenue: shows Airbnb pending reservations (automatic,
-      // read-only reference) plus itemized manual entries for anything Airbnb
-      // doesn't know about — off-platform / direct bookings. Manual entries use
-      // the same entries[] mechanism as Service Forecast, so Analytics →
-      // Forecast picks them up automatically. A flat quick-edit stays available
-      // for months with no itemized entries yet.
+      // Property forecast revenue: itemized Airbnb-sourced bookings (one entry
+      // per reservation, editable/deletable, frozen once paid out) plus
+      // itemized manual entries for anything Airbnb doesn't know about —
+      // off-platform / direct bookings. Both share the same entries[]
+      // mechanism as Service Forecast, so Analytics → Forecast picks them up
+      // automatically. A flat quick-edit stays available for months with no
+      // itemized entries yet.
       function makePropertyRevCell(current, mk, monthIdx) {
-        const pending = getPendingAirbnbRows(entityId, mk);
+        const pending = getAirbnbForecastEntries(entityId, mk).filter(e => e.bookingStatus === 'pending' || e.bookingStatus === 'materialized');
         const entries = getForecastEntries(fc.id, mk);
         const cell = el('td', { class: 'right num', style: 'white-space:nowrap' });
 
@@ -1041,67 +1054,106 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         }
 
         cell.style.cursor = 'pointer';
-        cell.title = 'Click to manage off-platform / manual bookings';
+        cell.title = 'Click to manage forecasted bookings';
         cell.onclick = () => openPropertyEntriesEditor(mk, `${MONTHS[monthIdx]} ${year}`);
         return cell;
       }
 
+      // A settled/tombstoned Airbnb entry (bookingStatus cancelled/removed) is
+      // shown read-only with a Restore action, rather than editable fields —
+      // there's nothing meaningful left to edit once a booking is known gone,
+      // but the user can still bring it back into the active forecast.
+      function isSettledAirbnbEntry(e) {
+        return e.auto && (e.bookingStatus === 'cancelled' || e.bookingStatus === 'removed');
+      }
+
       function openPropertyEntriesEditor(monthKey, monthLabel) {
         const body = el('div', {});
-
-        const pending = getPendingAirbnbRows(entityId, monthKey);
-        if (pending.length > 0) {
-          const autoEntry = getForecastEntries(fc.id, monthKey).find(e => e.auto);
-          const refBox = el('div', {
-            style: 'padding:10px 12px;margin-bottom:12px;border-radius:4px;background:rgba(99,102,241,0.06);border-left:3px solid #6366f1;font-size:12px;color:var(--text-muted)'
-          }, `${pending.length} Airbnb reservation${pending.length === 1 ? '' : 's'} already captured automatically for this month` +
-             (autoEntry ? ` (${formatEUR(autoEntry.amount)})` : '') + ' — no need to add them below.');
-          body.appendChild(refBox);
-        }
-
         const listWrap = el('div', {});
         body.appendChild(listWrap);
 
-        // The Airbnb auto-entry (id: 'airbnb-auto') is machine-managed by the
-        // CSV import / pending-payment recalculation — it's shown above in the
-        // reference box, not in this editable list, so it can't be hand-edited
-        // out of sync with the actual Airbnb data.
+        // Unified, fully editable list: manual off-platform bookings and
+        // Airbnb-sourced bookings side by side. An Airbnb-sourced line stays
+        // editable while active (pending/materialized) — editing it flags it
+        // `overridden` so a later CSV re-import never clobbers the change —
+        // and becomes a read-only, restorable tombstone once cancelled/removed.
         const refresh = () => {
           listWrap.innerHTML = '';
-          const entries = getForecastEntries(fc.id, monthKey).filter(e => !e.auto);
+          const entries = getForecastEntries(fc.id, monthKey)
+            .slice()
+            .sort((a, b) => (a.checkIn || '').localeCompare(b.checkIn || ''));
 
           if (entries.length === 0) {
-            listWrap.appendChild(el('div', { class: 'empty', style: 'padding:24px' }, 'No off-platform bookings yet — click "Add Booking" below.'));
+            listWrap.appendChild(el('div', { class: 'empty', style: 'padding:24px' }, 'No forecasted bookings yet — click "Add Booking" below.'));
           } else {
             const t = el('table', { class: 'table' });
-            t.innerHTML = '<thead><tr><th>Description</th><th class="right" style="width:130px">Amount (€)</th><th>Notes / Status</th><th style="width:60px"></th></tr></thead>';
+            t.innerHTML = '<thead><tr><th>Description</th><th class="right" style="width:130px">Amount (€)</th><th>Notes</th><th style="width:110px">Source</th><th style="width:70px"></th></tr></thead>';
             const tb2 = el('tbody');
             for (const e of entries) {
               const tr = el('tr');
-              const descI = input({ value: e.description || '', placeholder: 'e.g. Direct booking — Guest name' });
-              const amtI  = input({ type: 'number', value: e.amount || 0, min: 0, step: 0.01, style: 'text-align:right' });
-              const noteI = input({ value: e.notes || '', placeholder: 'e.g. Confirmed, bank transfer' });
-              const commit = () => {
-                e.description = descI.value.trim();
-                e.amount = Number(amtI.value) || 0;
-                e.notes = noteI.value.trim();
-                upsertForecastEntry(fc.id, monthKey, e);
-                rebuildTotals();
-                if (onChange) onChange();
-                refresh();
-              };
-              descI.onchange = commit;
-              amtI.onchange  = commit;
-              noteI.onchange = commit;
-              tr.appendChild(el('td', {}, descI));
-              tr.appendChild(el('td', { class: 'right' }, amtI));
-              tr.appendChild(el('td', {}, noteI));
-              tr.appendChild(el('td', { class: 'right' }, button('Del', { variant: 'sm ghost', onClick: () => {
-                removeForecastEntry(fc.id, monthKey, e.id);
-                refresh();
-                rebuildTotals();
-                if (onChange) onChange();
-              }})));
+              const settled = isSettledAirbnbEntry(e);
+
+              let descCell, amtCell, noteCell;
+              if (settled) {
+                descCell = el('td', { style: 'text-decoration:line-through;color:var(--text-muted)' }, e.description || '');
+                amtCell  = el('td', { class: 'right', style: 'text-decoration:line-through;color:var(--text-muted)' }, formatEUR(e.amount || 0));
+                noteCell = el('td', { class: 'muted' }, e.notes || '');
+              } else {
+                const descI = input({ value: e.description || '', placeholder: 'e.g. Direct booking — Guest name' });
+                const amtI  = input({ type: 'number', value: e.amount || 0, min: 0, step: 0.01, style: 'text-align:right' });
+                const noteI = input({ value: e.notes || '', placeholder: 'e.g. Confirmed, bank transfer' });
+                const commit = () => {
+                  e.description = descI.value.trim();
+                  e.amount = Number(amtI.value) || 0;
+                  e.notes = noteI.value.trim();
+                  if (e.auto) e.overridden = true;
+                  upsertForecastEntry(fc.id, monthKey, e);
+                  rebuildTotals();
+                  if (onChange) onChange();
+                  refresh();
+                };
+                descI.onchange = commit;
+                amtI.onchange  = commit;
+                noteI.onchange = commit;
+                descCell = el('td', {}, descI);
+                amtCell  = el('td', { class: 'right' }, amtI);
+                noteCell = el('td', {}, noteI);
+              }
+
+              const sourceCell = el('td', {});
+              if (e.auto) {
+                sourceCell.appendChild(el('span', { class: 'badge', style: 'margin-right:4px' }, 'Airbnb'));
+                sourceCell.appendChild(el('span', { class: 'muted', style: 'font-size:11px' }, BOOKING_STATUS_LABELS[e.bookingStatus] || ''));
+              }
+
+              const actionsCell = el('td', { class: 'right' });
+              if (settled) {
+                actionsCell.appendChild(button('Restore', { variant: 'sm ghost', onClick: () => {
+                  upsertForecastEntry(fc.id, monthKey, { ...e, bookingStatus: 'pending', overridden: true });
+                  refresh();
+                  rebuildTotals();
+                  if (onChange) onChange();
+                }}));
+              } else {
+                actionsCell.appendChild(button('Del', { variant: 'sm ghost', onClick: () => {
+                  if (e.auto) {
+                    // Tombstone, don't splice — keeps a later re-import of the
+                    // same booking from silently recreating this line.
+                    upsertForecastEntry(fc.id, monthKey, { ...e, bookingStatus: 'removed', overridden: true });
+                  } else {
+                    removeForecastEntry(fc.id, monthKey, e.id);
+                  }
+                  refresh();
+                  rebuildTotals();
+                  if (onChange) onChange();
+                }}));
+              }
+
+              tr.appendChild(descCell);
+              tr.appendChild(amtCell);
+              tr.appendChild(noteCell);
+              tr.appendChild(sourceCell);
+              tr.appendChild(actionsCell);
               tb2.appendChild(tr);
             }
             t.appendChild(tb2);
@@ -1109,9 +1161,9 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
             listWrap.appendChild(tw);
           }
 
-          const total = getForecastEntries(fc.id, monthKey).filter(e => !e.auto).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+          const total = sumForecastEntries(entries);
           listWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:12px 16px;margin-top:12px;border-top:1px solid var(--border);font-weight:600' },
-            el('span', {}, 'Manual Bookings Total'),
+            el('span', {}, 'Total Forecasted'),
             el('span', { class: 'num' }, formatEUR(total))
           ));
         };
@@ -1133,7 +1185,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         }});
         const doneBtn = button('Done', { onClick: () => { closeModal(); renderRows(); } });
 
-        openModal({ title: `Off-Platform Bookings — ${monthLabel}`, body, footer: [addBtn, doneBtn], large: true });
+        openModal({ title: `Forecasted Bookings — ${monthLabel}`, body, footer: [addBtn, doneBtn], large: true });
       }
 
       const net = mData.forecastRev - mData.forecastExp;
@@ -1421,6 +1473,7 @@ function entityLabel(id, type) {
 // target) via the picker below, without narrowing the outer filter down to
 // a single selection first.
 function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
+  if (type === 'property') entityIds.forEach(backfillAirbnbForecastEntries);
   const card = el('div', { class: 'card' });
   const label = type === 'service' ? `${entityIds.length} services selected` : `${entityIds.length} properties selected`;
   card.appendChild(el('div', { class: 'card-header' },
@@ -1490,16 +1543,17 @@ function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
     // Forecast Revenue — clickable drill-down for property type
     const fRevCell = el('td', { class: 'right num' });
     if (type === 'property') {
-      const pending = entityIds.flatMap(id => getPendingAirbnbRows(id, months[i].key))
+      const bookings = entityIds.flatMap(id => getAirbnbForecastEntries(id, months[i].key))
         .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+      const activeCount = bookings.filter(b => b.bookingStatus === 'pending' || b.bookingStatus === 'materialized').length;
       fRevCell.appendChild(el('div', {}, formatEUR(m.forecastRev)));
-      if (pending.length > 0) {
+      if (bookings.length > 0) {
         fRevCell.appendChild(el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' },
-          `${pending.length} reservation${pending.length === 1 ? '' : 's'}`));
+          `${activeCount} reservation${activeCount === 1 ? '' : 's'}`));
         fRevCell.style.cursor = 'pointer';
-        fRevCell.title = 'Click to see pending reservations';
+        fRevCell.title = 'Click to see reservations';
         fRevCell.onclick = () => drillDownModal(
-          `Forecast Revenue — ${MONTHS[i]}`, pending, FC_PENDING_COLS);
+          `Forecast Revenue — ${MONTHS[i]}`, bookings, FC_PENDING_COLS);
       } else {
         fRevCell.textContent = formatEUR(m.forecastRev);
       }
