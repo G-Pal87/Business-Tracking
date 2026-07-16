@@ -393,7 +393,7 @@ function buildPnLTable(data, taxRate, year) {
   tbody.appendChild(mkRow('Net After Tax (est.)', netAfterTax, { isSubtotal: true, isPositive: netAfterTax >= 0 }));
 
   tbl.appendChild(tbody);
-  wrap.appendChild(el('div', { style: 'padding:0 0 16px' }, tbl));
+  wrap.appendChild(el('div', { style: 'padding:0 0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch' }, tbl));
   return wrap;
 }
 
@@ -635,7 +635,7 @@ function buildExpenseCategoryTable(data) {
     tbody.appendChild(tr);
   });
   tbl.appendChild(tbody);
-  wrap.appendChild(el('div', { style: 'padding:0 0 8px' }, tbl));
+  wrap.appendChild(el('div', { style: 'padding:0 0 8px;overflow-x:auto;-webkit-overflow-scrolling:touch' }, tbl));
   return wrap;
 }
 

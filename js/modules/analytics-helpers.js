@@ -124,7 +124,13 @@ export function mkModalTable(headers, rows, opts = {}) {
   });
   tbl.appendChild(tbody);
 
-  return tbl;
+  // Wrapped in .table-wrap (same convention drillDownModal already uses) so
+  // a wide table scrolls horizontally instead of overflowing the modal on a
+  // narrow screen — every caller just appends the return value, so this is
+  // a transparent change for all of them.
+  const tw = el('div', { class: 'table-wrap' });
+  tw.appendChild(tbl);
+  return tw;
 }
 
 // ── Variance badge ────────────────────────────────────────────────────────────

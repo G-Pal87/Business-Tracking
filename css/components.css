@@ -667,4 +667,18 @@ input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
   /* Add class mob-hide to <th>/<td> in any module to hide on mobile.       */
   .mob-hide { display: none; }
 
+  /* ── Inline multi-column grids (stat tiles, tax/dividend breakdowns) ──── */
+  /* Many modules set grid-template-columns as an inline style attribute
+     (e.g. style="grid-template-columns:1fr 1fr 1fr") rather than a CSS
+     class, since the column count is often computed per-render. A media
+     query can't override those any other way, and inline styles otherwise
+     beat every CSS selector regardless of specificity — this attribute
+     selector + !important is the standard escape hatch for exactly that.
+     Stacking to one column is always safe on a narrow screen even where a
+     2-column grid might technically still fit; it just costs vertical
+     space, never legibility. */
+  [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
 }
