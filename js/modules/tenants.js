@@ -1,7 +1,8 @@
 // Tenants module – CRUD for long-term rental tenants
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
+import { recordRentPaymentsBulk } from './payments.js';
 
 let _sortCol = -1, _sortDir = 1, _tenSearch = '';
 
@@ -223,10 +224,37 @@ function openForm(existing, onSave) {
       }
     }
 
+    const isNewPastTenant = !existing && updated.status === 'past';
     upsert('tenants', updated);
     toast(existing ? 'Tenant updated' : 'Tenant added', 'success');
     closeModal();
     if (onSave) onSave();
+
+    // A brand-new tenant entered with an already-concluded lease ("past")
+    // means their rent schedule (generatePaymentSchedule) shows every month
+    // as Overdue — nothing marks it paid automatically. Offer to backfill it
+    // right away, capped at the lease end (or today, if somehow unset) so
+    // this never offers to pre-pay months that haven't happened yet.
+    if (isNewPastTenant) {
+      const prop = byId('properties', updated.propertyId);
+      if (prop) {
+        const cutoff = updated.leaseEndDate || today();
+        const unpaidEntries = generatePaymentSchedule(prop)
+          .filter(e => e.tenantId === updated.id && !e.paid && e.date <= cutoff);
+        if (unpaidEntries.length > 0) {
+          setTimeout(async () => {
+            const ok = await confirmDialog(
+              `This tenant's lease has already ended (${fmtDate(updated.leaseStartDate)} – ${updated.leaseEndDate ? fmtDate(updated.leaseEndDate) : 'present'}). Mark all ${unpaidEntries.length} month(s) of rent as paid?`,
+              { okLabel: `Mark ${unpaidEntries.length} Paid` }
+            );
+            if (!ok) return;
+            recordRentPaymentsBulk(prop, unpaidEntries);
+            toast(`${unpaidEntries.length} rent payment(s) recorded`, 'success');
+            if (onSave) onSave();
+          }, 220);
+        }
+      }
+    }
   }});
 
   openModal({

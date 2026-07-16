@@ -555,20 +555,32 @@ function buildAllPayments(wrap) {
   return () => { rebuildFilters(); renderTable(); };
 }
 
-function recordRentPayment(prop, entry, onDone) {
-  upsert('payments', {
-    id: newId('pay'),
-    propertyId: prop.id,
-    tenantId: entry.tenantId || null,
-    amount: entry.amount,
-    currency: entry.currency,
-    date: entry.date,
-    type: 'rental',
-    status: 'paid',
-    source: 'manual',
-    stream: 'long_term_rental',
-    notes: `Rent ${entry.monthKey}`
+// Turns N schedule entries (from generatePaymentSchedule) into real, paid
+// payment records in one batch — shared by the single "Mark Paid" button
+// below and by tenants.js's "mark this backfilled lease as paid" prompt.
+export function recordRentPaymentsBulk(prop, entries) {
+  runBatch(() => {
+    for (const entry of entries) {
+      upsert('payments', {
+        id: newId('pay'),
+        propertyId: prop.id,
+        tenantId: entry.tenantId || null,
+        amount: entry.amount,
+        currency: entry.currency,
+        date: entry.date,
+        type: 'rental',
+        status: 'paid',
+        source: 'manual',
+        stream: 'long_term_rental',
+        notes: `Rent ${entry.monthKey}`
+      });
+    }
   });
+  return entries.length;
+}
+
+function recordRentPayment(prop, entry, onDone) {
+  recordRentPaymentsBulk(prop, [entry]);
   toast('Payment recorded', 'success');
   if (onDone) onDone();
 }
