@@ -296,6 +296,15 @@
       "device": "Safari on macOS",
       "deviceType": "mobile",
       "at": 1784224735364
+    },
+    {
+      "type": "logout",
+      "sessionId": "8d9eedd3-e62c-47e3-8865-9ed8a1a0288b",
+      "username": "Giorgos",
+      "name": "Giorgos",
+      "device": "Safari on macOS",
+      "deviceType": "mobile",
+      "at": 1784224842205
     }
   ]
 }
