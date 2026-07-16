@@ -289,10 +289,14 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
   const parseCell = txt => {
     if ((/^\d{4}-\d{2}/.test(txt) || (/[a-zA-Z]/.test(txt) && txt.length >= 6)) && !isNaN(new Date(txt)))
       return { t: 'd', v: new Date(txt).getTime() };
-    // Only treat as numeric when the cell is a plain number or currency amount
-    // (e.g. "€1,500", "HUF 50,000") — not when text merely contains digits
-    // (e.g. "Danko u. 38 -2" would otherwise sort as 38, not alphabetically).
-    const clean = txt.replace(/^[A-Z]{2,3}\s*/, '').replace(/[€£$¥₿,\s]/g, '');
+    // Only treat as numeric when the cell is a plain number, currency amount,
+    // or percentage (e.g. "€1,500", "HUF 50,000", "7.0%", "-4.5%") — not when
+    // text merely contains digits (e.g. "Danko u. 38 -2" would otherwise sort
+    // as 38, not alphabetically). Stripping '%' matters: without it, "9.0%"
+    // sorted as a *string* lands after "10.0%"/"20.0%" (lexicographic '9' >
+    // '1'), so any percentage column (ROI, Cost %, Var % etc.) sorted in
+    // visibly wrong order instead of numerically.
+    const clean = txt.replace(/^[A-Z]{2,3}\s*/, '').replace(/[€£$¥₿%,\s]/g, '');
     const n = parseFloat(clean);
     if (!isNaN(n) && clean !== '' && /^-?[\d.]+$/.test(clean)) return { t: 'n', v: n };
     return { t: 's', v: txt };
