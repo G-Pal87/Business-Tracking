@@ -9,8 +9,11 @@
 // Balances (per engagement):
 //   - Annual quota remaining (calendar year) = quota − (standard + carry_out in that year)
 //   - Carry bank (running, all-time)          = Σ carry_out − Σ carry_in, PLUS any unused
-//     quota automatically rolled forward from every fully-completed past year (live/derived
-//     — see computeCarryBank; nothing is ever written for this, unlike an explicit carry_out).
+//     quota automatically rolled forward from every fully-completed year since
+//     eng.quotaStartYear (live/derived — see computeCarryBank; nothing is ever written for
+//     this, unlike an explicit carry_out). Defaults to the current year for any engagement
+//     that hasn't set one, so a year with no logged entries is never mistaken for "38 unused
+//     days" when it may just be a year that predates this app / wasn't tracked at all.
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, addDays } from '../core/ui.js';
 import { upsert, softDelete, listActive, newId, byId, formatMoney, getPersonName, patchSettings } from '../core/data.js';
 import { state } from '../core/state.js';
@@ -23,9 +26,9 @@ const TYPE_META = {
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-// Earliest year this module tracks — matches the year picker's lower bound
-// further down, kept as one constant so the two can't drift apart.
-const FIRST_TRACKED_YEAR = 2024;
+// Earliest year selectable in the year picker further down — a UI navigation
+// range only, independent of eng.quotaStartYear (which governs rollover math).
+const EARLIEST_VIEWABLE_YEAR = 2024;
 
 // ── Engagement helpers ──────────────────────────────────────────────────────
 
@@ -49,6 +52,7 @@ function ensureDefaultEngagement() {
       dailyRate: 670,
       currency: ctwo?.currency || 'EUR',
       annualQuota: 38,
+      quotaStartYear: new Date().getFullYear(),
       workingDays: 'mon-fri',
       active: true,
     }],
@@ -107,8 +111,9 @@ function computeCarryBank(eng, excludeId = null) {
   const manualCarry = sumAmount(all, t => t.type === 'carry_out') - sumAmount(all, t => t.type === 'carry_in');
 
   const thisYear = new Date().getFullYear();
+  const startYear = eng.quotaStartYear ?? thisYear;
   let rolledOverQuota = 0;
-  for (let y = FIRST_TRACKED_YEAR; y < thisYear; y++) {
+  for (let y = startYear; y < thisYear; y++) {
     const consumedY = sumAmount(entriesFor(eng.id, y, null).filter(t => t.id !== excludeId), t => TYPE_META[t.type]?.deducts);
     rolledOverQuota += Math.max(0, (eng.annualQuota || 0) - consumedY);
   }
@@ -153,7 +158,7 @@ function build() {
   // ── Toolbar ──
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center' });
   const years = [];
-  for (let y = new Date().getFullYear() + 1; y >= FIRST_TRACKED_YEAR; y--) years.push(y);
+  for (let y = new Date().getFullYear() + 1; y >= EARLIEST_VIEWABLE_YEAR; y--) years.push(y);
   const yearS = select(years.map(y => ({ value: String(y), label: String(y) })), String(selectedYear));
   yearS.onchange = () => { selectedYear = Number(yearS.value); rerender(); };
   bar.appendChild(formRow('Year', yearS));
@@ -399,14 +404,17 @@ function openEngagementForm(eng) {
   const rateI = input({ type: 'number', value: e.dailyRate, min: 0, step: 1 });
   const quotaI = input({ type: 'number', value: e.annualQuota, min: 0, step: 0.5 });
   const curS = select([{ value: 'EUR', label: 'EUR' }, { value: 'HUF', label: 'HUF' }], e.currency || 'EUR');
+  const quotaYearI = input({ type: 'number', value: e.quotaStartYear ?? new Date().getFullYear(), min: 2000, step: 1 });
 
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Client', clientS), formRow('Person', personS)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Daily Rate', rateI), formRow('Currency', curS)));
   body.appendChild(formRow('Annual Quota (days)', quotaI));
+  body.appendChild(formRow('Quota tracking starts in', quotaYearI,
+    'Unused quota from this year onward auto-rolls into the carry bank once each year ends. Years before this never contribute, even if nothing was logged for them.'));
 
   const save = button('Save', { variant: 'primary', onClick: () => {
     const list = state.db.settings.engagements.map(x => x.id === e.id
-      ? { ...x, clientId: clientS.value, personId: personS.value, dailyRate: Number(rateI.value) || 0, annualQuota: Number(quotaI.value) || 0, currency: curS.value }
+      ? { ...x, clientId: clientS.value, personId: personS.value, dailyRate: Number(rateI.value) || 0, annualQuota: Number(quotaI.value) || 0, currency: curS.value, quotaStartYear: Number(quotaYearI.value) || new Date().getFullYear() }
       : x);
     patchSettings({ engagements: list });
     toast('Engagement updated', 'success');
