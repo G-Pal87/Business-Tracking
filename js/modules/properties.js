@@ -1,6 +1,6 @@
 // Properties module
 import { state, runBatch } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, buildMultiSelect } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, buildMultiSelect } from '../core/ui.js';
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI,
@@ -418,6 +418,11 @@ export function openDetail(id, preStats) {
     ));
   }
 
+  if (p.type === 'long_term') {
+    const tlCard = buildTenantTimelineCard(id);
+    if (tlCard) body.appendChild(tlCard);
+  }
+
   if ((p.vacantPeriods || []).length > 0) {
     const vpCard = el('div', { class: 'card mb-16' });
     vpCard.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, `Vacant Periods (${p.vacantPeriods.length})`)));
@@ -579,6 +584,98 @@ function smallStat(label, value, sub) {
     el('div', { style: 'font-size:1.15rem;font-weight:700;font-variant-numeric:tabular-nums' }, value),
     sub ? el('div', { class: 'fx-hint' }, sub) : null
   );
+}
+
+// Gantt-style tenant occupancy timeline for one long-term property — a
+// hand-rolled positioned-div chart (mirrors how str-rates.js's calendar grid
+// is also hand-built rather than routed through the Chart.js wrapper in
+// core/charts.js) since a per-tenant date-range bar view with inline labels
+// isn't a shape Chart.js's chart types fit naturally.
+//
+// Layout: every row (the axis header and each tenant row) shares an identical
+// [LABEL_W px label gutter][flex:1 track] split, so a single absolutely
+// positioned overlay — offset by LABEL_W from the left, flush to the right —
+// lines up gridlines across the header and every bar underneath it using the
+// exact same 0–100% coordinate space.
+function buildTenantTimelineCard(propId) {
+  const LABEL_W = 190;
+  const list = listActive('tenants')
+    .filter(t => t.propertyId === propId && t.leaseStartDate && t.status !== 'prospective')
+    .sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || ''));
+  if (list.length === 0) return null;
+
+  const todayStr = today();
+  const endOf = t => t.leaseEndDate || t.terminationDate || todayStr;
+
+  const axisStart = list.reduce((min, t) => t.leaseStartDate < min ? t.leaseStartDate : min, list[0].leaseStartDate);
+  const axisEnd = list.reduce((max, t) => endOf(t) > max ? endOf(t) : max, todayStr);
+
+  const parseD = s => new Date(`${s}T00:00:00Z`).getTime();
+  const startMs = parseD(axisStart);
+  const span = Math.max(parseD(axisEnd) - startMs, 86400000); // floor of 1 day avoids a div-by-zero when everything lands on one date
+  const pct = s => Math.min(100, Math.max(0, ((parseD(s) - startMs) / span) * 100));
+
+  const card = el('div', { class: 'card mb-16' });
+  const swatch = color => el('span', { style: `display:inline-block;width:9px;height:9px;border-radius:2px;background:${color};margin-right:5px;vertical-align:middle` });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, `Tenant Timeline (${list.length})`),
+    el('div', { class: 'flex gap-16', style: 'font-size:11px;color:var(--text-muted)' },
+      el('span', {}, swatch('var(--success)'), 'Current'),
+      el('span', {}, swatch('var(--accent)'), 'Past')
+    )
+  ));
+
+  const wrap = el('div', { style: 'padding:14px 16px 16px' });
+
+  // ── Axis header: edge dates + internal year gridline labels ──
+  const headerTrack = el('div', { style: 'flex:1;position:relative;height:18px;font-size:11px;color:var(--text-muted)' });
+  headerTrack.appendChild(el('span', { style: 'position:absolute;left:0' }, fmtDate(axisStart)));
+  headerTrack.appendChild(el('span', { style: 'position:absolute;right:0' }, axisEnd === todayStr ? 'Today' : fmtDate(axisEnd)));
+  const startYear = new Date(`${axisStart}T00:00:00Z`).getUTCFullYear();
+  const endYear = new Date(`${axisEnd}T00:00:00Z`).getUTCFullYear();
+  const yearMarks = [];
+  for (let y = startYear + 1; y <= endYear; y++) {
+    const p = pct(`${y}-01-01`);
+    if (p <= 2 || p >= 98) continue; // too close to an edge label — would overlap it
+    yearMarks.push(p);
+    headerTrack.appendChild(el('span', { style: `position:absolute;left:${p}%;transform:translateX(-50%)` }, String(y)));
+  }
+  wrap.appendChild(el('div', { style: 'display:flex' }, el('div', { style: `width:${LABEL_W}px;flex-shrink:0` }), headerTrack));
+
+  // ── Rows + gridline overlay ──
+  const rowsWrap = el('div', { style: 'position:relative;margin-top:4px' });
+  const overlay = el('div', { style: `position:absolute;left:${LABEL_W}px;right:0;top:0;bottom:0;pointer-events:none` });
+  for (const p of yearMarks) {
+    overlay.appendChild(el('div', { style: `position:absolute;left:${p}%;top:0;bottom:0;width:1px;background:var(--border)` }));
+  }
+  rowsWrap.appendChild(overlay);
+
+  for (const t of list) {
+    const isCurrent = t.status === 'active';
+    const hasEnd = !!(t.leaseEndDate || t.terminationDate);
+    const endStr = endOf(t);
+    const endLabel = hasEnd ? fmtDate(endStr) : 'Present';
+    const left = pct(t.leaseStartDate);
+    const width = Math.max(0.8, pct(endStr) - left); // floor keeps a very short stay visible/hoverable
+
+    const row = el('div', { style: 'display:flex;align-items:center;min-height:40px;border-bottom:1px solid var(--border)' });
+    row.appendChild(el('div', { style: `width:${LABEL_W}px;flex-shrink:0;padding-right:10px` },
+      el('div', { style: 'font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis' }, t.name),
+      el('div', { class: 'muted', style: 'font-size:11px' }, `${fmtDate(t.leaseStartDate)} – ${endLabel}`)
+    ));
+    const track = el('div', { style: 'flex:1;position:relative;height:20px' });
+    const bar = el('div', {
+      style: `position:absolute;left:${left}%;width:${width}%;height:100%;border-radius:4px;background:${isCurrent ? 'var(--success)' : 'var(--accent)'};box-shadow:var(--shadow-sm)`
+    });
+    bar.title = `${t.name} · ${fmtDate(t.leaseStartDate)} – ${endLabel}` +
+      (t.monthlyRent ? ` · ${formatMoney(t.monthlyRent, t.currency, { maxFrac: 0 })}/mo` : '');
+    track.appendChild(bar);
+    row.appendChild(track);
+    rowsWrap.appendChild(row);
+  }
+  wrap.appendChild(rowsWrap);
+  card.appendChild(wrap);
+  return card;
 }
 
 function nextMonthKey(ym) {
