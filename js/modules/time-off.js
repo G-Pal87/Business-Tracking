@@ -334,10 +334,23 @@ function openEntryForm(eng, existing, defaultDate) {
 
   const save = button('Save', { variant: 'primary', onClick: () => {
     if (!dateI.value) { toast('Date required', 'danger'); return; }
+    const newType = typeS.value;
+    const newAmount = Number(amountS.value) || 1;
+    // Guard: a carry-in can't spend more than the bank actually holds — the
+    // bank is a running total (see yearBalances), it has no built-in floor,
+    // so without this check it would silently go negative.
+    if (newType === 'carry_in') {
+      const others = listActive('timeOff').filter(t => t.engagementId === eng.id && t.id !== en.id);
+      const bankBeforeThis = sumAmount(others, t => t.type === 'carry_out') - sumAmount(others, t => t.type === 'carry_in');
+      if (newAmount > bankBeforeThis + 1e-9) {
+        toast(`Carry bank only has ${fmtDays(Math.max(0, bankBeforeThis))} day(s) available — can't carry in ${fmtDays(newAmount)}.`, 'danger', 5000);
+        return;
+      }
+    }
     Object.assign(en, {
       date: dateI.value,
-      amount: Number(amountS.value) || 1,
-      type: typeS.value,
+      amount: newAmount,
+      type: newType,
       notes: notesT.value.trim(),
     });
     // If this entry was previously tied to an invoice, keep the link
