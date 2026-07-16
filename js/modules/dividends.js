@@ -634,7 +634,7 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, ghsAmount, ne
   });
   tbody.appendChild(totRow);
   tbl.appendChild(tbody);
-  logCard.appendChild(el('div', { style: 'padding:0 0 8px' }, tbl));
+  logCard.appendChild(el('div', { style: 'padding:0 0 8px;overflow-x:auto;-webkit-overflow-scrolling:touch' }, tbl));
 
   // Per-recipient split footer
   if (gTotal > 0 || rTotal > 0) {
