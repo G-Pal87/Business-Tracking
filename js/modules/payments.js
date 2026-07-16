@@ -1347,7 +1347,7 @@ function openCSVImport() {
     const pendingFile = pendingFileI.files?.[0];
     if (pendingFile) {
       const text = await pendingFile.text();
-      const rows = parseAirbnbCSV(text);
+      const rows = mergeReservationRows(parseAirbnbCSV(text));
       const allPays = listActivePayments();
       const existingKeySet = new Set(allPays.filter(p => p.airbnbKey).map(p => p.airbnbKey));
       const paidCodeSet = new Set(allPays.filter(p => p.status === 'paid' && p.confirmationCode).map(p => p.confirmationCode));
@@ -1513,7 +1513,7 @@ function openCSVImport() {
     const pendingFile = pendingFileI.files?.[0];
     if (pendingFile) {
       const text = await pendingFile.text();
-      const rows = parseAirbnbCSV(text);
+      const rows = mergeReservationRows(parseAirbnbCSV(text));
 
       // Accumulate totals per (property, month) so we can set the forecast in
       // one pass — prevents double-counting when the same CSV is re-imported.
