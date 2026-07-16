@@ -18,10 +18,10 @@
       "role": "admin",
       "device": "Safari on macOS",
       "deviceType": "mobile",
-      "hasKey": false,
+      "hasKey": true,
       "keyConfigured": true,
-      "connectedAt": 1784224740785,
-      "lastSeen": 1784224805262
+      "connectedAt": 1784224858416,
+      "lastSeen": 1784224892522
     }
   }
 }
