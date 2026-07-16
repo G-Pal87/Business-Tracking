@@ -162,7 +162,7 @@ function getPersonData(person, start, end, months) {
 }
 
 // ── KPI section ───────────────────────────────────────────────────────────────
-function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, cmpMonths) {
+function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, cmpMonths, isIncomplete) {
   const combined    = youData.total + ritaData.total;
   const cmpCombined = youCmp && ritaCmp ? youCmp.total + ritaCmp.total : null;
 
@@ -211,7 +211,12 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
   grid.appendChild(mkKpiCard({
     label: 'Avg / Month',
     value: formatEUR(avgMonth),
-    subtitle: months.length < 12
+    // A still-accumulating period (YTD, this-month, etc.) shouldn't project a
+    // partial month/quarter's data up to a full-year estimate — that reads as
+    // "this is what the year will total" when it's really just an average of
+    // whatever's happened so far. Only offer the annualised projection for a
+    // genuinely fixed/completed range.
+    subtitle: (months.length < 12 && !isIncomplete)
       ? `~${formatEUR(avgMonth * 12)} annualised`
       : 'Combined both directors',
     delta: safePct(avgMonth, cmpAvg),
@@ -1034,7 +1039,7 @@ function buildView() {
   const compLine = buildComparisonLine(curRange, cmpRange);
   if (compLine) wrap.appendChild(compLine);
 
-  wrap.appendChild(buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, cmpMonths));
+  wrap.appendChild(buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, cmpMonths, curRange.isIncomplete));
 
   // ── Person columns ──────────────────────────────────────────────────────────
   const colGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px' });
