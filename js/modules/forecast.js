@@ -112,10 +112,17 @@ function buildPropertySection(wrap) {
   });
 
   // ── Property checklist ────────────────────────────────────────────────────
+  // Short-term listings can carry long names (e.g. "Poolside Central Studio |
+  // Balcony & Beach Walk") — without a cap, a single selected long name grows
+  // the trigger button (and stretches the whole toolbar), and an unconstrained
+  // row in the dropdown grows the menu just as wide. Both get a hard max-width
+  // with ellipsis truncation instead; the full name is still available via
+  // the title tooltip on hover.
+  const TRIG_LABEL_STYLE = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;min-width:0;display:inline-block;vertical-align:middle';
   const propWrapper = el('div', { style: 'position:relative' });
-  const trigLabel = el('span', {}, 'All Properties');
-  const propTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:160px;user-select:none' }, trigLabel);
-  const propMenu = el('div', { style: MENU_STYLE.replace('200px', '240px') });
+  const trigLabel = el('span', { style: TRIG_LABEL_STYLE }, 'All Properties');
+  const propTrigger = el('div', { class: 'select', style: 'cursor:pointer;display:flex;align-items:center;width:auto;min-width:160px;max-width:260px;user-select:none' }, trigLabel);
+  const propMenu = el('div', { style: MENU_STYLE.replace('200px', '240px') + ';max-width:320px' });
   const allChk = el('input', { type: 'checkbox' });
   allChk.checked = selectedPropIds.size === props.length;
   propMenu.appendChild(el('label', { style: LABEL_STYLE + ';border-bottom:1px solid var(--border)' }, allChk, el('span', {}, 'All Properties')));
@@ -123,7 +130,9 @@ function buildPropertySection(wrap) {
     const chk = el('input', { type: 'checkbox' });
     chk.dataset.id = p.id;
     chk.checked = selectedPropIds.has(p.id);
-    propMenu.appendChild(el('label', { style: LABEL_STYLE }, chk, el('span', {}, p.name)));
+    const nameSpan = el('span', { style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0' }, p.name);
+    nameSpan.title = p.name;
+    propMenu.appendChild(el('label', { style: LABEL_STYLE }, chk, nameSpan));
     return chk;
   });
 
@@ -151,10 +160,12 @@ function buildPropertySection(wrap) {
     const sel = visibleChks.filter(c => c.checked);
     allChk.checked = visibleChks.length > 0 && sel.length === visibleChks.length;
     allChk.indeterminate = sel.length > 0 && sel.length < visibleChks.length;
+    const singleName = sel.length === 1 ? (props.find(p => p.id === sel[0].dataset.id)?.name || '1 Property') : null;
     trigLabel.textContent = sel.length === visibleChks.length && visibleChks.length > 0 ? 'All Properties'
       : sel.length === 0 ? 'No Properties'
-      : sel.length === 1 ? (props.find(p => p.id === sel[0].dataset.id)?.name || '1 Property')
+      : sel.length === 1 ? singleName
       : `${sel.length} Properties`;
+    trigLabel.title = singleName || ''; // full name on hover when the trigger label is ellipsis-truncated
     selectedPropIds = new Set(propChks.filter(c => c.checked).map(c => c.dataset.id));
     gPropSelectedIds = selectedPropIds;
   };
@@ -1485,10 +1496,19 @@ function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
     style: 'display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--bg-elev-2);border-bottom:1px solid var(--border);flex-wrap:wrap'
   });
   editBar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Edit forecast for:'));
-  const entitySel = select(entityIds.map(id => ({ value: id, label: entityLabel(id, type) })), entityIds[0]);
+  // Defaults to an empty placeholder rather than silently pre-selecting
+  // entityIds[0] — with several properties/services selected in the outer
+  // filter, auto-picking "the first one" looked like an arbitrary, easy to
+  // miss default; forcing an explicit choice avoids editing the wrong entity.
+  const entityOpts = [
+    { value: '', label: type === 'service' ? '— Select service —' : '— Select property —' },
+    ...entityIds.map(id => ({ value: id, label: entityLabel(id, type) }))
+  ];
+  const entitySel = select(entityOpts, '');
   editBar.appendChild(entitySel);
   editBar.appendChild(button('Edit Monthly Forecast', { variant: 'sm primary', onClick: () => {
     const chosenId = entitySel.value;
+    if (!chosenId) { toast(type === 'service' ? 'Select a service first' : 'Select a property first', 'warning'); return; }
     const modalBody = el('div', {});
     modalBody.appendChild(buildMonthlyGrid(chosenId, year, type, onChange));
     openModal({
