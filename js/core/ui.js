@@ -403,6 +403,11 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
   }, trigLabel);
 
   const menu = el('div', {
+    // 'ms-menu' + 'open' (toggled below) let background-sync code (see
+    // app.js backgroundResync) detect an open filter dropdown the same way
+    // it already detects an open modal, so a periodic refresh doesn't
+    // rebuild this widget — and silently close it — out from under the user.
+    class: 'ms-menu',
     style: [
       'display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:300',
       'background:var(--bg-elev-2);border:1px solid var(--border)',
@@ -500,13 +505,18 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
     if (!wrapper.isConnected) { document.removeEventListener('click', closeMenu); return; }
     if (menu.style.display === 'none') return;
     menu.style.display = 'none';
+    menu.classList.remove('open');
     persist();
     onRefresh();
   };
 
   allChk.checked  = filterSet.size === 0;
   allChk.onchange = () => { chks.forEach(c => { c.checked = allChk.checked; }); allChk.indeterminate = false; sync(); };
-  trigger.onclick = e => { e.stopPropagation(); menu.style.display === 'none' ? (menu.style.display = '') : closeMenu(); };
+  trigger.onclick = e => {
+    e.stopPropagation();
+    if (menu.style.display === 'none') { menu.style.display = ''; menu.classList.add('open'); }
+    else closeMenu();
+  };
   menu.onclick    = e => e.stopPropagation();
   document.addEventListener('click', closeMenu);
   // Modules rebuild their DOM wholesale (innerHTML = '') on every refresh —
