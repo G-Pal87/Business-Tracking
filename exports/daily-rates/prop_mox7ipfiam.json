@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-15T14:41:14.541Z",
+  "generatedAt": "2026-07-16T04:02:05.230Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -13,16 +13,6 @@
   "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": [
-    {
-      "date": "2026-07-15",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 53,
-      "discountPct": 0,
-      "amount": 53,
-      "airbnbCheckout": 60
-    },
     {
       "date": "2026-07-16",
       "currency": "EUR",
@@ -3576,7 +3566,7 @@
     {
       "date": "2027-07-06",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 day 06 (1n, 1.95×) + July 2025 day 06 (1n, 1.27×)",
       "originalAmount": 60,
       "discountPct": 10,
@@ -3586,7 +3576,7 @@
     {
       "date": "2027-07-07",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
       "originalAmount": 46,
       "discountPct": 10,
@@ -3596,7 +3586,7 @@
     {
       "date": "2027-07-08",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
       "originalAmount": 46,
       "discountPct": 10,
@@ -3606,7 +3596,7 @@
     {
       "date": "2027-07-09",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
       "originalAmount": 46,
       "discountPct": 10,
@@ -3616,7 +3606,7 @@
     {
       "date": "2027-07-10",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
       "originalAmount": 46,
       "discountPct": 10,
@@ -3636,7 +3626,7 @@
     {
       "date": "2027-07-12",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
       "originalAmount": 46,
       "discountPct": 10,
@@ -3646,7 +3636,7 @@
     {
       "date": "2027-07-13",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
       "originalAmount": 46,
       "discountPct": 10,
@@ -3656,8 +3646,18 @@
     {
       "date": "2027-07-14",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2026 day 14 (1n, 1.95×) + July 2025 day 14 (1n, 1.27×)",
+      "originalAmount": 54,
+      "discountPct": 10,
+      "amount": 49,
+      "airbnbCheckout": 62
+    },
+    {
+      "date": "2027-07-15",
+      "currency": "EUR",
+      "status": "blocked",
+      "basis": "July 2026 day 15 (1n, 1.95×) + July 2025 day 15 (1n, 1.27×)",
       "originalAmount": 54,
       "discountPct": 10,
       "amount": 49,
