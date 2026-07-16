@@ -846,15 +846,6 @@ const FC_VAR_COLS = [
   { key: 'eur',   label: 'EUR', right: true, format: v => v === null ? '—' : formatEUR(v) },
   { key: 'pct',   label: '%',   right: true }
 ];
-const FC_PENDING_COLS = [
-  { key: 'date',        label: 'Check-in',  format: v => fmtDate(v) },
-  { key: 'guest',       label: 'Guest' },
-  { key: 'code',        label: 'Conf. Code' },
-  { key: 'nights',      label: 'Nights',    right: true },
-  { key: 'eur',         label: 'Amount',    right: true, format: v => formatEUR(v) },
-  { key: 'statusLabel', label: 'Status' }
-];
-
 const BOOKING_STATUS_LABELS = { pending: 'Pending', materialized: 'Paid', cancelled: 'Cancelled', removed: 'Removed' };
 
 // Reads the persisted, itemized Airbnb-sourced forecast entries for a
@@ -1520,6 +1511,45 @@ function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
   }}));
   card.appendChild(editBar);
 
+  // Precompute each entity's forecast doc once — reused below by both the
+  // Forecast Revenue and Forecast Expenses drill-downs, for every month.
+  const fcByEntity = new Map(entityIds.map(id => [id, getOrCreateForecast(type, id, year)]));
+  const entityWord = type === 'service' ? 'Service' : 'Property';
+  const FC_ENTRY_DRILL_COLS = [
+    { key: 'entityName',  label: entityWord },
+    { key: 'description', label: 'Description' },
+    { key: 'source',      label: 'Source' },
+    { key: 'notes',       label: 'Notes' },
+    { key: 'eur',         label: 'Amount', right: true, format: v => formatEUR(v) }
+  ];
+  const FC_EXP_DRILL_COLS = [
+    { key: 'entityName',  label: entityWord },
+    { key: 'description', label: 'Description' },
+    { key: 'notes',       label: 'Category / Notes' },
+    { key: 'eur',         label: 'Amount', right: true, format: v => formatEUR(v) }
+  ];
+  // All revenue entries (Airbnb-sourced + manual) across the selected
+  // entities for one month — this is what actually sums to forecastRev, so
+  // it's the same breakdown regardless of property vs service.
+  const getRevEntriesForMonth = monthKey => entityIds.flatMap(id => {
+    const efc = fcByEntity.get(id);
+    return getForecastEntries(efc.id, monthKey)
+      .filter(e => e.bookingStatus !== 'cancelled' && e.bookingStatus !== 'removed')
+      .map(e => ({
+        entityName: entityLabel(id, type),
+        description: e.description || (e.auto ? 'Airbnb reservation' : '—'),
+        source: e.auto ? `Airbnb${BOOKING_STATUS_LABELS[e.bookingStatus] ? ' · ' + BOOKING_STATUS_LABELS[e.bookingStatus] : ''}` : 'Manual',
+        notes: e.notes || '', eur: Number(e.amount) || 0, date: e.checkIn || ''
+      }));
+  }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  const getExpEntriesForMonth = monthKey => entityIds.flatMap(id => {
+    const efc = fcByEntity.get(id);
+    return (efc.months?.[monthKey]?.expenseEntries || []).map(e => ({
+      entityName: entityLabel(id, type), description: e.description || '—',
+      notes: e.notes || '', eur: Number(e.amount) || 0
+    }));
+  });
+
   const results = entityIds.map(id => getForecastVsActual(type, id, year));
   const months = results[0].months.map((_, i) => ({
     key: results[0].months[i].key,
@@ -1560,29 +1590,37 @@ function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
     const tr = el('tr');
     tr.appendChild(el('td', {}, MONTHS[i]));
 
-    // Forecast Revenue — clickable drill-down for property type
+    // Forecast Revenue — clickable drill-down for both property and service
     const fRevCell = el('td', { class: 'right num' });
-    if (type === 'property') {
-      const bookings = entityIds.flatMap(id => getAirbnbForecastEntries(id, months[i].key))
-        .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-      const activeCount = bookings.filter(b => b.bookingStatus === 'pending' || b.bookingStatus === 'materialized').length;
-      fRevCell.appendChild(el('div', {}, formatEUR(m.forecastRev)));
-      if (bookings.length > 0) {
-        fRevCell.appendChild(el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' },
-          `${activeCount} reservation${activeCount === 1 ? '' : 's'}`));
-        fRevCell.style.cursor = 'pointer';
-        fRevCell.title = 'Click to see reservations';
-        fRevCell.onclick = () => drillDownModal(
-          `Forecast Revenue — ${MONTHS[i]}`, bookings, FC_PENDING_COLS);
-      } else {
-        fRevCell.textContent = formatEUR(m.forecastRev);
-      }
+    const revEntries = getRevEntriesForMonth(months[i].key);
+    fRevCell.appendChild(el('div', {}, formatEUR(m.forecastRev)));
+    if (revEntries.length > 0) {
+      fRevCell.appendChild(el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' },
+        `${revEntries.length} entr${revEntries.length === 1 ? 'y' : 'ies'}`));
+      fRevCell.style.cursor = 'pointer';
+      fRevCell.title = 'Click to see forecast breakdown';
+      fRevCell.onclick = () => drillDownModal(
+        `Forecast Revenue — ${MONTHS[i]}`, revEntries, FC_ENTRY_DRILL_COLS);
     } else {
       fRevCell.textContent = formatEUR(m.forecastRev);
     }
     tr.appendChild(fRevCell);
 
-    tr.appendChild(el('td', { class: 'right num' }, formatEUR(m.forecastExp)));
+    // Forecast Expenses — clickable drill-down (same idea, itemized expenseEntries)
+    const fExpCell = el('td', { class: 'right num' });
+    const expEntries = getExpEntriesForMonth(months[i].key);
+    fExpCell.appendChild(el('div', {}, formatEUR(m.forecastExp)));
+    if (expEntries.length > 0) {
+      fExpCell.appendChild(el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' },
+        `${expEntries.length} entr${expEntries.length === 1 ? 'y' : 'ies'}`));
+      fExpCell.style.cursor = 'pointer';
+      fExpCell.title = 'Click to see forecast expense breakdown';
+      fExpCell.onclick = () => drillDownModal(
+        `Forecast Expenses — ${MONTHS[i]}`, expEntries, FC_EXP_DRILL_COLS);
+    } else {
+      fExpCell.textContent = formatEUR(m.forecastExp);
+    }
+    tr.appendChild(fExpCell);
     tr.appendChild(el('td', { class: 'right num' + (net < 0 ? ' danger' : '') }, formatEUR(net)));
 
     // Actual Revenue — clickable
