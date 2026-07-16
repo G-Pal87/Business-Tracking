@@ -279,7 +279,6 @@ function openMonthDetail(eng, year, monthIdx) {
 // ── Entry form ────────────────────────────────────────────────────────────────
 
 function openEntryForm(eng, existing, defaultDate) {
-  const isFuture = (dateStr) => dateStr >= today();
   const en = existing ? { ...existing } : {
     id: newId('to'),
     engagementId: eng.id,
@@ -310,18 +309,31 @@ function openEntryForm(eng, existing, defaultDate) {
   typeS.onchange = updateHint;
   updateHint();
 
+  // A past date can land in a month whose invoice was already created
+  // (createMonthInvoice tags that month's entries with invoiceId) — logging
+  // it retrospectively is fine, but it's a one-time snapshot at invoice
+  // creation, so it won't retroactively change that invoice. Surface that
+  // up front rather than let it look like a silent no-op later.
+  const invoicedHint = el('div', { style: 'font-size:11px;color:var(--warning);padding:4px 0' });
+  const updateInvoicedHint = () => {
+    if (!dateI.value) { invoicedHint.textContent = ''; return; }
+    const y = Number(dateI.value.slice(0, 4));
+    const mIdx = Number(dateI.value.slice(5, 7)) - 1;
+    invoicedHint.textContent = monthBilling(eng, y, mIdx).invoiceId
+      ? `${MONTHS[mIdx]} ${y} has already been invoiced — this entry won't change that invoice.`
+      : '';
+  };
+  dateI.onchange = updateInvoicedHint;
+  updateInvoicedHint();
+
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI), formRow('Amount', amountS)));
   body.appendChild(formRow('Type', typeS));
   body.appendChild(hint);
+  body.appendChild(invoicedHint);
   body.appendChild(formRow('Notes', notesT));
 
   const save = button('Save', { variant: 'primary', onClick: () => {
     if (!dateI.value) { toast('Date required', 'danger'); return; }
-    // Log going forward only (allow editing existing past entries)
-    if (!existing && !isFuture(dateI.value)) {
-      toast('Time off can only be logged from today onward', 'danger', 4000);
-      return;
-    }
     Object.assign(en, {
       date: dateI.value,
       amount: Number(amountS.value) || 1,
