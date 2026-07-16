@@ -394,12 +394,16 @@ async function boot() {
     if (!state.github.token || !state.github.owner || !state.github.repo) return;
     if (state.dirty || pushPending || state.saving || pendingSaveBeforeSync) return;
     if (typeof document !== 'undefined' && document.hidden) return;
-    if (document.querySelector('.modal-overlay.open')) return; // don't disrupt an open form/dialog
+    // Don't disrupt an open form/dialog, or an open filter dropdown — a full
+    // view refresh rebuilds buildMultiSelect() widgets from scratch, which
+    // would silently collapse whichever one the user has open (see ui.js
+    // buildMultiSelect's 'ms-menu open' class).
+    if (document.querySelector('.modal-overlay.open, .ms-menu.open')) return;
     resyncing = true;
     try {
       const remoteDb = await github.fetchDb();          // also refreshes sha + remoteDb base
       // Re-check after the await — the user may have started editing meanwhile.
-      if (state.dirty || pushPending || state.saving || document.querySelector('.modal-overlay.open')) return;
+      if (state.dirty || pushPending || state.saving || document.querySelector('.modal-overlay.open, .ms-menu.open')) return;
       // resyncDb: pure last-writer-wins by updatedAt — no 3-way base.
       // This prevents CDN-stale responses from overwriting locally-held records
       // that were saved more recently. If local.updatedAt > remote.updatedAt,
