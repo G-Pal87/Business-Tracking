@@ -1,11 +1,5 @@
 {
-  "entries": {
-    "Giorgos": {
-      "view": "tenants",
-      "t": 1784221335900,
-      "name": "Giorgos"
-    }
-  },
+  "entries": {},
   "devices": {
     "fd9b77d3-dc30-4dd1-bfe0-51f377701f94": {
       "username": "Giorgos",
