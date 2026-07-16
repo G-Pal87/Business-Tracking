@@ -8,7 +8,9 @@
 //
 // Balances (per engagement):
 //   - Annual quota remaining (calendar year) = quota − (standard + carry_out in that year)
-//   - Carry bank (running, all-time)          = Σ carry_out − Σ carry_in
+//   - Carry bank (running, all-time)          = Σ carry_out − Σ carry_in, PLUS any unused
+//     quota automatically rolled forward from every fully-completed past year (live/derived
+//     — see computeCarryBank; nothing is ever written for this, unlike an explicit carry_out).
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, addDays } from '../core/ui.js';
 import { upsert, softDelete, listActive, newId, byId, formatMoney, getPersonName, patchSettings } from '../core/data.js';
 import { state } from '../core/state.js';
@@ -20,6 +22,10 @@ const TYPE_META = {
 };
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+// Earliest year this module tracks — matches the year picker's lower bound
+// further down, kept as one constant so the two can't drift apart.
+const FIRST_TRACKED_YEAR = 2024;
 
 // ── Engagement helpers ──────────────────────────────────────────────────────
 
@@ -90,13 +96,30 @@ function monthBilling(eng, year, monthIdx) {
   return { entries, working, deducted, carryIn, billable, amount: billable * (eng.dailyRate || 0), invoiceId };
 }
 
+// Carry bank = the manual carry_out/carry_in ledger, PLUS unused quota
+// auto-rolled forward from every fully-completed past year (current year's
+// leftover isn't final until the year ends, so it never contributes yet).
+// `excludeId` lets a save-time check compute the bank as it would be
+// WITHOUT the entry currently being edited/saved, so the guard and the
+// displayed balance can never disagree.
+function computeCarryBank(eng, excludeId = null) {
+  const all = listActive('timeOff').filter(t => t.engagementId === eng.id && t.id !== excludeId);
+  const manualCarry = sumAmount(all, t => t.type === 'carry_out') - sumAmount(all, t => t.type === 'carry_in');
+
+  const thisYear = new Date().getFullYear();
+  let rolledOverQuota = 0;
+  for (let y = FIRST_TRACKED_YEAR; y < thisYear; y++) {
+    const consumedY = sumAmount(entriesFor(eng.id, y, null).filter(t => t.id !== excludeId), t => TYPE_META[t.type]?.deducts);
+    rolledOverQuota += Math.max(0, (eng.annualQuota || 0) - consumedY);
+  }
+  return manualCarry + rolledOverQuota;
+}
+
 function yearBalances(eng, year) {
   const yearEntries = entriesFor(eng.id, year, null);
   const consumed = sumAmount(yearEntries, t => TYPE_META[t.type]?.deducts);
   const quotaRemaining = (eng.annualQuota || 0) - consumed;
-  // Carry bank is a running all-time balance
-  const all = listActive('timeOff').filter(t => t.engagementId === eng.id);
-  const carryBank = sumAmount(all, t => t.type === 'carry_out') - sumAmount(all, t => t.type === 'carry_in');
+  const carryBank = computeCarryBank(eng);
   return { consumed, quotaRemaining, carryBank };
 }
 
@@ -130,7 +153,7 @@ function build() {
   // ── Toolbar ──
   const bar = el('div', { class: 'flex gap-8 mb-16', style: 'align-items:center' });
   const years = [];
-  for (let y = new Date().getFullYear() + 1; y >= 2024; y--) years.push(y);
+  for (let y = new Date().getFullYear() + 1; y >= FIRST_TRACKED_YEAR; y--) years.push(y);
   const yearS = select(years.map(y => ({ value: String(y), label: String(y) })), String(selectedYear));
   yearS.onchange = () => { selectedYear = Number(yearS.value); rerender(); };
   bar.appendChild(formRow('Year', yearS));
@@ -337,11 +360,12 @@ function openEntryForm(eng, existing, defaultDate) {
     const newType = typeS.value;
     const newAmount = Number(amountS.value) || 1;
     // Guard: a carry-in can't spend more than the bank actually holds — the
-    // bank is a running total (see yearBalances), it has no built-in floor,
-    // so without this check it would silently go negative.
+    // bank is a running total (see computeCarryBank), it has no built-in
+    // floor, so without this check it would silently go negative. Uses the
+    // same helper the displayed balance uses (incl. auto-rolled-over quota
+    // from past years) so this check can never disagree with what's shown.
     if (newType === 'carry_in') {
-      const others = listActive('timeOff').filter(t => t.engagementId === eng.id && t.id !== en.id);
-      const bankBeforeThis = sumAmount(others, t => t.type === 'carry_out') - sumAmount(others, t => t.type === 'carry_in');
+      const bankBeforeThis = computeCarryBank(eng, en.id);
       if (newAmount > bankBeforeThis + 1e-9) {
         toast(`Carry bank only has ${fmtDays(Math.max(0, bankBeforeThis))} day(s) available — can't carry in ${fmtDays(newAmount)}.`, 'danger', 5000);
         return;
