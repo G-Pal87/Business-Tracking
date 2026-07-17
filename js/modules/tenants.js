@@ -126,6 +126,30 @@ function build() {
   return wrap;
 }
 
+// A renovation/vacant period left open-ended (no endDate) means "still
+// ongoing" on the property lifecycle timeline. Once a tenant's lease starts,
+// any such period that began before that lease is no longer ongoing — close
+// it as of the lease start date instead of leaving a stale band that runs
+// forever alongside the new tenant's bar. Returns which kinds got closed, so
+// the caller can tell the user.
+function closeOpenPeriodsOnLeaseStart(propertyId, leaseStartDate) {
+  if (!leaseStartDate) return [];
+  const prop = byId('properties', propertyId);
+  if (!prop) return [];
+  const closedKinds = [];
+  const closeOpen = (periods, kind) => (periods || []).map(p => {
+    if (!p.endDate && p.startDate && p.startDate <= leaseStartDate) {
+      closedKinds.push(kind);
+      return { ...p, endDate: leaseStartDate };
+    }
+    return p;
+  });
+  const renovationPeriods = closeOpen(prop.renovationPeriods, 'renovation period');
+  const vacantPeriods     = closeOpen(prop.vacantPeriods,     'vacant period');
+  if (closedKinds.length) upsert('properties', { ...prop, renovationPeriods, vacantPeriods });
+  return closedKinds;
+}
+
 function openForm(existing, onSave) {
   const ltProps = listActive('properties').filter(p => p.type === 'long_term');
   const defaultProp = ltProps[0]?.id || '';
@@ -226,7 +250,11 @@ function openForm(existing, onSave) {
 
     const isNewPastTenant = !existing && updated.status === 'past';
     upsert('tenants', updated);
+    const closedKinds = closeOpenPeriodsOnLeaseStart(updated.propertyId, updated.leaseStartDate);
     toast(existing ? 'Tenant updated' : 'Tenant added', 'success');
+    if (closedKinds.length) {
+      toast(`Closed open ${[...new Set(closedKinds)].join(' & ')} as of ${fmtDate(updated.leaseStartDate)}`, 'info', 5000);
+    }
     closeModal();
     if (onSave) onSave();
 
