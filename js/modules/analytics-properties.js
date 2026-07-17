@@ -1,12 +1,13 @@
 // Property Performance Analytics Dashboard
-import { el, buildMultiSelect, button, fmtDate, drillDownModal, attachSortFilter, openModal } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, today, drillDownModal, attachSortFilter, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, PROPERTY_STREAMS, PROPERTY_STATUSES } from '../core/config.js';
 import {
-  formatEUR, toEUR, byId,
+  formatEUR, formatMoney, toEUR, byId,
   listActive, listActivePayments, isCapEx, isReservationNight,
   simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
+import { openDetail as openPropertyDetail } from './properties.js';
 import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js?v=20260519';
 import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct } from './analytics-helpers.js';
 
@@ -1040,6 +1041,176 @@ function buildLeaseExpiryCard() {
   return card;
 }
 
+// ── Property Lifecycle Timeline ────────────────────────────────────────────────
+// Consolidated Gantt-style history per property — purchase date, renovation
+// periods, and tenant occupancy — all on one shared date axis. Mirrors the
+// per-property Gantt bar mechanics in properties.js's buildTenantTimelineCard,
+// generalized to one row per property (instead of one row per tenant of a
+// single property) with purchase/sold markers and renovation bands added.
+
+// Greedy interval-scheduling lane assignment so overlapping tenants (e.g. a
+// multi-room property with concurrent leases) stack instead of visually
+// colliding. Dates are ISO "YYYY-MM-DD" strings, which sort lexically in
+// chronological order, so no ms parsing is needed here.
+function assignLanes(items, getStart, getEnd) {
+  const laneEnds = [];
+  return items.map(item => {
+    const s = getStart(item), e = getEnd(item);
+    let lane = laneEnds.findIndex(end => end <= s);
+    if (lane === -1) { lane = laneEnds.length; laneEnds.push(e); }
+    else laneEnds[lane] = e;
+    return lane;
+  });
+}
+
+function buildPropertyLifecycleTimeline(propData) {
+  const LABEL_W = 200;
+  const todayStr = today();
+  const tenantEnd = t => t.leaseEndDate || t.terminationDate || todayStr;
+  const renoEnd   = r => r.endDate || todayStr;
+
+  const rows = propData
+    .filter(d => d.prop.purchaseDate)
+    .map(d => ({
+      prop: d.prop,
+      tenants: listActive('tenants')
+        .filter(t => t.propertyId === d.prop.id && t.leaseStartDate && t.status !== 'prospective')
+        .sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || '')),
+      renovations: [...(d.prop.renovationPeriods || [])].sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))
+    }))
+    .sort((a, b) => (a.prop.purchaseDate || '').localeCompare(b.prop.purchaseDate || ''));
+
+  if (rows.length === 0) return null;
+
+  // Shared axis across every row: earliest purchase/lease/renovation start to
+  // the latest lease/renovation/sold end (or today, for anything ongoing).
+  let axisStart = rows[0].prop.purchaseDate;
+  let axisEnd = todayStr;
+  for (const r of rows) {
+    if (r.prop.purchaseDate < axisStart) axisStart = r.prop.purchaseDate;
+    for (const t of r.tenants) {
+      if (t.leaseStartDate < axisStart) axisStart = t.leaseStartDate;
+      const e = tenantEnd(t);
+      if (e > axisEnd) axisEnd = e;
+    }
+    for (const rp of r.renovations) {
+      if (rp.startDate && rp.startDate < axisStart) axisStart = rp.startDate;
+      const e = renoEnd(rp);
+      if (e > axisEnd) axisEnd = e;
+    }
+    if (r.prop.status === 'sold' && r.prop.soldDate && r.prop.soldDate > axisEnd) axisEnd = r.prop.soldDate;
+  }
+
+  const parseD = s => new Date(`${s}T00:00:00Z`).getTime();
+  const startMs = parseD(axisStart);
+  const span = Math.max(parseD(axisEnd) - startMs, 86400000);
+  const pct = s => Math.min(100, Math.max(0, ((parseD(s) - startMs) / span) * 100));
+
+  const card = el('div', { class: 'card mb-16' });
+  const swatch = color => el('span', { style: `display:inline-block;width:9px;height:9px;border-radius:2px;background:${color};margin-right:5px;vertical-align:middle` });
+  card.appendChild(el('div', { class: 'card-header' },
+    el('div', { class: 'card-title' }, `Property Lifecycle Timeline (${rows.length})`),
+    el('div', { class: 'flex gap-16', style: 'font-size:11px;color:var(--text-muted);flex-wrap:wrap' },
+      el('span', {}, swatch('var(--info)'), 'Purchased'),
+      el('span', {}, swatch('var(--warning)'), 'Renovation'),
+      el('span', {}, swatch('var(--success)'), 'Current tenant'),
+      el('span', {}, swatch('var(--accent)'), 'Past tenant'),
+      el('span', {}, swatch('var(--danger)'), 'Sold')
+    )
+  ));
+  card.appendChild(el('div', { style: 'padding:4px 16px 4px;font-size:11px;color:var(--text-muted)' },
+    'Click a property name for full details'
+  ));
+
+  const scroller = el('div', { style: 'max-height:560px;overflow-y:auto;padding:8px 16px 16px' });
+
+  // ── Axis header: edge dates + internal year gridline labels ──
+  const headerTrack = el('div', { style: 'flex:1;position:relative;height:18px;font-size:11px;color:var(--text-muted)' });
+  headerTrack.appendChild(el('span', { style: 'position:absolute;left:0' }, fmtDate(axisStart)));
+  headerTrack.appendChild(el('span', { style: 'position:absolute;right:0' }, axisEnd === todayStr ? 'Today' : fmtDate(axisEnd)));
+  const startYear = new Date(`${axisStart}T00:00:00Z`).getUTCFullYear();
+  const endYear = new Date(`${axisEnd}T00:00:00Z`).getUTCFullYear();
+  const yearMarks = [];
+  for (let y = startYear + 1; y <= endYear; y++) {
+    const p = pct(`${y}-01-01`);
+    if (p <= 2 || p >= 98) continue;
+    yearMarks.push(p);
+    headerTrack.appendChild(el('span', { style: `position:absolute;left:${p}%;transform:translateX(-50%)` }, String(y)));
+  }
+  scroller.appendChild(el('div', { style: 'display:flex' }, el('div', { style: `width:${LABEL_W}px;flex-shrink:0` }), headerTrack));
+
+  // ── Rows + gridline overlay ──
+  const rowsWrap = el('div', { style: 'position:relative;margin-top:4px' });
+  const overlay = el('div', { style: `position:absolute;left:${LABEL_W}px;right:0;top:0;bottom:0;pointer-events:none` });
+  for (const p of yearMarks) {
+    overlay.appendChild(el('div', { style: `position:absolute;left:${p}%;top:0;bottom:0;width:1px;background:var(--border)` }));
+  }
+  rowsWrap.appendChild(overlay);
+
+  const LANE_H = 18, LANE_GAP = 4;
+  for (const { prop, tenants, renovations } of rows) {
+    const lanes = assignLanes(tenants, t => t.leaseStartDate, tenantEnd);
+    const laneCount = Math.max(1, lanes.length ? Math.max(...lanes) + 1 : 1);
+    const trackH = laneCount * LANE_H + (laneCount - 1) * LANE_GAP;
+
+    const row = el('div', { style: `display:flex;align-items:flex-start;min-height:${Math.max(40, trackH + 16)}px;border-bottom:1px solid var(--border);padding:8px 0` });
+    const label = el('div', { style: `width:${LABEL_W}px;flex-shrink:0;padding-right:10px;cursor:pointer` },
+      el('div', { style: 'font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis' }, prop.name),
+      el('div', { class: 'muted', style: 'font-size:11px' }, `Purchased ${fmtDate(prop.purchaseDate)}`)
+    );
+    label.onclick = () => openPropertyDetail(prop.id);
+    row.appendChild(label);
+
+    const track = el('div', { style: `flex:1;position:relative;height:${trackH}px` });
+
+    for (const rp of renovations) {
+      const left = pct(rp.startDate);
+      const width = Math.max(0.8, pct(renoEnd(rp)) - left);
+      const band = el('div', {
+        style: `position:absolute;left:${left}%;width:${width}%;top:0;bottom:0;background:repeating-linear-gradient(45deg,var(--warning-soft),var(--warning-soft) 4px,transparent 4px,transparent 8px);border-left:2px solid var(--warning);border-right:2px solid var(--warning)`
+      });
+      band.title = `Renovation · ${fmtDate(rp.startDate)} – ${rp.endDate ? fmtDate(rp.endDate) : 'ongoing'}` + (rp.notes ? ` · ${rp.notes}` : '');
+      track.appendChild(band);
+    }
+
+    const buyLeft = pct(prop.purchaseDate);
+    const buyMarker = el('div', { style: `position:absolute;left:${buyLeft}%;top:0;bottom:0;width:2px;background:var(--info);transform:translateX(-1px)` });
+    buyMarker.title = `Purchased ${fmtDate(prop.purchaseDate)}` + (prop.purchasePrice ? ` · ${formatMoney(prop.purchasePrice, prop.currency, { maxFrac: 0 })}` : '');
+    track.appendChild(buyMarker);
+    const buyDot = el('div', { style: `position:absolute;left:${buyLeft}%;top:-2px;width:8px;height:8px;border-radius:50%;background:var(--info);transform:translateX(-3px);box-shadow:var(--shadow-sm)` });
+    track.appendChild(buyDot);
+
+    if (prop.status === 'sold' && prop.soldDate) {
+      const soldLeft = pct(prop.soldDate);
+      const soldMarker = el('div', { style: `position:absolute;left:${soldLeft}%;top:0;bottom:0;width:2px;background:var(--danger);transform:translateX(-1px)` });
+      soldMarker.title = `Sold ${fmtDate(prop.soldDate)}`;
+      track.appendChild(soldMarker);
+      const soldDot = el('div', { style: `position:absolute;left:${soldLeft}%;top:-2px;width:8px;height:8px;border-radius:50%;background:var(--danger);transform:translateX(-3px);box-shadow:var(--shadow-sm)` });
+      track.appendChild(soldDot);
+    }
+
+    tenants.forEach((t, i) => {
+      const isCurrent = t.status === 'active';
+      const hasEnd = !!(t.leaseEndDate || t.terminationDate);
+      const endStr = tenantEnd(t);
+      const left = pct(t.leaseStartDate);
+      const width = Math.max(0.8, pct(endStr) - left);
+      const bar = el('div', {
+        style: `position:absolute;left:${left}%;width:${width}%;top:${lanes[i] * (LANE_H + LANE_GAP)}px;height:${LANE_H}px;border-radius:4px;background:${isCurrent ? 'var(--success)' : 'var(--accent)'};box-shadow:var(--shadow-sm)`
+      });
+      bar.title = `${t.name} · ${fmtDate(t.leaseStartDate)} – ${hasEnd ? fmtDate(endStr) : 'Present'}` +
+        (t.monthlyRent ? ` · ${formatMoney(t.monthlyRent, t.currency, { maxFrac: 0 })}/mo` : '');
+      track.appendChild(bar);
+    });
+
+    row.appendChild(track);
+    rowsWrap.appendChild(row);
+  }
+  scroller.appendChild(rowsWrap);
+  card.appendChild(scroller);
+  return card;
+}
+
 // (STR Occupancy Heatmap moved to the STR Performance dashboard — analytics-str.js)
 
 // ── Status badge helper ───────────────────────────────────────────────────────
@@ -1356,6 +1527,10 @@ function buildView() {
 
   // ── Lease Expiry Alerts ────────────────────────────────────────────────────
   wrap.appendChild(buildLeaseExpiryCard());
+
+  // ── Property Lifecycle Timeline ────────────────────────────────────────────
+  const lifecycleTimeline = buildPropertyLifecycleTimeline(propData);
+  if (lifecycleTimeline) wrap.appendChild(lifecycleTimeline);
 
   // STR Occupancy Heatmap moved to the STR Performance dashboard.
 

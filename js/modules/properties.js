@@ -442,6 +442,25 @@ export function openDetail(id, preStats) {
     body.appendChild(vpCard);
   }
 
+  if ((p.renovationPeriods || []).length > 0) {
+    const rpCard = el('div', { class: 'card mb-16' });
+    rpCard.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, `Renovation Periods (${p.renovationPeriods.length})`)));
+    const rpTw = el('div', { class: 'table-wrap' });
+    const rpT = el('table', { class: 'table' });
+    rpT.innerHTML = '<thead><tr><th>Start</th><th>End</th><th>Notes</th></tr></thead>';
+    const rpTb = el('tbody');
+    for (const rp of p.renovationPeriods) {
+      const rptr = el('tr');
+      rptr.appendChild(el('td', {}, fmtDate(rp.startDate)));
+      rptr.appendChild(el('td', {}, rp.endDate ? fmtDate(rp.endDate) : 'Ongoing'));
+      rptr.appendChild(el('td', { class: 'muted' }, rp.notes || ''));
+      rpTb.appendChild(rptr);
+    }
+    rpT.appendChild(rpTb); rpTw.appendChild(rpT);
+    rpCard.appendChild(rpTw);
+    body.appendChild(rpCard);
+  }
+
   // Vendors with rates for this property
   const propVendors = (state.db.vendors || []).filter(v => v.rates && v.rates[id] !== undefined);
   if (propVendors.length > 0) {
@@ -905,6 +924,50 @@ function openForm(existing) {
   vpCard.appendChild(vpListEl);
   body.appendChild(vpCard);
 
+  // Renovation periods editor
+  let pendingRenovationPeriods = [...(p.renovationPeriods || [])];
+  const rpListEl = el('div', { style: 'padding:0 16px 8px' });
+  const renderRPList = () => {
+    rpListEl.innerHTML = '';
+    if (pendingRenovationPeriods.length === 0) {
+      rpListEl.appendChild(el('div', { class: 'muted', style: 'font-size:13px;padding:4px 0' }, 'No renovation periods added'));
+      return;
+    }
+    for (const rp of pendingRenovationPeriods) {
+      const rpRow = el('div', { class: 'flex gap-8', style: 'align-items:center;margin-bottom:4px' });
+      rpRow.appendChild(el('span', { style: 'font-size:13px;flex:1' },
+        `${fmtDate(rp.startDate)} – ${rp.endDate ? fmtDate(rp.endDate) : 'ongoing'}${rp.notes ? ' · ' + rp.notes : ''}`
+      ));
+      rpRow.appendChild(button('✕', { variant: 'sm ghost', onClick: () => {
+        pendingRenovationPeriods = pendingRenovationPeriods.filter(x => x !== rp);
+        renderRPList();
+      }}));
+      rpListEl.appendChild(rpRow);
+    }
+  };
+  renderRPList();
+  const rpStartI = el('input', { type: 'date', class: 'input', style: 'min-width:130px' });
+  const rpEndI   = el('input', { type: 'date', class: 'input', style: 'min-width:130px' });
+  const rpNotesI = el('input', { type: 'text',  class: 'input', placeholder: 'Notes (optional)', style: 'flex:1;min-width:100px' });
+  const addRPBtn = button('Add', { onClick: () => {
+    if (!rpStartI.value) { toast('Start date is required', 'danger'); return; }
+    pendingRenovationPeriods.push({ id: newId('reno'), startDate: rpStartI.value, endDate: rpEndI.value || '', notes: rpNotesI.value.trim() });
+    rpStartI.value = ''; rpEndI.value = ''; rpNotesI.value = '';
+    renderRPList();
+  }});
+  const rpCard = el('div', { class: 'card mb-16' });
+  rpCard.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Renovation Periods')));
+  const rpAddRow = el('div', { class: 'flex gap-8', style: 'padding:8px 16px 4px;flex-wrap:wrap;align-items:center' });
+  rpAddRow.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Start'));
+  rpAddRow.appendChild(rpStartI);
+  rpAddRow.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'End'));
+  rpAddRow.appendChild(rpEndI);
+  rpAddRow.appendChild(rpNotesI);
+  rpAddRow.appendChild(addRPBtn);
+  rpCard.appendChild(rpAddRow);
+  rpCard.appendChild(rpListEl);
+  body.appendChild(rpCard);
+
   // Documents upload
   let pendingDocs = [...(p.documents || [])];
   const fileInput = el('input', {
@@ -1033,6 +1096,7 @@ function openForm(existing) {
       notes: notesT.value.trim(),
       soldDate: soldDateI.value,
       vacantPeriods: pendingVacantPeriods,
+      renovationPeriods: pendingRenovationPeriods,
       documents: docsToSave
     });
     // Soft-delete unpaid payments within vacant periods (keep paid history intact)
