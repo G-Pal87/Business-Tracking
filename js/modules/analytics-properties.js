@@ -3,7 +3,7 @@ import { el, buildMultiSelect, button, fmtDate, today, drillDownModal, attachSor
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, PROPERTY_STREAMS, PROPERTY_STATUSES } from '../core/config.js';
 import {
-  formatEUR, formatMoney, toEUR, byId,
+  formatEUR, formatMoney, toEUR, byId, getPersonName,
   listActive, listActivePayments, isCapEx, isReservationNight,
   simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
@@ -1063,11 +1063,39 @@ function assignLanes(items, getStart, getEnd) {
   });
 }
 
+// Compact "Xy Ym" / "Xm" span label between two ISO date strings, for the
+// click-through info popups below.
+function durationLabel(startStr, endStr) {
+  const start = new Date(`${startStr}T00:00:00Z`);
+  const end   = new Date(`${endStr}T00:00:00Z`);
+  let months = (end.getUTCFullYear() - start.getUTCFullYear()) * 12 + (end.getUTCMonth() - start.getUTCMonth());
+  if (end.getUTCDate() < start.getUTCDate()) months--;
+  months = Math.max(0, months);
+  const years = Math.floor(months / 12);
+  const rem = months % 12;
+  if (years && rem) return `${years}y ${rem}m`;
+  if (years) return `${years}y`;
+  return `${rem}m`;
+}
+
+// Compact click-through popup for a single bar/marker/band on the timeline —
+// a small label/value grid rather than a full drill-down table, since the
+// point of clicking a bar is a quick fact-check, not another dashboard.
+function openTimelineInfoModal(title, fields) {
+  const body = el('div');
+  body.appendChild(mkSummaryGrid(
+    fields.filter(([, v]) => v !== undefined).map(([label, value]) => ({ label, value: value || '—' })),
+    2
+  ));
+  openModal({ title, body });
+}
+
 function buildPropertyLifecycleTimeline(propData) {
   const LABEL_W = 200;
   const todayStr = today();
   const tenantEnd = t => t.leaseEndDate || t.terminationDate || todayStr;
   const renoEnd   = r => r.endDate || todayStr;
+  const vacEnd    = v => v.endDate || todayStr;
 
   const rows = propData
     .filter(d => d.prop.purchaseDate)
@@ -1076,14 +1104,16 @@ function buildPropertyLifecycleTimeline(propData) {
       tenants: listActive('tenants')
         .filter(t => t.propertyId === d.prop.id && t.leaseStartDate && t.status !== 'prospective')
         .sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || '')),
-      renovations: [...(d.prop.renovationPeriods || [])].sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))
+      renovations: [...(d.prop.renovationPeriods || [])].sort((a, b) => (a.startDate || '').localeCompare(b.startDate || '')),
+      vacancies: [...(d.prop.vacantPeriods || [])].sort((a, b) => (a.startDate || '').localeCompare(b.startDate || ''))
     }))
     .sort((a, b) => (a.prop.purchaseDate || '').localeCompare(b.prop.purchaseDate || ''));
 
   if (rows.length === 0) return null;
 
-  // Shared axis across every row: earliest purchase/lease/renovation start to
-  // the latest lease/renovation/sold end (or today, for anything ongoing).
+  // Shared axis across every row: earliest purchase/lease/renovation/vacancy
+  // start to the latest lease/renovation/vacancy/sold end (or today, for
+  // anything ongoing).
   let axisStart = rows[0].prop.purchaseDate;
   let axisEnd = todayStr;
   for (const r of rows) {
@@ -1096,6 +1126,11 @@ function buildPropertyLifecycleTimeline(propData) {
     for (const rp of r.renovations) {
       if (rp.startDate && rp.startDate < axisStart) axisStart = rp.startDate;
       const e = renoEnd(rp);
+      if (e > axisEnd) axisEnd = e;
+    }
+    for (const vp of r.vacancies) {
+      if (vp.startDate && vp.startDate < axisStart) axisStart = vp.startDate;
+      const e = vacEnd(vp);
       if (e > axisEnd) axisEnd = e;
     }
     if (r.prop.status === 'sold' && r.prop.soldDate && r.prop.soldDate > axisEnd) axisEnd = r.prop.soldDate;
@@ -1113,13 +1148,14 @@ function buildPropertyLifecycleTimeline(propData) {
     el('div', { class: 'flex gap-16', style: 'font-size:11px;color:var(--text-muted);flex-wrap:wrap' },
       el('span', {}, swatch('var(--info)'), 'Purchased'),
       el('span', {}, swatch('var(--warning)'), 'Renovation'),
+      el('span', {}, swatch('var(--text-dim)'), 'Vacant'),
       el('span', {}, swatch('var(--success)'), 'Current tenant'),
       el('span', {}, swatch('var(--accent)'), 'Past tenant'),
       el('span', {}, swatch('var(--danger)'), 'Sold')
     )
   ));
   card.appendChild(el('div', { style: 'padding:4px 16px 4px;font-size:11px;color:var(--text-muted)' },
-    'Click a property name for full details'
+    'Click a property name for full details · click any bar or marker for a quick summary'
   ));
 
   const scroller = el('div', { style: 'max-height:560px;overflow-y:auto;padding:8px 16px 16px' });
@@ -1148,7 +1184,7 @@ function buildPropertyLifecycleTimeline(propData) {
   rowsWrap.appendChild(overlay);
 
   const LANE_H = 18, LANE_GAP = 4;
-  for (const { prop, tenants, renovations } of rows) {
+  for (const { prop, tenants, renovations, vacancies } of rows) {
     const lanes = assignLanes(tenants, t => t.leaseStartDate, tenantEnd);
     const laneCount = Math.max(1, lanes.length ? Math.max(...lanes) + 1 : 1);
     const trackH = laneCount * LANE_H + (laneCount - 1) * LANE_GAP;
@@ -1163,29 +1199,72 @@ function buildPropertyLifecycleTimeline(propData) {
 
     const track = el('div', { style: `flex:1;position:relative;height:${trackH}px` });
 
+    for (const vp of vacancies) {
+      const left = pct(vp.startDate);
+      const width = Math.max(0.8, pct(vacEnd(vp)) - left);
+      const band = el('div', {
+        style: `position:absolute;left:${left}%;width:${width}%;top:0;bottom:0;cursor:pointer;background:repeating-linear-gradient(90deg,rgba(139,147,176,0.16),rgba(139,147,176,0.16) 3px,transparent 3px,transparent 7px);border-left:2px dashed var(--text-dim);border-right:2px dashed var(--text-dim)`
+      });
+      const endLabel = vp.endDate ? fmtDate(vp.endDate) : 'Ongoing';
+      band.title = `Vacant · ${fmtDate(vp.startDate)} – ${endLabel}` + (vp.notes ? ` · ${vp.notes}` : '');
+      band.onclick = () => openTimelineInfoModal(`${prop.name} — Vacant`, [
+        ['Start', fmtDate(vp.startDate)],
+        ['End', endLabel],
+        ['Duration', durationLabel(vp.startDate, vacEnd(vp))],
+        ['Notes', vp.notes]
+      ]);
+      track.appendChild(band);
+    }
+
     for (const rp of renovations) {
       const left = pct(rp.startDate);
       const width = Math.max(0.8, pct(renoEnd(rp)) - left);
       const band = el('div', {
-        style: `position:absolute;left:${left}%;width:${width}%;top:0;bottom:0;background:repeating-linear-gradient(45deg,var(--warning-soft),var(--warning-soft) 4px,transparent 4px,transparent 8px);border-left:2px solid var(--warning);border-right:2px solid var(--warning)`
+        style: `position:absolute;left:${left}%;width:${width}%;top:0;bottom:0;cursor:pointer;background:repeating-linear-gradient(45deg,var(--warning-soft),var(--warning-soft) 4px,transparent 4px,transparent 8px);border-left:2px solid var(--warning);border-right:2px solid var(--warning)`
       });
-      band.title = `Renovation · ${fmtDate(rp.startDate)} – ${rp.endDate ? fmtDate(rp.endDate) : 'ongoing'}` + (rp.notes ? ` · ${rp.notes}` : '');
+      const endLabel = rp.endDate ? fmtDate(rp.endDate) : 'Ongoing';
+      band.title = `Renovation · ${fmtDate(rp.startDate)} – ${endLabel}` + (rp.notes ? ` · ${rp.notes}` : '');
+      band.onclick = () => openTimelineInfoModal(`${prop.name} — Renovation`, [
+        ['Start', fmtDate(rp.startDate)],
+        ['End', endLabel],
+        ['Duration', durationLabel(rp.startDate, renoEnd(rp))],
+        ['Notes', rp.notes]
+      ]);
       track.appendChild(band);
     }
 
     const buyLeft = pct(prop.purchaseDate);
-    const buyMarker = el('div', { style: `position:absolute;left:${buyLeft}%;top:0;bottom:0;width:2px;background:var(--info);transform:translateX(-1px)` });
+    const buyEndForOwnership = prop.status === 'sold' && prop.soldDate ? prop.soldDate : todayStr;
+    const onBuyClick = () => openTimelineInfoModal(`${prop.name} — Purchased`, [
+      ['Purchase Date', fmtDate(prop.purchaseDate)],
+      ['Purchase Price', prop.purchasePrice ? formatMoney(prop.purchasePrice, prop.currency, { maxFrac: 0 }) : null],
+      ['Owner', getPersonName(prop.owner || 'both')],
+      ['Status', PROPERTY_STATUSES[prop.status]?.label || prop.status],
+      [prop.status === 'sold' ? 'Held For' : 'Owned For', durationLabel(prop.purchaseDate, buyEndForOwnership)]
+    ]);
+    const buyMarker = el('div', { style: `position:absolute;left:${buyLeft}%;top:0;bottom:0;width:2px;cursor:pointer;background:var(--info);transform:translateX(-1px)` });
     buyMarker.title = `Purchased ${fmtDate(prop.purchaseDate)}` + (prop.purchasePrice ? ` · ${formatMoney(prop.purchasePrice, prop.currency, { maxFrac: 0 })}` : '');
+    buyMarker.onclick = onBuyClick;
     track.appendChild(buyMarker);
-    const buyDot = el('div', { style: `position:absolute;left:${buyLeft}%;top:-2px;width:8px;height:8px;border-radius:50%;background:var(--info);transform:translateX(-3px);box-shadow:var(--shadow-sm)` });
+    const buyDot = el('div', { style: `position:absolute;left:${buyLeft}%;top:-2px;width:8px;height:8px;border-radius:50%;cursor:pointer;background:var(--info);transform:translateX(-3px);box-shadow:var(--shadow-sm)` });
+    buyDot.title = buyMarker.title;
+    buyDot.onclick = onBuyClick;
     track.appendChild(buyDot);
 
     if (prop.status === 'sold' && prop.soldDate) {
       const soldLeft = pct(prop.soldDate);
-      const soldMarker = el('div', { style: `position:absolute;left:${soldLeft}%;top:0;bottom:0;width:2px;background:var(--danger);transform:translateX(-1px)` });
+      const onSoldClick = () => openTimelineInfoModal(`${prop.name} — Sold`, [
+        ['Sold Date', fmtDate(prop.soldDate)],
+        ['Purchase Date', fmtDate(prop.purchaseDate)],
+        ['Held For', durationLabel(prop.purchaseDate, prop.soldDate)]
+      ]);
+      const soldMarker = el('div', { style: `position:absolute;left:${soldLeft}%;top:0;bottom:0;width:2px;cursor:pointer;background:var(--danger);transform:translateX(-1px)` });
       soldMarker.title = `Sold ${fmtDate(prop.soldDate)}`;
+      soldMarker.onclick = onSoldClick;
       track.appendChild(soldMarker);
-      const soldDot = el('div', { style: `position:absolute;left:${soldLeft}%;top:-2px;width:8px;height:8px;border-radius:50%;background:var(--danger);transform:translateX(-3px);box-shadow:var(--shadow-sm)` });
+      const soldDot = el('div', { style: `position:absolute;left:${soldLeft}%;top:-2px;width:8px;height:8px;border-radius:50%;cursor:pointer;background:var(--danger);transform:translateX(-3px);box-shadow:var(--shadow-sm)` });
+      soldDot.title = soldMarker.title;
+      soldDot.onclick = onSoldClick;
       track.appendChild(soldDot);
     }
 
@@ -1193,13 +1272,23 @@ function buildPropertyLifecycleTimeline(propData) {
       const isCurrent = t.status === 'active';
       const hasEnd = !!(t.leaseEndDate || t.terminationDate);
       const endStr = tenantEnd(t);
+      const endLabel = hasEnd ? fmtDate(endStr) : 'Present';
       const left = pct(t.leaseStartDate);
       const width = Math.max(0.8, pct(endStr) - left);
       const bar = el('div', {
-        style: `position:absolute;left:${left}%;width:${width}%;top:${lanes[i] * (LANE_H + LANE_GAP)}px;height:${LANE_H}px;border-radius:4px;background:${isCurrent ? 'var(--success)' : 'var(--accent)'};box-shadow:var(--shadow-sm)`
+        style: `position:absolute;left:${left}%;width:${width}%;top:${lanes[i] * (LANE_H + LANE_GAP)}px;height:${LANE_H}px;border-radius:4px;cursor:pointer;background:${isCurrent ? 'var(--success)' : 'var(--accent)'};box-shadow:var(--shadow-sm)`
       });
-      bar.title = `${t.name} · ${fmtDate(t.leaseStartDate)} – ${hasEnd ? fmtDate(endStr) : 'Present'}` +
+      bar.title = `${t.name} · ${fmtDate(t.leaseStartDate)} – ${endLabel}` +
         (t.monthlyRent ? ` · ${formatMoney(t.monthlyRent, t.currency, { maxFrac: 0 })}/mo` : '');
+      bar.onclick = () => openTimelineInfoModal(`${t.name} — Tenant`, [
+        ['Property', prop.name],
+        ['Status', isCurrent ? 'Current tenant' : 'Past tenant'],
+        ['Lease Start', fmtDate(t.leaseStartDate)],
+        ['Lease End', endLabel],
+        ['Duration', durationLabel(t.leaseStartDate, endStr)],
+        ['Monthly Rent', t.monthlyRent ? formatMoney(t.monthlyRent, t.currency, { maxFrac: 0 }) : null],
+        ['Notes', t.notes]
+      ]);
       track.appendChild(bar);
     });
 
