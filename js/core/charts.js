@@ -96,7 +96,19 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
   const ctx = canvas.getContext('2d');
   const opts = baseOpts();
   if (stacked) { opts.scales.x.stacked = true; opts.scales.y.stacked = true; }
-  if (horizontal) opts.indexAxis = 'y';
+  if (horizontal) {
+    opts.indexAxis = 'y';
+    // The category axis becomes Y here. Chart.js's default autoSkip silently
+    // drops tick labels once rows get too tight to fit them all — exactly
+    // what happens once a dashboard has enough rows (properties, vendors...)
+    // to outgrow the fixed .chart-wrap height, and it fails silent: a bar
+    // renders with no name next to it, not an error. Never skip a category
+    // label; the height grow below gives every row room instead.
+    opts.scales.y.ticks.autoSkip = false;
+    opts.scales.x.grace = '12%'; // headroom so the value labels drawn past each bar's tip aren't clipped
+  } else {
+    opts.scales.y.grace = '12%'; // headroom for the value labels drawn above/below each bar
+  }
   if (onClickItem) {
     opts.onClick = (_e, elements) => {
       if (!elements.length) return;
@@ -104,6 +116,18 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
       onClickItem(labels[index], index, datasetIndex);
     };
     canvas.style.cursor = 'pointer';
+  }
+
+  // A fixed-height .chart-wrap looks fine for a handful of rows, but once a
+  // horizontal bar chart has enough categories each row gets squeezed below
+  // a legible height (the same squeeze that makes Chart.js autoSkip labels
+  // above). Grow the wrapper — never shrink it — so every never-skipped
+  // label has real room. Skipped when the wrapper isn't laid out yet
+  // (offsetHeight 0, e.g. a hidden ancestor) rather than risk collapsing it.
+  if (horizontal && canvas.parentElement) {
+    const rowsNeeded = labels.length * 26 + 40;
+    const current = canvas.parentElement.offsetHeight;
+    if (current > 0 && rowsNeeded > current) canvas.parentElement.style.height = `${rowsNeeded}px`;
   }
 
   // Per-category total (sum of the stack at each index) — shown as a tooltip
@@ -140,6 +164,12 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
     }
   }
 
+  // Always-visible value labels — reading the amount currently means hovering
+  // every bar one at a time. Stacked bars already get a total via showTotals
+  // above; a label per segment there would just overlap, so this is
+  // deliberately skipped for stacked charts.
+  if (!stacked) localPlugins.push(valueLabelsPlugin(horizontal));
+
   const c = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -150,6 +180,73 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
     plugins: localPlugins
   });
   registry.set(id, c);
+}
+
+// Slice percentage labels — drawn directly on each big-enough doughnut/pie
+// wedge so the split is legible at a glance instead of needing a hover per
+// slice. Independent of toggleDoughnutPct's value/% tooltip+legend toggle.
+function sliceLabelsPlugin() {
+  return {
+    id: 'sliceLabels',
+    afterDatasetsDraw(chart) {
+      const ds = chart.data.datasets[0];
+      const meta = chart.getDatasetMeta(0);
+      if (!meta?.data?.length) return;
+      const visible = i => chart.getDataVisibility ? chart.getDataVisibility(i) : true;
+      const total = ds.data.reduce((s, v, i) => s + (visible(i) && typeof v === 'number' ? v : 0), 0);
+      if (total <= 0) return;
+      const g = chart.ctx;
+      g.save();
+      g.font = '700 11px sans-serif';
+      g.fillStyle = '#fff';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.shadowColor = 'rgba(0,0,0,0.55)';
+      g.shadowBlur = 3;
+      meta.data.forEach((arc, i) => {
+        const val = ds.data[i];
+        if (!visible(i) || !val) return;
+        const pct = val / total * 100;
+        if (pct < 4) return; // too thin a wedge to label legibly
+        const angle = (arc.startAngle + arc.endAngle) / 2;
+        const radius = (arc.innerRadius + arc.outerRadius) / 2;
+        g.fillText(`${pct.toFixed(0)}%`, arc.x + Math.cos(angle) * radius, arc.y + Math.sin(angle) * radius);
+      });
+      g.restore();
+    }
+  };
+}
+
+function valueLabelsPlugin(horizontal) {
+  return {
+    id: 'valueLabels',
+    afterDatasetsDraw(chart) {
+      const g = chart.ctx;
+      g.save();
+      g.font = '600 10px sans-serif';
+      g.fillStyle = '#e4e8f1';
+      chart.data.datasets.forEach((ds, di) => {
+        if (!chart.isDatasetVisible(di)) return;
+        const meta = chart.getDatasetMeta(di);
+        meta.data.forEach((el, i) => {
+          const raw = ds.data[i];
+          if (raw === null || raw === undefined || raw === 0) return;
+          const label = '€' + Math.round(raw).toLocaleString('de-DE');
+          const positive = raw >= 0;
+          if (horizontal) {
+            g.textAlign = positive ? 'left' : 'right';
+            g.textBaseline = 'middle';
+            g.fillText(label, el.x + (positive ? 6 : -6), el.y);
+          } else {
+            g.textAlign = 'center';
+            g.textBaseline = positive ? 'bottom' : 'top';
+            g.fillText(label, el.x, el.y + (positive ? -4 : 4));
+          }
+        });
+      });
+      g.restore();
+    }
+  };
 }
 
 export function toggleDoughnutPct(id) {
@@ -212,7 +309,8 @@ export function doughnut(id, { labels, data, colors, onClickItem }) {
         borderWidth: 2
       }]
     },
-    options: opts
+    options: opts,
+    plugins: [sliceLabelsPlugin()]
   });
   registry.set(id, c);
 }
