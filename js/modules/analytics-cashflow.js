@@ -16,7 +16,7 @@ import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBa
 let gF = createFilterState();
 let gScope = 'company'; // 'company' | 'all'
 
-const CHART_IDS = ['cf-cumulative-line', 'cf-month-bar', 'cf-net-donut', 'cf-net-month-bar', 'cf-prop-hbar', 'cf-stream-bar'];
+const CHART_IDS = ['cf-cumulative-line', 'cf-month-bar', 'cf-net-donut', 'cf-net-month-bar'];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 let _cfSortCol = -1, _cfSortDir = 1, _cfSearch = '';
@@ -1181,28 +1181,6 @@ function buildView() {
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-net-month-bar' }))
   ));
 
-  // ── Cash Flow by Stream and Property ──────────────────────────────────────
-  wrap.appendChild(el('div', { style: 'margin:8px 0 12px' },
-    el('h3', { style: 'margin:0;font-size:14px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px' }, 'Cash Flow by Stream and Property')
-  ));
-
-  const row4 = el('div', { class: 'grid grid-2 mb-16' });
-  row4.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Cash Flow by Property'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click for breakdown')
-    ),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-prop-hbar' }))
-  ));
-  row4.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' },
-      el('div', { class: 'card-title' }, 'Cash Flow by Stream'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click for breakdown')
-    ),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'cf-stream-bar' }))
-  ));
-  wrap.appendChild(row4);
-
   // ── Cash Seasonality Heatmap ───────────────────────────────────────────────
   const heatmap = buildCashSeasonalityHeatmap();
   if (heatmap) wrap.appendChild(heatmap);
@@ -1244,8 +1222,6 @@ function buildView() {
     renderMonthBar(curData, monthKeys);
     renderNetStreamDonut(curData);
     renderNetMonthBar(curData, monthKeys);
-    renderPropHBar(curData);
-    renderStreamBar(curData);
   }, 0);
 
   return wrap;
@@ -1571,186 +1547,6 @@ function renderNetMonthBar({ payments, invoices, opExpenses, capExpenses }, mont
       }
 
       openModal({ title: `Net Cash Flow — ${mLabel}`, body, large: true });
-    }
-  });
-}
-
-// ── Chart 5: Horizontal grouped bar — Cash Flow by Property ──────────────────
-function renderPropHBar({ payments, opExpenses, capExpenses }) {
-  const propInMap  = new Map();
-  const propOpMap  = new Map();
-  const propCapMap = new Map();
-  const propNames  = new Map();
-
-  const regName = pid => { if (!propNames.has(pid)) propNames.set(pid, byId('properties', pid)?.name || pid); };
-
-  payments   .forEach(p => { if (!p.propertyId) return; regName(p.propertyId); propInMap .set(p.propertyId, (propInMap .get(p.propertyId) || 0) + toEUR(p.amount, p.currency, p.date)); });
-  opExpenses .forEach(e => { if (!e.propertyId) return; regName(e.propertyId); propOpMap .set(e.propertyId, (propOpMap .get(e.propertyId) || 0) + toEUR(e.amount, e.currency, e.date)); });
-  capExpenses.forEach(e => { if (!e.propertyId) return; regName(e.propertyId); propCapMap.set(e.propertyId, (propCapMap.get(e.propertyId) || 0) + toEUR(e.amount, e.currency, e.date)); });
-
-  const allPids = [...new Set([...propInMap.keys(), ...propOpMap.keys(), ...propCapMap.keys()])];
-  if (!allPids.length) return;
-
-  allPids.sort((a, b) =>
-    ((propInMap.get(b) || 0) + (propOpMap.get(b) || 0) + (propCapMap.get(b) || 0)) -
-    ((propInMap.get(a) || 0) + (propOpMap.get(a) || 0) + (propCapMap.get(a) || 0))
-  );
-
-  charts.bar('cf-prop-hbar', {
-    labels: allPids.map(pid => propNames.get(pid) || pid),
-    datasets: [
-      { label: 'Cash In',             data: allPids.map(pid => Math.round(propInMap .get(pid) || 0)), backgroundColor: 'rgba(16,185,129,0.8)' },
-      { label: 'Operating Cash Out',  data: allPids.map(pid => Math.round(propOpMap .get(pid) || 0)), backgroundColor: 'rgba(239,68,68,0.8)'  },
-      { label: 'Investment Cash Out', data: allPids.map(pid => Math.round(propCapMap.get(pid) || 0)), backgroundColor: 'rgba(185,28,28,0.8)'  }
-    ],
-    horizontal: true,
-    stacked: false,
-    onClickItem: (_label, idx, dsIdx) => {
-      const pid  = allPids[idx];
-      const name = propNames.get(pid) || pid;
-      const pPay = payments   .filter(p => p.propertyId === pid);
-      const pOp  = opExpenses .filter(e => e.propertyId === pid);
-      const pCap = capExpenses.filter(e => e.propertyId === pid);
-      const dsLabel = dsIdx === 0 ? 'Cash In' : dsIdx === 1 ? 'Operating Cash Out' : 'Investment Cash Out';
-      const pIn     = pPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-      const pOpOut  = pOp .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-      const pCapOut = pCap.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-      const pNet = pIn - pOpOut - pCapOut;
-
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px' });
-      summaryGrid.appendChild(mkSummaryBox('Cash In', formatEUR(pIn), `${pPay.length} payments`));
-      summaryGrid.appendChild(mkSummaryBox('Op. Cash Out', formatEUR(pOpOut), `${pOp.length} expenses`));
-      summaryGrid.appendChild(mkSummaryBox('Invest. Out', formatEUR(pCapOut), `${pCap.length} items`));
-      summaryGrid.appendChild(mkSummaryBox('Net CF', formatEUR(pNet), pNet >= 0 ? 'Surplus' : 'Deficit'));
-      body.appendChild(summaryGrid);
-
-      // Focused dataset section based on what was clicked
-      if (dsIdx === 0 && pPay.length > 0) {
-        // Cash In: breakdown by stream
-        const streamMap = new Map();
-        pPay.forEach(p => { const k = STREAMS[p.stream]?.label || p.stream || 'Other'; streamMap.set(k, (streamMap.get(k) || 0) + toEUR(p.amount, p.currency, p.date)); });
-        const streamEntries = [...streamMap.entries()].sort((a, b) => b[1] - a[1]);
-        const streamSection = el('div');
-        streamSection.appendChild(mkSectionLabel('Cash In by Stream'));
-        streamSection.appendChild(mkModalTable(
-          ['Stream', 'Amount', '% of In'],
-          streamEntries.map(([k, v]) => [k, formatEUR(v), pIn > 0 ? (v / pIn * 100).toFixed(1) + '%' : '—'])
-        ));
-        body.appendChild(streamSection);
-      } else if (dsIdx !== 0) {
-        // OpEx or CapEx: category breakdown
-        const items = dsIdx === 1 ? pOp : pCap;
-        const total = dsIdx === 1 ? pOpOut : pCapOut;
-        const catMap = new Map();
-        items.forEach(e => { const cat = e.category || 'Uncategorized'; catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date)); });
-        const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
-        const catSection = el('div');
-        catSection.appendChild(mkSectionLabel(`${dsLabel} by Category`));
-        catSection.appendChild(mkModalTable(
-          ['Category', 'Amount', '% of Total'],
-          catEntries.map(([k, v]) => [k, formatEUR(v), total > 0 ? (v / total * 100).toFixed(1) + '%' : '—'])
-        ));
-        body.appendChild(catSection);
-      }
-
-      openModal({ title: `${name} — ${dsLabel}`, body, large: true });
-    }
-  });
-}
-
-// ── Chart 6: Horizontal grouped bar — Cash Flow by Stream ────────────────────
-function renderStreamBar({ payments, invoices, opExpenses, capExpenses }) {
-  const streamInMap  = new Map();
-  const streamOpMap  = new Map();
-  const streamCapMap = new Map();
-
-  payments   .forEach(p => { const k = p.stream || 'other'; streamInMap .set(k, (streamInMap .get(k) || 0) + toEUR(p.amount, p.currency, p.date)); });
-  invoices   .forEach(i => { const k = i.stream || 'other'; streamInMap .set(k, (streamInMap .get(k) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
-  opExpenses .forEach(e => { const k = expStream(e);         streamOpMap .set(k, (streamOpMap .get(k) || 0) + toEUR(e.amount, e.currency, e.date)); });
-  capExpenses.forEach(e => { const k = expStream(e);         streamCapMap.set(k, (streamCapMap.get(k) || 0) + toEUR(e.amount, e.currency, e.date)); });
-
-  const allKeys = [...new Set([...streamInMap.keys(), ...streamOpMap.keys(), ...streamCapMap.keys()])];
-  if (!allKeys.length) return;
-
-  allKeys.sort((a, b) =>
-    ((streamInMap.get(b) || 0) + (streamOpMap.get(b) || 0) + (streamCapMap.get(b) || 0)) -
-    ((streamInMap.get(a) || 0) + (streamOpMap.get(a) || 0) + (streamCapMap.get(a) || 0))
-  );
-
-  charts.bar('cf-stream-bar', {
-    labels: allKeys.map(k => STREAMS[k]?.label || k),
-    datasets: [
-      { label: 'Cash In',             data: allKeys.map(k => Math.round(streamInMap .get(k) || 0)), backgroundColor: 'rgba(16,185,129,0.8)' },
-      { label: 'Operating Cash Out',  data: allKeys.map(k => Math.round(streamOpMap .get(k) || 0)), backgroundColor: 'rgba(239,68,68,0.8)'  },
-      { label: 'Investment Cash Out', data: allKeys.map(k => Math.round(streamCapMap.get(k) || 0)), backgroundColor: 'rgba(185,28,28,0.8)'  }
-    ],
-    horizontal: true,
-    stacked: false,
-    onClickItem: (_label, idx, dsIdx) => {
-      const sk = allKeys[idx];
-      const streamLabel = STREAMS[sk]?.label || sk;
-      const dsLabel = dsIdx === 0 ? 'Cash In' : dsIdx === 1 ? 'Operating Cash Out' : 'Investment Cash Out';
-      const sPay = payments   .filter(p => (p.stream || 'other') === sk);
-      const sInv = invoices   .filter(i => (i.stream || 'other') === sk);
-      const sOp  = opExpenses .filter(e => expStream(e) === sk);
-      const sCap = capExpenses.filter(e => expStream(e) === sk);
-      const sIn     = sPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
-                    + sInv.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-      const sOpOut  = sOp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-      const sCapOut = sCap.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-      const sNet = sIn - sOpOut - sCapOut;
-
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px' });
-      summaryGrid.appendChild(mkSummaryBox('Cash In', formatEUR(sIn), `${sPay.length + sInv.length} items`));
-      summaryGrid.appendChild(mkSummaryBox('Op. Cash Out', formatEUR(sOpOut), `${sOp.length} expenses`));
-      summaryGrid.appendChild(mkSummaryBox('Invest. Out', formatEUR(sCapOut), `${sCap.length} items`));
-      summaryGrid.appendChild(mkSummaryBox('Net CF', formatEUR(sNet), sNet >= 0 ? 'Surplus' : 'Deficit'));
-      body.appendChild(summaryGrid);
-
-      // Monthly breakdown for this stream
-      const monthMap = new Map();
-      const addM = (mk, inV, opV, capV) => {
-        if (!mk) return;
-        const c = monthMap.get(mk) || { in: 0, opOut: 0, capOut: 0 };
-        c.in += inV; c.opOut += opV; c.capOut += capV;
-        monthMap.set(mk, c);
-      };
-      sPay.forEach(p => addM(p.date?.slice(0, 7), toEUR(p.amount, p.currency, p.date), 0, 0));
-      sInv.forEach(i => addM((i.issueDate || '').slice(0, 7), toEUR(i.total, i.currency, i.issueDate), 0, 0));
-      sOp .forEach(e => addM(e.date?.slice(0, 7), 0, toEUR(e.amount, e.currency, e.date), 0));
-      sCap.forEach(e => addM(e.date?.slice(0, 7), 0, 0, toEUR(e.amount, e.currency, e.date)));
-      const monthEntries = [...monthMap.entries()].sort(([a], [b]) => a.localeCompare(b));
-      if (monthEntries.length > 0) {
-        const monthSection = el('div');
-        monthSection.appendChild(mkSectionLabel('Monthly Breakdown'));
-        monthSection.appendChild(mkModalTable(
-          ['Month', 'Cash In', 'Op. Out', 'Invest. Out', 'Net'],
-          monthEntries.map(([mk, d]) => [mk, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
-        ));
-        body.appendChild(monthSection);
-      }
-
-      // Focused dataset: category breakdown for OpEx/CapEx clicks
-      if (dsIdx !== 0) {
-        const items = dsIdx === 1 ? sOp : sCap;
-        const total = dsIdx === 1 ? sOpOut : sCapOut;
-        const catMap = new Map();
-        items.forEach(e => { const cat = e.category || 'Uncategorized'; catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date)); });
-        const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
-        if (catEntries.length > 0) {
-          const catSection = el('div');
-          catSection.appendChild(mkSectionLabel(`${dsLabel} by Category`));
-          catSection.appendChild(mkModalTable(
-            ['Category', 'Amount', '% of Total'],
-            catEntries.map(([k, v]) => [k, formatEUR(v), total > 0 ? (v / total * 100).toFixed(1) + '%' : '—'])
-          ));
-          body.appendChild(catSection);
-        }
-      }
-
-      openModal({ title: `${streamLabel} — ${dsLabel}`, body, large: true });
     }
   });
 }
