@@ -182,9 +182,11 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
   registry.set(id, c);
 }
 
-// Slice percentage labels — drawn directly on each big-enough doughnut/pie
-// wedge so the split is legible at a glance instead of needing a hover per
-// slice. Independent of toggleDoughnutPct's value/% tooltip+legend toggle.
+// Slice amount labels — drawn directly on each big-enough doughnut/pie wedge
+// so the absolute value is legible at a glance instead of needing a hover per
+// slice. The legend carries the percentage (see doughnut()'s generateLabels
+// below) so amount and share are both always visible, never one-or-the-other
+// behind a toggle.
 function sliceLabelsPlugin() {
   return {
     id: 'sliceLabels',
@@ -210,7 +212,7 @@ function sliceLabelsPlugin() {
         if (pct < 4) return; // too thin a wedge to label legibly
         const angle = (arc.startAngle + arc.endAngle) / 2;
         const radius = (arc.innerRadius + arc.outerRadius) / 2;
-        g.fillText(`${pct.toFixed(0)}%`, arc.x + Math.cos(angle) * radius, arc.y + Math.sin(angle) * radius);
+        g.fillText('€' + Math.round(val).toLocaleString('de-DE'), arc.x + Math.cos(angle) * radius, arc.y + Math.sin(angle) * radius);
       });
       g.restore();
     }
@@ -249,34 +251,21 @@ function valueLabelsPlugin(horizontal) {
   };
 }
 
-export function toggleDoughnutPct(id) {
-  const c = registry.get(id);
-  if (!c) return false;
-  c._showPct = !c._showPct;
-  const sp = c._showPct;
-  c.options.plugins.tooltip.callbacks = {
-    label: ctx => {
-      const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
-      return sp
-        ? ` ${total > 0 ? (ctx.parsed / total * 100).toFixed(1) : 0}%`
-        : ` €${Math.round(ctx.parsed).toLocaleString('de-DE')}`;
-    }
-  };
-  c.options.plugins.legend.labels.generateLabels = chart => {
-    const ds = chart.data.datasets[0];
-    const total = ds.data.reduce((a, b) => a + b, 0);
-    return chart.data.labels.map((lbl, i) => ({
-      text: lbl + (sp ? ` (${total > 0 ? (ds.data[i] / total * 100).toFixed(1) : 0}%)` : ''),
-      fillStyle: ds.backgroundColor[i],
-      strokeStyle: '#161a27',
-      lineWidth: 2,
-      hidden: false,
-      index: i,
-      fontColor: '#e4e8f1'
-    }));
-  };
-  c.update();
-  return sp;
+// Legend entries always carry each slice's percentage of the total — paired
+// with sliceLabelsPlugin's on-slice € amount, so amount and share are both
+// always visible without a hover or a toggle.
+function legendLabelsWithPct(chart) {
+  const ds = chart.data.datasets[0];
+  const total = ds.data.reduce((a, b) => a + b, 0);
+  return chart.data.labels.map((lbl, i) => ({
+    text: lbl + (total > 0 ? ` (${(ds.data[i] / total * 100).toFixed(1)}%)` : ''),
+    fillStyle: ds.backgroundColor[i],
+    strokeStyle: '#161a27',
+    lineWidth: 2,
+    hidden: false,
+    index: i,
+    fontColor: '#e4e8f1'
+  }));
 }
 
 export function doughnut(id, { labels, data, colors, onClickItem }) {
@@ -290,6 +279,7 @@ export function doughnut(id, { labels, data, colors, onClickItem }) {
   delete opts.scales;
   opts.cutout = '65%';
   opts.plugins.legend.position = 'right';
+  opts.plugins.legend.labels.generateLabels = legendLabelsWithPct;
   if (onClickItem) {
     opts.onClick = (_e, elements) => {
       if (!elements.length) return;

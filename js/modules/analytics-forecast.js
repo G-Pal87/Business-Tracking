@@ -1225,16 +1225,11 @@ function makeChartSection(title, panels) {
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, title)));
   const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:0 16px 16px' });
-  for (const [panelTitle, canvasId, opts] of panels) {
+  for (const [panelTitle, canvasId] of panels) {
     const panel = el('div');
     const labelRow = el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin-bottom:8px' },
       el('div', { class: 'kpi-label' }, panelTitle)
     );
-    if (opts?.isDoughnut) {
-      const btn = el('button', { style: 'background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:11px;cursor:pointer;padding:2px 6px;line-height:1' }, '%');
-      btn.onclick = () => { const sp = charts.toggleDoughnutPct(canvasId); btn.textContent = sp ? '€' : '%'; };
-      labelRow.appendChild(btn);
-    }
     panel.appendChild(labelRow);
     panel.appendChild(el('div', { class: 'chart-wrap' }, el('canvas', { id: canvasId })));
     grid.appendChild(panel);
@@ -2035,7 +2030,7 @@ function buildView() {
   ]));
 
   wrap.appendChild(makeChartSection('Revenue Breakdown', [
-    ['Forecast Revenue by Stream',    'anf-stream-rev',     { isDoughnut: true }],
+    ['Forecast Revenue by Stream',    'anf-stream-rev'],
     ['Actual vs Forecast by Stream',  'anf-stream-compare'],
     ['Actual vs Forecast by Property','anf-prop-compare']
   ]));

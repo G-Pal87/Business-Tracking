@@ -799,15 +799,9 @@ function buildView() {
   const row2 = el('div', { class: 'grid grid-2 mb-16' });
 
   {
-    const btn = el('button', {
-      style: 'background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:11px;cursor:pointer;padding:2px 6px;line-height:1'
-    }, '%');
-    btn.onclick = () => { const sp = charts.toggleDoughnutPct('own-value-donut'); btn.textContent = sp ? '€' : '%'; };
-
     row2.appendChild(el('div', { class: 'card' },
-      el('div', { class: 'card-header', style: 'display:flex;align-items:center;justify-content:space-between' },
-        el('div', { class: 'card-title' }, 'Portfolio Value Split'),
-        btn
+      el('div', { class: 'card-header' },
+        el('div', { class: 'card-title' }, 'Portfolio Value Split')
       ),
       el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'own-value-donut' }))
     ));
