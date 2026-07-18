@@ -818,19 +818,8 @@ function buildView() {
 
   {
     const donutCard = el('div', { class: 'card' });
-    const btnToggle = el('button', {
-      style: 'background:none;border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:11px;cursor:pointer;padding:2px 6px;line-height:1'
-    }, '%');
-    btnToggle.onclick = () => {
-      const showing = charts.toggleDoughnutPct('exec-mix-donut');
-      btnToggle.textContent = showing ? '€' : '%';
-    };
-    donutCard.appendChild(el('div', {
-      class: 'card-header',
-      style: 'display:flex;align-items:center;justify-content:space-between'
-    },
-      el('div', { class: 'card-title' }, 'Revenue by Business Line'),
-      btnToggle
+    donutCard.appendChild(el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Revenue by Business Line')
     ));
     donutCard.appendChild(el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'exec-mix-donut' })));
     row1.appendChild(donutCard);
