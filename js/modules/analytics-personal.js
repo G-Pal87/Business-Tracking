@@ -15,7 +15,7 @@ import { EXPENSE_CATEGORIES } from '../core/config.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const SDC_RATE  = 0.0265;
-const CHART_IDS = ['pi-stream-monthly', 'pi-person-monthly', 'pi-giorgos-donut', 'pi-rita-donut'];
+const CHART_IDS = ['pi-stream-monthly', 'pi-person-monthly'];
 const YOU_HEX   = '#6366f1';
 const RITA_HEX  = '#ec4899';
 let YOU_LABEL  = 'Giorgos';
@@ -223,22 +223,6 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     compLabel: cmpRange?.label,
     compValue: cmpAvg ? formatEUR(cmpAvg) : undefined,
     onClick: () => showAvgMonthModal(youData, ritaData, months)
-  }));
-
-  // Recurring Income card
-  const recurring    = (youData.salary + youData.ownerRentTotal) + (ritaData.salary + ritaData.ownerRentTotal);
-  const cmpRecurring = youCmp && ritaCmp
-    ? (youCmp.salary + youCmp.ownerRentTotal) + (ritaCmp.salary + ritaCmp.ownerRentTotal)
-    : null;
-  const recPct = combined > 0 ? (recurring / combined * 100).toFixed(0) + '% of total' : null;
-  grid.appendChild(mkKpiCard({
-    label: 'Recurring Income',
-    value: formatEUR(recurring),
-    subtitle: recPct ? `${recPct} · Salary + Owner Rent` : 'Salary + Owner Rent',
-    delta: safePct(recurring, cmpRecurring),
-    compLabel: cmpRange?.label,
-    compValue: cmpRecurring ? formatEUR(cmpRecurring) : undefined,
-    onClick: () => showRecurringModal(youData, ritaData)
   }));
 
   // Dividends (Combined) card
@@ -967,35 +951,6 @@ function renderPersonMonthly(youData, ritaData, months) {
   });
 }
 
-function renderCompositionDonut(canvasId, data, label, color, months) {
-  const slices = [
-    { key: 'salary',   label: 'Salary',          value: data.salary,        color: INCOME_COLORS.salary  },
-    { key: 'rent',     label: 'Property Rent',    value: data.ownerRentTotal,color: INCOME_COLORS.rent    },
-    { key: 'reimb',    label: 'Reimbursements',   value: data.reimb,         color: INCOME_COLORS.reimb   },
-    { key: 'divs',     label: 'Dividends (net)',  value: data.netDivs,       color: INCOME_COLORS.divs    },
-    { key: 'personal', label: 'Personal Prop.',   value: data.personalIncome,color: INCOME_COLORS.personal}
-  ].filter(s => s.value > 0);
-
-  if (!slices.length) return;
-
-  charts.doughnut(canvasId, {
-    labels: slices.map(s => s.label),
-    data:   slices.map(s => Math.round(s.value)),
-    colors: slices.map(s => s.color),
-    onClickItem: (sliceLabel) => {
-      const s = slices.find(x => x.label === sliceLabel);
-      if (!s) return;
-      switch (s.key) {
-        case 'salary':   return showSalaryModal(label, data);
-        case 'rent':     return showRentModal(label, data, months);
-        case 'reimb':    return showReimbModal(label, data);
-        case 'divs':     return showDivModal(label, data);
-        case 'personal': return showPersonalPropsModal(label, data);
-      }
-    }
-  });
-}
-
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
@@ -1051,28 +1006,15 @@ function buildView() {
   const insightsEl = buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange);
   if (insightsEl) wrap.appendChild(insightsEl);
 
-  // ── Charts — Row 1: stacked stream + donuts ─────────────────────────────────
-  const row1 = el('div', { class: 'grid grid-2 mb-16' });
+  // ── Charts — Row 1: stacked stream ──────────────────────────────────────────
+  // (Composition donuts were dropped here — they just restated percentages
+  // already shown as text in each person's column above.)
+  const row1 = el('div', { class: 'mb-16' });
 
   row1.appendChild(el('div', { class: 'card' },
     el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Income by Stream — Monthly')),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'pi-stream-monthly' }))
   ));
-
-  // Composition donuts
-  const donutCard = el('div', { class: 'card' });
-  donutCard.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Income Composition')));
-  const donutRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:0;padding:0 8px 8px' });
-  const mkDonutCell = (id, personLabel) => {
-    const cell = el('div', { style: 'display:flex;flex-direction:column;align-items:center' });
-    cell.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);margin:8px 0 4px;text-transform:uppercase;letter-spacing:.05em' }, personLabel));
-    cell.appendChild(el('div', { class: 'chart-wrap', style: 'height:160px;width:100%' }, el('canvas', { id })));
-    return cell;
-  };
-  donutRow.appendChild(mkDonutCell('pi-giorgos-donut', YOU_LABEL));
-  donutRow.appendChild(mkDonutCell('pi-rita-donut', RITA_LABEL));
-  donutCard.appendChild(donutRow);
-  row1.appendChild(donutCard);
   wrap.appendChild(row1);
 
   // ── Charts — Row 2: partner comparison (full width) ─────────────────────────
@@ -1092,8 +1034,6 @@ function buildView() {
   setTimeout(() => {
     renderStreamMonthly(youData, ritaData, months);
     renderPersonMonthly(youData, ritaData, months);
-    renderCompositionDonut('pi-giorgos-donut', youData, YOU_LABEL, YOU_HEX, months);
-    renderCompositionDonut('pi-rita-donut',    ritaData, RITA_LABEL, RITA_HEX, months);
   }, 0);
 
   return wrap;

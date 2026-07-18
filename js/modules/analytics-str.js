@@ -14,7 +14,7 @@ import {
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const CHART_IDS = ['str-rev-trend', 'str-occ-bar', 'str-adr-line', 'str-prop-rev-donut', 'str-spotlight-adr', 'str-spotlight-occ'];
+const CHART_IDS = ['str-rev-trend', 'str-spotlight-adr', 'str-spotlight-occ'];
 const PROP_COLORS = ['#6366f1','#14b8a6','#f59e0b','#ec4899','#22c55e'];
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -516,15 +516,6 @@ function buildPortfolioKpis(data) {
       subtitle: `Target: ${formatEUR(targetRev, { maxFrac: 0 })}`,
       variant: vsTarget != null && vsTarget >= 90 ? 'success' : vsTarget != null && vsTarget < 70 ? 'danger' : undefined,
       onClick: () => openTargetModal(data)
-    }));
-  }
-
-  // 6. Avg Rev / Property
-  if (propCount > 1) {
-    grid.appendChild(mkKpiCard({
-      label: 'Avg Rev / Property',
-      value: formatEUR(totalRev / propCount, { maxFrac: 0 }),
-      subtitle: `Across ${propCount} STR properties`
     }));
   }
 

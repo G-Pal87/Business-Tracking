@@ -6,15 +6,15 @@ import {
   formatEUR, toEUR, byId,
   listActive, listActiveClients
 } from '../core/data.js';
-import {
-  createFilterState, getCurrentPeriodRange, getComparisonRange,
-  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
-} from './analytics-filters.js?v=20260519';
+import { getMonthKeysForRange, makeMatchers } from './analytics-filters.js?v=20260519';
 import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
-let gF = createFilterState();
-let gStatusFilter = new Set(); // Invoice Status — local, service-specific
+// Period/Owner/Stream/Client all come from Revenue's own shared filter state
+// now (passed into buildServicesSection) rather than a second, independent
+// filter bar stacked on the same page — see buildServicesSection below.
+// Invoice Status has no Revenue-side equivalent, so it stays local.
+let gStatusFilter = new Set();
 
 const CHART_IDS     = ['svc-client-bar', 'svc-month-bar', 'svc-status-donut', 'svc-outstanding-bar', 'svc-aging-bar'];
 const STATUS_COLORS = { draft: '#8b93b0', sent: '#f59e0b', paid: '#10b981', overdue: '#ef4444' };
@@ -25,11 +25,13 @@ let _invoiceTableSortCol = -1, _invoiceTableSortDir = 1, _invoiceTableSearch = '
 // folded into the Revenue dashboard as a section (Revenue already covers all
 // streams including these two; this section adds the client-collections
 // depth — DSO, cohorts, aging — that Revenue doesn't have) so it no longer
-// registers as a router page. `buildServicesSection` takes the host page's
-// own rebuild callback since this section's local Stream/Status filters need
-// to re-render the *host* page, not manage `#content` themselves.
-export function buildServicesSection(onChange) {
-  return buildView(onChange);
+// registers as a router page. Takes Revenue's own shared filter state
+// (gF, curRange, cmpRange) instead of building a second independent filter
+// bar, and the host page's own rebuild callback since this section's local
+// Status filter needs to re-render the *host* page, not manage #content
+// itself.
+export function buildServicesSection(gF, curRange, cmpRange, onChange) {
+  return buildView(gF, curRange, cmpRange, onChange);
 }
 
 export function destroyServiceCharts() {
@@ -37,7 +39,7 @@ export function destroyServiceCharts() {
 }
 
 // ── Owner matcher with client-owner fallback ──────────────────────────────────
-function matchOwnerSvc(inv) {
+function matchOwnerSvc(inv, gF) {
   if (!gF.owners.size) return true;
   let ow = inv.owner;
   if (!ow && inv.clientId) ow = byId('clients', inv.clientId)?.owner;
@@ -49,7 +51,7 @@ function matchOwnerSvc(inv) {
 // kpiBase: no status filter → KPIs, status donut, outstanding/aging always reflect
 //          the true financial picture regardless of status filter.
 // base:    status-filtered → monthly bar, client revenue bar, table.
-function getData(start, end) {
+function getData(gF, start, end) {
   const { mStream, mClient } = makeMatchers(gF);
 
   const matchDate = inv => {
@@ -59,7 +61,7 @@ function getData(start, end) {
 
   const kpiBase = listActive('invoices').filter(i =>
     SERVICE_STREAMS.includes(i.stream) &&
-    matchDate(i) && mStream(i) && matchOwnerSvc(i) && mClient(i)
+    matchDate(i) && mStream(i) && matchOwnerSvc(i, gF) && mClient(i)
   );
   const base = gStatusFilter.size === 0 ? kpiBase : kpiBase.filter(i => gStatusFilter.has(i.status));
 
@@ -289,11 +291,14 @@ function computeServiceInsights({
   return signals;
 }
 
-// ── Stream Performance Card ───────────────────────────────────────────────────
-function buildStreamPerformanceCard(kpiBase) {
+// ── Per-stream metric breakdown ───────────────────────────────────────────────
+// Same 4 metrics as kpiRow1 (Paid Revenue, Invoiced, Collection Rate,
+// Outstanding), split by stream — surfaced as inline `lines` on those cards
+// instead of a separate "Stream Performance" card that just re-derived them.
+function computeStreamData(kpiBase) {
   const sum = arr => arr.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
 
-  const streamData = SERVICE_STREAMS.map(k => {
+  return SERVICE_STREAMS.map(k => {
     const streamInvs    = kpiBase.filter(i => i.stream === k);
     const streamPaidInv = streamInvs.filter(i => i.status === 'paid');
     const streamNonDraft = streamInvs.filter(i => i.status !== 'draft');
@@ -305,204 +310,56 @@ function buildStreamPerformanceCard(kpiBase) {
     const streamCollectionRate = streamInvoiced > 0 ? streamPaid / streamInvoiced * 100 : null;
     const invoiceCount       = streamNonDraft.length;
 
-    // Top client by paid revenue
-    const clientRevMap = new Map();
-    streamPaidInv.forEach(i => {
-      if (!i.clientId) return;
-      clientRevMap.set(i.clientId, (clientRevMap.get(i.clientId) || 0) + toEUR(i.total, i.currency, i.issueDate));
-    });
-    let topClient = null, topClientRev = 0;
-    for (const [cid, rev] of clientRevMap.entries()) {
-      if (rev > topClientRev) {
-        topClientRev = rev;
-        topClient = byId('clients', cid)?.name || '—';
-      }
-    }
-
     return {
-      k, streamPaid, streamInvoiced, streamOutstanding, streamCollectionRate, topClient, invoiceCount,
+      k, label: STREAMS[k]?.label || k,
+      streamPaid, streamInvoiced, streamOutstanding, streamCollectionRate, invoiceCount,
       streamPaidInv, streamNonDraft, streamOutInv
     };
   });
+}
 
-  // Skip if both streams have zero invoiced revenue
-  const totalInvoiced = streamData.reduce((s, d) => s + d.streamInvoiced, 0);
-  if (totalInvoiced === 0) {
-    return mkEmptyState('No stream invoice activity for the selected period.');
+function streamClientModal(title, invs, valueKey) {
+  const body = el('div');
+  const clientMap = new Map();
+  invs.forEach(i => {
+    const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown';
+    const x = clientMap.get(id) || { n, v: 0, overdue: 0, cnt: 0 };
+    x.v += toEUR(i.total, i.currency, i.issueDate);
+    if (i.status === 'overdue') x.overdue += toEUR(i.total, i.currency, i.issueDate);
+    x.cnt++; clientMap.set(id, x);
+  });
+  const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
+  if (clients.length) {
+    body.appendChild(mkSectionLabel('By Client'));
+    const cols = valueKey === 'outstanding'
+      ? ['Client', 'Invoices', 'Outstanding', 'Overdue']
+      : ['Client', 'Invoices', 'Revenue', '% of Total'];
+    const total = clients.reduce((s, c) => s + c.v, 0);
+    body.appendChild(mkModalTable(cols, clients.map(c => [
+      c.n, String(c.cnt), formatEUR(c.v),
+      valueKey === 'outstanding' ? (c.overdue > 0 ? formatEUR(c.overdue) : '—') : (total > 0 ? (c.v / total * 100).toFixed(1) + '%' : '—')
+    ])));
+  } else {
+    body.appendChild(mkEmptyState('No invoices for this stream in the selected period.'));
   }
-
-  const card = el('div', { class: 'card mb-16' });
-  card.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Stream Performance')
-  ));
-
-  const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px' });
-
-  for (const d of streamData) {
-    const cfg   = STREAMS[d.k] || {};
-    const color = cfg.color || '#8b93b0';
-    const label = cfg.label || d.k;
-
-    const col = el('div', { style: 'display:flex;flex-direction:column;gap:10px' });
-
-    // Stream label header
-    col.appendChild(el('div', {
-      style: `font-size:12px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:${color};padding-bottom:4px;border-bottom:2px solid ${color}`
-    }, label));
-
-    // Summary boxes grid — each opens the stream-filtered version of the matching top-level modal
-    const boxGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px' });
-
-    const rateVariant = d.streamCollectionRate === null ? '' :
-      d.streamCollectionRate >= 80 ? 'success' :
-      d.streamCollectionRate >= 60 ? 'warning' : 'danger';
-    const rateLabel = d.streamCollectionRate !== null ? d.streamCollectionRate.toFixed(0) + '%' : '—';
-
-    boxGrid.appendChild(mkKpiCard({
-      label:   'Paid Revenue',
-      value:   formatEUR(d.streamPaid),
-      subtitle: d.invoiceCount > 0 ? `${d.invoiceCount} invoice${d.invoiceCount !== 1 ? 's' : ''}` : null,
-      onClick: () => {
-        const body = el('div');
-        const clientMap = new Map();
-        d.streamPaidInv.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
-        const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
-        if (clients.length) {
-          body.appendChild(mkSectionLabel('By Client'));
-          body.appendChild(mkModalTable(
-            ['Client', 'Invoices', 'Revenue', '% of Paid'],
-            clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), d.streamPaid > 0 ? (c.v / d.streamPaid * 100).toFixed(1) + '%' : '—'])
-          ));
-        } else {
-          body.appendChild(mkEmptyState('No paid invoices for this stream in the selected period.'));
-        }
-        openModal({ title: `Paid Revenue — ${label} — ${formatEUR(d.streamPaid)}`, body, large: true });
-      }
-    }));
-
-    boxGrid.appendChild(mkKpiCard({
-      label:   'Collection Rate',
-      value:   rateLabel,
-      variant: rateVariant,
-      subtitle: 'Paid / invoiced',
-      onClick: () => {
-        const body = el('div');
-        const streamOverdueTotal = sum(d.streamOutInv.filter(i => i.status === 'overdue'));
-        const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
-        sgrid.appendChild(mkSummaryBox('Paid', formatEUR(d.streamPaid), d.streamCollectionRate != null ? `${d.streamCollectionRate.toFixed(0)}% collected` : null));
-        sgrid.appendChild(mkSummaryBox('Outstanding', formatEUR(d.streamOutstanding), d.streamInvoiced > 0 ? `${(d.streamOutstanding / d.streamInvoiced * 100).toFixed(0)}% of invoiced` : null));
-        sgrid.appendChild(mkSummaryBox('Overdue', formatEUR(streamOverdueTotal), d.streamOutstanding > 0 ? `${(streamOverdueTotal / d.streamOutstanding * 100).toFixed(0)}% of outstanding` : null));
-        body.appendChild(sgrid);
-        const clientMap = new Map();
-        d.streamNonDraft.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, paid: 0, total: 0 }; x.total += toEUR(i.total, i.currency, i.issueDate); if (i.status === 'paid') x.paid += toEUR(i.total, i.currency, i.issueDate); clientMap.set(id, x); });
-        const clients = [...clientMap.values()].sort((a, b) => b.total - a.total);
-        if (clients.length) {
-          body.appendChild(mkSectionLabel('Collection by Client'));
-          body.appendChild(mkModalTable(
-            ['Client', 'Invoiced', 'Paid', 'Rate'],
-            clients.map(c => [c.n, formatEUR(c.total), formatEUR(c.paid), c.total > 0 ? (c.paid / c.total * 100).toFixed(0) + '%' : '—'])
-          ));
-        }
-        openModal({ title: `Collection Rate — ${label} — ${d.streamCollectionRate != null ? d.streamCollectionRate.toFixed(0) + '%' : 'N/A'}`, body, large: true });
-      }
-    }));
-
-    boxGrid.appendChild(mkKpiCard({
-      label:   'Invoiced',
-      value:   formatEUR(d.streamInvoiced),
-      onClick: () => {
-        const body = el('div');
-        const statusMap = new Map();
-        d.streamNonDraft.forEach(i => { statusMap.set(i.status, (statusMap.get(i.status) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
-        const statuses = [...statusMap.entries()].sort((a, b) => b[1] - a[1]);
-        if (statuses.length) {
-          const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${Math.min(statuses.length, 4)},1fr);gap:10px;margin-bottom:20px` });
-          statuses.forEach(([s, v]) => sgrid.appendChild(mkSummaryBox(INVOICE_STATUSES[s]?.label || s, formatEUR(v), d.streamInvoiced > 0 ? `${(v / d.streamInvoiced * 100).toFixed(0)}%` : null)));
-          body.appendChild(sgrid);
-        }
-        const clientMap = new Map();
-        d.streamNonDraft.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
-        const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
-        if (clients.length) {
-          body.appendChild(mkSectionLabel('By Client'));
-          body.appendChild(mkModalTable(
-            ['Client', 'Invoices', 'Invoiced', '% of Total'],
-            clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), d.streamInvoiced > 0 ? (c.v / d.streamInvoiced * 100).toFixed(1) + '%' : '—'])
-          ));
-        }
-        openModal({ title: `Invoiced Revenue — ${label} — ${formatEUR(d.streamInvoiced)}`, body, large: true });
-      }
-    }));
-
-    boxGrid.appendChild(mkKpiCard({
-      label:   'Outstanding',
-      value:   formatEUR(d.streamOutstanding),
-      variant: d.streamOutstanding > 0 ? 'warning' : '',
-      onClick: () => {
-        const body = el('div');
-        const clientMap = new Map();
-        d.streamOutInv.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0, overdue: 0, cnt: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); if (i.status === 'overdue') x.overdue += toEUR(i.total, i.currency, i.issueDate); x.cnt++; clientMap.set(id, x); });
-        const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
-        if (clients.length) {
-          body.appendChild(mkSectionLabel('Outstanding by Client'));
-          body.appendChild(mkModalTable(
-            ['Client', 'Invoices', 'Outstanding', 'Overdue'],
-            clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), c.overdue > 0 ? formatEUR(c.overdue) : '—'])
-          ));
-        } else {
-          body.appendChild(mkEmptyState('No outstanding invoices for this stream.'));
-        }
-        openModal({ title: `Outstanding — ${label} — ${formatEUR(d.streamOutstanding)}`, body, large: true });
-      }
-    }));
-
-    col.appendChild(boxGrid);
-
-    // Top client line
-    const topClientEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' });
-    topClientEl.appendChild(el('span', { style: 'font-weight:600' }, 'Top client: '));
-    topClientEl.appendChild(document.createTextNode(d.topClient || '—'));
-    col.appendChild(topClientEl);
-
-    grid.appendChild(col);
-  }
-
-  card.appendChild(grid);
-  return card;
+  openModal({ title, body, large: true });
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
-function buildView(onChange) {
+function buildView(gF, curRange, cmpRange, onChange) {
   const wrap = el('div', {});
 
   // Header
   wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
     el('h3', { style: 'margin:0 0 4px;font-size:16px;font-weight:700' }, 'Services (Customer Success & Marketing)'),
     el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' },
-      'Invoice revenue, client concentration, and collection for these two streams specifically')
+      'Invoice revenue, client concentration, and collection for these two streams specifically — Period/Owner/Client/Stream filters and comparison above apply here too')
   ));
 
-  // Shared filter bar — Period, Owner, Client, Comparison (no property, custom stream)
-  const filterBarEl = buildFilterBar(gF, {
-    showOwner: true, showStream: false, showProperty: false, showClient: true,
-    storagePrefix: 'svc'
-  }, newState => {
-    if (newState) Object.assign(gF, newState);
-    onChange();
-  });
-  wrap.appendChild(filterBarEl);
-
-  // Local stream filter (service streams only)
+  // Local invoice status filter — the one filter dimension with no Revenue-side
+  // equivalent, so it's the only filter control this section still owns.
   const streamWrap = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap' });
-  streamWrap.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Stream:'));
-  const streamMS = buildMultiSelect(
-    SERVICE_STREAMS.map(k => ({ value: k, label: STREAMS[k]?.label || k })),
-    gF.streams, 'All Streams', onChange, 'svc_streams'
-  );
-  streamWrap.appendChild(streamMS);
-
-  // Local invoice status filter
-  streamWrap.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);margin-left:8px' }, 'Status:'));
+  streamWrap.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Status:'));
   const statusMS = buildMultiSelect(
     Object.entries(INVOICE_STATUSES).map(([k, v]) => ({ value: k, label: v.label })),
     gStatusFilter, 'All Statuses', onChange, 'svc_statuses'
@@ -510,23 +367,16 @@ function buildView(onChange) {
   streamWrap.appendChild(statusMS);
   wrap.appendChild(streamWrap);
 
-  // Date ranges
-  const curRange = getCurrentPeriodRange(gF);
-  const cmpRange = getComparisonRange(gF, curRange);
   const { start, end } = curRange;
 
-  const curData = getData(start, end);
-  const cmpData = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
+  const curData = getData(gF, start, end);
+  const cmpData = cmpRange ? getData(gF, cmpRange.start, cmpRange.end) : null;
 
   const {
     paid, outstanding, overdue, nonDraft, kpiBase,
     paidTotal, invoicedTotal, outstandingTotal, overdueTotal,
     collectionRate, topClient, concentration, activeClientIds, clientRevMap
   } = curData;
-
-  // Comparison line
-  const compLine = buildComparisonLine(curRange, cmpRange);
-  if (compLine) wrap.appendChild(compLine);
 
   // Deltas (suppress when unavailable)
   const deltaPaid       = safePct(paidTotal,        cmpData?.paidTotal);
@@ -536,6 +386,11 @@ function buildView(onChange) {
     ? collectionRate - cmpData.collectionRate : null;
 
   // ── KPI row 1: Paid Revenue, Invoiced Revenue, Collection Rate, Outstanding ─
+  // Per-stream splits render inline via `lines` — folded in from the former
+  // standalone "Stream Performance" card, which just re-derived these same
+  // 4 metrics × 2 streams below these cards.
+  const streamData = computeStreamData(kpiBase);
+  const pct = (num, den) => den > 0 ? (num / den * 100).toFixed(0) + '%' : '—';
   const kpiRow1 = el('div', { class: 'grid grid-4 mb-16' });
   const onClickPaidRevenue = () => {
     const body = el('div');
@@ -566,7 +421,11 @@ function buildView(onChange) {
     delta:     deltaPaid,
     compLabel: cmpRange?.label,
     compValue: cmpData ? formatEUR(cmpData.paidTotal) : undefined,
-    onClick:   onClickPaidRevenue
+    onClick:   onClickPaidRevenue,
+    lines: streamData.map(d => ({
+      label: d.label, value: formatEUR(d.streamPaid), pct: pct(d.streamPaid, paidTotal),
+      onClick: () => streamClientModal(`Paid Revenue — ${d.label} — ${formatEUR(d.streamPaid)}`, d.streamPaidInv, 'paid')
+    }))
   }));
   kpiRow1.appendChild(mkKpiCard({
     label:     'Invoiced Revenue',
@@ -595,7 +454,11 @@ function buildView(onChange) {
         ));
       }
       openModal({ title: `Invoiced Revenue — ${formatEUR(invoicedTotal)}`, body, large: true });
-    }
+    },
+    lines: streamData.map(d => ({
+      label: d.label, value: formatEUR(d.streamInvoiced), pct: pct(d.streamInvoiced, invoicedTotal),
+      onClick: () => streamClientModal(`Invoiced Revenue — ${d.label} — ${formatEUR(d.streamInvoiced)}`, d.streamNonDraft, 'invoiced')
+    }))
   }));
   const onClickCollectionRate = () => {
     const body = el('div');
@@ -625,7 +488,11 @@ function buildView(onChange) {
     deltaIsPp: true,
     compLabel: cmpRange?.label,
     compValue: cmpData?.collectionRate != null ? cmpData.collectionRate.toFixed(0) + '%' : undefined,
-    onClick:   onClickCollectionRate
+    onClick:   onClickCollectionRate,
+    lines: streamData.map(d => ({
+      label: d.label, value: d.streamCollectionRate !== null ? d.streamCollectionRate.toFixed(0) + '%' : '—',
+      onClick: () => streamClientModal(`Collection Rate — ${d.label} — ${d.streamCollectionRate !== null ? d.streamCollectionRate.toFixed(0) + '%' : 'N/A'}`, d.streamNonDraft, 'invoiced')
+    }))
   }));
   const onClickOutstanding = () => {
     const body = el('div');
@@ -649,7 +516,11 @@ function buildView(onChange) {
     invertDelta: true,
     compLabel:   cmpRange?.label,
     compValue:   cmpData ? formatEUR(cmpData.outstandingTotal) : undefined,
-    onClick:     onClickOutstanding
+    onClick:     onClickOutstanding,
+    lines: streamData.map(d => ({
+      label: d.label, value: formatEUR(d.streamOutstanding), pct: pct(d.streamOutstanding, outstandingTotal),
+      onClick: () => streamClientModal(`Outstanding — ${d.label} — ${formatEUR(d.streamOutstanding)}`, d.streamOutInv, 'outstanding')
+    }))
   }));
   wrap.appendChild(kpiRow1);
 
@@ -958,10 +829,6 @@ function buildView(onChange) {
       style: 'font-size:12px;color:var(--text-muted);margin:-8px 0 16px;padding:6px 10px;background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);display:inline-block'
     }, `${draftCount} draft${draftCount !== 1 ? 's' : ''} · ${formatEUR(draftTotal)} not yet sent`));
   }
-
-  // ── Stream Performance ────────────────────────────────────────────────────
-  const streamPerfCard = buildStreamPerformanceCard(kpiBase);
-  if (streamPerfCard) wrap.appendChild(streamPerfCard);
 
   // ── Service Performance Insights ──────────────────────────────────────────
   const signals = computeServiceInsights({
