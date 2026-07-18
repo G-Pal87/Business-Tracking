@@ -12,6 +12,7 @@ import {
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
 import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK, groupByMonthKey } from './analytics-helpers.js';
+import { buildServicesSection, destroyServiceCharts } from './analytics-services.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const OWNER_COLORS = { you: '#6366f1', rita: '#ec4899', both: '#14b8a6' };
@@ -38,7 +39,7 @@ export default {
   id: 'analytics-revenue', label: 'Revenue', icon: '📈',
   render(container) { container.appendChild(buildView()); },
   refresh() { rebuildView(); },
-  destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }
+  destroy() { CHART_IDS.forEach(id => charts.destroy(id)); destroyServiceCharts(); }
 };
 
 // ── Data ──────────────────────────────────────────────────────────────────────
@@ -1114,6 +1115,13 @@ function buildView() {
   buildRevenueTable(tableBody, curData);
   tableCard.appendChild(tableBody);
   wrap.appendChild(tableCard);
+
+  // ── Services (Customer Success & Marketing) ───────────────────────────────
+  // Folded in from the former standalone Services dashboard — same section,
+  // same filters/KPIs/charts/table, just composed onto this page instead of
+  // its own nav item, since it was really "Revenue filtered to two streams
+  // plus client-collections depth (DSO, cohorts, aging) Revenue doesn't have."
+  wrap.appendChild(buildServicesSection(rebuildView));
 
   setTimeout(() => {
     renderTrend(curData, months);
