@@ -17,7 +17,7 @@ import { buildServicesSection, destroyServiceCharts } from './analytics-services
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const OWNER_COLORS = { you: '#6366f1', rita: '#ec4899', both: '#14b8a6' };
 const CHART_IDS    = [
-  'rev-trend', 'rev-stream-bar', 'rev-prop-bar', 'rev-client-bar', 'rev-owner-donut',
+  'rev-trend', 'rev-stream-bar', 'rev-prop-bar', 'rev-owner-donut',
   'rev-mix-evolution', 'rev-growth-trend', 'rev-paid-outstanding',
   'rev-concentration', 'rev-aging'
 ];
@@ -665,22 +665,6 @@ function renderPropBar({ payments }) {
   });
 }
 
-function renderClientBar({ invoices }) {
-  const map = new Map();
-  invoices.forEach(i => map.set(i.clientId, { name: byId('clients', i.clientId)?.name || 'Unknown', eur: (map.get(i.clientId)?.eur || 0) + toEUR(i.total, i.currency, i.issueDate) }));
-  const sorted = [...map.entries()].sort((a, b) => b[1].eur - a[1].eur);
-  if (!sorted.length) return;
-  charts.bar('rev-client-bar', {
-    labels: sorted.map(([, m]) => m.name),
-    datasets: [{ label: 'Revenue (EUR)', data: sorted.map(([, m]) => Math.round(m.eur)), backgroundColor: sorted.map((_, i) => `hsla(${(160 + i * 35) % 360},65%,55%,0.85)`) }],
-    horizontal: true,
-    onClickItem: (_, idx) => {
-      const [id, entry] = sorted[idx];
-      drillDownModal(`Revenue — ${entry.name}`, drillRevRows([], invoices.filter(i => i.clientId === id)), REV_COLS);
-    }
-  });
-}
-
 function renderMixEvolution({ payments, invoices, payByMonth, invByMonth }, months) {
   const rental  = months.map(m => Math.round((payByMonth.get(m.key) || []).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)));
   const service = months.map(m => Math.round((invByMonth.get(m.key) || []).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0)));
@@ -1050,15 +1034,14 @@ function buildView() {
   ));
   wrap.appendChild(row2);
 
-  // Row 3: Property + Client
-  const row3 = el('div', { class: 'grid grid-2 mb-16' });
+  // Row 3: Property
+  // (Revenue by Client was dropped here — it duplicated Services' client
+  // chart below, which has the richer per-client drill-down: outstanding,
+  // collection rate, and stream breakdown.)
+  const row3 = el('div', { class: 'mb-16' });
   row3.appendChild(el('div', { class: 'card' },
     el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue by Property')),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-prop-bar' }))
-  ));
-  row3.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Revenue by Client')),
-    el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-client-bar' }))
   ));
   wrap.appendChild(row3);
 
@@ -1117,7 +1100,7 @@ function buildView() {
   // same filters/KPIs/charts/table, just composed onto this page instead of
   // its own nav item, since it was really "Revenue filtered to two streams
   // plus client-collections depth (DSO, cohorts, aging) Revenue doesn't have."
-  wrap.appendChild(buildServicesSection(rebuildView));
+  wrap.appendChild(buildServicesSection(gF, curRange, cmpRange, rebuildView));
 
   setTimeout(() => {
     renderTrend(curData, months);
@@ -1125,7 +1108,6 @@ function buildView() {
     renderMixEvolution(curData, months);
     renderGrowthTrend(curData, months);
     renderPropBar(curData);
-    renderClientBar(curData);
     renderConcentration(curData);
     renderOwnerDonut(curData);
     renderPaidOutstanding(curData, months, curRange.start, curRange.end);
