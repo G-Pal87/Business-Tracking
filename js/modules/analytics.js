@@ -149,7 +149,7 @@ function getData(start, end) {
 function buildKpiGrid(cur, cmp, cmpRange) {
   const {
     totalRev, netOpProfit, cashPos, pipeline,
-    collectionRate, expenseRatio, topContribs,
+    collectionRate,
     overdueCount, overdueEur,
     opEx, propRev, svcRev, streamMap,
     burnCoverage, avgMonthlyOpEx, periodMonths
@@ -164,8 +164,6 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   const dCash    = cmp ? safePct(cashPos,     cmp.cashPos)     : null;
   const dCollect = cmp ? (collectionRate != null && cmp.collectionRate != null
     ? collectionRate - cmp.collectionRate : null) : null;
-  const dExpR    = cmp ? (expenseRatio != null && cmp.expenseRatio != null
-    ? expenseRatio - cmp.expenseRatio : null) : null;
 
   // Overdue modal
   const overdueDrill = () => {
@@ -246,24 +244,6 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       ], 2));
     }
     openModal({ title: 'Cash Position Breakdown', body, large: false });
-  };
-
-  // Top contributors drill
-  const contribDrill = () => {
-    const body = el('div');
-    if (!topContribs.length) {
-      body.appendChild(mkEmptyState('No revenue contributors found.'));
-    } else {
-      const rows = topContribs.slice(0, 10).map((c, i) => [
-        `#${i + 1}`,
-        c.name,
-        c.type,
-        formatEUR(c.eur),
-        pct(c.eur, totalRev)
-      ]);
-      body.appendChild(mkModalTable(['#', 'Name', 'Type', 'Revenue', 'Share'], rows));
-    }
-    openModal({ title: 'Top Revenue Contributors', body, large: true });
   };
 
   const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:16px' });
@@ -430,61 +410,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     }));
   }
 
-  // 6. Expense Ratio
-  {
-    let variant = '';
-    if (expenseRatio !== null) {
-      variant = expenseRatio > 80 ? 'danger' : expenseRatio > 60 ? 'warning' : 'success';
-    }
-    grid.appendChild(mkKpiCard({
-      label:    'Expense Ratio',
-      value:    expenseRatio !== null ? `${expenseRatio.toFixed(1)}%` : '—',
-      subtitle: `OpEx ÷ Revenue`,
-      delta:    dExpR,
-      deltaIsPp: true,
-      invertDelta: true,
-      compLabel: cl,
-      compValue: cmp && cmp.expenseRatio != null ? `${cmp.expenseRatio.toFixed(1)}%` : undefined,
-      variant,
-      onClick: () => {
-        const body = el('div');
-        if (cmp) {
-          body.appendChild(mkCmpGrid([
-            { label: 'Total Revenue', curVal: formatEUR(totalRev),  cmpVal: formatEUR(cmp.totalRev)  },
-            { label: 'OpEx',          curVal: formatEUR(opEx),      cmpVal: formatEUR(cmp.opEx)       },
-            { label: 'Expense Ratio', curVal: expenseRatio != null ? `${expenseRatio.toFixed(1)}%` : '—',
-                                      cmpVal: cmp.expenseRatio != null ? `${cmp.expenseRatio.toFixed(1)}%` : '—' },
-          ], 'Current Period', cl));
-        } else {
-          body.appendChild(mkSummaryGrid([
-            { label: 'Total Revenue', value: formatEUR(totalRev) },
-            { label: 'OpEx',          value: formatEUR(opEx) },
-            { label: 'CapEx',         value: formatEUR(cur.capEx) },
-            { label: 'Expense Ratio', value: expenseRatio !== null ? `${expenseRatio.toFixed(1)}%` : '—' }
-          ]));
-        }
-        openModal({ title: 'Expense Ratio', body, large: false });
-      }
-    }));
-  }
-
-  // 7. Top Revenue Source (composite)
-  {
-    const top3 = topContribs.slice(0, 3);
-    grid.appendChild(mkKpiCard({
-      label:  'Top Revenue Source',
-      value:  topContribs[0]?.name || '—',
-      subtitle: topContribs[0] ? `${pct(topContribs[0].eur, totalRev)} of total revenue` : 'No data',
-      onClick: contribDrill,
-      lines: top3.map((c, i) => ({
-        label: `#${i + 1} ${c.type}`,
-        value: c.name,
-        pct:   pct(c.eur, totalRev)
-      }))
-    }));
-  }
-
-  // 8. Overdue Invoices
+  // 6. Overdue Invoices
   {
     const variant = overdueCount > 0 ? 'danger' : 'success';
     grid.appendChild(mkKpiCard({
