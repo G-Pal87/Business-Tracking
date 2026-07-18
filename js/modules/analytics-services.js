@@ -21,15 +21,20 @@ const STATUS_COLORS = { draft: '#8b93b0', sent: '#f59e0b', paid: '#10b981', over
 
 let _invoiceTableSortCol = -1, _invoiceTableSortDir = 1, _invoiceTableSearch = '';
 
-// ── Module export ─────────────────────────────────────────────────────────────
-export default {
-  id:    'analytics-services',
-  label: 'Services',
-  icon:  '🛠️',
-  render(container) { container.appendChild(buildView()); },
-  refresh() { rebuildView(); },
-  destroy() { CHART_IDS.forEach(id => charts.destroy(id)); }
-};
+// This used to be its own top-level "Services" dashboard/nav item. It's now
+// folded into the Revenue dashboard as a section (Revenue already covers all
+// streams including these two; this section adds the client-collections
+// depth — DSO, cohorts, aging — that Revenue doesn't have) so it no longer
+// registers as a router page. `buildServicesSection` takes the host page's
+// own rebuild callback since this section's local Stream/Status filters need
+// to re-render the *host* page, not manage `#content` themselves.
+export function buildServicesSection(onChange) {
+  return buildView(onChange);
+}
+
+export function destroyServiceCharts() {
+  CHART_IDS.forEach(id => charts.destroy(id));
+}
 
 // ── Owner matcher with client-owner fallback ──────────────────────────────────
 function matchOwnerSvc(inv) {
@@ -95,15 +100,6 @@ function getData(start, end) {
     paidTotal, invoicedTotal, outstandingTotal, overdueTotal,
     collectionRate, topClient, concentration, activeClientIds, clientRevMap
   };
-}
-
-// ── Rebuild ───────────────────────────────────────────────────────────────────
-function rebuildView() {
-  CHART_IDS.forEach(id => charts.destroy(id));
-  const c = document.getElementById('content');
-  if (!c) return;
-  c.innerHTML = '';
-  c.appendChild(buildView());
 }
 
 // ── Drill-down row builders ───────────────────────────────────────────────────
@@ -476,14 +472,14 @@ function buildStreamPerformanceCard(kpiBase) {
 }
 
 // ── Main view ─────────────────────────────────────────────────────────────────
-function buildView() {
-  const wrap = el('div', { class: 'view active' });
+function buildView(onChange) {
+  const wrap = el('div', {});
 
   // Header
   wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
-    el('h2', { style: 'margin:0 0 4px;font-size:20px;font-weight:700' }, 'Services Analytics'),
+    el('h3', { style: 'margin:0 0 4px;font-size:16px;font-weight:700' }, 'Services (Customer Success & Marketing)'),
     el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' },
-      'Customer Success and Marketing Services invoice revenue, client concentration, and collection')
+      'Invoice revenue, client concentration, and collection for these two streams specifically')
   ));
 
   // Shared filter bar — Period, Owner, Client, Comparison (no property, custom stream)
@@ -492,7 +488,7 @@ function buildView() {
     storagePrefix: 'svc'
   }, newState => {
     if (newState) Object.assign(gF, newState);
-    rebuildView();
+    onChange();
   });
   wrap.appendChild(filterBarEl);
 
@@ -501,7 +497,7 @@ function buildView() {
   streamWrap.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Stream:'));
   const streamMS = buildMultiSelect(
     SERVICE_STREAMS.map(k => ({ value: k, label: STREAMS[k]?.label || k })),
-    gF.streams, 'All Streams', rebuildView, 'svc_streams'
+    gF.streams, 'All Streams', onChange, 'svc_streams'
   );
   streamWrap.appendChild(streamMS);
 
@@ -509,7 +505,7 @@ function buildView() {
   streamWrap.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted);margin-left:8px' }, 'Status:'));
   const statusMS = buildMultiSelect(
     Object.entries(INVOICE_STATUSES).map(([k, v]) => ({ value: k, label: v.label })),
-    gStatusFilter, 'All Statuses', rebuildView, 'svc_statuses'
+    gStatusFilter, 'All Statuses', onChange, 'svc_statuses'
   );
   streamWrap.appendChild(statusMS);
   wrap.appendChild(streamWrap);
