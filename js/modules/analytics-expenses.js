@@ -699,6 +699,9 @@ function buildView() {
 
   wrap.appendChild(kpiRow2);
 
+  const streamKpiRow = buildExpenseStreamKpiRow(cur, cmp, cmpLabel);
+  if (streamKpiRow) wrap.appendChild(streamKpiRow);
+
   // Inline insights
   const expBanner = mkInsightsBanner(computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, curRange, cmpData: cmp }), 'Expense Insights');
   if (expBanner) wrap.appendChild(expBanner);
@@ -841,6 +844,70 @@ function renderCatBar({ allExp }, curRange) {
   });
 }
 
+// Expense drill-down for one stream (by category, by property) — shared by
+// the per-stream KPI card row and the "Expenses by Stream" donut's click
+// handler so both surfaces open the identical detail view.
+function openExpenseStreamModal(sk, allExp) {
+  const streamExp   = allExp.filter(e => expStream(e) === sk);
+  const streamTotal = streamExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const body = el('div');
+  const catMap = new Map();
+  streamExp.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+  const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+  if (cats.length) {
+    body.appendChild(mkSectionLabel('By Category'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Stream', right: true, muted: true }],
+      cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), streamTotal > 0 ? (v / streamTotal * 100).toFixed(1) + '%' : '—'])
+    ));
+  }
+  const propMap = new Map();
+  streamExp.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
+  const props = [...propMap.values()].sort((a, b) => b.v - a.v);
+  if (props.length) {
+    body.appendChild(el('div', { style: 'margin-top:20px' }));
+    body.appendChild(mkSectionLabel('By Property'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Property' }, { label: 'Amount', right: true }, { label: '% of Stream', right: true, muted: true }],
+      props.map(p => [p.n, formatEUR(p.v), streamTotal > 0 ? (p.v / streamTotal * 100).toFixed(1) + '%' : '—'])
+    ));
+  }
+  openModal({ title: `${STREAMS[sk]?.label || sk} Expenses — ${formatEUR(streamTotal)}`, body, large: true });
+}
+
+// Per-stream KPI card row — one card per stream with expenses this period, so
+// the split is visible at a glance instead of only through the donut chart
+// further down the page.
+function buildExpenseStreamKpiRow(cur, cmp, cmpLabel) {
+  const streamMap = new Map();
+  cur.allExp.forEach(e => { const s = expStream(e); streamMap.set(s, (streamMap.get(s) || 0) + toEUR(e.amount, e.currency, e.date)); });
+  const entries = [...streamMap.entries()].filter(([, v]) => v > 0);
+  if (entries.length === 0) return null;
+
+  const cmpStreamMap = new Map();
+  if (cmp) cmp.allExp.forEach(e => { const s = expStream(e); cmpStreamMap.set(s, (cmpStreamMap.get(s) || 0) + toEUR(e.amount, e.currency, e.date)); });
+
+  const streamKeys = entries.map(([k]) => k);
+  const ordered = [...Object.keys(STREAMS).filter(k => streamKeys.includes(k)), ...streamKeys.filter(k => !STREAMS[k])];
+
+  const grid = el('div', { class: 'grid grid-4 mb-16' });
+  for (const sk of ordered) {
+    const val = streamMap.get(sk) || 0;
+    const cmpVal = cmp ? (cmpStreamMap.get(sk) || 0) : null;
+    grid.appendChild(mkKpiCard({
+      label:       STREAMS[sk]?.label || sk,
+      value:       formatEUR(val),
+      subtitle:    cur.total > 0 ? `${(val / cur.total * 100).toFixed(0)}% of total expenses` : null,
+      delta:       cmp ? safePct(val, cmpVal) : null,
+      invertDelta: true,
+      compLabel:   cmpLabel,
+      compValue:   cmp ? formatEUR(cmpVal) : undefined,
+      onClick:     () => openExpenseStreamModal(sk, cur.allExp)
+    }));
+  }
+  return el('div', {}, mkSectionLabel('Expenses by Stream'), grid);
+}
+
 // ── Chart 2: Donut — Expenses by Stream ──────────────────────────────────────
 function renderStreamDonut({ allExp }) {
   const streamMap = new Map();
@@ -857,34 +924,7 @@ function renderStreamDonut({ allExp }) {
     labels: entries.map(([k]) => STREAMS[k]?.label || k),
     data:   entries.map(([, v]) => Math.round(v)),
     colors: streamKeys.map(k => STREAMS[k]?.color || '#8b93b0'),
-    onClickItem: (_label, idx) => {
-      const sk       = streamKeys[idx];
-      const streamExp   = allExp.filter(e => expStream(e) === sk);
-      const streamTotal = streamExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-      const body = el('div');
-      const catMap = new Map();
-      streamExp.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
-      const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
-      if (cats.length) {
-        body.appendChild(mkSectionLabel('By Category'));
-        body.appendChild(mkModalTable(
-          [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Stream', right: true, muted: true }],
-          cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), streamTotal > 0 ? (v / streamTotal * 100).toFixed(1) + '%' : '—'])
-        ));
-      }
-      const propMap = new Map();
-      streamExp.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
-      const props = [...propMap.values()].sort((a, b) => b.v - a.v);
-      if (props.length) {
-        body.appendChild(el('div', { style: 'margin-top:20px' }));
-        body.appendChild(mkSectionLabel('By Property'));
-        body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Amount', right: true }, { label: '% of Stream', right: true, muted: true }],
-          props.map(p => [p.n, formatEUR(p.v), streamTotal > 0 ? (p.v / streamTotal * 100).toFixed(1) + '%' : '—'])
-        ));
-      }
-      openModal({ title: `${STREAMS[sk]?.label || sk} Expenses — ${formatEUR(streamTotal)}`, body, large: true });
-    }
+    onClickItem: (_label, idx) => openExpenseStreamModal(streamKeys[idx], allExp)
   });
 }
 

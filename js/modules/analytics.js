@@ -673,23 +673,82 @@ function renderRevExpBar(cur, months) {
 }
 
 // ── Chart: Business Mix Donut ─────────────────────────────────────────────────
+const STREAM_LABELS = {
+  short_term_rental:  'STR',
+  long_term_rental:   'LTR',
+  customer_success:   'Customer Success',
+  marketing_services: 'Marketing',
+  other:              'Other'
+};
+const STREAM_COLORS = {
+  short_term_rental:  '#6366f1',
+  long_term_rental:   '#10b981',
+  customer_success:   '#f59e0b',
+  marketing_services: '#ec4899',
+  other:              '#8b93b0'
+};
+
+// Revenue drill-down for one stream — shared by the per-stream KPI card row
+// and the "Business Mix" donut's click handler so both surfaces open the
+// identical detail view.
+function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur) {
+  const streamLabel = STREAM_LABELS[streamKey] || streamKey;
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  body.appendChild(mkSummaryGrid([
+    { label: 'Stream',   value: streamLabel },
+    { label: 'Revenue',  value: formatEUR(streamTotal) },
+    { label: '% of Mix', value: totalRevMix > 0 ? (streamTotal / totalRevMix * 100).toFixed(1) + '%' : '—' }
+  ], 3));
+  const pays = cur.payments.filter(p => (p.stream || 'other') === streamKey);
+  const invs = cur.invoices.filter(i => (i.stream || 'other') === streamKey);
+  if (pays.length) {
+    body.appendChild(mkSectionLabel('Payments'));
+    body.appendChild(mkModalTable(['Date','Property','Amount'],
+      pays.sort((a,b) => (b.date||'').localeCompare(a.date||'')).slice(0,8)
+          .map(p => [p.date||'—', byId('properties',p.propertyId)?.name||'—', formatEUR(toEUR(p.amount,p.currency,p.date))])
+    ));
+  }
+  if (invs.length) {
+    body.appendChild(mkSectionLabel('Invoices'));
+    body.appendChild(mkModalTable(['Date','Client','Amount'],
+      invs.sort((a,b) => (b.issueDate||'').localeCompare(a.issueDate||'')).slice(0,8)
+          .map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', formatEUR(toEUR(i.total,i.currency,i.issueDate))])
+    ));
+  }
+  if (!pays.length && !invs.length) body.appendChild(mkEmptyState('No records for this stream.'));
+  openModal({ title: `${streamLabel} — Revenue Detail`, body, large: true });
+}
+
+// Per-stream KPI card row — one card per stream with revenue this period, so
+// the business mix is visible at a glance instead of only through the donut
+// chart further down the page.
+function buildStreamKpiRow(cur, cmp, cmpRange) {
+  const entries = [...cur.streamMap.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) return null;
+  const totalRevMix = entries.reduce((s, [, v]) => s + v, 0);
+  const cmpLabel = cmpRange?.label;
+
+  const grid = el('div', {
+    class: 'mb-16',
+    style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px'
+  });
+  for (const [streamKey, streamTotal] of entries) {
+    const cmpTotal = cmp ? (cmp.streamMap.get(streamKey) || 0) : null;
+    grid.appendChild(mkKpiCard({
+      label:     STREAM_LABELS[streamKey] || streamKey,
+      value:     formatEUR(streamTotal),
+      subtitle:  totalRevMix > 0 ? `${(streamTotal / totalRevMix * 100).toFixed(0)}% of revenue mix` : null,
+      delta:     cmp ? safePct(streamTotal, cmpTotal) : null,
+      compLabel: cmpLabel,
+      compValue: cmp ? formatEUR(cmpTotal ?? 0) : undefined,
+      onClick:   () => openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur)
+    }));
+  }
+  return el('div', {}, mkSectionLabel('Revenue by Stream'), grid);
+}
+
 function renderMixDonut(cur) {
   const { streamMap } = cur;
-  const STREAM_LABELS = {
-    short_term_rental:  'STR',
-    long_term_rental:   'LTR',
-    customer_success:   'Customer Success',
-    marketing_services: 'Marketing',
-    other:              'Other'
-  };
-  const STREAM_COLORS = {
-    short_term_rental:  '#6366f1',
-    long_term_rental:   '#10b981',
-    customer_success:   '#f59e0b',
-    marketing_services: '#ec4899',
-    other:              '#8b93b0'
-  };
-
   const entries = [...streamMap.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   if (!entries.length) return;
 
@@ -701,31 +760,7 @@ function renderMixDonut(cur) {
     colors: entries.map(([k]) => STREAM_COLORS[k] || '#8b93b0'),
     onClickItem: (label, index) => {
       const [streamKey, streamTotal] = entries[index];
-      const streamLabel = STREAM_LABELS[streamKey] || streamKey;
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      body.appendChild(mkSummaryGrid([
-        { label: 'Stream',   value: streamLabel },
-        { label: 'Revenue',  value: formatEUR(streamTotal) },
-        { label: '% of Mix', value: totalRevMix > 0 ? (streamTotal / totalRevMix * 100).toFixed(1) + '%' : '—' }
-      ], 3));
-      const pays = cur.payments.filter(p => (p.stream || 'other') === streamKey);
-      const invs = cur.invoices.filter(i => (i.stream || 'other') === streamKey);
-      if (pays.length) {
-        body.appendChild(mkSectionLabel('Payments'));
-        body.appendChild(mkModalTable(['Date','Property','Amount'],
-          pays.sort((a,b) => (b.date||'').localeCompare(a.date||'')).slice(0,8)
-              .map(p => [p.date||'—', byId('properties',p.propertyId)?.name||'—', formatEUR(toEUR(p.amount,p.currency,p.date))])
-        ));
-      }
-      if (invs.length) {
-        body.appendChild(mkSectionLabel('Invoices'));
-        body.appendChild(mkModalTable(['Date','Client','Amount'],
-          invs.sort((a,b) => (b.issueDate||'').localeCompare(a.issueDate||'')).slice(0,8)
-              .map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', formatEUR(toEUR(i.total,i.currency,i.issueDate))])
-        ));
-      }
-      if (!pays.length && !invs.length) body.appendChild(mkEmptyState('No records for this stream.'));
-      openModal({ title: `${streamLabel} — Revenue Detail`, body, large: true });
+      openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur);
     }
   });
 }
@@ -838,6 +873,9 @@ function buildView() {
 
   // KPI Grid (2 rows of 4)
   wrap.appendChild(buildKpiGrid(curData, cmpData, cmpRange));
+
+  const streamKpiRow = buildStreamKpiRow(curData, cmpData, cmpRange);
+  if (streamKpiRow) wrap.appendChild(streamKpiRow);
 
   // Insights Banner
   wrap.appendChild(buildInsights(curData, cmpData, cmpRange, curRange.start, curRange.end));

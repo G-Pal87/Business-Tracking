@@ -1458,6 +1458,70 @@ function buildPendingTable(data) {
   return mkModalTable(headers, rows);
 }
 
+// Forecast-vs-actual drill-down for one stream — shared by the per-stream KPI
+// card row and the "Forecast Revenue by Stream" doughnut's click handler so
+// both surfaces open the identical detail view.
+function openStreamDetailModal(s, data) {
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+  const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
+  summaryBoxes.appendChild(mkSummaryBox('Forecast Revenue', formatEUR(s.fcRev)));
+  summaryBoxes.appendChild(mkSummaryBox('Actual Revenue',   formatEUR(s.actRev)));
+  summaryBoxes.appendChild(mkSummaryBox('Variance',         fmtVar(s.actRev, s.fcRev), fmtVarPct(s.actRev, s.fcRev)));
+  body.appendChild(mkSectionLabel('Forecast vs Actual'));
+  body.appendChild(summaryBoxes);
+
+  const streamPayments = data.actPayments.filter(p => (resolveStream(p) || 'other') === s.key);
+  const streamInvoices = data.actInvoices.filter(i => (resolveStream(i) || 'other') === s.key);
+
+  if (streamPayments.length > 0) {
+    const payRows = streamPayments
+      .slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .map(p => [fmtDate(p.date), byId('properties', p.propertyId)?.name || '—', p.confirmationCode || p.airbnbRef || '—', formatEUR(toEUR(p.amount, p.currency, p.date))]);
+    body.appendChild(mkSectionLabel('Payments'));
+    body.appendChild(mkModalTable(['Date', 'Property', 'Reference', 'Amount'], payRows));
+  }
+
+  if (streamInvoices.length > 0) {
+    const invRows = streamInvoices
+      .slice().sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''))
+      .map(i => [fmtDate(i.issueDate), byId('clients', i.clientId)?.name || i.clientId || '—', i.ref || i.number || '—', formatEUR(toEUR(i.total || i.amount, i.currency, i.issueDate))]);
+    body.appendChild(mkSectionLabel('Invoices'));
+    body.appendChild(mkModalTable(['Date', 'Client', 'Reference', 'Amount'], invRows));
+  }
+
+  openModal({ title: `${s.label} — Stream Detail`, body, large: true });
+}
+
+// Per-stream KPI card row — one card per stream with forecast and/or actual
+// revenue this period, so the split is visible at a glance instead of only
+// through the "Revenue Breakdown" charts/table further down the page.
+function buildStreamKpiRow(data) {
+  const streams = data.streamBreakdown.filter(s => s.fcRev > 0 || s.actRev > 0);
+  if (streams.length === 0) return null;
+
+  const grid = el('div', {
+    class: 'mb-16',
+    style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px'
+  });
+  for (const s of streams) {
+    const variance = s.actRev - s.fcRev;
+    grid.appendChild(mkKpiCard({
+      label: s.label,
+      value: formatEUR(s.actRev),
+      subtitle: s.fcRev > 0 ? `Forecast ${formatEUR(s.fcRev)}` : 'No forecast set',
+      variant: s.fcRev > 0 ? (variance > 0 ? 'success' : variance < 0 ? 'danger' : '') : '',
+      delta: s.fcRev > 0 ? safeVariancePct(s.actRev, s.fcRev) : null,
+      compLabel: 'forecast',
+      onClick: () => openStreamDetailModal(s, data)
+    }));
+  }
+  return el('div', {},
+    mkSectionLabel('Forecast by Stream'),
+    grid
+  );
+}
+
 // ── Chart rendering ───────────────────────────────────────────────────────────
 function renderCharts(data) {
   const { months, fcMonthlyRev, fcMonthlyExp,
@@ -1607,38 +1671,7 @@ function renderCharts(data) {
       colors: fcStreams.map(s => STREAMS[s.key]?.color || '#6366f1'),
       onClickItem: (_lbl, idx) => {
         const s = fcStreams[idx];
-        if (!s) return;
-        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-
-        // Forecast vs actual summary for this stream
-        const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
-        summaryBoxes.appendChild(mkSummaryBox('Forecast Revenue', formatEUR(s.fcRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Actual Revenue',   formatEUR(s.actRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Variance',         fmtVar(s.actRev, s.fcRev), fmtVarPct(s.actRev, s.fcRev)));
-        body.appendChild(mkSectionLabel('Forecast vs Actual'));
-        body.appendChild(summaryBoxes);
-
-        // Payments for this stream in the current period
-        const streamPayments = data.actPayments.filter(p => (resolveStream(p) || 'other') === s.key);
-        const streamInvoices = data.actInvoices.filter(i => (resolveStream(i) || 'other') === s.key);
-
-        if (streamPayments.length > 0) {
-          const payRows = streamPayments
-            .slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-            .map(p => [fmtDate(p.date), byId('properties', p.propertyId)?.name || '—', p.confirmationCode || p.airbnbRef || '—', formatEUR(toEUR(p.amount, p.currency, p.date))]);
-          body.appendChild(mkSectionLabel('Payments'));
-          body.appendChild(mkModalTable(['Date', 'Property', 'Reference', 'Amount'], payRows));
-        }
-
-        if (streamInvoices.length > 0) {
-          const invRows = streamInvoices
-            .slice().sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''))
-            .map(i => [fmtDate(i.issueDate), byId('clients', i.clientId)?.name || i.clientId || '—', i.ref || i.number || '—', formatEUR(toEUR(i.total || i.amount, i.currency, i.issueDate))]);
-          body.appendChild(mkSectionLabel('Invoices'));
-          body.appendChild(mkModalTable(['Date', 'Client', 'Reference', 'Amount'], invRows));
-        }
-
-        openModal({ title: `${s.label} — Stream Detail`, body, large: true });
+        if (s) openStreamDetailModal(s, data);
       }
     });
   }
@@ -1964,6 +1997,10 @@ function buildView() {
   const hasAnyData = data.forecastRev > 0 || data.actualRev > 0 || data.pendingPipeline > 0;
 
   wrap.appendChild(buildKpiGrid(data, cmpData, cmpRange));
+
+  const streamKpiRow = buildStreamKpiRow(data);
+  if (streamKpiRow) wrap.appendChild(streamKpiRow);
+
   wrap.appendChild(buildForecastInsights(data, cmpData));
 
   const dqSection = buildDataQualityWarnings();
