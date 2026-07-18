@@ -13,7 +13,7 @@ import {
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
 
 // ── Module state ───────────────────────────────────────────────────────────────
-const CHART_IDS  = ['tax-rev-exp-bar', 'tax-exp-cat-donut', 'tax-yoy-bar'];
+const CHART_IDS  = ['tax-yoy-bar'];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 let gYear  = null;
@@ -169,10 +169,6 @@ function resolvedCatLabel(e) {
 function resolvedCatKey(e) {
   const fields = resolveExpenseFields(e);
   return fields.costCategory || e.costCategory || e.category || 'other';
-}
-
-function catColor(catKey) {
-  return COST_CATEGORIES[catKey]?.color || '#8b93b0';
 }
 
 function getYearData(year, ownerFilter) {
@@ -449,7 +445,7 @@ function buildKpiCards(data, year, taxRate) {
     return mkEmptyState('No activity recorded for ' + year + '. Select a different year or add data.');
   }
 
-  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px' });
+  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px' });
 
   // 1. Operating Margin
   grid.appendChild(mkKpiCard({
@@ -489,44 +485,7 @@ function buildKpiCards(data, year, taxRate) {
     }
   }));
 
-  // 3. Tax-Deductible OpEx
-  grid.appendChild(mkKpiCard({
-    label: 'Tax-Deductible OpEx', value: formatEUR(totalOpEx), subtitle: 'Estimated deductible expenses',
-    onClick: () => {
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      const catEntries = [...data.catMap.entries()].sort((a, b) => b[1] - a[1]);
-      body.appendChild(mkSectionLabel('OpEx by Category'));
-      body.appendChild(mkModalTable(['Category', 'Amount', '% of OpEx'], catEntries.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), totalOpEx > 0 ? (v / totalOpEx * 100).toFixed(1) + '%' : '—'])));
-      body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:8px' }, 'Operating expenses are generally deductible for tax purposes. CapEx is typically depreciated over the asset\'s useful life.'));
-      openModal({ title: 'Tax-Deductible OpEx — Breakdown', body, large: true });
-    }
-  }));
-
-  // 4. Capital Deployed
-  grid.appendChild(mkKpiCard({
-    label: 'Capital Deployed', value: formatEUR(totalCapEx),
-    subtitle: totalCapEx === 0 ? 'No capital assets this year' : 'Non-deductible (depreciated)',
-    variant: totalCapEx > 0 ? 'warning' : '',
-    onClick: () => {
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      const capByCategory = new Map();
-      for (const e of data.capExpenses) capByCategory.set(resolvedCatKey(e), (capByCategory.get(resolvedCatKey(e)) || 0) + toEUR(e.amount, e.currency, e.date));
-      const catEntries = [...capByCategory.entries()].sort((a, b) => b[1] - a[1]);
-      body.appendChild(mkSummaryGrid([
-        { label: 'Total CapEx',     value: formatEUR(totalCapEx), sub: `${data.capExpenses.length} items` },
-        { label: 'As % of Revenue', value: totalRevenue > 0 ? (totalCapEx / totalRevenue * 100).toFixed(1) + '%' : '—', sub: 'Capital intensity' }
-      ], 2));
-      if (catEntries.length > 0) {
-        body.appendChild(mkSectionLabel('CapEx by Category'));
-        body.appendChild(mkModalTable(['Category', 'Amount', '% of CapEx'], catEntries.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), totalCapEx > 0 ? (v / totalCapEx * 100).toFixed(1) + '%' : '—'])));
-      } else {
-        body.appendChild(mkEmptyState('No CapEx recorded for this year.'));
-      }
-      openModal({ title: 'Capital Deployed — Breakdown', body, large: true });
-    }
-  }));
-
-  // 5. Year vs Forecast
+  // 3. Year vs Forecast
   if (hasForecast) {
     const actualNet    = opProfit;
     const variance     = actualNet - forecastNet;
@@ -590,75 +549,6 @@ function buildKpiCards(data, year, taxRate) {
   return grid;
 }
 
-function buildExpenseCategoryTable(data) {
-  const { catMap, totalOpEx, capExpenses } = data;
-  const capCatMap = new Map();
-  for (const e of capExpenses) capCatMap.set(resolvedCatKey(e), (capCatMap.get(resolvedCatKey(e)) || 0) + toEUR(e.amount, e.currency, e.date));
-
-  const wrap = el('div', { class: 'card mb-16' });
-  wrap.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Expense Categories'),
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a row to see individual records')
-  ));
-
-  const rows = [];
-  for (const [catKey, amt] of [...catMap.entries()].sort((a, b) => b[1] - a[1])) {
-    rows.push({ catKey, amt, count: data.opExpenses.filter(e => resolvedCatKey(e) === catKey).length, isCapex: false, expList: data.opExpenses.filter(e => resolvedCatKey(e) === catKey) });
-  }
-  for (const [catKey, amt] of [...capCatMap.entries()].sort((a, b) => b[1] - a[1])) {
-    rows.push({ catKey, amt, count: capExpenses.filter(e => resolvedCatKey(e) === catKey).length, isCapex: true, expList: capExpenses.filter(e => resolvedCatKey(e) === catKey) });
-  }
-
-  if (!rows.length) { wrap.appendChild(mkEmptyState('No expense data for this year.')); return wrap; }
-
-  const tbl  = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
-  const hrow = el('tr');
-  ['Category', 'Count', 'Total (€)', '% of OpEx', 'Type'].forEach((h, hi) => {
-    hrow.appendChild(el('th', { style: `padding:8px 12px;text-align:${hi === 0 ? 'left' : 'right'};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08)` }, h));
-  });
-  tbl.appendChild(el('thead', {}, hrow));
-
-  const tbody = el('tbody');
-  rows.forEach((row, ri) => {
-    const tr = el('tr', { style: [ri % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : '', 'cursor:pointer;transition:background 80ms'].join(';') });
-    tr.addEventListener('mouseenter', () => { tr.style.background = 'rgba(255,255,255,0.05)'; });
-    tr.addEventListener('mouseleave', () => { tr.style.background = ri % 2 === 1 ? 'rgba(255,255,255,0.02)' : ''; });
-    const labelCell = el('td', { style: 'padding:8px 12px;display:flex;align-items:center;gap:8px' });
-    labelCell.appendChild(el('span', { style: `width:8px;height:8px;border-radius:50%;background:${catColor(row.catKey)};flex-shrink:0;display:inline-block` }));
-    labelCell.appendChild(document.createTextNode(COST_CATEGORIES[row.catKey]?.label || row.catKey));
-    tr.appendChild(labelCell);
-    const pctOfOpEx = (!row.isCapex && totalOpEx > 0) ? (row.amt / totalOpEx * 100).toFixed(1) + '%' : '—';
-    [[String(row.count), 'right'], [formatEUR(row.amt), 'right'], [pctOfOpEx, 'right'], [row.isCapex ? 'CapEx' : 'OpEx', 'right']].forEach(([text, align]) => {
-      tr.appendChild(el('td', { style: `padding:8px 12px;text-align:${align};color:var(--text-muted)` }, text));
-    });
-    tr.onclick = () => openCategoryModal(row.catKey, row.expList, row.isCapex, row.amt);
-    tbody.appendChild(tr);
-  });
-  tbl.appendChild(tbody);
-  wrap.appendChild(el('div', { style: 'padding:0 0 8px;overflow-x:auto;-webkit-overflow-scrolling:touch' }, tbl));
-  return wrap;
-}
-
-function openCategoryModal(catKey, expList, isCapex, total) {
-  const label = COST_CATEGORIES[catKey]?.label || catKey;
-  const body  = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-  body.appendChild(mkSummaryGrid([
-    { label: 'Category',   value: label,                                                                                 sub: isCapex ? 'CapEx' : 'OpEx' },
-    { label: 'Total',      value: formatEUR(total),                                                                      sub: `${expList.length} records` },
-    { label: 'Avg Amount', value: expList.length > 0 ? formatEUR(total / expList.length) : '—',                         sub: 'per expense' }
-  ], 3));
-  body.appendChild(mkSectionLabel('Individual Records'));
-  const sorted = [...expList].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  body.appendChild(mkModalTable(
-    ['Date', 'Description', 'Property / Vendor', 'Amount (EUR)'],
-    sorted.map(e => {
-      const prop   = e.propertyId ? byId('properties', e.propertyId)?.name : null;
-      const vendor = e.vendorId   ? byId('vendors', e.vendorId)?.name      : null;
-      return [e.date || '—', e.description || e.notes || '—', prop || vendor || '—', formatEUR(toEUR(e.amount, e.currency, e.date))];
-    })
-  ));
-  openModal({ title: `${label} — Expense Detail`, body, large: true });
-}
 
 const CHART_FALLBACK_MSG = 'Chart unavailable — network connection required to load charting library';
 
@@ -674,16 +564,6 @@ function mkChartWrap(id) {
 
 function buildCharts(data, year) {
   const wrap = el('div');
-  const row1 = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px' });
-  row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Monthly Revenue vs Operating Expenses'), el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Operating P&L view — CapEx excluded')),
-    mkChartWrap('tax-rev-exp-bar')
-  ));
-  row1.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'OpEx by Category'), el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click slice for detail')),
-    mkChartWrap('tax-exp-cat-donut')
-  ));
-  wrap.appendChild(row1);
   wrap.appendChild(el('div', { class: 'card mb-16' },
     el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Year-over-Year Revenue Comparison'), el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a bar to see that year\'s P&L summary')),
     mkChartWrap('tax-yoy-bar')
@@ -700,57 +580,6 @@ function renderCharts(data, year, ownerFilter) {
       if (fallback) { fallback.style.display = 'flex'; }
     });
     return;
-  }
-
-  charts.bar('tax-rev-exp-bar', {
-    labels: MONTH_LABELS,
-    datasets: [
-      { label: 'Revenue',             data: data.monthly.map(m => Math.round(m.rev)),  backgroundColor: 'rgba(16,185,129,0.75)', borderColor: '#10b981', borderWidth: 1 },
-      { label: 'Operating Expenses',  data: data.monthly.map(m => Math.round(m.opex)), backgroundColor: 'rgba(239,68,68,0.65)',  borderColor: '#ef4444', borderWidth: 1 }
-    ],
-    onClickItem: (label, index) => {
-      const m = data.monthly[index];
-      if (!m) return;
-      const mk           = m.mk;
-      const monthLabel   = MONTH_LABELS[index];
-      const monthPayments = data.payments.filter(p => p.date?.startsWith(mk));
-      const monthInvoices = data.invoices.filter(i => (i.issueDate || '').startsWith(mk));
-      const monthExpenses = data.opExpenses.filter(e => e.date?.startsWith(mk));
-      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-      body.appendChild(mkSummaryGrid([{ label: 'Revenue', value: formatEUR(m.rev) }, { label: 'Operating Expenses', value: formatEUR(m.opex) }, { label: 'Net', value: formatEUR(m.rev - m.opex) }], 3));
-      if (monthPayments.length > 0 || monthInvoices.length > 0) {
-        body.appendChild(mkSectionLabel('Revenue Breakdown'));
-        const revRows = [
-          ...monthPayments.map(p => { const prop = p.propertyId ? byId('properties', p.propertyId)?.name : null; return [p.date || '—', prop || '—', 'Payment', formatEUR(toEUR(p.amount, p.currency, p.date))]; }),
-          ...monthInvoices.map(i => { const client = i.clientId ? byId('clients', i.clientId)?.name : null;      return [i.issueDate || '—', client || '—', 'Invoice', formatEUR(toEUR(i.total, i.currency, i.issueDate))]; })
-        ].sort((a, b) => a[0].localeCompare(b[0]));
-        body.appendChild(mkModalTable(['Date', 'Entity', 'Type', 'Amount (EUR)'], revRows));
-      }
-      if (monthExpenses.length > 0) {
-        body.appendChild(mkSectionLabel('Expense Breakdown'));
-        body.appendChild(mkModalTable(['Date', 'Description', 'Entity', 'Amount (EUR)'], monthExpenses.sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(e => {
-          const prop   = e.propertyId ? byId('properties', e.propertyId)?.name : null;
-          const vendor = e.vendorId   ? byId('vendors', e.vendorId)?.name      : null;
-          return [e.date || '—', e.description || e.notes || '—', prop || vendor || '—', formatEUR(toEUR(e.amount, e.currency, e.date))];
-        })));
-      }
-      if (!monthPayments.length && !monthInvoices.length && !monthExpenses.length) body.appendChild(mkEmptyState('No data for this month.'));
-      openModal({ title: `${monthLabel} ${year} — Revenue & Expense Detail`, body, large: true });
-    }
-  });
-
-  const catEntries = [...data.catMap.entries()].sort((a, b) => b[1] - a[1]);
-  if (catEntries.length > 0) {
-    charts.doughnut('tax-exp-cat-donut', {
-      labels: catEntries.map(([k]) => COST_CATEGORIES[k]?.label || k),
-      data:   catEntries.map(([, v]) => Math.round(v)),
-      colors: catEntries.map(([k]) => catColor(k)),
-      onClickItem: (label, index) => {
-        const [catKey] = catEntries[index];
-        openCategoryModal(catKey, data.opExpenses.filter(e => resolvedCatKey(e) === catKey), false, catEntries[index][1]);
-      }
-    });
-    charts.toggleDoughnutPct('tax-exp-cat-donut');
   }
 
   const allYears   = getDataYears().reverse();
@@ -875,7 +704,6 @@ function buildPnLContent(years) {
   const data = getYearData(gYear, gOwner);
   wrap.appendChild(buildPnLTable(data, taxRate, gYear));
   wrap.appendChild(buildKpiCards(data, gYear, taxRate));
-  wrap.appendChild(buildExpenseCategoryTable(data));
   wrap.appendChild(buildCharts(data, gYear));
   wrap.appendChild(buildTaxExportSection(data, gYear));
 
