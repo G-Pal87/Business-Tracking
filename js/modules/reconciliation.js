@@ -1,6 +1,6 @@
 // Reconciliation – best-in-class heatmap dashboard
 import { el, fmtDate, drillDownModal, escapeHtml } from '../core/ui.js';
-import { availableYears, formatEUR, buildReconciliationData, listActivePayments, listActive, toEUR } from '../core/data.js';
+import { availableYears, formatEUR, buildReconciliationData, listActivePayments, listActive, toEUR, getPersonName, byId, companyPropIds, isCompanyRecord } from '../core/data.js';
 
 export default {
   id: 'reconciliation',
@@ -13,12 +13,35 @@ export default {
 
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
+// Same owner/scope matching buildReconciliationData applies when computing
+// the aggregate totals — needed here too so a service entity's drill-down
+// modal lists exactly the invoices its heatmap cell/row total already counted,
+// not every invoice for that stream regardless of the active Owner/Scope filter.
+function matchInvOwner(inv) {
+  if (!_recOwner) return true;
+  let ow = inv.owner;
+  if (!ow && inv.clientId) ow = byId('clients', inv.clientId)?.owner;
+  ow = ow || 'both';
+  return ow === 'both' || ow === _recOwner;
+}
+function matchInvScope(inv) {
+  if (_recScope !== 'company') return true;
+  return isCompanyRecord(inv, companyPropIds());
+}
+
 // Filter selections persisted at module scope so they survive refresh()/
 // re-navigation — build() otherwise recreates yearSel/kindFilter/statusFilter
 // from scratch on every visit, silently resetting them to today's defaults.
 let _recYear   = null; // null = not yet chosen; falls back to curYear
 let _recKind   = 'all';
 let _recStatus = 'all';
+let _recOwner  = ''; // '' = all owners | 'you' | 'rita'
+// Defaults to 'all' (not 'company', unlike every other dashboard's scope
+// toggle) so migrating this page onto the shared Owner/Scope conventions
+// doesn't silently hide personal-channel properties someone is already
+// relying on seeing here — 'all' matches this page's original, unscoped
+// behaviour before the toggle existed.
+let _recScope  = 'all';
 
 const ENT_COLS = [
   { key: 'entity',      label: 'Entity' },
@@ -117,7 +140,8 @@ function openCellModal(ent, m, yr) {
   if (ent.kind === 'service') {
     const { start, end } = monthRange(m.mk);
     const invs = listActive('invoices').filter(i =>
-      i.stream === ent.id && i.issueDate >= start && i.issueDate <= end && i.status !== 'draft'
+      i.stream === ent.id && i.issueDate >= start && i.issueDate <= end && i.status !== 'draft' &&
+      matchInvOwner(i) && matchInvScope(i)
     );
     return drillDownModal(title, byDate(invs.map(i => invRow(i, ent.label))), REC_COLS);
   }
@@ -151,7 +175,8 @@ function openEntityModal(ent, yr) {
   }
   if (ent.kind === 'service') {
     const invs = listActive('invoices').filter(i =>
-      i.stream === ent.id && (i.issueDate || '').startsWith(yr) && i.status !== 'draft'
+      i.stream === ent.id && (i.issueDate || '').startsWith(yr) && i.status !== 'draft' &&
+      matchInvOwner(i) && matchInvScope(i)
     );
     return drillDownModal(title, byDate(invs.map(i => invRow(i, ent.label))), REC_COLS);
   }
@@ -163,6 +188,34 @@ function openEntityModal(ent, yr) {
 
 function build() {
   const wrap = el('div', { class: 'view active' });
+
+  // Header — same convention as every analytics-*.js dashboard
+  wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
+    el('h2', { style: 'margin:0 0 4px;font-size:20px;font-weight:700' }, 'Reconciliation'),
+    el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' },
+      'Expected vs received revenue by property/stream, month by month, for one full year at a time')
+  ));
+
+  // Scope toggle (Company only / All incl. personal) — same convention and
+  // styling as every other analytics dashboard, defaulted to 'all' here (see
+  // _recScope's definition above) so nothing disappears from view by default.
+  const scopeBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:12px' });
+  scopeBar.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)' }, 'Scope'));
+  for (const [val, label] of [['company', 'Company only'], ['all', 'All (incl. personal)']]) {
+    const isActive = _recScope === val;
+    const btn = el('button', {
+      style: [
+        'padding:4px 14px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer;transition:all 120ms',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (_recScope !== val) { _recScope = val; render(); } };
+    scopeBar.appendChild(btn);
+  }
+  wrap.appendChild(scopeBar);
+
   const curYear = String(new Date().getFullYear());
   // Only show years with actual data, capped at current year (future years have nothing to reconcile)
   const yearOpts = [...new Set([curYear, ...availableYears().filter(y => y <= curYear)])].sort().reverse();
@@ -209,13 +262,24 @@ function build() {
     [{ key: 'all', label: 'All' }, { key: 'problem', label: 'Problems' }, { key: 'reconciled', label: 'Reconciled' }],
     () => _recStatus, v => _recStatus = v
   );
+  // Owner — same underlying data (getPersonName) and "both always matches"
+  // semantics as every other dashboard's Owner filter (core/data.js's
+  // buildReconciliationData ownerFilter param), styled as a button group to
+  // match this page's existing Type/Status controls rather than importing
+  // the shared multi-select widget those dashboards use.
+  const ownerGrp = makeFilterGroup(
+    [{ key: '', label: 'All' }, { key: 'you', label: getPersonName('you') }, { key: 'rita', label: getPersonName('rita') }],
+    () => _recOwner, v => _recOwner = v
+  );
 
   const sep = el('div', { style: 'width:1px;height:24px;background:var(--border)' });
+  const sep2 = el('div', { style: 'width:1px;height:24px;background:var(--border)' });
   const controlBar = el('div', { class: 'flex gap-12 mb-16', style: 'align-items:center;flex-wrap:wrap' },
     el('div', { style: 'font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px' }, 'Year'),
     yearSel, sep,
     el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Type:'),   kindGrp,
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Status:'), statusGrp
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Status:'), statusGrp, sep2,
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Owner:'),  ownerGrp
   );
   wrap.appendChild(controlBar);
 
@@ -232,7 +296,7 @@ function build() {
     detailCard.innerHTML = '';
 
     const yr = yearSel.value;
-    const allEntities = buildReconciliationData(Number(yr));
+    const allEntities = buildReconciliationData(Number(yr), _recOwner, _recScope);
     const withData    = allEntities.filter(e => e.totExp > 0 || e.totAct > 0);
 
     const filtered = withData.filter(e => {
@@ -259,7 +323,7 @@ function build() {
       const propNames = new Map(withData.filter(e => e.kind !== 'service').map(e => [e.id, e.label]));
       const svcNames  = new Map(withData.filter(e => e.kind === 'service').map(e => [e.id, e.label]));
       const pays = listActivePayments().filter(p => p.status === 'paid' && (p.date || '').startsWith(yr) && propNames.has(p.propertyId));
-      const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '').startsWith(yr) && svcNames.has(i.stream));
+      const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '').startsWith(yr) && svcNames.has(i.stream) && matchInvOwner(i) && matchInvScope(i));
       drillDownModal(`Received — ${yr}`, byDate([
         ...pays.map(p => payRow(p, propNames.get(p.propertyId) || '')),
         ...invs.map(i => invRow(i, svcNames.get(i.stream) || ''))

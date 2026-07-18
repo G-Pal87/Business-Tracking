@@ -778,10 +778,33 @@ export function generatePaymentSchedule(property) {
 }
 
 // ============== Reconciliation ==============
-export function buildReconciliationData(year) {
+// ownerFilter: '' (all) | 'you' | 'rita' — a property/invoice tagged 'both'
+// always matches, mirroring the owner-filter convention used across every
+// analytics-*.js dashboard's mOwner()/ownerMatches() matcher.
+// scope: 'all' (default — every property/invoice, personal included, matching
+// this function's original behaviour) | 'company' — excludes personal-channel
+// properties and personal-flagged invoices, same as every analytics
+// dashboard's Company-only/All scope toggle.
+export function buildReconciliationData(year, ownerFilter, scope) {
   const yr = Number(year);
   const now = new Date();
   const yearStr = String(yr);
+
+  const matchPropOwner = prop => {
+    if (!ownerFilter) return true;
+    const ow = prop.owner || 'both';
+    return ow === 'both' || ow === ownerFilter;
+  };
+  const matchInvOwner = inv => {
+    if (!ownerFilter) return true;
+    let ow = inv.owner;
+    if (!ow && inv.clientId) ow = byId('clients', inv.clientId)?.owner;
+    ow = ow || 'both';
+    return ow === 'both' || ow === ownerFilter;
+  };
+  const matchPropScope = prop => scope !== 'company' || (prop.channel || 'company') === 'company';
+  const coPropIds = companyPropIds();
+  const matchInvScope = inv => scope !== 'company' || isCompanyRecord(inv, coPropIds);
 
   // Pre-build lookup maps — avoids O(n) listActive() scans inside nested loops
   const tenantsByProp = new Map();
@@ -807,7 +830,7 @@ export function buildReconciliationData(year) {
   }
   const invsByStream = new Map();
   for (const i of listActive('invoices')) {
-    if (i.status === 'draft' || !(i.issueDate || '').startsWith(yearStr)) continue;
+    if (i.status === 'draft' || !(i.issueDate || '').startsWith(yearStr) || !matchInvOwner(i) || !matchInvScope(i)) continue;
     const arr = invsByStream.get(i.stream) || [];
     arr.push(i);
     invsByStream.set(i.stream, arr);
@@ -816,6 +839,7 @@ export function buildReconciliationData(year) {
   const entities = [];
 
   for (const prop of listActive('properties')) {
+    if (!matchPropOwner(prop) || !matchPropScope(prop)) continue;
     const propTenants = tenantsByProp.get(prop.id) || [];
     const propPayments = paysByProp.get(prop.id) || [];
     const months = [];
