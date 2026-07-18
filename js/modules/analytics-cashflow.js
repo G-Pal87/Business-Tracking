@@ -177,6 +177,86 @@ const CF_DRILL_COLS = [
   { key: 'amountEUR',   label: 'Amount EUR',  right: true             }
 ];
 
+// Net cash flow (in / opOut / capOut) grouped by raw stream key — shared by
+// the per-stream KPI card row and its drill-down modal below.
+function computeCashflowByStream({ payments, invoices, opExpenses, capExpenses }) {
+  const m = new Map();
+  const add = (sk, inV, opV, capV) => {
+    const c = m.get(sk) || { in: 0, opOut: 0, capOut: 0 };
+    c.in += inV; c.opOut += opV; c.capOut += capV;
+    m.set(sk, c);
+  };
+  payments.forEach(p => add(p.stream || 'other', toEUR(p.amount, p.currency, p.date), 0, 0));
+  invoices.forEach(i => add(i.stream || 'other', toEUR(i.total, i.currency, i.issueDate), 0, 0));
+  opExpenses.forEach(e => add(expStream(e), 0, toEUR(e.amount, e.currency, e.date), 0));
+  capExpenses.forEach(e => add(expStream(e), 0, 0, toEUR(e.amount, e.currency, e.date)));
+  return m;
+}
+
+// Cash-flow drill-down for one stream — mirrors the per-month heatmap-cell
+// drill-down further down this file (summary boxes + transaction list).
+function openCashflowStreamModal(sk, curData) {
+  const sPay = curData.payments.filter(p => (p.stream || 'other') === sk);
+  const sInv = curData.invoices.filter(i => (i.stream || 'other') === sk);
+  const sOp  = curData.opExpenses.filter(e => expStream(e) === sk);
+  const sCap = curData.capExpenses.filter(e => expStream(e) === sk);
+  const inV     = sPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
+                + sInv.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const opOutV  = sOp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const capOutV = sCap.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const net = inV - opOutV - capOutV;
+
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px' });
+  summaryGrid.appendChild(mkSummaryBox('Cash In', formatEUR(inV), `${sPay.length + sInv.length} items`));
+  summaryGrid.appendChild(mkSummaryBox('Op. Cash Out', formatEUR(opOutV), `${sOp.length} expenses`));
+  summaryGrid.appendChild(mkSummaryBox('Invest. Cash Out', formatEUR(capOutV), `${sCap.length} items`));
+  summaryGrid.appendChild(mkSummaryBox('Net Cash Flow', formatEUR(net), net >= 0 ? 'Surplus' : 'Deficit'));
+  body.appendChild(summaryGrid);
+
+  const rows = buildCashFlowRows(sPay, sInv, sOp, sCap);
+  if (rows.length > 0) {
+    body.appendChild(mkSectionLabel('Transactions'));
+    body.appendChild(mkModalTable(
+      ['Date', 'Source', 'Type', 'Entity', 'Owner', 'Description', 'Amount EUR'],
+      rows.map(r => [fmtDate(r.date), r.source, r.type, r.entity, r.owner, r.description, r.amountEUR])
+    ));
+  }
+  openModal({ title: `${STREAMS[sk]?.label || sk} — Net ${formatEUR(net)}`, body, large: true });
+}
+
+// Per-stream KPI card row — one card per stream with cash activity this
+// period, so net cash flow by stream is visible at a glance instead of only
+// through the "Cash Flow by Stream" chart further down the page.
+function buildCashflowStreamKpiRow(curData, cmpData, cmpLabel) {
+  const streamMap = computeCashflowByStream(curData);
+  const entries = [...streamMap.entries()].filter(([, d]) => d.in > 0 || d.opOut > 0 || d.capOut > 0);
+  if (entries.length === 0) return null;
+
+  const cmpStreamMap = cmpData ? computeCashflowByStream(cmpData) : null;
+  const streamKeys = entries.map(([k]) => k);
+  const ordered = [...Object.keys(STREAMS).filter(k => streamKeys.includes(k)), ...streamKeys.filter(k => !STREAMS[k])];
+
+  const grid = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:16px' });
+  for (const sk of ordered) {
+    const d = streamMap.get(sk);
+    const net = d.in - d.opOut - d.capOut;
+    const cmpD = cmpStreamMap?.get(sk);
+    const cmpNet = cmpD ? cmpD.in - cmpD.opOut - cmpD.capOut : null;
+    grid.appendChild(mkKpiCard({
+      label:     STREAMS[sk]?.label || sk,
+      value:     formatEUR(net),
+      variant:   net > 0 ? 'success' : net < 0 ? 'danger' : '',
+      subtitle:  `In ${formatEUR(d.in)} · Out ${formatEUR(d.opOut + d.capOut)}`,
+      delta:     cmpData ? safePct(net, cmpNet) : null,
+      compLabel: cmpLabel,
+      compValue: cmpData ? formatEUR(cmpNet ?? 0) : undefined,
+      onClick:   () => openCashflowStreamModal(sk, curData)
+    }));
+  }
+  return el('div', {}, mkSectionLabel('Net Cash Flow by Stream'), grid);
+}
+
 // ── Cash Flow Insights ────────────────────────────────────────────────────────
 function computeCashFlowInsights(curData, cmpData, cmpRange) {
   const { payments, invoices, opExpenses, capExpenses, cashIn, opExCashOut, investCashOut, cashOut, opCashFlow, net } = curData;
@@ -1059,6 +1139,9 @@ function buildView() {
   }
 
   wrap.appendChild(kpiRow4);
+
+  const streamKpiRow = buildCashflowStreamKpiRow(curData, cmpData, cmpRange?.label);
+  if (streamKpiRow) wrap.appendChild(streamKpiRow);
 
   // ── Cash Flow Insights ─────────────────────────────────────────────────────
   wrap.appendChild(mkInsightsBanner(computeCashFlowInsights(curData, cmpData, cmpRange), 'Cash Flow Insights'));
