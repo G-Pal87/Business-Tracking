@@ -438,6 +438,7 @@ function calculateDashboardData(range) {
 
   const streamBreakdown   = computeStreamBreakdown(actPayments, actInvoices, months);
   const propertyBreakdown = computePropertyBreakdown(actPayments, months, combinedPropPending);
+  const blendedRoi        = computeBlendedRoi(monthlyBreakdown);
 
   return {
     actualRev, actualExp, actualCapEx, actualNet,
@@ -448,9 +449,51 @@ function calculateDashboardData(range) {
     svcProjectedItems, svcProjectedTotal,
     actPayments, actInvoices, actOpExpenses, actCapExpenses,
     months, fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp,
-    monthlyBreakdown, streamBreakdown, propertyBreakdown,
+    monthlyBreakdown, streamBreakdown, propertyBreakdown, blendedRoi,
     mape, mapeMonthCount: mapeValidMonths.length
   };
+}
+
+// ── Blended ROI (actual to date + forecast for the remainder of the range) ────
+// Unlike a projection that scales partial-period actuals up to a full year,
+// this uses the real actual figures for months that have already happened and
+// the real forecast figures (manual entries / lease schedule / service
+// targets — the same ones the KPIs above show) for months still ahead, so a
+// "Full Year" selection mid-year reflects what's actually forecasted for the
+// rest of the year instead of silently matching "YTD" 1:1.
+function computeBlendedRoi(monthlyBreakdown) {
+  const todayMk = new Date().toISOString().slice(0, 7);
+  let blendedRev = 0, blendedExp = 0;
+  const monthSource = monthlyBreakdown.map(m => {
+    const useActual = m.key <= todayMk;
+    const rev = useActual ? m.actRev : m.fcRev;
+    const exp = useActual ? m.actExp : m.fcExp;
+    blendedRev += rev;
+    blendedExp += exp;
+    return { label: m.label, key: m.key, source: useActual ? 'Actual' : 'Forecast', rev, exp, net: rev - exp };
+  });
+  const blendedNet = blendedRev - blendedExp;
+
+  // Total invested — purchase price + all-time CapEx across properties in the
+  // current scope/owner/stream/property filters. Investment is cumulative to
+  // date, so unlike revenue/expenses this is never clamped to the period.
+  const capExByProp = new Map();
+  listActive('expenses').filter(isCapEx).forEach(e => {
+    if (!e.propertyId) return;
+    capExByProp.set(e.propertyId, (capExByProp.get(e.propertyId) || 0) + toEUR(e.amount, e.currency, e.date));
+  });
+  const propBreakdown = [];
+  let totalInvested = 0;
+  listActive('properties').filter(propMatchesForecastFilters).forEach(prop => {
+    const purchaseEUR = prop.purchasePrice ? toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) : 0;
+    const capExEUR    = capExByProp.get(prop.id) || 0;
+    const invested     = purchaseEUR + capExEUR;
+    if (invested > 0) propBreakdown.push({ name: prop.name, purchaseEUR, capExEUR, invested });
+    totalInvested += invested;
+  });
+
+  const roi = totalInvested > 0 ? (blendedNet / totalInvested) * 100 : null;
+  return { blendedRev, blendedExp, blendedNet, totalInvested, roi, monthSource, propBreakdown };
 }
 
 function computeStreamBreakdown(actPayments, actInvoices, months) {
@@ -678,7 +721,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     pendingSTRTotal, ltrPendingItems, ltrPendingTotal, svcPendingItems, svcPendingTotal,
     svcProjectedItems, svcProjectedTotal,
     actPayments, actInvoices, actOpExpenses, actCapExpenses,
-    monthlyBreakdown, mape, mapeMonthCount
+    monthlyBreakdown, mape, mapeMonthCount, blendedRoi
   } = data;
   const cmpLabel = cmpRange?.label || '';
 
@@ -857,6 +900,50 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     delta: cmpData ? safePct(actualNet, cmpData.actualNet) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.actualNet) : undefined,
+  }));
+
+  // 8b. ROI (Actual + Forecast) — blends actual figures for months already
+  // elapsed with forecast figures for months still ahead in the selected
+  // range, so e.g. a mid-year "Full Year" selection reflects the real
+  // forecast for Aug-Dec instead of matching "YTD" 1:1 (see computeBlendedRoi).
+  grid.appendChild(mkKpiCard({
+    label:    'ROI (Actual + Forecast)',
+    subtitle: blendedRoi.totalInvested > 0 ? 'Actual to date + forecast remainder' : 'No purchase price recorded',
+    value:    blendedRoi.roi !== null ? blendedRoi.roi.toFixed(1) + '%' : '—',
+    variant:  blendedRoi.roi === null ? '' : blendedRoi.roi >= 5 ? 'success' : blendedRoi.roi >= 0 ? 'warning' : 'danger',
+    onClick: () => {
+      const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+      if (blendedRoi.totalInvested === 0) {
+        body.appendChild(mkEmptyState('No properties in the current filters have a purchase price recorded.'));
+      } else {
+        const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px' });
+        sgrid.appendChild(mkSummaryBox('Blended Net Income', formatEUR(blendedRoi.blendedNet), 'Actual (to date) + forecast (remainder)'));
+        sgrid.appendChild(mkSummaryBox('Total Invested', formatEUR(blendedRoi.totalInvested), 'Purchase price + all-time CapEx'));
+        sgrid.appendChild(mkSummaryBox('ROI', blendedRoi.roi.toFixed(1) + '%', null));
+        body.appendChild(sgrid);
+
+        body.appendChild(mkSectionLabel('Monthly Basis — Actual vs Forecast'));
+        body.appendChild(mkModalTable(
+          ['Month', 'Source', 'Revenue', 'Expenses', 'Net'],
+          blendedRoi.monthSource.map(m => [m.label, m.source, formatEUR(m.rev), formatEUR(m.exp), formatEUR(m.net)])
+        ));
+
+        if (blendedRoi.propBreakdown.length > 0) {
+          body.appendChild(mkSectionLabel('Invested Capital by Property'));
+          body.appendChild(mkModalTable(
+            ['Property', 'Purchase Price', 'All-time CapEx', 'Total Invested'],
+            [...blendedRoi.propBreakdown].sort((a, b) => b.invested - a.invested)
+              .map(p => [p.name, formatEUR(p.purchaseEUR), formatEUR(p.capExEUR), formatEUR(p.invested)])
+          ));
+        }
+      }
+
+      openModal({ title: 'ROI — Actual + Forecast', body, large: true });
+    },
+    delta: cmpData?.blendedRoi?.roi != null && blendedRoi.roi != null ? blendedRoi.roi - cmpData.blendedRoi.roi : null,
+    deltaIsPp: true, compLabel: cmpLabel,
+    compValue: cmpData?.blendedRoi?.roi != null ? cmpData.blendedRoi.roi.toFixed(1) + '%' : undefined,
   }));
 
   // 9. Pending Pipeline — period scoped, across all CONFIRMED streams (STR + LTR + Services)
