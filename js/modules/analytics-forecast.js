@@ -243,13 +243,17 @@ function getServicesProjectedItems(range) {
 
 // ── Forecast map builder (filtered, multi-year) ───────────────────────────────
 // Returns:
-//   fcMonthlyRev    Map<"YYYY-MM",        EUR>  — total portfolio forecast revenue per month
+//   fcMonthlyRev     Map<"YYYY-MM",        EUR>  — total portfolio forecast revenue per month (properties + services)
 //   fcPropMonthlyRev Map<"YYYY-MM_propId", EUR>  — per-property forecast revenue per month
-//   fcMonthlyExp    Map<"YYYY-MM",        EUR>  — total forecast expenses per month
+//   fcMonthlyExp     Map<"YYYY-MM",        EUR>  — total forecast expenses per month (properties + services)
+//   fcMonthlyPropRev Map<"YYYY-MM",        EUR>  — forecast revenue per month, properties only (excl. services)
+//   fcMonthlyPropExp Map<"YYYY-MM",        EUR>  — forecast expenses per month, properties only (excl. services)
 function buildFcMaps(startY, endY) {
   const fcMonthlyRev     = new Map();
   const fcPropMonthlyRev = new Map();
   const fcMonthlyExp     = new Map();
+  const fcMonthlyPropRev = new Map();
+  const fcMonthlyPropExp = new Map();
   const allFcs = listActive('forecasts');
   const fcByEntityYear = new Map(allFcs.map(fc => [fc.entityId + ':' + fc.year, fc]));
 
@@ -270,11 +274,15 @@ function buildFcMaps(startY, endY) {
           const rev = resolvePropertyMonthRevenue(prop.id, y, mk, md);
           if (rev > 0) {
             fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
+            fcMonthlyPropRev.set(mk, (fcMonthlyPropRev.get(mk) || 0) + rev);
             const propKey = mk + '_' + prop.id;
             fcPropMonthlyRev.set(propKey, (fcPropMonthlyRev.get(propKey) || 0) + rev);
           }
           const exp = Number(md?.expenses) || 0;
-          if (exp > 0) fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
+          if (exp > 0) {
+            fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
+            fcMonthlyPropExp.set(mk, (fcMonthlyPropExp.get(mk) || 0) + exp);
+          }
         }
       } else if (fc) {
         Object.entries(fc.months || {}).forEach(([mk, md]) => {
@@ -282,17 +290,22 @@ function buildFcMaps(startY, endY) {
           const rev = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
           if (rev > 0) {
             fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
+            fcMonthlyPropRev.set(mk, (fcMonthlyPropRev.get(mk) || 0) + rev);
             const propKey = mk + '_' + prop.id;
             fcPropMonthlyRev.set(propKey, (fcPropMonthlyRev.get(propKey) || 0) + rev);
           }
           const exp = Number(md.expenses) || 0;
-          if (exp > 0) fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
+          if (exp > 0) {
+            fcMonthlyExp.set(mk, (fcMonthlyExp.get(mk) || 0) + exp);
+            fcMonthlyPropExp.set(mk, (fcMonthlyPropExp.get(mk) || 0) + exp);
+          }
         });
       }
     });
 
     // Service forecasts (customer_success, marketing_services) — unaffected
-    // by the property scope/owner filters.
+    // by the property scope/owner filters. Added only to the combined maps —
+    // fcMonthlyPropRev/fcMonthlyPropExp stay property-only by construction.
     allFcs.filter(fc => fc.year === y && fc.type === 'service').forEach(fc => {
       if (gF.streams.size > 0 && !gF.streams.has(fc.entityId)) return;
       Object.entries(fc.months || {}).forEach(([mk, md]) => {
@@ -304,7 +317,7 @@ function buildFcMaps(startY, endY) {
       });
     });
   }
-  return { fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp };
+  return { fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp, fcMonthlyPropRev, fcMonthlyPropExp };
 }
 
 // ── Core data calculation ─────────────────────────────────────────────────────
@@ -335,7 +348,7 @@ function calculateDashboardData(range) {
   const { keys: months } = getMonthKeysForRange(range.start, range.end);
   const startY = parseInt(range.start.slice(0, 4));
   const endY   = parseInt(range.end.slice(0, 4));
-  const { fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp } = buildFcMaps(startY, endY);
+  const { fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp, fcMonthlyPropRev, fcMonthlyPropExp } = buildFcMaps(startY, endY);
 
   let forecastRev = 0, forecastExp = 0;
   months.forEach(m => {
@@ -417,12 +430,22 @@ function calculateDashboardData(range) {
     const mActExp = sumExpensesEUR(mExps);
     const mFcRev  = fcMonthlyRev.get(mk) || 0;
     const mFcExp  = fcMonthlyExp.get(mk) || 0;
+    // Property-only figures (excl. Customer Success/Marketing) — payments are
+    // always property-linked (no propertyId means client/service revenue), and
+    // property-linked expenses always carry a propertyId (service-stream costs
+    // key off e.stream instead — see resolveStream()). Feeds Property ROI below.
+    const mActPropRev = sumPaymentsEUR(mPays);
+    const mActPropExp = sumExpensesEUR(mExps.filter(e => e.propertyId));
+    const mFcPropRev  = fcMonthlyPropRev.get(mk) || 0;
+    const mFcPropExp  = fcMonthlyPropExp.get(mk) || 0;
     return {
       label: m.label, key: mk,
       fcRev: mFcRev, actRev: mActRev,
       variance: mActRev - mFcRev, variancePct: safeVariancePct(mActRev, mFcRev),
       fcExp: mFcExp, actExp: mActExp,
       fcNet: mFcRev - mFcExp, actNet: mActRev - mActExp,
+      actPropRev: mActPropRev, actPropExp: mActPropExp,
+      fcPropRev: mFcPropRev, fcPropExp: mFcPropExp,
       payments: mPays, invoices: mInvs, expenses: mExps,
       capexExpenses: capexByMk.get(mk) || []
     };
@@ -454,20 +477,28 @@ function calculateDashboardData(range) {
   };
 }
 
-// ── Blended ROI (actual to date + forecast for the remainder of the range) ────
+// ── Property ROI, blended (actual to date + forecast for the remainder) ───────
 // Unlike a projection that scales partial-period actuals up to a full year,
 // this uses the real actual figures for months that have already happened and
-// the real forecast figures (manual entries / lease schedule / service
-// targets — the same ones the KPIs above show) for months still ahead, so a
-// "Full Year" selection mid-year reflects what's actually forecasted for the
-// rest of the year instead of silently matching "YTD" 1:1.
+// the real forecast figures (manual entries / lease schedule — the same ones
+// the KPIs above show) for months still ahead, so a "Full Year" selection
+// mid-year reflects what's actually forecasted for the rest of the year
+// instead of silently matching "YTD" 1:1.
+//
+// Deliberately property-only (rev/exp use actPropRev/actPropExp/fcPropRev/
+// fcPropExp, not the combined actRev/fcRev): Customer Success/Marketing have
+// no purchase price or CapEx, so mixing their income into the numerator while
+// the denominator (Total Invested) stays property-capital-only would inflate
+// the % into something that isn't really "return on property investment"
+// anymore. Selecting other streams in the filter bar doesn't change that —
+// this card always reflects properties regardless of the stream filter.
 function computeBlendedRoi(monthlyBreakdown) {
   const todayMk = new Date().toISOString().slice(0, 7);
   let blendedRev = 0, blendedExp = 0;
   const monthSource = monthlyBreakdown.map(m => {
     const useActual = m.key <= todayMk;
-    const rev = useActual ? m.actRev : m.fcRev;
-    const exp = useActual ? m.actExp : m.fcExp;
+    const rev = useActual ? m.actPropRev : m.fcPropRev;
+    const exp = useActual ? m.actPropExp : m.fcPropExp;
     blendedRev += rev;
     blendedExp += exp;
     return { label: m.label, key: m.key, source: useActual ? 'Actual' : 'Forecast', rev, exp, net: rev - exp };
@@ -902,13 +933,16 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     compValue: cmpData ? formatEUR(cmpData.actualNet) : undefined,
   }));
 
-  // 8b. ROI (Actual + Forecast) — blends actual figures for months already
-  // elapsed with forecast figures for months still ahead in the selected
-  // range, so e.g. a mid-year "Full Year" selection reflects the real
-  // forecast for Aug-Dec instead of matching "YTD" 1:1 (see computeBlendedRoi).
+  // 8b. Property ROI (Actual + Forecast) — blends actual figures for months
+  // already elapsed with forecast figures for months still ahead in the
+  // selected range, so e.g. a mid-year "Full Year" selection reflects the
+  // real forecast for Aug-Dec instead of matching "YTD" 1:1. Income/expenses
+  // are property-only (excl. Customer Success/Marketing) regardless of the
+  // stream filter, since those streams have no purchase price/CapEx to put in
+  // the denominator — see computeBlendedRoi.
   grid.appendChild(mkKpiCard({
-    label:    'ROI (Actual + Forecast)',
-    subtitle: blendedRoi.totalInvested > 0 ? 'Actual to date + forecast remainder' : 'No purchase price recorded',
+    label:    'Property ROI (Actual + Forecast)',
+    subtitle: blendedRoi.totalInvested > 0 ? 'Property income only · actual to date + forecast remainder' : 'No purchase price recorded',
     value:    blendedRoi.roi !== null ? blendedRoi.roi.toFixed(1) + '%' : '—',
     variant:  blendedRoi.roi === null ? '' : blendedRoi.roi >= 5 ? 'success' : blendedRoi.roi >= 0 ? 'warning' : 'danger',
     onClick: () => {
@@ -918,12 +952,12 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         body.appendChild(mkEmptyState('No properties in the current filters have a purchase price recorded.'));
       } else {
         const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px' });
-        sgrid.appendChild(mkSummaryBox('Blended Net Income', formatEUR(blendedRoi.blendedNet), 'Actual (to date) + forecast (remainder)'));
+        sgrid.appendChild(mkSummaryBox('Blended Property Net Income', formatEUR(blendedRoi.blendedNet), 'Property income only — actual (to date) + forecast (remainder)'));
         sgrid.appendChild(mkSummaryBox('Total Invested', formatEUR(blendedRoi.totalInvested), 'Purchase price + all-time CapEx'));
-        sgrid.appendChild(mkSummaryBox('ROI', blendedRoi.roi.toFixed(1) + '%', null));
+        sgrid.appendChild(mkSummaryBox('Property ROI', blendedRoi.roi.toFixed(1) + '%', null));
         body.appendChild(sgrid);
 
-        body.appendChild(mkSectionLabel('Monthly Basis — Actual vs Forecast'));
+        body.appendChild(mkSectionLabel('Monthly Basis — Actual vs Forecast (Property Income Only)'));
         body.appendChild(mkModalTable(
           ['Month', 'Source', 'Revenue', 'Expenses', 'Net'],
           blendedRoi.monthSource.map(m => [m.label, m.source, formatEUR(m.rev), formatEUR(m.exp), formatEUR(m.net)])
@@ -939,7 +973,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         }
       }
 
-      openModal({ title: 'ROI — Actual + Forecast', body, large: true });
+      openModal({ title: 'Property ROI — Actual + Forecast', body, large: true });
     },
     delta: cmpData?.blendedRoi?.roi != null && blendedRoi.roi != null ? blendedRoi.roi - cmpData.blendedRoi.roi : null,
     deltaIsPp: true, compLabel: cmpLabel,
