@@ -266,9 +266,13 @@ function getOperationalData({ propData, payments, start, end, isIncomplete }) {
       };
     });
 
-  const yieldItems   = yieldData.filter(y => y.yieldPct !== null && y.annualRev > 0);
-  const avgYield     = yieldItems.length > 0
-    ? yieldItems.reduce((s, y) => s + y.yieldPct, 0) / yieldItems.length : null;
+  // Include every property with a purchase price in the average, even ones
+  // earning ~0 that period (e.g. mid-renovation) — matches Net Yield's
+  // inclusion rule below, so a renovation-heavy period correctly pulls the
+  // average down instead of that property being silently dropped from it.
+  // Use the Status filter to exclude renovation/vacant properties on purpose.
+  const avgYield = yieldData.length > 0
+    ? yieldData.reduce((s, y) => s + y.yieldPct, 0) / yieldData.length : null;
 
   // ── Vacancy: property-months with zero revenue ────────────────────────────
   const monthKeys = [];
