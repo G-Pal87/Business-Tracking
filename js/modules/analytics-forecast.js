@@ -461,7 +461,7 @@ function calculateDashboardData(range) {
 
   const streamBreakdown   = computeStreamBreakdown(actPayments, actInvoices, months);
   const propertyBreakdown = computePropertyBreakdown(actPayments, months, combinedPropPending);
-  const blendedRoi        = computeBlendedRoi(monthlyBreakdown);
+  const blendedRoi        = computeBlendedRoi(monthlyBreakdown, actPayments, fcPropMonthlyRev);
 
   return {
     actualRev, actualExp, actualCapEx, actualNet,
@@ -492,7 +492,7 @@ function calculateDashboardData(range) {
 // the % into something that isn't really "return on property investment"
 // anymore. Selecting other streams in the filter bar doesn't change that —
 // this card always reflects properties regardless of the stream filter.
-function computeBlendedRoi(monthlyBreakdown) {
+function computeBlendedRoi(monthlyBreakdown, actPayments, fcPropMonthlyRev) {
   const todayMk = new Date().toISOString().slice(0, 7);
   let blendedRev = 0, blendedExp = 0;
   const monthSource = monthlyBreakdown.map(m => {
@@ -504,6 +504,26 @@ function computeBlendedRoi(monthlyBreakdown) {
     return { label: m.label, key: m.key, source: useActual ? 'Actual' : 'Forecast', rev, exp, net: rev - exp };
   });
   const blendedNet = blendedRev - blendedExp;
+
+  // Per-property blended revenue — same actual/forecast blend as the
+  // portfolio total above, just split by property. Drives the per-property
+  // Yield below (payments always carry a propertyId, so this is a clean
+  // property-only figure with no service-stream revenue mixed in).
+  const actRevByPropMonth = new Map(); // propertyId -> Map<mk, EUR>
+  actPayments.forEach(p => {
+    if (!p.propertyId) return;
+    const mk = (p.date || '').slice(0, 7);
+    if (!actRevByPropMonth.has(p.propertyId)) actRevByPropMonth.set(p.propertyId, new Map());
+    const m = actRevByPropMonth.get(p.propertyId);
+    m.set(mk, (m.get(mk) || 0) + toEUR(p.amount, p.currency, p.date));
+  });
+  const monthKeys = monthlyBreakdown.map(m => ({ key: m.key, useActual: m.key <= todayMk }));
+  const blendedRevForProp = propId => monthKeys.reduce((sum, m) => {
+    const rev = m.useActual
+      ? (actRevByPropMonth.get(propId)?.get(m.key) || 0)
+      : (fcPropMonthlyRev.get(m.key + '_' + propId) || 0);
+    return sum + rev;
+  }, 0);
 
   // Total invested — purchase price + all-time CapEx across properties in the
   // current scope/owner/stream/property filters. Investment is cumulative to
@@ -519,7 +539,14 @@ function computeBlendedRoi(monthlyBreakdown) {
     const purchaseEUR = prop.purchasePrice ? toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) : 0;
     const capExEUR    = capExByProp.get(prop.id) || 0;
     const invested     = purchaseEUR + capExEUR;
-    if (invested > 0) propBreakdown.push({ name: prop.name, purchaseEUR, capExEUR, invested });
+    const propRev      = blendedRevForProp(prop.id);
+    // Yield mirrors the Properties dashboard's Rental Yield convention (gross
+    // revenue ÷ purchase price, not total invested) — not annualized here,
+    // since a "Full Year" selection's blended revenue already spans 12
+    // months and a partial range (e.g. YTD) intentionally shows the partial
+    // actual figure rather than projecting it forward.
+    const yieldPct = purchaseEUR > 0 ? (propRev / purchaseEUR) * 100 : null;
+    if (invested > 0 || propRev > 0) propBreakdown.push({ name: prop.name, purchaseEUR, capExEUR, invested, propRev, yieldPct });
     totalInvested += invested;
   });
 
@@ -964,11 +991,21 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         ));
 
         if (blendedRoi.propBreakdown.length > 0) {
-          body.appendChild(mkSectionLabel('Invested Capital by Property'));
+          body.appendChild(mkSectionLabel('Per Property — Revenue, Invested Capital & Yield'));
           body.appendChild(mkModalTable(
-            ['Property', 'Purchase Price', 'All-time CapEx', 'Total Invested'],
-            [...blendedRoi.propBreakdown].sort((a, b) => b.invested - a.invested)
-              .map(p => [p.name, formatEUR(p.purchaseEUR), formatEUR(p.capExEUR), formatEUR(p.invested)])
+            [
+              { label: 'Property' },
+              { label: 'Revenue (Actual + Forecast)', right: true },
+              { label: 'Purchase Price', right: true },
+              { label: 'All-time CapEx', right: true },
+              { label: 'Total Invested', right: true },
+              { label: 'Yield', right: true }
+            ],
+            [...blendedRoi.propBreakdown].sort((a, b) => (b.yieldPct ?? -Infinity) - (a.yieldPct ?? -Infinity))
+              .map(p => [
+                p.name, formatEUR(p.propRev), formatEUR(p.purchaseEUR), formatEUR(p.capExEUR), formatEUR(p.invested),
+                p.yieldPct !== null ? p.yieldPct.toFixed(1) + '%' : '—'
+              ])
           ));
         }
       }
