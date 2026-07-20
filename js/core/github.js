@@ -16,6 +16,23 @@ const SYNC_SAFETY_MARGIN_MS = 15 * 60 * 1000; // 15 minutes
 let pushQueue = Promise.resolve();
 let _sizeWarned = false; // throttles the db.json size-warning toast to once per session per threshold-crossing
 
+// Cheap recency watermark for a whole db snapshot — the highest updatedAt
+// across every collection. Used only to detect when a fresh GET has regressed
+// (see fetchDb()'s remoteDb guard below), never to drive any actual merge
+// decision — this is deliberately coarser than mergeDb's own per-record
+// comparisons.
+function maxUpdatedAt(db) {
+  let max = 0;
+  if (!db) return max;
+  for (const val of Object.values(db)) {
+    if (!Array.isArray(val)) continue;
+    for (const item of val) {
+      if (item && item.updatedAt > max) max = item.updatedAt;
+    }
+  }
+  return max;
+}
+
 // ── Config ───────────────────────────────────────────────────────────────────
 
 export function loadConfig() {
@@ -192,7 +209,18 @@ export async function fetchDb() {
   state.github.usingCache    = false;
   state.github.lastPulledAt  = Date.now();
   state.github.lastSyncError = null;
-  state.github.remoteDb      = structuredClone(parsed);
+  // Guard against GitHub's Contents API occasionally serving a stale/lagging
+  // CDN read (documented and already worked around elsewhere in this file —
+  // see mergeDb's direction-sensitive remoteChanged check): only advance the
+  // conflict-detection "base" if this fetch looks at least as fresh as what
+  // it already holds. A regressed base here is what turns an entirely
+  // ordinary single-user edit into a manufactured "someone else changed this"
+  // conflict on the next push, purely from comparing against stale ancestor
+  // data — never affects the returned `parsed` content itself, which callers
+  // still get in full regardless (e.g. to setDb() the actual working data).
+  if (!state.github.remoteDb || maxUpdatedAt(parsed) >= maxUpdatedAt(state.github.remoteDb)) {
+    state.github.remoteDb = structuredClone(parsed);
+  }
   return parsed;
 }
 
