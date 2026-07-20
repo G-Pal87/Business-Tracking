@@ -1,6 +1,6 @@
 // Application bootstrap - registers modules and loads data
 import { state, subscribe, setDb, markDirty } from './core/state.js';
-import { autoPurgeOldDeleted } from './core/data.js';
+import { autoPurgeOldDeleted, listActive } from './core/data.js';
 import * as github from './core/github.js';
 import * as router from './core/router.js';
 import { toast } from './core/ui.js';
@@ -331,12 +331,13 @@ async function boot() {
         if (typeof console.table === 'function' && (e.conflicts || []).length) console.table(e.conflicts);
         // Reloading resolves this by keeping whichever side has the later
         // timestamp — it does not re-check for the conflict. If the other
-        // person's edit happens to be newer, reloading can silently discard
+        // side's edit happens to be newer, reloading can silently discard
         // yours with no further warning, so say that plainly rather than
         // implying "refresh" is a clean, lossless fix.
+        const actorMsg = describeConflictActors(e.conflicts);
         toast(
-          `Another user modified the same data.${detail} Reloading will keep whichever edit was made more recently — it won't ask you to choose. ` +
-          `Check with them before reloading if you want to make sure your change isn't the one that gets dropped.`,
+          `${actorMsg}${detail} Reloading will keep whichever edit was made more recently — it won't ask you to choose. ` +
+          `Check before reloading if you want to make sure your change isn't the one that gets dropped.`,
           'danger',
           20000
         );
@@ -706,6 +707,42 @@ function normalizeNetworkError(msg) {
     return 'Cannot reach GitHub — check your internet connection';
   }
   return msg;
+}
+
+// The conflict message used to always say "Another user modified the same
+// data" — but the underlying check is purely timestamp-based (see mergeDb in
+// core/github.js) and has no idea whether the "other" edit actually came from
+// a different person. The single most common real-world trigger is the SAME
+// account open in a second tab/browser/device, whose local copy went stale
+// the moment this account's other session pushed — which reads to the user
+// as "no one else is logged in" even though it's technically true here.
+// e.conflicts already carries remoteUpdatedBy per record, so use it to say
+// what actually happened instead of guessing.
+function describeConflictActors(conflicts) {
+  const me = state.session?.username;
+  const nameFor = username => {
+    if (!username) return null;
+    if (username === me) return 'you';
+    return listActive('users').find(u => u.username === username)?.name || username;
+  };
+  const others = new Set();
+  let anySelf = false, anyUnknown = false;
+  for (const c of conflicts || []) {
+    if (!c.remoteUpdatedBy) { anyUnknown = true; continue; }
+    if (c.remoteUpdatedBy === me) anySelf = true;
+    else others.add(nameFor(c.remoteUpdatedBy));
+  }
+  if (others.size === 0 && anySelf && !anyUnknown) {
+    return 'This looks like it was edited from another tab, browser, or device you\'re also logged into — not someone else.';
+  }
+  if (others.size > 0) {
+    const names = [...others];
+    const list = names.length === 1 ? names[0]
+      : names.length === 2 ? `${names[0]} and ${names[1]}`
+      : `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+    return `${list} modified the same data.`;
+  }
+  return 'Another user modified the same data.';
 }
 
 function updateSyncStatus(dotState, message, showRetry = false) {
