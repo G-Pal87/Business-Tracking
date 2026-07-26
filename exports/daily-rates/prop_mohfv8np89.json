@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-26T07:26:48.158Z",
+  "generatedAt": "2026-07-26T07:28:40.423Z",
   "property": {
     "id": "prop_mohfv8np89",
     "name": "Rooftop Tenerife",
@@ -2656,7 +2656,7 @@
     {
       "date": "2027-04-16",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (25n, 1.95×) + April 2025 (23n, 1.27×) + April 2024 (15n, 0.82×) + April 2023 (4n, 0.54×)",
       "originalAmount": 51,
       "discountPct": 10,
@@ -2666,7 +2666,7 @@
     {
       "date": "2027-04-17",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 17 (1n, 1.95×) + April 2025 day 17 (1n, 1.27×)",
       "originalAmount": 43,
       "discountPct": 10,
@@ -2676,7 +2676,7 @@
     {
       "date": "2027-04-18",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 18 (1n, 1.95×) + April 2025 day 18 (1n, 1.27×)",
       "originalAmount": 43,
       "discountPct": 10,
@@ -2686,7 +2686,7 @@
     {
       "date": "2027-04-19",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (25n, 1.95×) + April 2025 (23n, 1.27×) + April 2024 (15n, 0.82×) + April 2023 (4n, 0.54×)",
       "originalAmount": 51,
       "discountPct": 10,
@@ -2696,7 +2696,7 @@
     {
       "date": "2027-04-20",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 20 (1n, 1.95×) + April 2025 day 20 (1n, 1.27×) + April 2024 day 20 (1n, 0.82×)",
       "originalAmount": 48,
       "discountPct": 10,
@@ -2706,7 +2706,7 @@
     {
       "date": "2027-04-21",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 21 (1n, 1.95×) + April 2025 day 21 (1n, 1.27×) + April 2024 day 21 (1n, 0.82×)",
       "originalAmount": 48,
       "discountPct": 10,
@@ -3616,7 +3616,7 @@
     {
       "date": "2027-07-21",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 21 (1n, 1.27×) + July 2023 day 21 (1n, 0.54×)",
       "originalAmount": 60,
       "discountPct": 10,
@@ -3626,7 +3626,7 @@
     {
       "date": "2027-07-22",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 22 (1n, 1.27×) + July 2023 day 22 (1n, 0.54×)",
       "originalAmount": 60,
       "discountPct": 10,
@@ -3636,7 +3636,7 @@
     {
       "date": "2027-07-23",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 23 (1n, 1.27×) + July 2023 day 23 (1n, 0.54×)",
       "originalAmount": 58,
       "discountPct": 10,
@@ -3646,7 +3646,7 @@
     {
       "date": "2027-07-24",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 24 (1n, 1.27×) + July 2023 day 24 (1n, 0.54×)",
       "originalAmount": 58,
       "discountPct": 10,
@@ -3656,7 +3656,7 @@
     {
       "date": "2027-07-25",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2026 (3n, 1.95×) + July 2025 (27n, 1.27×) + July 2024 (15n, 0.82×) + July 2023 (27n, 0.54×)",
       "originalAmount": 53,
       "discountPct": 10,
