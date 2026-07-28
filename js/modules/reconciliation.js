@@ -1,6 +1,7 @@
 // Reconciliation – best-in-class heatmap dashboard
-import { el, fmtDate, drillDownModal, escapeHtml } from '../core/ui.js';
+import { el, fmtDate, drillDownModal, escapeHtml, openModal } from '../core/ui.js';
 import { availableYears, formatEUR, buildReconciliationData, listActivePayments, listActive, toEUR, getPersonName, byId, companyPropIds, isCompanyRecord } from '../core/data.js';
+import { mkSectionLabel, mkSummaryGrid, mkModalTable, groupByMonthKey } from './analytics-helpers.js';
 
 export default {
   id: 'reconciliation',
@@ -43,13 +44,6 @@ let _recOwner  = ''; // '' = all owners | 'you' | 'rita'
 // behaviour before the toggle existed.
 let _recScope  = 'all';
 
-const ENT_COLS = [
-  { key: 'entity',      label: 'Entity' },
-  { key: 'type',        label: 'Type' },
-  { key: 'expected',    label: 'Expected',    right: true, format: v => formatEUR(v) },
-  { key: 'received',    label: 'Received',    right: true, format: v => formatEUR(v) },
-  { key: 'outstanding', label: 'Outstanding', right: true, format: v => formatEUR(v) }
-];
 const REC_COLS = [
   { key: 'date',   label: 'Date',   format: v => fmtDate(v) },
   { key: 'entity', label: 'Entity' },
@@ -61,6 +55,32 @@ const REC_COLS = [
 const payRow = (p, name) => ({ date: p.date,      entity: name, ref: p.confirmationCode || p.type || '', status: p.status, eur: toEUR(p.amount, p.currency, p.date) });
 const invRow = (i, name) => ({ date: i.issueDate, entity: name, ref: i.number || '',                    status: i.status, eur: toEUR(i.total,  i.currency, i.issueDate) });
 const byDate = rows => [...rows].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+// statusBreakdown(rows, amountOf) — groups raw records by their `status` field
+// for the small aggregated tables in cell-level modals below.
+function statusBreakdown(rows, amountOf) {
+  const map = new Map();
+  for (const r of rows) {
+    const st  = r.status || '—';
+    const cur = map.get(st) || { count: 0, total: 0 };
+    cur.count++; cur.total += amountOf(r);
+    map.set(st, cur);
+  }
+  return [...map.entries()].sort((a, b) => b[1].total - a[1].total);
+}
+
+// appendRawLinkFooter(body, count, onClick) — secondary link that reopens the
+// full raw drillDownModal list, same convention as Properties' "View all
+// transactions →" footer, so demoting a modal to an aggregated view never
+// drops the underlying record list, just moves it one click away.
+function appendRawLinkFooter(body, count, onClick) {
+  const footer = el('div', { style: 'margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+  footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${count} record${count === 1 ? '' : 's'}`));
+  const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all transactions →');
+  link.onclick = onClick;
+  footer.appendChild(link);
+  body.appendChild(footer);
+}
 
 function monthRange(mk) {
   const yr = Number(mk.slice(0, 4)), mo = Number(mk.slice(5, 7));
@@ -132,23 +152,73 @@ function openCellModal(ent, m, yr) {
       ]);
     }
     // Fallthrough: show actual payments if we have them
-    const { start, end } = monthRange(m.mk);
-    const pays = listActivePayments().filter(p => p.propertyId === ent.id && p.date >= start && p.date <= end);
-    return drillDownModal(title, byDate(pays.map(p => payRow(p, ent.label))), REC_COLS);
+    return openCellPaymentModal(title, ent, m);
   }
 
   if (ent.kind === 'service') {
-    const { start, end } = monthRange(m.mk);
-    const invs = listActive('invoices').filter(i =>
-      i.stream === ent.id && i.issueDate >= start && i.issueDate <= end && i.status !== 'draft' &&
-      matchInvOwner(i) && matchInvScope(i)
-    );
-    return drillDownModal(title, byDate(invs.map(i => invRow(i, ent.label))), REC_COLS);
+    return openCellServiceModal(title, ent, m);
   }
 
+  openCellPaymentModal(title, ent, m);
+}
+
+// openCellPaymentModal(title, ent, m) — one property/stream, one month: a
+// small Expected/Received/Payments summary plus a by-status breakdown (when
+// more than one status is present), with the full raw list still one click
+// away via the footer link.
+function openCellPaymentModal(title, ent, m) {
   const { start, end } = monthRange(m.mk);
   const pays = listActivePayments().filter(p => p.propertyId === ent.id && p.date >= start && p.date <= end);
-  drillDownModal(title, byDate(pays.map(p => payRow(p, ent.label))), REC_COLS);
+
+  const body = el('div');
+  body.appendChild(mkSectionLabel('Summary'));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Expected', value: formatEUR(m.expected) },
+    { label: 'Received', value: formatEUR(m.actual) },
+    { label: 'Payments', value: String(pays.length) }
+  ], 3));
+
+  const breakdown = statusBreakdown(pays, p => toEUR(p.amount, p.currency, p.date));
+  if (breakdown.length > 1) {
+    body.appendChild(mkSectionLabel('By Status'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Status' }, { label: 'Count', right: true }, { label: 'Total', right: true }],
+      breakdown.map(([st, v]) => [st, String(v.count), formatEUR(v.total)])
+    ));
+  }
+
+  appendRawLinkFooter(body, pays.length, () => drillDownModal(title, byDate(pays.map(p => payRow(p, ent.label))), REC_COLS));
+  openModal({ title, body, large: true });
+}
+
+// openCellServiceModal(title, ent, m) — same shape as openCellPaymentModal,
+// scoped to one service stream/month of invoices instead of payments.
+function openCellServiceModal(title, ent, m) {
+  const { start, end } = monthRange(m.mk);
+  const invs = listActive('invoices').filter(i =>
+    i.stream === ent.id && i.issueDate >= start && i.issueDate <= end && i.status !== 'draft' &&
+    matchInvOwner(i) && matchInvScope(i)
+  );
+
+  const body = el('div');
+  body.appendChild(mkSectionLabel('Summary'));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Expected', value: formatEUR(m.expected) },
+    { label: 'Received', value: formatEUR(m.actual) },
+    { label: 'Invoices', value: String(invs.length) }
+  ], 3));
+
+  const breakdown = statusBreakdown(invs, i => toEUR(i.total, i.currency, i.issueDate));
+  if (breakdown.length > 1) {
+    body.appendChild(mkSectionLabel('By Status'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Status' }, { label: 'Count', right: true }, { label: 'Total', right: true }],
+      breakdown.map(([st, v]) => [st, String(v.count), formatEUR(v.total)])
+    ));
+  }
+
+  appendRawLinkFooter(body, invs.length, () => drillDownModal(title, byDate(invs.map(i => invRow(i, ent.label))), REC_COLS));
+  openModal({ title, body, large: true });
 }
 
 function openEntityModal(ent, yr) {
@@ -178,10 +248,61 @@ function openEntityModal(ent, yr) {
       i.stream === ent.id && (i.issueDate || '').startsWith(yr) && i.status !== 'draft' &&
       matchInvOwner(i) && matchInvScope(i)
     );
-    return drillDownModal(title, byDate(invs.map(i => invRow(i, ent.label))), REC_COLS);
+
+    const body = el('div');
+    body.appendChild(mkSectionLabel('Performance'));
+    body.appendChild(mkSummaryGrid([
+      { label: 'Expected',    value: formatEUR(ent.totExp) },
+      { label: 'Received',    value: formatEUR(ent.totAct) },
+      { label: 'Outstanding', value: formatEUR(Math.max(0, ent.totExp - ent.totAct)) },
+      { label: 'Invoices',    value: String(invs.length) }
+    ], 4));
+
+    const byMonth = groupByMonthKey(invs, i => i.issueDate);
+    const monthRows = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([mk, list]) => [
+      MON[Number(mk.slice(5, 7)) - 1],
+      String(list.length),
+      formatEUR(list.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0))
+    ]);
+    if (monthRows.length) {
+      body.appendChild(mkSectionLabel('By Month'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Month' }, { label: 'Invoices', right: true }, { label: 'Total', right: true }],
+        monthRows
+      ));
+    }
+
+    appendRawLinkFooter(body, invs.length, () => drillDownModal(title, byDate(invs.map(i => invRow(i, ent.label))), REC_COLS));
+    return openModal({ title, body, large: true });
   }
+
   const pays = listActivePayments().filter(p => p.propertyId === ent.id && (p.date || '').startsWith(yr));
-  drillDownModal(title, byDate(pays.map(p => payRow(p, ent.label))), REC_COLS);
+
+  const body = el('div');
+  body.appendChild(mkSectionLabel('Performance'));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Expected',    value: formatEUR(ent.totExp) },
+    { label: 'Received',    value: formatEUR(ent.totAct) },
+    { label: 'Outstanding', value: formatEUR(Math.max(0, ent.totExp - ent.totAct)) },
+    { label: 'Payments',    value: String(pays.length) }
+  ], 4));
+
+  const byMonth = groupByMonthKey(pays, p => p.date);
+  const monthRows = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([mk, list]) => [
+    MON[Number(mk.slice(5, 7)) - 1],
+    String(list.length),
+    formatEUR(list.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0))
+  ]);
+  if (monthRows.length) {
+    body.appendChild(mkSectionLabel('By Month'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Month' }, { label: 'Payments', right: true }, { label: 'Total', right: true }],
+      monthRows
+    ));
+  }
+
+  appendRawLinkFooter(body, pays.length, () => drillDownModal(title, byDate(pays.map(p => payRow(p, ent.label))), REC_COLS));
+  openModal({ title, body, large: true });
 }
 
 // ── Main build ──────────────────────────────────────────────────────────────
@@ -312,31 +433,85 @@ function build() {
     const outstanding = withData.reduce((s, e) => s + Math.max(0, e.totExp - e.totAct), 0);
     const cr          = rate(totAct, totExp);
 
-    const onExpected = () => drillDownModal(`Expected — ${yr}`,
-      withData.filter(e => e.totExp > 0).map(e => ({
-        entity: e.label,
-        type: e.kind === 'lt' ? 'LT Rental' : e.kind === 'st' ? 'ST Rental' : 'Service',
-        expected: e.totExp, received: e.totAct, outstanding: Math.max(0, e.totExp - e.totAct)
-      })), ENT_COLS);
+    const entRowsFor = list => list.map(e => ({
+      entity: e.label,
+      type: e.kind === 'lt' ? 'LT Rental' : e.kind === 'st' ? 'ST Rental' : 'Service',
+      expected: e.totExp, received: e.totAct, outstanding: Math.max(0, e.totExp - e.totAct)
+    }));
+    const appendEntityTable = (body, rows) => body.appendChild(mkModalTable(
+      [{ label: 'Entity' }, { label: 'Type' }, { label: 'Expected', right: true }, { label: 'Received', right: true }, { label: 'Outstanding', right: true }],
+      rows.map(r => [r.entity, r.type, formatEUR(r.expected), formatEUR(r.received), formatEUR(r.outstanding)])
+    ));
+
+    const onExpected = () => {
+      const rows = entRowsFor(withData.filter(e => e.totExp > 0));
+      const body = el('div');
+      body.appendChild(mkSectionLabel('Summary'));
+      body.appendChild(mkSummaryGrid([
+        { label: 'Total Expected', value: formatEUR(rows.reduce((s, r) => s + r.expected, 0)) },
+        { label: 'Total Received', value: formatEUR(rows.reduce((s, r) => s + r.received, 0)) },
+        { label: 'Entities',       value: String(rows.length) }
+      ], 3));
+      body.appendChild(mkSectionLabel('By Entity'));
+      appendEntityTable(body, rows);
+      openModal({ title: `Expected — ${yr}`, body, large: true });
+    };
 
     const onReceived = () => {
       const propNames = new Map(withData.filter(e => e.kind !== 'service').map(e => [e.id, e.label]));
       const svcNames  = new Map(withData.filter(e => e.kind === 'service').map(e => [e.id, e.label]));
       const pays = listActivePayments().filter(p => p.status === 'paid' && (p.date || '').startsWith(yr) && propNames.has(p.propertyId));
       const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '').startsWith(yr) && svcNames.has(i.stream) && matchInvOwner(i) && matchInvScope(i));
-      drillDownModal(`Received — ${yr}`, byDate([
+      const allRows = [
+        ...pays.map(p => ({ label: propNames.get(p.propertyId) || '', eur: toEUR(p.amount, p.currency, p.date) })),
+        ...invs.map(i => ({ label: svcNames.get(i.stream) || '', eur: toEUR(i.total, i.currency, i.issueDate) }))
+      ];
+      const total = allRows.reduce((s, r) => s + r.eur, 0);
+
+      const body = el('div');
+      body.appendChild(mkSectionLabel('Summary'));
+      body.appendChild(mkSummaryGrid([
+        { label: 'Total Received', value: formatEUR(total) },
+        { label: 'Payments',       value: String(pays.length) },
+        { label: 'Invoices',       value: String(invs.length) },
+        { label: 'Average',        value: allRows.length > 0 ? formatEUR(total / allRows.length) : '—' }
+      ], 4));
+
+      const byEntity = new Map();
+      for (const r of allRows) {
+        const cur = byEntity.get(r.label) || { count: 0, total: 0 };
+        cur.count++; cur.total += r.eur;
+        byEntity.set(r.label, cur);
+      }
+      const entRows = [...byEntity.entries()].sort((a, b) => b[1].total - a[1].total);
+      if (entRows.length) {
+        body.appendChild(mkSectionLabel('By Entity'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Entity' }, { label: 'Records', right: true }, { label: 'Total', right: true }],
+          entRows.map(([label, v]) => [label, String(v.count), formatEUR(v.total)])
+        ));
+      }
+
+      appendRawLinkFooter(body, allRows.length, () => drillDownModal(`Received — ${yr}`, byDate([
         ...pays.map(p => payRow(p, propNames.get(p.propertyId) || '')),
         ...invs.map(i => invRow(i, svcNames.get(i.stream) || ''))
-      ]), REC_COLS);
+      ]), REC_COLS));
+
+      openModal({ title: `Received — ${yr}`, body, large: true });
     };
 
     const onOutstanding = () => {
-      const rows = withData.filter(e => e.totExp > e.totAct).map(e => ({
-        entity: e.label,
-        type: e.kind === 'lt' ? 'LT Rental' : e.kind === 'st' ? 'ST Rental' : 'Service',
-        expected: e.totExp, received: e.totAct, outstanding: Math.max(0, e.totExp - e.totAct)
-      }));
-      drillDownModal(`Outstanding — ${yr}`, rows, ENT_COLS);
+      const rows = entRowsFor(withData.filter(e => e.totExp > e.totAct));
+      const body = el('div');
+      body.appendChild(mkSectionLabel('Summary'));
+      body.appendChild(mkSummaryGrid([
+        { label: 'Total Outstanding', value: formatEUR(rows.reduce((s, r) => s + r.outstanding, 0)) },
+        { label: 'Total Expected',    value: formatEUR(rows.reduce((s, r) => s + r.expected, 0)) },
+        { label: 'Entities',          value: String(rows.length) }
+      ], 3));
+      body.appendChild(mkSectionLabel('By Entity'));
+      appendEntityTable(body, rows);
+      openModal({ title: `Outstanding — ${yr}`, body, large: true });
     };
 
     kpiRow.appendChild(kpi('Expected',       formatEUR(totExp),          '',                                                  onExpected));
