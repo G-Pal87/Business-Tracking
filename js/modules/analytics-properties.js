@@ -857,6 +857,87 @@ function openPropertyCapExModal({ totals, capExpenses }) {
   openModal({ title: `Property CapEx — ${formatEUR(totals.capEx)}`, body, large: true });
 }
 
+// ── Compact property summary (row-click on the Property Summary table) ────────
+function openPropertySummaryModal(d) {
+  const prop   = d.prop;
+  const status = prop.status || 'active';
+  const body   = el('div');
+
+  const statusNotes = {
+    renovation: '🔨 This property is currently under renovation — figures reflect any activity during the selected period.',
+    vacant:     '⬜ This property is currently vacant — figures reflect any activity during the selected period.',
+    sold:       '✓ This property has been sold — figures reflect activity up to the sale.'
+  };
+  if (statusNotes[status]) {
+    body.appendChild(el('div', {
+      style: 'margin-bottom:16px;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:12px;color:#92400e'
+    }, statusNotes[status]));
+  }
+
+  body.appendChild(mkSectionLabel('Performance'));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Revenue',            value: formatEUR(d.rev) },
+    { label: 'Operating Expenses', value: formatEUR(d.opEx), sub: d.rev > 0 ? `${(d.opEx / d.rev * 100).toFixed(0)}% of revenue` : null },
+    { label: 'Operating Profit',   value: formatEUR(d.profit), sub: d.rev > 0 ? `Margin ${(d.profit / d.rev * 100).toFixed(0)}%` : null },
+    { label: 'CapEx (period)',     value: formatEUR(d.capEx) },
+    { label: 'Net (after CapEx)',  value: formatEUR(d.net) },
+    { label: 'All-time CapEx',     value: formatEUR(d.allTimeCapEx) }
+  ], 3));
+
+  const roiBoxes = [];
+  if (d.simpleROI     !== null) roiBoxes.push({ label: 'Simple ROI',       value: d.simpleROI.toFixed(1) + '%' });
+  if (d.annualizedROI !== null) roiBoxes.push({ label: 'Annualized ROI',   value: d.annualizedROI.toFixed(1) + '%' });
+  if (d.cashOnCashROI !== null) roiBoxes.push({ label: 'Cash-on-Cash ROI', value: d.cashOnCashROI.toFixed(1) + '%' });
+  if (roiBoxes.length) {
+    body.appendChild(mkSectionLabel('Return on Investment'));
+    body.appendChild(mkSummaryGrid(roiBoxes, roiBoxes.length));
+  }
+
+  body.appendChild(mkSectionLabel('Investment'));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Purchase Price', value: formatEUR(d.purchaseEUR) },
+    { label: 'Total Invested', value: formatEUR(d.totalInvested), sub: 'Purchase price + all-time CapEx' }
+  ], 2));
+
+  const mort = computeMortgageEstimate(prop);
+  if (mort.financed) {
+    body.appendChild(mkSectionLabel('Financing'));
+    body.appendChild(mkSummaryGrid([
+      { label: 'Outstanding Balance', value: formatEUR(mort.remaining), sub: mort.dtvRatio != null ? `${mort.dtvRatio.toFixed(0)}% of purchase price` : null },
+      { label: 'Monthly Payment',     value: formatEUR(mort.monthlyDebt) },
+      { label: 'Est. Payoff',         value: mort.paidOff ? 'Paid off' : (mort.yearsLeft != null ? `${mort.yearsLeft.toFixed(1)} yrs left` : '—') }
+    ], 3));
+  }
+
+  const catMap = new Map();
+  [...d.propOpExpenses, ...d.propCapExpenses].forEach(e => {
+    const c = e.category || '—';
+    catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date));
+  });
+  const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (cats.length) {
+    const totalExp = d.opEx + d.capEx;
+    body.appendChild(mkSectionLabel('Top Expense Categories'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Expenses', right: true, muted: true }],
+      cats.map(([c, v]) => [c, formatEUR(v), totalExp > 0 ? (v / totalExp * 100).toFixed(1) + '%' : '—'])
+    ));
+  }
+
+  const txCount = d.propPayments.length + d.propOpExpenses.length + d.propCapExpenses.length;
+  const footer = el('div', { style: 'margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+  footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${txCount} transaction${txCount === 1 ? '' : 's'} in the selected period`));
+  const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all transactions →');
+  link.onclick = () => {
+    const rows = mixedRows(d.propPayments, [...d.propOpExpenses, ...d.propCapExpenses]);
+    drillDownModal(`${prop.name} — All Transactions`, rows, MIXED_DRILL_COLS);
+  };
+  footer.appendChild(link);
+  body.appendChild(footer);
+
+  openModal({ title: `${prop.name} — Summary`, body, large: true });
+}
+
 function openPropertyPLModal(d) {
   const body = el('div');
   const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
@@ -1613,7 +1694,7 @@ function buildView() {
   const tableCard = el('div', { class: 'card mb-16' });
   tableCard.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Property Summary'),
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a row for transactions')
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Click a row for a compact summary')
   ));
   buildSummaryTable(tableCard, propData);
   wrap.appendChild(tableCard);
@@ -2287,32 +2368,8 @@ function buildSummaryTable(container, propData) {
   for (const d of sorted) {
     const sm = STREAMS[propStream(d.prop)];
     const propStatus = d.prop.status || 'active';
-    const tr = el('tr', { style: 'cursor:pointer', title: 'Click for transactions' });
-    tr.onclick = () => {
-      const rows = mixedRows(d.propPayments, [...d.propOpExpenses, ...d.propCapExpenses]);
-      if (propStatus === 'renovation' || propStatus === 'vacant' || propStatus === 'sold') {
-        // Show contextual note in a modal with the note first, then the transactions
-        const modalBody = el('div');
-        modalBody.appendChild(el('div', {
-          style: 'margin-bottom:12px;padding:8px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:12px;color:#92400e'
-        }, `ℹ This property is currently ${propStatus} — revenue reflects any activity during the selected period.`));
-        const tableEl = mkModalTable(
-          MIXED_DRILL_COLS.map(c => c.label ? c : { label: c.key }),
-          rows.map(r => MIXED_DRILL_COLS.map(c => {
-            const v = r[c.key];
-            return c.format ? c.format(v) : (v ?? '—');
-          }))
-        );
-        modalBody.appendChild(tableEl);
-        openModal({ title: `${d.prop.name} — All Transactions`, body: modalBody, large: true });
-      } else {
-        drillDownModal(
-          `${d.prop.name} — All Transactions`,
-          rows,
-          MIXED_DRILL_COLS
-        );
-      }
-    };
+    const tr = el('tr', { style: 'cursor:pointer', title: 'Click for property summary' });
+    tr.onclick = () => openPropertySummaryModal(d);
     COLS.forEach(col => {
       const td = el('td', { class: col.right ? 'right num' : '' });
       if (col.key === 'name') {
