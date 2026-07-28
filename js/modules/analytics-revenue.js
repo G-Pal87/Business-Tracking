@@ -28,6 +28,82 @@ const REV_COLS = [
   { key: 'ref',    label: 'Ref'    },
   { key: 'eur',    label: 'EUR',    right: true, format: v => formatEUR(v) }
 ];
+
+// ── Grouping / footer helpers for compact drill-down modals ───────────────────
+// These turn a scoped (payments, invoices) slice into small aggregated tables
+// instead of a flat per-record dump; the raw list stays one click away via
+// appendRawLink.
+function revByStream(pays, invs) {
+  const m = new Map();
+  (pays || []).forEach(p => { const k = p.stream || 'other'; const e = m.get(k) || { key: k, eur: 0, count: 0 }; e.eur += toEUR(p.amount, p.currency, p.date); e.count++; m.set(k, e); });
+  (invs || []).forEach(i => { const k = i.stream || 'other'; const e = m.get(k) || { key: k, eur: 0, count: 0 }; e.eur += toEUR(i.total, i.currency, i.issueDate); e.count++; m.set(k, e); });
+  return [...m.values()].sort((a, b) => b.eur - a.eur).map(e => ({ ...e, name: STREAMS[e.key]?.label || e.key }));
+}
+
+function revByEntity(pays, invs) {
+  const m = new Map();
+  (pays || []).forEach(p => { const key = 'p:' + p.propertyId; const e = m.get(key) || { name: byId('properties', p.propertyId)?.name || 'Unknown', eur: 0, count: 0 }; e.eur += toEUR(p.amount, p.currency, p.date); e.count++; m.set(key, e); });
+  (invs || []).forEach(i => { const key = 'c:' + i.clientId; const e = m.get(key) || { name: byId('clients', i.clientId)?.name || 'Unknown', eur: 0, count: 0 }; e.eur += toEUR(i.total, i.currency, i.issueDate); e.count++; m.set(key, e); });
+  return [...m.values()].sort((a, b) => b.eur - a.eur);
+}
+
+function revByProperty(pays) {
+  const m = new Map();
+  (pays || []).forEach(p => { const id = p.propertyId; const e = m.get(id) || { name: byId('properties', id)?.name || 'Unknown', eur: 0, count: 0 }; e.eur += toEUR(p.amount, p.currency, p.date); e.count++; m.set(id, e); });
+  return [...m.values()].sort((a, b) => b.eur - a.eur);
+}
+
+function revByClient(invs) {
+  const m = new Map();
+  (invs || []).forEach(i => { const id = i.clientId; const e = m.get(id) || { name: byId('clients', id)?.name || 'Unknown', eur: 0, count: 0 }; e.eur += toEUR(i.total, i.currency, i.issueDate); e.count++; m.set(id, e); });
+  return [...m.values()].sort((a, b) => b.eur - a.eur);
+}
+
+function revByMonth(pays, invs) {
+  const m = new Map();
+  (pays || []).forEach(p => { const k = p.date?.slice(0, 7); if (!k) return; const e = m.get(k) || { key: k, eur: 0, count: 0 }; e.eur += toEUR(p.amount, p.currency, p.date); e.count++; m.set(k, e); });
+  (invs || []).forEach(i => { const k = (i.issueDate || '').slice(0, 7); if (!k) return; const e = m.get(k) || { key: k, eur: 0, count: 0 }; e.eur += toEUR(i.total, i.currency, i.issueDate); e.count++; m.set(k, e); });
+  return [...m.values()].sort((a, b) => b.key.localeCompare(a.key));
+}
+
+function monthKeyLabel(key) {
+  const [y, m] = key.split('-');
+  return `${MONTH_LABELS[parseInt(m, 10) - 1] || m} ${y}`;
+}
+
+// openStreamDrill(title, pays, invs) — compact modal for a single-stream slice
+// (e.g. one rental type or one service stream): summary + a grouped breakdown
+// by property (when pays given) or by client (when invs given), raw list
+// demoted behind a link.
+function openStreamDrill(title, pays, invs) {
+  const eur = (pays || []).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0) +
+              (invs || []).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([
+    { label: 'Revenue', value: formatEUR(eur) },
+    { label: 'Records', value: String((pays || []).length + (invs || []).length) }
+  ], 2));
+  const entities = revByEntity(pays, invs);
+  if (entities.length) {
+    body.appendChild(mkSectionLabel((pays || []).length ? 'By Property' : 'By Client'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Name' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }],
+      entities.map(e => [e.name, String(e.count), formatEUR(e.eur), eur > 0 ? (e.eur / eur * 100).toFixed(1) + '%' : '—'])
+    ));
+  }
+  appendRawLink(body, (pays || []).length + (invs || []).length, () => drillDownModal(title, drillRevRows(pays, invs), REV_COLS));
+  openModal({ title: `${title} — ${formatEUR(eur)}`, body, large: true });
+}
+
+function appendRawLink(body, count, onClick, label) {
+  const footer = el('div', { style: 'margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+  footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${count} record${count === 1 ? '' : 's'}`));
+  const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, label || 'View all transactions →');
+  link.onclick = onClick;
+  footer.appendChild(link);
+  body.appendChild(footer);
+}
+
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
 let gScope = 'company'; // 'company' | 'all'
@@ -280,7 +356,23 @@ function buildKpiSection(cur, cmp, cmpRange) {
     if (!c) return;
     const pays = c.type === 'Property' ? payments.filter(p => p.propertyId === c.id) : [];
     const invs = c.type === 'Client'   ? invoices.filter(i => i.clientId   === c.id) : [];
-    drillDownModal(`Revenue — ${c.name}`, drillRevRows(pays, invs), REV_COLS);
+    const eur  = pays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0) + invs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+    const body = el('div');
+    body.appendChild(mkSummaryGrid([
+      { label: 'Revenue', value: formatEUR(eur) },
+      { label: 'Records', value: String(pays.length + invs.length) },
+      { label: 'Share of Total', value: total > 0 ? (eur / total * 100).toFixed(1) + '%' : '—' }
+    ], 3));
+    const byMonth = revByMonth(pays, invs);
+    if (byMonth.length) {
+      body.appendChild(mkSectionLabel('By Month'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Month' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }],
+        byMonth.map(m => [monthKeyLabel(m.key), String(m.count), formatEUR(m.eur)])
+      ));
+    }
+    appendRawLink(body, pays.length + invs.length, () => drillDownModal(`Revenue — ${c.name}`, drillRevRows(pays, invs), REV_COLS));
+    openModal({ title: `Revenue — ${c.name}`, body, large: true });
   };
 
   const wrapper = el('div', { class: 'mb-16' });
@@ -304,9 +396,9 @@ function buildKpiSection(cur, cmp, cmpRange) {
     onClick: serviceRevDrill,
     lines: [
       { label: 'Customer Success',   value: formatEUR(csRev),  pct: pct(csRev,  svcRev),
-        onClick: () => drillDownModal('Customer Success',   drillRevRows([], invoices.filter(i => i.stream === 'customer_success')),   REV_COLS) },
+        onClick: () => openStreamDrill('Customer Success',   [], invoices.filter(i => i.stream === 'customer_success')) },
       { label: 'Marketing Services', value: formatEUR(mktRev), pct: pct(mktRev, svcRev),
-        onClick: () => drillDownModal('Marketing Services', drillRevRows([], invoices.filter(i => i.stream === 'marketing_services')), REV_COLS) },
+        onClick: () => openStreamDrill('Marketing Services', [], invoices.filter(i => i.stream === 'marketing_services')) },
     ]
   }));
 
@@ -316,9 +408,9 @@ function buildKpiSection(cur, cmp, cmpRange) {
     onClick: rentalRevDrill,
     lines: [
       { label: 'Short-term', value: formatEUR(stRev), pct: pct(stRev, propRev),
-        onClick: () => drillDownModal('Short-term Rental', drillRevRows(payments.filter(p => p.stream === 'short_term_rental'), []), REV_COLS) },
+        onClick: () => openStreamDrill('Short-term Rental', payments.filter(p => p.stream === 'short_term_rental'), []) },
       { label: 'Long-term',  value: formatEUR(ltRev), pct: pct(ltRev, propRev),
-        onClick: () => drillDownModal('Long-term Rental',  drillRevRows(payments.filter(p => p.stream === 'long_term_rental'),  []), REV_COLS) },
+        onClick: () => openStreamDrill('Long-term Rental',  payments.filter(p => p.stream === 'long_term_rental'),  []) },
     ]
   }));
 
@@ -344,9 +436,20 @@ function buildKpiSection(cur, cmp, cmpRange) {
       value:    total > 0 ? `${concPct.toFixed(1)}%` : '0%',
       subtitle: `Top ${concTypeLbl} share · ${concStatus}`,
       variant:  concVariant,
-      onClick:  () => drillDownModal('Revenue Concentration',
-        contribs.map(c => ({ type: c.type, name: c.name, eur: c.val, share: total > 0 ? (c.val / total * 100).toFixed(1) + '%' : '0%' })),
-        [{ key: 'type', label: 'Type' }, { key: 'name', label: 'Name' }, { key: 'eur', label: 'Revenue EUR', right: true, format: v => formatEUR(v) }, { key: 'share', label: 'Share', right: true }])
+      onClick:  () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Top Contributor', value: topC?.name || '—', sub: topC ? concTypeLbl : null },
+          { label: 'Share of Total',  value: total > 0 ? `${concPct.toFixed(1)}%` : '0%', sub: concStatus },
+          { label: 'Total Revenue',   value: formatEUR(total) }
+        ], 3));
+        body.appendChild(mkSectionLabel('All Contributors'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Type', muted: true }, { label: 'Name' }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
+          contribs.map(c => [c.type, c.name, formatEUR(c.val), total > 0 ? (c.val / total * 100).toFixed(1) + '%' : '0%'])
+        ));
+        openModal({ title: `Revenue Concentration — ${total > 0 ? concPct.toFixed(1) + '%' : '0%'}`, body, large: true });
+      }
     }));
   }
 
@@ -357,27 +460,30 @@ function buildKpiSection(cur, cmp, cmpRange) {
     delta:   null,
     compLabel: '',
     subtitle: allRentalPropIds.size > 0 ? `${allRentalPropIds.size} revenue-generating propert${allRentalPropIds.size > 1 ? 'ies' : 'y'}` : 'No rental revenue',
-    onClick: () => drillDownModal('Avg Rental Revenue / Property', [
-      { type: 'Short-term', revenue: stRev, props: strPropIds.size, avg: strPropIds.size > 0 ? avgStr : 0 },
-      { type: 'Long-term',  revenue: ltRev, props: ltrPropIds.size, avg: ltrPropIds.size > 0 ? avgLtr : 0 }
-    ], [
-      { key: 'type',    label: 'Rental Type' },
-      { key: 'revenue', label: 'Revenue',              right: true, format: v => formatEUR(v) },
-      { key: 'props',   label: 'Revenue Properties',   right: true },
-      { key: 'avg',     label: 'Avg / Property',       right: true, format: v => formatEUR(v) }
-    ]),
+    onClick: () => {
+      const body = el('div');
+      body.appendChild(mkSectionLabel('Avg Revenue / Property'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Rental Type' }, { label: 'Revenue', right: true }, { label: 'Revenue Properties', right: true, muted: true }, { label: 'Avg / Property', right: true }],
+        [
+          ['Short-term', formatEUR(stRev), String(strPropIds.size), formatEUR(strPropIds.size > 0 ? avgStr : 0)],
+          ['Long-term',  formatEUR(ltRev), String(ltrPropIds.size), formatEUR(ltrPropIds.size > 0 ? avgLtr : 0)]
+        ]
+      ));
+      openModal({ title: 'Avg Rental Revenue / Property', body, large: true });
+    },
     lines: [
       {
         label: 'Short-term',
         value: strPropIds.size > 0 ? formatEUR(avgStr) : '€0',
         pct:   strPropIds.size > 0 ? `${strPropIds.size} prop${strPropIds.size > 1 ? 's' : ''}` : 'no revenue',
-        onClick: () => drillDownModal('Short-term Rental', drillRevRows(payments.filter(p => p.stream === 'short_term_rental'), []), REV_COLS)
+        onClick: () => openStreamDrill('Short-term Rental', payments.filter(p => p.stream === 'short_term_rental'), [])
       },
       {
         label: 'Long-term',
         value: ltrPropIds.size > 0 ? formatEUR(avgLtr) : '€0',
         pct:   ltrPropIds.size > 0 ? `${ltrPropIds.size} prop${ltrPropIds.size > 1 ? 's' : ''}` : 'no revenue',
-        onClick: () => drillDownModal('Long-term Rental', drillRevRows(payments.filter(p => p.stream === 'long_term_rental'), []), REV_COLS)
+        onClick: () => openStreamDrill('Long-term Rental', payments.filter(p => p.stream === 'long_term_rental'), [])
       }
     ]
   }));
@@ -425,7 +531,25 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
       text:    `Top contributor: ${topEntity.name} — ${formatEUR(topEntity.rev)} (${pct.toFixed(0)}% of total).${pct >= 60 ? ' High concentration — consider diversifying revenue sources.' : ''}`,
       severity,
       inspect: 'Revenue Dashboard',
-      onClick: () => drillDownModal(`Revenue — ${topEntity.name}`, drillRevRows(topEntity.pays, topEntity.invs), REV_COLS)
+      onClick: () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Revenue',        value: formatEUR(topEntity.rev) },
+          { label: 'Records',        value: String(topEntity.pays.length + topEntity.invs.length) },
+          { label: 'Share of Total', value: `${pct.toFixed(1)}%` }
+        ], 3));
+        const byMonth = revByMonth(topEntity.pays, topEntity.invs);
+        if (byMonth.length) {
+          body.appendChild(mkSectionLabel('By Month'));
+          body.appendChild(mkModalTable(
+            [{ label: 'Month' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }],
+            byMonth.map(m => [monthKeyLabel(m.key), String(m.count), formatEUR(m.eur)])
+          ));
+        }
+        appendRawLink(body, topEntity.pays.length + topEntity.invs.length,
+          () => drillDownModal(`Revenue — ${topEntity.name}`, drillRevRows(topEntity.pays, topEntity.invs), REV_COLS));
+        openModal({ title: `Revenue — ${topEntity.name}`, body, large: true });
+      }
     });
   }
 
@@ -437,7 +561,7 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
         text:    `No rental revenue this period — 100% from services (${formatEUR(svcRev)}).`,
         severity: 'Watch',
         inspect: 'Payments / Properties',
-        onClick: () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS)
+        onClick: () => openStreamDrill('Service Revenue', [], invoices)
       });
     } else if (svcRev === 0) {
       signals.push({
@@ -445,7 +569,7 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
         text:    `No service revenue this period — 100% from rentals (${formatEUR(propRev)}).`,
         severity: 'Note',
         inspect: 'Services Dashboard',
-        onClick: () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS)
+        onClick: () => openStreamDrill('Rental Revenue', payments, [])
       });
     } else {
       const rentalPct = (propRev / total * 100).toFixed(0);
@@ -461,15 +585,14 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
             { label: 'Rental Revenue',  value: formatEUR(propRev), sub: `${rentalPct}% of total` },
             { label: 'Service Revenue', value: formatEUR(svcRev),  sub: `${svcPct}% of total` },
           ], 2));
-          if (payments.length || invoices.length) {
-            body.appendChild(mkSectionLabel('Contributions'));
+          const streams = revByStream(payments, invoices);
+          if (streams.length) {
+            body.appendChild(mkSectionLabel('By Stream'));
             body.appendChild(mkModalTable(
-              ['Date', 'Type', 'Entity', 'EUR'],
-              drillRevRows(payments, invoices)
-                .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-                .map(r => [r.date || '—', r.type || '—', r.source || '—', formatEUR(r.eur)]),
-              { highlight: 3 }
+              [{ label: 'Stream' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }],
+              streams.map(s => [s.name, String(s.count), formatEUR(s.eur), total > 0 ? (s.eur / total * 100).toFixed(1) + '%' : '—'])
             ));
+            appendRawLink(body, payments.length + invoices.length, () => drillDownModal('Revenue Mix', drillRevRows(payments, invoices), REV_COLS));
           } else {
             body.appendChild(mkEmptyState('No revenue records for the current period.'));
           }
@@ -498,15 +621,14 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
             { label: `Revenue — ${cmpRange.label}`, value: formatEUR(cmpData.total) },
             { label: 'Change',                      value: `${sign}${delta.toFixed(1)}%` },
           ], 3));
-          if (payments.length || invoices.length) {
-            body.appendChild(mkSectionLabel('Contributions — Current Period'));
+          const streams = revByStream(payments, invoices);
+          if (streams.length) {
+            body.appendChild(mkSectionLabel('By Stream — Current Period'));
             body.appendChild(mkModalTable(
-              ['Date', 'Type', 'Entity', 'EUR'],
-              drillRevRows(payments, invoices)
-                .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-                .map(r => [r.date || '—', r.type || '—', r.source || '—', formatEUR(r.eur)]),
-              { highlight: 3 }
+              [{ label: 'Stream' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }],
+              streams.map(s => [s.name, String(s.count), formatEUR(s.eur), total > 0 ? (s.eur / total * 100).toFixed(1) + '%' : '—'])
             ));
+            appendRawLink(body, payments.length + invoices.length, () => drillDownModal('Growth Signal — Current Period', drillRevRows(payments, invoices), REV_COLS));
           } else {
             body.appendChild(mkEmptyState('No revenue records for the current period.'));
           }
@@ -525,14 +647,31 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
       text:    `${formatEUR(outstandingTotal)} outstanding — ${pct.toFixed(0)}% of invoiced service revenue.${pct > 30 ? ' High collection risk.' : ''}`,
       severity: pct > 50 ? 'At Risk' : 'Watch',
       inspect: 'Services Dashboard',
-      onClick: () => drillDownModal('Outstanding Revenue',
-        outstanding.map(i => ({
-          date:   i.issueDate, type: 'Invoice',
-          source: byId('clients', i.clientId)?.name || '',
-          ref:    i.number || '',
-          eur:    toEUR(i.total, i.currency, i.issueDate)
-        })).sort((a, b) => (b.date || '').localeCompare(a.date || '')),
-        REV_COLS)
+      onClick: () => {
+        const body = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Outstanding',   value: formatEUR(outstandingTotal) },
+          { label: 'Invoices',     value: String(outstanding.length) },
+          { label: '% of Invoiced', value: `${pct.toFixed(1)}%` }
+        ], 3));
+        const clients = revByClient(outstanding);
+        if (clients.length) {
+          body.appendChild(mkSectionLabel('By Client'));
+          body.appendChild(mkModalTable(
+            [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Outstanding', right: true }, { label: '% of Total', right: true, muted: true }],
+            clients.map(c => [c.name, String(c.count), formatEUR(c.eur), outstandingTotal > 0 ? (c.eur / outstandingTotal * 100).toFixed(1) + '%' : '—'])
+          ));
+        }
+        appendRawLink(body, outstanding.length, () => drillDownModal('Outstanding Revenue',
+          outstanding.map(i => ({
+            date:   i.issueDate, type: 'Invoice',
+            source: byId('clients', i.clientId)?.name || '',
+            ref:    i.number || '',
+            eur:    toEUR(i.total, i.currency, i.issueDate)
+          })).sort((a, b) => (b.date || '').localeCompare(a.date || '')),
+          REV_COLS));
+        openModal({ title: `Outstanding Revenue — ${formatEUR(outstandingTotal)}`, body, large: true });
+      }
     });
   }
 
@@ -595,9 +734,25 @@ function renderTrend({ payments, invoices, payByMonth, invByMonth }, months) {
     onClickItem: (_, idx) => {
       const mk = months[idx]?.key;
       if (!mk) return;
-      drillDownModal(`${months[idx].label} — Revenue`,
-        drillRevRows(payments.filter(p => p.date?.slice(0, 7) === mk), invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk)),
-        REV_COLS);
+      const mPays = payments.filter(p => p.date?.slice(0, 7) === mk);
+      const mInvs = invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk);
+      const mTotal = mPays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0) + mInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+      const body = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: 'Revenue',  value: formatEUR(mTotal) },
+        { label: 'Payments', value: String(mPays.length) },
+        { label: 'Invoices', value: String(mInvs.length) }
+      ], 3));
+      const streams = revByStream(mPays, mInvs);
+      if (streams.length) {
+        body.appendChild(mkSectionLabel('By Stream'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Stream' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }],
+          streams.map(s => [s.name, String(s.count), formatEUR(s.eur), mTotal > 0 ? (s.eur / mTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      appendRawLink(body, mPays.length + mInvs.length, () => drillDownModal(`${months[idx].label} — Revenue`, drillRevRows(mPays, mInvs), REV_COLS));
+      openModal({ title: `${months[idx].label} — Revenue`, body, large: true });
     }
   });
 }
@@ -621,10 +776,25 @@ function renderStreamBar({ payments, invoices }, months) {
       const mk = months[idx]?.key;
       if (!mk) return;
       const sk = orderedKeys[dsIdx];
-      drillDownModal(`${label} — ${STREAMS[sk]?.label || sk}`,
-        drillRevRows(payments.filter(p => p.date?.slice(0, 7) === mk && (p.stream || 'other') === sk),
-                     invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk && (i.stream || 'other') === sk)),
-        REV_COLS);
+      const title = `${label} — ${STREAMS[sk]?.label || sk}`;
+      const sPays = payments.filter(p => p.date?.slice(0, 7) === mk && (p.stream || 'other') === sk);
+      const sInvs = invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk && (i.stream || 'other') === sk);
+      const sTotal = sPays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0) + sInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+      const body = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: 'Revenue', value: formatEUR(sTotal) },
+        { label: 'Records', value: String(sPays.length + sInvs.length) }
+      ], 2));
+      const entities = revByEntity(sPays, sInvs);
+      if (entities.length) {
+        body.appendChild(mkSectionLabel(sPays.length ? 'By Property' : 'By Client'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Name' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }],
+          entities.map(e => [e.name, String(e.count), formatEUR(e.eur)])
+        ));
+      }
+      appendRawLink(body, sPays.length + sInvs.length, () => drillDownModal(title, drillRevRows(sPays, sInvs), REV_COLS));
+      openModal({ title, body, large: true });
     }
   });
 }
@@ -641,10 +811,33 @@ function renderOwnerDonut({ payments, invoices }) {
     colors: keys.map(k => OWNER_COLORS[k] || '#8b93b0'),
     onClickItem: (_, idx) => {
       const ok = keys[idx];
-      drillDownModal(`Revenue — ${OWNERS[ok]}`,
-        drillRevRows(payments.filter(p => (byId('properties', p.propertyId)?.owner || 'both') === ok),
-                     invoices.filter(i => (i.owner || 'both') === ok)),
-        REV_COLS);
+      const oPays = payments.filter(p => (byId('properties', p.propertyId)?.owner || 'both') === ok);
+      const oInvs = invoices.filter(i => (i.owner || 'both') === ok);
+      const oTotal = oPays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0) + oInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+      const body = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: 'Revenue',  value: formatEUR(oTotal) },
+        { label: 'Payments', value: String(oPays.length) },
+        { label: 'Invoices', value: String(oInvs.length) }
+      ], 3));
+      const streams = revByStream(oPays, oInvs);
+      if (streams.length) {
+        body.appendChild(mkSectionLabel('By Stream'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Stream' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }],
+          streams.map(s => [s.name, String(s.count), formatEUR(s.eur), oTotal > 0 ? (s.eur / oTotal * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+      const entities = revByEntity(oPays, oInvs).slice(0, 10);
+      if (entities.length) {
+        body.appendChild(mkSectionLabel('Top Properties / Clients'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Name' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }],
+          entities.map(e => [e.name, String(e.count), formatEUR(e.eur)])
+        ));
+      }
+      appendRawLink(body, oPays.length + oInvs.length, () => drillDownModal(`Revenue — ${OWNERS[ok]}`, drillRevRows(oPays, oInvs), REV_COLS));
+      openModal({ title: `Revenue — ${OWNERS[ok]}`, body, large: true });
     }
   });
 }
@@ -660,7 +853,22 @@ function renderPropBar({ payments }) {
     horizontal: true,
     onClickItem: (_, idx) => {
       const [id, entry] = sorted[idx];
-      drillDownModal(`Revenue — ${entry.name}`, drillRevRows(payments.filter(p => p.propertyId === id), []), REV_COLS);
+      const pPays = payments.filter(p => p.propertyId === id);
+      const body  = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: 'Revenue', value: formatEUR(entry.eur) },
+        { label: 'Payments', value: String(pPays.length) }
+      ], 2));
+      const byMonth = revByMonth(pPays, []);
+      if (byMonth.length) {
+        body.appendChild(mkSectionLabel('By Month'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Month' }, { label: 'Payments', right: true, muted: true }, { label: 'Revenue', right: true }],
+          byMonth.map(m => [monthKeyLabel(m.key), String(m.count), formatEUR(m.eur)])
+        ));
+      }
+      appendRawLink(body, pPays.length, () => drillDownModal(`Revenue — ${entry.name}`, drillRevRows(pPays, []), REV_COLS));
+      openModal({ title: `Revenue — ${entry.name}`, body, large: true });
     }
   });
 }
@@ -676,12 +884,14 @@ function renderMixEvolution({ payments, invoices, payByMonth, invByMonth }, mont
       { label: 'Service', data: service, backgroundColor: '#10b981' }
     ],
     stacked: true,
-    onClickItem: (_, idx) => {
+    onClickItem: (_, idx, dsIdx) => {
       const mk = months[idx]?.key;
       if (!mk) return;
-      drillDownModal(`${months[idx].label} — Revenue Mix`,
-        drillRevRows(payments.filter(p => p.date?.slice(0, 7) === mk), invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk)),
-        REV_COLS);
+      if (dsIdx === 0) {
+        openStreamDrill(`${months[idx].label} — Rental`, payments.filter(p => p.date?.slice(0, 7) === mk), []);
+      } else {
+        openStreamDrill(`${months[idx].label} — Service`, [], invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk));
+      }
     }
   });
 }
@@ -726,21 +936,15 @@ function renderGrowthTrend({ payments, invoices, payByMonth, invByMonth }, month
       ];
       body.appendChild(mkSummaryGrid(summaryItems, 3));
 
-      // Contributing payments / invoices
+      // Contributing payments / invoices, grouped by stream
       if (mPays.length > 0 || mInvs.length > 0) {
-        body.appendChild(mkSectionLabel(`Contributions — ${label}`));
+        const streams = revByStream(mPays, mInvs);
+        body.appendChild(mkSectionLabel(`By Stream — ${label}`));
         body.appendChild(mkModalTable(
-          ['Date', 'Type', 'Entity', 'EUR'],
-          drillRevRows(mPays, mInvs)
-            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-            .map(r => [
-              r.date  || '—',
-              r.type  || '—',
-              r.source || '—',
-              formatEUR(r.eur)
-            ]),
-          { highlight: 3 }
+          [{ label: 'Stream' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }],
+          streams.map(s => [s.name, String(s.count), formatEUR(s.eur), curRev > 0 ? (s.eur / curRev * 100).toFixed(1) + '%' : '—'])
         ));
+        appendRawLink(body, mPays.length + mInvs.length, () => drillDownModal(`Revenue — ${label}`, drillRevRows(mPays, mInvs), REV_COLS));
       } else {
         body.appendChild(mkEmptyState(`No revenue records for ${label}.`));
       }
@@ -770,14 +974,26 @@ function renderPaidOutstanding({ invoices, invByMonth }, months, start, end) {
     onClickItem: (_, idx, dsIdx) => {
       const mk = months[idx]?.key;
       if (!mk) return;
-      if (dsIdx === 0) {
-        drillDownModal(`${months[idx].label} — Paid`, drillRevRows([], invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk)), REV_COLS);
-      } else {
-        const rows = allOut.filter(i => (i.issueDate || '').slice(0, 7) === mk).map(i => ({
-          date: i.issueDate, type: 'Invoice', source: byId('clients', i.clientId)?.name || '', ref: i.number || '', eur: toEUR(i.total, i.currency, i.issueDate)
-        }));
-        drillDownModal(`${months[idx].label} — Outstanding`, rows, REV_COLS);
+      const title = dsIdx === 0 ? `${months[idx].label} — Paid` : `${months[idx].label} — Outstanding`;
+      const mInvs = dsIdx === 0
+        ? invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk)
+        : allOut.filter(i => (i.issueDate || '').slice(0, 7) === mk);
+      const eur = mInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+      const body = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: dsIdx === 0 ? 'Paid' : 'Outstanding', value: formatEUR(eur) },
+        { label: 'Invoices', value: String(mInvs.length) }
+      ], 2));
+      const clients = revByClient(mInvs);
+      if (clients.length) {
+        body.appendChild(mkSectionLabel('By Client'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Amount', right: true }],
+          clients.map(c => [c.name, String(c.count), formatEUR(c.eur)])
+        ));
       }
+      appendRawLink(body, mInvs.length, () => drillDownModal(title, drillRevRows([], mInvs), REV_COLS));
+      openModal({ title, body, large: true });
     }
   });
 }
@@ -798,22 +1014,43 @@ function renderConcentration({ payments, invoices }) {
     onClickItem: (_, idx) => {
       if (idx < top5.length) {
         const e = top5[idx];
-        drillDownModal(`Revenue — ${e.name}`,
-          e.isPay ? drillRevRows(payments.filter(p => p.propertyId === e.id), [])
-                  : drillRevRows([], invoices.filter(i => i.clientId === e.id)),
-          REV_COLS);
+        const ePays = e.isPay ? payments.filter(p => p.propertyId === e.id) : [];
+        const eInvs = e.isPay ? [] : invoices.filter(i => i.clientId === e.id);
+        const body  = el('div');
+        body.appendChild(mkSummaryGrid([
+          { label: 'Revenue', value: formatEUR(e.eur) },
+          { label: 'Records', value: String(ePays.length + eInvs.length) }
+        ], 2));
+        const byMonth = revByMonth(ePays, eInvs);
+        if (byMonth.length) {
+          body.appendChild(mkSectionLabel('By Month'));
+          body.appendChild(mkModalTable(
+            [{ label: 'Month' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }],
+            byMonth.map(m => [monthKeyLabel(m.key), String(m.count), formatEUR(m.eur)])
+          ));
+        }
+        appendRawLink(body, ePays.length + eInvs.length, () => drillDownModal(`Revenue — ${e.name}`, drillRevRows(ePays, eInvs), REV_COLS));
+        openModal({ title: `Revenue — ${e.name}`, body, large: true });
         return;
       }
       // "Others" slice — combined revenue of every contributor beyond the Top 5.
       const restEntities  = sorted.slice(5);
       const restPropIds   = new Set(restEntities.filter(e => e.isPay).map(e => e.id));
       const restClientIds = new Set(restEntities.filter(e => !e.isPay).map(e => e.id));
-      drillDownModal(`Revenue — Others (${restEntities.length} beyond Top 5)`,
-        drillRevRows(
-          payments.filter(p => restPropIds.has(p.propertyId)),
-          invoices.filter(i => restClientIds.has(i.clientId))
-        ),
-        REV_COLS);
+      const restPays = payments.filter(p => restPropIds.has(p.propertyId));
+      const restInvs = invoices.filter(i => restClientIds.has(i.clientId));
+      const body = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: 'Revenue',      value: formatEUR(rest) },
+        { label: 'Contributors', value: String(restEntities.length) }
+      ], 2));
+      body.appendChild(mkSectionLabel('By Property / Client'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Name' }, { label: 'Revenue', right: true }, { label: '% of Others', right: true, muted: true }],
+        restEntities.map(e => [e.name, formatEUR(e.eur), rest > 0 ? (e.eur / rest * 100).toFixed(1) + '%' : '—'])
+      ));
+      appendRawLink(body, restPays.length + restInvs.length, () => drillDownModal(`Revenue — Others (${restEntities.length} beyond Top 5)`, drillRevRows(restPays, restInvs), REV_COLS));
+      openModal({ title: `Revenue — Others (${restEntities.length} beyond Top 5)`, body, large: true });
     }
   });
 }
@@ -853,13 +1090,29 @@ function renderAging({ outstanding }) {
         { key: 'due',    label: 'Due Date'  },
         { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v) }
       ];
-      const rows = items[idx].map(i => ({
-        source: byId('clients', i.clientId)?.name || '',
-        date:   i.issueDate || '',
-        due:    i.dueDate   || '—',
-        eur:    toEUR(i.total, i.currency, i.issueDate)
-      }));
-      drillDownModal(`Outstanding — ${label}`, rows, AGING_COLS);
+      const bucketInvs = items[idx];
+      const eur = buckets[idx];
+      const body = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: 'Outstanding', value: formatEUR(eur) },
+        { label: 'Invoices',    value: String(bucketInvs.length) }
+      ], 2));
+      const clients = revByClient(bucketInvs);
+      if (clients.length) {
+        body.appendChild(mkSectionLabel('By Client'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Amount', right: true }],
+          clients.map(c => [c.name, String(c.count), formatEUR(c.eur)])
+        ));
+      }
+      appendRawLink(body, bucketInvs.length, () => drillDownModal(`Outstanding — ${label}`,
+        bucketInvs.map(i => ({
+          source: byId('clients', i.clientId)?.name || '',
+          date:   i.issueDate || '',
+          due:    i.dueDate   || '—',
+          eur:    toEUR(i.total, i.currency, i.issueDate)
+        })), AGING_COLS));
+      openModal({ title: `Outstanding — ${label}`, body, large: true });
     }
   });
 }
@@ -904,9 +1157,26 @@ function buildSeasonalityHeatmap() {
       if (v > 0) {
         const capturedKey = key, capturedMi = mi;
         td.onclick = () => {
-          drillDownModal(`${MONTH_LABELS[capturedMi]} ${y} — Revenue`,
-            drillRevRows(pays.filter(p => p.date?.slice(0, 7) === capturedKey), invs.filter(i => i.issueDate?.slice(0, 7) === capturedKey)),
-            REV_COLS);
+          const title = `${MONTH_LABELS[capturedMi]} ${y} — Revenue`;
+          const mPays = pays.filter(p => p.date?.slice(0, 7) === capturedKey);
+          const mInvs = invs.filter(i => i.issueDate?.slice(0, 7) === capturedKey);
+          const mTotal = mPays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0) + mInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+          const body = el('div');
+          body.appendChild(mkSummaryGrid([
+            { label: 'Revenue',  value: formatEUR(mTotal) },
+            { label: 'Payments', value: String(mPays.length) },
+            { label: 'Invoices', value: String(mInvs.length) }
+          ], 3));
+          const streams = revByStream(mPays, mInvs);
+          if (streams.length) {
+            body.appendChild(mkSectionLabel('By Stream'));
+            body.appendChild(mkModalTable(
+              [{ label: 'Stream' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }],
+              streams.map(s => [s.name, String(s.count), formatEUR(s.eur), mTotal > 0 ? (s.eur / mTotal * 100).toFixed(1) + '%' : '—'])
+            ));
+          }
+          appendRawLink(body, mPays.length + mInvs.length, () => drillDownModal(title, drillRevRows(mPays, mInvs), REV_COLS));
+          openModal({ title, body, large: true });
         };
       }
       tr.appendChild(td);
