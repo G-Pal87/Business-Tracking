@@ -140,6 +140,104 @@ const DRILL_COLS = [
   { key: 'eur',         label: 'EUR',          right: true, format: v => formatEUR(v) }
 ];
 
+// ── Small footer link demoting a raw record list one click behind a summary ──
+function mkRawLinkFooter(count, onClick) {
+  const footer = el('div', { style: 'margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+  footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${count} record${count === 1 ? '' : 's'}`));
+  const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all records →');
+  link.onclick = onClick;
+  footer.appendChild(link);
+  return footer;
+}
+
+function openCostPressureModal(allExp, opTotal, opRatio) {
+  const opExArr = allExp.filter(e => !isCapEx(e));
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([
+    { label: 'Operating Expenses', value: formatEUR(opTotal) },
+    { label: 'Records',            value: String(opExArr.length) },
+    { label: 'Cost Ratio',         value: `${opRatio.toFixed(0)}%`, sub: 'OpEx / Revenue' }
+  ], 3));
+  const catMap = new Map();
+  opExArr.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+  const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+  if (cats.length) {
+    body.appendChild(mkSectionLabel('By Category'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of OpEx', right: true, muted: true }],
+      cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—'])
+    ));
+  }
+  body.appendChild(mkRawLinkFooter(opExArr.length, () => drillDownModal('Operating Expenses', toExpDrillRows(opExArr), DRILL_COLS)));
+  openModal({ title: `Operating Expenses — ${formatEUR(opTotal)}`, body, large: true });
+}
+
+function openCapExConcentrationModal(allExp, capTotal, capPct) {
+  const capExArr = allExp.filter(e => isCapEx(e));
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([
+    { label: 'Capital Expenditure', value: formatEUR(capTotal) },
+    { label: 'Records',             value: String(capExArr.length) },
+    { label: '% of Total Expenses', value: `${capPct.toFixed(0)}%` }
+  ], 3));
+  const propMap = new Map();
+  capExArr.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0, cnt: 0 }; x.v += toEUR(e.amount, e.currency, e.date); x.cnt++; propMap.set(e.propertyId, x); });
+  const props = [...propMap.values()].sort((a, b) => b.v - a.v);
+  if (props.length) {
+    body.appendChild(mkSectionLabel('By Property'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Property' }, { label: 'Records', right: true, muted: true }, { label: 'Amount', right: true }, { label: '% of CapEx', right: true, muted: true }],
+      props.map(p => [p.n, String(p.cnt), formatEUR(p.v), capTotal > 0 ? (p.v / capTotal * 100).toFixed(1) + '%' : '—'])
+    ));
+  }
+  body.appendChild(mkRawLinkFooter(capExArr.length, () => drillDownModal('CapEx', toExpDrillRows(capExArr), DRILL_COLS)));
+  openModal({ title: `CapEx — ${formatEUR(capTotal)}`, body, large: true });
+}
+
+function openCostConcentrationModal(allExp, topCat, lbl, pct) {
+  const catExp = allExp.filter(e => resolveExpenseFields(e).costCategory === topCat[0]);
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([
+    { label: lbl,          value: formatEUR(topCat[1]) },
+    { label: 'Records',    value: String(catExp.length) },
+    { label: '% of Total', value: `${pct}%` }
+  ], 3));
+  const vendMap = new Map();
+  catExp.forEach(e => { const name = vendorLabel(e); if (name === '—') return; vendMap.set(name, (vendMap.get(name) || 0) + toEUR(e.amount, e.currency, e.date)); });
+  const vends = [...vendMap.entries()].sort((a, b) => b[1] - a[1]);
+  if (vends.length) {
+    body.appendChild(mkSectionLabel('By Vendor'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Vendor' }, { label: 'Amount', right: true }, { label: '% of Category', right: true, muted: true }],
+      vends.map(([v, amt]) => [v, formatEUR(amt), topCat[1] > 0 ? (amt / topCat[1] * 100).toFixed(1) + '%' : '—'])
+    ));
+  }
+  body.appendChild(mkRawLinkFooter(catExp.length, () => drillDownModal(`Expenses — ${lbl}`, toExpDrillRows(catExp), DRILL_COLS)));
+  openModal({ title: `${lbl} — ${formatEUR(topCat[1])}`, body, large: true });
+}
+
+function openVendorConcentrationModal(allExp, topVend, pct) {
+  const vendExp = allExp.filter(e => vendorLabel(e) === topVend[0]);
+  const body = el('div');
+  body.appendChild(mkSummaryGrid([
+    { label: 'Vendor Total', value: formatEUR(topVend[1]) },
+    { label: 'Records',      value: String(vendExp.length) },
+    { label: '% of Total',   value: `${pct}%` }
+  ], 3));
+  const catMap = new Map();
+  vendExp.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+  const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+  if (cats.length) {
+    body.appendChild(mkSectionLabel('By Category'));
+    body.appendChild(mkModalTable(
+      [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Vendor Total', right: true, muted: true }],
+      cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), topVend[1] > 0 ? (v / topVend[1] * 100).toFixed(1) + '%' : '—'])
+    ));
+  }
+  body.appendChild(mkRawLinkFooter(vendExp.length, () => drillDownModal(`Expenses — ${topVend[0]}`, toExpDrillRows(vendExp), DRILL_COLS)));
+  openModal({ title: `${topVend[0]} — ${formatEUR(topVend[1])}`, body, large: true });
+}
+
 // ── Expense Insights (same card-grid format as Executive Insights) ────────────
 function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, curRange, cmpData }) {
   const signals = []; // { title, text, severity: 'At Risk'|'Watch'|'Note', inspect, onClick }
@@ -153,7 +251,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `Operating cost ratio is ${opRatio.toFixed(0)}% — OpEx exceeds revenue. Portfolio is unprofitable for this period.`,
       severity: 'At Risk',
       inspect:  'Expense Records',
-      onClick:  () => drillDownModal('Operating Expenses', toExpDrillRows(allExp.filter(e => !isCapEx(e))), DRILL_COLS)
+      onClick:  () => openCostPressureModal(allExp, opTotal, opRatio)
     });
   } else if (opRatio !== null && opRatio > 80) {
     signals.push({
@@ -161,7 +259,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `Operating cost ratio is ${opRatio.toFixed(0)}% — OpEx consumes over 80% of revenue. Margins are thin.`,
       severity: 'Watch',
       inspect:  'Expense Records',
-      onClick:  () => drillDownModal('Operating Expenses', toExpDrillRows(allExp.filter(e => !isCapEx(e))), DRILL_COLS)
+      onClick:  () => openCostPressureModal(allExp, opTotal, opRatio)
     });
   }
 
@@ -173,7 +271,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `CapEx is ${capPct.toFixed(0)}% of total expenses — major capital investment activity. Verify this is planned.`,
       severity: 'Watch',
       inspect:  'CapEx Detail',
-      onClick:  () => drillDownModal('CapEx', toExpDrillRows(allExp.filter(e => isCapEx(e))), DRILL_COLS)
+      onClick:  () => openCapExConcentrationModal(allExp, capTotal, capPct)
     });
   } else if (capPct > 30) {
     signals.push({
@@ -181,7 +279,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `CapEx is ${capPct.toFixed(0)}% of total expenses — elevated capital investment activity.`,
       severity: 'Note',
       inspect:  'CapEx Detail',
-      onClick:  () => drillDownModal('CapEx', toExpDrillRows(allExp.filter(e => isCapEx(e))), DRILL_COLS)
+      onClick:  () => openCapExConcentrationModal(allExp, capTotal, capPct)
     });
   }
 
@@ -200,7 +298,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `"${lbl}" is the dominant cost category at ${pct}% of total spend.`,
       severity: 'Note',
       inspect:  'Category Breakdown',
-      onClick:  () => drillDownModal(`Expenses — ${lbl}`, toExpDrillRows(allExp.filter(e => resolveExpenseFields(e).costCategory === topCat[0])), DRILL_COLS)
+      onClick:  () => openCostConcentrationModal(allExp, topCat, lbl, pct)
     });
   }
 
@@ -234,7 +332,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `"${topVend[0]}" accounts for ${formatEUR(topVend[1])} (${pct}% of total expenses) — high dependency on a single vendor.${trendText}`,
       severity: 'Watch',
       inspect:  'Vendor Breakdown',
-      onClick:  () => drillDownModal(`Expenses — ${topVend[0]}`, toExpDrillRows(allExp.filter(e => vendorLabel(e) === topVend[0])), DRILL_COLS)
+      onClick:  () => openVendorConcentrationModal(allExp, topVend, pct)
     });
   }
 
@@ -280,11 +378,19 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
         text:     `${recurringPatterns.length} recurring expense pattern${recurringPatterns.length !== 1 ? 's' : ''} detected — ${examples}`,
         severity: 'Note',
         inspect:  'Recurring Vendors',
-        onClick:  () => drillDownModal('Recurring Expenses', recurringRows, [
-          { key: 'vendor', label: 'Vendor' },
-          { key: 'month',  label: 'Month', format: v => monthLabel(v) },
-          { key: 'eur',    label: 'EUR',   right: true, format: v => formatEUR(v) }
-        ])
+        onClick:  () => {
+          const body = el('div');
+          body.appendChild(mkSummaryGrid([
+            { label: 'Patterns Detected',     value: String(recurringPatterns.length) },
+            { label: 'Combined Monthly Avg',  value: formatEUR(recurringPatterns.reduce((s, p) => s + p.avg, 0)) }
+          ], 2));
+          body.appendChild(mkSectionLabel('Recurring Vendors'));
+          body.appendChild(mkModalTable(
+            [{ label: 'Vendor' }, { label: 'Month' }, { label: 'EUR', right: true }],
+            recurringRows.map(r => [r.vendor, monthLabel(r.month), formatEUR(r.eur)])
+          ));
+          openModal({ title: 'Recurring Expenses', body, large: true });
+        }
       });
     }
   }
@@ -643,13 +749,18 @@ function buildView() {
     value:   topVendEntry ? topVendEntry[0] : '—',
     subtitle: topVendEntry ? formatEUR(topVendEntry[1]) : 'No vendors recorded',
     onClick: () => {
-      const rows = [...vendMap2.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([vendor, eur]) => ({ vendor, eur }));
-      drillDownModal('Vendors Summary', rows, [
-        { key: 'vendor', label: 'Vendor' },
-        { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v) }
-      ]);
+      const rows = [...vendMap2.entries()].sort((a, b) => b[1] - a[1]);
+      const body = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: 'Vendors',     value: String(rows.length) },
+        { label: 'Total Spend', value: formatEUR(rows.reduce((s, [, v]) => s + v, 0)) }
+      ], 2));
+      body.appendChild(mkSectionLabel('Vendors Summary'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Vendor' }, { label: 'EUR', right: true }],
+        rows.map(([vendor, eur]) => [vendor, formatEUR(eur)])
+      ));
+      openModal({ title: 'Vendors Summary', body, large: true });
     }
   }));
 
@@ -665,13 +776,18 @@ function buildView() {
     value:   topCatEntry ? (COST_CATEGORIES[topCatEntry[0]]?.label || topCatEntry[0]) : '—',
     subtitle: topCatEntry ? formatEUR(topCatEntry[1]) : 'No categories',
     onClick: () => {
-      const rows = [...catMap2.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([cat, eur]) => ({ category: COST_CATEGORIES[cat]?.label || cat, eur }));
-      drillDownModal('Categories Summary', rows, [
-        { key: 'category', label: 'Category' },
-        { key: 'eur',      label: 'EUR', right: true, format: v => formatEUR(v) }
-      ]);
+      const rows = [...catMap2.entries()].sort((a, b) => b[1] - a[1]);
+      const body = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: 'Categories',  value: String(rows.length) },
+        { label: 'Total Spend', value: formatEUR(rows.reduce((s, [, v]) => s + v, 0)) }
+      ], 2));
+      body.appendChild(mkSectionLabel('Categories Summary'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Category' }, { label: 'EUR', right: true }],
+        rows.map(([cat, eur]) => [COST_CATEGORIES[cat]?.label || cat, formatEUR(eur)])
+      ));
+      openModal({ title: 'Categories Summary', body, large: true });
     }
   }));
 
@@ -690,10 +806,17 @@ function buildView() {
           .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
         return { property: p?.name || pid, eur: amt };
       }).sort((a, b) => b.eur - a.eur);
-      drillDownModal('Costs by Property', rows, [
-        { key: 'property', label: 'Property' },
-        { key: 'eur',      label: 'EUR', right: true, format: v => formatEUR(v) }
-      ]);
+      const body = el('div');
+      body.appendChild(mkSummaryGrid([
+        { label: 'Properties',  value: String(rows.length) },
+        { label: 'Total Costs', value: formatEUR(rows.reduce((s, r) => s + r.eur, 0)) }
+      ], 2));
+      body.appendChild(mkSectionLabel('Costs by Property'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Property' }, { label: 'EUR', right: true }],
+        rows.map(r => [r.property, formatEUR(r.eur)])
+      ));
+      openModal({ title: 'Costs by Property', body, large: true });
     }
   }));
 

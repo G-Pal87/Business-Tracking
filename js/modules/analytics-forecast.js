@@ -1103,19 +1103,28 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         body.appendChild(mkModalTable(['Property', 'CapEx Amount'], propRows));
       }
 
-      // Detailed transaction rows
+      // Detailed transaction rows — one click away via footer link
       if (actCapExpenses.length > 0) {
-        const txRows = actCapExpenses
-          .slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-          .map(e => [
-            fmtDate(e.date),
-            e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.source || '—'),
-            e.category || '—',
-            e.description || '—',
-            formatEUR(toEUR(e.amount, e.currency, e.date))
-          ]);
-        body.appendChild(mkSectionLabel('Transactions'));
-        body.appendChild(mkModalTable(['Date', 'Property', 'Category', 'Description', 'Amount'], txRows));
+        const footer = el('div', { style: 'margin-top:4px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+        footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${actCapExpenses.length} transaction${actCapExpenses.length === 1 ? '' : 's'}`));
+        const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all transactions →');
+        link.onclick = () => {
+          const txRows = actCapExpenses
+            .slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+            .map(e => [
+              fmtDate(e.date),
+              e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.source || '—'),
+              e.category || '—',
+              e.description || '—',
+              formatEUR(toEUR(e.amount, e.currency, e.date))
+            ]);
+          const detailBody = el('div');
+          detailBody.appendChild(mkSectionLabel('Transactions'));
+          detailBody.appendChild(mkModalTable(['Date', 'Property', 'Category', 'Description', 'Amount'], txRows));
+          openModal({ title: 'CapEx — All Transactions', body: detailBody, large: true });
+        };
+        footer.appendChild(link);
+        body.appendChild(footer);
       }
 
       openModal({ title: 'CapEx Actual Breakdown', body, large: true });
@@ -1627,20 +1636,54 @@ function openStreamDetailModal(s, data) {
   const streamPayments = data.actPayments.filter(p => (resolveStream(p) || 'other') === s.key);
   const streamInvoices = data.actInvoices.filter(i => (resolveStream(i) || 'other') === s.key);
 
-  if (streamPayments.length > 0) {
-    const payRows = streamPayments
-      .slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-      .map(p => [fmtDate(p.date), byId('properties', p.propertyId)?.name || '—', p.confirmationCode || p.airbnbRef || '—', formatEUR(toEUR(p.amount, p.currency, p.date))]);
-    body.appendChild(mkSectionLabel('Payments'));
-    body.appendChild(mkModalTable(['Date', 'Property', 'Reference', 'Amount'], payRows));
+  const monthMap = new Map();
+  streamPayments.forEach(p => {
+    const mk = (p.date || '').slice(0, 7);
+    if (!mk) return;
+    monthMap.set(mk, (monthMap.get(mk) || 0) + toEUR(p.amount, p.currency, p.date));
+  });
+  streamInvoices.forEach(i => {
+    const mk = (i.issueDate || '').slice(0, 7);
+    if (!mk) return;
+    monthMap.set(mk, (monthMap.get(mk) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate));
+  });
+  const MN9 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const monthRows = [...monthMap.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([mk, v]) => {
+      const [y, m] = mk.split('-');
+      return [`${MN9[parseInt(m) - 1]} ${y}`, formatEUR(v)];
+    });
+  if (monthRows.length > 0) {
+    body.appendChild(mkSectionLabel('By Month'));
+    body.appendChild(mkModalTable(['Month', 'Amount'], monthRows));
   }
 
-  if (streamInvoices.length > 0) {
-    const invRows = streamInvoices
-      .slice().sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''))
-      .map(i => [fmtDate(i.issueDate), byId('clients', i.clientId)?.name || i.clientId || '—', i.ref || i.number || '—', formatEUR(toEUR(i.total || i.amount, i.currency, i.issueDate))]);
-    body.appendChild(mkSectionLabel('Invoices'));
-    body.appendChild(mkModalTable(['Date', 'Client', 'Reference', 'Amount'], invRows));
+  const txCount = streamPayments.length + streamInvoices.length;
+  if (txCount > 0) {
+    const footer = el('div', { style: 'margin-top:4px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+    footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${txCount} transaction${txCount === 1 ? '' : 's'} in this stream`));
+    const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all transactions →');
+    link.onclick = () => {
+      const detailBody = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+      if (streamPayments.length > 0) {
+        const payRows = streamPayments
+          .slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+          .map(p => [fmtDate(p.date), byId('properties', p.propertyId)?.name || '—', p.confirmationCode || p.airbnbRef || '—', formatEUR(toEUR(p.amount, p.currency, p.date))]);
+        detailBody.appendChild(mkSectionLabel('Payments'));
+        detailBody.appendChild(mkModalTable(['Date', 'Property', 'Reference', 'Amount'], payRows));
+      }
+      if (streamInvoices.length > 0) {
+        const invRows = streamInvoices
+          .slice().sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''))
+          .map(i => [fmtDate(i.issueDate), byId('clients', i.clientId)?.name || i.clientId || '—', i.ref || i.number || '—', formatEUR(toEUR(i.total || i.amount, i.currency, i.issueDate))]);
+        detailBody.appendChild(mkSectionLabel('Invoices'));
+        detailBody.appendChild(mkModalTable(['Date', 'Client', 'Reference', 'Amount'], invRows));
+      }
+      openModal({ title: `${s.label} — All Transactions`, body: detailBody, large: true });
+    };
+    footer.appendChild(link);
+    body.appendChild(footer);
   }
 
   openModal({ title: `${s.label} — Stream Detail`, body, large: true });

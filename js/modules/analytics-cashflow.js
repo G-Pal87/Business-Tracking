@@ -1,5 +1,5 @@
 // Cash Flow Analytics Dashboard — track liquidity
-import { el, buildMultiSelect, button, fmtDate, attachSortFilter, openModal } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, attachSortFilter, openModal, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, COST_CATEGORIES } from '../core/config.js';
 import {
@@ -214,14 +214,42 @@ function openCashflowStreamModal(sk, curData) {
   summaryGrid.appendChild(mkSummaryBox('Net Cash Flow', formatEUR(net), net >= 0 ? 'Surplus' : 'Deficit'));
   body.appendChild(summaryGrid);
 
-  const rows = buildCashFlowRows(sPay, sInv, sOp, sCap);
-  if (rows.length > 0) {
-    body.appendChild(mkSectionLabel('Transactions'));
+  if (inV > 0) {
+    const propMap = new Map();
+    sPay.forEach(p => { const n = byId('properties', p.propertyId)?.name || p.source || 'No Property'; propMap.set(n, (propMap.get(n) || 0) + toEUR(p.amount, p.currency, p.date)); });
+    sInv.forEach(i => { const n = byId('clients', i.clientId)?.name || 'No Client'; propMap.set(n, (propMap.get(n) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+    const propEntries = [...propMap.entries()].sort((a, b) => b[1] - a[1]);
+    body.appendChild(mkSectionLabel('Cash In by Property / Client'));
     body.appendChild(mkModalTable(
-      ['Date', 'Source', 'Type', 'Entity', 'Owner', 'Description', 'Amount EUR'],
-      rows.map(r => [fmtDate(r.date), r.source, r.type, r.entity, r.owner, r.description, r.amountEUR])
+      ['Property / Client', 'Amount', '% of Cash In'],
+      propEntries.map(([k, v]) => [k, formatEUR(v), inV > 0 ? (v / inV * 100).toFixed(1) + '%' : '—'])
     ));
   }
+
+  const cashOutV = opOutV + capOutV;
+  if (cashOutV > 0) {
+    const catMap = new Map();
+    [...sOp, ...sCap].forEach(e => {
+      const key = resolveExpenseFields(e).costCategory;
+      const cat = COST_CATEGORIES[key]?.label || key || 'Uncategorized';
+      catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
+    });
+    const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
+    body.appendChild(mkSectionLabel('Cash Out by Category'));
+    body.appendChild(mkModalTable(
+      ['Category', 'Amount', '% of Cash Out'],
+      catEntries.map(([k, v]) => [k, formatEUR(v), cashOutV > 0 ? (v / cashOutV * 100).toFixed(1) + '%' : '—'])
+    ));
+  }
+
+  const rows = buildCashFlowRows(sPay, sInv, sOp, sCap);
+  const footer = el('div', { style: 'margin-top:4px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+  footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${rows.length} transaction${rows.length === 1 ? '' : 's'} in this stream`));
+  const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all transactions →');
+  link.onclick = () => drillDownModal(`${STREAMS[sk]?.label || sk} — All Transactions`, rows, CF_DRILL_COLS);
+  footer.appendChild(link);
+  body.appendChild(footer);
+
   openModal({ title: `${STREAMS[sk]?.label || sk} — Net ${formatEUR(net)}`, body, large: true });
 }
 
@@ -1403,7 +1431,7 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
       if (slice.idx === 0) {
-        // Cash In: payments + invoices top 10 by amount
+        // Cash In: payments + invoices, rolled up by property/client (all N), plus top 5 largest for context
         const allIn = [
           ...payments.map(p => ({
             date: p.date,
@@ -1417,34 +1445,57 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
             description: 'Invoice',
             _eur: toEUR(i.total, i.currency, i.issueDate)
           }))
-        ].sort((a, b) => b._eur - a._eur).slice(0, 10);
+        ];
 
         const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px' });
-        summaryGrid.appendChild(mkSummaryBox('Total Cash In', formatEUR(totalCashIn), `${payments.length + invoices.length} items`));
-        summaryGrid.appendChild(mkSummaryBox('Top 10 shown', `${Math.min(10, payments.length + invoices.length)} of ${payments.length + invoices.length}`, 'by amount'));
+        summaryGrid.appendChild(mkSummaryBox('Total Cash In', formatEUR(totalCashIn), `${allIn.length} items`));
+        summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(allIn.length > 0 ? totalCashIn / allIn.length : 0), 'per record'));
         body.appendChild(summaryGrid);
 
-        body.appendChild(mkSectionLabel('Top Cash In Records'));
+        const entityMap = new Map();
+        allIn.forEach(r => entityMap.set(r.entity, (entityMap.get(r.entity) || 0) + r._eur));
+        const entityEntries = [...entityMap.entries()].sort((a, b) => b[1] - a[1]);
+        body.appendChild(mkSectionLabel('By Property / Client'));
+        body.appendChild(mkModalTable(
+          ['Property / Client', 'Amount', '% of Total'],
+          entityEntries.map(([k, v]) => [k, formatEUR(v), totalCashIn > 0 ? (v / totalCashIn * 100).toFixed(1) + '%' : '—'])
+        ));
+
+        const top5In = [...allIn].sort((a, b) => b._eur - a._eur).slice(0, 5);
+        body.appendChild(mkSectionLabel('Top 5 Largest'));
         body.appendChild(mkModalTable(
           ['Date', 'Entity / Description', 'Type', 'Amount'],
-          allIn.map(r => [fmtDate(r.date), r.entity, r.description, formatEUR(r._eur)])
+          top5In.map(r => [fmtDate(r.date), r.entity, r.description, formatEUR(r._eur)])
         ));
 
       } else if (slice.idx === 1) {
-        // Op Cash Out: opExpenses top 10
-        const sorted = [...opExpenses]
-          .sort((a, b) => toEUR(b.amount, b.currency, b.date) - toEUR(a.amount, a.currency, a.date))
-          .slice(0, 10);
+        // Op Cash Out: all opExpenses rolled up by category, plus top 5 largest for context
+        const catMap = new Map();
+        opExpenses.forEach(e => {
+          const key = resolveExpenseFields(e).costCategory;
+          const cat = COST_CATEGORIES[key]?.label || key || 'Uncategorized';
+          catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
+        });
+        const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
 
         const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px' });
         summaryGrid.appendChild(mkSummaryBox('Total OpEx Out', formatEUR(totalOpCashOut), `${opExpenses.length} expenses`));
-        summaryGrid.appendChild(mkSummaryBox('Top 10 shown', `${Math.min(10, opExpenses.length)} of ${opExpenses.length}`, 'by amount'));
+        summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(opExpenses.length > 0 ? totalOpCashOut / opExpenses.length : 0), 'per expense'));
         body.appendChild(summaryGrid);
 
-        body.appendChild(mkSectionLabel('Top Operating Expenses'));
+        body.appendChild(mkSectionLabel('By Category'));
+        body.appendChild(mkModalTable(
+          ['Category', 'Amount', '% of Total'],
+          catEntries.map(([k, v]) => [k, formatEUR(v), totalOpCashOut > 0 ? (v / totalOpCashOut * 100).toFixed(1) + '%' : '—'])
+        ));
+
+        const top5Op = [...opExpenses]
+          .sort((a, b) => toEUR(b.amount, b.currency, b.date) - toEUR(a.amount, a.currency, a.date))
+          .slice(0, 5);
+        body.appendChild(mkSectionLabel('Top 5 Largest'));
         body.appendChild(mkModalTable(
           ['Date', 'Entity / Property', 'Description', 'Amount'],
-          sorted.map(e => [
+          top5Op.map(e => [
             fmtDate(e.date),
             e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.vendorId ? (byId('vendors', e.vendorId)?.name || e.vendorId) : '—'),
             e.description || e.category || '—',
@@ -1453,20 +1504,33 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
         ));
 
       } else {
-        // Investment Cash Out: capExpenses top 10
-        const sorted = [...capExpenses]
-          .sort((a, b) => toEUR(b.amount, b.currency, b.date) - toEUR(a.amount, a.currency, a.date))
-          .slice(0, 10);
+        // Investment Cash Out: all capExpenses rolled up by category, plus top 5 largest for context
+        const catMap = new Map();
+        capExpenses.forEach(e => {
+          const key = resolveExpenseFields(e).costCategory;
+          const cat = COST_CATEGORIES[key]?.label || key || 'Uncategorized';
+          catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
+        });
+        const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
 
         const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px' });
         summaryGrid.appendChild(mkSummaryBox('Total Invest. Out', formatEUR(totalInvCashOut), `${capExpenses.length} items`));
-        summaryGrid.appendChild(mkSummaryBox('Top 10 shown', `${Math.min(10, capExpenses.length)} of ${capExpenses.length}`, 'by amount'));
+        summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(capExpenses.length > 0 ? totalInvCashOut / capExpenses.length : 0), 'per item'));
         body.appendChild(summaryGrid);
 
-        body.appendChild(mkSectionLabel('Top Investment Expenses'));
+        body.appendChild(mkSectionLabel('By Category'));
+        body.appendChild(mkModalTable(
+          ['Category', 'Amount', '% of Total'],
+          catEntries.map(([k, v]) => [k, formatEUR(v), totalInvCashOut > 0 ? (v / totalInvCashOut * 100).toFixed(1) + '%' : '—'])
+        ));
+
+        const top5Cap = [...capExpenses]
+          .sort((a, b) => toEUR(b.amount, b.currency, b.date) - toEUR(a.amount, a.currency, a.date))
+          .slice(0, 5);
+        body.appendChild(mkSectionLabel('Top 5 Largest'));
         body.appendChild(mkModalTable(
           ['Date', 'Entity / Property', 'Description', 'Amount'],
-          sorted.map(e => [
+          top5Cap.map(e => [
             fmtDate(e.date),
             e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.vendorId ? (byId('vendors', e.vendorId)?.name || e.vendorId) : '—'),
             e.description || e.category || '—',

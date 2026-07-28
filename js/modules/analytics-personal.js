@@ -384,6 +384,21 @@ function showDivCombinedModal(youData, ritaData) {
     ...ritaData.divRecords.map(d => ({ ...d, _label: RITA_LABEL })),
   ];
   if (merged.length > 0) {
+    const byYear = new Map();
+    for (const d of merged) {
+      const yr  = (d.date || '').slice(0, 4) || '—';
+      const cur = byYear.get(yr) || { gross: 0, count: 0 };
+      cur.gross += d.grossAmount || 0;
+      cur.count += 1;
+      byYear.set(yr, cur);
+    }
+    if (byYear.size > 1) {
+      body.appendChild(mkSectionLabel('By Year'));
+      const yearRows = [...byYear.entries()]
+        .sort((a, b) => b[0].localeCompare(a[0]))
+        .map(([yr, v]) => [yr, String(v.count), formatEUR(v.gross), formatEUR(v.gross * SDC_RATE), formatEUR(v.gross * (1 - SDC_RATE))]);
+      body.appendChild(mkModalTable(['Year', 'Records', 'Gross', 'SDC', 'Net'], yearRows, { highlight: 4 }));
+    }
     body.appendChild(mkSectionLabel('Dividend Records'));
     const rows = merged
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
@@ -416,6 +431,20 @@ function showGesyModal(youData, ritaData) {
     ...ritaData.gesyExps.map(e => ({ ...e, _label: RITA_LABEL })),
   ];
   if (merged.length > 0) {
+    const byPerson = new Map();
+    for (const e of merged) {
+      const eur = toEUR(e.amount, e.currency, e.date);
+      const cur = byPerson.get(e._label) || { total: 0, count: 0 };
+      cur.total += eur;
+      cur.count += 1;
+      byPerson.set(e._label, cur);
+    }
+    body.appendChild(mkSectionLabel('By Person'));
+    const personRows = [...byPerson.entries()]
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(([p, v]) => [p, String(v.count), formatEUR(v.total)]);
+    body.appendChild(mkModalTable(['Person', 'Records', 'Amount'], personRows, { highlight: 2 }));
+
     body.appendChild(mkSectionLabel('Social Contribution Records'));
     const rows = merged
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
@@ -436,11 +465,32 @@ function showSalaryModal(label, data) {
     ...(data.gesyTotal > 0 ? [{ label: 'GESY (company cost)', value: formatEUR(data.gesyTotal) }] : [])
   ], 3));
   if (data.salaryExps.length > 0) {
-    body.appendChild(mkSectionLabel('Salary Records'));
-    const rows = data.salaryExps
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-      .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), e.description || '—']);
-    body.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Description'], rows, { highlight: 1 }));
+    const byMonth = new Map();
+    for (const e of data.salaryExps) {
+      const mk  = (e.date || '').slice(0, 7) || '—';
+      const cur = byMonth.get(mk) || { total: 0, count: 0 };
+      cur.total += toEUR(e.amount, e.currency, e.date);
+      cur.count += 1;
+      byMonth.set(mk, cur);
+    }
+    body.appendChild(mkSectionLabel('Salary by Month'));
+    const monthRows = [...byMonth.entries()]
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([mk, v]) => [mk, String(v.count), formatEUR(v.total)]);
+    body.appendChild(mkModalTable(['Month', 'Records', 'Amount'], monthRows, { highlight: 2 }));
+
+    const footer = el('div', { style: 'margin-top:4px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:flex-end' });
+    const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all salary records →');
+    link.onclick = () => {
+      const rows = data.salaryExps
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+        .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), e.description || '—']);
+      const rawBody = el('div');
+      rawBody.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Description'], rows, { highlight: 1 }));
+      openModal({ title: `${label} — Salary Records`, body: rawBody, large: true });
+    };
+    footer.appendChild(link);
+    body.appendChild(footer);
   } else {
     body.appendChild(mkEmptyState('No salary records for this period. Add expenses with category "Salary".'));
   }
@@ -484,8 +534,15 @@ function showRentModal(label, data, months) {
 
 // ── Reimbursements drill-down ─────────────────────────────────────────────────
 function showReimbModal(label, data) {
-  const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
-  if (data.reimbExps.length > 0) {
+  const body  = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  const count = data.reimbExps.length;
+  body.appendChild(mkSummaryGrid([
+    { label: 'Total Reimbursed', value: formatEUR(data.reimb) },
+    { label: 'Records',          value: String(count) },
+    { label: 'Average',          value: count > 0 ? formatEUR(data.reimb / count) : '—' }
+  ], 3));
+  if (count > 0) {
+    body.appendChild(mkSectionLabel('Reimbursement Records'));
     const rows = data.reimbExps
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
       .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), e.description || '—']);
@@ -505,6 +562,21 @@ function showDivModal(label, data) {
     { label: 'Net Dividends',   value: formatEUR(data.netDivs) }
   ], 3));
   if (data.divRecords.length > 0) {
+    const byYear = new Map();
+    for (const d of data.divRecords) {
+      const yr  = (d.date || '').slice(0, 4) || '—';
+      const cur = byYear.get(yr) || { gross: 0, count: 0 };
+      cur.gross += d.grossAmount || 0;
+      cur.count += 1;
+      byYear.set(yr, cur);
+    }
+    if (byYear.size > 1) {
+      body.appendChild(mkSectionLabel('By Year'));
+      const yearRows = [...byYear.entries()]
+        .sort((a, b) => b[0].localeCompare(a[0]))
+        .map(([yr, v]) => [yr, String(v.count), formatEUR(v.gross), formatEUR(v.gross * SDC_RATE), formatEUR(v.gross * (1 - SDC_RATE))]);
+      body.appendChild(mkModalTable(['Year', 'Records', 'Gross', 'SDC', 'Net'], yearRows, { highlight: 4 }));
+    }
     body.appendChild(mkSectionLabel('Dividend Records'));
     const rows = data.divRecords
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
@@ -632,17 +704,45 @@ function buildPersonColumn(label, color, data, months, cmpData) {
       'STR Income', formatEUR(data.strIncomeTotal),
       data.strIncomeExps.length > 0,
       () => {
-        const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
-        if (data.strIncomeExps.length > 0) {
-          const rows = data.strIncomeExps
-            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-            .map(e => [
-              e.date || '—',
-              formatEUR(toEUR(e.amount, e.currency, e.date)),
-              byId('properties', e.propertyId)?.name || '—',
-              e.description || '—'
-            ]);
-          body.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Property', 'Description'], rows, { highlight: 1 }));
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+        const exps = data.strIncomeExps;
+        body.appendChild(mkSummaryGrid([
+          { label: 'Total STR Income', value: formatEUR(data.strIncomeTotal) },
+          { label: 'Records',          value: String(exps.length) },
+          { label: 'Properties',       value: String(new Set(exps.map(e => e.propertyId).filter(Boolean)).size) }
+        ], 3));
+        if (exps.length > 0) {
+          const byProp = new Map();
+          for (const e of exps) {
+            const name = byId('properties', e.propertyId)?.name || 'Unassigned';
+            const cur  = byProp.get(name) || { total: 0, count: 0 };
+            cur.total += toEUR(e.amount, e.currency, e.date);
+            cur.count += 1;
+            byProp.set(name, cur);
+          }
+          body.appendChild(mkSectionLabel('STR Income by Property'));
+          const propRows = [...byProp.entries()]
+            .sort((a, b) => b[1].total - a[1].total)
+            .map(([name, v]) => [name, String(v.count), formatEUR(v.total)]);
+          body.appendChild(mkModalTable(['Property', 'Records', 'Amount'], propRows, { highlight: 2 }));
+
+          const footer = el('div', { style: 'margin-top:4px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:flex-end' });
+          const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all STR records →');
+          link.onclick = () => {
+            const rows = exps
+              .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+              .map(e => [
+                e.date || '—',
+                formatEUR(toEUR(e.amount, e.currency, e.date)),
+                byId('properties', e.propertyId)?.name || '—',
+                e.description || '—'
+              ]);
+            const rawBody = el('div');
+            rawBody.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Property', 'Description'], rows, { highlight: 1 }));
+            openModal({ title: `${label} — STR Income Records`, body: rawBody, large: true });
+          };
+          footer.appendChild(link);
+          body.appendChild(footer);
         } else {
           body.appendChild(mkEmptyState('No STR income records this period.'));
         }
@@ -661,12 +761,40 @@ function buildPersonColumn(label, color, data, months, cmpData) {
       'Other Personal Income', formatEUR(data.piExpTotal),
       data.piExps.length > 0,
       () => {
-        const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
-        if (data.piExps.length > 0) {
-          const rows = data.piExps
-            .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-            .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), EXPENSE_CATEGORIES[e.category]?.label || e.category, e.description || '—']);
-          body.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Category', 'Description'], rows, { highlight: 1 }));
+        const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+        const exps = data.piExps;
+        body.appendChild(mkSummaryGrid([
+          { label: 'Total',      value: formatEUR(data.piExpTotal) },
+          { label: 'Records',    value: String(exps.length) },
+          { label: 'Categories', value: String(new Set(exps.map(e => e.category)).size) }
+        ], 3));
+        if (exps.length > 0) {
+          const byCat = new Map();
+          for (const e of exps) {
+            const cat = EXPENSE_CATEGORIES[e.category]?.label || e.category || '—';
+            const cur = byCat.get(cat) || { total: 0, count: 0 };
+            cur.total += toEUR(e.amount, e.currency, e.date);
+            cur.count += 1;
+            byCat.set(cat, cur);
+          }
+          body.appendChild(mkSectionLabel('By Category'));
+          const catRows = [...byCat.entries()]
+            .sort((a, b) => b[1].total - a[1].total)
+            .map(([cat, v]) => [cat, String(v.count), formatEUR(v.total)]);
+          body.appendChild(mkModalTable(['Category', 'Records', 'Amount'], catRows, { highlight: 2 }));
+
+          const footer = el('div', { style: 'margin-top:4px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:flex-end' });
+          const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all records →');
+          link.onclick = () => {
+            const rows = exps
+              .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+              .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), EXPENSE_CATEGORIES[e.category]?.label || e.category, e.description || '—']);
+            const rawBody = el('div');
+            rawBody.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Category', 'Description'], rows, { highlight: 1 }));
+            openModal({ title: `${label} — Other Personal Income Records`, body: rawBody, large: true });
+          };
+          footer.appendChild(link);
+          body.appendChild(footer);
         } else {
           body.appendChild(mkEmptyState('No personal income expenses linked to this person.'));
         }

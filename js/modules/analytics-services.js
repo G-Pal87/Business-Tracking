@@ -136,11 +136,6 @@ function toClientConcentrationRows(clientRevMap, paidTotal) {
     }))
     .sort((a, b) => b.paidRev - a.paidRev);
 }
-const CONCENTRATION_DRILL_COLS = [
-  { key: 'client',  label: 'Client'                                            },
-  { key: 'paidRev', label: 'Paid Revenue', right: true, format: v => formatEUR(v) },
-  { key: 'share',   label: 'Share',        right: true, format: v => v.toFixed(1) + '%' }
-];
 
 function toActiveClientRows(kpiBase) {
   const map = new Map();
@@ -166,13 +161,13 @@ function toActiveClientRows(kpiBase) {
     }))
     .sort((a, b) => b.paidRev - a.paidRev);
 }
-const ACTIVE_CLIENT_DRILL_COLS = [
-  { key: 'client',      label: 'Client'                                               },
-  { key: 'paidRev',     label: 'Paid Revenue',     right: true, format: v => formatEUR(v) },
-  { key: 'invoicedRev', label: 'Invoiced Revenue', right: true, format: v => formatEUR(v) },
-  { key: 'outstanding', label: 'Outstanding',      right: true, format: v => formatEUR(v) },
-  { key: 'overdue',     label: 'Overdue',          right: true, format: v => formatEUR(v) },
-  { key: 'count',       label: 'Invoice Count',    right: true }
+
+const AGING_INV_DRILL_COLS = [
+  { key: 'client',    label: 'Client'                                          },
+  { key: 'issueDate', label: 'Invoice Date',     format: v => v ? fmtDate(v) : '—' },
+  { key: 'dueDate',   label: 'Due Date',         format: v => v ? fmtDate(v) : '—' },
+  { key: 'daysOut',   label: 'Days Outstanding', right: true                    },
+  { key: 'eur',       label: 'Amount',           right: true, format: v => formatEUR(v) }
 ];
 
 // ── Service Performance Insights ──────────────────────────────────────────────
@@ -549,7 +544,26 @@ function buildView(gF, curRange, cmpRange, onChange) {
     variant: overdueTotal > 0 ? 'danger' : '',
     onClick: onClickOverdue
   }));
-  const onClickClientConcentration = () => drillDownModal('Revenue by Client', toClientConcentrationRows(clientRevMap, paidTotal), CONCENTRATION_DRILL_COLS);
+  const onClickClientConcentration = () => {
+    const rows = toClientConcentrationRows(clientRevMap, paidTotal);
+    const body = el('div');
+    body.appendChild(mkSectionLabel('Summary'));
+    body.appendChild(mkSummaryGrid([
+      { label: 'Top Client',    value: topClient ? topClient.name : '—' },
+      { label: 'Concentration', value: concentration !== null ? concentration.toFixed(0) + '%' : '—' },
+      { label: 'Paid Revenue',  value: formatEUR(paidTotal) }
+    ], 3));
+    if (rows.length) {
+      body.appendChild(mkSectionLabel('By Client'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Client' }, { label: 'Paid Revenue', right: true }, { label: 'Share', right: true, muted: true }],
+        rows.map(r => [r.client, formatEUR(r.paidRev), r.share.toFixed(1) + '%'])
+      ));
+    } else {
+      body.appendChild(mkEmptyState('No paid revenue for the selected period.'));
+    }
+    openModal({ title: 'Revenue by Client', body, large: true });
+  };
   kpiRow2.appendChild(mkKpiCard({
     label:   'Client Concentration',
     value:   concentration !== null ? concentration.toFixed(0) + '%' : '—',
@@ -586,11 +600,38 @@ function buildView(gF, curRange, cmpRange, onChange) {
       openModal({ title: `${topClient.name} — Client Profile`, body, large: true });
     }
   }));
+  const onClickActiveClients = () => {
+    const rows = toActiveClientRows(kpiBase);
+    const body = el('div');
+    body.appendChild(mkSectionLabel('Summary'));
+    body.appendChild(mkSummaryGrid([
+      { label: 'Active Clients',   value: String(activeClientIds.size) },
+      { label: 'Invoiced Revenue', value: formatEUR(invoicedTotal) },
+      { label: 'Outstanding',      value: formatEUR(outstandingTotal) }
+    ], 3));
+    if (rows.length) {
+      body.appendChild(mkSectionLabel('By Client'));
+      body.appendChild(mkModalTable(
+        [
+          { label: 'Client' },
+          { label: 'Paid Revenue', right: true },
+          { label: 'Invoiced Revenue', right: true },
+          { label: 'Outstanding', right: true },
+          { label: 'Overdue', right: true },
+          { label: 'Invoices', right: true, muted: true }
+        ],
+        rows.map(r => [r.client, formatEUR(r.paidRev), formatEUR(r.invoicedRev), formatEUR(r.outstanding), formatEUR(r.overdue), String(r.count)])
+      ));
+    } else {
+      body.appendChild(mkEmptyState('No client activity for the selected period.'));
+    }
+    openModal({ title: 'Client Summary', body, large: true });
+  };
   kpiRow2.appendChild(mkKpiCard({
     label:   'Active Clients',
     value:   String(activeClientIds.size),
     subtitle: 'Clients with invoiced activity',
-    onClick: () => drillDownModal('Client Summary', toActiveClientRows(kpiBase), ACTIVE_CLIENT_DRILL_COLS)
+    onClick: onClickActiveClients
   }));
   wrap.appendChild(kpiRow2);
 
@@ -1034,9 +1075,42 @@ function renderStatusDonut({ kpiBase }) {
     data:   entries.map(([, v]) => Math.round(v)),
     colors: entries.map(([k]) => STATUS_COLORS[k] || '#8b93b0'),
     onClickItem: (_label, idx) => {
-      const sk   = entries[idx][0];
-      const rows = kpiBase.filter(i => i.status === sk);
-      drillDownModal(`Invoices — ${INVOICE_STATUSES[sk]?.label || sk}`, toInvDrillRows(rows), INV_DRILL_COLS);
+      const sk    = entries[idx][0];
+      const rows  = kpiBase.filter(i => i.status === sk);
+      const label = INVOICE_STATUSES[sk]?.label || sk;
+      const total = rows.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+
+      const body = el('div');
+      body.appendChild(mkSectionLabel('Summary'));
+      body.appendChild(mkSummaryGrid([
+        { label: 'Invoices',   value: String(rows.length) },
+        { label: 'Total Value', value: formatEUR(total) }
+      ], 2));
+
+      const clientMap = new Map();
+      rows.forEach(i => {
+        const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown';
+        const x = clientMap.get(id) || { n, v: 0, cnt: 0 };
+        x.v += toEUR(i.total, i.currency, i.issueDate); x.cnt++;
+        clientMap.set(id, x);
+      });
+      const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
+      if (clients.length) {
+        body.appendChild(mkSectionLabel('By Client'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Total', right: true }, { label: '% of Total', right: true, muted: true }],
+          clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), total > 0 ? (c.v / total * 100).toFixed(1) + '%' : '—'])
+        ));
+      }
+
+      const footer = el('div', { style: 'margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+      footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${rows.length} invoice${rows.length === 1 ? '' : 's'} in this status`));
+      const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all invoices →');
+      link.onclick = () => drillDownModal(`Invoices — ${label}`, toInvDrillRows(rows), INV_DRILL_COLS);
+      footer.appendChild(link);
+      body.appendChild(footer);
+
+      openModal({ title: `Invoices — ${label}`, body, large: true });
     }
   });
 }
@@ -1066,11 +1140,36 @@ function renderOutstandingBar({ outstanding }) {
     horizontal: true,
     onClickItem: (_label, idx) => {
       const d = sorted[idx];
-      drillDownModal(
-        `Outstanding — ${d.name}`,
-        toInvDrillRows(outstanding.filter(i => i.clientId === d.id)),
-        INV_DRILL_COLS
-      );
+      const clientInvs = outstanding.filter(i => i.clientId === d.id);
+      const overdueAmt = clientInvs.filter(i => i.status === 'overdue').reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+
+      const body = el('div');
+      body.appendChild(mkSectionLabel('Summary'));
+      body.appendChild(mkSummaryGrid([
+        { label: 'Invoices',    value: String(clientInvs.length) },
+        { label: 'Outstanding', value: formatEUR(d.eur) },
+        { label: 'Overdue',     value: overdueAmt > 0 ? formatEUR(overdueAmt) : '—' }
+      ], 3));
+
+      const streamMap = new Map();
+      clientInvs.forEach(i => { streamMap.set(i.stream, (streamMap.get(i.stream) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+      const streams = [...streamMap.entries()].sort((a, b) => b[1] - a[1]);
+      if (streams.length) {
+        body.appendChild(mkSectionLabel('By Stream'));
+        body.appendChild(mkModalTable(
+          [{ label: 'Stream' }, { label: 'Outstanding', right: true }, { label: '% of Total', right: true, muted: true }],
+          streams.map(([s, v]) => [STREAMS[s]?.label || s, formatEUR(v), d.eur > 0 ? (v / d.eur * 100).toFixed(0) + '%' : '—'])
+        ));
+      }
+
+      const footer = el('div', { style: 'margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+      footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${clientInvs.length} invoice${clientInvs.length === 1 ? '' : 's'} outstanding`));
+      const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all invoices →');
+      link.onclick = () => drillDownModal(`Outstanding — ${d.name}`, toInvDrillRows(clientInvs), INV_DRILL_COLS);
+      footer.appendChild(link);
+      body.appendChild(footer);
+
+      openModal({ title: `Outstanding — ${d.name}`, body, large: true });
     }
   });
 }
@@ -1157,39 +1256,31 @@ function renderAgingBar({ outstanding }) {
         ])
       ));
 
-      // Fix 5 — Individual invoice rows, sorted by days outstanding descending
-      const today2 = new Date().toISOString().slice(0, 10);
-      const invRows = b.items.map(i => {
-        const agingDate = i.dueDate || i.issueDate || i.date;
-        const daysOut = agingDate
-          ? Math.max(0, Math.floor((new Date(today2) - new Date(agingDate)) / 86400000))
-          : 0;
-        return {
-          client:   byId('clients', i.clientId)?.name || '—',
-          issueDate: i.issueDate || i.date || '',
-          dueDate:  i.dueDate || '',
-          daysOut,
-          eur:      toEUR(i.total, i.currency, i.issueDate)
-        };
-      }).sort((a, b2) => b2.daysOut - a.daysOut);
-
-      body.appendChild(mkSectionLabel('Individual Invoices (oldest first)'));
-      body.appendChild(mkModalTable(
-        [
-          { label: 'Client' },
-          { label: 'Invoice Date' },
-          { label: 'Due Date' },
-          { label: 'Days Outstanding', right: true },
-          { label: 'Amount', right: true }
-        ],
-        invRows.map(r => [
-          r.client,
-          r.issueDate ? fmtDate(r.issueDate) : '—',
-          r.dueDate   ? fmtDate(r.dueDate)   : '—',
-          String(r.daysOut),
-          formatEUR(r.eur)
-        ])
-      ));
+      // Individual invoice rows are demoted behind a link — the "By Client" table
+      // above already covers the aggregated view, so the raw per-invoice list is
+      // one click away rather than always-rendered.
+      const footer = el('div', { style: 'margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+      footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${b.items.length} invoice${b.items.length === 1 ? '' : 's'} in this bucket`));
+      const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View individual invoices →');
+      link.onclick = () => {
+        const today2 = new Date().toISOString().slice(0, 10);
+        const invRows = b.items.map(i => {
+          const agingDate = i.dueDate || i.issueDate || i.date;
+          const daysOut = agingDate
+            ? Math.max(0, Math.floor((new Date(today2) - new Date(agingDate)) / 86400000))
+            : 0;
+          return {
+            client:   byId('clients', i.clientId)?.name || '—',
+            issueDate: i.issueDate || i.date || '',
+            dueDate:  i.dueDate || '',
+            daysOut,
+            eur:      toEUR(i.total, i.currency, i.issueDate)
+          };
+        }).sort((a, b2) => b2.daysOut - a.daysOut);
+        drillDownModal(`Aging — ${b.label} — Individual Invoices`, invRows, AGING_INV_DRILL_COLS);
+      };
+      footer.appendChild(link);
+      body.appendChild(footer);
 
       openModal({ title: `Aging — ${b.label}`, body, large: true });
     }

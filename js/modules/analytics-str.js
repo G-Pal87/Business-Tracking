@@ -1,5 +1,5 @@
 // STR Performance Dashboard — portfolio summary, property spotlight, forward pipeline
-import { el, openModal, fmtDate } from '../core/ui.js';
+import { el, openModal, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { state } from '../core/state.js';
 import { formatEUR, listActive, listActivePayments, byId, isReservationNight } from '../core/data.js';
@@ -650,15 +650,22 @@ function buildStrOccupancyHeatmap(data) {
             { label: 'Blocked', value: occ.blocked.toString() },
             { label: 'Occupancy %', value: occ.available > 0 ? monthPct.toFixed(1) + '%' : '—' }
           ], 4));
-          mb.appendChild(mkSectionLabel('Payments'));
-          mb.appendChild(mkModalTable(
-            [{ label: 'Date' }, { label: 'Nights', right: true }, { label: 'Amount', right: true }],
-            [...monthPays].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(pay => [
-              fmtDate(pay.date),
-              pay.airbnbNights != null ? String(pay.airbnbNights) : '—',
-              formatEUR(pay.amount)
-            ])
-          ));
+          const payFooter = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding-top:4px' });
+          payFooter.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
+            `${monthPays.length} payment${monthPays.length === 1 ? '' : 's'} this month`));
+          const payLink = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all bookings →');
+          payLink.onclick = () => {
+            drillDownModal(`${shortName(p.name)} — ${k.label} Bookings`,
+              [...monthPays].sort((a, b) => (a.date || '').localeCompare(b.date || '')),
+              [
+                { key: 'date', label: 'Date', format: v => fmtDate(v) },
+                { key: 'airbnbNights', label: 'Nights', right: true, format: v => v != null ? String(v) : '—' },
+                { key: 'amount', label: 'Amount', right: true, format: v => formatEUR(v) }
+              ]
+            );
+          };
+          payFooter.appendChild(payLink);
+          mb.appendChild(payFooter);
           openModal({ title: `Occupancy — ${shortName(p.name)} · ${k.label}`, body: mb, large: true });
         };
       }
@@ -966,10 +973,18 @@ function openPipelineDetailModal(pipeline, { propId = null, type = null, title }
   });
   rows.sort((a, b) => a.start.localeCompare(b.start) || a.propName.localeCompare(b.propName));
 
-  const body = el('div');
+  const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   if (!rows.length) {
     body.appendChild(mkEmptyState('No dates in this category.'));
   } else {
+    const totalValue = rows.reduce((s, r) => s + r.rev, 0);
+    const rangeEnd = rows.reduce((mx, r) => r.end > mx ? r.end : mx, rows[0].end);
+    body.appendChild(mkSummaryGrid([
+      { label: 'Segments', value: rows.length.toString() },
+      { label: 'Total Value', value: formatEUR(totalValue, { maxFrac: 0 }) },
+      { label: 'Date Range', value: `${fmtDate(rows[0].start)} – ${fmtDate(rangeEnd)}` }
+    ], 3));
+
     body.appendChild(mkModalTable(
       [
         { label: 'Property' },
@@ -1195,16 +1210,43 @@ function openMonthRevenueModal(monthIdx, data) {
   ], 2));
 
   if (moPays.length) {
+    const byProp = new Map();
+    moPays.forEach(p => {
+      const key = p.propertyId || '—';
+      if (!byProp.has(key)) byProp.set(key, []);
+      byProp.get(key).push(p);
+    });
+    const propRows = [...byProp.entries()].map(([propId, pays]) => ({
+      name: shortName(byId('properties', propId)?.name || '—'),
+      rev: pays.reduce((s, p) => s + p.amount, 0),
+      nights: sumNights(pays),
+      count: pays.length
+    })).sort((a, b) => b.rev - a.rev);
+
+    body.appendChild(mkSectionLabel('By Property'));
     body.appendChild(mkModalTable(
-      ['Check-in', 'Property', 'Nights', 'Amount'],
-      [...moPays].sort((a, b) => (a.airbnbCheckIn || a.date) < (b.airbnbCheckIn || b.date) ? -1 : 1).map(p => [
-        p.airbnbCheckIn || p.date || '—',
-        shortName(byId('properties', p.propertyId)?.name || '—'),
-        (p.airbnbNights || '—').toString(),
-        formatEUR(p.amount)
-      ]),
+      [{ label: 'Property' }, { label: 'Bookings', right: true }, { label: 'Nights', right: true }, { label: 'Revenue', right: true }],
+      propRows.map(r => [r.name, r.count.toString(), r.nights > 0 ? r.nights.toString() : '—', formatEUR(r.rev)]),
       { highlight: 3 }
     ));
+
+    const footer = el('div', { style: 'margin-top:4px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+    footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
+      `${moPays.length} booking${moPays.length === 1 ? '' : 's'} across ${propRows.length} propert${propRows.length !== 1 ? 'ies' : 'y'}`));
+    const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all bookings →');
+    link.onclick = () => {
+      drillDownModal(`${k.label} — All Bookings`,
+        [...moPays].sort((a, b) => (a.airbnbCheckIn || a.date) < (b.airbnbCheckIn || b.date) ? -1 : 1),
+        [
+          { key: 'airbnbCheckIn', label: 'Check-in', format: (v, row) => v || row.date || '—' },
+          { key: 'propertyId', label: 'Property', format: v => shortName(byId('properties', v)?.name || '—') },
+          { key: 'airbnbNights', label: 'Nights', right: true, format: v => v != null ? String(v) : '—' },
+          { key: 'amount', label: 'Amount', right: true, format: v => formatEUR(v) }
+        ]
+      );
+    };
+    footer.appendChild(link);
+    body.appendChild(footer);
   } else {
     body.appendChild(mkEmptyState('No bookings in this month.'));
   }
@@ -1231,18 +1273,24 @@ function openMonthSpotlightModal(monthIdx, propId, months, curRange) {
   ], 3));
 
   if (pays.length) {
-    body.appendChild(mkSectionLabel('Bookings'));
-    body.appendChild(mkModalTable(
-      ['Check-in', 'Check-out', 'Nights', 'ADR', 'Amount'],
-      pays.map(p => [
-        p.airbnbCheckIn || p.date || '—',
-        p.airbnbCheckOut || '—',
-        (p.airbnbNights || '—').toString(),
-        p.avgNightlyRate ? formatEUR(p.avgNightlyRate) : '—',
-        formatEUR(p.amount)
-      ]),
-      { highlight: 4 }
-    ));
+    const footer = el('div', { style: 'display:flex;justify-content:space-between;align-items:center' });
+    footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
+      `${pays.length} booking${pays.length === 1 ? '' : 's'} this month`));
+    const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all bookings →');
+    link.onclick = () => {
+      drillDownModal(`${shortName(prop?.name || '')} — ${mo.label} Bookings`,
+        pays,
+        [
+          { key: 'airbnbCheckIn', label: 'Check-in', format: (v, row) => v || row.date || '—' },
+          { key: 'airbnbCheckOut', label: 'Check-out', format: v => v || '—' },
+          { key: 'airbnbNights', label: 'Nights', right: true, format: v => v != null ? String(v) : '—' },
+          { key: 'avgNightlyRate', label: 'ADR', right: true, format: v => v ? formatEUR(v) : '—' },
+          { key: 'amount', label: 'Amount', right: true, format: v => formatEUR(v) }
+        ]
+      );
+    };
+    footer.appendChild(link);
+    body.appendChild(footer);
   } else {
     body.appendChild(mkEmptyState('No bookings recorded for this month.'));
   }

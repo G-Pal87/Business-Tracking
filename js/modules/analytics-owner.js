@@ -167,6 +167,12 @@ function buildShareKpiModal(owner, partnerLabel, revenue, pct, allRecords) {
     .sort((a, b) => b._shareEur - a._shareEur);
   const total = filtered.length;
   const relevant = filtered.slice(0, 5);
+  const toRow = r => {
+    const date   = r.date || r.issueDate || '—';
+    const entity = r.propertyId ? (byId('properties', r.propertyId)?.name || '—')
+                 : r.clientId   ? (byId('clients',    r.clientId)?.name   || '—') : '—';
+    return [date, entity, r._resolvedOwner === 'both' ? 'Shared (50%)' : partnerLabel, formatEUR(r._shareEur)];
+  };
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
@@ -179,14 +185,18 @@ function buildShareKpiModal(owner, partnerLabel, revenue, pct, allRecords) {
     ));
     body.appendChild(mkModalTable(
       ['Date', 'Entity', 'Attribution', 'EUR'],
-      relevant.map(r => {
-        const date   = r.date || r.issueDate || '—';
-        const entity = r.propertyId ? (byId('properties', r.propertyId)?.name || '—')
-                     : r.clientId   ? (byId('clients',    r.clientId)?.name   || '—') : '—';
-        return [date, entity, r._resolvedOwner === 'both' ? 'Shared (50%)' : partnerLabel, formatEUR(r._shareEur)];
-      }),
+      relevant.map(toRow),
       { highlight: 3 }
     ));
+    if (relevant.length < total) {
+      const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, `View all ${total} records →`);
+      link.onclick = () => {
+        const allBody = el('div');
+        allBody.appendChild(mkModalTable(['Date', 'Entity', 'Attribution', 'EUR'], filtered.map(toRow), { highlight: 3 }));
+        openModal({ title: `${partnerLabel} — All Records`, body: allBody, large: true });
+      };
+      body.appendChild(link);
+    }
   }
   return body;
 }
@@ -575,16 +585,45 @@ function renderRevBar(annotatedPayments, annotatedInvoices, months) {
         { label: RITA_LABEL, value: formatEUR(split.rita), sub: `${items.filter(r => (r._resolvedOwner === 'rita' || r._resolvedOwner === 'both')).length} records` }
       ], 2));
 
-      const rows = items
-        .sort((a, b) => ((b.date || b.issueDate) || '').localeCompare((a.date || a.issueDate) || ''))
-        .map(r => [
-          r.date || r.issueDate || '—',
-          r._resolvedOwner === 'you' ? YOU_LABEL : r._resolvedOwner === 'rita' ? RITA_LABEL : 'Shared',
-          r.propertyId ? (byId('properties', r.propertyId)?.name || '—') : (r.clientId ? (byId('clients', r.clientId)?.name || '—') : '—'),
-          formatEUR(r._eur)
-        ]);
-      body.appendChild(mkSectionLabel('Records'));
-      body.appendChild(mkModalTable(['Date', 'Owner', 'Entity', 'EUR'], rows, { highlight: 3 }));
+      // Group by property/client so the breakdown shows where revenue came
+      // from instead of one row per raw payment/invoice.
+      const entityMap = new Map();
+      for (const r of items) {
+        const key  = r.propertyId ? `p:${r.propertyId}` : r.clientId ? `c:${r.clientId}` : 'other';
+        const name = r.propertyId ? (byId('properties', r.propertyId)?.name || '—')
+                   : r.clientId   ? (byId('clients',    r.clientId)?.name   || '—') : 'Other';
+        const e = entityMap.get(key) || { name, you: 0, rita: 0 };
+        const s = splitByOwner([r], rec => rec._eur);
+        e.you  += s.you;
+        e.rita += s.rita;
+        entityMap.set(key, e);
+      }
+      const entityRows = [...entityMap.values()]
+        .sort((a, b) => (b.you + b.rita) - (a.you + a.rita))
+        .map(e => [e.name, formatEUR(e.you), formatEUR(e.rita), formatEUR(e.you + e.rita)]);
+
+      body.appendChild(mkSectionLabel('By Property / Client'));
+      body.appendChild(mkModalTable(['Entity', YOU_LABEL, RITA_LABEL, 'Total'], entityRows, { highlight: 3 }));
+
+      const footer = el('div', { style: 'margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
+      footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${items.length} record${items.length === 1 ? '' : 's'} in ${months[idx].label}`));
+      const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View records →');
+      link.onclick = () => {
+        const rows = items
+          .sort((a, b) => ((b.date || b.issueDate) || '').localeCompare((a.date || a.issueDate) || ''))
+          .map(r => [
+            r.date || r.issueDate || '—',
+            r._resolvedOwner === 'you' ? YOU_LABEL : r._resolvedOwner === 'rita' ? RITA_LABEL : 'Shared',
+            r.propertyId ? (byId('properties', r.propertyId)?.name || '—') : (r.clientId ? (byId('clients', r.clientId)?.name || '—') : '—'),
+            formatEUR(r._eur)
+          ]);
+        const recBody = el('div');
+        recBody.appendChild(mkModalTable(['Date', 'Owner', 'Entity', 'EUR'], rows, { highlight: 3 }));
+        openModal({ title: `${months[idx].label} — All Records`, body: recBody, large: true });
+      };
+      footer.appendChild(link);
+      body.appendChild(footer);
+
       openModal({ title: `${months[idx].label} — Revenue Breakdown`, body, large: true });
     }
   });

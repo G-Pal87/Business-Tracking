@@ -358,6 +358,19 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       if (!cur.pendingPayments.length) {
         body.appendChild(mkEmptyState('No pending payments in this period.'));
       } else {
+        const today = new Date().toISOString().slice(0, 10);
+        let pastDueAmt = 0, pastDueCount = 0, upcomingAmt = 0, upcomingCount = 0;
+        cur.pendingPayments.forEach(p => {
+          const amt = toEUR(p.amount, p.currency, p.date);
+          if (p.date && p.date < today) { pastDueAmt += amt; pastDueCount++; }
+          else { upcomingAmt += amt; upcomingCount++; }
+        });
+        body.appendChild(mkSummaryGrid([
+          { label: 'Total Pending', value: formatEUR(pipeline), sub: `${cur.pendingPayments.length} payment${cur.pendingPayments.length !== 1 ? 's' : ''}` },
+          { label: 'Past Expected Date', value: formatEUR(pastDueAmt), sub: `${pastDueCount} payment${pastDueCount !== 1 ? 's' : ''}` },
+          { label: 'Upcoming',       value: formatEUR(upcomingAmt), sub: `${upcomingCount} payment${upcomingCount !== 1 ? 's' : ''}` }
+        ], 3));
+        body.appendChild(mkSectionLabel('Pending Payments'));
         const rows = cur.pendingPayments
           .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
           .map(p => [
@@ -577,22 +590,61 @@ function renderRevExpBar(cur, months) {
       const mInvs = cur.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk);
       const mOpEx2 = cur.opExpenses.filter(e => (e.date||'').slice(0,7) === mk);
       const mCapEx2 = cur.capExpenses.filter(e => (e.date||'').slice(0,7) === mk);
+
       if (mPays.length || mInvs.length) {
-        body.appendChild(mkSectionLabel('Revenue Records'));
-        body.appendChild(mkModalTable(['Date','Entity','Type','Amount'],
-          [...mPays.map(p => [p.date||'—', byId('properties',p.propertyId)?.name||'—', 'Payment', formatEUR(toEUR(p.amount,p.currency,p.date))]),
-           ...mInvs.map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', 'Invoice', formatEUR(toEUR(i.total,i.currency,i.issueDate))])]
-          .sort((a,b) => a[0].localeCompare(b[0]))
+        const streamMap2 = new Map();
+        mPays.forEach(p => {
+          const key = STREAM_LABELS[p.stream || 'other'] || p.stream || 'Other';
+          streamMap2.set(key, (streamMap2.get(key) || 0) + toEUR(p.amount, p.currency, p.date));
+        });
+        mInvs.forEach(i => {
+          const key = STREAM_LABELS[i.stream || 'other'] || i.stream || 'Other';
+          streamMap2.set(key, (streamMap2.get(key) || 0) + toEUR(i.total, i.currency, i.issueDate));
+        });
+        body.appendChild(mkSectionLabel('Revenue by Stream'));
+        body.appendChild(mkModalTable(['Stream', 'Amount'],
+          [...streamMap2.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, formatEUR(v)])
         ));
       }
       if (mOpEx2.length || mCapEx2.length) {
-        body.appendChild(mkSectionLabel('Expense Records'));
-        body.appendChild(mkModalTable(['Date','Description','Type','Amount'],
-          [...mOpEx2.map(e => [e.date||'—', e.description||e.notes||'—', 'OpEx', formatEUR(toEUR(e.amount,e.currency,e.date))]),
-           ...mCapEx2.map(e => [e.date||'—', e.description||e.notes||'—', 'CapEx', formatEUR(toEUR(e.amount,e.currency,e.date))])]
-          .sort((a,b) => a[0].localeCompare(b[0]))
+        const catMap = new Map();
+        [...mOpEx2, ...mCapEx2].forEach(e => {
+          const key = e.category || 'Uncategorized';
+          catMap.set(key, (catMap.get(key) || 0) + toEUR(e.amount, e.currency, e.date));
+        });
+        body.appendChild(mkSectionLabel('Expenses by Category'));
+        body.appendChild(mkModalTable(['Category', 'Amount'],
+          [...catMap.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, formatEUR(v)])
         ));
       }
+
+      if (mPays.length || mInvs.length || mOpEx2.length || mCapEx2.length) {
+        const footer = el('div', { style: 'margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:flex-end' });
+        const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all records →');
+        link.onclick = () => {
+          const rawBody = el('div');
+          if (mPays.length || mInvs.length) {
+            rawBody.appendChild(mkSectionLabel('Revenue Records'));
+            rawBody.appendChild(mkModalTable(['Date','Entity','Type','Amount'],
+              [...mPays.map(p => [p.date||'—', byId('properties',p.propertyId)?.name||'—', 'Payment', formatEUR(toEUR(p.amount,p.currency,p.date))]),
+               ...mInvs.map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', 'Invoice', formatEUR(toEUR(i.total,i.currency,i.issueDate))])]
+              .sort((a,b) => a[0].localeCompare(b[0]))
+            ));
+          }
+          if (mOpEx2.length || mCapEx2.length) {
+            rawBody.appendChild(mkSectionLabel('Expense Records'));
+            rawBody.appendChild(mkModalTable(['Date','Description','Type','Amount'],
+              [...mOpEx2.map(e => [e.date||'—', e.description||e.notes||'—', 'OpEx', formatEUR(toEUR(e.amount,e.currency,e.date))]),
+               ...mCapEx2.map(e => [e.date||'—', e.description||e.notes||'—', 'CapEx', formatEUR(toEUR(e.amount,e.currency,e.date))])]
+              .sort((a,b) => a[0].localeCompare(b[0]))
+            ));
+          }
+          openModal({ title: `${months[idx].label} — All Records`, body: rawBody, large: true });
+        };
+        footer.appendChild(link);
+        body.appendChild(footer);
+      }
+
       openModal({ title: `${months[idx].label} — P&L Summary`, body, large: true });
     }
   });
