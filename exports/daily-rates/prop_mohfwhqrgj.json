@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-26T07:26:48.170Z",
+  "generatedAt": "2026-07-29T15:29:24.442Z",
   "property": {
     "id": "prop_mohfwhqrgj",
     "name": "Studio Tenerife",
@@ -13,36 +13,6 @@
   "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": [
-    {
-      "date": "2026-07-26",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "July 2026 (10 nights)",
-      "originalAmount": 27,
-      "discountPct": 10,
-      "amount": 24,
-      "airbnbCheckout": 31
-    },
-    {
-      "date": "2026-07-27",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "July 2026 (10 nights)",
-      "originalAmount": 27,
-      "discountPct": 10,
-      "amount": 24,
-      "airbnbCheckout": 31
-    },
-    {
-      "date": "2026-07-28",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "July 2026 (10 nights)",
-      "originalAmount": 27,
-      "discountPct": 10,
-      "amount": 24,
-      "airbnbCheckout": 31
-    },
     {
       "date": "2026-07-29",
       "currency": "EUR",
@@ -3662,6 +3632,36 @@
       "discountPct": 10,
       "amount": 30,
       "airbnbCheckout": 38
+    },
+    {
+      "date": "2027-07-26",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "July 2025 day 26 (1n, 1.27×) + July 2024 day 26 (1n, 0.82×) + July 2023 day 26 (1n, 0.54×)",
+      "originalAmount": 33,
+      "discountPct": 10,
+      "amount": 30,
+      "airbnbCheckout": 38
+    },
+    {
+      "date": "2027-07-27",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "July 2025 day 27 (1n, 1.27×) + July 2024 day 27 (1n, 0.82×) + July 2023 day 27 (1n, 0.54×)",
+      "originalAmount": 32,
+      "discountPct": 10,
+      "amount": 29,
+      "airbnbCheckout": 36
+    },
+    {
+      "date": "2027-07-28",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "July 2025 day 28 (1n, 1.27×) + July 2023 day 28 (1n, 0.54×)",
+      "originalAmount": 30,
+      "discountPct": 10,
+      "amount": 27,
+      "airbnbCheckout": 34
     }
   ]
 }
