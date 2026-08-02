@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-07-29T15:29:24.456Z",
+  "generatedAt": "2026-08-02T12:25:18.600Z",
   "property": {
     "id": "prop_mox7p43s8o",
     "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
@@ -13,46 +13,6 @@
   "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": [
-    {
-      "date": "2026-07-29",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 106,
-      "discountPct": 0,
-      "amount": 106,
-      "airbnbCheckout": 121
-    },
-    {
-      "date": "2026-07-30",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 106,
-      "discountPct": 0,
-      "amount": 106,
-      "airbnbCheckout": 121
-    },
-    {
-      "date": "2026-07-31",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 106,
-      "discountPct": 0,
-      "amount": 106,
-      "airbnbCheckout": 121
-    },
-    {
-      "date": "2026-08-01",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 106,
-      "discountPct": 0,
-      "amount": 106,
-      "airbnbCheckout": 121
-    },
     {
       "date": "2026-08-02",
       "currency": "EUR",
@@ -3658,6 +3618,46 @@
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 day 28 (1n, 1.95×) + July 2025 day 28 (1n, 1.27×)",
+      "originalAmount": 98,
+      "discountPct": 10,
+      "amount": 88,
+      "airbnbCheckout": 112
+    },
+    {
+      "date": "2027-07-29",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "July 2026 day 29 (1n, 1.95×) + July 2025 day 29 (1n, 1.27×)",
+      "originalAmount": 98,
+      "discountPct": 10,
+      "amount": 88,
+      "airbnbCheckout": 112
+    },
+    {
+      "date": "2027-07-30",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "July 2026 day 30 (1n, 1.95×) + July 2025 day 30 (1n, 1.27×)",
+      "originalAmount": 98,
+      "discountPct": 10,
+      "amount": 88,
+      "airbnbCheckout": 112
+    },
+    {
+      "date": "2027-07-31",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "July 2026 day 31 (1n, 1.95×) + July 2025 day 31 (1n, 1.27×)",
+      "originalAmount": 98,
+      "discountPct": 10,
+      "amount": 88,
+      "airbnbCheckout": 112
+    },
+    {
+      "date": "2027-08-01",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2026 day 01 (1n, 1.95×) + August 2025 day 01 (1n, 1.27×)",
       "originalAmount": 98,
       "discountPct": 10,
       "amount": 88,
