@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-04T03:42:32.159Z",
+  "generatedAt": "2026-08-04T03:45:11.504Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -3426,7 +3426,7 @@
     {
       "date": "2027-07-11",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
       "originalAmount": 46,
       "discountPct": 10,
@@ -3436,7 +3436,7 @@
     {
       "date": "2027-07-12",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
       "originalAmount": 46,
       "discountPct": 10,
@@ -3446,7 +3446,7 @@
     {
       "date": "2027-07-13",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
       "originalAmount": 46,
       "discountPct": 10,
@@ -3456,7 +3456,7 @@
     {
       "date": "2027-07-14",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 day 14 (1n, 1.95×) + July 2025 day 14 (1n, 1.27×)",
       "originalAmount": 54,
       "discountPct": 10,
@@ -3466,7 +3466,7 @@
     {
       "date": "2027-07-15",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 day 15 (1n, 1.95×) + July 2025 day 15 (1n, 1.27×)",
       "originalAmount": 54,
       "discountPct": 10,
@@ -3476,7 +3476,7 @@
     {
       "date": "2027-07-16",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 day 16 (1n, 1.95×) + July 2025 day 16 (1n, 1.27×)",
       "originalAmount": 54,
       "discountPct": 10,
@@ -3616,7 +3616,7 @@
     {
       "date": "2027-07-30",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2026 day 30 (1n, 1.95×) + July 2025 day 30 (1n, 1.27×)",
       "originalAmount": 29,
       "discountPct": 10,
@@ -3626,7 +3626,7 @@
     {
       "date": "2027-07-31",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2026 day 31 (1n, 1.95×) + July 2025 day 31 (1n, 1.27×)",
       "originalAmount": 29,
       "discountPct": 10,
@@ -3636,7 +3636,7 @@
     {
       "date": "2027-08-01",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2026 day 01 (1n, 1.95×) + August 2025 day 01 (1n, 1.27×)",
       "originalAmount": 29,
       "discountPct": 10,
@@ -3646,7 +3646,7 @@
     {
       "date": "2027-08-02",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2026 day 02 (1n, 1.95×) + August 2025 day 02 (1n, 1.27×)",
       "originalAmount": 29,
       "discountPct": 10,
@@ -3656,7 +3656,7 @@
     {
       "date": "2027-08-03",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2026 day 03 (1n, 1.95×) + August 2025 day 03 (1n, 1.27×)",
       "originalAmount": 29,
       "discountPct": 10,
