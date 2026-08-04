@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-04T03:46:49.649Z",
+  "generatedAt": "2026-08-04T11:45:45.851Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
@@ -2316,7 +2316,7 @@
     {
       "date": "2027-03-22",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
       "discountPct": 10,
@@ -2326,7 +2326,7 @@
     {
       "date": "2027-03-23",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
       "discountPct": 10,
@@ -2336,7 +2336,7 @@
     {
       "date": "2027-03-24",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
       "discountPct": 10,
@@ -2346,7 +2346,7 @@
     {
       "date": "2027-03-25",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
       "discountPct": 10,
@@ -2356,7 +2356,7 @@
     {
       "date": "2027-03-26",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
       "discountPct": 10,
@@ -2366,7 +2366,7 @@
     {
       "date": "2027-03-27",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
       "discountPct": 10,
@@ -2376,7 +2376,7 @@
     {
       "date": "2027-03-28",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
       "discountPct": 10,
@@ -2386,7 +2386,7 @@
     {
       "date": "2027-03-29",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
       "discountPct": 10,
@@ -2396,7 +2396,7 @@
     {
       "date": "2027-03-30",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
       "discountPct": 10,
@@ -2406,7 +2406,7 @@
     {
       "date": "2027-03-31",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "March 2026 (29 nights)",
       "originalAmount": 59,
       "discountPct": 10,
