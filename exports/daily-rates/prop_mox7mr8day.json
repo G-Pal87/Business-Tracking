@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-04T03:42:32.162Z",
+  "generatedAt": "2026-08-04T03:46:49.649Z",
   "property": {
     "id": "prop_mox7mr8day",
     "name": "Luxe Poolside Escape | Beach walk & 2 Terraces",
@@ -1056,7 +1056,7 @@
     {
       "date": "2026-11-16",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
       "discountPct": 10,
@@ -1066,7 +1066,7 @@
     {
       "date": "2026-11-17",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
       "discountPct": 10,
@@ -1076,7 +1076,7 @@
     {
       "date": "2026-11-18",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
       "discountPct": 10,
@@ -1086,7 +1086,7 @@
     {
       "date": "2026-11-19",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
       "discountPct": 10,
@@ -1096,7 +1096,7 @@
     {
       "date": "2026-11-20",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
       "discountPct": 10,
@@ -1106,7 +1106,7 @@
     {
       "date": "2026-11-21",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
       "discountPct": 10,
@@ -1116,7 +1116,7 @@
     {
       "date": "2026-11-22",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
       "discountPct": 10,
@@ -1126,7 +1126,7 @@
     {
       "date": "2026-11-23",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
       "discountPct": 10,
@@ -1136,7 +1136,7 @@
     {
       "date": "2026-11-24",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
       "discountPct": 10,
@@ -1146,7 +1146,7 @@
     {
       "date": "2026-11-25",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "confirmed target",
       "originalAmount": 77,
       "discountPct": 10,
@@ -3526,7 +3526,7 @@
     {
       "date": "2027-07-21",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 day 21 (1n, 1.95×) + July 2025 day 21 (1n, 1.27×)",
       "originalAmount": 108,
       "discountPct": 10,
@@ -3536,7 +3536,7 @@
     {
       "date": "2027-07-22",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 day 22 (1n, 1.95×) + July 2025 day 22 (1n, 1.27×)",
       "originalAmount": 108,
       "discountPct": 10,
@@ -3546,7 +3546,7 @@
     {
       "date": "2027-07-23",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 day 23 (1n, 1.95×) + July 2025 day 23 (1n, 1.27×)",
       "originalAmount": 108,
       "discountPct": 10,
@@ -3556,7 +3556,7 @@
     {
       "date": "2027-07-24",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 day 24 (1n, 1.95×) + July 2025 day 24 (1n, 1.27×)",
       "originalAmount": 108,
       "discountPct": 10,
@@ -3566,7 +3566,7 @@
     {
       "date": "2027-07-25",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 (27n, 1.95×) + July 2025 (31n, 1.27×)",
       "originalAmount": 100,
       "discountPct": 10,
@@ -3576,7 +3576,7 @@
     {
       "date": "2027-07-26",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "July 2026 day 26 (1n, 1.95×) + July 2025 day 26 (1n, 1.27×)",
       "originalAmount": 109,
       "discountPct": 10,
@@ -3616,7 +3616,7 @@
     {
       "date": "2027-07-30",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2026 day 30 (1n, 1.95×) + July 2025 day 30 (1n, 1.27×)",
       "originalAmount": 109,
       "discountPct": 10,
@@ -3626,7 +3626,7 @@
     {
       "date": "2027-07-31",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2026 (27n, 1.95×) + July 2025 (31n, 1.27×)",
       "originalAmount": 100,
       "discountPct": 10,
@@ -3636,7 +3636,7 @@
     {
       "date": "2027-08-01",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2026 (24n, 1.95×) + August 2025 (31n, 1.27×)",
       "originalAmount": 103,
       "discountPct": 10,
@@ -3646,7 +3646,7 @@
     {
       "date": "2027-08-02",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2026 day 02 (1n, 1.95×) + August 2025 day 02 (1n, 1.27×)",
       "originalAmount": 100,
       "discountPct": 10,
@@ -3656,7 +3656,7 @@
     {
       "date": "2027-08-03",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2026 day 03 (1n, 1.95×) + August 2025 day 03 (1n, 1.27×)",
       "originalAmount": 100,
       "discountPct": 10,
