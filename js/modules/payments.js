@@ -1472,6 +1472,21 @@ function openCSVImport() {
       const byAirbnbKey = new Map(
         listActivePayments().filter(p => p.airbnbKey).map(p => [p.airbnbKey, p])
       );
+      // Fallback dedup index, keyed by property + confirmation code only (no
+      // dates): catches the same real-world booking when its exact airbnbKey
+      // (code|checkIn|checkOut) doesn't match anymore — e.g. an earlier import
+      // parsed the stay dates a day off via parseDateStr's non-ISO fallback.
+      // Without this, that earlier bad record never gets found and updated;
+      // this import creates a second, competing payment for the same stay
+      // instead, and the two then fight over the same nights on the calendar.
+      const byCodeAndProperty = new Map(); // `${propertyId}|${code}` -> [payments]
+      for (const p of listActivePayments()) {
+        if (p.source === 'airbnb' && p.status !== 'pending' && p.confirmationCode) {
+          const k = `${p.propertyId}|${p.confirmationCode}`;
+          (byCodeAndProperty.get(k) || byCodeAndProperty.set(k, []).get(k)).push(p);
+        }
+      }
+      const staysOverlap = (ci1, co1, ci2, co2) => !!(ci1 && co1 && ci2 && co2 && ci1 < co2 && ci2 < co1);
       const pendingByCode = new Map();
       for (const p of listActivePayments()) {
         if (p.source === 'airbnb' && p.status === 'pending') {
@@ -1488,7 +1503,11 @@ function openCSVImport() {
         const matched = findProp(row.listing);
         if (!matched) continue;
 
-        const existing = row.airbnbKey ? (byAirbnbKey.get(row.airbnbKey) ?? null) : null;
+        let existing = row.airbnbKey ? (byAirbnbKey.get(row.airbnbKey) ?? null) : null;
+        if (!existing && row.confirmationCode) {
+          const candidates = byCodeAndProperty.get(`${matched.id}|${row.confirmationCode}`) || [];
+          existing = candidates.find(p => staysOverlap(p.airbnbCheckIn, p.airbnbCheckOut, row.checkIn, row.checkOut)) || null;
+        }
         const newFields = buildCompletedPayFields(row, matched);
         const pay = existing ? { ...existing, ...newFields } : {
           id: newId('pay'),
