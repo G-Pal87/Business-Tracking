@@ -2050,14 +2050,18 @@ export function backfillAirbnbForecastEntries(propertyId) {
 
 // Auto-cancellation detection for still-pending Airbnb bookings, evaluated
 // each time a pending CSV is imported. Two independent signals, combined:
-//   1. Proactive: a pending booking with a FUTURE check-in whose key is
-//      missing from the freshly imported pending CSV — Airbnb no longer
-//      lists it as upcoming. Scoped to properties the CSV actually covers
-//      (csvPropertyIds) so a partial/per-property export can't wrongly
-//      cancel bookings for properties it doesn't mention, and scoped to
-//      future check-in only because the pending export is inherently
-//      forward-looking — a past-dated pending record is always "missing"
-//      regardless of whether it was cancelled, so that's not a real signal.
+//   1. Proactive: a pending booking with a FUTURE check-in whose key AND
+//      confirmation code are both missing from the freshly imported pending
+//      CSV — Airbnb no longer lists it as upcoming. Confirmation code is
+//      checked as well as the exact key (not the key alone) because the key's
+//      format has changed over app history, so an old-format key can go
+//      "missing" for a booking that's still very much active under a newer
+//      key. Scoped to properties the CSV actually covers (csvPropertyIds) so
+//      a partial/per-property export can't wrongly cancel bookings for
+//      properties it doesn't mention, and scoped to future check-in only
+//      because the pending export is inherently forward-looking — a
+//      past-dated pending record is always "missing" regardless of whether
+//      it was cancelled, so that's not a real signal.
 //   2. Safety-net: a pending booking whose checkout is more than
 //      CANCEL_GRACE_DAYS in the past and that never materialized — catches
 //      anything rule 1 missed (e.g. a skipped reimport), independent of
@@ -2071,6 +2075,15 @@ const CANCEL_GRACE_DAYS = 7;
 
 function detectAirbnbCancellations(rows, findProp) {
   const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
+  // airbnbKey's format has changed over time (e.g. `code|type` -> `code|
+  // checkIn|checkOut` — see pendingByRefP's comment above), so a record still
+  // holding an old-format key never matches a freshly parsed row for the very
+  // same, still-active booking — only its exact key string is "missing", not
+  // the booking itself. That false positive is what deleted a dozen genuinely
+  // live reservations in one sweep before this fix: each was recreated from
+  // the same CSV row seconds later, but the stale-keyed original still got
+  // cancelled first. Falling back to confirmationCode closes that gap.
+  const csvCodes = new Set(rows.map(r => r.confirmationCode).filter(Boolean));
   const csvPropertyIds = new Set(rows.map(r => findProp(r.listing)?.id).filter(Boolean));
   const paidCodes = new Set(listActivePayments().filter(p => p.status === 'paid' && p.confirmationCode).map(p => p.confirmationCode));
   const todayStr = today();
@@ -2082,7 +2095,9 @@ function detectAirbnbCancellations(rows, findProp) {
     const checkIn = p.airbnbCheckIn || p.date || '';
     const checkOut = p.airbnbCheckOut || '';
     const isFutureCheckIn = checkIn > todayStr;
-    const missingFromFreshExport = csvPropertyIds.has(p.propertyId) && !csvKeys.has(p.airbnbKey);
+    const missingFromFreshExport = csvPropertyIds.has(p.propertyId) &&
+      !csvKeys.has(p.airbnbKey) &&
+      !(p.confirmationCode && csvCodes.has(p.confirmationCode));
     if (isFutureCheckIn && missingFromFreshExport) return true;
     if (checkOut && (new Date(`${todayStr}T00:00:00Z`).getTime() - new Date(`${checkOut}T00:00:00Z`).getTime()) > graceMs) return true;
     return false;
