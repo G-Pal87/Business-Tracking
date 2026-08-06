@@ -1435,6 +1435,10 @@ function openCSVImport() {
     // same-category dedup — see applyReservationExpenseRules in core/data.js.
     const categoryIndex = buildGeneratedExpenseCategoryIndex();
 
+    // Two bookings "overlap" if their stay ranges share any night — used below
+    // to confirm a same-confirmationCode match is genuinely the same stay.
+    const staysOverlap = (ci1, co1, ci2, co2) => !!(ci1 && co1 && ci2 && co2 && ci1 < co2 && ci2 < co1);
+
     // Batch all the per-row mutations into a single save/refresh cycle instead
     // of one per upsert (thousands during a large import).
     await runBatch(async () => {
@@ -1486,12 +1490,19 @@ function openCSVImport() {
           (byCodeAndProperty.get(k) || byCodeAndProperty.set(k, []).get(k)).push(p);
         }
       }
-      const staysOverlap = (ci1, co1, ci2, co2) => !!(ci1 && co1 && ci2 && co2 && ci1 < co2 && ci2 < co1);
+      // Array-valued: more than one pending record can already share a code
+      // (see historicNightMap's comment in str-rates.js for how that
+      // happens) — a single code->record slot would silently see only one
+      // of them, leaving any other to never get materialized/frozen.
       const pendingByCode = new Map();
+      const addPendingByCode = (key, p) => {
+        if (!key) return;
+        (pendingByCode.get(key) || pendingByCode.set(key, []).get(key)).push(p);
+      };
       for (const p of listActivePayments()) {
         if (p.source === 'airbnb' && p.status === 'pending') {
-          if (p.confirmationCode) pendingByCode.set(p.confirmationCode, p);
-          if (p.airbnbRef && p.airbnbRef !== p.confirmationCode) pendingByCode.set(p.airbnbRef, p);
+          addPendingByCode(p.confirmationCode, p);
+          if (p.airbnbRef && p.airbnbRef !== p.confirmationCode) addPendingByCode(p.airbnbRef, p);
         }
       }
       // Index existing generated expenses once so rule application can find an
@@ -1531,12 +1542,13 @@ function openCSVImport() {
 
         if (row.type.toLowerCase() === 'reservation') ruleConflicts.push(...applyReservationExpenseRules(pay, genIndex, categoryIndex));
 
-        // Materialize any matching pending reservation — its forecast entry
-        // freezes at whatever it was forecasted at, instead of being
-        // recalculated away, so past months keep their forecast history.
+        // Materialize every matching pending reservation (there can be more
+        // than one duplicate — see addPendingByCode above) — each one's
+        // forecast entry freezes at whatever it was forecasted at, instead of
+        // being recalculated away, so past months keep their forecast history.
         if (row.confirmationCode) {
-          const pending = row.confirmationCode ? (pendingByCode.get(row.confirmationCode) ?? null) : null;
-          if (pending) {
+          const pendings = pendingByCode.get(row.confirmationCode) || [];
+          for (const pending of pendings) {
             const pendingMonthKey = (pending.airbnbCheckIn || pending.date || '').slice(0, 7);
             upsert('payments', {
               ...pending,
@@ -1544,11 +1556,13 @@ function openCSVImport() {
               materializedPaymentId: pay.id,
               materializedAt: new Date().toISOString().slice(0, 10)
             });
-            if (pending.confirmationCode) pendingByCode.delete(pending.confirmationCode);
-            if (pending.airbnbRef) pendingByCode.delete(pending.airbnbRef);
             if (pending.propertyId && pendingMonthKey && pending.airbnbKey) {
               freezeAirbnbForecastEntry(pending.propertyId, pendingMonthKey, pending.airbnbKey);
             }
+          }
+          if (pendings.length) {
+            pendingByCode.delete(row.confirmationCode);
+            for (const pending of pendings) if (pending.airbnbRef) pendingByCode.delete(pending.airbnbRef);
           }
         }
       }
@@ -1570,17 +1584,25 @@ function openCSVImport() {
       const byAirbnbKeyP = new Map(
         listActivePayments().filter(p => p.airbnbKey).map(p => [p.airbnbKey, p])
       );
-      const pendingByRefP = new Map(
-        listActivePayments()
-          .filter(p => p.source === 'airbnb' && p.status === 'pending' && p.airbnbRef)
-          .map(p => [p.airbnbRef, p])
-      );
+      // Array-valued for the same reason as pendingByCode above: more than
+      // one pending record can already share an airbnbRef, and a single-slot
+      // lookup would silently see only one of them, leaving the other never
+      // found/updated by any future import — the exact history behind the
+      // "€8/night" bug, where the correct record sat untouched since its
+      // original import while a wrong duplicate kept being recreated instead.
+      const pendingByRefP = new Map();
+      for (const p of listActivePayments()) {
+        if (p.source === 'airbnb' && p.status === 'pending' && p.airbnbRef) {
+          (pendingByRefP.get(p.airbnbRef) || pendingByRefP.set(p.airbnbRef, []).get(p.airbnbRef)).push(p);
+        }
+      }
       const paidByCodeP = new Map(
         listActivePayments()
           .filter(p => p.status === 'paid' && p.confirmationCode)
           .map(p => [p.confirmationCode, p])
       );
       const genIndexP = buildGeneratedExpenseIndex();
+      const dupRefMapP = buildReservationExpenseRefMap();
 
       for (const row of rows) {
         const matched = findProp(row.listing);
@@ -1589,7 +1611,21 @@ function openCSVImport() {
         // Dedup: prefer airbnbKey match; fall back to confirmationCode (airbnbRef)
         // for payments imported before the airbnbKey field was introduced.
         const existingByKey = row.airbnbKey ? (byAirbnbKeyP.get(row.airbnbKey) ?? null) : null;
-        const existingByRef = !existingByKey && row.confirmationCode ? (pendingByRefP.get(row.confirmationCode) ?? null) : null;
+        let existingByRef = null;
+        if (!existingByKey && row.confirmationCode) {
+          const candidates = pendingByRefP.get(row.confirmationCode) || [];
+          if (candidates.length > 0) {
+            // More than one already exists for this booking (see
+            // pendingByRefP's comment above) — consolidate onto one and
+            // delete the rest so they stop lingering as permanent duplicates.
+            existingByRef = candidates.find(p => staysOverlap(p.airbnbCheckIn, p.airbnbCheckOut, row.checkIn, row.checkOut)) || candidates[0];
+            for (const dup of candidates) {
+              if (dup.id === existingByRef.id) continue;
+              removeReservationExpenses(dup, dupRefMapP);
+              softDelete('payments', dup.id);
+            }
+          }
+        }
         const existing = existingByKey || existingByRef;
 
         // If a paid payment already exists for this confirmation code, record as materialized

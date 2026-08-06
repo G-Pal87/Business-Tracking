@@ -71,16 +71,17 @@ function staysOverlap(ci1, co1, ci2, co2) {
 // Build date → { rate, currency, label } for every historic night of an STR property.
 //
 // A single real-world reservation can end up as more than one payment record
-// here — e.g. an earlier CSV import parsed its check-in/check-out a day off
-// (see parseDateStr's non-ISO fallback), so a later, correct re-import didn't
-// match the existing record by airbnbKey and created a second one instead of
-// updating it. Both then carry the same confirmationCode and overlapping
-// dates. Without merging them, whichever is later in `listActivePayments()`
-// silently overwrites the other's amount/cleaningFee for every shared night
-// — which is exactly what produced a "total booking amount" that didn't match
-// the CSV. Group by confirmationCode + date overlap first, summing their
-// money, so any leftover/duplicate record from that class of bug can't
-// silently corrupt the figures — it adds to them instead of replacing them.
+// here — e.g. two "pending" records for the same confirmationCode already
+// coexisted (a past import matched pending records by a single code→record
+// lookup, so when more than one shared a code the lookup could only ever see
+// one of them, leaving the other to keep being recreated/re-touched on every
+// later import instead of converging into one). Both then carry the same
+// confirmationCode and overlapping dates. These are NOT separate money —
+// they're competing snapshots of the exact same reservation — so summing
+// them (as this used to do) produces a different, still-wrong number rather
+// than a merge. Keep the one with the larger amount: a spuriously-shrunk
+// duplicate can never outrank the real total by claiming to be bigger, so
+// this can't be gamed into hiding the true figure.
 function historicNightMap(propertyId) {
   const map = new Map();
   const rawBookings = listActivePayments().filter(p =>
@@ -92,22 +93,22 @@ function historicNightMap(propertyId) {
   );
 
   const bookings = [];
-  const byCode = new Map(); // confirmationCode -> merged booking (only when non-empty)
+  const byCode = new Map(); // confirmationCode -> chosen booking so far
   for (const p of rawBookings) {
     const code = p.confirmationCode;
     const ci = checkInOf(p), co = checkOutOf(p);
-    const dup = code ? byCode.get(code) : null;
-    if (dup && staysOverlap(dup._ci, dup._co, ci, co)) {
-      dup.amount = (dup.amount ?? 0) + (p.amount ?? 0);
-      dup.airbnbCleaningFee = (dup.airbnbCleaningFee ?? 0) + (p.airbnbCleaningFee ?? 0);
-      // Keep the widest span so every night either record covered is priced.
-      if (ci < dup._ci) dup._ci = ci;
-      if (co > dup._co) dup._co = co;
+    const prior = code ? byCode.get(code) : null;
+    if (prior && staysOverlap(prior._ci, prior._co, ci, co)) {
+      if ((p.amount ?? 0) > (prior.amount ?? 0)) {
+        const entry = { ...p, _ci: ci, _co: co };
+        bookings[bookings.indexOf(prior)] = entry;
+        byCode.set(code, entry);
+      }
       continue;
     }
-    const merged = { ...p, _ci: ci, _co: co };
-    if (code) byCode.set(code, merged);
-    bookings.push(merged);
+    const entry = { ...p, _ci: ci, _co: co };
+    if (code) byCode.set(code, entry);
+    bookings.push(entry);
   }
 
   // A manual/off-platform payment entered against the same stay dates (e.g. a
@@ -121,10 +122,9 @@ function historicNightMap(propertyId) {
   for (const p of bookings) {
     const ci = p._ci, co = p._co;
     const nights = Math.max(0, Math.round((parseYMD(co) - parseYMD(ci)) / 86400000)) || p.airbnbNights;
-    // Recompute straight from the (possibly merged) totals rather than
-    // trusting cached avgNightExclCleaning/avgNightlyRate — those were
-    // computed per-record at import time and go stale the moment two
-    // records get folded together above.
+    // Recompute straight from amount/cleaningFee rather than trusting cached
+    // avgNightExclCleaning/avgNightlyRate — falls back to those cached fields
+    // only when amount itself is missing.
     const rate = nights > 0 && p.amount != null ? (p.amount - (p.airbnbCleaningFee || 0)) / nights : avgNightOf(p);
     if (rate == null || rate <= 0) continue;
     const adr  = nights > 0 && p.amount != null ? p.amount / nights : (adrNightOf(p) || rate);
