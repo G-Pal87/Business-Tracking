@@ -2,7 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, attachSortFilter } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
-import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64 } from '../core/crypto.js';
+import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64, generateDebugKey, installDebugKey, exportActiveDebugKeyBase64, hasDebugKeyConfigured, isDebugKeyUnlocked, encryptJsonWithDebugKey } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
 import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, removeDevices, listSessionHistory, clearSessionHistory } from '../core/presence.js';
 import { navigate } from '../core/router.js';
@@ -67,6 +67,7 @@ function build() {
   wrap.appendChild(buildServicesCard());
   wrap.appendChild(buildReservationExpenseRulesCard());
   wrap.appendChild(buildRepositoryMaintenanceCard());
+  wrap.appendChild(buildDebugExportCard());
   wrap.appendChild(buildTrashCard());
   wrap.appendChild(buildDangerCard());
   return wrap;
@@ -3439,6 +3440,187 @@ function buildRepositoryMaintenanceCard() {
   body.appendChild(cliSub.wrap);
 
   return card;
+}
+
+// ── Debug Data Export ────────────────────────────────────────────────────────
+// Lets an admin push an on-demand decrypted snapshot to debug/ for a
+// developer/AI assistant to read directly from the repo, without ever
+// handing over the real data key. Encrypted under its own separate key (see
+// crypto.js's WRAPPED_DEBUG_KEY_LS_KEY) that only ever protects this folder —
+// regenerating it cuts off access to future exports without touching the key
+// that protects db.json, documents, or invoices.
+function buildDebugExportCard() {
+  const configured = hasDebugKeyConfigured();
+  const unlocked   = isDebugKeyUnlocked();
+
+  const card = el('div', { class: 'card mb-16' });
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const statusBadge = unlocked
+    ? el('span', { class: 'badge success' }, 'Key active')
+    : configured
+      ? el('span', { class: 'badge warning' }, 'Locked')
+      : el('span', { class: 'badge' }, 'Not configured');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Debug Data Export'),
+      el('div', { class: 'card-subtitle' }, 'Push an on-demand decrypted snapshot to debug/ for troubleshooting — encrypted under its own key, separate from your real data')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, statusBadge, chevron)
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+  wireCollapsible('debugExport', header, body, chevron);
+
+  body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:12px' },
+    'This key only decrypts files in the debug/ folder — it has no access to db.json, documents, or invoices. Generate it once and hand it to whoever is troubleshooting. Regenerating it stops them from reading any NEW export; use Clean Up below to also remove what is already there.'));
+
+  const showKeyModal = (base64) => {
+    const body2 = el('div');
+    body2.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px' },
+      'Share this with whoever needs debug access — it only decrypts files in the debug/ folder.'));
+    const keyOut = input({ value: base64, readonly: true, style: 'width:100%;font-family:monospace;font-size:12px' });
+    body2.appendChild(keyOut);
+    openModal({
+      title: 'Debug Export Key',
+      body: body2,
+      footer: [button('Done', { variant: 'primary', onClick: () => { closeModal(); setTimeout(() => navigate('settings'), 200); } })]
+    });
+  };
+
+  const genBtn = button(configured ? 'Regenerate Debug Key' : 'Generate Debug Key', {
+    variant: configured ? 'danger' : 'primary',
+    onClick: async () => {
+      if (configured) {
+        const ok = await confirmDialog(
+          'Regenerating replaces the debug key. Anyone holding the old key can still read exports already sitting in debug/, but not any new ones — run Clean Up too if you want those gone. Continue?',
+          { danger: true, okLabel: 'Regenerate' }
+        );
+        if (!ok) return;
+      }
+      if (!(await promptForPasswordAndUnlock())) return;
+      try {
+        const { key, base64 } = await generateDebugKey();
+        await installDebugKey(key);
+        showKeyModal(base64);
+      } catch (e) {
+        toast('Failed to generate debug key: ' + e.message, 'danger', 5000);
+      }
+    }
+  });
+  body.appendChild(el('div', { class: 'flex gap-8 mb-12' }, genBtn));
+
+  if (unlocked) {
+    const revealBtn = button('Reveal Debug Key', { variant: 'sm ghost', onClick: async () => {
+      try {
+        const base64 = await exportActiveDebugKeyBase64();
+        showKeyModal(base64);
+      } catch (e) {
+        toast('Could not read the debug key: ' + e.message, 'danger', 5000);
+      }
+    }});
+    body.appendChild(el('div', { class: 'mb-12' }, revealBtn));
+  }
+
+  const exportStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const cleanupStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+
+  const exportBtn = button('Export Debug Snapshot', { variant: 'primary', onClick: () => runExportDebugSnapshot(exportBtn, exportStatusEl) });
+  const cleanupBtn = button('Clean Up Debug Folder', { variant: 'danger', onClick: () => runCleanupDebugFolder(cleanupBtn, cleanupStatusEl) });
+
+  body.appendChild(el('div', { class: 'flex gap-8' }, exportBtn, cleanupBtn));
+  body.appendChild(exportStatusEl);
+  body.appendChild(cleanupStatusEl);
+
+  return card;
+}
+
+async function runExportDebugSnapshot(btn, statusEl) {
+  if (!isDebugKeyUnlocked()) {
+    toast('Generate (or unlock) the debug key first', 'warning');
+    return;
+  }
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) {
+    statusEl.textContent = 'GitHub not configured — cannot export.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Exporting…';
+  statusEl.style.color = 'var(--text-muted)';
+  statusEl.textContent = 'Encrypting and uploading snapshot…';
+  try {
+    const data = structuredClone(state.db);
+    if (data.appConfig?.github?.token) delete data.appConfig.github.token;
+    const envelope = await encryptJsonWithDebugKey({ exportedAt: new Date().toISOString(), data });
+    const json = JSON.stringify(envelope);
+    const b64  = btoa(unescape(encodeURIComponent(json)));
+    const ts   = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const filename = `snapshot-${ts}.json`;
+    await uploadGithubFile(`debug/${filename}`, b64, `Debug export: ${filename}`);
+    statusEl.textContent = `Exported debug/${filename}`;
+    statusEl.style.color = 'var(--success,#198754)';
+  } catch (e) {
+    statusEl.textContent = 'Export failed: ' + e.message;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Export Debug Snapshot';
+  }
+}
+
+async function runCleanupDebugFolder(btn, statusEl) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) {
+    statusEl.textContent = 'GitHub not configured.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  statusEl.style.color = 'var(--text-muted)';
+  statusEl.textContent = 'Listing debug/ folder…';
+  let files;
+  try {
+    files = await listGithubFolder('debug');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Clean Up Debug Folder';
+    statusEl.textContent = 'Failed to list debug/: ' + e.message;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Clean Up Debug Folder';
+  if (files.length === 0) {
+    statusEl.textContent = 'debug/ is already empty.';
+    statusEl.style.color = 'var(--text-muted)';
+    return;
+  }
+  const ok = await confirmDialog(
+    `Delete all ${files.length} file(s) in debug/? They stop appearing in the repo immediately, though (like any git commit) they remain recoverable from history.`,
+    { danger: true, okLabel: 'Delete All' }
+  );
+  if (!ok) return;
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  statusEl.textContent = `Deleting ${files.length} file(s)…`;
+  let failed = 0;
+  for (const f of files) {
+    try { await deleteGithubFile(f.path, f.sha, `Debug cleanup: ${f.name}`); }
+    catch { failed++; }
+  }
+  btn.disabled = false;
+  btn.textContent = 'Clean Up Debug Folder';
+  if (failed > 0) {
+    statusEl.textContent = `Deleted ${files.length - failed} of ${files.length}; ${failed} failed — try again.`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } else {
+    statusEl.textContent = `Deleted ${files.length} file(s).`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }
 }
 
 function buildDangerCard() {
