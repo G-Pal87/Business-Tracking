@@ -3550,8 +3550,19 @@ async function runExportDebugSnapshot(btn, statusEl) {
   btn.disabled = true;
   btn.textContent = 'Exporting…';
   statusEl.style.color = 'var(--text-muted)';
-  statusEl.textContent = 'Encrypting and uploading snapshot…';
+  statusEl.textContent = 'Clearing old snapshot(s)…';
   try {
+    // Keep debug/ down to at most one file — a stale snapshot from an
+    // earlier round left sitting alongside a fresh one is exactly the
+    // ambiguity this folder should never have: which one is current becomes
+    // a guess. Clearing first means "the file in debug/" is always
+    // unambiguous.
+    const stale = await listGithubFolder('debug');
+    for (const f of stale) {
+      try { await deleteGithubFile(f.path, f.sha, `Debug cleanup before new export: ${f.name}`); }
+      catch { /* best-effort — an unremovable stale file shouldn't block this export */ }
+    }
+    statusEl.textContent = 'Encrypting and uploading snapshot…';
     const data = structuredClone(state.db);
     if (data.appConfig?.github?.token) delete data.appConfig.github.token;
     const envelope = await encryptJsonWithDebugKey({ exportedAt: new Date().toISOString(), data });
