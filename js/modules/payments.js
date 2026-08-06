@@ -1439,14 +1439,43 @@ function openCSVImport() {
     // to confirm a same-confirmationCode match is genuinely the same stay.
     const staysOverlap = (ci1, co1, ci2, co2) => !!(ci1 && co1 && ci2 && co2 && ci1 < co2 && ci2 < co1);
 
+    // Heuristic guard against a Completed export landing in the Pending slot,
+    // or vice versa — that mistake doesn't fail loudly: a Completed file fed
+    // into Pending auto-cancels every currently-upcoming booking it doesn't
+    // mention (see detectAirbnbCancellations), and a Pending file fed into
+    // Completed records real income as still-pending. A genuine Completed
+    // export's reservation rows have almost all already checked out; a
+    // genuine Pending export's mostly haven't — a majority pointing the
+    // wrong way is a strong signal of the wrong file in the wrong slot.
+    function wrongSlotWarning(rows, { expectFutureCheckout }) {
+      const todayStr = today();
+      const withCheckout = rows.filter(r => r.type?.toLowerCase() === 'reservation' && r.checkOut);
+      if (withCheckout.length === 0) return null;
+      const futureCount = withCheckout.filter(r => r.checkOut > todayStr).length;
+      const futureRatio = futureCount / withCheckout.length;
+      if (expectFutureCheckout && futureRatio < 0.5) {
+        return `This file looks like a Completed export, not Pending — ${withCheckout.length - futureCount} of ${withCheckout.length} booking(s) have already checked out. Import it as Pending anyway?`;
+      }
+      if (!expectFutureCheckout && futureRatio > 0.5) {
+        return `This file looks like a Pending export, not Completed — ${futureCount} of ${withCheckout.length} booking(s) haven't checked out yet. Import it as Completed anyway?`;
+      }
+      return null;
+    }
+
     // Batch all the per-row mutations into a single save/refresh cycle instead
     // of one per upsert (thousands during a large import).
     await runBatch(async () => {
     // ── Completed CSV (airbnb_.csv): full sync / overwrite ──────────────────
     const completedFile = completedFileI.files?.[0];
-    if (completedFile) {
+    completedBlock: if (completedFile) {
       const text = await completedFile.text();
       const rows = mergeReservationRows(parseAirbnbCSV(text));
+
+      const wrongSlotMsg = wrongSlotWarning(rows, { expectFutureCheckout: false });
+      if (wrongSlotMsg && !(await confirmDialog(wrongSlotMsg, { danger: true, okLabel: 'Import Anyway' }))) {
+        toast('Completed CSV import skipped', 'warning');
+        break completedBlock;
+      }
 
       // Collect keys and confirmation codes present in the CSV
       const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
@@ -1570,9 +1599,15 @@ function openCSVImport() {
 
     // ── Pending CSV (airbnb_pending.csv): upsert + always sync forecast ────
     const pendingFile = pendingFileI.files?.[0];
-    if (pendingFile) {
+    pendingBlock: if (pendingFile) {
       const text = await pendingFile.text();
       const rows = mergeReservationRows(parseAirbnbCSV(text));
+
+      const wrongSlotMsg = wrongSlotWarning(rows, { expectFutureCheckout: true });
+      if (wrongSlotMsg && !(await confirmDialog(wrongSlotMsg, { danger: true, okLabel: 'Import Anyway' }))) {
+        toast('Pending CSV import skipped', 'warning');
+        break pendingBlock;
+      }
 
       // Auto-cancellation sweep — run before the upsert loop so a booking that
       // both disappeared from the export AND would otherwise match by key is
