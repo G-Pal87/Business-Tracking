@@ -16,10 +16,19 @@
 const PBKDF2_ITERATIONS = 150000; // matches auth.js's password hashing cost
 const WRAP_SALT_LS_KEY = 'bt_enc_wrap_salt';
 const WRAPPED_KEY_LS_KEY = 'bt_enc_wrapped_key';
+// A second, independent AES key used ONLY to encrypt files pushed to the
+// debug/ export folder (see settings.js's "Debug Data Export" card). Kept
+// entirely separate from the real data key: this one can be handed to a
+// third party for troubleshooting (e.g. an AI assistant) without exposing
+// anything else this app protects — db.json, documents, invoices — and
+// revoking that access is just regenerating this key, not rotating the
+// real one for every device/user.
+const WRAPPED_DEBUG_KEY_LS_KEY = 'bt_enc_wrapped_debug_key';
 
 // Held only in memory for the lifetime of the tab — never persisted.
 let _sessionWrapKey = null;    // CryptoKey, derived from the login password
 let _dataKey = null;           // CryptoKey, the actual AES-256-GCM data key once unlocked
+let _debugKey = null;          // CryptoKey, AES-256-GCM — scoped only to the debug/ export folder
 let _pendingBootstrapKey = null; // set when a key is entered on a brand-new device, before login
 
 function b64encode(bytes) {
@@ -78,23 +87,37 @@ export async function unlockOnLogin(password) {
   }
 
   const wrapped = localStorage.getItem(WRAPPED_KEY_LS_KEY);
-  if (!wrapped) { _dataKey = null; return; }
+  if (!wrapped) { _dataKey = null; } else {
+    try {
+      const { iv, ct } = JSON.parse(wrapped);
+      const raw = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: b64decode(iv) }, _sessionWrapKey, b64decode(ct)
+      );
+      _dataKey = await crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt', 'decrypt']);
+    } catch {
+      // Wrong password would already have failed login; a decrypt failure here
+      // means corrupted/foreign localStorage state — treat as "not configured".
+      _dataKey = null;
+    }
+  }
+
+  const wrappedDebug = localStorage.getItem(WRAPPED_DEBUG_KEY_LS_KEY);
+  if (!wrappedDebug) { _debugKey = null; return; }
   try {
-    const { iv, ct } = JSON.parse(wrapped);
+    const { iv, ct } = JSON.parse(wrappedDebug);
     const raw = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: b64decode(iv) }, _sessionWrapKey, b64decode(ct)
     );
-    _dataKey = await crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt', 'decrypt']);
+    _debugKey = await crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt', 'decrypt']);
   } catch {
-    // Wrong password would already have failed login; a decrypt failure here
-    // means corrupted/foreign localStorage state — treat as "not configured".
-    _dataKey = null;
+    _debugKey = null;
   }
 }
 
 export function lockOnLogout() {
   _sessionWrapKey = null;
   _dataKey = null;
+  _debugKey = null;
   _pendingBootstrapKey = null;
 }
 
@@ -145,6 +168,54 @@ export async function installDataKey(key) {
 export function clearDataKey() {
   localStorage.removeItem(WRAPPED_KEY_LS_KEY);
   _dataKey = null;
+}
+
+// ── Debug export key (separate from the real data key, see comment above) ──
+
+export function isDebugKeyUnlocked() { return _debugKey !== null; }
+export function hasDebugKeyConfigured() { return !!localStorage.getItem(WRAPPED_DEBUG_KEY_LS_KEY); }
+
+export async function generateDebugKey() {
+  const raw = randomBytes(32);
+  const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt', 'decrypt']);
+  return { key, base64: b64encode(raw) };
+}
+
+// Wraps `key` under this device's session wrap-key and persists it under its
+// own localStorage slot — never touches WRAPPED_KEY_LS_KEY (the real data key).
+export async function installDebugKey(key) {
+  if (!_sessionWrapKey) throw new Error('Not logged in — cannot install a debug key');
+  const raw = await crypto.subtle.exportKey('raw', key);
+  const iv = randomBytes(12);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _sessionWrapKey, raw);
+  localStorage.setItem(WRAPPED_DEBUG_KEY_LS_KEY, JSON.stringify({
+    iv: b64encode(iv), ct: b64encode(new Uint8Array(ct))
+  }));
+  _debugKey = key;
+}
+
+export function clearDebugKey() {
+  localStorage.removeItem(WRAPPED_DEBUG_KEY_LS_KEY);
+  _debugKey = null;
+}
+
+// One-time reveal so the key can be handed to whoever needs debug access —
+// same extractable-key mechanism as exportActiveDataKeyBase64.
+export async function exportActiveDebugKeyBase64() {
+  if (!_debugKey) throw new Error('No debug key active on this device');
+  const raw = await crypto.subtle.exportKey('raw', _debugKey);
+  return b64encode(new Uint8Array(raw));
+}
+
+// Encrypts a debug snapshot under the debug key — deliberately separate from
+// encryptJsonToEnvelope (which uses the real data key) so a debug export can
+// never accidentally end up encrypted under, or require, the real key.
+export async function encryptJsonWithDebugKey(obj) {
+  if (!_debugKey) throw new Error('No debug key configured on this device');
+  const iv = randomBytes(12);
+  const plaintext = new TextEncoder().encode(JSON.stringify(obj));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _debugKey, plaintext);
+  return { enc: 1, iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)) };
 }
 
 // Lets an admin retrieve the currently active key on demand — e.g. if the
