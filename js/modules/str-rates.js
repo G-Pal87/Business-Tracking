@@ -61,22 +61,73 @@ function adrNightOf(p) {
   return null;
 }
 
+// Two bookings on the same property "overlap" if their stay ranges share any
+// night — half-open interval overlap, consistent with the check-in-inclusive,
+// check-out-exclusive convention used everywhere else in this file.
+function staysOverlap(ci1, co1, ci2, co2) {
+  return !!(ci1 && co1 && ci2 && co2 && ci1 < co2 && ci2 < co1);
+}
+
 // Build date → { rate, currency, label } for every historic night of an STR property.
+//
+// A single real-world reservation can end up as more than one payment record
+// here — e.g. an earlier CSV import parsed its check-in/check-out a day off
+// (see parseDateStr's non-ISO fallback), so a later, correct re-import didn't
+// match the existing record by airbnbKey and created a second one instead of
+// updating it. Both then carry the same confirmationCode and overlapping
+// dates. Without merging them, whichever is later in `listActivePayments()`
+// silently overwrites the other's amount/cleaningFee for every shared night
+// — which is exactly what produced a "total booking amount" that didn't match
+// the CSV. Group by confirmationCode + date overlap first, summing their
+// money, so any leftover/duplicate record from that class of bug can't
+// silently corrupt the figures — it adds to them instead of replacing them.
 function historicNightMap(propertyId) {
   const map = new Map();
-  const bookings = listActivePayments().filter(p =>
+  const rawBookings = listActivePayments().filter(p =>
     p.propertyId === propertyId &&
     p.stream === 'short_term_rental' &&
     p.status !== 'materialized' &&          // materialized duplicates a paid record
     checkInOf(p) && checkOutOf(p) &&
     isReservationNight(p)
   );
-  for (const p of bookings) {
-    const rate = avgNightOf(p);
-    if (rate == null || rate <= 0) continue;
+
+  const bookings = [];
+  const byCode = new Map(); // confirmationCode -> merged booking (only when non-empty)
+  for (const p of rawBookings) {
+    const code = p.confirmationCode;
     const ci = checkInOf(p), co = checkOutOf(p);
-    const nights = p.airbnbNights || Math.max(0, Math.round((parseYMD(co) - parseYMD(ci)) / 86400000));
-    const adr  = adrNightOf(p) || rate;
+    const dup = code ? byCode.get(code) : null;
+    if (dup && staysOverlap(dup._ci, dup._co, ci, co)) {
+      dup.amount = (dup.amount ?? 0) + (p.amount ?? 0);
+      dup.airbnbCleaningFee = (dup.airbnbCleaningFee ?? 0) + (p.airbnbCleaningFee ?? 0);
+      // Keep the widest span so every night either record covered is priced.
+      if (ci < dup._ci) dup._ci = ci;
+      if (co > dup._co) dup._co = co;
+      continue;
+    }
+    const merged = { ...p, _ci: ci, _co: co };
+    if (code) byCode.set(code, merged);
+    bookings.push(merged);
+  }
+
+  // A manual/off-platform payment entered against the same stay dates (e.g. a
+  // placeholder logged before the Airbnb CSV was imported) has no
+  // confirmationCode to merge on above, so it can still collide with the real
+  // Airbnb record on shared nights. Processing Airbnb-sourced bookings last
+  // means they always win that per-night overwrite below, instead of
+  // whichever happened to load later from storage.
+  bookings.sort((a, b) => (a.source === 'airbnb' ? 1 : 0) - (b.source === 'airbnb' ? 1 : 0));
+
+  for (const p of bookings) {
+    const ci = p._ci, co = p._co;
+    const nights = Math.max(0, Math.round((parseYMD(co) - parseYMD(ci)) / 86400000)) || p.airbnbNights;
+    // Recompute straight from the (possibly merged) totals rather than
+    // trusting cached avgNightExclCleaning/avgNightlyRate — those were
+    // computed per-record at import time and go stale the moment two
+    // records get folded together above.
+    const rate = nights > 0 && p.amount != null ? (p.amount - (p.airbnbCleaningFee || 0)) / nights : avgNightOf(p);
+    if (rate == null || rate <= 0) continue;
+    const adr  = nights > 0 && p.amount != null ? p.amount / nights : (adrNightOf(p) || rate);
     const guest = p.guestName || (p.notes || '').split(' · ')[0] || '';
     for (let cur = ci; cur < co; cur = addDays(cur, 1)) {
       map.set(cur, {
