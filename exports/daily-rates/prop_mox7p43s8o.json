@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-06T15:07:06.332Z",
+  "generatedAt": "2026-08-06T16:40:23.714Z",
   "property": {
     "id": "prop_mox7p43s8o",
     "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
@@ -396,102 +396,102 @@
     {
       "date": "2026-09-13",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 98,
-      "discountPct": 10,
-      "amount": 88,
-      "airbnbCheckout": 112
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 107,
+      "discountPct": 0,
+      "amount": 107,
+      "airbnbCheckout": 122
     },
     {
       "date": "2026-09-14",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 98,
-      "discountPct": 10,
-      "amount": 88,
-      "airbnbCheckout": 112
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 107,
+      "discountPct": 0,
+      "amount": 107,
+      "airbnbCheckout": 122
     },
     {
       "date": "2026-09-15",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 98,
-      "discountPct": 10,
-      "amount": 88,
-      "airbnbCheckout": 112
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 107,
+      "discountPct": 0,
+      "amount": 107,
+      "airbnbCheckout": 122
     },
     {
       "date": "2026-09-16",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 98,
-      "discountPct": 10,
-      "amount": 88,
-      "airbnbCheckout": 112
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 107,
+      "discountPct": 0,
+      "amount": 107,
+      "airbnbCheckout": 122
     },
     {
       "date": "2026-09-17",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 98,
-      "discountPct": 10,
-      "amount": 88,
-      "airbnbCheckout": 112
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 107,
+      "discountPct": 0,
+      "amount": 107,
+      "airbnbCheckout": 122
     },
     {
       "date": "2026-09-18",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 98,
-      "discountPct": 10,
-      "amount": 88,
-      "airbnbCheckout": 112
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 107,
+      "discountPct": 0,
+      "amount": 107,
+      "airbnbCheckout": 122
     },
     {
       "date": "2026-09-19",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 98,
-      "discountPct": 10,
-      "amount": 88,
-      "airbnbCheckout": 112
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 107,
+      "discountPct": 0,
+      "amount": 107,
+      "airbnbCheckout": 122
     },
     {
       "date": "2026-09-20",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 98,
-      "discountPct": 10,
-      "amount": 88,
-      "airbnbCheckout": 112
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 107,
+      "discountPct": 0,
+      "amount": 107,
+      "airbnbCheckout": 122
     },
     {
       "date": "2026-09-21",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 98,
-      "discountPct": 10,
-      "amount": 88,
-      "airbnbCheckout": 112
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 107,
+      "discountPct": 0,
+      "amount": 107,
+      "airbnbCheckout": 122
     },
     {
       "date": "2026-09-22",
       "currency": "EUR",
-      "status": "blocked",
-      "basis": "confirmed target",
-      "originalAmount": 98,
-      "discountPct": 10,
-      "amount": 88,
-      "airbnbCheckout": 112
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 107,
+      "discountPct": 0,
+      "amount": 107,
+      "airbnbCheckout": 122
     },
     {
       "date": "2026-09-23",
