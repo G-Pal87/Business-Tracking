@@ -4,6 +4,11 @@
       "view": "invoices",
       "t": 1785862370875,
       "name": "Rita"
+    },
+    "Giorgos": {
+      "view": "invoices",
+      "t": 1786032589567,
+      "name": "Giorgos"
     }
   },
   "devices": {
