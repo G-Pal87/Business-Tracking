@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-07T05:13:18.237Z",
+  "generatedAt": "2026-08-07T15:12:20.601Z",
   "property": {
     "id": "prop_mohfwhqrgj",
     "name": "Studio Tenerife",
@@ -46,7 +46,7 @@
     {
       "date": "2026-08-10",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2024 day 10 (1n, 1.27×) + August 2023 day 10 (1n, 0.82×)",
       "originalAmount": 29,
       "discountPct": 10,
@@ -156,7 +156,7 @@
     {
       "date": "2026-08-21",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 day 21 (1n, 1.95×) + August 2024 day 21 (1n, 1.27×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -166,7 +166,7 @@
     {
       "date": "2026-08-22",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 day 22 (1n, 1.95×) + August 2024 day 22 (1n, 1.27×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -176,7 +176,7 @@
     {
       "date": "2026-08-23",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 day 23 (1n, 1.95×) + August 2024 day 23 (1n, 1.27×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -236,7 +236,7 @@
     {
       "date": "2026-08-29",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 day 29 (1n, 1.95×) + August 2024 day 29 (1n, 1.27×) + August 2023 day 29 (1n, 0.82×)",
       "originalAmount": 29,
       "discountPct": 10,
@@ -246,7 +246,7 @@
     {
       "date": "2026-08-30",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2024 day 30 (1n, 1.27×) + August 2023 day 30 (1n, 0.82×)",
       "originalAmount": 27,
       "discountPct": 10,
@@ -256,7 +256,7 @@
     {
       "date": "2026-08-31",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2024 day 31 (1n, 1.27×) + August 2023 day 31 (1n, 0.82×)",
       "originalAmount": 27,
       "discountPct": 10,
@@ -266,7 +266,7 @@
     {
       "date": "2026-09-01",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "September 2025 day 01 (1n, 1.95×) + September 2024 day 01 (1n, 1.27×) + September 2023 day 01 (1n, 0.82×)",
       "originalAmount": 25,
       "discountPct": 10,
@@ -276,7 +276,7 @@
     {
       "date": "2026-09-02",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "September 2025 day 02 (1n, 1.95×) + September 2023 day 02 (1n, 0.82×)",
       "originalAmount": 24,
       "discountPct": 10,
@@ -286,7 +286,7 @@
     {
       "date": "2026-09-03",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "September 2025 day 03 (1n, 1.95×) + September 2023 day 03 (1n, 0.82×)",
       "originalAmount": 24,
       "discountPct": 10,
@@ -296,7 +296,7 @@
     {
       "date": "2026-09-04",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "September 2025 day 04 (1n, 1.95×) + September 2023 day 04 (1n, 0.82×)",
       "originalAmount": 24,
       "discountPct": 10,
@@ -306,7 +306,7 @@
     {
       "date": "2026-09-05",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "September 2025 day 05 (1n, 1.95×) + September 2023 day 05 (1n, 0.82×)",
       "originalAmount": 24,
       "discountPct": 10,
@@ -316,7 +316,7 @@
     {
       "date": "2026-09-06",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "September 2025 day 06 (1n, 1.95×) + September 2023 day 06 (1n, 0.82×)",
       "originalAmount": 24,
       "discountPct": 10,
@@ -326,7 +326,7 @@
     {
       "date": "2026-09-07",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "September 2025 day 07 (1n, 1.95×) + September 2024 day 07 (1n, 1.27×) + September 2023 day 07 (1n, 0.82×)",
       "originalAmount": 27,
       "discountPct": 10,
@@ -1996,7 +1996,7 @@
     {
       "date": "2027-02-21",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "February 2026 (1n, 1.95×) + February 2025 (10n, 1.27×) + February 2024 (19n, 0.82×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -2006,7 +2006,7 @@
     {
       "date": "2027-02-22",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "February 2025 day 22 (1n, 1.27×) + February 2024 day 22 (1n, 0.82×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -2016,7 +2016,7 @@
     {
       "date": "2027-02-23",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "February 2026 (1n, 1.95×) + February 2025 (10n, 1.27×) + February 2024 (19n, 0.82×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -2026,7 +2026,7 @@
     {
       "date": "2027-02-24",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "February 2025 day 24 (1n, 1.27×) + February 2024 day 24 (1n, 0.82×)",
       "originalAmount": 26,
       "discountPct": 10,
@@ -2036,7 +2036,7 @@
     {
       "date": "2027-02-25",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "February 2026 (1n, 1.95×) + February 2025 (10n, 1.27×) + February 2024 (19n, 0.82×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -2046,7 +2046,7 @@
     {
       "date": "2027-02-26",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "February 2025 day 26 (1n, 1.27×) + February 2024 day 26 (1n, 0.82×)",
       "originalAmount": 43,
       "discountPct": 10,
@@ -2446,7 +2446,7 @@
     {
       "date": "2027-04-07",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 07 (1n, 1.95×) + April 2025 day 07 (1n, 1.27×)",
       "originalAmount": 41,
       "discountPct": 10,
@@ -2456,7 +2456,7 @@
     {
       "date": "2027-04-08",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 08 (1n, 1.95×) + April 2025 day 08 (1n, 1.27×)",
       "originalAmount": 41,
       "discountPct": 10,
@@ -2466,7 +2466,7 @@
     {
       "date": "2027-04-09",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 09 (1n, 1.95×) + April 2025 day 09 (1n, 1.27×)",
       "originalAmount": 41,
       "discountPct": 10,
@@ -2476,7 +2476,7 @@
     {
       "date": "2027-04-10",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (18n, 1.27×) + April 2024 (14n, 0.82×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -2486,7 +2486,7 @@
     {
       "date": "2027-04-11",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (18n, 1.27×) + April 2024 (14n, 0.82×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -2496,7 +2496,7 @@
     {
       "date": "2027-04-12",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (18n, 1.27×) + April 2024 (14n, 0.82×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -2506,7 +2506,7 @@
     {
       "date": "2027-04-13",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (18n, 1.27×) + April 2024 (14n, 0.82×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -2516,7 +2516,7 @@
     {
       "date": "2027-04-14",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (18n, 1.27×) + April 2024 (14n, 0.82×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -2526,7 +2526,7 @@
     {
       "date": "2027-04-15",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (18n, 1.27×) + April 2024 (14n, 0.82×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -2536,7 +2536,7 @@
     {
       "date": "2027-04-16",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 16 (1n, 1.95×) + April 2025 day 16 (1n, 1.27×) + April 2024 day 16 (1n, 0.82×)",
       "originalAmount": 29,
       "discountPct": 10,
@@ -2546,7 +2546,7 @@
     {
       "date": "2027-04-17",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 17 (1n, 1.95×) + April 2025 day 17 (1n, 1.27×) + April 2024 day 17 (1n, 0.82×)",
       "originalAmount": 29,
       "discountPct": 10,
@@ -2556,7 +2556,7 @@
     {
       "date": "2027-04-18",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 18 (1n, 1.95×) + April 2025 day 18 (1n, 1.27×) + April 2024 day 18 (1n, 0.82×)",
       "originalAmount": 29,
       "discountPct": 10,
@@ -2566,7 +2566,7 @@
     {
       "date": "2027-04-19",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 19 (1n, 1.95×) + April 2025 day 19 (1n, 1.27×) + April 2024 day 19 (1n, 0.82×)",
       "originalAmount": 29,
       "discountPct": 10,
@@ -2576,7 +2576,7 @@
     {
       "date": "2027-04-20",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 20 (1n, 1.95×) + April 2024 day 20 (1n, 0.82×)",
       "originalAmount": 27,
       "discountPct": 10,
@@ -2586,7 +2586,7 @@
     {
       "date": "2027-04-21",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (18n, 1.27×) + April 2024 (14n, 0.82×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -2596,7 +2596,7 @@
     {
       "date": "2027-04-22",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (18n, 1.27×) + April 2024 (14n, 0.82×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -2606,7 +2606,7 @@
     {
       "date": "2027-04-23",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (18n, 1.27×) + April 2024 (14n, 0.82×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -2616,7 +2616,7 @@
     {
       "date": "2027-04-24",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 24 (1n, 1.95×) + April 2025 day 24 (1n, 1.27×) + April 2024 day 24 (1n, 0.82×)",
       "originalAmount": 28,
       "discountPct": 10,
@@ -2626,7 +2626,7 @@
     {
       "date": "2027-04-25",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 25 (1n, 1.95×) + April 2025 day 25 (1n, 1.27×) + April 2024 day 25 (1n, 0.82×)",
       "originalAmount": 28,
       "discountPct": 10,
@@ -2636,7 +2636,7 @@
     {
       "date": "2027-04-26",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 26 (1n, 1.95×) + April 2025 day 26 (1n, 1.27×)",
       "originalAmount": 24,
       "discountPct": 10,
@@ -2646,7 +2646,7 @@
     {
       "date": "2027-04-27",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 (29n, 1.95×) + April 2025 (18n, 1.27×) + April 2024 (14n, 0.82×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -2656,7 +2656,7 @@
     {
       "date": "2027-04-28",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 28 (1n, 1.95×) + April 2025 day 28 (1n, 1.27×)",
       "originalAmount": 23,
       "discountPct": 10,
@@ -2666,7 +2666,7 @@
     {
       "date": "2027-04-29",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 29 (1n, 1.95×) + April 2025 day 29 (1n, 1.27×) + April 2024 day 29 (1n, 0.82×)",
       "originalAmount": 22,
       "discountPct": 10,
@@ -2676,7 +2676,7 @@
     {
       "date": "2027-04-30",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "April 2026 day 30 (1n, 1.95×) + April 2024 day 30 (1n, 0.82×)",
       "originalAmount": 25,
       "discountPct": 10,
@@ -2686,7 +2686,7 @@
     {
       "date": "2027-05-01",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "May 2026 day 01 (1n, 1.95×) + May 2025 day 01 (1n, 1.27×) + May 2024 day 01 (1n, 0.82×)",
       "originalAmount": 23,
       "discountPct": 10,
@@ -2696,7 +2696,7 @@
     {
       "date": "2027-05-02",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "May 2026 day 02 (1n, 1.95×) + May 2025 day 02 (1n, 1.27×) + May 2024 day 02 (1n, 0.82×)",
       "originalAmount": 23,
       "discountPct": 10,
@@ -2706,7 +2706,7 @@
     {
       "date": "2027-05-03",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "May 2026 day 03 (1n, 1.95×) + May 2025 day 03 (1n, 1.27×) + May 2024 day 03 (1n, 0.82×)",
       "originalAmount": 23,
       "discountPct": 10,
@@ -3406,7 +3406,7 @@
     {
       "date": "2027-07-12",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 12 (1n, 1.27×) + July 2024 day 12 (1n, 0.82×) + July 2023 day 12 (1n, 0.54×)",
       "originalAmount": 31,
       "discountPct": 10,
@@ -3416,7 +3416,7 @@
     {
       "date": "2027-07-13",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 13 (1n, 1.27×) + July 2024 day 13 (1n, 0.82×) + July 2023 day 13 (1n, 0.54×)",
       "originalAmount": 31,
       "discountPct": 10,
@@ -3426,7 +3426,7 @@
     {
       "date": "2027-07-14",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2024 day 14 (1n, 0.82×) + July 2023 day 14 (1n, 0.54×)",
       "originalAmount": 31,
       "discountPct": 10,
@@ -3436,7 +3436,7 @@
     {
       "date": "2027-07-15",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2024 day 15 (1n, 0.82×) + July 2023 day 15 (1n, 0.54×)",
       "originalAmount": 31,
       "discountPct": 10,
@@ -3446,7 +3446,7 @@
     {
       "date": "2027-07-16",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2024 day 16 (1n, 0.82×) + July 2023 day 16 (1n, 0.54×)",
       "originalAmount": 31,
       "discountPct": 10,
@@ -3456,7 +3456,7 @@
     {
       "date": "2027-07-17",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 17 (1n, 1.27×) + July 2024 day 17 (1n, 0.82×) + July 2023 day 17 (1n, 0.54×)",
       "originalAmount": 33,
       "discountPct": 10,
@@ -3466,7 +3466,7 @@
     {
       "date": "2027-07-18",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 18 (1n, 1.27×) + July 2024 day 18 (1n, 0.82×) + July 2023 day 18 (1n, 0.54×)",
       "originalAmount": 33,
       "discountPct": 10,
@@ -3476,7 +3476,7 @@
     {
       "date": "2027-07-19",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 19 (1n, 1.27×) + July 2024 day 19 (1n, 0.82×) + July 2023 day 19 (1n, 0.54×)",
       "originalAmount": 33,
       "discountPct": 10,
@@ -3486,7 +3486,7 @@
     {
       "date": "2027-07-20",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 20 (1n, 1.27×) + July 2024 day 20 (1n, 0.82×) + July 2023 day 20 (1n, 0.54×)",
       "originalAmount": 33,
       "discountPct": 10,
@@ -3496,7 +3496,7 @@
     {
       "date": "2027-07-21",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 21 (1n, 1.27×) + July 2024 day 21 (1n, 0.82×) + July 2023 day 21 (1n, 0.54×)",
       "originalAmount": 33,
       "discountPct": 10,
@@ -3506,7 +3506,7 @@
     {
       "date": "2027-07-22",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 22 (1n, 1.27×) + July 2024 day 22 (1n, 0.82×) + July 2023 day 22 (1n, 0.54×)",
       "originalAmount": 33,
       "discountPct": 10,
@@ -3516,7 +3516,7 @@
     {
       "date": "2027-07-23",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 23 (1n, 1.27×) + July 2024 day 23 (1n, 0.82×) + July 2023 day 23 (1n, 0.54×)",
       "originalAmount": 33,
       "discountPct": 10,
@@ -3526,7 +3526,7 @@
     {
       "date": "2027-07-24",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 24 (1n, 1.27×) + July 2024 day 24 (1n, 0.82×) + July 2023 day 24 (1n, 0.54×)",
       "originalAmount": 33,
       "discountPct": 10,
@@ -3536,7 +3536,7 @@
     {
       "date": "2027-07-25",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 25 (1n, 1.27×) + July 2024 day 25 (1n, 0.82×) + July 2023 day 25 (1n, 0.54×)",
       "originalAmount": 33,
       "discountPct": 10,
@@ -3546,7 +3546,7 @@
     {
       "date": "2027-07-26",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 26 (1n, 1.27×) + July 2024 day 26 (1n, 0.82×) + July 2023 day 26 (1n, 0.54×)",
       "originalAmount": 33,
       "discountPct": 10,
@@ -3556,7 +3556,7 @@
     {
       "date": "2027-07-27",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 27 (1n, 1.27×) + July 2024 day 27 (1n, 0.82×) + July 2023 day 27 (1n, 0.54×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -3566,7 +3566,7 @@
     {
       "date": "2027-07-28",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 28 (1n, 1.27×) + July 2023 day 28 (1n, 0.54×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -3576,7 +3576,7 @@
     {
       "date": "2027-07-29",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 29 (1n, 1.27×) + July 2023 day 29 (1n, 0.54×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -3586,7 +3586,7 @@
     {
       "date": "2027-07-30",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 30 (1n, 1.27×) + July 2023 day 30 (1n, 0.54×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -3596,7 +3596,7 @@
     {
       "date": "2027-07-31",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "July 2025 day 31 (1n, 1.27×) + July 2023 day 31 (1n, 0.54×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -3606,7 +3606,7 @@
     {
       "date": "2027-08-01",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 day 01 (1n, 1.27×) + August 2024 day 01 (1n, 0.82×) + August 2023 day 01 (1n, 0.54×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -3616,7 +3616,7 @@
     {
       "date": "2027-08-02",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2025 day 02 (1n, 1.27×) + August 2024 day 02 (1n, 0.82×) + August 2023 day 02 (1n, 0.54×)",
       "originalAmount": 30,
       "discountPct": 10,
@@ -3626,7 +3626,7 @@
     {
       "date": "2027-08-03",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2024 day 03 (1n, 0.82×) + August 2023 day 03 (1n, 0.54×)",
       "originalAmount": 27,
       "discountPct": 10,
@@ -3636,7 +3636,7 @@
     {
       "date": "2027-08-04",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2024 day 04 (1n, 0.82×) + August 2023 day 04 (1n, 0.54×)",
       "originalAmount": 27,
       "discountPct": 10,
@@ -3646,7 +3646,7 @@
     {
       "date": "2027-08-05",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2024 day 05 (1n, 0.82×) + August 2023 day 05 (1n, 0.54×)",
       "originalAmount": 34,
       "discountPct": 10,
@@ -3656,7 +3656,7 @@
     {
       "date": "2027-08-06",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2024 day 06 (1n, 0.82×) + August 2023 day 06 (1n, 0.54×)",
       "originalAmount": 34,
       "discountPct": 10,
