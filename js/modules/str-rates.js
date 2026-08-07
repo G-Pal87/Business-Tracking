@@ -1359,8 +1359,8 @@ function renderKpis(row, { histMap, suggest, blocked, year, month1, ccy, propert
   // Published (pushed) rate = confirmed target after effective promo discount
   // (monthly override if set, else global).
   const af        = state.db.settings?.airbnb || {};
-  const feePct    = af.guestFeePct     != null ? af.guestFeePct     : 14;
-  const taxPct    = af.taxPct          != null ? af.taxPct          : 0;
+  const feePct    = af.guestFeePct     != null ? af.guestFeePct     : AIRBNB_GUEST_FEE_PCT;
+  const taxPct    = af.taxPct          != null ? af.taxPct          : AIRBNB_TAX_PCT;
   const kpiGlobal = af.globalDiscountPct || 0;
   const guestMult = 1 + (feePct + taxPct) / 100;
   let published = null, saving = null, savingPct = null, effDisc = 0;
@@ -2010,6 +2010,13 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     } else {
       adjResult.textContent = '';
     }
+    // Setting targetInp.value programmatically doesn't fire its own oninput,
+    // so without this the Published rate / guest-price / saving boxes below
+    // kept showing figures computed from the OLD target ADR until the user
+    // separately clicked into Target ADR or Discount — the save itself was
+    // always correct (it reads targetInp.value directly), just the preview
+    // shown beforehand wasn't.
+    updateDiscountPreview();
   };
 
   formRow2.appendChild(adjWrap);
@@ -2041,8 +2048,8 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
   const discArrow2 = el('div', { style: 'font-size:18px;color:var(--text-muted);padding-bottom:6px;line-height:1' }, '→');
 
   const af = state.db.settings?.airbnb || {};
-  const feePct  = af.guestFeePct != null ? af.guestFeePct : 14;
-  const taxPct  = af.taxPct      != null ? af.taxPct      : 0;
+  const feePct  = af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT;
+  const taxPct  = af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT;
   const guestMult = 1 + (feePct + taxPct) / 100;
 
   const guestPriceWrap = el('div', {});
@@ -2139,6 +2146,7 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
       adjResult.textContent = '';
       targetInp.value = String(recommendedADR);
       targetInp.focus();
+      updateDiscountPreview(); // targetInp.value set programmatically — see adjInp.oninput's comment
     }}));
   }
   if (confirmed) {

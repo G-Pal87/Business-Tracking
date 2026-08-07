@@ -854,7 +854,12 @@ function buildScheduleSection(wrap) {
 
         const notesI = el('input', { type: 'text', class: 'input', value: linked?.notes || `Rent ${s.monthKey}`, placeholder: 'Notes', style: 'width:100%;margin-bottom:6px' });
 
-        tr.addEventListener('cancel-edit', renderViewRow);
+        // `{ once: true }` — renderEditRow() re-adds this listener on the same
+        // persistent `tr` every time Edit is clicked, and without `once` each
+        // Edit→Cancel cycle left the previous listener behind, accumulating
+        // indefinitely (harmless in effect since renderViewRow is idempotent,
+        // but a genuine unbounded leak).
+        tr.addEventListener('cancel-edit', renderViewRow, { once: true });
 
         const saveBtn = button('Save', { variant: 'sm primary', onClick: () => {
           const newDate  = dateI.value, newAmt = Number(amtI.value), newCur = curS.value;
@@ -1449,8 +1454,17 @@ function openCSVImport() {
     // wrong way is a strong signal of the wrong file in the wrong slot.
     function wrongSlotWarning(rows, { expectFutureCheckout }) {
       const todayStr = today();
-      const withCheckout = rows.filter(r => r.type?.toLowerCase() === 'reservation' && r.checkOut);
-      if (withCheckout.length === 0) return null;
+      const reservationRows = rows.filter(r => r.type?.toLowerCase() === 'reservation');
+      if (reservationRows.length === 0) return null;
+      const withCheckout = reservationRows.filter(r => r.checkOut);
+      if (withCheckout.length === 0) {
+        // No check-in/check-out columns at all in this export variant — can't
+        // verify direction from dates, which used to mean silently returning
+        // null ("looks fine") in exactly the case (a date-signal-less
+        // Completed export dropped into Pending) where the resulting mass
+        // auto-cancellation is most damaging. Warn on "couldn't verify" too.
+        return `This file has no check-in/check-out dates to verify against — could not confirm it belongs in the ${expectFutureCheckout ? 'Pending' : 'Completed'} slot. Double-check you selected the right file before continuing. Import anyway?`;
+      }
       const futureCount = withCheckout.filter(r => r.checkOut > todayStr).length;
       const futureRatio = futureCount / withCheckout.length;
       if (expectFutureCheckout && futureRatio < 0.5) {
@@ -1502,9 +1516,17 @@ function openCSVImport() {
         }
       }
 
-      const byAirbnbKey = new Map(
-        listActivePayments().filter(p => p.airbnbKey).map(p => [p.airbnbKey, p])
-      );
+      // Array-valued, same reason as pendingByCode/pendingByRefP below: a
+      // single-slot Map would silently keep only whichever record happened
+      // to be last in listActivePayments() when two shared an airbnbKey,
+      // starving the other of every future update. Unlike a shared
+      // confirmationCode, an exact shared airbnbKey (which already encodes
+      // the dates) is strong enough evidence to treat siblings as genuine
+      // duplicates of the same booking outright, no overlap check needed.
+      const byAirbnbKey = new Map();
+      for (const p of listActivePayments()) {
+        if (p.airbnbKey) (byAirbnbKey.get(p.airbnbKey) || byAirbnbKey.set(p.airbnbKey, []).get(p.airbnbKey)).push(p);
+      }
       // Fallback dedup index, keyed by property + confirmation code only (no
       // dates): catches the same real-world booking when its exact airbnbKey
       // (code|checkIn|checkOut) doesn't match anymore — e.g. an earlier import
@@ -1543,7 +1565,17 @@ function openCSVImport() {
         const matched = findProp(row.listing);
         if (!matched) continue;
 
-        let existing = row.airbnbKey ? (byAirbnbKey.get(row.airbnbKey) ?? null) : null;
+        let existing = null;
+        if (row.airbnbKey) {
+          const keyMatches = byAirbnbKey.get(row.airbnbKey) || [];
+          if (keyMatches.length > 0) {
+            existing = keyMatches[0];
+            for (const dup of keyMatches.slice(1)) {
+              removeReservationExpenses(dup, orphanRefMap);
+              softDelete('payments', dup.id);
+            }
+          }
+        }
         if (!existing && row.confirmationCode) {
           const candidates = byCodeAndProperty.get(`${matched.id}|${row.confirmationCode}`) || [];
           existing = candidates.find(p => staysOverlap(p.airbnbCheckIn, p.airbnbCheckOut, row.checkIn, row.checkOut)) || null;
@@ -1568,15 +1600,28 @@ function openCSVImport() {
           upsert('payments', pay);
           if (existing) totalUpdated++; else totalAdded++;
         }
+        // Keep the lookup current within this same loop — otherwise two rows
+        // in one CSV that normalize to the same airbnbKey (e.g. two "noref"
+        // adjustment rows on the same day/listing/amount) each create their
+        // own brand-new payment instead of the second one finding/updating
+        // the first, seeding this exact class of duplicate all over again.
+        if (row.airbnbKey) byAirbnbKey.set(row.airbnbKey, [pay]);
 
         if (row.type.toLowerCase() === 'reservation') ruleConflicts.push(...applyReservationExpenseRules(pay, genIndex, categoryIndex));
 
-        // Materialize every matching pending reservation (there can be more
-        // than one duplicate — see addPendingByCode above) — each one's
-        // forecast entry freezes at whatever it was forecasted at, instead of
-        // being recalculated away, so past months keep their forecast history.
+        // Materialize every matching pending reservation for THIS stay (there
+        // can be more than one duplicate — see addPendingByCode above) — each
+        // one's forecast entry freezes at whatever it was forecasted at,
+        // instead of being recalculated away, so past months keep their
+        // forecast history. Filtered by date overlap, not just a shared
+        // confirmationCode: two genuinely different bookings can end up
+        // sharing a reused code (see historicNightMap's comment in
+        // str-rates.js), and without this check the other one would be
+        // wrongly marked paid/settled and its forecast frozen despite no
+        // such payout ever happening.
         if (row.confirmationCode) {
-          const pendings = pendingByCode.get(row.confirmationCode) || [];
+          const pendings = (pendingByCode.get(row.confirmationCode) || [])
+            .filter(p => staysOverlap(p.airbnbCheckIn, p.airbnbCheckOut, row.checkIn, row.checkOut));
           for (const pending of pendings) {
             const pendingMonthKey = (pending.airbnbCheckIn || pending.date || '').slice(0, 7);
             upsert('payments', {
@@ -1590,8 +1635,19 @@ function openCSVImport() {
             }
           }
           if (pendings.length) {
-            pendingByCode.delete(row.confirmationCode);
-            for (const pending of pendings) if (pending.airbnbRef) pendingByCode.delete(pending.airbnbRef);
+            // Remove only the matched entries from each key's array, not the
+            // whole key — a genuinely different booking sharing this same
+            // reused code (see the comment above) must stay discoverable for
+            // any later row in this same import that's actually its match.
+            const matchedIds = new Set(pendings.map(p => p.id));
+            const removeMatched = key => {
+              const arr = pendingByCode.get(key);
+              if (!arr) return;
+              const remaining = arr.filter(p => !matchedIds.has(p.id));
+              if (remaining.length) pendingByCode.set(key, remaining); else pendingByCode.delete(key);
+            };
+            removeMatched(row.confirmationCode);
+            for (const pending of pendings) if (pending.airbnbRef) removeMatched(pending.airbnbRef);
           }
         }
       }
@@ -1616,9 +1672,13 @@ function openCSVImport() {
       applyAirbnbCancellations(cancelled);
       totalRemoved += cancelled.length;
 
-      const byAirbnbKeyP = new Map(
-        listActivePayments().filter(p => p.airbnbKey).map(p => [p.airbnbKey, p])
-      );
+      // Array-valued — see byAirbnbKey's comment in the completed-CSV block
+      // above for why a single-slot Map here silently starves a duplicate of
+      // future updates.
+      const byAirbnbKeyP = new Map();
+      for (const p of listActivePayments()) {
+        if (p.airbnbKey) (byAirbnbKeyP.get(p.airbnbKey) || byAirbnbKeyP.set(p.airbnbKey, []).get(p.airbnbKey)).push(p);
+      }
       // Array-valued for the same reason as pendingByCode above: more than
       // one pending record can already share an airbnbRef, and a single-slot
       // lookup would silently see only one of them, leaving the other never
@@ -1645,7 +1705,19 @@ function openCSVImport() {
 
         // Dedup: prefer airbnbKey match; fall back to confirmationCode (airbnbRef)
         // for payments imported before the airbnbKey field was introduced.
-        const existingByKey = row.airbnbKey ? (byAirbnbKeyP.get(row.airbnbKey) ?? null) : null;
+        let existingByKey = null;
+        if (row.airbnbKey) {
+          const keyMatches = byAirbnbKeyP.get(row.airbnbKey) || [];
+          if (keyMatches.length > 0) {
+            existingByKey = keyMatches[0];
+            // Exact shared airbnbKey (already encodes the dates) is strong
+            // enough evidence these are duplicates of the same booking.
+            for (const dup of keyMatches.slice(1)) {
+              removeReservationExpenses(dup, dupRefMapP);
+              softDelete('payments', dup.id);
+            }
+          }
+        }
         let existingByRef = null;
         if (!existingByKey && row.confirmationCode) {
           const candidates = pendingByRefP.get(row.confirmationCode) || [];
@@ -1653,12 +1725,28 @@ function openCSVImport() {
             // More than one already exists for this booking (see
             // pendingByRefP's comment above) — consolidate onto one and
             // delete the rest so they stop lingering as permanent duplicates.
-            existingByRef = candidates.find(p => staysOverlap(p.airbnbCheckIn, p.airbnbCheckOut, row.checkIn, row.checkOut)) || candidates[0];
-            for (const dup of candidates) {
-              if (dup.id === existingByRef.id) continue;
-              removeReservationExpenses(dup, dupRefMapP);
-              softDelete('payments', dup.id);
+            // Only ever delete a candidate that actually overlaps this row's
+            // dates: a genuinely different booking can end up sharing the
+            // same reused code, and blindly deleting every OTHER candidate
+            // (as this used to) wiped out that unrelated, still-valid
+            // reservation along with its generated expenses.
+            const overlapping = candidates.filter(p => staysOverlap(p.airbnbCheckIn, p.airbnbCheckOut, row.checkIn, row.checkOut));
+            if (overlapping.length > 0) {
+              existingByRef = overlapping[0];
+              for (const dup of overlapping) {
+                if (dup.id === existingByRef.id) continue;
+                removeReservationExpenses(dup, dupRefMapP);
+                softDelete('payments', dup.id);
+              }
+            } else if (candidates.length === 1) {
+              // Single candidate with no comparable/overlapping dates (the
+              // common legacy-key-format case) — still the expected match.
+              existingByRef = candidates[0];
             }
+            // Otherwise: multiple candidates share this code but none
+            // overlap this row's dates — too ambiguous to guess which one
+            // (if any) this row belongs to; fall through to creating a new
+            // record rather than risk overwriting an unrelated booking.
           }
         }
         const existing = existingByKey || existingByRef;
@@ -1737,6 +1825,9 @@ function openCSVImport() {
         if (row.type?.toLowerCase() === 'reservation') ruleConflicts.push(...applyReservationExpenseRules(pay, genIndexP, categoryIndex));
 
         syncAirbnbForecastEntry(pay);
+        // Keep the lookup current within this same loop — see the matching
+        // comment in the completed-CSV block above.
+        if (row.airbnbKey) byAirbnbKeyP.set(row.airbnbKey, [pay]);
       }
     }
     });
@@ -1826,7 +1917,28 @@ function parseAirbnbCSV(text) {
     if (field.length > 0 || row.length > 0) { row.push(field.trim()); rawRows.push(row); }
   }
 
-  const parseAmt = str => Math.abs(parseFloat((str || '').replace(/[^0-9.-]/g, '')) || 0);
+  // Handles both US (1,234.56) and European (1.234,56 / 1234,56) formatting.
+  // Blindly stripping everything but digits/dot/minus (the old behavior)
+  // assumed US formatting unconditionally — a European-formatted amount like
+  // "1.234,56" became "1.234.56" after stripping, and parseFloat stops at
+  // the second dot, silently truncating it to 1.234 (a ~1000× undercount).
+  const parseAmt = str => {
+    let s = (str || '').replace(/[^0-9.,-]/g, '').trim();
+    if (!s) return 0;
+    const lastComma = s.lastIndexOf(',');
+    const lastDot   = s.lastIndexOf('.');
+    if (lastComma > -1 && lastDot > -1) {
+      // Both present — whichever comes last is the decimal separator.
+      s = lastComma > lastDot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+    } else if (lastComma > -1) {
+      // Comma only: a lone comma followed by exactly 1-2 digits is a decimal
+      // separator ("1234,56"); anything else (multiple commas, or a 3-digit
+      // group) is a thousands separator ("1,234").
+      const parts = s.split(',');
+      s = (parts.length === 2 && parts[1].length <= 2) ? s.replace(',', '.') : s.replace(/,/g, '');
+    }
+    return Math.abs(parseFloat(s) || 0);
+  };
 
   // Find the header row (first row with any non-empty field)
   const headerRowIdx = rawRows.findIndex(r => r.some(f => f));
@@ -1846,8 +1958,13 @@ function parseAirbnbCSV(text) {
     for (const name of candidates) {
       const exact = headerIdx.get(name);
       if (exact != null) {
+        // An exact header match is authoritative for this candidate name —
+        // commit to that column and report missing (not fall through to a
+        // same-prefix header further down, which used to silently substitute
+        // a DIFFERENT column's value) when a short/malformed row doesn't
+        // reach that index.
         recognizedIdx.add(exact);
-        if (exact < row.length) return (row[exact] ?? '').trim();
+        return exact < row.length ? (row[exact] ?? '').trim() : '';
       }
       for (const [h, i] of headerIdx) {
         if (h.startsWith(name)) {
@@ -2134,7 +2251,12 @@ function detectAirbnbCancellations(rows, findProp) {
       !csvKeys.has(p.airbnbKey) &&
       !(p.confirmationCode && csvCodes.has(p.confirmationCode));
     if (isFutureCheckIn && missingFromFreshExport) return true;
-    if (checkOut && (new Date(`${todayStr}T00:00:00Z`).getTime() - new Date(`${checkOut}T00:00:00Z`).getTime()) > graceMs) return true;
+    // Safety-net only fires when the booking is ALSO missing from this fresh
+    // export — a booking still listed there just has a legitimately delayed
+    // payout (bank verification hold, cross-border transfer lag), not a
+    // cancellation, and shouldn't be swept up purely by checkout age.
+    if (checkOut && missingFromFreshExport &&
+        (new Date(`${todayStr}T00:00:00Z`).getTime() - new Date(`${checkOut}T00:00:00Z`).getTime()) > graceMs) return true;
     return false;
   });
 }
