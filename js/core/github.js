@@ -218,7 +218,16 @@ export async function fetchDb() {
   // conflict on the next push, purely from comparing against stale ancestor
   // data — never affects the returned `parsed` content itself, which callers
   // still get in full regardless (e.g. to setDb() the actual working data).
-  if (!state.github.remoteDb || maxUpdatedAt(parsed) >= maxUpdatedAt(state.github.remoteDb)) {
+  // maxUpdatedAt alone misjudges freshness when the newest commit's only
+  // change is a hard delete/purge that removed the very record holding the
+  // previous highest timestamp — the remaining max can regress even though
+  // the fetch is genuinely newer. A tombstone count that grew is an
+  // independent, monotonic signal of exactly that case: purging always adds
+  // a tombstone, so more tombstones than the held base already has means
+  // real forward progress happened even if maxUpdatedAt alone can't see it.
+  const tombstonesGrew = Object.keys(parsed._tombstones || {}).length >
+    Object.keys(state.github.remoteDb?._tombstones || {}).length;
+  if (!state.github.remoteDb || tombstonesGrew || maxUpdatedAt(parsed) >= maxUpdatedAt(state.github.remoteDb)) {
     state.github.remoteDb = structuredClone(parsed);
   }
   return parsed;
@@ -266,6 +275,9 @@ async function doPushDb(message = 'Update data') {
           if (!localIds.has(item.id) && tombstones[`${col}:${item.id}`] === undefined) {
             state.db[col].push(item);
             localIds.add(item.id);
+            // Keep the id index in sync — this path bypasses upsert/markDirty,
+            // so byId() would otherwise miss this record until a full reload.
+            state._ix?.get(col)?.set(item.id, item);
           }
         }
       }
@@ -766,6 +778,16 @@ export function mergeLocalPending(remoteDb, localCache) {
       // authoritative (old cache can't be trusted). With sync history local wins
       // because the user may have intentionally changed settings since last sync.
       result[col] = syncedAt ? (local ?? remote) : (remote ?? local);
+      // These have no per-record timestamp to drive hasLocalChanges the way
+      // the array branch below does — without this value comparison, a
+      // settings-only edit made just before a reload/close (flushed to the
+      // local cache but never pushed) had no way to mark itself unsynced,
+      // and setDb() unconditionally clears state.dirty on load, so the edit
+      // could be silently stranded, never reaching db.json for any other
+      // device/user.
+      if (syncedAt && local !== undefined && JSON.stringify(local) !== JSON.stringify(remote)) {
+        hasLocalChanges = true;
+      }
       continue;
     }
 
@@ -786,7 +808,7 @@ export function mergeLocalPending(remoteDb, localCache) {
       } else if (
         effSyncedAt &&
         item.updatedAt && item.updatedAt > effSyncedAt &&
-        remoteItem.updatedAt && item.updatedAt > remoteItem.updatedAt
+        item.updatedAt > (remoteItem.updatedAt || 0)
       ) {
         // Local record was modified after the last sync AND is newer than remote:
         // this is a genuine offline edit — apply it.

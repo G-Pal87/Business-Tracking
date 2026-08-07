@@ -40,7 +40,7 @@ function propStream(p) {
 }
 
 // ── Data aggregation ──────────────────────────────────────────────────────────
-function getData(start, end) {
+function getData(start, end, isIncomplete = false) {
   const { mOwner } = makeMatchers(gF);
 
   // Custom matchers for property objects (p.id / p.type, not p.propertyId / p.stream)
@@ -102,9 +102,18 @@ function getData(start, end) {
     const totalInvested = purchaseEUR + allTimeCapEx;
 
     const netIncome     = rev - opEx;
-    const simpleROI     = simplePropertyROI(prop.id,     { netIncome, totalInvested });
-    const annualizedROI = annualizedPropertyROI(prop.id, { netIncome, totalInvested });
-    const cashOnCashROI = cashOnCashPropertyROI(prop.id, { annualCashFlow: netIncome });
+    // simplePropertyROI / annualizedPropertyROI / cashOnCashPropertyROI are all
+    // documented as ANNUAL metrics, but netIncome above is scoped to the current
+    // filter period (e.g. YTD is always a partial year). Annualize it the same
+    // way the Rental Yield KPI does (see annualizeForProperty) before feeding it
+    // in, so a partial period doesn't masquerade as a full year of underperformance.
+    // annualizedPropertyROI separately divides by years-owned to turn a lifetime
+    // return into a per-year rate — that's a different denominator, so annualizing
+    // netIncome here first doesn't double up with it.
+    const annualNetIncome = annualizeForProperty(prop, netIncome, { start, end, isIncomplete });
+    const simpleROI     = simplePropertyROI(prop.id,     { netIncome: annualNetIncome, totalInvested });
+    const annualizedROI = annualizedPropertyROI(prop.id, { netIncome: annualNetIncome, totalInvested });
+    const cashOnCashROI = cashOnCashPropertyROI(prop.id, { annualCashFlow: annualNetIncome });
 
     return {
       prop, rev, opEx, capEx, allTimeCapEx, purchaseEUR, totalInvested,
@@ -1451,8 +1460,8 @@ function buildView() {
   const cmpRange = getComparisonRange(gF, curRange);
   const { start, end } = curRange;
 
-  const curData = getData(start, end);
-  const cmpData = cmpRange ? getData(cmpRange.start, cmpRange.end) : null;
+  const curData = getData(start, end, curRange.isIncomplete);
+  const cmpData = cmpRange ? getData(cmpRange.start, cmpRange.end, cmpRange.isIncomplete) : null;
 
   const { allProps, propData, payments, opExpenses, capExpenses, totals, avgROI, best, worst } = curData;
 

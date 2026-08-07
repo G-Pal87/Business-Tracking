@@ -101,12 +101,12 @@ function renderLineItems(doc, invoice, startY, margin, pageH) {
   doc.rect(margin, startY, tableW, rowH, 'F');
   doc.setFontSize(9);
   doc.setTextColor(80);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.text('DESCRIPTION', C_DESC_X,  startY + 16);
   doc.text('QTY',         C_QTY_X,   startY + 16, { align: 'right' });
   doc.text('RATE',        C_RATE_X,  startY + 16, { align: 'right' });
   doc.text('AMOUNT',      C_AMT_X,   startY + 16, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
   doc.setTextColor(0);
   doc.setDrawColor(180);
   doc.setLineWidth(0.5);
@@ -144,10 +144,10 @@ function renderLineItems(doc, invoice, startY, margin, pageH) {
   doc.line(C_RATE_X - 80, y, C_AMT_X, y);
   y += 16;
   doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.text('TOTAL', C_RATE_X, y, { align: 'right' });
   doc.text(formatMoney(invoice.total, invoice.currency), C_AMT_X, y, { align: 'right' });
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
 
   return y;
 }
@@ -167,7 +167,8 @@ function renderNotes(doc, invoice, y, margin) {
 }
 
 // ── Template: Standard ────────────────────────────────────────────────────────
-function renderStandard(doc, invoice) {
+async function renderStandard(doc, invoice) {
+  await loadAllFonts(doc);
   const client = byId('clients', invoice.clientId) || {};
   const biz    = state.db.settings?.business || {};
   const team   = (state.db.settings?.team || []).find(t => t.id === invoice.owner);
@@ -179,13 +180,13 @@ function renderStandard(doc, invoice) {
   let ry = margin;
 
   doc.setFontSize(28);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.text('INVOICE', margin, y);
   y += 20;
   doc.setFontSize(11);
   doc.text(biz.name || ownerName, margin, y);
   y += 16;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   bizLines(biz).forEach(line => { doc.text(line, margin, y); y += 12; });
 
@@ -194,11 +195,11 @@ function renderStandard(doc, invoice) {
   doc.text('Invoice No', rightX, ry);
   doc.setTextColor(0);
   doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.text(String(invoice.number || ''), rightX, ry + 15);
   ry += 32;
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(120);
   doc.text('Issued', rightX, ry);
@@ -223,10 +224,10 @@ function renderStandard(doc, invoice) {
   doc.setTextColor(0);
   y += 14;
   doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.text(client.name || '', margin, y);
   y += 14;
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   clientLines(client).forEach(line => { doc.text(line, margin, y); y += 12; });
   y += 24;
@@ -236,7 +237,8 @@ function renderStandard(doc, invoice) {
 }
 
 // ── Template: Corporate Navy ──────────────────────────────────────────────────
-function renderCorporate(doc, invoice) {
+async function renderCorporate(doc, invoice) {
+  await loadAllFonts(doc);
   const client = byId('clients', invoice.clientId) || {};
   const biz    = state.db.settings?.business || {};
   const team   = (state.db.settings?.team || []).find(t => t.id === invoice.owner);
@@ -258,10 +260,10 @@ function renderCorporate(doc, invoice) {
 
   // Company name left in white
   doc.setFontSize(20);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.setTextColor(255, 255, 255);
   doc.text(biz.name || ownerName, margin, 34);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(200, 210, 230);
   const bl = bizLines(biz);
@@ -269,12 +271,12 @@ function renderCorporate(doc, invoice) {
 
   // "INVOICE" right in white
   doc.setFontSize(30);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.setTextColor(255, 255, 255);
   doc.text('INVOICE', W - margin, 36, { align: 'right' });
   // Invoice number in gold accent
   doc.setFontSize(11);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
   doc.setTextColor(ACC_R, ACC_G, ACC_B);
   doc.text(`No. ${invoice.number || 'DRAFT'}`, W - margin, 54, { align: 'right' });
   doc.setTextColor(200, 210, 230);
@@ -282,7 +284,7 @@ function renderCorporate(doc, invoice) {
   doc.text(`Issued: ${fmtDate(invoice.issueDate)}  •  Due: ${fmtDate(invoice.dueDate)}`, W - margin, 70, { align: 'right' });
 
   doc.setTextColor(0);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
 
   // ── Gold accent stripe below header ───────────────────────────────────────
   doc.setFillColor(ACC_R, ACC_G, ACC_B);
@@ -296,19 +298,19 @@ function renderCorporate(doc, invoice) {
 
   doc.setFontSize(8);
   doc.setTextColor(120);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.text('FROM', margin, y);
   doc.text('BILL TO', col2X, y);
   y += 14;
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(0);
   doc.text(biz.name || ownerName, margin, y);
   doc.text(client.name || '', col2X, y);
   y += 14;
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   const bl2 = bizLines(biz);
   const cl  = clientLines(client);
@@ -340,7 +342,8 @@ function renderCorporate(doc, invoice) {
 }
 
 // ── Template: Minimal ─────────────────────────────────────────────────────────
-function renderMinimal(doc, invoice) {
+async function renderMinimal(doc, invoice) {
+  await loadAllFonts(doc);
   const client = byId('clients', invoice.clientId) || {};
   const biz    = state.db.settings?.business || {};
   const team   = (state.db.settings?.team || []).find(t => t.id === invoice.owner);
@@ -360,7 +363,7 @@ function renderMinimal(doc, invoice) {
 
   // INVOICE large
   doc.setFontSize(32);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.setTextColor(20, 20, 20);
   doc.text('INVOICE', margin, y);
 
@@ -378,18 +381,18 @@ function renderMinimal(doc, invoice) {
   y += 16;
 
   // Company name + date meta side by side
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(20, 20, 20);
   doc.text(biz.name || ownerName, margin, y);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(120);
   doc.text(`Issued  ${fmtDate(invoice.issueDate)}`, W - margin, y, { align: 'right' });
   y += 14;
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(100);
   bizLines(biz).forEach(line => { doc.text(line, margin, y); y += 11; });
@@ -412,15 +415,15 @@ function renderMinimal(doc, invoice) {
 
   doc.setFontSize(8);
   doc.setTextColor(120);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.text('BILL TO', margin + 10, y + 14);
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('DMSans', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(20, 20, 20);
   doc.text(client.name || '', margin + 10, y + 27);
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(80);
   clientLines(client).forEach((line, i) => doc.text(line, margin + 10, y + 40 + i * 13));
@@ -727,11 +730,11 @@ export async function generateInvoicePDF(invoice, templateOverride) {
   if (tpl === 'luxury') {
     await renderLuxury(doc, invoice);
   } else if (tpl === 'corporate') {
-    renderCorporate(doc, invoice);
+    await renderCorporate(doc, invoice);
   } else if (tpl === 'minimal') {
-    renderMinimal(doc, invoice);
+    await renderMinimal(doc, invoice);
   } else {
-    renderStandard(doc, invoice);
+    await renderStandard(doc, invoice);
   }
 
   return doc;

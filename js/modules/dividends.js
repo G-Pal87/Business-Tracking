@@ -10,6 +10,7 @@ import {
   getPersonName
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
+import { hasCyprusTaxYearConfig, getCyprusTaxYearConfig } from './cyprus-tax.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // This 2.65% withholding is the General Healthcare System (GHS/GESY)
@@ -31,6 +32,23 @@ let R_LABEL = 'Rita';
 
 // ── Module state ──────────────────────────────────────────────────────────────
 let gYear = null;
+// This module only ever recognizes exactly two dividend recipients
+// ('giorgos'/'rita' — see recipientSel below), while company-structure.js
+// supports adding arbitrary partners/directors with a sharePercent for
+// dividends. Rather than a full N-recipient redesign, just surface the gap
+// once per session so it's visible instead of silently wrong.
+let warnedExtraRecipients = false;
+function warnIfExtraRecipients() {
+  if (warnedExtraRecipients) return;
+  const extraCount = (state.db.people || [])
+    .filter(p => !p.deletedAt && p.active !== false && ['partner', 'director'].includes(p.role))
+    .length - 2;
+  if (extraCount > 0) {
+    warnedExtraRecipients = true;
+    console.warn(`[Dividends] ${extraCount} additional active partner/director person(s) beyond the first two are not supported — dividend tracking currently only recognizes two fixed recipients ('giorgos'/'rita').`);
+    toast(`Dividend tracking currently only supports two recipients — ${extraCount} additional partner's/director's dividends can't be recorded here.`, 'warning', 8000);
+  }
+}
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -97,11 +115,15 @@ function ghsScheduleForYear(divsForYear) {
 }
 
 // Cumulative gross dividends already recorded for a recipient in a given
-// year (excluding one dividend by id, e.g. the one currently being edited).
-// Used to preview GHS for a not-yet-saved amount against the cap.
-function priorCumForRecipientYear(year, recipient, excludeId) {
+// year, counting only those dated strictly BEFORE `beforeDate` (excluding one
+// dividend by id, e.g. the one currently being edited). Used to preview GHS
+// for a not-yet-saved amount against the cap — mirrors ghsScheduleForYear's
+// actual chronological (date-order) computation so the live preview can't
+// diverge from what gets saved by including same-year dividends that fall
+// AFTER the one being entered.
+function priorCumForRecipientYear(year, recipient, excludeId, beforeDate) {
   return listActive('dividends')
-    .filter(d => d.id !== excludeId && d.recipient === recipient && inYear(d.date, year))
+    .filter(d => d.id !== excludeId && d.recipient === recipient && inYear(d.date, year) && (!beforeDate || (d.date || '') < beforeDate))
     .reduce((s, d) => s + (d.grossAmount || 0), 0);
 }
 
@@ -139,8 +161,12 @@ function getOpProfit(year) {
 }
 
 function getCorpTaxEst(year) {
-  const s = state.db.settings?.cyprusTax;
-  if (!s || String(s.year) !== String(year)) return null;
+  // Per-year config now persists independently of whichever year the
+  // Provisional Tax tab's dropdown currently shows (see cyprus-tax.js) — so
+  // this checks whether `year` has ever actually been configured, not
+  // whether it happens to be the tab's active selection right now.
+  if (!hasCyprusTaxYearConfig(year)) return null;
+  const s = getCyprusTaxYearConfig(year);
   const rate = safeN(s.corpTaxRate);
   const totalRevenue = safeN(s.actualRevenue) + safeN(s.forecastRevenue);
   const totalDeductible = safeN(s.actualExpenses) + safeN(s.forecastExpenses);
@@ -170,6 +196,7 @@ const mkCurrencyInput = (val, style, onValue) => {
 function buildView() {
   G_LABEL = getPersonName('you');
   R_LABEL = getPersonName('rita');
+  warnIfExtraRecipients();
 
   const years = getDataYears();
   if (!gYear || !years.includes(gYear)) gYear = defaultYear();
@@ -248,7 +275,7 @@ function buildView() {
             { label: 'Operating Profit',   value: fmtE(pnlData.opProfit) },
             { label: 'Est. Corporation Tax', value: fmtE(corpTaxEst) },
             { label: 'After-Tax Profit',   value: fmtE(Math.max(0, afterTax)) },
-            { label: 'Tax Rate Applied',   value: `${state.db.settings?.cyprusTax?.corpTaxRate ?? 15}%` },
+            { label: 'Tax Rate Applied',   value: `${getCyprusTaxYearConfig(gYear).corpTaxRate}%` },
           ], 2));
         } else {
           body.appendChild(el('p', { style: 'font-size:13px;color:var(--text-muted);line-height:1.6;margin:0' },
@@ -502,12 +529,15 @@ function buildAddForm(year) {
   let formNotes     = '';
 
   const dateI = input({ type: 'date', value: formDate, style: 'width:150px' });
-  dateI.oninput = () => { formDate = dateI.value; };
+  // The GHS preview is now chronological (only counts prior dividends dated
+  // before this one — see priorCumForRecipientYear), so changing the date
+  // itself must refresh it too, not just changing the amount/recipient.
+  dateI.oninput = () => { formDate = dateI.value; updateGhsPreview(formAmount); };
 
   const ghsPreviewEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;min-height:16px;transition:opacity 120ms' });
   const updateGhsPreview = v => {
     if (v > 0) {
-      const prior = priorCumForRecipientYear(year, formRecipient, null);
+      const prior = priorCumForRecipientYear(year, formRecipient, null, formDate);
       const ghs   = ghsForAmount(v, prior);
       ghsPreviewEl.textContent = `GHS ${fmtE(ghs)} · Net received ${fmtE(v - ghs)}`;
       ghsPreviewEl.style.opacity = '1';
@@ -667,7 +697,7 @@ function openEditModal(d) {
   const ghsPreviewEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;min-height:16px;transition:opacity 120ms' });
   const updateGhsPreview = v => {
     if (v > 0 && editDate) {
-      const prior = priorCumForRecipientYear(editDate.slice(0, 4), editRecipient, d.id);
+      const prior = priorCumForRecipientYear(editDate.slice(0, 4), editRecipient, d.id, editDate);
       const ghs   = ghsForAmount(v, prior);
       ghsPreviewEl.textContent = `GHS ${fmtE(ghs)} · Net received ${fmtE(v - ghs)}`;
       ghsPreviewEl.style.opacity = '1';

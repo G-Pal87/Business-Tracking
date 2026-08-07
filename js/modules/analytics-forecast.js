@@ -186,7 +186,7 @@ function getServicesPendingItems(range, mStream, mOwner, mClient) {
   const inRange = d => d && d >= range.start && d <= range.end;
   const today = new Date().toISOString().slice(0, 10);
   return listActive('invoices')
-    .filter(i => !['paid', 'cancelled', 'void'].includes(i.status) && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i))
+    .filter(i => ['sent', 'overdue'].includes(i.status) && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i))
     .map(i => {
       const dueDate = i.dueDate || i.issueDate;
       return {
@@ -211,6 +211,7 @@ function getServicesPendingItems(range, mStream, mOwner, mClient) {
 function getServicesProjectedItems(range) {
   const invoicedStreamMonths = new Set();
   listActive('invoices').forEach(i => {
+    if (['cancelled', 'void'].includes(i.status)) return; // contributed $0 — must not suppress the forecast
     const mk = (i.issueDate || '').slice(0, 7);
     if (mk) invoicedStreamMonths.add((i.stream || '') + ':' + mk);
   });
@@ -224,7 +225,7 @@ function getServicesProjectedItems(range) {
     if (gF.streams.size > 0 && !gF.streams.has(fc.entityId)) return;
     Object.entries(fc.months || {}).forEach(([mk, md]) => {
       if (mk < startMk || mk > endMk) return;
-      if (invoicedStreamMonths.has(fc.entityId + ':' + mk)) return; // already invoiced (any status) — don't double count
+      if (invoicedStreamMonths.has(fc.entityId + ':' + mk)) return; // already invoiced (draft/sent/paid/overdue) — don't double count
       const entries = Array.isArray(md.entries) ? md.entries : [];
       const rev = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
       if (rev <= 0) return;

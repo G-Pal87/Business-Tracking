@@ -2,7 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, confirmDialog, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, getForecastEntries, upsertForecastEntry, removeForecastEntry, sumForecastEntries, listActive, listActivePayments } from '../core/data.js';
+import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, getForecastEntries, upsertForecastEntry, removeForecastEntry, sumForecastEntries, listActive, listActivePayments, generatePaymentSchedule } from '../core/data.js';
 import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { backfillAirbnbForecastEntries } from './payments.js';
 
@@ -948,11 +948,28 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         const m = fc.months?.[mk] || {};
         return (m.entries && m.entries.length > 0) || (type === 'property' && m.expenseEntries && m.expenseEntries.length > 0);
       });
-      if (hasItemized) {
-        const ok = await confirmDialog(
-          'Some months have itemized revenue and/or expense entries. Distributing evenly will replace them all with flat 1/12 amounts and cannot be undone. Continue?',
-          { danger: true, okLabel: 'Distribute Evenly' }
-        );
+      // For long-term rental properties, getForecastVsActual() falls back to
+      // the lease schedule's rent (ltRentByMonth) for any month with no
+      // explicit forecast.revenue set (fd.revenue == null). The flat
+      // overwrite below always writes an explicit revenue (even 0), which
+      // would silently and permanently disable that lease-based fallback for
+      // months that currently rely on it — warn before doing that.
+      let hasLeaseFallback = false;
+      if (type === 'property') {
+        const prop = byId('properties', entityId);
+        if (prop?.type === 'long_term') {
+          const ltMonths = new Set(
+            generatePaymentSchedule(prop).filter(e => e.monthKey?.startsWith(String(year))).map(e => e.monthKey)
+          );
+          hasLeaseFallback = monthKeys.some(mk => (fc.months?.[mk] || {}).revenue == null && ltMonths.has(mk));
+        }
+      }
+      if (hasItemized || hasLeaseFallback) {
+        const parts = [];
+        if (hasItemized) parts.push('Some months have itemized revenue and/or expense entries — distributing evenly will replace them all with flat 1/12 amounts.');
+        if (hasLeaseFallback) parts.push('Some months currently have no explicit forecast and are using this lease\'s rent schedule as the forecast — distributing evenly will overwrite them with an explicit flat amount and permanently disable that automatic lease-based forecast for those months.');
+        parts.push('This cannot be undone. Continue?');
+        const ok = await confirmDialog(parts.join(' '), { danger: true, okLabel: 'Distribute Evenly' });
         if (!ok) return;
       }
       for (const mk of monthKeys) {

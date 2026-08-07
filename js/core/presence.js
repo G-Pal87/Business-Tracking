@@ -539,6 +539,31 @@ async function readSignalDoc(headers, apiUrl) {
   return { sha: null, doc: {} };
 }
 
+// Conflict-tolerant read-modify-write for session-signal.json, mirroring
+// doUpdatePresence's retry pattern above — a single GET+PUT with no retry let
+// two admin actions issued back-to-back (e.g. "Kill Session" on two devices
+// in a row, or a kill immediately followed by "Disconnect other sessions")
+// silently lose whichever one's PUT landed on the now-stale sha.
+async function writeSignalDoc(headers, apiUrl, mutator, attempts = 4) {
+  for (let i = 0; i < attempts; i++) {
+    const { sha, doc } = await readSignalDoc(headers, apiUrl);
+    mutator(doc);
+    const body = {
+      message: 'Session signal update',
+      content: btoa(unescape(encodeURIComponent(JSON.stringify(doc, null, 2)))),
+      branch:  PRESENCE_BRANCH,
+      ...(sha ? { sha } : {})
+    };
+    try {
+      const put = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+      if (put.ok) return true;
+      if (put.status === 409 && i < attempts - 1) { await sleep(150 + Math.random() * 150); continue; }
+      return false;
+    } catch { return false; }
+  }
+  return false;
+}
+
 export async function requestDisconnectOtherSessions() {
   const { owner, repo, token } = state.github;
   if (!owner || !repo || !token) return false;
@@ -550,21 +575,11 @@ export async function requestDisconnectOtherSessions() {
   const enc    = SIGNAL_PATH.split('/').map(encodeURIComponent).join('/');
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${enc}`;
 
-  const { sha, doc } = await readSignalDoc(headers, apiUrl);
-  doc.disconnectAt    = Date.now();
-  doc.exceptSessionId = state.github.sessionId; // the issuing tab must not disconnect itself
-  doc.issuedBy         = state.session?.name || state.session?.username || 'someone';
-
-  const body = {
-    message: 'Disconnect other sessions',
-    content: btoa(unescape(encodeURIComponent(JSON.stringify(doc, null, 2)))),
-    branch:  PRESENCE_BRANCH,
-    ...(sha ? { sha } : {})
-  };
-  try {
-    const put = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
-    return put.ok;
-  } catch { return false; }
+  return writeSignalDoc(headers, apiUrl, doc => {
+    doc.disconnectAt    = Date.now();
+    doc.exceptSessionId = state.github.sessionId; // the issuing tab must not disconnect itself
+    doc.issuedBy         = state.session?.name || state.session?.username || 'someone';
+  });
 }
 
 // Targeted counterpart to requestDisconnectOtherSessions() — disconnects one
@@ -582,24 +597,14 @@ export async function killDevice(targetSessionId) {
   const enc    = SIGNAL_PATH.split('/').map(encodeURIComponent).join('/');
   const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${enc}`;
 
-  const { sha, doc } = await readSignalDoc(headers, apiUrl);
-  doc.kills = doc.kills || {};
-  const cutoff = Date.now() - KILL_TTL_MS;
-  for (const [id, k] of Object.entries(doc.kills)) {
-    if ((k.at || 0) < cutoff) delete doc.kills[id];
-  }
-  doc.kills[targetSessionId] = { at: Date.now(), by: state.session?.name || state.session?.username || 'someone' };
-
-  const body = {
-    message: 'Disconnect device',
-    content: btoa(unescape(encodeURIComponent(JSON.stringify(doc, null, 2)))),
-    branch:  PRESENCE_BRANCH,
-    ...(sha ? { sha } : {})
-  };
-  try {
-    const put = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
-    return put.ok;
-  } catch { return false; }
+  return writeSignalDoc(headers, apiUrl, doc => {
+    doc.kills = doc.kills || {};
+    const cutoff = Date.now() - KILL_TTL_MS;
+    for (const [id, k] of Object.entries(doc.kills)) {
+      if ((k.at || 0) < cutoff) delete doc.kills[id];
+    }
+    doc.kills[targetSessionId] = { at: Date.now(), by: state.session?.name || state.session?.username || 'someone' };
+  });
 }
 
 async function checkDisconnectSignal() {

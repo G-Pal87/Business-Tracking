@@ -256,7 +256,12 @@ function valueLabelsPlugin(horizontal) {
 // always visible without a hover or a toggle.
 function legendLabelsWithPct(chart) {
   const ds = chart.data.datasets[0];
-  const total = ds.data.reduce((a, b) => a + b, 0);
+  // Match sliceLabelsPlugin: when a slice has been hidden via legend-click
+  // (Chart.js's default toggle), the remaining slices' percentages must be
+  // computed against the still-visible total, not the original whole-pie
+  // total, or every visible slice's % understates its actual visible share.
+  const visible = i => chart.getDataVisibility ? chart.getDataVisibility(i) : true;
+  const total = ds.data.reduce((s, v, i) => s + (visible(i) && typeof v === 'number' ? v : 0), 0);
   return chart.data.labels.map((lbl, i) => ({
     text: lbl + (total > 0 ? ` (${(ds.data[i] / total * 100).toFixed(1)}%)` : ''),
     fillStyle: ds.backgroundColor[i],

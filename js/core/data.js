@@ -1222,6 +1222,20 @@ export function restoreInventoryStock(expense) {
       restoreMap.has(b.id) ? { ...b, remaining: (b.remaining ?? b.qty ?? 0) + restoreMap.get(b.id) } : b
     );
     upsert('inventory', { ...item, batches: updatedBatches });
+  } else if (item.batches) {
+    // Legacy expense (predates per-batch consumption tracking, so it has no
+    // inventoryBatches of its own) on an item that has since migrated to
+    // batches — totalRemaining() ignores item.stock entirely once an item
+    // has batches, so crediting back into stock here silently lost the
+    // restored quantity forever. Add it as a new batch instead so it's
+    // actually counted; unitPrice 0 since the original per-unit cost isn't
+    // recoverable here — this only restores the QUANTITY, not cost history.
+    const restoredBatch = {
+      id: newId('batch'), dateBought: expense.date || new Date().toISOString().slice(0, 10),
+      qty: expense.inventoryQty, remaining: expense.inventoryQty, unitPrice: 0, currency: 'EUR',
+      note: 'Restored from deleted expense (pre-batch-tracking record)'
+    };
+    upsert('inventory', { ...item, batches: [...item.batches, restoredBatch] });
   } else {
     upsert('inventory', { ...item, stock: (item.stock || 0) + expense.inventoryQty });
   }

@@ -656,7 +656,21 @@ function buildEncryptionCard() {
               const fileData = await fetchGithubFile(item.path);
               const bytes = Uint8Array.from(atob(fileData.content.replace(/\s/g, '')), c => c.charCodeAt(0));
               let snapshotJson = JSON.parse(new TextDecoder().decode(bytes));
-              if (isEncryptedEnvelope(snapshotJson)) snapshotJson = await decryptEnvelopeToJson(snapshotJson);
+              // A scheduled/GitHub-Actions backup can't decrypt db.json itself
+              // (no key access, by design — see .github/workflows/backup.yml)
+              // — when the live db.json was encrypted at backup time, its
+              // `data` field IS the raw {enc,iv,ct} envelope, one level
+              // deeper than a manual "Backup Now" snapshot's own top-level
+              // envelope. Checking only the top level here missed this and
+              // silently treated the still-encrypted payload as already
+              // plain — re-encrypting it under the new key at the re-upload
+              // step below then just double-wrapped ciphertext the new key
+              // can never open, reporting full success the whole time.
+              if (isEncryptedEnvelope(snapshotJson)) {
+                snapshotJson = await decryptEnvelopeToJson(snapshotJson);
+              } else if (isEncryptedEnvelope(snapshotJson.data)) {
+                snapshotJson = { ...snapshotJson, data: await decryptEnvelopeToJson(snapshotJson.data) };
+              }
               plaintexts.push({ ...item, snapshotJson });
             } else {
               const fileData = await fetchGithubFileEncrypted(item.path);
@@ -676,6 +690,15 @@ function buildEncryptionCard() {
           return;
         }
 
+        // Captured before the switch below discards it from memory/storage —
+        // installDataKey() overwrites the one wrapped key slot unconditionally,
+        // so this is the only chance to keep a copy. If any re-upload below
+        // fails, whatever attachments are still on the old key would
+        // otherwise become permanently unrecoverable the moment this
+        // function returns (nothing else in the app remembers it).
+        let oldKeyBase64 = null;
+        try { oldKeyBase64 = await exportActiveDataKeyBase64(); } catch { /* not unlocked — nothing to preserve */ }
+
         // Phase 2: everything is safely decrypted in memory — now switch to
         // the new key and re-upload each attachment (same path) under it.
         let key, base64;
@@ -691,40 +714,60 @@ function buildEncryptionCard() {
           return;
         }
 
-        let uploadFailed = 0;
+        const uploadOne = async item => {
+          if (item.kind === 'invoice') {
+            // The invoice's path IS an encrypted filename (invoicePdfPath),
+            // not just encrypted content at a stable ID-based path like
+            // everything else — regenerate it under the new key so nothing
+            // is left pointing at a filename only the old key can decrypt.
+            const newPath = await invoicePdfPath(item.invoice);
+            await uploadGithubFileEncrypted(newPath, item.content, `Re-encrypt under new key: ${item.label}`);
+            if (newPath !== item.path) {
+              try { await deleteGithubFile(item.path, null, `Remove old-key path for ${item.label}`); } catch { /* old file already gone */ }
+              // Re-fetch the CURRENT record rather than reusing item.invoice
+              // (a snapshot taken at the start of rotation, before this long
+              // attachment loop began) — another user editing this same
+              // invoice mid-rotation would otherwise have their edit
+              // silently overwritten by the stale pre-rotation copy here.
+              const currentInvoice = byId('invoices', item.invoice.id) || item.invoice;
+              upsert('invoices', { ...currentInvoice, pdfPath: newPath });
+            }
+          } else if (item.kind === 'backup-snapshot') {
+            // Same envelope format as db.json (see collectBackupSnapshots) —
+            // build it manually rather than through uploadGithubFileEncrypted,
+            // which only knows the raw-bytes attachment format.
+            const json = isUnlocked()
+              ? JSON.stringify(await encryptJsonToEnvelope(item.snapshotJson))
+              : JSON.stringify(item.snapshotJson, null, 2);
+            const b64 = btoa(unescape(encodeURIComponent(json)));
+            await uploadGithubFile(item.path, b64, `Re-encrypt backup under new key: ${item.label}`);
+          } else {
+            await uploadGithubFileEncrypted(item.path, item.content, `Re-encrypt under new key: ${item.label}`);
+          }
+        };
+
+        const failedItems = [];
         for (let i = 0; i < plaintexts.length; i++) {
           const item = plaintexts[i];
           genBtn.textContent = `Re-encrypting ${i + 1} / ${plaintexts.length}…`;
           try {
-            if (item.kind === 'invoice') {
-              // The invoice's path IS an encrypted filename (invoicePdfPath),
-              // not just encrypted content at a stable ID-based path like
-              // everything else — regenerate it under the new key so nothing
-              // is left pointing at a filename only the old key can decrypt.
-              const newPath = await invoicePdfPath(item.invoice);
-              await uploadGithubFileEncrypted(newPath, item.content, `Re-encrypt under new key: ${item.label}`);
-              if (newPath !== item.path) {
-                try { await deleteGithubFile(item.path, null, `Remove old-key path for ${item.label}`); } catch { /* old file already gone */ }
-                upsert('invoices', { ...item.invoice, pdfPath: newPath });
-              }
-            } else if (item.kind === 'backup-snapshot') {
-              // Same envelope format as db.json (see collectBackupSnapshots) —
-              // build it manually rather than through uploadGithubFileEncrypted,
-              // which only knows the raw-bytes attachment format.
-              const json = isUnlocked()
-                ? JSON.stringify(await encryptJsonToEnvelope(item.snapshotJson))
-                : JSON.stringify(item.snapshotJson, null, 2);
-              const b64 = btoa(unescape(encodeURIComponent(json)));
-              await uploadGithubFile(item.path, b64, `Re-encrypt backup under new key: ${item.label}`);
-            } else {
-              await uploadGithubFileEncrypted(item.path, item.content, `Re-encrypt under new key: ${item.label}`);
-            }
+            await uploadOne(item);
           } catch (err) {
-            console.warn(`[key rotation] Could not re-upload ${item.label}:`, err.message);
-            uploadFailed++;
+            // One retry after a short pause — the stated failure mode here
+            // is a transient network blip, and every attachment that
+            // recovers on retry is one less that ends up stranded under a
+            // key this device is about to forget.
+            try {
+              await new Promise(r => setTimeout(r, 500));
+              await uploadOne(item);
+            } catch (err2) {
+              console.warn(`[key rotation] Could not re-upload ${item.label}:`, err2.message);
+              failedItems.push(item);
+            }
           }
           progressStep();
         }
+        const uploadFailed = failedItems.length;
 
         genBtn.textContent = 'Pushing data…';
         let pushFailed = false;
@@ -741,7 +784,27 @@ function buildEncryptionCard() {
           const parts = [];
           if (uploadFailed > 0) parts.push(`${uploadFailed} attachment(s) could not be re-encrypted`);
           if (pushFailed) parts.push('the data push failed');
-          toast(`New key is active on this device, but ${parts.join(' and ')} — check your connection, then use Push Now and re-check the console for which attachments to retry. Save the new key below regardless.`, 'danger', 10000);
+          toast(`New key is active on this device, but ${parts.join(' and ')} — check your connection, then use Push Now. Save the new key below regardless.`, 'danger', 10000);
+          // The old key is gone from this device's storage/memory the moment
+          // installDataKey() ran above — this is the one remaining chance to
+          // hand it back to the admin, since it's the only way to ever read
+          // whatever's still stuck under it.
+          if (uploadFailed > 0 && oldKeyBase64) {
+            const body2 = el('div');
+            body2.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px;color:var(--danger,#dc3545)' },
+              `${uploadFailed} attachment(s) below are still encrypted under the OLD key and could not be moved to the new one (even after a retry). Save this OLD key now — without it, these specific files become permanently unreadable.`));
+            const oldKeyOut = input({ value: oldKeyBase64, readonly: true, style: 'width:100%;font-family:monospace;font-size:12px;margin-bottom:12px' });
+            body2.appendChild(oldKeyOut);
+            body2.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:4px;font-weight:600' }, 'Affected files:'));
+            const list = el('ul', { style: 'font-size:12px;color:var(--text-muted);margin:0;padding-left:18px;max-height:150px;overflow:auto' });
+            for (const item of failedItems) list.appendChild(el('li', {}, item.label));
+            body2.appendChild(list);
+            openModal({
+              title: 'Some attachments are stranded under the old key',
+              body: body2,
+              footer: [button('Done', { variant: 'primary', onClick: () => closeModal() })]
+            });
+          }
         }
 
         showNewKeyModal(base64);
@@ -3698,6 +3761,24 @@ function buildDangerCard() {
   // ── Shared import logic ──────────────────────────────────────────────────────
 
   async function processImport(raw) {
+    // Defense-in-depth: the "Import JSON" file picker below calls this
+    // directly with whatever the user selected, with no decryption handling
+    // of its own — a manually-downloaded scheduled/GitHub-Actions backup's
+    // `data` field can itself be the raw {enc,iv,ct} envelope (see the
+    // matching comments on the "Restore from Backup" and key-rotation flows
+    // in this same file), one level deeper than a manual export's own
+    // top-level envelope. Without this, that still-encrypted data would get
+    // injected straight into the live database.
+    try {
+      if (isEncryptedEnvelope(raw)) raw = await decryptEnvelopeToJson(raw);
+      else if (raw && typeof raw === 'object' && isEncryptedEnvelope(raw.data)) {
+        raw = { ...raw, data: await decryptEnvelopeToJson(raw.data) };
+      }
+    } catch (e) {
+      statusEl.textContent = `Import failed: could not decrypt this file (${e.message}).`;
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
     let importedData, meta;
     if (typeof raw.exportVersion === 'number') {
       if (raw.exportVersion > EXPORT_VERSION) {
@@ -4001,7 +4082,17 @@ function buildDangerCard() {
       const bytes = Uint8Array.from(atob(fileData.content.replace(/\s/g, '')), c => c.charCodeAt(0));
       const text  = new TextDecoder().decode(bytes);
       raw = JSON.parse(text);
+      // A scheduled/GitHub-Actions backup's `data` field can itself be the
+      // raw {enc,iv,ct} envelope (see the matching comment in the key
+      // rotation flow above, and .github/workflows/backup.yml) — one level
+      // deeper than a manual "Backup Now" snapshot's own top-level envelope.
+      // Checking only the top level here missed this: processImport() would
+      // inject a still-encrypted `data` straight into the live database,
+      // and pushing that pollutes db.json's top level with stray enc/iv/ct
+      // fields, corrupting how the ENTIRE file gets read on the next load
+      // anywhere.
       if (isEncryptedEnvelope(raw)) raw = await decryptEnvelopeToJson(raw);
+      else if (isEncryptedEnvelope(raw.data)) raw = { ...raw, data: await decryptEnvelopeToJson(raw.data) };
     } catch (e) {
       statusEl.textContent = `Failed to fetch backup: ${e.message}`;
       statusEl.style.color = 'var(--danger,#dc3545)';

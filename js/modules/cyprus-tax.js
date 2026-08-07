@@ -1,15 +1,17 @@
 // Cyprus Provisional Corporation Tax Calculator
 import { state, markDirty } from '../core/state.js';
-import { el, input, select, button, formRow, toast, openModal } from '../core/ui.js';
+import { el, input, select, button, formRow, toast, openModal, today } from '../core/ui.js';
 import { formatEUR, toEUR, listActivePayments, listActive, availableYears, isCapEx, byId, companyPropIds, isCompanyRecord } from '../core/data.js';
 import { mkKpiCard, mkModalTable, mkSectionLabel, mkSummaryGrid } from './analytics-helpers.js';
 
-const DEFAULTS = {
-  year: String(new Date().getFullYear()),
-  // Cyprus's standard corporate tax rate rose from 12.5% to 15% for tax years
-  // starting 1 January 2026 (OECD Pillar Two alignment). Existing saved
-  // configs keep whatever rate they were set to — this only affects the
-  // default a brand-new (never-configured) year starts from.
+// Per-year figures only — `year` itself lives once at the root (see
+// getCyprusTaxRoot), never inside a year's own bucket.
+//
+// Cyprus's standard corporate tax rate rose from 12.5% to 15% for tax years
+// starting 1 January 2026 (OECD Pillar Two alignment). Existing saved
+// configs keep whatever rate they were set to — this only affects the
+// default a brand-new (never-configured) year starts from.
+export const CYPRUS_TAX_YEAR_DEFAULTS = {
   corpTaxRate: 15,
   bufferEnabled: true,
   bufferPct: 10,
@@ -27,15 +29,75 @@ const DEFAULTS = {
   decRevAllowances: 0,
 };
 
-function cfg() {
-  if (!state.db.settings) state.db.settings = {};
-  if (!state.db.settings.cyprusTax) state.db.settings.cyprusTax = { ...DEFAULTS };
-  return state.db.settings.cyprusTax;
+// Legacy shape (before per-year isolation) stored every field flat on
+// `cyprusTax` itself, with a single `year` field selecting which year's
+// figures were "currently" being edited — switching that dropdown never
+// reset the other fields, so one year's revenue/payments/estimates silently
+// bled into the next. This runs at most once per device: it moves whatever
+// was already there into `byYear[year]` so existing data isn't lost, and
+// `root.byYear` existing afterward is what marks the migration as done.
+function migrateLegacyCyprusTax(root) {
+  const legacyYear = root.year || String(new Date().getFullYear());
+  const legacyData = {};
+  for (const k of Object.keys(CYPRUS_TAX_YEAR_DEFAULTS)) {
+    if (root[k] !== undefined) { legacyData[k] = root[k]; delete root[k]; }
+  }
+  root.byYear = { [legacyYear]: { ...CYPRUS_TAX_YEAR_DEFAULTS, ...legacyData } };
 }
 
-function persist(patch) {
-  Object.assign(cfg(), patch);
+export function getCyprusTaxRoot() {
+  if (!state.db.settings) state.db.settings = {};
+  if (!state.db.settings.cyprusTax) {
+    state.db.settings.cyprusTax = { year: String(new Date().getFullYear()), byYear: {} };
+  }
+  const root = state.db.settings.cyprusTax;
+  if (!root.byYear) migrateLegacyCyprusTax(root);
+  return root;
+}
+
+// Read-only existence check — unlike getCyprusTaxYearConfig, never creates a
+// default entry as a side effect of checking, so callers (e.g. dividends.js,
+// deciding whether to show a tax estimate at all) can probe a year without
+// silently persisting an empty bucket for it.
+export function hasCyprusTaxYearConfig(year) {
+  const root = getCyprusTaxRoot();
+  return !!root.byYear[String(year)];
+}
+
+// Returns a merged, read-only VIEW `{ year, ...yearFigures }` — kept in this
+// shape so every existing call site here and in analytics-tax.js (which reads
+// `cfg().year`/`s.corpTaxRate`/etc. throughout) keeps working unchanged.
+// Never mutate the returned object directly — use persistCyprusTaxYearConfig.
+export function getCyprusTaxYearConfig(year) {
+  const root = getCyprusTaxRoot();
+  const yr = year != null ? String(year) : (root.year || String(new Date().getFullYear()));
+  if (!root.byYear[yr]) root.byYear[yr] = { ...CYPRUS_TAX_YEAR_DEFAULTS };
+  return { year: yr, ...root.byYear[yr] };
+}
+
+export function setCyprusTaxYear(year) {
+  getCyprusTaxRoot().year = String(year);
   markDirty();
+}
+
+export function persistCyprusTaxYearConfig(patch, year) {
+  const root = getCyprusTaxRoot();
+  const yr = year != null ? String(year) : (root.year || String(new Date().getFullYear()));
+  if (!root.byYear[yr]) root.byYear[yr] = { ...CYPRUS_TAX_YEAR_DEFAULTS };
+  Object.assign(root.byYear[yr], patch);
+  markDirty();
+}
+
+function cfg() { return getCyprusTaxYearConfig(); }
+
+function persist(patch) {
+  if ('year' in patch) {
+    const { year: newYear, ...rest } = patch;
+    if (newYear !== undefined) setCyprusTaxYear(newYear);
+    if (Object.keys(rest).length) persistCyprusTaxYearConfig(rest);
+  } else {
+    persistCyprusTaxYearConfig(patch);
+  }
 }
 
 const safeN = v => (isFinite(Number(v)) ? Math.max(0, Number(v)) : 0);
@@ -90,7 +152,7 @@ function calcAll(s) {
 // ── Modal utilities ───────────────────────────────────────────────────────────
 const pct = (v, tot) => tot > 0 ? `${((v / tot) * 100).toFixed(1)}%` : '—';
 
-function daysLabel(dateStr) {
+export function daysLabel(dateStr) {
   // Compare local calendar dates only (both at local midnight) so the result
   // doesn't depend on what time of day "now" is or the machine's UTC offset —
   // parsing dateStr with `new Date(dateStr)` treats it as UTC midnight, which
@@ -112,7 +174,7 @@ function daysLabel(dateStr) {
 // "forecast remaining" — counting the whole month would double-count days
 // already in actuals; excluding the month entirely (the old `mk > curMonth`
 // check) silently dropped its remaining days from both totals.
-function monthRemainingFraction(cutoff) {
+export function monthRemainingFraction(cutoff) {
   const y = Number(cutoff.slice(0, 4)), m = Number(cutoff.slice(5, 7)), d = Number(cutoff.slice(8, 10));
   const daysInMonth = new Date(y, m, 0).getDate();
   return Math.max(0, (daysInMonth - d) / daysInMonth);
@@ -123,14 +185,14 @@ function monthRemainingFraction(cutoff) {
 // individually flagged `personal` (e.g. off-platform bookings), are
 // excluded — corporation tax is a company-only liability, and Dividends
 // (getOpProfit) already applies this same filter.
-function isCoRec(r) {
+export function isCoRec(r) {
   const coPropIds = companyPropIds();
   return isCompanyRecord(r, coPropIds);
 }
 
-function getActualsForYear(year) {
-  const today  = new Date().toISOString().slice(0, 10);
-  const cutoff = today < `${year}-12-31` ? today : `${year}-12-31`;
+export function getActualsForYear(year) {
+  const todayStr = today();
+  const cutoff = todayStr < `${year}-12-31` ? todayStr : `${year}-12-31`;
   const s1     = `${year}-01-01`;
   return {
     pays:   listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff && isCoRec(p)),
@@ -259,8 +321,8 @@ function modalExpenseCategory(cat) {
 function modalForecastEntities(forRevenue) {
   const s        = cfg();
   const year     = s.year || String(new Date().getFullYear());
-  const today    = new Date().toISOString().slice(0, 10);
-  const cutoff   = today < `${year}-12-31` ? today : `${year}-12-31`;
+  const todayStr = today();
+  const cutoff   = todayStr < `${year}-12-31` ? todayStr : `${year}-12-31`;
   const curMonth = cutoff.slice(0, 7);
   const propMap  = Object.fromEntries((state.db.properties || []).map(p => [p.id, p]));
   const humanize = id => id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -847,8 +909,8 @@ function buildEstimateCard(onChange) {
 function prefillFromActuals(onChange) {
   const s        = cfg();
   const year     = s.year || String(new Date().getFullYear());
-  const today    = new Date().toISOString().slice(0, 10);
-  const cutoff   = today < `${year}-12-31` ? today : `${year}-12-31`;
+  const todayStr = today();
+  const cutoff   = todayStr < `${year}-12-31` ? todayStr : `${year}-12-31`;
   const curMonth = cutoff.slice(0, 7);
   const s1       = `${year}-01-01`;
 

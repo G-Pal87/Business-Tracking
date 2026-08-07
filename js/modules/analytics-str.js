@@ -172,6 +172,11 @@ function buildAdrSuggester(propId) {
   const byMonthDay = new Map(), byMonth = new Map(), all = [];
   listActivePayments().forEach(p => {
     if (p.propertyId !== propId || p.stream !== 'short_term_rental' || p.status !== 'paid') return;
+    // Exclude Airbnb payout adjustments (Resolution Adjustment, Cancellation Fee,
+    // etc.) — they repeat the same check-in/check-out/nights as their originating
+    // Reservation but carry a much smaller amount, which would pollute the
+    // historic per-night rate buckets with a tiny, unrelated rate.
+    if (!isReservationNight(p)) return;
     const rate = p.avgNightExclCleaning != null ? p.avgNightExclCleaning
                : (p.avgNightlyRate != null ? p.avgNightlyRate : null);
     if (rate == null || rate <= 0) return;
@@ -299,7 +304,14 @@ function getSpotlightData(propId, curRange) {
   const cal = getCalendar(propId);
   const { occupiedSet, ownerBlockSet } = buildOccupancySets(propId, cal?.blocks || []);
   const monthKeys = getMonthKeysForRange(curRange.start, curRange.end).keys;
-  const { occByMonth, availByMonth } = rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end);
+  // Target revenue uses the same historic-fallback-aware published rate
+  // (makeRateForNight) as getPortfolioData — confirmed target ADR when set,
+  // otherwise the historic suggestion — so the Spotlight's "Target Revenue"
+  // agrees with the Portfolio view for the same property/months instead of
+  // silently reading 0 for months without a confirmed strRateTargets entry.
+  const rateForNight = makeRateForNight(propId);
+  const { occByMonth, availByMonth, rev: targetRev } =
+    rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end, rateForNight);
 
   const months = monthKeys.map(k => {
     const mk       = k.key;
@@ -317,7 +329,6 @@ function getSpotlightData(propId, curRange) {
   const totalRev    = months.reduce((s, m) => s + m.rev, 0);
   const totalNights = months.reduce((s, m) => s + m.nights, 0);
   const avgADR      = totalNights > 0 ? months.reduce((s, m) => s + m.adr * m.nights, 0) / totalNights : 0;
-  const targetRev   = months.reduce((s, m) => s + (m.target || 0) * m.occupied, 0);
 
   return { months, totalRev, totalNights, avgADR, targetRev };
 }
@@ -334,8 +345,12 @@ function getForwardPipeline() {
 
   props.forEach(prop => {
     const cal = getCalendar(prop.id);
+    // Only real guest reservations count as "locked" — owner-blocked/personal-use
+    // closures earn nothing and must not be valued as booked revenue (mirrors
+    // buildBlockDateSets' reserved/owner split elsewhere in this file).
     const blocks = (cal?.blocks || []).filter(b => {
       if (!b.start || !b.end) return false;
+      if (isOwnerBlockSummary(b.summary)) return false;
       const bs = new Date(b.start);
       const be = new Date(b.end);
       return be > today && bs < end90;
@@ -808,7 +823,7 @@ function buildSpotlightContent(propId, curRange) {
   // Summary row below chart
   const adrSummary = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px' });
   adrSummary.appendChild(mkSummaryBox('Total Revenue', formatEUR(totalRev, { maxFrac: 0 }), curRange.label));
-  adrSummary.appendChild(mkSummaryBox('Target Revenue', targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—', 'confirmed months'));
+  adrSummary.appendChild(mkSummaryBox('Target Revenue', targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—', 'at published rate'));
   adrSummary.appendChild(mkSummaryBox('Avg ADR', avgADR > 0 ? formatEUR(avgADR, { maxFrac: 0 }) : '—', 'from bookings'));
   adrBody.appendChild(adrSummary);
   adrCard.appendChild(adrBody);

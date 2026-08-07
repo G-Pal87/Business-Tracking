@@ -376,13 +376,26 @@ function openEntryForm(eng, existing, defaultDate) {
         return;
       }
     }
+    // If the date now falls in a different month than before, this entry no
+    // longer belongs to whatever invoice it was tagged with (createMonthInvoice
+    // tags entries per calendar month) — clear the stale link so the new
+    // month isn't falsely shown as already invoiced (see monthBilling/
+    // invoiceId) while the old month keeps sitting under an invoice for a day
+    // it no longer has.
+    const oldMonth = (en.date || '').slice(0, 7);
+    const newMonth = (dateI.value || '').slice(0, 7);
+    const monthChanged = oldMonth !== newMonth;
     Object.assign(en, {
       date: dateI.value,
       amount: newAmount,
       type: newType,
       notes: notesT.value.trim(),
     });
-    // If this entry was previously tied to an invoice, keep the link
+    if (monthChanged && en.invoiceId) {
+      en.invoiceId = null;
+    }
+    // Otherwise, if this entry was previously tied to an invoice and the
+    // month didn't change, keep the link as-is.
     upsert('timeOff', en);
     selectedYear = Number(dateI.value.slice(0, 4));
     toast(existing ? 'Time off updated' : 'Time off logged', 'success');
