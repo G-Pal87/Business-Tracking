@@ -12,7 +12,7 @@ import {
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
 import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK, groupByMonthKey } from './analytics-helpers.js';
-import { buildServicesSection, destroyServiceCharts } from './analytics-services.js';
+import { buildServicesSection, destroyServiceCharts, resetServiceStatusFilter } from './analytics-services.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const OWNER_COLORS = { you: '#6366f1', rita: '#ec4899', both: '#14b8a6' };
@@ -136,7 +136,7 @@ function getData(start, end) {
     i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
   );
   const outstanding = gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i =>
-    !['paid', 'cancelled', 'void'].includes(i.status) &&
+    ['sent', 'overdue'].includes(i.status) &&
     inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
   );
 
@@ -957,7 +957,7 @@ function renderGrowthTrend({ payments, invoices, payByMonth, invByMonth }, month
 function renderPaidOutstanding({ invoices, invByMonth }, months, start, end) {
   const { mStream, mOwner, mClient } = makeMatchers(gF);
   const allOut = gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i =>
-    !['paid', 'cancelled', 'void'].includes(i.status) &&
+    ['sent', 'overdue'].includes(i.status) &&
     i.issueDate && i.issueDate >= start && i.issueDate <= end &&
     mStream(i) && mOwner(i) && mClient(i)
   );
@@ -1248,7 +1248,7 @@ function buildView() {
     el('p',  { style: 'margin:0;font-size:13px;color:var(--text-muted)' }, 'Structure · Growth · Collections · Contributors · Dynamics')
   ));
 
-  wrap.appendChild(buildFilterBar(gF, { showOwner: true, showStream: true, showProperty: true, showClient: true, storagePrefix: 'rev', channelScope: gScope === 'all' ? null : 'company' }, (newGF) => { if (newGF) gF = newGF; rebuildView(); }));
+  wrap.appendChild(buildFilterBar(gF, { showOwner: true, showStream: true, showProperty: true, showClient: true, storagePrefix: 'rev', channelScope: gScope === 'all' ? null : 'company', extraReset: resetServiceStatusFilter }, (newGF) => { if (newGF) gF = newGF; rebuildView(); }));
 
   // Scope toggle (Company only / All incl. personal)
   const scopeBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:12px' });

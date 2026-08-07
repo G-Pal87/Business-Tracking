@@ -1383,7 +1383,11 @@ function renderMonthBar({ payments, invoices, opExpenses, capExpenses }, monthKe
       } else {
         // OpEx or CapEx: breakdown by category
         const catMap = new Map();
-        items.forEach(e => { const cat = e.category || 'Uncategorized'; catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date)); });
+        items.forEach(e => {
+          const key = resolveExpenseFields(e).costCategory;
+          const cat = COST_CATEGORIES[key]?.label || key || 'Uncategorized';
+          catMap.set(cat, (catMap.get(cat) || 0) + toEUR(e.amount, e.currency, e.date));
+        });
         const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
         const catSection = el('div');
         catSection.appendChild(mkSectionLabel('By Category'));
