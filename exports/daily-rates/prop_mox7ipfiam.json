@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-07T15:12:40.207Z",
+  "generatedAt": "2026-08-07T18:53:27.115Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -18,190 +18,190 @@
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-08",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-09",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-10",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-11",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-12",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-13",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-14",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-15",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-16",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-17",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-18",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-19",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-20",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-21",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-22",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-23",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-24",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-25",
       "currency": "EUR",
       "status": "booked",
       "basis": "historic actual",
-      "originalAmount": 8,
+      "originalAmount": 60,
       "discountPct": 0,
-      "amount": 8,
-      "airbnbCheckout": 9
+      "amount": 60,
+      "airbnbCheckout": 68
     },
     {
       "date": "2026-08-26",
@@ -3298,20 +3298,20 @@
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
-      "originalAmount": 46,
+      "originalAmount": 58,
       "discountPct": 10,
-      "amount": 41,
-      "airbnbCheckout": 52
+      "amount": 52,
+      "airbnbCheckout": 66
     },
     {
       "date": "2027-07-02",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
-      "originalAmount": 46,
+      "originalAmount": 58,
       "discountPct": 10,
-      "amount": 41,
-      "airbnbCheckout": 52
+      "amount": 52,
+      "airbnbCheckout": 66
     },
     {
       "date": "2027-07-03",
@@ -3358,70 +3358,70 @@
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
-      "originalAmount": 46,
+      "originalAmount": 58,
       "discountPct": 10,
-      "amount": 41,
-      "airbnbCheckout": 52
+      "amount": 52,
+      "airbnbCheckout": 66
     },
     {
       "date": "2027-07-08",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
-      "originalAmount": 46,
+      "originalAmount": 58,
       "discountPct": 10,
-      "amount": 41,
-      "airbnbCheckout": 52
+      "amount": 52,
+      "airbnbCheckout": 66
     },
     {
       "date": "2027-07-09",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
-      "originalAmount": 46,
+      "originalAmount": 58,
       "discountPct": 10,
-      "amount": 41,
-      "airbnbCheckout": 52
+      "amount": 52,
+      "airbnbCheckout": 66
     },
     {
       "date": "2027-07-10",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
-      "originalAmount": 46,
+      "originalAmount": 58,
       "discountPct": 10,
-      "amount": 41,
-      "airbnbCheckout": 52
+      "amount": 52,
+      "airbnbCheckout": 66
     },
     {
       "date": "2027-07-11",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
-      "originalAmount": 46,
+      "originalAmount": 58,
       "discountPct": 10,
-      "amount": 41,
-      "airbnbCheckout": 52
+      "amount": 52,
+      "airbnbCheckout": 66
     },
     {
       "date": "2027-07-12",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
-      "originalAmount": 46,
+      "originalAmount": 58,
       "discountPct": 10,
-      "amount": 41,
-      "airbnbCheckout": 52
+      "amount": 52,
+      "airbnbCheckout": 66
     },
     {
       "date": "2027-07-13",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 (22n, 1.95×) + July 2025 (30n, 1.27×)",
-      "originalAmount": 46,
+      "originalAmount": 58,
       "discountPct": 10,
-      "amount": 41,
-      "airbnbCheckout": 52
+      "amount": 52,
+      "airbnbCheckout": 66
     },
     {
       "date": "2027-07-14",
@@ -3508,160 +3508,160 @@
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 day 22 (1n, 1.95×) + July 2025 day 22 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 60,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 54,
+      "airbnbCheckout": 68
     },
     {
       "date": "2027-07-23",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 day 23 (1n, 1.95×) + July 2025 day 23 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 60,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 54,
+      "airbnbCheckout": 68
     },
     {
       "date": "2027-07-24",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 day 24 (1n, 1.95×) + July 2025 day 24 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 60,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 54,
+      "airbnbCheckout": 68
     },
     {
       "date": "2027-07-25",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 day 25 (1n, 1.95×) + July 2025 day 25 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 60,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 54,
+      "airbnbCheckout": 68
     },
     {
       "date": "2027-07-26",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 day 26 (1n, 1.95×) + July 2025 day 26 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 60,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 54,
+      "airbnbCheckout": 68
     },
     {
       "date": "2027-07-27",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 day 27 (1n, 1.95×) + July 2025 day 27 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 60,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 54,
+      "airbnbCheckout": 68
     },
     {
       "date": "2027-07-28",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 day 28 (1n, 1.95×) + July 2025 day 28 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 61,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 55,
+      "airbnbCheckout": 70
     },
     {
       "date": "2027-07-29",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 day 29 (1n, 1.95×) + July 2025 day 29 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 61,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 55,
+      "airbnbCheckout": 70
     },
     {
       "date": "2027-07-30",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 day 30 (1n, 1.95×) + July 2025 day 30 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 61,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 55,
+      "airbnbCheckout": 70
     },
     {
       "date": "2027-07-31",
       "currency": "EUR",
       "status": "open",
       "basis": "July 2026 day 31 (1n, 1.95×) + July 2025 day 31 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 61,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 55,
+      "airbnbCheckout": 70
     },
     {
       "date": "2027-08-01",
       "currency": "EUR",
       "status": "open",
       "basis": "August 2026 day 01 (1n, 1.95×) + August 2025 day 01 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 61,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 55,
+      "airbnbCheckout": 70
     },
     {
       "date": "2027-08-02",
       "currency": "EUR",
       "status": "blocked",
       "basis": "August 2026 day 02 (1n, 1.95×) + August 2025 day 02 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 61,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 55,
+      "airbnbCheckout": 70
     },
     {
       "date": "2027-08-03",
       "currency": "EUR",
       "status": "blocked",
       "basis": "August 2026 day 03 (1n, 1.95×) + August 2025 day 03 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 60,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 54,
+      "airbnbCheckout": 68
     },
     {
       "date": "2027-08-04",
       "currency": "EUR",
       "status": "blocked",
       "basis": "August 2026 day 04 (1n, 1.95×) + August 2025 day 04 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 60,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 54,
+      "airbnbCheckout": 68
     },
     {
       "date": "2027-08-05",
       "currency": "EUR",
       "status": "blocked",
       "basis": "August 2026 day 05 (1n, 1.95×) + August 2025 day 05 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 60,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 54,
+      "airbnbCheckout": 68
     },
     {
       "date": "2027-08-06",
       "currency": "EUR",
       "status": "blocked",
       "basis": "August 2026 day 06 (1n, 1.95×) + August 2025 day 06 (1n, 1.27×)",
-      "originalAmount": 29,
+      "originalAmount": 60,
       "discountPct": 10,
-      "amount": 26,
-      "airbnbCheckout": 33
+      "amount": 54,
+      "airbnbCheckout": 68
     }
   ]
 }
