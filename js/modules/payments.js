@@ -1646,10 +1646,16 @@ function openCSVImport() {
         // sharing a reused code (see historicNightMap's comment in
         // str-rates.js), and without this check the other one would be
         // wrongly marked paid/settled and its forecast frozen despite no
-        // such payout ever happening.
+        // such payout ever happening. Also excludes pay.id itself: when this
+        // row's own `existing` match (found via byAirbnbKey above) was still
+        // status:'pending' at the top of this import, it's captured in
+        // pendingByCode's pre-loop snapshot too — without this check it then
+        // "materializes" against itself, clobbering the paid write we just
+        // made with a stale, self-referencing materializedPaymentId and
+        // leaving the reservation with no real paid record at all.
         if (row.confirmationCode) {
           const pendings = (pendingByCode.get(row.confirmationCode) || [])
-            .filter(p => staysOverlap(p.airbnbCheckIn, p.airbnbCheckOut, row.checkIn, row.checkOut));
+            .filter(p => p.id !== pay.id && staysOverlap(p.airbnbCheckIn, p.airbnbCheckOut, row.checkIn, row.checkOut));
           for (const pending of pendings) {
             const pendingMonthKey = (pending.airbnbCheckIn || pending.date || '').slice(0, 7);
             upsert('payments', {
@@ -1662,12 +1668,18 @@ function openCSVImport() {
               freezeAirbnbForecastEntry(pending.propertyId, pendingMonthKey, pending.airbnbKey);
             }
           }
-          if (pendings.length) {
-            // Remove only the matched entries from each key's array, not the
-            // whole key — a genuinely different booking sharing this same
-            // reused code (see the comment above) must stay discoverable for
-            // any later row in this same import that's actually its match.
+          // Remove only the matched entries from each key's array, not the
+          // whole key — a genuinely different booking sharing this same
+          // reused code (see the comment above) must stay discoverable for
+          // any later row in this same import that's actually its match.
+          // Always purges pay.id too (even if pendings is empty): pay itself
+          // may still be sitting in pendingByCode's pre-loop snapshot (it was
+          // pending when that snapshot was built) — left in place, a later
+          // row sharing this code would find and re-materialize this now-paid
+          // record against itself, the same self-reference bug as above.
+          {
             const matchedIds = new Set(pendings.map(p => p.id));
+            matchedIds.add(pay.id);
             const removeMatched = key => {
               const arr = pendingByCode.get(key);
               if (!arr) return;
@@ -1675,6 +1687,7 @@ function openCSVImport() {
               if (remaining.length) pendingByCode.set(key, remaining); else pendingByCode.delete(key);
             };
             removeMatched(row.confirmationCode);
+            if (pay.airbnbRef) removeMatched(pay.airbnbRef);
             for (const pending of pendings) if (pending.airbnbRef) removeMatched(pending.airbnbRef);
           }
         }
@@ -1811,6 +1824,19 @@ function openCSVImport() {
           }
           continue;
         }
+
+        // An already-realized record (paid, or materialized into one) must
+        // never be dragged back to 'pending' by a later import of the
+        // upcoming-reservations report — Airbnb's export keeps listing a
+        // booking as upcoming right up until checkout, long after its actual
+        // payout (or an earlier duplicate's materialization) has already
+        // landed. Matching it here via byAirbnbKeyP/pendingByRefP (neither of
+        // which filters by status) and then hardcoding status:'pending' onto
+        // it below regresses its status while leaving its materializedPaymentId
+        // /materializedAt untouched (Object.assign only touches payFields'
+        // own keys) — producing a "pending zombie" that still points at a
+        // payout, and duplicating this reservation's row in Property Payments.
+        if (existing && existing.status !== 'pending') continue;
 
         const payFields = {
           amount: row.amount,
