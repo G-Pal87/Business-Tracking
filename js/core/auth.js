@@ -1,6 +1,6 @@
 // Auth: session management + login/setup screen
 import { state, setDb } from './state.js';
-import { el, input, formRow, button } from './ui.js';
+import { el, input, formRow, button, toast } from './ui.js';
 import { newId, upsert, listActive } from './data.js';
 import { unlockOnLogin, lockOnLogout, hasWrappedKeyConfigured, isUnlocked, setBootstrapDataKey, importDataKeyFromBase64 } from './crypto.js';
 import { recordSessionEvent } from './presence.js';
@@ -237,6 +237,13 @@ function renderUnlock(screen, user, done, onSwitchUser) {
       const result = await verifyPassword(password, user);
       if (!result.ok) { errEl.textContent = 'Incorrect password'; passwordI.value = ''; btn.disabled = false; return; }
       await unlockOnLogin(password);
+      // See the matching comment in doLogin below — a wrapped key existing on
+      // this device under a different user's password fails to unwrap
+      // silently otherwise, with nothing telling the user why every
+      // subsequent data read/write is broken.
+      if (!isUnlocked() && hasWrappedKeyConfigured()) {
+        toast('This device has an encryption key set up under a different user — paste the team’s key in Settings → Encryption to unlock your data here.', 'warning', 10000);
+      }
       done();
     } catch (e) { errEl.textContent = 'Unlock error'; btn.disabled = false; }
   };
@@ -292,6 +299,16 @@ function renderLogin(screen, resolve) {
       setSession(user);
       recordSessionEvent('login').catch(() => {});
       screen.remove();
+      // A wrapped key exists on this device (someone set encryption up here
+      // before) but this user's password couldn't unwrap it — it was wrapped
+      // under a DIFFERENT user's password. Previously this failed silently:
+      // login succeeded, but every subsequent data read/write throws
+      // NO_ENC_KEY with nothing telling the user why. The fix (pasting the
+      // team's key) already exists in Settings → Encryption; this just makes
+      // sure the user learns they need it, right when it matters.
+      if (!isUnlocked() && hasWrappedKeyConfigured()) {
+        toast('This device has an encryption key set up under a different user — paste the team’s key in Settings → Encryption to unlock your data here.', 'warning', 10000);
+      }
       resolve(state.session);
     } catch (e) { errEl.textContent = 'Sign in error'; btn.disabled = false; }
   };
@@ -356,6 +373,12 @@ function renderSetup(screen, resolve) {
       setSession(user);
       recordSessionEvent('login').catch(() => {});
       screen.remove();
+      // This device already has a key wrapped under a different password
+      // (e.g. an existing team member's) — see the matching comment in
+      // doLogin above for why this needs to be surfaced rather than left silent.
+      if (!isUnlocked() && hasWrappedKeyConfigured()) {
+        toast('This device has an encryption key set up under a different user — paste the team’s key in Settings → Encryption to unlock your data here.', 'warning', 10000);
+      }
       resolve(state.session);
     } catch (e) { errEl.textContent = 'Error creating account'; btn.disabled = false; }
   };
