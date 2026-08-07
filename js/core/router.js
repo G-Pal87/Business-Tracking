@@ -1,6 +1,7 @@
 // Hash-based router + module registry
 import { state, setRoute, subscribe } from './state.js';
 import * as charts from './charts.js';
+import { closeModal } from './ui.js';
 
 const modules = new Map();
 let currentModule = null;
@@ -54,6 +55,11 @@ function onHashChange() {
   // Destroy any Chart.js instances before their canvases are removed below.
   // Centralized here so a module with an incomplete destroy() can't leak charts.
   try { charts.destroyAll(); } catch (e) { console.error(e); }
+  // A modal lives on document.body, outside `container` — navigating away
+  // while one is open used to leave it visually stuck on top of the new
+  // page (blocking clicks via its overlay) along with its keydown listener,
+  // holding closures over the now-destroyed module's stale form state.
+  try { closeModal(); } catch (e) { console.error(e); }
   container.innerHTML = '';
   currentModule = mod;
   setRoute(mod.id);
