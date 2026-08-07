@@ -455,6 +455,12 @@ export function buildFilterBar(gF, opts, onChange) {
     showClient   = false,
     storagePrefix = 'ana',
     channelScope  = null,
+    // Optional hook for callers/sections that keep their own extra filter
+    // state alongside the shared owners/streams/props/clients (e.g. the
+    // Services section's local invoice-status filter). Reset invokes this
+    // after clearing its own state so that state gets cleared too. Defaults
+    // to a no-op so every existing caller is unaffected.
+    extraReset    = () => {},
   } = opts || {};
 
   // Compute available options using leave-one-out faceting & trim stale selections
@@ -547,6 +553,7 @@ export function buildFilterBar(gF, opts, onChange) {
       ['_owners', '_streams', '_props', '_clients'].forEach(k => {
         try { localStorage.removeItem(`btf:${storagePrefix}${k}`); } catch {}
       });
+      extraReset();
       onChange(createFilterState({ period: 'all' }));
     },
   }));

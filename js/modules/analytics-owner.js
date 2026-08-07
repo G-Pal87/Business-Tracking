@@ -87,11 +87,14 @@ function getData(start, end) {
   const invoices = listActive('invoices').filter(i =>
     i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mProperty(i)
   );
-  const annotatedInvoices = invoices.map(i => ({
-    ...i,
-    _resolvedOwner: i.owner || 'both',
-    _eur: toEUR(i.total, i.currency, i.issueDate)
-  }));
+  const annotatedInvoices = invoices.map(i => {
+    const prop = i.propertyId ? propMap.get(i.propertyId) : null;
+    return {
+      ...i,
+      _resolvedOwner: i.owner || prop?.owner || 'both',
+      _eur: toEUR(i.total, i.currency, i.issueDate)
+    };
+  });
 
   // Expenses (OpEx only for profit)
   const expenses = listActive('expenses').filter(e => {
@@ -472,12 +475,11 @@ function buildSettlementBody(data) {
     totNet >= 0 ? 'Portfolio profitable' : 'Portfolio at a loss'));
   body.appendChild(sgrid);
 
-  // Per-partner expense attribution breakdown
-  // Shared expenses (owner='both') → split 50/50 by share percentage
-  const youShareFraction  = totRev > 0 ? revSplit.you  / totRev : 0.5;
-  const ritaShareFraction = totRev > 0 ? revSplit.rita / totRev : 0.5;
-
-  // Partition expenses: partner-specific vs shared
+  // Per-partner expense attribution breakdown.
+  // Shared expenses (owner='both') must be split 50/50 here, matching exactly
+  // how expSplit/netSplit compute them via splitByOwner() — otherwise this
+  // table's own "Total Expenses" row (below) is derived differently than the
+  // "Net Profit" row right underneath it, and the two don't reconcile.
   const { annotatedExpenses } = data;
   let youDirectExp = 0, ritaDirectExp = 0, sharedExp = 0;
   for (const e of annotatedExpenses) {
@@ -486,9 +488,10 @@ function buildSettlementBody(data) {
     else if (owner === 'rita') ritaDirectExp += e._eur;
     else                       sharedExp     += e._eur;
   }
-  // Attribute shared expenses proportionally to each partner's revenue share
-  const youSharedAlloc  = sharedExp * youShareFraction;
-  const ritaSharedAlloc = sharedExp * ritaShareFraction;
+  // 50/50, same as splitByOwner's 'both' handling — not proportional to
+  // revenue share, so this reconciles with netSplit (revSplit − expSplit).
+  const youSharedAlloc  = sharedExp * 0.5;
+  const ritaSharedAlloc = sharedExp * 0.5;
   const youTotalExp  = youDirectExp  + youSharedAlloc;
   const ritaTotalExp = ritaDirectExp + ritaSharedAlloc;
 
@@ -651,7 +654,11 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
     }
     const prop  = propMap.get(propId);
     if (!prop)  continue;
-    const owner = prop.owner || 'both';
+    // Use the record's own _resolvedOwner (payments/invoices already fall back
+    // to the linked property's owner in getData()) rather than re-deriving from
+    // the property directly — otherwise this chart can disagree with the KPIs/
+    // Settlement section's totals for the exact same records.
+    const owner = r._resolvedOwner || 'both';
     const e     = propRevs.get(propId) || { name: prop.name, owner, youRev: 0, ritaRev: 0 };
     const half  = r._eur * 0.5;
     if (owner === 'you') { e.youRev += r._eur; } else if (owner === 'rita') { e.ritaRev += r._eur; } else { e.youRev += half; e.ritaRev += half; }
@@ -663,7 +670,9 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
     if (!propId) continue;
     const prop  = propMap.get(propId);
     if (!prop)  continue;
-    const owner = prop.owner || 'both';
+    // Same reasoning as the revenue loop above — use the expense's own
+    // _resolvedOwner instead of re-deriving from the property.
+    const owner = e._resolvedOwner || 'both';
     const entry = propExps.get(propId) || { youExp: 0, ritaExp: 0 };
     const half  = e._eur * 0.5;
     if (owner === 'you') { entry.youExp += e._eur; } else if (owner === 'rita') { entry.ritaExp += e._eur; } else { entry.youExp += half; entry.ritaExp += half; }

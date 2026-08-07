@@ -51,6 +51,22 @@ export default {
 };
 
 // ── Data ──────────────────────────────────────────────────────────────────────
+// Zeroed shape matching getPersonData's return, used when a person can't be
+// safely resolved to a people record (see the legacyKey/name resolution below).
+function emptyPersonData() {
+  return {
+    salary: 0, salaryExps: [],
+    gesyTotal: 0, gesyExps: [],
+    reimb: 0, reimbExps: [],
+    strIncomeExps: [], strIncomeTotal: 0,
+    piExps: [], piExpTotal: 0,
+    ownerRentTotal: 0, ownerRentByMonth: {}, companyProps: [],
+    grossDivs: 0, sdcAmount: 0, netDivs: 0, divRecords: [],
+    personalIncome: 0, personalPayments: [], personalProps: [], personalByProp: new Map(),
+    fromCompany: 0, total: 0
+  };
+}
+
 function getPersonData(person, start, end, months) {
   const inRange    = d => d && d >= start && d <= end;
   const ownerKeys  = person === 'you' ? ['you', 'both'] : ['rita', 'both'];
@@ -61,8 +77,22 @@ function getPersonData(person, start, end, months) {
   const activePeople = (state.db.people || []).filter(p =>
     !p.deletedAt && p.active !== false && ['partner', 'director'].includes(p.role)
   );
+  // Resolve by legacyKey first (authoritative). If nothing matches, do NOT
+  // guess by array position — that silently swaps Giorgos's and Rita's income
+  // whenever people records exist without legacyKey set. Fall back to a name
+  // match instead, and if that's also ambiguous, bail out with an empty
+  // result rather than misattributing one partner's income to the other.
+  const nameNeedle   = person === 'you' ? 'giorgos' : 'rita';
   const personRecord = activePeople.find(p => p.legacyKey === person) ||
-                       activePeople[person === 'you' ? 0 : 1];
+                       activePeople.find(p => (p.name || '').toLowerCase().includes(nameNeedle));
+  if (activePeople.length > 0 && !personRecord) {
+    console.warn(
+      `getPersonData: could not resolve "${person}" to a people record — no legacyKey match and no ` +
+      `name containing "${nameNeedle}" among active partner/director records. Returning empty data ` +
+      `instead of guessing by array position, to avoid misattributing income between partners.`
+    );
+    return emptyPersonData();
+  }
   const personId  = personRecord?.id;
   // personKey is the value getPeopleOwners stores as select option value
   const personKey = activePeople.length === 0 ? person : (personRecord?.legacyKey || personRecord?.id || person);
@@ -102,11 +132,14 @@ function getPersonData(person, start, end, months) {
   const piExpTotal = piExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
   // Owner rent — derived from ownerRentHistory, rate-per-month aware
+  // Don't exclude currently-sold properties here — that would make the
+  // per-month `soldDate` guard below dead code for them, dropping their
+  // pre-sale rent from the whole period instead of just the months after
+  // the sale. The inner loop already stops counting once soldDate is passed.
   const companyProps = listActive('properties').filter(p =>
     (p.channel === 'company' || !p.channel) &&
     ownerKeys.includes(p.owner || 'both') &&
-    (p.ownerRentHistory || []).length > 0 &&
-    p.status !== 'sold'
+    (p.ownerRentHistory || []).length > 0
   );
   const ownerRentByMonth = {};
   let ownerRentTotal = 0;

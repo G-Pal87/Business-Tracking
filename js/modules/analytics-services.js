@@ -16,6 +16,17 @@ import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBa
 // Invoice Status has no Revenue-side equivalent, so it stays local.
 let gStatusFilter = new Set();
 
+// Clears this section's local invoice-status filter (state + its persisted
+// localStorage key). This section has no buildFilterBar() call of its own —
+// it's embedded in the host dashboard's page (see buildServicesSection below)
+// and shares that page's filter bar — so the host's buildFilterBar() Reset
+// button needs to invoke this via the `extraReset` hook (see
+// analytics-filters.js) for Reset to actually clear this filter too.
+export function resetServiceStatusFilter() {
+  gStatusFilter.clear();
+  try { localStorage.removeItem('btf:svc_statuses'); } catch {}
+}
+
 const CHART_IDS     = ['svc-client-bar', 'svc-month-bar', 'svc-status-donut', 'svc-outstanding-bar', 'svc-aging-bar'];
 const STATUS_COLORS = { draft: '#8b93b0', sent: '#f59e0b', paid: '#10b981', overdue: '#ef4444' };
 
