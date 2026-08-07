@@ -39,6 +39,7 @@ function rentForMonth(history, monthKey) {
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
+let gScope = 'all'; // 'all' | 'company' | 'personal'
 
 // ── Module export ─────────────────────────────────────────────────────────────
 export default {
@@ -55,6 +56,7 @@ export default {
 // safely resolved to a people record (see the legacyKey/name resolution below).
 function emptyPersonData() {
   return {
+    scope: gScope,
     salary: 0, salaryExps: [],
     gesyTotal: 0, gesyExps: [],
     reimb: 0, reimbExps: [],
@@ -178,19 +180,35 @@ function getPersonData(person, start, end, months) {
   }
   const personalIncome = [...personalByProp.values()].reduce((s, v) => s + v, 0);
 
-  const fromCompany = salary + ownerRentTotal + reimb + netDivs + strIncomeTotal + piExpTotal;
-  const total = fromCompany + personalIncome;
+  const grossFromCompany = salary + ownerRentTotal + reimb + netDivs + strIncomeTotal + piExpTotal;
+
+  // Scope gate — 'company' shows only business-sourced income, 'personal' only
+  // personal-property income, 'all' (default) shows both combined, matching
+  // the Revenue dashboard's Scope toggle. Zeroing every field in the excluded
+  // group (not just the fromCompany/personalIncome aggregates) keeps every
+  // downstream consumer — KPI cards, breakdown tables, monthly charts,
+  // insights — automatically consistent without each one re-checking gScope.
+  const showCompany  = gScope !== 'personal';
+  const showPersonal = gScope !== 'company';
 
   return {
-    salary, salaryExps,
-    gesyTotal, gesyExps,
-    reimb, reimbExps,
-    strIncomeExps, strIncomeTotal,
-    piExps, piExpTotal,
-    ownerRentTotal, ownerRentByMonth, companyProps,
-    grossDivs, sdcAmount, netDivs, divRecords,
-    personalIncome, personalPayments, personalProps, personalByProp,
-    fromCompany, total
+    scope: gScope,
+    salary:      showCompany ? salary : 0,           salaryExps:     showCompany ? salaryExps : [],
+    gesyTotal:   showCompany ? gesyTotal : 0,         gesyExps:       showCompany ? gesyExps : [],
+    reimb:       showCompany ? reimb : 0,             reimbExps:      showCompany ? reimbExps : [],
+    strIncomeExps: showCompany ? strIncomeExps : [],  strIncomeTotal: showCompany ? strIncomeTotal : 0,
+    piExps:      showCompany ? piExps : [],           piExpTotal:     showCompany ? piExpTotal : 0,
+    ownerRentTotal:   showCompany ? ownerRentTotal : 0,
+    ownerRentByMonth: showCompany ? ownerRentByMonth : {},
+    companyProps:     showCompany ? companyProps : [],
+    grossDivs:   showCompany ? grossDivs : 0,         sdcAmount: showCompany ? sdcAmount : 0,
+    netDivs:     showCompany ? netDivs : 0,           divRecords: showCompany ? divRecords : [],
+    personalIncome:   showPersonal ? personalIncome : 0,
+    personalPayments: showPersonal ? personalPayments : [],
+    personalProps:    showPersonal ? personalProps : [],
+    personalByProp:   showPersonal ? personalByProp : new Map(),
+    fromCompany: showCompany ? grossFromCompany : 0,
+    total: (showCompany ? grossFromCompany : 0) + (showPersonal ? personalIncome : 0)
   };
 }
 
@@ -284,20 +302,33 @@ function showPersonModal(label, data) {
     { label: 'From Company',      value: formatEUR(data.fromCompany) },
     { label: 'Personal Properties', value: formatEUR(data.personalIncome) }
   ], 3));
-  body.appendChild(mkSectionLabel('Breakdown'));
-  body.appendChild(mkModalTable(
-    ['Source', 'Amount', 'Notes'],
-    [
-      ['Director Salary',             formatEUR(data.salary),          `${data.salaryExps.length} expense records`],
-      ['Property Rent (owner)',        formatEUR(data.ownerRentTotal),  `${data.companyProps.length} company-operated properties`],
-      ['Reimbursements',               formatEUR(data.reimb),           `${data.reimbExps.length} records`],
-      ['STR Income',                   formatEUR(data.strIncomeTotal),  data.strIncomeExps.length > 0 ? `${data.strIncomeExps.length} STR fee records` : 'None'],
-      ['Other Personal Income',        formatEUR(data.piExpTotal),      data.piExps.length > 0 ? `${data.piExps.length} linked expenses` : 'None'],
-      ['Dividends (net SDC)',          formatEUR(data.netDivs),         data.grossDivs > 0 ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}` : 'No dividends'],
-      ['Personal Properties',          formatEUR(data.personalIncome),  `${data.personalPayments.length} payments`],
-    ],
-    { highlight: 1 }
-  ));
+  // Grouped into the same two buckets as the summary boxes above (and as
+  // buildPersonColumn's "From Company" / "Personal Properties" sections) —
+  // a flat list mixing company-sourced and personal-property rows together
+  // was the source of "is this business or personal income?" confusion.
+  if (data.scope !== 'personal') {
+    body.appendChild(mkSectionLabel('From Company'));
+    body.appendChild(mkModalTable(
+      ['Source', 'Amount', 'Notes'],
+      [
+        ['Director Salary',             formatEUR(data.salary),          `${data.salaryExps.length} expense records`],
+        ['Property Rent (owner)',        formatEUR(data.ownerRentTotal),  `${data.companyProps.length} company-operated properties`],
+        ['Reimbursements',               formatEUR(data.reimb),           `${data.reimbExps.length} records`],
+        ['STR Income',                   formatEUR(data.strIncomeTotal),  data.strIncomeExps.length > 0 ? `${data.strIncomeExps.length} STR fee records` : 'None'],
+        ['Other Personal Income',        formatEUR(data.piExpTotal),      data.piExps.length > 0 ? `${data.piExps.length} linked expenses` : 'None'],
+        ['Dividends (net SDC)',          formatEUR(data.netDivs),         data.grossDivs > 0 ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}` : 'No dividends'],
+      ],
+      { highlight: 1 }
+    ));
+  }
+  if (data.scope !== 'company') {
+    body.appendChild(mkSectionLabel('Personal Properties'));
+    body.appendChild(mkModalTable(
+      ['Source', 'Amount', 'Notes'],
+      [['Personal Properties', formatEUR(data.personalIncome), `${data.personalPayments.length} payments`]],
+      { highlight: 1 }
+    ));
+  }
   if (data.gesyTotal > 0) {
     body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);padding:4px 0' },
       `ℹ Social contributions (GESY) paid by company: ${formatEUR(data.gesyTotal)} — employer cost, not personal income`
@@ -324,18 +355,28 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
       { label: 'Combined', value: formatEUR(combined) }
     ], 3));
   }
-  body.appendChild(mkSectionLabel('Combined Breakdown'));
-  body.appendChild(mkModalTable(
-    ['Source', YOU_LABEL, RITA_LABEL, 'Combined'],
-    [
-      ['Director Salary',       formatEUR(youData.salary),         formatEUR(ritaData.salary),         formatEUR(youData.salary + ritaData.salary)],
-      ['Property Rent (Owner)', formatEUR(youData.ownerRentTotal), formatEUR(ritaData.ownerRentTotal), formatEUR(youData.ownerRentTotal + ritaData.ownerRentTotal)],
-      ['Reimbursements',        formatEUR(youData.reimb),          formatEUR(ritaData.reimb),          formatEUR(youData.reimb + ritaData.reimb)],
-      ['Dividends (Net SDC)',   formatEUR(youData.netDivs),        formatEUR(ritaData.netDivs),        formatEUR(youData.netDivs + ritaData.netDivs)],
-      ['Personal Properties',   formatEUR(youData.personalIncome), formatEUR(ritaData.personalIncome), formatEUR(youData.personalIncome + ritaData.personalIncome)],
-    ],
-    { highlight: 3 }
-  ));
+  // Grouped Company/Personal, same rationale as showPersonModal above.
+  if (youData.scope !== 'personal') {
+    body.appendChild(mkSectionLabel('From Company'));
+    body.appendChild(mkModalTable(
+      ['Source', YOU_LABEL, RITA_LABEL, 'Combined'],
+      [
+        ['Director Salary',       formatEUR(youData.salary),         formatEUR(ritaData.salary),         formatEUR(youData.salary + ritaData.salary)],
+        ['Property Rent (Owner)', formatEUR(youData.ownerRentTotal), formatEUR(ritaData.ownerRentTotal), formatEUR(youData.ownerRentTotal + ritaData.ownerRentTotal)],
+        ['Reimbursements',        formatEUR(youData.reimb),          formatEUR(ritaData.reimb),          formatEUR(youData.reimb + ritaData.reimb)],
+        ['Dividends (Net SDC)',   formatEUR(youData.netDivs),        formatEUR(ritaData.netDivs),        formatEUR(youData.netDivs + ritaData.netDivs)],
+      ],
+      { highlight: 3 }
+    ));
+  }
+  if (youData.scope !== 'company') {
+    body.appendChild(mkSectionLabel('Personal Properties'));
+    body.appendChild(mkModalTable(
+      ['Source', YOU_LABEL, RITA_LABEL, 'Combined'],
+      [['Personal Properties', formatEUR(youData.personalIncome), formatEUR(ritaData.personalIncome), formatEUR(youData.personalIncome + ritaData.personalIncome)]],
+      { highlight: 3 }
+    ));
+  }
   openModal({ title: 'Combined Gross Income', body, large: true });
 }
 
@@ -698,7 +739,10 @@ function buildPersonColumn(label, color, data, months, cmpData) {
 
   // ── From Company ────────────────────────────────────────────────────────────
   col.appendChild(mkSectionLabel('From Company'));
-
+  if (data.scope === 'personal') {
+    col.appendChild(el('div', { style: 'font-size:11px;color:var(--text-dim);font-style:italic;padding:2px 0 8px' },
+      'Hidden — scope set to Personal only'));
+  } else {
   col.appendChild(makeRow(
     'Director Salary', formatEUR(data.salary),
     data.salaryExps.length > 0 || true,
@@ -859,10 +903,14 @@ function buildPersonColumn(label, color, data, months, cmpData) {
   compSub.appendChild(el('span', { style: 'font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em' }, 'Subtotal Company'));
   compSub.appendChild(el('span', { style: 'font-size:14px;font-weight:700;color:var(--text)' }, formatEUR(data.fromCompany)));
   col.appendChild(compSub);
+  } // end From Company scope gate
 
   // ── Personal Properties ─────────────────────────────────────────────────────
-  if (data.personalProps.length > 0 || true) {
-    col.appendChild(mkSectionLabel('Personal Properties'));
+  col.appendChild(mkSectionLabel('Personal Properties'));
+  if (data.scope === 'company') {
+    col.appendChild(el('div', { style: 'font-size:11px;color:var(--text-dim);font-style:italic;padding:2px 0 8px' },
+      'Hidden — scope set to Company only'));
+  } else {
     col.appendChild(makeRow(
       'Rental Income', formatEUR(data.personalIncome),
       data.personalPayments.length > 0 || data.personalProps.length > 0,
@@ -1139,6 +1187,27 @@ function buildView() {
     { showOwner: false, showStream: false, showProperty: false, storagePrefix: 'ana_personal' },
     (newGF) => { if (newGF) gF = newGF; rebuildView(); }
   ));
+
+  // Scope toggle (All / Company only / Personal only) — matches the Revenue
+  // dashboard's Scope control, letting business-sourced income (salary, owner
+  // rent, reimbursements, dividends, flagged STR/other income) be isolated
+  // from personal-channel property income, or vice versa.
+  const scopeBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:12px' });
+  scopeBar.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)' }, 'Scope'));
+  for (const [val, label] of [['all', 'All'], ['company', 'Company only'], ['personal', 'Personal only']]) {
+    const isActive = gScope === val;
+    const btn = el('button', {
+      style: [
+        'padding:4px 14px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer;transition:all 120ms',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (gScope !== val) { gScope = val; rebuildView(); } };
+    scopeBar.appendChild(btn);
+  }
+  wrap.appendChild(scopeBar);
 
   const curRange = getCurrentPeriodRange(gF);
   const cmpRange = getComparisonRange(gF, curRange);
