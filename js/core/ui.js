@@ -294,8 +294,15 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
   searchWrap.appendChild(searchInput);
   tableWrap.parentNode.insertBefore(searchWrap, tableWrap);
 
+  // Matches whole-string date-like text (anchored) so a month name only
+  // counts as a date when it's actually shaped like one — e.g. "Aug 7, 2026"
+  // (fmtDate's format) or "Aug 26" (monthLabel's format) — and NOT when a
+  // month name merely appears inside ordinary text such as "May Street
+  // Villa" or "March 2024 rent" (trailing/leading words break the anchor).
+  const DATE_LIKE_RE = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{2,4}|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s*\d{2,4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{2,4})$/i;
+
   const parseCell = txt => {
-    if ((/^\d{4}-\d{2}/.test(txt) || (/[a-zA-Z]/.test(txt) && txt.length >= 6)) && !isNaN(new Date(txt)))
+    if ((/^\d{4}-\d{2}/.test(txt) || DATE_LIKE_RE.test(txt.trim())) && !isNaN(new Date(txt)))
       return { t: 'd', v: new Date(txt).getTime() };
     // Only treat as numeric when the cell is a plain number, currency amount,
     // or percentage (e.g. "€1,500", "HUF 50,000", "7.0%", "-4.5%") — not when
@@ -394,6 +401,16 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
 // storageKey: optional localStorage key for filter persistence
 //
 // The returned element has a .reset() method that restores the "show all" state.
+// Sentinel stashed inside filterSet to mean "the user explicitly unchecked
+// every option" (show NOTHING), as distinct from an empty Set meaning "no
+// filter has ever been applied" (show all) — the convention every caller of
+// this widget relies on. It can never collide with a real item value (those
+// come from app data — ids, enum keys, years, etc.) and callers' existing
+// `filterSet.has(realValue)` checks simply never match it, so an "explicit
+// none" filterSet correctly excludes every real row without requiring any
+// caller-side changes.
+const MS_NONE_SENTINEL = ' __ms_none__';
+
 export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, storageKey = null) {
   // ── Restore persisted state into the Set before building the UI ────────────
   if (storageKey) {
@@ -451,7 +468,8 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
     allChk.checked       = n === chks.length;
     allChk.indeterminate = n > 0 && n < chks.length;
     trigLabel.textContent =
-      n === chks.length || n === 0 ? allLabel
+      n === chks.length ? allLabel
+      : n === 0 ? 'None selected'
       : n === 1 ? (items.find(i => i.value === sel[0].dataset.value)?.label || '')
       : `${n} selected`;
   };
@@ -462,15 +480,26 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
     refreshUI();
     const sel = chks.filter(c => c.checked);
     filterSet.clear();
-    if (sel.length > 0 && sel.length < chks.length) sel.forEach(c => filterSet.add(c.dataset.value));
+    if (chks.length > 0 && sel.length === 0) {
+      // Every box explicitly unchecked by the user — must filter out
+      // everything, not fall back to "no filter" just because the Set is
+      // conventionally empty-means-all. The sentinel keeps the Set non-empty
+      // (so callers' `.size` checks see an active filter) while never
+      // matching any real value (so `.has(realValue)` is always false).
+      filterSet.add(MS_NONE_SENTINEL);
+    } else if (sel.length > 0 && sel.length < chks.length) {
+      sel.forEach(c => filterSet.add(c.dataset.value));
+    }
   };
 
   // Builds (or rebuilds) the item rows in the menu
   const buildRows = (newItems) => {
     while (menu.children.length > 1) menu.removeChild(menu.lastChild);
-    // Prune selections that no longer exist in the new item set
+    // Prune selections that no longer exist in the new item set (but keep
+    // the "explicit none" sentinel — it isn't, and never should be, one of
+    // the real item values being pruned here).
     const newVals = new Set(newItems.map(i => i.value));
-    for (const v of [...filterSet]) { if (!newVals.has(v)) filterSet.delete(v); }
+    for (const v of [...filterSet]) { if (v !== MS_NONE_SENTINEL && !newVals.has(v)) filterSet.delete(v); }
     items = newItems;
     chks  = newItems.map(({ value, label, css, color }) => {
       const chk         = el('input', { type: 'checkbox' });

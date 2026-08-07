@@ -5,10 +5,15 @@ export function parseICal(text) {
   // Unfold continuation lines (RFC 5545)
   const unfolded = [];
   for (const l of lines) {
-    if (l.startsWith(' ') || l.startsWith('\t')) {
+    if ((l.startsWith(' ') || l.startsWith('\t')) && unfolded.length > 0) {
       unfolded[unfolded.length - 1] += l.slice(1);
     } else {
-      unfolded.push(l);
+      // Either a normal new line, or a continuation with nothing to fold
+      // into (an invalid leading continuation per RFC 5545 — there's no
+      // prior line yet). `unfolded[-1] += …` would silently write to a
+      // non-index property, dropping the content; push it as its own entry
+      // instead so it's at least preserved rather than lost.
+      unfolded.push(l.startsWith(' ') || l.startsWith('\t') ? l.slice(1) : l);
     }
   }
   let current = null;
@@ -34,8 +39,28 @@ function parseICalDate(str) {
   if (/^\d{8}$/.test(str)) {
     return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
   }
-  if (/^\d{8}T\d{6}Z?$/.test(str)) {
-    return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
+  const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/.exec(str);
+  if (m) {
+    const [, y, mo, d, h, mi, s, z] = m;
+    if (z) {
+      // Trailing "Z" marks a real UTC instant. Slicing the digits directly
+      // (as below) reads the UTC calendar date, which is the WRONG local day
+      // for any viewer whose offset carries the instant across midnight —
+      // e.g. 20260810T220000Z (10pm UTC) is already Aug 11 for a UTC+3
+      // viewer. Build the actual UTC instant and let the Date object convert
+      // it to the viewer's local calendar date.
+      const dt = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s));
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    }
+    // No "Z" — a "floating" local time with no timezone attached. This is
+    // what Airbnb's own iCal exports actually use (see file/module comments
+    // above), so there is no UTC instant to convert: reading the digits
+    // straight off is already correct and must not be routed through
+    // Date/UTC math, which would introduce a spurious shift for this,
+    // the common, case. (A TZID parameter, if present, was already discarded
+    // by the caller — see `rawKey.split(';')[0]` in parseICal — so it never
+    // reaches this function; there is no usable timezone info to convert by.)
+    return `${y}-${mo}-${d}`;
   }
   return str;
 }
@@ -52,7 +77,7 @@ export function nights(startStr, endStr) {
 // availability syncs — only the latter should ever be expected to have no
 // matching payment.
 export function isOwnerBlockSummary(summary) {
-  return /not available|unavailable|\bblocked\b|closed/i.test(summary || '');
+  return /not available|unavailable|\bblocked\b|\bclosed\b/i.test(summary || '');
 }
 
 // Merge freshly-fetched blocks with the previous snapshot so blocks that have
