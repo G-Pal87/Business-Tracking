@@ -30,12 +30,27 @@ function getDividendSettings() {
 
 function getRelatedRecordCount(person) {
   const key = person.legacyKey || person.id;
+  // Dividends always store the literal 'giorgos'/'rita' recipient strings
+  // (see analytics-personal.js's `person === 'you' ? 'giorgos' : 'rita'`
+  // translation), while Giorgos's own legacyKey is 'you' — translate the
+  // same way here so his dividend count isn't silently always 0.
+  const dividendKey = key === 'you' ? 'giorgos' : key;
   const counts = {
     properties: listActive('properties').filter(r => r.owner === key).length,
     invoices:   listActive('invoices').filter(r => r.owner === key).length,
     clients:    listActive('clients').filter(r => r.owner === key).length,
     payments:   listActivePayments().filter(r => r.owner === key).length,
-    dividends:  listActive('dividends').filter(r => r.recipient === key).length,
+    // Expenses use the same owner-key convention as properties/invoices/etc.
+    // for property-linked records (properties.js's generateOwnerRentExpenses)
+    // and separately a personId field for person-associated expenses
+    // (expenses.js) — both use getPeopleOwners()'s legacyKey||id values, so
+    // both are checked here.
+    expenses:   listActive('expenses').filter(r => r.owner === key || r.personId === key).length,
+    dividends:  listActive('dividends').filter(r => r.recipient === dividendKey).length,
+    // Time-off engagements always store the person's real db id (see
+    // time-off.js's ensureDefaultEngagement/openEngagementForm), not the
+    // legacyKey||id convention the fields above use.
+    engagements: (state.db.settings?.engagements || []).filter(en => en.personId === person.id).length,
   };
   const total = Object.values(counts).reduce((s, v) => s + v, 0);
   return { total, counts };

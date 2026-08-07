@@ -301,6 +301,20 @@ function openBatchesModal(item, onUpdate) {
           openBatchEditForm(it, b, () => { onUpdate?.(); });
         }}));
         bActs.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
+          // Block outright rather than warn-and-proceed, matching the house
+          // style for "still referenced" deletes elsewhere (see vendors.js's/
+          // tenants.js's/clients.js's "Cannot delete — N linked" toasts). A
+          // batch consumed by fifoDeduct is named in an active expense's
+          // inventoryBatches; if it's deleted here, restoreInventoryStock
+          // (core/data.js) can no longer find it by id to credit back the
+          // consumed qty if that expense is later deleted, silently losing stock.
+          const linkedCount = listActive('expenses')
+            .filter(e => (e.inventoryBatches || []).some(ib => ib.batchId === b.id))
+            .length;
+          if (linkedCount) {
+            toast(`Cannot delete — ${linkedCount} expense(s) consumed stock from this batch.`, 'danger', 5000);
+            return;
+          }
           const ok = await confirmDialog('Delete this batch?', { danger: true, okLabel: 'Delete' });
           if (!ok) return;
           const fresh = byId('inventory', it.id);
