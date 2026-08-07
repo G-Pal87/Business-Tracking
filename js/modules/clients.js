@@ -330,6 +330,13 @@ export function openDetail(id) {
     if (invCount) { toast(`Cannot delete — ${invCount} invoice(s) are linked to this client.`, 'danger', 5000); return; }
     const ok = await confirmDialog(`Delete client "${c.name}"?`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
+    // Best-effort cleanup of GitHub-hosted documents — one failed deletion
+    // shouldn't block the others or the record's own soft-delete.
+    for (const d of (c.documents || [])) {
+      if (!d.path) continue;
+      try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
+      catch (e) { console.warn(`[Client delete] could not remove document ${d.path}:`, e); }
+    }
     softDelete('clients', c.id);
     toast('Deleted', 'success');
     closeModal(); setTimeout(() => navigate('clients'), 200);
