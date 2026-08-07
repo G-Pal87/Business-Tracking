@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-07T15:12:20.611Z",
+  "generatedAt": "2026-08-07T15:12:40.207Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -3606,7 +3606,7 @@
     {
       "date": "2027-08-01",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "August 2026 day 01 (1n, 1.95×) + August 2025 day 01 (1n, 1.27×)",
       "originalAmount": 29,
       "discountPct": 10,
