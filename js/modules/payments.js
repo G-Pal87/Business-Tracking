@@ -1444,6 +1444,28 @@ function openCSVImport() {
     // to confirm a same-confirmationCode match is genuinely the same stay.
     const staysOverlap = (ci1, co1, ci2, co2) => !!(ci1 && co1 && ci2 && co2 && ci1 < co2 && ci2 < co1);
 
+    // Cheap filename-convention guard, checked before the heavier data-based
+    // wrongSlotWarning below (and before the file is even parsed). Airbnb's
+    // own exports are named "airbnb_pending....csv" for future/upcoming
+    // payouts and "airbnb_....csv" (never containing "pending") for
+    // completed ones — a filename that doesn't match the slot it's being
+    // dropped into is worth a prompt even before checking its contents.
+    function filenameSlotWarning(fileName, { expectPending }) {
+      const name = (fileName || '').toLowerCase();
+      const looksPending = name.includes('airbnb_pending');
+      const looksAirbnb  = name.includes('airbnb');
+      if (!looksAirbnb) {
+        return `"${fileName}" doesn't look like an Airbnb export by name (expected to start with "airbnb_"${expectPending ? ', e.g. "airbnb_pending.csv"' : ''}). Import it as ${expectPending ? 'Pending' : 'Completed'} anyway?`;
+      }
+      if (expectPending && !looksPending) {
+        return `"${fileName}" doesn't match the usual "airbnb_pending...csv" naming for Pending exports. Import it as Pending anyway?`;
+      }
+      if (!expectPending && looksPending) {
+        return `"${fileName}" is named like a Pending export ("airbnb_pending"), not a Completed one. Import it as Completed anyway?`;
+      }
+      return null;
+    }
+
     // Heuristic guard against a Completed export landing in the Pending slot,
     // or vice versa — that mistake doesn't fail loudly: a Completed file fed
     // into Pending auto-cancels every currently-upcoming booking it doesn't
@@ -1482,6 +1504,12 @@ function openCSVImport() {
     // ── Completed CSV (airbnb_.csv): full sync / overwrite ──────────────────
     const completedFile = completedFileI.files?.[0];
     completedBlock: if (completedFile) {
+      const filenameMsg = filenameSlotWarning(completedFile.name, { expectPending: false });
+      if (filenameMsg && !(await confirmDialog(filenameMsg, { danger: true, okLabel: 'Import Anyway' }))) {
+        toast('Completed CSV import skipped', 'warning');
+        break completedBlock;
+      }
+
       const text = await completedFile.text();
       const rows = mergeReservationRows(parseAirbnbCSV(text));
 
@@ -1656,6 +1684,12 @@ function openCSVImport() {
     // ── Pending CSV (airbnb_pending.csv): upsert + always sync forecast ────
     const pendingFile = pendingFileI.files?.[0];
     pendingBlock: if (pendingFile) {
+      const filenameMsg = filenameSlotWarning(pendingFile.name, { expectPending: true });
+      if (filenameMsg && !(await confirmDialog(filenameMsg, { danger: true, okLabel: 'Import Anyway' }))) {
+        toast('Pending CSV import skipped', 'warning');
+        break pendingBlock;
+      }
+
       const text = await pendingFile.text();
       const rows = mergeReservationRows(parseAirbnbCSV(text));
 
