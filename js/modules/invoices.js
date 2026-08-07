@@ -258,7 +258,11 @@ async function downloadInvoicesAsZip(invoices, zipFilename) {
   let ok = 0, failed = 0;
 
   for (const inv of invoices) {
-    const filename = `${(inv.number || inv.id).replace(/[/\\:*?"<>|]/g, '_')}.pdf`;
+    // Use the same canonical name as single-invoice download/PDF filenames
+    // (number_CLIENT_DDMMYY) rather than the bare invoice number — invoice
+    // numbers reset each year, so "1.pdf" from 2025 and "1.pdf" from 2026
+    // would otherwise collide inside the same archive.
+    const filename = `${invoicePdfCanonicalName(inv)}.pdf`;
     try {
       const blob = await resolveInvoiceBlob(inv);
       zip.file(filename, blob);
@@ -365,7 +369,11 @@ function build() {
     if (!count) return;
     const ok = await confirmDeleteTwice(`${count} invoice(s)`);
     if (!ok) return;
-    for (const id of [...selected]) softDelete('invoices', id);
+    for (const id of [...selected]) {
+      const inv = byId('invoices', id);
+      if (inv) { try { await deleteInvoiceFile(inv); } catch { /* best-effort */ } }
+      softDelete('invoices', id);
+    }
     selected.clear();
     toast(`Deleted ${count} invoice(s)`, 'success');
     renderTable();
@@ -560,7 +568,13 @@ function build() {
       actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async (e) => {
         e.stopPropagation();
         const ok = await confirmDeleteTwice(r.number || 'this invoice');
-        if (ok) { _invStatCache = new Map(); softDelete('invoices', r.id); toast('Deleted', 'success'); renderTable(); }
+        if (ok) {
+          _invStatCache = new Map();
+          try { await deleteInvoiceFile(r); } catch { /* best-effort */ }
+          softDelete('invoices', r.id);
+          toast('Deleted', 'success');
+          renderTable();
+        }
       }}));
       tr.appendChild(actions);
       tr.onclick = () => openPreview(r.id);
@@ -614,8 +628,11 @@ function sanitizeClientName(name) {
 }
 
 function nextInvoiceSequence(year, excludeId) {
+  // Scans ALL invoices for the year, including soft-deleted ones — otherwise
+  // deleting the highest-numbered invoice of a year would let its number be
+  // reissued (a duplicate legal invoice number).
   let max = 0;
-  for (const inv of listActive('invoices')) {
+  for (const inv of (state.db.invoices || [])) {
     if (inv.id === excludeId) continue;
     if ((inv.issueDate || '').startsWith(year) && inv.number) {
       const n = parseInt(inv.number.split('_')[0], 10);
@@ -745,7 +762,11 @@ export function openBuilder(existing, { onSaved } = {}) {
           li.description = descI.value;
           li.quantity = Number(qtyI.value) || 0;
           li.unit = unitS.value;
-          li.rate = Number(rateI.value) || 0;
+          // Round to 2 decimals at input time so the stored rate always matches
+          // what's displayed (formatMoney rounds to 2dp) — otherwise a hand-typed
+          // rate like 33.333 could total correctly (33.333*3=100.00) while the
+          // printed rate (33.33) looks like it doesn't multiply out to the total.
+          li.rate = Math.round((Number(rateI.value) || 0) * 100) / 100;
           recalcLine(li);
           totalSpan.textContent = formatMoney(li.total, currencyS.value);
           recalcInvoice();
@@ -1224,9 +1245,17 @@ function openPDFImport() {
   const dateI    = el('input', { type: 'date', class: 'input', value: today() });
   const dueDateI = el('input', { type: 'date', class: 'input', value: addDays(today(), 30) });
   const numI     = el('input', { type: 'text', class: 'input', placeholder: 'e.g. INV-001', style: 'width:180px' });
+  // Status defaults to 'paid' to preserve prior hardcoded behavior for anyone
+  // who doesn't change it. Options/labels match the regular invoice builder.
+  const statusS  = select([
+    { value: 'paid',  label: INVOICE_STATUSES.paid.label },
+    { value: 'sent',  label: INVOICE_STATUSES.sent.label },
+    { value: 'draft', label: INVOICE_STATUSES.draft.label }
+  ], 'paid');
   metaWrap.appendChild(formRow('Invoice Date', dateI));
   metaWrap.appendChild(formRow('Due Date', dueDateI));
   metaWrap.appendChild(formRow('Invoice #', numI));
+  metaWrap.appendChild(formRow('Status', statusS));
 
   const preview = el('div', { style: 'margin-top:12px;font-size:13px;min-height:20px' });
 
@@ -1398,17 +1427,28 @@ function openPDFImport() {
     );
     if (dup) { toast('Invoice already imported (same date & total)', 'warning'); return; }
 
+    const finalNumber = invoiceNum || String(nextInvoiceSequence(year, null));
+    // Same duplicate-number check the builder's Save flow uses: purely numeric
+    // numbers are scoped to the same year, others must be globally unique.
+    const numberInUse = /^\d+$/.test(finalNumber)
+      ? listActive('invoices').some(i => i.number === finalNumber && (i.issueDate || '').startsWith(year))
+      : listActive('invoices').some(i => i.number === finalNumber);
+    if (numberInUse) {
+      toast(`Invoice number ${finalNumber} is already in use in ${year}`, 'danger');
+      return;
+    }
+
     const invId = newId('inv');
     const inv = {
       id: invId,
-      number: invoiceNum || String(nextInvoiceSequence(year, null)),
+      number: finalNumber,
       clientId: clientS.value || '',
       owner: byId('clients', clientS.value)?.owner || 'you',
       issueDate,
       dueDate,
       stream: streamS.value,
       currency: 'EUR',
-      status: 'paid',
+      status: statusS.value,
       lineItems: items.map(li => ({ id: newId('li'), description: li.description, quantity: li.quantity, unit: 'day', rate: li.rate, total: li.total })),
       subtotal: total, taxRate: 0, tax: 0, total,
       notes: 'Imported from PDF',
