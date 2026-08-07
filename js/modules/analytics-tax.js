@@ -1,6 +1,6 @@
 // Tax — Annual P&L Report + Cyprus Provisional Tax Calculator
 import { state, markDirty } from '../core/state.js';
-import { el, input, select, button, formRow, toast, openModal } from '../core/ui.js';
+import { el, input, select, button, formRow, toast, openModal, today } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { COST_CATEGORIES } from '../core/config.js';
 import {
@@ -11,6 +11,10 @@ import {
   getPersonName
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
+import {
+  getCyprusTaxYearConfig, setCyprusTaxYear, persistCyprusTaxYearConfig,
+  daysLabel, monthRemainingFraction, isCoRec, getActualsForYear
+} from './cyprus-tax.js';
 
 // ── Module state ───────────────────────────────────────────────────────────────
 const CHART_IDS  = ['tax-yoy-bar'];
@@ -150,7 +154,13 @@ function inYear(date, year) {
 
 function getTaxRate(year) {
   const rates = state.db.settings?.taxRates || {};
-  return rates[String(year)] ?? state.db.settings?.corpTaxRate ?? 12.5;
+  if (rates[String(year)] != null) return rates[String(year)];
+  if (state.db.settings?.corpTaxRate != null) return state.db.settings.corpTaxRate;
+  // Cyprus's standard corporate tax rate rose from 12.5% to 15% for tax years
+  // starting 1 January 2026 (OECD Pillar Two alignment) — a flat fallback
+  // here would either overcharge every pre-2026 year or undercharge every
+  // 2026+ year the moment neither a per-year nor a global rate was ever set.
+  return Number(year) >= 2026 ? 15 : 12.5;
 }
 
 function saveTaxRate(year, rate) {
@@ -715,34 +725,24 @@ function buildPnLContent(years) {
 // PROVISIONAL TAX TAB
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const PT_DEFAULTS = {
-  year: String(new Date().getFullYear()),
-  corpTaxRate: 12.5,
-  bufferEnabled: true,
-  bufferPct: 10,
-  actualRevenue: 0,
-  forecastRevenue: 0,
-  actualExpenses: 0,
-  forecastExpenses: 0,
-  nonDeductibleExpenses: 0,
-  taxAllowances: 0,
-  estimatedFinalTax: 0,
-  julPayment: 0,
-  decRevRevenue: 0,
-  decRevExpenses: 0,
-  decRevNonDeductible: 0,
-  decRevAllowances: 0,
-};
-
-function cfg() {
-  if (!state.db.settings) state.db.settings = {};
-  if (!state.db.settings.cyprusTax) state.db.settings.cyprusTax = { ...PT_DEFAULTS };
-  return state.db.settings.cyprusTax;
-}
+// Provisional Tax config now lives in cyprus-tax.js (shared, per-year state —
+// see its own comment for why the per-year isolation matters). This tab and
+// the Settings → Provisional Tax card both read/write the exact same
+// underlying data, so a rate/estimate entered in either place shows up in
+// the other, and a stale local copy of the defaults here can never drift
+// out of sync with it again (this used to default corpTaxRate to 12.5%
+// while cyprus-tax.js defaulted to 15% — whichever tab a first-time user
+// opened first silently decided which wrong-or-right rate got saved).
+function cfg() { return getCyprusTaxYearConfig(); }
 
 function persist(patch) {
-  Object.assign(cfg(), patch);
-  markDirty();
+  if ('year' in patch) {
+    const { year: newYear, ...rest } = patch;
+    if (newYear !== undefined) setCyprusTaxYear(newYear);
+    if (Object.keys(rest).length) persistCyprusTaxYearConfig(rest);
+  } else {
+    persistCyprusTaxYearConfig(patch);
+  }
 }
 
 const safeN = v => (isFinite(Number(v)) ? Math.max(0, Number(v)) : 0);
@@ -795,25 +795,6 @@ function calcAll(s) {
 }
 
 const pct = (v, tot) => tot > 0 ? `${((v / tot) * 100).toFixed(1)}%` : '—';
-
-function daysLabel(dateStr) {
-  const diff = Math.round((new Date(dateStr) - new Date()) / 86400000);
-  if (diff > 0)  return `${diff}d remaining`;
-  if (diff === 0) return 'Due today';
-  return `${Math.abs(diff)}d overdue`;
-}
-
-function getActualsForYear(year) {
-  const today  = new Date().toISOString().slice(0, 10);
-  const cutoff = today < `${year}-12-31` ? today : `${year}-12-31`;
-  const s1     = `${year}-01-01`;
-  return {
-    pays: listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff),
-    invs: listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff),
-    exps: listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff),
-    cutoff, year,
-  };
-}
 
 function emptyModal(title, msg) {
   openModal({ title, body: el('div', { style: 'padding:24px;text-align:center;color:var(--text-muted)' }, msg) });
@@ -898,21 +879,27 @@ function modalExpenseCategory(cat) {
 function modalForecastEntities(forRevenue) {
   const s        = cfg();
   const year     = s.year || String(new Date().getFullYear());
-  const today    = new Date().toISOString().slice(0, 10);
-  const cutoff   = today < `${year}-12-31` ? today : `${year}-12-31`;
+  const todayStr = today();
+  const cutoff   = todayStr < `${year}-12-31` ? todayStr : `${year}-12-31`;
   const curMonth = cutoff.slice(0, 7);
   const propMap  = Object.fromEntries((state.db.properties || []).map(p => [p.id, p]));
   const humanize = id => id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
+  // Current, still-in-progress month contributes only its not-yet-elapsed
+  // fraction — counting it in full would double-count days already folded
+  // into actuals; the old `mk > curMonth` check instead dropped it (and its
+  // remaining days) entirely. See monthRemainingFraction in cyprus-tax.js.
+  const curMonthFrac = monthRemainingFraction(cutoff);
   const fcData = {};
   for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
     const eid = fc.entityId || fc.propertyId || fc.id;
     if (!fcData[eid]) fcData[eid] = { rev: 0, exp: 0, months: 0, type: fc.type };
     for (const [mk, md] of Object.entries(fc.months || {})) {
-      if (mk > curMonth) {
-        const rev = Number(md.revenue) || 0, exp = Number(md.expenses) || 0;
-        if (rev > 0 || exp > 0) { fcData[eid].rev += rev; fcData[eid].exp += exp; fcData[eid].months++; }
-      }
+      if (mk < curMonth) continue;
+      const frac = mk === curMonth ? curMonthFrac : 1;
+      if (frac <= 0) continue;
+      const rev = (Number(md.revenue) || 0) * frac, exp = (Number(md.expenses) || 0) * frac;
+      if (rev > 0 || exp > 0) { fcData[eid].rev += rev; fcData[eid].exp += exp; fcData[eid].months++; }
     }
   }
 
@@ -1078,8 +1065,8 @@ function modalFinalBalance() {
   const c        = calcAll(s);
   const year     = s.year || String(new Date().getFullYear());
   const nextYear = String(Number(year) + 1);
-  const today    = new Date().toISOString().slice(0, 10);
-  const paidSoFar = (today > `${year}-07-31` ? c.julyPayment : 0) + (today > `${year}-12-31` ? c.decPayment : 0);
+  const todayStr = today();
+  const paidSoFar = (todayStr > `${year}-07-31` ? c.julyPayment : 0) + (todayStr > `${year}-12-31` ? c.decPayment : 0);
   const targetTax = c.finalTax > 0 ? c.finalTax : (c.revisedAnnualTax > 0 ? c.revisedAnnualTax : c.corpTax);
   const coverage  = targetTax > 0 ? (paidSoFar / targetTax * 100) : 0;
   const body = el('div');
@@ -1211,7 +1198,7 @@ function ptBuildSettingsCard(onChange) {
   const yearSel = select(dataYears.map(y => ({ value: y, label: y })), selectedYear);
   yearSel.onchange = () => { persist({ year: yearSel.value }); onChange(); };
 
-  const rateI = input({ type: 'number', value: s.corpTaxRate ?? 12.5, min: 0, max: 100, step: 0.1, style: 'width:110px' });
+  const rateI = input({ type: 'number', value: s.corpTaxRate ?? 15, min: 0, max: 100, step: 0.1, style: 'width:110px' });
   rateI.oninput = () => { persist({ corpTaxRate: safeN(rateI.value) }); onChange(); };
 
   const bufChk = el('input', { type: 'checkbox' });
@@ -1222,7 +1209,7 @@ function ptBuildSettingsCard(onChange) {
 
   body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px' },
     formRow('Tax Year', yearSel),
-    formRow('Corporate Tax Rate', el('div', { style: 'display:flex;align-items:center;gap:6px' }, rateI, el('span', { style: 'color:var(--text-muted);font-size:13px' }, '%')), 'Cyprus default: 12.5%'),
+    formRow('Corporate Tax Rate', el('div', { style: 'display:flex;align-items:center;gap:6px' }, rateI, el('span', { style: 'color:var(--text-muted);font-size:13px' }, '%')), 'Cyprus standard rate: 15% from tax year 2026 onwards (12.5% for years before 2026)'),
     formRow('Safety Buffer', el('div', { style: 'display:flex;align-items:center;gap:10px' }, el('label', { style: 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap' }, bufChk, 'Enable'), bufPctI, el('span', { style: 'color:var(--text-muted);font-size:13px' }, '%')), 'Inflates estimate to reduce underpayment risk')
   ));
   card.appendChild(body);
@@ -1336,14 +1323,17 @@ function ptBuildEstimateCard(onChange) {
 function ptPrefillFromActuals(onChange) {
   const s        = cfg();
   const year     = s.year || String(new Date().getFullYear());
-  const today    = new Date().toISOString().slice(0, 10);
-  const cutoff   = today < `${year}-12-31` ? today : `${year}-12-31`;
+  const todayStr = today();
+  const cutoff   = todayStr < `${year}-12-31` ? todayStr : `${year}-12-31`;
   const curMonth = cutoff.slice(0, 7);
   const s1       = `${year}-01-01`;
 
-  const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff);
+  // isCoRec: corporation tax is a company-only liability — records tied to a
+  // 'personal'-channel property (or individually flagged personal) must be
+  // excluded from the base, same as cyprus-tax.js's own prefill.
+  const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff && isCoRec(p));
   const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff);
-  const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff);
+  const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff && isCoRec(e));
 
   const rnd = v => Math.round(v * 100) / 100;
   const paysRevenue    = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
@@ -1354,17 +1344,23 @@ function ptPrefillFromActuals(onChange) {
   const expsByCat = {};
   for (const e of exps) { const cat = e.category || 'Other'; expsByCat[cat] = (expsByCat[cat] || 0) + toEUR(e.amount, e.currency, year); }
 
+  // Current, still-in-progress month contributes only its not-yet-elapsed
+  // fraction — see monthRemainingFraction's comment in cyprus-tax.js. The
+  // old `mk > curMonth` check dropped the current month's remaining days
+  // from the forecast total entirely instead.
   let forecastRevenue = 0, forecastExpenses = 0;
   const fcRevIds = new Set(), fcExpIds = new Set();
   const propIds  = new Set((state.db.properties || []).map(p => p.id));
+  const curMonthFrac = monthRemainingFraction(cutoff);
   for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
     const eid = fc.entityId || fc.propertyId || fc.id;
     for (const [mk, md] of Object.entries(fc.months || {})) {
-      if (mk > curMonth) {
-        const rev = Number(md.revenue) || 0, exp = Number(md.expenses) || 0;
-        if (rev > 0) { fcRevIds.add(eid); forecastRevenue  += rev; }
-        if (exp > 0) { fcExpIds.add(eid); forecastExpenses += exp; }
-      }
+      if (mk < curMonth) continue;
+      const frac = mk === curMonth ? curMonthFrac : 1;
+      if (frac <= 0) continue;
+      const rev = (Number(md.revenue) || 0) * frac, exp = (Number(md.expenses) || 0) * frac;
+      if (rev > 0) { fcRevIds.add(eid); forecastRevenue  += rev; }
+      if (exp > 0) { fcExpIds.add(eid); forecastExpenses += exp; }
     }
   }
 

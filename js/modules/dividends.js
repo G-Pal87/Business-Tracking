@@ -10,6 +10,7 @@ import {
   getPersonName
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
+import { hasCyprusTaxYearConfig, getCyprusTaxYearConfig } from './cyprus-tax.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // This 2.65% withholding is the General Healthcare System (GHS/GESY)
@@ -139,8 +140,12 @@ function getOpProfit(year) {
 }
 
 function getCorpTaxEst(year) {
-  const s = state.db.settings?.cyprusTax;
-  if (!s || String(s.year) !== String(year)) return null;
+  // Per-year config now persists independently of whichever year the
+  // Provisional Tax tab's dropdown currently shows (see cyprus-tax.js) — so
+  // this checks whether `year` has ever actually been configured, not
+  // whether it happens to be the tab's active selection right now.
+  if (!hasCyprusTaxYearConfig(year)) return null;
+  const s = getCyprusTaxYearConfig(year);
   const rate = safeN(s.corpTaxRate);
   const totalRevenue = safeN(s.actualRevenue) + safeN(s.forecastRevenue);
   const totalDeductible = safeN(s.actualExpenses) + safeN(s.forecastExpenses);
@@ -248,7 +253,7 @@ function buildView() {
             { label: 'Operating Profit',   value: fmtE(pnlData.opProfit) },
             { label: 'Est. Corporation Tax', value: fmtE(corpTaxEst) },
             { label: 'After-Tax Profit',   value: fmtE(Math.max(0, afterTax)) },
-            { label: 'Tax Rate Applied',   value: `${state.db.settings?.cyprusTax?.corpTaxRate ?? 15}%` },
+            { label: 'Tax Rate Applied',   value: `${getCyprusTaxYearConfig(gYear).corpTaxRate}%` },
           ], 2));
         } else {
           body.appendChild(el('p', { style: 'font-size:13px;color:var(--text-muted);line-height:1.6;margin:0' },

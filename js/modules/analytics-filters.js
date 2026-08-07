@@ -107,7 +107,17 @@ export function createFilterState(overrides = {}) {
 }
 
 // ── Date utilities (internal) ─────────────────────────────────────────────────
-const fmtD    = dt => (dt instanceof Date ? dt : new Date(dt)).toISOString().slice(0, 10);
+// A Date object's LOCAL calendar date, not its UTC one — `.toISOString()`
+// reads the UTC date, which for any positive-UTC-offset viewer (e.g. Cyprus,
+// UTC+2/+3) is a day BEHIND the real local date for the first few hours
+// after local midnight. A date-only string (no time component) round-trips
+// safely through `new Date(str).toISOString()` unchanged (both sides read
+// the same UTC-midnight instant), so only the Date-object branch — which
+// represents a real "now" moment — needs the local-getters fix.
+const fmtD = dt => {
+  if (!(dt instanceof Date)) return new Date(dt).toISOString().slice(0, 10);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+};
 const addDays = (d, n) => { const dt = new Date(d); dt.setDate(dt.getDate() + n); return fmtD(dt); };
 const addYrs  = (d, n) => { const dt = new Date(d); dt.setFullYear(dt.getFullYear() + n); return fmtD(dt); };
 

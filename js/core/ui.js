@@ -255,7 +255,15 @@ export function button(label, opts = {}) {
 }
 
 // ========== Date helpers ==========
-export function today() { return new Date().toISOString().slice(0, 10); }
+// Local calendar date, NOT `new Date().toISOString().slice(0,10)` — that
+// reads the UTC calendar date, which for any positive-UTC-offset viewer
+// (e.g. Cyprus, UTC+2/+3) is a day BEHIND the real local date for the first
+// few hours after local midnight, silently shifting every "today"-anchored
+// range/deadline/comparison in the app during that window.
+export function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 export function addDays(dateStr, days) {
   const d = new Date(dateStr);
