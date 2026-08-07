@@ -369,6 +369,12 @@ function buildAllPayments(wrap) {
 
     // 1. Facet filters
     let derived = listActivePayments().filter(r => {
+      // A materialized row is a frozen snapshot of a forecast that came
+      // true — the real money is the 'paid' record it points at
+      // (materializedPaymentId). Showing both by default renders the same
+      // reservation/amount twice; only surface the historical row when the
+      // user explicitly opts in via the status filter's "Sold" option.
+      if (r.status === 'materialized' && !statusFilter.has('materialized')) return false;
       if (yearFilter.size > 0   && !(r.date && yearFilter.has(r.date.slice(0, 4))))  return false;
       if (monthFilter.size > 0  && !(r.date && monthFilter.has(r.date.slice(5, 7)))) return false;
       if (streamFilter.size > 0 && !streamFilter.has(r.stream || ''))                return false;
