@@ -249,6 +249,16 @@ function buildView() {
       label: 'Operating Profit',
       value: fmtE(pnlData.opProfit),
       subtitle: 'Revenue minus OpEx (company scope)',
+      explain: {
+        title: 'Operating Profit',
+        formula: 'Total Revenue − Total OpEx (company-channel properties only; CapEx excluded).',
+        inputs: [
+          { label: 'Total Revenue', value: fmtE(pnlData.totalRevenue) },
+          { label: 'Total OpEx', value: fmtE(pnlData.totalOpEx) },
+          { label: 'Operating Profit', value: fmtE(pnlData.opProfit) }
+        ],
+        source: 'dividends.js:135 getOpProfit()'
+      },
       onClick: () => {
         const body = el('div');
         body.appendChild(mkSummaryGrid([
@@ -268,6 +278,16 @@ function buildView() {
       value: corpTaxEst !== null ? fmtE(corpTaxEst) : '—',
       subtitle: corpTaxEst !== null ? `Provisional Tax (${gYear})` : 'Set in Tax → Provisional tab',
       variant: corpTaxEst !== null && corpTaxEst > 0 ? 'warning' : '',
+      explain: corpTaxEst !== null ? {
+        title: 'Est. Corporation Tax',
+        formula: 'Pulled from the Provisional Tax estimate configured for this year (Tax → Analysis → Provisional tab), not recalculated here.',
+        inputs: [
+          { label: 'Operating Profit', value: fmtE(pnlData.opProfit) },
+          { label: 'Est. Corporation Tax', value: fmtE(corpTaxEst) }
+        ],
+        source: 'dividends.js:163 getCorpTaxEst()',
+        note: 'Change the estimate in the Provisional Tax tab, not here — this card only reads it.'
+      } : null,
       onClick: () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
         if (corpTaxEst !== null) {
@@ -289,6 +309,16 @@ function buildView() {
       label: 'Gross Dividends',
       value: fmtE(totalGross),
       subtitle: yearDivs.length ? `${yearDivs.length} payment${yearDivs.length > 1 ? 's' : ''}` : 'None recorded',
+      explain: {
+        title: 'Gross Dividends',
+        formula: 'Sum of grossAmount across every dividend record dated in the selected year.',
+        inputs: [
+          { label: G_LABEL, value: fmtE(gTotal) },
+          { label: R_LABEL, value: fmtE(rTotal) },
+          { label: 'Total', value: fmtE(totalGross) }
+        ],
+        source: 'dividends.js:232,236 buildView()'
+      },
       onClick: totalGross > 0 ? () => {
         const body = el('div');
         body.appendChild(mkSummaryGrid([
@@ -305,6 +335,17 @@ function buildView() {
       value: fmtE(ghsAmount),
       subtitle: totalGross > 0 ? `On ${fmtE(totalGross)} gross` : 'No dividends declared',
       variant: ghsAmount > 0 ? 'warning' : '',
+      explain: {
+        title: 'GHS Contribution (2.65%)',
+        formula: 'Sum per recipient of min(gross dividends, annual GHS cap − prior cumulative gross) × 2.65%.',
+        inputs: [
+          { label: 'Gross Dividends', value: fmtE(totalGross) },
+          { label: 'GHS Rate', value: '2.65%' },
+          { label: 'GHS Amount', value: fmtE(ghsAmount) }
+        ],
+        source: 'dividends.js:102 ghsScheduleForYear()',
+        note: `Capped at the first €${GHS_ANNUAL_CAP.toLocaleString('en-US')} of a recipient's annual GHS-able income per year.`
+      },
       onClick: () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
         body.appendChild(mkSummaryGrid([
@@ -324,6 +365,17 @@ function buildView() {
       value: fmtEAny(retained),
       subtitle: corpTaxEst !== null ? 'After tax & dividends' : 'After dividends (no tax est.)',
       variant: retained < 0 ? 'danger' : retained < pnlData.opProfit * 0.1 ? 'warning' : 'success',
+      explain: {
+        title: 'Retained Earnings',
+        formula: 'Operating Profit − Est. Corporation Tax (if set) − Gross Dividends.',
+        inputs: [
+          { label: 'Operating Profit', value: fmtE(pnlData.opProfit) },
+          { label: 'Est. Corporation Tax', value: corpTaxEst !== null ? fmtE(corpTaxEst) : '— (not deducted)' },
+          { label: 'Gross Dividends', value: fmtE(totalGross) },
+          { label: 'Retained Earnings', value: fmtEAny(retained) }
+        ],
+        source: 'dividends.js:242-243 buildView()'
+      },
       onClick: () => {
         const body = el('div');
         body.appendChild(mkSummaryGrid([
@@ -345,6 +397,16 @@ function buildView() {
       value: afterTax > 0 ? `${payoutRatio.toFixed(1)}%` : '—',
       subtitle: afterTax > 0 ? `of ${fmtE(afterTax)} after-tax profit` : corpTaxEst === null ? 'Set corp tax estimate for ratio' : 'No after-tax profit',
       variant: payoutRatio > 90 ? 'danger' : payoutRatio > 70 ? 'warning' : payoutRatio > 0 ? 'success' : '',
+      explain: afterTax > 0 ? {
+        title: 'Payout Ratio',
+        formula: 'Gross Dividends ÷ After-Tax Profit × 100.',
+        inputs: [
+          { label: 'After-Tax Profit', value: fmtE(afterTax) },
+          { label: 'Gross Dividends', value: fmtE(totalGross) },
+          { label: 'Payout Ratio', value: `${payoutRatio.toFixed(1)}%` }
+        ],
+        source: 'dividends.js:244 buildView()'
+      } : null,
       onClick: afterTax > 0 ? () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
         body.appendChild(mkSummaryGrid([
@@ -646,9 +708,18 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, ghsAmount, ne
 
   const tbl  = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
   const hrow = el('tr');
-  [['Date', 'left'], ['Recipient', 'left'], ['Gross Amount', 'right'], ['GHS (2.65%)', 'right'], ['Net Amount', 'right'], ['Notes', 'left'], ['', 'right']].forEach(([h, align]) => {
+  [
+    ['Date', 'left', 'Date the dividend was declared/paid.'],
+    ['Recipient', 'left', 'Which director received this dividend.'],
+    ['Gross Amount', 'right', 'The declared dividend amount before GHS withholding.'],
+    ['GHS (2.65%)', 'right', 'GHS/GESY contribution withheld at 2.65%, capped at the recipient\'s annual GHS-able income cap.'],
+    ['Net Amount', 'right', 'Gross Amount minus GHS — what the recipient actually receives.'],
+    ['Notes', 'left', ''],
+    ['', 'right', '']
+  ].forEach(([h, align, tip]) => {
     hrow.appendChild(el('th', {
-      style: `padding:8px 12px;text-align:${align};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08)`
+      title: tip || '',
+      style: `padding:8px 12px;text-align:${align};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08);${tip ? 'cursor:help' : ''}`
     }, h));
   });
   tbl.appendChild(el('thead', {}, hrow));
