@@ -9,7 +9,7 @@ import {
 } from '../core/data.js';
 import { openDetail as openPropertyDetail } from './properties.js';
 import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct, mkTh, mkExplainButton } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -467,14 +467,14 @@ function toROIDrillRows(propData) {
   })).sort((a, b) => (b.roi ?? -Infinity) - (a.roi ?? -Infinity));
 }
 const ROI_DRILL_COLS = [
-  { key: 'name',     label: 'Property'                                           },
-  { key: 'rev',      label: 'Revenue',    right: true, format: v => formatEUR(v) },
-  { key: 'expenses', label: 'Expenses',   right: true, format: v => formatEUR(v) },
-  { key: 'net',      label: 'Op. Profit', right: true, format: v => formatEUR(v) },
-  { key: 'invested', label: 'Invested',   right: true, format: v => formatEUR(v) },
-  { key: 'roi',      label: 'Simple ROI', right: true, format: v => v != null ? v.toFixed(1) + '%' : '—' },
-  { key: 'annRoi',   label: 'Ann. ROI',   right: true, format: v => v != null ? v.toFixed(1) + '%' : '—' },
-  { key: 'cocRoi',   label: 'CoC ROI',    right: true, format: v => v != null ? v.toFixed(1) + '%' : '—' }
+  { key: 'name',     label: 'Property' },
+  { key: 'rev',      label: 'Revenue',    right: true, format: v => formatEUR(v), tip: 'Sum of paid payments in the selected period.' },
+  { key: 'expenses', label: 'Expenses',   right: true, format: v => formatEUR(v), tip: 'Operating expenses (excludes CapEx) in the selected period.' },
+  { key: 'net',      label: 'Op. Profit', right: true, format: v => formatEUR(v), tip: 'Revenue minus Expenses.' },
+  { key: 'invested', label: 'Invested',   right: true, format: v => formatEUR(v), tip: 'Purchase price plus all-time renovation/CapEx spend.' },
+  { key: 'roi',      label: 'Simple ROI', right: true, format: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Net income ÷ total invested × 100 for the selected period.' },
+  { key: 'annRoi',   label: 'Ann. ROI',   right: true, format: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Simple ROI divided by years owned since purchase.' },
+  { key: 'cocRoi',   label: 'CoC ROI',    right: true, format: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Annual net income ÷ actual cash invested (purchase price minus mortgage).' }
 ];
 
 function mixedRows(pays, exps) {
@@ -941,24 +941,99 @@ function openPropertySummaryModal(d) {
   }
 
   const perfBoxes = [
-    { label: 'Revenue',            value: formatEUR(d.rev) },
-    { label: 'Operating Expenses', value: formatEUR(d.opEx), sub: d.rev > 0 ? `${(d.opEx / d.rev * 100).toFixed(0)}% of revenue` : null },
-    { label: 'Operating Profit',   value: formatEUR(d.profit), sub: d.rev > 0 ? `Margin ${(d.profit / d.rev * 100).toFixed(0)}%` : null },
+    {
+      label: 'Revenue', value: formatEUR(d.rev),
+      explain: {
+        title: 'Revenue', formula: 'Sum of paid payments for this property, dated within the selected period.',
+        inputs: [
+          { label: 'Payments counted', value: String(d.propPayments.length) },
+          { label: 'Total', value: formatEUR(d.rev) }
+        ],
+        source: 'analytics-properties.js getData() — `rev` (payByProp reduce)',
+        note: 'Only status:\'paid\' payments count — pending/materialized rows are excluded so nothing is double-counted.'
+      }
+    },
+    { label: 'Operating Expenses', value: formatEUR(d.opEx), sub: d.rev > 0 ? `${(d.opEx / d.rev * 100).toFixed(0)}% of revenue` : null,
+      explain: {
+        title: 'Operating Expenses', formula: 'Sum of expenses in the selected period, excluding CapEx/renovation.',
+        inputs: [{ label: 'Total', value: formatEUR(d.opEx) }],
+        source: 'analytics-properties.js getData() — `opEx` (opExByProp reduce)'
+      }
+    },
+    { label: 'Operating Profit',   value: formatEUR(d.profit), sub: d.rev > 0 ? `Margin ${(d.profit / d.rev * 100).toFixed(0)}%` : null,
+      explain: {
+        title: 'Operating Profit', formula: 'Revenue − Operating Expenses',
+        inputs: [{ label: 'Revenue', value: formatEUR(d.rev) }, { label: 'Operating Expenses', value: formatEUR(d.opEx) }],
+        source: 'analytics-properties.js getData() — `profit: rev - opEx`'
+      }
+    },
     { label: 'CapEx (period)',     value: formatEUR(d.capEx) },
-    { label: 'Net (after CapEx)',  value: formatEUR(d.net) },
+    { label: 'Net (after CapEx)',  value: formatEUR(d.net),
+      explain: {
+        title: 'Net (after CapEx)', formula: 'Revenue − Operating Expenses − CapEx',
+        inputs: [{ label: 'Revenue', value: formatEUR(d.rev) }, { label: 'Operating Expenses', value: formatEUR(d.opEx) }, { label: 'CapEx (period)', value: formatEUR(d.capEx) }],
+        source: 'analytics-properties.js getData() — `net: rev - opEx - capEx`'
+      }
+    },
     { label: 'All-time CapEx',     value: formatEUR(d.allTimeCapEx) }
   ];
   if (d.expectedBookedEUR !== null) {
-    perfBoxes.push({ label: 'Expected Rev (booked)', value: formatEUR(d.expectedBookedEUR), sub: 'Booked so far for this future period' });
+    perfBoxes.push({
+      label: 'Expected Rev (booked)', value: formatEUR(d.expectedBookedEUR), sub: 'Booked so far for this future period',
+      explain: {
+        title: 'Expected Rev (booked)',
+        formula: prop.type === 'long_term'
+          ? 'Sum of active-lease monthlyRent, once per month covered by the selected future period.'
+          : 'Sum of every payment already on the books (any status) whose date falls in the selected future period — mostly pending Airbnb reservations.',
+        inputs: [{ label: 'Total', value: formatEUR(d.expectedBookedEUR) }],
+        source: 'analytics-properties.js computeExpectedBookedEUR()',
+        note: 'This is what\'s already booked/scheduled, not a full-period forecast — a future month with nothing booked yet will show near-zero.'
+      }
+    });
   }
   body.appendChild(mkSectionLabel('Performance'));
   body.appendChild(mkSummaryGrid(perfBoxes, 3));
 
   const roiBoxes = [];
-  if (d.simpleROI     !== null) roiBoxes.push({ label: 'Simple ROI',       value: d.simpleROI.toFixed(1) + '%' });
-  if (d.potentialROI  !== null) roiBoxes.push({ label: 'Potential ROI',    value: d.potentialROI.toFixed(1) + '%', sub: 'Full-year run-rate' });
-  if (d.annualizedROI !== null) roiBoxes.push({ label: 'Annualized ROI',   value: d.annualizedROI.toFixed(1) + '%' });
-  if (d.cashOnCashROI !== null) roiBoxes.push({ label: 'Cash-on-Cash ROI', value: d.cashOnCashROI.toFixed(1) + '%' });
+  if (d.simpleROI !== null) roiBoxes.push({
+    label: 'Simple ROI', value: d.simpleROI.toFixed(1) + '%',
+    explain: {
+      title: 'Simple ROI', formula: 'Net Income ÷ Total Invested × 100',
+      inputs: [
+        { label: 'Net Income (period, possibly annualized)', value: formatEUR(d.netIncome) },
+        { label: 'Total Invested', value: formatEUR(d.totalInvested) }
+      ],
+      source: 'core/data.js simplePropertyROI()',
+      note: 'For an in-progress period (e.g. YTD) this uses the raw actual-so-far net income, unprojected — see Potential ROI for a full-year run-rate instead.'
+    }
+  });
+  if (d.potentialROI !== null) roiBoxes.push({
+    label: 'Potential ROI', value: d.potentialROI.toFixed(1) + '%', sub: 'Full-year run-rate',
+    explain: {
+      title: 'Potential ROI', formula: '(Net Income so far ÷ months elapsed × 12) ÷ Total Invested × 100',
+      inputs: [{ label: 'Total Invested', value: formatEUR(d.totalInvested) }],
+      source: 'analytics-properties.js annualizeForProperty(..., {force:true}) → simplePropertyROI()',
+      note: 'Only shown for an in-progress period. Projects the current run-rate to a full year instead of showing the partial-period actual — relies on purchaseDate being accurate, since the projection is anchored to it.'
+    }
+  });
+  if (d.annualizedROI !== null) roiBoxes.push({
+    label: 'Annualized ROI', value: d.annualizedROI.toFixed(1) + '%',
+    explain: {
+      title: 'Annualized ROI', formula: 'Simple ROI ÷ years owned since purchase',
+      inputs: [{ label: 'Simple ROI', value: d.simpleROI != null ? d.simpleROI.toFixed(1) + '%' : '—' }, { label: 'Purchase Date', value: prop.purchaseDate || '—' }],
+      source: 'core/data.js annualizedPropertyROI()',
+      note: 'Average annual return per year of ownership — not the same as this year\'s return.'
+    }
+  });
+  if (d.cashOnCashROI !== null) roiBoxes.push({
+    label: 'Cash-on-Cash ROI', value: d.cashOnCashROI.toFixed(1) + '%',
+    explain: {
+      title: 'Cash-on-Cash ROI', formula: 'Annual Net Income ÷ (Purchase Price − Mortgage Amount) × 100',
+      inputs: [{ label: 'Net Income', value: formatEUR(d.netIncome) }, { label: 'Purchase Price', value: formatEUR(d.purchaseEUR) }],
+      source: 'core/data.js cashOnCashPropertyROI()',
+      note: 'Isolates return on actual cash/equity invested rather than the full purchase price. Null for a cash purchase with no mortgage data.'
+    }
+  });
   if (roiBoxes.length) {
     body.appendChild(mkSectionLabel('Return on Investment'));
     body.appendChild(mkSummaryGrid(roiBoxes, roiBoxes.length));
@@ -967,7 +1042,14 @@ function openPropertySummaryModal(d) {
   body.appendChild(mkSectionLabel('Investment'));
   body.appendChild(mkSummaryGrid([
     { label: 'Purchase Price', value: formatEUR(d.purchaseEUR) },
-    { label: 'Total Invested', value: formatEUR(d.totalInvested), sub: 'Purchase price + all-time CapEx' }
+    { label: 'Total Invested', value: formatEUR(d.totalInvested), sub: 'Purchase price + all-time CapEx',
+      explain: {
+        title: 'Total Invested', formula: 'Purchase Price + all-time renovation/CapEx spend',
+        inputs: [{ label: 'Purchase Price', value: formatEUR(d.purchaseEUR) }, { label: 'All-time CapEx', value: formatEUR(d.allTimeCapEx) }],
+        source: 'analytics-properties.js getData() — `totalInvested: purchaseEUR + allTimeCapEx`',
+        note: 'All-time CapEx is never filtered by the selected period — it always reflects every renovation expense ever recorded for this property.'
+      }
+    }
   ], 2));
 
   const mort = computeMortgageEstimate(prop);
@@ -2413,21 +2495,21 @@ function buildSummaryTable(container, propData) {
   const hasExpectedBooked = propData.some(d => d.expectedBookedEUR !== null);
 
   const COLS = [
-    { key: 'name',      label: 'Property'          },
-    { key: 'stream',    label: 'Stream'            },
-    { key: 'owner',     label: 'Owner'             },
-    { key: 'status',    label: 'Status'            },
-    { key: 'rev',       label: 'Revenue',           right: true, fmt: formatEUR },
-    ...(hasExpectedBooked ? [{ key: 'expectedBookedEUR', label: 'Expected Rev (booked)', right: true, fmt: v => v != null ? formatEUR(v) : '—' }] : []),
-    { key: 'opEx',      label: 'Operating Exp.',    right: true, fmt: formatEUR },
-    { key: 'profit',    label: 'Op. Profit',        right: true, fmt: formatEUR, colored: true },
-    { key: 'capEx',     label: 'CapEx',             right: true, fmt: formatEUR },
-    { key: 'net',       label: 'Net (after CapEx)', right: true, fmt: formatEUR, colored: true },
-    { key: 'costRatio', label: 'Cost %',            right: true, fmt: v => v != null ? v.toFixed(0) + '%' : '—' },
-    ...(hasSimpleROI    ? [{ key: 'simpleROI',    label: 'Simple ROI',    right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
-    ...(hasPotentialROI ? [{ key: 'potentialROI', label: 'Potential ROI', right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
-    ...(hasAnnROI       ? [{ key: 'annualizedROI', label: 'Ann. ROI',  right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
-    ...(hasCoCROI       ? [{ key: 'cashOnCashROI', label: 'CoC ROI',   right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : [])
+    { key: 'name',      label: 'Property',          tip: 'Property name. Click a row for a full breakdown of these figures.' },
+    { key: 'stream',    label: 'Stream',             tip: 'Short-term (Airbnb-style nightly rental) or long-term (leased) rental.' },
+    { key: 'owner',     label: 'Owner',              tip: 'Which owner this property is attributed to.' },
+    { key: 'status',    label: 'Status',             tip: 'Active, renovation, vacant, or sold — affects how figures for this period should be read.' },
+    { key: 'rev',       label: 'Revenue',            right: true, fmt: formatEUR, tip: 'Sum of paid payments for this property in the selected period.' },
+    ...(hasExpectedBooked ? [{ key: 'expectedBookedEUR', label: 'Expected Rev (booked)', right: true, fmt: v => v != null ? formatEUR(v) : '—', tip: 'Only shown for a future period. What’s already booked/scheduled — pending Airbnb reservations, or active-lease rent — not a full prediction.' }] : []),
+    { key: 'opEx',      label: 'Operating Exp.',     right: true, fmt: formatEUR, tip: 'Non-capital expenses (excludes renovation/CapEx) in the selected period.' },
+    { key: 'profit',    label: 'Op. Profit',         right: true, fmt: formatEUR, colored: true, tip: 'Revenue minus Operating Expenses.' },
+    { key: 'capEx',     label: 'CapEx',              right: true, fmt: formatEUR, tip: 'Capital/renovation expenses in the selected period.' },
+    { key: 'net',       label: 'Net (after CapEx)',  right: true, fmt: formatEUR, colored: true, tip: 'Revenue minus Operating Expenses minus CapEx for the selected period.' },
+    { key: 'costRatio', label: 'Cost %',             right: true, fmt: v => v != null ? v.toFixed(0) + '%' : '—', tip: 'Operating Expenses as a percentage of Revenue.' },
+    ...(hasSimpleROI    ? [{ key: 'simpleROI',    label: 'Simple ROI',    right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Net income ÷ total invested × 100. For an in-progress period (e.g. YTD) this is the raw actual-so-far figure, not projected.' }] : []),
+    ...(hasPotentialROI ? [{ key: 'potentialROI', label: 'Potential ROI', right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Simple ROI, but projected to a full-year run-rate even mid-period. Only shown for an in-progress period.' }] : []),
+    ...(hasAnnROI       ? [{ key: 'annualizedROI', label: 'Ann. ROI',  right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Simple ROI divided by years owned since purchase — average annual return per year of ownership.' }] : []),
+    ...(hasCoCROI       ? [{ key: 'cashOnCashROI', label: 'CoC ROI',   right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Annual net income ÷ actual cash invested (purchase price minus mortgage). Null for cash purchases with no mortgage.' }] : [])
   ];
 
   const sorted = [...propData]
@@ -2436,7 +2518,7 @@ function buildSummaryTable(container, propData) {
 
   const table = el('table', { class: 'table' });
   const htr   = el('tr');
-  COLS.forEach(col => htr.appendChild(el('th', { class: col.right ? 'right' : '' }, col.label)));
+  COLS.forEach(col => htr.appendChild(mkTh(col)));
   table.appendChild(el('thead', {}, htr));
 
   const tbody = el('tbody');
