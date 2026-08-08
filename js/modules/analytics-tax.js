@@ -10,7 +10,7 @@ import {
   newId, upsert, softDelete, companyPropIds, isCompanyRecord,
   getPersonName
 } from '../core/data.js';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton } from './analytics-helpers.js';
 import {
   getCyprusTaxYearConfig, setCyprusTaxYear, persistCyprusTaxYearConfig,
   daysLabel, monthRemainingFraction, isCoRec, getActualsForYear
@@ -332,7 +332,7 @@ function buildPnLTable(data, taxRate, year) {
   const tbody = el('tbody');
 
   const mkRow = (label, value, opts = {}) => {
-    const { isSectionHeader = false, isSectionTotal = false, isSubtotal = false, isSeparator = false, isPositive = null, indent = 0, onClick = null } = opts;
+    const { isSectionHeader = false, isSectionTotal = false, isSubtotal = false, isSeparator = false, isPositive = null, indent = 0, onClick = null, explain = null } = opts;
     if (isSeparator) {
       const tr = el('tr');
       tr.appendChild(el('td', { colspan: '2', style: 'padding:4px 16px;border-bottom:1px solid rgba(255,255,255,0.12)' }));
@@ -354,7 +354,15 @@ function buildPnLTable(data, taxRate, year) {
       labelStyle += 'color:var(--text-muted);';
       valueStyle += 'color:var(--text-muted);';
     }
-    tr.appendChild(el('td', { style: labelStyle }, label));
+    const labelTd = el('td', { style: labelStyle });
+    if (explain && !isSectionHeader) {
+      const labelRow = el('div', { style: 'display:flex;align-items:center;gap:4px' }, label);
+      labelRow.appendChild(mkExplainButton(explain));
+      labelTd.appendChild(labelRow);
+    } else {
+      labelTd.appendChild(document.createTextNode(label ?? ''));
+    }
+    tr.appendChild(labelTd);
     if (!isSectionHeader) tr.appendChild(el('td', { style: valueStyle }, formatEUR(value)));
     if (onClick) {
       tr.style.cursor = 'pointer';
@@ -373,30 +381,125 @@ function buildPnLTable(data, taxRate, year) {
   if (revMkt   > 0) tbody.appendChild(mkRow('Service Revenue (Marketing)', revMkt,   { indent: 1, onClick: () => openPnLRevenueModal('Service Revenue (Marketing)', data.invoicesMkt, true, year) }));
   if (revOther > 0) tbody.appendChild(mkRow('Other Services',              revOther, { indent: 1, onClick: () => openPnLRevenueModal('Other Services', data.invoicesOther, true, year) }));
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
-  tbody.appendChild(mkRow('Total Revenue', totalRevenue, { isSectionTotal: true, isPositive: totalRevenue >= 0 }));
+  tbody.appendChild(mkRow('Total Revenue', totalRevenue, {
+    isSectionTotal: true, isPositive: totalRevenue >= 0,
+    explain: {
+      title: 'Total Revenue',
+      formula: 'Rental Revenue (STR) + Rental Revenue (LTR) + Service Revenue (CS) + Service Revenue (Marketing) + Other Services',
+      inputs: [
+        { label: 'Rental Revenue (STR)', value: formatEUR(revSTR) },
+        { label: 'Rental Revenue (LTR)', value: formatEUR(revLTR) },
+        { label: 'Service Revenue (CS)', value: formatEUR(revCS) },
+        { label: 'Service Revenue (Marketing)', value: formatEUR(revMkt) },
+        { label: 'Other Services', value: formatEUR(revOther) },
+        { label: 'Total Revenue', value: formatEUR(totalRevenue) }
+      ],
+      source: 'analytics-tax.js:230 getYearData()',
+      note: 'Cash basis — only payments/invoices with status "paid", dated within the selected year and scope, are counted.'
+    }
+  }));
 
   tbody.appendChild(mkRow('OPERATING EXPENSES', 0, { isSectionHeader: true }));
   for (const [catKey, amt] of [...catMap.entries()].sort((a, b) => b[1] - a[1])) {
     tbody.appendChild(mkRow(COST_CATEGORIES[catKey]?.label || catKey, amt, { indent: 1 }));
   }
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
-  tbody.appendChild(mkRow('Total Operating Expenses', totalOpEx, { isSectionTotal: true, isPositive: false }));
+  tbody.appendChild(mkRow('Total Operating Expenses', totalOpEx, {
+    isSectionTotal: true, isPositive: false,
+    explain: {
+      title: 'Total Operating Expenses',
+      formula: 'Sum of all expenses in the selected year/scope, converted to EUR, excluding any expense flagged as CapEx.',
+      inputs: [{ label: 'Total Operating Expenses', value: formatEUR(totalOpEx) }],
+      source: 'analytics-tax.js:238 getYearData()',
+      note: 'CapEx/renovation spend is tracked separately below and is not part of this total.'
+    }
+  }));
   tbody.appendChild(mkRow('', 0, {}));
-  tbody.appendChild(mkRow('Operating Profit', opProfit, { isSubtotal: true, isPositive: opProfit >= 0 }));
+  tbody.appendChild(mkRow('Operating Profit', opProfit, {
+    isSubtotal: true, isPositive: opProfit >= 0,
+    explain: {
+      title: 'Operating Profit',
+      formula: 'Total Revenue − Total Operating Expenses',
+      inputs: [
+        { label: 'Total Revenue', value: formatEUR(totalRevenue) },
+        { label: 'Total Operating Expenses', value: formatEUR(totalOpEx) },
+        { label: 'Operating Profit', value: formatEUR(opProfit) }
+      ],
+      source: 'analytics-tax.js:240 getYearData()'
+    }
+  }));
 
   tbody.appendChild(mkRow('CAPITAL EXPENDITURES (not P&L)', 0, { isSectionHeader: true }));
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
-  tbody.appendChild(mkRow('Total CapEx', totalCapEx, { isSectionTotal: true, isPositive: null }));
+  tbody.appendChild(mkRow('Total CapEx', totalCapEx, {
+    isSectionTotal: true, isPositive: null,
+    explain: {
+      title: 'Total CapEx',
+      formula: 'Sum of expenses flagged as CapEx (isCapEx()) in the selected year/scope, converted to EUR.',
+      inputs: [{ label: 'Total CapEx', value: formatEUR(totalCapEx) }],
+      source: 'analytics-tax.js:239 getYearData()',
+      note: 'Shown for reference only — CapEx is excluded from Operating Profit, since it is treated as a balance-sheet item here rather than an operating expense.'
+    }
+  }));
   tbody.appendChild(mkRow('', 0, {}));
-  tbody.appendChild(mkRow('Net Cash Used', netCash, { isSubtotal: true, isPositive: netCash >= 0 }));
+  tbody.appendChild(mkRow('Net Cash Used', netCash, {
+    isSubtotal: true, isPositive: netCash >= 0,
+    explain: {
+      title: 'Net Cash Used',
+      formula: 'Operating Profit − Total CapEx',
+      inputs: [
+        { label: 'Operating Profit', value: formatEUR(opProfit) },
+        { label: 'Total CapEx', value: formatEUR(totalCapEx) },
+        { label: 'Net Cash Used', value: formatEUR(netCash) }
+      ],
+      source: 'analytics-tax.js:241 getYearData()'
+    }
+  }));
 
   tbody.appendChild(mkRow(`TAX ESTIMATION — ${year} (${taxRate}%)`, 0, { isSectionHeader: true }));
-  tbody.appendChild(mkRow('Taxable Income (Operating Profit)', taxableIncome, { indent: 1 }));
+  tbody.appendChild(mkRow('Taxable Income (Operating Profit)', taxableIncome, {
+    indent: 1,
+    explain: {
+      title: 'Taxable Income (Operating Profit)',
+      formula: 'max(0, Operating Profit)',
+      inputs: [
+        { label: 'Operating Profit', value: formatEUR(opProfit) },
+        { label: 'Taxable Income', value: formatEUR(taxableIncome) }
+      ],
+      source: 'analytics-tax.js:322 buildPnLTable()',
+      note: 'A loss year is floored to €0 taxable income here — this dashboard does not model loss carry-forward or any other tax-law adjustment. Consult your accountant for the actual tax treatment of a loss.'
+    }
+  }));
   if (opProfit < 0) tbody.appendChild(mkRow('Note: loss year — no tax due', 0, { indent: 1 }));
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
-  tbody.appendChild(mkRow(`Estimated Corporation Tax @ ${taxRate}%`, estimatedTax, { isSectionTotal: true, isPositive: estimatedTax === 0 }));
+  tbody.appendChild(mkRow(`Estimated Corporation Tax @ ${taxRate}%`, estimatedTax, {
+    isSectionTotal: true, isPositive: estimatedTax === 0,
+    explain: {
+      title: 'Estimated Corporation Tax',
+      formula: 'Taxable Income × Tax Rate ÷ 100',
+      inputs: [
+        { label: 'Taxable Income', value: formatEUR(taxableIncome) },
+        { label: `Tax Rate (${year})`, value: `${taxRate}%` },
+        { label: 'Estimated Corporation Tax', value: formatEUR(estimatedTax) }
+      ],
+      source: 'analytics-tax.js:323 buildPnLTable()',
+      note: `Tax rate comes from a per-year override, the global corpTaxRate setting, or the built-in default (12.5% before tax year 2026, 15% from 2026 — see getTaxRate()). This is a planning estimate only, not a filed tax calculation.`
+    }
+  }));
   tbody.appendChild(mkRow('', 0, {}));
-  tbody.appendChild(mkRow('Net After Tax (est.)', netAfterTax, { isSubtotal: true, isPositive: netAfterTax >= 0 }));
+  tbody.appendChild(mkRow('Net After Tax (est.)', netAfterTax, {
+    isSubtotal: true, isPositive: netAfterTax >= 0,
+    explain: {
+      title: 'Net After Tax (est.)',
+      formula: 'Operating Profit − Estimated Corporation Tax',
+      inputs: [
+        { label: 'Operating Profit', value: formatEUR(opProfit) },
+        { label: 'Estimated Corporation Tax', value: formatEUR(estimatedTax) },
+        { label: 'Net After Tax (est.)', value: formatEUR(netAfterTax) }
+      ],
+      source: 'analytics-tax.js:324 buildPnLTable()'
+    }
+  }));
 
   tbl.appendChild(tbody);
   wrap.appendChild(el('div', { style: 'padding:0 0 16px;overflow-x:auto;-webkit-overflow-scrolling:touch' }, tbl));
@@ -431,7 +534,12 @@ function openPnLRevenueModal(streamLabel, records, isInvoice, year) {
   ], 4));
   body.appendChild(mkSectionLabel(`Revenue by ${isInvoice ? 'Client' : 'Property'}`));
   body.appendChild(mkModalTable(
-    [{ label: isInvoice ? 'Client' : 'Property' }, { label: isInvoice ? 'Invoices' : 'Pmts', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
+    [
+      { label: isInvoice ? 'Client' : 'Property', tip: isInvoice ? 'The client billed on the invoice.' : 'The property this payment was recorded against.' },
+      { label: isInvoice ? 'Invoices' : 'Pmts', right: true, tip: isInvoice ? 'Number of paid invoices for this client in the selected stream/year.' : 'Number of paid payments for this property in the selected stream/year.' },
+      { label: 'Revenue', right: true, tip: 'Total revenue from this entity, converted to EUR.' },
+      { label: 'Share', right: true, muted: true, tip: "This row's revenue as a percentage of the stream total shown above." }
+    ],
     entRows.map(([id, d]) => {
       const name = isInvoice ? (clientMap.get(id)?.name || clientMap.get(id)?.company || 'Unknown') : (propMap.get(id)?.name || propMap.get(id)?.address || 'Unknown');
       return [name, String(d.n), formatEUR(d.rev), total > 0 ? `${(d.rev / total * 100).toFixed(1)}%` : '—'];
@@ -439,7 +547,11 @@ function openPnLRevenueModal(streamLabel, records, isInvoice, year) {
   ));
   if (moRows.length) {
     body.appendChild(mkSectionLabel('Monthly Breakdown'));
-    body.appendChild(mkModalTable([{ label: 'Month' }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }], moRows.map(([mo, v]) => [mo, formatEUR(v), total > 0 ? `${(v / total * 100).toFixed(1)}%` : '—'])));
+    body.appendChild(mkModalTable([
+      { label: 'Month', tip: 'Calendar month (YYYY-MM) the revenue was recorded in.' },
+      { label: 'Revenue', right: true, tip: 'Total revenue recorded in this month, converted to EUR.' },
+      { label: 'Share', right: true, muted: true, tip: "This month's revenue as a percentage of the stream total." }
+    ], moRows.map(([mo, v]) => [mo, formatEUR(v), total > 0 ? `${(v / total * 100).toFixed(1)}%` : '—'])));
   }
   openModal({ title: `${streamLabel} — ${year}`, body, large: true });
 }
@@ -462,6 +574,17 @@ function buildKpiCards(data, year, taxRate) {
     label: 'Operating Margin', value: `${operatingMargin.toFixed(1)}%`,
     subtitle: operatingMargin > 80 ? 'High margin — service-led' : 'Revenue minus OpEx',
     variant: operatingMargin >= 50 ? 'success' : operatingMargin >= 20 ? 'warning' : 'danger',
+    explain: {
+      title: 'Operating Margin',
+      formula: '(Total Revenue − Total Operating Expenses) ÷ Total Revenue × 100',
+      inputs: [
+        { label: 'Total Revenue', value: formatEUR(totalRevenue) },
+        { label: 'Total Operating Expenses', value: formatEUR(totalOpEx) },
+        { label: 'Operating Margin', value: `${operatingMargin.toFixed(2)}%` }
+      ],
+      source: 'analytics-tax.js:561 buildKpiCards()',
+      note: 'CapEx is excluded — this is a P&L margin, not a cash-flow margin.'
+    },
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       body.appendChild(mkSummaryGrid([
@@ -480,6 +603,18 @@ function buildKpiCards(data, year, taxRate) {
     label: `Est. Corp Tax @ ${taxRate}%`, value: formatEUR(estimatedTax),
     subtitle: opProfit <= 0 ? 'No taxable profit this year' : `On ${formatEUR(taxableIncome)} taxable income`,
     variant: estimatedTax > 0 ? 'danger' : '',
+    explain: {
+      title: 'Estimated Corporation Tax',
+      formula: 'max(0, Operating Profit) × Tax Rate ÷ 100',
+      inputs: [
+        { label: 'Operating Profit', value: formatEUR(opProfit) },
+        { label: 'Taxable Income (max(0, Op. Profit))', value: formatEUR(taxableIncome) },
+        { label: `Tax Rate (${year})`, value: `${taxRate}%` },
+        { label: 'Estimated Corporation Tax', value: formatEUR(estimatedTax) }
+      ],
+      source: 'analytics-tax.js:562-563 buildKpiCards()',
+      note: 'A loss year floors taxable income to €0 — no loss carry-forward is modeled. This is a planning estimate only, not a filed tax calculation; consult your accountant for the precise figure.'
+    },
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       body.appendChild(mkSummaryGrid([
@@ -501,6 +636,19 @@ function buildKpiCards(data, year, taxRate) {
     const variance     = actualNet - forecastNet;
     const forecastCard = mkKpiCard({
       label: 'Year vs Forecast', value: formatEUR(actualNet), variant: variance >= 0 ? 'success' : 'danger',
+      explain: {
+        title: 'Year vs Forecast — Variance',
+        formula: 'Variance = Actual Net (Operating Profit) − Forecast Net (Forecast Revenue − Forecast Expenses)',
+        inputs: [
+          { label: 'Actual Net (Operating Profit)', value: formatEUR(actualNet) },
+          { label: 'Forecast Revenue', value: formatEUR(data.forecastRevenue) },
+          { label: 'Forecast Expenses', value: formatEUR(data.forecastExpenses) },
+          { label: 'Forecast Net', value: formatEUR(forecastNet) },
+          { label: 'Variance', value: formatEUR(variance) }
+        ],
+        source: 'analytics-tax.js:612-613 buildKpiCards()',
+        note: 'Forecast Net/Revenue/Expenses are the sum of yearTarget.revenue/yearTarget.expenses across active forecasts for this year — a manually entered target, not a system projection.'
+      },
       onClick: () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
         body.appendChild(mkSummaryGrid([
@@ -512,7 +660,12 @@ function buildKpiCards(data, year, taxRate) {
           { label: 'Forecast Net',      value: formatEUR(forecastNet) }
         ], 2));
         body.appendChild(mkSectionLabel('Variance'));
-        body.appendChild(mkModalTable(['Metric', 'Actual', 'Forecast', 'Variance'], [
+        body.appendChild(mkModalTable([
+          { label: 'Metric', tip: 'The P&L line being compared to its forecast target.' },
+          { label: 'Actual', tip: 'Actual amount recorded for the selected year.' },
+          { label: 'Forecast', tip: 'Forecast target entered for the selected year.' },
+          { label: 'Variance', tip: 'Actual minus Forecast.' }
+        ], [
           ['Revenue',    formatEUR(totalRevenue), formatEUR(data.forecastRevenue),  formatEUR(totalRevenue - data.forecastRevenue)],
           ['Expenses',   formatEUR(totalOpEx),    formatEUR(data.forecastExpenses), formatEUR(totalOpEx - data.forecastExpenses)],
           ['Net (OpEx)', formatEUR(actualNet),    formatEUR(forecastNet),           formatEUR(variance)]
@@ -616,7 +769,11 @@ function renderCharts(data, year, ownerFilter) {
       const catEnt = [...d.catMap.entries()].sort((a, b) => b[1] - a[1]);
       if (catEnt.length > 0) {
         body.appendChild(mkSectionLabel('OpEx by Category'));
-        body.appendChild(mkModalTable(['Category', 'Amount', '% of OpEx'], catEnt.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), d.totalOpEx > 0 ? (v / d.totalOpEx * 100).toFixed(1) + '%' : '—'])));
+        body.appendChild(mkModalTable([
+          { label: 'Category', tip: 'Operating expense cost category.' },
+          { label: 'Amount', right: true, tip: "Total operating expenses in this category for the clicked year, converted to EUR." },
+          { label: '% of OpEx', right: true, tip: "This category's amount as a percentage of that year's Total Operating Expenses." }
+        ], catEnt.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), d.totalOpEx > 0 ? (v / d.totalOpEx * 100).toFixed(1) + '%' : '—'])));
       }
       openModal({ title: `${clickedYear} Annual P&L Summary`, body, large: true });
     }
@@ -822,9 +979,18 @@ function modalRentalPayments() {
   const body = el('div');
   body.appendChild(mkSummaryGrid([{ label: 'Total Revenue', value: fmtE(total) }, { label: 'Payments', value: String(pays.length) }, { label: 'Avg / Payment', value: fmtE(total / pays.length) }, { label: 'Properties', value: String(propRows.length) }], 4));
   body.appendChild(mkSectionLabel('Revenue by Property'));
-  body.appendChild(mkModalTable([{ label: 'Property' }, { label: 'Pmts', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }], propRows.map(([id, d]) => { const p = propMap[id]; return [p?.name || p?.address || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })));
+  body.appendChild(mkModalTable([
+    { label: 'Property', tip: 'The property this rental payment was recorded against.' },
+    { label: 'Pmts', right: true, tip: 'Number of paid rental payments for this property.' },
+    { label: 'Revenue', right: true, tip: 'Total paid rental revenue for this property, converted to EUR.' },
+    { label: 'Share', right: true, muted: true, tip: "This property's revenue as a percentage of total rental payments shown above." }
+  ], propRows.map(([id, d]) => { const p = propMap[id]; return [p?.name || p?.address || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })));
   body.appendChild(mkSectionLabel('Monthly Collections'));
-  body.appendChild(mkModalTable([{ label: 'Month' }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }], moRows.map(([mo, v]) => [mo, fmtE(v), pct(v, total)])));
+  body.appendChild(mkModalTable([
+    { label: 'Month', tip: 'Calendar month (YYYY-MM) the payments were dated in.' },
+    { label: 'Revenue', right: true, tip: 'Total paid rental revenue collected in this month, converted to EUR.' },
+    { label: 'Share', right: true, muted: true, tip: "This month's revenue as a percentage of the total shown above." }
+  ], moRows.map(([mo, v]) => [mo, fmtE(v), pct(v, total)])));
   openModal({ title: `Rental Payments — ${year}`, body, large: true });
 }
 
@@ -847,7 +1013,12 @@ function modalInvoiceRevenue() {
   const body = el('div');
   body.appendChild(mkSummaryGrid([{ label: 'Total Invoiced', value: fmtE(total) }, { label: 'Invoices', value: String(invs.length) }, { label: 'Avg Invoice', value: fmtE(total / invs.length) }, { label: 'Clients', value: String(clRows.length) }], 4));
   body.appendChild(mkSectionLabel('Revenue by Client'));
-  body.appendChild(mkModalTable([{ label: 'Client' }, { label: 'Invoices', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }], clRows.map(([id, d]) => { const c = clientMap[id]; return [c?.name || c?.company || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })));
+  body.appendChild(mkModalTable([
+    { label: 'Client', tip: 'The client billed on the invoice.' },
+    { label: 'Invoices', right: true, tip: 'Number of paid invoices for this client.' },
+    { label: 'Revenue', right: true, tip: 'Total paid invoice revenue for this client, converted to EUR.' },
+    { label: 'Share', right: true, muted: true, tip: "This client's revenue as a percentage of total invoiced revenue shown above." }
+  ], clRows.map(([id, d]) => { const c = clientMap[id]; return [c?.name || c?.company || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })));
   openModal({ title: `Invoice Revenue — ${year}`, body, large: true });
 }
 
@@ -867,9 +1038,17 @@ function modalExpenseCategory(cat) {
   const body = el('div');
   body.appendChild(mkSummaryGrid([{ label: 'Category Total', value: fmtE(total) }, { label: 'Records', value: String(catExps.length) }, { label: 'Avg / Record', value: fmtE(total / catExps.length) }, { label: '% of All Expenses', value: pct(total, allTotal) }], 4));
   body.appendChild(mkSectionLabel('Monthly Distribution'));
-  body.appendChild(mkModalTable([{ label: 'Month' }, { label: 'Amount', right: true }, { label: '% of Category', right: true, muted: true }], moRows.map(([mo, v]) => [mo, fmtE(v), pct(v, total)])));
+  body.appendChild(mkModalTable([
+    { label: 'Month', tip: 'Calendar month (YYYY-MM) the expense was dated in.' },
+    { label: 'Amount', right: true, tip: 'Total expense amount recorded in this category for the month, converted to EUR.' },
+    { label: '% of Category', right: true, muted: true, tip: "This month's amount as a percentage of the category total shown above." }
+  ], moRows.map(([mo, v]) => [mo, fmtE(v), pct(v, total)])));
   body.appendChild(mkSectionLabel(`Top Records (${topRecs.length} of ${catExps.length})`));
-  body.appendChild(mkModalTable([{ label: 'Description / Vendor' }, { label: 'Date' }, { label: 'Amount', right: true }], topRecs.map(e => {
+  body.appendChild(mkModalTable([
+    { label: 'Description / Vendor', tip: "The expense's description, or its vendor's name if no description was entered." },
+    { label: 'Date', tip: 'Date the expense was recorded.' },
+    { label: 'Amount', right: true, tip: 'Expense amount, converted to EUR.' }
+  ], topRecs.map(e => {
     const vendorName = e.vendorId ? byId('vendors', e.vendorId)?.name : null;
     return [e.description || vendorName || e.vendor || '—', e.date || '', fmtE(toEUR(e.amount, e.currency, year))];
   })));
@@ -914,7 +1093,13 @@ function modalForecastEntities(forRevenue) {
   body.appendChild(mkSummaryGrid([{ label: forRevenue ? 'Forecast Revenue' : 'Forecast Expenses', value: fmtE(total) }, { label: 'Properties', value: String(propCount) }, { label: 'Services', value: String(svcCount) }, { label: 'From Month', value: `> ${curMonth}` }], 4));
   body.appendChild(mkSectionLabel(`${forRevenue ? 'Revenue' : 'Expense'} Forecast by Entity`));
   body.appendChild(mkModalTable(
-    [{ label: 'Entity' }, { label: 'Type' }, { label: 'Months', right: true }, { label: forRevenue ? 'Revenue' : 'Expenses', right: true }, { label: 'Share', right: true, muted: true }],
+    [
+      { label: 'Entity', tip: 'The property or service line the forecast applies to.' },
+      { label: 'Type', tip: 'Whether the forecast entity is a Property or a Service.' },
+      { label: 'Months', right: true, tip: 'Number of remaining forecast months counted (the current month counts only its not-yet-elapsed fraction).' },
+      { label: forRevenue ? 'Revenue' : 'Expenses', right: true, tip: `Forecast ${forRevenue ? 'revenue' : 'expenses'} for this entity over the remaining months of the year.` },
+      { label: 'Share', right: true, muted: true, tip: "This entity's forecast amount as a percentage of the total shown above." }
+    ],
     rows.map(([id, d]) => {
       const prop = propMap[id];
       const isProperty = d.type === 'property' || !!prop;
@@ -943,7 +1128,11 @@ function modalRevenueDetail() {
   if (moRows.length) {
     body.appendChild(mkSectionLabel('Month-by-Month Actual Collections'));
     let cum = 0;
-    body.appendChild(mkModalTable([{ label: 'Month' }, { label: 'Revenue', right: true }, { label: 'Cumulative', right: true, muted: true }], moRows.map(([mo, v]) => { cum += v; return [mo, fmtE(v), fmtE(cum)]; })));
+    body.appendChild(mkModalTable([
+      { label: 'Month', tip: 'Calendar month (YYYY-MM) the revenue was recorded in.' },
+      { label: 'Revenue', right: true, tip: 'Paid rental payments plus paid invoice revenue recorded in this month, converted to EUR.' },
+      { label: 'Cumulative', right: true, muted: true, tip: 'Running total of Revenue from the first month shown through this month.' }
+    ], moRows.map(([mo, v]) => { cum += v; return [mo, fmtE(v), fmtE(cum)]; })));
   }
   openModal({ title: `Annual Revenue Breakdown — ${year}`, body, large: true });
 }
@@ -961,7 +1150,11 @@ function modalExpensesDetail() {
   body.appendChild(mkSummaryGrid([{ label: 'Actual to Date', value: fmtE(actTotal) }, { label: 'Forecast Remaining', value: fmtE(safeN(s.forecastExpenses)) }, { label: 'Expense Categories', value: String(catRows.length) }, { label: 'Largest Category', value: catRows[0]?.[0] || '—', sub: catRows[0] ? fmtE(catRows[0][1]) : '' }], 4));
   if (catRows.length) {
     body.appendChild(mkSectionLabel('All Categories — Actual to Date'));
-    body.appendChild(mkModalTable([{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Actual', right: true, muted: true }], catRows.map(([cat, v]) => [cat, fmtE(v), pct(v, actTotal)])));
+    body.appendChild(mkModalTable([
+      { label: 'Category', tip: "Expense category, as recorded on the expense (defaults to 'Other' if unset)." },
+      { label: 'Amount', right: true, tip: 'Total actual (non-CapEx) deductible expenses to date in this category, converted to EUR.' },
+      { label: '% of Actual', right: true, muted: true, tip: "This category's amount as a percentage of total actual expenses to date." }
+    ], catRows.map(([cat, v]) => [cat, fmtE(v), pct(v, actTotal)])));
   }
   openModal({ title: `Deductible Expenses Breakdown — ${year}`, body, large: true });
 }
@@ -978,7 +1171,11 @@ function modalTaxableProfit() {
   const body = el('div');
   body.appendChild(mkSummaryGrid([{ label: 'Est. Revenue', value: fmtE(c.totalRevenue) }, { label: 'Est. Expenses', value: fmtE(c.totalDeductible) }, { label: 'Taxable Profit', value: fmtE(c.estProfit) }, { label: 'Profit Margin', value: margin ? `${margin}%` : '—', sub: 'Profit ÷ Revenue' }], 4));
   body.appendChild(mkSectionLabel('Calculation'));
-  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], rows));
+  body.appendChild(mkModalTable([
+    { label: 'Item', tip: 'Line item in the estimated taxable profit calculation.' },
+    { label: '', tip: 'Arithmetic operator applied to this line (+, −, or = for the running result).' },
+    { label: 'Amount', right: true, tip: 'Value of this line item, converted to EUR.' }
+  ], rows));
   openModal({ title: 'Taxable Profit — Calculation', body });
 }
 
@@ -1006,7 +1203,12 @@ function modalCorpTax() {
   const body = el('div');
   body.appendChild(mkSummaryGrid([{ label: 'Corp Tax Rate', value: `${c.rate}%` }, { label: 'Taxable Profit', value: fmtE(c.taxableProfit) }, { label: 'Total Corp Tax', value: fmtE(c.corpTax) }, { label: 'Effective Rate on Revenue', value: `${effRate}%`, sub: 'Tax ÷ Est. Revenue' }], 4));
   body.appendChild(mkSectionLabel('Payment Schedule'));
-  body.appendChild(mkModalTable([{ label: 'Instalment' }, { label: 'Due Date' }, { label: 'Amount', right: true }, { label: 'Status', right: true, muted: true }], [
+  body.appendChild(mkModalTable([
+    { label: 'Instalment', tip: 'Which provisional or final corporation tax payment this row represents.' },
+    { label: 'Due Date', tip: 'Statutory due date for this payment.' },
+    { label: 'Amount', right: true, tip: '50% of estimated corporation tax for each instalment; the final balance is not computed here (it depends on the audited year-end profit).' },
+    { label: 'Status', right: true, muted: true, tip: 'Days remaining or overdue relative to the due date.' }
+  ], [
     ['1st — 50%',     `31 Jul ${year}`,      fmtE(c.julyPayment), daysLabel(`${year}-07-31`)],
     ['2nd — 50%',     `31 Dec ${year}`,      fmtE(c.decPayment),  daysLabel(`${year}-12-31`)],
     ['Final balance', `1 Aug ${nextYear}`,   '—',                 'After audit'],
@@ -1036,7 +1238,11 @@ function modalInstalment(which) {
   if (c.bufEnabled) calcRows.push([`Safety Buffer (+${c.bufPct}%)`, '+', fmtE(c.taxableProfit - c.estProfit)]);
   calcRows.push([`Corporation Tax @ ${c.rate}%`, '=', fmtE(c.corpTax)]);
   calcRows.push([isJuly ? '1st Instalment (50%)' : '2nd Instalment (50%)', '=', fmtE(amount)]);
-  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], calcRows));
+  body.appendChild(mkModalTable([
+    { label: 'Item', tip: 'Line item in the calculation leading to this instalment amount.' },
+    { label: '', tip: 'Arithmetic operator applied to this line (+, −, or = for the running result).' },
+    { label: 'Amount', right: true, tip: 'Value of this line item, converted to EUR.' }
+  ], calcRows));
 
   body.appendChild(mkSectionLabel('Underlying Figures'));
   const linkRow = (label, value, onClick) => {
@@ -1093,7 +1299,11 @@ function modalDecRevProfit() {
   const body = el('div');
   body.appendChild(mkSummaryGrid([{ label: 'Original Estimate', value: fmtE(c.estProfit) }, { label: 'Revised Estimate', value: fmtE(c.revProfit) }, { label: 'Change', value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta)), sub: delta > 0 ? 'Profit up' : delta < 0 ? 'Profit down' : 'No change' }, { label: 'Tax Impact', value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta) * c.rate / 100), sub: `At ${c.rate}% rate` }], 4));
   body.appendChild(mkSectionLabel('Revised Calculation'));
-  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], rows));
+  body.appendChild(mkModalTable([
+    { label: 'Item', tip: 'Line item in the revised taxable profit calculation.' },
+    { label: '', tip: 'Arithmetic operator applied to this line (+, −, or = for the running result).' },
+    { label: 'Amount', right: true, tip: 'Value of this line item, converted to EUR.' }
+  ], rows));
   openModal({ title: 'Revised Taxable Profit vs Original', body });
 }
 
@@ -1147,7 +1357,11 @@ function modalSafetyCheck() {
     { label: 'Shortfall',               value: fmtE(c.shortfall),     sub: c.shortfall > 0 ? 'Additional tax needed' : 'None' }
   ], 4));
   body.appendChild(mkSectionLabel('How the 75% Safe Harbor Is Calculated'));
-  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], [
+  body.appendChild(mkModalTable([
+    { label: 'Item', tip: 'Line item in the 75% safe-harbor calculation.' },
+    { label: '', tip: 'Arithmetic operator applied to this line (×, −, or = for the running result).' },
+    { label: 'Amount', right: true, tip: 'Value of this line item, converted to EUR (or a percentage, for the 75% threshold row).' }
+  ], [
     ['Estimated Final Tax Liability',       '',  fmtE(c.finalTax)],
     ['× 75% Safe Harbor Threshold',         '×', '75%'],
     ['Minimum Required Provisional Tax',    '=', fmtE(c.minRequired75)],
@@ -1155,7 +1369,11 @@ function modalSafetyCheck() {
     ['Shortfall (if positive)',             '=', fmtE(c.shortfall)],
   ]));
   body.appendChild(mkSectionLabel('Contributing Instalments'));
-  body.appendChild(mkModalTable([{ label: 'Instalment' }, { label: 'Due Date' }, { label: 'Amount', right: true }], [
+  body.appendChild(mkModalTable([
+    { label: 'Instalment', tip: 'Which provisional tax instalment.' },
+    { label: 'Due Date', tip: 'Statutory due date for this instalment.' },
+    { label: 'Amount', right: true, tip: '50% of estimated corporation tax for this instalment.' }
+  ], [
     ['1st — 50%', `31 Jul ${year}`, fmtE(c.julyPayment)],
     ['2nd — 50%', `31 Dec ${year}`, fmtE(c.decPayment)],
   ]));
@@ -1175,7 +1393,10 @@ function modalOverpayment() {
   body.appendChild(mkSummaryGrid([{ label: 'July Payment', value: fmtE(c.alreadyPaid) }, { label: 'Revised Annual Tax', value: fmtE(c.revisedAnnualTax) }, { label: 'Overpayment', value: fmtE(c.overpayment) }, { label: 'No Dec Payment Due', value: 'Confirmed' }], 4));
   body.appendChild(mkSectionLabel('Your Options'));
   body.appendChild(mkModalTable(
-    ['Option', 'Description'],
+    [
+      { label: 'Option', tip: 'Available way to handle the July overpayment.' },
+      { label: 'Description', right: false, tip: 'What choosing this option means.' }
+    ],
     [
       ['Offset against final balance', `Apply the ${fmtE(c.overpayment)} credit toward the final corporation tax balance due after the year-end audit (1 Aug).`],
       ['Claim a refund', 'Request a refund from the Cyprus Tax Department after the final assessment is issued. Processing times vary.'],
@@ -1418,20 +1639,100 @@ function ptBuildResultsCard(c, s) {
   const expSub = [safeN(s.actualExpenses) > 0 ? `Actual ${fmtE(safeN(s.actualExpenses))}` : null, safeN(s.forecastExpenses) > 0 ? `Forecast ${fmtE(safeN(s.forecastExpenses))}` : null].filter(Boolean).join(' + ') || null;
 
   body.appendChild(el('div', { class: 'grid grid-3 mb-16' },
-    mkKpiCard({ label: 'Est. Annual Revenue',      value: fmtE(c.totalRevenue),    subtitle: revSub, onClick: modalRevenueDetail }),
-    mkKpiCard({ label: 'Est. Deductible Expenses', value: fmtE(c.totalDeductible), subtitle: expSub, onClick: modalExpensesDetail }),
-    mkKpiCard({ label: 'Est. Taxable Profit',      value: fmtE(c.estProfit),       onClick: modalTaxableProfit })
+    mkKpiCard({
+      label: 'Est. Annual Revenue', value: fmtE(c.totalRevenue), subtitle: revSub, onClick: modalRevenueDetail,
+      explain: {
+        title: 'Est. Annual Revenue', formula: 'Actual Revenue to Date + Forecast Revenue (rest of year)',
+        inputs: [
+          { label: 'Actual Revenue to Date', value: fmtE(safeN(s.actualRevenue)) },
+          { label: 'Forecast Revenue (remaining)', value: fmtE(safeN(s.forecastRevenue)) },
+          { label: 'Est. Annual Revenue', value: fmtE(c.totalRevenue) }
+        ],
+        source: 'analytics-tax.js:768 calcAll()',
+        note: 'Actual/forecast figures come from the Annual Estimate card above — manually entered or prefilled from recorded payments/invoices/forecasts.'
+      }
+    }),
+    mkKpiCard({
+      label: 'Est. Deductible Expenses', value: fmtE(c.totalDeductible), subtitle: expSub, onClick: modalExpensesDetail,
+      explain: {
+        title: 'Est. Deductible Expenses', formula: 'Actual Expenses to Date + Forecast Expenses (rest of year)',
+        inputs: [
+          { label: 'Actual Expenses to Date', value: fmtE(safeN(s.actualExpenses)) },
+          { label: 'Forecast Expenses (remaining)', value: fmtE(safeN(s.forecastExpenses)) },
+          { label: 'Est. Deductible Expenses', value: fmtE(c.totalDeductible) }
+        ],
+        source: 'analytics-tax.js:769 calcAll()',
+        note: '"Deductible" here means whatever the user entered as expenses in the Annual Estimate card — this dashboard does not itself classify individual expenses as tax-deductible or not.'
+      }
+    }),
+    mkKpiCard({
+      label: 'Est. Taxable Profit', value: fmtE(c.estProfit), onClick: modalTaxableProfit,
+      explain: {
+        title: 'Est. Taxable Profit',
+        formula: 'max(0, Est. Annual Revenue − Est. Deductible Expenses + Non-deductible Add-back − Tax Allowances)',
+        inputs: [
+          { label: 'Est. Annual Revenue', value: fmtE(c.totalRevenue) },
+          { label: 'Est. Deductible Expenses', value: fmtE(c.totalDeductible) },
+          { label: 'Non-deductible Add-back', value: fmtE(safeN(s.nonDeductibleExpenses)) },
+          { label: 'Tax Allowances', value: fmtE(safeN(s.taxAllowances)) },
+          { label: 'Est. Taxable Profit', value: fmtE(c.estProfit) }
+        ],
+        source: 'analytics-tax.js:770 calcAll()',
+        note: 'Non-deductible Add-back and Tax Allowances are figures the user enters directly in the Profit Adjustments card — not derived from any tax-law classification by this dashboard.'
+      }
+    })
   ));
 
   const taxRow = [];
-  if (c.bufEnabled) taxRow.push(mkKpiCard({ label: `Buffered Taxable Profit (+${c.bufPct}%)`, value: fmtE(c.taxableProfit), subtitle: `${c.bufPct}% safety margin applied`, onClick: modalBufferedProfit }));
-  taxRow.push(mkKpiCard({ label: `Est. Corporation Tax (${c.rate}%)`, value: fmtE(c.corpTax), variant: c.corpTax > 0 ? 'warning' : '', onClick: modalCorpTax }));
+  if (c.bufEnabled) taxRow.push(mkKpiCard({
+    label: `Buffered Taxable Profit (+${c.bufPct}%)`, value: fmtE(c.taxableProfit), subtitle: `${c.bufPct}% safety margin applied`, onClick: modalBufferedProfit,
+    explain: {
+      title: 'Buffered Taxable Profit',
+      formula: 'max(0, Est. Taxable Profit × (1 + Buffer % ÷ 100))',
+      inputs: [
+        { label: 'Est. Taxable Profit', value: fmtE(c.estProfit) },
+        { label: 'Buffer %', value: `${c.bufPct}%` },
+        { label: 'Buffered Taxable Profit', value: fmtE(c.taxableProfit) }
+      ],
+      source: 'analytics-tax.js:771-772 calcAll()',
+      note: 'The buffer is an optional, user-configured safety margin (Tax Settings card) — not a statutory requirement. It exists only to reduce the risk of the 75% provisional-tax shortfall penalty.'
+    }
+  }));
+  taxRow.push(mkKpiCard({
+    label: `Est. Corporation Tax (${c.rate}%)`, value: fmtE(c.corpTax), variant: c.corpTax > 0 ? 'warning' : '', onClick: modalCorpTax,
+    explain: {
+      title: 'Est. Corporation Tax',
+      formula: 'Taxable Profit used (buffered, if enabled) × Tax Rate ÷ 100',
+      inputs: [
+        { label: 'Taxable Profit used', value: fmtE(c.taxableProfit) },
+        { label: 'Tax Rate', value: `${c.rate}%` },
+        { label: 'Est. Corporation Tax', value: fmtE(c.corpTax) }
+      ],
+      source: 'analytics-tax.js:773 calcAll()',
+      note: 'This is a planning estimate only, not a filed tax calculation — consult your accountant for the precise figure.'
+    }
+  }));
   body.appendChild(el('div', { style: `display:grid;grid-template-columns:repeat(${taxRow.length},1fr);gap:16px;margin-bottom:16px` }, ...taxRow));
 
   body.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px' }, 'Payment Schedule'));
   body.appendChild(el('div', { class: 'grid grid-3' },
-    mkKpiCard({ label: `1st Instalment — 31 Jul ${year}`,   value: fmtE(c.julyPayment), subtitle: '50% of estimated corporation tax', onClick: () => modalInstalment('july') }),
-    mkKpiCard({ label: `2nd Instalment — 31 Dec ${year}`,   value: fmtE(c.decPayment),  subtitle: '50% — revise in Dec if needed',   onClick: () => modalInstalment('dec') }),
+    mkKpiCard({
+      label: `1st Instalment — 31 Jul ${year}`, value: fmtE(c.julyPayment), subtitle: '50% of estimated corporation tax', onClick: () => modalInstalment('july'),
+      explain: {
+        title: '1st Instalment (July)', formula: 'Est. Corporation Tax ÷ 2',
+        inputs: [{ label: 'Est. Corporation Tax', value: fmtE(c.corpTax) }, { label: '1st Instalment', value: fmtE(c.julyPayment) }],
+        source: 'analytics-tax.js:774 calcAll()'
+      }
+    }),
+    mkKpiCard({
+      label: `2nd Instalment — 31 Dec ${year}`, value: fmtE(c.decPayment), subtitle: '50% — revise in Dec if needed', onClick: () => modalInstalment('dec'),
+      explain: {
+        title: '2nd Instalment (December)', formula: 'Est. Corporation Tax ÷ 2',
+        inputs: [{ label: 'Est. Corporation Tax', value: fmtE(c.corpTax) }, { label: '2nd Instalment', value: fmtE(c.decPayment) }],
+        source: 'analytics-tax.js:775 calcAll()',
+        note: 'Split evenly 50/50 with the July instalment. Use the December Revision card if year-end estimates change before the payment is due.'
+      }
+    }),
     mkKpiCard({ label: `Final Balance — 1 Aug ${nextYear}`, value: '—',                 subtitle: 'Based on actual audited profit',  onClick: modalFinalBalance })
   ));
 
@@ -1501,9 +1802,31 @@ function buildProvisionalTax() {
       return;
     }
     safetyDisplayEl.appendChild(el('div', { class: 'grid grid-3', style: 'margin-bottom:12px' },
-      mkKpiCard({ label: 'Planned Provisional Tax', value: fmtE(c.corpTax), onClick: modalSafetyCheck }),
-      mkKpiCard({ label: 'Minimum Required (75%)',  value: fmtE(c.minRequired75), subtitle: `75% of ${fmtE(c.finalTax)}`, onClick: modalSafetyCheck }),
-      mkKpiCard({ label: 'Shortfall',               value: fmtE(c.shortfall), variant: c.shortfall > 0 ? 'danger' : 'success', onClick: modalSafetyCheck })
+      mkKpiCard({
+        label: 'Planned Provisional Tax', value: fmtE(c.corpTax), onClick: modalSafetyCheck,
+        explain: {
+          title: 'Planned Provisional Tax', formula: 'Taxable Profit used (buffered, if enabled) × Tax Rate ÷ 100 — the July + December instalments combined',
+          inputs: [{ label: 'Taxable Profit used', value: fmtE(c.taxableProfit) }, { label: 'Tax Rate', value: `${c.rate}%` }, { label: 'Planned Provisional Tax', value: fmtE(c.corpTax) }],
+          source: 'analytics-tax.js:773 calcAll()'
+        }
+      }),
+      mkKpiCard({
+        label: 'Minimum Required (75%)', value: fmtE(c.minRequired75), subtitle: `75% of ${fmtE(c.finalTax)}`, onClick: modalSafetyCheck,
+        explain: {
+          title: 'Minimum Required (75%)', formula: 'Estimated Final Tax × 75%',
+          inputs: [{ label: 'Estimated Final Tax', value: fmtE(c.finalTax) }, { label: 'Minimum Required', value: fmtE(c.minRequired75) }],
+          source: 'analytics-tax.js:778 calcAll()',
+          note: 'Estimated Final Tax is a manually entered year-end estimate (Safety Check card above), not derived from any other figure on this dashboard.'
+        }
+      }),
+      mkKpiCard({
+        label: 'Shortfall', value: fmtE(c.shortfall), variant: c.shortfall > 0 ? 'danger' : 'success', onClick: modalSafetyCheck,
+        explain: {
+          title: 'Shortfall', formula: 'max(0, Minimum Required (75%) − Planned Provisional Tax)',
+          inputs: [{ label: 'Minimum Required (75%)', value: fmtE(c.minRequired75) }, { label: 'Planned Provisional Tax', value: fmtE(c.corpTax) }, { label: 'Shortfall', value: fmtE(c.shortfall) }],
+          source: 'analytics-tax.js:779 calcAll()'
+        }
+      })
     ));
     const safe = c.safe;
     safetyDisplayEl.appendChild(el('div', { style: `padding:12px 14px;border-radius:var(--radius-sm);border-left:4px solid var(--${safe ? 'success' : 'danger'});background:rgba(${safe ? '16,185,129' : '239,68,68'},0.07)` },
@@ -1523,14 +1846,58 @@ function buildProvisionalTax() {
       return;
     }
     decDisplayEl.appendChild(el('div', { class: 'grid grid-3 mb-16' },
-      mkKpiCard({ label: 'Revised Taxable Profit',         value: fmtE(c.revProfit),        onClick: modalDecRevProfit }),
-      mkKpiCard({ label: `Revised Corp Tax (${c.rate}%)`,  value: fmtE(c.revisedAnnualTax), onClick: modalDecRevTax }),
-      mkKpiCard({ label: 'Already Paid in July',           value: fmtE(c.alreadyPaid),      onClick: modalJulyPaid })
+      mkKpiCard({
+        label: 'Revised Taxable Profit', value: fmtE(c.revProfit), onClick: modalDecRevProfit,
+        explain: {
+          title: 'Revised Taxable Profit',
+          formula: 'max(0, Revised Revenue − Revised Expenses + Non-deductible Add-back − Tax Allowances)',
+          inputs: [
+            { label: 'Revised Revenue', value: fmtE(safeN(s.decRevRevenue)) },
+            { label: 'Revised Expenses', value: fmtE(safeN(s.decRevExpenses)) },
+            { label: 'Non-deductible Add-back', value: fmtE(safeN(s.decRevNonDeductible)) },
+            { label: 'Tax Allowances', value: fmtE(safeN(s.decRevAllowances)) },
+            { label: 'Revised Taxable Profit', value: fmtE(c.revProfit) }
+          ],
+          source: 'analytics-tax.js:781 calcAll()',
+          note: 'All four inputs are manually entered in the December Revision Check card above.'
+        }
+      }),
+      mkKpiCard({
+        label: `Revised Corp Tax (${c.rate}%)`, value: fmtE(c.revisedAnnualTax), onClick: modalDecRevTax,
+        explain: {
+          title: 'Revised Corp Tax', formula: 'Revised Taxable Profit × Tax Rate ÷ 100',
+          inputs: [{ label: 'Revised Taxable Profit', value: fmtE(c.revProfit) }, { label: 'Tax Rate', value: `${c.rate}%` }, { label: 'Revised Corp Tax', value: fmtE(c.revisedAnnualTax) }],
+          source: 'analytics-tax.js:782 calcAll()'
+        }
+      }),
+      mkKpiCard({
+        label: 'Already Paid in July', value: fmtE(c.alreadyPaid), onClick: modalJulyPaid,
+        explain: {
+          title: 'Already Paid in July', formula: 'User-entered "amount already paid in July" (clamped to ≥ 0)',
+          inputs: [{ label: 'Already Paid in July', value: fmtE(c.alreadyPaid) }],
+          source: 'analytics-tax.js:783 calcAll()',
+          note: 'This is a manually entered actual payment (Prior Payment section below), independent of the 1st Instalment estimate shown on the main Provisional Tax Result card — enter what you actually paid.'
+        }
+      })
     ));
     decDisplayEl.appendChild(el('div', { class: 'grid grid-2' },
-      mkKpiCard({ label: `Required 2nd Instalment — 31 Dec ${year}`, value: fmtE(c.reqDecPayment), variant: c.reqDecPayment > 0 ? 'warning' : 'success', subtitle: c.reqDecPayment > 0 ? 'Pay by 31 December' : 'No additional payment required', onClick: modalReqDecPayment }),
+      mkKpiCard({
+        label: `Required 2nd Instalment — 31 Dec ${year}`, value: fmtE(c.reqDecPayment), variant: c.reqDecPayment > 0 ? 'warning' : 'success', subtitle: c.reqDecPayment > 0 ? 'Pay by 31 December' : 'No additional payment required', onClick: modalReqDecPayment,
+        explain: {
+          title: 'Required 2nd Instalment', formula: 'max(0, Revised Corp Tax − Already Paid in July)',
+          inputs: [{ label: 'Revised Corp Tax', value: fmtE(c.revisedAnnualTax) }, { label: 'Already Paid in July', value: fmtE(c.alreadyPaid) }, { label: 'Required 2nd Instalment', value: fmtE(c.reqDecPayment) }],
+          source: 'analytics-tax.js:784-785 calcAll()'
+        }
+      }),
       c.overpayment > 0
-        ? mkKpiCard({ label: 'July Overpayment', value: fmtE(c.overpayment), variant: 'success', subtitle: 'Offset or refund — click for options', onClick: modalOverpayment })
+        ? mkKpiCard({
+            label: 'July Overpayment', value: fmtE(c.overpayment), variant: 'success', subtitle: 'Offset or refund — click for options', onClick: modalOverpayment,
+            explain: {
+              title: 'July Overpayment', formula: 'Already Paid in July − Revised Corp Tax (shown only when this is positive)',
+              inputs: [{ label: 'Already Paid in July', value: fmtE(c.alreadyPaid) }, { label: 'Revised Corp Tax', value: fmtE(c.revisedAnnualTax) }, { label: 'July Overpayment', value: fmtE(c.overpayment) }],
+              source: 'analytics-tax.js:786 calcAll()'
+            }
+          })
         : mkKpiCard({ label: 'Overpayment', value: fmtE(0), subtitle: 'None' })
     ));
   };
