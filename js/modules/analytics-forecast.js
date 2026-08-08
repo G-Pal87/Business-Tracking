@@ -16,7 +16,7 @@ import {
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, safePct } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, safePct, mkTh } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = [
@@ -27,33 +27,33 @@ const CHART_IDS = [
 ];
 
 const REV_COLS = [
-  { key: 'date',   label: 'Date',   format: v => fmtDate(v) },
-  { key: 'type',   label: 'Type' },
-  { key: 'source', label: 'Entity' },
-  { key: 'ref',    label: 'Ref' },
-  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v) }
+  { key: 'date',   label: 'Date',   format: v => fmtDate(v), tip: 'Date the payment or invoice was recorded.' },
+  { key: 'type',   label: 'Type', tip: 'Record type (payment or invoice).' },
+  { key: 'source', label: 'Entity', tip: 'Property or client the revenue is attributed to.' },
+  { key: 'ref',    label: 'Ref', tip: 'Reference or confirmation number for the transaction.' },
+  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the transaction date.' }
 ];
 const EXP_COLS = [
-  { key: 'date',        label: 'Date',        format: v => fmtDate(v) },
-  { key: 'source',      label: 'Property' },
-  { key: 'category',    label: 'Category' },
-  { key: 'description', label: 'Description' },
-  { key: 'eur',         label: 'EUR', right: true, format: v => formatEUR(v) }
+  { key: 'date',        label: 'Date',        format: v => fmtDate(v), tip: 'Date the expense was recorded.' },
+  { key: 'source',      label: 'Property', tip: 'Property the expense is attributed to.' },
+  { key: 'category',    label: 'Category', tip: 'Expense category (e.g. maintenance, utilities).' },
+  { key: 'description', label: 'Description', tip: 'Free-text description of the expense.' },
+  { key: 'eur',         label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the expense date.' }
 ];
 const EXP_MO_COLS = [
-  { key: 'month',  label: 'Month' },
-  { key: 'fcExp',  label: 'Forecast OpEx', right: true },
-  { key: 'actExp', label: 'Actual OpEx',   right: true },
-  { key: 'varStr', label: 'Variance',      right: true },
-  { key: 'pctStr', label: 'Var %',         right: true }
+  { key: 'month',  label: 'Month', tip: 'Calendar month.' },
+  { key: 'fcExp',  label: 'Forecast OpEx', right: true, tip: 'Forecast operating expenses for the month, from property/service forecast records.' },
+  { key: 'actExp', label: 'Actual OpEx',   right: true, tip: 'Actual operating expenses recorded for the month (excludes CapEx).' },
+  { key: 'varStr', label: 'Variance',      right: true, tip: 'Actual OpEx minus Forecast OpEx.' },
+  { key: 'pctStr', label: 'Var %',         right: true, tip: 'Variance as a percentage of Forecast OpEx.' }
 ];
 const NET_MO_COLS = [
-  { key: 'month',  label: 'Month' },
-  { key: 'actRev', label: 'Actual Revenue', right: true },
-  { key: 'actExp', label: 'Actual OpEx',    right: true },
-  { key: 'actNet', label: 'Actual Net',     right: true },
-  { key: 'fcNet',  label: 'Forecast Net',   right: true },
-  { key: 'varStr', label: 'Variance',       right: true }
+  { key: 'month',  label: 'Month', tip: 'Calendar month.' },
+  { key: 'actRev', label: 'Actual Revenue', right: true, tip: 'Actual revenue recorded for the month (paid payments + paid invoices).' },
+  { key: 'actExp', label: 'Actual OpEx',    right: true, tip: 'Actual operating expenses recorded for the month (excludes CapEx).' },
+  { key: 'actNet', label: 'Actual Net',     right: true, tip: 'Actual Revenue minus Actual OpEx.' },
+  { key: 'fcNet',  label: 'Forecast Net',   right: true, tip: 'Forecast Revenue minus Forecast OpEx for the month.' },
+  { key: 'varStr', label: 'Variance',       right: true, tip: 'Actual Net minus Forecast Net.' }
 ];
 
 // ── Filter state ──────────────────────────────────────────────────────────────
@@ -665,11 +665,11 @@ function computePropertyBreakdown(actPayments, months, pendingItems) {
 
 // ── Drill row helpers ─────────────────────────────────────────────────────────
 const MO_COLS = [
-  { key: 'month', label: 'Month' },
-  { key: 'fcRev', label: 'Forecast',  right: true },
-  { key: 'actRev',label: 'Actual',    right: true },
-  { key: 'var',   label: 'Variance',  right: true },
-  { key: 'pct',   label: 'Var %',     right: true }
+  { key: 'month', label: 'Month', tip: 'Calendar month.' },
+  { key: 'fcRev', label: 'Forecast',  right: true, tip: 'Forecast revenue for the month, from property/service forecast records.' },
+  { key: 'actRev',label: 'Actual',    right: true, tip: 'Actual revenue recorded for the month (paid payments + paid invoices).' },
+  { key: 'var',   label: 'Variance',  right: true, tip: 'Actual Revenue minus Forecast Revenue.' },
+  { key: 'pct',   label: 'Var %',     right: true, tip: 'Variance as a percentage of Forecast Revenue.' }
 ];
 function monthDrillRows(monthlyBreakdown) {
   return monthlyBreakdown
@@ -716,16 +716,64 @@ function openPendingPipelineModal(data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   body.appendChild(mkSummaryGrid([
-    { label: 'Short-Term Rental', value: pendingSTRTotal > 0 ? formatEUR(pendingSTRTotal) : '—', sub: `${pendingReservations.length} reservation${pendingReservations.length !== 1 ? 's' : ''}` },
-    { label: 'Long-Term Rental',  value: ltrPendingTotal > 0 ? formatEUR(ltrPendingTotal) : '—', sub: `${ltrPendingItems.length} month${ltrPendingItems.length !== 1 ? 's' : ''}` },
-    { label: 'Services',          value: svcPendingTotal > 0 ? formatEUR(svcPendingTotal) : '—', sub: `${svcPendingItems.length} invoice${svcPendingItems.length !== 1 ? 's' : ''}` },
-    { label: 'Total Pipeline',    value: formatEUR(pendingPipeline) }
+    { label: 'Short-Term Rental', value: pendingSTRTotal > 0 ? formatEUR(pendingSTRTotal) : '—', sub: `${pendingReservations.length} reservation${pendingReservations.length !== 1 ? 's' : ''}`,
+      explain: {
+        title: 'Short-Term Rental Pending', formula: 'Sum of pending Airbnb payments (source: airbnb, status: pending) with check-in date inside the selected period, converted to EUR.',
+        inputs: [
+          { label: 'Reservations', value: String(pendingReservations.length) },
+          { label: 'Total', value: formatEUR(pendingSTRTotal) }
+        ],
+        source: 'analytics-forecast.js calculateDashboardData() — `pendingSTRTotal`',
+        note: 'Already-paid Airbnb payments and non-Airbnb sources are excluded.'
+      }
+    },
+    { label: 'Long-Term Rental',  value: ltrPendingTotal > 0 ? formatEUR(ltrPendingTotal) : '—', sub: `${ltrPendingItems.length} month${ltrPendingItems.length !== 1 ? 's' : ''}`,
+      explain: {
+        title: 'Long-Term Rental Pending', formula: 'Sum of unpaid scheduled rent months (from each active long-term lease\'s payment schedule) with due dates inside the selected period, converted to EUR.',
+        inputs: [
+          { label: 'Unpaid months', value: String(ltrPendingItems.length) },
+          { label: 'Total', value: formatEUR(ltrPendingTotal) }
+        ],
+        source: 'analytics-forecast.js calculateDashboardData() — `ltrPendingTotal` (getLtRentPendingItems())',
+        note: 'Only schedule entries not yet marked paid are counted.'
+      }
+    },
+    { label: 'Services',          value: svcPendingTotal > 0 ? formatEUR(svcPendingTotal) : '—', sub: `${svcPendingItems.length} invoice${svcPendingItems.length !== 1 ? 's' : ''}`,
+      explain: {
+        title: 'Services Pending', formula: 'Sum of sent/overdue invoices with issue date inside the selected period, converted to EUR.',
+        inputs: [
+          { label: 'Invoices', value: String(svcPendingItems.length) },
+          { label: 'Total', value: formatEUR(svcPendingTotal) }
+        ],
+        source: 'analytics-forecast.js calculateDashboardData() — `svcPendingTotal` (getServicesPendingItems())',
+        note: 'Paid and draft invoices are excluded — only status "sent" or "overdue" counts.'
+      }
+    },
+    { label: 'Total Pipeline',    value: formatEUR(pendingPipeline),
+      explain: {
+        title: 'Total Pending Pipeline', formula: 'Short-Term Rental Pending + Long-Term Rental Pending + Services Pending.',
+        inputs: [
+          { label: 'Short-Term Rental', value: formatEUR(pendingSTRTotal) },
+          { label: 'Long-Term Rental',  value: formatEUR(ltrPendingTotal) },
+          { label: 'Services',          value: formatEUR(svcPendingTotal) },
+          { label: 'Total', value: formatEUR(pendingPipeline) }
+        ],
+        source: 'analytics-forecast.js calculateDashboardData() — `pendingPipeline`',
+        note: 'Confirmed pipeline only — forecasted service revenue with no invoice raised yet (Projected Services) is deliberately excluded.'
+      }
+    }
   ], 4));
 
   if (pendingReservations.length > 0) {
     body.appendChild(mkSectionLabel('Short-Term Rental — Pending Airbnb Reservations'));
     body.appendChild(mkModalTable(
-      ['Property', 'Confirmation', 'Check-in', 'Nights', 'Amount'],
+      [
+        { label: 'Property', tip: 'Property the reservation belongs to.' },
+        { label: 'Confirmation', right: true, tip: 'Airbnb confirmation/reference code for the reservation.' },
+        { label: 'Check-in', right: true, tip: 'Reservation check-in date.' },
+        { label: 'Nights', right: true, tip: 'Number of nights booked.' },
+        { label: 'Amount', right: true, tip: 'Reservation payout amount, converted to EUR, pending collection.' }
+      ],
       pendingReservations
         .slice()
         .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
@@ -743,7 +791,13 @@ function openPendingPipelineModal(data) {
   if (ltrPendingItems.length > 0) {
     body.appendChild(mkSectionLabel('Long-Term Rental — Unpaid Scheduled Rent'));
     body.appendChild(mkModalTable(
-      ['Property', 'Tenant', 'Due Date', 'Status', 'Amount'],
+      [
+        { label: 'Property', tip: 'Property with the unpaid lease month.' },
+        { label: 'Tenant', right: true, tip: 'Tenant on the active lease.' },
+        { label: 'Due Date', right: true, tip: 'Scheduled rent due date from the lease payment schedule.' },
+        { label: 'Status', right: true, tip: 'Whether the due date has already passed (Overdue) or is still upcoming.' },
+        { label: 'Amount', right: true, tip: 'Scheduled rent amount, converted to EUR.' }
+      ],
       ltrPendingItems
         .slice()
         .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
@@ -755,7 +809,13 @@ function openPendingPipelineModal(data) {
   if (svcPendingItems.length > 0) {
     body.appendChild(mkSectionLabel('Services — Outstanding Invoices'));
     body.appendChild(mkModalTable(
-      ['Client', 'Invoice #', 'Due Date', 'Status', 'Amount'],
+      [
+        { label: 'Client', tip: 'Client the outstanding invoice was issued to.' },
+        { label: 'Invoice #', right: true, tip: 'Invoice number.' },
+        { label: 'Due Date', right: true, tip: 'Invoice due date (or issue date if no due date is set).' },
+        { label: 'Status', right: true, tip: 'Whether the due date has already passed (Overdue) or is still upcoming.' },
+        { label: 'Amount', right: true, tip: 'Invoice total, converted to EUR, not yet paid.' }
+      ],
       svcPendingItems
         .slice()
         .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
@@ -799,6 +859,15 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     delta: cmpData ? safePct(forecastRev, cmpData.forecastRev) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.forecastRev) : undefined,
+    explain: {
+      title: 'Forecast Revenue', formula: 'Sum of each month\'s forecast revenue across the selected period.',
+      inputs: [
+        { label: 'Months in period', value: String(monthlyBreakdown.length) },
+        { label: 'Total', value: formatEUR(forecastRev) }
+      ],
+      source: 'analytics-forecast.js calculateDashboardData() — `forecastRev` (buildFcMaps())',
+      note: 'A manual monthly forecast entry wins when present; a long-term property with no manual entry falls back to its lease/rent schedule (see resolvePropertyMonthRevenue()). Cancelled/removed Airbnb forecast entries (tombstones) are excluded via sumForecastEntries().'
+    }
   }));
 
   // 2. Actual Revenue
@@ -845,7 +914,13 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         .map(([name, val]) => [name, formatEUR(val)]);
       if (clientRows.length > 0) {
         body.appendChild(mkSectionLabel('By Client / Property'));
-        body.appendChild(mkModalTable(['Client / Property', 'Amount'], clientRows));
+        body.appendChild(mkModalTable(
+          [
+            { label: 'Client / Property', tip: 'Client (services) or property (rentals) the actual revenue is attributed to.' },
+            { label: 'Amount', right: true, tip: 'Sum of actual revenue (paid payments + paid invoices) for this client/property in the selected period.' }
+          ],
+          clientRows
+        ));
       }
 
       openModal({ title: 'Actual Revenue Breakdown', body, large: true });
@@ -853,6 +928,15 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     delta: cmpData ? safePct(actualRev, cmpData.actualRev) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.actualRev) : undefined,
+    explain: {
+      title: 'Actual Revenue', formula: 'Sum of paid payments + paid invoices dated within the selected period.',
+      inputs: [
+        { label: 'Paid payments', value: String(actPayments.length) },
+        { label: 'Paid invoices', value: String(actInvoices.length) },
+        { label: 'Total', value: formatEUR(actualRev) }
+      ],
+      source: 'analytics-forecast.js calculateDashboardData() — `actualRev`'
+    }
   }));
 
   // 3. Forecast Variance
@@ -861,7 +945,16 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     value: forecastRev > 0 ? fmtVar(actualRev, forecastRev) : '—',
     variant: varVariant,
     onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS),
-    delta: null, compLabel: ''
+    delta: null, compLabel: '',
+    explain: {
+      title: 'Forecast Variance', formula: 'Actual Revenue − Forecast Revenue.',
+      inputs: [
+        { label: 'Actual Revenue', value: formatEUR(actualRev) },
+        { label: 'Forecast Revenue', value: formatEUR(forecastRev) },
+        { label: 'Variance', value: fmtVar(actualRev, forecastRev) }
+      ],
+      source: 'analytics-forecast.js calculateDashboardData() — `variance` (fmtVar())'
+    }
   }));
 
   // 4. Forecast Variance %
@@ -873,7 +966,17 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     value: varPctStr,
     variant: varVariant,
     onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS),
-    delta: null, compLabel: ''
+    delta: null, compLabel: '',
+    explain: {
+      title: 'Forecast Variance %', formula: '(Actual Revenue − Forecast Revenue) ÷ |Forecast Revenue| × 100.',
+      inputs: [
+        { label: 'Actual Revenue', value: formatEUR(actualRev) },
+        { label: 'Forecast Revenue', value: formatEUR(forecastRev) },
+        { label: 'Variance %', value: varPctStr }
+      ],
+      source: 'analytics-forecast.js calculateDashboardData() — `variancePct` (safeVariancePct())',
+      note: 'Shows "No forecast" when actual revenue exists but forecast revenue is zero.'
+    }
   }));
 
   // 5. Forecast OpEx — drilldown shows forecast vs actual expense breakdown
@@ -885,6 +988,12 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     delta: cmpData ? safePct(forecastExp, cmpData.forecastExp) : null,
     invertDelta: true, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.forecastExp) : undefined,
+    explain: {
+      title: 'Forecast OpEx', formula: 'Sum of each month\'s forecast operating expenses across the selected period.',
+      inputs: [{ label: 'Total', value: formatEUR(forecastExp) }],
+      source: 'analytics-forecast.js calculateDashboardData() — `forecastExp` (buildFcMaps())',
+      note: 'CapEx is not part of the forecast model — this figure is OpEx only.'
+    }
   }));
 
   // 6. Actual OpEx
@@ -929,7 +1038,13 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         .map(([name, val]) => [name, formatEUR(val)]);
       if (propRows.length > 0) {
         body.appendChild(mkSectionLabel('By Property'));
-        body.appendChild(mkModalTable(['Property', 'Amount'], propRows));
+        body.appendChild(mkModalTable(
+          [
+            { label: 'Property', tip: 'Property the operating expense is attributed to (or expense source if no property).' },
+            { label: 'Amount', right: true, tip: 'Sum of actual operating expenses for this property in the selected period.' }
+          ],
+          propRows
+        ));
       }
 
       openModal({ title: 'Actual OpEx Breakdown', body, large: true });
@@ -937,6 +1052,15 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     delta: cmpData ? safePct(actualExp, cmpData.actualExp) : null,
     invertDelta: true, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.actualExp) : undefined,
+    explain: {
+      title: 'Actual OpEx', formula: 'Sum of expenses dated within the selected period, excluding CapEx.',
+      inputs: [
+        { label: 'Expense records', value: String(actOpExpenses.length) },
+        { label: 'Total', value: formatEUR(actualExp) }
+      ],
+      source: 'analytics-forecast.js calculateDashboardData() — `actualExp`',
+      note: 'Expenses flagged as CapEx (see isCapEx()) are excluded — they show separately under Actual CapEx.'
+    },
   }));
 
   // 7. Forecast Net
@@ -948,6 +1072,15 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     delta: cmpData ? safePct(forecastNet, cmpData.forecastNet) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.forecastNet) : undefined,
+    explain: {
+      title: 'Forecast Net', formula: 'Forecast Revenue − Forecast OpEx.',
+      inputs: [
+        { label: 'Forecast Revenue', value: formatEUR(forecastRev) },
+        { label: 'Forecast OpEx', value: formatEUR(forecastExp) },
+        { label: 'Forecast Net', value: formatEUR(forecastNet) }
+      ],
+      source: 'analytics-forecast.js calculateDashboardData() — `forecastNet`'
+    }
   }));
 
   // 8. Actual Net — drilldown shows monthly net breakdown vs forecast
@@ -959,6 +1092,15 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     delta: cmpData ? safePct(actualNet, cmpData.actualNet) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.actualNet) : undefined,
+    explain: {
+      title: 'Actual Net', formula: 'Actual Revenue − Actual OpEx.',
+      inputs: [
+        { label: 'Actual Revenue', value: formatEUR(actualRev) },
+        { label: 'Actual OpEx', value: formatEUR(actualExp) },
+        { label: 'Actual Net', value: formatEUR(actualNet) }
+      ],
+      source: 'analytics-forecast.js calculateDashboardData() — `actualNet`'
+    }
   }));
 
   // 8b. Property ROI (Actual + Forecast) — blends actual figures for months
@@ -980,14 +1122,42 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         body.appendChild(mkEmptyState('No properties in the current filters have a purchase price recorded.'));
       } else {
         const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px' });
-        sgrid.appendChild(mkSummaryBox('Blended Property Net Income', formatEUR(blendedRoi.blendedNet), 'Property income only — actual (to date) + forecast (remainder)'));
-        sgrid.appendChild(mkSummaryBox('Total Invested', formatEUR(blendedRoi.totalInvested), 'Purchase price + all-time CapEx'));
-        sgrid.appendChild(mkSummaryBox('Property ROI', blendedRoi.roi.toFixed(1) + '%', null));
+        sgrid.appendChild(mkSummaryBox('Blended Property Net Income', formatEUR(blendedRoi.blendedNet), 'Property income only — actual (to date) + forecast (remainder)', {
+          title: 'Blended Property Net Income', formula: 'Blended Revenue − Blended Expenses, where each month uses the Actual figure if it has already elapsed, or the Forecast figure if it is still ahead.',
+          inputs: [
+            { label: 'Blended Revenue', value: formatEUR(blendedRoi.blendedRev) },
+            { label: 'Blended Expenses', value: formatEUR(blendedRoi.blendedExp) },
+            { label: 'Blended Net Income', value: formatEUR(blendedRoi.blendedNet) }
+          ],
+          source: 'analytics-forecast.js computeBlendedRoi() — `blendedNet`',
+          note: 'Property-only — Customer Success/Marketing revenue is excluded, since those streams have no purchase price or CapEx to feed the ROI denominator.'
+        }));
+        sgrid.appendChild(mkSummaryBox('Total Invested', formatEUR(blendedRoi.totalInvested), 'Purchase price + all-time CapEx', {
+          title: 'Total Invested', formula: 'Sum, across properties in the current filters, of Purchase Price + all-time CapEx.',
+          inputs: [{ label: 'Total Invested', value: formatEUR(blendedRoi.totalInvested) }],
+          source: 'analytics-forecast.js computeBlendedRoi() — `totalInvested`',
+          note: 'Cumulative to date — unlike revenue/expenses, this is never clamped to the selected period.'
+        }));
+        sgrid.appendChild(mkSummaryBox('Property ROI', blendedRoi.roi.toFixed(1) + '%', null, {
+          title: 'Property ROI (Actual + Forecast)', formula: 'Blended Property Net Income ÷ Total Invested × 100.',
+          inputs: [
+            { label: 'Blended Net Income', value: formatEUR(blendedRoi.blendedNet) },
+            { label: 'Total Invested', value: formatEUR(blendedRoi.totalInvested) },
+            { label: 'ROI', value: blendedRoi.roi.toFixed(1) + '%' }
+          ],
+          source: 'analytics-forecast.js computeBlendedRoi() — `roi`'
+        }));
         body.appendChild(sgrid);
 
         body.appendChild(mkSectionLabel('Monthly Basis — Actual vs Forecast (Property Income Only)'));
         body.appendChild(mkModalTable(
-          ['Month', 'Source', 'Revenue', 'Expenses', 'Net'],
+          [
+            { label: 'Month' },
+            { label: 'Source', right: true, tip: 'Whether this month\'s figures are Actual (already elapsed) or Forecast (still ahead).' },
+            { label: 'Revenue', right: true, tip: 'Property revenue for the month — actual if elapsed, forecast if not.' },
+            { label: 'Expenses', right: true, tip: 'Property operating expenses for the month — actual if elapsed, forecast if not.' },
+            { label: 'Net', right: true, tip: 'Revenue minus Expenses for the month.' }
+          ],
           blendedRoi.monthSource.map(m => [m.label, m.source, formatEUR(m.rev), formatEUR(m.exp), formatEUR(m.net)])
         ));
 
@@ -996,11 +1166,11 @@ function buildKpiGrid(data, cmpData, cmpRange) {
           body.appendChild(mkModalTable(
             [
               { label: 'Property' },
-              { label: 'Revenue (Actual + Forecast)', right: true },
-              { label: 'Purchase Price', right: true },
-              { label: 'All-time CapEx', right: true },
-              { label: 'Total Invested', right: true },
-              { label: 'Yield', right: true }
+              { label: 'Revenue (Actual + Forecast)', right: true, tip: 'Blended revenue for this property — actual to date plus forecast for the remainder of the period.' },
+              { label: 'Purchase Price', right: true, tip: 'Property purchase price, converted to EUR.' },
+              { label: 'All-time CapEx', right: true, tip: 'Cumulative capital expenditure on this property to date, regardless of the selected period.' },
+              { label: 'Total Invested', right: true, tip: 'Purchase Price plus All-time CapEx.' },
+              { label: 'Yield', right: true, tip: 'Blended revenue divided by purchase price × 100 (not annualized).' }
             ],
             [...blendedRoi.propBreakdown].sort((a, b) => (b.yieldPct ?? -Infinity) - (a.yieldPct ?? -Infinity))
               .map(p => [
@@ -1016,6 +1186,16 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     delta: cmpData?.blendedRoi?.roi != null && blendedRoi.roi != null ? blendedRoi.roi - cmpData.blendedRoi.roi : null,
     deltaIsPp: true, compLabel: cmpLabel,
     compValue: cmpData?.blendedRoi?.roi != null ? cmpData.blendedRoi.roi.toFixed(1) + '%' : undefined,
+    explain: {
+      title: 'Property ROI (Actual + Forecast)', formula: 'Blended Property Net Income ÷ Total Invested × 100.',
+      inputs: blendedRoi.totalInvested > 0 ? [
+        { label: 'Blended Net Income', value: formatEUR(blendedRoi.blendedNet) },
+        { label: 'Total Invested', value: formatEUR(blendedRoi.totalInvested) },
+        { label: 'ROI', value: blendedRoi.roi.toFixed(1) + '%' }
+      ] : [{ label: 'Total Invested', value: formatEUR(0) }],
+      source: 'analytics-forecast.js computeBlendedRoi() — `roi`',
+      note: 'Blends actual figures for months already elapsed with forecast figures for months still ahead in the selected range; property-only, regardless of the stream filter.'
+    }
   }));
 
   // 9. Pending Pipeline — period scoped, across all CONFIRMED streams (STR + LTR + Services)
@@ -1028,6 +1208,17 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     delta: cmpData ? safePct(pendingPipeline, cmpData.pendingPipeline) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.pendingPipeline) : undefined,
+    explain: {
+      title: 'Pending Pipeline', formula: 'Short-Term Rental Pending + Long-Term Rental Pending + Services Pending.',
+      inputs: [
+        { label: 'Short-Term Rental', value: formatEUR(pendingSTRTotal) },
+        { label: 'Long-Term Rental',  value: formatEUR(ltrPendingTotal) },
+        { label: 'Services',          value: formatEUR(svcPendingTotal) },
+        { label: 'Total', value: formatEUR(pendingPipeline) }
+      ],
+      source: 'analytics-forecast.js calculateDashboardData() — `pendingPipeline`',
+      note: 'Confirmed revenue only (pending Airbnb payouts, unpaid lease months, sent/overdue invoices) — forecasted-but-not-yet-invoiced service revenue is shown separately under Projected Services.'
+    }
   }));
 
   // 10. Projected Services — forecasted service revenue with no invoice raised
@@ -1043,14 +1234,39 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
       body.appendChild(mkSummaryGrid([
-        { label: 'Projected Total',       value: svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', sub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}` },
-        { label: 'Pipeline + Projected',  value: formatEUR(pendingPipeline + svcProjectedTotal) }
+        { label: 'Projected Total',       value: svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', sub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}`,
+          explain: {
+            title: 'Projected Services', formula: 'Sum of forecasted service-stream revenue (Customer Success, Marketing Services) for months with no invoice raised yet, converted to EUR.',
+            inputs: [
+              { label: 'Months', value: String(svcProjectedItems.length) },
+              { label: 'Total', value: formatEUR(svcProjectedTotal) }
+            ],
+            source: 'analytics-forecast.js calculateDashboardData() — `svcProjectedTotal` (getServicesProjectedItems())',
+            note: 'This is a typed-in target, not a signed contract, confirmed booking, or invoice — a different confidence level from Pending Pipeline. A month already invoiced (draft/sent/paid/overdue) is excluded so it isn\'t double counted.'
+          }
+        },
+        { label: 'Pipeline + Projected',  value: formatEUR(pendingPipeline + svcProjectedTotal),
+          explain: {
+            title: 'Pipeline + Projected', formula: 'Pending Pipeline (confirmed) + Projected Services (forecasted, not yet invoiced).',
+            inputs: [
+              { label: 'Pending Pipeline', value: formatEUR(pendingPipeline) },
+              { label: 'Projected Services', value: formatEUR(svcProjectedTotal) },
+              { label: 'Total', value: formatEUR(pendingPipeline + svcProjectedTotal) }
+            ],
+            source: 'analytics-forecast.js buildKpiGrid()'
+          }
+        }
       ], 2));
 
       if (svcProjectedItems.length > 0) {
         body.appendChild(mkSectionLabel('Services — Forecasted, Not Yet Invoiced'));
         body.appendChild(mkModalTable(
-          ['Stream', 'Month', 'Status', 'Amount'],
+          [
+            { label: 'Stream', tip: 'Service stream (Customer Success or Marketing Services) the projection belongs to.' },
+            { label: 'Month', right: true, tip: 'Forecasted month.' },
+            { label: 'Status', right: true, tip: 'Whether the forecasted month has already passed with no invoice raised, or is still a future projection.' },
+            { label: 'Amount', right: true, tip: 'Forecasted service revenue for the month, converted to EUR — not yet invoiced.' }
+          ],
           svcProjectedItems
             .slice()
             .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
@@ -1066,6 +1282,15 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     delta: cmpData ? safePct(svcProjectedTotal, cmpData.svcProjectedTotal) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.svcProjectedTotal) : undefined,
+    explain: {
+      title: 'Projected Services', formula: 'Sum of forecasted service-stream revenue for months with no invoice raised yet, converted to EUR.',
+      inputs: [
+        { label: 'Months', value: String(svcProjectedItems.length) },
+        { label: 'Total', value: formatEUR(svcProjectedTotal) }
+      ],
+      source: 'analytics-forecast.js calculateDashboardData() — `svcProjectedTotal` (getServicesProjectedItems())',
+      note: 'Excluded from Pending Pipeline — it is a forecasted target, not a signed contract, confirmed booking, or invoice.'
+    }
   }));
 
   // 11. CapEx Budget vs Actual — forecast model has no CapEx field; show actuals with explanatory subtitle
@@ -1079,7 +1304,15 @@ function buildKpiGrid(data, cmpData, cmpRange) {
 
       // Summary box
       const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px' });
-      summaryBoxes.appendChild(mkSummaryBox('Total CapEx', formatEUR(actualCapEx)));
+      summaryBoxes.appendChild(mkSummaryBox('Total CapEx', formatEUR(actualCapEx), null, {
+        title: 'Total CapEx', formula: 'Sum of expenses flagged as CapEx (isCapEx()) dated within the selected period, converted to EUR.',
+        inputs: [
+          { label: 'CapEx records', value: String(actCapExpenses.length) },
+          { label: 'Total', value: formatEUR(actualCapEx) }
+        ],
+        source: 'analytics-forecast.js calculateDashboardData() — `actualCapEx`',
+        note: 'The forecast model has no CapEx field, so this is shown as an actuals-only reference alongside the other forecast KPIs.'
+      }));
       summaryBoxes.appendChild(mkSummaryBox('Transactions', String(actCapExpenses.length)));
       body.appendChild(mkSectionLabel('CapEx Summary'));
       body.appendChild(summaryBoxes);
