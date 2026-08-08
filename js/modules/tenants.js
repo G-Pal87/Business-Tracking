@@ -3,6 +3,7 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
 import { recordRentPaymentsBulk } from './payments.js';
+import { mkTh } from './analytics-helpers.js';
 
 let _sortCol = -1, _sortDir = 1, _tenSearch = '';
 
@@ -77,11 +78,21 @@ function build() {
       return;
     }
 
+    const TEN_COLS = [
+      { label: 'Name',         tip: "Tenant's full name." },
+      { label: 'Property',     tip: 'The long-term rental property this tenant is leasing.' },
+      { label: 'Email',        tip: "Tenant's contact email address." },
+      { label: 'Phone',        tip: "Tenant's contact phone number." },
+      { label: 'Lease Start',  tip: "Date the tenant's lease began." },
+      { label: 'Lease End',    tip: "Date the tenant's lease is scheduled to end, or \"Open-ended\" if no end date is set." },
+      { label: 'Monthly Rent', right: true, tip: "The tenant's contracted monthly rent amount." },
+      { label: 'Deposit',      right: true, tip: 'Security deposit amount held for this tenant.' },
+      { label: 'Status',       tip: "Whether the tenant's lease is Active, Past, or Prospective." },
+      { label: '' }
+    ];
     const t = el('table', { class: 'table' });
     const htr = el('tr');
-    ['Name', 'Property', 'Email', 'Phone', 'Lease Start', 'Lease End', 'Monthly Rent', 'Deposit', 'Status', ''].forEach((h, i) => {
-      htr.appendChild(el('th', (i === 6 || i === 7) ? { class: 'right' } : {}, h));
-    });
+    TEN_COLS.forEach(col => htr.appendChild(mkTh(col)));
     const thead = el('thead'); thead.appendChild(htr); t.appendChild(thead);
 
     const tb = el('tbody');
