@@ -7,7 +7,7 @@ import {
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers
 } from './analytics-filters.js?v=20260519';
 import {
-  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkExplainButton
 } from './analytics-helpers.js';
 import { SERVICE_STREAMS, STREAMS, PROPERTY_STREAMS } from '../core/config.js';
 
@@ -179,15 +179,38 @@ function buildShareKpiModal(owner, partnerLabel, revenue, pct, allRecords) {
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: `${partnerLabel} Revenue`, value: formatEUR(revenue) },
-    { label: '% of Portfolio',          value: pct.toFixed(1) + '%' }
+    { label: `${partnerLabel} Revenue`, value: formatEUR(revenue),
+      explain: {
+        title: `${partnerLabel} Revenue`,
+        formula: "Owner-split revenue: records whose owner matches this partner count 100%, records with owner='both' count 50%.",
+        inputs: [{ label: `${partnerLabel} Revenue`, value: formatEUR(revenue) }],
+        source: 'analytics-owner.js:44 splitByOwner()',
+        note: 'Computed once in getData() and reused by the KPI card, Partner column and this modal so the figure always matches everywhere it appears.'
+      }
+    },
+    { label: '% of Portfolio',          value: pct.toFixed(1) + '%',
+      explain: {
+        title: '% of Portfolio',
+        formula: `${partnerLabel} Revenue ÷ Total Portfolio Revenue × 100`,
+        inputs: [
+          { label: `${partnerLabel} Revenue`, value: formatEUR(revenue) },
+          { label: '% of Portfolio', value: pct.toFixed(1) + '%' }
+        ],
+        source: 'analytics-owner.js:406 buildKpiSection() — `youPct`/`ritaPct`'
+      }
+    }
   ], 2));
   if (relevant.length > 0) {
     body.appendChild(mkSectionLabel(
       relevant.length < total ? `Top ${relevant.length} of ${total} Records by Amount` : `All ${total} Records by Amount`
     ));
     body.appendChild(mkModalTable(
-      ['Date', 'Entity', 'Attribution', 'EUR'],
+      [
+        { label: 'Date', tip: 'Payment or invoice date.' },
+        { label: 'Entity', tip: 'The property or client this record is linked to.' },
+        { label: 'Attribution', tip: "Which partner this record's amount was attributed to — 'Shared (50%)' means owner='both' and the amount was split evenly." },
+        { label: 'EUR', right: true, tip: "This record's amount in EUR, already reduced to this partner's share." }
+      ],
       relevant.map(toRow),
       { highlight: 3 }
     ));
@@ -195,7 +218,16 @@ function buildShareKpiModal(owner, partnerLabel, revenue, pct, allRecords) {
       const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, `View all ${total} records →`);
       link.onclick = () => {
         const allBody = el('div');
-        allBody.appendChild(mkModalTable(['Date', 'Entity', 'Attribution', 'EUR'], filtered.map(toRow), { highlight: 3 }));
+        allBody.appendChild(mkModalTable(
+          [
+            { label: 'Date', tip: 'Payment or invoice date.' },
+            { label: 'Entity', tip: 'The property or client this record is linked to.' },
+            { label: 'Attribution', tip: "Which partner this record's amount was attributed to — 'Shared (50%)' means owner='both' and the amount was split evenly." },
+            { label: 'EUR', right: true, tip: "This record's amount in EUR, already reduced to this partner's share." }
+          ],
+          filtered.map(toRow),
+          { highlight: 3 }
+        ));
         openModal({ title: `${partnerLabel} — All Records`, body: allBody, large: true });
       };
       body.appendChild(link);
@@ -223,14 +255,48 @@ function openRevenueSplitModal(data, cmpData, cmpRange) {
     ], 'Current Period', cl));
   } else {
     body.appendChild(mkSummaryGrid([
-      { label: YOU_LABEL,  value: formatEUR(revSplit.you),  sub: youPct.toFixed(1) + '%' },
-      { label: RITA_LABEL, value: formatEUR(revSplit.rita), sub: ritaPct.toFixed(1) + '%' },
-      { label: 'Total',    value: formatEUR(total) }
+      { label: YOU_LABEL,  value: formatEUR(revSplit.you),  sub: youPct.toFixed(1) + '%',
+        explain: {
+          title: `${YOU_LABEL} Revenue`,
+          formula: "Owner-split revenue: 'you' records count 100%, 'both' records count 50%.",
+          inputs: [
+            { label: `${YOU_LABEL} Revenue`, value: formatEUR(revSplit.you) },
+            { label: '% of Total', value: youPct.toFixed(1) + '%' }
+          ],
+          source: 'analytics-owner.js:44 splitByOwner()'
+        }
+      },
+      { label: RITA_LABEL, value: formatEUR(revSplit.rita), sub: ritaPct.toFixed(1) + '%',
+        explain: {
+          title: `${RITA_LABEL} Revenue`,
+          formula: "Owner-split revenue: 'rita' records count 100%, 'both' records count 50%.",
+          inputs: [
+            { label: `${RITA_LABEL} Revenue`, value: formatEUR(revSplit.rita) },
+            { label: '% of Total', value: ritaPct.toFixed(1) + '%' }
+          ],
+          source: 'analytics-owner.js:44 splitByOwner()'
+        }
+      },
+      { label: 'Total',    value: formatEUR(total),
+        explain: {
+          title: 'Total Portfolio Revenue',
+          formula: `${YOU_LABEL} Revenue + ${RITA_LABEL} Revenue`,
+          inputs: [
+            { label: `${YOU_LABEL} Revenue`, value: formatEUR(revSplit.you) },
+            { label: `${RITA_LABEL} Revenue`, value: formatEUR(revSplit.rita) }
+          ],
+          source: 'analytics-owner.js:117 getData() — `total: revSplit.you + revSplit.rita`'
+        }
+      }
     ], 3));
   }
   body.appendChild(mkSectionLabel('Revenue Split'));
   body.appendChild(mkModalTable(
-    ['Partner', 'Revenue', '% of Total'],
+    [
+      { label: 'Partner', tip: 'Giorgos, Rita, or the combined Total row.' },
+      { label: 'Revenue', right: true, tip: "This partner's owner-split share of total portfolio revenue for the period." },
+      { label: '% of Total', right: true, tip: "This partner's revenue as a percentage of total portfolio revenue." }
+    ],
     [
       [YOU_LABEL,  formatEUR(revSplit.you),  youPct.toFixed(1)  + '%'],
       [RITA_LABEL, formatEUR(revSplit.rita), ritaPct.toFixed(1) + '%'],
@@ -269,11 +335,45 @@ function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cm
   }, label));
 
   const rows = [
-    { label: 'Revenue',                        value: formatEUR(rev),   sub: null, onClick: () => openRevenueSplitModal(data, cmpData, cmpRange) },
-    { label: 'Operating Expenses (excl. CapEx)', value: formatEUR(exp),   sub: null },
-    { label: 'Net Profit',          value: formatEUR(net),   sub: null, netVal: net, onClick: () => openSettlementModal(data, curRange) },
+    { label: 'Revenue',                        value: formatEUR(rev),   sub: null, onClick: () => openRevenueSplitModal(data, cmpData, cmpRange),
+      explain: {
+        title: `${label} Revenue`,
+        formula: "Owner-split revenue: records owned by this partner count 100%, records with owner='both' count 50%.",
+        inputs: [{ label: 'Revenue', value: formatEUR(rev) }],
+        source: 'analytics-owner.js:44 splitByOwner()',
+        note: "Owner is resolved per record (the record's own `owner` field, falling back to its linked property's `owner`, defaulting to 'both')."
+      }
+    },
+    { label: 'Operating Expenses (excl. CapEx)', value: formatEUR(exp),   sub: null,
+      explain: {
+        title: `${label} Operating Expenses`,
+        formula: "Same owner-split rule as Revenue, applied to operating expenses (CapEx excluded).",
+        inputs: [{ label: 'Operating Expenses', value: formatEUR(exp) }],
+        source: 'analytics-owner.js:44 splitByOwner()',
+        note: 'CapEx/renovation spend is excluded — see the isCapEx() filter in getData().'
+      }
+    },
+    { label: 'Net Profit',          value: formatEUR(net),   sub: null, netVal: net, onClick: () => openSettlementModal(data, curRange),
+      explain: {
+        title: `${label} Net Profit`,
+        formula: 'Revenue (owner split) − Operating Expenses (owner split)',
+        inputs: [
+          { label: 'Revenue', value: formatEUR(rev) },
+          { label: 'Operating Expenses', value: formatEUR(exp) }
+        ],
+        source: 'analytics-owner.js:126 getData() — `netSplit`'
+      }
+    },
     { label: 'Portfolio Properties',value: String(count),    sub: null },
-    { label: 'Portfolio Book Value', value: formatEUR(value), sub: null, onClick: () => openValueSplitModal(label, isYou ? 0 : 1, propsData) },
+    { label: 'Portfolio Book Value', value: formatEUR(value), sub: null, onClick: () => openValueSplitModal(label, isYou ? 0 : 1, propsData),
+      explain: {
+        title: `${label} Portfolio Book Value`,
+        formula: "Sum of each owned property's purchase price (converted to EUR); properties with owner='both' contribute 50% to each partner.",
+        inputs: [{ label: 'Book Value', value: formatEUR(value) }],
+        source: 'analytics-owner.js:146 getPropertiesData() — `bookValue()`',
+        note: 'Based on purchasePrice only — does not net out mortgage balance or reflect current market value.'
+      }
+    },
   ];
 
   for (const row of rows) {
@@ -287,7 +387,9 @@ function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cm
       item.addEventListener('mouseleave', () => { item.style.background = ''; });
       item.onclick = row.onClick;
     }
-    item.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, row.label));
+    const labelWrap = el('span', { style: 'display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted)' }, row.label);
+    if (row.explain) labelWrap.appendChild(mkExplainButton(row.explain));
+    item.appendChild(labelWrap);
     const valStyle = row.netVal !== undefined
       ? `font-size:13px;font-weight:600;color:${netColor(row.netVal)}`
       : 'font-size:13px;font-weight:600;color:var(--text)';
@@ -318,7 +420,17 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     delta: safePct(total, cmpData?.total),
     compLabel: cl,
     compValue: cmpData ? formatEUR(cmpData.total) : undefined,
-    onClick: () => openRevenueSplitModal(data, cmpData, cmpRange)
+    onClick: () => openRevenueSplitModal(data, cmpData, cmpRange),
+    explain: {
+      title: 'Total Portfolio Revenue',
+      formula: 'Giorgos Revenue + Rita Revenue (owner-split totals)',
+      inputs: [
+        { label: 'Giorgos Revenue', value: formatEUR(revSplit.you) },
+        { label: 'Rita Revenue', value: formatEUR(revSplit.rita) }
+      ],
+      source: 'analytics-owner.js:117 getData() — `total: revSplit.you + revSplit.rita`',
+      note: "Includes both rental payments and paid service invoices; owner='both' records are already split 50/50 inside revSplit before this total is formed."
+    }
   }));
 
   // Compute comparison period share percentages for delta
@@ -338,6 +450,16 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     onClick: () => {
       const body = buildShareKpiModal('you', 'Giorgos', revSplit.you, youPct, [...annotatedPayments, ...annotatedInvoices]);
       openModal({ title: 'Giorgos Share — Detail', body, large: true });
+    },
+    explain: {
+      title: 'Giorgos Share',
+      formula: 'Giorgos Revenue ÷ Total Portfolio Revenue × 100',
+      inputs: [
+        { label: 'Giorgos Revenue', value: formatEUR(revSplit.you) },
+        { label: 'Total Portfolio Revenue', value: formatEUR(total) }
+      ],
+      source: 'analytics-owner.js:406 buildKpiSection() — `youPct`',
+      note: "The underlying revenue split resolves each record's owner ('you'/'rita'/'both') via splitByOwner(); 'both' records count half toward each partner."
     }
   }));
 
@@ -353,6 +475,16 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     onClick: () => {
       const body = buildShareKpiModal('rita', 'Rita', revSplit.rita, ritaPct, [...annotatedPayments, ...annotatedInvoices]);
       openModal({ title: 'Rita Share — Detail', body, large: true });
+    },
+    explain: {
+      title: 'Rita Share',
+      formula: 'Rita Revenue ÷ Total Portfolio Revenue × 100',
+      inputs: [
+        { label: 'Rita Revenue', value: formatEUR(revSplit.rita) },
+        { label: 'Total Portfolio Revenue', value: formatEUR(total) }
+      ],
+      source: 'analytics-owner.js:407 buildKpiSection() — `ritaPct`',
+      note: "The underlying revenue split resolves each record's owner ('you'/'rita'/'both') via splitByOwner(); 'both' records count half toward each partner."
     }
   }));
 
@@ -382,7 +514,11 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
 
         body.appendChild(mkSectionLabel('Shared Properties — Period Revenue'));
         body.appendChild(mkModalTable(
-          ['Property', 'Revenue', '% of Shared Total'],
+          [
+            { label: 'Property', tip: "Property with owner = 'both' (jointly owned)." },
+            { label: 'Revenue', right: true, tip: "Total period revenue for this shared property, before the 50/50 partner split is applied." },
+            { label: '% of Shared Total', right: true, tip: "This property's share of revenue among all shared properties." }
+          ],
           sharedRows,
           { highlight: 1 }
         ));
@@ -445,7 +581,12 @@ function buildServiceStreamSection(annotatedInvoices, curRange) {
   rows.push(['Total', formatEUR(grandYou), formatEUR(grandRita), formatEUR(grandTotal)]);
 
   body.appendChild(mkModalTable(
-    ['Stream', 'Giorgos', 'Rita', 'Total'],
+    [
+      { label: 'Stream', tip: 'Service revenue stream (e.g. management, cleaning).' },
+      { label: 'Giorgos', right: true, tip: "Giorgos's owner-split share of paid invoices in this stream." },
+      { label: 'Rita', right: true, tip: "Rita's owner-split share of paid invoices in this stream." },
+      { label: 'Total', right: true, tip: 'Combined paid invoice total for this stream.' }
+    ],
     rows,
     { highlight: 3 }
   ));
@@ -469,10 +610,34 @@ function buildSettlementBody(data) {
   const totNet = netSplit.you + netSplit.rita;
 
   const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px' });
-  sgrid.appendChild(mkSummaryBox('Total Revenue', formatEUR(totRev), null));
-  sgrid.appendChild(mkSummaryBox('Total OpEx', formatEUR(totExp), null));
+  sgrid.appendChild(mkSummaryBox('Total Revenue', formatEUR(totRev), null, {
+    title: 'Total Revenue',
+    formula: 'Giorgos Revenue + Rita Revenue (owner-split totals)',
+    inputs: [
+      { label: 'Giorgos Revenue', value: formatEUR(revSplit.you) },
+      { label: 'Rita Revenue', value: formatEUR(revSplit.rita) }
+    ],
+    source: 'analytics-owner.js:608 buildSettlementBody() — `totRev = revSplit.you + revSplit.rita`'
+  }));
+  sgrid.appendChild(mkSummaryBox('Total OpEx', formatEUR(totExp), null, {
+    title: 'Total OpEx',
+    formula: 'Giorgos OpEx + Rita OpEx (owner-split totals, CapEx excluded)',
+    inputs: [
+      { label: 'Giorgos OpEx', value: formatEUR(expSplit.you) },
+      { label: 'Rita OpEx', value: formatEUR(expSplit.rita) }
+    ],
+    source: 'analytics-owner.js:609 buildSettlementBody() — `totExp = expSplit.you + expSplit.rita`'
+  }));
   sgrid.appendChild(mkSummaryBox('Net Profit', formatEUR(totNet),
-    totNet >= 0 ? 'Portfolio profitable' : 'Portfolio at a loss'));
+    totNet >= 0 ? 'Portfolio profitable' : 'Portfolio at a loss', {
+    title: 'Net Profit',
+    formula: 'Total Revenue − Total OpEx',
+    inputs: [
+      { label: 'Total Revenue', value: formatEUR(totRev) },
+      { label: 'Total OpEx', value: formatEUR(totExp) }
+    ],
+    source: 'analytics-owner.js:610 buildSettlementBody() — `totNet = netSplit.you + netSplit.rita`'
+  }));
   body.appendChild(sgrid);
 
   // Per-partner expense attribution breakdown.
@@ -506,7 +671,12 @@ function buildSettlementBody(data) {
 
   body.appendChild(mkSectionLabel('Per-Partner Net Distribution'));
   body.appendChild(mkModalTable(
-    ['', YOU_LABEL, RITA_LABEL, 'Total'],
+    [
+      { label: '', tip: 'Line item in the settlement calculation.' },
+      { label: YOU_LABEL, right: true, tip: "Giorgos's amount for this line item." },
+      { label: RITA_LABEL, right: true, tip: "Rita's amount for this line item." },
+      { label: 'Total', right: true, tip: 'Combined amount across both partners for this line item.' }
+    ],
     rows,
     { highlight: 3, firstColLeft: true }
   ));
@@ -520,7 +690,19 @@ function buildSettlementBody(data) {
     const note = el('div', {
       style: 'margin-top:16px;padding:10px 14px;border-radius:6px;background:rgba(99,102,241,0.06);border-left:3px solid var(--accent,#6366f1)'
     });
-    note.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:4px' }, 'Implied Settlement'));
+    const noteTitleRow = el('div', { style: 'display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:4px' }, 'Implied Settlement');
+    noteTitleRow.appendChild(mkExplainButton({
+      title: 'Implied Settlement',
+      formula: '|Giorgos Net − Rita Net| ÷ 2, paid by the partner with the higher net profit to the partner with the lower net profit — this equalizes both partners’ net take for the period.',
+      inputs: [
+        { label: 'Giorgos Net', value: formatEUR(netSplit.you) },
+        { label: 'Rita Net', value: formatEUR(netSplit.rita) },
+        { label: 'Difference', value: formatEUR(Math.abs(diff)) }
+      ],
+      source: 'analytics-owner.js:685 buildSettlementBody() — `diff`/`amt`',
+      note: "This assumes both partners should end each period with equal net profit — it is not derived from any ownership-percentage config, since none exists in the data model beyond the per-record/per-property `owner` tag ('you' | 'rita' | 'both')."
+    }));
+    note.appendChild(noteTitleRow);
     note.appendChild(el('div', { style: 'font-size:13px;color:var(--text)' },
       `To equalise net profits, ${who} owes ${to} ${formatEUR(amt)}.`
     ));
@@ -584,8 +766,22 @@ function renderRevBar(annotatedPayments, annotatedInvoices, months) {
       const split = splitByOwner(items, r => r._eur);
       const body = el('div');
       body.appendChild(mkSummaryGrid([
-        { label: YOU_LABEL,  value: formatEUR(split.you),  sub: `${items.filter(r => (r._resolvedOwner === 'you' || r._resolvedOwner === 'both')).length} records` },
-        { label: RITA_LABEL, value: formatEUR(split.rita), sub: `${items.filter(r => (r._resolvedOwner === 'rita' || r._resolvedOwner === 'both')).length} records` }
+        { label: YOU_LABEL,  value: formatEUR(split.you),  sub: `${items.filter(r => (r._resolvedOwner === 'you' || r._resolvedOwner === 'both')).length} records`,
+          explain: {
+            title: `${YOU_LABEL} Revenue — ${months[idx].label}`,
+            formula: "Owner-split revenue for this month: 'you' records count 100%, 'both' records count 50%.",
+            inputs: [{ label: `${YOU_LABEL} Revenue`, value: formatEUR(split.you) }],
+            source: 'analytics-owner.js:44 splitByOwner()'
+          }
+        },
+        { label: RITA_LABEL, value: formatEUR(split.rita), sub: `${items.filter(r => (r._resolvedOwner === 'rita' || r._resolvedOwner === 'both')).length} records`,
+          explain: {
+            title: `${RITA_LABEL} Revenue — ${months[idx].label}`,
+            formula: "Owner-split revenue for this month: 'rita' records count 100%, 'both' records count 50%.",
+            inputs: [{ label: `${RITA_LABEL} Revenue`, value: formatEUR(split.rita) }],
+            source: 'analytics-owner.js:44 splitByOwner()'
+          }
+        }
       ], 2));
 
       // Group by property/client so the breakdown shows where revenue came
@@ -606,7 +802,15 @@ function renderRevBar(annotatedPayments, annotatedInvoices, months) {
         .map(e => [e.name, formatEUR(e.you), formatEUR(e.rita), formatEUR(e.you + e.rita)]);
 
       body.appendChild(mkSectionLabel('By Property / Client'));
-      body.appendChild(mkModalTable(['Entity', YOU_LABEL, RITA_LABEL, 'Total'], entityRows, { highlight: 3 }));
+      body.appendChild(mkModalTable(
+        [
+          { label: 'Entity', tip: 'Property or client generating this revenue.' },
+          { label: YOU_LABEL, right: true, tip: "Giorgos's owner-split share of this entity's revenue in the selected month." },
+          { label: RITA_LABEL, right: true, tip: "Rita's owner-split share of this entity's revenue in the selected month." },
+          { label: 'Total', right: true, tip: 'Combined revenue from this entity in the selected month.' }
+        ],
+        entityRows, { highlight: 3 }
+      ));
 
       const footer = el('div', { style: 'margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:space-between;align-items:center' });
       footer.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${items.length} record${items.length === 1 ? '' : 's'} in ${months[idx].label}`));
@@ -621,7 +825,15 @@ function renderRevBar(annotatedPayments, annotatedInvoices, months) {
             formatEUR(r._eur)
           ]);
         const recBody = el('div');
-        recBody.appendChild(mkModalTable(['Date', 'Owner', 'Entity', 'EUR'], rows, { highlight: 3 }));
+        recBody.appendChild(mkModalTable(
+          [
+            { label: 'Date', tip: 'Payment or invoice date.' },
+            { label: 'Owner', tip: "Resolved owner for this record — Giorgos, Rita, or Shared (owner='both')." },
+            { label: 'Entity', tip: 'Property or client this record is linked to.' },
+            { label: 'EUR', right: true, tip: 'Full record amount in EUR (not yet split between partners).' }
+          ],
+          rows, { highlight: 3 }
+        ));
         openModal({ title: `${months[idx].label} — All Records`, body: recBody, large: true });
       };
       footer.appendChild(link);
@@ -712,10 +924,44 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
 
       const body = el('div');
       body.appendChild(mkSummaryGrid([
-        { label: 'Revenue — Giorgos',  value: formatEUR(item.youRev),  sub: `OpEx: ${formatEUR(item.youExp)}` },
-        { label: 'Revenue — Rita',     value: formatEUR(item.ritaRev), sub: `OpEx: ${formatEUR(item.ritaExp)}` },
-        { label: 'Net Profit — Giorgos', value: formatEUR(item.youNet),  sub: null },
-        { label: 'Net Profit — Rita',    value: formatEUR(item.ritaNet), sub: null },
+        { label: 'Revenue — Giorgos',  value: formatEUR(item.youRev),  sub: `OpEx: ${formatEUR(item.youExp)}`,
+          explain: {
+            title: 'Revenue — Giorgos',
+            formula: "Owner-split revenue for this property: 'you' records count 100%, 'both' records count 50%.",
+            inputs: [{ label: 'Revenue — Giorgos', value: formatEUR(item.youRev) }],
+            source: 'analytics-owner.js:847 renderProfitHBar()'
+          }
+        },
+        { label: 'Revenue — Rita',     value: formatEUR(item.ritaRev), sub: `OpEx: ${formatEUR(item.ritaExp)}`,
+          explain: {
+            title: 'Revenue — Rita',
+            formula: "Owner-split revenue for this property: 'rita' records count 100%, 'both' records count 50%.",
+            inputs: [{ label: 'Revenue — Rita', value: formatEUR(item.ritaRev) }],
+            source: 'analytics-owner.js:847 renderProfitHBar()'
+          }
+        },
+        { label: 'Net Profit — Giorgos', value: formatEUR(item.youNet),  sub: null,
+          explain: {
+            title: 'Net Profit — Giorgos',
+            formula: 'Revenue — Giorgos − OpEx — Giorgos',
+            inputs: [
+              { label: 'Revenue — Giorgos', value: formatEUR(item.youRev) },
+              { label: 'OpEx — Giorgos', value: formatEUR(item.youExp) }
+            ],
+            source: 'analytics-owner.js:903 renderProfitHBar() — `youNet: rev.youRev - exp.youExp`'
+          }
+        },
+        { label: 'Net Profit — Rita',    value: formatEUR(item.ritaNet), sub: null,
+          explain: {
+            title: 'Net Profit — Rita',
+            formula: 'Revenue — Rita − OpEx — Rita',
+            inputs: [
+              { label: 'Revenue — Rita', value: formatEUR(item.ritaRev) },
+              { label: 'OpEx — Rita', value: formatEUR(item.ritaExp) }
+            ],
+            source: 'analytics-owner.js:904 renderProfitHBar() — `ritaNet: rev.ritaRev - exp.ritaExp`'
+          }
+        },
       ], 2));
 
       const rows = [
@@ -724,7 +970,15 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
         ['Net',      formatEUR(item.youNet),  formatEUR(item.ritaNet),  formatEUR(item.youNet + item.ritaNet)],
       ];
       body.appendChild(mkSectionLabel('Full P&L with Owner Attribution'));
-      body.appendChild(mkModalTable(['', YOU_LABEL, RITA_LABEL, 'Total'], rows, { highlight: 3 }));
+      body.appendChild(mkModalTable(
+        [
+          { label: '', tip: 'Revenue, OpEx, or Net line item for this property.' },
+          { label: YOU_LABEL, right: true, tip: "Giorgos's owner-split share for this property." },
+          { label: RITA_LABEL, right: true, tip: "Rita's owner-split share for this property." },
+          { label: 'Total', right: true, tip: 'Combined amount across both partners for this property.' }
+        ],
+        rows, { highlight: 3 }
+      ));
       openModal({ title: `${item.name} — P&L by Owner`, body, large: true });
     }
   });
@@ -743,11 +997,26 @@ function openValueSplitModal(label, idx, propsData) {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Book Value', value: formatEUR(totalValue) },
+    { label: 'Total Book Value', value: formatEUR(totalValue),
+      explain: {
+        title: `${label} — Total Book Value`,
+        formula: "Sum of purchase price (EUR) for properties owned by this partner; owner='both' properties contribute 50%.",
+        inputs: [{ label: 'Total Book Value', value: formatEUR(totalValue) }],
+        source: 'analytics-owner.js:153 getPropertiesData() — `youValue`/`ritaValue` (via `bookValue()`)',
+        note: 'Based on purchasePrice only — does not net out mortgage balance or reflect current market value.'
+      }
+    },
     { label: 'Properties',       value: String(props.length) }
   ], 2));
   body.appendChild(mkSectionLabel('Properties'));
-  body.appendChild(mkModalTable(['Property', 'Attribution', 'Book Value (EUR)'], rows, { highlight: 2 }));
+  body.appendChild(mkModalTable(
+    [
+      { label: 'Property', tip: 'Property name.' },
+      { label: 'Attribution', tip: "Which partner this property's book value share belongs to — 'Shared (50%)' for owner='both' properties." },
+      { label: 'Book Value (EUR)', right: true, tip: "This partner's share of the property's purchase price, converted to EUR." }
+    ],
+    rows, { highlight: 2 }
+  ));
   openModal({ title: `${label} — Book Value Breakdown`, body, large: true });
 }
 
@@ -865,8 +1134,26 @@ function buildView() {
 
     const totalProps = propsData.allProps.length;
     const pGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px' });
-    pGrid.appendChild(mkSummaryBox(YOU_LABEL, `${propsData.youCount} propert${propsData.youCount !== 1 ? 'ies' : 'y'}`, formatEUR(propsData.youValue)));
-    pGrid.appendChild(mkSummaryBox(RITA_LABEL, `${propsData.ritaCount} propert${propsData.ritaCount !== 1 ? 'ies' : 'y'}`, formatEUR(propsData.ritaValue)));
+    pGrid.appendChild(mkSummaryBox(YOU_LABEL, `${propsData.youCount} propert${propsData.youCount !== 1 ? 'ies' : 'y'}`, formatEUR(propsData.youValue), {
+      title: `${YOU_LABEL} Book Value`,
+      formula: "Sum of purchase price (EUR) for properties fully owned by Giorgos, plus 50% of purchase price for jointly-owned ('both') properties.",
+      inputs: [
+        { label: 'Book Value', value: formatEUR(propsData.youValue) },
+        { label: 'Properties (incl. shared)', value: String(propsData.youCount) }
+      ],
+      source: 'analytics-owner.js:153 getPropertiesData() — `youValue`',
+      note: 'A shared property is counted in both youCount and ritaCount, and its value split 50/50 between both — it is not double-counted in the portfolio total.'
+    }));
+    pGrid.appendChild(mkSummaryBox(RITA_LABEL, `${propsData.ritaCount} propert${propsData.ritaCount !== 1 ? 'ies' : 'y'}`, formatEUR(propsData.ritaValue), {
+      title: `${RITA_LABEL} Book Value`,
+      formula: "Sum of purchase price (EUR) for properties fully owned by Rita, plus 50% of purchase price for jointly-owned ('both') properties.",
+      inputs: [
+        { label: 'Book Value', value: formatEUR(propsData.ritaValue) },
+        { label: 'Properties (incl. shared)', value: String(propsData.ritaCount) }
+      ],
+      source: 'analytics-owner.js:154 getPropertiesData() — `ritaValue`',
+      note: 'A shared property is counted in both youCount and ritaCount, and its value split 50/50 between both — it is not double-counted in the portfolio total.'
+    }));
     infoBody.appendChild(pGrid);
 
     if (propsData.bothProps.length > 0) {
@@ -875,7 +1162,14 @@ function buildView() {
         const eur = toEUR(p.purchasePrice || 0, p.currency || 'EUR', p.purchaseDate || null);
         return [p.name, formatEUR(eur), formatEUR(eur * 0.5)];
       });
-      infoBody.appendChild(mkModalTable(['Property', 'Total Value', 'Per Partner'], rows, { highlight: 2 }));
+      infoBody.appendChild(mkModalTable(
+        [
+          { label: 'Property', tip: "Jointly-owned (owner='both') property." },
+          { label: 'Total Value', right: true, tip: "Full purchase price of the property, converted to EUR." },
+          { label: 'Per Partner', right: true, tip: "Each partner's 50% share of the property's purchase price." }
+        ],
+        rows, { highlight: 2 }
+      ));
     } else {
       infoBody.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted)' }, `${totalProps} total propert${totalProps !== 1 ? 'ies' : 'y'} · no shared properties`));
     }
