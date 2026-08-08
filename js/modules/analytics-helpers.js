@@ -292,8 +292,12 @@ export function mkProgressBar(pct, color) {
  * @param {Function} [opts.onClick]    - Click handler; adds hover highlight when provided.
  * @param {Array}    [opts.lines]      - Breakdown lines for composite cards.
  *   Each line: { label, value, pct?, onClick? }
+ * @param {object}   [opts.explain]    - Optional mkExplainButton payload — renders a
+ *   small "ⓘ" next to the label that opens a compact "how is this calculated" modal.
+ *   Independent of onClick (stops propagation so it never also triggers the card's
+ *   own drill-down click).
  */
-export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, compValue, variant, onClick, lines } = {}) {
+export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, compValue, variant, onClick, lines, explain } = {}) {
   const card = el('div', {
     class: 'kpi' + (variant ? ' ' + variant : ''),
     style: onClick ? 'cursor:pointer;transition:box-shadow 120ms' : '',
@@ -305,7 +309,13 @@ export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelt
     card.onclick = onClick;
   }
 
-  card.appendChild(el('div', { class: 'kpi-label' }, label));
+  if (explain) {
+    const labelRow = el('div', { class: 'kpi-label', style: 'display:flex;align-items:center;gap:4px' }, label);
+    labelRow.appendChild(mkExplainButton(explain));
+    card.appendChild(labelRow);
+  } else {
+    card.appendChild(el('div', { class: 'kpi-label' }, label));
+  }
   card.appendChild(el('div', { class: 'kpi-value' }, value));
 
   if (delta !== null && delta !== undefined && isFinite(delta)) {
