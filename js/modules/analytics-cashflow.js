@@ -1275,6 +1275,15 @@ function buildView() {
       value:    runwayValue,
       subtitle: 'Period net ÷ avg monthly OpEx',
       variant:  runwayVariant,
+      explain: {
+        title: 'Cash Runway', formula: 'Period Net Cash Flow ÷ avg monthly OpEx, in months.',
+        inputs: [
+          { label: 'Net Cash Flow', value: formatEUR(net) },
+          { label: 'Avg monthly OpEx', value: formatEUR(avgMonthlyOpEx) }
+        ],
+        source: 'analytics-cashflow.js buildView() — Cash Runway block (`runwayMonths`)',
+        note: 'A period-level indicator (how many months of OpEx this period\'s net covers), not an actual cash-balance runway projection.'
+      },
       onClick:  () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
@@ -1312,7 +1321,12 @@ function buildView() {
 
         body.appendChild(mkSectionLabel('Monthly Runway Trend'));
         body.appendChild(mkModalTable(
-          ['Month', 'Op. Expenses', 'Cumulative Burn', 'Remaining Runway'],
+          [
+            { label: 'Month', tip: 'Calendar month (YYYY-MM).' },
+            { label: 'Op. Expenses', right: true, tip: 'Operating expenses in this month.' },
+            { label: 'Cumulative Burn', right: true, tip: 'Running total of operating expenses from the start of the period through this month.' },
+            { label: 'Remaining Runway', right: true, tip: 'Cumulative net cash flow through this month ÷ avg monthly OpEx, in months.' }
+          ],
           runwayTrendRows
         ));
 
@@ -1343,6 +1357,15 @@ function buildView() {
       value:    formatEUR(workingCapital),
       subtitle: 'Receivables − Payables',
       variant:  workingCapital > 0 ? 'success' : workingCapital < 0 ? 'danger' : '',
+      explain: {
+        title: 'Working Capital', formula: 'Receivables (outstanding invoice totals) − Payables.',
+        inputs: [
+          { label: 'Receivables', value: formatEUR(receivables) },
+          { label: 'Payables', value: formatEUR(payables) }
+        ],
+        source: 'analytics-cashflow.js buildView() — Working Capital block (`workingCapital`)',
+        note: 'Payables tracking is not enabled in this app (expenses are recorded when paid), so Payables is always 0 here.'
+      },
       onClick:  () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
@@ -1356,7 +1379,13 @@ function buildView() {
           const sorted = [...outstandingInvoices].sort((a, b) => toEUR(b.total, b.currency, b.issueDate) - toEUR(a.total, a.currency, a.issueDate));
           body.appendChild(mkSectionLabel('Outstanding Invoices'));
           body.appendChild(mkModalTable(
-            ['Client', 'Issue Date', 'Due Date', 'Status', 'Amount'],
+            [
+              { label: 'Client', tip: 'Client the outstanding invoice was issued to.' },
+              { label: 'Issue Date', tip: 'Date the invoice was issued.' },
+              { label: 'Due Date', tip: 'Date payment is due.' },
+              { label: 'Status', tip: 'Invoice status — only "sent" and "overdue" invoices count as outstanding here.' },
+              { label: 'Amount', right: true, tip: 'Invoice total, in EUR.' }
+            ],
             sorted.map(i => [
               byId('clients', i.clientId)?.name || i.clientId || '—',
               fmtDate(i.issueDate || i.date),
@@ -1530,7 +1559,13 @@ function renderCumulativeLine({ payments, invoices, opExpenses, capExpenses }, m
       const streamSection = el('div');
       streamSection.appendChild(mkSectionLabel('Breakdown by Stream'));
       streamSection.appendChild(mkModalTable(
-        ['Stream', 'Cash In', 'Op. Out', 'Invest. Out', 'Net'],
+        [
+          { label: 'Stream', tip: 'Revenue/expense stream key (e.g. short-term rental, long-term rental).' },
+          { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices for this stream in the month.' },
+          { label: 'Op. Out', right: true, tip: 'Operating (non-CapEx) expenses for this stream in the month.' },
+          { label: 'Invest. Out', right: true, tip: 'CapEx/investment expenses for this stream in the month.' },
+          { label: 'Net', right: true, tip: 'Cash In minus Op. Out minus Invest. Out for this stream and month.' }
+        ],
         streamEntries.map(([k, d]) => [k, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
       ));
       body.appendChild(streamSection);
@@ -1589,7 +1624,11 @@ function renderMonthBar({ payments, invoices, opExpenses, capExpenses }, monthKe
         const srcSection = el('div');
         srcSection.appendChild(mkSectionLabel('By Source Type'));
         srcSection.appendChild(mkModalTable(
-          ['Source', 'Amount', 'Count'],
+          [
+            { label: 'Source', tip: 'Where the cash in came from — Payments or Invoices.' },
+            { label: 'Amount', right: true, tip: 'Total cash in from this source in the month, in EUR.' },
+            { label: 'Count', right: true, tip: 'Number of records from this source in the month.' }
+          ],
           [['Payments', formatEUR(payTotal), mPay.length], ['Invoices', formatEUR(invTotal), mInv.length]]
         ));
         body.appendChild(srcSection);
@@ -1605,7 +1644,11 @@ function renderMonthBar({ payments, invoices, opExpenses, capExpenses }, monthKe
         const catSection = el('div');
         catSection.appendChild(mkSectionLabel('By Category'));
         catSection.appendChild(mkModalTable(
-          ['Category', 'Amount', '% of Total'],
+          [
+            { label: 'Category', tip: 'Cost category assigned to the expense.' },
+            { label: 'Amount', right: true, tip: 'Total expense amount in this category, in EUR.' },
+            { label: '% of Total', right: true, tip: "This category's share of the clicked bar segment's total." }
+          ],
           catEntries.map(([k, v]) => [k, formatEUR(v), totalAmt > 0 ? (v / totalAmt * 100).toFixed(1) + '%' : '—'])
         ));
         body.appendChild(catSection);
@@ -1674,14 +1717,23 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
         const entityEntries = [...entityMap.entries()].sort((a, b) => b[1] - a[1]);
         body.appendChild(mkSectionLabel('By Property / Client'));
         body.appendChild(mkModalTable(
-          ['Property / Client', 'Amount', '% of Total'],
+          [
+            { label: 'Property / Client', tip: 'Property (from payments) or client (from invoices) generating cash in.' },
+            { label: 'Amount', right: true, tip: 'Cash in from this property/client in the period, in EUR.' },
+            { label: '% of Total', right: true, tip: "This property/client's share of total Cash In." }
+          ],
           entityEntries.map(([k, v]) => [k, formatEUR(v), totalCashIn > 0 ? (v / totalCashIn * 100).toFixed(1) + '%' : '—'])
         ));
 
         const top5In = [...allIn].sort((a, b) => b._eur - a._eur).slice(0, 5);
         body.appendChild(mkSectionLabel('Top 5 Largest'));
         body.appendChild(mkModalTable(
-          ['Date', 'Entity / Description', 'Type', 'Amount'],
+          [
+            { label: 'Date', tip: 'Date of the payment or invoice.' },
+            { label: 'Entity / Description', tip: 'Property or client the cash in is linked to.' },
+            { label: 'Type', tip: 'Record type — Payment or Invoice.' },
+            { label: 'Amount', right: true, tip: 'Cash in amount, in EUR.' }
+          ],
           top5In.map(r => [fmtDate(r.date), r.entity, r.description, formatEUR(r._eur)])
         ));
 
@@ -1702,7 +1754,11 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
 
         body.appendChild(mkSectionLabel('By Category'));
         body.appendChild(mkModalTable(
-          ['Category', 'Amount', '% of Total'],
+          [
+            { label: 'Category', tip: 'Cost category assigned to the operating expense.' },
+            { label: 'Amount', right: true, tip: 'Operating expense total in this category, in EUR.' },
+            { label: '% of Total', right: true, tip: "This category's share of total Operating Cash Out." }
+          ],
           catEntries.map(([k, v]) => [k, formatEUR(v), totalOpCashOut > 0 ? (v / totalOpCashOut * 100).toFixed(1) + '%' : '—'])
         ));
 
@@ -1711,7 +1767,12 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
           .slice(0, 5);
         body.appendChild(mkSectionLabel('Top 5 Largest'));
         body.appendChild(mkModalTable(
-          ['Date', 'Entity / Property', 'Description', 'Amount'],
+          [
+            { label: 'Date', tip: 'Date of the expense.' },
+            { label: 'Entity / Property', tip: 'Property or vendor the expense is linked to.' },
+            { label: 'Description', tip: 'Expense description or category.' },
+            { label: 'Amount', right: true, tip: 'Expense amount, in EUR.' }
+          ],
           top5Op.map(e => [
             fmtDate(e.date),
             e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.vendorId ? (byId('vendors', e.vendorId)?.name || e.vendorId) : '—'),
@@ -1737,7 +1798,11 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
 
         body.appendChild(mkSectionLabel('By Category'));
         body.appendChild(mkModalTable(
-          ['Category', 'Amount', '% of Total'],
+          [
+            { label: 'Category', tip: 'Cost category assigned to the CapEx expense.' },
+            { label: 'Amount', right: true, tip: 'CapEx spend in this category, in EUR.' },
+            { label: '% of Total', right: true, tip: "This category's share of total Investment Cash Out." }
+          ],
           catEntries.map(([k, v]) => [k, formatEUR(v), totalInvCashOut > 0 ? (v / totalInvCashOut * 100).toFixed(1) + '%' : '—'])
         ));
 
@@ -1746,7 +1811,12 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
           .slice(0, 5);
         body.appendChild(mkSectionLabel('Top 5 Largest'));
         body.appendChild(mkModalTable(
-          ['Date', 'Entity / Property', 'Description', 'Amount'],
+          [
+            { label: 'Date', tip: 'Date of the CapEx expense.' },
+            { label: 'Entity / Property', tip: 'Property or vendor the CapEx expense is linked to.' },
+            { label: 'Description', tip: 'Expense description or category.' },
+            { label: 'Amount', right: true, tip: 'CapEx amount, in EUR.' }
+          ],
           top5Cap.map(e => [
             fmtDate(e.date),
             e.propertyId ? (byId('properties', e.propertyId)?.name || e.propertyId) : (e.vendorId ? (byId('vendors', e.vendorId)?.name || e.vendorId) : '—'),
