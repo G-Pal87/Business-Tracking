@@ -169,7 +169,7 @@ function openCostPressureModal(allExp, opTotal, opRatio, revenue) {
           { label: 'Operating Expenses', value: formatEUR(opTotal) },
           { label: 'Revenue', value: formatEUR(revenue) }
         ],
-        source: 'analytics-expenses.js:247 computeExpenseInsights() — `opRatio`',
+        source: 'analytics-expenses.js:308 computeExpenseInsights() — `opRatio`',
         note: 'Revenue includes paid rental payments and paid service invoices (see getRevenue()).'
       }
     }
@@ -207,7 +207,7 @@ function openCapExConcentrationModal(allExp, capTotal, capPct, total) {
           { label: 'Capital Expenditure', value: formatEUR(capTotal) },
           { label: 'Total Expenses', value: formatEUR(total) }
         ],
-        source: 'analytics-expenses.js:267 computeExpenseInsights() — `capPct`'
+        source: 'analytics-expenses.js:328 computeExpenseInsights() — `capPct`'
       }
     }
   ], 3));
@@ -233,7 +233,7 @@ function openCostConcentrationModal(allExp, topCat, lbl, pct, total) {
       explain: {
         title: lbl, formula: 'All expenses in the selected period are grouped by cost category and summed; this is the total for the dominant category.',
         inputs: [{ label: 'Records', value: String(catExp.length) }, { label: 'Total', value: formatEUR(topCat[1]) }],
-        source: 'analytics-expenses.js:287 computeExpenseInsights() — `catMap`/`topCat`'
+        source: 'analytics-expenses.js:353 computeExpenseInsights() — `catMap`/`topCat`'
       }
     },
     { label: 'Records',    value: String(catExp.length) },
@@ -244,7 +244,7 @@ function openCostConcentrationModal(allExp, topCat, lbl, pct, total) {
           { label: 'Category Total', value: formatEUR(topCat[1]) },
           { label: 'Total Expenses', value: formatEUR(total) }
         ],
-        source: 'analytics-expenses.js:294 computeExpenseInsights() — `pct`'
+        source: 'analytics-expenses.js:355 computeExpenseInsights() — `pct`'
       }
     }
   ], 3));
@@ -270,7 +270,7 @@ function openVendorConcentrationModal(allExp, topVend, pct, total) {
       explain: {
         title: 'Vendor Total', formula: 'All expenses in the selected period are grouped by vendor and summed; this is the total for the highest-spend vendor.',
         inputs: [{ label: 'Vendor', value: topVend[0] }, { label: 'Records', value: String(vendExp.length) }, { label: 'Total', value: formatEUR(topVend[1]) }],
-        source: 'analytics-expenses.js:306 computeExpenseInsights() — `vendMap`/`topVend`'
+        source: 'analytics-expenses.js:373 computeExpenseInsights() — `vendMap`/`topVend`'
       }
     },
     { label: 'Records',      value: String(vendExp.length) },
@@ -281,7 +281,7 @@ function openVendorConcentrationModal(allExp, topVend, pct, total) {
           { label: 'Vendor Total', value: formatEUR(topVend[1]) },
           { label: 'Total Expenses', value: formatEUR(total) }
         ],
-        source: 'analytics-expenses.js:314 computeExpenseInsights() — `pct`'
+        source: 'analytics-expenses.js:375 computeExpenseInsights() — `pct`'
       }
     }
   ], 3));
@@ -448,7 +448,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
                 title: 'Combined Monthly Avg',
                 formula: 'Sum of each recurring pattern\'s own monthly average (each vendor/description\'s per-month total, averaged over 3+ months where every month stays within 20% of that average).',
                 inputs: [{ label: 'Patterns Detected', value: String(recurringPatterns.length) }],
-                source: 'analytics-expenses.js:358 computeExpenseInsights() — `recurringPatterns` (monthTotals avg)',
+                source: 'analytics-expenses.js:420 computeExpenseInsights() — `recurringPatterns` (monthTotals avg)',
                 note: 'A vendor/description only counts as "recurring" if it appears in 3+ distinct months and every month\'s total is within 20% of the average.'
               }
             }
@@ -723,7 +723,7 @@ function buildView() {
             { label: 'Operating Expenses', value: formatEUR(opTotal) },
             { label: 'Revenue', value: formatEUR(revenue) }
           ],
-          source: 'analytics-expenses.js:705 buildView() — `expRatio`',
+          source: 'analytics-expenses.js:812 buildView() — `expRatio`',
           note: 'Revenue includes paid rental payments and paid service invoices (see getRevenue()).'
         }
       }
@@ -828,7 +828,7 @@ function buildView() {
         { label: 'Operating Expenses', value: formatEUR(opTotal) },
         { label: 'Revenue', value: formatEUR(revenue) }
       ],
-      source: 'analytics-expenses.js:705 buildView() — `expRatio`',
+      source: 'analytics-expenses.js:812 buildView() — `expRatio`',
       note: expRatio === null ? 'Shows "—" when there is no revenue in the selected period.' : 'Revenue includes paid rental payments and paid service invoices (see getRevenue()).'
     }
   }));
@@ -856,7 +856,7 @@ function buildView() {
         { label: 'CapEx', value: formatEUR(capTotal) },
         { label: 'Total Expenses', value: formatEUR(total) }
       ],
-      source: 'analytics-expenses.js:726 buildView() — `capSharePct`'
+      source: 'analytics-expenses.js:842 buildView() — `capSharePct`'
     }
   }));
 
@@ -878,7 +878,7 @@ function buildView() {
         { label: 'Vendor', value: topVendEntry ? topVendEntry[0] : '—' },
         { label: 'Amount', value: topVendEntry ? formatEUR(topVendEntry[1]) : '—' }
       ],
-      source: 'analytics-expenses.js:746 buildView() — `topVendEntry` (vendMap2)'
+      source: 'analytics-expenses.js:870 buildView() — `topVendEntry` (vendMap2)'
     },
     onClick: () => {
       const rows = [...vendMap2.entries()].sort((a, b) => b[1] - a[1]);
@@ -913,7 +913,7 @@ function buildView() {
         { label: 'Category', value: topCatEntry ? (COST_CATEGORIES[topCatEntry[0]]?.label || topCatEntry[0]) : '—' },
         { label: 'Amount', value: topCatEntry ? formatEUR(topCatEntry[1]) : '—' }
       ],
-      source: 'analytics-expenses.js:773 buildView() — `topCatEntry` (catMap2)'
+      source: 'analytics-expenses.js:905 buildView() — `topCatEntry` (catMap2)'
     },
     onClick: () => {
       const rows = [...catMap2.entries()].sort((a, b) => b[1] - a[1]);
@@ -1172,7 +1172,7 @@ function buildExpenseStreamKpiRow(cur, cmp, cmpLabel) {
           { label: 'Total', value: formatEUR(val) },
           { label: 'Total Expenses (all streams)', value: formatEUR(cur.total) }
         ],
-        source: 'analytics-expenses.js:1006 buildExpenseStreamKpiRow() — `streamMap`',
+        source: 'analytics-expenses.js:1145 buildExpenseStreamKpiRow() — `streamMap`',
         note: 'Stream is read from the expense record itself, falling back to the linked property\'s type (see expStream() in analytics-helpers.js).'
       }
     }));
