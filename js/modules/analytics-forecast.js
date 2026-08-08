@@ -1334,7 +1334,13 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         .map(([name, val]) => [name, formatEUR(val)]);
       if (propRows.length > 0) {
         body.appendChild(mkSectionLabel('By Property'));
-        body.appendChild(mkModalTable(['Property', 'CapEx Amount'], propRows));
+        body.appendChild(mkModalTable(
+          [
+            { label: 'Property', tip: 'Property the CapEx is attributed to (or expense source if no property).' },
+            { label: 'CapEx Amount', right: true, tip: 'Sum of actual capital expenditure for this property in the selected period.' }
+          ],
+          propRows
+        ));
       }
 
       // Detailed transaction rows — one click away via footer link
@@ -1354,7 +1360,16 @@ function buildKpiGrid(data, cmpData, cmpRange) {
             ]);
           const detailBody = el('div');
           detailBody.appendChild(mkSectionLabel('Transactions'));
-          detailBody.appendChild(mkModalTable(['Date', 'Property', 'Category', 'Description', 'Amount'], txRows));
+          detailBody.appendChild(mkModalTable(
+            [
+              { label: 'Date', tip: 'Date the expense was recorded.' },
+              { label: 'Property', tip: 'Property the expense is attributed to.' },
+              { label: 'Category', tip: 'Expense category.' },
+              { label: 'Description', tip: 'Free-text expense description.' },
+              { label: 'Amount', right: true, tip: 'Expense amount converted to EUR.' }
+            ],
+            txRows
+          ));
           openModal({ title: 'CapEx — All Transactions', body: detailBody, large: true });
         };
         footer.appendChild(link);
@@ -1364,7 +1379,16 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       openModal({ title: 'CapEx Actual Breakdown', body, large: true });
     },
     delta: cmpData ? safePct(actualCapEx, cmpData.actualCapEx) : null,
-    invertDelta: true, compLabel: cmpLabel
+    invertDelta: true, compLabel: cmpLabel,
+    explain: {
+      title: 'Actual CapEx', formula: 'Sum of expenses flagged as CapEx dated within the selected period, converted to EUR.',
+      inputs: [
+        { label: 'CapEx records', value: String(actCapExpenses.length) },
+        { label: 'Total', value: formatEUR(actualCapEx) }
+      ],
+      source: 'analytics-forecast.js calculateDashboardData() — `actualCapEx`',
+      note: 'The forecast model has no CapEx field — this figure is actuals-only, shown for reference alongside the forecast KPIs.'
+    }
   }));
 
   // 12. Forecast Accuracy (MAPE)
@@ -1389,11 +1413,24 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
       const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
-      summaryBoxes.appendChild(mkSummaryBox('MAPE', mapeValue, 'lower is better'));
+      summaryBoxes.appendChild(mkSummaryBox('MAPE', mapeValue, 'lower is better', {
+        title: 'MAPE (Mean Absolute Percentage Error)', formula: 'Average, over all months with a forecast value, of |Actual − Forecast| ÷ Forecast × 100.',
+        inputs: [
+          { label: 'Months measured', value: String(mapeMonthCount) },
+          { label: 'MAPE', value: mapeValue }
+        ],
+        source: 'analytics-forecast.js calculateDashboardData() — `mape`',
+        note: 'Only months where Forecast Revenue > 0 are included, so a month with no forecast set can\'t distort the average.'
+      }));
       summaryBoxes.appendChild(mkSummaryBox('Months Measured', String(mapeMonthCount)));
       if (mape !== null) {
         const accuracy = Math.max(0, 100 - mape).toFixed(1) + '%';
-        summaryBoxes.appendChild(mkSummaryBox('Avg Accuracy', accuracy, 'of forecast'));
+        summaryBoxes.appendChild(mkSummaryBox('Avg Accuracy', accuracy, 'of forecast', {
+          title: 'Avg Accuracy', formula: 'max(0, 100 − MAPE).',
+          inputs: [{ label: 'MAPE', value: mapeValue }, { label: 'Avg Accuracy', value: accuracy }],
+          source: 'analytics-forecast.js buildKpiGrid()',
+          note: 'A simple inverse of MAPE for a more intuitive "how close were we" reading — floored at 0%.'
+        }));
       }
       body.appendChild(mkSectionLabel('Accuracy Summary'));
       body.appendChild(summaryBoxes);
@@ -1401,7 +1438,13 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       if (mapeRows.length > 0) {
         body.appendChild(mkSectionLabel('Per-Month Error (worst first)'));
         body.appendChild(mkModalTable(
-          ['Month', 'Forecast', 'Actual', 'Abs Error', '% Error'],
+          [
+            { label: 'Month' },
+            { label: 'Forecast', right: true, tip: 'Forecast revenue for the month.' },
+            { label: 'Actual', right: true, tip: 'Actual revenue recorded for the month.' },
+            { label: 'Abs Error', right: true, tip: 'Absolute difference between Actual and Forecast revenue.' },
+            { label: '% Error', right: true, tip: 'Absolute Error as a percentage of Forecast revenue — the per-month term averaged into MAPE.' }
+          ],
           mapeRows.map(r => [r.month, r.fcRev, r.actRev, r.absErr, r.pctErr])
         ));
       } else {
@@ -1410,7 +1453,16 @@ function buildKpiGrid(data, cmpData, cmpRange) {
 
       openModal({ title: 'Forecast Accuracy Detail (MAPE)', body, large: true });
     },
-    delta: null, compLabel: ''
+    delta: null, compLabel: '',
+    explain: {
+      title: 'Forecast Accuracy (MAPE)', formula: 'Average, over all months with a forecast value, of |Actual − Forecast| ÷ Forecast × 100.',
+      inputs: [
+        { label: 'Months measured', value: String(mapeMonthCount) },
+        { label: 'MAPE', value: mapeValue }
+      ],
+      source: 'analytics-forecast.js calculateDashboardData() — `mape`',
+      note: 'Lower is better — 0% means every measured month matched its forecast exactly.'
+    }
   }));
 
   return grid;
