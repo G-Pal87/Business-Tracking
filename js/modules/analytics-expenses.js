@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner, mkTh } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -131,13 +131,13 @@ function toExpDrillRows(expenses) {
 }
 
 const DRILL_COLS = [
-  { key: 'date',        label: 'Date',        format: v => fmtDate(v) },
-  { key: 'type',        label: 'Type'         },
-  { key: 'source',      label: 'Property'     },
-  { key: 'category',    label: 'Category'     },
-  { key: 'vendor',      label: 'Vendor'       },
-  { key: 'description', label: 'Description'  },
-  { key: 'eur',         label: 'EUR',          right: true, format: v => formatEUR(v) }
+  { key: 'date',        label: 'Date',        format: v => fmtDate(v), tip: 'Date the expense was recorded.' },
+  { key: 'type',        label: 'Type',         tip: 'OpEx (operating expense) or CapEx (capital expenditure).' },
+  { key: 'source',      label: 'Property',     tip: 'Property this expense is linked to, if any.' },
+  { key: 'category',    label: 'Category',     tip: 'Cost category the expense was classified under.' },
+  { key: 'vendor',      label: 'Vendor',       tip: 'Vendor/supplier the expense was paid to.' },
+  { key: 'description', label: 'Description',  tip: 'Free-text description entered for this expense.' },
+  { key: 'eur',         label: 'EUR',          right: true, format: v => formatEUR(v), tip: 'Expense amount converted to EUR.' }
 ];
 
 // ── Small footer link demoting a raw record list one click behind a summary ──
@@ -150,13 +150,29 @@ function mkRawLinkFooter(count, onClick) {
   return footer;
 }
 
-function openCostPressureModal(allExp, opTotal, opRatio) {
+function openCostPressureModal(allExp, opTotal, opRatio, revenue) {
   const opExArr = allExp.filter(e => !isCapEx(e));
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Operating Expenses', value: formatEUR(opTotal) },
+    { label: 'Operating Expenses', value: formatEUR(opTotal),
+      explain: {
+        title: 'Operating Expenses', formula: 'Sum of expenses in the selected period, excluding CapEx/renovation.',
+        inputs: [{ label: 'Records', value: String(opExArr.length) }, { label: 'Total', value: formatEUR(opTotal) }],
+        source: 'analytics-expenses.js:87 getData() — `opTotal` (opEx reduce)'
+      }
+    },
     { label: 'Records',            value: String(opExArr.length) },
-    { label: 'Cost Ratio',         value: `${opRatio.toFixed(0)}%`, sub: 'OpEx / Revenue' }
+    { label: 'Cost Ratio',         value: `${opRatio.toFixed(0)}%`, sub: 'OpEx / Revenue',
+      explain: {
+        title: 'Cost Ratio', formula: 'Operating Expenses ÷ Revenue × 100.',
+        inputs: [
+          { label: 'Operating Expenses', value: formatEUR(opTotal) },
+          { label: 'Revenue', value: formatEUR(revenue) }
+        ],
+        source: 'analytics-expenses.js:247 computeExpenseInsights() — `opRatio`',
+        note: 'Revenue includes paid rental payments and paid service invoices (see getRevenue()).'
+      }
+    }
   ], 3));
   const catMap = new Map();
   opExArr.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
@@ -164,7 +180,7 @@ function openCostPressureModal(allExp, opTotal, opRatio) {
   if (cats.length) {
     body.appendChild(mkSectionLabel('By Category'));
     body.appendChild(mkModalTable(
-      [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of OpEx', right: true, muted: true }],
+      [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of OpEx', right: true, muted: true, tip: 'Share of total operating expenses shown above.' }],
       cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—'])
     ));
   }
@@ -172,13 +188,28 @@ function openCostPressureModal(allExp, opTotal, opRatio) {
   openModal({ title: `Operating Expenses — ${formatEUR(opTotal)}`, body, large: true });
 }
 
-function openCapExConcentrationModal(allExp, capTotal, capPct) {
+function openCapExConcentrationModal(allExp, capTotal, capPct, total) {
   const capExArr = allExp.filter(e => isCapEx(e));
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Capital Expenditure', value: formatEUR(capTotal) },
+    { label: 'Capital Expenditure', value: formatEUR(capTotal),
+      explain: {
+        title: 'Capital Expenditure', formula: 'Sum of expenses in the selected period flagged as CapEx (capital/renovation spend).',
+        inputs: [{ label: 'Records', value: String(capExArr.length) }, { label: 'Total', value: formatEUR(capTotal) }],
+        source: 'analytics-expenses.js:88 getData() — `capTotal` (capEx reduce)'
+      }
+    },
     { label: 'Records',             value: String(capExArr.length) },
-    { label: '% of Total Expenses', value: `${capPct.toFixed(0)}%` }
+    { label: '% of Total Expenses', value: `${capPct.toFixed(0)}%`,
+      explain: {
+        title: '% of Total Expenses', formula: 'Capital Expenditure ÷ Total Expenses × 100.',
+        inputs: [
+          { label: 'Capital Expenditure', value: formatEUR(capTotal) },
+          { label: 'Total Expenses', value: formatEUR(total) }
+        ],
+        source: 'analytics-expenses.js:267 computeExpenseInsights() — `capPct`'
+      }
+    }
   ], 3));
   const propMap = new Map();
   capExArr.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0, cnt: 0 }; x.v += toEUR(e.amount, e.currency, e.date); x.cnt++; propMap.set(e.propertyId, x); });
@@ -186,7 +217,7 @@ function openCapExConcentrationModal(allExp, capTotal, capPct) {
   if (props.length) {
     body.appendChild(mkSectionLabel('By Property'));
     body.appendChild(mkModalTable(
-      [{ label: 'Property' }, { label: 'Records', right: true, muted: true }, { label: 'Amount', right: true }, { label: '% of CapEx', right: true, muted: true }],
+      [{ label: 'Property', tip: 'Property this CapEx spend is linked to.' }, { label: 'Records', right: true, muted: true, tip: 'Number of CapEx records for this property.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of CapEx', right: true, muted: true, tip: 'Share of total CapEx shown above.' }],
       props.map(p => [p.n, String(p.cnt), formatEUR(p.v), capTotal > 0 ? (p.v / capTotal * 100).toFixed(1) + '%' : '—'])
     ));
   }
@@ -194,13 +225,28 @@ function openCapExConcentrationModal(allExp, capTotal, capPct) {
   openModal({ title: `CapEx — ${formatEUR(capTotal)}`, body, large: true });
 }
 
-function openCostConcentrationModal(allExp, topCat, lbl, pct) {
+function openCostConcentrationModal(allExp, topCat, lbl, pct, total) {
   const catExp = allExp.filter(e => resolveExpenseFields(e).costCategory === topCat[0]);
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: lbl,          value: formatEUR(topCat[1]) },
+    { label: lbl,          value: formatEUR(topCat[1]),
+      explain: {
+        title: lbl, formula: 'All expenses in the selected period are grouped by cost category and summed; this is the total for the dominant category.',
+        inputs: [{ label: 'Records', value: String(catExp.length) }, { label: 'Total', value: formatEUR(topCat[1]) }],
+        source: 'analytics-expenses.js:287 computeExpenseInsights() — `catMap`/`topCat`'
+      }
+    },
     { label: 'Records',    value: String(catExp.length) },
-    { label: '% of Total', value: `${pct}%` }
+    { label: '% of Total', value: `${pct}%`,
+      explain: {
+        title: '% of Total', formula: 'Category total ÷ Total expenses × 100.',
+        inputs: [
+          { label: 'Category Total', value: formatEUR(topCat[1]) },
+          { label: 'Total Expenses', value: formatEUR(total) }
+        ],
+        source: 'analytics-expenses.js:294 computeExpenseInsights() — `pct`'
+      }
+    }
   ], 3));
   const vendMap = new Map();
   catExp.forEach(e => { const name = vendorLabel(e); if (name === '—') return; vendMap.set(name, (vendMap.get(name) || 0) + toEUR(e.amount, e.currency, e.date)); });
@@ -208,7 +254,7 @@ function openCostConcentrationModal(allExp, topCat, lbl, pct) {
   if (vends.length) {
     body.appendChild(mkSectionLabel('By Vendor'));
     body.appendChild(mkModalTable(
-      [{ label: 'Vendor' }, { label: 'Amount', right: true }, { label: '% of Category', right: true, muted: true }],
+      [{ label: 'Vendor', tip: 'Vendor/supplier the expense was paid to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Category', right: true, muted: true, tip: 'Share of this category\'s total shown above.' }],
       vends.map(([v, amt]) => [v, formatEUR(amt), topCat[1] > 0 ? (amt / topCat[1] * 100).toFixed(1) + '%' : '—'])
     ));
   }
@@ -216,13 +262,28 @@ function openCostConcentrationModal(allExp, topCat, lbl, pct) {
   openModal({ title: `${lbl} — ${formatEUR(topCat[1])}`, body, large: true });
 }
 
-function openVendorConcentrationModal(allExp, topVend, pct) {
+function openVendorConcentrationModal(allExp, topVend, pct, total) {
   const vendExp = allExp.filter(e => vendorLabel(e) === topVend[0]);
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Vendor Total', value: formatEUR(topVend[1]) },
+    { label: 'Vendor Total', value: formatEUR(topVend[1]),
+      explain: {
+        title: 'Vendor Total', formula: 'All expenses in the selected period are grouped by vendor and summed; this is the total for the highest-spend vendor.',
+        inputs: [{ label: 'Vendor', value: topVend[0] }, { label: 'Records', value: String(vendExp.length) }, { label: 'Total', value: formatEUR(topVend[1]) }],
+        source: 'analytics-expenses.js:306 computeExpenseInsights() — `vendMap`/`topVend`'
+      }
+    },
     { label: 'Records',      value: String(vendExp.length) },
-    { label: '% of Total',   value: `${pct}%` }
+    { label: '% of Total',   value: `${pct}%`,
+      explain: {
+        title: '% of Total', formula: 'Vendor total ÷ Total expenses × 100.',
+        inputs: [
+          { label: 'Vendor Total', value: formatEUR(topVend[1]) },
+          { label: 'Total Expenses', value: formatEUR(total) }
+        ],
+        source: 'analytics-expenses.js:314 computeExpenseInsights() — `pct`'
+      }
+    }
   ], 3));
   const catMap = new Map();
   vendExp.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
@@ -230,7 +291,7 @@ function openVendorConcentrationModal(allExp, topVend, pct) {
   if (cats.length) {
     body.appendChild(mkSectionLabel('By Category'));
     body.appendChild(mkModalTable(
-      [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Vendor Total', right: true, muted: true }],
+      [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Vendor Total', right: true, muted: true, tip: 'Share of this vendor\'s total spend shown above.' }],
       cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), topVend[1] > 0 ? (v / topVend[1] * 100).toFixed(1) + '%' : '—'])
     ));
   }
@@ -251,7 +312,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `Operating cost ratio is ${opRatio.toFixed(0)}% — OpEx exceeds revenue. Portfolio is unprofitable for this period.`,
       severity: 'At Risk',
       inspect:  'Expense Records',
-      onClick:  () => openCostPressureModal(allExp, opTotal, opRatio)
+      onClick:  () => openCostPressureModal(allExp, opTotal, opRatio, revenue)
     });
   } else if (opRatio !== null && opRatio > 80) {
     signals.push({
@@ -259,7 +320,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `Operating cost ratio is ${opRatio.toFixed(0)}% — OpEx consumes over 80% of revenue. Margins are thin.`,
       severity: 'Watch',
       inspect:  'Expense Records',
-      onClick:  () => openCostPressureModal(allExp, opTotal, opRatio)
+      onClick:  () => openCostPressureModal(allExp, opTotal, opRatio, revenue)
     });
   }
 
@@ -271,7 +332,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `CapEx is ${capPct.toFixed(0)}% of total expenses — major capital investment activity. Verify this is planned.`,
       severity: 'Watch',
       inspect:  'CapEx Detail',
-      onClick:  () => openCapExConcentrationModal(allExp, capTotal, capPct)
+      onClick:  () => openCapExConcentrationModal(allExp, capTotal, capPct, total)
     });
   } else if (capPct > 30) {
     signals.push({
@@ -279,7 +340,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `CapEx is ${capPct.toFixed(0)}% of total expenses — elevated capital investment activity.`,
       severity: 'Note',
       inspect:  'CapEx Detail',
-      onClick:  () => openCapExConcentrationModal(allExp, capTotal, capPct)
+      onClick:  () => openCapExConcentrationModal(allExp, capTotal, capPct, total)
     });
   }
 
@@ -298,7 +359,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `"${lbl}" is the dominant cost category at ${pct}% of total spend.`,
       severity: 'Note',
       inspect:  'Category Breakdown',
-      onClick:  () => openCostConcentrationModal(allExp, topCat, lbl, pct)
+      onClick:  () => openCostConcentrationModal(allExp, topCat, lbl, pct, total)
     });
   }
 
@@ -332,7 +393,7 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
       text:     `"${topVend[0]}" accounts for ${formatEUR(topVend[1])} (${pct}% of total expenses) — high dependency on a single vendor.${trendText}`,
       severity: 'Watch',
       inspect:  'Vendor Breakdown',
-      onClick:  () => openVendorConcentrationModal(allExp, topVend, pct)
+      onClick:  () => openVendorConcentrationModal(allExp, topVend, pct, total)
     });
   }
 
@@ -382,11 +443,19 @@ function computeExpenseInsights({ allExp, opTotal, capTotal, total, revenue, cur
           const body = el('div');
           body.appendChild(mkSummaryGrid([
             { label: 'Patterns Detected',     value: String(recurringPatterns.length) },
-            { label: 'Combined Monthly Avg',  value: formatEUR(recurringPatterns.reduce((s, p) => s + p.avg, 0)) }
+            { label: 'Combined Monthly Avg',  value: formatEUR(recurringPatterns.reduce((s, p) => s + p.avg, 0)),
+              explain: {
+                title: 'Combined Monthly Avg',
+                formula: 'Sum of each recurring pattern\'s own monthly average (each vendor/description\'s per-month total, averaged over 3+ months where every month stays within 20% of that average).',
+                inputs: [{ label: 'Patterns Detected', value: String(recurringPatterns.length) }],
+                source: 'analytics-expenses.js:358 computeExpenseInsights() — `recurringPatterns` (monthTotals avg)',
+                note: 'A vendor/description only counts as "recurring" if it appears in 3+ distinct months and every month\'s total is within 20% of the average.'
+              }
+            }
           ], 2));
           body.appendChild(mkSectionLabel('Recurring Vendors'));
           body.appendChild(mkModalTable(
-            [{ label: 'Vendor' }, { label: 'Month' }, { label: 'EUR', right: true }],
+            [{ label: 'Vendor', tip: 'Vendor name, or description text when no vendor is linked.' }, { label: 'Month', tip: 'Calendar month this total covers.' }, { label: 'EUR', right: true, tip: 'Total spend with this vendor/description in that month.' }],
             recurringRows.map(r => [r.vendor, monthLabel(r.month), formatEUR(r.eur)])
           ));
           openModal({ title: 'Recurring Expenses', body, large: true });
@@ -522,9 +591,19 @@ function buildView() {
     } else {
       const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
       sgrid.appendChild(mkSummaryBox('Operating Expenses', formatEUR(opTotal),
-        total > 0 ? `${(opTotal / total * 100).toFixed(0)}% of total · ${opEx.length} record${opEx.length !== 1 ? 's' : ''}` : null));
+        total > 0 ? `${(opTotal / total * 100).toFixed(0)}% of total · ${opEx.length} record${opEx.length !== 1 ? 's' : ''}` : null,
+        {
+          title: 'Operating Expenses', formula: 'Sum of expenses in the selected period, excluding CapEx/renovation.',
+          inputs: [{ label: 'Records', value: String(opEx.length) }, { label: 'Total', value: formatEUR(opTotal) }],
+          source: 'analytics-expenses.js:87 getData() — `opTotal` (opEx reduce)'
+        }));
       sgrid.appendChild(mkSummaryBox('Capital Expenditure', formatEUR(capTotal),
-        total > 0 ? `${(capTotal / total * 100).toFixed(0)}% of total · ${capEx.length} record${capEx.length !== 1 ? 's' : ''}` : null));
+        total > 0 ? `${(capTotal / total * 100).toFixed(0)}% of total · ${capEx.length} record${capEx.length !== 1 ? 's' : ''}` : null,
+        {
+          title: 'Capital Expenditure', formula: 'Sum of expenses in the selected period flagged as CapEx (capital/renovation spend).',
+          inputs: [{ label: 'Records', value: String(capEx.length) }, { label: 'Total', value: formatEUR(capTotal) }],
+          source: 'analytics-expenses.js:88 getData() — `capTotal` (capEx reduce)'
+        }));
       body.appendChild(sgrid);
     }
     const catMap = new Map();
@@ -535,12 +614,12 @@ function buildView() {
       body.appendChild(mkSectionLabel('By Category'));
       body.appendChild(mkModalTable(
         [
-          { label: 'Category' },
-          { label: 'Type', muted: true },
-          { label: 'Actual', right: true },
-          { label: '% of Total', right: true, muted: true },
-          { label: 'Budget', right: true, muted: true },
-          { label: 'Variance', right: true, muted: true }
+          { label: 'Category', tip: 'Cost category this expense was classified under.' },
+          { label: 'Type', muted: true, tip: 'OpEx (operating) or CapEx (capital) expense.' },
+          { label: 'Actual', right: true, tip: 'Total amount actually spent in this category during the selected period.' },
+          { label: '% of Total', right: true, muted: true, tip: 'Share of total expenses (OpEx + CapEx) in the selected period.' },
+          { label: 'Budget', right: true, muted: true, tip: 'Forecast operating-expense budget for the period, allocated to this category in proportion to its share of actual spend.' },
+          { label: 'Variance', right: true, muted: true, tip: 'Actual minus Budget — positive means overspend vs. forecast.' }
         ],
         cats.map(([k, v]) => {
           const budgetShare = fcBudget !== null ? (catMap.get(k) || 0) / (total || 1) * fcBudget : null;
@@ -569,11 +648,11 @@ function buildView() {
       body.appendChild(mkSectionLabel('By Category'));
       body.appendChild(mkModalTable(
         [
-          { label: 'Category' },
-          { label: 'Actual', right: true },
-          { label: '% of OpEx', right: true, muted: true },
-          { label: 'Budget', right: true, muted: true },
-          { label: 'Variance', right: true, muted: true }
+          { label: 'Category', tip: 'Cost category this expense was classified under.' },
+          { label: 'Actual', right: true, tip: 'Total amount actually spent in this category during the selected period.' },
+          { label: '% of OpEx', right: true, muted: true, tip: 'Share of total operating expenses in the selected period.' },
+          { label: 'Budget', right: true, muted: true, tip: 'Forecast operating-expense budget for the period, allocated to this category in proportion to its share of actual spend.' },
+          { label: 'Variance', right: true, muted: true, tip: 'Actual minus Budget — positive means overspend vs. forecast.' }
         ],
         cats.map(([k, v]) => {
           const budgetShare = fcBudget !== null ? (catMap.get(k) || 0) / (opTotal || 1) * fcBudget : null;
@@ -595,7 +674,7 @@ function buildView() {
       body.appendChild(el('div', { style: 'margin-top:20px' }));
       body.appendChild(mkSectionLabel('By Property'));
       body.appendChild(mkModalTable(
-        [{ label: 'Property' }, { label: 'Amount', right: true }, { label: '% of OpEx', right: true, muted: true }],
+        [{ label: 'Property', tip: 'Property this operating expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of OpEx', right: true, muted: true, tip: 'Share of total operating expenses shown above.' }],
         props.map(p => [p.n, formatEUR(p.v), opTotal > 0 ? (p.v / opTotal * 100).toFixed(1) + '%' : '—'])
       ));
     }
@@ -614,7 +693,7 @@ function buildView() {
       body.appendChild(pgrid);
       body.appendChild(mkSectionLabel('All Properties'));
       body.appendChild(mkModalTable(
-        [{ label: 'Property' }, { label: 'Records', right: true, muted: true }, { label: 'Amount', right: true }, { label: '% of CapEx', right: true, muted: true }],
+        [{ label: 'Property', tip: 'Property this CapEx spend is linked to.' }, { label: 'Records', right: true, muted: true, tip: 'Number of CapEx records for this property.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of CapEx', right: true, muted: true, tip: 'Share of total CapEx for the selected period.' }],
         props.map(p => [p.n, String(p.cnt), formatEUR(p.v), capTotal > 0 ? (p.v / capTotal * 100).toFixed(1) + '%' : '—'])
       ));
     }
@@ -625,7 +704,7 @@ function buildView() {
       body.appendChild(el('div', { style: 'margin-top:20px' }));
       body.appendChild(mkSectionLabel('By Category'));
       body.appendChild(mkModalTable(
-        [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of CapEx', right: true, muted: true }],
+        [{ label: 'Category', tip: 'Cost category this CapEx expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of CapEx', right: true, muted: true, tip: 'Share of total CapEx for the selected period.' }],
         cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), capTotal > 0 ? (v / capTotal * 100).toFixed(1) + '%' : '—'])
       ));
     }
@@ -637,12 +716,22 @@ function buildView() {
     body.appendChild(mkSummaryGrid([
       { label: 'Revenue',              value: formatEUR(revenue) },
       { label: 'Operating Expenses',   value: formatEUR(opTotal) },
-      { label: 'Expense Ratio',        value: expRatio !== null ? `${expRatio.toFixed(1)}%` : '—', sub: 'OpEx / Revenue' }
+      { label: 'Expense Ratio',        value: expRatio !== null ? `${expRatio.toFixed(1)}%` : '—', sub: 'OpEx / Revenue',
+        explain: {
+          title: 'Expense Ratio', formula: 'Operating Expenses ÷ Revenue × 100.',
+          inputs: [
+            { label: 'Operating Expenses', value: formatEUR(opTotal) },
+            { label: 'Revenue', value: formatEUR(revenue) }
+          ],
+          source: 'analytics-expenses.js:705 buildView() — `expRatio`',
+          note: 'Revenue includes paid rental payments and paid service invoices (see getRevenue()).'
+        }
+      }
     ], 3));
     if (revenue > 0) {
       body.appendChild(mkSectionLabel('Revenue Composition'));
       body.appendChild(mkModalTable(
-        [{ label: 'Source' }, { label: 'Amount', right: true }, { label: '% of Revenue', right: true, muted: true }],
+        [{ label: 'Source', tip: 'Revenue source.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Revenue', right: true, muted: true, tip: 'Share of total revenue for the selected period.' }],
         [
           ['Rentals',  formatEUR(revenueData.rentals),  (revenueData.rentals  / revenue * 100).toFixed(1) + '%'],
           ['Services', formatEUR(revenueData.services), (revenueData.services / revenue * 100).toFixed(1) + '%']
@@ -656,7 +745,7 @@ function buildView() {
       body.appendChild(el('div', { style: 'margin-top:20px' }));
       body.appendChild(mkSectionLabel('OpEx by Category'));
       body.appendChild(mkModalTable(
-        [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of OpEx', right: true, muted: true }],
+        [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of OpEx', right: true, muted: true, tip: 'Share of total operating expenses shown above.' }],
         cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—'])
       ));
     }
@@ -672,6 +761,14 @@ function buildView() {
     compLabel:   cmpLabel,
     compValue:   cmp ? formatEUR(cmp.total) : undefined,
     onClick:     totalExpDrill,
+    explain: {
+      title: 'Total Expenses', formula: 'Operating Expenses + Capital Expenditure for the selected period.',
+      inputs: [
+        { label: 'Operating Expenses', value: formatEUR(opTotal) },
+        { label: 'CapEx', value: formatEUR(capTotal) }
+      ],
+      source: 'analytics-expenses.js:89 getData() — `total: opTotal + capTotal`'
+    },
     lines: [
       { label: 'OpEx',  value: formatEUR(opTotal),  color: '#ef4444' },
       { label: 'CapEx', value: formatEUR(capTotal),  color: '#f59e0b' }
@@ -686,7 +783,12 @@ function buildView() {
     invertDelta: true,
     compLabel:   cmpLabel,
     compValue:   cmp ? formatEUR(cmp.opTotal) : undefined,
-    onClick:     opExDrill
+    onClick:     opExDrill,
+    explain: {
+      title: 'Operating Expenses', formula: 'Sum of expenses in the selected period, excluding CapEx/renovation.',
+      inputs: [{ label: 'Records', value: String(opEx.length) }, { label: 'Total', value: formatEUR(opTotal) }],
+      source: 'analytics-expenses.js:87 getData() — `opTotal` (opEx reduce)'
+    }
   }));
 
   // 3. CapEx
@@ -698,7 +800,12 @@ function buildView() {
     compLabel:   cmpLabel,
     compValue:   cmp ? formatEUR(cmp.capTotal) : undefined,
     variant:     capTotal > 0 ? 'warning' : '',
-    onClick:     capExDrill
+    onClick:     capExDrill,
+    explain: {
+      title: 'CapEx', formula: 'Sum of expenses in the selected period flagged as CapEx (capital/renovation spend).',
+      inputs: [{ label: 'Records', value: String(capEx.length) }, { label: 'Total', value: formatEUR(capTotal) }],
+      source: 'analytics-expenses.js:88 getData() — `capTotal` (capEx reduce)'
+    }
   }));
 
   // 4. Expense Ratio (OpEx / Revenue)
@@ -714,7 +821,16 @@ function buildView() {
     invertDelta: true,
     compLabel:   cmpLabel,
     variant:     expRatio !== null && expRatio > 80 ? 'danger' : '',
-    onClick:     expRatioDrill
+    onClick:     expRatioDrill,
+    explain: {
+      title: 'Expense Ratio', formula: 'Operating Expenses ÷ Revenue × 100.',
+      inputs: [
+        { label: 'Operating Expenses', value: formatEUR(opTotal) },
+        { label: 'Revenue', value: formatEUR(revenue) }
+      ],
+      source: 'analytics-expenses.js:705 buildView() — `expRatio`',
+      note: expRatio === null ? 'Shows "—" when there is no revenue in the selected period.' : 'Revenue includes paid rental payments and paid service invoices (see getRevenue()).'
+    }
   }));
 
   wrap.appendChild(kpiRow1);
@@ -733,7 +849,15 @@ function buildView() {
     delta:     capShareDelta,
     deltaIsPp: true,
     compLabel: cmpLabel,
-    onClick:   capExDrill
+    onClick:   capExDrill,
+    explain: {
+      title: 'CapEx Share', formula: 'Capital Expenditure ÷ Total Expenses × 100.',
+      inputs: [
+        { label: 'CapEx', value: formatEUR(capTotal) },
+        { label: 'Total Expenses', value: formatEUR(total) }
+      ],
+      source: 'analytics-expenses.js:726 buildView() — `capSharePct`'
+    }
   }));
 
   // 6. Top Vendor
@@ -748,6 +872,14 @@ function buildView() {
     label:   'Top Vendor',
     value:   topVendEntry ? topVendEntry[0] : '—',
     subtitle: topVendEntry ? formatEUR(topVendEntry[1]) : 'No vendors recorded',
+    explain: {
+      title: 'Top Vendor', formula: 'All expenses in the selected period are grouped by vendor and summed; the highest-spend vendor is shown.',
+      inputs: [
+        { label: 'Vendor', value: topVendEntry ? topVendEntry[0] : '—' },
+        { label: 'Amount', value: topVendEntry ? formatEUR(topVendEntry[1]) : '—' }
+      ],
+      source: 'analytics-expenses.js:746 buildView() — `topVendEntry` (vendMap2)'
+    },
     onClick: () => {
       const rows = [...vendMap2.entries()].sort((a, b) => b[1] - a[1]);
       const body = el('div');
@@ -757,7 +889,7 @@ function buildView() {
       ], 2));
       body.appendChild(mkSectionLabel('Vendors Summary'));
       body.appendChild(mkModalTable(
-        [{ label: 'Vendor' }, { label: 'EUR', right: true }],
+        [{ label: 'Vendor', tip: 'Vendor/supplier the expense was paid to.' }, { label: 'EUR', right: true, tip: 'Total amount paid to this vendor in the selected period.' }],
         rows.map(([vendor, eur]) => [vendor, formatEUR(eur)])
       ));
       openModal({ title: 'Vendors Summary', body, large: true });
@@ -775,6 +907,14 @@ function buildView() {
     label:   'Top Cost Category',
     value:   topCatEntry ? (COST_CATEGORIES[topCatEntry[0]]?.label || topCatEntry[0]) : '—',
     subtitle: topCatEntry ? formatEUR(topCatEntry[1]) : 'No categories',
+    explain: {
+      title: 'Top Cost Category', formula: 'All expenses in the selected period are grouped by cost category and summed; the highest-spend category is shown.',
+      inputs: [
+        { label: 'Category', value: topCatEntry ? (COST_CATEGORIES[topCatEntry[0]]?.label || topCatEntry[0]) : '—' },
+        { label: 'Amount', value: topCatEntry ? formatEUR(topCatEntry[1]) : '—' }
+      ],
+      source: 'analytics-expenses.js:773 buildView() — `topCatEntry` (catMap2)'
+    },
     onClick: () => {
       const rows = [...catMap2.entries()].sort((a, b) => b[1] - a[1]);
       const body = el('div');
@@ -784,7 +924,7 @@ function buildView() {
       ], 2));
       body.appendChild(mkSectionLabel('Categories Summary'));
       body.appendChild(mkModalTable(
-        [{ label: 'Category' }, { label: 'EUR', right: true }],
+        [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'EUR', right: true, tip: 'Total amount spent in this category in the selected period.' }],
         rows.map(([cat, eur]) => [COST_CATEGORIES[cat]?.label || cat, formatEUR(eur)])
       ));
       openModal({ title: 'Categories Summary', body, large: true });
@@ -813,7 +953,7 @@ function buildView() {
       ], 2));
       body.appendChild(mkSectionLabel('Costs by Property'));
       body.appendChild(mkModalTable(
-        [{ label: 'Property' }, { label: 'EUR', right: true }],
+        [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'EUR', right: true, tip: 'Total amount spent on this property in the selected period.' }],
         rows.map(r => [r.property, formatEUR(r.eur)])
       ));
       openModal({ title: 'Costs by Property', body, large: true });
@@ -955,7 +1095,7 @@ function renderCatBar({ allExp }, curRange) {
       const body = el('div');
       body.appendChild(mkSectionLabel(`Expense Breakdown — ${label}`));
       body.appendChild(mkModalTable(
-        [{ label: 'Category' }, { label: 'Type', muted: true }, { label: 'Amount', right: true }, { label: '% of Month', right: true, muted: true }],
+        [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Type', muted: true, tip: 'OpEx (operating) or CapEx (capital) expense.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Month', right: true, muted: true, tip: 'Share of total spend in this month.' }],
         cats.map(([k, v]) => {
           const row = [COST_CATEGORIES[k]?.label || k, capExCats.has(k) ? 'CapEx' : 'OpEx', formatEUR(v), monthTotal > 0 ? (v / monthTotal * 100).toFixed(1) + '%' : '—'];
           if (k === clickedCat) row[0] = `▶ ${row[0]}`;
@@ -980,7 +1120,7 @@ function openExpenseStreamModal(sk, allExp) {
   if (cats.length) {
     body.appendChild(mkSectionLabel('By Category'));
     body.appendChild(mkModalTable(
-      [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Stream', right: true, muted: true }],
+      [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Stream', right: true, muted: true, tip: 'Share of this stream\'s total spend shown above.' }],
       cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), streamTotal > 0 ? (v / streamTotal * 100).toFixed(1) + '%' : '—'])
     ));
   }
@@ -991,7 +1131,7 @@ function openExpenseStreamModal(sk, allExp) {
     body.appendChild(el('div', { style: 'margin-top:20px' }));
     body.appendChild(mkSectionLabel('By Property'));
     body.appendChild(mkModalTable(
-      [{ label: 'Property' }, { label: 'Amount', right: true }, { label: '% of Stream', right: true, muted: true }],
+      [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Stream', right: true, muted: true, tip: 'Share of this stream\'s total spend shown above.' }],
       props.map(p => [p.n, formatEUR(p.v), streamTotal > 0 ? (p.v / streamTotal * 100).toFixed(1) + '%' : '—'])
     ));
   }
@@ -1025,7 +1165,16 @@ function buildExpenseStreamKpiRow(cur, cmp, cmpLabel) {
       invertDelta: true,
       compLabel:   cmpLabel,
       compValue:   cmp ? formatEUR(cmpVal) : undefined,
-      onClick:     () => openExpenseStreamModal(sk, cur.allExp)
+      onClick:     () => openExpenseStreamModal(sk, cur.allExp),
+      explain: {
+        title: `${STREAMS[sk]?.label || sk} Expenses`, formula: 'Sum of expenses in the selected period whose business stream (or linked property\'s stream) matches this one.',
+        inputs: [
+          { label: 'Total', value: formatEUR(val) },
+          { label: 'Total Expenses (all streams)', value: formatEUR(cur.total) }
+        ],
+        source: 'analytics-expenses.js:1006 buildExpenseStreamKpiRow() — `streamMap`',
+        note: 'Stream is read from the expense record itself, falling back to the linked property\'s type (see expStream() in analytics-helpers.js).'
+      }
     }));
   }
   return el('div', {}, mkSectionLabel('Expenses by Stream'), grid);
@@ -1095,7 +1244,7 @@ function renderCatHBar({ allExp }) {
       if (vends.length) {
         body.appendChild(mkSectionLabel('By Vendor'));
         body.appendChild(mkModalTable(
-          [{ label: 'Vendor' }, { label: 'Amount', right: true }, { label: '% of Category', right: true, muted: true }],
+          [{ label: 'Vendor', tip: 'Vendor/supplier the expense was paid to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Category', right: true, muted: true, tip: 'Share of this category\'s total shown above.' }],
           vends.map(([n, v]) => [n, formatEUR(v), catTotal > 0 ? (v / catTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -1106,7 +1255,7 @@ function renderCatHBar({ allExp }) {
         body.appendChild(el('div', { style: 'margin-top:20px' }));
         body.appendChild(mkSectionLabel('By Property'));
         body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Amount', right: true }, { label: '% of Category', right: true, muted: true }],
+          [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Category', right: true, muted: true, tip: 'Share of this category\'s total shown above.' }],
           props.map(p => [p.n, formatEUR(p.v), catTotal > 0 ? (p.v / catTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -1149,7 +1298,7 @@ function renderVendorBar({ allExp }) {
       if (cats.length) {
         body.appendChild(mkSectionLabel('By Category'));
         body.appendChild(mkModalTable(
-          [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Vendor Total', right: true, muted: true }],
+          [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Vendor Total', right: true, muted: true, tip: 'Share of this vendor\'s total spend shown above.' }],
           cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), vendTotal > 0 ? (v / vendTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -1160,7 +1309,7 @@ function renderVendorBar({ allExp }) {
         body.appendChild(el('div', { style: 'margin-top:20px' }));
         body.appendChild(mkSectionLabel('By Property'));
         body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Amount', right: true }, { label: '% of Vendor Total', right: true, muted: true }],
+          [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Vendor Total', right: true, muted: true, tip: 'Share of this vendor\'s total spend shown above.' }],
           props.map(p => [p.n, formatEUR(p.v), vendTotal > 0 ? (p.v / vendTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -1188,7 +1337,7 @@ function renderTypeDonut({ opTotal, capTotal, opEx, capEx }) {
       if (cats.length) {
         body.appendChild(mkSectionLabel('By Category'));
         body.appendChild(mkModalTable(
-          [{ label: 'Category' }, { label: 'Amount', right: true }, { label: `% of ${typeShort}`, right: true, muted: true }],
+          [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: `% of ${typeShort}`, right: true, muted: true, tip: `Share of total ${typeShort} shown above.` }],
           cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), expTotal > 0 ? (v / expTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -1199,7 +1348,7 @@ function renderTypeDonut({ opTotal, capTotal, opEx, capEx }) {
         body.appendChild(el('div', { style: 'margin-top:20px' }));
         body.appendChild(mkSectionLabel('By Property'));
         body.appendChild(mkModalTable(
-          [{ label: 'Property' }, { label: 'Amount', right: true }, { label: `% of ${typeShort}`, right: true, muted: true }],
+          [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: `% of ${typeShort}`, right: true, muted: true, tip: `Share of total ${typeShort} shown above.` }],
           props.map(p => [p.n, formatEUR(p.v), expTotal > 0 ? (p.v / expTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -1251,7 +1400,7 @@ function renderPropHBar({ allExp }) {
       if (cats.length) {
         body.appendChild(mkSectionLabel('By Category'));
         body.appendChild(mkModalTable(
-          [{ label: 'Category' }, { label: 'Type', muted: true }, { label: 'Amount', right: true }, { label: '% of Property', right: true, muted: true }],
+          [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Type', muted: true, tip: 'OpEx (operating) or CapEx (capital) expense.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Property', right: true, muted: true, tip: 'Share of this property\'s total costs shown above.' }],
           cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, getCapExCatKeys(allExp).has(k) ? 'CapEx' : 'OpEx', formatEUR(v), propTotal > 0 ? (v / propTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -1262,7 +1411,7 @@ function renderPropHBar({ allExp }) {
         body.appendChild(el('div', { style: 'margin-top:20px' }));
         body.appendChild(mkSectionLabel('By Vendor'));
         body.appendChild(mkModalTable(
-          [{ label: 'Vendor' }, { label: 'Amount', right: true }, { label: '% of Property', right: true, muted: true }],
+          [{ label: 'Vendor', tip: 'Vendor/supplier the expense was paid to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Property', right: true, muted: true, tip: 'Share of this property\'s total costs shown above.' }],
           vends.map(([n, v]) => [n, formatEUR(v), propTotal > 0 ? (v / propTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -1308,18 +1457,18 @@ function buildCapExDetailSection(container, { capEx, total }) {
   }).sort((a, b) => b._eur - a._eur);
 
   const CAPEX_COLS = [
-    { key: 'date',        label: 'Date'        },
-    { key: 'property',    label: 'Property'    },
-    { key: 'category',    label: 'Category'    },
-    { key: 'vendor',      label: 'Vendor'      },
-    { key: 'description', label: 'Description' },
-    { key: 'eur',         label: 'EUR',         right: true },
-    { key: 'pctTotal',    label: '% of Total',  right: true }
+    { key: 'date',        label: 'Date',        tip: 'Date the CapEx expense was recorded.' },
+    { key: 'property',    label: 'Property',    tip: 'Property this CapEx spend is linked to.' },
+    { key: 'category',    label: 'Category',    tip: 'Cost category the expense was classified under.' },
+    { key: 'vendor',      label: 'Vendor',      tip: 'Vendor/supplier the expense was paid to.' },
+    { key: 'description', label: 'Description', tip: 'Free-text description entered for this expense.' },
+    { key: 'eur',         label: 'EUR',         right: true, tip: 'Expense amount converted to EUR.' },
+    { key: 'pctTotal',    label: '% of Total',  right: true, tip: 'Share of total expenses (OpEx + CapEx) for the selected period.' }
   ];
 
   const table = el('table', { class: 'table' });
   const htr   = el('tr');
-  CAPEX_COLS.forEach(col => htr.appendChild(el('th', { class: col.right ? 'right' : '' }, col.label)));
+  CAPEX_COLS.forEach(col => htr.appendChild(mkTh(col)));
   table.appendChild(el('thead', {}, htr));
 
   const tbody = el('tbody');
@@ -1362,19 +1511,19 @@ function buildExpenseTable(container, { allExp }) {
   }).sort((a, b) => (b._date || '').localeCompare(a._date || ''));
 
   const TABLE_COLS = [
-    { key: 'type',        label: 'Type'        },
-    { key: 'date',        label: 'Date'        },
-    { key: 'category',    label: 'Category'    },
-    { key: 'vendor',      label: 'Vendor'      },
-    { key: 'description', label: 'Description' },
-    { key: 'stream',      label: 'Stream'      },
-    { key: 'property',    label: 'Property'    },
-    { key: 'amountEUR',   label: 'Amount EUR',  right: true }
+    { key: 'type',        label: 'Type',        tip: 'OpEx (operating expense) or CapEx (capital expenditure).' },
+    { key: 'date',        label: 'Date',        tip: 'Date the expense was recorded.' },
+    { key: 'category',    label: 'Category',    tip: 'Cost category the expense was classified under.' },
+    { key: 'vendor',      label: 'Vendor',      tip: 'Vendor/supplier the expense was paid to.' },
+    { key: 'description', label: 'Description', tip: 'Free-text description entered for this expense.' },
+    { key: 'stream',      label: 'Stream',      tip: 'Business stream this expense belongs to (short-term rental, long-term rental, or other).' },
+    { key: 'property',    label: 'Property',    tip: 'Property this expense is linked to, if any.' },
+    { key: 'amountEUR',   label: 'Amount EUR',  right: true, tip: 'Expense amount converted to EUR.' }
   ];
 
   const table = el('table', { class: 'table' });
   const htr   = el('tr');
-  TABLE_COLS.forEach(col => htr.appendChild(el('th', { class: col.right ? 'right' : '' }, col.label)));
+  TABLE_COLS.forEach(col => htr.appendChild(mkTh(col)));
   table.appendChild(el('thead', {}, htr));
 
   const tbody = el('tbody');
