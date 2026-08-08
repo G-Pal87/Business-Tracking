@@ -3,6 +3,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, addDays, attachSortFilter } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, totalRemaining } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
+import { mkTh, mkExplainButton } from './analytics-helpers.js';
 
 let _sortCol = -1, _sortDir = 1, _invSearch = '';
 
@@ -198,6 +199,16 @@ function buildInventoryInsights(onInspect) {
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 
+const INV_LIST_COLS = [
+  { label: 'Name',          tip: 'Inventory item name.' },
+  { label: 'Property',      tip: 'Property this stock is assigned to.' },
+  { label: 'Stock',         right: true, tip: 'Total remaining quantity across all purchase batches for this item.' },
+  { label: 'Value',         right: true, tip: 'Total value of remaining stock: each batch\'s remaining quantity × its unit price, summed.' },
+  { label: 'Last Purchase', tip: 'Date of the most recently dated purchase batch for this item.' },
+  { label: 'Runs Out',      tip: 'Projected stockout date, based on the recent consumption rate and assuming no further restocking.' },
+  { label: '' }
+];
+
 function build() {
   const wrap = el('div', { class: 'view active' });
 
@@ -224,7 +235,9 @@ function build() {
     }
     const now = today();
     const t = el('table', { class: 'table' });
-    t.innerHTML = '<thead><tr><th>Name</th><th>Property</th><th class="right">Stock</th><th class="right">Value</th><th>Last Purchase</th><th>Runs Out</th><th></th></tr></thead>';
+    const theadTr = el('tr');
+    INV_LIST_COLS.forEach(c => theadTr.appendChild(mkTh(c)));
+    t.appendChild(el('thead', {}, theadTr));
     const tb = el('tbody');
     for (const item of rows) {
       const stock = totalRemaining(item);
@@ -233,18 +246,55 @@ function build() {
       const ccy   = firstCurrency(item);
       const prop  = byId('properties', item.propertyId);
       const stockout = projectedStockout(item, now);
+      const batches = item.batches || [];
 
       const tr = el('tr', { style: 'cursor:pointer' });
+      // mkExplainButton's own onclick stops propagation, so clicking the "ⓘ"
+      // never also triggers this row-open handler.
       tr.onclick = e => { if (!e.target.closest('button')) openBatchesModal(item, render); };
       tr.appendChild(el('td', {}, item.name));
       tr.appendChild(el('td', {}, prop?.name || '—'));
       const stockCls = stock <= 0 ? 'right num muted' : stock <= 5 ? 'right num warning' : 'right num';
-      tr.appendChild(el('td', { class: stockCls }, String(stock)));
-      tr.appendChild(el('td', { class: 'right num' }, formatMoney(value, ccy)));
+      const stockTd = el('td', { class: stockCls, style: 'display:flex;align-items:center;justify-content:flex-end;gap:4px' }, String(stock));
+      stockTd.appendChild(mkExplainButton({
+        title: 'Stock',
+        formula: 'Sum of `remaining` across all of this item\'s purchase batches.',
+        inputs: [
+          { label: 'Batches counted', value: String(batches.length) },
+          { label: 'Total Stock', value: String(stock) }
+        ],
+        source: 'core/data.js totalRemaining()',
+        note: 'Each batch\'s remaining quantity is decremented via FIFO (oldest batch first) as generated expenses consume stock — see core/data.js fifoDeduct().'
+      }));
+      tr.appendChild(stockTd);
+      const valueTd = el('td', { class: 'right num', style: 'display:flex;align-items:center;justify-content:flex-end;gap:4px' }, formatMoney(value, ccy));
+      valueTd.appendChild(mkExplainButton({
+        title: 'Value',
+        formula: 'Σ (batch remaining × batch unit price), summed across all batches.',
+        inputs: [
+          { label: 'Batches counted', value: String(batches.length) },
+          { label: 'Total Value', value: formatMoney(value, ccy) }
+        ],
+        source: 'js/modules/inventory.js totalValue()',
+        note: 'Raw sum of remaining×unitPrice per batch, not currency-converted — if batches were bought in different currencies this total mixes them, and the displayed currency is only the first one found (firstCurrency()).'
+      }));
+      tr.appendChild(valueTd);
       tr.appendChild(el('td', {}, fmtDate(last)));
       if (stockout) {
         const soonCls = stockout.daysCover < 14 ? 'warning' : '';
-        tr.appendChild(el('td', { class: soonCls }, `${fmtDate(stockout.date)} (~${Math.floor(stockout.daysCover)}d)`));
+        const runsOutTd = el('td', { class: soonCls, style: 'display:flex;align-items:center;gap:4px' }, `${fmtDate(stockout.date)} (~${Math.floor(stockout.daysCover)}d)`);
+        runsOutTd.appendChild(mkExplainButton({
+          title: 'Runs Out',
+          formula: 'Projected stockout date = current stock ÷ recent consumption rate (units/day), projected forward from today.',
+          inputs: [
+            { label: 'Current Stock', value: String(stock) },
+            { label: 'Recent Usage Rate', value: `${stockout.ratePerDay.toFixed(2)}/day` },
+            { label: 'Days of Cover', value: `${Math.floor(stockout.daysCover)} days` }
+          ],
+          source: 'js/modules/inventory.js projectedStockout() / consumptionRate()',
+          note: `Usage rate is total inventory-linked expense quantity over the last ${LOOKBACK_DAYS} days (minimum 7-day window), assuming no further restocking. Items with no recent usage show "No usage data" instead of a projection.`
+        }));
+        tr.appendChild(runsOutTd);
       } else {
         tr.appendChild(el('td', { class: 'muted' }, 'No usage data'));
       }
@@ -270,6 +320,15 @@ function build() {
 
 // ── Batch drill-down modal ────────────────────────────────────────────────────
 
+const BATCH_LIST_COLS = [
+  { label: 'Date',       tip: 'Date this batch was purchased.' },
+  { label: 'Purchased',  right: true, tip: 'Quantity originally purchased in this batch.' },
+  { label: 'Remaining',  right: true, tip: 'Quantity left in this batch after FIFO consumption by generated expenses (oldest batches are consumed first).' },
+  { label: 'Unit Price', right: true, tip: 'Price paid per unit for this batch, in the batch\'s own currency.' },
+  { label: 'Comments',   tip: 'Free-text notes entered for this batch.' },
+  { label: '' }
+];
+
 function openBatchesModal(item, onUpdate) {
   const bodyEl = el('div', {});
 
@@ -285,7 +344,9 @@ function openBatchesModal(item, onUpdate) {
       bodyEl.appendChild(el('div', { class: 'empty' }, 'No batches'));
     } else {
       const t = el('table', { class: 'table' });
-      t.innerHTML = '<thead><tr><th>Date</th><th class="right">Purchased</th><th class="right">Remaining</th><th class="right">Unit Price</th><th>Comments</th><th></th></tr></thead>';
+      const theadTr = el('tr');
+      BATCH_LIST_COLS.forEach(c => theadTr.appendChild(mkTh(c)));
+      t.appendChild(el('thead', {}, theadTr));
       const tb = el('tbody');
       for (const b of batches) {
         const remaining = b.remaining ?? b.qty ?? 0;
@@ -293,7 +354,18 @@ function openBatchesModal(item, onUpdate) {
         tr.appendChild(el('td', {}, fmtDate(b.dateBought)));
         tr.appendChild(el('td', { class: 'right num' }, String(b.qty || 0)));
         const remCls = remaining <= 0 ? 'right num muted' : remaining <= 5 ? 'right num warning' : 'right num';
-        tr.appendChild(el('td', { class: remCls }, String(remaining)));
+        const remTd = el('td', { class: remCls, style: 'display:flex;align-items:center;justify-content:flex-end;gap:4px' }, String(remaining));
+        remTd.appendChild(mkExplainButton({
+          title: 'Remaining',
+          formula: 'Batch remaining quantity, decremented via FIFO as generated expenses consume stock from the oldest batch first.',
+          inputs: [
+            { label: 'Originally Purchased', value: String(b.qty || 0) },
+            { label: 'Remaining', value: String(remaining) }
+          ],
+          source: 'core/data.js fifoDeduct() / restoreInventoryStock()',
+          note: 'Consumption always draws down the oldest batch (by dateBought) first. If a linked expense that consumed from this batch is later deleted, its quantity is credited back here via restoreInventoryStock().'
+        }));
+        tr.appendChild(remTd);
         tr.appendChild(el('td', { class: 'right num' }, formatMoney(b.unitPrice, b.currency)));
         tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, b.comments || ''));
         const bActs = el('td', { class: 'right' });

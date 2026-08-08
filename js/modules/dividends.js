@@ -9,7 +9,7 @@ import {
   newId, upsert, softDelete, companyPropIds, isCompanyRecord,
   getPersonName
 } from '../core/data.js';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton } from './analytics-helpers.js';
 import { hasCyprusTaxYearConfig, getCyprusTaxYearConfig } from './cyprus-tax.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -442,10 +442,30 @@ function buildChartsSection(allDivs) {
 
   const row = el('div', { style: 'display:grid;grid-template-columns:2fr 1fr;gap:16px' });
 
+  // Precompute the same groupings the charts render, purely so the explain
+  // popups below can show the actual input figures — does not change what
+  // gets drawn (see renderHistoryBar/renderRecipientDonut for the real calc).
+  const yearsWithData = [...new Set(allDivs.map(d => (d.date || '').slice(0, 4)).filter(y => y >= '2000'))].sort();
+  const allTimeGross  = allDivs.reduce((s, d) => s + (d.grossAmount || 0), 0);
+  const yearSplitDivs = allDivs.filter(d => inYear(d.date, gYear));
+  const yearSplitG    = yearSplitDivs.filter(d => d.recipient === 'giorgos').reduce((s, d) => s + (d.grossAmount || 0), 0);
+  const yearSplitR    = yearSplitDivs.filter(d => d.recipient === 'rita').reduce((s, d) => s + (d.grossAmount || 0), 0);
+
   // History bar — stacked Giorgos + Rita by year
   const histCard = el('div', { class: 'card' });
+  const histTitleRow = el('div', { class: 'card-title', style: 'display:flex;align-items:center;gap:4px' }, 'Dividends by Year');
+  histTitleRow.appendChild(mkExplainButton({
+    title: 'Dividends by Year',
+    formula: 'Sum of grossAmount per calendar year, grouped by recipient (Giorgos vs Rita).',
+    inputs: [
+      { label: 'Years plotted', value: yearsWithData.length ? yearsWithData.join(', ') : '—' },
+      { label: 'All-time gross total', value: fmtE(allTimeGross) },
+    ],
+    source: 'js/modules/dividends.js renderHistoryBar()',
+    note: 'Uses every non-deleted dividend regardless of the year filter above — clicking a bar switches the selected year.'
+  }));
   histCard.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, 'Dividends by Year'),
+    histTitleRow,
     el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Gross declared — click a bar to select year')
   ));
   histCard.appendChild(el('div', { style: 'padding:16px;height:220px' },
@@ -455,8 +475,19 @@ function buildChartsSection(allDivs) {
 
   // Recipient donut — current year split
   const donutCard = el('div', { class: 'card' });
+  const donutTitleRow = el('div', { class: 'card-title', style: 'display:flex;align-items:center;gap:4px' }, `${gYear} Split`);
+  donutTitleRow.appendChild(mkExplainButton({
+    title: `${gYear} Split`,
+    formula: `Sum of grossAmount for ${gYear}, grouped by recipient (Giorgos vs Rita).`,
+    inputs: [
+      { label: G_LABEL, value: fmtE(yearSplitG) },
+      { label: R_LABEL, value: fmtE(yearSplitR) },
+    ],
+    source: 'js/modules/dividends.js renderRecipientDonut()',
+    note: 'Only dividends dated in the currently selected year are included.'
+  }));
   donutCard.appendChild(el('div', { class: 'card-header' },
-    el('div', { class: 'card-title' }, `${gYear} Split`),
+    donutTitleRow,
     el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Gross by recipient')
   ));
   donutCard.appendChild(el('div', { style: 'padding:16px;height:220px' },
@@ -694,16 +725,36 @@ function openEditModal(d) {
   const dateI = input({ type: 'date', value: editDate, style: 'width:160px' });
   dateI.oninput = () => { editDate = dateI.value; updateGhsPreview(editAmount); };
 
-  const ghsPreviewEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;min-height:16px;transition:opacity 120ms' });
+  const ghsPreviewEl   = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;min-height:16px;transition:opacity 120ms;display:flex;align-items:center;gap:4px' });
+  const ghsPreviewText = el('span', {});
+  const ghsExplainSlot = el('span');
+  ghsPreviewEl.appendChild(ghsPreviewText);
+  ghsPreviewEl.appendChild(ghsExplainSlot);
   const updateGhsPreview = v => {
     if (v > 0 && editDate) {
       const prior = priorCumForRecipientYear(editDate.slice(0, 4), editRecipient, d.id, editDate);
       const ghs   = ghsForAmount(v, prior);
-      ghsPreviewEl.textContent = `GHS ${fmtE(ghs)} · Net received ${fmtE(v - ghs)}`;
+      ghsPreviewText.textContent = `GHS ${fmtE(ghs)} · Net received ${fmtE(v - ghs)}`;
       ghsPreviewEl.style.opacity = '1';
+      ghsExplainSlot.innerHTML = '';
+      ghsExplainSlot.appendChild(mkExplainButton({
+        title: 'GHS Withholding (this dividend)',
+        formula: 'min(Gross Amount, €180,000 − prior cumulative gross for this recipient this year) × 2.65%',
+        inputs: [
+          { label: 'Gross Amount (this dividend)', value: fmtE(v) },
+          { label: `Prior cumulative gross for ${editRecipient === 'giorgos' ? G_LABEL : R_LABEL} in ${editDate.slice(0, 4)} (before this date)`, value: fmtE(prior) },
+          { label: 'GHS-able capacity remaining', value: fmtE(Math.max(0, GHS_ANNUAL_CAP - prior)) },
+          { label: 'GHS rate', value: `${(GHS_RATE * 100).toFixed(2)}%` },
+          { label: 'GHS amount', value: fmtE(ghs) },
+          { label: 'Net received', value: fmtE(v - ghs) },
+        ],
+        source: 'js/modules/dividends.js ghsForAmount() / priorCumForRecipientYear()',
+        note: `GHS is capped at the first €${GHS_ANNUAL_CAP.toLocaleString('en-US')} of a recipient's cumulative gross dividends per year, applied in chronological (date) order — see ghsScheduleForYear() for how the saved dividend log recomputes this across all of a recipient's dividends once this edit is saved.`
+      }));
     } else {
-      ghsPreviewEl.textContent = '';
+      ghsPreviewText.textContent = '';
       ghsPreviewEl.style.opacity = '0';
+      ghsExplainSlot.innerHTML = '';
     }
   };
   const amountWrap = el('div');
