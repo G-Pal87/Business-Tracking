@@ -1,7 +1,7 @@
 // Shared UI helper utilities for analytics modals and drill-downs.
 // Import these instead of copy-pasting the equivalent mkExp* functions
 // into every analytics module.
-import { el } from '../core/ui.js';
+import { el, openModal } from '../core/ui.js';
 import { formatEUR, byId } from '../core/data.js';
 
 // ── Section label ─────────────────────────────────────────────────────────────
@@ -19,18 +19,24 @@ export function mkSectionLabel(text) {
 // ── Summary box ───────────────────────────────────────────────────────────────
 
 /**
- * mkSummaryBox(label, value, sub) — bordered metric card with optional subtitle.
+ * mkSummaryBox(label, value, sub, explain) — bordered metric card with optional subtitle.
  * Renders a single KPI-style card suitable for placing in a summary grid.
  *
  * @param {string} label  - Small muted label above the value.
  * @param {string} value  - Primary large value text.
  * @param {string|null} sub - Optional muted subtitle rendered below the value.
+ * @param {object|null} [explain] - Optional {@link mkExplainButton} payload; when
+ *   present, renders a small "ⓘ" next to the label that opens a compact modal
+ *   showing the formula, the core inputs that fed into it, and a source
+ *   file:line reference — see mkExplainButton for the exact shape.
  */
-export function mkSummaryBox(label, value, sub) {
+export function mkSummaryBox(label, value, sub, explain) {
   const box = el('div', {
     style: 'padding:12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08)'
   });
-  box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px' }, label));
+  const labelRow = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-bottom:4px;display:flex;align-items:center;gap:4px' }, label);
+  if (explain) labelRow.appendChild(mkExplainButton(explain));
+  box.appendChild(labelRow);
   box.appendChild(el('div', { style: 'font-size:17px;font-weight:700;color:var(--text)' }, value));
   if (sub) box.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, sub));
   return box;
@@ -40,9 +46,9 @@ export function mkSummaryBox(label, value, sub) {
 
 /**
  * mkSummaryGrid(boxes, cols=2) — wraps summary boxes in a responsive grid.
- * Each element of `boxes` is passed to mkSummaryBox as {label, value, sub}.
+ * Each element of `boxes` is passed to mkSummaryBox as {label, value, sub, explain}.
  *
- * @param {Array<{label:string, value:string, sub?:string}>} boxes
+ * @param {Array<{label:string, value:string, sub?:string, explain?:object}>} boxes
  * @param {number} cols - Number of columns in the CSS grid (default 2).
  * @returns {HTMLElement} div with grid layout containing the rendered boxes.
  */
@@ -50,8 +56,8 @@ export function mkSummaryGrid(boxes, cols = 2) {
   const grid = el('div', {
     style: `display:grid;grid-template-columns:repeat(${cols},1fr);gap:12px;margin-bottom:20px`
   });
-  for (const { label, value, sub } of boxes) {
-    grid.appendChild(mkSummaryBox(label, value, sub ?? null));
+  for (const { label, value, sub, explain } of boxes) {
+    grid.appendChild(mkSummaryBox(label, value, sub ?? null, explain ?? null));
   }
   return grid;
 }
@@ -62,13 +68,15 @@ export function mkSummaryGrid(boxes, cols = 2) {
  * mkModalTable(headers, rows, opts={}) — styled table for use inside modals.
  *
  * Headers may be plain strings or descriptor objects:
- *   { label: string, right?: boolean, muted?: boolean }
+ *   { label: string, right?: boolean, muted?: boolean, tip?: string }
  * When objects are supplied, `right` controls text alignment and `muted`
- * renders cell text in `var(--text-muted)` instead of `var(--text)`.
+ * renders cell text in `var(--text-muted)` instead of `var(--text)`. `tip`,
+ * when given, renders as a native hover tooltip on that header explaining
+ * what the column represents.
  * Plain-string headers fall back to the legacy behaviour (first col left,
  * all others right-aligned).
  *
- * @param {Array<string|{label:string, right?:boolean, muted?:boolean}>} headers
+ * @param {Array<string|{label:string, right?:boolean, muted?:boolean, tip?:string}>} headers
  * @param {Array<Array<string|HTMLElement>>} rows - 2-D array of cell contents.
  * @param {object} [opts]
  * @param {number} [opts.highlight]      - Column index to render in bold (default: none).
@@ -78,14 +86,14 @@ export function mkSummaryGrid(boxes, cols = 2) {
 export function mkModalTable(headers, rows, opts = {}) {
   const { highlight, firstColLeft = true } = opts;
 
-  // Normalise headers — accept plain strings or {label, right, muted} objects.
+  // Normalise headers — accept plain strings or {label, right, muted, tip} objects.
   const useObjects = headers.length > 0 && typeof headers[0] === 'object' && headers[0] !== null;
   const cols = headers.map((h, hi) => {
     if (useObjects) {
-      return { label: h.label ?? '', right: !!h.right, muted: !!h.muted };
+      return { label: h.label ?? '', right: !!h.right, muted: !!h.muted, tip: h.tip || '' };
     }
     // Legacy plain-string mode: first column left, rest right.
-    return { label: String(h), right: !(hi === 0 && firstColLeft), muted: false };
+    return { label: String(h), right: !(hi === 0 && firstColLeft), muted: false, tip: '' };
   });
 
   const tbl = el('table', { style: 'width:100%;border-collapse:collapse;font-size:13px' });
@@ -94,7 +102,9 @@ export function mkModalTable(headers, rows, opts = {}) {
   const hrow = el('tr');
   cols.forEach(col => {
     hrow.appendChild(el('th', {
+      title: col.tip || '',
       style: `padding:4px 8px;text-align:${col.right ? 'right' : 'left'};color:var(--text-muted);font-size:11px;` +
+             `${col.tip ? 'cursor:help;' : ''}` +
              `border-bottom:1px solid rgba(255,255,255,0.08)`
     }, col.label));
   });
@@ -131,6 +141,83 @@ export function mkModalTable(headers, rows, opts = {}) {
   const tw = el('div', { class: 'table-wrap' });
   tw.appendChild(tbl);
   return tw;
+}
+
+// ── Column header with hover tooltip ─────────────────────────────────────────
+
+/**
+ * mkTh(col) — <th> cell for hand-rolled tables (i.e. not going through
+ * mkModalTable, e.g. a full-page summary table's own header row), with an
+ * optional hover tooltip describing what the column represents.
+ *
+ * @param {{label:string, right?:boolean, tip?:string}} col
+ * @returns {HTMLElement}
+ */
+export function mkTh(col) {
+  return el('th', {
+    class: col.right ? 'right' : '',
+    title: col.tip || '',
+    style: col.tip ? 'cursor:help' : ''
+  }, col.label);
+}
+
+// ── Explain-this-calculation drill-in ────────────────────────────────────────
+
+/**
+ * mkExplainButton(explain) — small "ⓘ" affordance that opens a compact modal
+ * showing how a figure was calculated: the formula in plain terms, the core
+ * input values that fed into it, and (per the app's own convention of citing
+ * file:line when explaining a calculation) a source reference pointing at the
+ * function that computed it.
+ *
+ * Meant to sit next to a label wherever mkSummaryBox/mkSummaryGrid render a
+ * computed figure a user might reasonably ask "how did you get this number?"
+ * about — not every figure needs one; skip it for raw sums pulled straight
+ * from a single field (e.g. "Purchase Price").
+ *
+ * @param {object} explain
+ * @param {string} explain.title    - Modal title, e.g. "Simple ROI".
+ * @param {string} [explain.formula] - Plain-text formula, e.g. "Net Income ÷ Total Invested × 100".
+ * @param {Array<{label:string, value:string}>} [explain.inputs] - Core data
+ *   this figure was built from, shown as a compact label/value table.
+ * @param {string} [explain.source] - "file.js:123 functionName()" reference.
+ * @param {string} [explain.note]   - Optional short freeform caveat/context line.
+ * @returns {HTMLElement} span — the clickable "ⓘ" trigger.
+ */
+export function mkExplainButton(explain) {
+  const btn = el('span', {
+    title: 'How is this calculated?',
+    style: 'cursor:pointer;color:var(--text-muted);font-size:11px;line-height:1;border:1px solid rgba(255,255,255,0.15);' +
+           'border-radius:50%;width:13px;height:13px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0'
+  }, 'i');
+  btn.onclick = e => {
+    e.stopPropagation();
+    const body = el('div');
+    if (explain.formula) {
+      body.appendChild(el('div', {
+        style: 'font-family:monospace;font-size:13px;background:rgba(255,255,255,0.04);' +
+               'border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:8px 10px;margin-bottom:12px'
+      }, explain.formula));
+    }
+    if (explain.inputs?.length) {
+      body.appendChild(mkSectionLabel('Core Data'));
+      body.appendChild(mkModalTable(
+        [{ label: 'Input' }, { label: 'Value', right: true }],
+        explain.inputs.map(i => [i.label, i.value])
+      ));
+    }
+    if (explain.note) {
+      body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:10px;line-height:1.4' }, explain.note));
+    }
+    if (explain.source) {
+      body.appendChild(el('div', {
+        style: 'margin-top:12px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);' +
+               'font-family:monospace;font-size:11px;color:var(--text-muted)'
+      }, `Source: ${explain.source}`));
+    }
+    openModal({ title: explain.title || 'How this is calculated', body });
+  };
+  return btn;
 }
 
 // ── Variance badge ────────────────────────────────────────────────────────────

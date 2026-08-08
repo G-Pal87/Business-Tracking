@@ -102,7 +102,13 @@ export function closeModal() {
 export function drillDownModal(title, rows, columns) {
   const table = el('table', { class: 'table' });
   const headRow = el('tr');
-  for (const col of columns) headRow.appendChild(el('th', { class: col.right ? 'right' : '' }, col.label));
+  // col.tip is an optional hover tooltip describing what the column means —
+  // opt-in per column definition, every existing caller is unaffected.
+  for (const col of columns) headRow.appendChild(el('th', {
+    class: col.right ? 'right' : '',
+    title: col.tip || '',
+    style: col.tip ? 'cursor:help' : ''
+  }, col.label));
   table.appendChild(el('thead', {}, headRow));
   const tbody = el('tbody');
   if (!rows.length) {
