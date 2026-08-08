@@ -229,7 +229,16 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(youData.total, youCmp?.total),
     compLabel: cmpRange?.label,
     compValue: youCmp ? formatEUR(youCmp.total) : undefined,
-    onClick: () => showPersonModal(YOU_LABEL, youData)
+    onClick: () => showPersonModal(YOU_LABEL, youData),
+    explain: {
+      title: `Total — ${YOU_LABEL}`, formula: 'From Company + Personal Properties',
+      inputs: [
+        { label: 'From Company', value: formatEUR(youData.fromCompany) },
+        { label: 'Personal Properties', value: formatEUR(youData.personalIncome) }
+      ],
+      source: 'analytics-personal.js:211 getPersonData() — `total`',
+      note: 'Whichever half is excluded by the Scope toggle (Company only / Personal only) contributes 0.'
+    }
   }));
 
   // Rita total
@@ -240,7 +249,16 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(ritaData.total, ritaCmp?.total),
     compLabel: cmpRange?.label,
     compValue: ritaCmp ? formatEUR(ritaCmp.total) : undefined,
-    onClick: () => showPersonModal(RITA_LABEL, ritaData)
+    onClick: () => showPersonModal(RITA_LABEL, ritaData),
+    explain: {
+      title: `Total — ${RITA_LABEL}`, formula: 'From Company + Personal Properties',
+      inputs: [
+        { label: 'From Company', value: formatEUR(ritaData.fromCompany) },
+        { label: 'Personal Properties', value: formatEUR(ritaData.personalIncome) }
+      ],
+      source: 'analytics-personal.js:211 getPersonData() — `total`',
+      note: 'Whichever half is excluded by the Scope toggle (Company only / Personal only) contributes 0.'
+    }
   }));
 
   // Combined Gross
@@ -251,7 +269,15 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(combined, cmpCombined),
     compLabel: cmpRange?.label,
     compValue: cmpCombined !== null ? formatEUR(cmpCombined) : undefined,
-    onClick: () => showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange)
+    onClick: () => showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange),
+    explain: {
+      title: 'Combined Gross', formula: `${YOU_LABEL} Total + ${RITA_LABEL} Total`,
+      inputs: [
+        { label: YOU_LABEL, value: formatEUR(youData.total) },
+        { label: RITA_LABEL, value: formatEUR(ritaData.total) }
+      ],
+      source: 'analytics-personal.js:217 buildKpiSection() — `combined`'
+    }
   }));
 
   // Avg / Month with annualised run-rate
@@ -273,7 +299,16 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(avgMonth, cmpAvg),
     compLabel: cmpRange?.label,
     compValue: cmpAvg ? formatEUR(cmpAvg) : undefined,
-    onClick: () => showAvgMonthModal(youData, ritaData, months)
+    onClick: () => showAvgMonthModal(youData, ritaData, months),
+    explain: {
+      title: 'Avg / Month', formula: 'Combined Gross ÷ Number of months in period',
+      inputs: [
+        { label: 'Combined Gross', value: formatEUR(combined) },
+        { label: 'Months', value: String(months.length) }
+      ],
+      source: 'analytics-personal.js:284 buildKpiSection() — `avgMonth`',
+      note: 'The "annualised" subtitle (×12) is only shown for a complete period spanning fewer than 12 months — never for a still-accumulating one like YTD.'
+    }
   }));
 
   // Dividends (Combined) card
@@ -288,7 +323,16 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(divsCombined, cmpDivsCombined),
     compLabel: cmpRange?.label,
     compValue: cmpDivsCombined && cmpDivsCombined > 0 ? formatEUR(cmpDivsCombined) : undefined,
-    onClick: () => showDivCombinedModal(youData, ritaData)
+    onClick: () => showDivCombinedModal(youData, ritaData),
+    explain: {
+      title: 'Dividends (Net SDC)', formula: `${YOU_LABEL} Net Dividends + ${RITA_LABEL} Net Dividends`,
+      inputs: [
+        { label: `${YOU_LABEL} Net`, value: formatEUR(youData.netDivs) },
+        { label: `${RITA_LABEL} Net`, value: formatEUR(ritaData.netDivs) }
+      ],
+      source: 'analytics-personal.js:315 buildKpiSection() — `divsCombined`',
+      note: 'Net dividends = gross dividends minus 2.65% SDC (getPersonData():166).'
+    }
   }));
 
   return grid;
@@ -298,9 +342,42 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
 function showPersonModal(label, data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Gross',       value: formatEUR(data.total) },
-    { label: 'From Company',      value: formatEUR(data.fromCompany) },
-    { label: 'Personal Properties', value: formatEUR(data.personalIncome) }
+    { label: 'Total Gross',       value: formatEUR(data.total),
+      explain: {
+        title: 'Total Gross', formula: 'From Company + Personal Properties',
+        inputs: [
+          { label: 'From Company', value: formatEUR(data.fromCompany) },
+          { label: 'Personal Properties', value: formatEUR(data.personalIncome) }
+        ],
+        source: 'analytics-personal.js:211 getPersonData() — `total`'
+      }
+    },
+    { label: 'From Company',      value: formatEUR(data.fromCompany),
+      explain: {
+        title: 'From Company', formula: 'Director Salary + Property Rent (Owner) + Reimbursements + STR Income + Other Personal Income + Dividends (net SDC)',
+        inputs: [
+          { label: 'Director Salary', value: formatEUR(data.salary) },
+          { label: 'Property Rent (Owner)', value: formatEUR(data.ownerRentTotal) },
+          { label: 'Reimbursements', value: formatEUR(data.reimb) },
+          { label: 'STR Income', value: formatEUR(data.strIncomeTotal) },
+          { label: 'Other Personal Income', value: formatEUR(data.piExpTotal) },
+          { label: 'Dividends (net SDC)', value: formatEUR(data.netDivs) }
+        ],
+        source: 'analytics-personal.js:183 getPersonData() — `grossFromCompany`',
+        note: 'Zeroed out entirely when the Scope toggle is set to "Personal only".'
+      }
+    },
+    { label: 'Personal Properties', value: formatEUR(data.personalIncome),
+      explain: {
+        title: 'Personal Properties', formula: 'Sum of paid payments on personal-channel properties owned by this person, in the selected period.',
+        inputs: [
+          { label: 'Payments counted', value: String(data.personalPayments.length) },
+          { label: 'Total', value: formatEUR(data.personalIncome) }
+        ],
+        source: 'analytics-personal.js:181 getPersonData() — `personalIncome`',
+        note: 'Zeroed out entirely when the Scope toggle is set to "Company only".'
+      }
+    }
   ], 3));
   // Grouped into the same two buckets as the summary boxes above (and as
   // buildPersonColumn's "From Company" / "Personal Properties" sections) —
@@ -309,7 +386,11 @@ function showPersonModal(label, data) {
   if (data.scope !== 'personal') {
     body.appendChild(mkSectionLabel('From Company'));
     body.appendChild(mkModalTable(
-      ['Source', 'Amount', 'Notes'],
+      [
+        { label: 'Source', tip: 'Which company-sourced income stream this row represents.' },
+        { label: 'Amount', right: true, tip: 'Total for this stream in the selected period, converted to EUR.' },
+        { label: 'Notes', right: true, tip: 'Supporting detail — record count, property count, or the gross/SDC breakdown for dividends.' }
+      ],
       [
         ['Director Salary',             formatEUR(data.salary),          `${data.salaryExps.length} expense records`],
         ['Property Rent (owner)',        formatEUR(data.ownerRentTotal),  `${data.companyProps.length} company-operated properties`],
@@ -324,7 +405,11 @@ function showPersonModal(label, data) {
   if (data.scope !== 'company') {
     body.appendChild(mkSectionLabel('Personal Properties'));
     body.appendChild(mkModalTable(
-      ['Source', 'Amount', 'Notes'],
+      [
+        { label: 'Source', tip: 'Personal-channel property income line.' },
+        { label: 'Amount', right: true, tip: 'Total personal-property rental income received in the selected period.' },
+        { label: 'Notes', right: true, tip: 'Number of paid payments included in this total.' }
+      ],
       [['Personal Properties', formatEUR(data.personalIncome), `${data.personalPayments.length} payments`]],
       { highlight: 1 }
     ));
@@ -342,24 +427,45 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
   const combined    = youData.total + ritaData.total;
   const cmpCombined = youCmp && ritaCmp ? youCmp.total + ritaCmp.total : null;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  const combinedExplain = {
+    title: 'Combined', formula: `${YOU_LABEL} Total Gross + ${RITA_LABEL} Total Gross`,
+    inputs: [
+      { label: YOU_LABEL, value: formatEUR(youData.total) },
+      { label: RITA_LABEL, value: formatEUR(ritaData.total) }
+    ],
+    source: 'analytics-personal.js:427 showCombinedGrossModal() — `combined`'
+  };
+  const personTotalExplain = data => ({
+    title: 'Total Gross', formula: 'From Company + Personal Properties',
+    inputs: [
+      { label: 'From Company', value: formatEUR(data.fromCompany) },
+      { label: 'Personal Properties', value: formatEUR(data.personalIncome) }
+    ],
+    source: 'analytics-personal.js:211 getPersonData() — `total`'
+  });
   if (youCmp && ritaCmp && cmpRange) {
     body.appendChild(mkCmpGrid([
-      { label: YOU_LABEL,  curVal: formatEUR(youData.total),  cmpVal: formatEUR(youCmp.total)  },
-      { label: RITA_LABEL, curVal: formatEUR(ritaData.total), cmpVal: formatEUR(ritaCmp.total) },
-      { label: 'Combined', curVal: formatEUR(combined),       cmpVal: formatEUR(cmpCombined)   },
+      { label: YOU_LABEL,  curVal: formatEUR(youData.total),  cmpVal: formatEUR(youCmp.total),  explain: personTotalExplain(youData)  },
+      { label: RITA_LABEL, curVal: formatEUR(ritaData.total), cmpVal: formatEUR(ritaCmp.total), explain: personTotalExplain(ritaData) },
+      { label: 'Combined', curVal: formatEUR(combined),       cmpVal: formatEUR(cmpCombined),   explain: combinedExplain },
     ], 'Current Period', cmpRange.label));
   } else {
     body.appendChild(mkSummaryGrid([
-      { label: YOU_LABEL,  value: formatEUR(youData.total),  sub: null },
-      { label: RITA_LABEL, value: formatEUR(ritaData.total), sub: null },
-      { label: 'Combined', value: formatEUR(combined) }
+      { label: YOU_LABEL,  value: formatEUR(youData.total),  sub: null, explain: personTotalExplain(youData) },
+      { label: RITA_LABEL, value: formatEUR(ritaData.total), sub: null, explain: personTotalExplain(ritaData) },
+      { label: 'Combined', value: formatEUR(combined), explain: combinedExplain }
     ], 3));
   }
   // Grouped Company/Personal, same rationale as showPersonModal above.
   if (youData.scope !== 'personal') {
     body.appendChild(mkSectionLabel('From Company'));
     body.appendChild(mkModalTable(
-      ['Source', YOU_LABEL, RITA_LABEL, 'Combined'],
+      [
+        { label: 'Source', tip: 'Company-sourced income stream.' },
+        { label: YOU_LABEL, right: true, tip: `${YOU_LABEL}'s amount for this stream in the selected period.` },
+        { label: RITA_LABEL, right: true, tip: `${RITA_LABEL}'s amount for this stream in the selected period.` },
+        { label: 'Combined', right: true, tip: 'Sum of both directors for this stream.' }
+      ],
       [
         ['Director Salary',       formatEUR(youData.salary),         formatEUR(ritaData.salary),         formatEUR(youData.salary + ritaData.salary)],
         ['Property Rent (Owner)', formatEUR(youData.ownerRentTotal), formatEUR(ritaData.ownerRentTotal), formatEUR(youData.ownerRentTotal + ritaData.ownerRentTotal)],
@@ -372,7 +478,12 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
   if (youData.scope !== 'company') {
     body.appendChild(mkSectionLabel('Personal Properties'));
     body.appendChild(mkModalTable(
-      ['Source', YOU_LABEL, RITA_LABEL, 'Combined'],
+      [
+        { label: 'Source', tip: 'Personal-channel property income.' },
+        { label: YOU_LABEL, right: true, tip: `${YOU_LABEL}'s personal-property income in the selected period.` },
+        { label: RITA_LABEL, right: true, tip: `${RITA_LABEL}'s personal-property income in the selected period.` },
+        { label: 'Combined', right: true, tip: 'Sum of both directors\' personal-property income.' }
+      ],
       [['Personal Properties', formatEUR(youData.personalIncome), formatEUR(ritaData.personalIncome), formatEUR(youData.personalIncome + ritaData.personalIncome)]],
       { highlight: 3 }
     ));
@@ -386,8 +497,26 @@ function showAvgMonthModal(youData, ritaData, months) {
   const avg      = months.length > 0 ? combined / months.length : 0;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Avg / Month',  value: formatEUR(avg) },
-    { label: 'Total Period', value: formatEUR(combined) },
+    { label: 'Avg / Month',  value: formatEUR(avg),
+      explain: {
+        title: 'Avg / Month', formula: 'Total Period ÷ Number of months in period',
+        inputs: [
+          { label: 'Total Period', value: formatEUR(combined) },
+          { label: 'Months', value: String(months.length) }
+        ],
+        source: 'analytics-personal.js:497 showAvgMonthModal() — `avg`'
+      }
+    },
+    { label: 'Total Period', value: formatEUR(combined),
+      explain: {
+        title: 'Total Period', formula: `${YOU_LABEL} Total Gross + ${RITA_LABEL} Total Gross`,
+        inputs: [
+          { label: YOU_LABEL, value: formatEUR(youData.total) },
+          { label: RITA_LABEL, value: formatEUR(ritaData.total) }
+        ],
+        source: 'analytics-personal.js:496 showAvgMonthModal() — `combined`'
+      }
+    },
     { label: 'Months',       value: String(months.length) }
   ], 3));
   if (months.length > 0) {
@@ -405,7 +534,12 @@ function showAvgMonthModal(youData, ritaData, months) {
                  + ritaData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
       return [m.label, formatEUR(sal + rent + reimb + divs + pers)];
     });
-    body.appendChild(mkModalTable(['Month', 'Combined Income'], rows, { highlight: 1 }));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Month', tip: 'Calendar month within the selected period.' },
+        { label: 'Combined Income', right: true, tip: 'Salary + Owner Rent + Reimbursements + Net Dividends + Personal Property income, both directors combined, for that month.' }
+      ],
+      rows, { highlight: 1 }));
   }
   openModal({ title: 'Average Monthly Income', body, large: true });
 }
@@ -417,13 +551,47 @@ function showRecurringModal(youData, ritaData) {
   const nonRecurring = combined - recurring;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Recurring',     value: formatEUR(recurring) },
-    { label: 'Non-Recurring', value: formatEUR(nonRecurring) },
-    { label: '% Recurring',   value: combined > 0 ? (recurring / combined * 100).toFixed(0) + '%' : '—' }
+    { label: 'Recurring',     value: formatEUR(recurring),
+      explain: {
+        title: 'Recurring', formula: '(Director Salary + Property Rent (Owner)), both directors combined',
+        inputs: [
+          { label: `${YOU_LABEL} Salary`, value: formatEUR(youData.salary) },
+          { label: `${YOU_LABEL} Owner Rent`, value: formatEUR(youData.ownerRentTotal) },
+          { label: `${RITA_LABEL} Salary`, value: formatEUR(ritaData.salary) },
+          { label: `${RITA_LABEL} Owner Rent`, value: formatEUR(ritaData.ownerRentTotal) }
+        ],
+        source: 'analytics-personal.js:550 showRecurringModal() — `recurring`'
+      }
+    },
+    { label: 'Non-Recurring', value: formatEUR(nonRecurring),
+      explain: {
+        title: 'Non-Recurring', formula: 'Combined Gross − Recurring',
+        inputs: [
+          { label: 'Combined Gross', value: formatEUR(combined) },
+          { label: 'Recurring', value: formatEUR(recurring) }
+        ],
+        source: 'analytics-personal.js:551 showRecurringModal() — `nonRecurring`'
+      }
+    },
+    { label: '% Recurring',   value: combined > 0 ? (recurring / combined * 100).toFixed(0) + '%' : '—',
+      explain: {
+        title: '% Recurring', formula: 'Recurring ÷ Combined Gross × 100',
+        inputs: [
+          { label: 'Recurring', value: formatEUR(recurring) },
+          { label: 'Combined Gross', value: formatEUR(combined) }
+        ],
+        source: 'analytics-personal.js:576 showRecurringModal()'
+      }
+    }
   ], 3));
   body.appendChild(mkSectionLabel('Recurring — Salary + Owner Rent'));
   body.appendChild(mkModalTable(
-    ['Source', YOU_LABEL, RITA_LABEL, 'Combined'],
+    [
+      { label: 'Source', tip: 'Recurring income stream — salary or owner rent.' },
+      { label: YOU_LABEL, right: true, tip: `${YOU_LABEL}'s amount for this stream in the selected period.` },
+      { label: RITA_LABEL, right: true, tip: `${RITA_LABEL}'s amount for this stream in the selected period.` },
+      { label: 'Combined', right: true, tip: 'Sum of both directors for this stream.' }
+    ],
     [
       ['Director Salary',       formatEUR(youData.salary),         formatEUR(ritaData.salary),         formatEUR(youData.salary + ritaData.salary)],
       ['Property Rent (Owner)', formatEUR(youData.ownerRentTotal), formatEUR(ritaData.ownerRentTotal), formatEUR(youData.ownerRentTotal + ritaData.ownerRentTotal)],
@@ -432,7 +600,12 @@ function showRecurringModal(youData, ritaData) {
   ));
   body.appendChild(mkSectionLabel('Non-Recurring — Everything Else'));
   body.appendChild(mkModalTable(
-    ['Source', YOU_LABEL, RITA_LABEL, 'Combined'],
+    [
+      { label: 'Source', tip: 'Non-recurring / variable income stream.' },
+      { label: YOU_LABEL, right: true, tip: `${YOU_LABEL}'s amount for this stream in the selected period.` },
+      { label: RITA_LABEL, right: true, tip: `${RITA_LABEL}'s amount for this stream in the selected period.` },
+      { label: 'Combined', right: true, tip: 'Sum of both directors for this stream.' }
+    ],
     [
       ['Reimbursements',      formatEUR(youData.reimb),          formatEUR(ritaData.reimb),          formatEUR(youData.reimb + ritaData.reimb)],
       ['Dividends (Net SDC)', formatEUR(youData.netDivs),        formatEUR(ritaData.netDivs),        formatEUR(youData.netDivs + ritaData.netDivs)],
@@ -448,10 +621,46 @@ function showDivCombinedModal(youData, ritaData) {
   const grossCombined = youData.grossDivs + ritaData.grossDivs;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Gross Combined',    value: formatEUR(grossCombined) },
-    { label: `${YOU_LABEL} Net`,  value: formatEUR(youData.netDivs) },
-    { label: `${RITA_LABEL} Net`, value: formatEUR(ritaData.netDivs) },
-    { label: 'SDC Total',         value: formatEUR(youData.sdcAmount + ritaData.sdcAmount) },
+    { label: 'Gross Combined',    value: formatEUR(grossCombined),
+      explain: {
+        title: 'Gross Combined', formula: `${YOU_LABEL} Gross Dividends + ${RITA_LABEL} Gross Dividends`,
+        inputs: [
+          { label: `${YOU_LABEL} Gross`, value: formatEUR(youData.grossDivs) },
+          { label: `${RITA_LABEL} Gross`, value: formatEUR(ritaData.grossDivs) }
+        ],
+        source: 'analytics-personal.js:621 showDivCombinedModal() — `grossCombined`'
+      }
+    },
+    { label: `${YOU_LABEL} Net`,  value: formatEUR(youData.netDivs),
+      explain: {
+        title: `${YOU_LABEL} Net Dividends`, formula: 'Gross Dividends − SDC (2.65%)',
+        inputs: [
+          { label: 'Gross Dividends', value: formatEUR(youData.grossDivs) },
+          { label: 'SDC', value: formatEUR(youData.sdcAmount) }
+        ],
+        source: 'analytics-personal.js:166 getPersonData() — `netDivs`'
+      }
+    },
+    { label: `${RITA_LABEL} Net`, value: formatEUR(ritaData.netDivs),
+      explain: {
+        title: `${RITA_LABEL} Net Dividends`, formula: 'Gross Dividends − SDC (2.65%)',
+        inputs: [
+          { label: 'Gross Dividends', value: formatEUR(ritaData.grossDivs) },
+          { label: 'SDC', value: formatEUR(ritaData.sdcAmount) }
+        ],
+        source: 'analytics-personal.js:166 getPersonData() — `netDivs`'
+      }
+    },
+    { label: 'SDC Total',         value: formatEUR(youData.sdcAmount + ritaData.sdcAmount),
+      explain: {
+        title: 'SDC Total', formula: 'Gross Dividends × 2.65% (Special Defence Contribution), both directors combined',
+        inputs: [
+          { label: `${YOU_LABEL} SDC`, value: formatEUR(youData.sdcAmount) },
+          { label: `${RITA_LABEL} SDC`, value: formatEUR(ritaData.sdcAmount) }
+        ],
+        source: 'analytics-personal.js:165 getPersonData() — `sdcAmount` (SDC_RATE = 0.0265, line 17)'
+      }
+    },
   ], 4));
   const merged = [
     ...youData.divRecords.map(d => ({ ...d, _label: YOU_LABEL })),
@@ -471,7 +680,15 @@ function showDivCombinedModal(youData, ritaData) {
       const yearRows = [...byYear.entries()]
         .sort((a, b) => b[0].localeCompare(a[0]))
         .map(([yr, v]) => [yr, String(v.count), formatEUR(v.gross), formatEUR(v.gross * SDC_RATE), formatEUR(v.gross * (1 - SDC_RATE))]);
-      body.appendChild(mkModalTable(['Year', 'Records', 'Gross', 'SDC', 'Net'], yearRows, { highlight: 4 }));
+      body.appendChild(mkModalTable(
+        [
+          { label: 'Year', tip: 'Calendar year the dividend(s) were declared.' },
+          { label: 'Records', right: true, tip: 'Number of dividend records declared that year.' },
+          { label: 'Gross', right: true, tip: 'Sum of gross dividend amounts declared that year.' },
+          { label: 'SDC', right: true, tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
+          { label: 'Net', right: true, tip: 'Gross dividends minus SDC — amount actually received.' }
+        ],
+        yearRows, { highlight: 4 }));
     }
     body.appendChild(mkSectionLabel('Dividend Records'));
     const rows = merged
@@ -483,7 +700,15 @@ function showDivCombinedModal(youData, ritaData) {
         formatEUR((d.grossAmount || 0) * SDC_RATE),
         formatEUR((d.grossAmount || 0) * (1 - SDC_RATE)),
       ]);
-    body.appendChild(mkModalTable(['Date', 'Person', 'Gross', 'SDC', 'Net'], rows, { highlight: 4 }));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Date', tip: 'Date the dividend was declared.' },
+        { label: 'Person', right: true, tip: 'Which director this dividend record belongs to.' },
+        { label: 'Gross', right: true, tip: 'Gross dividend amount declared.' },
+        { label: 'SDC', right: true, tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
+        { label: 'Net', right: true, tip: 'Gross dividend minus SDC — amount actually received.' }
+      ],
+      rows, { highlight: 4 }));
   } else {
     body.appendChild(mkEmptyState('No dividends for this period. Add dividends in the Tax → Dividends tab.'));
   }
@@ -496,9 +721,37 @@ function showGesyModal(youData, ritaData) {
   const salaryTotal = youData.salary + ritaData.salary;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'GESY Total',            value: formatEUR(gesyTotal) },
-    { label: 'Combined Salary',       value: formatEUR(salaryTotal) },
-    { label: 'True Employment Cost',  value: formatEUR(salaryTotal + gesyTotal) }
+    { label: 'GESY Total',            value: formatEUR(gesyTotal),
+      explain: {
+        title: 'GESY Total', formula: 'Sum of "social_contributions" category expenses linked to each director, both directors combined',
+        inputs: [
+          { label: `${YOU_LABEL} GESY`, value: formatEUR(youData.gesyTotal) },
+          { label: `${RITA_LABEL} GESY`, value: formatEUR(ritaData.gesyTotal) }
+        ],
+        source: 'analytics-personal.js:113 getPersonData() — `gesyTotal`'
+      }
+    },
+    { label: 'Combined Salary',       value: formatEUR(salaryTotal),
+      explain: {
+        title: 'Combined Salary', formula: `${YOU_LABEL} Salary + ${RITA_LABEL} Salary`,
+        inputs: [
+          { label: `${YOU_LABEL} Salary`, value: formatEUR(youData.salary) },
+          { label: `${RITA_LABEL} Salary`, value: formatEUR(ritaData.salary) }
+        ],
+        source: 'analytics-personal.js:721 showGesyModal() — `salaryTotal`'
+      }
+    },
+    { label: 'True Employment Cost',  value: formatEUR(salaryTotal + gesyTotal),
+      explain: {
+        title: 'True Employment Cost', formula: 'Combined Salary + GESY Total',
+        inputs: [
+          { label: 'Combined Salary', value: formatEUR(salaryTotal) },
+          { label: 'GESY Total', value: formatEUR(gesyTotal) }
+        ],
+        source: 'analytics-personal.js:744 showGesyModal()',
+        note: 'GESY is an employer cost, not personal income — this figure exists for context, not to be added into any income total.'
+      }
+    }
   ], 3));
   const merged = [
     ...youData.gesyExps.map(e => ({ ...e, _label: YOU_LABEL })),
@@ -517,13 +770,26 @@ function showGesyModal(youData, ritaData) {
     const personRows = [...byPerson.entries()]
       .sort((a, b) => b[1].total - a[1].total)
       .map(([p, v]) => [p, String(v.count), formatEUR(v.total)]);
-    body.appendChild(mkModalTable(['Person', 'Records', 'Amount'], personRows, { highlight: 2 }));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Person', tip: 'Which director this GESY / social-contribution cost is attributed to.' },
+        { label: 'Records', right: true, tip: 'Number of social-contribution expense records for that person.' },
+        { label: 'Amount', right: true, tip: 'Total GESY / social contributions paid for that person in the selected period.' }
+      ],
+      personRows, { highlight: 2 }));
 
     body.appendChild(mkSectionLabel('Social Contribution Records'));
     const rows = merged
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
       .map(e => [e.date || '—', e._label, formatEUR(toEUR(e.amount, e.currency, e.date)), e.description || '—']);
-    body.appendChild(mkModalTable(['Date', 'Person', 'Amount (EUR)', 'Description'], rows, { highlight: 2 }));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Date', tip: 'Expense date.' },
+        { label: 'Person', right: true, tip: 'Which director this record is attributed to.' },
+        { label: 'Amount (EUR)', right: true, tip: 'Amount converted to EUR at the expense date.' },
+        { label: 'Description', right: true, tip: 'Free-text note entered on the expense record.' }
+      ],
+      rows, { highlight: 2 }));
   } else {
     body.appendChild(mkEmptyState('No GESY / social contribution records this period.'));
   }
@@ -534,9 +800,22 @@ function showGesyModal(youData, ritaData) {
 function showSalaryModal(label, data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Salary',  value: formatEUR(data.salary) },
+    { label: 'Total Salary',  value: formatEUR(data.salary),
+      explain: {
+        title: 'Total Salary', formula: 'Sum of expenses with category "salary" linked to this person, dated within the selected period.',
+        inputs: [{ label: 'Records', value: String(data.salaryExps.length) }, { label: 'Total', value: formatEUR(data.salary) }],
+        source: 'analytics-personal.js:107 getPersonData() — `salary`'
+      }
+    },
     { label: 'Records',       value: String(data.salaryExps.length) },
-    ...(data.gesyTotal > 0 ? [{ label: 'GESY (company cost)', value: formatEUR(data.gesyTotal) }] : [])
+    ...(data.gesyTotal > 0 ? [{ label: 'GESY (company cost)', value: formatEUR(data.gesyTotal),
+      explain: {
+        title: 'GESY (company cost)', formula: 'Sum of expenses with category "social_contributions" linked to this person, in the selected period.',
+        inputs: [{ label: 'Total', value: formatEUR(data.gesyTotal) }],
+        source: 'analytics-personal.js:113 getPersonData() — `gesyTotal`',
+        note: 'Employer cost shown for context — not personal income, not included in Total Salary.'
+      }
+    }] : [])
   ], 3));
   if (data.salaryExps.length > 0) {
     const byMonth = new Map();
@@ -551,7 +830,13 @@ function showSalaryModal(label, data) {
     const monthRows = [...byMonth.entries()]
       .sort((a, b) => b[0].localeCompare(a[0]))
       .map(([mk, v]) => [mk, String(v.count), formatEUR(v.total)]);
-    body.appendChild(mkModalTable(['Month', 'Records', 'Amount'], monthRows, { highlight: 2 }));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Month', tip: 'Calendar month within the selected period.' },
+        { label: 'Records', right: true, tip: 'Number of salary expense records in that month.' },
+        { label: 'Amount', right: true, tip: 'Total salary paid that month, converted to EUR.' }
+      ],
+      monthRows, { highlight: 2 }));
 
     const footer = el('div', { style: 'margin-top:4px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:flex-end' });
     const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all salary records →');
@@ -560,7 +845,13 @@ function showSalaryModal(label, data) {
         .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
         .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), e.description || '—']);
       const rawBody = el('div');
-      rawBody.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Description'], rows, { highlight: 1 }));
+      rawBody.appendChild(mkModalTable(
+        [
+          { label: 'Date', tip: 'Expense date.' },
+          { label: 'Amount (EUR)', right: true, tip: 'Amount converted to EUR at the expense date.' },
+          { label: 'Description', right: true, tip: 'Free-text note entered on the expense record.' }
+        ],
+        rows, { highlight: 1 }));
       openModal({ title: `${label} — Salary Records`, body: rawBody, large: true });
     };
     footer.appendChild(link);
@@ -575,7 +866,18 @@ function showSalaryModal(label, data) {
 function showRentModal(label, data, months) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Owner Rent', value: formatEUR(data.ownerRentTotal) },
+    { label: 'Total Owner Rent', value: formatEUR(data.ownerRentTotal),
+      explain: {
+        title: 'Total Owner Rent', formula: 'For each month in the period, sum each company property\'s active owner-rent rate (from its rate history) × this director\'s ownership share, then add across all months.',
+        inputs: [
+          { label: 'Company-operated properties', value: String(data.companyProps.length) },
+          { label: 'Months in period', value: String(months.length) },
+          { label: 'Total', value: formatEUR(data.ownerRentTotal) }
+        ],
+        source: 'analytics-personal.js:146 getPersonData() — `ownerRentTotal` (uses rentForMonth() at :32)',
+        note: 'A property\'s rent stops counting from its soldDate onward; owner:"both" properties count at a 50% share.'
+      }
+    },
     { label: 'Properties',       value: String(data.companyProps.length) },
     { label: 'Months in Period', value: String(months.length) }
   ], 3));
@@ -595,7 +897,14 @@ function showRentModal(label, data, months) {
       }
       return [p.name, p.city, formatEUR(curMonthly * share) + '/mo', formatEUR(periodTotal)];
     });
-    body.appendChild(mkModalTable(['Property', 'City', 'Share/Month', 'Period Total'], rows, { highlight: 3 }));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Property', tip: 'Company-operated property name.' },
+        { label: 'City', right: true, tip: 'Property location.' },
+        { label: 'Share/Month', right: true, tip: 'Current monthly owner-rent rate applied to this director\'s ownership share.' },
+        { label: 'Period Total', right: true, tip: 'This director\'s share of owner rent from this property, summed over the selected period.' }
+      ],
+      rows, { highlight: 3 }));
     body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted)' },
       'Owner rent is calculated from the Owner Rent rate history on each property (rate-per-month aware). ' +
       'To update rent rates, edit each property.'
@@ -611,16 +920,34 @@ function showReimbModal(label, data) {
   const body  = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   const count = data.reimbExps.length;
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Reimbursed', value: formatEUR(data.reimb) },
+    { label: 'Total Reimbursed', value: formatEUR(data.reimb),
+      explain: {
+        title: 'Total Reimbursed', formula: 'Sum of expenses with category "reimbursement" linked to this person, dated within the selected period.',
+        inputs: [{ label: 'Records', value: String(count) }, { label: 'Total', value: formatEUR(data.reimb) }],
+        source: 'analytics-personal.js:119 getPersonData() — `reimb`'
+      }
+    },
     { label: 'Records',          value: String(count) },
-    { label: 'Average',          value: count > 0 ? formatEUR(data.reimb / count) : '—' }
+    { label: 'Average',          value: count > 0 ? formatEUR(data.reimb / count) : '—',
+      explain: {
+        title: 'Average', formula: 'Total Reimbursed ÷ number of reimbursement records',
+        inputs: [{ label: 'Total Reimbursed', value: formatEUR(data.reimb) }, { label: 'Records', value: String(count) }],
+        source: 'analytics-personal.js:931 showReimbModal()'
+      }
+    }
   ], 3));
   if (count > 0) {
     body.appendChild(mkSectionLabel('Reimbursement Records'));
     const rows = data.reimbExps
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
       .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), e.description || '—']);
-    body.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Description'], rows, { highlight: 1 }));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Date', tip: 'Expense date.' },
+        { label: 'Amount (EUR)', right: true, tip: 'Amount converted to EUR at the expense date.' },
+        { label: 'Description', right: true, tip: 'Free-text note entered on the expense record.' }
+      ],
+      rows, { highlight: 1 }));
   } else {
     body.appendChild(mkEmptyState('No reimbursements this period.'));
   }
@@ -631,9 +958,27 @@ function showReimbModal(label, data) {
 function showDivModal(label, data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Gross Dividends', value: formatEUR(data.grossDivs) },
-    { label: 'SDC (2.65%)',     value: formatEUR(data.sdcAmount) },
-    { label: 'Net Dividends',   value: formatEUR(data.netDivs) }
+    { label: 'Gross Dividends', value: formatEUR(data.grossDivs),
+      explain: {
+        title: 'Gross Dividends', formula: 'Sum of grossAmount across dividend records for this director\'s recipient, dated within the selected period.',
+        inputs: [{ label: 'Records', value: String(data.divRecords.length) }, { label: 'Total', value: formatEUR(data.grossDivs) }],
+        source: 'analytics-personal.js:164 getPersonData() — `grossDivs`'
+      }
+    },
+    { label: 'SDC (2.65%)',     value: formatEUR(data.sdcAmount),
+      explain: {
+        title: 'SDC (2.65%)', formula: 'Gross Dividends × 2.65% (Special Defence Contribution)',
+        inputs: [{ label: 'Gross Dividends', value: formatEUR(data.grossDivs) }],
+        source: 'analytics-personal.js:165 getPersonData() — `sdcAmount` (SDC_RATE = 0.0265, line 17)'
+      }
+    },
+    { label: 'Net Dividends',   value: formatEUR(data.netDivs),
+      explain: {
+        title: 'Net Dividends', formula: 'Gross Dividends − SDC',
+        inputs: [{ label: 'Gross Dividends', value: formatEUR(data.grossDivs) }, { label: 'SDC', value: formatEUR(data.sdcAmount) }],
+        source: 'analytics-personal.js:166 getPersonData() — `netDivs`'
+      }
+    }
   ], 3));
   if (data.divRecords.length > 0) {
     const byYear = new Map();
@@ -649,7 +994,15 @@ function showDivModal(label, data) {
       const yearRows = [...byYear.entries()]
         .sort((a, b) => b[0].localeCompare(a[0]))
         .map(([yr, v]) => [yr, String(v.count), formatEUR(v.gross), formatEUR(v.gross * SDC_RATE), formatEUR(v.gross * (1 - SDC_RATE))]);
-      body.appendChild(mkModalTable(['Year', 'Records', 'Gross', 'SDC', 'Net'], yearRows, { highlight: 4 }));
+      body.appendChild(mkModalTable(
+        [
+          { label: 'Year', tip: 'Calendar year the dividend(s) were declared.' },
+          { label: 'Records', right: true, tip: 'Number of dividend records declared that year.' },
+          { label: 'Gross', right: true, tip: 'Sum of gross dividend amounts declared that year.' },
+          { label: 'SDC', right: true, tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
+          { label: 'Net', right: true, tip: 'Gross dividends minus SDC — amount actually received.' }
+        ],
+        yearRows, { highlight: 4 }));
     }
     body.appendChild(mkSectionLabel('Dividend Records'));
     const rows = data.divRecords
@@ -661,7 +1014,15 @@ function showDivModal(label, data) {
         formatEUR((d.grossAmount || 0) * (1 - SDC_RATE)),
         d.notes || '—'
       ]);
-    body.appendChild(mkModalTable(['Date', 'Gross', 'SDC', 'Net', 'Notes'], rows, { highlight: 3 }));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Date', tip: 'Date the dividend was declared.' },
+        { label: 'Gross', right: true, tip: 'Gross dividend amount declared.' },
+        { label: 'SDC', right: true, tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
+        { label: 'Net', right: true, tip: 'Gross dividend minus SDC — amount actually received.' },
+        { label: 'Notes', right: true, tip: 'Free-text note entered on the dividend record.' }
+      ],
+      rows, { highlight: 3 }));
   } else {
     body.appendChild(mkEmptyState('No dividends for this period. Add dividends in the Tax → Dividends tab.'));
   }
@@ -672,7 +1033,18 @@ function showDivModal(label, data) {
 function showPersonalPropsModal(label, data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Income',  value: formatEUR(data.personalIncome) },
+    { label: 'Total Income',  value: formatEUR(data.personalIncome),
+      explain: {
+        title: 'Total Income', formula: 'Sum of paid payments dated within the selected period, across this director\'s personal-channel properties.',
+        inputs: [
+          { label: 'Personal-channel properties', value: String(data.personalProps.length) },
+          { label: 'Payments counted', value: String(data.personalPayments.length) },
+          { label: 'Total', value: formatEUR(data.personalIncome) }
+        ],
+        source: 'analytics-personal.js:181 getPersonData() — `personalIncome`',
+        note: 'Only status:\'paid\' payments on properties with channel:\'personal\' owned by this director count.'
+      }
+    },
     { label: 'Properties',    value: String(data.personalProps.length) },
     { label: 'Payments',      value: String(data.personalPayments.length) }
   ], 3));
@@ -682,7 +1054,14 @@ function showPersonalPropsModal(label, data) {
       .map(p => ({ prop: p, income: data.personalByProp.get(p.id) || 0 }))
       .sort((a, b) => b.income - a.income)
       .map(({ prop, income }) => [prop.name, prop.city, prop.country, formatEUR(income)]);
-    body.appendChild(mkModalTable(['Property', 'City', 'Country', 'Income (EUR)'], rows, { highlight: 3 }));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Property', tip: 'Personal-channel property name.' },
+        { label: 'City', right: true, tip: 'Property location.' },
+        { label: 'Country', right: true, tip: 'Property location.' },
+        { label: 'Income (EUR)', right: true, tip: 'Sum of paid payments for this property in the selected period.' }
+      ],
+      rows, { highlight: 3 }));
   } else {
     body.appendChild(mkEmptyState('No personal-channel properties. Mark properties as Personal in the Properties form.'));
   }
@@ -784,7 +1163,13 @@ function buildPersonColumn(label, color, data, months, cmpData) {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
         const exps = data.strIncomeExps;
         body.appendChild(mkSummaryGrid([
-          { label: 'Total STR Income', value: formatEUR(data.strIncomeTotal) },
+          { label: 'Total STR Income', value: formatEUR(data.strIncomeTotal),
+            explain: {
+              title: 'Total STR Income', formula: 'Sum of "str_fee" category expenses linked to this person and flagged countsAsPersonalIncome, dated within the selected period.',
+              inputs: [{ label: 'Records', value: String(exps.length) }, { label: 'Total', value: formatEUR(data.strIncomeTotal) }],
+              source: 'analytics-personal.js:122 getPersonData() — `strIncomeTotal`'
+            }
+          },
           { label: 'Records',          value: String(exps.length) },
           { label: 'Properties',       value: String(new Set(exps.map(e => e.propertyId).filter(Boolean)).size) }
         ], 3));
@@ -801,7 +1186,13 @@ function buildPersonColumn(label, color, data, months, cmpData) {
           const propRows = [...byProp.entries()]
             .sort((a, b) => b[1].total - a[1].total)
             .map(([name, v]) => [name, String(v.count), formatEUR(v.total)]);
-          body.appendChild(mkModalTable(['Property', 'Records', 'Amount'], propRows, { highlight: 2 }));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Property', tip: 'Property this STR fee income is linked to.' },
+              { label: 'Records', right: true, tip: 'Number of STR fee expense records for that property.' },
+              { label: 'Amount', right: true, tip: 'Total STR income for that property in the selected period.' }
+            ],
+            propRows, { highlight: 2 }));
 
           const footer = el('div', { style: 'margin-top:4px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:flex-end' });
           const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all STR records →');
@@ -815,7 +1206,14 @@ function buildPersonColumn(label, color, data, months, cmpData) {
                 e.description || '—'
               ]);
             const rawBody = el('div');
-            rawBody.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Property', 'Description'], rows, { highlight: 1 }));
+            rawBody.appendChild(mkModalTable(
+              [
+                { label: 'Date', tip: 'Expense date.' },
+                { label: 'Amount (EUR)', right: true, tip: 'Amount converted to EUR at the expense date.' },
+                { label: 'Property', right: true, tip: 'Property this STR fee income is linked to.' },
+                { label: 'Description', right: true, tip: 'Free-text note entered on the expense record.' }
+              ],
+              rows, { highlight: 1 }));
             openModal({ title: `${label} — STR Income Records`, body: rawBody, large: true });
           };
           footer.appendChild(link);
@@ -841,7 +1239,13 @@ function buildPersonColumn(label, color, data, months, cmpData) {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
         const exps = data.piExps;
         body.appendChild(mkSummaryGrid([
-          { label: 'Total',      value: formatEUR(data.piExpTotal) },
+          { label: 'Total',      value: formatEUR(data.piExpTotal),
+            explain: {
+              title: 'Total', formula: 'Sum of expenses linked to this person, flagged countsAsPersonalIncome, excluding salary/reimbursement/social_contributions/str_fee (counted elsewhere), dated within the selected period.',
+              inputs: [{ label: 'Records', value: String(exps.length) }, { label: 'Total', value: formatEUR(data.piExpTotal) }],
+              source: 'analytics-personal.js:128 getPersonData() — `piExpTotal`'
+            }
+          },
           { label: 'Records',    value: String(exps.length) },
           { label: 'Categories', value: String(new Set(exps.map(e => e.category)).size) }
         ], 3));
@@ -858,7 +1262,13 @@ function buildPersonColumn(label, color, data, months, cmpData) {
           const catRows = [...byCat.entries()]
             .sort((a, b) => b[1].total - a[1].total)
             .map(([cat, v]) => [cat, String(v.count), formatEUR(v.total)]);
-          body.appendChild(mkModalTable(['Category', 'Records', 'Amount'], catRows, { highlight: 2 }));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Category', tip: 'Expense category this personal-income record was filed under.' },
+              { label: 'Records', right: true, tip: 'Number of expense records in that category.' },
+              { label: 'Amount', right: true, tip: 'Total for that category in the selected period.' }
+            ],
+            catRows, { highlight: 2 }));
 
           const footer = el('div', { style: 'margin-top:4px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:flex-end' });
           const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all records →');
@@ -867,7 +1277,14 @@ function buildPersonColumn(label, color, data, months, cmpData) {
               .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
               .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), EXPENSE_CATEGORIES[e.category]?.label || e.category, e.description || '—']);
             const rawBody = el('div');
-            rawBody.appendChild(mkModalTable(['Date', 'Amount (EUR)', 'Category', 'Description'], rows, { highlight: 1 }));
+            rawBody.appendChild(mkModalTable(
+              [
+                { label: 'Date', tip: 'Expense date.' },
+                { label: 'Amount (EUR)', right: true, tip: 'Amount converted to EUR at the expense date.' },
+                { label: 'Category', right: true, tip: 'Expense category this record was filed under.' },
+                { label: 'Description', right: true, tip: 'Free-text note entered on the expense record.' }
+              ],
+              rows, { highlight: 1 }));
             openModal({ title: `${label} — Other Personal Income Records`, body: rawBody, large: true });
           };
           footer.appendChild(link);
@@ -1069,10 +1486,20 @@ function renderStreamMonthly(youData, ritaData, months) {
     const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
     body.appendChild(mkSectionLabel('Income by Stream'));
     body.appendChild(mkModalTable(
-      [{ label: 'Stream' }, { label: 'Amount', right: true }, { label: '% of Month', right: true, muted: true }],
+      [
+        { label: 'Stream', tip: 'Income stream for this month.' },
+        { label: 'Amount', right: true, tip: 'Combined amount for both directors in this stream, that month.' },
+        { label: '% of Month', right: true, muted: true, tip: 'Share of this month\'s combined income coming from this stream.' }
+      ],
       items.map(i => [i.label, formatEUR(i.val), total > 0 ? (i.val / total * 100).toFixed(0) + '%' : '—'])
     ));
-    body.appendChild(mkSummaryGrid([{ label: 'Total Combined', value: formatEUR(total) }], 1));
+    body.appendChild(mkSummaryGrid([{ label: 'Total Combined', value: formatEUR(total),
+      explain: {
+        title: 'Total Combined', formula: 'Director Salary + Owner Rent + Reimbursements + Dividends (Net SDC) + Personal Properties, both directors, for this month.',
+        inputs: items.map(i => ({ label: i.label, value: formatEUR(i.val) })),
+        source: 'analytics-personal.js:1485 renderStreamMonthly() onClickItem() — `total`'
+      }
+    }], 1));
     openModal({ title: `${m.label} — Income Breakdown`, body, large: false });
   };
 
@@ -1151,9 +1578,27 @@ function renderPersonMonthly(youData, ritaData, months) {
       const rTot = ritaMonthly[idx];
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
       body.appendChild(mkSummaryGrid([
-        { label: YOU_LABEL,  value: formatEUR(yTot) },
-        { label: RITA_LABEL, value: formatEUR(rTot) },
-        { label: 'Combined', value: formatEUR(yTot + rTot) }
+        { label: YOU_LABEL,  value: formatEUR(yTot),
+          explain: {
+            title: `${YOU_LABEL} — ${m.label}`, formula: 'Salary + Owner Rent + Reimbursements + Dividends (Net SDC) + Personal Properties for this director, that month.',
+            inputs: [{ label: 'Total', value: formatEUR(yTot) }],
+            source: 'analytics-personal.js:1562 renderPersonMonthly() — `youMonthly`'
+          }
+        },
+        { label: RITA_LABEL, value: formatEUR(rTot),
+          explain: {
+            title: `${RITA_LABEL} — ${m.label}`, formula: 'Salary + Owner Rent + Reimbursements + Dividends (Net SDC) + Personal Properties for this director, that month.',
+            inputs: [{ label: 'Total', value: formatEUR(rTot) }],
+            source: 'analytics-personal.js:1563 renderPersonMonthly() — `ritaMonthly`'
+          }
+        },
+        { label: 'Combined', value: formatEUR(yTot + rTot),
+          explain: {
+            title: 'Combined', formula: `${YOU_LABEL} + ${RITA_LABEL}, that month.`,
+            inputs: [{ label: YOU_LABEL, value: formatEUR(yTot) }, { label: RITA_LABEL, value: formatEUR(rTot) }],
+            source: 'analytics-personal.js:1583 renderPersonMonthly() onClickItem()'
+          }
+        }
       ], 3));
       openModal({ title: `${m.label} — Partner Comparison`, body, large: false });
     }
