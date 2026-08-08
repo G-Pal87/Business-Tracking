@@ -1,7 +1,7 @@
 // Reconciliation – best-in-class heatmap dashboard
 import { el, fmtDate, drillDownModal, escapeHtml, openModal } from '../core/ui.js';
 import { availableYears, formatEUR, buildReconciliationData, listActivePayments, listActive, toEUR, getPersonName, byId, companyPropIds, isCompanyRecord } from '../core/data.js';
-import { mkSectionLabel, mkSummaryGrid, mkModalTable, groupByMonthKey } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryGrid, mkModalTable, groupByMonthKey, mkTh, mkExplainButton } from './analytics-helpers.js';
 
 export default {
   id: 'reconciliation',
@@ -45,11 +45,11 @@ let _recOwner  = ''; // '' = all owners | 'you' | 'rita'
 let _recScope  = 'all';
 
 const REC_COLS = [
-  { key: 'date',   label: 'Date',   format: v => fmtDate(v) },
-  { key: 'entity', label: 'Entity' },
-  { key: 'ref',    label: 'Ref' },
-  { key: 'status', label: 'Status' },
-  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v) }
+  { key: 'date',   label: 'Date',   format: v => fmtDate(v), tip: 'Payment date or invoice issue date.' },
+  { key: 'entity', label: 'Entity', tip: 'Property or service stream this record belongs to.' },
+  { key: 'ref',    label: 'Ref', tip: "Payment confirmation code/type, or invoice number." },
+  { key: 'status', label: 'Status', tip: 'Record status (e.g. paid, pending, overdue, draft).' },
+  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the record\'s date.' }
 ];
 
 const payRow = (p, name) => ({ date: p.date,      entity: name, ref: p.confirmationCode || p.type || '', status: p.status, eur: toEUR(p.amount, p.currency, p.date) });
@@ -125,6 +125,141 @@ function rate(act, exp) {
   return exp > 0 ? Math.round((act / exp) * 100) : (act > 0 ? 100 : null);
 }
 
+// ── Explain builders — "how is this calculated" payloads for mkSummaryGrid ──
+// Expected/Received/Outstanding are computed differently per entity kind (see
+// buildReconciliationData in core/data.js: LT rent comes from the active
+// lease, STR expected is every payment on the books that month regardless of
+// status, both LT and STR actual/received are status:'paid' only, and
+// Services expected is invoiced (non-draft) totals). These builders mirror
+// that logic per call site instead of guessing a single generic formula.
+
+function monthExpectedExplain(ent, m) {
+  if (ent.kind === 'lt') {
+    return {
+      title: 'Expected — LT Rent',
+      formula: "Monthly rent (EUR) of whichever tenant's lease is active this month; 0 if no lease covers it.",
+      inputs: [{ label: 'Expected (EUR)', value: formatEUR(m.expected) }],
+      source: 'core/data.js:854-861 buildReconciliationData()',
+      note: 'Long-term Expected comes from the active lease’s monthlyRent, not from payments received — a bonus/extra payment this month won’t raise it.'
+    };
+  }
+  if (ent.kind === 'service') {
+    return {
+      title: 'Expected — Invoiced',
+      formula: 'Sum of invoice totals (EUR) issued this month (drafts excluded).',
+      inputs: [{ label: 'Expected (EUR)', value: formatEUR(m.expected) }],
+      source: 'core/data.js:895-896 buildReconciliationData()',
+      note: 'Expected here means "invoiced this month", regardless of whether the invoice has since been paid.'
+    };
+  }
+  return {
+    title: 'Expected — ST Rent',
+    formula: 'Sum of every payment dated this month, of any status.',
+    inputs: [{ label: 'Expected (EUR)', value: formatEUR(m.expected) }],
+    source: 'core/data.js:866-867 buildReconciliationData()',
+    note: 'Short-term Expected is derived from payment records already on the books for the month (any status), unlike LT rent which uses a fixed lease amount.'
+  };
+}
+
+function monthActualExplain(ent, m) {
+  return {
+    title: 'Received — Actual',
+    formula: ent.kind === 'service'
+      ? "Sum of invoice totals (EUR) with status 'paid', issued this month."
+      : "Sum of payment amounts (EUR) with status 'paid', dated this month.",
+    inputs: [{ label: 'Received (EUR)', value: formatEUR(m.actual) }],
+    source: ent.kind === 'service' ? 'core/data.js:897 buildReconciliationData()'
+          : ent.kind === 'lt'      ? 'core/data.js:862-864 buildReconciliationData()'
+          :                          'core/data.js:868 buildReconciliationData()',
+    note: 'Only status:\'paid\' records count as Received — pending/overdue amounts show up in Expected/Outstanding instead, never here.'
+  };
+}
+
+function entityExpectedExplain(ent) {
+  const per = ent.kind === 'lt'      ? "each month's active-lease monthly rent (EUR)"
+            : ent.kind === 'service' ? "each month's invoiced totals (EUR, drafts excluded)"
+            :                          "each month's payments (EUR, any status)";
+  return {
+    title: 'Expected (Year Total)',
+    formula: `Sum of ${per} across all 12 months.`,
+    inputs: [{ label: 'Total Expected (EUR)', value: formatEUR(ent.totExp) }],
+    source: ent.kind === 'service' ? 'core/data.js:900 buildReconciliationData()' : 'core/data.js:873 buildReconciliationData()',
+    note: ent.kind === 'lt' ? 'LT rent is looked up from the active lease per month, not from payments received.'
+        : ent.kind === 'st' ? 'ST Expected includes every payment on the books that month regardless of status — unlike LT, which uses the lease rent.'
+        : 'Service Expected is invoiced (not paid) totals.'
+  };
+}
+
+function entityActualExplain(ent) {
+  return {
+    title: 'Received (Year Total)',
+    formula: ent.kind === 'service'
+      ? "Sum of each month's paid invoice totals (EUR)."
+      : "Sum of each month's paid payment amounts (EUR).",
+    inputs: [{ label: 'Total Received (EUR)', value: formatEUR(ent.totAct) }],
+    source: ent.kind === 'service' ? 'core/data.js:901 buildReconciliationData()' : 'core/data.js:874 buildReconciliationData()',
+    note: 'Only status:\'paid\' records count toward Received, in every month.'
+  };
+}
+
+function entityOutstandingExplain(ent) {
+  return {
+    title: 'Outstanding',
+    formula: 'max(0, Total Expected − Total Received)',
+    inputs: [
+      { label: 'Total Expected (EUR)', value: formatEUR(ent.totExp) },
+      { label: 'Total Received (EUR)', value: formatEUR(ent.totAct) }
+    ],
+    source: 'reconciliation.js:392,421 openEntityModal()',
+    note: 'Floored at zero — an entity that has received more than Expected (e.g. a bonus ST month) never shows a negative Outstanding.'
+  };
+}
+
+function totalExpectedExplain(withData, source) {
+  return {
+    title: 'Expected (Total)',
+    formula: "Sum of every listed entity's year-Expected total.",
+    inputs: [
+      { label: 'Entities', value: String(withData.length) },
+      { label: 'Total Expected (EUR)', value: formatEUR(withData.reduce((s, e) => s + (e.totExp ?? e.expected ?? 0), 0)) }
+    ],
+    source,
+    note: "Each entity's own Expected formula differs by type — LT uses active-lease rent, ST uses all payments on the books that month, Services use invoiced totals. See core/data.js buildReconciliationData()."
+  };
+}
+
+function totalReceivedExplain(withData, source) {
+  return {
+    title: 'Received (Total)',
+    formula: "Sum of every listed entity's year-Received total (status:'paid' only, in every case).",
+    inputs: [{ label: 'Total Received (EUR)', value: formatEUR(withData.reduce((s, e) => s + (e.totAct ?? e.received ?? 0), 0)) }],
+    source
+  };
+}
+
+function totalOutstandingExplain(withData, source) {
+  return {
+    title: 'Outstanding (Total)',
+    formula: "Sum, per entity, of max(0, that entity's Expected − Received).",
+    inputs: [{ label: 'Total Outstanding (EUR)', value: formatEUR(withData.reduce((s, e) => s + (e.outstanding ?? Math.max(0, e.totExp - e.totAct)), 0)) }],
+    source,
+    note: 'The max(0, …) clamp is applied per entity before summing, so one entity running ahead of Expected never offsets another entity\'s shortfall.'
+  };
+}
+
+function collectionRateExplain(totExp, totAct, cr) {
+  return {
+    title: 'Collection Rate',
+    formula: cr === null ? 'Not shown when Expected is 0 and nothing was Received.' : 'round(Total Received ÷ Total Expected × 100)',
+    inputs: [
+      { label: 'Total Expected (EUR)', value: formatEUR(totExp) },
+      { label: 'Total Received (EUR)', value: formatEUR(totAct) }
+    ],
+    source: 'reconciliation.js:124-126 rate()',
+    note: "When Expected is 0 but something was Received anyway (a bonus month), the rate shows 100%."
+  };
+}
+
 // ── Drill-down openers ──────────────────────────────────────────────────────
 
 function openCellModal(ent, m, yr) {
@@ -146,9 +281,9 @@ function openCellModal(ent, m, yr) {
         lease:  `${t.leaseStartDate ? fmtDate(t.leaseStartDate) : '—'} → ${t.leaseEndDate ? fmtDate(t.leaseEndDate) : 'open-ended'}`,
         eur:    toEUR(t.monthlyRent, t.currency || 'EUR', Number(yr))
       })), [
-        { key: 'tenant', label: 'Tenant' },
-        { key: 'lease',  label: 'Lease Period' },
-        { key: 'eur',    label: 'Monthly Rent', right: true, format: v => formatEUR(v) }
+        { key: 'tenant', label: 'Tenant', tip: 'Tenant name on the active lease for this property.' },
+        { key: 'lease',  label: 'Lease Period', tip: 'Lease start and end dates (open-ended if no end date is set).' },
+        { key: 'eur',    label: 'Monthly Rent', right: true, format: v => formatEUR(v), tip: 'Monthly rent (EUR) — this is the property\'s Expected figure for months covered by the lease.' }
       ]);
     }
     // Fallthrough: show actual payments if we have them
@@ -173,8 +308,8 @@ function openCellPaymentModal(title, ent, m) {
   const body = el('div');
   body.appendChild(mkSectionLabel('Summary'));
   body.appendChild(mkSummaryGrid([
-    { label: 'Expected', value: formatEUR(m.expected) },
-    { label: 'Received', value: formatEUR(m.actual) },
+    { label: 'Expected', value: formatEUR(m.expected), explain: monthExpectedExplain(ent, m) },
+    { label: 'Received', value: formatEUR(m.actual), explain: monthActualExplain(ent, m) },
     { label: 'Payments', value: String(pays.length) }
   ], 3));
 
@@ -182,7 +317,7 @@ function openCellPaymentModal(title, ent, m) {
   if (breakdown.length > 1) {
     body.appendChild(mkSectionLabel('By Status'));
     body.appendChild(mkModalTable(
-      [{ label: 'Status' }, { label: 'Count', right: true }, { label: 'Total', right: true }],
+      [{ label: 'Status', tip: 'Payment status for this group.' }, { label: 'Count', right: true, tip: 'Number of payments with this status in the selected month.' }, { label: 'Total', right: true, tip: 'Sum of amounts (EUR) for payments with this status.' }],
       breakdown.map(([st, v]) => [st, String(v.count), formatEUR(v.total)])
     ));
   }
@@ -203,8 +338,8 @@ function openCellServiceModal(title, ent, m) {
   const body = el('div');
   body.appendChild(mkSectionLabel('Summary'));
   body.appendChild(mkSummaryGrid([
-    { label: 'Expected', value: formatEUR(m.expected) },
-    { label: 'Received', value: formatEUR(m.actual) },
+    { label: 'Expected', value: formatEUR(m.expected), explain: monthExpectedExplain(ent, m) },
+    { label: 'Received', value: formatEUR(m.actual), explain: monthActualExplain(ent, m) },
     { label: 'Invoices', value: String(invs.length) }
   ], 3));
 
@@ -212,7 +347,7 @@ function openCellServiceModal(title, ent, m) {
   if (breakdown.length > 1) {
     body.appendChild(mkSectionLabel('By Status'));
     body.appendChild(mkModalTable(
-      [{ label: 'Status' }, { label: 'Count', right: true }, { label: 'Total', right: true }],
+      [{ label: 'Status', tip: 'Invoice status for this group.' }, { label: 'Count', right: true, tip: 'Number of invoices with this status in the selected month.' }, { label: 'Total', right: true, tip: 'Sum of amounts (EUR) for invoices with this status.' }],
       breakdown.map(([st, v]) => [st, String(v.count), formatEUR(v.total)])
     ));
   }
@@ -237,9 +372,9 @@ function openEntityModal(ent, yr) {
         lease:  `${t.leaseStartDate ? fmtDate(t.leaseStartDate) : '—'} → ${t.leaseEndDate ? fmtDate(t.leaseEndDate) : 'open-ended'}`,
         eur:    toEUR(t.monthlyRent, t.currency || 'EUR', Number(yr))
       })), [
-        { key: 'tenant', label: 'Tenant' },
-        { key: 'lease',  label: 'Lease Period' },
-        { key: 'eur',    label: 'Monthly Rent', right: true, format: v => formatEUR(v) }
+        { key: 'tenant', label: 'Tenant', tip: 'Tenant name on the active lease for this property.' },
+        { key: 'lease',  label: 'Lease Period', tip: 'Lease start and end dates (open-ended if no end date is set).' },
+        { key: 'eur',    label: 'Monthly Rent', right: true, format: v => formatEUR(v), tip: 'Monthly rent (EUR) — this is the property\'s Expected figure for months covered by the lease.' }
       ]);
     }
   }
@@ -252,9 +387,9 @@ function openEntityModal(ent, yr) {
     const body = el('div');
     body.appendChild(mkSectionLabel('Performance'));
     body.appendChild(mkSummaryGrid([
-      { label: 'Expected',    value: formatEUR(ent.totExp) },
-      { label: 'Received',    value: formatEUR(ent.totAct) },
-      { label: 'Outstanding', value: formatEUR(Math.max(0, ent.totExp - ent.totAct)) },
+      { label: 'Expected',    value: formatEUR(ent.totExp), explain: entityExpectedExplain(ent) },
+      { label: 'Received',    value: formatEUR(ent.totAct), explain: entityActualExplain(ent) },
+      { label: 'Outstanding', value: formatEUR(Math.max(0, ent.totExp - ent.totAct)), explain: entityOutstandingExplain(ent) },
       { label: 'Invoices',    value: String(invs.length) }
     ], 4));
 
@@ -267,7 +402,7 @@ function openEntityModal(ent, yr) {
     if (monthRows.length) {
       body.appendChild(mkSectionLabel('By Month'));
       body.appendChild(mkModalTable(
-        [{ label: 'Month' }, { label: 'Invoices', right: true }, { label: 'Total', right: true }],
+        [{ label: 'Month', tip: 'Calendar month within the selected year.' }, { label: 'Invoices', right: true, tip: 'Number of invoices issued that month.' }, { label: 'Total', right: true, tip: 'Sum of invoice totals (EUR) issued that month.' }],
         monthRows
       ));
     }
@@ -281,9 +416,9 @@ function openEntityModal(ent, yr) {
   const body = el('div');
   body.appendChild(mkSectionLabel('Performance'));
   body.appendChild(mkSummaryGrid([
-    { label: 'Expected',    value: formatEUR(ent.totExp) },
-    { label: 'Received',    value: formatEUR(ent.totAct) },
-    { label: 'Outstanding', value: formatEUR(Math.max(0, ent.totExp - ent.totAct)) },
+    { label: 'Expected',    value: formatEUR(ent.totExp), explain: entityExpectedExplain(ent) },
+    { label: 'Received',    value: formatEUR(ent.totAct), explain: entityActualExplain(ent) },
+    { label: 'Outstanding', value: formatEUR(Math.max(0, ent.totExp - ent.totAct)), explain: entityOutstandingExplain(ent) },
     { label: 'Payments',    value: String(pays.length) }
   ], 4));
 
@@ -296,7 +431,7 @@ function openEntityModal(ent, yr) {
   if (monthRows.length) {
     body.appendChild(mkSectionLabel('By Month'));
     body.appendChild(mkModalTable(
-      [{ label: 'Month' }, { label: 'Payments', right: true }, { label: 'Total', right: true }],
+      [{ label: 'Month', tip: 'Calendar month within the selected year.' }, { label: 'Payments', right: true, tip: 'Number of payments received that month.' }, { label: 'Total', right: true, tip: 'Sum of payment amounts (EUR) received that month.' }],
       monthRows
     ));
   }
@@ -439,7 +574,13 @@ function build() {
       expected: e.totExp, received: e.totAct, outstanding: Math.max(0, e.totExp - e.totAct)
     }));
     const appendEntityTable = (body, rows) => body.appendChild(mkModalTable(
-      [{ label: 'Entity' }, { label: 'Type' }, { label: 'Expected', right: true }, { label: 'Received', right: true }, { label: 'Outstanding', right: true }],
+      [
+        { label: 'Entity', tip: 'Property or service stream.' },
+        { label: 'Type', tip: 'LT Rental, ST Rental, or Service — the entity\'s stream kind.' },
+        { label: 'Expected', right: true, tip: 'Sum of the entity\'s monthly Expected figures for the year (formula varies by type — see the ⓘ on the KPI card above).' },
+        { label: 'Received', right: true, tip: 'Sum of the entity\'s monthly Received (status:\'paid\' only) figures for the year.' },
+        { label: 'Outstanding', right: true, tip: 'Expected minus Received, floored at zero.' }
+      ],
       rows.map(r => [r.entity, r.type, formatEUR(r.expected), formatEUR(r.received), formatEUR(r.outstanding)])
     ));
 
@@ -448,8 +589,8 @@ function build() {
       const body = el('div');
       body.appendChild(mkSectionLabel('Summary'));
       body.appendChild(mkSummaryGrid([
-        { label: 'Total Expected', value: formatEUR(rows.reduce((s, r) => s + r.expected, 0)) },
-        { label: 'Total Received', value: formatEUR(rows.reduce((s, r) => s + r.received, 0)) },
+        { label: 'Total Expected', value: formatEUR(rows.reduce((s, r) => s + r.expected, 0)), explain: totalExpectedExplain(rows, 'reconciliation.js:592 onExpected()') },
+        { label: 'Total Received', value: formatEUR(rows.reduce((s, r) => s + r.received, 0)), explain: totalReceivedExplain(rows, 'reconciliation.js:593 onExpected()') },
         { label: 'Entities',       value: String(rows.length) }
       ], 3));
       body.appendChild(mkSectionLabel('By Entity'));
@@ -471,10 +612,33 @@ function build() {
       const body = el('div');
       body.appendChild(mkSectionLabel('Summary'));
       body.appendChild(mkSummaryGrid([
-        { label: 'Total Received', value: formatEUR(total) },
+        {
+          label: 'Total Received', value: formatEUR(total),
+          explain: {
+            title: 'Total Received',
+            formula: "Sum of paid payment amounts (EUR) + paid invoice totals (EUR), both dated in the selected year.",
+            inputs: [
+              { label: 'Paid payments', value: String(pays.length) },
+              { label: 'Paid invoices', value: String(invs.length) },
+              { label: 'Total (EUR)',   value: formatEUR(total) }
+            ],
+            source: 'reconciliation.js:610 onReceived()',
+            note: "Filters to status:'paid' only, on top of the current Owner/Scope selection."
+          }
+        },
         { label: 'Payments',       value: String(pays.length) },
         { label: 'Invoices',       value: String(invs.length) },
-        { label: 'Average',        value: allRows.length > 0 ? formatEUR(total / allRows.length) : '—' }
+        {
+          label: 'Average', value: allRows.length > 0 ? formatEUR(total / allRows.length) : '—',
+          explain: {
+            title: 'Average', formula: 'Total Received ÷ number of paid records (payments + invoices).',
+            inputs: [
+              { label: 'Total Received (EUR)', value: formatEUR(total) },
+              { label: 'Paid records', value: String(allRows.length) }
+            ],
+            source: 'reconciliation.js:632 onReceived()'
+          }
+        }
       ], 4));
 
       const byEntity = new Map();
@@ -487,7 +651,11 @@ function build() {
       if (entRows.length) {
         body.appendChild(mkSectionLabel('By Entity'));
         body.appendChild(mkModalTable(
-          [{ label: 'Entity' }, { label: 'Records', right: true }, { label: 'Total', right: true }],
+          [
+            { label: 'Entity', tip: 'Property or service stream that received the payment/invoice.' },
+            { label: 'Records', right: true, tip: 'Number of paid payments or invoices for this entity in the year.' },
+            { label: 'Total', right: true, tip: 'Sum of paid amounts (EUR) for this entity in the year.' }
+          ],
           entRows.map(([label, v]) => [label, String(v.count), formatEUR(v.total)])
         ));
       }
@@ -505,8 +673,19 @@ function build() {
       const body = el('div');
       body.appendChild(mkSectionLabel('Summary'));
       body.appendChild(mkSummaryGrid([
-        { label: 'Total Outstanding', value: formatEUR(rows.reduce((s, r) => s + r.outstanding, 0)) },
-        { label: 'Total Expected',    value: formatEUR(rows.reduce((s, r) => s + r.expected, 0)) },
+        {
+          label: 'Total Outstanding', value: formatEUR(rows.reduce((s, r) => s + r.outstanding, 0)),
+          explain: {
+            title: 'Total Outstanding',
+            formula: 'Sum of (Expected − Received) across every entity listed below (only entities where Expected > Received).',
+            inputs: [
+              { label: 'Entities', value: String(rows.length) },
+              { label: 'Total Outstanding (EUR)', value: formatEUR(rows.reduce((s, r) => s + r.outstanding, 0)) }
+            ],
+            source: 'reconciliation.js:677 onOutstanding()'
+          }
+        },
+        { label: 'Total Expected',    value: formatEUR(rows.reduce((s, r) => s + r.expected, 0)), explain: totalExpectedExplain(rows, 'reconciliation.js:688 onOutstanding()') },
         { label: 'Entities',          value: String(rows.length) }
       ], 3));
       body.appendChild(mkSectionLabel('By Entity'));
@@ -514,10 +693,10 @@ function build() {
       openModal({ title: `Outstanding — ${yr}`, body, large: true });
     };
 
-    kpiRow.appendChild(kpi('Expected',       formatEUR(totExp),          '',                                                  onExpected));
-    kpiRow.appendChild(kpi('Received',        formatEUR(totAct),          '',                                                  onReceived));
-    kpiRow.appendChild(kpi('Outstanding',     formatEUR(outstanding),     outstanding > 0 ? 'danger' : 'success',              onOutstanding));
-    kpiRow.appendChild(kpi('Collection Rate', cr !== null ? `${cr}%` : '—', cr === null ? '' : cr >= 100 ? 'success' : cr >= 75 ? 'warning' : 'danger', onOutstanding));
+    kpiRow.appendChild(kpi('Expected',       formatEUR(totExp),          '',                                                  onExpected,   totalExpectedExplain(withData, 'reconciliation.js:566 render()')));
+    kpiRow.appendChild(kpi('Received',        formatEUR(totAct),          '',                                                  onReceived,   totalReceivedExplain(withData, 'reconciliation.js:567 render()')));
+    kpiRow.appendChild(kpi('Outstanding',     formatEUR(outstanding),     outstanding > 0 ? 'danger' : 'success',              onOutstanding, totalOutstandingExplain(withData, 'reconciliation.js:568 render()')));
+    kpiRow.appendChild(kpi('Collection Rate', cr !== null ? `${cr}%` : '—', cr === null ? '' : cr >= 100 ? 'success' : cr >= 75 ? 'warning' : 'danger', onOutstanding, collectionRateExplain(totExp, totAct, cr)));
 
     // ── Heatmap ─────────────────────────────────────────────────────────────
     renderHeatmap(heatmapCard, filtered, yr);
@@ -569,21 +748,18 @@ function build() {
     htr.style.cssText = 'background:var(--surface)';
     const cellStyle = 'padding:7px 4px;font-size:10px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;border-bottom:2px solid var(--border);text-align:center';
 
-    const th0 = document.createElement('th');
-    th0.style.cssText = cellStyle + ';text-align:left;padding-left:12px;position:sticky;left:0;background:var(--surface)';
-    th0.textContent = 'Entity';
+    const th0 = mkTh({ label: 'Entity', tip: 'Property or service stream — click the name to view its full-year breakdown.' });
+    th0.style.cssText = cellStyle + ';text-align:left;padding-left:12px;position:sticky;left:0;background:var(--surface);cursor:help';
     htr.appendChild(th0);
 
     for (const m of MON) {
-      const th = document.createElement('th');
-      th.style.cssText = cellStyle;
-      th.textContent = m;
+      const th = mkTh({ label: m, tip: `${m}: percentage of that month's Expected amount actually Received (click a cell to view its records).` });
+      th.style.cssText = cellStyle + ';cursor:help';
       htr.appendChild(th);
     }
 
-    const thRate = document.createElement('th');
-    thRate.style.cssText = cellStyle + ';padding-right:10px';
-    thRate.textContent = 'Rate';
+    const thRate = mkTh({ label: 'Rate', tip: "Year-to-date collection rate for this entity: Received ÷ Expected × 100." });
+    thRate.style.cssText = cellStyle + ';padding-right:10px;cursor:help';
     htr.appendChild(thRate);
     thead.appendChild(htr);
     t.appendChild(thead);
@@ -700,11 +876,15 @@ function build() {
 
     const t  = document.createElement('table');
     t.className = 'table';
-    t.innerHTML = `<thead><tr>
-      <th>Entity</th><th>Type</th>
-      <th class="right">Expected</th><th class="right">Received</th>
-      <th class="right">Outstanding</th><th class="right">Rate</th>
-    </tr></thead>`;
+    const htr = el('tr', {},
+      mkTh({ label: 'Entity', tip: 'Property or service stream — click a row to view its full-year breakdown.' }),
+      mkTh({ label: 'Type', tip: 'LT Rental, ST Rental, or Service.' }),
+      mkTh({ label: 'Expected', right: true, tip: 'Sum of the entity\'s monthly Expected figures for the year (formula varies by type).' }),
+      mkTh({ label: 'Received', right: true, tip: 'Sum of the entity\'s monthly Received (status:\'paid\' only) figures for the year.' }),
+      mkTh({ label: 'Outstanding', right: true, tip: 'Expected minus Received, floored at zero.' }),
+      mkTh({ label: 'Rate', right: true, tip: 'Received ÷ Expected × 100, rounded.' })
+    );
+    t.appendChild(el('thead', {}, htr));
     const tb = document.createElement('tbody');
 
     const groups = [['lt','LT Rental','long'],['st','ST Rental','short'],['service','Service','cs']];
@@ -774,10 +954,16 @@ function build() {
   return wrap;
 }
 
-function kpi(label, value, variant, onClick) {
+function kpi(label, value, variant, onClick, explain) {
   const d = el('div', { class: 'kpi' + (variant ? ' ' + variant : '') });
   if (onClick) { d.style.cursor = 'pointer'; d.onclick = onClick; }
-  d.appendChild(el('div', { class: 'kpi-label' }, label));
+  if (explain) {
+    const labelRow = el('div', { class: 'kpi-label', style: 'display:flex;align-items:center;gap:4px' }, label);
+    labelRow.appendChild(mkExplainButton(explain));
+    d.appendChild(labelRow);
+  } else {
+    d.appendChild(el('div', { class: 'kpi-label' }, label));
+  }
   d.appendChild(el('div', { class: 'kpi-value' }, value));
   d.appendChild(el('div', { class: 'kpi-accent-bar' }));
   return d;
