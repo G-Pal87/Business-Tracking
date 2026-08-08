@@ -87,6 +87,13 @@ function getData(start, end, isIncomplete = false) {
   for (const e of capExpenses)   { const a = capExByProp.get(e.propertyId)    || []; a.push(e); capExByProp.set(e.propertyId, a); }
   for (const e of allCapExpenses) { const a = allCapExByProp.get(e.propertyId) || []; a.push(e); allCapExByProp.set(e.propertyId, a); }
 
+  // A period that hasn't started yet has no actual transactions at all, so
+  // there's nothing to annualize/project from past performance — instead
+  // "Expected Rev (booked)" sums what's already known: STR bookings already
+  // on the books (typically 'pending' Airbnb reservations) and LT rent from
+  // active leases, for each month in range.
+  const isFuturePeriod = start > today();
+
   const propData = allProps.map(prop => {
     const propPay   = payByProp.get(prop.id)    || [];
     const propOpEx  = opExByProp.get(prop.id)   || [];
@@ -115,12 +122,26 @@ function getData(start, end, isIncomplete = false) {
     const annualizedROI = annualizedPropertyROI(prop.id, { netIncome: annualNetIncome, totalInvested });
     const cashOnCashROI = cashOnCashPropertyROI(prop.id, { annualCashFlow: annualNetIncome });
 
+    // Potential ROI: the same full-year run-rate projection Simple ROI
+    // already shows for a *completed* period, but forced through for an
+    // *in-progress* one (YTD, this-month, etc.) too, where Simple ROI instead
+    // intentionally shows the raw actual-so-far figure. Null (not shown) for
+    // a completed period, since Simple ROI already is this number there.
+    const potentialROI = isIncomplete
+      ? simplePropertyROI(prop.id, {
+          netIncome: annualizeForProperty(prop, netIncome, { start, end, isIncomplete }, { force: true }),
+          totalInvested
+        })
+      : null;
+
+    const expectedBookedEUR = isFuturePeriod ? computeExpectedBookedEUR(prop, start, end) : null;
+
     return {
       prop, rev, opEx, capEx, allTimeCapEx, purchaseEUR, totalInvested,
       netIncome,
       profit: rev - opEx,
       net:    rev - opEx - capEx,
-      simpleROI, annualizedROI, cashOnCashROI,
+      simpleROI, annualizedROI, cashOnCashROI, potentialROI, expectedBookedEUR,
       propPayments:    propPay,
       propOpExpenses:  propOpEx,
       propCapExpenses: propCapEx
@@ -156,6 +177,40 @@ function getData(start, end, isIncomplete = false) {
   return { allProps, propData, payments, opExpenses, capExpenses, totals, avgROI, best, worst };
 }
 
+// Sums what's already booked/scheduled for a property over [start, end] —
+// used only for a genuinely future period (see isFuturePeriod above), where
+// there's no actual performance to annualize/project from. STR: every active
+// payment record already on the books in range (mostly 'pending' Airbnb
+// reservations — deliberately not restricted to a single status, so a stay
+// that's already been paid early still counts). LT: monthlyRent for whichever
+// tenant's lease is active, once per month in range — mirrors the same
+// "earlier lease wins" month-lookup buildReconciliationData uses.
+function computeExpectedBookedEUR(prop, start, end) {
+  if (prop.type === 'long_term') {
+    const tenants = listActive('tenants')
+      .filter(t => t.propertyId === prop.id && t.monthlyRent)
+      .sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || ''));
+    if (!tenants.length) return 0;
+    let total = 0;
+    let [y, m] = start.slice(0, 7).split('-').map(Number);
+    const [ey, em] = end.slice(0, 7).split('-').map(Number);
+    while (y < ey || (y === ey && m <= em)) {
+      const mStr = `${y}-${String(m).padStart(2, '0')}-01`;
+      const tenant = tenants.find(t => {
+        const ls = t.leaseStartDate ? t.leaseStartDate.slice(0, 7) + '-01' : null;
+        const le = t.leaseEndDate   ? t.leaseEndDate.slice(0, 7)   + '-01' : null;
+        return (!ls || mStr >= ls) && (!le || mStr <= le);
+      });
+      if (tenant) total += toEUR(tenant.monthlyRent, tenant.currency || 'EUR', mStr);
+      m++; if (m > 12) { m = 1; y++; }
+    }
+    return total;
+  }
+  return listActivePayments()
+    .filter(p => p.propertyId === prop.id && p.date >= start && p.date <= end)
+    .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+}
+
 // ── Operational metrics helpers ───────────────────────────────────────────────
 
 /**
@@ -187,8 +242,10 @@ function paymentNights(p) {
 // still accumulating, see getCurrentPeriodRange's isIncomplete flag), returns
 // the raw actual figure unprojected instead, since scaling partial-year data
 // up to a full year isn't what "year to date" should show.
-function annualizeForProperty(prop, rawValue, range) {
-  if (range.isIncomplete) return rawValue;
+function annualizeForProperty(prop, rawValue, range, { force = false } = {}) {
+  // force=true skips the incomplete-period passthrough — used by Potential
+  // ROI, which deliberately wants the run-rate projection even mid-period.
+  if (range.isIncomplete && !force) return rawValue;
   const ownedStart = (prop.purchaseDate && prop.purchaseDate > range.start) ? prop.purchaseDate : range.start;
   const ownedEnd = (prop.soldDate && prop.soldDate < range.end) ? prop.soldDate : range.end;
   if (ownedStart > ownedEnd) return 0;
@@ -2344,9 +2401,11 @@ function buildSummaryTable(container, propData) {
     return;
   }
 
-  const hasSimpleROI = propData.some(d => d.simpleROI      !== null);
-  const hasAnnROI    = propData.some(d => d.annualizedROI   !== null);
-  const hasCoCROI    = propData.some(d => d.cashOnCashROI   !== null);
+  const hasSimpleROI     = propData.some(d => d.simpleROI       !== null);
+  const hasAnnROI        = propData.some(d => d.annualizedROI   !== null);
+  const hasCoCROI        = propData.some(d => d.cashOnCashROI   !== null);
+  const hasPotentialROI  = propData.some(d => d.potentialROI    !== null);
+  const hasExpectedBooked = propData.some(d => d.expectedBookedEUR !== null);
 
   const COLS = [
     { key: 'name',      label: 'Property'          },
@@ -2354,14 +2413,16 @@ function buildSummaryTable(container, propData) {
     { key: 'owner',     label: 'Owner'             },
     { key: 'status',    label: 'Status'            },
     { key: 'rev',       label: 'Revenue',           right: true, fmt: formatEUR },
+    ...(hasExpectedBooked ? [{ key: 'expectedBookedEUR', label: 'Expected Rev (booked)', right: true, fmt: v => v != null ? formatEUR(v) : '—' }] : []),
     { key: 'opEx',      label: 'Operating Exp.',    right: true, fmt: formatEUR },
     { key: 'profit',    label: 'Op. Profit',        right: true, fmt: formatEUR, colored: true },
     { key: 'capEx',     label: 'CapEx',             right: true, fmt: formatEUR },
     { key: 'net',       label: 'Net (after CapEx)', right: true, fmt: formatEUR, colored: true },
     { key: 'costRatio', label: 'Cost %',            right: true, fmt: v => v != null ? v.toFixed(0) + '%' : '—' },
-    ...(hasSimpleROI ? [{ key: 'simpleROI',    label: 'Simple ROI', right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
-    ...(hasAnnROI    ? [{ key: 'annualizedROI', label: 'Ann. ROI',  right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
-    ...(hasCoCROI    ? [{ key: 'cashOnCashROI', label: 'CoC ROI',   right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : [])
+    ...(hasSimpleROI    ? [{ key: 'simpleROI',    label: 'Simple ROI',    right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
+    ...(hasPotentialROI ? [{ key: 'potentialROI', label: 'Potential ROI', right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
+    ...(hasAnnROI       ? [{ key: 'annualizedROI', label: 'Ann. ROI',  right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : []),
+    ...(hasCoCROI       ? [{ key: 'cashOnCashROI', label: 'CoC ROI',   right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—' }] : [])
   ];
 
   const sorted = [...propData]
