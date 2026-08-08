@@ -10,7 +10,7 @@ import {
 } from './analytics-filters.js';
 import {
   mkKpiCard, mkSummaryGrid, mkSummaryBox, mkModalTable, mkSectionLabel,
-  mkEmptyState, mkVarianceBadge, mkProgressBar, fmtK, safePct
+  mkEmptyState, mkVarianceBadge, mkProgressBar, fmtK, safePct, mkTh
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -493,7 +493,17 @@ function buildPortfolioKpis(data) {
     delta: hasCmp && prevRev != null ? safePct(totalRev, prevRev) : undefined,
     compLabel: hasCmp ? cmpLabel : undefined,
     compValue: hasCmp && prevRev > 0 ? formatEUR(prevRev) : undefined,
-    onClick: () => openRevenueModal(data)
+    onClick: () => openRevenueModal(data),
+    explain: {
+      title: 'Total Revenue', formula: 'Sum of paid STR payments\' amount, across all filtered properties, dated within the selected period.',
+      inputs: [
+        { label: 'Bookings counted', value: String(payments.length) },
+        { label: 'Properties', value: String(propCount) },
+        { label: 'Total', value: formatEUR(totalRev) }
+      ],
+      source: 'analytics-str.js:234 getPortfolioData()',
+      note: 'Only status:\'paid\' payments count — pending/materialized rows are excluded.'
+    }
   }));
 
   // 2. Nights Sold
@@ -503,7 +513,13 @@ function buildPortfolioKpis(data) {
     subtitle: `${propCount} propert${propCount !== 1 ? 'ies' : 'y'}`,
     delta: hasCmp && prevNights != null ? safePct(totalNights, prevNights) : undefined,
     compLabel: hasCmp ? cmpLabel : undefined,
-    onClick: () => openNightsModal(data)
+    onClick: () => openNightsModal(data),
+    explain: {
+      title: 'Nights Sold', formula: 'Sum of bookedNights(payment) over all paid STR payments in the selected period.',
+      inputs: [{ label: 'Total nights', value: totalNights.toLocaleString() }],
+      source: 'analytics-str.js:96 bookedNights() → analytics-str.js:247 getPortfolioData()',
+      note: 'bookedNights() returns 0 for Airbnb payout adjustments (Resolution Adjustment, Cancellation Fee, etc.) since they repeat the check-in/check-out of their originating Reservation — counting them would double-count nights.'
+    }
   }));
 
   // 3. Avg ADR (achieved)
@@ -511,7 +527,16 @@ function buildPortfolioKpis(data) {
     label: 'Avg ADR (Achieved)',
     value: avgADR > 0 ? formatEUR(avgADR, { maxFrac: 0 }) : '—',
     subtitle: 'Avg nightly rate across bookings',
-    onClick: () => openADRModal(data)
+    onClick: () => openADRModal(data),
+    explain: {
+      title: 'Avg ADR (Achieved)', formula: 'Σ(avgNightlyRate × nights) over paid bookings ÷ total nights with a recorded rate.',
+      inputs: [
+        { label: 'Nights with a rate', value: totalNights.toLocaleString() },
+        { label: 'Avg ADR', value: avgADR > 0 ? formatEUR(avgADR) : '—' }
+      ],
+      source: 'analytics-str.js:255 getPortfolioData()',
+      note: 'Payments with no avgNightlyRate, or 0 nights (payout adjustments), contribute neither to the numerator nor the denominator.'
+    }
   }));
 
   // 4. Avg Occupancy
@@ -520,7 +545,16 @@ function buildPortfolioKpis(data) {
     value: avgOcc > 0 ? avgOcc.toFixed(1) + '%' : '—',
     subtitle: 'Booked + blocked nights ÷ days',
     variant: avgOcc >= 70 ? 'success' : avgOcc >= 40 ? undefined : 'warning',
-    onClick: () => openOccModal(data)
+    onClick: () => openOccModal(data),
+    explain: {
+      title: 'Avg Occupancy', formula: 'Total occupied nights ÷ total available nights × 100, summed across all filtered properties.',
+      inputs: [
+        { label: 'Occupied nights', value: [...occByProp.values()].reduce((s, v) => s + v.occupied, 0).toLocaleString() },
+        { label: 'Available nights', value: [...occByProp.values()].reduce((s, v) => s + v.available, 0).toLocaleString() }
+      ],
+      source: 'analytics-str.js:280 getPortfolioData() (per-property via rangeOccupancy():147)',
+      note: 'Occupied = sold or Airbnb-"Reserved" nights. Available excludes owner-blocked days that were never sold — you can\'t sell a day you closed, so it shouldn\'t drag occupancy down.'
+    }
   }));
 
   // 5. Revenue vs Target
@@ -530,7 +564,16 @@ function buildPortfolioKpis(data) {
       value: vsTarget != null ? vsTarget.toFixed(1) + '%' : '—',
       subtitle: `Target: ${formatEUR(targetRev, { maxFrac: 0 })}`,
       variant: vsTarget != null && vsTarget >= 90 ? 'success' : vsTarget != null && vsTarget < 70 ? 'danger' : undefined,
-      onClick: () => openTargetModal(data)
+      onClick: () => openTargetModal(data),
+      explain: {
+        title: 'Revenue vs Target', formula: 'Actual Revenue ÷ Target Revenue × 100.',
+        inputs: [
+          { label: 'Actual Revenue', value: formatEUR(totalRev) },
+          { label: 'Target Revenue', value: formatEUR(targetRev) }
+        ],
+        source: 'analytics-str.js:480 buildPortfolioKpis() (targetRev from getPortfolioData():262-277)',
+        note: 'Target Revenue values every occupied night at its published rate — the confirmed strRateTargets ADR when set, otherwise the historic-suggestion rate (makeRateForNight():207) — so months without a confirmed target still get a target instead of reading €0.'
+      }
     }));
   }
 
@@ -621,8 +664,11 @@ function buildStrOccupancyHeatmap(data) {
   const body = el('div', { style: 'padding:0 16px 16px;overflow-x:auto' });
   const table = el('table', { class: 'table', style: 'min-width:600px' });
   const htr = el('tr');
-  htr.appendChild(el('th', {}, 'Property'));
-  monthKeys.forEach(k => htr.appendChild(el('th', { class: 'right', style: 'white-space:nowrap' }, k.label)));
+  htr.appendChild(mkTh({ label: 'Property', tip: 'Property name.' }));
+  monthKeys.forEach(k => htr.appendChild(mkTh({
+    label: k.label, right: true,
+    tip: 'Booked nights ÷ days in this month (color-coded: green ≥70%, amber ≥40%, red below).'
+  })));
   table.appendChild(el('thead', {}, htr));
 
   let anyNights = false;
@@ -663,7 +709,17 @@ function buildStrOccupancyHeatmap(data) {
             { label: 'Occupied', value: occ.occupied.toString() },
             { label: 'Open', value: monthOpen.toString() },
             { label: 'Blocked', value: occ.blocked.toString() },
-            { label: 'Occupancy %', value: occ.available > 0 ? monthPct.toFixed(1) + '%' : '—' }
+            { label: 'Occupancy %', value: occ.available > 0 ? monthPct.toFixed(1) + '%' : '—',
+              explain: {
+                title: 'Occupancy %', formula: 'Occupied nights ÷ Available nights × 100, for this property and month.',
+                inputs: [
+                  { label: 'Occupied', value: occ.occupied.toString() },
+                  { label: 'Available', value: occ.available.toString() }
+                ],
+                source: 'analytics-str.js:656 (rangeOccupancy():147)',
+                note: 'Available excludes owner-blocked nights that were never sold — a payment/reservation on an owner-blocked day still counts as occupied.'
+              }
+            }
           ], 4));
           const payFooter = el('div', { style: 'display:flex;justify-content:space-between;align-items:center;padding-top:4px' });
           payFooter.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' },
@@ -673,9 +729,9 @@ function buildStrOccupancyHeatmap(data) {
             drillDownModal(`${shortName(p.name)} — ${k.label} Bookings`,
               [...monthPays].sort((a, b) => (a.date || '').localeCompare(b.date || '')),
               [
-                { key: 'date', label: 'Date', format: v => fmtDate(v) },
-                { key: 'airbnbNights', label: 'Nights', right: true, format: v => v != null ? String(v) : '—' },
-                { key: 'amount', label: 'Amount', right: true, format: v => formatEUR(v) }
+                { key: 'date', label: 'Date', tip: 'Payment date.', format: v => fmtDate(v) },
+                { key: 'airbnbNights', label: 'Nights', right: true, tip: 'Nights booked on this payment record.', format: v => v != null ? String(v) : '—' },
+                { key: 'amount', label: 'Amount', right: true, tip: 'Paid amount for this record.', format: v => formatEUR(v) }
               ]
             );
           };
@@ -746,10 +802,17 @@ function buildComparisonTable(data, curRange) {
 
   const thead = el('thead');
   const hrow = el('tr');
-  ['Property', 'Revenue', 'Nights', 'Avg ADR', 'Occupancy', 'Bookings'].forEach((h, hi) => {
-    hrow.appendChild(el('th', {
-      style: `padding:6px 8px;text-align:${hi === 0 ? 'left' : 'right'};font-size:11px;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap`
-    }, h));
+  [
+    { label: 'Property', tip: 'Property name; colored dot matches the Monthly Revenue chart series.' },
+    { label: 'Revenue', right: true, tip: 'Sum of paid STR payments for this property in the selected period.' },
+    { label: 'Nights', right: true, tip: 'Nights sold in the selected period (excludes Airbnb payout adjustments, which would double-count nights).' },
+    { label: 'Avg ADR', right: true, tip: 'Revenue ÷ nights across this property\'s bookings.' },
+    { label: 'Occupancy', right: true, tip: 'Occupied nights ÷ available nights (excludes owner-blocked days) for the selected period.' },
+    { label: 'Bookings', right: true, tip: 'Number of paid payment records for this property in the period.' }
+  ].forEach((h, hi) => {
+    const th = mkTh(h);
+    th.style.cssText = `padding:6px 8px;text-align:${hi === 0 ? 'left' : 'right'};font-size:11px;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap${h.tip ? ';cursor:help' : ''}`;
+    hrow.appendChild(th);
   });
   thead.appendChild(hrow);
 
@@ -822,9 +885,21 @@ function buildSpotlightContent(propId, curRange) {
 
   // Summary row below chart
   const adrSummary = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px' });
-  adrSummary.appendChild(mkSummaryBox('Total Revenue', formatEUR(totalRev, { maxFrac: 0 }), curRange.label));
-  adrSummary.appendChild(mkSummaryBox('Target Revenue', targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—', 'at published rate'));
-  adrSummary.appendChild(mkSummaryBox('Avg ADR', avgADR > 0 ? formatEUR(avgADR, { maxFrac: 0 }) : '—', 'from bookings'));
+  adrSummary.appendChild(mkSummaryBox('Total Revenue', formatEUR(totalRev, { maxFrac: 0 }), curRange.label, {
+    title: 'Total Revenue', formula: 'Sum of this property\'s month.rev across the selected range (each month.rev = sum of its paid payments\' amount).',
+    inputs: [{ label: 'Total Revenue', value: formatEUR(totalRev, { maxFrac: 0 }) }],
+    source: 'analytics-str.js:320,329 getSpotlightData()'
+  }));
+  adrSummary.appendChild(mkSummaryBox('Target Revenue', targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—', 'at published rate', {
+    title: 'Target Revenue', formula: 'Sum, over every occupied night in the range, of that night\'s published rate (confirmed strRateTargets ADR when set, otherwise the historic-suggestion rate).',
+    inputs: [{ label: 'Target Revenue', value: targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—' }],
+    source: 'analytics-str.js:307-314 getSpotlightData() (makeRateForNight():207)'
+  }));
+  adrSummary.appendChild(mkSummaryBox('Avg ADR', avgADR > 0 ? formatEUR(avgADR, { maxFrac: 0 }) : '—', 'from bookings', {
+    title: 'Avg ADR', formula: 'Revenue-weighted average of each month\'s ADR: Σ(month.adr × month.nights) ÷ total nights.',
+    inputs: [{ label: 'Total nights', value: totalNights.toString() }, { label: 'Avg ADR', value: avgADR > 0 ? formatEUR(avgADR) : '—' }],
+    source: 'analytics-str.js:331 getSpotlightData()'
+  }));
   adrBody.appendChild(adrSummary);
   adrCard.appendChild(adrBody);
 
@@ -839,11 +914,21 @@ function buildSpotlightContent(propId, curRange) {
   occBody.appendChild(occWrap);
 
   const occSummary = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px' });
-  occSummary.appendChild(mkSummaryBox('Nights Sold', totalNights.toString(), 'from bookings'));
+  occSummary.appendChild(mkSummaryBox('Nights Sold', totalNights.toString(), 'from bookings', {
+    title: 'Nights Sold', formula: 'Sum of bookedNights(payment) over this property\'s paid bookings in the range.',
+    inputs: [{ label: 'Nights Sold', value: totalNights.toString() }],
+    source: 'analytics-str.js:96 bookedNights() → analytics-str.js:321,330 getSpotlightData()',
+    note: 'Airbnb payout adjustments (Resolution Adjustment, Cancellation Fee, etc.) contribute 0 nights so they don\'t double-count.'
+  }));
   const occupiedTotal = months.reduce((s, m) => s + m.occupied, 0);
   const availTotal    = months.reduce((s, m) => s + m.available, 0);
   const periodOcc = availTotal > 0 ? (occupiedTotal / availTotal * 100).toFixed(1) + '%' : '—';
-  occSummary.appendChild(mkSummaryBox('Period Occupancy', periodOcc, 'occupied ÷ available'));
+  occSummary.appendChild(mkSummaryBox('Period Occupancy', periodOcc, 'occupied ÷ available', {
+    title: 'Period Occupancy', formula: 'Total occupied nights ÷ total available nights × 100, across the selected range.',
+    inputs: [{ label: 'Occupied', value: occupiedTotal.toString() }, { label: 'Available', value: availTotal.toString() }],
+    source: 'analytics-str.js:906-908 buildSpotlightContent() (rangeOccupancy():147)',
+    note: 'Available excludes owner-blocked nights never sold.'
+  }));
   const bookings = getPaymentsInRange(curRange.start, curRange.end, new Set([propId])).length;
   occSummary.appendChild(mkSummaryBox('Bookings', bookings.toString(), curRange.label));
   occBody.appendChild(occSummary);
@@ -920,14 +1005,39 @@ function buildForwardPipelineCard() {
   // Summary row — Locked Revenue / Revenue Potential drill into the underlying
   // date-range segments so the totals are auditable.
   const sumGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px' });
-  sumGrid.appendChild(mkSummaryBox('Locked Nights', totalLocked.toString(), 'confirmed bookings'));
-  const lockedRevBox = mkSummaryBox('Locked Revenue', totalLockedRev > 0 ? formatEUR(totalLockedRev, { maxFrac: 0 }) : '—', 'at published rate');
+  sumGrid.appendChild(mkSummaryBox('Locked Nights', totalLocked.toString(), 'confirmed bookings', {
+    title: 'Locked Nights', formula: 'Count of the next 90 days that fall inside a real guest reservation (owner-blocks excluded).',
+    inputs: [{ label: 'Locked nights', value: totalLocked.toString() }],
+    source: 'analytics-str.js:359-378 getForwardPipeline()',
+    note: 'Owner-blocked/personal-use closures earn nothing and are never counted as locked.'
+  }));
+  const lockedRevBox = mkSummaryBox('Locked Revenue', totalLockedRev > 0 ? formatEUR(totalLockedRev, { maxFrac: 0 }) : '—', 'at published rate', {
+    title: 'Locked Revenue', formula: 'Sum, over locked nights, of that night\'s published rate after any promo discount.',
+    inputs: [
+      { label: 'Locked nights', value: totalLocked.toString() },
+      { label: 'Locked Revenue', value: formatEUR(totalLockedRev, { maxFrac: 0 }) }
+    ],
+    source: 'analytics-str.js:368-379 getForwardPipeline() (makeRateForNight():207)',
+    note: 'Rate = confirmed strRateTargets ADR (minus discount) when set, otherwise the historic-suggestion rate — same published-rate logic as the rest of this dashboard.'
+  });
   lockedRevBox.style.cursor = 'pointer';
   lockedRevBox.title = 'Click for locked date ranges';
   lockedRevBox.onclick = () => openPipelineDetailModal(pipeline, { type: 'locked', title: 'Forward Pipeline — Locked Nights (Next 90 Days)' });
   sumGrid.appendChild(lockedRevBox);
-  sumGrid.appendChild(mkSummaryBox('Open Nights', totalOpen.toString(), 'available to book'));
-  const potRevBox = mkSummaryBox('Revenue Potential', totalPot > 0 ? formatEUR(totalPot, { maxFrac: 0 }) : '—', 'open × target ADR');
+  sumGrid.appendChild(mkSummaryBox('Open Nights', totalOpen.toString(), 'available to book', {
+    title: 'Open Nights', formula: 'Count of the next 90 days not covered by a guest reservation or owner-block.',
+    inputs: [{ label: 'Open nights', value: totalOpen.toString() }],
+    source: 'analytics-str.js:359-381 getForwardPipeline()'
+  }));
+  const potRevBox = mkSummaryBox('Revenue Potential', totalPot > 0 ? formatEUR(totalPot, { maxFrac: 0 }) : '—', 'open × target ADR', {
+    title: 'Revenue Potential', formula: 'Sum, over open nights, of that night\'s full published rate (no discount).',
+    inputs: [
+      { label: 'Open nights', value: totalOpen.toString() },
+      { label: 'Revenue Potential', value: formatEUR(totalPot, { maxFrac: 0 }) }
+    ],
+    source: 'analytics-str.js:368-381 getForwardPipeline() (makeRateForNight():207)',
+    note: 'A best-case ceiling, not a forecast — assumes every open night sells at the full published rate with no discount.'
+  });
   potRevBox.style.cursor = 'pointer';
   potRevBox.title = 'Click for open date ranges';
   potRevBox.onclick = () => openPipelineDetailModal(pipeline, { type: 'open', title: 'Forward Pipeline — Open Nights (Next 90 Days)' });
@@ -938,15 +1048,15 @@ function buildForwardPipelineCard() {
   if (pipeline.length) {
     const hrow = el('tr');
     [
-      { label: 'Property', right: false },
-      { label: 'Locked Nights', right: true },
-      { label: 'Locked Rev', right: true },
-      { label: 'Open Nights', right: true },
-      { label: 'Rev Potential', right: true }
+      { label: 'Property', right: false, tip: 'Property name.' },
+      { label: 'Locked Nights', right: true, tip: 'Nights in the next 90 days already reserved by a guest (owner-blocks excluded).' },
+      { label: 'Locked Rev', right: true, tip: 'Locked nights valued at the published rate, after any promo discount.' },
+      { label: 'Open Nights', right: true, tip: 'Nights in the next 90 days still available to book.' },
+      { label: 'Rev Potential', right: true, tip: 'Open nights valued at the full published rate (no discount).' }
     ].forEach(h => {
-      hrow.appendChild(el('th', {
-        style: `padding:6px 8px;text-align:${h.right ? 'right' : 'left'};font-size:11px;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap`
-      }, h.label));
+      const th = mkTh(h);
+      th.style.cssText = `padding:6px 8px;text-align:${h.right ? 'right' : 'left'};font-size:11px;color:var(--text-muted);border-bottom:1px solid rgba(255,255,255,0.08);white-space:nowrap${h.tip ? ';cursor:help' : ''}`;
+      hrow.appendChild(th);
     });
     const tbody = el('tbody');
     pipeline.forEach((r, i) => {
@@ -996,18 +1106,25 @@ function openPipelineDetailModal(pipeline, { propId = null, type = null, title }
     const rangeEnd = rows.reduce((mx, r) => r.end > mx ? r.end : mx, rows[0].end);
     body.appendChild(mkSummaryGrid([
       { label: 'Segments', value: rows.length.toString() },
-      { label: 'Total Value', value: formatEUR(totalValue, { maxFrac: 0 }) },
+      { label: 'Total Value', value: formatEUR(totalValue, { maxFrac: 0 }),
+        explain: {
+          title: 'Total Value', formula: 'Sum of each date-range segment\'s value (nights × published rate for that segment).',
+          inputs: [{ label: 'Segments', value: rows.length.toString() }, { label: 'Total Value', value: formatEUR(totalValue, { maxFrac: 0 }) }],
+          source: 'analytics-str.js:369-391 getForwardPipeline()',
+          note: 'Matches the Locked Revenue / Revenue Potential totals for the same filter — this table is the auditable breakdown behind those figures.'
+        }
+      },
       { label: 'Date Range', value: `${fmtDate(rows[0].start)} – ${fmtDate(rangeEnd)}` }
     ], 3));
 
     body.appendChild(mkModalTable(
       [
-        { label: 'Property' },
-        { label: 'Type' },
-        { label: 'Dates' },
-        { label: 'Nights', right: true },
-        { label: 'Avg Published Rate', right: true },
-        { label: 'Total Value', right: true }
+        { label: 'Property', tip: 'Property name.' },
+        { label: 'Type', tip: 'Locked = an existing guest reservation; Open = still available to book.' },
+        { label: 'Dates', tip: 'Consecutive-night date range of this segment.' },
+        { label: 'Nights', right: true, tip: 'Number of nights in this segment.' },
+        { label: 'Avg Published Rate', right: true, tip: 'This segment\'s total value ÷ its nights.' },
+        { label: 'Total Value', right: true, tip: 'Nights × published rate for this segment (discounted for Locked, full rate for Open).' }
       ],
       rows.map(r => [
         shortName(r.propName),
@@ -1030,13 +1147,25 @@ function openRevenueModal(data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Revenue', value: formatEUR(totalRev) },
+    { label: 'Total Revenue', value: formatEUR(totalRev),
+      explain: {
+        title: 'Total Revenue', formula: 'Sum of paid STR payments\' amount, across all filtered properties, in the selected period.',
+        inputs: [{ label: 'Bookings counted', value: String(payments.length) }, { label: 'Total', value: formatEUR(totalRev) }],
+        source: 'analytics-str.js:234 getPortfolioData()',
+        note: 'Only status:\'paid\' payments count.'
+      }
+    },
     { label: 'Bookings', value: payments.length.toString() }
   ], 2));
 
   body.appendChild(mkSectionLabel('Revenue by Property'));
   body.appendChild(mkModalTable(
-    ['Property', 'Revenue', '% of Total', 'Bookings'],
+    [
+      { label: 'Property', tip: 'Property name.' },
+      { label: 'Revenue', tip: 'Sum of paid STR payments for this property in the selected period.' },
+      { label: '% of Total', tip: 'This property\'s revenue ÷ portfolio total revenue.' },
+      { label: 'Bookings', tip: 'Number of paid payment records for this property in the period.' }
+    ],
     props.map(p => {
       const rev  = revByProp.get(p.id) || 0;
       const pPays = payments.filter(pay => pay.propertyId === p.id);
@@ -1048,7 +1177,12 @@ function openRevenueModal(data) {
   body.appendChild(mkSectionLabel(`Top Bookings — ${data.rangeLabel}`));
   const top = [...payments].sort((a, b) => b.amount - a.amount).slice(0, 10);
   body.appendChild(mkModalTable(
-    ['Date', 'Property', 'Nights', 'Amount'],
+    [
+      { label: 'Date', tip: 'Payment date.' },
+      { label: 'Property', tip: 'Property this booking is attributed to.' },
+      { label: 'Nights', tip: 'Nights booked on this payment record.' },
+      { label: 'Amount', tip: 'Paid amount for this record.' }
+    ],
     top.map(p => [
       p.date || '—',
       shortName(byId('properties', p.propertyId)?.name || '—'),
@@ -1070,7 +1204,14 @@ function openNightsModal(data) {
     const nights = sumNights(pPays);
     return [shortName(p.name), nights.toString(), pPays.length.toString()];
   });
-  body.appendChild(mkModalTable(['Property', 'Nights Sold', 'Bookings'], rows, { highlight: 1 }));
+  body.appendChild(mkModalTable(
+    [
+      { label: 'Property', tip: 'Property name.' },
+      { label: 'Nights Sold', tip: 'Sum of bookedNights(payment) for this property — 0 for Airbnb payout adjustments so nights aren\'t double-counted.' },
+      { label: 'Bookings', tip: 'Number of paid payment records for this property in the period.' }
+    ],
+    rows, { highlight: 1 }
+  ));
 
   body.appendChild(mkSectionLabel('Monthly Breakdown (All Properties)'));
   const byMonth = monthKeys.map(() => 0);
@@ -1079,7 +1220,10 @@ function openNightsModal(data) {
     if (idx != null) byMonth[idx] += bookedNights(p);
   });
   body.appendChild(mkModalTable(
-    ['Month', 'Nights Sold'],
+    [
+      { label: 'Month', tip: 'Calendar month.' },
+      { label: 'Nights Sold', tip: 'Sum of bookedNights(payment) across all properties, for payments dated in this month.' }
+    ],
     byMonth.map((n, i) => [monthKeys[i].label, n > 0 ? n.toString() : '—']),
     { highlight: 1 }
   ));
@@ -1093,7 +1237,12 @@ function openADRModal(data) {
 
   body.appendChild(mkSectionLabel('ADR by Property'));
   body.appendChild(mkModalTable(
-    ['Property', 'Avg ADR', 'Nights', 'Bookings'],
+    [
+      { label: 'Property', tip: 'Property name.' },
+      { label: 'Avg ADR', tip: 'Revenue ÷ nights across this property\'s bookings.' },
+      { label: 'Nights', tip: 'Nights sold in the period (excludes Airbnb payout adjustments).' },
+      { label: 'Bookings', tip: 'Number of paid payment records for this property in the period.' }
+    ],
     props.map(p => {
       const pPays = payments.filter(pay => pay.propertyId === p.id);
       const nights = sumNights(pPays);
@@ -1111,7 +1260,14 @@ function openOccModal(data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   body.appendChild(mkModalTable(
-    ['Property', 'Occupancy %', 'Occupied', 'Open', 'Blocked (off-market)', 'Available'],
+    [
+      { label: 'Property', tip: 'Property name.' },
+      { label: 'Occupancy %', tip: 'Occupied ÷ Available × 100.' },
+      { label: 'Occupied', tip: 'Nights sold or Airbnb-"Reserved" in the period.' },
+      { label: 'Open', tip: 'Available but unsold nights (Available − Occupied).' },
+      { label: 'Blocked (off-market)', tip: 'Owner-closed nights, excluded from Available (no revenue possible).' },
+      { label: 'Available', tip: 'Total days in the period minus Blocked nights.' }
+    ],
     props.map(p => {
       const occ = occByProp.get(p.id) || { pct: 0, occupied: 0, available: 0, open: 0, blocked: 0 };
       return [shortName(p.name), occ.pct.toFixed(1) + '%', occ.occupied.toString(), occ.open.toString(), occ.blocked.toString(), occ.available.toString()];
@@ -1121,7 +1277,12 @@ function openOccModal(data) {
 
   body.appendChild(mkSectionLabel('Monthly Occupancy Trend (All Properties)'));
   body.appendChild(mkModalTable(
-    [{ label: 'Month' }, { label: 'Occupied', right: true }, { label: 'Available', right: true }, { label: 'Occupancy %', right: true }],
+    [
+      { label: 'Month', tip: 'Calendar month.' },
+      { label: 'Occupied', right: true, tip: 'Occupied nights across all properties in this month.' },
+      { label: 'Available', right: true, tip: 'Available nights (excl. owner-blocked) across all properties in this month.' },
+      { label: 'Occupancy %', right: true, tip: 'Occupied ÷ Available × 100 for this month.' }
+    ],
     monthKeys.map(k => {
       const occ = occByMonth.get(k.key) || 0;
       const avail = availByMonth.get(k.key) || 0;
@@ -1141,16 +1302,46 @@ function openTargetModal(data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   body.appendChild(mkSummaryGrid([
-    { label: 'Actual Revenue', value: formatEUR(totalRev) },
-    { label: 'Target Revenue', value: formatEUR(targetRev) },
-    { label: 'Achievement', value: targetRev > 0 ? (totalRev / targetRev * 100).toFixed(1) + '%' : '—' },
-    { label: 'Variance', value: formatEUR(totalRev - targetRev) }
+    { label: 'Actual Revenue', value: formatEUR(totalRev),
+      explain: {
+        title: 'Actual Revenue', formula: 'Sum of paid STR payments\' amount in the selected period.',
+        inputs: [{ label: 'Total', value: formatEUR(totalRev) }],
+        source: 'analytics-str.js:234 getPortfolioData()'
+      }
+    },
+    { label: 'Target Revenue', value: formatEUR(targetRev),
+      explain: {
+        title: 'Target Revenue', formula: 'Sum, over every occupied night in the period, of that night\'s published rate (confirmed strRateTargets ADR when set, otherwise the historic-suggestion rate).',
+        inputs: [{ label: 'Target Revenue', value: formatEUR(targetRev) }],
+        source: 'analytics-str.js:262-277 getPortfolioData() (rangeOccupancy():147, makeRateForNight():207)',
+        note: 'Ensures months/properties without a confirmed target still get a meaningful target instead of reading €0.'
+      }
+    },
+    { label: 'Achievement', value: targetRev > 0 ? (totalRev / targetRev * 100).toFixed(1) + '%' : '—',
+      explain: {
+        title: 'Achievement', formula: 'Actual Revenue ÷ Target Revenue × 100.',
+        inputs: [{ label: 'Actual Revenue', value: formatEUR(totalRev) }, { label: 'Target Revenue', value: formatEUR(targetRev) }],
+        source: 'analytics-str.js:1278 openTargetModal()'
+      }
+    },
+    { label: 'Variance', value: formatEUR(totalRev - targetRev),
+      explain: {
+        title: 'Variance', formula: 'Actual Revenue − Target Revenue.',
+        inputs: [{ label: 'Actual Revenue', value: formatEUR(totalRev) }, { label: 'Target Revenue', value: formatEUR(targetRev) }],
+        source: 'analytics-str.js:1278 openTargetModal()'
+      }
+    }
   ], 4));
 
   body.appendChild(mkSectionLabel('By Property'));
   const { targetRevByProp } = data;
   body.appendChild(mkModalTable(
-    ['Property', 'Actual', 'Target', 'Achievement'],
+    [
+      { label: 'Property', tip: 'Property name.' },
+      { label: 'Actual', tip: 'Actual revenue for this property in the selected period.' },
+      { label: 'Target', tip: 'Target revenue for this property (occupied nights × published rate).' },
+      { label: 'Achievement', tip: 'Actual ÷ Target × 100.' }
+    ],
     props.map(p => {
       const rev = revByProp.get(p.id) || 0;
       const propTarget = targetRevByProp.get(p.id) || 0;
@@ -1177,24 +1368,56 @@ function openPropertyRangeModal(propId, curRange) {
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Revenue', value: formatEUR(totalRev, { maxFrac: 0 }), sub: curRange.label },
-    { label: 'Nights Sold', value: totalNights.toString() },
-    { label: 'Avg ADR', value: avgADR > 0 ? formatEUR(avgADR, { maxFrac: 0 }) : '—' },
-    { label: 'Occupancy', value: availTotal > 0 ? periodOccPct.toFixed(1) + '%' : '—' },
-    { label: 'Target Revenue', value: targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—' },
+    { label: 'Total Revenue', value: formatEUR(totalRev, { maxFrac: 0 }), sub: curRange.label,
+      explain: {
+        title: 'Total Revenue', formula: 'Sum of this property\'s month.rev across the selected range (each month.rev = sum of its paid payments\' amount).',
+        inputs: [{ label: 'Total Revenue', value: formatEUR(totalRev, { maxFrac: 0 }) }],
+        source: 'analytics-str.js:320,329 getSpotlightData()'
+      }
+    },
+    { label: 'Nights Sold', value: totalNights.toString(),
+      explain: {
+        title: 'Nights Sold', formula: 'Sum of bookedNights(payment) over this property\'s paid bookings in the range.',
+        inputs: [{ label: 'Nights Sold', value: totalNights.toString() }],
+        source: 'analytics-str.js:96 bookedNights() → analytics-str.js:321,330 getSpotlightData()',
+        note: 'Airbnb payout adjustments (Resolution Adjustment, Cancellation Fee, etc.) contribute 0 nights so they don\'t double-count.'
+      }
+    },
+    { label: 'Avg ADR', value: avgADR > 0 ? formatEUR(avgADR, { maxFrac: 0 }) : '—',
+      explain: {
+        title: 'Avg ADR', formula: 'Revenue-weighted average of each month\'s ADR: Σ(month.adr × month.nights) ÷ total nights.',
+        inputs: [{ label: 'Total nights', value: totalNights.toString() }, { label: 'Avg ADR', value: avgADR > 0 ? formatEUR(avgADR) : '—' }],
+        source: 'analytics-str.js:331 getSpotlightData()'
+      }
+    },
+    { label: 'Occupancy', value: availTotal > 0 ? periodOccPct.toFixed(1) + '%' : '—',
+      explain: {
+        title: 'Occupancy', formula: 'Total occupied nights ÷ total available nights × 100, across the selected range.',
+        inputs: [{ label: 'Occupied', value: occupiedTotal.toString() }, { label: 'Available', value: availTotal.toString() }],
+        source: 'analytics-str.js:1343-1345 openPropertyRangeModal() (rangeOccupancy():147)',
+        note: 'Available excludes owner-blocked nights never sold.'
+      }
+    },
+    { label: 'Target Revenue', value: targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—',
+      explain: {
+        title: 'Target Revenue', formula: 'Sum, over every occupied night in the range, of that night\'s published rate (confirmed strRateTargets ADR when set, otherwise the historic-suggestion rate).',
+        inputs: [{ label: 'Target Revenue', value: targetRev > 0 ? formatEUR(targetRev, { maxFrac: 0 }) : '—' }],
+        source: 'analytics-str.js:307-314 getSpotlightData() (makeRateForNight():207)'
+      }
+    },
     { label: 'Bookings', value: bookings.toString() }
   ], 3));
 
   body.appendChild(mkSectionLabel('Monthly Breakdown'));
   body.appendChild(mkModalTable(
     [
-      { label: 'Month' },
-      { label: 'Revenue', right: true },
-      { label: 'Achieved ADR', right: true },
-      { label: 'Target ADR', right: true },
-      { label: 'Occupied', right: true },
-      { label: 'Available', right: true },
-      { label: 'Occupancy %', right: true }
+      { label: 'Month', tip: 'Calendar month.' },
+      { label: 'Revenue', right: true, tip: 'Sum of paid payments for this property in this month.' },
+      { label: 'Achieved ADR', right: true, tip: 'This month\'s revenue-per-night from bookings: Σ(rate×nights) ÷ nights.' },
+      { label: 'Target ADR', right: true, tip: 'Confirmed strRateTargets ADR for this property/month, if set.' },
+      { label: 'Occupied', right: true, tip: 'Occupied nights (sold or Airbnb-"Reserved") this month.' },
+      { label: 'Available', right: true, tip: 'Available nights (excl. owner-blocked) this month.' },
+      { label: 'Occupancy %', right: true, tip: 'Occupied ÷ Available × 100 for this month.' }
     ],
     months.map(m => [
       m.label,
@@ -1220,7 +1443,13 @@ function openMonthRevenueModal(monthIdx, data) {
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Revenue', value: formatEUR(moRev) },
+    { label: 'Total Revenue', value: formatEUR(moRev),
+      explain: {
+        title: 'Total Revenue', formula: 'Sum of paid STR payments\' amount dated within this month, across all filtered properties.',
+        inputs: [{ label: 'Bookings counted', value: String(moPays.length) }, { label: 'Total', value: formatEUR(moRev) }],
+        source: 'analytics-str.js:1419-1420 openMonthRevenueModal()'
+      }
+    },
     { label: 'Bookings',      value: moPays.length.toString() }
   ], 2));
 
@@ -1240,7 +1469,12 @@ function openMonthRevenueModal(monthIdx, data) {
 
     body.appendChild(mkSectionLabel('By Property'));
     body.appendChild(mkModalTable(
-      [{ label: 'Property' }, { label: 'Bookings', right: true }, { label: 'Nights', right: true }, { label: 'Revenue', right: true }],
+      [
+        { label: 'Property', tip: 'Property name.' },
+        { label: 'Bookings', right: true, tip: 'Number of paid payment records this month.' },
+        { label: 'Nights', right: true, tip: 'Nights sold this month (excludes Airbnb payout adjustments).' },
+        { label: 'Revenue', right: true, tip: 'Sum of paid payments for this property this month.' }
+      ],
       propRows.map(r => [r.name, r.count.toString(), r.nights > 0 ? r.nights.toString() : '—', formatEUR(r.rev)]),
       { highlight: 3 }
     ));
@@ -1253,10 +1487,10 @@ function openMonthRevenueModal(monthIdx, data) {
       drillDownModal(`${k.label} — All Bookings`,
         [...moPays].sort((a, b) => (a.airbnbCheckIn || a.date) < (b.airbnbCheckIn || b.date) ? -1 : 1),
         [
-          { key: 'airbnbCheckIn', label: 'Check-in', format: (v, row) => v || row.date || '—' },
-          { key: 'propertyId', label: 'Property', format: v => shortName(byId('properties', v)?.name || '—') },
-          { key: 'airbnbNights', label: 'Nights', right: true, format: v => v != null ? String(v) : '—' },
-          { key: 'amount', label: 'Amount', right: true, format: v => formatEUR(v) }
+          { key: 'airbnbCheckIn', label: 'Check-in', tip: 'Check-in date (falls back to payment date).', format: (v, row) => v || row.date || '—' },
+          { key: 'propertyId', label: 'Property', tip: 'Property this booking is attributed to.', format: v => shortName(byId('properties', v)?.name || '—') },
+          { key: 'airbnbNights', label: 'Nights', right: true, tip: 'Nights booked on this payment record.', format: v => v != null ? String(v) : '—' },
+          { key: 'amount', label: 'Amount', right: true, tip: 'Paid amount for this record.', format: v => formatEUR(v) }
         ]
       );
     };
@@ -1279,10 +1513,36 @@ function openMonthSpotlightModal(monthIdx, propId, months, curRange) {
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Revenue',        value: formatEUR(mo.rev) },
-    { label: 'Achieved ADR',   value: mo.adr > 0 ? formatEUR(mo.adr) : '—' },
-    { label: 'Target ADR',     value: mo.target != null ? formatEUR(mo.target) : '—' },
-    { label: 'Occupancy',      value: mo.occ.toFixed(1) + '%' },
+    { label: 'Revenue',        value: formatEUR(mo.rev),
+      explain: {
+        title: 'Revenue', formula: 'Sum of this property\'s paid payments\' amount dated within this month.',
+        inputs: [{ label: 'Revenue', value: formatEUR(mo.rev) }],
+        source: 'analytics-str.js:320 getSpotlightData()'
+      }
+    },
+    { label: 'Achieved ADR',   value: mo.adr > 0 ? formatEUR(mo.adr) : '—',
+      explain: {
+        title: 'Achieved ADR', formula: 'Σ(avgNightlyRate × nights) over this month\'s paid bookings ÷ total nights.',
+        inputs: [{ label: 'Achieved ADR', value: mo.adr > 0 ? formatEUR(mo.adr) : '—' }, { label: 'Nights', value: mo.nights.toString() }],
+        source: 'analytics-str.js:322 getSpotlightData()'
+      }
+    },
+    { label: 'Target ADR',     value: mo.target != null ? formatEUR(mo.target) : '—',
+      explain: {
+        title: 'Target ADR', formula: 'The confirmed strRateTargets.targetADR for this property and month, if one has been entered.',
+        inputs: [{ label: 'Target ADR', value: mo.target != null ? formatEUR(mo.target) : '—' }],
+        source: 'analytics-str.js:60 getTargetADR() → analytics-str.js:318,326 getSpotlightData()',
+        note: 'A raw lookup, not a calculation — shows "—" when no target has been set for this month.'
+      }
+    },
+    { label: 'Occupancy',      value: mo.occ.toFixed(1) + '%',
+      explain: {
+        title: 'Occupancy', formula: 'Occupied nights ÷ Available nights × 100, for this month.',
+        inputs: [{ label: 'Occupied', value: mo.occupied.toString() }, { label: 'Available', value: mo.available.toString() }],
+        source: 'analytics-str.js:325 getSpotlightData() (rangeOccupancy():147)',
+        note: 'Available excludes owner-blocked nights never sold.'
+      }
+    },
     { label: 'Occupied Nights',  value: mo.occupied.toString() },
     { label: 'Available Nights', value: mo.available.toString() }
   ], 3));
@@ -1296,11 +1556,11 @@ function openMonthSpotlightModal(monthIdx, propId, months, curRange) {
       drillDownModal(`${shortName(prop?.name || '')} — ${mo.label} Bookings`,
         pays,
         [
-          { key: 'airbnbCheckIn', label: 'Check-in', format: (v, row) => v || row.date || '—' },
-          { key: 'airbnbCheckOut', label: 'Check-out', format: v => v || '—' },
-          { key: 'airbnbNights', label: 'Nights', right: true, format: v => v != null ? String(v) : '—' },
-          { key: 'avgNightlyRate', label: 'ADR', right: true, format: v => v ? formatEUR(v) : '—' },
-          { key: 'amount', label: 'Amount', right: true, format: v => formatEUR(v) }
+          { key: 'airbnbCheckIn', label: 'Check-in', tip: 'Check-in date.', format: (v, row) => v || row.date || '—' },
+          { key: 'airbnbCheckOut', label: 'Check-out', tip: 'Check-out date.', format: v => v || '—' },
+          { key: 'airbnbNights', label: 'Nights', right: true, tip: 'Nights booked on this payment record.', format: v => v != null ? String(v) : '—' },
+          { key: 'avgNightlyRate', label: 'ADR', right: true, tip: 'Average nightly rate for this booking.', format: v => v ? formatEUR(v) : '—' },
+          { key: 'amount', label: 'Amount', right: true, tip: 'Paid amount for this record.', format: v => formatEUR(v) }
         ]
       );
     };
