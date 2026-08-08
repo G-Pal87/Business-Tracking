@@ -5,6 +5,10 @@ import * as charts from '../core/charts.js';
 import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, getForecastEntries, upsertForecastEntry, removeForecastEntry, sumForecastEntries, listActive, listActivePayments, generatePaymentSchedule } from '../core/data.js';
 import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { backfillAirbnbForecastEntries } from './payments.js';
+// mkExplainButton is the same "ⓘ how is this calculated" affordance used by
+// the analytics dashboards (see analytics-helpers.js) — reused here for the
+// Annual Summary panel's computed figures rather than re-implementing it.
+import { mkExplainButton } from './analytics-helpers.js';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -397,26 +401,77 @@ function buildPropertySection(wrap) {
     const insightItems = buildForecastInsightItems(allMonths, yearTarget);
     const items = [
       ...insightItems,
-      summaryRow('Forecast Revenue',      formatEUR(forecastRev)),
-      summaryRow('Forecast Expenses',     formatEUR(forecastExp)),
-      summaryRow('Forecast Net',          formatEUR(forecastRev - forecastExp)),
+      summaryRow('Forecast Revenue',      formatEUR(forecastRev), null, {
+        title: 'Forecast Revenue', formula: 'Sum of each selected month\'s Forecast Revenue, across every selected property and year.',
+        inputs: [{ label: 'Months summed', value: String(allMonths.length) }, { label: 'Total', value: formatEUR(forecastRev) }],
+        source: 'js/modules/forecast.js buildPropertySection() renderSummary()',
+        note: 'Each month\'s figure excludes cancelled/removed forecast entries — see sumForecastEntries() in core/data.js.'
+      }),
+      summaryRow('Forecast Expenses',     formatEUR(forecastExp), null, {
+        title: 'Forecast Expenses', formula: 'Sum of each selected month\'s Forecast Expenses, across every selected property and year.',
+        inputs: [{ label: 'Months summed', value: String(allMonths.length) }, { label: 'Total', value: formatEUR(forecastExp) }],
+        source: 'js/modules/forecast.js buildPropertySection() renderSummary()'
+      }),
+      summaryRow('Forecast Net',          formatEUR(forecastRev - forecastExp), null, {
+        title: 'Forecast Net', formula: 'Forecast Revenue − Forecast Expenses',
+        inputs: [{ label: 'Forecast Revenue', value: formatEUR(forecastRev) }, { label: 'Forecast Expenses', value: formatEUR(forecastExp) }],
+        source: 'js/modules/forecast.js buildPropertySection() renderSummary()'
+      }),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
-      summaryRow('Actual Revenue YTD',    formatEUR(actualRev)),
-      summaryRow('Actual Expenses YTD',   formatEUR(actualExp)),
-      summaryRow('Actual Net YTD',        formatEUR(actualRev - actualExp)),
+      summaryRow('Actual Revenue YTD',    formatEUR(actualRev), null, {
+        title: 'Actual Revenue YTD', formula: 'Sum of actual paid payments dated within each selected month, across every selected property and year.',
+        inputs: [{ label: 'Total', value: formatEUR(actualRev) }],
+        source: 'js/core/data.js getForecastVsActual() — `actualRev`'
+      }),
+      summaryRow('Actual Expenses YTD',   formatEUR(actualExp), null, {
+        title: 'Actual Expenses YTD', formula: 'Sum of actual expenses dated within each selected month, across every selected property and year. Excludes CapEx/renovation.',
+        inputs: [{ label: 'Total', value: formatEUR(actualExp) }],
+        source: 'js/core/data.js getForecastVsActual() — `actualExp`'
+      }),
+      summaryRow('Actual Net YTD',        formatEUR(actualRev - actualExp), null, {
+        title: 'Actual Net YTD', formula: 'Actual Revenue YTD − Actual Expenses YTD',
+        inputs: [{ label: 'Actual Revenue YTD', value: formatEUR(actualRev) }, { label: 'Actual Expenses YTD', value: formatEUR(actualExp) }],
+        source: 'js/modules/forecast.js buildPropertySection() renderSummary()'
+      }),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
-      summaryRow('Revenue Variance YTD',  formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger'),
+      summaryRow('Revenue Variance YTD',  formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger', {
+        title: 'Revenue Variance YTD', formula: 'Actual Revenue YTD − Forecast Revenue',
+        inputs: [{ label: 'Actual Revenue YTD', value: formatEUR(actualRev) }, { label: 'Forecast Revenue', value: formatEUR(forecastRev) }],
+        source: 'js/modules/forecast.js buildPropertySection() renderSummary()'
+      }),
       summaryRow('Revenue Variance %',    forecastRev > 0 ? ((actualRev - forecastRev) / forecastRev * 100).toFixed(1) + '%' : '—',
-        actualRev >= forecastRev ? 'success' : 'danger'),
+        actualRev >= forecastRev ? 'success' : 'danger', {
+        title: 'Revenue Variance %', formula: '(Actual Revenue YTD − Forecast Revenue) ÷ Forecast Revenue × 100',
+        inputs: [{ label: 'Revenue Variance YTD', value: formatEUR(actualRev - forecastRev) }, { label: 'Forecast Revenue', value: formatEUR(forecastRev) }],
+        source: 'js/modules/forecast.js buildPropertySection() renderSummary()',
+        note: 'Shows "—" when Forecast Revenue is €0 to avoid dividing by zero.'
+      }),
     ];
     if (yearTarget.revenue || yearTarget.expenses) {
       const ytRev = yearTarget.revenue || 0;
       items.push(
         el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
-        summaryRow('Annual Target Revenue',  formatEUR(ytRev)),
-        summaryRow('Annual Target Expenses', formatEUR(yearTarget.expenses || 0)),
-        summaryRow('Forecast vs Target',     formatEUR(forecastRev - ytRev), forecastRev >= ytRev ? 'success' : 'danger'),
-        summaryRow('Actual vs Target',       formatEUR(actualRev   - ytRev), actualRev   >= ytRev ? 'success' : 'danger'),
+        summaryRow('Annual Target Revenue',  formatEUR(ytRev), null, {
+          title: 'Annual Target Revenue', formula: 'Sum of each selected property\'s own Annual Target Revenue for the selected year(s).',
+          inputs: [{ label: 'Total', value: formatEUR(ytRev) }],
+          source: 'js/core/data.js saveForecastYear() / fc.yearTarget.revenue',
+          note: 'Set per-property on the "Annual Target" bar above the monthly grid.'
+        }),
+        summaryRow('Annual Target Expenses', formatEUR(yearTarget.expenses || 0), null, {
+          title: 'Annual Target Expenses', formula: 'Sum of each selected property\'s own Annual Target Expenses for the selected year(s).',
+          inputs: [{ label: 'Total', value: formatEUR(yearTarget.expenses || 0) }],
+          source: 'js/core/data.js saveForecastYear() / fc.yearTarget.expenses'
+        }),
+        summaryRow('Forecast vs Target',     formatEUR(forecastRev - ytRev), forecastRev >= ytRev ? 'success' : 'danger', {
+          title: 'Forecast vs Target', formula: 'Forecast Revenue − Annual Target Revenue',
+          inputs: [{ label: 'Forecast Revenue', value: formatEUR(forecastRev) }, { label: 'Annual Target Revenue', value: formatEUR(ytRev) }],
+          source: 'js/modules/forecast.js buildPropertySection() renderSummary()'
+        }),
+        summaryRow('Actual vs Target',       formatEUR(actualRev   - ytRev), actualRev   >= ytRev ? 'success' : 'danger', {
+          title: 'Actual vs Target', formula: 'Actual Revenue YTD − Annual Target Revenue',
+          inputs: [{ label: 'Actual Revenue YTD', value: formatEUR(actualRev) }, { label: 'Annual Target Revenue', value: formatEUR(ytRev) }],
+          source: 'js/modules/forecast.js buildPropertySection() renderSummary()'
+        }),
       );
     }
     el2.appendChild(el('div', { class: 'flex-col gap-8', style: 'padding:16px' }, ...items));
@@ -721,21 +776,52 @@ function buildServiceSection(wrap) {
     const insightItems = buildForecastInsightItems(allMonths, yearTarget);
     const items = [
       ...insightItems,
-      summaryRow('Forecast Revenue', formatEUR(forecastRev)),
+      summaryRow('Forecast Revenue', formatEUR(forecastRev), null, {
+        title: 'Forecast Revenue', formula: 'Sum of each selected month\'s Forecast Revenue, across every selected service and year.',
+        inputs: [{ label: 'Months summed', value: String(allMonths.length) }, { label: 'Total', value: formatEUR(forecastRev) }],
+        source: 'js/modules/forecast.js buildServiceSection() renderSummary()',
+        note: 'Each month\'s figure excludes cancelled/removed forecast entries — see sumForecastEntries() in core/data.js.'
+      }),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
-      summaryRow('Actual Revenue YTD', formatEUR(actualRev)),
+      summaryRow('Actual Revenue YTD', formatEUR(actualRev), null, {
+        title: 'Actual Revenue YTD', formula: 'Sum of actual paid invoices issued within each selected month, across every selected service and year.',
+        inputs: [{ label: 'Total', value: formatEUR(actualRev) }],
+        source: 'js/core/data.js getForecastVsActual() — `actualRev`'
+      }),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
-      summaryRow('Revenue Variance YTD', formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger'),
+      summaryRow('Revenue Variance YTD', formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger', {
+        title: 'Revenue Variance YTD', formula: 'Actual Revenue YTD − Forecast Revenue',
+        inputs: [{ label: 'Actual Revenue YTD', value: formatEUR(actualRev) }, { label: 'Forecast Revenue', value: formatEUR(forecastRev) }],
+        source: 'js/modules/forecast.js buildServiceSection() renderSummary()'
+      }),
       summaryRow('Revenue Variance %',   forecastRev > 0 ? ((actualRev - forecastRev) / forecastRev * 100).toFixed(1) + '%' : '—',
-        actualRev >= forecastRev ? 'success' : 'danger'),
+        actualRev >= forecastRev ? 'success' : 'danger', {
+        title: 'Revenue Variance %', formula: '(Actual Revenue YTD − Forecast Revenue) ÷ Forecast Revenue × 100',
+        inputs: [{ label: 'Revenue Variance YTD', value: formatEUR(actualRev - forecastRev) }, { label: 'Forecast Revenue', value: formatEUR(forecastRev) }],
+        source: 'js/modules/forecast.js buildServiceSection() renderSummary()',
+        note: 'Shows "—" when Forecast Revenue is €0 to avoid dividing by zero.'
+      }),
     ];
     if (yearTarget.revenue) {
       const ytRev = yearTarget.revenue;
       items.push(
         el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
-        summaryRow('Annual Target', formatEUR(ytRev)),
-        summaryRow('Forecast vs Target', formatEUR(forecastRev - ytRev), forecastRev >= ytRev ? 'success' : 'danger'),
-        summaryRow('Actual vs Target', formatEUR(actualRev - ytRev), actualRev >= ytRev ? 'success' : 'danger'),
+        summaryRow('Annual Target', formatEUR(ytRev), null, {
+          title: 'Annual Target', formula: 'Sum of each selected service\'s own Annual Target Revenue for the selected year(s).',
+          inputs: [{ label: 'Total', value: formatEUR(ytRev) }],
+          source: 'js/core/data.js saveForecastYear() / fc.yearTarget.revenue',
+          note: 'Set per-service on the "Annual Target" bar above the monthly grid.'
+        }),
+        summaryRow('Forecast vs Target', formatEUR(forecastRev - ytRev), forecastRev >= ytRev ? 'success' : 'danger', {
+          title: 'Forecast vs Target', formula: 'Forecast Revenue − Annual Target',
+          inputs: [{ label: 'Forecast Revenue', value: formatEUR(forecastRev) }, { label: 'Annual Target', value: formatEUR(ytRev) }],
+          source: 'js/modules/forecast.js buildServiceSection() renderSummary()'
+        }),
+        summaryRow('Actual vs Target', formatEUR(actualRev - ytRev), actualRev >= ytRev ? 'success' : 'danger', {
+          title: 'Actual vs Target', formula: 'Actual Revenue YTD − Annual Target',
+          inputs: [{ label: 'Actual Revenue YTD', value: formatEUR(actualRev) }, { label: 'Annual Target', value: formatEUR(ytRev) }],
+          source: 'js/modules/forecast.js buildServiceSection() renderSummary()'
+        }),
       );
     }
     el2.appendChild(el('div', { class: 'flex-col gap-8', style: 'padding:16px' }, ...items));
@@ -828,23 +914,23 @@ function getActualExpRows(entityId, type, monthKey) {
 }
 
 const FC_REV_COLS = [
-  { key: 'date',   label: 'Date',       format: v => fmtDate(v) },
-  { key: 'source', label: 'Source' },
-  { key: 'ref',    label: 'Type' },
-  { key: 'code',   label: 'Conf. Code' },
-  { key: 'eur',    label: 'EUR',        right: true, format: v => formatEUR(v) }
+  { key: 'date',   label: 'Date',       format: v => fmtDate(v), tip: 'Payment date (property) or invoice issue date (service).' },
+  { key: 'source', label: 'Source',     tip: 'Property this payment belongs to (property forecast) or client billed (service forecast).' },
+  { key: 'ref',    label: 'Type',       tip: 'Payment/booking type, e.g. Airbnb vs manual (property), or the invoice number (service).' },
+  { key: 'code',   label: 'Conf. Code', tip: 'Airbnb confirmation code, when the payment is booking-linked (property only).' },
+  { key: 'eur',    label: 'EUR',        right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at this record\'s date.' }
 ];
 const FC_EXP_COLS = [
-  { key: 'date',     label: 'Date',        format: v => fmtDate(v) },
-  { key: 'category', label: 'Category'    },
-  { key: 'desc',     label: 'Description' },
-  { key: 'vendor',   label: 'Vendor'      },
-  { key: 'eur',      label: 'EUR',         right: true, format: v => formatEUR(v) }
+  { key: 'date',     label: 'Date',        format: v => fmtDate(v), tip: 'Date the expense was recorded.' },
+  { key: 'category', label: 'Category',    tip: 'Expense category, e.g. Cleaning, Maintenance, Utilities.' },
+  { key: 'desc',     label: 'Description', tip: 'Expense description as entered.' },
+  { key: 'vendor',   label: 'Vendor',      tip: 'Vendor name, if one was linked or entered.' },
+  { key: 'eur',      label: 'EUR',         right: true, format: v => formatEUR(v), tip: 'Expense amount converted to EUR at this record\'s date. Excludes CapEx/renovation expenses.' }
 ];
 const FC_VAR_COLS = [
-  { key: 'label', label: 'Item' },
-  { key: 'eur',   label: 'EUR', right: true, format: v => v === null ? '—' : formatEUR(v) },
-  { key: 'pct',   label: '%',   right: true }
+  { key: 'label', label: 'Item', tip: 'Which figure this row shows: Forecast Revenue, Actual Revenue, or the Variance between them.' },
+  { key: 'eur',   label: 'EUR', right: true, format: v => v === null ? '—' : formatEUR(v), tip: 'EUR amount for this line.' },
+  { key: 'pct',   label: '%',   right: true, tip: 'Variance as a percentage of Forecast Revenue: (Actual − Forecast) ÷ Forecast × 100.' }
 ];
 const BOOKING_STATUS_LABELS = { pending: 'Pending', materialized: 'Paid', cancelled: 'Cancelled', removed: 'Removed' };
 
@@ -888,15 +974,15 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
 
   const t = el('table', { class: 'table' });
   t.innerHTML = `<thead><tr>
-    <th>Month</th>
-    <th class="right">Forecast Revenue</th>
-    <th class="right">Forecast Expenses</th>
-    <th class="right">Forecast Net</th>
-    <th class="right">Actual Revenue</th>
-    <th class="right">Actual Expenses</th>
-    <th class="right">Actual Net</th>
-    <th class="right">Rev Variance</th>
-    <th class="right">Var %</th>
+    <th title="Calendar month within the selected forecast year.">Month</th>
+    <th class="right" style="cursor:help" title="Sum of this month's forecasted amounts — itemized Airbnb-linked and manual booking entries for a property, or itemized entries for a service — excluding cancelled/removed entries. Click a cell to manage entries.">Forecast Revenue</th>
+    <th class="right" style="cursor:help" title="Sum of this month's itemized forecast expense entries (properties only; always €0 for services). Click a cell to manage entries.">Forecast Expenses</th>
+    <th class="right" style="cursor:help" title="Forecast Revenue minus Forecast Expenses for this month.">Forecast Net</th>
+    <th class="right" style="cursor:help" title="Sum of paid payments (property) or paid invoices (service) actually recorded in this month, converted to EUR. Click a non-zero cell to see the underlying records.">Actual Revenue</th>
+    <th class="right" style="cursor:help" title="Sum of actual expenses recorded in this month, excluding CapEx/renovation. Click a non-zero cell to see the underlying records.">Actual Expenses</th>
+    <th class="right" style="cursor:help" title="Actual Revenue minus Actual Expenses for this month.">Actual Net</th>
+    <th class="right" style="cursor:help" title="Actual Revenue minus Forecast Revenue for this month. Click a cell for the forecast/actual/variance breakdown.">Rev Variance</th>
+    <th class="right" style="cursor:help" title="Rev Variance as a percentage of Forecast Revenue: (Actual − Forecast) ÷ Forecast × 100.">Var %</th>
   </tr></thead>`;
   const tb = el('tbody');
   renderRows();
@@ -1106,7 +1192,13 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
             listWrap.appendChild(el('div', { class: 'empty', style: 'padding:24px' }, 'No forecasted bookings yet — click "Add Booking" below.'));
           } else {
             const t = el('table', { class: 'table' });
-            t.innerHTML = '<thead><tr><th>Description</th><th class="right" style="width:130px">Amount (€)</th><th>Notes</th><th style="width:110px">Source</th><th style="width:70px"></th></tr></thead>';
+            t.innerHTML = '<thead><tr>'
+              + '<th title="Editable description of a manual booking, or the Airbnb reservation\'s guest/notes once auto-generated.">Description</th>'
+              + '<th class="right" style="width:130px;cursor:help" title="Forecasted amount for this entry — editable unless the entry is a settled (cancelled/removed) Airbnb booking.">Amount (€)</th>'
+              + '<th style="cursor:help" title="Free-text notes for this entry.">Notes</th>'
+              + '<th style="width:110px;cursor:help" title="Whether this entry is Airbnb-linked (with its current booking status) or manually added.">Source</th>'
+              + '<th style="width:70px;cursor:help" title="Restore a settled Airbnb booking, or delete an entry."></th>'
+              + '</tr></thead>';
             const tb2 = el('tbody');
             for (const e of entries) {
               const tr = el('tr');
@@ -1299,7 +1391,12 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         listWrap.appendChild(el('div', { class: 'empty', style: 'padding:24px' }, 'No entries yet — click "Add Entry" below.'));
       } else {
         const t = el('table', { class: 'table' });
-        t.innerHTML = '<thead><tr><th>Client / Lead</th><th class="right" style="width:130px">Amount (€)</th><th>Notes / Status</th><th style="width:60px"></th></tr></thead>';
+        t.innerHTML = '<thead><tr>'
+          + '<th title="Name of the client or lead this forecasted entry represents.">Client / Lead</th>'
+          + '<th class="right" style="width:130px;cursor:help" title="Forecasted amount for this entry.">Amount (€)</th>'
+          + '<th style="cursor:help" title="Free-text notes, e.g. deal stage (Lead, In Discussion, Confirmed).">Notes / Status</th>'
+          + '<th style="width:60px;cursor:help" title="Delete this entry.">'
+          + '</th></tr></thead>';
         const tb2 = el('tbody');
         for (const e of entries) {
           const tr = el('tr');
@@ -1377,7 +1474,12 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         listWrap.appendChild(el('div', { class: 'empty', style: 'padding:24px' }, 'No expense entries yet — click "Add Entry" below.'));
       } else {
         const t = el('table', { class: 'table' });
-        t.innerHTML = '<thead><tr><th>Description</th><th class="right" style="width:130px">Amount (€)</th><th>Category / Notes</th><th style="width:60px"></th></tr></thead>';
+        t.innerHTML = '<thead><tr>'
+          + '<th title="What this forecasted expense is for.">Description</th>'
+          + '<th class="right" style="width:130px;cursor:help" title="Forecasted expense amount for this entry.">Amount (€)</th>'
+          + '<th style="cursor:help" title="Free-text category or notes for this expense entry.">Category / Notes</th>'
+          + '<th style="width:60px;cursor:help" title="Delete this entry.">'
+          + '</th></tr></thead>';
         const tb2 = el('tbody');
         for (const e of entries) {
           const tr = el('tr');
@@ -1445,7 +1547,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
     const varPct   = fcRev > 0 ? ((variance / fcRev) * 100).toFixed(1) + '%' : '—';
 
     const tRow = el('tr', { style: 'font-weight:600;background:var(--bg-elev-2)' });
-    tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em' }, 'TOTAL'));
+    tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em;cursor:help', title: 'Sum of the 12 months above for each column.' }, 'TOTAL'));
     tRow.appendChild(el('td', { class: 'right num' }, formatEUR(fcRev)));
     tRow.appendChild(el('td', { class: 'right num' }, formatEUR(fcExp)));
     tRow.appendChild(el('td', { class: 'right num' + (fcNet < 0 ? ' danger' : '') }, formatEUR(fcNet)));
@@ -1461,7 +1563,10 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
       const ytExp = yearTarget.expenses || 0;
       const ytNet = ytRev - ytExp;
       const ytRow = el('tr', { style: 'font-size:11px;color:var(--text-muted);background:var(--bg-elev-3)' });
-      ytRow.appendChild(el('td', {}, 'vs Annual Target'));
+      // Each cell below is (this column's TOTAL row value) minus the Annual
+      // Target set on the annual bar above — a per-column diff, not a
+      // separate stored figure. See saveForecastYear()/fc.yearTarget.
+      ytRow.appendChild(el('td', { style: 'cursor:help', title: 'Each figure below is this column\'s TOTAL (above) minus the Annual Target set for this year (see the Annual Target bar above the table).' }, 'vs Annual Target'));
       ytRow.appendChild(el('td', { class: 'right num' + (fcRev - ytRev >= 0 ? '' : ' danger') }, formatEUR(fcRev - ytRev)));
       if (type === 'property') {
         ytRow.appendChild(el('td', { class: 'right num' + (fcExp - ytExp > 0 ? ' warning' : '') }, formatEUR(fcExp - ytExp)));
@@ -1533,17 +1638,17 @@ function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
   const fcByEntity = new Map(entityIds.map(id => [id, getOrCreateForecast(type, id, year)]));
   const entityWord = type === 'service' ? 'Service' : 'Property';
   const FC_ENTRY_DRILL_COLS = [
-    { key: 'entityName',  label: entityWord },
-    { key: 'description', label: 'Description' },
-    { key: 'source',      label: 'Source' },
-    { key: 'notes',       label: 'Notes' },
-    { key: 'eur',         label: 'Amount', right: true, format: v => formatEUR(v) }
+    { key: 'entityName',  label: entityWord, tip: `${entityWord} this forecast entry belongs to.` },
+    { key: 'description', label: 'Description', tip: 'What this forecasted booking/entry is for.' },
+    { key: 'source',      label: 'Source', tip: 'Whether this entry came from an Airbnb-linked booking (with its current status) or was entered manually.' },
+    { key: 'notes',       label: 'Notes', tip: 'Free-text notes entered for this forecast entry.' },
+    { key: 'eur',         label: 'Amount', right: true, format: v => formatEUR(v), tip: 'Forecasted amount for this entry, in EUR. Excludes cancelled/removed bookings.' }
   ];
   const FC_EXP_DRILL_COLS = [
-    { key: 'entityName',  label: entityWord },
-    { key: 'description', label: 'Description' },
-    { key: 'notes',       label: 'Category / Notes' },
-    { key: 'eur',         label: 'Amount', right: true, format: v => formatEUR(v) }
+    { key: 'entityName',  label: entityWord, tip: `${entityWord} this forecasted expense entry belongs to.` },
+    { key: 'description', label: 'Description', tip: 'What this forecasted expense entry is for.' },
+    { key: 'notes',       label: 'Category / Notes', tip: 'Free-text category or notes entered for this expense entry.' },
+    { key: 'eur',         label: 'Amount', right: true, format: v => formatEUR(v), tip: 'Forecasted expense amount for this entry, in EUR.' }
   ];
   // All revenue entries (Airbnb-sourced + manual) across the selected
   // entities for one month — this is what actually sums to forecastRev, so
@@ -1583,15 +1688,15 @@ function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
 
   const t = el('table', { class: 'table' });
   t.innerHTML = `<thead><tr>
-    <th>Month</th>
-    <th class="right">Forecast Revenue</th>
-    <th class="right">Forecast Expenses</th>
-    <th class="right">Forecast Net</th>
-    <th class="right">Actual Revenue</th>
-    <th class="right">Actual Expenses</th>
-    <th class="right">Actual Net</th>
-    <th class="right">Rev Variance</th>
-    <th class="right">Var %</th>
+    <th title="Calendar month within the selected forecast year.">Month</th>
+    <th class="right" style="cursor:help" title="Sum, across every selected ${type === 'service' ? 'service' : 'property'}, of this month's forecasted amounts — excludes cancelled/removed entries. Click a cell to see the itemized breakdown.">Forecast Revenue</th>
+    <th class="right" style="cursor:help" title="Sum, across every selected ${type === 'service' ? 'service' : 'property'}, of this month's itemized forecast expense entries. Click a cell to see the itemized breakdown.">Forecast Expenses</th>
+    <th class="right" style="cursor:help" title="Forecast Revenue minus Forecast Expenses for this month, summed across every selected entity.">Forecast Net</th>
+    <th class="right" style="cursor:help" title="Sum, across every selected entity, of actual paid revenue recorded in this month. Click a non-zero cell to see the underlying records.">Actual Revenue</th>
+    <th class="right" style="cursor:help" title="Sum, across every selected entity, of actual expenses recorded in this month (excludes CapEx). Click a non-zero cell to see the underlying records.">Actual Expenses</th>
+    <th class="right" style="cursor:help" title="Actual Revenue minus Actual Expenses for this month, summed across every selected entity.">Actual Net</th>
+    <th class="right" style="cursor:help" title="Actual Revenue minus Forecast Revenue for this month, summed across every selected entity. Click a cell for the forecast/actual/variance breakdown.">Rev Variance</th>
+    <th class="right" style="cursor:help" title="Rev Variance as a percentage of Forecast Revenue: (Actual − Forecast) ÷ Forecast × 100.">Var %</th>
   </tr></thead>`;
   const tb = el('tbody');
 
@@ -1695,7 +1800,7 @@ function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
   const totVarPct = fcRev > 0 ? ((variance / fcRev) * 100).toFixed(1) + '%' : '—';
 
   const tRow = el('tr', { style: 'font-weight:600;background:var(--bg-elev-2)' });
-  tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em' }, 'TOTAL'));
+  tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em;cursor:help', title: 'Sum of the 12 months above for each column, across every selected entity.' }, 'TOTAL'));
   tRow.appendChild(el('td', { class: 'right num' }, formatEUR(fcRev)));
   tRow.appendChild(el('td', { class: 'right num' }, formatEUR(fcExp)));
   tRow.appendChild(el('td', { class: 'right num' + (fcNet < 0 ? ' danger' : '') }, formatEUR(fcNet)));
@@ -1711,7 +1816,10 @@ function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
     const ytExp = yearTarget.expenses || 0;
     const ytNet = ytRev - ytExp;
     const ytRow = el('tr', { style: 'font-size:11px;color:var(--text-muted);background:var(--bg-elev-3)' });
-    ytRow.appendChild(el('td', {}, 'vs Annual Target'));
+    // Sum, across the selected entities, of each entity's own Annual Target
+    // (see saveForecastYear()/fc.yearTarget); each cell is TOTAL (above)
+    // minus that summed target.
+    ytRow.appendChild(el('td', { style: 'cursor:help', title: 'Each figure below is this column\'s TOTAL (above) minus the sum of every selected entity\'s own Annual Target.' }, 'vs Annual Target'));
     ytRow.appendChild(el('td', { class: 'right num' + (fcRev - ytRev >= 0 ? '' : ' danger') }, formatEUR(fcRev - ytRev)));
     ytRow.appendChild(el('td', { class: 'right num' + (fcExp - ytExp > 0 ? ' warning' : '') }, formatEUR(fcExp - ytExp)));
     ytRow.appendChild(el('td', { class: 'right num' + (fcNet - ytNet >= 0 ? '' : ' danger') }, formatEUR(fcNet - ytNet)));
@@ -1754,11 +1862,11 @@ function buildPropertyBreakdownCard(selIds, year, fcCache) {
 
   const t = el('table', { class: 'table' });
   t.innerHTML = `<thead><tr>
-    <th>Property</th><th>Stream</th>
-    <th class="right">For. Rev</th><th class="right">Act. Rev</th>
-    <th class="right">Rev Var</th><th class="right">Var %</th>
-    <th class="right">For. Exp</th><th class="right">Act. Exp</th>
-    <th class="right">For. Net</th><th class="right">Act. Net</th>
+    <th title="Property name. Click a row for the monthly breakdown.">Property</th><th title="Short-term (Airbnb-style nightly rental) or long-term (leased) rental.">Stream</th>
+    <th class="right" style="cursor:help" title="Forecasted revenue total for the selected year.">For. Rev</th><th class="right" style="cursor:help" title="Actual paid revenue total for the selected year.">Act. Rev</th>
+    <th class="right" style="cursor:help" title="Actual Revenue minus Forecast Revenue for the year.">Rev Var</th><th class="right" style="cursor:help" title="Rev Variance as a percentage of Forecast Revenue.">Var %</th>
+    <th class="right" style="cursor:help" title="Forecasted expenses total for the selected year.">For. Exp</th><th class="right" style="cursor:help" title="Actual expenses total for the selected year (excludes CapEx).">Act. Exp</th>
+    <th class="right" style="cursor:help" title="Forecast Revenue minus Forecast Expenses for the year.">For. Net</th><th class="right" style="cursor:help" title="Actual Revenue minus Actual Expenses for the year.">Act. Net</th>
   </tr></thead>`;
   const tb = el('tbody');
 
@@ -1777,14 +1885,14 @@ function buildPropertyBreakdownCard(selIds, year, fcCache) {
         actNet:  formatEUR(m.actualRev - m.actualExp),
       }));
       drillDownModal(`${d.prop?.name || d.id} — ${year}`, mRows, [
-        { key: 'month',  label: 'Month' },
-        { key: 'fcRev',  label: 'For. Rev',  right: true },
-        { key: 'actRev', label: 'Act. Rev',  right: true },
-        { key: 'revVar', label: 'Variance',  right: true },
-        { key: 'varPct', label: 'Var %',     right: true },
-        { key: 'fcExp',  label: 'For. Exp',  right: true },
-        { key: 'actExp', label: 'Act. Exp',  right: true },
-        { key: 'actNet', label: 'Act. Net',  right: true },
+        { key: 'month',  label: 'Month', tip: 'Calendar month within the selected year.' },
+        { key: 'fcRev',  label: 'For. Rev',  right: true, tip: 'Forecasted revenue for this property/month.' },
+        { key: 'actRev', label: 'Act. Rev',  right: true, tip: 'Actual paid revenue for this property/month.' },
+        { key: 'revVar', label: 'Variance',  right: true, tip: 'Actual Revenue minus Forecast Revenue for this property/month.' },
+        { key: 'varPct', label: 'Var %',     right: true, tip: 'Variance as a percentage of Forecast Revenue.' },
+        { key: 'fcExp',  label: 'For. Exp',  right: true, tip: 'Forecasted expenses for this property/month.' },
+        { key: 'actExp', label: 'Act. Exp',  right: true, tip: 'Actual expenses for this property/month (excludes CapEx).' },
+        { key: 'actNet', label: 'Act. Net',  right: true, tip: 'Actual Revenue minus Actual Expenses for this property/month.' },
       ]);
     };
     tr.appendChild(el('td', {}, d.prop?.name || d.id));
@@ -1809,7 +1917,8 @@ function buildPropertyBreakdownCard(selIds, year, fcCache) {
   }), { fcRev: 0, fcExp: 0, actRev: 0, actExp: 0, revVar: 0, fcNet: 0, actNet: 0 });
   const totVarPct = tot.fcRev > 0 ? ((tot.revVar / tot.fcRev) * 100).toFixed(1) + '%' : '—';
   const tRow = el('tr', { style: 'font-weight:600;background:var(--bg-elev-2)' });
-  ['TOTAL', ''].forEach(v => tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em' }, v)));
+  tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em;cursor:help', title: 'Sum of every row above, for each column.' }, 'TOTAL'));
+  tRow.appendChild(el('td', { style: 'font-size:11px;letter-spacing:.04em' }, ''));
   [tot.fcRev, tot.actRev].forEach(v => tRow.appendChild(el('td', { class: 'right num' }, formatEUR(v))));
   tRow.appendChild(el('td', { class: `right num ${tot.revVar >= 0 ? '' : 'danger'}` }, formatEUR(tot.revVar)));
   tRow.appendChild(el('td', { class: `right num ${tot.revVar >= 0 ? '' : 'danger'}` }, totVarPct));
@@ -1850,11 +1959,11 @@ function buildStreamBreakdownCard(selIds, year, fcCache) {
 
   const t = el('table', { class: 'table' });
   t.innerHTML = `<thead><tr>
-    <th>Stream</th><th class="right">Properties</th>
-    <th class="right">For. Rev</th><th class="right">Act. Rev</th>
-    <th class="right">Rev Var</th><th class="right">Var %</th>
-    <th class="right">For. Exp</th><th class="right">Act. Exp</th>
-    <th class="right">For. Net</th><th class="right">Act. Net</th>
+    <th title="Short-term (Airbnb-style nightly rental) or long-term (leased) rental. Click a row for the underlying properties.">Stream</th><th class="right" style="cursor:help" title="Number of selected properties in this stream.">Properties</th>
+    <th class="right" style="cursor:help" title="Forecasted revenue total for the selected year, summed across this stream's properties.">For. Rev</th><th class="right" style="cursor:help" title="Actual paid revenue total for the selected year, summed across this stream's properties.">Act. Rev</th>
+    <th class="right" style="cursor:help" title="Actual Revenue minus Forecast Revenue for the year.">Rev Var</th><th class="right" style="cursor:help" title="Rev Variance as a percentage of Forecast Revenue.">Var %</th>
+    <th class="right" style="cursor:help" title="Forecasted expenses total for the selected year, summed across this stream's properties.">For. Exp</th><th class="right" style="cursor:help" title="Actual expenses total for the selected year (excludes CapEx), summed across this stream's properties.">Act. Exp</th>
+    <th class="right" style="cursor:help" title="Forecast Revenue minus Forecast Expenses for the year.">For. Net</th><th class="right" style="cursor:help" title="Actual Revenue minus Actual Expenses for the year.">Act. Net</th>
   </tr></thead>`;
   const tb = el('tbody');
 
@@ -1877,11 +1986,11 @@ function buildStreamBreakdownCard(selIds, year, fcCache) {
             varPct: fRev > 0 ? ((aRev - fRev) / fRev * 100).toFixed(1) + '%' : '—' };
         });
       drillDownModal(`${STREAMS[sk]?.label || sk} — Properties`, propRows, [
-        { key: 'name',   label: 'Property' },
-        { key: 'fcRev',  label: 'For. Rev',  right: true },
-        { key: 'actRev', label: 'Act. Rev',  right: true },
-        { key: 'revVar', label: 'Variance',  right: true },
-        { key: 'varPct', label: 'Var %',     right: true },
+        { key: 'name',   label: 'Property', tip: 'Property name.' },
+        { key: 'fcRev',  label: 'For. Rev',  right: true, tip: 'Forecasted revenue total for the selected year.' },
+        { key: 'actRev', label: 'Act. Rev',  right: true, tip: 'Actual paid revenue total for the selected year.' },
+        { key: 'revVar', label: 'Variance',  right: true, tip: 'Actual Revenue minus Forecast Revenue for the year.' },
+        { key: 'varPct', label: 'Var %',     right: true, tip: 'Variance as a percentage of Forecast Revenue.' },
       ]);
     };
     tr.appendChild(el('td', {}, STREAMS[sk]?.label || sk));
@@ -1903,9 +2012,15 @@ function buildStreamBreakdownCard(selIds, year, fcCache) {
   return card;
 }
 
-function summaryRow(label, value, variant) {
+// `explain` is an optional mkExplainButton payload (see analytics-helpers.js)
+// rendered as a small "ⓘ" next to the label — used for figures in this row
+// that are computed (sums/differences/percentages) rather than a raw
+// passthrough of a single stored value.
+function summaryRow(label, value, variant, explain) {
+  const labelSpan = el('span', { class: 'muted', style: 'font-size:12px;display:inline-flex;align-items:center;gap:4px' }, label);
+  if (explain) labelSpan.appendChild(mkExplainButton(explain));
   return el('div', { class: 'flex justify-between items-center', style: 'padding:4px 0' },
-    el('span', { class: 'muted', style: 'font-size:12px' }, label),
+    labelSpan,
     el('span', { class: 'num ' + (variant || ''), style: 'font-weight:600' }, value)
   );
 }
