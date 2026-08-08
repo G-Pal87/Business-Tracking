@@ -173,7 +173,18 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     } else {
       body.appendChild(mkSummaryGrid([
         { label: 'Overdue Count',  value: String(overdueCount) },
-        { label: 'Overdue Amount', value: formatEUR(overdueEur) }
+        { label: 'Overdue Amount', value: formatEUR(overdueEur),
+          explain: {
+            title: 'Overdue Amount',
+            formula: 'Sum of outstanding invoices whose due date is before today.',
+            inputs: [
+              { label: 'Overdue Count',  value: String(overdueCount) },
+              { label: 'Overdue Amount', value: formatEUR(overdueEur) }
+            ],
+            source: 'analytics.js:66-68,127 getData()',
+            note: 'Cancelled/void invoices are excluded from the outstanding pool before the overdue check runs.'
+          }
+        }
       ]));
       body.appendChild(mkSectionLabel('Overdue Invoices'));
       const rows = cur.overdueInvoices.map(i => [
@@ -182,7 +193,12 @@ function buildKpiGrid(cur, cmp, cmpRange) {
         i.dueDate || '—',
         formatEUR(toEUR(i.total, i.currency, i.issueDate))
       ]);
-      body.appendChild(mkModalTable(['Issued', 'Client', 'Due', 'Amount'], rows));
+      body.appendChild(mkModalTable([
+        { label: 'Issued', tip: 'Invoice issue date.' },
+        { label: 'Client',  tip: 'Client the invoice was billed to.' },
+        { label: 'Due',     tip: 'Invoice due date.' },
+        { label: 'Amount',  right: true, tip: 'Invoice total in EUR.' }
+      ], rows));
     }
     openModal({ title: 'Overdue Invoices', body, large: false });
   };
@@ -198,8 +214,30 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       ], 'Current Period', cl));
     } else {
       body.appendChild(mkSummaryGrid([
-        { label: 'Rental Income',   value: formatEUR(propRev), sub: pct(propRev, totalRev) + ' of total' },
-        { label: 'Service Income',  value: formatEUR(svcRev),  sub: pct(svcRev,  totalRev) + ' of total' }
+        { label: 'Rental Income',   value: formatEUR(propRev), sub: pct(propRev, totalRev) + ' of total',
+          explain: {
+            title: 'Rental Income',
+            formula: 'Sum of paid rental payments (status:\'paid\'), dated within the selected period.',
+            inputs: [
+              { label: 'Rental Income',  value: formatEUR(propRev) },
+              { label: 'Total Revenue',  value: formatEUR(totalRev) },
+              { label: '% of Total',     value: pct(propRev, totalRev) }
+            ],
+            source: 'analytics.js:76 getData()'
+          }
+        },
+        { label: 'Service Income',  value: formatEUR(svcRev),  sub: pct(svcRev,  totalRev) + ' of total',
+          explain: {
+            title: 'Service Income',
+            formula: 'Sum of paid service invoices (status:\'paid\'), dated by issue date within the selected period.',
+            inputs: [
+              { label: 'Service Income', value: formatEUR(svcRev) },
+              { label: 'Total Revenue',  value: formatEUR(totalRev) },
+              { label: '% of Total',     value: pct(svcRev, totalRev) }
+            ],
+            source: 'analytics.js:77 getData()'
+          }
+        }
       ]));
     }
     body.appendChild(mkSectionLabel('Revenue by Stream'));
@@ -218,7 +256,11 @@ function buildKpiGrid(cur, cmp, cmpRange) {
         pct(v, totalRev)
       ]);
     if (streamRows.length) {
-      body.appendChild(mkModalTable(['Stream', 'Revenue', '% of Total'], streamRows));
+      body.appendChild(mkModalTable([
+        { label: 'Stream',     tip: 'Business line the revenue was earned through.' },
+        { label: 'Revenue',    right: true, tip: 'Sum of paid rental payments and paid invoices attributed to this stream, in the selected period.' },
+        { label: '% of Total', right: true, tip: 'This stream\'s revenue as a percentage of total revenue for the period.' }
+      ], streamRows));
     } else {
       body.appendChild(mkEmptyState('No stream data available.'));
     }
@@ -240,7 +282,20 @@ function buildKpiGrid(cur, cmp, cmpRange) {
         { label: 'Total Revenue',   value: formatEUR(totalRev) },
         { label: 'OpEx',            value: formatEUR(cur.opEx),    sub: 'Operating expenses' },
         { label: 'CapEx',           value: formatEUR(cur.capEx),   sub: 'Capital expenses' },
-        { label: 'Net Cash Flow',   value: formatEUR(cashPos),     sub: cashPos >= 0 ? 'Positive' : 'Negative' }
+        { label: 'Net Cash Flow',   value: formatEUR(cashPos),     sub: cashPos >= 0 ? 'Positive' : 'Negative',
+          explain: {
+            title: 'Net Cash Flow',
+            formula: 'Total Revenue − (OpEx + CapEx).',
+            inputs: [
+              { label: 'Total Revenue',  value: formatEUR(totalRev) },
+              { label: 'OpEx',           value: formatEUR(cur.opEx) },
+              { label: 'CapEx',          value: formatEUR(cur.capEx) },
+              { label: 'Net Cash Flow',  value: formatEUR(cashPos) }
+            ],
+            source: 'analytics.js:83,87 getData()',
+            note: 'Unlike Net Operating Profit, this also subtracts CapEx — so a heavy renovation month can turn a profitable period cash-negative.'
+          }
+        }
       ], 2));
     }
     openModal({ title: 'Cash Position Breakdown', body, large: false });
@@ -258,7 +313,18 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     delta:    dRev,
     compLabel: cl,
     compValue: cmp ? formatEUR(cmp.totalRev) : undefined,
-    onClick:  revDrill
+    onClick:  revDrill,
+    explain: {
+      title: 'Total Revenue',
+      formula: 'Rental Income + Service Income (paid only, within the selected period).',
+      inputs: [
+        { label: 'Rental Income',  value: formatEUR(propRev) },
+        { label: 'Service Income', value: formatEUR(svcRev) },
+        { label: 'Total Revenue',  value: formatEUR(totalRev) }
+      ],
+      source: 'analytics.js:76-78 getData()',
+      note: 'Only status:\'paid\' payments and invoices count; pending payments and outstanding invoices are excluded.'
+    }
   }));
 
   // 2. Net Operating Profit
@@ -285,10 +351,33 @@ function buildKpiGrid(cur, cmp, cmpRange) {
           body.appendChild(mkSummaryGrid([
             { label: 'Revenue',         value: formatEUR(totalRev) },
             { label: 'OpEx',            value: formatEUR(opEx) },
-            { label: 'Net Op. Profit',  value: formatEUR(netOpProfit), sub: margin !== null ? `${margin.toFixed(1)}% margin` : '' }
+            { label: 'Net Op. Profit',  value: formatEUR(netOpProfit), sub: margin !== null ? `${margin.toFixed(1)}% margin` : '',
+              explain: {
+                title: 'Net Operating Profit',
+                formula: 'Total Revenue − OpEx. CapEx is not subtracted.',
+                inputs: [
+                  { label: 'Revenue', value: formatEUR(totalRev) },
+                  { label: 'OpEx',    value: formatEUR(opEx) },
+                  { label: 'Net Operating Profit', value: formatEUR(netOpProfit) }
+                ],
+                source: 'analytics.js:86 getData()',
+                note: margin !== null ? 'Margin shown is Net Operating Profit ÷ Total Revenue.' : undefined
+              }
+            }
           ], 1));
         }
         openModal({ title: 'Net Operating Profit', body, large: false });
+      },
+      explain: {
+        title: 'Net Operating Profit',
+        formula: 'Total Revenue − Operating Expenses (OpEx). CapEx is excluded.',
+        inputs: [
+          { label: 'Total Revenue', value: formatEUR(totalRev) },
+          { label: 'OpEx',          value: formatEUR(opEx) },
+          { label: 'Net Operating Profit', value: formatEUR(netOpProfit) }
+        ],
+        source: 'analytics.js:86 getData()',
+        note: margin !== null ? `Margin (${margin.toFixed(1)}%) is Net Operating Profit ÷ Total Revenue.` : 'No revenue this period, so margin is not shown.'
       }
     }));
   }
@@ -304,7 +393,18 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       compLabel: cl,
       compValue: cmp ? formatEUR(cmp.cashPos) : undefined,
       variant,
-      onClick:  cashDrill
+      onClick:  cashDrill,
+      explain: {
+        title: 'Period Net Cash',
+        formula: 'Total Revenue − Total Expenses (OpEx + CapEx).',
+        inputs: [
+          { label: 'Total Revenue',   value: formatEUR(totalRev) },
+          { label: 'Total Expenses',  value: formatEUR(cur.totalExp) },
+          { label: 'Period Net Cash', value: formatEUR(cashPos) }
+        ],
+        source: 'analytics.js:87 getData()',
+        note: 'Unlike Net Operating Profit, this also subtracts CapEx.'
+      }
     }));
   }
 
@@ -335,14 +435,49 @@ function buildKpiGrid(cur, cmp, cmpRange) {
         } else {
           body.appendChild(mkSummaryGrid([
             { label: 'Period Net Cash',    value: formatEUR(cashPos),       sub: cashPos >= 0 ? 'Positive' : 'Negative' },
-            { label: 'Avg Monthly OpEx',  value: formatEUR(avgMonthlyOpEx), sub: `over ${periodMonths} month${periodMonths !== 1 ? 's' : ''}` },
-            { label: 'Burn Coverage',      value: months !== null ? `${months.toFixed(1)} months` : '—', sub: months !== null && months < 3 ? 'Low — review spending' : null }
+            { label: 'Avg Monthly OpEx',  value: formatEUR(avgMonthlyOpEx), sub: `over ${periodMonths} month${periodMonths !== 1 ? 's' : ''}`,
+              explain: {
+                title: 'Avg Monthly OpEx',
+                formula: 'OpEx ÷ number of months in the selected period.',
+                inputs: [
+                  { label: 'OpEx',          value: formatEUR(opEx) },
+                  { label: 'Period Length', value: `${periodMonths} month${periodMonths !== 1 ? 's' : ''}` },
+                  { label: 'Avg Monthly OpEx', value: formatEUR(avgMonthlyOpEx) }
+                ],
+                source: 'analytics.js:92-93 getData()'
+              }
+            },
+            { label: 'Burn Coverage',      value: months !== null ? `${months.toFixed(1)} months` : '—', sub: months !== null && months < 3 ? 'Low — review spending' : null,
+              explain: {
+                title: 'Burn Coverage',
+                formula: 'Period Net Cash ÷ Avg Monthly OpEx.',
+                inputs: [
+                  { label: 'Period Net Cash',   value: formatEUR(cashPos) },
+                  { label: 'Avg Monthly OpEx',  value: formatEUR(avgMonthlyOpEx) },
+                  { label: 'Burn Coverage',     value: months !== null ? `${months.toFixed(1)} months` : '—' }
+                ],
+                source: 'analytics.js:94 getData()',
+                note: 'Uses this period\'s own OpEx run-rate — not a balance-sheet cash runway figure.'
+              }
+            }
           ], 1));
         }
         body.appendChild(el('div', {
           style: 'font-size:11px;color:var(--text-muted);margin-top:10px;line-height:1.6;padding:8px 10px;border-radius:6px;background:rgba(255,255,255,0.03)'
         }, 'Measures how many months of operating expenses are covered by this period\'s net cash flow. Uses period-level data — not a balance-sheet cash runway figure.'));
         openModal({ title: 'Burn Coverage — Breakdown', body, large: false });
+      },
+      explain: {
+        title: 'Burn Coverage',
+        formula: 'Period Net Cash ÷ Avg Monthly OpEx.',
+        inputs: [
+          { label: 'Period Net Cash',   value: formatEUR(cashPos) },
+          { label: 'Avg Monthly OpEx',  value: formatEUR(avgMonthlyOpEx) },
+          { label: 'Period Length',     value: `${periodMonths} month${periodMonths !== 1 ? 's' : ''}` },
+          { label: 'Burn Coverage',     value: months !== null ? `${months.toFixed(1)} mo` : '—' }
+        ],
+        source: 'analytics.js:93-94 getData()',
+        note: 'Uses this period\'s own OpEx run-rate — not a balance-sheet cash runway figure.'
       }
     }));
   }
@@ -366,9 +501,40 @@ function buildKpiGrid(cur, cmp, cmpRange) {
           else { upcomingAmt += amt; upcomingCount++; }
         });
         body.appendChild(mkSummaryGrid([
-          { label: 'Total Pending', value: formatEUR(pipeline), sub: `${cur.pendingPayments.length} payment${cur.pendingPayments.length !== 1 ? 's' : ''}` },
-          { label: 'Past Expected Date', value: formatEUR(pastDueAmt), sub: `${pastDueCount} payment${pastDueCount !== 1 ? 's' : ''}` },
-          { label: 'Upcoming',       value: formatEUR(upcomingAmt), sub: `${upcomingCount} payment${upcomingCount !== 1 ? 's' : ''}` }
+          { label: 'Total Pending', value: formatEUR(pipeline), sub: `${cur.pendingPayments.length} payment${cur.pendingPayments.length !== 1 ? 's' : ''}`,
+            explain: {
+              title: 'Total Pending',
+              formula: 'Sum of payment amounts with status "pending", dated within the selected period.',
+              inputs: [
+                { label: 'Pending payments', value: String(cur.pendingPayments.length) },
+                { label: 'Total Pending',    value: formatEUR(pipeline) }
+              ],
+              source: 'analytics.js:54,88 getData()',
+              note: 'Not yet collected — excluded from Total Revenue and Net Cash figures.'
+            }
+          },
+          { label: 'Past Expected Date', value: formatEUR(pastDueAmt), sub: `${pastDueCount} payment${pastDueCount !== 1 ? 's' : ''}`,
+            explain: {
+              title: 'Past Expected Date',
+              formula: 'Of the pending payments, those whose expected date is before today.',
+              inputs: [
+                { label: 'Past-due payments', value: String(pastDueCount) },
+                { label: 'Past-due amount',   value: formatEUR(pastDueAmt) }
+              ],
+              source: 'analytics.js — buildKpiGrid() Pending Pipeline onClick handler'
+            }
+          },
+          { label: 'Upcoming',       value: formatEUR(upcomingAmt), sub: `${upcomingCount} payment${upcomingCount !== 1 ? 's' : ''}`,
+            explain: {
+              title: 'Upcoming',
+              formula: 'Of the pending payments, those whose expected date is today or later (or has no date).',
+              inputs: [
+                { label: 'Upcoming payments', value: String(upcomingCount) },
+                { label: 'Upcoming amount',   value: formatEUR(upcomingAmt) }
+              ],
+              source: 'analytics.js — buildKpiGrid() Pending Pipeline onClick handler'
+            }
+          }
         ], 3));
         body.appendChild(mkSectionLabel('Pending Payments'));
         const rows = cur.pendingPayments
@@ -378,9 +544,23 @@ function buildKpiGrid(cur, cmp, cmpRange) {
             byId('properties', p.propertyId)?.name || '—',
             formatEUR(toEUR(p.amount, p.currency, p.date))
           ]);
-        body.appendChild(mkModalTable(['Date', 'Property', 'Amount'], rows));
+        body.appendChild(mkModalTable([
+          { label: 'Date',     tip: 'Expected payment date.' },
+          { label: 'Property', tip: 'Property the pending payment is linked to.' },
+          { label: 'Amount',   right: true, tip: 'Pending payment amount in EUR.' }
+        ], rows));
       }
       openModal({ title: `Pending Pipeline — ${formatEUR(pipeline)}`, body, large: false });
+    },
+    explain: {
+      title: 'Pending Pipeline',
+      formula: 'Sum of payment amounts with status "pending", dated within the selected period.',
+      inputs: [
+        { label: 'Pending payments', value: String(cur.pendingPayments.length) },
+        { label: 'Pending Pipeline', value: formatEUR(pipeline) }
+      ],
+      source: 'analytics.js:54,88 getData()',
+      note: 'Not yet collected — excluded from Total Revenue and Net Cash figures.'
     }
   }));
 
@@ -414,11 +594,45 @@ function buildKpiGrid(cur, cmp, cmpRange) {
           body.appendChild(mkSummaryGrid([
             { label: 'Paid',        value: formatEUR(cur.paidInvTotal) },
             { label: 'Outstanding', value: formatEUR(cur.outTotal) },
-            { label: 'Invoiced',    value: formatEUR(cur.invoicedTotal) },
-            { label: 'Rate',        value: collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—' }
+            { label: 'Invoiced',    value: formatEUR(cur.invoicedTotal),
+              explain: {
+                title: 'Invoiced',
+                formula: 'Paid Invoice Total + Outstanding Invoice Total.',
+                inputs: [
+                  { label: 'Paid',     value: formatEUR(cur.paidInvTotal) },
+                  { label: 'Outstanding', value: formatEUR(cur.outTotal) },
+                  { label: 'Invoiced', value: formatEUR(cur.invoicedTotal) }
+                ],
+                source: 'analytics.js:97-99 getData()'
+              }
+            },
+            { label: 'Rate',        value: collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—',
+              explain: {
+                title: 'Invoice Collection Rate',
+                formula: 'Paid Invoice Total ÷ (Paid + Outstanding Invoice Total) × 100.',
+                inputs: [
+                  { label: 'Paid',       value: formatEUR(cur.paidInvTotal) },
+                  { label: 'Invoiced',   value: formatEUR(cur.invoicedTotal) },
+                  { label: 'Rate',       value: collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—' }
+                ],
+                source: 'analytics.js:96-100 getData()',
+                note: 'Outstanding excludes cancelled/void invoices.'
+              }
+            }
           ]));
         }
         openModal({ title: 'Invoice Collection Rate', body, large: false });
+      },
+      explain: {
+        title: 'Invoice Collection Rate',
+        formula: 'Paid Invoice Total ÷ (Paid + Outstanding Invoice Total) × 100.',
+        inputs: [
+          { label: 'Paid',        value: formatEUR(cur.paidInvTotal) },
+          { label: 'Outstanding', value: formatEUR(cur.outTotal) },
+          { label: 'Collection Rate', value: collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—' }
+        ],
+        source: 'analytics.js:96-100 getData()',
+        note: 'Outstanding excludes cancelled/void invoices.'
       }
     }));
   }
@@ -431,7 +645,17 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       value:    overdueCount > 0 ? formatEUR(overdueEur) : '€0',
       subtitle: overdueCount > 0 ? `${overdueCount} invoice${overdueCount !== 1 ? 's' : ''} overdue` : 'All clear',
       variant,
-      onClick:  overdueDrill
+      onClick:  overdueDrill,
+      explain: {
+        title: 'Overdue Invoices',
+        formula: 'Sum of outstanding invoices whose due date is before today.',
+        inputs: [
+          { label: 'Overdue Count',  value: String(overdueCount) },
+          { label: 'Overdue Amount', value: formatEUR(overdueEur) }
+        ],
+        source: 'analytics.js:64-68,126-127 getData()',
+        note: 'Cancelled/void invoices are excluded from the outstanding pool before the overdue check runs.'
+      }
     }));
   }
 
@@ -584,7 +808,19 @@ function renderRevExpBar(cur, months) {
         { label: 'Revenue',   value: formatEUR(mRev) },
         { label: 'OpEx',      value: formatEUR(mOpEx) },
         { label: 'CapEx',     value: formatEUR(mCapEx) },
-        { label: 'Net',       value: formatEUR(mNet), sub: mNet >= 0 ? 'Profitable' : 'Loss' }
+        { label: 'Net',       value: formatEUR(mNet), sub: mNet >= 0 ? 'Profitable' : 'Loss',
+          explain: {
+            title: 'Net (month)',
+            formula: 'Monthly Revenue − Monthly OpEx − Monthly CapEx.',
+            inputs: [
+              { label: 'Revenue', value: formatEUR(mRev) },
+              { label: 'OpEx',    value: formatEUR(mOpEx) },
+              { label: 'CapEx',   value: formatEUR(mCapEx) },
+              { label: 'Net',     value: formatEUR(mNet) }
+            ],
+            source: 'analytics.js — renderRevExpBar() onClickItem'
+          }
+        }
       ]));
       const mPays = cur.payments.filter(p => p.date?.slice(0,7) === mk);
       const mInvs = cur.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk);
@@ -602,7 +838,10 @@ function renderRevExpBar(cur, months) {
           streamMap2.set(key, (streamMap2.get(key) || 0) + toEUR(i.total, i.currency, i.issueDate));
         });
         body.appendChild(mkSectionLabel('Revenue by Stream'));
-        body.appendChild(mkModalTable(['Stream', 'Amount'],
+        body.appendChild(mkModalTable([
+          { label: 'Stream', tip: 'Business line label.' },
+          { label: 'Amount', right: true, tip: 'Revenue from this stream in the selected month.' }
+        ],
           [...streamMap2.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, formatEUR(v)])
         ));
       }
@@ -613,7 +852,10 @@ function renderRevExpBar(cur, months) {
           catMap.set(key, (catMap.get(key) || 0) + toEUR(e.amount, e.currency, e.date));
         });
         body.appendChild(mkSectionLabel('Expenses by Category'));
-        body.appendChild(mkModalTable(['Category', 'Amount'],
+        body.appendChild(mkModalTable([
+          { label: 'Category', tip: 'Expense category (OpEx and CapEx combined).' },
+          { label: 'Amount',   right: true, tip: 'Total expense amount in this category for the selected month.' }
+        ],
           [...catMap.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, formatEUR(v)])
         ));
       }
@@ -625,7 +867,12 @@ function renderRevExpBar(cur, months) {
           const rawBody = el('div');
           if (mPays.length || mInvs.length) {
             rawBody.appendChild(mkSectionLabel('Revenue Records'));
-            rawBody.appendChild(mkModalTable(['Date','Entity','Type','Amount'],
+            rawBody.appendChild(mkModalTable([
+              { label: 'Date',   tip: 'Payment or invoice date.' },
+              { label: 'Entity', tip: 'Property (for payments) or client (for invoices).' },
+              { label: 'Type',   tip: 'Whether this record is a rental payment or a service invoice.' },
+              { label: 'Amount', right: true, tip: 'Record amount in EUR.' }
+            ],
               [...mPays.map(p => [p.date||'—', byId('properties',p.propertyId)?.name||'—', 'Payment', formatEUR(toEUR(p.amount,p.currency,p.date))]),
                ...mInvs.map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', 'Invoice', formatEUR(toEUR(i.total,i.currency,i.issueDate))])]
               .sort((a,b) => a[0].localeCompare(b[0]))
@@ -633,7 +880,12 @@ function renderRevExpBar(cur, months) {
           }
           if (mOpEx2.length || mCapEx2.length) {
             rawBody.appendChild(mkSectionLabel('Expense Records'));
-            rawBody.appendChild(mkModalTable(['Date','Description','Type','Amount'],
+            rawBody.appendChild(mkModalTable([
+              { label: 'Date',        tip: 'Expense date.' },
+              { label: 'Description', tip: 'Expense description or notes.' },
+              { label: 'Type',        tip: 'Whether this is an operating expense (OpEx) or capital expense (CapEx).' },
+              { label: 'Amount',      right: true, tip: 'Expense amount in EUR.' }
+            ],
               [...mOpEx2.map(e => [e.date||'—', e.description||e.notes||'—', 'OpEx', formatEUR(toEUR(e.amount,e.currency,e.date))]),
                ...mCapEx2.map(e => [e.date||'—', e.description||e.notes||'—', 'CapEx', formatEUR(toEUR(e.amount,e.currency,e.date))])]
               .sort((a,b) => a[0].localeCompare(b[0]))
@@ -674,21 +926,49 @@ function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
     { label: 'Stream',   value: streamLabel },
-    { label: 'Revenue',  value: formatEUR(streamTotal) },
-    { label: '% of Mix', value: totalRevMix > 0 ? (streamTotal / totalRevMix * 100).toFixed(1) + '%' : '—' }
+    { label: 'Revenue',  value: formatEUR(streamTotal),
+      explain: {
+        title: `${streamLabel} Revenue`,
+        formula: 'Sum of paid payments + paid invoices tagged with this stream, within the selected period.',
+        inputs: [
+          { label: 'Stream',  value: streamLabel },
+          { label: 'Revenue', value: formatEUR(streamTotal) }
+        ],
+        source: 'analytics.js:130-132 getData() (streamMap)'
+      }
+    },
+    { label: '% of Mix', value: totalRevMix > 0 ? (streamTotal / totalRevMix * 100).toFixed(1) + '%' : '—',
+      explain: {
+        title: '% of Mix',
+        formula: 'This stream\'s revenue ÷ total revenue across all streams × 100.',
+        inputs: [
+          { label: 'Stream Revenue', value: formatEUR(streamTotal) },
+          { label: 'Total Revenue (all streams)', value: formatEUR(totalRevMix) }
+        ],
+        source: 'analytics.js — openStreamRevenueModal()'
+      }
+    }
   ], 3));
   const pays = cur.payments.filter(p => (p.stream || 'other') === streamKey);
   const invs = cur.invoices.filter(i => (i.stream || 'other') === streamKey);
   if (pays.length) {
     body.appendChild(mkSectionLabel('Payments'));
-    body.appendChild(mkModalTable(['Date','Property','Amount'],
+    body.appendChild(mkModalTable([
+      { label: 'Date',     tip: 'Payment date.' },
+      { label: 'Property', tip: 'Property the payment is linked to.' },
+      { label: 'Amount',   right: true, tip: 'Payment amount in EUR.' }
+    ],
       pays.sort((a,b) => (b.date||'').localeCompare(a.date||'')).slice(0,8)
           .map(p => [p.date||'—', byId('properties',p.propertyId)?.name||'—', formatEUR(toEUR(p.amount,p.currency,p.date))])
     ));
   }
   if (invs.length) {
     body.appendChild(mkSectionLabel('Invoices'));
-    body.appendChild(mkModalTable(['Date','Client','Amount'],
+    body.appendChild(mkModalTable([
+      { label: 'Date',   tip: 'Invoice issue date.' },
+      { label: 'Client', tip: 'Client the invoice was billed to.' },
+      { label: 'Amount', right: true, tip: 'Invoice total in EUR.' }
+    ],
       invs.sort((a,b) => (b.issueDate||'').localeCompare(a.issueDate||'')).slice(0,8)
           .map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', formatEUR(toEUR(i.total,i.currency,i.issueDate))])
     ));
@@ -719,7 +999,17 @@ function buildStreamKpiRow(cur, cmp, cmpRange) {
       delta:     cmp ? safePct(streamTotal, cmpTotal) : null,
       compLabel: cmpLabel,
       compValue: cmp ? formatEUR(cmpTotal ?? 0) : undefined,
-      onClick:   () => openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur)
+      onClick:   () => openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur),
+      explain: {
+        title: `${STREAM_LABELS[streamKey] || streamKey} Revenue`,
+        formula: 'Sum of paid payments + paid invoices tagged with this stream, within the selected period.',
+        inputs: [
+          { label: 'Stream Revenue', value: formatEUR(streamTotal) },
+          { label: 'Total Revenue (all streams)', value: formatEUR(totalRevMix) },
+          { label: '% of Mix', value: totalRevMix > 0 ? `${(streamTotal / totalRevMix * 100).toFixed(0)}%` : '—' }
+        ],
+        source: 'analytics.js:130-132 getData() (streamMap)'
+      }
     }));
   }
   return el('div', {}, mkSectionLabel('Revenue by Stream'), grid);
@@ -778,7 +1068,14 @@ function renderNetLine(cur, months) {
       const body = el('div');
       body.appendChild(mkSummaryGrid([
         { label: 'Month',         value: months[idx].label },
-        { label: 'Net Cash Flow', value: formatEUR(mNet), sub: mNet >= 0 ? 'Positive' : 'Negative' }
+        { label: 'Net Cash Flow', value: formatEUR(mNet), sub: mNet >= 0 ? 'Positive' : 'Negative',
+          explain: {
+            title: 'Net Cash Flow (month)',
+            formula: 'Monthly (paid payments + paid invoices) − Monthly (OpEx + CapEx).',
+            inputs: [{ label: 'Net Cash Flow', value: formatEUR(mNet) }],
+            source: 'analytics.js — renderNetLine() netData'
+          }
+        }
       ], 1));
       openModal({ title: `${months[idx].label} — Net Cash Flow`, body, large: false });
     }
