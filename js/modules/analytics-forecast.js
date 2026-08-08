@@ -723,7 +723,7 @@ function openPendingPipelineModal(data) {
           { label: 'Reservations', value: String(pendingReservations.length) },
           { label: 'Total', value: formatEUR(pendingSTRTotal) }
         ],
-        source: 'analytics-forecast.js calculateDashboardData() — `pendingSTRTotal`',
+        source: 'analytics-forecast.js:401 calculateDashboardData()',
         note: 'Already-paid Airbnb payments and non-Airbnb sources are excluded.'
       }
     },
@@ -734,7 +734,7 @@ function openPendingPipelineModal(data) {
           { label: 'Unpaid months', value: String(ltrPendingItems.length) },
           { label: 'Total', value: formatEUR(ltrPendingTotal) }
         ],
-        source: 'analytics-forecast.js calculateDashboardData() — `ltrPendingTotal` (getLtRentPendingItems())',
+        source: 'analytics-forecast.js:404 calculateDashboardData() (getLtRentPendingItems())',
         note: 'Only schedule entries not yet marked paid are counted.'
       }
     },
@@ -745,7 +745,7 @@ function openPendingPipelineModal(data) {
           { label: 'Invoices', value: String(svcPendingItems.length) },
           { label: 'Total', value: formatEUR(svcPendingTotal) }
         ],
-        source: 'analytics-forecast.js calculateDashboardData() — `svcPendingTotal` (getServicesPendingItems())',
+        source: 'analytics-forecast.js:405 calculateDashboardData() (getServicesPendingItems())',
         note: 'Paid and draft invoices are excluded — only status "sent" or "overdue" counts.'
       }
     },
@@ -758,7 +758,7 @@ function openPendingPipelineModal(data) {
           { label: 'Services',          value: formatEUR(svcPendingTotal) },
           { label: 'Total', value: formatEUR(pendingPipeline) }
         ],
-        source: 'analytics-forecast.js calculateDashboardData() — `pendingPipeline`',
+        source: 'analytics-forecast.js:409 calculateDashboardData()',
         note: 'Confirmed pipeline only — forecasted service revenue with no invoice raised yet (Projected Services) is deliberately excluded.'
       }
     }
@@ -865,7 +865,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'Months in period', value: String(monthlyBreakdown.length) },
         { label: 'Total', value: formatEUR(forecastRev) }
       ],
-      source: 'analytics-forecast.js calculateDashboardData() — `forecastRev` (buildFcMaps())',
+      source: 'analytics-forecast.js:356 calculateDashboardData() (buildFcMaps())',
       note: 'A manual monthly forecast entry wins when present; a long-term property with no manual entry falls back to its lease/rent schedule (see resolvePropertyMonthRevenue()). Cancelled/removed Airbnb forecast entries (tombstones) are excluded via sumForecastEntries().'
     }
   }));
@@ -935,7 +935,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'Paid invoices', value: String(actInvoices.length) },
         { label: 'Total', value: formatEUR(actualRev) }
       ],
-      source: 'analytics-forecast.js calculateDashboardData() — `actualRev`'
+      source: 'analytics-forecast.js:344 calculateDashboardData()'
     }
   }));
 
@@ -953,7 +953,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'Forecast Revenue', value: formatEUR(forecastRev) },
         { label: 'Variance', value: fmtVar(actualRev, forecastRev) }
       ],
-      source: 'analytics-forecast.js calculateDashboardData() — `variance` (fmtVar())'
+      source: 'analytics-forecast.js:360 calculateDashboardData()'
     }
   }));
 
@@ -974,7 +974,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'Forecast Revenue', value: formatEUR(forecastRev) },
         { label: 'Variance %', value: varPctStr }
       ],
-      source: 'analytics-forecast.js calculateDashboardData() — `variancePct` (safeVariancePct())',
+      source: 'analytics-forecast.js:361 calculateDashboardData() (safeVariancePct())',
       note: 'Shows "No forecast" when actual revenue exists but forecast revenue is zero.'
     }
   }));
@@ -991,7 +991,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     explain: {
       title: 'Forecast OpEx', formula: 'Sum of each month\'s forecast operating expenses across the selected period.',
       inputs: [{ label: 'Total', value: formatEUR(forecastExp) }],
-      source: 'analytics-forecast.js calculateDashboardData() — `forecastExp` (buildFcMaps())',
+      source: 'analytics-forecast.js:357 calculateDashboardData() (buildFcMaps())',
       note: 'CapEx is not part of the forecast model — this figure is OpEx only.'
     }
   }));
@@ -1058,7 +1058,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'Expense records', value: String(actOpExpenses.length) },
         { label: 'Total', value: formatEUR(actualExp) }
       ],
-      source: 'analytics-forecast.js calculateDashboardData() — `actualExp`',
+      source: 'analytics-forecast.js:345 calculateDashboardData()',
       note: 'Expenses flagged as CapEx (see isCapEx()) are excluded — they show separately under Actual CapEx.'
     },
   }));
@@ -1079,7 +1079,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'Forecast OpEx', value: formatEUR(forecastExp) },
         { label: 'Forecast Net', value: formatEUR(forecastNet) }
       ],
-      source: 'analytics-forecast.js calculateDashboardData() — `forecastNet`'
+      source: 'analytics-forecast.js:359 calculateDashboardData()'
     }
   }));
 
@@ -1099,7 +1099,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'Actual OpEx', value: formatEUR(actualExp) },
         { label: 'Actual Net', value: formatEUR(actualNet) }
       ],
-      source: 'analytics-forecast.js calculateDashboardData() — `actualNet`'
+      source: 'analytics-forecast.js:347 calculateDashboardData()'
     }
   }));
 
@@ -1129,13 +1129,13 @@ function buildKpiGrid(data, cmpData, cmpRange) {
             { label: 'Blended Expenses', value: formatEUR(blendedRoi.blendedExp) },
             { label: 'Blended Net Income', value: formatEUR(blendedRoi.blendedNet) }
           ],
-          source: 'analytics-forecast.js computeBlendedRoi() — `blendedNet`',
+          source: 'analytics-forecast.js:507 computeBlendedRoi()',
           note: 'Property-only — Customer Success/Marketing revenue is excluded, since those streams have no purchase price or CapEx to feed the ROI denominator.'
         }));
         sgrid.appendChild(mkSummaryBox('Total Invested', formatEUR(blendedRoi.totalInvested), 'Purchase price + all-time CapEx', {
           title: 'Total Invested', formula: 'Sum, across properties in the current filters, of Purchase Price + all-time CapEx.',
           inputs: [{ label: 'Total Invested', value: formatEUR(blendedRoi.totalInvested) }],
-          source: 'analytics-forecast.js computeBlendedRoi() — `totalInvested`',
+          source: 'analytics-forecast.js:551 computeBlendedRoi()',
           note: 'Cumulative to date — unlike revenue/expenses, this is never clamped to the selected period.'
         }));
         sgrid.appendChild(mkSummaryBox('Property ROI', blendedRoi.roi.toFixed(1) + '%', null, {
@@ -1145,7 +1145,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
             { label: 'Total Invested', value: formatEUR(blendedRoi.totalInvested) },
             { label: 'ROI', value: blendedRoi.roi.toFixed(1) + '%' }
           ],
-          source: 'analytics-forecast.js computeBlendedRoi() — `roi`'
+          source: 'analytics-forecast.js:554 computeBlendedRoi()'
         }));
         body.appendChild(sgrid);
 
@@ -1193,7 +1193,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'Total Invested', value: formatEUR(blendedRoi.totalInvested) },
         { label: 'ROI', value: blendedRoi.roi.toFixed(1) + '%' }
       ] : [{ label: 'Total Invested', value: formatEUR(0) }],
-      source: 'analytics-forecast.js computeBlendedRoi() — `roi`',
+      source: 'analytics-forecast.js:554 computeBlendedRoi()',
       note: 'Blends actual figures for months already elapsed with forecast figures for months still ahead in the selected range; property-only, regardless of the stream filter.'
     }
   }));
@@ -1216,7 +1216,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'Services',          value: formatEUR(svcPendingTotal) },
         { label: 'Total', value: formatEUR(pendingPipeline) }
       ],
-      source: 'analytics-forecast.js calculateDashboardData() — `pendingPipeline`',
+      source: 'analytics-forecast.js:409 calculateDashboardData()',
       note: 'Confirmed revenue only (pending Airbnb payouts, unpaid lease months, sent/overdue invoices) — forecasted-but-not-yet-invoiced service revenue is shown separately under Projected Services.'
     }
   }));
@@ -1241,7 +1241,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
               { label: 'Months', value: String(svcProjectedItems.length) },
               { label: 'Total', value: formatEUR(svcProjectedTotal) }
             ],
-            source: 'analytics-forecast.js calculateDashboardData() — `svcProjectedTotal` (getServicesProjectedItems())',
+            source: 'analytics-forecast.js:406 calculateDashboardData() (getServicesProjectedItems())',
             note: 'This is a typed-in target, not a signed contract, confirmed booking, or invoice — a different confidence level from Pending Pipeline. A month already invoiced (draft/sent/paid/overdue) is excluded so it isn\'t double counted.'
           }
         },
@@ -1253,7 +1253,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
               { label: 'Projected Services', value: formatEUR(svcProjectedTotal) },
               { label: 'Total', value: formatEUR(pendingPipeline + svcProjectedTotal) }
             ],
-            source: 'analytics-forecast.js buildKpiGrid()'
+            source: 'analytics-forecast.js:835 buildKpiGrid()'
           }
         }
       ], 2));
@@ -1288,7 +1288,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'Months', value: String(svcProjectedItems.length) },
         { label: 'Total', value: formatEUR(svcProjectedTotal) }
       ],
-      source: 'analytics-forecast.js calculateDashboardData() — `svcProjectedTotal` (getServicesProjectedItems())',
+      source: 'analytics-forecast.js:406 calculateDashboardData() (getServicesProjectedItems())',
       note: 'Excluded from Pending Pipeline — it is a forecasted target, not a signed contract, confirmed booking, or invoice.'
     }
   }));
@@ -1310,7 +1310,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
           { label: 'CapEx records', value: String(actCapExpenses.length) },
           { label: 'Total', value: formatEUR(actualCapEx) }
         ],
-        source: 'analytics-forecast.js calculateDashboardData() — `actualCapEx`',
+        source: 'analytics-forecast.js:346 calculateDashboardData()',
         note: 'The forecast model has no CapEx field, so this is shown as an actuals-only reference alongside the other forecast KPIs.'
       }));
       summaryBoxes.appendChild(mkSummaryBox('Transactions', String(actCapExpenses.length)));
@@ -1386,7 +1386,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'CapEx records', value: String(actCapExpenses.length) },
         { label: 'Total', value: formatEUR(actualCapEx) }
       ],
-      source: 'analytics-forecast.js calculateDashboardData() — `actualCapEx`',
+      source: 'analytics-forecast.js:346 calculateDashboardData()',
       note: 'The forecast model has no CapEx field — this figure is actuals-only, shown for reference alongside the forecast KPIs.'
     }
   }));
@@ -1419,7 +1419,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
           { label: 'Months measured', value: String(mapeMonthCount) },
           { label: 'MAPE', value: mapeValue }
         ],
-        source: 'analytics-forecast.js calculateDashboardData() — `mape`',
+        source: 'analytics-forecast.js:460 calculateDashboardData()',
         note: 'Only months where Forecast Revenue > 0 are included, so a month with no forecast set can\'t distort the average.'
       }));
       summaryBoxes.appendChild(mkSummaryBox('Months Measured', String(mapeMonthCount)));
@@ -1428,7 +1428,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         summaryBoxes.appendChild(mkSummaryBox('Avg Accuracy', accuracy, 'of forecast', {
           title: 'Avg Accuracy', formula: 'max(0, 100 − MAPE).',
           inputs: [{ label: 'MAPE', value: mapeValue }, { label: 'Avg Accuracy', value: accuracy }],
-          source: 'analytics-forecast.js buildKpiGrid()',
+          source: 'analytics-forecast.js:835 buildKpiGrid()',
           note: 'A simple inverse of MAPE for a more intuitive "how close were we" reading — floored at 0%.'
         }));
       }
@@ -1460,7 +1460,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         { label: 'Months measured', value: String(mapeMonthCount) },
         { label: 'MAPE', value: mapeValue }
       ],
-      source: 'analytics-forecast.js calculateDashboardData() — `mape`',
+      source: 'analytics-forecast.js:460 calculateDashboardData()',
       note: 'Lower is better — 0% means every measured month matched its forecast exactly.'
     }
   }));
@@ -1725,14 +1725,14 @@ function buildMonthlyTable(data) {
   }
   const headers = [
     { label: 'Month' },
-    { label: 'Fc Revenue',  right: true },
-    { label: 'Actual Rev',  right: true },
-    { label: 'Variance',    right: true },
-    { label: 'Var %',       right: true },
-    { label: 'Fc OpEx',     right: true },
-    { label: 'Actual OpEx', right: true },
-    { label: 'Fc Net',      right: true },
-    { label: 'Actual Net',  right: true }
+    { label: 'Fc Revenue',  right: true, tip: 'Forecast revenue for the month, from property/service forecast records.' },
+    { label: 'Actual Rev',  right: true, tip: 'Actual revenue recorded for the month (paid payments + paid invoices).' },
+    { label: 'Variance',    right: true, tip: 'Actual Revenue minus Forecast Revenue.' },
+    { label: 'Var %',       right: true, tip: 'Variance as a percentage of Forecast Revenue.' },
+    { label: 'Fc OpEx',     right: true, tip: 'Forecast operating expenses for the month.' },
+    { label: 'Actual OpEx', right: true, tip: 'Actual operating expenses recorded for the month (excludes CapEx).' },
+    { label: 'Fc Net',      right: true, tip: 'Forecast Revenue minus Forecast OpEx.' },
+    { label: 'Actual Net',  right: true, tip: 'Actual Revenue minus Actual OpEx.' }
   ];
   const rows = filtered.map(m => [
     m.label,
@@ -1754,10 +1754,10 @@ function buildStreamTable(data) {
   }
   const headers = [
     { label: 'Stream' },
-    { label: 'Forecast', right: true },
-    { label: 'Actual',   right: true },
-    { label: 'Variance', right: true },
-    { label: 'Var %',    right: true }
+    { label: 'Forecast', right: true, tip: 'Forecast revenue for this stream over the selected period.' },
+    { label: 'Actual',   right: true, tip: 'Actual revenue recorded for this stream over the selected period.' },
+    { label: 'Variance', right: true, tip: 'Actual minus Forecast.' },
+    { label: 'Var %',    right: true, tip: 'Variance as a percentage of Forecast.' }
   ];
   const rows = data.streamBreakdown.map(s => [
     s.label,
@@ -1776,12 +1776,18 @@ function buildPropertyTable(data) {
   const hasPending = data.propertyBreakdown.some(r => r.pending > 0);
 
   // Build table manually so we can add Edit buttons per row
+  const cols = [
+    { label: 'Property', tip: 'Property with actual, forecast, or pending revenue in the selected period.' },
+    { label: 'Forecast', right: true, tip: 'Forecast revenue for this property over the selected period.' },
+    { label: 'Actual', right: true, tip: 'Actual revenue recorded for this property over the selected period.' },
+    { label: 'Variance', right: true, tip: 'Actual minus Forecast.' },
+    { label: 'Var %', right: true, tip: 'Variance as a percentage of Forecast.' },
+    ...(hasPending ? [{ label: 'Pending', right: true, tip: 'Confirmed pending revenue (Short-Term + Long-Term Rental) not yet collected for this property.' }] : []),
+    { label: '' }
+  ];
   const table = el('table', { class: 'table' });
   const htr = el('tr');
-  ['Property', 'Forecast', 'Actual', 'Variance', 'Var %', ...(hasPending ? ['Pending'] : []), ''].forEach((lbl, i) => {
-    const isRight = i > 0 && i < (hasPending ? 6 : 5);
-    htr.appendChild(el('th', { class: isRight ? 'right' : '' }, lbl));
-  });
+  cols.forEach(col => htr.appendChild(mkTh(col)));
   table.appendChild(el('thead', {}, htr));
 
   const tbody = el('tbody');
@@ -1871,6 +1877,21 @@ function openForecastEditModal(propRow, data) {
   body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:4px' },
     `Editing annual forecast for ${year}. Revenue and expenses will be distributed evenly across all 12 months.`
   ));
+
+  const curGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px' });
+  curGrid.appendChild(mkSummaryBox('Current Forecast Revenue', formatEUR(curFcRev), `${year} total`, {
+    title: 'Current Forecast Revenue', formula: 'Sum, across the 12 months of the selected year, of each month\'s forecast revenue.',
+    inputs: [{ label: 'Total', value: formatEUR(curFcRev) }],
+    source: 'analytics-forecast.js:1841 openForecastEditModal()',
+    note: 'Cancelled/removed Airbnb forecast entries (tombstones) are excluded via sumForecastEntries(), matching every other forecast total in this dashboard.'
+  }));
+  curGrid.appendChild(mkSummaryBox('Current Forecast Expenses', formatEUR(curFcExp), `${year} total`, {
+    title: 'Current Forecast Expenses', formula: 'Sum, across the 12 months of the selected year, of each month\'s forecast expenses.',
+    inputs: [{ label: 'Total', value: formatEUR(curFcExp) }],
+    source: 'analytics-forecast.js:1841 openForecastEditModal()'
+  }));
+  body.appendChild(curGrid);
+
   body.appendChild(formRow(`Revenue Target (€) — ${year}`, revInput));
   body.appendChild(formRow(`Expense Target (€) — ${year}`, expInput));
   body.appendChild(el('div', { style: 'display:flex;justify-content:flex-end;margin-top:8px' }, saveBtn));
@@ -1883,13 +1904,13 @@ function buildPendingTable(data) {
     return el('p', { style: 'color:var(--text-muted);padding:12px 0;margin:0' }, 'No pending Airbnb reservations found for the selected period.');
   }
   const headers = [
-    { label: 'Property' },
-    { label: 'Confirmation' },
-    { label: 'Guest' },
-    { label: 'Check-in' },
-    { label: 'Check-out' },
-    { label: 'Nights',  right: true },
-    { label: 'Amount',  right: true }
+    { label: 'Property', tip: 'Property the reservation belongs to.' },
+    { label: 'Confirmation', tip: 'Airbnb confirmation/reference code for the reservation.' },
+    { label: 'Guest', tip: 'Guest name, when available.' },
+    { label: 'Check-in', tip: 'Reservation check-in date.' },
+    { label: 'Check-out', tip: 'Reservation check-out date.' },
+    { label: 'Nights',  right: true, tip: 'Number of nights booked.' },
+    { label: 'Amount',  right: true, tip: 'Reservation payout amount, converted to EUR, pending collection.' }
   ];
   const rows = data.pendingReservations
     .map(p => ({
@@ -1913,9 +1934,26 @@ function openStreamDetailModal(s, data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
-  summaryBoxes.appendChild(mkSummaryBox('Forecast Revenue', formatEUR(s.fcRev)));
-  summaryBoxes.appendChild(mkSummaryBox('Actual Revenue',   formatEUR(s.actRev)));
-  summaryBoxes.appendChild(mkSummaryBox('Variance',         fmtVar(s.actRev, s.fcRev), fmtVarPct(s.actRev, s.fcRev)));
+  summaryBoxes.appendChild(mkSummaryBox('Forecast Revenue', formatEUR(s.fcRev), null, {
+    title: 'Forecast Revenue', formula: 'Sum of this stream\'s forecast revenue across the months in the selected period.',
+    inputs: [{ label: 'Total', value: formatEUR(s.fcRev) }],
+    source: 'analytics-forecast.js:558 computeStreamBreakdown()',
+    note: 'Property streams use the manual forecast entry when present, falling back to the lease/rent schedule for long-term properties.'
+  }));
+  summaryBoxes.appendChild(mkSummaryBox('Actual Revenue',   formatEUR(s.actRev), null, {
+    title: 'Actual Revenue', formula: 'Sum of paid payments + paid invoices resolved to this stream, dated within the selected period.',
+    inputs: [{ label: 'Total', value: formatEUR(s.actRev) }],
+    source: 'analytics-forecast.js:558 computeStreamBreakdown()'
+  }));
+  summaryBoxes.appendChild(mkSummaryBox('Variance',         fmtVar(s.actRev, s.fcRev), fmtVarPct(s.actRev, s.fcRev), {
+    title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for this stream.',
+    inputs: [
+      { label: 'Actual Revenue', value: formatEUR(s.actRev) },
+      { label: 'Forecast Revenue', value: formatEUR(s.fcRev) },
+      { label: 'Variance', value: fmtVar(s.actRev, s.fcRev) }
+    ],
+    source: 'analytics-forecast.js:558 computeStreamBreakdown()'
+  }));
   body.appendChild(mkSectionLabel('Forecast vs Actual'));
   body.appendChild(summaryBoxes);
 
@@ -1942,7 +1980,13 @@ function openStreamDetailModal(s, data) {
     });
   if (monthRows.length > 0) {
     body.appendChild(mkSectionLabel('By Month'));
-    body.appendChild(mkModalTable(['Month', 'Amount'], monthRows));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Month' },
+        { label: 'Amount', right: true, tip: 'Actual revenue (paid payments + paid invoices) recorded for this stream in the month.' }
+      ],
+      monthRows
+    ));
   }
 
   const txCount = streamPayments.length + streamInvoices.length;
@@ -1957,14 +2001,30 @@ function openStreamDetailModal(s, data) {
           .slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''))
           .map(p => [fmtDate(p.date), byId('properties', p.propertyId)?.name || '—', p.confirmationCode || p.airbnbRef || '—', formatEUR(toEUR(p.amount, p.currency, p.date))]);
         detailBody.appendChild(mkSectionLabel('Payments'));
-        detailBody.appendChild(mkModalTable(['Date', 'Property', 'Reference', 'Amount'], payRows));
+        detailBody.appendChild(mkModalTable(
+          [
+            { label: 'Date', tip: 'Date the payment was recorded.' },
+            { label: 'Property', tip: 'Property the payment belongs to.' },
+            { label: 'Reference', tip: 'Confirmation/reference code for the payment.' },
+            { label: 'Amount', right: true, tip: 'Payment amount converted to EUR.' }
+          ],
+          payRows
+        ));
       }
       if (streamInvoices.length > 0) {
         const invRows = streamInvoices
           .slice().sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''))
           .map(i => [fmtDate(i.issueDate), byId('clients', i.clientId)?.name || i.clientId || '—', i.ref || i.number || '—', formatEUR(toEUR(i.total || i.amount, i.currency, i.issueDate))]);
         detailBody.appendChild(mkSectionLabel('Invoices'));
-        detailBody.appendChild(mkModalTable(['Date', 'Client', 'Reference', 'Amount'], invRows));
+        detailBody.appendChild(mkModalTable(
+          [
+            { label: 'Date', tip: 'Invoice issue date.' },
+            { label: 'Client', tip: 'Client the invoice was issued to.' },
+            { label: 'Reference', tip: 'Invoice number/reference.' },
+            { label: 'Amount', right: true, tip: 'Invoice total converted to EUR.' }
+          ],
+          invRows
+        ));
       }
       openModal({ title: `${s.label} — All Transactions`, body: detailBody, large: true });
     };
@@ -1995,7 +2055,16 @@ function buildStreamKpiRow(data) {
       variant: s.fcRev > 0 ? (variance > 0 ? 'success' : variance < 0 ? 'danger' : '') : '',
       delta: s.fcRev > 0 ? safeVariancePct(s.actRev, s.fcRev) : null,
       compLabel: 'forecast',
-      onClick: () => openStreamDetailModal(s, data)
+      onClick: () => openStreamDetailModal(s, data),
+      explain: {
+        title: `${s.label} — Actual vs Forecast`, formula: 'Actual: sum of paid payments + paid invoices resolved to this stream in the selected period. Forecast: sum of this stream\'s forecast revenue for the same months.',
+        inputs: [
+          { label: 'Actual Revenue', value: formatEUR(s.actRev) },
+          { label: 'Forecast Revenue', value: formatEUR(s.fcRev) },
+          { label: 'Variance', value: fmtVar(s.actRev, s.fcRev) }
+        ],
+        source: 'analytics-forecast.js:558 computeStreamBreakdown()'
+      }
     }));
   }
   return el('div', {},
@@ -2039,7 +2108,15 @@ function renderCharts(data) {
         const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
         summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(m.actRev)));
         summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(m.fcRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(m.actRev, m.fcRev), fmtVarPct(m.actRev, m.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(m.actRev, m.fcRev), fmtVarPct(m.actRev, m.fcRev), {
+          title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for the month.',
+          inputs: [
+            { label: 'Actual Revenue', value: formatEUR(m.actRev) },
+            { label: 'Budget (Forecast)', value: formatEUR(m.fcRev) },
+            { label: 'Variance', value: fmtVar(m.actRev, m.fcRev) }
+          ],
+          source: 'analytics-forecast.js:445 calculateDashboardData()'
+        }));
         body.appendChild(mkSectionLabel('Actual vs Budget'));
         body.appendChild(summaryBoxes);
 
@@ -2058,7 +2135,13 @@ function renderCharts(data) {
           .map(([key, val]) => [STREAMS[key]?.label || key, formatEUR(val)]);
         if (streamRows.length > 0) {
           body.appendChild(mkSectionLabel('Breakdown by Stream'));
-          body.appendChild(mkModalTable(['Stream', 'Actual Revenue'], streamRows));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Stream' },
+              { label: 'Actual Revenue', right: true, tip: 'Sum of actual payments and invoices for this stream in the selected month.' }
+            ],
+            streamRows
+          ));
         }
 
         openModal({ title: `${m.label} — Revenue Detail`, body, large: true });
@@ -2084,7 +2167,15 @@ function renderCharts(data) {
         const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
         summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(m.actRev)));
         summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(m.fcRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(m.actRev, m.fcRev), fmtVarPct(m.actRev, m.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(m.actRev, m.fcRev), fmtVarPct(m.actRev, m.fcRev), {
+          title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for the month.',
+          inputs: [
+            { label: 'Actual Revenue', value: formatEUR(m.actRev) },
+            { label: 'Budget (Forecast)', value: formatEUR(m.fcRev) },
+            { label: 'Variance', value: fmtVar(m.actRev, m.fcRev) }
+          ],
+          source: 'analytics-forecast.js:445 calculateDashboardData()'
+        }));
         body.appendChild(mkSectionLabel('Variance Detail'));
         body.appendChild(summaryBoxes);
 
@@ -2103,7 +2194,13 @@ function renderCharts(data) {
           .map(([key, val]) => [STREAMS[key]?.label || key, formatEUR(val)]);
         if (streamRows.length > 0) {
           body.appendChild(mkSectionLabel('Breakdown by Stream'));
-          body.appendChild(mkModalTable(['Stream', 'Actual Revenue'], streamRows));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Stream' },
+              { label: 'Actual Revenue', right: true, tip: 'Sum of actual payments and invoices for this stream in the selected month.' }
+            ],
+            streamRows
+          ));
         }
 
         openModal({ title: `${m.label} — Variance Detail`, body, large: true });
@@ -2135,7 +2232,15 @@ function renderCharts(data) {
         const fcBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
         fcBoxes.appendChild(mkSummaryBox('Forecast Revenue', formatEUR(m.fcRev)));
         fcBoxes.appendChild(mkSummaryBox('Forecast OpEx',    formatEUR(m.fcExp)));
-        fcBoxes.appendChild(mkSummaryBox('Forecast Net',     formatEUR(m.fcNet), fmtVar(m.actNet, m.fcNet) + ' vs forecast'));
+        fcBoxes.appendChild(mkSummaryBox('Forecast Net',     formatEUR(m.fcNet), fmtVar(m.actNet, m.fcNet) + ' vs forecast', {
+          title: 'Forecast Net', formula: 'Forecast Revenue − Forecast OpEx for the month.',
+          inputs: [
+            { label: 'Forecast Revenue', value: formatEUR(m.fcRev) },
+            { label: 'Forecast OpEx', value: formatEUR(m.fcExp) },
+            { label: 'Forecast Net', value: formatEUR(m.fcNet) }
+          ],
+          source: 'analytics-forecast.js:447 calculateDashboardData()'
+        }));
         body.appendChild(mkSectionLabel('Forecast'));
         body.appendChild(fcBoxes);
 
@@ -2175,7 +2280,15 @@ function renderCharts(data) {
         const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
         summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(s.actRev)));
         summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(s.fcRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(s.actRev, s.fcRev), fmtVarPct(s.actRev, s.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(s.actRev, s.fcRev), fmtVarPct(s.actRev, s.fcRev), {
+          title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for this stream.',
+          inputs: [
+            { label: 'Actual Revenue', value: formatEUR(s.actRev) },
+            { label: 'Budget (Forecast)', value: formatEUR(s.fcRev) },
+            { label: 'Variance', value: fmtVar(s.actRev, s.fcRev) }
+          ],
+          source: 'analytics-forecast.js:558 computeStreamBreakdown()'
+        }));
         body.appendChild(mkSectionLabel('Actual vs Budget'));
         body.appendChild(summaryBoxes);
 
@@ -2188,7 +2301,13 @@ function renderCharts(data) {
         }).filter(([, val]) => val !== formatEUR(0));
         if (monthlyRows.length > 0) {
           body.appendChild(mkSectionLabel('Monthly Trend'));
-          body.appendChild(mkModalTable(['Month', 'Actual Revenue'], monthlyRows));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Month' },
+              { label: 'Actual Revenue', right: true, tip: 'Sum of actual payments and invoices for this stream in the month.' }
+            ],
+            monthlyRows
+          ));
         }
 
         openModal({ title: `${s.label} — Stream Detail`, body, large: true });
@@ -2215,7 +2334,15 @@ function renderCharts(data) {
         const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
         summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(prop.actRev)));
         summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(prop.fcRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(prop.actRev, prop.fcRev), fmtVarPct(prop.actRev, prop.fcRev)));
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(prop.actRev, prop.fcRev), fmtVarPct(prop.actRev, prop.fcRev), {
+          title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for this property.',
+          inputs: [
+            { label: 'Actual Revenue', value: formatEUR(prop.actRev) },
+            { label: 'Budget (Forecast)', value: formatEUR(prop.fcRev) },
+            { label: 'Variance', value: fmtVar(prop.actRev, prop.fcRev) }
+          ],
+          source: 'analytics-forecast.js:618 computePropertyBreakdown()'
+        }));
         body.appendChild(mkSectionLabel('Actual vs Budget'));
         body.appendChild(summaryBoxes);
 
@@ -2229,7 +2356,15 @@ function renderCharts(data) {
         }).filter(([, act]) => act !== formatEUR(0));
         if (monthlyRows.length > 0) {
           body.appendChild(mkSectionLabel('Monthly Revenue Breakdown'));
-          body.appendChild(mkModalTable(['Month', 'Actual', 'Forecast', 'Variance'], monthlyRows));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Month' },
+              { label: 'Actual', right: true, tip: 'Actual revenue recorded for this property in the month.' },
+              { label: 'Forecast', right: true, tip: 'Forecast revenue for this property in the month.' },
+              { label: 'Variance', right: true, tip: 'Actual minus Forecast for the month.' }
+            ],
+            monthlyRows
+          ));
         }
 
         openModal({ title: `${prop.label} — Property Detail`, body, large: true });
@@ -2263,7 +2398,14 @@ function renderCharts(data) {
 
         const total = monthPending.reduce((s, p) => s + toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date), 0);
         const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px' });
-        summaryBoxes.appendChild(mkSummaryBox('Total Pending', formatEUR(total)));
+        summaryBoxes.appendChild(mkSummaryBox('Total Pending', formatEUR(total), null, {
+          title: 'Total Pending', formula: 'Sum of pending Airbnb reservation amounts with check-in date in this month, converted to EUR.',
+          inputs: [
+            { label: 'Reservations', value: String(monthPending.length) },
+            { label: 'Total', value: formatEUR(total) }
+          ],
+          source: 'analytics-forecast.js:2077 renderCharts() (anf-pending-pipeline onClickItem)'
+        }));
         summaryBoxes.appendChild(mkSummaryBox('Reservations', String(monthPending.length)));
         body.appendChild(mkSectionLabel('Pipeline Summary'));
         body.appendChild(summaryBoxes);
@@ -2279,7 +2421,16 @@ function renderCharts(data) {
           ]);
         if (pendingRows.length > 0) {
           body.appendChild(mkSectionLabel('Pending Invoices'));
-          body.appendChild(mkModalTable(['Property', 'Confirmation', 'Check-in', 'Nights', 'Amount'], pendingRows));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Property', tip: 'Property the reservation belongs to.' },
+              { label: 'Confirmation', right: true, tip: 'Airbnb confirmation/reference code for the reservation.' },
+              { label: 'Check-in', right: true, tip: 'Reservation check-in date.' },
+              { label: 'Nights', right: true, tip: 'Number of nights booked.' },
+              { label: 'Amount', right: true, tip: 'Reservation payout amount, converted to EUR, pending collection.' }
+            ],
+            pendingRows
+          ));
         }
 
         openModal({ title: `Pending Pipeline — ${monthLabel}`, body, large: true });
@@ -2309,7 +2460,14 @@ function renderCharts(data) {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
         const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px' });
-        summaryBoxes.appendChild(mkSummaryBox('Total Pending', formatEUR(entry.total)));
+        summaryBoxes.appendChild(mkSummaryBox('Total Pending', formatEUR(entry.total), null, {
+          title: 'Total Pending', formula: 'Sum of pending Airbnb reservation amounts for this property, converted to EUR.',
+          inputs: [
+            { label: 'Reservations', value: String(entry.reservations.length) },
+            { label: 'Total', value: formatEUR(entry.total) }
+          ],
+          source: 'analytics-forecast.js:2077 renderCharts() (anf-pending-by-prop onClickItem)'
+        }));
         summaryBoxes.appendChild(mkSummaryBox('Reservations', String(entry.reservations.length)));
         body.appendChild(mkSectionLabel('Pipeline Summary'));
         body.appendChild(summaryBoxes);
@@ -2325,7 +2483,16 @@ function renderCharts(data) {
           ]);
         if (pendingRows.length > 0) {
           body.appendChild(mkSectionLabel('Pending Invoices'));
-          body.appendChild(mkModalTable(['Confirmation', 'Check-in', 'Check-out', 'Nights', 'Amount'], pendingRows));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Confirmation', tip: 'Airbnb confirmation/reference code for the reservation.' },
+              { label: 'Check-in', right: true, tip: 'Reservation check-in date.' },
+              { label: 'Check-out', right: true, tip: 'Reservation check-out date.' },
+              { label: 'Nights', right: true, tip: 'Number of nights booked.' },
+              { label: 'Amount', right: true, tip: 'Reservation payout amount, converted to EUR, pending collection.' }
+            ],
+            pendingRows
+          ));
         }
 
         openModal({ title: `${entry.label} — Pending Pipeline`, body, large: true });
@@ -2400,7 +2567,15 @@ function renderCharts(data) {
         const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
         summaryBoxes.appendChild(mkSummaryBox('Forecast', formatEUR(m.fcRev)));
         summaryBoxes.appendChild(mkSummaryBox('Actual', formatEUR(m.actRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Abs Error', formatEUR(absErr), pctErr !== null ? pctErr.toFixed(1) + '% error' : ''));
+        summaryBoxes.appendChild(mkSummaryBox('Abs Error', formatEUR(absErr), pctErr !== null ? pctErr.toFixed(1) + '% error' : '', {
+          title: 'Abs Error', formula: '|Actual Revenue − Forecast Revenue| for the month; the % Error is Abs Error ÷ Forecast Revenue × 100 — the per-month term averaged into MAPE.',
+          inputs: [
+            { label: 'Forecast', value: formatEUR(m.fcRev) },
+            { label: 'Actual', value: formatEUR(m.actRev) },
+            { label: 'Abs Error', value: formatEUR(absErr) }
+          ],
+          source: 'analytics-forecast.js:460 calculateDashboardData()'
+        }));
         body.appendChild(mkSectionLabel(`${m.label} — Accuracy Detail`));
         body.appendChild(summaryBoxes);
 
@@ -2419,7 +2594,13 @@ function renderCharts(data) {
           .map(([key, val]) => [STREAMS[key]?.label || key, formatEUR(val)]);
         if (streamRows.length > 0) {
           body.appendChild(mkSectionLabel('Actual Revenue by Stream'));
-          body.appendChild(mkModalTable(['Stream', 'Actual Revenue'], streamRows));
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Stream' },
+              { label: 'Actual Revenue', right: true, tip: 'Sum of actual payments and invoices for this stream in the selected month.' }
+            ],
+            streamRows
+          ));
         }
 
         openModal({ title: `${m.label} — Forecast Accuracy`, body, large: true });
