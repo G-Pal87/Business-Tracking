@@ -1019,7 +1019,7 @@ function buildForwardPipelineCard() {
     ],
     source: 'analytics-str.js:368-379 getForwardPipeline() (makeRateForNight():207)',
     note: 'Rate = confirmed strRateTargets ADR (minus discount) when set, otherwise the historic-suggestion rate — same published-rate logic as the rest of this dashboard.'
-  }));
+  });
   lockedRevBox.style.cursor = 'pointer';
   lockedRevBox.title = 'Click for locked date ranges';
   lockedRevBox.onclick = () => openPipelineDetailModal(pipeline, { type: 'locked', title: 'Forward Pipeline — Locked Nights (Next 90 Days)' });
@@ -1037,7 +1037,7 @@ function buildForwardPipelineCard() {
     ],
     source: 'analytics-str.js:368-381 getForwardPipeline() (makeRateForNight():207)',
     note: 'A best-case ceiling, not a forecast — assumes every open night sells at the full published rate with no discount.'
-  }));
+  });
   potRevBox.style.cursor = 'pointer';
   potRevBox.title = 'Click for open date ranges';
   potRevBox.onclick = () => openPipelineDetailModal(pipeline, { type: 'open', title: 'Forward Pipeline — Open Nights (Next 90 Days)' });
