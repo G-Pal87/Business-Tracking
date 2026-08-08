@@ -358,18 +358,20 @@ export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelt
 
 /**
  * mkCmpGrid(items, curLabel, cmpLabel) — side-by-side comparison summary.
- * items = [{label, curVal, cmpVal, curSub?, cmpSub?}]
+ * items = [{label, curVal, cmpVal, curSub?, cmpSub?, explain?}]
+ * `explain` (an mkExplainButton payload) is the same metric's calculation
+ * regardless of period, so it's shown on both the current and comparison box.
  */
 export function mkCmpGrid(items, curLabel, cmpLabel) {
   const wrap = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
   const headerStyle = 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px';
   for (const [lbl, vals] of [
-    [curLabel,         items.map(i => [i.label, i.curVal, i.curSub ?? null])],
-    [`vs ${cmpLabel}`, items.map(i => [i.label, i.cmpVal, i.cmpSub ?? null])]
+    [curLabel,         items.map(i => [i.label, i.curVal, i.curSub ?? null, i.explain ?? null])],
+    [`vs ${cmpLabel}`, items.map(i => [i.label, i.cmpVal, i.cmpSub ?? null, i.explain ?? null])]
   ]) {
     const col = el('div');
     col.appendChild(el('div', { style: headerStyle }, lbl));
-    vals.forEach(([label, value, sub]) => col.appendChild(mkSummaryBox(label, value, sub)));
+    vals.forEach(([label, value, sub, explain]) => col.appendChild(mkSummaryBox(label, value, sub, explain)));
     wrap.appendChild(col);
   }
   return wrap;
