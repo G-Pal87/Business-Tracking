@@ -940,18 +940,23 @@ function openPropertySummaryModal(d) {
     }, statusNotes[status]));
   }
 
-  body.appendChild(mkSectionLabel('Performance'));
-  body.appendChild(mkSummaryGrid([
+  const perfBoxes = [
     { label: 'Revenue',            value: formatEUR(d.rev) },
     { label: 'Operating Expenses', value: formatEUR(d.opEx), sub: d.rev > 0 ? `${(d.opEx / d.rev * 100).toFixed(0)}% of revenue` : null },
     { label: 'Operating Profit',   value: formatEUR(d.profit), sub: d.rev > 0 ? `Margin ${(d.profit / d.rev * 100).toFixed(0)}%` : null },
     { label: 'CapEx (period)',     value: formatEUR(d.capEx) },
     { label: 'Net (after CapEx)',  value: formatEUR(d.net) },
     { label: 'All-time CapEx',     value: formatEUR(d.allTimeCapEx) }
-  ], 3));
+  ];
+  if (d.expectedBookedEUR !== null) {
+    perfBoxes.push({ label: 'Expected Rev (booked)', value: formatEUR(d.expectedBookedEUR), sub: 'Booked so far for this future period' });
+  }
+  body.appendChild(mkSectionLabel('Performance'));
+  body.appendChild(mkSummaryGrid(perfBoxes, 3));
 
   const roiBoxes = [];
   if (d.simpleROI     !== null) roiBoxes.push({ label: 'Simple ROI',       value: d.simpleROI.toFixed(1) + '%' });
+  if (d.potentialROI  !== null) roiBoxes.push({ label: 'Potential ROI',    value: d.potentialROI.toFixed(1) + '%', sub: 'Full-year run-rate' });
   if (d.annualizedROI !== null) roiBoxes.push({ label: 'Annualized ROI',   value: d.annualizedROI.toFixed(1) + '%' });
   if (d.cashOnCashROI !== null) roiBoxes.push({ label: 'Cash-on-Cash ROI', value: d.cashOnCashROI.toFixed(1) + '%' });
   if (roiBoxes.length) {
