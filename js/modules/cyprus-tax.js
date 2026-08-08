@@ -229,19 +229,25 @@ function modalRentalPayments() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Revenue',  value: fmtE(total) },
+    { label: 'Total Revenue',  value: fmtE(total),
+      explain: { title: 'Total Revenue', formula: 'Sum of EUR-converted paid rental payments for the year.',
+        inputs: [{ label: 'Payments counted', value: String(pays.length) }, { label: 'Total', value: fmtE(total) }],
+        source: 'cyprus-tax.js:211 modalRentalPayments()' } },
     { label: 'Payments',       value: String(pays.length) },
-    { label: 'Avg / Payment',  value: fmtE(total / pays.length) },
+    { label: 'Avg / Payment',  value: fmtE(total / pays.length),
+      explain: { title: 'Avg / Payment', formula: 'Total Revenue ÷ number of payments.',
+        inputs: [{ label: 'Total Revenue', value: fmtE(total) }, { label: 'Payments', value: String(pays.length) }],
+        source: 'cyprus-tax.js:211 modalRentalPayments()' } },
     { label: 'Properties',     value: String(propRows.length) },
   ], 4));
   body.appendChild(mkSectionLabel('Revenue by Property'));
   body.appendChild(mkModalTable(
-    [{ label: 'Property' }, { label: 'Pmts', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
+    [{ label: 'Property', tip: 'Property this rental payment is linked to (Unknown if none).' }, { label: 'Pmts', right: true, tip: 'Number of paid rental payments for this property this year.' }, { label: 'Revenue', right: true, tip: 'Sum of EUR-converted paid rental payments for this property.' }, { label: 'Share', right: true, muted: true, tip: 'This property’s revenue as a percentage of total rental revenue.' }],
     propRows.map(([id, d]) => { const p = propMap[id]; return [p?.name || p?.address || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })
   ));
   body.appendChild(mkSectionLabel('Monthly Collections'));
   body.appendChild(mkModalTable(
-    [{ label: 'Month' }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
+    [{ label: 'Month', tip: 'Calendar month the payment date falls in (YYYY-MM).' }, { label: 'Revenue', right: true, tip: 'Sum of EUR-converted paid rental payments collected that month.' }, { label: 'Share', right: true, muted: true, tip: 'That month’s revenue as a percentage of total rental revenue for the year.' }],
     moRows.map(([mo, v]) => [mo, fmtE(v), pct(v, total)])
   ));
   openModal({ title: `Rental Payments — ${year}`, body, large: true });
@@ -265,14 +271,20 @@ function modalInvoiceRevenue() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Invoiced', value: fmtE(total) },
+    { label: 'Total Invoiced', value: fmtE(total),
+      explain: { title: 'Total Invoiced', formula: 'Sum of EUR-converted paid invoice totals for the year.',
+        inputs: [{ label: 'Invoices counted', value: String(invs.length) }, { label: 'Total', value: fmtE(total) }],
+        source: 'cyprus-tax.js:256 modalInvoiceRevenue()' } },
     { label: 'Invoices',       value: String(invs.length) },
-    { label: 'Avg Invoice',    value: fmtE(total / invs.length) },
+    { label: 'Avg Invoice',    value: fmtE(total / invs.length),
+      explain: { title: 'Avg Invoice', formula: 'Total Invoiced ÷ number of invoices.',
+        inputs: [{ label: 'Total Invoiced', value: fmtE(total) }, { label: 'Invoices', value: String(invs.length) }],
+        source: 'cyprus-tax.js:256 modalInvoiceRevenue()' } },
     { label: 'Clients',        value: String(clRows.length) },
   ], 4));
   body.appendChild(mkSectionLabel('Revenue by Client'));
   body.appendChild(mkModalTable(
-    [{ label: 'Client' }, { label: 'Invoices', right: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
+    [{ label: 'Client', tip: 'Client this paid invoice is billed to (Unknown if none).' }, { label: 'Invoices', right: true, tip: 'Number of paid invoices for this client this year.' }, { label: 'Revenue', right: true, tip: 'Sum of EUR-converted paid invoice totals for this client.' }, { label: 'Share', right: true, muted: true, tip: 'This client’s revenue as a percentage of total invoice revenue.' }],
     clRows.map(([id, d]) => { const c = clientMap[id]; return [c?.name || c?.company || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })
   ));
   openModal({ title: `Invoice Revenue — ${year}`, body, large: true });
@@ -296,19 +308,28 @@ function modalExpenseCategory(cat) {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Category Total',    value: fmtE(total) },
+    { label: 'Category Total',    value: fmtE(total),
+      explain: { title: 'Category Total', formula: 'Sum of EUR-converted, non-CapEx expense amounts in this category, dated within the year.',
+        inputs: [{ label: 'Records counted', value: String(catExps.length) }, { label: 'Total', value: fmtE(total) }],
+        source: 'cyprus-tax.js:293 modalExpenseCategory()' } },
     { label: 'Records',           value: String(catExps.length) },
-    { label: 'Avg / Record',      value: fmtE(total / catExps.length) },
-    { label: '% of All Expenses', value: pct(total, allTotal) },
+    { label: 'Avg / Record',      value: fmtE(total / catExps.length),
+      explain: { title: 'Avg / Record', formula: 'Category Total ÷ number of records.',
+        inputs: [{ label: 'Category Total', value: fmtE(total) }, { label: 'Records', value: String(catExps.length) }],
+        source: 'cyprus-tax.js:293 modalExpenseCategory()' } },
+    { label: '% of All Expenses', value: pct(total, allTotal),
+      explain: { title: '% of All Expenses', formula: 'Category Total ÷ Total (all non-CapEx expenses this year) × 100.',
+        inputs: [{ label: 'Category Total', value: fmtE(total) }, { label: 'All Expenses Total', value: fmtE(allTotal) }],
+        source: 'cyprus-tax.js:293 modalExpenseCategory()' } },
   ], 4));
   body.appendChild(mkSectionLabel('Monthly Distribution'));
   body.appendChild(mkModalTable(
-    [{ label: 'Month' }, { label: 'Amount', right: true }, { label: '% of Category', right: true, muted: true }],
+    [{ label: 'Month', tip: 'Calendar month the expense date falls in (YYYY-MM).' }, { label: 'Amount', right: true, tip: 'Sum of EUR-converted amounts for this category in that month.' }, { label: '% of Category', right: true, muted: true, tip: 'That month’s amount as a percentage of this category’s total for the year.' }],
     moRows.map(([mo, v]) => [mo, fmtE(v), pct(v, total)])
   ));
   body.appendChild(mkSectionLabel(`Top Records (${topRecs.length} of ${catExps.length})`));
   body.appendChild(mkModalTable(
-    [{ label: 'Description / Vendor' }, { label: 'Date' }, { label: 'Amount', right: true }],
+    [{ label: 'Description / Vendor', tip: 'Expense description, or linked vendor name, whichever is available.' }, { label: 'Date', tip: 'Expense date.' }, { label: 'Amount', right: true, tip: 'EUR-converted expense amount.' }],
     topRecs.map(e => {
       const vendorName = e.vendorId ? byId('vendors', e.vendorId)?.name : null;
       const label = e.description || vendorName || e.vendor || '—';
@@ -352,14 +373,18 @@ function modalForecastEntities(forRevenue) {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: forRevenue ? 'Forecast Revenue' : 'Forecast Expenses', value: fmtE(total) },
+    { label: forRevenue ? 'Forecast Revenue' : 'Forecast Expenses', value: fmtE(total),
+      explain: { title: forRevenue ? 'Forecast Revenue' : 'Forecast Expenses',
+        formula: 'Sum, across all forecast entities, of each remaining month\'s forecast revenue/expenses from the cutoff month onward; the cutoff month itself is scaled by the fraction of that month still remaining (days left ÷ days in month), so already-elapsed days aren\'t double-counted against actuals.',
+        inputs: [{ label: 'Entities with forecast', value: String(rows.length) }, { label: 'From month (partial)', value: curMonth }, { label: 'Total', value: fmtE(total) }],
+        source: 'cyprus-tax.js:342 modalForecastEntities() (via monthRemainingFraction())' } },
     { label: 'Properties', value: String(propCount) },
     { label: 'Services', value: String(svcCount) },
     { label: 'From Month', value: `${curMonth} (partial) onwards` },
   ], 4));
   body.appendChild(mkSectionLabel(`${forRevenue ? 'Revenue' : 'Expense'} Forecast by Entity`));
   body.appendChild(mkModalTable(
-    [{ label: 'Entity' }, { label: 'Type' }, { label: 'Months', right: true }, { label: forRevenue ? 'Revenue' : 'Expenses', right: true }, { label: 'Share', right: true, muted: true }],
+    [{ label: 'Entity', tip: 'Property or service the forecast entry belongs to.' }, { label: 'Type', tip: 'Whether the entity is a Property or a Service.' }, { label: 'Months', right: true, tip: 'Number of remaining forecast months (from the cutoff onward) with a non-zero value for this entity.' }, { label: forRevenue ? 'Revenue' : 'Expenses', right: true, tip: forRevenue ? 'Forecast revenue for this entity from the cutoff month onward, with the cutoff month pro-rated.' : 'Forecast expenses for this entity from the cutoff month onward, with the cutoff month pro-rated.' }, { label: 'Share', right: true, muted: true, tip: 'This entity’s forecast total as a percentage of the overall forecast total shown above.' }],
     rows.map(([id, d]) => {
       const prop = propMap[id];
       const isProperty = d.type === 'property' || !!prop;
@@ -387,16 +412,25 @@ function modalRevenueDetail() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Actual Collected',       value: fmtE(actTotal) },
+    { label: 'Actual Collected',       value: fmtE(actTotal),
+      explain: { title: 'Actual Collected', formula: 'Sum of paid rental payments + paid invoices, dated up to today (or year-end).',
+        inputs: [{ label: 'Rental payments', value: fmtE(paysTotal) }, { label: 'Invoices', value: fmtE(invsTotal) }, { label: 'Total', value: fmtE(actTotal) }],
+        source: 'cyprus-tax.js:401 modalRevenueDetail()' } },
     { label: 'Forecast Remaining',     value: fmtE(safeN(s.forecastRevenue)) },
-    { label: 'Rental Share',           value: pct(paysTotal, actTotal) },
-    { label: 'Invoice Share',          value: pct(invsTotal, actTotal) },
+    { label: 'Rental Share',           value: pct(paysTotal, actTotal),
+      explain: { title: 'Rental Share', formula: 'Rental payments collected ÷ Actual Collected × 100.',
+        inputs: [{ label: 'Rental payments', value: fmtE(paysTotal) }, { label: 'Actual Collected', value: fmtE(actTotal) }],
+        source: 'cyprus-tax.js:401 modalRevenueDetail()' } },
+    { label: 'Invoice Share',          value: pct(invsTotal, actTotal),
+      explain: { title: 'Invoice Share', formula: 'Paid invoices ÷ Actual Collected × 100.',
+        inputs: [{ label: 'Invoices', value: fmtE(invsTotal) }, { label: 'Actual Collected', value: fmtE(actTotal) }],
+        source: 'cyprus-tax.js:401 modalRevenueDetail()' } },
   ], 4));
   if (moRows.length) {
     body.appendChild(mkSectionLabel('Month-by-Month Actual Collections'));
     let cum = 0;
     body.appendChild(mkModalTable(
-      [{ label: 'Month' }, { label: 'Revenue', right: true }, { label: 'Cumulative', right: true, muted: true }],
+      [{ label: 'Month', tip: 'Calendar month the payment/invoice date falls in (YYYY-MM).' }, { label: 'Revenue', right: true, tip: 'Sum of EUR-converted paid rental payments and paid invoices dated that month.' }, { label: 'Cumulative', right: true, muted: true, tip: 'Running total of Actual Collected revenue from January through this month.' }],
       moRows.map(([mo, v]) => { cum += v; return [mo, fmtE(v), fmtE(cum)]; })
     ));
   }
@@ -414,15 +448,21 @@ function modalExpensesDetail() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Actual to Date',       value: fmtE(actTotal) },
+    { label: 'Actual to Date',       value: fmtE(actTotal),
+      explain: { title: 'Actual to Date', formula: 'Sum of EUR-converted, non-CapEx expenses across all categories, dated up to today (or year-end).',
+        inputs: [{ label: 'Categories', value: String(catRows.length) }, { label: 'Total', value: fmtE(actTotal) }],
+        source: 'cyprus-tax.js:440 modalExpensesDetail()' } },
     { label: 'Forecast Remaining',   value: fmtE(safeN(s.forecastExpenses)) },
     { label: 'Expense Categories',   value: String(catRows.length) },
-    { label: 'Largest Category',     value: catRows[0]?.[0] || '—', sub: catRows[0] ? fmtE(catRows[0][1]) : '' },
+    { label: 'Largest Category',     value: catRows[0]?.[0] || '—', sub: catRows[0] ? fmtE(catRows[0][1]) : '',
+      explain: { title: 'Largest Category', formula: 'Category with the highest actual-to-date expense total.',
+        inputs: catRows[0] ? [{ label: 'Category', value: catRows[0][0] }, { label: 'Amount', value: fmtE(catRows[0][1]) }] : [],
+        source: 'cyprus-tax.js:440 modalExpensesDetail()' } },
   ], 4));
   if (catRows.length) {
     body.appendChild(mkSectionLabel('All Categories — Actual to Date'));
     body.appendChild(mkModalTable(
-      [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Actual', right: true, muted: true }],
+      [{ label: 'Category', tip: 'Expense category (e.g. Utilities, Maintenance).' }, { label: 'Amount', right: true, tip: 'Sum of EUR-converted, non-CapEx expenses in that category, dated up to today (or year-end).' }, { label: '% of Actual', right: true, muted: true, tip: 'That category’s amount as a percentage of Actual to Date.' }],
       catRows.map(([cat, v]) => [cat, fmtE(v), pct(v, actTotal)])
     ));
   }
@@ -443,13 +483,29 @@ function modalTaxableProfit() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Est. Revenue',    value: fmtE(c.totalRevenue) },
-    { label: 'Est. Expenses',   value: fmtE(c.totalDeductible) },
-    { label: 'Taxable Profit',  value: fmtE(c.estProfit) },
-    { label: 'Profit Margin',   value: margin ? `${margin}%` : '—', sub: 'Profit ÷ Revenue' },
+    { label: 'Est. Revenue',    value: fmtE(c.totalRevenue),
+      explain: { title: 'Est. Revenue', formula: 'Actual revenue to date + forecast revenue for the rest of the year.',
+        inputs: [{ label: 'Actual revenue', value: fmtE(safeN(s.actualRevenue)) }, { label: 'Forecast revenue', value: fmtE(safeN(s.forecastRevenue)) }],
+        source: 'cyprus-tax.js:123 calcAll() — `totalRevenue`' } },
+    { label: 'Est. Expenses',   value: fmtE(c.totalDeductible),
+      explain: { title: 'Est. Expenses', formula: 'Actual deductible expenses to date + forecast deductible expenses for the rest of the year.',
+        inputs: [{ label: 'Actual expenses', value: fmtE(safeN(s.actualExpenses)) }, { label: 'Forecast expenses', value: fmtE(safeN(s.forecastExpenses)) }],
+        source: 'cyprus-tax.js:124 calcAll() — `totalDeductible`' } },
+    { label: 'Taxable Profit',  value: fmtE(c.estProfit),
+      explain: { title: 'Est. Taxable Profit', formula: 'max(0, Est. Revenue − Est. Expenses + Non-deductible add-back − Tax allowances)',
+        inputs: [
+          { label: 'Est. Revenue', value: fmtE(c.totalRevenue) }, { label: 'Est. Expenses', value: fmtE(c.totalDeductible) },
+          { label: 'Non-deductible add-back', value: fmtE(safeN(s.nonDeductibleExpenses)) }, { label: 'Tax allowances', value: fmtE(safeN(s.taxAllowances)) },
+        ],
+        source: 'cyprus-tax.js:125 calcAll() — `estProfit`',
+        note: 'Floored at 0 — a projected loss shows as €0.00 taxable profit here, not a negative figure.' } },
+    { label: 'Profit Margin',   value: margin ? `${margin}%` : '—', sub: 'Profit ÷ Revenue',
+      explain: { title: 'Profit Margin', formula: 'Est. Taxable Profit ÷ Est. Revenue × 100.',
+        inputs: [{ label: 'Taxable Profit', value: fmtE(c.estProfit) }, { label: 'Est. Revenue', value: fmtE(c.totalRevenue) }],
+        source: 'cyprus-tax.js:472 modalTaxableProfit()' } },
   ], 4));
   body.appendChild(mkSectionLabel('Calculation'));
-  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], rows));
+  body.appendChild(mkModalTable([{ label: 'Item', tip: 'Line item in the taxable profit build-up.' }, { label: '' }, { label: 'Amount', right: true, tip: 'EUR value of the line item.' }], rows));
   openModal({ title: 'Taxable Profit — Calculation', body, large: false });
 }
 
@@ -462,10 +518,23 @@ function modalBufferedProfit() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Base Taxable Profit',   value: fmtE(c.estProfit) },
-    { label: `Buffer (${c.bufPct}%)`, value: `+ ${fmtE(bufferAmt)}` },
-    { label: 'Buffered Profit',       value: fmtE(c.taxableProfit) },
-    { label: 'Extra Tax Cost',        value: fmtE(extraTax), sub: 'Cost of the safety margin' },
+    { label: 'Base Taxable Profit',   value: fmtE(c.estProfit),
+      explain: { title: 'Base Taxable Profit', formula: 'max(0, Est. Revenue − Est. Expenses + Non-deductible add-back − Tax allowances), before the safety buffer.',
+        inputs: [{ label: 'Base Taxable Profit', value: fmtE(c.estProfit) }],
+        source: 'cyprus-tax.js:125 calcAll() — `estProfit`' } },
+    { label: `Buffer (${c.bufPct}%)`, value: `+ ${fmtE(bufferAmt)}`,
+      explain: { title: `Buffer (${c.bufPct}%)`, formula: 'Base Taxable Profit × Buffer % ÷ 100.',
+        inputs: [{ label: 'Base Taxable Profit', value: fmtE(c.estProfit) }, { label: 'Buffer %', value: `${c.bufPct}%` }],
+        source: 'cyprus-tax.js:126 calcAll() — `bufferedProfit` minus `estProfit`',
+        note: `Buffer % is user-set in Tax Settings (default ${CYPRUS_TAX_YEAR_DEFAULTS.bufferPct}%) — this year it is set to ${c.bufPct}%.` } },
+    { label: 'Buffered Profit',       value: fmtE(c.taxableProfit),
+      explain: { title: 'Buffered Profit', formula: 'max(0, Base Taxable Profit × (1 + Buffer % ÷ 100)) — the figure corporation tax is actually calculated on.',
+        inputs: [{ label: 'Base Taxable Profit', value: fmtE(c.estProfit) }, { label: 'Buffer %', value: `${c.bufPct}%` }],
+        source: 'cyprus-tax.js:126-127 calcAll() — `bufferedProfit`, `taxableProfit`' } },
+    { label: 'Extra Tax Cost',        value: fmtE(extraTax), sub: 'Cost of the safety margin',
+      explain: { title: 'Extra Tax Cost', formula: 'Buffer amount × Corp Tax Rate ÷ 100 — the additional provisional tax caused only by the buffer.',
+        inputs: [{ label: 'Buffer amount', value: fmtE(bufferAmt) }, { label: 'Corp Tax Rate', value: `${c.rate}%` }],
+        source: 'cyprus-tax.js:512 modalBufferedProfit() — `extraTax`' } },
   ], 4));
   body.appendChild(el('div', { style: 'margin-top:4px;padding:12px;border-radius:6px;background:rgba(251,191,36,0.08);border-left:3px solid var(--warning);font-size:12px;color:var(--text-muted);line-height:1.6' },
     `The ${c.bufPct}% buffer inflates the taxable profit estimate so provisional tax is less likely to fall below 75% of the final liability. Cyprus imposes a 10% surcharge on any shortfall below that threshold. The buffer costs ~${fmtE(extraTax)} in extra provisional tax but protects against the penalty.`
@@ -483,14 +552,27 @@ function modalCorpTax() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Corp Tax Rate',              value: `${c.rate}%` },
-    { label: 'Taxable Profit',             value: fmtE(c.taxableProfit) },
-    { label: 'Total Corp Tax',             value: fmtE(c.corpTax) },
-    { label: 'Effective Rate on Revenue',  value: `${effRate}%`, sub: 'Tax ÷ Est. Revenue' },
+    { label: 'Corp Tax Rate',              value: `${c.rate}%`,
+      explain: { title: 'Corp Tax Rate', formula: 'Rate set in Tax Settings for this tax year.',
+        inputs: [{ label: 'Rate', value: `${c.rate}%` }],
+        source: 'cyprus-tax.js:15 CYPRUS_TAX_YEAR_DEFAULTS.corpTaxRate (default for new years)',
+        note: `Default for a never-configured year is ${CYPRUS_TAX_YEAR_DEFAULTS.corpTaxRate}% (code comment: standard rate rises from 12.5% to 15% for tax years starting 1 Jan 2026). Existing saved years keep whatever rate they were already set to — changing the default doesn't retroactively change past years.` } },
+    { label: 'Taxable Profit',             value: fmtE(c.taxableProfit),
+      explain: { title: 'Taxable Profit', formula: 'Buffered taxable profit if the safety buffer is enabled, otherwise Est. Taxable Profit unchanged.',
+        inputs: [{ label: 'Taxable Profit', value: fmtE(c.taxableProfit) }],
+        source: 'cyprus-tax.js:127 calcAll() — `taxableProfit`' } },
+    { label: 'Total Corp Tax',             value: fmtE(c.corpTax),
+      explain: { title: 'Total Corp Tax', formula: 'Taxable Profit × Corp Tax Rate ÷ 100.',
+        inputs: [{ label: 'Taxable Profit', value: fmtE(c.taxableProfit) }, { label: 'Corp Tax Rate', value: `${c.rate}%` }],
+        source: 'cyprus-tax.js:128 calcAll() — `corpTax`' } },
+    { label: 'Effective Rate on Revenue',  value: `${effRate}%`, sub: 'Tax ÷ Est. Revenue',
+      explain: { title: 'Effective Rate on Revenue', formula: 'Total Corp Tax ÷ Est. Revenue × 100.',
+        inputs: [{ label: 'Total Corp Tax', value: fmtE(c.corpTax) }, { label: 'Est. Revenue', value: fmtE(c.totalRevenue) }],
+        source: 'cyprus-tax.js:545 modalCorpTax() — `effRate`' } },
   ], 4));
   body.appendChild(mkSectionLabel('Payment Schedule'));
   body.appendChild(mkModalTable(
-    [{ label: 'Instalment' }, { label: 'Due Date' }, { label: 'Amount', right: true }, { label: 'Status', right: true, muted: true }],
+    [{ label: 'Instalment', tip: 'Which provisional-tax instalment this row is (1st, 2nd, or the post-audit final balance).' }, { label: 'Due Date', tip: 'Statutory due date for this instalment.' }, { label: 'Amount', right: true, tip: 'Amount due for this instalment — the 1st and 2nd instalments each equal 50% of Total Corp Tax.' }, { label: 'Status', right: true, muted: true, tip: 'Days remaining/overdue relative to today, based on the due date.' }],
     [
       ['1st — 50%',     `31 Jul ${year}`,       fmtE(c.julyPayment), daysLabel(`${year}-07-31`)],
       ['2nd — 50%',     `31 Dec ${year}`,        fmtE(c.decPayment),  daysLabel(`${year}-12-31`)],
@@ -514,10 +596,16 @@ function modalInstalment(which) {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Amount Due',       value: fmtE(amount) },
+    { label: 'Amount Due',       value: fmtE(amount),
+      explain: { title: 'Amount Due', formula: 'Total Corp Tax ÷ 2 — each instalment is 50% of the estimated annual corporation tax.',
+        inputs: [{ label: 'Total Corp Tax', value: fmtE(c.corpTax) }],
+        source: `cyprus-tax.js:${isJuly ? '129' : '130'} calcAll() — \`${isJuly ? 'julyPayment' : 'decPayment'}\`` } },
     { label: 'Due Date',         value: isJuly ? `31 Jul ${year}` : `31 Dec ${year}` },
     { label: 'Deadline Status',  value: daysLabel(dueDate) },
-    { label: 'Total Corp Tax',   value: fmtE(c.corpTax), sub: 'Both instalments combined' },
+    { label: 'Total Corp Tax',   value: fmtE(c.corpTax), sub: 'Both instalments combined',
+      explain: { title: 'Total Corp Tax', formula: 'Taxable Profit × Corp Tax Rate ÷ 100.',
+        inputs: [{ label: 'Taxable Profit', value: fmtE(c.taxableProfit) }, { label: 'Corp Tax Rate', value: `${c.rate}%` }],
+        source: 'cyprus-tax.js:128 calcAll() — `corpTax`' } },
   ], 4));
   body.appendChild(el('div', { style: 'margin-top:4px;padding:12px;border-radius:6px;background:rgba(251,191,36,0.08);border-left:3px solid var(--warning);font-size:12px;color:var(--text-muted);line-height:1.6' },
     isJuly
@@ -535,8 +623,14 @@ function modalFinalBalance() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Provisional Tax Paid', value: fmtE(c.corpTax), sub: 'Jul + Dec instalments' },
-    { label: 'Current Estimate',     value: fmtE(c.corpTax), sub: 'Based on your inputs' },
+    { label: 'Provisional Tax Paid', value: fmtE(c.corpTax), sub: 'Jul + Dec instalments',
+      explain: { title: 'Provisional Tax Paid', formula: 'Taxable Profit × Corp Tax Rate ÷ 100 (July + December instalments combined, each 50%).',
+        inputs: [{ label: 'Taxable Profit', value: fmtE(c.taxableProfit) }, { label: 'Corp Tax Rate', value: `${c.rate}%` }],
+        source: 'cyprus-tax.js:128 calcAll() — `corpTax`' } },
+    { label: 'Current Estimate',     value: fmtE(c.corpTax), sub: 'Based on your inputs',
+      explain: { title: 'Current Estimate', formula: 'Same as Total Corp Tax above — this screen has no separate "actual audited" figure yet, so the current estimate and the amount paid are shown as equal until the audit is filed.',
+        inputs: [{ label: 'Total Corp Tax', value: fmtE(c.corpTax) }],
+        source: 'cyprus-tax.js:128 calcAll() — `corpTax`' } },
     { label: 'Final Balance',        value: '—',             sub: 'Determined after audit' },
     { label: 'Deadline',             value: `1 Aug ${nextYear}` },
   ], 4));
@@ -559,13 +653,29 @@ function modalDecRevProfit() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Original Estimate', value: fmtE(c.estProfit) },
-    { label: 'Revised Estimate',  value: fmtE(c.revProfit) },
-    { label: 'Change',            value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta)), sub: delta > 0 ? 'Profit up' : delta < 0 ? 'Profit down' : 'No change' },
-    { label: 'Tax Impact',        value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta) * c.rate / 100), sub: `At ${c.rate}% rate` },
+    { label: 'Original Estimate', value: fmtE(c.estProfit),
+      explain: { title: 'Original Estimate', formula: 'max(0, Est. Revenue − Est. Expenses + Non-deductible add-back − Tax allowances), from the Annual Estimate section.',
+        inputs: [{ label: 'Original Estimate', value: fmtE(c.estProfit) }],
+        source: 'cyprus-tax.js:125 calcAll() — `estProfit`' } },
+    { label: 'Revised Estimate',  value: fmtE(c.revProfit),
+      explain: { title: 'Revised Estimate', formula: 'max(0, Revised Revenue − Revised Expenses + Revised non-deductible add-back − Revised tax allowances).',
+        inputs: [
+          { label: 'Revised Revenue', value: fmtE(safeN(s.decRevRevenue)) }, { label: 'Revised Expenses', value: fmtE(safeN(s.decRevExpenses)) },
+          { label: 'Revised non-deductible', value: fmtE(safeN(s.decRevNonDeductible)) }, { label: 'Revised allowances', value: fmtE(safeN(s.decRevAllowances)) },
+        ],
+        source: 'cyprus-tax.js:136 calcAll() — `revProfit`',
+        note: 'Floored at 0, same as the original estimate.' } },
+    { label: 'Change',            value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta)), sub: delta > 0 ? 'Profit up' : delta < 0 ? 'Profit down' : 'No change',
+      explain: { title: 'Change', formula: 'Revised Estimate − Original Estimate.',
+        inputs: [{ label: 'Revised Estimate', value: fmtE(c.revProfit) }, { label: 'Original Estimate', value: fmtE(c.estProfit) }],
+        source: 'cyprus-tax.js:645 modalDecRevProfit() — `delta`' } },
+    { label: 'Tax Impact',        value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta) * c.rate / 100), sub: `At ${c.rate}% rate`,
+      explain: { title: 'Tax Impact', formula: '|Change| × Corp Tax Rate ÷ 100 — the change in profit converted to a change in corporation tax.',
+        inputs: [{ label: 'Change', value: fmtE(Math.abs(delta)) }, { label: 'Corp Tax Rate', value: `${c.rate}%` }],
+        source: 'cyprus-tax.js:645 modalDecRevProfit()' } },
   ], 4));
   body.appendChild(mkSectionLabel('Revised Calculation'));
-  body.appendChild(mkModalTable([{ label: 'Item' }, { label: '' }, { label: 'Amount', right: true }], rows));
+  body.appendChild(mkModalTable([{ label: 'Item', tip: 'Line item in the revised taxable profit build-up.' }, { label: '' }, { label: 'Amount', right: true, tip: 'EUR value of the line item.' }], rows));
   openModal({ title: 'Revised Taxable Profit vs Original', body, large: false });
 }
 
@@ -576,9 +686,18 @@ function modalDecRevTax() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Original Corp Tax',  value: fmtE(c.corpTax),          sub: 'From Annual Estimate' },
-    { label: 'Revised Corp Tax',   value: fmtE(c.revisedAnnualTax) },
-    { label: 'Tax Change',         value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta)), sub: delta > 0 ? 'More tax required' : delta < 0 ? 'Less tax required' : 'No change' },
+    { label: 'Original Corp Tax',  value: fmtE(c.corpTax),          sub: 'From Annual Estimate',
+      explain: { title: 'Original Corp Tax', formula: 'Taxable Profit × Corp Tax Rate ÷ 100.',
+        inputs: [{ label: 'Taxable Profit', value: fmtE(c.taxableProfit) }, { label: 'Corp Tax Rate', value: `${c.rate}%` }],
+        source: 'cyprus-tax.js:128 calcAll() — `corpTax`' } },
+    { label: 'Revised Corp Tax',   value: fmtE(c.revisedAnnualTax),
+      explain: { title: 'Revised Corp Tax', formula: 'Revised Taxable Profit × Corp Tax Rate ÷ 100.',
+        inputs: [{ label: 'Revised Taxable Profit', value: fmtE(c.revProfit) }, { label: 'Corp Tax Rate', value: `${c.rate}%` }],
+        source: 'cyprus-tax.js:137 calcAll() — `revisedAnnualTax`' } },
+    { label: 'Tax Change',         value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta)), sub: delta > 0 ? 'More tax required' : delta < 0 ? 'Less tax required' : 'No change',
+      explain: { title: 'Tax Change', formula: 'Revised Corp Tax − Original Corp Tax.',
+        inputs: [{ label: 'Revised Corp Tax', value: fmtE(c.revisedAnnualTax) }, { label: 'Original Corp Tax', value: fmtE(c.corpTax) }],
+        source: 'cyprus-tax.js:682 modalDecRevTax() — `delta`' } },
     { label: 'Rate Applied',       value: `${c.rate}%` },
   ], 4));
   body.appendChild(el('div', { style: 'margin-top:4px;padding:12px;border-radius:6px;background:rgba(99,102,241,0.08);border-left:3px solid var(--accent);font-size:12px;color:var(--text-muted);line-height:1.6' },
@@ -601,9 +720,18 @@ function modalJulyPaid() {
   const body = el('div');
   body.appendChild(mkSummaryGrid([
     { label: 'July Payment',             value: fmtE(c.alreadyPaid) },
-    { label: '% of Original Tax',        value: `${coverOrig}%`,    sub: `Original: ${fmtE(c.corpTax)}` },
-    { label: '% of Revised Tax',         value: `${coverRevised}%`, sub: `Revised: ${fmtE(c.revisedAnnualTax)}` },
-    { label: surplus >= 0 ? 'Surplus Paid' : 'Still Owed', value: fmtE(Math.abs(surplus)), sub: surplus >= 0 ? 'Overpaid so far' : 'Remaining liability' },
+    { label: '% of Original Tax',        value: `${coverOrig}%`,    sub: `Original: ${fmtE(c.corpTax)}`,
+      explain: { title: '% of Original Tax', formula: 'July Payment ÷ Original Corp Tax × 100.',
+        inputs: [{ label: 'July Payment', value: fmtE(c.alreadyPaid) }, { label: 'Original Corp Tax', value: fmtE(c.corpTax) }],
+        source: 'cyprus-tax.js:713 modalJulyPaid() — `coverOrig`' } },
+    { label: '% of Revised Tax',         value: `${coverRevised}%`, sub: `Revised: ${fmtE(c.revisedAnnualTax)}`,
+      explain: { title: '% of Revised Tax', formula: 'July Payment ÷ Revised Corp Tax × 100.',
+        inputs: [{ label: 'July Payment', value: fmtE(c.alreadyPaid) }, { label: 'Revised Corp Tax', value: fmtE(c.revisedAnnualTax) }],
+        source: 'cyprus-tax.js:713 modalJulyPaid() — `coverRevised`' } },
+    { label: surplus >= 0 ? 'Surplus Paid' : 'Still Owed', value: fmtE(Math.abs(surplus)), sub: surplus >= 0 ? 'Overpaid so far' : 'Remaining liability',
+      explain: { title: surplus >= 0 ? 'Surplus Paid' : 'Still Owed', formula: 'July Payment − Revised Annual Tax (positive = surplus already paid, negative = still owed).',
+        inputs: [{ label: 'July Payment', value: fmtE(c.alreadyPaid) }, { label: 'Revised Annual Tax', value: fmtE(c.revisedAnnualTax) }],
+        source: 'cyprus-tax.js:713 modalJulyPaid() — `surplus`' } },
   ], 4));
   openModal({ title: 'July Payment — Coverage Analysis', body, large: false });
 }
@@ -616,9 +744,19 @@ function modalReqDecPayment() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Original Dec Plan',     value: fmtE(c.decPayment),     sub: '50% of original estimate' },
-    { label: 'Required Dec Payment',  value: fmtE(c.reqDecPayment),  sub: delta > 0 ? '↑ More than planned' : delta < 0 ? '↓ Less than planned' : 'Same as planned' },
-    { label: 'Change vs Plan',        value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta)) },
+    { label: 'Original Dec Plan',     value: fmtE(c.decPayment),     sub: '50% of original estimate',
+      explain: { title: 'Original Dec Plan', formula: 'Total Corp Tax ÷ 2 (the originally planned 2nd instalment).',
+        inputs: [{ label: 'Total Corp Tax', value: fmtE(c.corpTax) }],
+        source: 'cyprus-tax.js:130 calcAll() — `decPayment`' } },
+    { label: 'Required Dec Payment',  value: fmtE(c.reqDecPayment),  sub: delta > 0 ? '↑ More than planned' : delta < 0 ? '↓ Less than planned' : 'Same as planned',
+      explain: { title: 'Required Dec Payment', formula: 'max(0, Revised Corp Tax − July Payment already paid).',
+        inputs: [{ label: 'Revised Corp Tax', value: fmtE(c.revisedAnnualTax) }, { label: 'July Payment', value: fmtE(c.alreadyPaid) }],
+        source: 'cyprus-tax.js:140 calcAll() — `reqDecPayment`',
+        note: 'Floored at 0 — if July already covers the revised liability, the required December payment shows as €0.00 (see Overpayment instead).' } },
+    { label: 'Change vs Plan',        value: (delta >= 0 ? '+' : '−') + fmtE(Math.abs(delta)),
+      explain: { title: 'Change vs Plan', formula: 'Required Dec Payment − Original Dec Plan.',
+        inputs: [{ label: 'Required Dec Payment', value: fmtE(c.reqDecPayment) }, { label: 'Original Dec Plan', value: fmtE(c.decPayment) }],
+        source: 'cyprus-tax.js:739 modalReqDecPayment() — `delta`' } },
     { label: 'Deadline Status',       value: daysLabel(`${year}-12-31`) },
   ], 4));
   body.appendChild(el('div', { style: 'margin-top:4px;padding:12px;border-radius:6px;' + (c.reqDecPayment > 0 ? 'background:rgba(251,191,36,0.08);border-left:3px solid var(--warning)' : 'background:rgba(16,185,129,0.08);border-left:3px solid var(--success)') + ';font-size:12px;color:var(--text-muted);line-height:1.6' },
@@ -636,13 +774,19 @@ function modalOverpayment() {
   const body = el('div');
   body.appendChild(mkSummaryGrid([
     { label: 'July Payment',       value: fmtE(c.alreadyPaid) },
-    { label: 'Revised Annual Tax', value: fmtE(c.revisedAnnualTax) },
-    { label: 'Overpayment',        value: fmtE(c.overpayment) },
+    { label: 'Revised Annual Tax', value: fmtE(c.revisedAnnualTax),
+      explain: { title: 'Revised Annual Tax', formula: 'Revised Taxable Profit × Corp Tax Rate ÷ 100.',
+        inputs: [{ label: 'Revised Taxable Profit', value: fmtE(c.revProfit) }, { label: 'Corp Tax Rate', value: `${c.rate}%` }],
+        source: 'cyprus-tax.js:137 calcAll() — `revisedAnnualTax`' } },
+    { label: 'Overpayment',        value: fmtE(c.overpayment),
+      explain: { title: 'Overpayment', formula: 'July Payment − Revised Annual Tax, when that is positive (i.e. July payment exceeds the revised liability).',
+        inputs: [{ label: 'July Payment', value: fmtE(c.alreadyPaid) }, { label: 'Revised Annual Tax', value: fmtE(c.revisedAnnualTax) }],
+        source: 'cyprus-tax.js:141 calcAll() — `overpayment`' } },
     { label: 'No Dec Payment Due', value: 'Confirmed' },
   ], 4));
   body.appendChild(mkSectionLabel('Your Options'));
   body.appendChild(mkModalTable(
-    ['Option', 'Description'],
+    [{ label: 'Option', tip: 'What you can do with the overpaid amount.' }, { label: 'Description', right: true, tip: 'Details of that option.' }],
     [
       ['Offset against final balance', `Apply the ${fmtE(c.overpayment)} credit toward the final corporation tax balance due after the year-end audit (1 Aug).`],
       ['Claim a refund', 'Request a refund from the Cyprus Tax Department after the final assessment is issued. Processing times vary.'],
@@ -687,9 +831,20 @@ function build() {
       return;
     }
     safetyDisplayEl.appendChild(el('div', { class: 'grid grid-3', style: 'margin-bottom:12px' },
-      mkKpiCard({ label: 'Planned Provisional Tax', value: fmtE(c.corpTax) }),
-      mkKpiCard({ label: 'Minimum Required (75%)',  value: fmtE(c.minRequired75), subtitle: `75% of ${fmtE(c.finalTax)}` }),
-      mkKpiCard({ label: 'Shortfall',               value: fmtE(c.shortfall), variant: c.shortfall > 0 ? 'danger' : 'success' })
+      mkKpiCard({ label: 'Planned Provisional Tax', value: fmtE(c.corpTax),
+        explain: { title: 'Planned Provisional Tax', formula: 'Taxable Profit × Corp Tax Rate ÷ 100.',
+          inputs: [{ label: 'Taxable Profit', value: fmtE(c.taxableProfit) }, { label: 'Corp Tax Rate', value: `${c.rate}%` }],
+          source: 'cyprus-tax.js:128 calcAll() — `corpTax`' } }),
+      mkKpiCard({ label: 'Minimum Required (75%)',  value: fmtE(c.minRequired75), subtitle: `75% of ${fmtE(c.finalTax)}`,
+        explain: { title: 'Minimum Required (75%)', formula: 'Estimated final actual tax liability × 0.75.',
+          inputs: [{ label: 'Estimated final tax', value: fmtE(c.finalTax) }],
+          source: 'cyprus-tax.js:133 calcAll() — `minRequired75`',
+          note: 'The 75% threshold is hard-coded (Cyprus\'s minimum-cover requirement) — provisional tax must reach at least this to avoid the additional charge.' } }),
+      mkKpiCard({ label: 'Shortfall',               value: fmtE(c.shortfall), variant: c.shortfall > 0 ? 'danger' : 'success',
+        explain: { title: 'Shortfall', formula: 'max(0, Minimum Required (75%) − Planned Provisional Tax).',
+          inputs: [{ label: 'Minimum Required (75%)', value: fmtE(c.minRequired75) }, { label: 'Planned Provisional Tax', value: fmtE(c.corpTax) }],
+          source: 'cyprus-tax.js:134 calcAll() — `shortfall`',
+          note: 'Zero means the plan already covers the 75% threshold; a positive value is how much more provisional tax is needed to avoid the additional charge.' } })
     ));
     const safe = c.safe;
     safetyDisplayEl.appendChild(el('div', {
