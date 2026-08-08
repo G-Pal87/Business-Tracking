@@ -10,7 +10,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner, mkTh } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -167,14 +167,14 @@ function buildCashFlowRows(payments, invoices, opExpenses, capExpenses) {
 }
 
 const CF_DRILL_COLS = [
-  { key: 'date',        label: 'Date',        format: v => fmtDate(v) },
-  { key: 'source',      label: 'Source'                               },
-  { key: 'type',        label: 'Type'                                 },
-  { key: 'stream',      label: 'Stream'                               },
-  { key: 'entity',      label: 'Entity'                               },
-  { key: 'owner',       label: 'Owner'                                },
-  { key: 'description', label: 'Description'                          },
-  { key: 'amountEUR',   label: 'Amount EUR',  right: true             }
+  { key: 'date',        label: 'Date',        format: v => fmtDate(v), tip: 'Payment date, invoice issue date, or expense date.' },
+  { key: 'source',      label: 'Source',      tip: 'Record type this row came from — Payment, Invoice, or Expense.' },
+  { key: 'type',        label: 'Type',        tip: 'Cash flow category — Cash In, Operating Cash Out, or Investment Cash Out.' },
+  { key: 'stream',      label: 'Stream',      tip: 'Revenue or expense stream (e.g. short-term rental, long-term rental, service).' },
+  { key: 'entity',      label: 'Entity',      tip: 'Property, client, or vendor associated with the transaction.' },
+  { key: 'owner',       label: 'Owner',       tip: 'Owner attributed to the property or invoice (or "Both" when shared).' },
+  { key: 'description', label: 'Description', tip: 'Expense description or category; "—" for cash-in rows.' },
+  { key: 'amountEUR',   label: 'Amount EUR',  right: true, tip: 'Transaction amount converted to EUR.' }
 ];
 
 // Net cash flow (in / opOut / capOut) grouped by raw stream key — shared by
@@ -211,7 +211,16 @@ function openCashflowStreamModal(sk, curData) {
   summaryGrid.appendChild(mkSummaryBox('Cash In', formatEUR(inV), `${sPay.length + sInv.length} items`));
   summaryGrid.appendChild(mkSummaryBox('Op. Cash Out', formatEUR(opOutV), `${sOp.length} expenses`));
   summaryGrid.appendChild(mkSummaryBox('Invest. Cash Out', formatEUR(capOutV), `${sCap.length} items`));
-  summaryGrid.appendChild(mkSummaryBox('Net Cash Flow', formatEUR(net), net >= 0 ? 'Surplus' : 'Deficit'));
+  summaryGrid.appendChild(mkSummaryBox('Net Cash Flow', formatEUR(net), net >= 0 ? 'Surplus' : 'Deficit', {
+    title: 'Net Cash Flow (by Stream)', formula: 'Cash In − Op. Cash Out − Invest. Cash Out, for this stream and period.',
+    inputs: [
+      { label: 'Cash In', value: formatEUR(inV) },
+      { label: 'Op. Cash Out', value: formatEUR(opOutV) },
+      { label: 'Invest. Cash Out', value: formatEUR(capOutV) }
+    ],
+    source: 'analytics-cashflow.js openCashflowStreamModal() — `net = inV - opOutV - capOutV`',
+    note: 'Only status:\'paid\' payments/invoices and their matching expenses for this stream are counted.'
+  }));
   body.appendChild(summaryGrid);
 
   if (inV > 0) {
@@ -221,7 +230,11 @@ function openCashflowStreamModal(sk, curData) {
     const propEntries = [...propMap.entries()].sort((a, b) => b[1] - a[1]);
     body.appendChild(mkSectionLabel('Cash In by Property / Client'));
     body.appendChild(mkModalTable(
-      ['Property / Client', 'Amount', '% of Cash In'],
+      [
+        { label: 'Property / Client', tip: 'Property (from payments) or client (from invoices) generating cash in for this stream.' },
+        { label: 'Amount', right: true, tip: 'Cash in from this property/client within the stream and period, in EUR.' },
+        { label: '% of Cash In', right: true, tip: "This property/client's share of the stream's total cash in." }
+      ],
       propEntries.map(([k, v]) => [k, formatEUR(v), inV > 0 ? (v / inV * 100).toFixed(1) + '%' : '—'])
     ));
   }
@@ -237,7 +250,11 @@ function openCashflowStreamModal(sk, curData) {
     const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
     body.appendChild(mkSectionLabel('Cash Out by Category'));
     body.appendChild(mkModalTable(
-      ['Category', 'Amount', '% of Cash Out'],
+      [
+        { label: 'Category', tip: 'Cost category assigned to the operating or investment expense.' },
+        { label: 'Amount', right: true, tip: 'Total expense amount in this category, in EUR.' },
+        { label: '% of Cash Out', right: true, tip: "This category's share of the stream's total cash out (Op. + Invest.)." }
+      ],
       catEntries.map(([k, v]) => [k, formatEUR(v), cashOutV > 0 ? (v / cashOutV * 100).toFixed(1) + '%' : '—'])
     ));
   }
@@ -279,7 +296,17 @@ function buildCashflowStreamKpiRow(curData, cmpData, cmpLabel) {
       delta:     cmpData ? safePct(net, cmpNet) : null,
       compLabel: cmpLabel,
       compValue: cmpData ? formatEUR(cmpNet ?? 0) : undefined,
-      onClick:   () => openCashflowStreamModal(sk, curData)
+      onClick:   () => openCashflowStreamModal(sk, curData),
+      explain: {
+        title: `${STREAMS[sk]?.label || sk} — Net Cash Flow`,
+        formula: 'Cash In − Op. Cash Out − Invest. Cash Out, for this stream and period.',
+        inputs: [
+          { label: 'Cash In', value: formatEUR(d.in) },
+          { label: 'Op. Cash Out', value: formatEUR(d.opOut) },
+          { label: 'Invest. Cash Out', value: formatEUR(d.capOut) }
+        ],
+        source: 'analytics-cashflow.js computeCashflowByStream() — grouped `in`/`opOut`/`capOut` per stream key'
+      }
     }));
   }
   return el('div', {}, mkSectionLabel('Net Cash Flow by Stream'), grid);
@@ -433,8 +460,11 @@ function buildCashSeasonalityHeatmap() {
 
   const table = el('table', { id: 'cf-seasonality-heatmap', style: 'border-collapse:collapse;width:100%;font-size:12px' });
   const htr = el('tr');
-  htr.appendChild(el('th', { style: 'text-align:left;padding:4px 8px;color:var(--text-muted);white-space:nowrap' }, 'Year'));
-  MONTH_LABELS.forEach(ml => htr.appendChild(el('th', { style: 'padding:4px 6px;text-align:right;color:var(--text-muted)' }, ml)));
+  htr.appendChild(el('th', { style: 'text-align:left;padding:4px 8px;color:var(--text-muted);white-space:nowrap;cursor:help', title: 'Calendar year.' }, 'Year'));
+  MONTH_LABELS.forEach(ml => htr.appendChild(el('th', {
+    style: 'padding:4px 6px;text-align:right;color:var(--text-muted);cursor:help',
+    title: `Net cash flow (Cash In minus Op. and Invest. Cash Out) for ${ml} in each year — color intensity shows magnitude. Click a colored cell for that month's transactions.`
+  }, ml)));
   table.appendChild(el('thead', {}, htr));
 
   const tbody = el('tbody');
@@ -478,7 +508,15 @@ function buildCashSeasonalityHeatmap() {
           summaryGrid.appendChild(mkSummaryBox('Cash In', formatEUR(mIn), `${mPay.length + mInv.length} items`));
           summaryGrid.appendChild(mkSummaryBox('Op. Cash Out', formatEUR(mOpOut), `${mOp.length} expenses`));
           summaryGrid.appendChild(mkSummaryBox('Invest. Cash Out', formatEUR(mCapOut), `${mCap.length} items`));
-          summaryGrid.appendChild(mkSummaryBox('Net Cash Flow', formatEUR(mNet), mNet >= 0 ? 'Surplus' : 'Deficit'));
+          summaryGrid.appendChild(mkSummaryBox('Net Cash Flow', formatEUR(mNet), mNet >= 0 ? 'Surplus' : 'Deficit', {
+            title: 'Net Cash Flow (Month)', formula: 'Cash In − Op. Cash Out − Invest. Cash Out, for this month.',
+            inputs: [
+              { label: 'Cash In', value: formatEUR(mIn) },
+              { label: 'Op. Cash Out', value: formatEUR(mOpOut) },
+              { label: 'Invest. Cash Out', value: formatEUR(mCapOut) }
+            ],
+            source: 'analytics-cashflow.js buildCashSeasonalityHeatmap() — heatmap cell `td.onclick` handler'
+          }));
           body.appendChild(summaryGrid);
 
           // Stream breakdown
@@ -497,7 +535,13 @@ function buildCashSeasonalityHeatmap() {
             const streamSection = el('div');
             streamSection.appendChild(mkSectionLabel('Breakdown by Stream'));
             streamSection.appendChild(mkModalTable(
-              ['Stream', 'Cash In', 'Op. Out', 'Invest. Out', 'Net'],
+              [
+                { label: 'Stream', tip: 'Revenue/expense stream key (e.g. short-term rental, long-term rental).' },
+                { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices for this stream in the month.' },
+                { label: 'Op. Out', right: true, tip: 'Operating (non-CapEx) expenses for this stream in the month.' },
+                { label: 'Invest. Out', right: true, tip: 'CapEx/investment expenses for this stream in the month.' },
+                { label: 'Net', right: true, tip: 'Cash In minus Op. Out minus Invest. Out for this stream and month.' }
+              ],
               streamEntries.map(([sk, d]) => [STREAMS[sk]?.label || sk, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
             ));
             body.appendChild(streamSection);
@@ -524,7 +568,14 @@ function openOperatingCashFlowModal({ payments, invoices, opExpenses, cashIn, op
   const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
   summaryGrid.appendChild(mkSummaryBox('Cash In', formatEUR(cashIn), `${payments.length + invoices.length} items`));
   summaryGrid.appendChild(mkSummaryBox('Op. Cash Out', formatEUR(opExCashOut), `${opExpenses.length} expenses`));
-  summaryGrid.appendChild(mkSummaryBox('Operating CF', formatEUR(opCashFlow), opCashFlow >= 0 ? 'Surplus' : 'Deficit'));
+  summaryGrid.appendChild(mkSummaryBox('Operating CF', formatEUR(opCashFlow), opCashFlow >= 0 ? 'Surplus' : 'Deficit', {
+    title: 'Operating Cash Flow', formula: 'Cash In − Operating Cash Out.',
+    inputs: [
+      { label: 'Cash In', value: formatEUR(cashIn) },
+      { label: 'Op. Cash Out', value: formatEUR(opExCashOut) }
+    ],
+    source: 'analytics-cashflow.js getData() — `opCashFlow: cashIn - opExCashOut` (line 74)'
+  }));
   body.appendChild(summaryGrid);
 
   const monthMap = new Map();
@@ -541,7 +592,12 @@ function openOperatingCashFlowModal({ payments, invoices, opExpenses, cashIn, op
   const monthSection = el('div');
   monthSection.appendChild(mkSectionLabel('Monthly Breakdown'));
   monthSection.appendChild(mkModalTable(
-    ['Month', 'Cash In', 'Op. Out', 'Net CF'],
+    [
+      { label: 'Month', tip: 'Calendar month (YYYY-MM).' },
+      { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices in that month.' },
+      { label: 'Op. Out', right: true, tip: 'Operating expenses (excludes CapEx) in that month.' },
+      { label: 'Net CF', right: true, tip: 'Cash In minus Op. Out for that month.' }
+    ],
     monthEntries.map(([mk, d]) => [mk, formatEUR(d.in), formatEUR(d.out), formatEUR(d.in - d.out)])
   ));
   body.appendChild(monthSection);
@@ -554,7 +610,12 @@ function openOperatingCashFlowModal({ payments, invoices, opExpenses, cashIn, op
   const streamSection = el('div');
   streamSection.appendChild(mkSectionLabel('Breakdown by Stream'));
   streamSection.appendChild(mkModalTable(
-    ['Stream', 'Cash In', 'Op. Out', 'Net CF'],
+    [
+      { label: 'Stream', tip: 'Revenue/expense stream.' },
+      { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices in this stream for the period.' },
+      { label: 'Op. Out', right: true, tip: 'Operating expenses in this stream for the period.' },
+      { label: 'Net CF', right: true, tip: 'Cash In minus Op. Out for this stream.' }
+    ],
     streamEntries.map(([k, d]) => [k, formatEUR(d.in), formatEUR(d.out), formatEUR(d.in - d.out)])
   ));
   body.appendChild(streamSection);
@@ -568,9 +629,23 @@ function openInvestmentCashOutModal({ capExpenses, investCashOut, cashOut }) {
   const avg = capExpenses.length > 0 ? investCashOut / capExpenses.length : 0;
   const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
   summaryGrid.appendChild(mkSummaryBox('Total CapEx Out', formatEUR(investCashOut), `${capExpenses.length} items`));
-  summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(avg), 'per investment expense'));
+  summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(avg), 'per investment expense', {
+    title: 'Avg CapEx per Item', formula: 'Total CapEx Out ÷ number of CapEx expense records.',
+    inputs: [
+      { label: 'Total CapEx Out', value: formatEUR(investCashOut) },
+      { label: 'CapEx items', value: String(capExpenses.length) }
+    ],
+    source: 'analytics-cashflow.js openInvestmentCashOutModal() — `avg = investCashOut / capExpenses.length`'
+  }));
   const pctOfOut = cashOut > 0 ? (investCashOut / cashOut * 100).toFixed(1) + '%' : '—';
-  summaryGrid.appendChild(mkSummaryBox('% of Total Cash Out', pctOfOut, `vs ${formatEUR(cashOut)} total`));
+  summaryGrid.appendChild(mkSummaryBox('% of Total Cash Out', pctOfOut, `vs ${formatEUR(cashOut)} total`, {
+    title: '% of Total Cash Out', formula: 'Investment Cash Out ÷ (Operating Cash Out + Investment Cash Out) × 100.',
+    inputs: [
+      { label: 'Investment Cash Out', value: formatEUR(investCashOut) },
+      { label: 'Total Cash Out', value: formatEUR(cashOut) }
+    ],
+    source: 'analytics-cashflow.js openInvestmentCashOutModal() — `pctOfOut = investCashOut / cashOut * 100`'
+  }));
   body.appendChild(summaryGrid);
 
   const propMap = new Map();
@@ -582,7 +657,11 @@ function openInvestmentCashOutModal({ capExpenses, investCashOut, cashOut }) {
   const propSection = el('div');
   propSection.appendChild(mkSectionLabel('Breakdown by Property'));
   propSection.appendChild(mkModalTable(
-    ['Property', 'Amount', '% of CapEx'],
+    [
+      { label: 'Property', tip: 'Property the CapEx expense is linked to.' },
+      { label: 'Amount', right: true, tip: 'CapEx spend for this property in the period, in EUR.' },
+      { label: '% of CapEx', right: true, tip: "This property's share of total Investment Cash Out." }
+    ],
     propEntries.map(([k, v]) => [k, formatEUR(v), investCashOut > 0 ? (v / investCashOut * 100).toFixed(1) + '%' : '—'])
   ));
   body.appendChild(propSection);
@@ -597,7 +676,11 @@ function openInvestmentCashOutModal({ capExpenses, investCashOut, cashOut }) {
   const catSection = el('div');
   catSection.appendChild(mkSectionLabel('Breakdown by Category'));
   catSection.appendChild(mkModalTable(
-    ['Category', 'Amount', '% of CapEx'],
+    [
+      { label: 'Category', tip: 'Cost category assigned to the CapEx expense.' },
+      { label: 'Amount', right: true, tip: 'CapEx spend in this category, in EUR.' },
+      { label: '% of CapEx', right: true, tip: "This category's share of total Investment Cash Out." }
+    ],
     catEntries.map(([k, v]) => [k, formatEUR(v), investCashOut > 0 ? (v / investCashOut * 100).toFixed(1) + '%' : '—'])
   ));
   body.appendChild(catSection);
@@ -620,7 +703,15 @@ function openNetCashFlowModal(curData, cmpData, cmpRange) {
     const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
     summaryGrid.appendChild(mkSummaryBox('Operating CF', formatEUR(opCashFlow), `In ${formatEUR(cashIn)} − OpEx ${formatEUR(opExCashOut)}`));
     summaryGrid.appendChild(mkSummaryBox('Investment Out', formatEUR(investCashOut), `${capExpenses.length} CapEx items`));
-    summaryGrid.appendChild(mkSummaryBox('Net Cash Flow', formatEUR(net), net >= 0 ? 'Surplus' : 'Deficit'));
+    summaryGrid.appendChild(mkSummaryBox('Net Cash Flow', formatEUR(net), net >= 0 ? 'Surplus' : 'Deficit', {
+      title: 'Net Cash Flow', formula: 'Cash In − Operating Cash Out − Investment Cash Out.',
+      inputs: [
+        { label: 'Cash In', value: formatEUR(cashIn) },
+        { label: 'Operating Cash Out', value: formatEUR(opExCashOut) },
+        { label: 'Investment Cash Out', value: formatEUR(investCashOut) }
+      ],
+      source: 'analytics-cashflow.js getData() — `net: cashIn - cashOut` (line 75)'
+    }));
     body.appendChild(summaryGrid);
   }
 
@@ -639,7 +730,13 @@ function openNetCashFlowModal(curData, cmpData, cmpRange) {
   const monthSection = el('div');
   monthSection.appendChild(mkSectionLabel('Monthly Breakdown'));
   monthSection.appendChild(mkModalTable(
-    ['Month', 'Cash In', 'Op. Out', 'Invest. Out', 'Net CF'],
+    [
+      { label: 'Month', tip: 'Calendar month (YYYY-MM).' },
+      { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices in that month.' },
+      { label: 'Op. Out', right: true, tip: 'Operating (non-CapEx) expenses in that month.' },
+      { label: 'Invest. Out', right: true, tip: 'CapEx expenses in that month.' },
+      { label: 'Net CF', right: true, tip: 'Cash In minus Op. Out minus Invest. Out for that month.' }
+    ],
     monthEntries.map(([mk, d]) => [mk, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
   ));
   body.appendChild(monthSection);
@@ -657,7 +754,13 @@ function openNetCashFlowModal(curData, cmpData, cmpRange) {
   const propSection = el('div');
   propSection.appendChild(mkSectionLabel('Breakdown by Property'));
   propSection.appendChild(mkModalTable(
-    ['Property', 'Cash In', 'Op. Out', 'Invest. Out', 'Net CF'],
+    [
+      { label: 'Property', tip: 'Property the payments/expenses are linked to (or "No Property").' },
+      { label: 'Cash In', right: true, tip: 'Paid payments linked to this property in the period.' },
+      { label: 'Op. Out', right: true, tip: 'Operating expenses linked to this property in the period.' },
+      { label: 'Invest. Out', right: true, tip: 'CapEx linked to this property in the period.' },
+      { label: 'Net CF', right: true, tip: 'Cash In minus Op. Out minus Invest. Out for this property.' }
+    ],
     propEntries.map(([k, d]) => [k, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
   ));
   body.appendChild(propSection);
@@ -744,6 +847,16 @@ function buildView() {
     delta:     deltaCashIn,
     compLabel: cmpRange?.label,
     compValue: cmpData ? formatEUR(cmpData.cashIn) : undefined,
+    explain: {
+      title: 'Cash In', formula: 'Sum of paid payments (by payment date) + paid invoices (by issue date) within the selected period, converted to EUR.',
+      inputs: [
+        { label: 'Paid payments', value: `${payments.length} record(s)` },
+        { label: 'Paid invoices', value: `${invoices.length} record(s)` },
+        { label: 'Cash In', value: formatEUR(cashIn) }
+      ],
+      source: 'analytics-cashflow.js getData() — `cashIn` (lines 69-70)',
+      note: "Only status:'paid' payments/invoices count — pending, sent, or materialized rows are excluded."
+    },
     onClick:   () => {
       // Summary: Payments vs Invoices totals
       const totalPay = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
@@ -766,7 +879,11 @@ function buildView() {
       const streamSection = el('div');
       streamSection.appendChild(mkSectionLabel('Breakdown by Stream'));
       streamSection.appendChild(mkModalTable(
-        ['Stream', 'Amount', '% of Total'],
+        [
+          { label: 'Stream', tip: 'Revenue stream the cash-in amount belongs to.' },
+          { label: 'Amount', right: true, tip: 'Cash in from this stream in the period, in EUR.' },
+          { label: '% of Total', right: true, tip: "This stream's share of total Cash In." }
+        ],
         streamEntries.map(([k, v]) => [k, formatEUR(v), cashIn > 0 ? (v / cashIn * 100).toFixed(1) + '%' : '—'])
       ));
       body.appendChild(streamSection);
@@ -782,6 +899,15 @@ function buildView() {
     invertDelta: true,
     compLabel:   cmpRange?.label,
     compValue:   cmpData ? formatEUR(cmpData.opExCashOut) : undefined,
+    explain: {
+      title: 'Operating Cash Out', formula: 'Sum of non-CapEx expenses dated within the selected period, converted to EUR.',
+      inputs: [
+        { label: 'Operating expenses', value: `${opExpenses.length} record(s)` },
+        { label: 'Operating Cash Out', value: formatEUR(opExCashOut) }
+      ],
+      source: 'analytics-cashflow.js getData() — `opExCashOut` / `sum(opExpenses)` (lines 68, 71)',
+      note: 'CapEx/renovation expenses (isCapEx() === true) are excluded — see Investment Cash Out.'
+    },
     onClick:     () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
@@ -789,7 +915,14 @@ function buildView() {
       const avg = opExpenses.length > 0 ? opExCashOut / opExpenses.length : 0;
       const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
       summaryGrid.appendChild(mkSummaryBox('Total OpEx Out', formatEUR(opExCashOut), `${opExpenses.length} expenses`));
-      summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(avg), 'per expense'));
+      summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(avg), 'per expense', {
+        title: 'Avg OpEx per Item', formula: 'Total OpEx Out ÷ number of operating expense records.',
+        inputs: [
+          { label: 'Total OpEx Out', value: formatEUR(opExCashOut) },
+          { label: 'OpEx items', value: String(opExpenses.length) }
+        ],
+        source: 'analytics-cashflow.js buildView() — kpiRow1 Operating Cash Out onClick handler'
+      }));
       // Largest single expense
       const largest = opExpenses.reduce((max, e) => {
         const v = toEUR(e.amount, e.currency, e.date);
@@ -809,7 +942,11 @@ function buildView() {
       const catSection = el('div');
       catSection.appendChild(mkSectionLabel('Breakdown by Category'));
       catSection.appendChild(mkModalTable(
-        ['Category', 'Amount', '% of Total'],
+        [
+          { label: 'Category', tip: 'Cost category assigned to the operating expense.' },
+          { label: 'Amount', right: true, tip: 'Operating expense total in this category, in EUR.' },
+          { label: '% of Total', right: true, tip: "This category's share of total Operating Cash Out." }
+        ],
         catEntries.map(([k, v]) => [k, formatEUR(v), opExCashOut > 0 ? (v / opExCashOut * 100).toFixed(1) + '%' : '—'])
       ));
       body.appendChild(catSection);
@@ -824,7 +961,11 @@ function buildView() {
       const propSection = el('div');
       propSection.appendChild(mkSectionLabel('Breakdown by Property'));
       propSection.appendChild(mkModalTable(
-        ['Property', 'Amount', '% of Total'],
+        [
+          { label: 'Property', tip: 'Property the operating expense is linked to.' },
+          { label: 'Amount', right: true, tip: 'Operating expense total for this property, in EUR.' },
+          { label: '% of Total', right: true, tip: "This property's share of total Operating Cash Out." }
+        ],
         propEntries.map(([k, v]) => [k, formatEUR(v), opExCashOut > 0 ? (v / opExCashOut * 100).toFixed(1) + '%' : '—'])
       ));
       body.appendChild(propSection);
@@ -839,6 +980,14 @@ function buildView() {
     delta:     deltaOpCF,
     compLabel: cmpRange?.label,
     compValue: cmpData ? formatEUR(cmpData.opCashFlow) : undefined,
+    explain: {
+      title: 'Operating Cash Flow', formula: 'Cash In − Operating Cash Out (excludes CapEx).',
+      inputs: [
+        { label: 'Cash In', value: formatEUR(cashIn) },
+        { label: 'Operating Cash Out', value: formatEUR(opExCashOut) }
+      ],
+      source: 'analytics-cashflow.js getData() — `opCashFlow: cashIn - opExCashOut` (line 74)'
+    },
     onClick:   () => openOperatingCashFlowModal(curData)
   }));
   wrap.appendChild(kpiRow1);
@@ -854,6 +1003,15 @@ function buildView() {
     invertDelta: true,
     compLabel:   cmpRange?.label,
     compValue:   cmpData ? formatEUR(cmpData.investCashOut) : undefined,
+    explain: {
+      title: 'Investment Cash Out', formula: 'Sum of CapEx-flagged expenses dated within the selected period, converted to EUR.',
+      inputs: [
+        { label: 'CapEx expenses', value: `${capExpenses.length} record(s)` },
+        { label: 'Investment Cash Out', value: formatEUR(investCashOut) }
+      ],
+      source: 'analytics-cashflow.js getData() — `investCashOut` / `sum(capExpenses)` (lines 68, 72)',
+      note: 'Expenses flagged isCapEx() === true — renovation/capital spend, kept separate from Operating Cash Out.'
+    },
     onClick:     () => openInvestmentCashOutModal(curData)
   }));
   kpiRow2.appendChild(mkKpiCard({
@@ -864,6 +1022,15 @@ function buildView() {
     delta:     deltaNet,
     compLabel: cmpRange?.label,
     compValue: cmpData ? formatEUR(cmpData.net) : undefined,
+    explain: {
+      title: 'Net Cash Flow', formula: 'Cash In − (Operating Cash Out + Investment Cash Out).',
+      inputs: [
+        { label: 'Cash In', value: formatEUR(cashIn) },
+        { label: 'Cash Out (Op. + Invest.)', value: formatEUR(cashOut) },
+        { label: 'Net Cash Flow', value: formatEUR(net) }
+      ],
+      source: 'analytics-cashflow.js getData() — `net: cashIn - cashOut` (line 75)'
+    },
     onClick:   () => openNetCashFlowModal(curData, cmpData, cmpRange)
   }));
   kpiRow2.appendChild(mkKpiCard({
@@ -873,6 +1040,15 @@ function buildView() {
     delta:     deltaAvgNet,
     compLabel: cmpRange?.label,
     compValue: cmpData ? formatEUR(cmpData.avgMonthlyNet) : undefined,
+    explain: {
+      title: 'Avg Monthly Net', formula: 'Net Cash Flow ÷ number of months with any cash activity (payments, invoices, or expenses) in the period.',
+      inputs: [
+        { label: 'Net Cash Flow', value: formatEUR(net) },
+        { label: 'Active months', value: String(curData.activeMonthCount) }
+      ],
+      source: 'analytics-cashflow.js getData() — `avgMonthlyNet` (lines 83-84)',
+      note: 'A month only counts as active if it has at least one paid payment/invoice or expense — months with zero activity are not divided into.'
+    },
     onClick:   () => {
       const monthMap = new Map();
       const addMk = (mk, inAmt, opOut, capOut) => {
@@ -903,7 +1079,13 @@ function buildView() {
       const monthSection = el('div');
       monthSection.appendChild(mkSectionLabel('Monthly Net Cash Flow'));
       monthSection.appendChild(mkModalTable(
-        ['Month', 'Cash In', 'Op. Out', 'Invest. Out', 'Net'],
+        [
+          { label: 'Month', tip: 'Calendar month (YYYY-MM).' },
+          { label: 'Cash In', right: true, tip: 'Paid payments + paid invoices in that month.' },
+          { label: 'Op. Out', right: true, tip: 'Operating (non-CapEx) expenses in that month.' },
+          { label: 'Invest. Out', right: true, tip: 'CapEx expenses in that month.' },
+          { label: 'Net', right: true, tip: 'Cash In minus Op. Out minus Invest. Out for that month.' }
+        ],
         monthEntries.map(([mk, d]) => [mk, formatEUR(d.in), formatEUR(d.opOut), formatEUR(d.capOut), formatEUR(d.in - d.opOut - d.capOut)])
       ));
       body.appendChild(monthSection);
@@ -939,6 +1121,16 @@ function buildView() {
       value:    isNegativeBalance ? '0 days' : (daysOnHand !== null ? `${daysOnHand} days` : 'N/A'),
       subtitle: isNegativeBalance ? 'Negative period net — cash shortfall' : 'Period net ÷ avg monthly OpEx',
       variant:  dohVariant,
+      explain: {
+        title: 'Net Coverage Days', formula: '(Cumulative net cash balance ÷ avg monthly OpEx) × 30. Shows 0 days when the cumulative balance is negative, instead of a negative day count.',
+        inputs: [
+          { label: 'Cumulative cash balance', value: formatEUR(running) },
+          { label: 'Avg monthly OpEx', value: formatEUR(avgMonthlyOpex) },
+          { label: 'OpEx-active months', value: String(opexMonthCount) }
+        ],
+        source: 'analytics-cashflow.js buildView() — Net Coverage Days block (`daysOnHand`)',
+        note: 'Avg monthly OpEx divides by opex-active months (months with actual OpEx activity), not all active months, so partial-activity periods don\'t understate it.'
+      },
       onClick:  () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
@@ -967,7 +1159,13 @@ function buildView() {
             return [mk, formatEUR(net >= 0 ? net : 0), formatEUR(net < 0 ? Math.abs(net) : 0), formatEUR(opMk), formatEUR(cum)];
           });
           posSection.appendChild(mkModalTable(
-            ['Month', 'Net In', 'Net Out', 'OpEx Out', 'Running Balance'],
+            [
+              { label: 'Month', tip: 'Calendar month (YYYY-MM).' },
+              { label: 'Net In', right: true, tip: "This month's net cash flow when positive (0 shown for negative months)." },
+              { label: 'Net Out', right: true, tip: "Absolute value of this month's net cash flow when negative (0 shown for positive months)." },
+              { label: 'OpEx Out', right: true, tip: 'Operating expenses paid in this month.' },
+              { label: 'Running Balance', right: true, tip: 'Cumulative net cash flow across all months up to and including this one.' }
+            ],
             tableRows
           ));
           body.appendChild(posSection);
@@ -994,6 +1192,15 @@ function buildView() {
       value:    ccc !== null ? `${ccc} days` : 'N/A',
       subtitle: 'Outstanding ÷ Invoiced × 30 (proxy)',
       variant:  cccVariant,
+      explain: {
+        title: 'Invoice Collection Lag', formula: '(Outstanding service invoices ÷ Total service invoiced) × 30 — a simplified DSO proxy.',
+        inputs: [
+          { label: 'Total service invoiced', value: formatEUR(svcInvoiced) },
+          { label: 'Outstanding service', value: formatEUR(outstandingSvc) }
+        ],
+        source: 'analytics-cashflow.js buildView() — Invoice Collection Lag block (`ccc`)',
+        note: 'Outstanding = invoices not in paid/cancelled/void/draft status. This is a proxy for average days unpaid, not a true DSO (which needs per-invoice payment dates).'
+      },
       onClick:  () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
@@ -1028,7 +1235,13 @@ function buildView() {
           const monthSection = el('div');
           monthSection.appendChild(mkSectionLabel('Monthly Breakdown'));
           monthSection.appendChild(mkModalTable(
-            ['Month', 'Total Invoiced', 'Paid', 'Outstanding', 'Lag (days)'],
+            [
+              { label: 'Month', tip: 'Calendar month (YYYY-MM) by invoice issue date.' },
+              { label: 'Total Invoiced', right: true, tip: 'Sum of invoice totals issued in this month.' },
+              { label: 'Paid', right: true, tip: 'Invoiced amount already marked paid, cancelled, or void in this month.' },
+              { label: 'Outstanding', right: true, tip: 'Invoiced amount still unpaid (not paid/cancelled/void) in this month.' },
+              { label: 'Lag (days)', right: true, tip: 'Outstanding ÷ Total Invoiced × 30 for this month.' }
+            ],
             monthEntries2.map(([mk, d]) => [
               mk,
               formatEUR(d.invoiced),
