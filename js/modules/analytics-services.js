@@ -7,7 +7,7 @@ import {
   listActive, listActiveClients
 } from '../core/data.js';
 import { getMonthKeysForRange, makeMatchers } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct, mkTh } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 // Period/Owner/Stream/Client all come from Revenue's own shared filter state
@@ -129,13 +129,13 @@ function toInvDrillRows(invoices) {
 }
 
 const INV_DRILL_COLS = [
-  { key: 'date',    label: 'Issue Date', format: v => fmtDate(v)       },
-  { key: 'number',  label: 'Invoice'                                    },
-  { key: 'client',  label: 'Client'                                     },
-  { key: 'stream',  label: 'Stream'                                     },
-  { key: 'status',  label: 'Status'                                     },
-  { key: 'dueDate', label: 'Due Date',   format: v => v ? fmtDate(v) : '—' },
-  { key: 'eur',     label: 'EUR',        right: true, format: v => formatEUR(v) }
+  { key: 'date',    label: 'Issue Date', format: v => fmtDate(v),       tip: 'Date the invoice was issued.' },
+  { key: 'number',  label: 'Invoice',                                   tip: 'Invoice number.' },
+  { key: 'client',  label: 'Client',                                    tip: 'Client billed on this invoice.' },
+  { key: 'stream',  label: 'Stream',                                    tip: 'Service stream (CS or Marketing) this invoice belongs to.' },
+  { key: 'status',  label: 'Status',                                    tip: 'Invoice status: draft, sent, paid, or overdue.' },
+  { key: 'dueDate', label: 'Due Date',   format: v => v ? fmtDate(v) : '—', tip: 'Date payment is due.' },
+  { key: 'eur',     label: 'EUR',        right: true, format: v => formatEUR(v), tip: 'Invoice total converted to EUR.' }
 ];
 
 function toClientConcentrationRows(clientRevMap, paidTotal) {
@@ -174,11 +174,11 @@ function toActiveClientRows(kpiBase) {
 }
 
 const AGING_INV_DRILL_COLS = [
-  { key: 'client',    label: 'Client'                                          },
-  { key: 'issueDate', label: 'Invoice Date',     format: v => v ? fmtDate(v) : '—' },
-  { key: 'dueDate',   label: 'Due Date',         format: v => v ? fmtDate(v) : '—' },
-  { key: 'daysOut',   label: 'Days Outstanding', right: true                    },
-  { key: 'eur',       label: 'Amount',           right: true, format: v => formatEUR(v) }
+  { key: 'client',    label: 'Client',                                         tip: 'Client billed on this invoice.' },
+  { key: 'issueDate', label: 'Invoice Date',     format: v => v ? fmtDate(v) : '—', tip: 'Date the invoice was issued.' },
+  { key: 'dueDate',   label: 'Due Date',         format: v => v ? fmtDate(v) : '—', tip: 'Date payment is due.' },
+  { key: 'daysOut',   label: 'Days Outstanding', right: true,                    tip: 'Days elapsed since the due date (or issue date if no due date is set).' },
+  { key: 'eur',       label: 'Amount',           right: true, format: v => formatEUR(v), tip: 'Outstanding invoice total converted to EUR.' }
 ];
 
 // ── Service Performance Insights ──────────────────────────────────────────────
@@ -338,8 +338,18 @@ function streamClientModal(title, invs, valueKey) {
   if (clients.length) {
     body.appendChild(mkSectionLabel('By Client'));
     const cols = valueKey === 'outstanding'
-      ? ['Client', 'Invoices', 'Outstanding', 'Overdue']
-      : ['Client', 'Invoices', 'Revenue', '% of Total'];
+      ? [
+          { label: 'Client', tip: 'Client billed.' },
+          { label: 'Invoices', right: true, muted: true, tip: 'Count of invoices for this client in this stream.' },
+          { label: 'Outstanding', right: true, tip: 'Sum of sent + overdue invoice totals for this client.' },
+          { label: 'Overdue', right: true, tip: 'Portion of the outstanding total that is past due.' }
+        ]
+      : [
+          { label: 'Client', tip: 'Client billed.' },
+          { label: 'Invoices', right: true, muted: true, tip: 'Count of invoices for this client in this stream.' },
+          { label: 'Revenue', right: true, tip: 'Sum of invoice totals for this client in this stream.' },
+          { label: '% of Total', right: true, muted: true, tip: 'This client\'s share of the total shown across all clients in this stream.' }
+        ];
     const total = clients.reduce((s, c) => s + c.v, 0);
     body.appendChild(mkModalTable(cols, clients.map(c => [
       c.n, String(c.cnt), formatEUR(c.v),
@@ -414,7 +424,12 @@ function buildView(gF, curRange, cmpRange, onChange) {
     if (clients.length) {
       body.appendChild(mkSectionLabel('By Client'));
       body.appendChild(mkModalTable(
-        ['Client', 'Invoices', 'Revenue', '% of Paid'],
+        [
+          { label: 'Client', tip: 'Client billed.' },
+          { label: 'Invoices', right: true, muted: true, tip: 'Count of paid invoices for this client.' },
+          { label: 'Revenue', right: true, tip: 'Sum of this client\'s paid invoice totals.' },
+          { label: '% of Paid', right: true, muted: true, tip: 'This client\'s share of total paid revenue.' }
+        ],
         clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), paidTotal > 0 ? (c.v / paidTotal * 100).toFixed(1) + '%' : '—'])
       ));
     }
@@ -428,6 +443,14 @@ function buildView(gF, curRange, cmpRange, onChange) {
     compLabel: cmpRange?.label,
     compValue: cmpData ? formatEUR(cmpData.paidTotal) : undefined,
     onClick:   onClickPaidRevenue,
+    explain: {
+      title: 'Paid Revenue', formula: 'Sum of EUR-converted invoice totals for CS/Marketing invoices with status = paid, dated within the selected period.',
+      inputs: [
+        { label: 'Paid invoices', value: String(paid.length) },
+        { label: 'Total', value: formatEUR(paidTotal) }
+      ],
+      source: 'analytics-services.js:85 getData() — `paidTotal = sum(paid)`'
+    },
     lines: streamData.map(d => ({
       label: d.label, value: formatEUR(d.streamPaid), pct: pct(d.streamPaid, paidTotal),
       onClick: () => streamClientModal(`Paid Revenue — ${d.label} — ${formatEUR(d.streamPaid)}`, d.streamPaidInv, 'paid')
@@ -455,11 +478,25 @@ function buildView(gF, curRange, cmpRange, onChange) {
       if (clients.length) {
         body.appendChild(mkSectionLabel('By Client'));
         body.appendChild(mkModalTable(
-          ['Client', 'Invoices', 'Invoiced', '% of Total'],
+          [
+            { label: 'Client', tip: 'Client billed.' },
+            { label: 'Invoices', right: true, muted: true, tip: 'Count of non-draft invoices for this client.' },
+            { label: 'Invoiced', right: true, tip: 'Sum of this client\'s non-draft invoice totals.' },
+            { label: '% of Total', right: true, muted: true, tip: 'This client\'s share of total invoiced revenue.' }
+          ],
           clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), invoicedTotal > 0 ? (c.v / invoicedTotal * 100).toFixed(1) + '%' : '—'])
         ));
       }
       openModal({ title: `Invoiced Revenue — ${formatEUR(invoicedTotal)}`, body, large: true });
+    },
+    explain: {
+      title: 'Invoiced Revenue', formula: 'Sum of EUR-converted invoice totals for all non-draft CS/Marketing invoices (sent, paid, or overdue) in the selected period.',
+      inputs: [
+        { label: 'Non-draft invoices', value: String(nonDraft.length) },
+        { label: 'Total', value: formatEUR(invoicedTotal) }
+      ],
+      source: 'analytics-services.js:86 getData() — `invoicedTotal = sum(nonDraft)`',
+      note: 'Draft invoices are excluded — they aren\'t yet committed revenue.'
     },
     lines: streamData.map(d => ({
       label: d.label, value: formatEUR(d.streamInvoiced), pct: pct(d.streamInvoiced, invoicedTotal),
@@ -479,7 +516,12 @@ function buildView(gF, curRange, cmpRange, onChange) {
     if (clients.length) {
       body.appendChild(mkSectionLabel('Collection by Client'));
       body.appendChild(mkModalTable(
-        ['Client', 'Invoiced', 'Paid', 'Rate'],
+        [
+          { label: 'Client', tip: 'Client billed.' },
+          { label: 'Invoiced', right: true, tip: 'Sum of this client\'s non-draft invoice totals.' },
+          { label: 'Paid', right: true, tip: 'Sum of this client\'s paid invoice totals.' },
+          { label: 'Rate', right: true, muted: true, tip: 'Paid ÷ Invoiced × 100 for this client.' }
+        ],
         clients.map(c => [c.n, formatEUR(c.total), formatEUR(c.paid), c.total > 0 ? (c.paid / c.total * 100).toFixed(0) + '%' : '—'])
       ));
     }
@@ -495,6 +537,15 @@ function buildView(gF, curRange, cmpRange, onChange) {
     compLabel: cmpRange?.label,
     compValue: cmpData?.collectionRate != null ? cmpData.collectionRate.toFixed(0) + '%' : undefined,
     onClick:   onClickCollectionRate,
+    explain: {
+      title: 'Collection Rate', formula: 'Paid Revenue ÷ Invoiced Revenue × 100',
+      inputs: [
+        { label: 'Paid Revenue', value: formatEUR(paidTotal) },
+        { label: 'Invoiced Revenue', value: formatEUR(invoicedTotal) }
+      ],
+      source: 'analytics-services.js:89 getData() — `collectionRate = paidTotal / invoicedTotal * 100`',
+      note: 'Null (shown as —) when there is no invoiced revenue in the period.'
+    },
     lines: streamData.map(d => ({
       label: d.label, value: d.streamCollectionRate !== null ? d.streamCollectionRate.toFixed(0) + '%' : '—',
       onClick: () => streamClientModal(`Collection Rate — ${d.label} — ${d.streamCollectionRate !== null ? d.streamCollectionRate.toFixed(0) + '%' : 'N/A'}`, d.streamNonDraft, 'invoiced')
@@ -508,7 +559,12 @@ function buildView(gF, curRange, cmpRange, onChange) {
     if (clients.length) {
       body.appendChild(mkSectionLabel('Outstanding by Client'));
       body.appendChild(mkModalTable(
-        ['Client', 'Invoices', 'Outstanding', 'Overdue'],
+        [
+          { label: 'Client', tip: 'Client billed.' },
+          { label: 'Invoices', right: true, muted: true, tip: 'Count of sent/overdue invoices for this client.' },
+          { label: 'Outstanding', right: true, tip: 'Sum of this client\'s sent + overdue invoice totals.' },
+          { label: 'Overdue', right: true, tip: 'Portion of this client\'s outstanding total that is past due.' }
+        ],
         clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), c.overdue > 0 ? formatEUR(c.overdue) : '—'])
       ));
     }
@@ -523,6 +579,14 @@ function buildView(gF, curRange, cmpRange, onChange) {
     compLabel:   cmpRange?.label,
     compValue:   cmpData ? formatEUR(cmpData.outstandingTotal) : undefined,
     onClick:     onClickOutstanding,
+    explain: {
+      title: 'Outstanding', formula: 'Sum of EUR-converted invoice totals for invoices with status = sent or overdue, dated within the selected period.',
+      inputs: [
+        { label: 'Outstanding invoices', value: String(outstanding.length) },
+        { label: 'Total', value: formatEUR(outstandingTotal) }
+      ],
+      source: 'analytics-services.js:87 getData() — `outstandingTotal = sum(outstanding)`'
+    },
     lines: streamData.map(d => ({
       label: d.label, value: formatEUR(d.streamOutstanding), pct: pct(d.streamOutstanding, outstandingTotal),
       onClick: () => streamClientModal(`Outstanding — ${d.label} — ${formatEUR(d.streamOutstanding)}`, d.streamOutInv, 'outstanding')
@@ -541,7 +605,12 @@ function buildView(gF, curRange, cmpRange, onChange) {
     if (clients.length) {
       body.appendChild(mkSectionLabel('Overdue by Client'));
       body.appendChild(mkModalTable(
-        ['Client', 'Invoices', 'Overdue Amount', '% of Total Overdue'],
+        [
+          { label: 'Client', tip: 'Client billed.' },
+          { label: 'Invoices', right: true, muted: true, tip: 'Count of overdue invoices for this client.' },
+          { label: 'Overdue Amount', right: true, tip: 'Sum of this client\'s overdue invoice totals.' },
+          { label: '% of Total Overdue', right: true, muted: true, tip: 'This client\'s share of total overdue across all clients.' }
+        ],
         clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), overdueTotal > 0 ? (c.v / overdueTotal * 100).toFixed(1) + '%' : '—'])
       ));
     } else {
@@ -553,7 +622,15 @@ function buildView(gF, curRange, cmpRange, onChange) {
     label:   'Overdue',
     value:   formatEUR(overdueTotal),
     variant: overdueTotal > 0 ? 'danger' : '',
-    onClick: onClickOverdue
+    onClick: onClickOverdue,
+    explain: {
+      title: 'Overdue', formula: 'Sum of EUR-converted invoice totals for invoices with status = overdue, dated within the selected period.',
+      inputs: [
+        { label: 'Overdue invoices', value: String(overdue.length) },
+        { label: 'Total', value: formatEUR(overdueTotal) }
+      ],
+      source: 'analytics-services.js:88 getData() — `overdueTotal = sum(overdue)`'
+    }
   }));
   const onClickClientConcentration = () => {
     const rows = toClientConcentrationRows(clientRevMap, paidTotal);
@@ -561,13 +638,26 @@ function buildView(gF, curRange, cmpRange, onChange) {
     body.appendChild(mkSectionLabel('Summary'));
     body.appendChild(mkSummaryGrid([
       { label: 'Top Client',    value: topClient ? topClient.name : '—' },
-      { label: 'Concentration', value: concentration !== null ? concentration.toFixed(0) + '%' : '—' },
+      { label: 'Concentration', value: concentration !== null ? concentration.toFixed(0) + '%' : '—',
+        explain: {
+          title: 'Client Concentration', formula: 'Top client\'s paid revenue ÷ total paid revenue × 100',
+          inputs: [
+            { label: 'Top Client Paid Revenue', value: topClient ? formatEUR(topClient.rev) : '—' },
+            { label: 'Total Paid Revenue', value: formatEUR(paidTotal) }
+          ],
+          source: 'analytics-services.js:105 getData() — `concentration = topClientRev / paidTotal * 100`'
+        }
+      },
       { label: 'Paid Revenue',  value: formatEUR(paidTotal) }
     ], 3));
     if (rows.length) {
       body.appendChild(mkSectionLabel('By Client'));
       body.appendChild(mkModalTable(
-        [{ label: 'Client' }, { label: 'Paid Revenue', right: true }, { label: 'Share', right: true, muted: true }],
+        [
+          { label: 'Client', tip: 'Client billed.' },
+          { label: 'Paid Revenue', right: true, tip: 'Sum of this client\'s paid invoice totals.' },
+          { label: 'Share', right: true, muted: true, tip: 'This client\'s paid revenue as a percentage of total paid revenue.' }
+        ],
         rows.map(r => [r.client, formatEUR(r.paidRev), r.share.toFixed(1) + '%'])
       ));
     } else {
@@ -580,7 +670,17 @@ function buildView(gF, curRange, cmpRange, onChange) {
     value:   concentration !== null ? concentration.toFixed(0) + '%' : '—',
     variant: concVariant,
     subtitle: 'Top client share of paid revenue',
-    onClick: onClickClientConcentration
+    onClick: onClickClientConcentration,
+    explain: {
+      title: 'Client Concentration', formula: 'Top client\'s paid revenue ÷ total paid revenue × 100',
+      inputs: [
+        { label: 'Top Client', value: topClient ? topClient.name : '—' },
+        { label: 'Top Client Paid Revenue', value: topClient ? formatEUR(topClient.rev) : '—' },
+        { label: 'Total Paid Revenue', value: formatEUR(paidTotal) }
+      ],
+      source: 'analytics-services.js:105 getData() — `concentration = topClientRev / paidTotal * 100`',
+      note: 'Measures dependency risk — a high share means revenue is concentrated in one client.'
+    }
   }));
   kpiRow2.appendChild(mkKpiCard({
     label:   'Top Client',
@@ -604,7 +704,10 @@ function buildView(gF, curRange, cmpRange, onChange) {
       if (streams.length) {
         body.appendChild(mkSectionLabel('By Stream'));
         body.appendChild(mkModalTable(
-          ['Stream', 'Invoiced'],
+          [
+            { label: 'Stream', tip: 'Service stream (CS or Marketing).' },
+            { label: 'Invoiced', right: true, tip: 'Sum of this client\'s non-draft invoice totals in this stream.' }
+          ],
           streams.map(([s, v]) => [STREAMS[s]?.label || s, formatEUR(v)])
         ));
       }
@@ -624,12 +727,12 @@ function buildView(gF, curRange, cmpRange, onChange) {
       body.appendChild(mkSectionLabel('By Client'));
       body.appendChild(mkModalTable(
         [
-          { label: 'Client' },
-          { label: 'Paid Revenue', right: true },
-          { label: 'Invoiced Revenue', right: true },
-          { label: 'Outstanding', right: true },
-          { label: 'Overdue', right: true },
-          { label: 'Invoices', right: true, muted: true }
+          { label: 'Client', tip: 'Client with at least one non-draft invoice in the period.' },
+          { label: 'Paid Revenue', right: true, tip: 'Sum of this client\'s paid invoice totals.' },
+          { label: 'Invoiced Revenue', right: true, tip: 'Sum of this client\'s non-draft invoice totals.' },
+          { label: 'Outstanding', right: true, tip: 'Sum of this client\'s sent + overdue invoice totals.' },
+          { label: 'Overdue', right: true, tip: 'Sum of this client\'s overdue invoice totals.' },
+          { label: 'Invoices', right: true, muted: true, tip: 'Count of invoices for this client in the period.' }
         ],
         rows.map(r => [r.client, formatEUR(r.paidRev), formatEUR(r.invoicedRev), formatEUR(r.outstanding), formatEUR(r.overdue), String(r.count)])
       ));
@@ -642,7 +745,12 @@ function buildView(gF, curRange, cmpRange, onChange) {
     label:   'Active Clients',
     value:   String(activeClientIds.size),
     subtitle: 'Clients with invoiced activity',
-    onClick: onClickActiveClients
+    onClick: onClickActiveClients,
+    explain: {
+      title: 'Active Clients', formula: 'Count of distinct clients with at least one non-draft (sent, paid, or overdue) invoice in the selected period.',
+      inputs: [{ label: 'Active Clients', value: String(activeClientIds.size) }],
+      source: 'analytics-services.js:108 getData() — `activeClientIds = new Set(nonDraft.map(i => i.clientId)...)`'
+    }
   }));
   wrap.appendChild(kpiRow2);
 
@@ -693,11 +801,21 @@ function buildView(gF, curRange, cmpRange, onChange) {
     value:   dso !== null ? `${Math.round(dso)}d` : '—',
     variant: dsoVariant,
     subtitle: dsoSubtitle,
+    explain: {
+      title: 'Days Sales Outstanding', formula: '(Outstanding ÷ Invoiced) × Days in Period',
+      inputs: [
+        { label: 'Outstanding', value: formatEUR(outstandingTotal) },
+        { label: 'Invoiced (non-draft)', value: formatEUR(invoicedTotal) },
+        { label: 'Days in Period', value: String(periodDays) }
+      ],
+      source: 'analytics-services.js:760 buildView() — `dso = (outstandingTotal / invoicedTotal) * periodDays`',
+      note: 'Estimates how many days of invoiced revenue are still uncollected, on average — lower is healthier.'
+    },
     onClick: () => {
       const body = el('div');
       body.appendChild(mkSectionLabel('DSO Formula'));
       body.appendChild(mkModalTable(
-        [{ label: 'Metric' }, { label: 'Value', right: true }],
+        [{ label: 'Metric', tip: 'Component of the DSO calculation.' }, { label: 'Value', right: true, tip: 'Value of the component for the selected period.' }],
         [
           ['Outstanding Invoices Balance', formatEUR(outstandingTotal)],
           ['Total Invoiced (non-draft)',    formatEUR(invoicedTotal)],
@@ -730,10 +848,10 @@ function buildView(gF, curRange, cmpRange, onChange) {
         body.appendChild(mkSectionLabel('Per-Client DSO (worst first)'));
         body.appendChild(mkModalTable(
           [
-            { label: 'Client' },
-            { label: 'DSO (days)', right: true },
-            { label: 'Outstanding', right: true },
-            { label: 'Invoiced', right: true, muted: true }
+            { label: 'Client', tip: 'Client with outstanding non-draft invoices.' },
+            { label: 'DSO (days)', right: true, tip: '(Outstanding ÷ Invoiced) × Days in Period, for this client.' },
+            { label: 'Outstanding', right: true, tip: 'Sum of this client\'s sent + overdue invoice totals.' },
+            { label: 'Invoiced', right: true, muted: true, tip: 'Sum of this client\'s non-draft invoice totals.' }
           ],
           clientDsoRows.map(r => [
             r.client,
@@ -757,6 +875,14 @@ function buildView(gF, curRange, cmpRange, onChange) {
     delta:    deltaAvgInv,
     compLabel: cmpRange?.label,
     compValue: (cmpData && cmpData.nonDraft.length > 0) ? formatEUR(cmpData.invoicedTotal / cmpData.nonDraft.length) : undefined,
+    explain: {
+      title: 'Avg Invoice Size', formula: 'Invoiced Revenue ÷ Count of non-draft invoices',
+      inputs: [
+        { label: 'Invoiced Revenue', value: formatEUR(invoicedTotal) },
+        { label: 'Non-draft Invoices', value: String(nonDraft.length) }
+      ],
+      source: 'analytics-services.js:767 buildView() — `avgInvValue = invoicedTotal / nonDraft.length`'
+    },
     onClick:  () => {
       const body = el('div');
 
@@ -770,9 +896,9 @@ function buildView(gF, curRange, cmpRange, onChange) {
         body.appendChild(mkSectionLabel('Top 5 Largest Invoices'));
         body.appendChild(mkModalTable(
           [
-            { label: 'Client' },
-            { label: 'Issue Date' },
-            { label: 'Amount', right: true }
+            { label: 'Client', tip: 'Client billed.' },
+            { label: 'Issue Date', tip: 'Date the invoice was issued.' },
+            { label: 'Amount', right: true, tip: 'Invoice total converted to EUR.' }
           ],
           top5.map(({ i, eur }) => [
             byId('clients', i.clientId)?.name || '—',
@@ -799,10 +925,10 @@ function buildView(gF, curRange, cmpRange, onChange) {
       body.appendChild(mkSectionLabel('Invoice Distribution'));
       body.appendChild(mkModalTable(
         [
-          { label: 'Range' },
-          { label: 'Count', right: true },
-          { label: 'Total', right: true },
-          { label: '% of Invoiced', right: true, muted: true }
+          { label: 'Range', tip: 'Invoice amount bucket (EUR).' },
+          { label: 'Count', right: true, tip: 'Number of non-draft invoices in this amount range.' },
+          { label: 'Total', right: true, tip: 'Sum of invoice totals in this amount range.' },
+          { label: '% of Invoiced', right: true, muted: true, tip: 'This bucket\'s total as a percentage of overall invoiced revenue.' }
         ],
         DIST_BUCKETS.map(b => {
           const bTotal = b.items.reduce((s, x) => s + x.eur, 0);
@@ -825,6 +951,15 @@ function buildView(gF, curRange, cmpRange, onChange) {
     value:   `${newClientIds.length} new / ${recurringClientIds.length} recurring`,
     variant: 'info',
     subtitle: 'Clients in selected period',
+    explain: {
+      title: 'New vs Recurring', formula: 'A client with a non-draft invoice in the selected period is "new" if it has no non-draft service invoice dated before the period start, otherwise "recurring".',
+      inputs: [
+        { label: 'New Clients', value: String(newClientIds.length) },
+        { label: 'Recurring Clients', value: String(recurringClientIds.length) }
+      ],
+      source: 'analytics-services.js:786 buildView() — `newClientIds`/`recurringClientIds` (vs. `clientsBeforePeriod`)',
+      note: 'Compares against ALL historical CS/Marketing invoices, not just the current filter\'s date range, so "new" means new to the business, not just to this period\'s filters.'
+    },
     onClick: () => {
       const body = el('div');
       const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px' });
@@ -841,7 +976,11 @@ function buildView(gF, curRange, cmpRange, onChange) {
           return { name, rev, count: invs.length };
         }).sort((a, b) => b.rev - a.rev);
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Revenue', right: true }],
+          [
+            { label: 'Client', tip: 'Client with no non-draft invoices before the selected period.' },
+            { label: 'Invoices', right: true, muted: true, tip: 'Count of this client\'s non-draft invoices in the period.' },
+            { label: 'Revenue', right: true, tip: 'Sum of this client\'s non-draft invoice totals in the period.' }
+          ],
           newRows.map(r => [r.name, String(r.count), formatEUR(r.rev)])
         ));
       }
@@ -858,9 +997,9 @@ function buildView(gF, curRange, cmpRange, onChange) {
         }).sort((a, b) => b.histRev - a.histRev);
         body.appendChild(mkModalTable(
           [
-            { label: 'Client' },
-            { label: 'Period Revenue', right: true },
-            { label: 'Historical Revenue', right: true, muted: true }
+            { label: 'Client', tip: 'Client with non-draft invoice activity before the selected period.' },
+            { label: 'Period Revenue', right: true, tip: 'Sum of this client\'s non-draft invoice totals within the selected period.' },
+            { label: 'Historical Revenue', right: true, muted: true, tip: 'Sum of this client\'s non-draft invoice totals across all time (all service invoices ever recorded, any period).' }
           ],
           recurRows.map(r => [r.name, formatEUR(r.periodRev), formatEUR(r.histRev)])
         ));
@@ -1004,7 +1143,11 @@ function renderClientBar({ paid, kpiBase }) {
       if (streams.length) {
         body.appendChild(mkSectionLabel('By Stream (Paid)'));
         body.appendChild(mkModalTable(
-          [{ label: 'Stream' }, { label: 'Revenue', right: true }, { label: '% of Paid', right: true, muted: true }],
+          [
+            { label: 'Stream', tip: 'Service stream (CS or Marketing).' },
+            { label: 'Revenue', right: true, tip: 'Sum of this client\'s paid invoice totals in this stream.' },
+            { label: '% of Paid', right: true, muted: true, tip: 'This stream\'s share of this client\'s total paid revenue.' }
+          ],
           streams.map(([s, v]) => [STREAMS[s]?.label || s, formatEUR(v), d.eur > 0 ? (v / d.eur * 100).toFixed(0) + '%' : '—'])
         ));
       }
@@ -1059,7 +1202,11 @@ function renderMonthBar({ base }, monthKeys) {
       if (clients.length) {
         body.appendChild(mkSectionLabel(`${STREAMS[sk]?.label || sk} — By Client`));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Revenue', right: true }, { label: '% of Stream', right: true, muted: true }],
+          [
+            { label: 'Client', tip: 'Client billed.' },
+            { label: 'Revenue', right: true, tip: 'Sum of this client\'s invoice totals for this month and stream.' },
+            { label: '% of Stream', right: true, muted: true, tip: 'This client\'s share of the stream\'s total for this month.' }
+          ],
           clients.map(c => [c.n, formatEUR(c.v), streamTotal > 0 ? (c.v / streamTotal * 100).toFixed(0) + '%' : '—'])
         ));
       }
@@ -1109,7 +1256,12 @@ function renderStatusDonut({ kpiBase }) {
       if (clients.length) {
         body.appendChild(mkSectionLabel('By Client'));
         body.appendChild(mkModalTable(
-          [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Total', right: true }, { label: '% of Total', right: true, muted: true }],
+          [
+            { label: 'Client', tip: 'Client billed.' },
+            { label: 'Invoices', right: true, muted: true, tip: 'Count of invoices in this status for this client.' },
+            { label: 'Total', right: true, tip: 'Sum of this client\'s invoice totals in this status.' },
+            { label: '% of Total', right: true, muted: true, tip: 'This client\'s share of the total value in this status.' }
+          ],
           clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), total > 0 ? (c.v / total * 100).toFixed(1) + '%' : '—'])
         ));
       }
@@ -1168,7 +1320,11 @@ function renderOutstandingBar({ outstanding }) {
       if (streams.length) {
         body.appendChild(mkSectionLabel('By Stream'));
         body.appendChild(mkModalTable(
-          [{ label: 'Stream' }, { label: 'Outstanding', right: true }, { label: '% of Total', right: true, muted: true }],
+          [
+            { label: 'Stream', tip: 'Service stream (CS or Marketing).' },
+            { label: 'Outstanding', right: true, tip: 'Sum of this client\'s sent + overdue invoice totals in this stream.' },
+            { label: '% of Total', right: true, muted: true, tip: 'This stream\'s share of this client\'s total outstanding.' }
+          ],
           streams.map(([s, v]) => [STREAMS[s]?.label || s, formatEUR(v), d.eur > 0 ? (v / d.eur * 100).toFixed(0) + '%' : '—'])
         ));
       }
@@ -1254,10 +1410,10 @@ function renderAgingBar({ outstanding }) {
       body.appendChild(mkSectionLabel('By Client (worst first)'));
       body.appendChild(mkModalTable(
         [
-          { label: 'Client' },
-          { label: 'Invoices', right: true, muted: true },
-          { label: 'Outstanding', right: true },
-          { label: 'Oldest Due Date', right: true, muted: true }
+          { label: 'Client', tip: 'Client with an invoice in this aging bucket.' },
+          { label: 'Invoices', right: true, muted: true, tip: 'Count of this client\'s invoices in this aging bucket.' },
+          { label: 'Outstanding', right: true, tip: 'Sum of this client\'s invoice totals in this aging bucket.' },
+          { label: 'Oldest Due Date', right: true, muted: true, tip: 'Earliest due date among this client\'s invoices in this bucket.' }
         ],
         clientRows.map(c => [
           c.name,
@@ -1308,15 +1464,15 @@ function buildInvoiceTable(container, { base }) {
   };
 
   const TABLE_COLS = [
-    { key: 'number',      label: 'Invoice'                  },
-    { key: 'client',      label: 'Client'                   },
-    { key: 'stream',      label: 'Stream'                   },
-    { key: 'owner',       label: 'Owner'                    },
-    { key: 'status',      label: 'Status',      badge: true },
-    { key: 'issueDate',   label: 'Issue Date'               },
-    { key: 'dueDate',     label: 'Due Date'                 },
-    { key: 'amountEUR',   label: 'Amount EUR',  right: true },
-    { key: 'overdueDays', label: 'Overdue Days', right: true }
+    { key: 'number',      label: 'Invoice',                  tip: 'Invoice number.' },
+    { key: 'client',      label: 'Client',                   tip: 'Client billed on this invoice.' },
+    { key: 'stream',      label: 'Stream',                   tip: 'Service stream (CS or Marketing) this invoice belongs to.' },
+    { key: 'owner',       label: 'Owner',                    tip: 'Owner attributed to this invoice, falling back to the client\'s owner if not set on the invoice itself.' },
+    { key: 'status',      label: 'Status',      badge: true, tip: 'Invoice status: draft, sent, paid, or overdue.' },
+    { key: 'issueDate',   label: 'Issue Date',                tip: 'Date the invoice was issued.' },
+    { key: 'dueDate',     label: 'Due Date',                  tip: 'Date payment is due.' },
+    { key: 'amountEUR',   label: 'Amount EUR',  right: true, tip: 'Invoice total converted to EUR.' },
+    { key: 'overdueDays', label: 'Overdue Days', right: true, tip: 'Days elapsed since the due date (or issue date if no due date), for sent/overdue invoices only.' }
   ];
 
   const rows = base.map(i => {
@@ -1343,7 +1499,7 @@ function buildInvoiceTable(container, { base }) {
 
   const table = el('table', { class: 'table' });
   const htr   = el('tr');
-  TABLE_COLS.forEach(col => htr.appendChild(el('th', { class: col.right ? 'right' : '' }, col.label)));
+  TABLE_COLS.forEach(col => htr.appendChild(mkTh(col)));
   table.appendChild(el('thead', {}, htr));
 
   const tbody = el('tbody');
