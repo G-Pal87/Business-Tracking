@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK, groupByMonthKey } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK, groupByMonthKey, mkTh } from './analytics-helpers.js';
 import { buildServicesSection, destroyServiceCharts, resetServiceStatusFilter } from './analytics-services.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -22,11 +22,11 @@ const CHART_IDS    = [
   'rev-concentration', 'rev-aging'
 ];
 const REV_COLS = [
-  { key: 'date',   label: 'Date',   format: v => fmtDate(v) },
-  { key: 'type',   label: 'Type'   },
-  { key: 'source', label: 'Entity' },
-  { key: 'ref',    label: 'Ref'    },
-  { key: 'eur',    label: 'EUR',    right: true, format: v => formatEUR(v) }
+  { key: 'date',   label: 'Date',   format: v => fmtDate(v), tip: 'Date the payment was received or the invoice was issued.' },
+  { key: 'type',   label: 'Type',   tip: 'Record type — Payment (rental) or Invoice (service).' },
+  { key: 'source', label: 'Entity', tip: 'The property (for payments) or client (for invoices) this revenue came from.' },
+  { key: 'ref',    label: 'Ref',    tip: 'Reference identifier for the transaction, e.g. an invoice number.' },
+  { key: 'eur',    label: 'EUR',    right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the record\'s own date.' }
 ];
 
 // ── Grouping / footer helpers for compact drill-down modals ───────────────────
@@ -87,7 +87,12 @@ function openStreamDrill(title, pays, invs) {
   if (entities.length) {
     body.appendChild(mkSectionLabel((pays || []).length ? 'By Property' : 'By Client'));
     body.appendChild(mkModalTable(
-      [{ label: 'Name' }, { label: 'Records', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }],
+      [
+        { label: 'Name', tip: 'Property or client name contributing to this stream.' },
+        { label: 'Records', right: true, muted: true, tip: 'Number of payments or invoices from this property/client.' },
+        { label: 'Revenue', right: true, tip: 'Total EUR revenue from this property/client in the current scope.' },
+        { label: '% of Total', right: true, muted: true, tip: 'This property/client\'s share of the stream total shown above.' }
+      ],
       entities.map(e => [e.name, String(e.count), formatEUR(e.eur), eur > 0 ? (e.eur / eur * 100).toFixed(1) + '%' : '—'])
     ));
   }
@@ -228,7 +233,11 @@ function buildKpiSection(cur, cmp, cmpRange) {
     ].filter(r => r[1] !== formatEUR(0));
     if (streamRows.length) {
       body.appendChild(mkSectionLabel('Revenue by Stream'));
-      const hdrs = [{ label: 'Stream' }, { label: 'Revenue', right: true }, { label: '% of Total', right: true, muted: true }];
+      const hdrs = [
+        { label: 'Stream', tip: 'Revenue stream — short-term rental, long-term rental, customer success, or marketing services.' },
+        { label: 'Revenue', right: true, tip: 'Total EUR revenue from this stream for the current period.' },
+        { label: '% of Total', right: true, muted: true, tip: 'This stream\'s share of total revenue for the period.' }
+      ];
       body.appendChild(mkModalTable(hdrs, streamRows));
     }
 
@@ -236,7 +245,13 @@ function buildKpiSection(cur, cmp, cmpRange) {
     if (contribs.length) {
       body.appendChild(el('div', { style: 'margin-top:20px' }));
       body.appendChild(mkSectionLabel('Top Contributors'));
-      const hdrs = [{ label: '#', muted: true }, { label: 'Name' }, { label: 'Type', muted: true }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }];
+      const hdrs = [
+        { label: '#', muted: true, tip: 'Rank by revenue, highest first.' },
+        { label: 'Name', tip: 'Property or client name.' },
+        { label: 'Type', muted: true, tip: 'Whether this contributor is a Property (rental) or a Client (services).' },
+        { label: 'Revenue', right: true, tip: 'Total EUR revenue from this contributor for the current period.' },
+        { label: 'Share', right: true, muted: true, tip: 'This contributor\'s share of total revenue.' }
+      ];
       const rows = contribs.slice(0, 8).map((c, i) => [
         String(i + 1), c.name, c.type, formatEUR(c.val),
         total > 0 ? (c.val / total * 100).toFixed(1) + '%' : '—'
@@ -287,7 +302,12 @@ function buildKpiSection(cur, cmp, cmpRange) {
     const clients = [...clientMap.values()].sort((a, b) => b.eur - a.eur);
     if (clients.length) {
       body.appendChild(mkSectionLabel('By Client'));
-      const hdrs = [{ label: 'Client' }, { label: 'Invoices', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Service', right: true, muted: true }];
+      const hdrs = [
+        { label: 'Client', tip: 'Client billed for services.' },
+        { label: 'Invoices', right: true, muted: true, tip: 'Number of paid invoices from this client.' },
+        { label: 'Revenue', right: true, tip: 'Total EUR revenue billed to this client.' },
+        { label: '% of Service', right: true, muted: true, tip: 'This client\'s share of total service revenue.' }
+      ];
       const rows = clients.map(c => [
         c.name, String(c.count), formatEUR(c.eur),
         svcRev > 0 ? (c.eur / svcRev * 100).toFixed(1) + '%' : '—'
@@ -340,7 +360,13 @@ function buildKpiSection(cur, cmp, cmpRange) {
     const props = [...propRevMap.values()].sort((a, b) => b.eur - a.eur);
     if (props.length) {
       body.appendChild(mkSectionLabel('By Property'));
-      const hdrs = [{ label: 'Property' }, { label: 'Type', muted: true }, { label: 'Payments', right: true, muted: true }, { label: 'Revenue', right: true }, { label: '% of Rental', right: true, muted: true }];
+      const hdrs = [
+        { label: 'Property', tip: 'Rental property name.' },
+        { label: 'Type', muted: true, tip: 'Rental type — STR (short-term) or LTR (long-term).' },
+        { label: 'Payments', right: true, muted: true, tip: 'Number of paid payments recorded for this property.' },
+        { label: 'Revenue', right: true, tip: 'Total EUR revenue from this property.' },
+        { label: '% of Rental', right: true, muted: true, tip: 'This property\'s share of total rental revenue.' }
+      ];
       const rows = props.map(p => [
         p.name, p.type, String(p.count), formatEUR(p.eur),
         propRev > 0 ? (p.eur / propRev * 100).toFixed(1) + '%' : '—'
@@ -1190,13 +1216,13 @@ function buildSeasonalityHeatmap() {
 
 // ── Revenue table (collapsed) ─────────────────────────────────────────────────
 const TX_COLS = [
-  { key: 'type',      label: 'Type'        },
-  { key: 'date',      label: 'Date'        },
-  { key: 'stream',    label: 'Stream'      },
-  { key: 'entity',    label: 'Entity'      },
-  { key: 'owner',     label: 'Owner'       },
-  { key: 'status',    label: 'Status'      },
-  { key: 'amountEUR', label: 'Amount EUR', right: true }
+  { key: 'type',      label: 'Type',        tip: 'Whether this row is a rental Payment or a service Invoice.' },
+  { key: 'date',      label: 'Date',        tip: 'Date the payment was received or the invoice was issued.' },
+  { key: 'stream',    label: 'Stream',      tip: 'Revenue stream — short/long-term rental, customer success, or marketing services.' },
+  { key: 'entity',    label: 'Entity',      tip: 'Property (for payments) or client (for invoices) tied to this record.' },
+  { key: 'owner',     label: 'Owner',       tip: 'Owner of the property or client generating this revenue.' },
+  { key: 'status',    label: 'Status',      tip: 'Payment/invoice status, e.g. paid, sent, or overdue.' },
+  { key: 'amountEUR', label: 'Amount EUR', right: true, tip: 'Amount converted to EUR at the record\'s own date.' }
 ];
 
 function buildRevenueTable(container, { payments, invoices }) {
@@ -1218,7 +1244,7 @@ function buildRevenueTable(container, { payments, invoices }) {
 
   const table = el('table', { class: 'table' });
   const htr   = el('tr');
-  TX_COLS.forEach(col => htr.appendChild(el('th', { class: col.right ? 'right' : '' }, col.label)));
+  TX_COLS.forEach(col => htr.appendChild(mkTh(col)));
   table.appendChild(el('thead', {}, htr));
 
   const tbody = el('tbody');
