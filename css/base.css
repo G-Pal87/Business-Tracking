@@ -1,0 +1,92 @@
+/* ========== BASE: reset, variables, typography ========== */
+
+:root {
+  --bg: #0f1117;
+  --bg-elev-1: #161a27;
+  --bg-elev-2: #1e2235;
+  --bg-elev-3: #252a42;
+  --sidebar: #141726;
+  --border: #2a2f47;
+  --border-strong: #3a4165;
+
+  --text: #e4e8f1;
+  --text-muted: #8b93b0;
+  --text-dim: #5c6480;
+
+  --accent: #6366f1;
+  --accent-hover: #7c7ff5;
+  --accent-soft: rgba(99, 102, 241, 0.12);
+
+  --success: #10b981;
+  --success-soft: rgba(16, 185, 129, 0.12);
+  --warning: #f59e0b;
+  --warning-soft: rgba(245, 158, 11, 0.12);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.12);
+  --info: #3b82f6;
+  --info-soft: rgba(59, 130, 246, 0.12);
+
+  --stream-short: #8b5cf6;
+  --stream-long: #14b8a6;
+  --stream-cs: #3b82f6;
+  --stream-mkt: #ec4899;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.5);
+
+  --sidebar-width: 248px;
+  --header-height: 64px;
+
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, Consolas, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+* { margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body { overflow: hidden; }
+
+h1, h2, h3, h4, h5, h6 { font-weight: 600; letter-spacing: -0.01em; }
+h1 { font-size: 1.75rem; }
+h2 { font-size: 1.375rem; }
+h3 { font-size: 1.125rem; }
+h4 { font-size: 1rem; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hover); }
+
+button { font-family: inherit; font-size: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+
+input, select, textarea { font-family: inherit; font-size: inherit; }
+
+code, pre, .mono { font-family: var(--font-mono); }
+
+.muted { color: var(--text-muted); }
+.dim { color: var(--text-dim); }
+.right { text-align: right; }
+.center { text-align: center; }
+.num { font-variant-numeric: tabular-nums; font-family: var(--font-mono); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.hidden { display: none !important; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
