@@ -331,7 +331,7 @@ function streamClientModal(title, invs, valueKey) {
   const clientMap = new Map();
   invs.forEach(i => {
     const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown';
-    const x = clientMap.get(id) || { n, v: 0, overdue: 0, cnt: 0 };
+    const x = clientMap.get(id) || { n, id, v: 0, overdue: 0, cnt: 0 };
     x.v += toEUR(i.total, i.currency, i.issueDate);
     if (i.status === 'overdue') x.overdue += toEUR(i.total, i.currency, i.issueDate);
     x.cnt++; clientMap.set(id, x);
@@ -354,8 +354,11 @@ function streamClientModal(title, invs, valueKey) {
         ];
     const total = clients.reduce((s, c) => s + c.v, 0);
     body.appendChild(mkModalTable(cols, clients.map(c => [
-      c.n, String(c.cnt), formatEUR(c.v),
-      valueKey === 'outstanding' ? (c.overdue > 0 ? formatEUR(c.overdue) : '—') : (total > 0 ? (c.v / total * 100).toFixed(1) + '%' : '—')
+      c.n, String(c.cnt),
+      mkDrillValue(formatEUR(c.v), () => drillDownModal(`${title} — ${c.n}`, toInvDrillRows(invs.filter(i => i.clientId === c.id)), INV_DRILL_COLS)),
+      valueKey === 'outstanding'
+        ? (c.overdue > 0 ? mkDrillValue(formatEUR(c.overdue), () => drillDownModal(`${title} — ${c.n} — Overdue`, toInvDrillRows(invs.filter(i => i.clientId === c.id && i.status === 'overdue')), INV_DRILL_COLS)) : '—')
+        : (total > 0 ? (c.v / total * 100).toFixed(1) + '%' : '—')
     ])));
   } else {
     body.appendChild(mkEmptyState('No invoices for this stream in the selected period.'));
