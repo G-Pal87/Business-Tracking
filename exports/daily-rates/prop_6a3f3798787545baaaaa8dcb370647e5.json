@@ -1,0 +1,16 @@
+{
+  "schema": "str-daily-rates/v1",
+  "generatedAt": "2026-07-12T05:05:43.230Z",
+  "property": {
+    "id": "prop_6a3f3798787545baaaaa8dcb370647e5",
+    "name": "tst1",
+    "currency": "EUR",
+    "airbnbCalUrl": ""
+  },
+  "guestFeePct": 14,
+  "taxPct": 0,
+  "cleaningFee": 60,
+  "cleaningGuestTotal": 60,
+  "horizonDays": 365,
+  "rates": []
+}

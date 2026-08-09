@@ -1,0 +1,4110 @@
+// Settings module: GitHub config, FX rates, services catalog, business info, team
+import { state, markDirty } from '../core/state.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, attachSortFilter } from '../core/ui.js';
+import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
+import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64, generateDebugKey, installDebugKey, exportActiveDebugKeyBase64, hasDebugKeyConfigured, isDebugKeyUnlocked, encryptJsonWithDebugKey } from '../core/crypto.js';
+import { verifyPassword } from '../core/auth.js';
+import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, removeDevices, listSessionHistory, clearSessionHistory } from '../core/presence.js';
+import { navigate } from '../core/router.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning } from '../core/data.js';
+import { setDb } from '../core/state.js';
+import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
+import { PDF_TEMPLATES } from '../core/pdf.js';
+const generateInvoicePDF = (...a) => import(`../core/pdf.js?v=${window._appV || Date.now()}`).then(m => m.generateInvoicePDF(...a));
+import { openPreview as openInvoicePreview, invoicePdfPath, invoicePdfCanonicalName } from './invoices.js';
+import { openDetail as openClientDetail } from './clients.js';
+import { openDetail as openPropertyDetail } from './properties.js';
+import { openExpenseForm } from './expenses.js';
+
+export default {
+  id: 'settings',
+  label: 'Settings',
+  icon: '⚙️',
+  render(container) { container.appendChild(build()); },
+  refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
+  destroy() {}
+};
+
+// refresh() (above) tears down and rebuilds the ENTIRE settings page from
+// scratch on every 'data-loaded' event — which fires from the background
+// sync poll roughly every 60s, not just on a real navigation. Every
+// collapsible card is a brand-new DOM element each time, so without this its
+// open/closed state would silently reset to closed mid-interaction (e.g. the
+// user has Trash open with items selected, a background sync tick fires,
+// and the card slams shut). Module-scope so it survives across build() calls
+// for the life of the page; only a hard reload clears it, which is fine.
+const _expandedCards = new Set();
+
+// Same rationale as _expandedCards above — the Reservation Expense Rules
+// table is rebuilt from scratch by renderCard() (every Add/Edit/Delete/Run)
+// and by the whole-page refresh() on background syncs, so sort/search state
+// needs to live at module scope to survive that instead of resetting.
+let _rerSortCol = -1, _rerSortDir = 1, _rerSearch = '';
+
+function wireCollapsible(key, header, body, chevron) {
+  if (_expandedCards.has(key)) {
+    body.style.display = '';
+    chevron.classList.add('open');
+  }
+  header.addEventListener('click', () => {
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+    if (open) _expandedCards.delete(key); else _expandedCards.add(key);
+  });
+}
+
+function build() {
+  const wrap = el('div', { class: 'view active' });
+
+  wrap.appendChild(buildGithubCard());
+  wrap.appendChild(buildEncryptionCard());
+  const devicesCard = buildDevicesCard();
+  if (devicesCard) wrap.appendChild(devicesCard);
+  wrap.appendChild(buildCurrencyCard());
+  wrap.appendChild(buildBusinessCard());
+  wrap.appendChild(buildStrSettingsCard());
+  wrap.appendChild(buildServicesCard());
+  wrap.appendChild(buildReservationExpenseRulesCard());
+  wrap.appendChild(buildRepositoryMaintenanceCard());
+  wrap.appendChild(buildDebugExportCard());
+  wrap.appendChild(buildTrashCard());
+  wrap.appendChild(buildDangerCard());
+  return wrap;
+}
+
+function githubStatusBadge(g) {
+  if (!g.owner || !g.repo || !g.token) {
+    return el('span', { class: 'badge' }, 'Not configured');
+  }
+  if (g.lastSyncError && (g.lastSyncError.toLowerCase().includes('conflict'))) {
+    return el('span', { class: 'badge danger' }, 'Conflict');
+  }
+  if (g.lastSyncError && !g.usingCache) {
+    return el('span', { class: 'badge danger' }, 'Save failed');
+  }
+  if (g.usingCache) {
+    return el('span', { class: 'badge warning' }, 'Using local cache');
+  }
+  if (state.dirty) {
+    return el('span', { class: 'badge warning' }, 'Local changes pending');
+  }
+  if (g.lastPushOk) {
+    return el('span', { class: 'badge success' }, 'Connected and synced');
+  }
+  if (g.lastPullOk) {
+    return el('span', { class: 'badge success' }, 'Connected');
+  }
+  return el('span', { class: 'badge' }, 'Configured');
+}
+
+async function pushBootstrapConfig({ owner, repo, branch, path }) {
+  const content = JSON.stringify({ owner, repo, branch, path }, null, 2);
+  const b64 = btoa(unescape(encodeURIComponent(content)));
+  await uploadGithubFile('data/github-config.json', b64, 'Update GitHub bootstrap config');
+}
+
+function buildGithubCard() {
+  const card = el('div', { class: 'card mb-16' });
+  const g = state.github;
+  // Merge runtime state with db config so new devices (no localStorage) still see values
+  const dbCfg    = state.db.appConfig?.github || {};
+  const effOwner  = g.owner  || dbCfg.owner  || '';
+  const effRepo   = g.repo   || dbCfg.repo   || '';
+  const effBranch = g.branch || dbCfg.branch || 'main';
+  const effPath   = g.dbPath || dbCfg.path   || 'data/db.json';
+  const effToken  = g.token  || dbCfg.token  || '';
+  const isAdmin = state.session?.role === 'admin';
+
+  // \u2500\u2500 Collapsible header \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '\u25b6');
+  const header  = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'GitHub Storage'),
+      el('div', { class: 'card-subtitle' }, 'Sync data to a repo so it is accessible to everyone')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      githubStatusBadge(g),
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  wireCollapsible('github', header, body, chevron);
+
+  // \u2500\u2500 Error banner \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  if (g.lastSyncError) {
+    body.appendChild(el('div', {
+      style: 'background:var(--danger-light,#fff0f0);border-left:3px solid var(--danger,#dc3545);padding:8px 12px;margin-bottom:12px;font-size:12px;color:var(--danger,#dc3545);border-radius:4px'
+    }, `Last sync error: ${g.lastSyncError}`));
+  }
+
+  if (!isAdmin) {
+    // Read-only view for non-admins
+    const infoGrid = el('div', { style: 'display:grid;grid-template-columns:120px 1fr;gap:8px 16px;font-size:13px;margin-bottom:8px' });
+    for (const [label, value] of [
+      ['Owner',  effOwner  || '\u2014'],
+      ['Repo',   effRepo   || '\u2014'],
+      ['Branch', effBranch || 'main'],
+      ['Path',   effPath   || 'data/db.json'],
+      ['Token',  effToken  ? 'Configured' : 'Not configured'],
+    ]) {
+      infoGrid.appendChild(el('div', { style: 'color:var(--text-muted)' }, label));
+      infoGrid.appendChild(el('div', {}, value));
+    }
+    body.appendChild(infoGrid);
+    return card;
+  }
+
+  // Admin edit form
+  const ownerI  = input({ value: effOwner,  placeholder: 'github-username' });
+  const repoI   = input({ value: effRepo,   placeholder: 'business-tracking' });
+  const branchI = input({ value: effBranch, placeholder: 'main' });
+  const dbPathI = input({ value: effPath,   placeholder: 'data/db.json' });
+  const tokenI  = input({ type: 'password', placeholder: effToken ? 'Leave blank to keep current token' : 'ghp_\u2026' });
+
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Owner', ownerI), formRow('Repo', repoI)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Branch', branchI), formRow('Path', dbPathI)));
+  body.appendChild(formRow(
+    effToken ? 'Token (configured)' : 'Token (PAT)',
+    tokenI,
+    'Stored in db.json and shared across all users/devices.'
+  ));
+
+  const saveBtn = button('Save & Pull', { variant: 'primary', onClick: async () => {
+    const owner  = ownerI.value.trim();
+    const repo   = repoI.value.trim();
+    const branch = branchI.value.trim() || 'main';
+    const dbPath = dbPathI.value.trim() || 'data/db.json';
+    const token  = tokenI.value.trim() || effToken;
+
+    if (!owner || !repo) { toast('Owner and repo are required', 'danger'); return; }
+
+    saveConfig({ owner, repo, branch, dbPath, token });
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving\u2026';
+    try {
+      const db = await fetchDb();
+      // Preserve the config we just set in the fetched db before calling setDb
+      if (!db.appConfig) db.appConfig = {};
+      db.appConfig.github = { owner, repo, branch, path: dbPath };
+      setDb(db);
+      saveLocalCache(state.db);
+      markDirty(); // push db.appConfig.github to GitHub
+      // Push bootstrap config (no token) so new devices can auto-configure
+      pushBootstrapConfig({ owner, repo, branch, path: dbPath }).catch(() => {});
+      toast('Connected! Data loaded from GitHub.', 'success');
+      setTimeout(() => navigate('settings'), 250);
+    } catch (e) {
+      // Config saved locally; push will happen when connection is available
+      if (!state.db.appConfig) state.db.appConfig = {};
+      state.db.appConfig.github = { owner, repo, branch, path: dbPath };
+      markDirty();
+      toast('Config saved. Pull failed: ' + e.message, 'warning', 5000);
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save & Pull';
+    }
+  }});
+
+  const btnRow = el('div', { class: 'flex gap-8', style: 'margin-top:8px' });
+  btnRow.appendChild(saveBtn);
+
+  if (effToken) {
+    const pushBtn = button('Push Now', { onClick: async () => {
+      if (!state.github.syncNow) { toast('Not ready \u2014 reload the page', 'warning'); return; }
+      pushBtn.disabled = true;
+      pushBtn.textContent = 'Pushing\u2026';
+      try {
+        await state.github.syncNow();
+        toast('Pushed to GitHub', 'success');
+      } catch (e) {
+        toast('Push failed: ' + (state.github.lastSyncError || e.message), 'danger', 5000);
+      } finally {
+        pushBtn.disabled = false;
+        pushBtn.textContent = 'Push Now';
+      }
+      setTimeout(() => navigate('settings'), 150);
+    }});
+    btnRow.appendChild(pushBtn);
+
+    const disconnectBtn = button('Disconnect', { variant: 'danger', onClick: async () => {
+      const ok = await confirmDialog('Disconnect from GitHub? Config will be cleared from db.json.', { danger: true, okLabel: 'Disconnect' });
+      if (!ok) return;
+      if (!state.db.appConfig) state.db.appConfig = {};
+      state.db.appConfig.github = { owner: '', repo: '', branch: 'main', path: 'data/db.json' };
+      clearConfig();
+      markDirty();
+      toast('Disconnected from GitHub', 'info');
+      setTimeout(() => navigate('settings'), 200);
+    }});
+    btnRow.appendChild(disconnectBtn);
+  }
+
+  body.appendChild(btnRow);
+
+  // Remote session-kill — a stale tab (yours or someone else's) that still has
+  // old code loaded, or has simply gone stale, keeps pushing whatever it has
+  // in memory. There's no way to force another browser to reload, but this at
+  // least stops it from writing: every other session polls for this signal
+  // every 30s and, on seeing it, stops pushing to GitHub until *it* reloads.
+  if (effToken) {
+    const killSection = el('div', {
+      style: 'margin-top:16px;padding:12px 14px;background:var(--danger-light,#fff0f0);border:1px solid var(--danger,#dc3545);border-radius:var(--radius-sm)'
+    });
+    killSection.appendChild(el('div', {
+      style: 'font-size:12px;font-weight:600;color:var(--danger,#dc3545);margin-bottom:6px'
+    }, '⚠️ Disconnect Other Sessions'));
+    killSection.appendChild(el('div', {
+      style: 'font-size:12px;color:var(--text-muted);margin-bottom:10px'
+    }, 'If another tab, device, or user has this app open and is still saving with old data (e.g. their edits keep reverting yours), use this to stop every other session from pushing to GitHub. It does not delete anything or force anyone to reload — their local edits stay put, they just stop syncing until they refresh. This browser stays connected.'));
+
+    const killBtn = button('Disconnect Other Sessions', { variant: 'danger', onClick: async () => {
+      const ok = await confirmDialog(
+        'This will stop every OTHER open session (other tabs, devices, or users) from saving to GitHub until they reload. Their local, unsaved edits are not deleted — they just stop syncing. Use this only if you suspect another session is actively conflicting with yours.',
+        { danger: true, okLabel: 'Disconnect Others' }
+      );
+      if (!ok) return;
+      killBtn.disabled = true;
+      killBtn.textContent = 'Disconnecting…';
+      const sent = await requestDisconnectOtherSessions();
+      killBtn.disabled = false;
+      killBtn.textContent = 'Disconnect Other Sessions';
+      toast(
+        sent ? 'Signal sent — other sessions will disconnect within ~30 seconds.' : 'Failed to send — check your connection and try again.',
+        sent ? 'success' : 'danger'
+      );
+    }});
+    killSection.appendChild(killBtn);
+    body.appendChild(killSection);
+  }
+
+  // Setup Link section — prominent, separate from action buttons. A plain
+  // "no token" link used to be offered alongside this one, but it's now
+  // redundant: app.js Phase 1.5 already auto-configures owner/repo/branch/path
+  // for any brand-new visitor straight from data/github-config.json (kept
+  // current by Save & Pull below), so a bare link adds nothing over just
+  // sharing the site's normal URL. The token is the only thing worth a link.
+  if (effOwner && effRepo) {
+    const setupSection = el('div', {
+      style: 'margin-top:16px;padding:12px 14px;background:var(--info-soft);border:1px solid var(--info);border-radius:var(--radius-sm)'
+    });
+    setupSection.appendChild(el('div', {
+      style: 'font-size:12px;font-weight:600;color:var(--info);margin-bottom:6px'
+    }, '🔗 Share Access with New Users'));
+    setupSection.appendChild(el('div', {
+      style: 'font-size:12px;color:var(--text-muted);margin-bottom:10px'
+    }, 'Generate a one-click setup link and share it — anyone who opens it gets auto-configured instantly.'));
+
+    if (effToken) {
+      setupSection.appendChild(el('div', {
+        style: 'font-size:12px;color:var(--warning, #d97706);margin-bottom:10px;padding:8px 10px;background:rgba(217,119,6,0.08);border-left:3px solid var(--warning, #d97706);border-radius:0 4px 4px 0'
+      }, '⚠️ This link includes your GitHub token, giving full write access with no further setup — treat it like a password and share only with someone you trust with write access.'));
+    } else {
+      setupSection.appendChild(el('div', {
+        style: 'font-size:12px;color:var(--text-muted);margin-bottom:10px'
+      }, 'This link shares which repo to connect to, but not a token — the recipient still needs their own GitHub Personal Access Token, entered in their own Settings, before anything they do here will actually sync.'));
+    }
+
+    const params = new URLSearchParams({ owner: effOwner, repo: effRepo, branch: effBranch, path: effPath });
+    if (effToken) params.set('token', effToken);
+    const setupUrl = `${window.location.origin}${window.location.pathname}#/setup?${params}`;
+
+    const setupLinkInput = el('input', {
+      type: 'text',
+      readonly: true,
+      style: 'width:100%;font-size:11px;margin-bottom:8px',
+      value: setupUrl
+    });
+
+    const doCopy = (text, msg) => {
+      const fallback = () => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+        document.body.appendChild(ta);
+        ta.focus(); ta.select();
+        try { document.execCommand('copy'); toast(msg, 'success', 5000); }
+        catch { toast('Copy failed — select the link manually', 'warning', 3000); }
+        document.body.removeChild(ta);
+      };
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => toast(msg, 'success', 5000)).catch(fallback);
+      } else {
+        fallback();
+      }
+    };
+
+    const copyBtn = button('Copy Setup Link', { variant: 'primary', onClick: () => {
+      setupLinkInput.select();
+      doCopy(setupUrl, effToken
+        ? '⚠️ Link includes your token — share only with trusted users'
+        : 'Link copied — tell the recipient to add their own GitHub token in Settings, or their edits won’t sync');
+    }});
+
+    const linkRow = el('div', { class: 'flex gap-8', style: 'align-items:center' });
+    linkRow.appendChild(setupLinkInput);
+    linkRow.appendChild(copyBtn);
+    setupSection.appendChild(linkRow);
+    body.appendChild(setupSection);
+  }
+
+  if (g.lastSyncError && !g.usingCache) {
+    const retryBtn = button('Retry Sync Now', { variant: 'primary', onClick: async () => {
+      if (!state.github.syncNow) { toast('Not ready \u2014 reload the page', 'warning'); return; }
+      retryBtn.disabled = true;
+      retryBtn.textContent = 'Retrying\u2026';
+      try {
+        await state.github.syncNow();
+        toast('Sync successful', 'success');
+      } catch (e) {
+        toast('Sync failed: ' + (state.github.lastSyncError || e.message), 'danger', 5000);
+      } finally {
+        retryBtn.disabled = false;
+        retryBtn.textContent = 'Retry Sync Now';
+      }
+      setTimeout(() => navigate('settings'), 150);
+    }});
+    const retryRow = el('div', { style: 'margin-top:8px' });
+    retryRow.appendChild(retryBtn);
+    body.appendChild(retryRow);
+  }
+
+  return card;
+}
+
+// Installing/rotating the data key requires a wrap-key derived from the
+// login password (see crypto.js) — normally set at login time, but a
+// long-lived resumed session (no password re-entry since before encryption
+// existed on this device) never derived one. Prompts for the password once
+// in that case, verifies it against the real account, then derives it.
+// Resolves true if a wrap-key is now available, false if cancelled/wrong.
+function promptForPasswordAndUnlock() {
+  if (hasSessionWrapKey()) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const user = byId('users', state.session?.userId);
+    const body = el('div');
+    body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:10px' },
+      'Confirm your password to continue.'));
+    const passI = input({ type: 'password', placeholder: 'Password' });
+    body.appendChild(formRow('Password', passI));
+    let settled = false;
+    const settle = v => { if (!settled) { settled = true; resolve(v); } };
+    const confirmBtn = button('Confirm', { variant: 'primary', onClick: async () => {
+      const pw = passI.value;
+      if (!pw) { toast('Enter your password', 'danger'); return; }
+      const result = user ? await verifyPassword(pw, user) : { ok: false };
+      if (!result.ok) { toast('Incorrect password', 'danger'); return; }
+      await unlockOnLogin(pw);
+      closeModal();
+      settle(true);
+    }});
+    const cancelBtn = button('Cancel', { onClick: () => { closeModal(); settle(false); } });
+    openModal({ title: 'Confirm Password', body, footer: [cancelBtn, confirmBtn], onClose: () => settle(false) });
+  });
+}
+
+function buildEncryptionCard() {
+  const card = el('div', { class: 'card mb-16' });
+  const isAdmin = state.session?.role === 'admin';
+
+  const unlocked = isUnlocked();
+  const configured = hasWrappedKeyConfigured();
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const statusBadge = unlocked
+    ? el('span', { class: 'badge success' }, 'Enabled on this device')
+    : configured
+      ? el('span', { class: 'badge warning' }, 'Locked')
+      : el('span', { class: 'badge' }, 'Not configured');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Encryption'),
+      el('div', { class: 'card-subtitle' }, 'Keeps data unreadable to anyone without this key, even though the repo is public')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, statusBadge, chevron)
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+  wireCollapsible('encryption', header, body, chevron);
+
+  const refreshAfterKeyChange = () => { toast('Encryption key updated', 'success'); setTimeout(() => navigate('settings'), 200); };
+
+  if (unlocked) {
+    body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:12px' },
+      'This device can read and write encrypted data. Nothing further is needed here unless you’re rotating the key.'));
+  } else {
+    body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:12px' },
+      'This device does not have the team’s encryption key yet. Paste it below — get it from whoever set up encryption, through a secure channel (password manager, in person), never email/chat/URL.'));
+  }
+
+  const keyI = input({ type: 'password', placeholder: 'Paste encryption key…' });
+  const saveKeyBtn = button('Save Key', { variant: 'primary', onClick: async () => {
+    const raw = keyI.value.trim();
+    if (!raw) { toast('Paste a key first', 'danger'); return; }
+    saveKeyBtn.disabled = true;
+    try {
+      const key = await importDataKeyFromBase64(raw);
+      if (!(await promptForPasswordAndUnlock())) { saveKeyBtn.disabled = false; return; }
+      await installDataKey(key);
+      refreshAfterKeyChange();
+    } catch (e) {
+      toast('Invalid key: ' + e.message, 'danger', 5000);
+      saveKeyBtn.disabled = false;
+    }
+  }});
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Encryption Key', keyI), saveKeyBtn));
+
+  if (isAdmin) {
+    const defaultGenLabel = configured ? 'Generate New Key (rotates — re-encrypts on next save)' : 'Generate Key';
+    // changed=true is the one-time reveal right after generating/rotating a
+    // key; changed=false is a plain "look it up again" reveal (e.g. the
+    // one-time modal got missed, or a new device needs it) — same layout,
+    // but it must not claim the key changed or navigate away.
+    const showKeyModal = (base64, { changed = true } = {}) => {
+      const body2 = el('div');
+      body2.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px' },
+        changed
+          ? 'Save this now — it will not be shown again. Store it in a password manager, then share it with every authorized user through a secure channel.'
+          : 'This is the key currently active on this device. Store it in a password manager, then share it with every authorized user through a secure channel.'));
+      const keyOut = input({ value: base64, readonly: true, style: 'width:100%;font-family:monospace;font-size:12px' });
+      body2.appendChild(keyOut);
+      openModal({
+        title: changed ? 'New Encryption Key' : 'Current Encryption Key',
+        body: body2,
+        footer: [button('Done', { variant: 'primary', onClick: () => { closeModal(); if (changed) refreshAfterKeyChange(); } })]
+      });
+    };
+    const showNewKeyModal = (base64) => showKeyModal(base64, { changed: true });
+
+    // Every entity type that stores an encrypted attachment path — kept in
+    // one place so key rotation and any future attachment-wide operation
+    // can't silently miss one. Invoice PDFs are marked `kind: 'invoice'`
+    // because their PATH itself is an encrypted filename (invoicePdfPath →
+    // encryptFilename) — everything else uses a plain ID-based path, so only
+    // invoices need a new path generated (and the old one deleted) once the
+    // key switches, or "Check Invoice Repository" would fail to decrypt
+    // every existing filename afterward.
+    //
+    // Deliberately reads state.db[collection] directly instead of
+    // listActive() — listActive() filters out anything currently in Trash
+    // (deletedAt set), but a trashed record's attachment is still sitting on
+    // GitHub under the old key and is fully restorable for up to 90 days
+    // (autoPurgeOldDeleted); skipping it here would leave it silently
+    // undecryptable the moment someone restores it after rotation.
+    const collectAttachments = () => {
+      const items = [];
+      for (const inv of (state.db.invoices || [])) {
+        if (inv.pdfPath) items.push({ path: inv.pdfPath, label: `invoice ${inv.number || inv.id}`, kind: 'invoice', invoice: inv });
+      }
+      for (const prop of (state.db.properties || [])) {
+        for (const doc of (prop.documents || [])) {
+          if (doc.path) items.push({ path: doc.path, label: `document "${doc.name}"`, kind: 'simple' });
+        }
+      }
+      for (const client of (state.db.clients || [])) {
+        for (const doc of (client.documents || [])) {
+          if (doc.path) items.push({ path: doc.path, label: `document "${doc.name}"`, kind: 'simple' });
+        }
+      }
+      for (const exp of (state.db.expenses || [])) {
+        if (exp.receipt?.path) items.push({ path: exp.receipt.path, label: `receipt for expense ${exp.id}`, kind: 'simple' });
+      }
+      return items;
+    };
+
+    // "Backup Invoices"/"Backup Property Documents"/"Backup Client Documents"
+    // create raw copies of whatever was encrypted at the time, sitting in a
+    // backup/ folder with no database record pointing at them — invisible to
+    // collectAttachments() above. listBackupFiles() already tolerates a
+    // missing folder (returns []), so this is safe to call even if nothing's
+    // ever been backed up.
+    const collectBackupAttachments = async () => {
+      const items = [];
+      for (const [label, folder] of [
+        ['invoice backup', 'invoices/backup'],
+        ['property backup', 'Properties/backup'],
+        ['client backup', 'Clients/backup']
+      ]) {
+        try {
+          const files = await listBackupFiles(folder);
+          for (const f of files) items.push({ path: f.path, label: `${label} "${f.name}"`, kind: 'simple' });
+        } catch (err) {
+          console.warn(`[key rotation] Could not list ${folder}:`, err.message);
+        }
+      }
+      return items;
+    };
+
+    // "Backup Now" (Danger Zone) writes a FULL db.json-style snapshot to
+    // backups/*.json using the same JSON envelope as db.json itself
+    // (encryptJsonToEnvelope), not the raw-bytes format the file attachments
+    // above use — so these need their own fetch/upload handling (kind:
+    // 'backup-snapshot' below). Every one of these predates the rotation and
+    // holds the exact same sensitive data as db.json; left unmigrated, every
+    // pre-rotation backup becomes permanently unrestorable the moment the
+    // key switches, right when a disaster-recovery backup is most likely to
+    // be needed.
+    const collectBackupSnapshots = async () => {
+      const items = [];
+      try {
+        const files = await listGithubFolder('backups');
+        for (const f of files) {
+          if (f.name.endsWith('.json')) items.push({ path: f.path, label: `backup snapshot "${f.name}"`, kind: 'backup-snapshot' });
+        }
+      } catch (err) {
+        console.warn('[key rotation] Could not list backups/:', err.message);
+      }
+      return items;
+    };
+
+    const progressTrack = el('div', {
+      style: 'height:6px;background:var(--bg-elev-1);border-radius:3px;overflow:hidden;margin-top:8px;display:none'
+    });
+    const progressFill = el('div', {
+      style: 'height:100%;width:0%;background:var(--info,#3b82f6);transition:width 0.15s ease'
+    });
+    progressTrack.appendChild(progressFill);
+    // total/done tracked via closures below rather than DOM reads, so
+    // fractional progress survives across the connection-check/fetch/
+    // key-switch/upload/push phases without recomputing from scratch.
+    let progressTotal = 0, progressDone = 0;
+    const progressStart = (total) => {
+      progressTotal = Math.max(total, 1);
+      progressDone = 0;
+      progressFill.style.width = '0%';
+      progressTrack.style.display = '';
+    };
+    const progressStep = () => {
+      progressDone++;
+      progressFill.style.width = `${Math.min(100, Math.round((progressDone / progressTotal) * 100))}%`;
+    };
+    const progressEnd = () => { progressTrack.style.display = 'none'; };
+
+    const genBtn = button(defaultGenLabel, {
+      variant: configured ? 'danger' : 'primary',
+      onClick: async () => {
+        if (!(await promptForPasswordAndUnlock())) return;
+        await new Promise(r => setTimeout(r, 250)); // let that modal's close() settle — see note below
+        const ok = await confirmDialog(
+          configured
+            ? 'Generating a new key replaces the current one, re-encrypting your data AND every existing invoice PDF / property / client / expense attachment under it. Every other device/user will need the new key afterward or they will be unable to read or save data. Continue?'
+            : 'Generate a new random encryption key for this app? You’ll need to save a secure backup of it and share it with every authorized user.',
+          { danger: configured, okLabel: 'Generate' }
+        );
+        if (!ok) return;
+        // The confirm dialog's own close() clears the modal overlay ~200ms
+        // after resolving — opening the next modal before that finishes lets
+        // the delayed cleanup wipe it out from under us (same pitfall as
+        // confirmDeleteTwice above). Let it fully settle first.
+        await new Promise(r => setTimeout(r, 250));
+
+        if (!configured) {
+          // First-ever key: nothing is encrypted yet, so there's nothing to
+          // migrate — keep this path simple, no progress bar needed.
+          try {
+            const { key, base64 } = await generateDataKey();
+            await installDataKey(key);
+            if (state.github.syncNow) { try { await state.github.syncNow(); } catch { /* toast below still shows the key regardless */ } }
+            showNewKeyModal(base64);
+          } catch (e) {
+            toast('Failed to generate key: ' + e.message, 'danger', 5000);
+          }
+          return;
+        }
+
+        // Rotating an existing key. Refuse to even start unless GitHub is
+        // actually reachable right now — rotating while disconnected used to
+        // install the new key locally with no way to know the push that
+        // re-encrypts everything else had silently failed, leaving this
+        // device out of sync with what's still on GitHub under the old key.
+        genBtn.disabled = true;
+        genBtn.textContent = 'Checking connection…';
+        let attachments;
+        try {
+          await fetchDb();
+          attachments = [...collectAttachments(), ...(await collectBackupAttachments()), ...(await collectBackupSnapshots())];
+        } catch (e) {
+          genBtn.disabled = false;
+          genBtn.textContent = defaultGenLabel;
+          toast('Cannot reach GitHub right now — try again once connected. Nothing has changed.', 'danger', 6000);
+          return;
+        }
+        // Steps: connection check, one fetch + one upload per attachment,
+        // installing the new key, and the final data push.
+        progressStart(1 + attachments.length * 2 + 1 + 1);
+        progressStep();
+
+        // Phase 1: fetch + decrypt every attachment while the OLD key is
+        // still active, before touching anything. A failure here aborts
+        // cleanly — the key hasn't been switched yet, so nothing is broken.
+        const plaintexts = [];
+        let fetchFailed = 0;
+        for (let i = 0; i < attachments.length; i++) {
+          const item = attachments[i];
+          genBtn.textContent = `Fetching attachment ${i + 1} / ${attachments.length}…`;
+          try {
+            if (item.kind === 'backup-snapshot') {
+              // Same envelope format as db.json, not the raw-bytes format
+              // fetchGithubFileEncrypted expects — decode + parse manually.
+              const fileData = await fetchGithubFile(item.path);
+              const bytes = Uint8Array.from(atob(fileData.content.replace(/\s/g, '')), c => c.charCodeAt(0));
+              let snapshotJson = JSON.parse(new TextDecoder().decode(bytes));
+              // A scheduled/GitHub-Actions backup can't decrypt db.json itself
+              // (no key access, by design — see .github/workflows/backup.yml)
+              // — when the live db.json was encrypted at backup time, its
+              // `data` field IS the raw {enc,iv,ct} envelope, one level
+              // deeper than a manual "Backup Now" snapshot's own top-level
+              // envelope. Checking only the top level here missed this and
+              // silently treated the still-encrypted payload as already
+              // plain — re-encrypting it under the new key at the re-upload
+              // step below then just double-wrapped ciphertext the new key
+              // can never open, reporting full success the whole time.
+              if (isEncryptedEnvelope(snapshotJson)) {
+                snapshotJson = await decryptEnvelopeToJson(snapshotJson);
+              } else if (isEncryptedEnvelope(snapshotJson.data)) {
+                snapshotJson = { ...snapshotJson, data: await decryptEnvelopeToJson(snapshotJson.data) };
+              }
+              plaintexts.push({ ...item, snapshotJson });
+            } else {
+              const fileData = await fetchGithubFileEncrypted(item.path);
+              plaintexts.push({ ...item, content: fileData.content });
+            }
+          } catch (err) {
+            console.warn(`[key rotation] Could not fetch ${item.label}:`, err.message);
+            fetchFailed++;
+          }
+          progressStep();
+        }
+        if (fetchFailed > 0) {
+          genBtn.disabled = false;
+          genBtn.textContent = defaultGenLabel;
+          progressEnd();
+          toast(`Could not read ${fetchFailed} of ${attachments.length} attachment(s) — aborted before changing anything. Check your connection and try again.`, 'danger', 8000);
+          return;
+        }
+
+        // Captured before the switch below discards it from memory/storage —
+        // installDataKey() overwrites the one wrapped key slot unconditionally,
+        // so this is the only chance to keep a copy. If any re-upload below
+        // fails, whatever attachments are still on the old key would
+        // otherwise become permanently unrecoverable the moment this
+        // function returns (nothing else in the app remembers it).
+        let oldKeyBase64 = null;
+        try { oldKeyBase64 = await exportActiveDataKeyBase64(); } catch { /* not unlocked — nothing to preserve */ }
+
+        // Phase 2: everything is safely decrypted in memory — now switch to
+        // the new key and re-upload each attachment (same path) under it.
+        let key, base64;
+        try {
+          ({ key, base64 } = await generateDataKey());
+          await installDataKey(key);
+          progressStep();
+        } catch (e) {
+          genBtn.disabled = false;
+          genBtn.textContent = defaultGenLabel;
+          progressEnd();
+          toast('Failed to generate/install the new key: ' + e.message, 'danger', 6000);
+          return;
+        }
+
+        const uploadOne = async item => {
+          if (item.kind === 'invoice') {
+            // The invoice's path IS an encrypted filename (invoicePdfPath),
+            // not just encrypted content at a stable ID-based path like
+            // everything else — regenerate it under the new key so nothing
+            // is left pointing at a filename only the old key can decrypt.
+            const newPath = await invoicePdfPath(item.invoice);
+            await uploadGithubFileEncrypted(newPath, item.content, `Re-encrypt under new key: ${item.label}`);
+            if (newPath !== item.path) {
+              try { await deleteGithubFile(item.path, null, `Remove old-key path for ${item.label}`); } catch { /* old file already gone */ }
+              // Re-fetch the CURRENT record rather than reusing item.invoice
+              // (a snapshot taken at the start of rotation, before this long
+              // attachment loop began) — another user editing this same
+              // invoice mid-rotation would otherwise have their edit
+              // silently overwritten by the stale pre-rotation copy here.
+              const currentInvoice = byId('invoices', item.invoice.id) || item.invoice;
+              upsert('invoices', { ...currentInvoice, pdfPath: newPath });
+            }
+          } else if (item.kind === 'backup-snapshot') {
+            // Same envelope format as db.json (see collectBackupSnapshots) —
+            // build it manually rather than through uploadGithubFileEncrypted,
+            // which only knows the raw-bytes attachment format.
+            const json = isUnlocked()
+              ? JSON.stringify(await encryptJsonToEnvelope(item.snapshotJson))
+              : JSON.stringify(item.snapshotJson, null, 2);
+            const b64 = btoa(unescape(encodeURIComponent(json)));
+            await uploadGithubFile(item.path, b64, `Re-encrypt backup under new key: ${item.label}`);
+          } else {
+            await uploadGithubFileEncrypted(item.path, item.content, `Re-encrypt under new key: ${item.label}`);
+          }
+        };
+
+        const failedItems = [];
+        for (let i = 0; i < plaintexts.length; i++) {
+          const item = plaintexts[i];
+          genBtn.textContent = `Re-encrypting ${i + 1} / ${plaintexts.length}…`;
+          try {
+            await uploadOne(item);
+          } catch (err) {
+            // One retry after a short pause — the stated failure mode here
+            // is a transient network blip, and every attachment that
+            // recovers on retry is one less that ends up stranded under a
+            // key this device is about to forget.
+            try {
+              await new Promise(r => setTimeout(r, 500));
+              await uploadOne(item);
+            } catch (err2) {
+              console.warn(`[key rotation] Could not re-upload ${item.label}:`, err2.message);
+              failedItems.push(item);
+            }
+          }
+          progressStep();
+        }
+        const uploadFailed = failedItems.length;
+
+        genBtn.textContent = 'Pushing data…';
+        let pushFailed = false;
+        if (state.github.syncNow) {
+          try { await state.github.syncNow(); } catch { pushFailed = true; }
+        }
+        progressStep();
+
+        genBtn.disabled = false;
+        genBtn.textContent = defaultGenLabel;
+        progressEnd();
+
+        if (uploadFailed > 0 || pushFailed) {
+          const parts = [];
+          if (uploadFailed > 0) parts.push(`${uploadFailed} attachment(s) could not be re-encrypted`);
+          if (pushFailed) parts.push('the data push failed');
+          toast(`New key is active on this device, but ${parts.join(' and ')} — check your connection, then use Push Now. Save the new key below regardless.`, 'danger', 10000);
+          // The old key is gone from this device's storage/memory the moment
+          // installDataKey() ran above — this is the one remaining chance to
+          // hand it back to the admin, since it's the only way to ever read
+          // whatever's still stuck under it.
+          if (uploadFailed > 0 && oldKeyBase64) {
+            const body2 = el('div');
+            body2.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px;color:var(--danger,#dc3545)' },
+              `${uploadFailed} attachment(s) below are still encrypted under the OLD key and could not be moved to the new one (even after a retry). Save this OLD key now — without it, these specific files become permanently unreadable.`));
+            const oldKeyOut = input({ value: oldKeyBase64, readonly: true, style: 'width:100%;font-family:monospace;font-size:12px;margin-bottom:12px' });
+            body2.appendChild(oldKeyOut);
+            body2.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:4px;font-weight:600' }, 'Affected files:'));
+            const list = el('ul', { style: 'font-size:12px;color:var(--text-muted);margin:0;padding-left:18px;max-height:150px;overflow:auto' });
+            for (const item of failedItems) list.appendChild(el('li', {}, item.label));
+            body2.appendChild(list);
+            openModal({
+              title: 'Some attachments are stranded under the old key',
+              body: body2,
+              footer: [button('Done', { variant: 'primary', onClick: () => closeModal() })]
+            });
+          }
+        }
+
+        showNewKeyModal(base64);
+      }
+    });
+    body.appendChild(el('div', { style: 'margin-top:10px' }, genBtn, progressTrack));
+
+    if (unlocked) {
+      const revealBtn = button('Reveal Current Key', { variant: 'sm ghost', onClick: async () => {
+        try {
+          const base64 = await exportActiveDataKeyBase64();
+          showKeyModal(base64, { changed: false });
+        } catch (e) {
+          toast('Could not read the current key: ' + e.message, 'danger', 5000);
+        }
+      }});
+      body.appendChild(el('div', { style: 'margin-top:8px' }, revealBtn));
+    }
+  }
+
+  if (configured) {
+    const removeBtn = button('Remove Key From This Device', { variant: 'sm ghost', onClick: async () => {
+      const ok = await confirmDialog('Remove the encryption key from this device? You will need to paste it again to read or save data here.', { danger: true, okLabel: 'Remove' });
+      if (!ok) return;
+      clearDataKey();
+      toast('Key removed from this device', 'info');
+      setTimeout(() => navigate('settings'), 150);
+    }});
+    body.appendChild(el('div', { style: 'margin-top:10px' }, removeBtn));
+  }
+
+  return card;
+}
+
+function relativeTime(ts) {
+  if (!ts) return 'never';
+  const diffMs = Date.now() - ts;
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return `${days}d ago`;
+}
+
+// Admin-only: lists every browser session that has reported into the shared
+// device registry (js/core/presence.js), whether it currently has the
+// encryption key, and lets an admin disconnect one remotely. See
+// killDevice() for what "disconnect" actually means on static hosting — it
+// stops that session from syncing within ~30s, it does not force a reload
+// or touch its local data.
+const HISTORY_EVENT_LABELS = {
+  login: 'Logged in', logout: 'Logged out', disconnected: 'Disconnected remotely',
+  failed_login: 'Failed login attempt'
+};
+
+// Admin-only: one section covering both live sessions (js/core/presence.js's
+// device registry) and the login/logout/kill audit log
+// (recordSessionEvent(), written from auth.js on login, app.js on logout,
+// and presence.js itself on a remote-kill) — kept together since they're
+// two views of the same underlying question ("who's using this app, from
+// where, and when").
+function buildDevicesCard() {
+  const isAdmin = state.session?.role === 'admin';
+  if (!isAdmin) return null;
+
+  const card = el('div', { class: 'card mb-16' });
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Active Devices & Login History'),
+      el('div', { class: 'card-subtitle' }, 'Sessions that have connected recently, encryption key status, and a log of logins/logouts')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+  wireCollapsible('devices', header, body, chevron);
+
+  const ONLINE_MS = 2 * 60 * 1000; // matches presence.js's own STALE_MS
+
+  const renderDevicesTable = (container, devices) => {
+    const entries = Object.entries(devices).sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0));
+    if (entries.length === 0) {
+      container.appendChild(el('div', { class: 'empty' }, 'No devices reported yet — they appear here a few seconds after logging in.'));
+      return;
+    }
+
+    const now = Date.now();
+    // Only offline, non-self rows are selectable — an online row's "Kill
+    // Session" is a different action (a live signal, not a delete), and you
+    // can't remove your own device out from under yourself.
+    const selectableIds = entries
+      .filter(([sessionId, d]) => sessionId !== state.github.sessionId && (now - (d.lastSeen || 0)) >= ONLINE_MS)
+      .map(([sessionId]) => sessionId);
+    const selected = new Set();
+
+    const bulkBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:8px' });
+    const bulkBtn = button('Delete Selected', { variant: 'sm danger', onClick: async () => {
+      const ids = [...selected];
+      const ok = await confirmDialog(
+        `Remove ${ids.length} offline device(s) from the list? They're offline, so this only clears their rows — nothing is disconnected.`,
+        { danger: true, okLabel: 'Remove' }
+      );
+      if (!ok) return;
+      const removed = await removeDevices(ids);
+      toast(removed ? `${ids.length} device(s) removed` : 'Failed to remove — check your connection and try again.', removed ? 'success' : 'danger');
+      if (removed) renderAll();
+    }});
+    bulkBtn.disabled = true;
+    bulkBar.appendChild(bulkBtn);
+    if (selectableIds.length > 0) container.appendChild(bulkBar);
+
+    const updateBulkBtn = () => {
+      bulkBtn.disabled = selected.size === 0;
+      bulkBtn.textContent = selected.size > 0 ? `Delete Selected (${selected.size})` : 'Delete Selected';
+    };
+
+    const tw = el('div', { class: 'table-wrap' });
+    const t  = el('table', { class: 'table' });
+    const thead = el('thead');
+    const htr = el('tr');
+    const selectAllCb = el('input', { type: 'checkbox' });
+    selectAllCb.disabled = selectableIds.length === 0;
+    selectAllCb.onchange = () => {
+      selected.clear();
+      if (selectAllCb.checked) selectableIds.forEach(id => selected.add(id));
+      for (const cb of tb.querySelectorAll('input[type=checkbox][data-session-id]')) {
+        cb.checked = selectAllCb.checked;
+      }
+      updateBulkBtn();
+    };
+    htr.appendChild(el('th', {}, selectableIds.length > 0 ? selectAllCb : null));
+    ['User', 'Device', 'Status', 'Encryption Key', ''].forEach(label => htr.appendChild(el('th', {}, label)));
+    thead.appendChild(htr);
+    t.appendChild(thead);
+
+    const tb = el('tbody');
+    for (const [sessionId, d] of entries) {
+      const isSelf = sessionId === state.github.sessionId;
+      const online = (now - (d.lastSeen || 0)) < ONLINE_MS;
+      const selectable = !isSelf && !online;
+
+      const tr = el('tr');
+      const selectCell = el('td', {});
+      if (selectable) {
+        const cb = el('input', { type: 'checkbox' });
+        cb.dataset.sessionId = sessionId;
+        cb.onchange = () => {
+          if (cb.checked) selected.add(sessionId); else selected.delete(sessionId);
+          selectAllCb.checked = selected.size === selectableIds.length;
+          updateBulkBtn();
+        };
+        selectCell.appendChild(cb);
+      }
+      tr.appendChild(selectCell);
+      tr.appendChild(el('td', {},
+        d.name || d.username || 'Unknown',
+        isSelf ? el('span', { class: 'badge', style: 'margin-left:6px' }, 'This device') : null
+      ));
+      tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' },
+        d.deviceType ? `${capitalizeFirst(d.deviceType)} · ${d.device || 'Unknown'}` : (d.device || '—')
+      ));
+      tr.appendChild(el('td', {},
+        online
+          ? el('span', { class: 'badge success' }, 'Online')
+          : el('span', { class: 'badge' }, `Last seen ${relativeTime(d.lastSeen)}`)
+      ));
+      tr.appendChild(el('td', {},
+        d.hasKey
+          ? el('span', { class: 'badge success' }, 'Unlocked')
+          : d.keyConfigured
+            ? el('span', { class: 'badge warning' }, 'Locked')
+            : el('span', { class: 'badge' }, 'Not configured')
+      ));
+
+      const actions = el('td', { class: 'right' });
+      if (!isSelf && online) {
+        actions.appendChild(button('Kill Session', { variant: 'sm ghost', onClick: async () => {
+          const ok = await confirmDialog(
+            `Disconnect ${d.name || d.username || 'this device'}? It stops syncing to GitHub within ~30 seconds — nothing is deleted, and it isn't forced to reload.`,
+            { danger: true, okLabel: 'Disconnect' }
+          );
+          if (!ok) return;
+          const sent = await killDevice(sessionId);
+          toast(
+            sent ? 'Signal sent — that device disconnects within ~30 seconds.' : 'Failed to send — check your connection and try again.',
+            sent ? 'success' : 'danger'
+          );
+        }}));
+      } else if (!isSelf) {
+        // Offline — no live tab left for a kill signal to reach, so this just
+        // clears the stale row instead.
+        actions.appendChild(button('Remove', { variant: 'sm ghost', onClick: async () => {
+          const ok = await confirmDialog(
+            `Remove ${d.name || d.username || 'this device'} from the list? It's offline, so this only clears its row — nothing is disconnected.`,
+            { danger: true, okLabel: 'Remove' }
+          );
+          if (!ok) return;
+          const removed = await removeDevice(sessionId);
+          toast(removed ? 'Device removed' : 'Failed to remove — check your connection and try again.', removed ? 'success' : 'danger');
+          if (removed) renderAll();
+        }}));
+      }
+      tr.appendChild(actions);
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    tw.appendChild(t);
+    container.appendChild(tw);
+  };
+
+  const renderHistoryTable = (container, events) => {
+    const sorted = events.slice().reverse(); // newest first
+    if (sorted.length === 0) {
+      container.appendChild(el('div', { class: 'empty' }, 'No login activity recorded yet'));
+      return;
+    }
+
+    const tw = el('div', { class: 'table-wrap' });
+    const t  = el('table', { class: 'table' });
+    const thead = el('thead');
+    const htr = el('tr');
+    ['Event', 'User', 'Device', 'When'].forEach(label => htr.appendChild(el('th', {}, label)));
+    thead.appendChild(htr);
+    t.appendChild(thead);
+
+    const tb = el('tbody');
+    for (const ev of sorted.slice(0, 200)) {
+      const tr = el('tr');
+      const badgeClass = ev.type === 'login' ? 'success'
+        : (ev.type === 'disconnected' || ev.type === 'failed_login') ? 'danger' : '';
+      tr.appendChild(el('td', {}, el('span', { class: `badge ${badgeClass}` }, HISTORY_EVENT_LABELS[ev.type] || ev.type)));
+      tr.appendChild(el('td', {}, ev.name || ev.username || 'Unknown'));
+      tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' },
+        ev.deviceType ? `${capitalizeFirst(ev.deviceType)} · ${ev.device || 'Unknown'}` : (ev.device || '—')
+      ));
+      tr.appendChild(el('td', { style: 'font-size:12px;white-space:nowrap' }, ev.at ? new Date(ev.at).toLocaleString() : '—'));
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    tw.appendChild(t);
+    container.appendChild(tw);
+    if (sorted.length > 200) {
+      container.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:8px' },
+        `Showing the 200 most recent of ${sorted.length} events.`));
+    }
+  };
+
+  const renderAll = async () => {
+    body.innerHTML = '';
+    body.appendChild(el('div', { class: 'empty' }, 'Loading…'));
+    const [devices, history] = await Promise.all([listDevices(), listSessionHistory()]);
+    body.innerHTML = '';
+
+    body.appendChild(el('div', { style: 'margin-bottom:10px;text-align:right' },
+      button('Refresh', { variant: 'sm ghost', onClick: renderAll })
+    ));
+
+    body.appendChild(el('div', { class: 'card-subtitle', style: 'margin-bottom:8px' }, 'Active Devices'));
+    renderDevicesTable(body, devices);
+
+    body.appendChild(el('div', { style: 'display:flex;align-items:center;justify-content:space-between;margin:20px 0 8px' },
+      el('div', { class: 'card-subtitle' }, 'Login History'),
+      history.length > 0 ? button('Clear History', { variant: 'sm ghost', onClick: async () => {
+        const ok = await confirmDialog(
+          `Permanently delete all ${history.length} login history event(s)? This cannot be undone.`,
+          { danger: true, okLabel: 'Clear' }
+        );
+        if (!ok) return;
+        const cleared = await clearSessionHistory();
+        toast(cleared ? 'Login history cleared' : 'Failed to clear — check your connection and try again.', cleared ? 'success' : 'danger');
+        if (cleared) renderAll();
+      }}) : null
+    ));
+    renderHistoryTable(body, history);
+  };
+
+  renderAll();
+  return card;
+}
+
+function buildCurrencyCard() {
+  const card = el('div', { class: 'card mb-16' });
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const addYearBtn = button('+ Add Year', { variant: 'primary', onClick: (e) => { e.stopPropagation(); openAddYearForm(renderCard); } });
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'HUF/EUR Annual Rates'),
+      el('div', { class: 'card-subtitle' }, 'Fixed yearly conversion rate: 1 HUF = X EUR')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      addYearBtn,
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  wireCollapsible('huf-eur-rates', header, body, chevron);
+
+  const renderCard = () => {
+    body.innerHTML = '';
+
+    const yearRates = state.db.settings?.fxRates?.yearRates || {};
+    const years = Object.keys(yearRates).sort().reverse();
+
+    if (years.length === 0) {
+      body.appendChild(el('div', { class: 'empty' }, 'No rates defined. Add a year to get started.'));
+    } else {
+      const t = el('table', { class: 'table' });
+      t.innerHTML = `<thead><tr><th>Year</th><th>1 HUF = EUR</th><th></th></tr></thead>`;
+      const tb = el('tbody');
+      for (const yr of years) {
+        const rateI = input({ type: 'number', value: yearRates[yr], step: 0.000001, min: 0, style: 'width:140px' });
+        const saveBtn = button('Save', { variant: 'sm primary', onClick: () => {
+          const r = Number(rateI.value);
+          if (!r || r <= 0) { toast('Enter a valid rate', 'danger'); return; }
+          state.db.settings.fxRates.yearRates[yr] = r;
+          markDirty();
+          toast(`${yr} rate saved`, 'success');
+        }});
+        const delBtn = button('Del', { variant: 'sm ghost', onClick: async () => {
+          const ok = await confirmDialog(`Remove the ${yr} rate?`, { danger: true, okLabel: 'Remove' });
+          if (!ok) return;
+          delete state.db.settings.fxRates.yearRates[yr];
+          markDirty();
+          renderCard();
+        }});
+        const td = el('td', { class: 'right' });
+        td.appendChild(saveBtn);
+        td.appendChild(delBtn);
+        const tr = el('tr');
+        tr.appendChild(el('td', {}, yr));
+        tr.appendChild(el('td', {}, rateI));
+        tr.appendChild(td);
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb);
+      body.appendChild(el('div', { class: 'table-wrap' }, t));
+    }
+
+  };
+
+  renderCard();
+  return card;
+}
+
+function openAddYearForm(onDone) {
+  const yearI = input({ type: 'number', value: new Date().getFullYear(), min: 2000, max: 2100, step: 1 });
+  const rateI = input({ type: 'number', step: 0.000001, min: 0, placeholder: 'e.g. 0.00256' });
+  const body = el('div', {});
+  body.appendChild(formRow('Year', yearI));
+  body.appendChild(formRow('1 HUF = EUR', rateI));
+  const save = button('Add', { variant: 'primary', onClick: () => {
+    const yr = String(Number(yearI.value) | 0);
+    const r = Number(rateI.value);
+    if (!yr || Number(yr) < 2000) { toast('Enter a valid year', 'danger'); return; }
+    if (!r || r <= 0) { toast('Enter a valid rate', 'danger'); return; }
+    if (!state.db.settings.fxRates.yearRates) state.db.settings.fxRates.yearRates = {};
+    state.db.settings.fxRates.yearRates[yr] = r;
+    markDirty();
+    toast(`${yr} rate added`, 'success');
+    closeModal();
+    onDone();
+  }});
+  openModal({ title: 'Add Annual Rate', body, footer: [button('Cancel', { onClick: closeModal }), save] });
+}
+
+function buildBusinessCard() {
+  const card = el('div', { class: 'card mb-16' });
+  const b = state.db.settings?.business || {};
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Business Info (on invoices)')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  wireCollapsible('business-info', header, body, chevron);
+
+  const nameI = input({ value: b.name });
+  const emailI = input({ value: b.email });
+  const addressI = input({ value: b.address });
+  const regI = input({ value: b.registrationNumber, placeholder: 'e.g. 01-09-123456' });
+  const vatI = input({ value: b.vatNumber, placeholder: 'e.g. HU12345678' });
+  const ibanI = input({ value: b.iban, placeholder: 'e.g. HU42 1177 3016 1111...' });
+  const bicI = input({ value: b.bic, placeholder: 'e.g. OTPVHUHB' });
+  const swiftI = input({ value: b.swift, placeholder: 'Same as BIC or separate SWIFT code' });
+  bicI.oninput  = () => { bicI.value  = bicI.value.toUpperCase(); };
+  swiftI.oninput = () => { swiftI.value = swiftI.value.toUpperCase(); };
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Business Name', nameI), formRow('Email', emailI)));
+  body.appendChild(formRow('Address', addressI));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Company Registration No.', regI), formRow('VAT Number', vatI)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('IBAN', ibanI), formRow('BIC', bicI)));
+  body.appendChild(formRow('SWIFT', swiftI, 'Used on invoice payment details. BIC and SWIFT are often identical.'));
+
+  const tplS = select(PDF_TEMPLATES.map(t => ({ value: t.value, label: t.label })), b.invoiceTemplate || 'standard');
+  const tplDesc = el('span', { style: 'font-size:12px;color:var(--text-muted);margin-top:4px;display:block' });
+  const updateTplDesc = () => {
+    const found = PDF_TEMPLATES.find(t => t.value === tplS.value);
+    tplDesc.textContent = found ? found.description : '';
+  };
+  tplS.addEventListener('change', updateTplDesc);
+  updateTplDesc();
+  const tplWrap = el('div', {});
+  tplWrap.appendChild(tplS);
+  tplWrap.appendChild(tplDesc);
+  body.appendChild(formRow('Invoice PDF Template', tplWrap, 'Applied to all generated PDFs (does not affect already-uploaded files)'));
+
+  const save = button('Save', { variant: 'primary', onClick: () => {
+    const iban  = ibanI.value.trim().replace(/\s/g, '').toUpperCase();
+    const bic   = bicI.value.trim().toUpperCase();
+    const swift = swiftI.value.trim().toUpperCase();
+    const reg   = regI.value.trim();
+    const BIC_RE = /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/;
+    if (iban  && !/^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$/.test(iban))  { toast('IBAN format looks incorrect', 'warning'); }
+    if (bic   && !BIC_RE.test(bic))   { toast('BIC must be 8 or 11 characters (e.g. OTPVHUHB)', 'warning'); }
+    if (swift && !BIC_RE.test(swift)) { toast('SWIFT must be 8 or 11 characters (e.g. OTPVHUHBXXX)', 'warning'); }
+    if (reg   && !/^[A-Z0-9][A-Z0-9 \-\.]{3,}$/i.test(reg)) { toast('Company registration number looks incorrect', 'warning'); }
+    state.db.settings.business = {
+      ...b,
+      name: nameI.value.trim(),
+      email: emailI.value.trim(),
+      address: addressI.value.trim(),
+      registrationNumber: reg,
+      vatNumber: vatI.value.trim(),
+      iban,
+      bic,
+      swift,
+      invoiceTemplate: tplS.value
+    };
+    markDirty();
+    toast('Saved', 'success');
+  }});
+  body.appendChild(save);
+  return card;
+}
+
+function buildStrSettingsCard() {
+  const card = el('div', { class: 'card mb-16' });
+  const af = state.db.settings?.airbnb || {};
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {}, el('div', { class: 'card-title' }, 'STR / Airbnb (guest price estimate)')),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  wireCollapsible('str-airbnb', header, body, chevron);
+
+  body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:12px' },
+    'The Airbnb host export only contains host-side money (payout / gross). The guest-facing total ' +
+    'is estimated by grossing up the gross earnings: Guest Total = Gross × (1 + guest fee % + tax %). ' +
+    'Adjust these to match your market.'));
+
+  const feeI = input({ value: af.guestFeePct != null ? af.guestFeePct : AIRBNB_GUEST_FEE_PCT, type: 'number', placeholder: String(AIRBNB_GUEST_FEE_PCT) });
+  const taxI = input({ value: af.taxPct      != null ? af.taxPct      : AIRBNB_TAX_PCT,      type: 'number', placeholder: String(AIRBNB_TAX_PCT) });
+  const cleanI = input({ value: af.cleaningFee != null ? af.cleaningFee : AIRBNB_CLEANING_FEE, type: 'number', placeholder: String(AIRBNB_CLEANING_FEE) });
+  body.appendChild(el('div', { class: 'form-row horizontal' },
+    formRow('Guest service fee %', feeI, 'Airbnb charges this to the guest on top of your price (typically ~14%).'),
+    formRow('Occupancy / tourist tax %', taxI, 'Any tax added to the guest total. Leave 0 if not applicable.')
+  ));
+  body.appendChild(formRow('Cleaning fee (flat, per booking)', cleanI, 'Flat fee the guest pays for cleaning, once per booking (no guest fee/tax added). Published in the daily-rate feed for the Short-Term-Rentals repo.'));
+
+  const globalDiscI = input({ value: af.globalDiscountPct != null ? af.globalDiscountPct : '', type: 'number', min: '0', max: '100', placeholder: '0' });
+  body.appendChild(formRow('Global promotional discount %', globalDiscI, 'Applied to all properties and months when publishing rates. Override per month in STR Rates → Promotional Discount.'));
+
+  const save = button('Save', { variant: 'primary', onClick: () => {
+    const fee = parseFloat(feeI.value);
+    const tax = parseFloat(taxI.value);
+    const clean = parseFloat(cleanI.value);
+    const globalDisc = parseFloat(globalDiscI.value);
+    if (feeI.value !== '' && (isNaN(fee) || fee < 0)) { toast('Guest fee % must be a positive number', 'warning'); return; }
+    if (taxI.value !== '' && (isNaN(tax) || tax < 0)) { toast('Tax % must be a positive number', 'warning'); return; }
+    if (cleanI.value !== '' && (isNaN(clean) || clean < 0)) { toast('Cleaning fee must be a positive number', 'warning'); return; }
+    if (globalDiscI.value !== '' && (isNaN(globalDisc) || globalDisc < 0 || globalDisc > 100)) { toast('Global discount must be between 0 and 100', 'warning'); return; }
+    state.db.settings.airbnb = {
+      ...af,
+      guestFeePct:       feeI.value === '' ? AIRBNB_GUEST_FEE_PCT : fee,
+      taxPct:            taxI.value === '' ? AIRBNB_TAX_PCT : tax,
+      cleaningFee:       cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean,
+      globalDiscountPct: globalDiscI.value === '' ? 0 : globalDisc
+    };
+    markDirty();
+    toast('Saved', 'success');
+  }});
+  body.appendChild(save);
+  return card;
+}
+
+function buildServicesCard() {
+  const card = el('div', { class: 'card mb-16' });
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const addServiceBtn = button('+ Add Service', { variant: 'primary', onClick: (e) => { e.stopPropagation(); openServiceForm(null, renderCard); } });
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Service Catalog'),
+      el('div', { class: 'card-subtitle' }, 'Premade services used when building invoices')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      addServiceBtn,
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  wireCollapsible('service-catalog', header, body, chevron);
+
+  const renderCard = () => {
+    body.innerHTML = '';
+    const services = listActive('services');
+    if (services.length === 0) {
+      body.appendChild(el('div', { class: 'empty' }, 'No services'));
+    } else {
+      const t = el('table', { class: 'table' });
+      t.innerHTML = `<thead><tr><th>Name</th><th>Stream</th><th>Unit</th><th class="right">Rate</th><th></th></tr></thead>`;
+      const tb = el('tbody');
+      for (const s of services) {
+        const tr = el('tr');
+        tr.appendChild(el('td', {}, s.name));
+        tr.appendChild(el('td', {}, el('span', { class: `badge ${STREAMS[s.stream]?.css || ''}` }, STREAMS[s.stream]?.short || s.stream)));
+        tr.appendChild(el('td', {}, s.unit));
+        tr.appendChild(el('td', { class: 'right num' }, formatMoney(s.defaultRate, s.currency)));
+        const actions = el('td', { class: 'right' });
+        actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openServiceForm(s, renderCard) }));
+        actions.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
+          const invCount = listActive('invoices').filter(i => (i.lineItems || []).some(li => li.serviceId === s.id)).length;
+          if (invCount) { toast(`Cannot delete — ${invCount} invoice(s) use this service.`, 'danger', 5000); return; }
+          const ok = await confirmDialog(`Delete service ${s.name}?`, { danger: true, okLabel: 'Delete' });
+          if (ok) { softDelete('services', s.id); toast('Deleted', 'success'); renderCard(); }
+        }}));
+        tr.appendChild(actions);
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb);
+      const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+      body.appendChild(tw);
+    }
+  };
+
+  renderCard();
+  return card;
+}
+
+function openServiceForm(existing, onSave) {
+  const s = existing ? { ...existing } : { id: newId('svc'), name: '', description: '', unit: 'day', defaultRate: 0, currency: 'EUR', stream: 'customer_success' };
+  const body = el('div', {});
+  const nameI = input({ value: s.name });
+  const descI = input({ value: s.description });
+  const unitS = select(Object.entries(SERVICE_UNITS).map(([v, l]) => ({ value: v, label: l })), s.unit);
+  const rateI = input({ type: 'number', value: s.defaultRate, min: 0, step: 0.01 });
+  const currencyS = select(CURRENCIES, s.currency);
+  const streamS = select(SERVICE_STREAMS.map(v => ({ value: v, label: STREAMS[v].label })), s.stream);
+  body.appendChild(formRow('Name', nameI));
+  body.appendChild(formRow('Description', descI));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Unit', unitS), formRow('Stream', streamS)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Default Rate', rateI), formRow('Currency', currencyS)));
+
+  const save = button('Save', { variant: 'primary', onClick: () => {
+    if (!nameI.value.trim()) { toast('Name required', 'danger'); return; }
+    Object.assign(s, {
+      name: nameI.value.trim(), description: descI.value.trim(),
+      unit: unitS.value, defaultRate: Number(rateI.value) || 0,
+      currency: currencyS.value, stream: streamS.value
+    });
+    upsert('services', s);
+    toast('Saved', 'success');
+    closeModal();
+    onSave?.();
+  }});
+  openModal({ title: existing ? 'Edit Service' : 'New Service', body, footer: [button('Cancel', { onClick: closeModal }), save] });
+}
+
+function buildReservationExpenseRulesCard() {
+  const card = el('div', { class: 'card mb-16' });
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const addRuleBtn = button('+ Add Rule', { variant: 'primary', onClick: (e) => { e.stopPropagation(); openReservationExpenseRuleForm(null, renderCard); } });
+  const runAllBtn = button('Run All Rules', { variant: 'sm ghost', onClick: async (e) => {
+    e.stopPropagation();
+    const rules = listActive('reservationExpenseRules').filter(r => r.enabled);
+    if (rules.length === 0) { toast('No enabled rules to run', 'warning'); return; }
+    const hasInventory = rules.some(r => r.amountSource === 'inventory');
+    const inventoryNote = hasInventory
+      ? ' This includes inventory-sourced rule(s), which will deduct stock for any matching reservation that doesn’t already have an expense from that rule.'
+      : '';
+    const ok = await confirmDialog(
+      `Run all ${rules.length} enabled rule${rules.length === 1 ? '' : 's'} against every matching reservation now? Missing expenses will be created; existing ones won't be duplicated.${inventoryNote}`,
+      { okLabel: 'Run All' }
+    );
+    if (!ok) return;
+    const { rulesRun, processed, created, conflicts } = runAllReservationExpenseRules({ allowInventory: true });
+    const warning = formatRuleConflictWarning(conflicts);
+    toast(`Ran ${rulesRun} rule${rulesRun === 1 ? '' : 's'} against ${processed} reservation${processed === 1 ? '' : 's'} — ${created} new expense${created === 1 ? '' : 's'} created.`, 'success');
+    if (warning) toast(warning, 'warning', 8000);
+  }});
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Reservation Expense Rules'),
+      el('div', { class: 'card-subtitle' }, 'Auto-generate expenses for each reservation (historical & future, imported & manual)')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      runAllBtn,
+      addRuleBtn,
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  wireCollapsible('reservation-expense-rules', header, body, chevron);
+
+  const renderCard = () => {
+    body.innerHTML = '';
+    const rules = listActive('reservationExpenseRules');
+    if (rules.length === 0) {
+      body.appendChild(el('div', { class: 'empty' }, 'No rules configured'));
+    } else {
+      const t = el('table', { class: 'table' });
+      t.innerHTML = `<thead><tr><th>Name</th><th>Property</th><th>Category</th><th>Amount Source</th><th>Enabled</th><th></th></tr></thead>`;
+      const tb = el('tbody');
+      for (const rule of rules) {
+        const prop = rule.propertyId ? byId('properties', rule.propertyId) : null;
+        const catLabel = EXPENSE_CATEGORIES[rule.category]?.label || rule.category;
+        const srcLabel = rule.amountSource === 'airbnb_cleaning_fee' ? 'Airbnb cleaning fee'
+          : rule.amountSource === 'inventory' ? 'Inventory (FIFO)'
+          : rule.amountSource === 'vendor_rate' ? 'Vendor rate by period'
+          : `Fixed ${rule.fixedAmount} ${rule.fixedCurrency || 'EUR'}`;
+        const tr = el('tr');
+        tr.appendChild(el('td', {}, rule.name));
+        tr.appendChild(el('td', {}, prop?.name || 'All properties'));
+        tr.appendChild(el('td', {}, catLabel));
+        tr.appendChild(el('td', {}, srcLabel));
+        tr.appendChild(el('td', {}, el('span', { class: `badge ${rule.enabled ? 'success' : ''}` }, rule.enabled ? 'On' : 'Off')));
+        const acts = el('td', { class: 'right' });
+        acts.appendChild(button('Run', {
+          variant: 'sm ghost',
+          onClick: async () => {
+            if (!rule.enabled) { toast('Enable the rule first', 'warning'); return; }
+            const inventoryNote = rule.amountSource === 'inventory'
+              ? ' This will deduct stock for any matching reservation that doesn’t already have an expense from this rule.'
+              : '';
+            const ok = await confirmDialog(
+              `Run rule "${rule.name}" against all matching reservations now? Missing expenses will be created; existing ones won't be duplicated.${inventoryNote}`,
+              { okLabel: 'Run Rule' }
+            );
+            if (!ok) return;
+            const { processed, created, conflicts } = reapplyRuleToAllPayments(rule, { allowInventory: true });
+            const warning = formatRuleConflictWarning(conflicts);
+            toast(`Checked ${processed} reservation${processed === 1 ? '' : 's'} — ${created} new expense${created === 1 ? '' : 's'} created.`, 'success');
+            if (warning) toast(warning, 'warning', 8000);
+          }
+        }));
+        acts.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openReservationExpenseRuleForm(rule, renderCard) }));
+        acts.appendChild(button('Del', { variant: 'sm ghost', onClick: async () => {
+          const ok = await confirmDialog(`Delete rule "${rule.name}"?`, { danger: true, okLabel: 'Delete' });
+          if (!ok) return;
+          softDelete('reservationExpenseRules', rule.id);
+          toast('Rule deleted', 'success');
+          renderCard();
+        }}));
+        tr.appendChild(acts);
+        tb.appendChild(tr);
+      }
+      t.appendChild(tb);
+      const tw = el('div', { class: 'table-wrap' }); tw.appendChild(t);
+      body.appendChild(tw);
+      attachSortFilter(tw, {
+        placeholder: 'Filter rules…',
+        initialCol: _rerSortCol, initialDir: _rerSortDir, initialSearch: _rerSearch,
+        onSortChange: (c, d) => { _rerSortCol = c; _rerSortDir = d; },
+        onSearchChange: v => { _rerSearch = v; }
+      });
+    }
+  };
+
+  renderCard();
+  return card;
+}
+
+function openReservationExpenseRuleForm(existing, onSave) {
+  const rule = existing ? { ...existing } : {
+    id: newId('rer'),
+    name: '',
+    propertyId: '',
+    category: 'cleaning',
+    vendorId: '',
+    amountSource: 'airbnb_cleaning_fee',
+    fixedAmount: 0,
+    fixedCurrency: 'EUR',
+    inventoryItemId: '',
+    inventoryQty: 1,
+    description: '',
+    enabled: true
+  };
+
+  const body = el('div', {});
+  const stProps = listActive('properties').filter(p => p.type === 'short_term');
+  const vendors = listActive('vendors');
+  const invItems = listActive('inventory');
+
+  const nameI      = input({ value: rule.name, placeholder: 'e.g. Cleaning Fee' });
+  const propS      = select(
+    [{ value: '', label: 'All short-term properties' }, ...stProps.map(p => ({ value: p.id, label: p.name }))],
+    rule.propertyId || ''
+  );
+  const catS       = select(
+    Object.entries(EXPENSE_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })),
+    rule.category || 'cleaning'
+  );
+  const vendorS    = select(
+    [{ value: '', label: 'None' }, ...vendors.map(v => ({ value: v.id, label: v.name }))],
+    rule.vendorId || ''
+  );
+  const srcS       = select([
+    { value: 'airbnb_cleaning_fee', label: 'Airbnb cleaning fee (from import data)' },
+    { value: 'fixed',               label: 'Fixed amount' },
+    { value: 'inventory',           label: 'Inventory item (FIFO deduction)' },
+    { value: 'vendor_rate',         label: 'Vendor rate by property & period' }
+  ], rule.amountSource || 'airbnb_cleaning_fee');
+  const fixedAmtI  = input({ type: 'number', value: rule.fixedAmount || 0, min: 0, step: 0.01 });
+  const fixedCurrS = select(CURRENCIES, rule.fixedCurrency || 'EUR');
+  const invItemS   = select(
+    [{ value: '', label: 'Select item…' }, ...invItems.map(i => {
+      const prop = stProps.find(p => p.id === i.propertyId);
+      return { value: i.id, label: prop ? `${i.name} (${prop.name})` : i.name };
+    })],
+    rule.inventoryItemId || ''
+  );
+  const invQtyI    = input({ type: 'number', value: rule.inventoryQty || 1, min: 1 });
+  const descI      = input({ value: rule.description || '', placeholder: 'Optional — prefills expense description' });
+  const enabledChk = el('input', { type: 'checkbox' });
+  enabledChk.checked = rule.enabled !== false;
+
+  const fixedRow = el('div', { class: 'form-row horizontal' }, formRow('Amount', fixedAmtI), formRow('Currency', fixedCurrS));
+  const invRow   = el('div', { class: 'form-row horizontal' }, formRow('Inventory Item', invItemS), formRow('Qty / Reservation', invQtyI));
+
+  const updateVis = () => {
+    fixedRow.style.display = srcS.value === 'fixed'     ? '' : 'none';
+    invRow.style.display   = srcS.value === 'inventory' ? '' : 'none';
+  };
+  srcS.onchange = updateVis;
+  updateVis();
+
+  body.appendChild(formRow('Rule Name', nameI));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Property', propS), formRow('Expense Category', catS)));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Vendor', vendorS), formRow('Amount Source', srcS)));
+  body.appendChild(fixedRow);
+  body.appendChild(invRow);
+  body.appendChild(formRow('Description', descI));
+  body.appendChild(formRow('Enabled', el('label', { style: 'display:flex;align-items:center;gap:8px;cursor:pointer' }, enabledChk, el('span', {}, 'Active'))));
+
+  const saveBtn = button('Save', { variant: 'primary', onClick: () => {
+    if (!nameI.value.trim()) { toast('Rule name is required', 'danger'); return; }
+    if (srcS.value === 'inventory' && !invItemS.value) { toast('Select an inventory item', 'danger'); return; }
+    Object.assign(rule, {
+      name:            nameI.value.trim(),
+      propertyId:      propS.value,
+      category:        catS.value,
+      vendorId:        vendorS.value,
+      amountSource:    srcS.value,
+      fixedAmount:     Number(fixedAmtI.value) || 0,
+      fixedCurrency:   fixedCurrS.value,
+      inventoryItemId: invItemS.value,
+      inventoryQty:    Number(invQtyI.value) || 1,
+      description:     descI.value.trim(),
+      enabled:         enabledChk.checked
+    });
+    upsert('reservationExpenseRules', rule);
+    toast('Rule saved', 'success');
+    closeModal();
+    // Retroactively apply to existing payments (non-inventory sources only —
+    // see reapplyRuleToAllPayments for why inventory needs an explicit "Run")
+    const { conflicts } = reapplyRuleToAllPayments(rule);
+    const warning = formatRuleConflictWarning(conflicts);
+    if (warning) toast(warning, 'warning', 8000);
+    onSave?.();
+  }});
+
+  openModal({
+    title: existing ? 'Edit Reservation Expense Rule' : 'New Reservation Expense Rule',
+    body,
+    footer: [button('Cancel', { onClick: closeModal }), saveBtn]
+  });
+}
+
+function trashDisplayName(collection, item) {
+  if (item.name) return item.name;
+  if (item.number) return `#${item.number}`;
+  if (item.description) return item.description;
+  if (item.amount != null && item.date) return `${item.date} · ${item.amount}${item.currency ? ' ' + item.currency : ''}`;
+  return item.id;
+}
+
+function capitalizeFirst(str) {
+  return str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
+}
+
+function buildTrashCard() {
+  const card = el('div', { class: 'card mb-16' });
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const subtitleEl = el('div', { class: 'card-subtitle' }, '');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Trash'),
+      subtitleEl
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  wireCollapsible('trash', header, body, chevron);
+
+  const renderCard = (activeCol = 'all') => {
+    body.innerHTML = '';
+
+    const all = listDeletedRecords().sort((a, b) => (b.item.deletedAt || 0) - (a.item.deletedAt || 0));
+    const colNames = [...new Set(all.map(r => r.collection))].sort();
+
+    subtitleEl.textContent = `${all.length} soft-deleted record${all.length !== 1 ? 's' : ''}`;
+
+    if (all.length === 0) {
+      body.appendChild(el('div', { class: 'empty' }, 'Trash is empty'));
+      return;
+    }
+
+    // --- Selection state ---
+    const selection = new Set();
+    const rowCbs = new Map(); // key -> <input type=checkbox>
+
+    // --- Bulk action controls ---
+    const selCountEl  = el('span', { style: 'font-size:12px;color:var(--text-muted);align-self:center' }, '');
+    const restoreSelBtn = button('Restore Selected', { variant: 'primary' });
+    const deleteSelBtn  = button('Delete Selected',  { variant: 'danger' });
+    const deleteAllBtn  = button('Delete All',       { variant: 'danger' });
+
+    const updateBulkState = () => {
+      const n = selection.size;
+      selCountEl.textContent = n > 0 ? `${n} selected` : '';
+      restoreSelBtn.disabled = n === 0;
+      deleteSelBtn.disabled  = n === 0;
+    };
+    updateBulkState();
+
+    // --- Collection filter ---
+    const colOptions = [
+      { value: 'all', label: 'All Collections' },
+      ...colNames.map(c => ({ value: c, label: capitalizeFirst(c) }))
+    ];
+    const colSel = select(colOptions, activeCol);
+
+    const getVisible = () => colSel.value === 'all' ? all : all.filter(r => r.collection === colSel.value);
+
+    // --- Select All checkbox ---
+    const selectAllCb = el('input', { type: 'checkbox', title: 'Select all visible' });
+
+    const syncSelectAll = () => {
+      const vis = getVisible();
+      const n = vis.filter(r => selection.has(r.key)).length;
+      selectAllCb.checked       = n > 0 && n === vis.length;
+      selectAllCb.indeterminate = n > 0 && n < vis.length;
+    };
+
+    const toggleRow = (key, checked) => {
+      if (checked) selection.add(key); else selection.delete(key);
+      syncSelectAll();
+      updateBulkState();
+    };
+
+    selectAllCb.onchange = () => {
+      for (const { key } of getVisible()) {
+        const cb = rowCbs.get(key);
+        if (!cb) continue;
+        cb.checked = selectAllCb.checked;
+        if (selectAllCb.checked) selection.add(key); else selection.delete(key);
+      }
+      updateBulkState();
+    };
+
+    colSel.onchange = () => renderCard(colSel.value);
+
+    // --- Bulk action handlers ---
+    restoreSelBtn.onclick = () => {
+      const targets = [...selection].map(key => {
+        const i = key.indexOf(':');
+        return { collection: key.slice(0, i), id: key.slice(i + 1) };
+      });
+      const count = restoreRecords(targets);
+      if (count > 0) markDirty();
+      toast(`Restored ${count} record${count !== 1 ? 's' : ''}`, 'success');
+      renderCard(colSel.value);
+    };
+
+    deleteSelBtn.onclick = async () => {
+      const n = selection.size;
+      const ok = await confirmDialog(
+        `This will permanently remove ${n} selected record${n !== 1 ? 's' : ''} from the database. This cannot be undone. Continue?`,
+        { danger: true, okLabel: 'Delete Permanently' }
+      );
+      if (!ok) return;
+      const targets = [...selection].map(key => {
+        const i = key.indexOf(':');
+        return { collection: key.slice(0, i), id: key.slice(i + 1) };
+      });
+      let pdfErrors = 0;
+      for (const { collection, id } of targets) {
+        if (collection === 'invoices') {
+          const inv = all.find(r => r.collection === 'invoices' && r.item.id === id)?.item;
+          if (!inv?.pdfPath) continue;
+          try { await deleteGithubFile(inv.pdfPath, null, `Delete PDF for invoice ${inv.number || inv.id}`); }
+          catch { pdfErrors++; }
+        } else if (collection === 'properties') {
+          const prop = all.find(r => r.collection === 'properties' && r.item.id === id)?.item;
+          for (const doc of (prop?.documents || [])) {
+            if (!doc.path) continue;
+            try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+            catch { pdfErrors++; }
+          }
+        } else if (collection === 'clients') {
+          const cli = all.find(r => r.collection === 'clients' && r.item.id === id)?.item;
+          for (const doc of (cli?.documents || [])) {
+            if (!doc.path) continue;
+            try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+            catch { pdfErrors++; }
+          }
+        }
+      }
+      const count = permanentlyDeleteRecords(targets);
+      if (pdfErrors > 0)
+        toast(`Permanently deleted ${count} record(s) — ${pdfErrors} file(s) could not be cleaned up`, 'warning', 6000);
+      else
+        toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
+      renderCard(colSel.value);
+    };
+
+    deleteAllBtn.onclick = async () => {
+      const ok = await confirmDialog(
+        'This will permanently remove all deleted records from the database. This cannot be undone. Continue?',
+        { danger: true, okLabel: 'Delete All Permanently' }
+      );
+      if (!ok) return;
+      let pdfErrors = 0;
+      for (const { collection, item } of all) {
+        if (collection === 'invoices' && item.pdfPath) {
+          try { await deleteGithubFile(item.pdfPath, null, `Delete PDF for invoice ${item.number || item.id}`); }
+          catch { pdfErrors++; }
+        } else if (collection === 'properties' || collection === 'clients') {
+          for (const doc of (item.documents || [])) {
+            if (!doc.path) continue;
+            try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+            catch { pdfErrors++; }
+          }
+        }
+      }
+      const count = purgeDeletedRecords();
+      if (pdfErrors > 0)
+        toast(`Permanently deleted ${count} record(s) — ${pdfErrors} file(s) could not be cleaned up`, 'warning', 6000);
+      else
+        toast(`Permanently deleted ${count} record${count !== 1 ? 's' : ''}`, 'success');
+      renderCard();
+    };
+
+    // --- Filter + bulk action bar ---
+    body.appendChild(el('div', {
+      class: 'flex gap-8 mb-16',
+      style: 'align-items:center;flex-wrap:wrap;padding-top:12px'
+    }, colSel, el('div', { class: 'flex-1' }), selCountEl, restoreSelBtn, deleteSelBtn, deleteAllBtn));
+
+    // --- Table ---
+    const vis = getVisible();
+    if (vis.length === 0) {
+      body.appendChild(el('div', { class: 'empty' }, 'No deleted records in this collection'));
+      return;
+    }
+
+    const tw = el('div', { class: 'table-wrap' });
+    const t  = el('table', { class: 'table' });
+
+    const thCb = el('th', { style: 'width:36px;text-align:center' });
+    thCb.appendChild(selectAllCb);
+    const htr = el('tr');
+    [thCb,
+      el('th', {}, 'Collection'),
+      el('th', {}, 'Record'),
+      el('th', {}, 'Deleted At'),
+      el('th', {}, 'Deleted By'),
+      el('th', {})
+    ].forEach(th => htr.appendChild(th));
+    const thead = el('thead');
+    thead.appendChild(htr);
+    t.appendChild(thead);
+
+    const tb = el('tbody');
+    for (const { key, collection, item } of vis) {
+      const cb = el('input', { type: 'checkbox' });
+      cb.onchange = () => toggleRow(key, cb.checked);
+      rowCbs.set(key, cb);
+
+      const tdCb = el('td', { style: 'text-align:center' });
+      tdCb.appendChild(cb);
+
+      const tr = el('tr');
+      tr.appendChild(tdCb);
+      tr.appendChild(el('td', {}, el('span', { class: 'badge' }, capitalizeFirst(collection))));
+      tr.appendChild(el('td', {}, trashDisplayName(collection, item)));
+      tr.appendChild(el('td', { style: 'font-size:12px;white-space:nowrap' },
+        item.deletedAt ? new Date(item.deletedAt).toLocaleString() : '—'
+      ));
+      tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' }, item.deletedBy || '—'));
+
+      const actions = el('td', { class: 'right' });
+      actions.appendChild(button('Restore', {
+        variant: 'sm ghost',
+        onClick: () => {
+          restoreRecord(collection, item.id);
+          markDirty();
+          toast('Restored', 'success');
+          renderCard(colSel.value);
+        }
+      }));
+      actions.appendChild(button('Delete', {
+        variant: 'sm ghost',
+        onClick: async () => {
+          const ok = await confirmDialog(
+            'Permanently delete this record? This cannot be undone.',
+            { danger: true, okLabel: 'Delete Permanently' }
+          );
+          if (!ok) return;
+          if (collection === 'invoices' && item.pdfPath) {
+            try {
+              await deleteGithubFile(item.pdfPath, null, `Delete PDF for invoice ${item.number || item.id}`);
+            } catch (e) {
+              const proceed = await confirmDialog(
+                `PDF cleanup failed: ${e.message}\nDelete invoice record anyway?`,
+                { okLabel: 'Delete Record Only' }
+              );
+              if (!proceed) return;
+              toast('Invoice deleted — PDF cleanup failed', 'warning', 5000);
+              permanentlyDeleteRecord(collection, item.id);
+              renderCard(colSel.value);
+              return;
+            }
+          } else if (collection === 'properties') {
+            for (const doc of (item.documents || [])) {
+              if (!doc.path) continue;
+              try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+              catch { /* best-effort */ }
+            }
+          } else if (collection === 'clients') {
+            for (const doc of (item.documents || [])) {
+              if (!doc.path) continue;
+              try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+              catch { /* best-effort */ }
+            }
+          }
+          permanentlyDeleteRecord(collection, item.id);
+          toast('Permanently deleted', 'success');
+          renderCard(colSel.value);
+        }
+      }));
+      tr.appendChild(actions);
+      tb.appendChild(tr);
+    }
+    t.appendChild(tb);
+    tw.appendChild(t);
+    body.appendChild(tw);
+  };
+
+  renderCard();
+  return card;
+}
+
+function fillInvoiceRepoBody(body) {
+  const resultEl        = el('div', { style: 'margin-top:12px' });
+  const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const deleteStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const reencryptStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const zipStatusEl      = el('div', { style: 'font-size:12px;margin-top:8px' });
+
+  const listInvoicePdfs = () => listGithubFolder('invoices').then(all => all.filter(f => f.name.toLowerCase().endsWith('.pdf')));
+
+  const checkBtn        = button('Check Invoice Repository', { onClick: runCheck });
+  const backupBtn       = button('Backup Invoices', { onClick: runBackup });
+  const deleteBackupBtn = button('Delete Invoice Backups', { variant: 'danger', onClick: runDeleteBackups });
+  const reencryptBtn    = button('Re-encrypt Existing Invoice PDFs', {
+    onClick: () => runReencryptAndRenameInvoices(reencryptStatusEl, reencryptBtn)
+  });
+  const zipBtn = button('Download All (Decrypted ZIP)', {
+    onClick: () => runDownloadZip(listInvoicePdfs, 'invoices', zipStatusEl, zipBtn)
+  });
+  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn, reencryptBtn, zipBtn));
+  body.appendChild(resultEl);
+  body.appendChild(backupStatusEl);
+  body.appendChild(deleteStatusEl);
+  body.appendChild(reencryptStatusEl);
+  body.appendChild(zipStatusEl);
+
+  // ── Check ────────────────────────────────────────────────────────────────────
+
+  async function runCheck() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      resultEl.innerHTML = '<div style="color:var(--danger,#dc3545)">GitHub not configured — add owner/repo/token above.</div>';
+      return;
+    }
+
+    checkBtn.disabled = true;
+    checkBtn.textContent = 'Checking…';
+    resultEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Fetching repository file list…</div>';
+
+    let repoFiles;
+    try {
+      repoFiles = await listGithubFolder('invoices');
+    } catch (err) {
+      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not read repository: ${err.message}</div>`;
+      checkBtn.disabled = false;
+      checkBtn.textContent = 'Check Invoice Repository';
+      return;
+    }
+
+    checkBtn.disabled = false;
+    checkBtn.textContent = 'Check Invoice Repository';
+
+    // Top-level PDFs only; backup/ subfolder is type:'dir' so filtered out by listGithubFolder
+    const pdfFiles = repoFiles.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+
+    // Filenames are encrypted (non-deterministic — a fresh encryption of the
+    // same name never equals a previous one), so matching can't compare
+    // paths/ciphertext directly. Decrypt each repo file's name back to
+    // plaintext once, then compare THAT against each invoice's canonical
+    // name. decryptFilename() returns null for a legacy plain (unencrypted)
+    // name, which falls back to being used as-is.
+    let decryptError = null;
+    const decryptedNameOf = new Map(); // file -> plain name
+    const byDecryptedName  = new Map(); // plain name (lowercase) -> file
+    for (const f of pdfFiles) {
+      const base = f.name.replace(/\.pdf$/i, '');
+      let plain;
+      try { plain = await decryptFilename(base); }
+      catch (err) { decryptError = err; break; }
+      plain = plain !== null ? plain : base;
+      decryptedNameOf.set(f, plain);
+      if (!byDecryptedName.has(plain.toLowerCase())) byDecryptedName.set(plain.toLowerCase(), f);
+    }
+    if (decryptError) {
+      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not decrypt filenames: ${decryptError.message}</div>`;
+      return;
+    }
+
+    const invoices      = listActive('invoices');
+    const discrepancies = [];
+    const matchedFiles  = new Set();
+
+    // Detect two invoice records that would produce the same canonical name
+    const canonicalCount = new Map();
+    for (const inv of invoices) {
+      const cn = invoicePdfCanonicalName(inv).toLowerCase();
+      if (!canonicalCount.has(cn)) canonicalCount.set(cn, []);
+      canonicalCount.get(cn).push(inv);
+    }
+    for (const [, invs] of canonicalCount) {
+      if (invs.length > 1) {
+        discrepancies.push({
+          type: 'duplicate',
+          detail: `Invoice numbers ${invs.map(i => `"${i.number || i.id}"`).join(' and ')} resolve to the same filename — rename one invoice to fix`,
+          invs
+        });
+      }
+    }
+
+    // Match each invoice to a repo file, by comparing canonical names
+    // against each repo file's DECRYPTED name (see above for why).
+    for (const inv of invoices) {
+      const canonicalName = invoicePdfCanonicalName(inv);
+      const file = byDecryptedName.get(canonicalName.toLowerCase());
+
+      if (file) {
+        // File exists at the canonical name
+        matchedFiles.add(file);
+        if (inv.pdfPath !== file.path) {
+          // pdfPath is wrong or missing, but the file itself is already correct
+          discrepancies.push({
+            type: 'filename_mismatch',
+            subtype: 'pdfpath_only',
+            detail: `Invoice "${inv.number || inv.id}": pdfPath "${inv.pdfPath || '(none)'}" should point to "${file.path}" (file already correctly named)`,
+            inv,
+            expPath: file.path
+          });
+        }
+      } else {
+        // No file decrypts to the canonical name -- check whether the
+        // invoice's own stored pdfPath still points at a real (but stale-
+        // named) file before concluding it's missing entirely.
+        const storedFile = inv.pdfPath ? pdfFiles.find(f => f.path === inv.pdfPath) : null;
+        if (storedFile) {
+          matchedFiles.add(storedFile);
+          const expPath = await invoicePdfPath(inv);
+          discrepancies.push({
+            type: 'filename_mismatch',
+            subtype: 'wrong_name',
+            detail: `Invoice "${inv.number || inv.id}": file found as "${decryptedNameOf.get(storedFile)}" but should be "${canonicalName}"`,
+            inv,
+            expPath,
+            wrongPath: storedFile.path,
+            wrongSha:  storedFile.sha
+          });
+        } else {
+          // No file found anywhere for this invoice
+          const canRegen = inv.source !== 'pdf_import';
+          const expPath = await invoicePdfPath(inv);
+          discrepancies.push({
+            type: 'missing_file',
+            detail: canRegen
+              ? `Invoice "${inv.number || inv.id}": PDF missing — can be regenerated`
+              : `Invoice "${inv.number || inv.id}": original PDF missing — re-import manually to re-attach${inv.pdfPath ? ` (stale link "${inv.pdfPath}" will be cleared)` : ''}`,
+            inv,
+            expPath,
+            canRegen
+          });
+        }
+      }
+    }
+
+    // Files in the repo with no matching invoice record
+    for (const f of pdfFiles) {
+      if (!matchedFiles.has(f)) {
+        discrepancies.push({
+          type: 'orphan_file',
+          detail: `"${f.name}" has no matching invoice record`,
+          file: f
+        });
+      }
+    }
+
+    // PDFs still in the repo that belong to soft-deleted invoices — matched
+    // by exact stored path, no decryption needed since the path is already known.
+    const deletedInvoices = (state.db.invoices || []).filter(i => i.deletedAt && i.pdfPath);
+    for (const inv of deletedInvoices) {
+      const file = pdfFiles.find(f => f.path === inv.pdfPath);
+      if (file) {
+        discrepancies.push({
+          type: 'deleted_invoice_pdf',
+          detail: `"${file.name}" belongs to deleted invoice "${inv.number || inv.id}" — safe to remove`,
+          file,
+          inv
+        });
+      }
+    }
+
+    // db.json size warning — GitHub Contents API has a hard 1 MB limit.
+    // Measure what actually gets pushed, not the raw plaintext: once
+    // encryption is on, the pushed file is { enc, iv, ct } with ct being
+    // base64 (⅓ larger than the raw ciphertext bytes it encodes) — plaintext
+    // JSON.stringify(state.db).length understates the real pushed size by
+    // roughly that much and can miss the file already being over 1 MB.
+    const dbBytes = isUnlocked()
+      ? JSON.stringify(await encryptJsonToEnvelope(state.db)).length
+      : JSON.stringify(state.db).length;
+    const DB_WARN_BYTES = 800_000;
+    if (dbBytes > DB_WARN_BYTES) {
+      discrepancies.push({
+        type: 'db_size_warning',
+        detail: `db.json is ${(dbBytes / 1024).toFixed(0)} KB (as actually pushed${isUnlocked() ? ', encrypted' : ''}) — ${dbBytes > 1_000_000 ? 'already over' : 'approaching'} GitHub's 1 MB API limit. Consider purging old soft-deleted records or moving pdfData to GitHub files.`,
+        noResolve: true
+      });
+    }
+
+    renderCheckResults(invoices.length, pdfFiles.length, discrepancies);
+  }
+
+  // ── Render results with per-row Resolve buttons ───────────────────────────────
+
+  function renderCheckResults(totalInvoices, totalPdfs, discrepancies) {
+    resultEl.innerHTML = '';
+
+    resultEl.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);text-align:right;margin-bottom:8px' }, `Checked at ${new Date().toLocaleTimeString()}`));
+
+    const missing = discrepancies.filter(d => d.type === 'missing_file').length;
+    const matched = totalInvoices - missing;
+
+    const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px' });
+    for (const [label, val, good] of [
+      ['Invoice records', totalInvoices, true],
+      ['Repository PDFs', totalPdfs,     true],
+      ['Matched',         matched,        matched === totalInvoices],
+      ['Discrepancies',   discrepancies.length, discrepancies.length === 0]
+    ]) {
+      summaryGrid.appendChild(el('div', {
+        style: `background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;border-top:3px solid ${good ? 'var(--success,#198754)' : 'var(--danger,#dc3545)'}`
+      },
+        el('div', { style: 'font-size:1.4rem;font-weight:700' }, String(val)),
+        el('div', { style: 'font-size:11px;color:var(--text-muted)' }, label)
+      ));
+    }
+    resultEl.appendChild(summaryGrid);
+
+    if (discrepancies.length === 0) {
+      resultEl.appendChild(el('div', { style: 'color:var(--success,#198754);font-size:13px' },
+        'All invoice records match repository files.'));
+      return;
+    }
+
+    const TYPE_LABEL = { missing_file: 'Missing file', orphan_file: 'Orphan file', filename_mismatch: 'Name mismatch', duplicate: 'Duplicate', deleted_invoice_pdf: 'Deleted invoice PDF', db_size_warning: 'DB size warning' };
+    const TYPE_CSS   = { orphan_file: 'warning', duplicate: 'warning', deleted_invoice_pdf: 'danger', db_size_warning: 'warning' };
+
+    // Multi-select toolbar
+    const resolvableItems = discrepancies.map(d => ({ d, action: resolveAction(d) })).filter(x => x.action);
+    const toolbar = el('div', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:6px 0' });
+    const selectAllCb = document.createElement('input');
+    selectAllCb.type = 'checkbox';
+    selectAllCb.title = 'Select all resolvable';
+    const resolveSelBtn = button('Resolve Selected (0)', { variant: 'sm primary' });
+    resolveSelBtn.disabled = true;
+    toolbar.appendChild(selectAllCb);
+    toolbar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Select all'));
+    toolbar.appendChild(resolveSelBtn);
+
+    const rowCheckboxes = [];
+
+    function updateToolbar() {
+      const checked = rowCheckboxes.filter(cb => cb.checked);
+      resolveSelBtn.disabled = checked.length === 0;
+      resolveSelBtn.textContent = `Resolve Selected (${checked.length})`;
+      selectAllCb.indeterminate = checked.length > 0 && checked.length < rowCheckboxes.length;
+      selectAllCb.checked = rowCheckboxes.length > 0 && checked.length === rowCheckboxes.length;
+    }
+
+    selectAllCb.onchange = () => {
+      rowCheckboxes.forEach(cb => { cb.checked = selectAllCb.checked; });
+      updateToolbar();
+    };
+
+    resolveSelBtn.onclick = async () => {
+      const toResolve = resolvableItems.filter((_, i) => rowCheckboxes[i]?.checked);
+      resolveSelBtn.disabled = true;
+      resolveSelBtn.textContent = 'Resolving…';
+      const errors = [];
+      for (const { action } of toResolve) {
+        try { await action(); } catch (err) { if (err.message !== 'cancelled') errors.push(err.message); }
+      }
+      if (errors.length) toast(errors.join('; '), 'danger', 6000);
+      await runCheck();
+    };
+
+    const list = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
+
+    if (resolvableItems.length > 0) resultEl.appendChild(toolbar);
+
+    for (const d of discrepancies) {
+      const badgeCss = TYPE_CSS[d.type] || 'danger';
+      const row = el('div', {
+        style: 'display:flex;align-items:flex-start;gap:6px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)'
+      });
+      const action = resolveAction(d);
+
+      if (action) {
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'flex-shrink:0;margin-top:3px;cursor:pointer';
+        cb.onchange = updateToolbar;
+        row.appendChild(cb);
+        rowCheckboxes.push(cb);
+      } else {
+        row.appendChild(el('span', { style: 'width:16px;flex-shrink:0' }));
+      }
+
+      row.appendChild(el('span', { class: `badge ${badgeCss}`, style: 'flex-shrink:0;margin-top:1px' }, TYPE_LABEL[d.type] || d.type));
+      row.appendChild(el('span', { style: 'flex:1' }, d.detail));
+
+      if (d.inv) {
+        const viewLink = document.createElement('a');
+        viewLink.textContent = 'View ↗';
+        viewLink.href = '#invoices';
+        viewLink.style.cssText = 'font-size:11px;white-space:nowrap;flex-shrink:0;color:var(--primary,#0d6efd);cursor:pointer;margin-right:4px';
+        viewLink.onclick = (e) => {
+          e.preventDefault();
+          navigate('invoices');
+          setTimeout(() => openInvoicePreview(d.inv.id), 200);
+        };
+        row.appendChild(viewLink);
+      }
+
+      const statusEl = el('span', { style: 'font-size:11px;white-space:nowrap;flex-shrink:0' });
+
+      if (action) {
+        const btn = button('Resolve', { variant: 'sm primary' });
+        btn.onclick = async () => {
+          btn.disabled    = true;
+          btn.textContent = 'Resolving…';
+          statusEl.textContent = '';
+          statusEl.style.color = '';
+          try {
+            await action();
+            btn.textContent      = '✓ Done';
+            statusEl.textContent = 'Refreshing…';
+            statusEl.style.color = 'var(--success,#198754)';
+            await new Promise(r => setTimeout(r, 600));
+            await runCheck();
+          } catch (err) {
+            btn.disabled    = false;
+            btn.textContent = 'Resolve';
+            if (err.message !== 'cancelled') {
+              statusEl.textContent = err.message;
+              statusEl.style.color = 'var(--danger,#dc3545)';
+            }
+          }
+        };
+        row.appendChild(statusEl);
+        row.appendChild(btn);
+      }
+
+      list.appendChild(row);
+    }
+    resultEl.appendChild(list);
+  }
+
+  // ── Resolve actions ───────────────────────────────────────────────────────────
+  // Returns an async thunk for auto-resolvable discrepancies, or null if not safe.
+
+  function resolveAction(d) {
+    if (d.type === 'filename_mismatch' && d.subtype === 'pdfpath_only') {
+      // File is already correctly named — just update the DB record's pdfPath
+      return async () => {
+        upsert('invoices', { ...d.inv, pdfPath: d.expPath });
+        markDirty();
+      };
+    }
+
+    if (d.type === 'filename_mismatch' && d.subtype === 'wrong_name') {
+      // File exists under the old/wrong name — rename it in GitHub and fix pdfPath
+      return async () => {
+        const fileData = await fetchGithubFile(d.wrongPath);
+        const b64      = fileData.content.replace(/\s/g, '');
+        await uploadGithubFile(d.expPath, b64, `Rename PDF: ${d.inv.number || d.inv.id}`);
+        await deleteGithubFile(d.wrongPath, d.wrongSha || fileData.sha, `Remove old path for invoice ${d.inv.number || d.inv.id}`);
+        upsert('invoices', { ...d.inv, pdfPath: d.expPath });
+        markDirty();
+      };
+    }
+
+    if (d.type === 'missing_file' && d.canRegen) {
+      // Builder invoice — regenerate the PDF and upload it
+      return async () => {
+        const b64 = (await generateInvoicePDF(d.inv)).output('datauristring').split(',')[1];
+        if (!b64) throw new Error('PDF generation produced empty content');
+        await uploadGithubFileEncrypted(d.expPath, b64, `Regenerate PDF for invoice ${d.inv.number || d.inv.id}`);
+        upsert('invoices', { ...d.inv, pdfPath: d.expPath });
+        markDirty();
+      };
+    }
+
+    if (d.type === 'missing_file' && !d.canRegen && d.inv.pdfPath) {
+      // Imported invoice with a stale pdfPath pointing to a file that no longer exists — clear the link
+      return async () => {
+        const updated = { ...d.inv };
+        delete updated.pdfPath;
+        upsert('invoices', updated);
+        markDirty();
+      };
+    }
+
+    if (d.type === 'orphan_file') {
+      // Repo file with no matching invoice — ask before deleting
+      return async () => {
+        const ok = await confirmDialog(
+          `Delete orphaned file "${d.file.name}" from the repository? This cannot be undone.`,
+          { danger: true, okLabel: 'Delete File' }
+        );
+        if (!ok) throw new Error('cancelled');
+        await deleteGithubFile(d.file.path, d.file.sha, `Delete orphan: ${d.file.name}`);
+      };
+    }
+
+    if (d.type === 'deleted_invoice_pdf') {
+      // PDF belongs to a soft-deleted invoice — offer to remove it from the repo
+      return async () => {
+        const ok = await confirmDialog(
+          `Delete "${d.file.name}" from the repository? It belongs to deleted invoice "${d.inv.number || d.inv.id}" and is no longer needed.`,
+          { danger: true, okLabel: 'Delete File' }
+        );
+        if (!ok) throw new Error('cancelled');
+        await deleteGithubFile(d.file.path, d.file.sha, `Delete PDF for deleted invoice ${d.inv.number || d.inv.id}`);
+      };
+    }
+
+    // duplicate / db_size_warning: no safe auto-resolve
+    return null;
+  }
+
+  // ── Backup ───────────────────────────────────────────────────────────────────
+
+  async function runBackup() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      backupStatusEl.textContent = 'GitHub not configured.';
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
+    backupBtn.disabled = true;
+    backupBtn.textContent = 'Backing up…';
+    backupStatusEl.style.color = 'var(--text-muted)';
+    backupStatusEl.textContent = 'Listing invoice files…';
+
+    let files;
+    try {
+      const all = await listGithubFolder('invoices');
+      files = all.filter(f => f.name.toLowerCase().endsWith('.pdf'));
+    } catch (err) {
+      backupStatusEl.textContent = `Failed to list files: ${err.message}`;
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+      backupBtn.disabled = false;
+      backupBtn.textContent = 'Backup Invoices';
+      return;
+    }
+
+    if (files.length === 0) {
+      backupStatusEl.textContent = 'No PDF files found in invoice repository.';
+      backupStatusEl.style.color = 'var(--text-muted)';
+      backupBtn.disabled = false;
+      backupBtn.textContent = 'Backup Invoices';
+      return;
+    }
+
+    let done = 0, failed = 0;
+    for (const file of files) {
+      backupStatusEl.textContent = `Copying ${done + failed + 1} / ${files.length}: ${file.name}…`;
+      try {
+        const fileData = await fetchGithubFile(file.path);
+        const b64 = fileData.content.replace(/\s/g, '');
+        await uploadGithubFile(`invoices/backup/${file.name}`, b64, `Backup: ${file.name}`);
+        done++;
+      } catch (err) {
+        console.warn(`[backup] Failed for ${file.name}:`, err.message);
+        failed++;
+      }
+    }
+
+    backupBtn.disabled = false;
+    backupBtn.textContent = 'Backup Invoices';
+    if (failed > 0) {
+      backupStatusEl.textContent = `Backup done: ${done} copied, ${failed} failed. Check browser console for details.`;
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+    } else {
+      backupStatusEl.textContent = `Backup complete: ${done} file${done !== 1 ? 's' : ''} copied to invoices/backup/.`;
+      backupStatusEl.style.color = 'var(--success,#198754)';
+    }
+  }
+
+  // ── Delete Backups ────────────────────────────────────────────────────────────
+
+  async function runDeleteBackups() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      deleteStatusEl.textContent = 'GitHub not configured.';
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
+    deleteBackupBtn.disabled = true;
+    deleteBackupBtn.textContent = 'Listing…';
+    deleteStatusEl.style.color = 'var(--text-muted)';
+    deleteStatusEl.textContent = 'Listing backup files…';
+
+    let files;
+    try {
+      files = await listBackupFiles('invoices/backup');
+    } catch (err) {
+      deleteStatusEl.textContent = `Failed to list backup files: ${err.message}`;
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+      deleteBackupBtn.disabled = false;
+      deleteBackupBtn.textContent = 'Delete Invoice Backups';
+      return;
+    }
+
+    deleteBackupBtn.disabled = false;
+    deleteBackupBtn.textContent = 'Delete Invoice Backups';
+
+    if (files.length === 0) {
+      deleteStatusEl.textContent = 'Backup folder is empty or does not exist — nothing to delete.';
+      deleteStatusEl.style.color = 'var(--text-muted)';
+      return;
+    }
+
+    const ok = await confirmDialog(
+      `Delete all ${files.length} file${files.length !== 1 ? 's' : ''} in invoices/backup/? This cannot be undone.`,
+      { danger: true, okLabel: 'Delete Backups' }
+    );
+    if (!ok) { deleteStatusEl.textContent = ''; return; }
+
+    deleteBackupBtn.disabled = true;
+    deleteBackupBtn.textContent = 'Deleting…';
+    let done = 0, failed = 0;
+    for (const file of files) {
+      deleteStatusEl.textContent = `Deleting ${done + failed + 1} / ${files.length}: ${file.name}…`;
+      try {
+        await deleteGithubFile(file.path, file.sha, `Delete invoice backup: ${file.name}`);
+        done++;
+      } catch (err) {
+        console.warn(`[delete-invoice-backup] Failed for ${file.name}:`, err.message);
+        failed++;
+      }
+    }
+
+    deleteBackupBtn.disabled = false;
+    deleteBackupBtn.textContent = 'Delete Invoice Backups';
+    if (failed > 0) {
+      deleteStatusEl.textContent = `Deleted ${done}, failed ${failed}. Check console for details.`;
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+    } else {
+      deleteStatusEl.textContent = `Deleted ${done} backup file${done !== 1 ? 's' : ''} from invoices/backup/.`;
+      deleteStatusEl.style.color = 'var(--success,#198754)';
+    }
+    if (resultEl.innerHTML) await runCheck();
+  }
+}
+
+// ── Shared helpers for document repo maintenance cards ────────────────────────
+
+// List all files inside a backup folder, recursing one level into sub-folders.
+async function listBackupFiles(backupPath) {
+  const { owner, repo, branch, token } = state.github;
+  if (!owner || !repo) return [];
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (token) headers['Authorization'] = `token ${token}`;
+  const cleanPath = backupPath.replace(/^\/+|\/+$/g, '');
+  const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
+  let topItems;
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`,
+      { headers, cache: 'no-store' }
+    );
+    if (res.status === 404) return [];
+    if (!res.ok) throw new Error(`Backup folder listing failed (${res.status})`);
+    const data = await res.json();
+    topItems = Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (err.message && err.message.includes('404')) return [];
+    throw err;
+  }
+  const files = [];
+  for (const item of topItems) {
+    if (item.type === 'file') {
+      files.push(item);
+    } else if (item.type === 'dir') {
+      try {
+        const subFiles = await listGithubFolder(item.path);
+        files.push(...subFiles);
+      } catch { /* skip unreadable subfolder */ }
+    }
+  }
+  return files;
+}
+
+// List root folder, then recurse one level into sub-folders (skip 'backup').
+// listGithubFolder() always filters its result to files only (by design, for
+// its typical flat-folder callers) — so the top-level listing here needs its
+// own raw fetch to see the per-entity sub-directories at all (mirrors
+// listBackupFiles above, which gets this right for the same reason).
+async function listDocRepoFiles(rootFolder) {
+  const { owner, repo, branch, token } = state.github;
+  if (!owner || !repo) return [];
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (token) headers['Authorization'] = `token ${token}`;
+  const cleanPath = rootFolder.replace(/^\/+|\/+$/g, '');
+  const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
+  let topItems;
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`,
+      { headers, cache: 'no-store' }
+    );
+    if (res.status === 404) return [];
+    if (!res.ok) throw new Error(`Folder listing failed (${res.status})`);
+    const data = await res.json();
+    topItems = Array.isArray(data) ? data : [];
+  } catch (err) {
+    if (err.message && (err.message.includes('404') || err.message.includes('Not Found'))) return [];
+    throw err;
+  }
+  const files = [];
+  for (const item of topItems) {
+    if (item.type === 'file') {
+      files.push(item);
+    } else if (item.type === 'dir' && item.name.toLowerCase() !== 'backup') {
+      try {
+        const subItems = await listGithubFolder(item.path);
+        for (const sub of subItems) { if (sub.type === 'file') files.push(sub); }
+      } catch { /* skip unreadable sub-folder */ }
+    }
+  }
+  return files;
+}
+
+// ── Re-encrypt + rename existing invoice PDFs ───────────────────────────────
+// Unlike runReencryptFiles below (content-only, same path), this one also
+// fixes filenames still on the old plain naming convention -- it iterates
+// invoice RECORDS (not raw repo files) so it always knows which invoice a
+// path belongs to, rather than needing to guess from a legacy plain name.
+// Orphaned repo files with no invoice pointing at them are deliberately left
+// alone here -- that's what "Check Invoice Repository" -> resolve is for.
+async function runReencryptAndRenameInvoices(statusEl, btn) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) {
+    statusEl.textContent = 'GitHub not configured.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  if (!isUnlocked()) {
+    statusEl.textContent = 'Encryption key not set up on this device — configure it in the Encryption section above first.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+
+  const ok = await confirmDialog(
+    'Re-encrypt every existing invoice PDF, and rename any still using the old plain filename to an encrypted one? This may take a while for many files and creates one or two commits per file.',
+    { okLabel: 'Re-encrypt' }
+  );
+  if (!ok) return;
+
+  const defaultLabel = 'Re-encrypt Existing Invoice PDFs';
+  btn.disabled = true;
+  btn.textContent = 'Listing invoices…';
+  statusEl.style.color = 'var(--text-muted)';
+
+  const invoices = listActive('invoices').filter(i => i.pdfPath);
+  if (invoices.length === 0) {
+    statusEl.textContent = 'No invoice PDFs found.';
+    statusEl.style.color = 'var(--text-muted)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  let done = 0, renamed = 0, failed = 0;
+  for (const inv of invoices) {
+    btn.textContent = `Processing ${done + failed + 1} / ${invoices.length}…`;
+    try {
+      const base = inv.pdfPath.replace(/^invoices\//, '').replace(/\.pdf$/i, '');
+      const alreadyEncrypted = (await decryptFilename(base)) !== null;
+      const fileData = await fetchGithubFileEncrypted(inv.pdfPath);
+      if (alreadyEncrypted) {
+        await uploadGithubFileEncrypted(inv.pdfPath, fileData.content, `Re-encrypt: ${inv.number || inv.id}`);
+      } else {
+        const newPath = await invoicePdfPath(inv);
+        await uploadGithubFileEncrypted(newPath, fileData.content, `Re-encrypt + rename: ${inv.number || inv.id}`);
+        await deleteGithubFile(inv.pdfPath, fileData.sha, `Remove old plain-named path for invoice ${inv.number || inv.id}`);
+        upsert('invoices', { ...inv, pdfPath: newPath });
+        renamed++;
+      }
+      done++;
+    } catch (err) {
+      console.warn(`[re-encrypt] Failed for invoice ${inv.number || inv.id}:`, err.message);
+      failed++;
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = defaultLabel;
+  if (failed > 0) {
+    statusEl.textContent = `Done: ${done} processed (${renamed} renamed), ${failed} failed. Check browser console for details.`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } else {
+    statusEl.textContent = `Complete: ${done} file${done !== 1 ? 's' : ''} encrypted${renamed > 0 ? ` (${renamed} renamed to the new naming convention)` : ''}.`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }
+}
+
+// ── Re-encrypt + rename existing property/client documents ──────────────────
+// Same idea as above but for the ID-based doc naming convention -- iterates
+// each entity's document records (not raw repo files), fixing any doc.path
+// still on an old human-readable name.
+async function runReencryptAndRenameDocs(rootFolder, collection, entityLabel, statusEl, btn) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) {
+    statusEl.textContent = 'GitHub not configured.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  if (!isUnlocked()) {
+    statusEl.textContent = 'Encryption key not set up on this device — configure it in the Encryption section above first.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+
+  const ok = await confirmDialog(
+    `Re-encrypt every existing ${entityLabel} document, and rename any still using the old naming convention? This may take a while for many files and creates one or two commits per file.`,
+    { okLabel: 'Re-encrypt' }
+  );
+  if (!ok) return;
+
+  const defaultLabel = `Re-encrypt Existing ${entityLabel} Documents`;
+  btn.disabled = true;
+  btn.textContent = 'Listing documents…';
+  statusEl.style.color = 'var(--text-muted)';
+
+  const items = [];
+  for (const entity of listActive(collection)) {
+    for (const doc of (entity.documents || [])) { if (doc.path) items.push({ entity, doc }); }
+  }
+
+  if (items.length === 0) {
+    statusEl.textContent = 'No documents found.';
+    statusEl.style.color = 'var(--text-muted)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  let done = 0, renamed = 0, failed = 0;
+  for (const { entity, doc } of items) {
+    btn.textContent = `Processing ${done + failed + 1} / ${items.length}…`;
+    try {
+      const ext = (doc.path.match(/\.[^.]+$/) || [''])[0];
+      const correctPath = `${rootFolder}/${entity.id}/${doc.id}${ext}`;
+      const fileData = await fetchGithubFileEncrypted(doc.path);
+      if (doc.path === correctPath) {
+        await uploadGithubFileEncrypted(doc.path, fileData.content, `Re-encrypt: ${doc.name}`);
+      } else {
+        await uploadGithubFileEncrypted(correctPath, fileData.content, `Re-encrypt + rename: ${doc.name}`);
+        await deleteGithubFile(doc.path, fileData.sha, `Remove old path for ${doc.name}`);
+        const updatedDocs = entity.documents.map(d => d.id === doc.id ? { ...d, path: correctPath } : d);
+        upsert(collection, { ...entity, documents: updatedDocs });
+        renamed++;
+      }
+      done++;
+    } catch (err) {
+      console.warn(`[re-encrypt] Failed for ${doc.name}:`, err.message);
+      failed++;
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = defaultLabel;
+  if (failed > 0) {
+    statusEl.textContent = `Done: ${done} processed (${renamed} renamed), ${failed} failed. Check browser console for details.`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } else {
+    statusEl.textContent = `Complete: ${done} file${done !== 1 ? 's' : ''} encrypted${renamed > 0 ? ` (${renamed} renamed to the new naming convention)` : ''}.`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }
+}
+
+// ── Shared: re-encrypt every file a lister returns, in place ────────────────
+// Fetches each file (transparently decrypting if it's already encrypted, so
+// this is safe to re-run) and re-uploads it through the encrypted path.
+async function runReencryptFiles(listFn, statusEl, btn, label) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) {
+    statusEl.textContent = 'GitHub not configured.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  if (!isUnlocked()) {
+    statusEl.textContent = 'Encryption key not set up on this device — configure it in the Encryption section above first.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+
+  const ok = await confirmDialog(
+    `Re-encrypt every existing ${label} in place? Each file is fetched, decrypted if needed, and re-uploaded encrypted — this may take a while for many files and creates one commit per file.`,
+    { okLabel: 'Re-encrypt' }
+  );
+  if (!ok) return;
+
+  const defaultLabel = `Re-encrypt Existing ${label}`;
+  btn.disabled = true;
+  btn.textContent = 'Listing files…';
+  statusEl.style.color = 'var(--text-muted)';
+
+  let files;
+  try {
+    files = await listFn();
+  } catch (err) {
+    statusEl.textContent = `Failed to list files: ${err.message}`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  if (files.length === 0) {
+    statusEl.textContent = 'No files found.';
+    statusEl.style.color = 'var(--text-muted)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  let done = 0, failed = 0;
+  for (const file of files) {
+    btn.textContent = `Re-encrypting ${done + failed + 1} / ${files.length}…`;
+    try {
+      const fileData = await fetchGithubFileEncrypted(file.path);
+      await uploadGithubFileEncrypted(file.path, fileData.content, `Re-encrypt: ${file.name}`);
+      done++;
+    } catch (err) {
+      console.warn(`[re-encrypt] Failed for ${file.name}:`, err.message);
+      failed++;
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = defaultLabel;
+  if (failed > 0) {
+    statusEl.textContent = `Done: ${done} re-encrypted, ${failed} failed. Check browser console for details.`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } else {
+    statusEl.textContent = `Complete: ${done} file${done !== 1 ? 's' : ''} now encrypted.`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }
+}
+
+// ── Shared: download every file a lister returns as a single decrypted ZIP ──
+async function runDownloadZip(listFn, zipBaseName, statusEl, btn) {
+  const { owner, repo } = state.github;
+  if (!owner || !repo) {
+    statusEl.textContent = 'GitHub not configured.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  const JSZip = window.JSZip;
+  if (!JSZip) {
+    statusEl.textContent = 'ZIP library not loaded — refresh and try again.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+
+  const defaultLabel = 'Download All (Decrypted ZIP)';
+  btn.disabled = true;
+  btn.textContent = 'Listing files…';
+  statusEl.style.color = 'var(--text-muted)';
+
+  let files;
+  try {
+    files = await listFn();
+  } catch (err) {
+    statusEl.textContent = `Failed to list files: ${err.message}`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  if (files.length === 0) {
+    statusEl.textContent = 'No files found.';
+    statusEl.style.color = 'var(--text-muted)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  const zip = new JSZip();
+  let ok = 0, failed = 0;
+  for (const file of files) {
+    btn.textContent = `Fetching ${ok + failed + 1} / ${files.length}…`;
+    try {
+      const fileData = await fetchGithubFileEncrypted(file.path);
+      const bytes = Uint8Array.from(atob(fileData.content.replace(/\s/g, '')), c => c.charCodeAt(0));
+      zip.file(file.path, bytes); // full repo-relative path, so per-entity subfolders are preserved
+      ok++;
+    } catch (err) {
+      console.warn(`[zip] Could not fetch ${file.path}:`, err.message);
+      failed++;
+    }
+  }
+
+  if (ok === 0) {
+    statusEl.textContent = 'Could not fetch any files.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    btn.disabled = false;
+    btn.textContent = defaultLabel;
+    return;
+  }
+
+  const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const filename = `${zipBaseName}-${ts}.zip`;
+  const url = URL.createObjectURL(content);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+  btn.disabled = false;
+  btn.textContent = defaultLabel;
+  if (failed > 0) {
+    statusEl.textContent = `Downloaded ${ok}, ${failed} failed. Check browser console for details.`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } else {
+    statusEl.textContent = `Downloaded ${ok} file${ok !== 1 ? 's' : ''} as ${filename}.`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }
+}
+
+function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLabel, backupBtnLabel, deleteBackupBtnLabel, openRecord }) {
+  const resultEl        = el('div', { style: 'margin-top:12px' });
+  const backupStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const deleteStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const reencryptStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const zipStatusEl      = el('div', { style: 'font-size:12px;margin-top:8px' });
+
+  const checkBtn        = button(checkBtnLabel,  { onClick: runCheck });
+  const backupBtn       = button(backupBtnLabel, { onClick: runBackup });
+  const deleteBackupBtn = button(deleteBackupBtnLabel, { variant: 'danger', onClick: runDeleteBackups });
+  const reencryptBtn    = button(`Re-encrypt Existing ${entityLabel} Documents`, {
+    onClick: () => runReencryptAndRenameDocs(rootFolder, collection, entityLabel, reencryptStatusEl, reencryptBtn)
+  });
+  const zipBtn = button('Download All (Decrypted ZIP)', {
+    onClick: () => runDownloadZip(() => listDocRepoFiles(rootFolder), rootFolder.toLowerCase(), zipStatusEl, zipBtn)
+  });
+  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, backupBtn, deleteBackupBtn, reencryptBtn, zipBtn));
+  body.appendChild(resultEl);
+  body.appendChild(backupStatusEl);
+  body.appendChild(deleteStatusEl);
+  body.appendChild(reencryptStatusEl);
+  body.appendChild(zipStatusEl);
+
+  // ── Check ─────────────────────────────────────────────────────────────────
+
+  async function runCheck() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      resultEl.innerHTML = '<div style="color:var(--danger,#dc3545)">GitHub not configured — add owner/repo/token above.</div>';
+      return;
+    }
+    checkBtn.disabled = true;
+    checkBtn.textContent = 'Checking…';
+    resultEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Fetching repository file list…</div>';
+
+    let repoFiles;
+    try {
+      repoFiles = await listDocRepoFiles(rootFolder);
+    } catch (err) {
+      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not read repository: ${err.message}</div>`;
+      checkBtn.disabled = false;
+      checkBtn.textContent = checkBtnLabel;
+      return;
+    }
+    checkBtn.disabled = false;
+    checkBtn.textContent = checkBtnLabel;
+
+    const repoByPath = new Map(repoFiles.map(f => [f.path.toLowerCase(), f]));
+    const entities   = listActive(collection);
+
+    // Collect all doc records that have a repo path
+    const allDocs = [];
+    for (const entity of entities) {
+      for (const doc of (entity.documents || [])) {
+        if (doc.path) allDocs.push({ doc, entity });
+      }
+    }
+
+    const discrepancies = [];
+    const matchedPaths  = new Set();
+
+    for (const { doc, entity } of allDocs) {
+      const pathLow = doc.path.toLowerCase();
+      if (repoByPath.has(pathLow)) {
+        matchedPaths.add(pathLow);
+      } else {
+        discrepancies.push({
+          type:   'missing_file',
+          detail: `"${doc.name}" (${entityLabel}: "${entity.name}"): file at "${doc.path}" not found in repository — record will be removed`,
+          doc, entity
+        });
+      }
+    }
+
+    for (const [pathLow, file] of repoByPath) {
+      if (!matchedPaths.has(pathLow)) {
+        discrepancies.push({
+          type:   'orphan_file',
+          detail: `"${file.name}" (${file.path}) has no matching document record`,
+          file
+        });
+      }
+    }
+
+    renderCheckResults(entities.length, repoFiles.length, allDocs.length, discrepancies);
+  }
+
+  // ── Render results ─────────────────────────────────────────────────────────
+
+  function renderCheckResults(totalEntities, totalFiles, totalDocs, discrepancies) {
+    resultEl.innerHTML = '';
+
+    resultEl.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);text-align:right;margin-bottom:8px' }, `Checked at ${new Date().toLocaleTimeString()}`));
+
+    const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px' });
+    for (const [label, val, good] of [
+      [`${entityLabel}s`,      totalEntities, true],
+      ['Repository files',     totalFiles,    true],
+      ['Document records',     totalDocs,     true],
+      ['Discrepancies',        discrepancies.length, discrepancies.length === 0]
+    ]) {
+      summaryGrid.appendChild(el('div', {
+        style: `background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;border-top:3px solid ${good ? 'var(--success,#198754)' : 'var(--danger,#dc3545)'}`
+      },
+        el('div', { style: 'font-size:1.4rem;font-weight:700' }, String(val)),
+        el('div', { style: 'font-size:11px;color:var(--text-muted)' }, label)
+      ));
+    }
+    resultEl.appendChild(summaryGrid);
+
+    if (discrepancies.length === 0) {
+      resultEl.appendChild(el('div', { style: 'color:var(--success,#198754);font-size:13px' },
+        `All ${entityLabel.toLowerCase()} document records match repository files.`));
+      return;
+    }
+
+    const TYPE_LABEL = { missing_file: 'Missing file', orphan_file: 'Orphan file' };
+    const TYPE_CSS   = { orphan_file: 'warning' };
+
+    // Multi-select toolbar
+    const resolvableItems = discrepancies.map(d => ({ d, action: resolveAction(d) })).filter(x => x.action);
+    const toolbar = el('div', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:6px 0' });
+    const selectAllCb = document.createElement('input');
+    selectAllCb.type = 'checkbox';
+    selectAllCb.title = 'Select all resolvable';
+    const resolveSelBtn = button('Resolve Selected (0)', { variant: 'sm primary' });
+    resolveSelBtn.disabled = true;
+    toolbar.appendChild(selectAllCb);
+    toolbar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Select all'));
+    toolbar.appendChild(resolveSelBtn);
+
+    const rowCheckboxes = [];
+
+    function updateToolbar() {
+      const checked = rowCheckboxes.filter(cb => cb.checked);
+      resolveSelBtn.disabled = checked.length === 0;
+      resolveSelBtn.textContent = `Resolve Selected (${checked.length})`;
+      selectAllCb.indeterminate = checked.length > 0 && checked.length < rowCheckboxes.length;
+      selectAllCb.checked = rowCheckboxes.length > 0 && checked.length === rowCheckboxes.length;
+    }
+
+    selectAllCb.onchange = () => {
+      rowCheckboxes.forEach(cb => { cb.checked = selectAllCb.checked; });
+      updateToolbar();
+    };
+
+    resolveSelBtn.onclick = async () => {
+      const toResolve = resolvableItems.filter((_, i) => rowCheckboxes[i]?.checked);
+      resolveSelBtn.disabled = true;
+      resolveSelBtn.textContent = 'Resolving…';
+      const errors = [];
+      for (const { action } of toResolve) {
+        try { await action(); } catch (err) { if (err.message !== 'cancelled') errors.push(err.message); }
+      }
+      if (errors.length) toast(errors.join('; '), 'danger', 6000);
+      await runCheck();
+    };
+
+    const list = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
+
+    if (resolvableItems.length > 0) resultEl.appendChild(toolbar);
+
+    for (const d of discrepancies) {
+      const row = el('div', { style: 'display:flex;align-items:flex-start;gap:6px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)' });
+      const action = resolveAction(d);
+
+      if (action) {
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'flex-shrink:0;margin-top:3px;cursor:pointer';
+        cb.onchange = updateToolbar;
+        row.appendChild(cb);
+        rowCheckboxes.push(cb);
+      } else {
+        row.appendChild(el('span', { style: 'width:16px;flex-shrink:0' }));
+      }
+
+      row.appendChild(el('span', { class: `badge ${TYPE_CSS[d.type] || 'danger'}`, style: 'flex-shrink:0;margin-top:1px' }, TYPE_LABEL[d.type] || d.type));
+      row.appendChild(el('span', { style: 'flex:1' }, d.detail));
+
+      if (d.entity && openRecord) {
+        const viewLink = document.createElement('a');
+        viewLink.textContent = 'View ↗';
+        viewLink.href = `#${collection}`;
+        viewLink.style.cssText = 'font-size:11px;white-space:nowrap;flex-shrink:0;color:var(--primary,#0d6efd);cursor:pointer;margin-right:4px';
+        viewLink.onclick = (e) => {
+          e.preventDefault();
+          navigate(collection);
+          setTimeout(() => openRecord(d.entity.id), 200);
+        };
+        row.appendChild(viewLink);
+      }
+
+      const statusEl = el('span', { style: 'font-size:11px;white-space:nowrap;flex-shrink:0' });
+      if (action) {
+        const btn = button('Resolve', { variant: 'sm primary' });
+        btn.onclick = async () => {
+          btn.disabled    = true;
+          btn.textContent = 'Resolving…';
+          statusEl.textContent = '';
+          statusEl.style.color = '';
+          try {
+            await action();
+            btn.textContent      = '✓ Done';
+            statusEl.textContent = 'Refreshing…';
+            statusEl.style.color = 'var(--success,#198754)';
+            await new Promise(r => setTimeout(r, 600));
+            await runCheck();
+          } catch (err) {
+            btn.disabled    = false;
+            btn.textContent = 'Resolve';
+            if (err.message !== 'cancelled') {
+              statusEl.textContent = err.message;
+              statusEl.style.color = 'var(--danger,#dc3545)';
+            }
+          }
+        };
+        row.appendChild(statusEl);
+        row.appendChild(btn);
+      }
+      list.appendChild(row);
+    }
+    resultEl.appendChild(list);
+  }
+
+  // ── Resolve actions ────────────────────────────────────────────────────────
+
+  function resolveAction(d) {
+    if (d.type === 'missing_file') {
+      return async () => {
+        const updated = { ...d.entity, documents: (d.entity.documents || []).filter(doc => doc.id !== d.doc.id) };
+        upsert(collection, updated);
+        markDirty();
+      };
+    }
+    if (d.type === 'orphan_file') {
+      return async () => {
+        const ok = await confirmDialog(
+          `Delete orphaned file "${d.file.name}" from the repository? This cannot be undone.`,
+          { danger: true, okLabel: 'Delete File' }
+        );
+        if (!ok) throw new Error('cancelled');
+        await deleteGithubFile(d.file.path, d.file.sha, `Delete orphan: ${d.file.name}`);
+      };
+    }
+    return null;
+  }
+
+  // ── Backup ─────────────────────────────────────────────────────────────────
+
+  async function runBackup() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      backupStatusEl.textContent = 'GitHub not configured.';
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+    backupBtn.disabled = true;
+    backupBtn.textContent = 'Backing up…';
+    backupStatusEl.style.color = 'var(--text-muted)';
+    backupStatusEl.textContent = `Listing ${rootFolder}/ files…`;
+
+    let files;
+    try {
+      files = await listDocRepoFiles(rootFolder);
+    } catch (err) {
+      backupStatusEl.textContent = `Failed to list files: ${err.message}`;
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+      backupBtn.disabled = false;
+      backupBtn.textContent = backupBtnLabel;
+      return;
+    }
+
+    if (files.length === 0) {
+      backupStatusEl.textContent = `No files found under ${rootFolder}/.`;
+      backupStatusEl.style.color = 'var(--text-muted)';
+      backupBtn.disabled = false;
+      backupBtn.textContent = backupBtnLabel;
+      return;
+    }
+
+    let done = 0, failed = 0;
+    for (const file of files) {
+      backupStatusEl.textContent = `Copying ${done + failed + 1} / ${files.length}: ${file.name}…`;
+      try {
+        const fileData = await fetchGithubFile(file.path);
+        const b64      = fileData.content.replace(/\s/g, '');
+        // Preserve sub-folder: {Root}/{name}/file → {Root}/backup/{name}/file
+        const relative = file.path.replace(new RegExp(`^${rootFolder}/`), '');
+        await uploadGithubFile(`${rootFolder}/backup/${relative}`, b64, `Backup: ${file.name}`);
+        done++;
+      } catch (err) {
+        console.warn(`[backup] Failed for ${file.name}:`, err.message);
+        failed++;
+      }
+    }
+
+    backupBtn.disabled = false;
+    backupBtn.textContent = backupBtnLabel;
+    if (failed > 0) {
+      backupStatusEl.textContent = `Backup done: ${done} copied, ${failed} failed. Check console for details.`;
+      backupStatusEl.style.color = 'var(--danger,#dc3545)';
+    } else {
+      backupStatusEl.textContent = `Backup complete: ${done} file${done !== 1 ? 's' : ''} copied to ${rootFolder}/backup/.`;
+      backupStatusEl.style.color = 'var(--success,#198754)';
+    }
+  }
+
+  // ── Delete Backups ─────────────────────────────────────────────────────────
+
+  async function runDeleteBackups() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      deleteStatusEl.textContent = 'GitHub not configured.';
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
+    deleteBackupBtn.disabled = true;
+    deleteBackupBtn.textContent = 'Listing…';
+    deleteStatusEl.style.color = 'var(--text-muted)';
+    deleteStatusEl.textContent = `Listing ${rootFolder}/backup/ files…`;
+
+    let files;
+    try {
+      files = await listBackupFiles(`${rootFolder}/backup`);
+    } catch (err) {
+      deleteStatusEl.textContent = `Failed to list backup files: ${err.message}`;
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+      deleteBackupBtn.disabled = false;
+      deleteBackupBtn.textContent = deleteBackupBtnLabel;
+      return;
+    }
+
+    deleteBackupBtn.disabled = false;
+    deleteBackupBtn.textContent = deleteBackupBtnLabel;
+
+    if (files.length === 0) {
+      deleteStatusEl.textContent = `Backup folder is empty or does not exist — nothing to delete.`;
+      deleteStatusEl.style.color = 'var(--text-muted)';
+      return;
+    }
+
+    const ok = await confirmDialog(
+      `Delete all ${files.length} file${files.length !== 1 ? 's' : ''} in ${rootFolder}/backup/? This cannot be undone.`,
+      { danger: true, okLabel: 'Delete Backups' }
+    );
+    if (!ok) { deleteStatusEl.textContent = ''; return; }
+
+    deleteBackupBtn.disabled = true;
+    deleteBackupBtn.textContent = 'Deleting…';
+    let done = 0, failed = 0;
+    for (const file of files) {
+      deleteStatusEl.textContent = `Deleting ${done + failed + 1} / ${files.length}: ${file.name}…`;
+      try {
+        await deleteGithubFile(file.path, file.sha, `Delete ${rootFolder.toLowerCase()} backup: ${file.name}`);
+        done++;
+      } catch (err) {
+        console.warn(`[delete-backup] Failed for ${file.name}:`, err.message);
+        failed++;
+      }
+    }
+
+    deleteBackupBtn.disabled = false;
+    deleteBackupBtn.textContent = deleteBackupBtnLabel;
+    if (failed > 0) {
+      deleteStatusEl.textContent = `Deleted ${done}, failed ${failed}. Check console for details.`;
+      deleteStatusEl.style.color = 'var(--danger,#dc3545)';
+    } else {
+      deleteStatusEl.textContent = `Deleted ${done} backup file${done !== 1 ? 's' : ''} from ${rootFolder}/backup/.`;
+      deleteStatusEl.style.color = 'var(--success,#198754)';
+    }
+    if (resultEl.innerHTML) await runCheck();
+  }
+}
+
+function makeSubSection(key, title, subtitle) {
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'sub-section-header' },
+    el('div', {},
+      el('div', { class: 'sub-section-title' }, title),
+      el('div', { class: 'sub-section-subtitle' }, subtitle)
+    ),
+    chevron
+  );
+  const body = el('div', { class: 'sub-section-body', style: 'display:none' });
+  wireCollapsible(key, header, body, chevron);
+  const wrap = el('div', { class: 'sub-section' });
+  wrap.appendChild(header);
+  wrap.appendChild(body);
+  return { wrap, body };
+}
+
+function fillExpenseReceiptRepoBody(body) {
+  const resultEl = el('div', { style: 'margin-top:12px' });
+  const reencryptStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const zipStatusEl       = el('div', { style: 'font-size:12px;margin-top:8px' });
+
+  const listReceipts = () => listGithubFolder('expenses/receipts');
+
+  const checkBtn     = button('Check Expense Receipts', { onClick: runCheck });
+  const reencryptBtn = button('Re-encrypt Existing Receipts', {
+    onClick: () => runReencryptFiles(listReceipts, reencryptStatusEl, reencryptBtn, 'Expense Receipts')
+  });
+  const zipBtn = button('Download All (Decrypted ZIP)', {
+    onClick: () => runDownloadZip(listReceipts, 'expense-receipts', zipStatusEl, zipBtn)
+  });
+  body.appendChild(el('div', { class: 'flex gap-8' }, checkBtn, reencryptBtn, zipBtn));
+  body.appendChild(resultEl);
+  body.appendChild(reencryptStatusEl);
+  body.appendChild(zipStatusEl);
+
+  async function runCheck() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      resultEl.innerHTML = '<div style="color:var(--danger,#dc3545)">GitHub not configured — add owner/repo/token in Settings.</div>';
+      return;
+    }
+    checkBtn.disabled = true;
+    checkBtn.textContent = 'Checking…';
+    resultEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Fetching repository file list…</div>';
+
+    let repoFiles;
+    try {
+      repoFiles = await listGithubFolder('expenses/receipts');
+    } catch (err) {
+      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not read repository: ${err.message}</div>`;
+      checkBtn.disabled = false;
+      checkBtn.textContent = 'Check Expense Receipts';
+      return;
+    }
+    checkBtn.disabled = false;
+    checkBtn.textContent = 'Check Expense Receipts';
+
+    const repoByPath = new Map(repoFiles.map(f => [f.path, f]));
+    const expenses   = listActive('expenses').filter(e => e.receipt);
+    const discrepancies  = [];
+    const matchedPaths   = new Set();
+
+    for (const exp of expenses) {
+      const { receipt } = exp;
+      if (!receipt.path && receipt.data) {
+        discrepancies.push({
+          type: 'not_uploaded',
+          detail: `Expense ${fmtDate(exp.date)} "${exp.description || exp.category}": receipt "${receipt.name}" is embedded — not yet in GitHub`,
+          exp, receipt
+        });
+      } else if (receipt.path) {
+        if (repoByPath.has(receipt.path)) {
+          matchedPaths.add(receipt.path);
+        } else {
+          discrepancies.push({
+            type: 'missing_file',
+            detail: `Expense ${fmtDate(exp.date)} "${exp.description || exp.category}": file "${receipt.path.split('/').pop()}" not found${receipt.data ? ' — embedded copy available, can re-upload' : ' — link will be cleared'}`,
+            exp, receipt, canReupload: !!receipt.data
+          });
+        }
+      }
+    }
+
+    for (const file of repoFiles) {
+      if (!matchedPaths.has(file.path)) {
+        discrepancies.push({
+          type: 'orphan_file',
+          detail: `File "${file.name}" in expenses/receipts/ is not referenced by any active expense`,
+          file
+        });
+      }
+    }
+
+    renderCheckResults(expenses.length, repoFiles.length, discrepancies);
+  }
+
+  function renderCheckResults(totalExpenses, totalFiles, discrepancies) {
+    resultEl.innerHTML = '';
+    resultEl.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);text-align:right;margin-bottom:8px' }, `Checked at ${new Date().toLocaleTimeString()}`));
+
+    const unmatched = discrepancies.filter(d => d.type !== 'orphan_file').length;
+    const matched   = totalExpenses - unmatched;
+    const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px' });
+    for (const [label, val, good] of [
+      ['Expenses w/ receipts', totalExpenses, true],
+      ['Repository files',     totalFiles,    true],
+      ['Matched',              matched,        matched === totalExpenses],
+      ['Discrepancies',        discrepancies.length, discrepancies.length === 0]
+    ]) {
+      summaryGrid.appendChild(el('div', {
+        style: `background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;text-align:center;border-top:3px solid ${good ? 'var(--success,#198754)' : 'var(--danger,#dc3545)'}`
+      },
+        el('div', { style: 'font-size:1.4rem;font-weight:700' }, String(val)),
+        el('div', { style: 'font-size:11px;color:var(--text-muted)' }, label)
+      ));
+    }
+    resultEl.appendChild(summaryGrid);
+
+    if (discrepancies.length === 0) {
+      resultEl.appendChild(el('div', { style: 'color:var(--success,#198754);font-size:13px' }, 'All expense receipts match repository files.'));
+      return;
+    }
+
+    const TYPE_LABEL = { not_uploaded: 'Not uploaded', missing_file: 'Missing file', orphan_file: 'Orphan file' };
+    const TYPE_CSS   = { not_uploaded: 'warning', orphan_file: 'warning' };
+
+    const resolvableItems = discrepancies.map(d => ({ d, action: resolveAction(d) })).filter(x => x.action);
+    const toolbar = el('div', { style: 'display:flex;align-items:center;gap:10px;margin-bottom:6px;padding:6px 0' });
+    const selectAllCb = document.createElement('input');
+    selectAllCb.type = 'checkbox';
+    selectAllCb.title = 'Select all resolvable';
+    const resolveSelBtn = button('Resolve Selected (0)', { variant: 'sm primary' });
+    resolveSelBtn.disabled = true;
+    toolbar.appendChild(selectAllCb);
+    toolbar.appendChild(el('span', { style: 'font-size:12px;color:var(--text-muted)' }, 'Select all'));
+    toolbar.appendChild(resolveSelBtn);
+
+    const rowCheckboxes = [];
+    function updateToolbar() {
+      const checked = rowCheckboxes.filter(cb => cb.checked);
+      resolveSelBtn.disabled = checked.length === 0;
+      resolveSelBtn.textContent = `Resolve Selected (${checked.length})`;
+      selectAllCb.indeterminate = checked.length > 0 && checked.length < rowCheckboxes.length;
+      selectAllCb.checked = rowCheckboxes.length > 0 && checked.length === rowCheckboxes.length;
+    }
+    selectAllCb.onchange = () => { rowCheckboxes.forEach(cb => { cb.checked = selectAllCb.checked; }); updateToolbar(); };
+    resolveSelBtn.onclick = async () => {
+      const toResolve = resolvableItems.filter((_, i) => rowCheckboxes[i]?.checked);
+      resolveSelBtn.disabled = true;
+      resolveSelBtn.textContent = 'Resolving…';
+      const errors = [];
+      for (const { action } of toResolve) {
+        try { await action(); } catch (err) { if (err.message !== 'cancelled') errors.push(err.message); }
+      }
+      if (errors.length) toast(errors.join('; '), 'danger', 6000);
+      await runCheck();
+    };
+
+    const list = el('div', { style: 'display:flex;flex-direction:column;gap:2px' });
+    if (resolvableItems.length > 0) resultEl.appendChild(toolbar);
+
+    for (const d of discrepancies) {
+      const row = el('div', { style: 'display:flex;align-items:flex-start;gap:6px;font-size:12px;padding:6px 0;border-bottom:1px solid var(--border)' });
+      const action = resolveAction(d);
+      if (action) {
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'flex-shrink:0;margin-top:3px;cursor:pointer';
+        cb.onchange = updateToolbar;
+        row.appendChild(cb);
+        rowCheckboxes.push(cb);
+      } else {
+        row.appendChild(el('span', { style: 'width:16px;flex-shrink:0' }));
+      }
+      row.appendChild(el('span', { class: `badge ${TYPE_CSS[d.type] || 'danger'}`, style: 'flex-shrink:0;margin-top:1px' }, TYPE_LABEL[d.type] || d.type));
+      row.appendChild(el('span', { style: 'flex:1' }, d.detail));
+
+      if (d.exp) {
+        const viewLink = document.createElement('a');
+        viewLink.textContent = 'View ↗';
+        viewLink.href = '#expenses';
+        viewLink.style.cssText = 'font-size:11px;white-space:nowrap;flex-shrink:0;color:var(--primary,#0d6efd);cursor:pointer;margin-right:4px';
+        viewLink.onclick = (e) => {
+          e.preventDefault();
+          navigate('expenses');
+          setTimeout(() => openExpenseForm(d.exp.id), 200);
+        };
+        row.appendChild(viewLink);
+      }
+
+      const statusEl = el('span', { style: 'font-size:11px;white-space:nowrap;flex-shrink:0' });
+      if (action) {
+        const btn = button('Resolve', { variant: 'sm primary' });
+        btn.onclick = async () => {
+          btn.disabled = true; btn.textContent = 'Resolving…';
+          statusEl.textContent = ''; statusEl.style.color = '';
+          try {
+            await action();
+            btn.textContent = '✓ Done';
+            statusEl.textContent = 'Refreshing…';
+            statusEl.style.color = 'var(--success,#198754)';
+            await new Promise(r => setTimeout(r, 600));
+            await runCheck();
+          } catch (err) {
+            btn.disabled = false; btn.textContent = 'Resolve';
+            if (err.message !== 'cancelled') { statusEl.textContent = err.message; statusEl.style.color = 'var(--danger,#dc3545)'; }
+          }
+        };
+        row.appendChild(statusEl);
+        row.appendChild(btn);
+      }
+      list.appendChild(row);
+    }
+    resultEl.appendChild(list);
+  }
+
+  function resolveAction(d) {
+    if (d.type === 'not_uploaded' || (d.type === 'missing_file' && d.canReupload)) {
+      return async () => {
+        const ext = (d.receipt.name || 'file').split('.').pop().toLowerCase();
+        const repoPath = `expenses/receipts/${d.exp.id}.${ext}`;
+        await uploadGithubFileEncrypted(repoPath, d.receipt.data, `Upload receipt for expense ${d.exp.id}`);
+        upsert('expenses', { ...d.exp, receipt: { name: d.receipt.name, type: d.receipt.type, path: repoPath } });
+        markDirty();
+      };
+    }
+    if (d.type === 'missing_file' && !d.canReupload) {
+      return async () => {
+        const updated = { ...d.exp };
+        delete updated.receipt;
+        upsert('expenses', updated);
+        markDirty();
+      };
+    }
+    if (d.type === 'orphan_file') {
+      return async () => {
+        const ok = await confirmDialog(
+          `Delete orphaned receipt "${d.file.name}" from the repository? This cannot be undone.`,
+          { danger: true, okLabel: 'Delete File' }
+        );
+        if (!ok) throw new Error('cancelled');
+        await deleteGithubFile(d.file.path, d.file.sha, `Delete orphan receipt: ${d.file.name}`);
+      };
+    }
+    return null;
+  }
+}
+
+function buildRepositoryMaintenanceCard() {
+  const card = el('div', { class: 'card mb-16' });
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Repository Maintenance'),
+      el('div', { class: 'card-subtitle' }, 'Audit and manage PDF and document files stored in GitHub')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
+  );
+  card.appendChild(header);
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+  wireCollapsible('repository-maintenance', header, body, chevron);
+
+  const invSub  = makeSubSection('repo-invoices',  'Invoices',         'PDF files stored in the invoice repository');
+  const expSub  = makeSubSection('repo-expenses',  'Expense Receipts', 'Receipt files stored under expenses/receipts/');
+  const propSub = makeSubSection('repo-properties', 'Properties',      'Document files stored under Properties/');
+  const cliSub  = makeSubSection('repo-clients',   'Clients',          'Document files stored under Clients/');
+
+  fillInvoiceRepoBody(invSub.body);
+  fillExpenseReceiptRepoBody(expSub.body);
+  fillDocRepoBody(propSub.body, {
+    rootFolder:           'Properties',
+    collection:           'properties',
+    entityLabel:          'Property',
+    checkBtnLabel:        'Check Property Documents',
+    backupBtnLabel:       'Backup Property Documents',
+    deleteBackupBtnLabel: 'Delete Property Backups',
+    openRecord:           openPropertyDetail
+  });
+  fillDocRepoBody(cliSub.body, {
+    rootFolder:           'Clients',
+    collection:           'clients',
+    entityLabel:          'Client',
+    checkBtnLabel:        'Check Client Documents',
+    backupBtnLabel:       'Backup Client Documents',
+    deleteBackupBtnLabel: 'Delete Client Backups',
+    openRecord:           openClientDetail
+  });
+
+  body.appendChild(invSub.wrap);
+  body.appendChild(expSub.wrap);
+  body.appendChild(propSub.wrap);
+  body.appendChild(cliSub.wrap);
+
+  return card;
+}
+
+// ── Debug Data Export ────────────────────────────────────────────────────────
+// Lets an admin push an on-demand decrypted snapshot to debug/ for a
+// developer/AI assistant to read directly from the repo, without ever
+// handing over the real data key. Encrypted under its own separate key (see
+// crypto.js's WRAPPED_DEBUG_KEY_LS_KEY) that only ever protects this folder —
+// regenerating it cuts off access to future exports without touching the key
+// that protects db.json, documents, or invoices.
+function buildDebugExportCard() {
+  const configured = hasDebugKeyConfigured();
+  const unlocked   = isDebugKeyUnlocked();
+
+  const card = el('div', { class: 'card mb-16' });
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const statusBadge = unlocked
+    ? el('span', { class: 'badge success' }, 'Key active')
+    : configured
+      ? el('span', { class: 'badge warning' }, 'Locked')
+      : el('span', { class: 'badge' }, 'Not configured');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Debug Data Export'),
+      el('div', { class: 'card-subtitle' }, 'Push an on-demand decrypted snapshot to debug/ for troubleshooting — encrypted under its own key, separate from your real data')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, statusBadge, chevron)
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+  wireCollapsible('debugExport', header, body, chevron);
+
+  body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:12px' },
+    'This key only decrypts files in the debug/ folder — it has no access to db.json, documents, or invoices. Generate it once and hand it to whoever is troubleshooting. Regenerating it stops them from reading any NEW export; use Clean Up below to also remove what is already there.'));
+
+  const showKeyModal = (base64) => {
+    const body2 = el('div');
+    body2.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px' },
+      'Share this with whoever needs debug access — it only decrypts files in the debug/ folder.'));
+    const keyOut = input({ value: base64, readonly: true, style: 'width:100%;font-family:monospace;font-size:12px' });
+    body2.appendChild(keyOut);
+    openModal({
+      title: 'Debug Export Key',
+      body: body2,
+      footer: [button('Done', { variant: 'primary', onClick: () => { closeModal(); setTimeout(() => navigate('settings'), 200); } })]
+    });
+  };
+
+  const genBtn = button(configured ? 'Regenerate Debug Key' : 'Generate Debug Key', {
+    variant: configured ? 'danger' : 'primary',
+    onClick: async () => {
+      if (configured) {
+        const ok = await confirmDialog(
+          'Regenerating replaces the debug key. Anyone holding the old key can still read exports already sitting in debug/, but not any new ones — run Clean Up too if you want those gone. Continue?',
+          { danger: true, okLabel: 'Regenerate' }
+        );
+        if (!ok) return;
+      }
+      if (!(await promptForPasswordAndUnlock())) return;
+      try {
+        const { key, base64 } = await generateDebugKey();
+        await installDebugKey(key);
+        showKeyModal(base64);
+      } catch (e) {
+        toast('Failed to generate debug key: ' + e.message, 'danger', 5000);
+      }
+    }
+  });
+  body.appendChild(el('div', { class: 'flex gap-8 mb-12' }, genBtn));
+
+  if (unlocked) {
+    const revealBtn = button('Reveal Debug Key', { variant: 'sm ghost', onClick: async () => {
+      try {
+        const base64 = await exportActiveDebugKeyBase64();
+        showKeyModal(base64);
+      } catch (e) {
+        toast('Could not read the debug key: ' + e.message, 'danger', 5000);
+      }
+    }});
+    body.appendChild(el('div', { class: 'mb-12' }, revealBtn));
+  }
+
+  const exportStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
+  const cleanupStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+
+  const exportBtn = button('Export Debug Snapshot', { variant: 'primary', onClick: () => runExportDebugSnapshot(exportBtn, exportStatusEl) });
+  const cleanupBtn = button('Clean Up Debug Folder', { variant: 'danger', onClick: () => runCleanupDebugFolder(cleanupBtn, cleanupStatusEl) });
+
+  body.appendChild(el('div', { class: 'flex gap-8' }, exportBtn, cleanupBtn));
+  body.appendChild(exportStatusEl);
+  body.appendChild(cleanupStatusEl);
+
+  return card;
+}
+
+async function runExportDebugSnapshot(btn, statusEl) {
+  if (!isDebugKeyUnlocked()) {
+    toast('Generate (or unlock) the debug key first', 'warning');
+    return;
+  }
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) {
+    statusEl.textContent = 'GitHub not configured — cannot export.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Exporting…';
+  statusEl.style.color = 'var(--text-muted)';
+  statusEl.textContent = 'Clearing old snapshot(s)…';
+  try {
+    // Keep debug/ down to at most one file — a stale snapshot from an
+    // earlier round left sitting alongside a fresh one is exactly the
+    // ambiguity this folder should never have: which one is current becomes
+    // a guess. Clearing first means "the file in debug/" is always
+    // unambiguous.
+    const stale = await listGithubFolder('debug');
+    for (const f of stale) {
+      try { await deleteGithubFile(f.path, f.sha, `Debug cleanup before new export: ${f.name}`); }
+      catch { /* best-effort — an unremovable stale file shouldn't block this export */ }
+    }
+    statusEl.textContent = 'Encrypting and uploading snapshot…';
+    const data = structuredClone(state.db);
+    if (data.appConfig?.github?.token) delete data.appConfig.github.token;
+    const envelope = await encryptJsonWithDebugKey({ exportedAt: new Date().toISOString(), data });
+    const json = JSON.stringify(envelope);
+    const b64  = btoa(unescape(encodeURIComponent(json)));
+    const ts   = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const filename = `snapshot-${ts}.json`;
+    await uploadGithubFile(`debug/${filename}`, b64, `Debug export: ${filename}`);
+    statusEl.textContent = `Exported debug/${filename}`;
+    statusEl.style.color = 'var(--success,#198754)';
+  } catch (e) {
+    statusEl.textContent = 'Export failed: ' + e.message;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Export Debug Snapshot';
+  }
+}
+
+async function runCleanupDebugFolder(btn, statusEl) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) {
+    statusEl.textContent = 'GitHub not configured.';
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  statusEl.style.color = 'var(--text-muted)';
+  statusEl.textContent = 'Listing debug/ folder…';
+  let files;
+  try {
+    files = await listGithubFolder('debug');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'Clean Up Debug Folder';
+    statusEl.textContent = 'Failed to list debug/: ' + e.message;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = 'Clean Up Debug Folder';
+  if (files.length === 0) {
+    statusEl.textContent = 'debug/ is already empty.';
+    statusEl.style.color = 'var(--text-muted)';
+    return;
+  }
+  const ok = await confirmDialog(
+    `Delete all ${files.length} file(s) in debug/? They stop appearing in the repo immediately, though (like any git commit) they remain recoverable from history.`,
+    { danger: true, okLabel: 'Delete All' }
+  );
+  if (!ok) return;
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  statusEl.textContent = `Deleting ${files.length} file(s)…`;
+  let failed = 0;
+  for (const f of files) {
+    try { await deleteGithubFile(f.path, f.sha, `Debug cleanup: ${f.name}`); }
+    catch { failed++; }
+  }
+  btn.disabled = false;
+  btn.textContent = 'Clean Up Debug Folder';
+  if (failed > 0) {
+    statusEl.textContent = `Deleted ${files.length - failed} of ${files.length}; ${failed} failed — try again.`;
+    statusEl.style.color = 'var(--danger,#dc3545)';
+  } else {
+    statusEl.textContent = `Deleted ${files.length} file(s).`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }
+}
+
+function buildDangerCard() {
+  const EXPORT_VERSION = 2;
+  const SCHEMA_VERSION = 1;
+  const MAX_BACKUPS    = 30;
+
+  // Canonical collection list — order controls export/import summary display
+  const ALL_COLLECTIONS = [
+    'properties', 'payments', 'expenses', 'vendors', 'tenants',
+    'clients', 'services', 'invoices', 'users', 'forecasts',
+    'inventory', 'reservationExpenseRules'
+  ];
+
+  // Build a versioned snapshot of the full app state.
+  // GitHub token is intentionally excluded — it must not appear in exported files.
+  function buildSnapshot() {
+    const data = structuredClone(state.db);
+    if (data.appConfig?.github?.token) delete data.appConfig.github.token;
+    return {
+      exportVersion: EXPORT_VERSION,
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt:    new Date().toISOString(),
+      appVersion:    String(window._appV || ''),
+      exportedBy:    state.session?.username || null,
+      snapshotName:  null,
+      data
+    };
+  }
+
+  function triggerDownload(content, filename) {
+    const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
+    const a   = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  function doExport(filename) {
+    triggerDownload(JSON.stringify(buildSnapshot(), null, 2), filename);
+  }
+
+  const card = el('div', { class: 'card mb-16' });
+
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Data')
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' },
+      chevron
+    )
+  );
+  card.appendChild(header);
+
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+
+  wireCollapsible('data', header, body, chevron);
+
+  const statusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
+
+  // ── Shared import logic ──────────────────────────────────────────────────────
+
+  async function processImport(raw) {
+    // Defense-in-depth: the "Import JSON" file picker below calls this
+    // directly with whatever the user selected, with no decryption handling
+    // of its own — a manually-downloaded scheduled/GitHub-Actions backup's
+    // `data` field can itself be the raw {enc,iv,ct} envelope (see the
+    // matching comments on the "Restore from Backup" and key-rotation flows
+    // in this same file), one level deeper than a manual export's own
+    // top-level envelope. Without this, that still-encrypted data would get
+    // injected straight into the live database.
+    try {
+      if (isEncryptedEnvelope(raw)) raw = await decryptEnvelopeToJson(raw);
+      else if (raw && typeof raw === 'object' && isEncryptedEnvelope(raw.data)) {
+        raw = { ...raw, data: await decryptEnvelopeToJson(raw.data) };
+      }
+    } catch (e) {
+      statusEl.textContent = `Import failed: could not decrypt this file (${e.message}).`;
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+    let importedData, meta;
+    if (typeof raw.exportVersion === 'number') {
+      if (raw.exportVersion > EXPORT_VERSION) {
+        statusEl.textContent = `Import failed: snapshot version ${raw.exportVersion} is newer than this app supports (max v${EXPORT_VERSION}). Update the app first.`;
+        statusEl.style.color = 'var(--danger,#dc3545)';
+        return;
+      }
+      if (!raw.data || typeof raw.data !== 'object' || Array.isArray(raw.data)) {
+        statusEl.textContent = 'Import failed: snapshot is missing the required "data" section.';
+        statusEl.style.color = 'var(--danger,#dc3545)';
+        return;
+      }
+      importedData = raw.data;
+      meta         = raw;
+    } else if (raw.properties !== undefined || raw.payments !== undefined || raw.settings !== undefined) {
+      importedData = raw;
+      meta         = null;
+    } else {
+      statusEl.textContent = 'Import failed: file does not appear to be a valid Business Tracking export.';
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
+    const rows = ALL_COLLECTIONS
+      .filter(c => Array.isArray(importedData[c]))
+      .map(c => {
+        const total  = importedData[c].length;
+        const active = importedData[c].filter(x => !x.deletedAt).length;
+        return { name: c, total, active, deleted: total - active };
+      });
+
+    const bodyEl = el('div', {});
+    if (meta) {
+      const parts = [
+        `Exported ${new Date(meta.exportedAt).toLocaleString()}`,
+        meta.exportedBy ? `by ${meta.exportedBy}` : null,
+        meta.appVersion ? `(app v${meta.appVersion})` : null,
+        meta.source     ? `[${meta.source}]` : null
+      ].filter(Boolean);
+      bodyEl.appendChild(el('div', { style: 'margin-bottom:12px;font-size:13px;color:var(--text-muted)' }, parts.join(' · ')));
+    } else {
+      bodyEl.appendChild(el('div', { style: 'margin-bottom:12px;padding:8px;background:var(--warning-bg,#fff3cd);border-radius:4px;font-size:12px' }, 'Legacy export — no version metadata. Proceeding anyway.'));
+    }
+
+    const grid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px;margin-bottom:12px' });
+    for (const { name, active, deleted } of rows) {
+      grid.appendChild(el('div', { style: 'color:var(--text-muted)' }, name));
+      grid.appendChild(el('div', {}, `${active} active${deleted > 0 ? ` + ${deleted} deleted` : ''}`));
+    }
+    if (rows.length === 0) {
+      grid.appendChild(el('div', { style: 'color:var(--text-muted);grid-column:1/-1' }, 'No data collections found in this file.'));
+    }
+    bodyEl.appendChild(grid);
+    bodyEl.appendChild(el('div', { style: 'padding:8px;background:var(--danger-bg,#f8d7da);border-radius:4px;font-size:12px;color:var(--danger,#dc3545)' },
+      'This will replace ALL current app data. Your current state will be downloaded as an automatic backup before the restore proceeds.'
+    ));
+
+    const confirmed = await new Promise(resolve => {
+      let settled = false;
+      const settle = v => { if (!settled) { settled = true; resolve(v); } };
+      const okBtn     = button('Restore Snapshot', { variant: 'danger' });
+      const cancelBtn = button('Cancel');
+      const { close } = openModal({ title: 'Restore Snapshot', body: bodyEl, footer: [cancelBtn, okBtn], onClose: () => settle(false) });
+      okBtn.onclick     = () => { close(); settle(true); };
+      cancelBtn.onclick = () => { close(); settle(false); };
+    });
+    if (!confirmed) return;
+
+    doExport(`bt-pre-import-backup-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.json`);
+
+    const restoredDb  = structuredClone(importedData);
+    const currentToken = state.github.token || '';
+    if (!restoredDb.appConfig)        restoredDb.appConfig = {};
+    if (!restoredDb.appConfig.github) restoredDb.appConfig.github = {};
+    if (currentToken)                 restoredDb.appConfig.github.token = currentToken;
+
+    setDb(restoredDb);
+    saveLocalCache(restoredDb);
+    markDirty();
+
+    const activeTotal = rows.reduce((s, r) => s + r.active, 0);
+    statusEl.textContent = `Snapshot restored: ${activeTotal} active records across ${rows.length} collection${rows.length !== 1 ? 's' : ''}. Syncing to GitHub…`;
+    statusEl.style.color = 'var(--success,#198754)';
+    toast('Snapshot restored successfully', 'success');
+    navigate('analytics');
+  }
+
+  // ── Export ──────────────────────────────────────────────────────────────────
+
+  const exportBtn = button('Export JSON', { onClick: () => {
+    doExport(`bt-snapshot-${new Date().toISOString().slice(0, 10)}.json`);
+    statusEl.textContent = `Full snapshot exported at ${new Date().toLocaleTimeString()}.`;
+    statusEl.style.color = 'var(--success,#198754)';
+  }});
+
+  // ── Import from local file ───────────────────────────────────────────────────
+
+  const importInput = input({ type: 'file', accept: '.json', style: 'display:none' });
+
+  importInput.onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    importInput.value = '';
+    let raw;
+    try { raw = JSON.parse(await file.text()); }
+    catch {
+      statusEl.textContent = 'Import failed: file is not valid JSON.';
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+    await processImport(raw);
+  };
+
+  const importBtn = button('Import JSON', { onClick: () => importInput.click() });
+
+  // ── Backup Now (push snapshot to backups/ in GitHub) ────────────────────────
+
+  async function trimBackups() {
+    let files;
+    try { files = await listGithubFolder('backups'); } catch { return; }
+    const jsons = files.filter(f => f.name.endsWith('.json')).sort((a, b) => a.name.localeCompare(b.name));
+    const excess = jsons.length - MAX_BACKUPS;
+    for (let i = 0; i < excess; i++) {
+      try { await deleteGithubFile(jsons[i].path, jsons[i].sha, `Auto-trim: ${jsons[i].name}`); }
+      catch { /* best-effort */ }
+    }
+  }
+
+  const backupNowBtn = button('Backup Now', { onClick: backupNow });
+
+  async function backupNow() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      statusEl.textContent = 'GitHub not configured — cannot backup.';
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+    backupNowBtn.disabled = true;
+    backupNowBtn.textContent = 'Backing up…';
+    statusEl.style.color = 'var(--text-muted)';
+    statusEl.textContent = 'Uploading backup to GitHub…';
+    try {
+      const snapshot = buildSnapshot();
+      // Same envelope as db.json — this snapshot holds the exact same
+      // sensitive data (all records + password hashes), so it must not sit
+      // in the public repo as plaintext just because it's a "backup".
+      const json = isUnlocked()
+        ? JSON.stringify(await encryptJsonToEnvelope(snapshot))
+        : JSON.stringify(snapshot, null, 2);
+      const b64  = btoa(unescape(encodeURIComponent(json)));
+      const ts   = new Date().toISOString().slice(0, 16).replace(':', '-');
+      const filename = `bt-backup-${ts}.json`;
+      await uploadGithubFile(`backups/${filename}`, b64, `Manual backup: ${filename}`);
+      statusEl.textContent = 'Trimming old backups…';
+      await trimBackups();
+
+      // Count remaining backups for the confirmation dialog
+      let totalCount = 0;
+      try {
+        const remaining = await listGithubFolder('backups');
+        totalCount = remaining.filter(f => f.name.endsWith('.json')).length;
+      } catch { /* ignore */ }
+
+      statusEl.textContent = '';
+
+      // Confirmation modal
+      const modalBody = el('div', {});
+      const topRow = el('div', { style: 'display:flex;align-items:center;gap:14px;margin-bottom:16px' });
+      const iconEl = el('div', {
+        style: 'width:44px;height:44px;border-radius:50%;background:var(--success-soft,#d1fae5);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0'
+      }, '✓');
+      const infoEl = el('div', {});
+      infoEl.appendChild(el('div', { style: 'font-weight:600;font-size:14px' }, 'Backup saved to GitHub'));
+      infoEl.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:3px;font-family:monospace' }, filename));
+      topRow.appendChild(iconEl);
+      topRow.appendChild(infoEl);
+      modalBody.appendChild(topRow);
+
+      const grid = el('div', { style: 'display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12px;color:var(--text-muted)' });
+      grid.appendChild(el('span', {}, 'Saved at'));
+      grid.appendChild(el('span', { style: 'color:var(--text)' }, new Date().toLocaleString()));
+      grid.appendChild(el('span', {}, 'Location'));
+      grid.appendChild(el('span', { style: 'font-family:monospace;color:var(--text)' }, `backups/${filename}`));
+      if (totalCount > 0) {
+        grid.appendChild(el('span', {}, 'Total backups'));
+        grid.appendChild(el('span', { style: 'color:var(--text)' }, `${totalCount} of ${MAX_BACKUPS} max`));
+      }
+      modalBody.appendChild(grid);
+
+      openModal({
+        title: 'Backup Complete',
+        body:  modalBody,
+        footer: [button('Close', { variant: 'primary', onClick: closeModal })]
+      });
+    } catch (e) {
+      statusEl.textContent = `Backup failed: ${e.message}`;
+      statusEl.style.color = 'var(--danger,#dc3545)';
+    } finally {
+      backupNowBtn.disabled = false;
+      backupNowBtn.textContent = 'Backup Now';
+    }
+  }
+
+  // ── Restore from Backup (select from backups/ in GitHub) ────────────────────
+
+  const restoreBackupBtn = button('Restore from Backup', { onClick: openRestoreFromBackup });
+
+  async function openRestoreFromBackup() {
+    const { owner, repo, token } = state.github;
+    if (!owner || !repo || !token) {
+      statusEl.textContent = 'GitHub not configured — cannot list backups.';
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+    restoreBackupBtn.disabled = true;
+    restoreBackupBtn.textContent = 'Loading…';
+    statusEl.textContent = '';
+
+    let files;
+    try { files = await listGithubFolder('backups'); }
+    catch (e) {
+      statusEl.textContent = `Failed to list backups: ${e.message}`;
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      restoreBackupBtn.disabled = false;
+      restoreBackupBtn.textContent = 'Restore from Backup';
+      return;
+    }
+    restoreBackupBtn.disabled = false;
+    restoreBackupBtn.textContent = 'Restore from Backup';
+
+    // Newest first
+    const jsonFiles = files.filter(f => f.name.endsWith('.json')).sort((a, b) => b.name.localeCompare(a.name));
+
+    if (jsonFiles.length === 0) {
+      statusEl.textContent = 'No backup files found in backups/ folder. Run a backup first.';
+      statusEl.style.color = 'var(--text-muted)';
+      return;
+    }
+
+    const modalBodyEl = el('div', {});
+    modalBodyEl.appendChild(el('p', { style: 'font-size:13px;color:var(--text-muted);margin:0 0 12px' },
+      'Select a backup to restore. Your current data will be downloaded as a safety backup first.'
+    ));
+
+    let selectedFile = null;
+    const restoreBtn = button('Restore Selected', { variant: 'danger' });
+    restoreBtn.disabled = true;
+
+    const listEl = el('div', { style: 'display:flex;flex-direction:column;gap:4px;max-height:380px;overflow-y:auto' });
+
+    for (const file of jsonFiles) {
+      const namePart = file.name.replace(/^bt-backup-/, '').replace(/\.json$/, '');
+      const isManual = namePart.includes('T');
+      const label    = namePart.replace('T', ' ').replace(/(\d{2})-(\d{2})$/, '$1:$2');
+      const row = el('div', {
+        style: 'display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;background:var(--surface);transition:border-color 0.1s'
+      });
+      const radioEl = el('input', { type: 'radio', name: 'backup-file-select', style: 'flex-shrink:0' });
+      row.appendChild(radioEl);
+      row.appendChild(el('div', { style: 'flex:1;min-width:0' },
+        el('div', { style: 'font-size:13px;font-weight:500;font-family:monospace' }, label),
+        el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:2px' }, isManual ? 'Manual backup' : 'Scheduled backup')
+      ));
+      row.addEventListener('click', () => {
+        radioEl.checked = true;
+        selectedFile = file;
+        restoreBtn.disabled = false;
+        listEl.querySelectorAll('[data-bk-row]').forEach(r => {
+          r.style.borderColor = 'var(--border)';
+          r.style.background  = 'var(--surface)';
+        });
+        row.style.borderColor = 'var(--primary,#0d6efd)';
+        row.style.background  = 'var(--info-soft,#e8f0fe)';
+      });
+      row.dataset.bkRow = '1';
+      listEl.appendChild(row);
+    }
+    modalBodyEl.appendChild(listEl);
+
+    const chosen = await new Promise(resolve => {
+      let settled = false;
+      const settle = v => { if (!settled) { settled = true; resolve(v); } };
+      const cancelBtn = button('Cancel');
+      const { close } = openModal({
+        title: 'Restore from Backup',
+        body:  modalBodyEl,
+        footer: [cancelBtn, restoreBtn],
+        onClose: () => settle(null)
+      });
+      restoreBtn.onclick = () => { close(); settle(selectedFile); };
+      cancelBtn.onclick  = () => { close(); settle(null); };
+    });
+    if (!chosen) return;
+
+    statusEl.textContent = `Fetching ${chosen.name}…`;
+    statusEl.style.color = 'var(--text-muted)';
+
+    let raw;
+    try {
+      const fileData = await fetchGithubFile(chosen.path);
+      const bytes = Uint8Array.from(atob(fileData.content.replace(/\s/g, '')), c => c.charCodeAt(0));
+      const text  = new TextDecoder().decode(bytes);
+      raw = JSON.parse(text);
+      // A scheduled/GitHub-Actions backup's `data` field can itself be the
+      // raw {enc,iv,ct} envelope (see the matching comment in the key
+      // rotation flow above, and .github/workflows/backup.yml) — one level
+      // deeper than a manual "Backup Now" snapshot's own top-level envelope.
+      // Checking only the top level here missed this: processImport() would
+      // inject a still-encrypted `data` straight into the live database,
+      // and pushing that pollutes db.json's top level with stray enc/iv/ct
+      // fields, corrupting how the ENTIRE file gets read on the next load
+      // anywhere.
+      if (isEncryptedEnvelope(raw)) raw = await decryptEnvelopeToJson(raw);
+      else if (isEncryptedEnvelope(raw.data)) raw = { ...raw, data: await decryptEnvelopeToJson(raw.data) };
+    } catch (e) {
+      statusEl.textContent = `Failed to fetch backup: ${e.message}`;
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
+    await processImport(raw);
+  }
+
+  // ── Button row ───────────────────────────────────────────────────────────────
+
+  body.appendChild(el('div', { class: 'flex gap-8', style: 'flex-wrap:wrap' }, exportBtn, importBtn, backupNowBtn, restoreBackupBtn, importInput));
+  body.appendChild(statusEl);
+  return card;
+}
