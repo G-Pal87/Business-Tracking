@@ -16,7 +16,7 @@ import {
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, safePct, mkTh } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, safePct, mkTh, mkDrillValue } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = [
@@ -512,7 +512,12 @@ function computeBlendedRoi(monthlyBreakdown, actPayments, fcPropMonthlyRev) {
     blendedRev += rev;
     blendedExp += exp;
     const source = useActualRev && useActualExp ? 'Actual' : (useActualRev || useActualExp ? 'Blended' : 'Forecast');
-    return { label: m.label, key: m.key, source, rev, exp, net: rev - exp };
+    // Carried through only for whichever side actually used real records —
+    // a pure-Forecast side has no transactions yet to drill into, just a
+    // projected number, so it's left empty rather than showing a false "0 records".
+    const revPayments = useActualRev ? m.payments.filter(p => p.propertyId) : [];
+    const expExpenses = useActualExp ? m.expenses.filter(e => e.propertyId) : [];
+    return { label: m.label, key: m.key, source, rev, exp, net: rev - exp, revPayments, expExpenses };
   });
   const blendedNet = blendedRev - blendedExp;
 
@@ -1168,11 +1173,20 @@ function buildKpiGrid(data, cmpData, cmpRange) {
           [
             { label: 'Month' },
             { label: 'Source', right: true, tip: 'Actual (already elapsed), Forecast (still ahead), or Blended — the current in-progress month, where revenue/expenses individually fall back to Forecast for whichever side has nothing recorded yet.' },
-            { label: 'Revenue', right: true, tip: 'Property revenue for the month — actual if elapsed, forecast if not.' },
-            { label: 'Expenses', right: true, tip: 'Property operating expenses for the month — actual if elapsed, forecast if not.' },
+            { label: 'Revenue', right: true, tip: 'Property revenue for the month — actual if elapsed, forecast if not. Underlined figures are clickable for the underlying payments.' },
+            { label: 'Expenses', right: true, tip: 'Property operating expenses for the month — actual if elapsed, forecast if not. Underlined figures are clickable for the underlying expenses.' },
             { label: 'Net', right: true, tip: 'Revenue minus Expenses for the month.' }
           ],
-          blendedRoi.monthSource.map(m => [m.label, m.source, formatEUR(m.rev), formatEUR(m.exp), formatEUR(m.net)])
+          blendedRoi.monthSource.map(m => [
+            m.label, m.source,
+            m.revPayments.length
+              ? mkDrillValue(formatEUR(m.rev), () => drillDownModal(`${m.label} — Revenue`, drillRevRows(m.revPayments, []), REV_COLS))
+              : formatEUR(m.rev),
+            m.expExpenses.length
+              ? mkDrillValue(formatEUR(m.exp), () => drillDownModal(`${m.label} — Expenses`, drillExpRows(m.expExpenses), EXP_COLS))
+              : formatEUR(m.exp),
+            formatEUR(m.net)
+          ])
         ));
 
         if (blendedRoi.propBreakdown.length > 0) {

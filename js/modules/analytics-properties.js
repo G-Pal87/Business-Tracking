@@ -9,7 +9,7 @@ import {
 } from '../core/data.js';
 import { openDetail as openPropertyDetail } from './properties.js';
 import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct, mkTh, mkExplainButton } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct, mkTh, mkExplainButton, mkDrillValue } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -974,7 +974,9 @@ function openPropertySummaryModal(d) {
 
   const perfBoxes = [
     {
-      label: 'Revenue', value: formatEUR(d.rev),
+      label: 'Revenue',
+      value: mkDrillValue(formatEUR(d.rev), () =>
+        drillDownModal(`${prop.name} — Revenue`, toRevDrillRows(d.propPayments), REV_DRILL_COLS)),
       explain: {
         title: 'Revenue', formula: 'Sum of paid payments for this property, dated within the selected period.',
         inputs: [
@@ -985,29 +987,43 @@ function openPropertySummaryModal(d) {
         note: 'Only status:\'paid\' payments count — pending/materialized rows are excluded so nothing is double-counted.'
       }
     },
-    { label: 'Operating Expenses', value: formatEUR(d.opEx), sub: d.rev > 0 ? `${(d.opEx / d.rev * 100).toFixed(0)}% of revenue` : null,
+    { label: 'Operating Expenses',
+      value: mkDrillValue(formatEUR(d.opEx), () =>
+        drillDownModal(`${prop.name} — Operating Expenses`, toExpDrillRows(d.propOpExpenses), EXP_DRILL_COLS)),
+      sub: d.rev > 0 ? `${(d.opEx / d.rev * 100).toFixed(0)}% of revenue` : null,
       explain: {
         title: 'Operating Expenses', formula: 'Sum of expenses in the selected period, excluding CapEx/renovation.',
         inputs: [{ label: 'Total', value: formatEUR(d.opEx) }],
         source: 'analytics-properties.js getData() — `opEx` (opExByProp reduce)'
       }
     },
-    { label: 'Operating Profit',   value: formatEUR(d.profit), sub: d.rev > 0 ? `Margin ${(d.profit / d.rev * 100).toFixed(0)}%` : null,
+    { label: 'Operating Profit',
+      value: mkDrillValue(formatEUR(d.profit), () =>
+        drillDownModal(`${prop.name} — Operating Profit`, mixedRows(d.propPayments, d.propOpExpenses), MIXED_DRILL_COLS)),
+      sub: d.rev > 0 ? `Margin ${(d.profit / d.rev * 100).toFixed(0)}%` : null,
       explain: {
         title: 'Operating Profit', formula: 'Revenue − Operating Expenses',
         inputs: [{ label: 'Revenue', value: formatEUR(d.rev) }, { label: 'Operating Expenses', value: formatEUR(d.opEx) }],
         source: 'analytics-properties.js getData() — `profit: rev - opEx`'
       }
     },
-    { label: 'CapEx (period)',     value: formatEUR(d.capEx) },
-    { label: 'Net (after CapEx)',  value: formatEUR(d.net),
+    { label: 'CapEx (period)',
+      value: mkDrillValue(formatEUR(d.capEx), () =>
+        drillDownModal(`${prop.name} — CapEx (period)`, toExpDrillRows(d.propCapExpenses), EXP_DRILL_COLS))
+    },
+    { label: 'Net (after CapEx)',
+      value: mkDrillValue(formatEUR(d.net), () =>
+        drillDownModal(`${prop.name} — Net (after CapEx)`, mixedRows(d.propPayments, [...d.propOpExpenses, ...d.propCapExpenses]), MIXED_DRILL_COLS)),
       explain: {
         title: 'Net (after CapEx)', formula: 'Revenue − Operating Expenses − CapEx',
         inputs: [{ label: 'Revenue', value: formatEUR(d.rev) }, { label: 'Operating Expenses', value: formatEUR(d.opEx) }, { label: 'CapEx (period)', value: formatEUR(d.capEx) }],
         source: 'analytics-properties.js getData() — `net: rev - opEx - capEx`'
       }
     },
-    { label: 'All-time CapEx',     value: formatEUR(d.allTimeCapEx) }
+    { label: 'All-time CapEx',
+      value: mkDrillValue(formatEUR(d.allTimeCapEx), () =>
+        drillDownModal(`${prop.name} — All-time CapEx`, toExpDrillRows(listActive('expenses').filter(e => isCapEx(e) && e.propertyId === prop.id)), EXP_DRILL_COLS))
+    }
   ];
   if (d.expectedBookedEUR !== null) {
     perfBoxes.push({
