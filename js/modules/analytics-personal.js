@@ -1042,21 +1042,27 @@ function showReimbModal(label, data) {
 function showDivModal(label, data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Gross Dividends', value: formatEUR(data.grossDivs),
+    { label: 'Gross Dividends', value: data.divRecords.length > 0
+        ? mkDrillValue(formatEUR(data.grossDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
+        : formatEUR(data.grossDivs),
       explain: {
         title: 'Gross Dividends', formula: 'Sum of grossAmount across dividend records for this director\'s recipient, dated within the selected period.',
         inputs: [{ label: 'Records', value: String(data.divRecords.length) }, { label: 'Total', value: formatEUR(data.grossDivs) }],
         source: 'analytics-personal.js:164 getPersonData() — `grossDivs`'
       }
     },
-    { label: 'SDC (2.65%)',     value: formatEUR(data.sdcAmount),
+    { label: 'SDC (2.65%)',     value: data.divRecords.length > 0
+        ? mkDrillValue(formatEUR(data.sdcAmount), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
+        : formatEUR(data.sdcAmount),
       explain: {
         title: 'SDC (2.65%)', formula: 'Gross Dividends × 2.65% (Special Defence Contribution)',
         inputs: [{ label: 'Gross Dividends', value: formatEUR(data.grossDivs) }],
         source: 'analytics-personal.js:165 getPersonData() — `sdcAmount` (SDC_RATE = 0.0265, line 17)'
       }
     },
-    { label: 'Net Dividends',   value: formatEUR(data.netDivs),
+    { label: 'Net Dividends',   value: data.divRecords.length > 0
+        ? mkDrillValue(formatEUR(data.netDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
+        : formatEUR(data.netDivs),
       explain: {
         title: 'Net Dividends', formula: 'Gross Dividends − SDC',
         inputs: [{ label: 'Gross Dividends', value: formatEUR(data.grossDivs) }, { label: 'SDC', value: formatEUR(data.sdcAmount) }],
@@ -1077,7 +1083,13 @@ function showDivModal(label, data) {
       body.appendChild(mkSectionLabel('By Year'));
       const yearRows = [...byYear.entries()]
         .sort((a, b) => b[0].localeCompare(a[0]))
-        .map(([yr, v]) => [yr, String(v.count), formatEUR(v.gross), formatEUR(v.gross * SDC_RATE), formatEUR(v.gross * (1 - SDC_RATE))]);
+        .map(([yr, v]) => {
+          const yrRecords = data.divRecords.filter(d => ((d.date || '').slice(0, 4) || '—') === yr);
+          return [yr, String(v.count),
+            mkDrillValue(formatEUR(v.gross), () => drillDownModal(`${label} — Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS)),
+            mkDrillValue(formatEUR(v.gross * SDC_RATE), () => drillDownModal(`${label} — Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS)),
+            mkDrillValue(formatEUR(v.gross * (1 - SDC_RATE)), () => drillDownModal(`${label} — Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS))];
+        });
       body.appendChild(mkModalTable(
         [
           { label: 'Year', tip: 'Calendar year the dividend(s) were declared.' },
@@ -1117,7 +1129,9 @@ function showDivModal(label, data) {
 function showPersonalPropsModal(label, data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Income',  value: formatEUR(data.personalIncome),
+    { label: 'Total Income',  value: data.personalPayments.length > 0
+        ? mkDrillValue(formatEUR(data.personalIncome), () => drillDownModal(`${label} — Personal Properties`, drillRevRows(data.personalPayments, []), REV_COLS))
+        : formatEUR(data.personalIncome),
       explain: {
         title: 'Total Income', formula: 'Sum of paid payments dated within the selected period, across this director\'s personal-channel properties.',
         inputs: [
@@ -1137,7 +1151,9 @@ function showPersonalPropsModal(label, data) {
     const rows = data.personalProps
       .map(p => ({ prop: p, income: data.personalByProp.get(p.id) || 0 }))
       .sort((a, b) => b.income - a.income)
-      .map(({ prop, income }) => [prop.name, prop.city, prop.country, formatEUR(income)]);
+      .map(({ prop, income }) => [prop.name, prop.city, prop.country,
+        mkDrillValue(formatEUR(income), () =>
+          drillDownModal(`${label} — ${prop.name}`, drillRevRows(data.personalPayments.filter(p => p.propertyId === prop.id), []), REV_COLS))]);
     body.appendChild(mkModalTable(
       [
         { label: 'Property', tip: 'Personal-channel property name.' },

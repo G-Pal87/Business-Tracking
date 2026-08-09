@@ -405,6 +405,8 @@ function buildPnLTable(data, taxRate, year) {
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
   tbody.appendChild(mkRow('Total Revenue', totalRevenue, {
     isSectionTotal: true, isPositive: totalRevenue >= 0,
+    drill: mkDrillValue(formatEUR(totalRevenue), () =>
+      drillDownModal(`${year} — Total Revenue`, drillRevRows(data.payments, data.invoices), REV_COLS)),
     explain: {
       title: 'Total Revenue',
       formula: 'Rental Revenue (STR) + Rental Revenue (LTR) + Service Revenue (CS) + Service Revenue (Marketing) + Other Services',
@@ -428,6 +430,8 @@ function buildPnLTable(data, taxRate, year) {
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
   tbody.appendChild(mkRow('Total Operating Expenses', totalOpEx, {
     isSectionTotal: true, isPositive: false,
+    drill: mkDrillValue(formatEUR(totalOpEx), () =>
+      drillDownModal(`${year} — Total Operating Expenses`, drillExpRows(data.opExpenses), EXP_COLS)),
     explain: {
       title: 'Total Operating Expenses',
       formula: 'Sum of all expenses in the selected year/scope, converted to EUR, excluding any expense flagged as CapEx.',
@@ -439,6 +443,8 @@ function buildPnLTable(data, taxRate, year) {
   tbody.appendChild(mkRow('', 0, {}));
   tbody.appendChild(mkRow('Operating Profit', opProfit, {
     isSubtotal: true, isPositive: opProfit >= 0,
+    drill: mkDrillValue(formatEUR(opProfit), () =>
+      drillDownModal(`${year} — Operating Profit`, drillNetRows(data.payments, data.invoices, data.opExpenses), NET_COLS)),
     explain: {
       title: 'Operating Profit',
       formula: 'Total Revenue − Total Operating Expenses',
@@ -455,6 +461,8 @@ function buildPnLTable(data, taxRate, year) {
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
   tbody.appendChild(mkRow('Total CapEx', totalCapEx, {
     isSectionTotal: true, isPositive: null,
+    drill: mkDrillValue(formatEUR(totalCapEx), () =>
+      drillDownModal(`${year} — Total CapEx`, drillExpRows(data.capExpenses), EXP_COLS)),
     explain: {
       title: 'Total CapEx',
       formula: 'Sum of expenses flagged as CapEx (isCapEx()) in the selected year/scope, converted to EUR.',
@@ -466,6 +474,8 @@ function buildPnLTable(data, taxRate, year) {
   tbody.appendChild(mkRow('', 0, {}));
   tbody.appendChild(mkRow('Net Cash Used', netCash, {
     isSubtotal: true, isPositive: netCash >= 0,
+    drill: mkDrillValue(formatEUR(netCash), () =>
+      drillDownModal(`${year} — Net Cash Used`, drillNetRows(data.payments, data.invoices, [...data.opExpenses, ...data.capExpenses]), NET_COLS)),
     explain: {
       title: 'Net Cash Used',
       formula: 'Operating Profit − Total CapEx',
@@ -549,7 +559,8 @@ function openPnLRevenueModal(streamLabel, records, isInvoice, year) {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Revenue', value: formatEUR(total) },
+    { label: 'Total Revenue', value: mkDrillValue(formatEUR(total), () =>
+        drillDownModal(`${streamLabel} — Records`, isInvoice ? drillRevRows([], records) : drillRevRows(records, []), REV_COLS)) },
     { label: isInvoice ? 'Invoices' : 'Payments', value: String(records.length) },
     { label: 'Avg', value: formatEUR(total / records.length) },
     { label: isInvoice ? 'Clients' : 'Properties', value: String(entRows.length) }

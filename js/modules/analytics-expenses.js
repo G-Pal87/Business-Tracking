@@ -944,12 +944,17 @@ function buildView() {
       const body = el('div');
       body.appendChild(mkSummaryGrid([
         { label: 'Vendors',     value: String(rows.length) },
-        { label: 'Total Spend', value: formatEUR(rows.reduce((s, [, v]) => s + v, 0)) }
+        { label: 'Total Spend',
+          value: mkDrillValue(formatEUR(rows.reduce((s, [, v]) => s + v, 0)), () => drillDownModal('Vendors Summary', toExpDrillRows(allExp.filter(e => vendorLabel(e) !== '—')), DRILL_COLS))
+        }
       ], 2));
       body.appendChild(mkSectionLabel('Vendors Summary'));
       body.appendChild(mkModalTable(
         [{ label: 'Vendor', tip: 'Vendor/supplier the expense was paid to.' }, { label: 'EUR', right: true, tip: 'Total amount paid to this vendor in the selected period.' }],
-        rows.map(([vendor, eur]) => [vendor, formatEUR(eur)])
+        rows.map(([vendor, eur]) => [
+          vendor,
+          mkDrillValue(formatEUR(eur), () => drillDownModal(`Expenses — ${vendor}`, toExpDrillRows(allExp.filter(e => vendorLabel(e) === vendor)), DRILL_COLS))
+        ])
       ));
       openModal({ title: 'Vendors Summary', body, large: true });
     }
@@ -979,12 +984,17 @@ function buildView() {
       const body = el('div');
       body.appendChild(mkSummaryGrid([
         { label: 'Categories',  value: String(rows.length) },
-        { label: 'Total Spend', value: formatEUR(rows.reduce((s, [, v]) => s + v, 0)) }
+        { label: 'Total Spend',
+          value: mkDrillValue(formatEUR(rows.reduce((s, [, v]) => s + v, 0)), () => drillDownModal('Categories Summary', toExpDrillRows(allExp), DRILL_COLS))
+        }
       ], 2));
       body.appendChild(mkSectionLabel('Categories Summary'));
       body.appendChild(mkModalTable(
         [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'EUR', right: true, tip: 'Total amount spent in this category in the selected period.' }],
-        rows.map(([cat, eur]) => [COST_CATEGORIES[cat]?.label || cat, formatEUR(eur)])
+        rows.map(([cat, eur]) => [
+          COST_CATEGORIES[cat]?.label || cat,
+          mkDrillValue(formatEUR(eur), () => drillDownModal(`Expenses — ${COST_CATEGORIES[cat]?.label || cat}`, toExpDrillRows(allExp.filter(e => (resolveExpenseFields(e).costCategory || 'other') === cat)), DRILL_COLS))
+        ])
       ));
       openModal({ title: 'Categories Summary', body, large: true });
     }
@@ -1001,19 +1011,24 @@ function buildView() {
     onClick:   () => {
       const rows = [...propWithCosts].map(pid => {
         const p   = byId('properties', pid);
-        const amt = allExp.filter(e => e.propertyId === pid)
-          .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-        return { property: p?.name || pid, eur: amt };
+        const propExp = allExp.filter(e => e.propertyId === pid);
+        const amt = propExp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+        return { property: p?.name || pid, eur: amt, propExp };
       }).sort((a, b) => b.eur - a.eur);
       const body = el('div');
       body.appendChild(mkSummaryGrid([
         { label: 'Properties',  value: String(rows.length) },
-        { label: 'Total Costs', value: formatEUR(rows.reduce((s, r) => s + r.eur, 0)) }
+        { label: 'Total Costs',
+          value: mkDrillValue(formatEUR(rows.reduce((s, r) => s + r.eur, 0)), () => drillDownModal('Costs by Property', toExpDrillRows(allExp.filter(e => propWithCosts.has(e.propertyId))), DRILL_COLS))
+        }
       ], 2));
       body.appendChild(mkSectionLabel('Costs by Property'));
       body.appendChild(mkModalTable(
         [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'EUR', right: true, tip: 'Total amount spent on this property in the selected period.' }],
-        rows.map(r => [r.property, formatEUR(r.eur)])
+        rows.map(r => [
+          r.property,
+          mkDrillValue(formatEUR(r.eur), () => drillDownModal(`Expenses — ${r.property}`, toExpDrillRows(r.propExp), DRILL_COLS))
+        ])
       ));
       openModal({ title: 'Costs by Property', body, large: true });
     }

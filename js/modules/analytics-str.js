@@ -1041,7 +1041,10 @@ function buildForwardPipelineCard() {
   lockedRevBox.title = 'Click for locked date ranges';
   lockedRevBox.onclick = () => openPipelineDetailModal(pipeline, { type: 'locked', title: 'Forward Pipeline — Locked Nights (Next 90 Days)' });
   sumGrid.appendChild(lockedRevBox);
-  sumGrid.appendChild(mkSummaryBox('Open Nights', totalOpen.toString(), 'available to book', {
+  sumGrid.appendChild(mkSummaryBox('Open Nights',
+    mkDrillValue(totalOpen.toString(), () =>
+      openPipelineDetailModal(pipeline, { type: 'open', title: 'Forward Pipeline — Open Nights (Next 90 Days)' })),
+    'available to book', {
     title: 'Open Nights', formula: 'Count of the next 90 days not covered by a guest reservation or owner-block.',
     inputs: [{ label: 'Open nights', value: totalOpen.toString() }],
     source: 'analytics-str.js:359-381 getForwardPipeline()'
@@ -1174,7 +1177,10 @@ function openRevenueModal(data) {
         note: 'Only status:\'paid\' payments count.'
       }
     },
-    { label: 'Bookings', value: payments.length.toString() }
+    { label: 'Bookings',
+      value: mkDrillValue(payments.length.toString(), () =>
+        drillDownModal(`STR Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY))
+    }
   ], 2));
 
   body.appendChild(mkSectionLabel('Revenue by Property'));
