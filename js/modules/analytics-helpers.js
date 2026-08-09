@@ -377,6 +377,38 @@ export function mkCmpGrid(items, curLabel, cmpLabel) {
   return wrap;
 }
 
+// ── Drillable value ───────────────────────────────────────────────────────────
+
+/**
+ * mkDrillValue(text, onClick) — wraps a displayed figure in a subtle clickable
+ * affordance (dotted underline) that opens a drill-down of the real records
+ * behind it when clicked.
+ *
+ * This is deliberately distinct from mkExplainButton: that answers "how was
+ * this calculated" (the formula, in the abstract); this answers "what's
+ * actually in this number" (the real payments/expenses/invoices that summed
+ * to it) — typically wired to drillDownModal() with whatever record array
+ * already produced the figure, so most call sites need no new computation,
+ * just a click handler over data already in scope.
+ *
+ * Works as a drop-in value anywhere a Node is accepted — mkSummaryBox's
+ * `value`, an mkModalTable cell, an mkKpiCard line value, etc.
+ *
+ * @param {string|HTMLElement} text - Display value.
+ * @param {() => void} onClick - Opens the drill-down (typically a drillDownModal call).
+ * @returns {HTMLElement}
+ */
+export function mkDrillValue(text, onClick) {
+  const span = el('span', {
+    style: 'cursor:pointer;text-decoration:underline;text-decoration-style:dotted;' +
+           'text-decoration-color:var(--text-muted);text-underline-offset:3px',
+    title: 'Click to see the records behind this figure'
+  });
+  span.appendChild(typeof text === 'string' ? document.createTextNode(text) : text);
+  span.onclick = e => { e.stopPropagation(); onClick(); };
+  return span;
+}
+
 // ── Empty state ───────────────────────────────────────────────────────────────
 
 /**
