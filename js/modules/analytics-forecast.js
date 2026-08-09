@@ -497,12 +497,22 @@ function computeBlendedRoi(monthlyBreakdown, actPayments, fcPropMonthlyRev) {
   const todayMk = new Date().toISOString().slice(0, 7);
   let blendedRev = 0, blendedExp = 0;
   const monthSource = monthlyBreakdown.map(m => {
-    const useActual = m.key <= todayMk;
-    const rev = useActual ? m.actPropRev : m.fcPropRev;
-    const exp = useActual ? m.actPropExp : m.fcPropExp;
+    // The current, still-in-progress month is the one ambiguous case: it's
+    // "Actual" by date, but early in the month nothing may be recorded yet
+    // (rent typically lands days 1-10), which used to show as a hard €0
+    // trough — a false-looking revenue drop rather than "not entered yet".
+    // Falls back to Forecast for just that month whenever actual-to-date is
+    // still zero; a completed past month always keeps its real (possibly
+    // zero) actual, and a future month is always pure Forecast.
+    const isCurrentMonth = m.key === todayMk;
+    const useActualRev = m.key < todayMk || (isCurrentMonth && m.actPropRev !== 0);
+    const useActualExp = m.key < todayMk || (isCurrentMonth && m.actPropExp !== 0);
+    const rev = useActualRev ? m.actPropRev : m.fcPropRev;
+    const exp = useActualExp ? m.actPropExp : m.fcPropExp;
     blendedRev += rev;
     blendedExp += exp;
-    return { label: m.label, key: m.key, source: useActual ? 'Actual' : 'Forecast', rev, exp, net: rev - exp };
+    const source = useActualRev && useActualExp ? 'Actual' : (useActualRev || useActualExp ? 'Blended' : 'Forecast');
+    return { label: m.label, key: m.key, source, rev, exp, net: rev - exp };
   });
   const blendedNet = blendedRev - blendedExp;
 
@@ -518,11 +528,15 @@ function computeBlendedRoi(monthlyBreakdown, actPayments, fcPropMonthlyRev) {
     const m = actRevByPropMonth.get(p.propertyId);
     m.set(mk, (m.get(mk) || 0) + toEUR(p.amount, p.currency, p.date));
   });
-  const monthKeys = monthlyBreakdown.map(m => ({ key: m.key, useActual: m.key <= todayMk }));
+  const monthKeys = monthlyBreakdown.map(m => ({ key: m.key, isCurrentMonth: m.key === todayMk }));
+  // Same current-month fallback as the portfolio total above, but decided
+  // per property — one property's rent landing on the 1st shouldn't make
+  // another property (still unpaid this month) show a real actual zero
+  // instead of falling back to its own forecast.
   const blendedRevForProp = propId => monthKeys.reduce((sum, m) => {
-    const rev = m.useActual
-      ? (actRevByPropMonth.get(propId)?.get(m.key) || 0)
-      : (fcPropMonthlyRev.get(m.key + '_' + propId) || 0);
+    const actualRev = actRevByPropMonth.get(propId)?.get(m.key) || 0;
+    const useActual = m.key < todayMk || (m.isCurrentMonth && actualRev !== 0);
+    const rev = useActual ? actualRev : (fcPropMonthlyRev.get(m.key + '_' + propId) || 0);
     return sum + rev;
   }, 0);
 
@@ -1153,7 +1167,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
         body.appendChild(mkModalTable(
           [
             { label: 'Month' },
-            { label: 'Source', right: true, tip: 'Whether this month\'s figures are Actual (already elapsed) or Forecast (still ahead).' },
+            { label: 'Source', right: true, tip: 'Actual (already elapsed), Forecast (still ahead), or Blended — the current in-progress month, where revenue/expenses individually fall back to Forecast for whichever side has nothing recorded yet.' },
             { label: 'Revenue', right: true, tip: 'Property revenue for the month — actual if elapsed, forecast if not.' },
             { label: 'Expenses', right: true, tip: 'Property operating expenses for the month — actual if elapsed, forecast if not.' },
             { label: 'Net', right: true, tip: 'Revenue minus Expenses for the month.' }
