@@ -768,7 +768,7 @@ function buildView(gF, curRange, cmpRange, onChange) {
             mkDrillValue(formatEUR(r.paidRev), () => drillDownModal(`${r.client} — Paid Revenue`, toInvDrillRows(clientInvs.filter(i => i.status === 'paid')), INV_DRILL_COLS)),
             mkDrillValue(formatEUR(r.invoicedRev), () => drillDownModal(`${r.client} — Invoiced Revenue`, toInvDrillRows(clientInvs.filter(i => i.status !== 'draft')), INV_DRILL_COLS)),
             mkDrillValue(formatEUR(r.outstanding), () => drillDownModal(`${r.client} — Outstanding`, toInvDrillRows(clientInvs.filter(i => i.status === 'sent' || i.status === 'overdue')), INV_DRILL_COLS)),
-            r.overdue > 0 ? mkDrillValue(formatEUR(r.overdue), () => drillDownModal(`${r.client} — Overdue`, toInvDrillRows(clientInvs.filter(i => i.status === 'overdue')), INV_DRILL_COLS)) : '—',
+            mkDrillValue(formatEUR(r.overdue), () => drillDownModal(`${r.client} — Overdue`, toInvDrillRows(clientInvs.filter(i => i.status === 'overdue')), INV_DRILL_COLS)),
             String(r.count)
           ];
         })
@@ -854,8 +854,8 @@ function buildView(gF, curRange, cmpRange, onChange) {
       body.appendChild(mkModalTable(
         [{ label: 'Metric', tip: 'Component of the DSO calculation.' }, { label: 'Value', right: true, tip: 'Value of the component for the selected period.' }],
         [
-          ['Outstanding Invoices Balance', formatEUR(outstandingTotal)],
-          ['Total Invoiced (non-draft)',    formatEUR(invoicedTotal)],
+          ['Outstanding Invoices Balance', mkDrillValue(formatEUR(outstandingTotal), () => drillDownModal('DSO — Outstanding Invoices Balance', toInvDrillRows(outstanding), INV_DRILL_COLS))],
+          ['Total Invoiced (non-draft)',    mkDrillValue(formatEUR(invoicedTotal), () => drillDownModal('DSO — Total Invoiced (non-draft)', toInvDrillRows(nonDraft), INV_DRILL_COLS))],
           ['Days in Period',               String(periodDays)],
           ['DSO = (Outstanding / Invoiced) × Days', dso !== null ? `${Math.round(dso)} days` : '—']
         ]
@@ -873,6 +873,7 @@ function buildView(gF, curRange, cmpRange, onChange) {
       });
       const clientDsoRows = [...clientDsoMap.entries()]
         .map(([cid, d]) => ({
+          clientId: cid,
           client: byId('clients', cid)?.name || '—',
           dso: d.invoiced > 0 ? (d.outstanding / d.invoiced) * periodDays : 0,
           outstanding: d.outstanding,
@@ -893,8 +894,8 @@ function buildView(gF, curRange, cmpRange, onChange) {
           clientDsoRows.map(r => [
             r.client,
             String(Math.round(r.dso)),
-            formatEUR(r.outstanding),
-            formatEUR(r.invoiced)
+            mkDrillValue(formatEUR(r.outstanding), () => drillDownModal(`DSO — ${r.client} — Outstanding`, toInvDrillRows(nonDraft.filter(i => i.clientId === r.clientId && (i.status === 'sent' || i.status === 'overdue'))), INV_DRILL_COLS)),
+            mkDrillValue(formatEUR(r.invoiced), () => drillDownModal(`DSO — ${r.client} — Invoiced`, toInvDrillRows(nonDraft.filter(i => i.clientId === r.clientId)), INV_DRILL_COLS))
           ])
         ));
       } else {
@@ -972,7 +973,7 @@ function buildView(gF, curRange, cmpRange, onChange) {
           return [
             b.label,
             String(b.items.length),
-            b.items.length ? formatEUR(bTotal) : '—',
+            b.items.length ? mkDrillValue(formatEUR(bTotal), () => drillDownModal(`Avg Invoice Size — ${b.label}`, toInvDrillRows(b.items.map(x => x.i)), INV_DRILL_COLS)) : '—',
             invoicedTotal > 0 && b.items.length ? (bTotal / invoicedTotal * 100).toFixed(1) + '%' : '—'
           ];
         })
