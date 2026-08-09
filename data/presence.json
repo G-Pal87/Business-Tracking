@@ -1,0 +1,33 @@
+{
+  "entries": {
+    "RitaK": {
+      "view": "invoices",
+      "t": 1785862370875,
+      "name": "Rita"
+    }
+  },
+  "devices": {
+    "fd9b77d3-dc30-4dd1-bfe0-51f377701f94": {
+      "username": "Giorgos",
+      "name": "Giorgos",
+      "role": "admin",
+      "device": "Chrome on Windows",
+      "deviceType": "desktop",
+      "hasKey": true,
+      "keyConfigured": true,
+      "connectedAt": 1786261134732,
+      "lastSeen": 1786261827736
+    },
+    "8d9eedd3-e62c-47e3-8865-9ed8a1a0288b": {
+      "username": "Giorgos",
+      "name": "Giorgos",
+      "role": "admin",
+      "device": "Safari on macOS",
+      "deviceType": "mobile",
+      "hasKey": true,
+      "keyConfigured": true,
+      "connectedAt": 1785696591493,
+      "lastSeen": 1785698095772
+    }
+  }
+}
