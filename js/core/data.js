@@ -1,0 +1,1614 @@
+// Data layer: CRUD + aggregations + currency conversion
+import { state, markDirty, runBatch } from './state.js';
+import { MASTER_CURRENCY } from './config.js';
+
+const _fmtCache    = new Map();
+const _numFmtCache = new Map();
+
+// ============== Currency ==============
+export function toEUR(amount, currency, dateOrYear) {
+  if (!amount) return 0;
+  if (currency === 'EUR' || !currency) return Number(amount);
+  if (currency === 'HUF') {
+    const yearRates = state.db.settings?.fxRates?.yearRates || {};
+    const years = Object.keys(yearRates);
+    if (years.length === 0) {
+      // No FX table configured at all — returning the raw HUF number as if
+      // it were EUR would silently inflate totals ~300-400x. 0 undercounts,
+      // but it's the safer failure mode for a financial aggregate.
+      console.warn('[BT] toEUR: no HUF FX rates configured — treating amount as 0 EUR instead of guessing');
+      return 0;
+    }
+    const exactYear = String(dateOrYear || '').slice(0, 4);
+    let rate = exactYear ? yearRates[exactYear] : undefined;
+    if (rate === undefined) {
+      // Fall back to the nearest configured year by absolute distance (not
+      // always the most recent), so a record older than the earliest
+      // configured year doesn't get converted with a much-later rate.
+      const sorted = years.map(Number).sort((a, b) => a - b);
+      const target = exactYear ? Number(exactYear) : sorted[sorted.length - 1];
+      const nearest = sorted.reduce((best, yr) => Math.abs(yr - target) < Math.abs(best - target) ? yr : best);
+      rate = yearRates[String(nearest)];
+    }
+    return Number(amount) * rate;
+  }
+  return Number(amount);
+}
+
+export function formatMoney(amount, currency = 'EUR', options = {}) {
+  const maxFrac = options.maxFrac ?? (currency === 'HUF' ? 0 : 2);
+  const minFrac = Math.min(options.minFrac ?? (currency === 'HUF' ? 0 : 2), maxFrac);
+  const key = `${currency}:${maxFrac}:${minFrac}`;
+  let fmt = _fmtCache.get(key);
+  if (!fmt) {
+    try {
+      fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: maxFrac, minimumFractionDigits: minFrac });
+    } catch (e) {
+      return `${amount} ${currency}`;
+    }
+    _fmtCache.set(key, fmt);
+  }
+  return fmt.format(amount || 0);
+}
+
+export function formatEUR(amount, options = {}) {
+  return formatMoney(amount, 'EUR', options);
+}
+
+export function formatNumber(n, frac = 0) {
+  let fmt = _numFmtCache.get(frac);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat('en-US', { minimumFractionDigits: frac, maximumFractionDigits: frac });
+    _numFmtCache.set(frac, fmt);
+  }
+  return fmt.format(n || 0);
+}
+
+// ============== IDs ==============
+export function newId(prefix) {
+  return `${prefix}_${crypto.randomUUID().replace(/-/g, '')}`;
+}
+
+// ============== Generic CRUD ==============
+export function upsert(collection, item) {
+  if (collection === 'users' && item.role === 'admin') {
+    // Defense-in-depth against the trivial self-escalation path (calling
+    // upsert('users', {role:'admin'}) from the console): block granting NEW
+    // admin status unless the acting session is already an admin, or this
+    // is the very first account ever created (no users exist yet). This is
+    // NOT a real security boundary — there's no backend, so a determined
+    // attacker could still bypass it — but it closes the trivial case.
+    const existingUsers = state.db.users || [];
+    const priorRecord = existingUsers.find(u => u.id === item.id);
+    const grantingAdmin = !priorRecord || priorRecord.role !== 'admin';
+    const isBootstrap = existingUsers.length === 0;
+    if (grantingAdmin && !isBootstrap && state.session?.role !== 'admin') {
+      throw new Error('Only an existing admin can grant admin access');
+    }
+  }
+  const now = Date.now();
+  const actor = state.session?.username || 'system';
+  const arr = state.db[collection] || (state.db[collection] = []);
+  const ix  = state._ix?.get(collection);
+  // Use the id index (when available) to decide insert vs. replace in O(1).
+  // Only fall back to the O(n) findIndex for the rarer in-place replace, and
+  // skip the scan entirely for brand-new records — this is what makes bulk
+  // imports O(n) instead of O(n²).
+  const isNew = ix ? !ix.has(item.id) : arr.findIndex(x => x.id === item.id) < 0;
+  if (isNew) {
+    item.createdAt = now;
+    item.createdBy = actor;
+  }
+  item.updatedAt = now;
+  item.updatedBy = actor;
+  if (isNew) {
+    arr.push(item);
+  } else {
+    const idx = arr.findIndex(x => x.id === item.id);
+    if (idx >= 0) arr[idx] = item; else arr.push(item);
+  }
+  ix?.set(item.id, item);
+  markDirty();
+  return item;
+}
+
+// WARNING: internal / machine-generated records only.
+// Do NOT call remove() for user-facing business entities — use softDelete() instead.
+export function remove(collection, id) {
+  const arr = state.db[collection] || [];
+  const idx = arr.findIndex(x => x.id === id);
+  if (idx >= 0) {
+    arr.splice(idx, 1);
+    state._ix?.get(collection)?.delete(id);
+    markDirty();
+    return true;
+  }
+  return false;
+}
+
+export function softDelete(collection, id) {
+  // Locate via the id index (O(1)) instead of scanning the array.
+  const item = state._ix?.get(collection)?.get(id) || (state.db[collection] || []).find(x => x.id === id);
+  if (!item) return false;
+  const now = Date.now();
+  const actor = state.session?.username || 'system';
+  item.deletedAt = now;
+  item.deletedBy = actor;
+  item.updatedAt = now;
+  item.updatedBy = actor;
+  markDirty();
+  return true;
+}
+
+export function listActive(collection) {
+  // Memoized: the filtered array is cached per collection and reused until the
+  // collection mutates (state.markDirty/setDb clear state._activeCache). This
+  // collapses the many listActive() calls per render into one scan per data
+  // version — critical as soft-deleted records accumulate. Returning the shared
+  // reference is safe: no caller mutates a listActive() return in place.
+  const cache = state._activeCache;
+  if (cache) {
+    const hit = cache.get(collection);
+    if (hit) return hit;
+    const arr = (state.db[collection] || []).filter(x => !x.deletedAt);
+    cache.set(collection, arr);
+    return arr;
+  }
+  return (state.db[collection] || []).filter(x => !x.deletedAt);
+}
+
+export function listActivePayments()   { return listActive('payments'); }
+export function listActiveExpenses()   { return listActive('expenses'); }
+export function listActiveInvoices()   { return listActive('invoices'); }
+export function listActiveProperties() { return listActive('properties'); }
+export function listActiveTenants()    { return listActive('tenants'); }
+export function listActiveVendors()    { return listActive('vendors'); }
+export function listActiveClients()    { return listActive('clients'); }
+export function listActiveServices()   { return listActive('services'); }
+export function listActiveInventory()  { return listActive('inventory'); }
+
+// ============== STR (short-term rental) helpers ==============
+// Airbnb payout adjustments (Resolution Adjustment, Resolution Payout,
+// Cancellation Fee, Adjustment) share the same check-in/check-out dates as the
+// "Reservation" record they adjust. Treating them as separate booked nights
+// double-counts occupancy/nights-sold and skews ADR-per-night wherever nights
+// are summed or iterated directly from payment records.
+export function isReservationNight(p) {
+  return !(p.source === 'airbnb' && p.airbnbType && p.airbnbType !== 'Reservation');
+}
+
+function deepMerge(target, source) {
+  const result = { ...target };
+  for (const key of Object.keys(source)) {
+    const sv = source[key];
+    const tv = result[key];
+    if (sv !== null && typeof sv === 'object' && !Array.isArray(sv) &&
+        tv !== null && typeof tv === 'object' && !Array.isArray(tv)) {
+      result[key] = deepMerge(tv, sv);
+    } else {
+      result[key] = sv;
+    }
+  }
+  return result;
+}
+
+export function patchSettings(patch) {
+  if (!state.db.settings) state.db.settings = {};
+  state.db.settings = deepMerge(state.db.settings, patch);
+  markDirty();
+}
+
+export function createRecord(collection, data) {
+  const item = { id: newId(collection.slice(0, 3)), ...data };
+  return upsert(collection, item);
+}
+
+export function updateRecord(collection, id, patch) {
+  const item = byId(collection, id);
+  if (!item) return null;
+  return upsert(collection, { ...item, ...patch });
+}
+
+export function byId(collection, id) {
+  const ix = state._ix?.get(collection);
+  if (ix) return ix.get(id);
+  return (state.db[collection] || []).find(x => x.id === id);
+}
+
+// ============== Filtering ==============
+export function applyFilters(rows, { year, years, stream, owner, propertyId, clientId } = {}) {
+  const f = state.ui.filters;
+  const y = year ?? f.year;
+  const s = stream ?? f.stream;
+  const o = owner ?? f.owner;
+
+  return rows.filter(r => {
+    if (years instanceof Set && years.size > 0 && r.date) {
+      if (![...years].some(yr => r.date.startsWith(String(yr)))) return false;
+    } else if (y && y !== 'all' && r.date) {
+      if (!r.date.startsWith(String(y))) return false;
+    }
+    if (s && s !== 'all' && r.stream && r.stream !== s) return false;
+    if (o && o !== 'all' && o !== 'both') {
+      // A record with no owner assigned defaults to 'both' (shared) — same
+      // convention used by mOwner() in analytics-filters.js — so it's an
+      // explicit rule here too, not an accidental pass-through of falsy
+      // `r.owner`.
+      const ro = r.owner || 'both';
+      if (ro !== 'both' && ro !== o) return false;
+    }
+    if (propertyId && r.propertyId !== propertyId) return false;
+    if (clientId && r.clientId !== clientId) return false;
+    return true;
+  });
+}
+
+// ============== Cost classification helpers ==============
+
+// Backwards-compatible CapEx detection:
+// New records carry accountingType; legacy records fall back to category === 'renovation'.
+export function isCapEx(e) {
+  if (e.accountingType) return e.accountingType === 'capex';
+  return e.category === 'renovation';
+}
+
+// Legacy category → costCategory mapping (mirrors COST_CATEGORIES in config.js)
+const LEGACY_CAT_MAP = {
+  mortgage:             'financing',           maintenance:          'maintenance',
+  renovation:           'renovation',          tax:                  'tax',
+  utilities:            'utilities',           management:           'property_management',
+  cleaning:             'cleaning',            electricity:          'utilities',
+  water:                'utilities',           inventory:            'inventory',
+  vat:                  'tax',                 reimbursement:        'other',
+  str_fee:              'property_management', salary:               'payroll',
+  social_contributions: 'payroll',             eurolife:             'insurance',
+  other:                'other'
+};
+
+// Derives accountingType / costCategory / recurrence for any expense record
+// without mutating stored data — safe, non-destructive migration layer.
+export function resolveExpenseFields(e) {
+  return {
+    accountingType: e.accountingType || (e.category === 'renovation' ? 'capex' : 'opex'),
+    costCategory:   e.costCategory   || LEGACY_CAT_MAP[e.category] || 'other',
+    recurrence:     e.recurrence     || (e.recurringGroupId ? 'recurring' : (e.category === 'renovation' || e.category === 'reimbursement') ? 'one_off' : 'recurring')
+  };
+}
+
+// ============== Aggregations ==============
+export function totalRevenueEUR(filters) {
+  const payments = applyFilters(listActivePayments(), filters).filter(p => p.status === 'paid');
+  const invoices = applyFilters(listActive('invoices'), filters).filter(i => i.status === 'paid');
+
+  let total = 0;
+  for (const p of payments) total += toEUR(p.amount, p.currency, p.date);
+  for (const i of invoices) total += toEUR(i.total, i.currency, i.issueDate);
+  return total;
+}
+
+export function totalExpensesEUR(filters, { includeRenovation = true } = {}) {
+  let rows = applyFilters(listActive('expenses'), filters);
+  if (!includeRenovation) rows = rows.filter(e => !isCapEx(e));
+  let total = 0;
+  for (const e of rows) total += toEUR(e.amount, e.currency, e.date);
+  return total;
+}
+
+export function renovationCapexEUR(filters) {
+  const rows = applyFilters(listActive('expenses'), filters).filter(e => isCapEx(e));
+  let total = 0;
+  for (const e of rows) total += toEUR(e.amount, e.currency, e.date);
+  return total;
+}
+
+// ── Sum helpers — operate on already-filtered arrays ─────────────────────────
+export function sumPaymentsEUR(payments) {
+  return payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+}
+export function sumInvoicesEUR(invoices) {
+  return invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+}
+export function sumExpensesEUR(expenses) {
+  return expenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+}
+
+// Unfiltered yearly totals — used for period-over-period comparisons
+export function yearTotalsEUR(year) {
+  const pays  = listActivePayments().filter(p => p.status === 'paid'    && (p.date      || '').startsWith(year));
+  const invs  = listActive('invoices').filter(i => i.status === 'paid'  && (i.issueDate || '').startsWith(year));
+  const opEx  = listActive('expenses').filter(e => !isCapEx(e)          && (e.date      || '').startsWith(year));
+  const capEx = listActive('expenses').filter(e =>  isCapEx(e)          && (e.date      || '').startsWith(year));
+  const rev   = sumPaymentsEUR(pays) + sumInvoicesEUR(invs);
+  const exp   = sumExpensesEUR(opEx);
+  const reno  = sumExpensesEUR(capEx);
+  return { rev, exp, reno, net: rev - exp, netCash: rev - exp - reno };
+}
+
+export function netIncomeEUR(filters) {
+  return totalRevenueEUR(filters) - totalExpensesEUR(filters, { includeRenovation: false });
+}
+
+export function ytdRange() {
+  const now = new Date();
+  return { start: `${now.getFullYear()}-01-01`, end: now.toISOString().slice(0, 10) };
+}
+
+function inDateRange(date, start, end) {
+  return date >= start && date <= end;
+}
+
+export function revenueInRangeEUR(start, end, filters = {}) {
+  const rows = listActivePayments().filter(p => inDateRange(p.date, start, end) && p.status === 'paid');
+  const invs = listActive('invoices').filter(i => inDateRange(i.issueDate, start, end) && i.status === 'paid');
+  const fRows = applyFilters(rows, filters);
+  const fInvs = applyFilters(invs.map(i => ({ ...i, date: i.issueDate })), filters);
+  let total = 0;
+  for (const p of fRows) total += toEUR(p.amount, p.currency, p.date);
+  for (const i of fInvs) total += toEUR(i.total, i.currency, i.date);
+  return total;
+}
+
+export function expensesInRangeEUR(start, end, filters = {}, { includeRenovation = true } = {}) {
+  let rows = listActive('expenses').filter(e => inDateRange(e.date, start, end));
+  if (!includeRenovation) rows = rows.filter(e => !isCapEx(e));
+  rows = applyFilters(rows, filters);
+  let total = 0;
+  for (const e of rows) total += toEUR(e.amount, e.currency, e.date);
+  return total;
+}
+
+export function propertyRevenueEUR(propertyId, filters) {
+  const rows = listActivePayments().filter(p => p.propertyId === propertyId && p.status === 'paid');
+  const filtered = applyFilters(rows, filters);
+  return filtered.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+}
+
+export function propertyExpensesEUR(propertyId, filters, { includeRenovation = true } = {}) {
+  let rows = listActive('expenses').filter(e => e.propertyId === propertyId);
+  if (!includeRenovation) rows = rows.filter(e => !isCapEx(e));
+  const filtered = applyFilters(rows, filters);
+  return filtered.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+}
+
+export function propertyROI(propertyId) {
+  const prop = byId('properties', propertyId);
+  if (!prop) return 0;
+  const purchaseEUR = toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate);
+  // "Total invested" is a lifetime figure — pin year:'all' explicitly so it
+  // doesn't inherit whatever year happens to be selected in the ambient
+  // dashboard filter (state.ui.filters.year).
+  const renoEUR = renovationCapexEUR({ propertyId, year: 'all' });
+  const totalInvested = purchaseEUR + renoEUR;
+  if (!totalInvested) return 0;
+  const now = new Date().getFullYear();
+  const rev = propertyRevenueEUR(propertyId, { year: now });
+  const exp = propertyExpensesEUR(propertyId, { year: now }, { includeRenovation: false });
+  const net = rev - exp;
+  return (net / totalInvested) * 100;
+}
+
+// net profit / total invested capital × 100
+// Accepts pre-computed { netIncome, totalInvested } to avoid double work in callers
+// that already have filtered data; falls back to current-year calculation.
+export function simplePropertyROI(propertyId, { netIncome, totalInvested } = {}) {
+  const prop = byId('properties', propertyId);
+  if (!prop) return null;
+
+  const invested = totalInvested !== undefined ? totalInvested : (() => {
+    const purchaseEUR = prop.purchasePrice
+      ? toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) : 0;
+    // Lifetime figure — see propertyROI() above for why year is pinned to 'all'.
+    return purchaseEUR + renovationCapexEUR({ propertyId, year: 'all' });
+  })();
+  if (invested <= 0) return null;
+
+  const net = netIncome !== undefined ? netIncome : (() => {
+    const yr  = new Date().getFullYear();
+    const rev = propertyRevenueEUR(propertyId, { year: yr });
+    const exp = propertyExpensesEUR(propertyId, { year: yr }, { includeRenovation: false });
+    return rev - exp;
+  })();
+
+  return (net / invested) * 100;
+}
+
+// Simple ROI normalized by years of ownership since purchaseDate.
+// Represents the average annual return per year the asset has been held.
+// Accepts same overrides as simplePropertyROI.
+export function annualizedPropertyROI(propertyId, { netIncome, totalInvested } = {}) {
+  const prop = byId('properties', propertyId);
+  if (!prop || !prop.purchaseDate) return null;
+
+  const years = (Date.now() - new Date(prop.purchaseDate).getTime()) / (365.25 * 24 * 3600 * 1000);
+  if (years < 0.083) return null; // less than ~1 month owned — too early to be meaningful
+
+  const simple = simplePropertyROI(propertyId, { netIncome, totalInvested });
+  if (simple === null) return null;
+
+  return simple / years;
+}
+
+// Annual cash flow / actual cash invested × 100
+// Cash invested = purchase price − mortgage balance (i.e., the equity/down-payment).
+// Returns null when no mortgage data is present (cash purchase) or when the
+// mortgage covers the full price, since the denominator would be zero.
+export function cashOnCashPropertyROI(propertyId, { annualCashFlow } = {}) {
+  const prop = byId('properties', propertyId);
+  if (!prop || !(prop.mortgageAmount > 0) || !prop.purchasePrice) return null;
+
+  const purchaseEUR  = toEUR(prop.purchasePrice,   prop.currency, prop.purchaseDate);
+  const mortgageEUR  = toEUR(prop.mortgageAmount,  prop.currency, prop.purchaseDate);
+  const cashInvested = purchaseEUR - mortgageEUR;
+  if (cashInvested <= 0) return null;
+
+  const cashFlow = annualCashFlow !== undefined ? annualCashFlow : (() => {
+    const yr  = new Date().getFullYear();
+    const rev = propertyRevenueEUR(propertyId, { year: yr });
+    const exp = propertyExpensesEUR(propertyId, { year: yr }, { includeRenovation: false });
+    return rev - exp;
+  })();
+
+  return (cashFlow / cashInvested) * 100;
+}
+
+export function groupByMonth(rows, dateField = 'date', amountField = 'amount', currencyField = 'currency') {
+  const map = new Map();
+  for (const r of rows) {
+    const key = (r[dateField] || '').slice(0, 7); // YYYY-MM
+    if (!key) continue;
+    map.set(key, (map.get(key) || 0) + toEUR(r[amountField], r[currencyField], r[dateField]));
+  }
+  return map;
+}
+
+export function groupByStream(rows, amountField = 'amount', currencyField = 'currency') {
+  const map = new Map();
+  for (const r of rows) {
+    const k = r.stream || 'other';
+    map.set(k, (map.get(k) || 0) + toEUR(r[amountField], r[currencyField], r.date || r.issueDate));
+  }
+  return map;
+}
+
+export function groupByCategory(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    const k = r.category || 'other';
+    map.set(k, (map.get(k) || 0) + toEUR(r.amount, r.currency, r.date));
+  }
+  return map;
+}
+
+export function recentActivity(limit = 8) {
+  const items = [];
+  for (const p of listActivePayments()) items.push({ kind: 'payment', date: p.date, data: p });
+  for (const e of listActive('expenses')) items.push({ kind: 'expense', date: e.date, data: e });
+  for (const i of listActive('invoices')) items.push({ kind: 'invoice', date: i.issueDate, data: i });
+  items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  return items.slice(0, limit);
+}
+
+export function availableYears() {
+  const years = new Set();
+  for (const p of listActivePayments()) if (p.date) years.add(p.date.slice(0, 4));
+  for (const e of listActive('expenses')) if (e.date) years.add(e.date.slice(0, 4));
+  for (const i of listActive('invoices')) if (i.issueDate) years.add(i.issueDate.slice(0, 4));
+  // Include years that have forecast records (e.g. from pending Airbnb import)
+  for (const f of (state.db.forecasts || [])) if (f.year) years.add(String(f.year));
+  return [...years].sort().reverse();
+}
+
+// ============== Vendors ==============
+export function getVendors() { return listActive('vendors'); }
+export function getVendorsByProperty(propertyId) {
+  return listActive('vendors').filter(v => !v.propertyIds?.length || v.propertyIds.includes(propertyId));
+}
+
+// ============== Forecasts ==============
+export function getOrCreateForecast(type, entityId, year) {
+  const existing = (state.db.forecasts || []).find(f => f.type === type && f.entityId === entityId && f.year === Number(year));
+  if (existing) {
+    if (!existing.yearTarget) {
+      existing.yearTarget = { revenue: 0, expenses: 0 };
+      upsert('forecasts', existing);
+    }
+    return existing;
+  }
+  const fc = { id: newId('fcs'), type, entityId, year: Number(year), taxRate: 0, yearTarget: { revenue: 0, expenses: 0 }, months: {} };
+  upsert('forecasts', fc);
+  return fc;
+}
+
+export function saveForecastMonth(forecastId, month, data) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  if (!fc) return;
+  fc.months[month] = { ...(fc.months[month] || {}), ...data };
+  upsert('forecasts', fc);
+}
+
+// Multi-entry forecast helpers (used by service forecast).
+// When entries[] exists, the month's revenue is auto-derived from their sum.
+// Months with only the legacy `revenue` field continue to work unchanged.
+export function getForecastEntries(forecastId, month) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  return fc?.months?.[month]?.entries || [];
+}
+
+// A booking-linked entry (entry.bookingStatus set) that's been cancelled or
+// manually removed is kept in entries[] as a tombstone — so a later re-import
+// never resurrects it — but must not count toward revenue. Plain manual
+// entries (no bookingStatus) are unaffected and always count, same as before.
+// Exported so every place that independently re-sums entries[] (analytics
+// dashboards mirroring this same data) excludes tombstones consistently
+// instead of each re-implementing the same filter inline.
+export function sumForecastEntries(entries) {
+  return entries.reduce((s, e) => {
+    if (e.bookingStatus === 'cancelled' || e.bookingStatus === 'removed') return s;
+    return s + (Number(e.amount) || 0);
+  }, 0);
+}
+
+export function upsertForecastEntry(forecastId, month, entry) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  if (!fc) return null;
+  if (!fc.months[month]) fc.months[month] = {};
+  const m = fc.months[month];
+  if (!Array.isArray(m.entries)) m.entries = [];
+  if (!entry.id) entry.id = newId('fce');
+  const idx = m.entries.findIndex(e => e.id === entry.id);
+  if (idx >= 0) m.entries[idx] = entry; else m.entries.push(entry);
+  m.revenue = sumForecastEntries(m.entries);
+  upsert('forecasts', fc);
+  return entry;
+}
+
+export function removeForecastEntry(forecastId, month, entryId) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  const m = fc?.months?.[month];
+  if (!m?.entries) return;
+  m.entries = m.entries.filter(e => e.id !== entryId);
+  m.revenue = sumForecastEntries(m.entries);
+  upsert('forecasts', fc);
+}
+
+export function setForecastTaxRate(forecastId, rate) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  if (!fc) return;
+  fc.taxRate = Number(rate) || 0;
+  upsert('forecasts', fc);
+}
+
+export function saveForecastYear(forecastId, data) {
+  const fc = (state.db.forecasts || []).find(f => f.id === forecastId);
+  if (!fc) return;
+  fc.yearTarget = { ...(fc.yearTarget || {}), ...data };
+  upsert('forecasts', fc);
+}
+
+export function getForecastVsActual(type, entityId, year) {
+  const fc = (state.db.forecasts || []).find(f => f.type === type && f.entityId === entityId && f.year === Number(year));
+
+  // For LT rental properties: build a monthKey→amountEUR map from the rent schedule
+  // so months with no manual forecast entry still show projected rent.
+  let ltRentByMonth = null;
+  if (type === 'property') {
+    const prop = byId('properties', entityId);
+    if (prop?.type === 'long_term') {
+      ltRentByMonth = {};
+      for (const entry of generatePaymentSchedule(prop)) {
+        if (entry.monthKey?.startsWith(String(year))) {
+          ltRentByMonth[entry.monthKey] = toEUR(entry.amount, entry.currency, year);
+        }
+      }
+    }
+  }
+
+  // Pre-filter collections to entity + year — avoids 24 full-collection scans
+  const yearStr = String(year);
+  let entityPayments = null, entityExpenses = null, entityInvoices = null;
+  if (type === 'property') {
+    entityPayments = listActivePayments().filter(p => p.propertyId === entityId && p.status === 'paid' && (p.date || '').startsWith(yearStr));
+    entityExpenses = listActive('expenses').filter(e => e.propertyId === entityId && !isCapEx(e) && (e.date || '').startsWith(yearStr));
+  } else {
+    entityInvoices = listActive('invoices').filter(i => i.stream === entityId && i.status === 'paid' && (i.issueDate || '').startsWith(yearStr));
+    // Service-stream expenses match by e.stream (same convention as
+    // getActualExpRows in forecast.js) — this used to be left unset, so
+    // actualExp was hardcoded to 0 for every service-forecast month below.
+    entityExpenses = listActive('expenses').filter(e => e.stream === entityId && !isCapEx(e) && (e.date || '').startsWith(yearStr));
+  }
+
+  const months = [];
+  for (let m = 1; m <= 12; m++) {
+    const key = `${year}-${String(m).padStart(2, '0')}`;
+    const start = `${key}-01`;
+    const end = `${key}-${new Date(year, m, 0).getDate().toString().padStart(2, '0')}`;
+    let actualRev = 0, actualExp = 0;
+    if (type === 'property') {
+      actualRev = entityPayments.filter(p => p.date >= start && p.date <= end).reduce((s, p) => s + toEUR(p.amount, p.currency, year), 0);
+    } else {
+      actualRev = entityInvoices.filter(i => i.issueDate >= start && i.issueDate <= end).reduce((s, i) => s + toEUR(i.total, i.currency, year), 0);
+    }
+    actualExp = entityExpenses.filter(e => e.date >= start && e.date <= end).reduce((s, e) => s + toEUR(e.amount, e.currency, year), 0);
+    const fd = fc?.months?.[key] || {};
+    // Fall back to scheduled LT rent only when no forecast entry exists at all
+    // for this month — `!= null` (not `||`) so an explicit revenue of 0 (e.g.
+    // "tenant moving out, no rent expected") is respected instead of being
+    // silently replaced by the scheduled rent.
+    const forecastRev = fd.revenue != null ? fd.revenue : (ltRentByMonth?.[key] ?? 0);
+    const forecastExp = fd.expenses || 0;
+    months.push({ key, forecastRev, forecastExp, actualRev, actualExp, revVariance: actualRev - forecastRev, expVariance: actualExp - forecastExp });
+  }
+  return { forecast: fc, months, yearTarget: fc?.yearTarget || { revenue: 0, expenses: 0 } };
+}
+
+export function forecastedRevenueEUR(year) {
+  const forecasts = (state.db.forecasts || []).filter(f => f.year === Number(year));
+  return forecasts.reduce((sum, fc) => {
+    return sum + Object.values(fc.months || {}).reduce((ms, md) => {
+      const entries = Array.isArray(md.entries) ? md.entries : [];
+      return ms + (entries.length > 0
+        ? sumForecastEntries(entries)
+        : Number(md.revenue) || 0);
+    }, 0);
+  }, 0);
+}
+
+// Returns a Map of YYYY-MM → forecasted EUR for monthly trend overlay
+export function forecastMonthlyEUR(year) {
+  const forecasts = (state.db.forecasts || []).filter(f => f.year === Number(year));
+  const map = new Map();
+  for (const fc of forecasts) {
+    for (const [mk, md] of Object.entries(fc.months || {})) {
+      const entries = Array.isArray(md.entries) ? md.entries : [];
+      const val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
+      if (val > 0) map.set(mk, (map.get(mk) || 0) + val);
+    }
+  }
+  return map;
+}
+
+export function estimateTaxForYear(year, rate) {
+  const s = `${year}-01-01`, e = `${year}-12-31`;
+  const rev = [...listActivePayments().filter(p => p.status === 'paid' && p.date >= s && p.date <= e).map(p => toEUR(p.amount, p.currency, year)), ...listActive('invoices').filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e).map(i => toEUR(i.total, i.currency, year))].reduce((a, b) => a + b, 0);
+  const exp = listActive('expenses').filter(ex => !isCapEx(ex) && ex.date >= s && ex.date <= e).reduce((a, ex) => a + toEUR(ex.amount, ex.currency, year), 0);
+  const taxable = Math.max(0, rev - exp);
+  const forecastRev = (state.db.forecasts || []).filter(f => f.year === Number(year)).reduce((sum, f) => sum + Object.values(f.months || {}).reduce((ms, md) => ms + (md.revenue || 0), 0), 0);
+  const forecastTaxable = Math.max(0, forecastRev - exp);
+  const r = Number(rate) || 0;
+  return { rev, exp, taxable, estimatedTax: taxable * (r / 100), forecastRev, forecastTaxable, forecastTax: forecastTaxable * (r / 100), rate: r };
+}
+
+// ============== LT Schedule ==============
+
+// Internal helper: generate schedule entries for one lease segment.
+// leaseData must have: monthlyRent, currency, leaseStartDate?, leaseEndDate?, paymentDayOfMonth?
+function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDate, paysByMonth) {
+  const now = new Date();
+  const dueDay = Math.min(Math.max(leaseData.paymentDayOfMonth || 1, 1), 28);
+
+  let rangeStart, rangeEnd;
+  if (leaseData.leaseStartDate) {
+    const d = new Date(leaseData.leaseStartDate);
+    rangeStart = new Date(d.getFullYear(), d.getMonth(), 1);
+  } else {
+    rangeStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  }
+  if (leaseData.leaseEndDate) {
+    const d = new Date(leaseData.leaseEndDate);
+    rangeEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  } else {
+    rangeEnd = new Date(now.getFullYear(), now.getMonth() + 13, 1);
+  }
+
+  const results = [];
+  let cursor = new Date(rangeStart);
+  while (cursor < rangeEnd) {
+    const lastDay = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+    const day = Math.min(dueDay, lastDay);
+    const dueDate = new Date(cursor.getFullYear(), cursor.getMonth(), day);
+    const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+    const dateStr = `${monthKey}-${String(day).padStart(2, '0')}`;
+    const monthPays = (paysByMonth.get(monthKey) || []).filter(p =>
+      p.propertyId === propertyId &&
+      (p.stream === 'long_term_rental' || p.type === 'rental')
+    );
+    const paidPayment  = monthPays.find(p => p.status === 'paid') || null;
+    const linkedPayment = paidPayment || monthPays[0] || null;
+    const paid = !!paidPayment;
+    // Skip unpaid entries in a vacant period or on/after the sold date
+    if (!paid) {
+      const inVacant = (vacantPeriods || []).some(vp =>
+        vp.startDate && dateStr >= vp.startDate && dateStr <= (vp.endDate || '9999-12-31')
+      );
+      const afterSold = soldDate ? dateStr > soldDate : false;
+      if (inVacant || afterSold) {
+        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+        continue;
+      }
+    }
+    const overdue = !paid && dueDate < now;
+    results.push({
+      date: dateStr, monthKey,
+      amount: leaseData.monthlyRent, currency: leaseData.currency || 'EUR',
+      amountEUR: toEUR(leaseData.monthlyRent, leaseData.currency || 'EUR', cursor.getFullYear()),
+      paid, overdue,
+      paidPaymentId: paidPayment?.id || null,
+      linkedPaymentId: linkedPayment?.id || null,
+      tenantId: tenantId || null
+    });
+    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+  }
+  return results;
+}
+
+export function generatePaymentSchedule(property) {
+  if (property.type !== 'long_term') return [];
+
+  const tenants = listActive('tenants')
+    .filter(t => t.propertyId === property.id && t.monthlyRent)
+    .sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || ''));
+
+  if (!tenants.length) return [];
+
+  // Pre-build month → payments map to avoid repeated full scans inside _scheduleSegment
+  const paysByMonth = new Map();
+  for (const p of listActivePayments()) {
+    if (!p.date) continue;
+    const mk = p.date.slice(0, 7);
+    const arr = paysByMonth.get(mk) || [];
+    arr.push(p);
+    paysByMonth.set(mk, arr);
+  }
+
+  const vacantPeriods = property.vacantPeriods || [];
+  const soldDate = (property.status === 'sold' && property.soldDate) ? property.soldDate : null;
+
+  // Merge segments from all tenants (already sorted earlier-lease-first
+  // above), deduplicate by monthKey BEFORE re-ordering chronologically.
+  // Dedup must see entries in tenant-priority order so "earlier lease wins"
+  // is decided by lease start date — sorting by due-date string first (as
+  // this used to do) let day-of-month decide instead, since e.g. "05" sorts
+  // before "25" regardless of which tenant's lease actually started earlier.
+  const all = [];
+  for (const t of tenants) all.push(..._scheduleSegment(property.id, t, t.id, vacantPeriods, soldDate, paysByMonth));
+  const seen = new Set();
+  const deduped = all.filter(e => { if (seen.has(e.monthKey)) return false; seen.add(e.monthKey); return true; });
+  deduped.sort((a, b) => a.date.localeCompare(b.date));
+  return deduped;
+}
+
+// ============== Reconciliation ==============
+// ownerFilter: '' (all) | 'you' | 'rita' — a property/invoice tagged 'both'
+// always matches, mirroring the owner-filter convention used across every
+// analytics-*.js dashboard's mOwner()/ownerMatches() matcher.
+// scope: 'all' (default — every property/invoice, personal included, matching
+// this function's original behaviour) | 'company' — excludes personal-channel
+// properties and personal-flagged invoices, same as every analytics
+// dashboard's Company-only/All scope toggle.
+export function buildReconciliationData(year, ownerFilter, scope) {
+  const yr = Number(year);
+  const now = new Date();
+  const yearStr = String(yr);
+
+  const matchPropOwner = prop => {
+    if (!ownerFilter) return true;
+    const ow = prop.owner || 'both';
+    return ow === 'both' || ow === ownerFilter;
+  };
+  const matchInvOwner = inv => {
+    if (!ownerFilter) return true;
+    let ow = inv.owner;
+    if (!ow && inv.clientId) ow = byId('clients', inv.clientId)?.owner;
+    ow = ow || 'both';
+    return ow === 'both' || ow === ownerFilter;
+  };
+  const matchPropScope = prop => scope !== 'company' || (prop.channel || 'company') === 'company';
+  const coPropIds = companyPropIds();
+  const matchInvScope = inv => scope !== 'company' || isCompanyRecord(inv, coPropIds);
+
+  // Pre-build lookup maps — avoids O(n) listActive() scans inside nested loops
+  const tenantsByProp = new Map();
+  for (const t of listActive('tenants')) {
+    if (!t.monthlyRent) continue;
+    const arr = tenantsByProp.get(t.propertyId) || [];
+    arr.push(t);
+    tenantsByProp.set(t.propertyId, arr);
+  }
+  // Sort each property's tenants by lease start date so an overlapping-month
+  // lookup below (.find()) resolves to the earlier lease first — same
+  // "earlier lease wins" convention generatePaymentSchedule() uses, so the
+  // two views agree on which tenant's rent is "expected" in a transition month.
+  for (const arr of tenantsByProp.values()) {
+    arr.sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || ''));
+  }
+  const paysByProp = new Map();
+  for (const p of listActivePayments()) {
+    if (!(p.date || '').startsWith(yearStr)) continue;
+    const arr = paysByProp.get(p.propertyId) || [];
+    arr.push(p);
+    paysByProp.set(p.propertyId, arr);
+  }
+  const invsByStream = new Map();
+  for (const i of listActive('invoices')) {
+    if (i.status === 'draft' || !(i.issueDate || '').startsWith(yearStr) || !matchInvOwner(i) || !matchInvScope(i)) continue;
+    const arr = invsByStream.get(i.stream) || [];
+    arr.push(i);
+    invsByStream.set(i.stream, arr);
+  }
+
+  const entities = [];
+
+  for (const prop of listActive('properties')) {
+    if (!matchPropOwner(prop) || !matchPropScope(prop)) continue;
+    const propTenants = tenantsByProp.get(prop.id) || [];
+    const propPayments = paysByProp.get(prop.id) || [];
+    const months = [];
+    for (let m = 1; m <= 12; m++) {
+      const mk = `${yr}-${String(m).padStart(2, '0')}`;
+      const start = `${mk}-01`;
+      const end = `${mk}-${new Date(yr, m, 0).getDate().toString().padStart(2, '0')}`;
+      const monthEnd = new Date(yr, m, 0);
+      const isPast = monthEnd < now;
+      let expected = 0, actual = 0;
+
+      if (prop.type === 'long_term') {
+        const mStr = `${mk}-01`;
+        const tenant = propTenants.find(t => {
+          const ls = t.leaseStartDate ? t.leaseStartDate.slice(0, 7) + '-01' : null;
+          const le = t.leaseEndDate   ? t.leaseEndDate.slice(0, 7)   + '-01' : null;
+          return (!ls || mStr >= ls) && (!le || mStr <= le);
+        });
+        if (tenant) expected = toEUR(tenant.monthlyRent, tenant.currency || 'EUR', yr);
+        actual = propPayments
+          .filter(p => p.date >= start && p.date <= end && p.status === 'paid')
+          .reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
+      } else if (prop.type === 'short_term') {
+        const monthPays = propPayments.filter(p => p.date >= start && p.date <= end);
+        expected = monthPays.reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
+        actual   = monthPays.filter(p => p.status === 'paid').reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
+      }
+
+      months.push({ mk, m, expected, actual, variance: actual - expected, isPast });
+    }
+    const totExp = months.reduce((s, m) => s + m.expected, 0);
+    const totAct = months.reduce((s, m) => s + m.actual, 0);
+    entities.push({
+      id: prop.id, label: prop.name,
+      kind: prop.type === 'long_term' ? 'lt' : 'st',
+      months, totExp, totAct, totVariance: totAct - totExp
+    });
+  }
+
+  // Services: issued invoices = expected; paid = actual
+  for (const { stream, label } of [
+    { stream: 'customer_success',  label: 'Customer Success' },
+    { stream: 'marketing_services', label: 'Marketing Services' }
+  ]) {
+    const streamInvs = invsByStream.get(stream) || [];
+    const months = [];
+    for (let m = 1; m <= 12; m++) {
+      const mk = `${yr}-${String(m).padStart(2, '0')}`;
+      const start = `${mk}-01`;
+      const end = `${mk}-${new Date(yr, m, 0).getDate().toString().padStart(2, '0')}`;
+      const monthEnd = new Date(yr, m, 0);
+      const isPast = monthEnd < now;
+      const invs = streamInvs.filter(i => i.issueDate >= start && i.issueDate <= end);
+      const expected = invs.reduce((s, i) => s + toEUR(i.total, i.currency, yr), 0);
+      const actual   = invs.filter(i => i.status === 'paid').reduce((s, i) => s + toEUR(i.total, i.currency, yr), 0);
+      months.push({ mk, m, expected, actual, variance: actual - expected, isPast });
+    }
+    const totExp = months.reduce((s, m) => s + m.expected, 0);
+    const totAct = months.reduce((s, m) => s + m.actual, 0);
+    entities.push({ id: stream, label, kind: 'service', months, totExp, totAct, totVariance: totAct - totExp });
+  }
+
+  return entities;
+}
+
+// ============== Centralised report data (single source of truth) ==============
+export function buildReportData(filters = {}) {
+  const f = { ...state.ui.filters, ...filters };
+  const matchDate = row => {
+    if (f.years instanceof Set) {
+      if (f.years.size === 0) return true;
+      const d = row.date || row.issueDate || '';
+      return [...f.years].some(y => d.startsWith(String(y)));
+    }
+    if (!f.year || f.year === 'all') return true;
+    const d = row.date || row.issueDate || '';
+    return d.startsWith(String(f.year));
+  };
+  const matchStream = row => {
+    if (f.streams instanceof Set) return f.streams.size === 0 || !row.stream || f.streams.has(row.stream);
+    return !f.stream || f.stream === 'all' || !row.stream || row.stream === f.stream;
+  };
+  const matchProperty = row => {
+    if (f.propertyIds instanceof Set) return f.propertyIds.size === 0 || f.propertyIds.has(row.propertyId);
+    return !f.propertyId || f.propertyId === 'all' || row.propertyId === f.propertyId;
+  };
+
+  const payments = listActivePayments().filter(p => p.status === 'paid' && matchDate(p) && matchStream(p) && matchProperty(p));
+  const invoices = listActive('invoices').filter(i => i.status === 'paid' && matchDate({ date: i.issueDate }) && matchStream(i) && matchProperty(i));
+  const allExpenses  = listActive('expenses');
+  const opExpenses   = allExpenses.filter(e => !isCapEx(e) && matchDate(e) && matchStream(e) && matchProperty(e));
+  const renoExpenses = allExpenses.filter(e =>  isCapEx(e) && matchDate(e) && matchProperty(e));
+
+  const rev = [...payments, ...invoices.map(i => ({ ...i, amount: i.total, date: i.date || i.issueDate }))].reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
+  const exp = opExpenses.reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
+  const reno = renoExpenses.reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
+
+  return { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net: rev - exp };
+}
+
+// Returns true if a record counts as "company" scope: payments explicitly
+// flagged `personal` (e.g. off-platform bookings that don't go through the
+// company) are always excluded, regardless of their property's channel;
+// otherwise scope follows the property's channel as before.
+export function isCompanyRecord(r, coPropIds) {
+  if (r.personal) return false;
+  return !r.propertyId || coPropIds.has(r.propertyId);
+}
+
+// Returns a Set of property IDs whose channel is 'company' (or unset, which defaults to company).
+// Records without a propertyId (e.g. salary expenses, service invoices) are always company-scope.
+export function companyPropIds() {
+  return new Set(
+    listActive('properties')
+      .filter(p => (p.channel || 'company') === 'company')
+      .map(p => p.id)
+  );
+}
+
+// ============== Drill-down row normalisers (used by all reporting modules) ==============
+export function drillRevRows(payments, invoices) {
+  return [
+    ...(payments || []).map(p => ({ date: p.date, type: 'Payment', source: byId('properties', p.propertyId)?.name || p.source || '', ref: p.type || '', eur: toEUR(p.amount, p.currency, p.date) })),
+    ...(invoices || []).map(i => ({ date: i.issueDate || i.date, type: 'Invoice', source: byId('clients', i.clientId)?.name || '', ref: i.number || '', eur: toEUR(i.total || i.amount, i.currency, i.issueDate || i.date) }))
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+export function drillExpRows(expenses) {
+  return (expenses || []).map(e => ({ date: e.date, source: byId('properties', e.propertyId)?.name || '', category: e.category, description: e.description || '', eur: toEUR(e.amount, e.currency, e.date) }))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+export function drillNetRows(payments, invoices, expenses) {
+  return [
+    ...drillRevRows(payments, invoices).map(r => ({ date: r.date, kind: 'Revenue', source: r.source + (r.ref ? ' · ' + r.ref : ''), eur: r.eur })),
+    ...drillExpRows(expenses).map(r => ({ date: r.date, kind: 'Expense', source: (r.source ? r.source + ' · ' : '') + r.category, eur: r.eur }))
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+// ============== Trash / Soft-delete management ==============
+
+export function listDeletedRecords() {
+  const records = [];
+  Object.keys(state.db).forEach(collection => {
+    if (!Array.isArray(state.db[collection])) return;
+    state.db[collection]
+      .filter(item => item && item.deletedAt)
+      .forEach(item => records.push({ key: `${collection}:${item.id}`, collection, item }));
+  });
+  return records;
+}
+
+export function restoreRecord(collection, id) {
+  const arr = state.db[collection];
+  if (!Array.isArray(arr)) return false;
+  const item = arr.find(x => x.id === id);
+  if (!item || !item.deletedAt) return false;
+  delete item.deletedAt;
+  delete item.deletedBy;
+  item.updatedAt = Date.now();
+  item.updatedBy = state.session?.username || 'system';
+  markDirty();
+  return true;
+}
+
+// Permanent-delete tombstones: every id ever hard-deleted is recorded here
+// (synced as part of db.json, same as any other field) so mergeDb/
+// mergeLocalPending/resyncDb can refuse to resurrect it no matter what a
+// stale/lagging GitHub read claims. Without this, a hard delete that already
+// pushed successfully could still come back: any LATER push (for something
+// completely unrelated) that happens to fetch a lagging copy of GitHub —
+// one still showing the old, deleted record — had no way to know the record
+// was gone for a *reason* rather than just "not yet in this snapshot", so it
+// flowed straight through into the merge and got written back to remote,
+// resurrecting it both there and locally. A permanent, explicit tombstone
+// closes that off entirely instead of relying on timestamp heuristics, which
+// this exact bug shape has broken more than once tonight.
+export function recordTombstone(collection, id) {
+  if (!state.db._tombstones) state.db._tombstones = {};
+  state.db._tombstones[`${collection}:${id}`] = Date.now();
+}
+
+// Bounds tombstone growth — kept for maxAgeDays. Must comfortably exceed
+// autoPurgeOldDeleted's own maxAgeDays (5, see app.js): a tombstone is only
+// created once a soft-deleted record is hard-purged at that point, so its
+// total protection window is 5 days + this value. A device offline for
+// longer than that total — plausible for weeks-long trips, not just a lagging
+// GitHub read — that made a genuine edit to a record before it was deleted
+// elsewhere could resurrect it once reconnected, if the tombstone has
+// already expired by then. 30 days keeps that combined window realistic
+// while tombstones themselves stay tiny (a timestamp per deleted id).
+export function pruneTombstones(maxAgeDays = 30) {
+  const tombstones = state.db._tombstones;
+  if (!tombstones) return 0;
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+  let count = 0;
+  for (const key of Object.keys(tombstones)) {
+    if (tombstones[key] < cutoff) { delete tombstones[key]; count++; }
+  }
+  return count;
+}
+
+export function permanentlyDeleteRecord(collection, id) {
+  const arr = state.db[collection];
+  if (!Array.isArray(arr)) return false;
+  const index = arr.findIndex(x => x && x.id === id);
+  if (index === -1) return false;
+  arr.splice(index, 1);
+  state._ix?.get(collection)?.delete(id);
+  recordTombstone(collection, id);
+  markDirty();
+  return true;
+}
+
+export function restoreRecords(records) {
+  let count = 0;
+  records.forEach(({ collection, id }) => {
+    const arr = state.db[collection];
+    if (!Array.isArray(arr)) return;
+    const item = arr.find(x => x.id === id);
+    if (!item || !item.deletedAt) return;
+    delete item.deletedAt;
+    delete item.deletedBy;
+    item.updatedAt = Date.now();
+    item.updatedBy = state.session?.username || 'system';
+    count++;
+  });
+  if (count > 0) markDirty();
+  return count;
+}
+
+export function permanentlyDeleteRecords(records) {
+  let count = 0;
+  records.forEach(({ collection, id }) => {
+    const arr = state.db[collection];
+    if (!Array.isArray(arr)) return;
+    const index = arr.findIndex(x => x && x.id === id);
+    if (index === -1) return;
+    arr.splice(index, 1);
+    state._ix?.get(collection)?.delete(id);
+    recordTombstone(collection, id);
+    count++;
+  });
+  if (count > 0) markDirty();
+  return count;
+}
+
+export function purgeDeletedRecords() {
+  let count = 0;
+  Object.keys(state.db).forEach(collection => {
+    if (!Array.isArray(state.db[collection])) return;
+    const before = state.db[collection].length;
+    for (const item of state.db[collection]) {
+      if (item.deletedAt) recordTombstone(collection, item.id);
+    }
+    state.db[collection] = state.db[collection].filter(item => !item.deletedAt);
+    count += before - state.db[collection].length;
+    // Rebuild the id index so byId() can't return purged records.
+    if (state._ix) state._ix.set(collection, new Map(state.db[collection].map(item => [item.id, item])));
+  });
+  if (count > 0) markDirty();
+  return count;
+}
+
+// Collect every string value held by a record (depth-limited) into `set`.
+// Any of these may be a foreign key pointing at another record's id, so a
+// deleted record whose id appears here must not be purged (would orphan a ref).
+function _collectStringValues(value, set, depth = 0) {
+  if (value == null || depth > 5) return;
+  const t = typeof value;
+  if (t === 'string') { set.add(value); return; }
+  if (t !== 'object') return;
+  if (Array.isArray(value)) {
+    for (const v of value) _collectStringValues(v, set, depth + 1);
+    return;
+  }
+  for (const k in value) _collectStringValues(value[k], set, depth + 1);
+}
+
+/**
+ * Permanently remove records that were soft-deleted longer than `maxAgeDays`
+ * ago, EXCEPT any whose id is still referenced by an active (non-deleted)
+ * record — keeping referential integrity intact. Runs at load after the
+ * authoritative data is in place. Returns the number of records purged.
+ */
+export function autoPurgeOldDeleted({ maxAgeDays = 90 } = {}) {
+  const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+
+  // 1) Build the set of ids referenced by any active record.
+  const referenced = new Set();
+  for (const col of Object.keys(state.db)) {
+    const arr = state.db[col];
+    if (!Array.isArray(arr)) continue;
+    for (const rec of arr) {
+      if (rec && rec.deletedAt) continue; // only active records can hold live refs
+      _collectStringValues(rec, referenced);
+    }
+  }
+
+  // 2) Purge old soft-deleted records that nothing active points at.
+  let count = 0;
+  for (const col of Object.keys(state.db)) {
+    const arr = state.db[col];
+    if (!Array.isArray(arr)) continue;
+    let changed = false;
+    const kept = [];
+    for (const rec of arr) {
+      const purgeable = rec && rec.deletedAt && rec.deletedAt < cutoff && !referenced.has(rec.id);
+      if (purgeable) { changed = true; count++; recordTombstone(col, rec.id); continue; }
+      kept.push(rec);
+    }
+    if (changed) {
+      state.db[col] = kept;
+      if (state._ix) state._ix.set(col, new Map(kept.map(r => [r.id, r])));
+    }
+  }
+  pruneTombstones();
+  if (count > 0) markDirty();
+  return count;
+}
+
+// ============== Inventory FIFO helpers ==============
+
+export function totalRemaining(item) {
+  if (!item) return 0;
+  if (item.batches) return item.batches.reduce((s, b) => s + (b.remaining ?? b.qty ?? 0), 0);
+  return item.stock || 0; // legacy flat format
+}
+
+/**
+ * Compute FIFO deduction from oldest batches first (does NOT mutate item).
+ * Returns { updatedBatches, consumed: [{batchId, qty, unitPrice, currency}], totalCost, deficit }.
+ * deficit > 0 means available stock was less than requested qty.
+ */
+/**
+ * dateForFx (optional): date/year used to convert each consumed batch's cost
+ * to EUR. Batches can carry different currencies, so `totalCost` (raw sum,
+ * kept for callers that already know all batches share one currency) is
+ * unsafe to use whenever `mixedCurrency` is true — use `totalCostEUR` instead.
+ */
+export function fifoDeduct(item, qty, dateForFx = null) {
+  if (!item?.batches?.length) return { updatedBatches: item?.batches || [], consumed: [], totalCost: 0, totalCostEUR: 0, mixedCurrency: false, deficit: qty };
+  const sorted = [...item.batches].sort((a, b) => (a.dateBought || '').localeCompare(b.dateBought || ''));
+  let need = qty;
+  const consumed = [];
+  let totalCost = 0;
+  let totalCostEUR = 0;
+  const patchMap = new Map();
+
+  for (const b of sorted) {
+    if (need <= 0) break;
+    const avail = b.remaining ?? b.qty ?? 0;
+    const take  = Math.min(avail, need);
+    if (take <= 0) continue;
+    const currency = b.currency || 'EUR';
+    const lineCost = take * (b.unitPrice || 0);
+    consumed.push({ batchId: b.id, qty: take, unitPrice: b.unitPrice || 0, currency });
+    totalCost += lineCost;
+    totalCostEUR += toEUR(lineCost, currency, dateForFx);
+    patchMap.set(b.id, avail - take);
+    need -= take;
+  }
+
+  const updatedBatches = item.batches.map(b =>
+    patchMap.has(b.id) ? { ...b, remaining: patchMap.get(b.id) } : b
+  );
+  const mixedCurrency = new Set(consumed.map(c => c.currency)).size > 1;
+  return { updatedBatches, consumed, totalCost, totalCostEUR, mixedCurrency, deficit: need };
+}
+
+// ============== Reservation Expense Rules ==============
+
+export function restoreInventoryStock(expense) {
+  if (!expense.inventoryItemId || !expense.inventoryQty) return;
+  const item = byId('inventory', expense.inventoryItemId);
+  if (!item) return;
+  if (expense.inventoryBatches && item.batches) {
+    const restoreMap = new Map(expense.inventoryBatches.map(c => [c.batchId, c.qty]));
+    const updatedBatches = item.batches.map(b =>
+      restoreMap.has(b.id) ? { ...b, remaining: (b.remaining ?? b.qty ?? 0) + restoreMap.get(b.id) } : b
+    );
+    upsert('inventory', { ...item, batches: updatedBatches });
+  } else if (item.batches) {
+    // Legacy expense (predates per-batch consumption tracking, so it has no
+    // inventoryBatches of its own) on an item that has since migrated to
+    // batches — totalRemaining() ignores item.stock entirely once an item
+    // has batches, so crediting back into stock here silently lost the
+    // restored quantity forever. Add it as a new batch instead so it's
+    // actually counted; unitPrice 0 since the original per-unit cost isn't
+    // recoverable here — this only restores the QUANTITY, not cost history.
+    const restoredBatch = {
+      id: newId('batch'), dateBought: expense.date || new Date().toISOString().slice(0, 10),
+      qty: expense.inventoryQty, remaining: expense.inventoryQty, unitPrice: 0, currency: 'EUR',
+      note: 'Restored from deleted expense (pre-batch-tracking record)'
+    };
+    upsert('inventory', { ...item, batches: [...item.batches, restoredBatch] });
+  } else {
+    upsert('inventory', { ...item, stock: (item.stock || 0) + expense.inventoryQty });
+  }
+}
+
+// Match vendor cleaningPeriods by property + date. vendorId='' means any vendor.
+export function findVendorRateByPeriod(propertyId, date, vendorId = '') {
+  const out = [];
+  for (const v of listActive('vendors')) {
+    if (vendorId && v.id !== vendorId) continue;
+    for (const period of (v.cleaningPeriods || [])) {
+      if (period.propertyId === propertyId &&
+          period.startDate && period.startDate <= date &&
+          (!period.endDate || period.endDate >= date)) {
+        out.push({ vendor: v, period });
+      }
+    }
+  }
+  return out;
+}
+
+// Build a lookup of generated expenses keyed by `ruleId|reservationRef`, used to
+// find an already-generated expense in O(1). Pass this into
+// applyReservationExpenseRules during bulk imports to avoid a full expense scan
+// per rule per row (otherwise O(rows × rules × expenses)).
+export function buildGeneratedExpenseIndex() {
+  const m = new Map();
+  for (const e of (state.db.expenses || [])) {
+    if (e.isGenerated && !e.deletedAt && e.reservationRuleId && e.reservationRef) {
+      m.set(e.reservationRuleId + '|' + e.reservationRef, e);
+    }
+  }
+  return m;
+}
+
+// Build a lookup of generated expenses keyed by `reservationRef|category`,
+// used by applyReservationExpenseRules to detect a same-category cross-rule
+// conflict in O(1). Pass this into applyReservationExpenseRules during bulk
+// imports/reapplies to avoid a full expense scan per rule per row (otherwise
+// O(rows × rules × expenses)) — mirrors buildGeneratedExpenseIndex above.
+export function buildGeneratedExpenseCategoryIndex() {
+  const m = new Map();
+  for (const e of (state.db.expenses || [])) {
+    if (e.isGenerated && !e.deletedAt && e.reservationRuleId && e.reservationRef) {
+      m.set(e.reservationRef + '|' + e.category, e.reservationRuleId);
+    }
+  }
+  return m;
+}
+
+// Shared claim-tracking for the "one auto-generated expense per category per
+// reservation" guard: `categoryIndex`, when supplied by a bulk caller, is a
+// map shared across the whole run (built once via
+// buildGeneratedExpenseCategoryIndex) — O(1) per rule instead of rescanning
+// every expense per payment. Falls back to a fresh scan of just this
+// reservation's own expenses when called standalone (e.g. a single manual
+// payment save or a single "Run" click).
+function _makeClaimTracker(reservationRef, categoryIndex) {
+  const keyOf = category => reservationRef + '|' + category;
+  const localClaims = categoryIndex ? null : new Map();
+  if (localClaims) {
+    for (const e of (state.db.expenses || [])) {
+      if (e.isGenerated && !e.deletedAt && e.reservationRef === reservationRef && e.reservationRuleId) {
+        localClaims.set(e.category, e.reservationRuleId);
+      }
+    }
+  }
+  return {
+    getOwner: category => categoryIndex ? categoryIndex.get(keyOf(category)) : localClaims.get(category),
+    setOwner: (category, ruleId) => categoryIndex ? categoryIndex.set(keyOf(category), ruleId) : localClaims.set(category, ruleId)
+  };
+}
+
+// Applies a single rule to a single payment, guarded by the same "don't
+// duplicate a category another rule already owns" check used everywhere
+// else. Returns a conflict descriptor (or null) instead of applying when
+// another rule already claimed this reservation's category.
+function _applyRuleGuarded(rule, payment, reservationRef, genIndex, tracker) {
+  const category = rule.category || 'cleaning';
+  const owner = tracker.getOwner(category);
+  if (owner && owner !== rule.id) {
+    const ownerRule = byId('reservationExpenseRules', owner);
+    return { category, reservationRef, ruleId: rule.id, ruleName: rule.name, ownerRuleId: owner, ownerRuleName: ownerRule?.name || owner };
+  }
+  _applyOneRule(rule, payment, reservationRef, genIndex);
+  tracker.setOwner(category, rule.id);
+  return null;
+}
+
+// Applies every enabled rule matching this payment's property, returning any
+// same-category conflicts that were skipped so callers can warn the user
+// instead of silently duplicating an expense. Two enabled rules mapping to
+// the same category (e.g. an old "Airbnb cleaning fee" rule left on
+// alongside a new "Vendor rate" rule, both categorized "cleaning") only let
+// the first one through; different categories (e.g. cleaning + maintenance)
+// are unaffected — each owns its own category independently.
+export function applyReservationExpenseRules(payment, genIndex = null, categoryIndex = null, { allowInventory = true } = {}) {
+  const reservationRef = payment.confirmationCode || payment.id;
+  if (!reservationRef || !payment.propertyId) return [];
+  const rules = listActive('reservationExpenseRules').filter(r =>
+    r.enabled && (!r.propertyId || r.propertyId === payment.propertyId) &&
+    (allowInventory || r.amountSource !== 'inventory')
+  );
+  const tracker = _makeClaimTracker(reservationRef, categoryIndex);
+  const conflicts = [];
+  for (const rule of rules) {
+    const conflict = _applyRuleGuarded(rule, payment, reservationRef, genIndex, tracker);
+    if (conflict) conflicts.push(conflict);
+  }
+  return conflicts;
+}
+
+// Applies ONLY the given rule to a single payment — unlike
+// applyReservationExpenseRules, this never touches any OTHER rule even if
+// other enabled rules also match the payment's property. Used by the
+// explicit per-rule "Run" action and reapplyRuleToAllPayments, so clicking
+// "Run" on one rule can't silently re-trigger a different one.
+export function applyRuleToPayment(rule, payment, genIndex = null, categoryIndex = null) {
+  const reservationRef = payment.confirmationCode || payment.id;
+  if (!reservationRef || !payment.propertyId) return [];
+  const tracker = _makeClaimTracker(reservationRef, categoryIndex);
+  const conflict = _applyRuleGuarded(rule, payment, reservationRef, genIndex, tracker);
+  return conflict ? [conflict] : [];
+}
+
+// Formats a de-duplicated, human-readable warning for conflicts returned by
+// applyReservationExpenseRules / reapplyRuleToAllPayments, or null if none.
+export function formatRuleConflictWarning(conflicts) {
+  if (!conflicts || conflicts.length === 0) return null;
+  const seen = new Set();
+  const lines = [];
+  for (const c of conflicts) {
+    const key = [c.category, c.ruleId, c.ownerRuleId].sort().join('|');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    lines.push(`"${c.ruleName}" (${c.category}) — already generated by "${c.ownerRuleName}"`);
+  }
+  return `${conflicts.length} duplicate expense${conflicts.length === 1 ? '' : 's'} skipped: ${lines.join('; ')}. Disable or recategorize one of the conflicting rules.`;
+}
+
+function _applyOneRule(rule, payment, reservationRef, genIndex = null) {
+  const existing = genIndex
+    ? (genIndex.get(rule.id + '|' + reservationRef) || null)
+    : (state.db.expenses || []).find(e =>
+        e.isGenerated && e.reservationRuleId === rule.id && e.reservationRef === reservationRef && !e.deletedAt
+      );
+  if (existing?.manualOverride) return;
+
+  let amount = 0, currency = rule.fixedCurrency || payment.currency || 'EUR';
+  let inventoryItemId, inventoryQty, inventoryBatches;
+  let overrideVendorId, overrideVendorName;
+  let reviewNeeded, reviewReason;
+
+  if (rule.amountSource === 'fixed') {
+    amount = rule.fixedAmount || 0;
+    currency = rule.fixedCurrency || payment.currency || 'EUR';
+  } else if (rule.amountSource === 'airbnb_cleaning_fee') {
+    amount = payment.airbnbCleaningFee || 0;
+    currency = payment.currency || 'EUR';
+  } else if (rule.amountSource === 'inventory' && rule.inventoryItemId) {
+    if (existing) {
+      // Don't re-deduct; only refresh metadata fields to stay in sync. Skip the
+      // write entirely when nothing would actually change — upsert() always
+      // stamps a fresh updatedAt, and re-running an import over reservations it
+      // already generated expenses for otherwise bumps every one of them on
+      // every run, manufacturing a "this was edited" signal (feeding spurious
+      // 3-way sync conflicts) out of a genuine no-op.
+      const refreshedDate        = payment.checkIn || payment.airbnbCheckIn || payment.date || existing.date;
+      const refreshedVendorId    = rule.vendorId || existing.vendorId || '';
+      const refreshedDescription = rule.description || existing.description || '';
+      if (
+        refreshedDate        !== existing.date ||
+        refreshedVendorId    !== existing.vendorId ||
+        refreshedDescription !== existing.description
+      ) {
+        upsert('expenses', {
+          ...existing,
+          date: refreshedDate,
+          vendorId: refreshedVendorId,
+          description: refreshedDescription
+        });
+      }
+      return;
+    }
+    const item = byId('inventory', rule.inventoryItemId);
+    if (!item) return;
+    const qty = rule.inventoryQty || 1;
+    const invDate = payment.checkIn || payment.airbnbCheckIn || payment.date || '';
+    const { updatedBatches, consumed, totalCostEUR, deficit } = fifoDeduct(item, qty, invDate);
+    upsert('inventory', { ...item, batches: updatedBatches });
+    // Always normalized to EUR — consumed batches can span multiple
+    // currencies, and there's no human review on this auto-generated path.
+    amount = totalCostEUR;
+    currency = 'EUR';
+    inventoryItemId = rule.inventoryItemId;
+    inventoryQty = qty;
+    inventoryBatches = consumed;
+    if (deficit > 0) {
+      reviewNeeded = true;
+      reviewReason = `Insufficient stock — short by ${deficit} unit${deficit === 1 ? '' : 's'}; cost may be understated`;
+    }
+  } else if (rule.amountSource === 'vendor_rate') {
+    const refDate = payment.checkIn || payment.airbnbCheckIn || payment.date || '';
+    const matches = refDate ? findVendorRateByPeriod(payment.propertyId, refDate, rule.vendorId || '') : [];
+    if (matches.length === 0) {
+      reviewNeeded = true;
+      reviewReason = 'No vendor rate found for this property and date';
+    } else if (matches.length > 1 && !rule.vendorId) {
+      reviewNeeded = true;
+      reviewReason = 'Multiple vendor rates match — set a specific vendor on the rule';
+    } else {
+      const { vendor, period } = matches[0];
+      amount = period.fee;
+      currency = payment.currency || 'EUR';
+      overrideVendorId = vendor.id;
+      overrideVendorName = vendor.name;
+    }
+  }
+
+  const candidate = {
+    id: existing?.id || newId('exp'),
+    propertyId: payment.propertyId,
+    category: rule.category || 'cleaning',
+    amount,
+    currency,
+    date: payment.checkIn || payment.airbnbCheckIn || payment.date || '',
+    vendorId: overrideVendorId ?? (rule.vendorId || ''),
+    vendor: overrideVendorName ?? '',
+    description: rule.description || '',
+    stream: payment.stream || 'short_term_rental',
+    reservationRuleId: rule.id,
+    reservationRef,
+    isGenerated: true,
+    manualOverride: existing?.manualOverride || false,
+    ...(inventoryItemId ? { inventoryItemId, inventoryQty, inventoryBatches } : {}),
+    ...(reviewNeeded ? { reviewNeeded, reviewReason } : {})
+  };
+
+  // Skip the write when re-running over a reservation produces an identical
+  // result to what's already stored — upsert() always stamps a fresh
+  // updatedAt, and bumping unchanged records on every re-import manufactures
+  // a spurious "this was edited" signal that feeds false 3-way sync conflicts.
+  if (existing && _sameExpenseFields(existing, candidate)) return;
+
+  upsert('expenses', candidate);
+}
+
+function _sameExpenseFields(existing, candidate) {
+  const keys = [
+    'propertyId', 'category', 'amount', 'currency', 'date', 'vendorId', 'vendor',
+    'description', 'stream', 'reservationRuleId', 'reservationRef', 'isGenerated',
+    'manualOverride', 'inventoryItemId', 'inventoryQty', 'reviewNeeded', 'reviewReason'
+  ];
+  return keys.every(k => (existing[k] ?? null) === (candidate[k] ?? null))
+    && JSON.stringify(existing.inventoryBatches ?? null) === JSON.stringify(candidate.inventoryBatches ?? null);
+}
+
+// ============== People / Owner helpers ==============
+
+export function getPeopleOwners({ includeBoth = false } = {}) {
+  const people = (state.db.people || []).filter(p =>
+    !p.deletedAt && p.active !== false && ['partner', 'director'].includes(p.role)
+  );
+  if (people.length === 0) {
+    // Fallback to hardcoded OWNERS when no people are configured
+    const opts = [{ value: 'you', label: 'Giorgos' }, { value: 'rita', label: 'Rita' }];
+    if (includeBoth) opts.push({ value: 'both', label: 'Both' });
+    return opts;
+  }
+  const opts = people.map(p => ({ value: p.legacyKey || p.id, label: p.name }));
+  if (includeBoth && opts.length > 1) opts.push({ value: 'both', label: 'Both' });
+  return opts;
+}
+
+export function getPersonName(ownerKey) {
+  if (!ownerKey) return '—';
+  const people = state.db.people || [];
+  const person = people.find(p => (p.legacyKey || p.id) === ownerKey && !p.deletedAt);
+  if (person) return person.name;
+  // Fallback: check OWNERS constant
+  const OWNERS_FALLBACK = { you: 'Giorgos', rita: 'Rita', both: 'Both' };
+  return OWNERS_FALLBACK[ownerKey] || ownerKey;
+}
+
+// Build a lookup of generated expenses grouped by reservationRef, so delete/
+// import loops can find a payment's generated expenses in O(1) instead of
+// scanning all expenses per payment (otherwise O(payments × expenses)).
+export function buildReservationExpenseRefMap() {
+  const m = new Map();
+  for (const e of (state.db.expenses || [])) {
+    if (e.isGenerated && !e.deletedAt && e.reservationRef) {
+      let list = m.get(e.reservationRef);
+      if (!list) { list = []; m.set(e.reservationRef, list); }
+      list.push(e);
+    }
+  }
+  return m;
+}
+
+export function removeReservationExpenses(payment, refMap = null) {
+  const reservationRef = payment.confirmationCode || payment.id;
+  if (!reservationRef) return;
+  const matches = refMap
+    ? (refMap.get(reservationRef) || [])
+    : (state.db.expenses || []).filter(e => e.isGenerated && e.reservationRef === reservationRef && !e.deletedAt);
+  for (const e of matches) {
+    if (e.deletedAt) continue;
+    restoreInventoryStock(e);
+    softDelete('expenses', e.id);
+  }
+}
+
+export function deletePayment(id) {
+  const p = byId('payments', id);
+  if (p) removeReservationExpenses(p);
+  return softDelete('payments', id);
+}
+
+// Apply ONLY the given rule to all its matching short-term payments — fills
+// in any missing generated expense for a matching reservation without
+// duplicating ones that already exist (existing-expense dedup lives in
+// _applyOneRule; cross-rule same-category dedup lives in
+// applyRuleToPayment/applyReservationExpenseRules above). Never touches any
+// OTHER rule, even one matching the same property.
+//
+// Inventory-sourced rules are skipped by default (retroactively deducting
+// stock for every historical reservation is a real, irreversible side effect
+// that shouldn't happen implicitly just from saving a rule) — pass
+// `allowInventory: true` for an explicit, user-initiated "run this rule now"
+// action where that's the whole point.
+export function reapplyRuleToAllPayments(rule, { allowInventory = false } = {}) {
+  if (!rule.enabled) return { processed: 0, created: 0, conflicts: [] };
+  if (rule.amountSource === 'inventory' && !allowInventory) return { processed: 0, created: 0, conflicts: [] };
+  const payments = listActive('payments').filter(p =>
+    p.stream === 'short_term_rental' &&
+    (!rule.propertyId || rule.propertyId === p.propertyId) &&
+    (p.confirmationCode || p.id)
+  );
+  // Index generated expenses once and batch the mutations — avoids an
+  // O(payments × expenses) scan and a per-payment save/refresh cycle.
+  const genIndex = buildGeneratedExpenseIndex();
+  const categoryIndex = buildGeneratedExpenseCategoryIndex();
+  const before = (state.db.expenses || []).filter(e => e.isGenerated && !e.deletedAt && e.reservationRuleId === rule.id).length;
+  const conflicts = [];
+  runBatch(() => {
+    for (const pay of payments) conflicts.push(...applyRuleToPayment(rule, pay, genIndex, categoryIndex));
+  });
+  const after = (state.db.expenses || []).filter(e => e.isGenerated && !e.deletedAt && e.reservationRuleId === rule.id).length;
+  return { processed: payments.length, created: Math.max(0, after - before), conflicts };
+}
+
+// Apply every enabled rule to every matching short-term payment in one pass
+// — the "Run All Rules" bulk action. Reuses applyReservationExpenseRules's
+// per-payment "every matching rule, cross-rule same-category guard" logic,
+// so the result is exactly what re-importing every reservation from scratch
+// would produce, just without touching payments themselves.
+//
+// Inventory-sourced rules are skipped by default, same rationale as
+// reapplyRuleToAllPayments — pass `allowInventory: true` for an explicit,
+// user-initiated run.
+export function runAllReservationExpenseRules({ allowInventory = false } = {}) {
+  const rules = listActive('reservationExpenseRules').filter(r => r.enabled);
+  if (rules.length === 0) return { rulesRun: 0, processed: 0, created: 0, conflicts: [] };
+  const payments = listActive('payments').filter(p =>
+    p.stream === 'short_term_rental' && (p.confirmationCode || p.id)
+  );
+  const genIndex = buildGeneratedExpenseIndex();
+  const categoryIndex = buildGeneratedExpenseCategoryIndex();
+  const before = (state.db.expenses || []).filter(e => e.isGenerated && !e.deletedAt).length;
+  const conflicts = [];
+  runBatch(() => {
+    for (const pay of payments) conflicts.push(...applyReservationExpenseRules(pay, genIndex, categoryIndex, { allowInventory }));
+  });
+  const after = (state.db.expenses || []).filter(e => e.isGenerated && !e.deletedAt).length;
+  return { rulesRun: rules.length, processed: payments.length, created: Math.max(0, after - before), conflicts };
+}
