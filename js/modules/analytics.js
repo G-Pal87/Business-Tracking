@@ -1,9 +1,10 @@
 // Executive Analytics Dashboard — morning-briefing single-glance overview
-import { el, openModal } from '../core/ui.js';
+import { el, fmtDate, drillDownModal, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import {
   formatEUR, toEUR, byId,
-  listActive, listActivePayments, isCapEx, companyPropIds, isCompanyRecord
+  listActive, listActivePayments, isCapEx, companyPropIds, isCompanyRecord,
+  drillRevRows, drillExpRows, drillNetRows
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -11,11 +12,32 @@ import {
 } from './analytics-filters.js?v=20260519';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid,
-  safePct, fmtK
+  safePct, fmtK, mkDrillValue
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = ['exec-rev-exp-bar', 'exec-mix-donut', 'exec-net-line'];
+
+const REV_COLS = [
+  { key: 'date',   label: 'Date',   format: v => fmtDate(v), tip: 'Date the payment or invoice was recorded.' },
+  { key: 'type',   label: 'Type', tip: 'Record type (payment or invoice).' },
+  { key: 'source', label: 'Entity', tip: 'Property or client the revenue is attributed to.' },
+  { key: 'ref',    label: 'Ref', tip: 'Reference or confirmation number for the transaction.' },
+  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the transaction date.' }
+];
+const EXP_COLS = [
+  { key: 'date',        label: 'Date',        format: v => fmtDate(v), tip: 'Date the expense was recorded.' },
+  { key: 'source',      label: 'Property', tip: 'Property the expense is attributed to.' },
+  { key: 'category',    label: 'Category', tip: 'Expense category (e.g. maintenance, utilities).' },
+  { key: 'description', label: 'Description', tip: 'Free-text description of the expense.' },
+  { key: 'eur',         label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the expense date.' }
+];
+const NET_COLS = [
+  { key: 'date',   label: 'Date',   format: v => fmtDate(v), tip: 'Date of the underlying revenue or expense record.' },
+  { key: 'kind',   label: 'Kind', tip: 'Whether this row is Revenue or an Expense.' },
+  { key: 'source', label: 'Source', tip: 'Entity/property and category this row is attributed to.' },
+  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR.' }
+];
 
 // ── Module-level state ────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -209,12 +231,18 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     if (cmp) {
       body.appendChild(mkCmpGrid([
         { label: 'Total Revenue',  curVal: formatEUR(totalRev), cmpVal: formatEUR(cmp.totalRev) },
-        { label: 'Rental Income',  curVal: formatEUR(propRev),  cmpVal: formatEUR(cmp.propRev)  },
-        { label: 'Service Income', curVal: formatEUR(svcRev),   cmpVal: formatEUR(cmp.svcRev)   },
+        { label: 'Rental Income',
+          curVal: mkDrillValue(formatEUR(propRev), () => drillDownModal('Rental Income', drillRevRows(cur.payments, []), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.propRev), () => drillDownModal(`Rental Income — ${cl}`, drillRevRows(cmp.payments, []), REV_COLS)) },
+        { label: 'Service Income',
+          curVal: mkDrillValue(formatEUR(svcRev), () => drillDownModal('Service Income', drillRevRows([], cur.invoices), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.svcRev), () => drillDownModal(`Service Income — ${cl}`, drillRevRows([], cmp.invoices), REV_COLS)) },
       ], 'Current Period', cl));
     } else {
       body.appendChild(mkSummaryGrid([
-        { label: 'Rental Income',   value: formatEUR(propRev), sub: pct(propRev, totalRev) + ' of total',
+        { label: 'Rental Income',
+          value: mkDrillValue(formatEUR(propRev), () => drillDownModal('Rental Income', drillRevRows(cur.payments, []), REV_COLS)),
+          sub: pct(propRev, totalRev) + ' of total',
           explain: {
             title: 'Rental Income',
             formula: 'Sum of paid rental payments (status:\'paid\'), dated within the selected period.',
@@ -226,7 +254,9 @@ function buildKpiGrid(cur, cmp, cmpRange) {
             source: 'analytics.js:76 getData()'
           }
         },
-        { label: 'Service Income',  value: formatEUR(svcRev),  sub: pct(svcRev,  totalRev) + ' of total',
+        { label: 'Service Income',
+          value: mkDrillValue(formatEUR(svcRev), () => drillDownModal('Service Income', drillRevRows([], cur.invoices), REV_COLS)),
+          sub: pct(svcRev,  totalRev) + ' of total',
           explain: {
             title: 'Service Income',
             formula: 'Sum of paid service invoices (status:\'paid\'), dated by issue date within the selected period.',
@@ -252,7 +282,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       .sort((a, b) => b[1] - a[1])
       .map(([k, v]) => [
         streamLabels[k] || k,
-        formatEUR(v),
+        mkDrillValue(formatEUR(v), () => openStreamRevenueModal(k, v, totalRev, cur)),
         pct(v, totalRev)
       ]);
     if (streamRows.length) {
@@ -272,17 +302,32 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     const body = el('div');
     if (cmp) {
       body.appendChild(mkCmpGrid([
-        { label: 'Total Revenue', curVal: formatEUR(totalRev),  cmpVal: formatEUR(cmp.totalRev)  },
-        { label: 'OpEx',          curVal: formatEUR(cur.opEx),  cmpVal: formatEUR(cmp.opEx)       },
-        { label: 'CapEx',         curVal: formatEUR(cur.capEx), cmpVal: formatEUR(cmp.capEx)      },
-        { label: 'Net Cash Flow', curVal: formatEUR(cashPos),   cmpVal: formatEUR(cmp.cashPos)    },
+        { label: 'Total Revenue',
+          curVal: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Total Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.totalRev), () => drillDownModal(`Total Revenue — ${cl}`, drillRevRows(cmp.payments, cmp.invoices), REV_COLS)) },
+        { label: 'OpEx',
+          curVal: mkDrillValue(formatEUR(cur.opEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.opEx), () => drillDownModal(`Operating Expenses — ${cl}`, drillExpRows(cmp.opExpenses), EXP_COLS)) },
+        { label: 'CapEx',
+          curVal: mkDrillValue(formatEUR(cur.capEx), () => drillDownModal('Capital Expenses', drillExpRows(cur.capExpenses), EXP_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.capEx), () => drillDownModal(`Capital Expenses — ${cl}`, drillExpRows(cmp.capExpenses), EXP_COLS)) },
+        { label: 'Net Cash Flow',
+          curVal: mkDrillValue(formatEUR(cashPos), () => drillDownModal('Net Cash Flow', drillNetRows(cur.payments, cur.invoices, [...cur.opExpenses, ...cur.capExpenses]), NET_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.cashPos), () => drillDownModal(`Net Cash Flow — ${cl}`, drillNetRows(cmp.payments, cmp.invoices, [...cmp.opExpenses, ...cmp.capExpenses]), NET_COLS)) },
       ], 'Current Period', cl));
     } else {
       body.appendChild(mkSummaryGrid([
-        { label: 'Total Revenue',   value: formatEUR(totalRev) },
-        { label: 'OpEx',            value: formatEUR(cur.opEx),    sub: 'Operating expenses' },
-        { label: 'CapEx',           value: formatEUR(cur.capEx),   sub: 'Capital expenses' },
-        { label: 'Net Cash Flow',   value: formatEUR(cashPos),     sub: cashPos >= 0 ? 'Positive' : 'Negative',
+        { label: 'Total Revenue',
+          value: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Total Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)) },
+        { label: 'OpEx',
+          value: mkDrillValue(formatEUR(cur.opEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)),
+          sub: 'Operating expenses' },
+        { label: 'CapEx',
+          value: mkDrillValue(formatEUR(cur.capEx), () => drillDownModal('Capital Expenses', drillExpRows(cur.capExpenses), EXP_COLS)),
+          sub: 'Capital expenses' },
+        { label: 'Net Cash Flow',
+          value: mkDrillValue(formatEUR(cashPos), () => drillDownModal('Net Cash Flow', drillNetRows(cur.payments, cur.invoices, [...cur.opExpenses, ...cur.capExpenses]), NET_COLS)),
+          sub: cashPos >= 0 ? 'Positive' : 'Negative',
           explain: {
             title: 'Net Cash Flow',
             formula: 'Total Revenue − (OpEx + CapEx).',
@@ -343,15 +388,25 @@ function buildKpiGrid(cur, cmp, cmpRange) {
         const body = el('div');
         if (cmp) {
           body.appendChild(mkCmpGrid([
-            { label: 'Revenue',        curVal: formatEUR(totalRev),    cmpVal: formatEUR(cmp.totalRev)    },
-            { label: 'OpEx',           curVal: formatEUR(opEx),        cmpVal: formatEUR(cmp.opEx)         },
-            { label: 'Net Op. Profit', curVal: formatEUR(netOpProfit), cmpVal: formatEUR(cmp.netOpProfit)  },
+            { label: 'Revenue',
+              curVal: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.totalRev), () => drillDownModal(`Revenue — ${cl}`, drillRevRows(cmp.payments, cmp.invoices), REV_COLS)) },
+            { label: 'OpEx',
+              curVal: mkDrillValue(formatEUR(opEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.opEx), () => drillDownModal(`Operating Expenses — ${cl}`, drillExpRows(cmp.opExpenses), EXP_COLS)) },
+            { label: 'Net Op. Profit',
+              curVal: mkDrillValue(formatEUR(netOpProfit), () => drillDownModal('Net Operating Profit', drillNetRows(cur.payments, cur.invoices, cur.opExpenses), NET_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.netOpProfit), () => drillDownModal(`Net Operating Profit — ${cl}`, drillNetRows(cmp.payments, cmp.invoices, cmp.opExpenses), NET_COLS)) },
           ], 'Current Period', cl));
         } else {
           body.appendChild(mkSummaryGrid([
-            { label: 'Revenue',         value: formatEUR(totalRev) },
-            { label: 'OpEx',            value: formatEUR(opEx) },
-            { label: 'Net Op. Profit',  value: formatEUR(netOpProfit), sub: margin !== null ? `${margin.toFixed(1)}% margin` : '',
+            { label: 'Revenue',
+              value: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)) },
+            { label: 'OpEx',
+              value: mkDrillValue(formatEUR(opEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)) },
+            { label: 'Net Op. Profit',
+              value: mkDrillValue(formatEUR(netOpProfit), () => drillDownModal('Net Operating Profit', drillNetRows(cur.payments, cur.invoices, cur.opExpenses), NET_COLS)),
+              sub: margin !== null ? `${margin.toFixed(1)}% margin` : '',
               explain: {
                 title: 'Net Operating Profit',
                 formula: 'Total Revenue − OpEx. CapEx is not subtracted.',
@@ -428,14 +483,22 @@ function buildKpiGrid(cur, cmp, cmpRange) {
         if (cmp) {
           const cmpMonths = cmpBC !== null ? `${cmpBC.toFixed(1)} months` : '—';
           body.appendChild(mkCmpGrid([
-            { label: 'Period Net Cash',   curVal: formatEUR(cashPos),        cmpVal: formatEUR(cmp.cashPos)        },
-            { label: 'Avg Monthly OpEx',  curVal: formatEUR(avgMonthlyOpEx),  cmpVal: formatEUR(cmp.avgMonthlyOpEx) },
+            { label: 'Period Net Cash',
+              curVal: mkDrillValue(formatEUR(cashPos), () => drillDownModal('Period Net Cash', drillNetRows(cur.payments, cur.invoices, [...cur.opExpenses, ...cur.capExpenses]), NET_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.cashPos), () => drillDownModal(`Period Net Cash — ${cl}`, drillNetRows(cmp.payments, cmp.invoices, [...cmp.opExpenses, ...cmp.capExpenses]), NET_COLS)) },
+            { label: 'Avg Monthly OpEx',
+              curVal: mkDrillValue(formatEUR(avgMonthlyOpEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.avgMonthlyOpEx), () => drillDownModal(`Operating Expenses — ${cl}`, drillExpRows(cmp.opExpenses), EXP_COLS)) },
             { label: 'Burn Coverage',     curVal: months !== null ? `${months.toFixed(1)} months` : '—', cmpVal: cmpMonths },
           ], 'Current Period', cl));
         } else {
           body.appendChild(mkSummaryGrid([
-            { label: 'Period Net Cash',    value: formatEUR(cashPos),       sub: cashPos >= 0 ? 'Positive' : 'Negative' },
-            { label: 'Avg Monthly OpEx',  value: formatEUR(avgMonthlyOpEx), sub: `over ${periodMonths} month${periodMonths !== 1 ? 's' : ''}`,
+            { label: 'Period Net Cash',
+              value: mkDrillValue(formatEUR(cashPos), () => drillDownModal('Period Net Cash', drillNetRows(cur.payments, cur.invoices, [...cur.opExpenses, ...cur.capExpenses]), NET_COLS)),
+              sub: cashPos >= 0 ? 'Positive' : 'Negative' },
+            { label: 'Avg Monthly OpEx',
+              value: mkDrillValue(formatEUR(avgMonthlyOpEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)),
+              sub: `over ${periodMonths} month${periodMonths !== 1 ? 's' : ''}`,
               explain: {
                 title: 'Avg Monthly OpEx',
                 formula: 'OpEx ÷ number of months in the selected period.',
@@ -495,10 +558,11 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       } else {
         const today = new Date().toISOString().slice(0, 10);
         let pastDueAmt = 0, pastDueCount = 0, upcomingAmt = 0, upcomingCount = 0;
+        const pastDuePayments = [], upcomingPayments = [];
         cur.pendingPayments.forEach(p => {
           const amt = toEUR(p.amount, p.currency, p.date);
-          if (p.date && p.date < today) { pastDueAmt += amt; pastDueCount++; }
-          else { upcomingAmt += amt; upcomingCount++; }
+          if (p.date && p.date < today) { pastDueAmt += amt; pastDueCount++; pastDuePayments.push(p); }
+          else { upcomingAmt += amt; upcomingCount++; upcomingPayments.push(p); }
         });
         body.appendChild(mkSummaryGrid([
           { label: 'Total Pending', value: formatEUR(pipeline), sub: `${cur.pendingPayments.length} payment${cur.pendingPayments.length !== 1 ? 's' : ''}`,
@@ -513,7 +577,9 @@ function buildKpiGrid(cur, cmp, cmpRange) {
               note: 'Not yet collected — excluded from Total Revenue and Net Cash figures.'
             }
           },
-          { label: 'Past Expected Date', value: formatEUR(pastDueAmt), sub: `${pastDueCount} payment${pastDueCount !== 1 ? 's' : ''}`,
+          { label: 'Past Expected Date',
+            value: mkDrillValue(formatEUR(pastDueAmt), () => drillDownModal('Past Expected Date — Pending Payments', drillRevRows(pastDuePayments, []), REV_COLS)),
+            sub: `${pastDueCount} payment${pastDueCount !== 1 ? 's' : ''}`,
             explain: {
               title: 'Past Expected Date',
               formula: 'Of the pending payments, those whose expected date is before today.',
@@ -524,7 +590,9 @@ function buildKpiGrid(cur, cmp, cmpRange) {
               source: 'analytics.js — buildKpiGrid() Pending Pipeline onClick handler'
             }
           },
-          { label: 'Upcoming',       value: formatEUR(upcomingAmt), sub: `${upcomingCount} payment${upcomingCount !== 1 ? 's' : ''}`,
+          { label: 'Upcoming',
+            value: mkDrillValue(formatEUR(upcomingAmt), () => drillDownModal('Upcoming — Pending Payments', drillRevRows(upcomingPayments, []), REV_COLS)),
+            sub: `${upcomingCount} payment${upcomingCount !== 1 ? 's' : ''}`,
             explain: {
               title: 'Upcoming',
               formula: 'Of the pending payments, those whose expected date is today or later (or has no date).',
@@ -585,16 +653,23 @@ function buildKpiGrid(cur, cmp, cmpRange) {
         const body = el('div');
         if (cmp) {
           body.appendChild(mkCmpGrid([
-            { label: 'Paid',        curVal: formatEUR(cur.paidInvTotal), cmpVal: formatEUR(cmp.paidInvTotal) },
-            { label: 'Outstanding', curVal: formatEUR(cur.outTotal),     cmpVal: formatEUR(cmp.outTotal)     },
+            { label: 'Paid',
+              curVal: mkDrillValue(formatEUR(cur.paidInvTotal), () => drillDownModal('Paid Invoices', drillRevRows([], cur.invoices), REV_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.paidInvTotal), () => drillDownModal(`Paid Invoices — ${cl}`, drillRevRows([], cmp.invoices), REV_COLS)) },
+            { label: 'Outstanding',
+              curVal: mkDrillValue(formatEUR(cur.outTotal), () => drillDownModal('Outstanding Invoices', drillRevRows([], cur.outstandingInvoices), REV_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.outTotal), () => drillDownModal(`Outstanding Invoices — ${cl}`, drillRevRows([], cmp.outstandingInvoices), REV_COLS)) },
             { label: 'Rate',        curVal: collectionRate != null ? `${collectionRate.toFixed(1)}%` : '—',
                                     cmpVal: cmp.collectionRate != null ? `${cmp.collectionRate.toFixed(1)}%` : '—' },
           ], 'Current Period', cl));
         } else {
           body.appendChild(mkSummaryGrid([
-            { label: 'Paid',        value: formatEUR(cur.paidInvTotal) },
-            { label: 'Outstanding', value: formatEUR(cur.outTotal) },
-            { label: 'Invoiced',    value: formatEUR(cur.invoicedTotal),
+            { label: 'Paid',
+              value: mkDrillValue(formatEUR(cur.paidInvTotal), () => drillDownModal('Paid Invoices', drillRevRows([], cur.invoices), REV_COLS)) },
+            { label: 'Outstanding',
+              value: mkDrillValue(formatEUR(cur.outTotal), () => drillDownModal('Outstanding Invoices', drillRevRows([], cur.outstandingInvoices), REV_COLS)) },
+            { label: 'Invoiced',
+              value: mkDrillValue(formatEUR(cur.invoicedTotal), () => drillDownModal('All Invoices (Paid + Outstanding)', drillRevRows([], [...cur.invoices, ...cur.outstandingInvoices]), REV_COLS)),
               explain: {
                 title: 'Invoiced',
                 formula: 'Paid Invoice Total + Outstanding Invoice Total.',
@@ -804,11 +879,15 @@ function renderRevExpBar(cur, months) {
       const mCapEx = Math.round(capExpenses.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0));
       const mNet  = mRev - mOpEx - mCapEx;
       const body  = el('div');
+      const mPays = cur.payments.filter(p => p.date?.slice(0,7) === mk);
+      const mInvs = cur.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk);
+      const mOpEx2 = cur.opExpenses.filter(e => (e.date||'').slice(0,7) === mk);
+      const mCapEx2 = cur.capExpenses.filter(e => (e.date||'').slice(0,7) === mk);
       body.appendChild(mkSummaryGrid([
-        { label: 'Revenue',   value: formatEUR(mRev) },
-        { label: 'OpEx',      value: formatEUR(mOpEx) },
-        { label: 'CapEx',     value: formatEUR(mCapEx) },
-        { label: 'Net',       value: formatEUR(mNet), sub: mNet >= 0 ? 'Profitable' : 'Loss',
+        { label: 'Revenue',   value: mkDrillValue(formatEUR(mRev), () => drillDownModal(`${months[idx].label} — Revenue`, drillRevRows(mPays, mInvs), REV_COLS)) },
+        { label: 'OpEx',      value: mkDrillValue(formatEUR(mOpEx), () => drillDownModal(`${months[idx].label} — Operating Expenses`, drillExpRows(mOpEx2), EXP_COLS)) },
+        { label: 'CapEx',     value: mkDrillValue(formatEUR(mCapEx), () => drillDownModal(`${months[idx].label} — Capital Expenses`, drillExpRows(mCapEx2), EXP_COLS)) },
+        { label: 'Net',       value: mkDrillValue(formatEUR(mNet), () => drillDownModal(`${months[idx].label} — Net`, drillNetRows(mPays, mInvs, [...mOpEx2, ...mCapEx2]), NET_COLS)), sub: mNet >= 0 ? 'Profitable' : 'Loss',
           explain: {
             title: 'Net (month)',
             formula: 'Monthly Revenue − Monthly OpEx − Monthly CapEx.',
@@ -822,10 +901,6 @@ function renderRevExpBar(cur, months) {
           }
         }
       ]));
-      const mPays = cur.payments.filter(p => p.date?.slice(0,7) === mk);
-      const mInvs = cur.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk);
-      const mOpEx2 = cur.opExpenses.filter(e => (e.date||'').slice(0,7) === mk);
-      const mCapEx2 = cur.capExpenses.filter(e => (e.date||'').slice(0,7) === mk);
 
       if (mPays.length || mInvs.length) {
         const streamMap2 = new Map();
@@ -924,9 +999,12 @@ const STREAM_COLORS = {
 function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur) {
   const streamLabel = STREAM_LABELS[streamKey] || streamKey;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+  const pays = cur.payments.filter(p => (p.stream || 'other') === streamKey);
+  const invs = cur.invoices.filter(i => (i.stream || 'other') === streamKey);
   body.appendChild(mkSummaryGrid([
     { label: 'Stream',   value: streamLabel },
-    { label: 'Revenue',  value: formatEUR(streamTotal),
+    { label: 'Revenue',
+      value: mkDrillValue(formatEUR(streamTotal), () => drillDownModal(`${streamLabel} — Revenue`, drillRevRows(pays, invs), REV_COLS)),
       explain: {
         title: `${streamLabel} Revenue`,
         formula: 'Sum of paid payments + paid invoices tagged with this stream, within the selected period.',
@@ -949,8 +1027,6 @@ function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur) {
       }
     }
   ], 3));
-  const pays = cur.payments.filter(p => (p.stream || 'other') === streamKey);
-  const invs = cur.invoices.filter(i => (i.stream || 'other') === streamKey);
   if (pays.length) {
     body.appendChild(mkSectionLabel('Payments'));
     body.appendChild(mkModalTable([
@@ -1066,9 +1142,15 @@ function renderNetLine(cur, months) {
       if (!mk) return;
       const mNet = netData[idx];
       const body = el('div');
+      const mPays = payments.filter(p => p.date?.slice(0, 7) === mk);
+      const mInvs = invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk);
+      const mOpEx = opExpenses.filter(e => (e.date || '').slice(0, 7) === mk);
+      const mCapEx = capExpenses.filter(e => (e.date || '').slice(0, 7) === mk);
       body.appendChild(mkSummaryGrid([
         { label: 'Month',         value: months[idx].label },
-        { label: 'Net Cash Flow', value: formatEUR(mNet), sub: mNet >= 0 ? 'Positive' : 'Negative',
+        { label: 'Net Cash Flow',
+          value: mkDrillValue(formatEUR(mNet), () => drillDownModal(`${months[idx].label} — Net Cash Flow`, drillNetRows(mPays, mInvs, [...mOpEx, ...mCapEx]), NET_COLS)),
+          sub: mNet >= 0 ? 'Positive' : 'Negative',
           explain: {
             title: 'Net Cash Flow (month)',
             formula: 'Monthly (paid payments + paid invoices) − Monthly (OpEx + CapEx).',

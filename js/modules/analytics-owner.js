@@ -1,5 +1,5 @@
 // Owner/Partner Analytics Dashboard — partner P&L, settlement, portfolio split
-import { el, openModal } from '../core/ui.js';
+import { el, openModal, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { formatEUR, toEUR, byId, listActive, listActivePayments, isCapEx, getPersonName, companyPropIds, isCompanyRecord } from '../core/data.js';
 import {
@@ -7,7 +7,7 @@ import {
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers
 } from './analytics-filters.js?v=20260519';
 import {
-  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkExplainButton
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkExplainButton, mkDrillValue
 } from './analytics-helpers.js';
 import { SERVICE_STREAMS, STREAMS, PROPERTY_STREAMS } from '../core/config.js';
 
@@ -317,6 +317,72 @@ function netColor(val) {
   return val >= 0 ? 'var(--success, #22c55e)' : 'var(--danger, #ef4444)';
 }
 
+// ── Drill-down row builders (owner-attributed) ───────────────────────────────
+// owner=null → no filter, full record amount, 'Attribution' shows the resolved
+// owner; owner='you'/'rita' → filtered to that partner's records (records with
+// owner='both' are included at their 50% share — same rule as splitByOwner()).
+function toOwnerRevRows(records, owner = null) {
+  return records
+    .filter(r => !owner || r._resolvedOwner === owner || r._resolvedOwner === 'both')
+    .map(r => {
+      const shared = r._resolvedOwner === 'both';
+      return {
+        date: r.date || r.issueDate,
+        entity: r.propertyId ? (byId('properties', r.propertyId)?.name || '—')
+              : r.clientId   ? (byId('clients', r.clientId)?.name || '—') : '—',
+        attribution: shared ? 'Shared (50%)' : (r._resolvedOwner === 'you' ? YOU_LABEL : RITA_LABEL),
+        eur: owner && shared ? r._eur * 0.5 : r._eur
+      };
+    })
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+function toOwnerExpRows(expenses, owner = null) {
+  return expenses
+    .filter(e => !owner || e._resolvedOwner === owner || e._resolvedOwner === 'both')
+    .map(e => {
+      const shared = e._resolvedOwner === 'both';
+      return {
+        date: e.date,
+        entity: e.propertyId ? (byId('properties', e.propertyId)?.name || '—') : '—',
+        category: e.category || '—',
+        attribution: shared ? 'Shared (50%)' : (e._resolvedOwner === 'you' ? YOU_LABEL : RITA_LABEL),
+        eur: owner && shared ? e._eur * 0.5 : e._eur
+      };
+    })
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+function toOwnerMixedRows(revRecords, expRecords, owner = null) {
+  return [
+    ...toOwnerRevRows(revRecords, owner).map(r => ({ ...r, kind: 'Revenue', category: '—' })),
+    ...toOwnerExpRows(expRecords, owner).map(e => ({ ...e, kind: 'Expense' }))
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+const OWNER_REV_COLS = [
+  { key: 'date',        label: 'Date',        format: v => fmtDate(v) },
+  { key: 'entity',      label: 'Entity' },
+  { key: 'attribution', label: 'Attribution' },
+  { key: 'eur',         label: 'EUR', right: true, format: v => formatEUR(v) }
+];
+
+const OWNER_EXP_COLS = [
+  { key: 'date',        label: 'Date',        format: v => fmtDate(v) },
+  { key: 'entity',      label: 'Property' },
+  { key: 'category',    label: 'Category' },
+  { key: 'attribution', label: 'Attribution' },
+  { key: 'eur',         label: 'EUR', right: true, format: v => formatEUR(v) }
+];
+
+const OWNER_MIXED_COLS = [
+  { key: 'date',        label: 'Date',        format: v => fmtDate(v) },
+  { key: 'kind',        label: 'Kind' },
+  { key: 'entity',      label: 'Entity' },
+  { key: 'attribution', label: 'Attribution' },
+  { key: 'eur',         label: 'EUR', right: true, format: v => formatEUR(v) }
+];
+
 // ── Partner column card ───────────────────────────────────────────────────────
 function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cmpRange, isYou) {
   const rev    = isYou ? data.revSplit.you  : data.revSplit.rita;
@@ -324,6 +390,8 @@ function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cm
   const net    = isYou ? data.netSplit.you  : data.netSplit.rita;
   const count  = isYou ? propsData.youCount : propsData.ritaCount;
   const value  = isYou ? propsData.youValue : propsData.ritaValue;
+  const owner  = isYou ? 'you' : 'rita';
+  const revRecords = [...data.annotatedPayments, ...data.annotatedInvoices];
 
   const col = el('div', {
     style: `background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:16px;border-top:3px solid ${color}`
@@ -335,7 +403,10 @@ function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cm
   }, label));
 
   const rows = [
-    { label: 'Revenue',                        value: formatEUR(rev),   sub: null, onClick: () => openRevenueSplitModal(data, cmpData, cmpRange),
+    { label: 'Revenue',
+      value: mkDrillValue(formatEUR(rev), () =>
+        drillDownModal(`${label} — Revenue`, toOwnerRevRows(revRecords, owner), OWNER_REV_COLS)),
+      sub: null, onClick: () => openRevenueSplitModal(data, cmpData, cmpRange),
       explain: {
         title: `${label} Revenue`,
         formula: "Owner-split revenue: records owned by this partner count 100%, records with owner='both' count 50%.",
@@ -344,7 +415,10 @@ function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cm
         note: "Owner is resolved per record (the record's own `owner` field, falling back to its linked property's `owner`, defaulting to 'both')."
       }
     },
-    { label: 'Operating Expenses (excl. CapEx)', value: formatEUR(exp),   sub: null,
+    { label: 'Operating Expenses (excl. CapEx)',
+      value: mkDrillValue(formatEUR(exp), () =>
+        drillDownModal(`${label} — Operating Expenses`, toOwnerExpRows(data.annotatedExpenses, owner), OWNER_EXP_COLS)),
+      sub: null,
       explain: {
         title: `${label} Operating Expenses`,
         formula: "Same owner-split rule as Revenue, applied to operating expenses (CapEx excluded).",
@@ -353,7 +427,10 @@ function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cm
         note: 'CapEx/renovation spend is excluded — see the isCapEx() filter in getData().'
       }
     },
-    { label: 'Net Profit',          value: formatEUR(net),   sub: null, netVal: net, onClick: () => openSettlementModal(data, curRange),
+    { label: 'Net Profit',
+      value: mkDrillValue(formatEUR(net), () =>
+        drillDownModal(`${label} — Net Profit`, toOwnerMixedRows(revRecords, data.annotatedExpenses, owner), OWNER_MIXED_COLS)),
+      sub: null, netVal: net, onClick: () => openSettlementModal(data, curRange),
       explain: {
         title: `${label} Net Profit`,
         formula: 'Revenue (owner split) − Operating Expenses (owner split)',
@@ -364,8 +441,13 @@ function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cm
         source: 'analytics-owner.js:126 getData() — `netSplit`'
       }
     },
-    { label: 'Portfolio Properties',value: String(count),    sub: null },
-    { label: 'Portfolio Book Value', value: formatEUR(value), sub: null, onClick: () => openValueSplitModal(label, isYou ? 0 : 1, propsData),
+    { label: 'Portfolio Properties',
+      value: mkDrillValue(String(count), () => openValueSplitModal(label, isYou ? 0 : 1, propsData)),
+      sub: null
+    },
+    { label: 'Portfolio Book Value',
+      value: mkDrillValue(formatEUR(value), () => openValueSplitModal(label, isYou ? 0 : 1, propsData)),
+      sub: null, onClick: () => openValueSplitModal(label, isYou ? 0 : 1, propsData),
       explain: {
         title: `${label} Portfolio Book Value`,
         formula: "Sum of each owned property's purchase price (converted to EUR); properties with owner='both' contribute 50% to each partner.",

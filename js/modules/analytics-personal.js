@@ -1,7 +1,7 @@
 // Personal Income Dashboard — salary, owner rent, reimbursements, dividends, personal properties
-import { el, openModal } from '../core/ui.js';
+import { el, openModal, drillDownModal, fmtDate } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, listActive, listActivePayments, getPersonName } from '../core/data.js';
+import { formatEUR, toEUR, byId, listActive, listActivePayments, getPersonName, drillRevRows, drillExpRows } from '../core/data.js';
 import { state } from '../core/state.js';
 import {
   createFilterState, buildFilterBar, buildComparisonLine,
@@ -9,7 +9,7 @@ import {
 } from './analytics-filters.js?v=20260519';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge,
-  mkEmptyState, mkKpiCard, mkCmpGrid, mkInsightsBanner, safePct, fmtK
+  mkEmptyState, mkKpiCard, mkCmpGrid, mkInsightsBanner, safePct, fmtK, mkDrillValue
 } from './analytics-helpers.js';
 import { EXPENSE_CATEGORIES } from '../core/config.js';
 
@@ -28,6 +28,38 @@ const INCOME_COLORS = {
   divs:     '#22c55e',
   personal: '#ec4899'
 };
+
+// ── Drill-down row builders ───────────────────────────────────────────────────
+const REV_COLS = [
+  { key: 'date',   label: 'Date',   format: v => fmtDate(v), tip: 'Date the payment was recorded.' },
+  { key: 'type',   label: 'Type', tip: 'Record type (payment or invoice).' },
+  { key: 'source', label: 'Property', tip: 'Property the income is attributed to.' },
+  { key: 'ref',    label: 'Ref', tip: 'Reference or payment type.' },
+  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the transaction date.' }
+];
+const EXP_COLS = [
+  { key: 'date',        label: 'Date',        format: v => fmtDate(v), tip: 'Date the expense was recorded.' },
+  { key: 'source',      label: 'Property', tip: 'Property the expense is linked to, if any.' },
+  { key: 'category',    label: 'Category', tip: 'Expense category.' },
+  { key: 'description', label: 'Description', tip: 'Free-text description of the expense.' },
+  { key: 'eur',          label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the expense date.' }
+];
+function toDivDrillRows(records) {
+  return (records || []).map(d => ({
+    date: d.date,
+    gross: d.grossAmount || 0,
+    sdc: (d.grossAmount || 0) * SDC_RATE,
+    net: (d.grossAmount || 0) * (1 - SDC_RATE),
+    notes: d.notes || '—'
+  })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+const DIV_COLS = [
+  { key: 'date',  label: 'Date',  format: v => fmtDate(v), tip: 'Date the dividend was declared.' },
+  { key: 'gross', label: 'Gross', right: true, format: v => formatEUR(v), tip: 'Gross dividend amount declared.' },
+  { key: 'sdc',   label: 'SDC',   right: true, format: v => formatEUR(v), tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
+  { key: 'net',   label: 'Net',   right: true, format: v => formatEUR(v), tip: 'Gross dividend minus SDC — amount actually received.' },
+  { key: 'notes', label: 'Notes', tip: 'Free-text note entered on the dividend record.' }
+];
 
 function rentForMonth(history, monthKey) {
   const sorted = [...history].sort((a, b) => a.from.localeCompare(b.from));
@@ -367,7 +399,9 @@ function showPersonModal(label, data) {
         note: 'Zeroed out entirely when the Scope toggle is set to "Personal only".'
       }
     },
-    { label: 'Personal Properties', value: formatEUR(data.personalIncome),
+    { label: 'Personal Properties',
+      value: mkDrillValue(formatEUR(data.personalIncome), () =>
+        drillDownModal(`${label} — Personal Properties`, drillRevRows(data.personalPayments, []), REV_COLS)),
       explain: {
         title: 'Personal Properties', formula: 'Sum of paid payments on personal-channel properties owned by this person, in the selected period.',
         inputs: [
@@ -392,12 +426,23 @@ function showPersonModal(label, data) {
         { label: 'Notes', right: true, tip: 'Supporting detail — record count, property count, or the gross/SDC breakdown for dividends.' }
       ],
       [
-        ['Director Salary',             formatEUR(data.salary),          `${data.salaryExps.length} expense records`],
+        ['Director Salary',             mkDrillValue(formatEUR(data.salary), () =>
+          drillDownModal(`${label} — Director Salary`, drillExpRows(data.salaryExps), EXP_COLS)),        `${data.salaryExps.length} expense records`],
         ['Property Rent (owner)',        formatEUR(data.ownerRentTotal),  `${data.companyProps.length} company-operated properties`],
-        ['Reimbursements',               formatEUR(data.reimb),           `${data.reimbExps.length} records`],
-        ['STR Income',                   formatEUR(data.strIncomeTotal),  data.strIncomeExps.length > 0 ? `${data.strIncomeExps.length} STR fee records` : 'None'],
-        ['Other Personal Income',        formatEUR(data.piExpTotal),      data.piExps.length > 0 ? `${data.piExps.length} linked expenses` : 'None'],
-        ['Dividends (net SDC)',          formatEUR(data.netDivs),         data.grossDivs > 0 ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}` : 'No dividends'],
+        ['Reimbursements',               mkDrillValue(formatEUR(data.reimb), () =>
+          drillDownModal(`${label} — Reimbursements`, drillExpRows(data.reimbExps), EXP_COLS)),           `${data.reimbExps.length} records`],
+        ['STR Income',                   data.strIncomeExps.length > 0
+          ? mkDrillValue(formatEUR(data.strIncomeTotal), () => drillDownModal(`${label} — STR Income`, drillExpRows(data.strIncomeExps), EXP_COLS))
+          : formatEUR(data.strIncomeTotal),
+          data.strIncomeExps.length > 0 ? `${data.strIncomeExps.length} STR fee records` : 'None'],
+        ['Other Personal Income',        data.piExps.length > 0
+          ? mkDrillValue(formatEUR(data.piExpTotal), () => drillDownModal(`${label} — Other Personal Income`, drillExpRows(data.piExps), EXP_COLS))
+          : formatEUR(data.piExpTotal),
+          data.piExps.length > 0 ? `${data.piExps.length} linked expenses` : 'None'],
+        ['Dividends (net SDC)',          data.divRecords.length > 0
+          ? mkDrillValue(formatEUR(data.netDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
+          : formatEUR(data.netDivs),
+          data.grossDivs > 0 ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}` : 'No dividends'],
       ],
       { highlight: 1 }
     ));
@@ -410,7 +455,9 @@ function showPersonModal(label, data) {
         { label: 'Amount', right: true, tip: 'Total personal-property rental income received in the selected period.' },
         { label: 'Notes', right: true, tip: 'Number of paid payments included in this total.' }
       ],
-      [['Personal Properties', formatEUR(data.personalIncome), `${data.personalPayments.length} payments`]],
+      [['Personal Properties', data.personalPayments.length > 0
+        ? mkDrillValue(formatEUR(data.personalIncome), () => drillDownModal(`${label} — Personal Properties`, drillRevRows(data.personalPayments, []), REV_COLS))
+        : formatEUR(data.personalIncome), `${data.personalPayments.length} payments`]],
       { highlight: 1 }
     ));
   }
@@ -467,10 +514,16 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
         { label: 'Combined', right: true, tip: 'Sum of both directors for this stream.' }
       ],
       [
-        ['Director Salary',       formatEUR(youData.salary),         formatEUR(ritaData.salary),         formatEUR(youData.salary + ritaData.salary)],
+        ['Director Salary',       mkDrillValue(formatEUR(youData.salary), () => drillDownModal(`${YOU_LABEL} — Director Salary`, drillExpRows(youData.salaryExps), EXP_COLS)),
+                                   mkDrillValue(formatEUR(ritaData.salary), () => drillDownModal(`${RITA_LABEL} — Director Salary`, drillExpRows(ritaData.salaryExps), EXP_COLS)),
+                                   mkDrillValue(formatEUR(youData.salary + ritaData.salary), () => drillDownModal('Director Salary — Combined', drillExpRows([...youData.salaryExps, ...ritaData.salaryExps]), EXP_COLS))],
         ['Property Rent (Owner)', formatEUR(youData.ownerRentTotal), formatEUR(ritaData.ownerRentTotal), formatEUR(youData.ownerRentTotal + ritaData.ownerRentTotal)],
-        ['Reimbursements',        formatEUR(youData.reimb),          formatEUR(ritaData.reimb),          formatEUR(youData.reimb + ritaData.reimb)],
-        ['Dividends (Net SDC)',   formatEUR(youData.netDivs),        formatEUR(ritaData.netDivs),        formatEUR(youData.netDivs + ritaData.netDivs)],
+        ['Reimbursements',        mkDrillValue(formatEUR(youData.reimb), () => drillDownModal(`${YOU_LABEL} — Reimbursements`, drillExpRows(youData.reimbExps), EXP_COLS)),
+                                   mkDrillValue(formatEUR(ritaData.reimb), () => drillDownModal(`${RITA_LABEL} — Reimbursements`, drillExpRows(ritaData.reimbExps), EXP_COLS)),
+                                   mkDrillValue(formatEUR(youData.reimb + ritaData.reimb), () => drillDownModal('Reimbursements — Combined', drillExpRows([...youData.reimbExps, ...ritaData.reimbExps]), EXP_COLS))],
+        ['Dividends (Net SDC)',   mkDrillValue(formatEUR(youData.netDivs), () => drillDownModal(`${YOU_LABEL} — Dividends`, toDivDrillRows(youData.divRecords), DIV_COLS)),
+                                   mkDrillValue(formatEUR(ritaData.netDivs), () => drillDownModal(`${RITA_LABEL} — Dividends`, toDivDrillRows(ritaData.divRecords), DIV_COLS)),
+                                   mkDrillValue(formatEUR(youData.netDivs + ritaData.netDivs), () => drillDownModal('Dividends — Combined', toDivDrillRows([...youData.divRecords, ...ritaData.divRecords]), DIV_COLS))],
       ],
       { highlight: 3 }
     ));
@@ -484,7 +537,10 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
         { label: RITA_LABEL, right: true, tip: `${RITA_LABEL}'s personal-property income in the selected period.` },
         { label: 'Combined', right: true, tip: 'Sum of both directors\' personal-property income.' }
       ],
-      [['Personal Properties', formatEUR(youData.personalIncome), formatEUR(ritaData.personalIncome), formatEUR(youData.personalIncome + ritaData.personalIncome)]],
+      [['Personal Properties',
+        mkDrillValue(formatEUR(youData.personalIncome), () => drillDownModal(`${YOU_LABEL} — Personal Properties`, drillRevRows(youData.personalPayments, []), REV_COLS)),
+        mkDrillValue(formatEUR(ritaData.personalIncome), () => drillDownModal(`${RITA_LABEL} — Personal Properties`, drillRevRows(ritaData.personalPayments, []), REV_COLS)),
+        mkDrillValue(formatEUR(youData.personalIncome + ritaData.personalIncome), () => drillDownModal('Personal Properties — Combined', drillRevRows([...youData.personalPayments, ...ritaData.personalPayments], []), REV_COLS))]],
       { highlight: 3 }
     ));
   }
@@ -593,7 +649,9 @@ function showRecurringModal(youData, ritaData) {
       { label: 'Combined', right: true, tip: 'Sum of both directors for this stream.' }
     ],
     [
-      ['Director Salary',       formatEUR(youData.salary),         formatEUR(ritaData.salary),         formatEUR(youData.salary + ritaData.salary)],
+      ['Director Salary',       mkDrillValue(formatEUR(youData.salary), () => drillDownModal(`${YOU_LABEL} — Director Salary`, drillExpRows(youData.salaryExps), EXP_COLS)),
+                                 mkDrillValue(formatEUR(ritaData.salary), () => drillDownModal(`${RITA_LABEL} — Director Salary`, drillExpRows(ritaData.salaryExps), EXP_COLS)),
+                                 mkDrillValue(formatEUR(youData.salary + ritaData.salary), () => drillDownModal('Director Salary — Combined', drillExpRows([...youData.salaryExps, ...ritaData.salaryExps]), EXP_COLS))],
       ['Property Rent (Owner)', formatEUR(youData.ownerRentTotal), formatEUR(ritaData.ownerRentTotal), formatEUR(youData.ownerRentTotal + ritaData.ownerRentTotal)],
     ],
     { highlight: 3 }
@@ -607,9 +665,15 @@ function showRecurringModal(youData, ritaData) {
       { label: 'Combined', right: true, tip: 'Sum of both directors for this stream.' }
     ],
     [
-      ['Reimbursements',      formatEUR(youData.reimb),          formatEUR(ritaData.reimb),          formatEUR(youData.reimb + ritaData.reimb)],
-      ['Dividends (Net SDC)', formatEUR(youData.netDivs),        formatEUR(ritaData.netDivs),        formatEUR(youData.netDivs + ritaData.netDivs)],
-      ['Personal Properties', formatEUR(youData.personalIncome), formatEUR(ritaData.personalIncome), formatEUR(youData.personalIncome + ritaData.personalIncome)],
+      ['Reimbursements',      mkDrillValue(formatEUR(youData.reimb), () => drillDownModal(`${YOU_LABEL} — Reimbursements`, drillExpRows(youData.reimbExps), EXP_COLS)),
+                               mkDrillValue(formatEUR(ritaData.reimb), () => drillDownModal(`${RITA_LABEL} — Reimbursements`, drillExpRows(ritaData.reimbExps), EXP_COLS)),
+                               mkDrillValue(formatEUR(youData.reimb + ritaData.reimb), () => drillDownModal('Reimbursements — Combined', drillExpRows([...youData.reimbExps, ...ritaData.reimbExps]), EXP_COLS))],
+      ['Dividends (Net SDC)', mkDrillValue(formatEUR(youData.netDivs), () => drillDownModal(`${YOU_LABEL} — Dividends`, toDivDrillRows(youData.divRecords), DIV_COLS)),
+                               mkDrillValue(formatEUR(ritaData.netDivs), () => drillDownModal(`${RITA_LABEL} — Dividends`, toDivDrillRows(ritaData.divRecords), DIV_COLS)),
+                               mkDrillValue(formatEUR(youData.netDivs + ritaData.netDivs), () => drillDownModal('Dividends — Combined', toDivDrillRows([...youData.divRecords, ...ritaData.divRecords]), DIV_COLS))],
+      ['Personal Properties', mkDrillValue(formatEUR(youData.personalIncome), () => drillDownModal(`${YOU_LABEL} — Personal Properties`, drillRevRows(youData.personalPayments, []), REV_COLS)),
+                               mkDrillValue(formatEUR(ritaData.personalIncome), () => drillDownModal(`${RITA_LABEL} — Personal Properties`, drillRevRows(ritaData.personalPayments, []), REV_COLS)),
+                               mkDrillValue(formatEUR(youData.personalIncome + ritaData.personalIncome), () => drillDownModal('Personal Properties — Combined', drillRevRows([...youData.personalPayments, ...ritaData.personalPayments], []), REV_COLS))],
     ],
     { highlight: 3 }
   ));
@@ -621,7 +685,8 @@ function showDivCombinedModal(youData, ritaData) {
   const grossCombined = youData.grossDivs + ritaData.grossDivs;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Gross Combined',    value: formatEUR(grossCombined),
+    { label: 'Gross Combined',    value: mkDrillValue(formatEUR(grossCombined), () =>
+        drillDownModal('Dividends — Combined', toDivDrillRows([...youData.divRecords, ...ritaData.divRecords]), DIV_COLS)),
       explain: {
         title: 'Gross Combined', formula: `${YOU_LABEL} Gross Dividends + ${RITA_LABEL} Gross Dividends`,
         inputs: [
@@ -631,7 +696,8 @@ function showDivCombinedModal(youData, ritaData) {
         source: 'analytics-personal.js:621 showDivCombinedModal() — `grossCombined`'
       }
     },
-    { label: `${YOU_LABEL} Net`,  value: formatEUR(youData.netDivs),
+    { label: `${YOU_LABEL} Net`,  value: mkDrillValue(formatEUR(youData.netDivs), () =>
+        drillDownModal(`${YOU_LABEL} — Dividends`, toDivDrillRows(youData.divRecords), DIV_COLS)),
       explain: {
         title: `${YOU_LABEL} Net Dividends`, formula: 'Gross Dividends − SDC (2.65%)',
         inputs: [
@@ -641,7 +707,8 @@ function showDivCombinedModal(youData, ritaData) {
         source: 'analytics-personal.js:166 getPersonData() — `netDivs`'
       }
     },
-    { label: `${RITA_LABEL} Net`, value: formatEUR(ritaData.netDivs),
+    { label: `${RITA_LABEL} Net`, value: mkDrillValue(formatEUR(ritaData.netDivs), () =>
+        drillDownModal(`${RITA_LABEL} — Dividends`, toDivDrillRows(ritaData.divRecords), DIV_COLS)),
       explain: {
         title: `${RITA_LABEL} Net Dividends`, formula: 'Gross Dividends − SDC (2.65%)',
         inputs: [
@@ -651,7 +718,8 @@ function showDivCombinedModal(youData, ritaData) {
         source: 'analytics-personal.js:166 getPersonData() — `netDivs`'
       }
     },
-    { label: 'SDC Total',         value: formatEUR(youData.sdcAmount + ritaData.sdcAmount),
+    { label: 'SDC Total',         value: mkDrillValue(formatEUR(youData.sdcAmount + ritaData.sdcAmount), () =>
+        drillDownModal('Dividends — Combined', toDivDrillRows([...youData.divRecords, ...ritaData.divRecords]), DIV_COLS)),
       explain: {
         title: 'SDC Total', formula: 'Gross Dividends × 2.65% (Special Defence Contribution), both directors combined',
         inputs: [
@@ -679,7 +747,13 @@ function showDivCombinedModal(youData, ritaData) {
       body.appendChild(mkSectionLabel('By Year'));
       const yearRows = [...byYear.entries()]
         .sort((a, b) => b[0].localeCompare(a[0]))
-        .map(([yr, v]) => [yr, String(v.count), formatEUR(v.gross), formatEUR(v.gross * SDC_RATE), formatEUR(v.gross * (1 - SDC_RATE))]);
+        .map(([yr, v]) => {
+          const yrRecords = merged.filter(d => ((d.date || '').slice(0, 4) || '—') === yr);
+          return [yr, String(v.count),
+            mkDrillValue(formatEUR(v.gross), () => drillDownModal(`Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS)),
+            mkDrillValue(formatEUR(v.gross * SDC_RATE), () => drillDownModal(`Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS)),
+            mkDrillValue(formatEUR(v.gross * (1 - SDC_RATE)), () => drillDownModal(`Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS))];
+        });
       body.appendChild(mkModalTable(
         [
           { label: 'Year', tip: 'Calendar year the dividend(s) were declared.' },
@@ -721,7 +795,8 @@ function showGesyModal(youData, ritaData) {
   const salaryTotal = youData.salary + ritaData.salary;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'GESY Total',            value: formatEUR(gesyTotal),
+    { label: 'GESY Total',            value: mkDrillValue(formatEUR(gesyTotal), () =>
+        drillDownModal('GESY — Combined', drillExpRows([...youData.gesyExps, ...ritaData.gesyExps]), EXP_COLS)),
       explain: {
         title: 'GESY Total', formula: 'Sum of "social_contributions" category expenses linked to each director, both directors combined',
         inputs: [
@@ -731,7 +806,8 @@ function showGesyModal(youData, ritaData) {
         source: 'analytics-personal.js:113 getPersonData() — `gesyTotal`'
       }
     },
-    { label: 'Combined Salary',       value: formatEUR(salaryTotal),
+    { label: 'Combined Salary',       value: mkDrillValue(formatEUR(salaryTotal), () =>
+        drillDownModal('Director Salary — Combined', drillExpRows([...youData.salaryExps, ...ritaData.salaryExps]), EXP_COLS)),
       explain: {
         title: 'Combined Salary', formula: `${YOU_LABEL} Salary + ${RITA_LABEL} Salary`,
         inputs: [
@@ -741,7 +817,8 @@ function showGesyModal(youData, ritaData) {
         source: 'analytics-personal.js:721 showGesyModal() — `salaryTotal`'
       }
     },
-    { label: 'True Employment Cost',  value: formatEUR(salaryTotal + gesyTotal),
+    { label: 'True Employment Cost',  value: mkDrillValue(formatEUR(salaryTotal + gesyTotal), () =>
+        drillDownModal('True Employment Cost — Combined', drillExpRows([...youData.salaryExps, ...ritaData.salaryExps, ...youData.gesyExps, ...ritaData.gesyExps]), EXP_COLS)),
       explain: {
         title: 'True Employment Cost', formula: 'Combined Salary + GESY Total',
         inputs: [
@@ -769,7 +846,8 @@ function showGesyModal(youData, ritaData) {
     body.appendChild(mkSectionLabel('By Person'));
     const personRows = [...byPerson.entries()]
       .sort((a, b) => b[1].total - a[1].total)
-      .map(([p, v]) => [p, String(v.count), formatEUR(v.total)]);
+      .map(([p, v]) => [p, String(v.count),
+        mkDrillValue(formatEUR(v.total), () => drillDownModal(`GESY — ${p}`, drillExpRows(merged.filter(e => e._label === p)), EXP_COLS))]);
     body.appendChild(mkModalTable(
       [
         { label: 'Person', tip: 'Which director this GESY / social-contribution cost is attributed to.' },
@@ -800,7 +878,9 @@ function showGesyModal(youData, ritaData) {
 function showSalaryModal(label, data) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Salary',  value: formatEUR(data.salary),
+    { label: 'Total Salary',  value: data.salaryExps.length > 0
+        ? mkDrillValue(formatEUR(data.salary), () => drillDownModal(`${label} — Director Salary`, drillExpRows(data.salaryExps), EXP_COLS))
+        : formatEUR(data.salary),
       explain: {
         title: 'Total Salary', formula: 'Sum of expenses with category "salary" linked to this person, dated within the selected period.',
         inputs: [{ label: 'Records', value: String(data.salaryExps.length) }, { label: 'Total', value: formatEUR(data.salary) }],
@@ -808,7 +888,8 @@ function showSalaryModal(label, data) {
       }
     },
     { label: 'Records',       value: String(data.salaryExps.length) },
-    ...(data.gesyTotal > 0 ? [{ label: 'GESY (company cost)', value: formatEUR(data.gesyTotal),
+    ...(data.gesyTotal > 0 ? [{ label: 'GESY (company cost)', value: mkDrillValue(formatEUR(data.gesyTotal), () =>
+        drillDownModal(`${label} — GESY`, drillExpRows(data.gesyExps), EXP_COLS)),
       explain: {
         title: 'GESY (company cost)', formula: 'Sum of expenses with category "social_contributions" linked to this person, in the selected period.',
         inputs: [{ label: 'Total', value: formatEUR(data.gesyTotal) }],
@@ -829,7 +910,8 @@ function showSalaryModal(label, data) {
     body.appendChild(mkSectionLabel('Salary by Month'));
     const monthRows = [...byMonth.entries()]
       .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([mk, v]) => [mk, String(v.count), formatEUR(v.total)]);
+      .map(([mk, v]) => [mk, String(v.count),
+        mkDrillValue(formatEUR(v.total), () => drillDownModal(`${label} — Salary — ${mk}`, drillExpRows(data.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk)), EXP_COLS))]);
     body.appendChild(mkModalTable(
       [
         { label: 'Month', tip: 'Calendar month within the selected period.' },
@@ -920,7 +1002,9 @@ function showReimbModal(label, data) {
   const body  = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   const count = data.reimbExps.length;
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Reimbursed', value: formatEUR(data.reimb),
+    { label: 'Total Reimbursed', value: count > 0
+        ? mkDrillValue(formatEUR(data.reimb), () => drillDownModal(`${label} — Reimbursements`, drillExpRows(data.reimbExps), EXP_COLS))
+        : formatEUR(data.reimb),
       explain: {
         title: 'Total Reimbursed', formula: 'Sum of expenses with category "reimbursement" linked to this person, dated within the selected period.',
         inputs: [{ label: 'Records', value: String(count) }, { label: 'Total', value: formatEUR(data.reimb) }],

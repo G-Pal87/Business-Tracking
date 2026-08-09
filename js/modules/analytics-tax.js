@@ -1,6 +1,6 @@
 // Tax — Annual P&L Report + Cyprus Provisional Tax Calculator
 import { state, markDirty } from '../core/state.js';
-import { el, input, select, button, formRow, toast, openModal, today } from '../core/ui.js';
+import { el, input, select, button, formRow, toast, openModal, today, drillDownModal, fmtDate } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { COST_CATEGORIES } from '../core/config.js';
 import {
@@ -8,9 +8,9 @@ import {
   listActive, listActivePayments,
   resolveExpenseFields, isCapEx,
   newId, upsert, softDelete, companyPropIds, isCompanyRecord,
-  getPersonName
+  getPersonName, drillRevRows, drillExpRows, drillNetRows
 } from '../core/data.js';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue } from './analytics-helpers.js';
 import {
   getCyprusTaxYearConfig, setCyprusTaxYear, persistCyprusTaxYearConfig,
   daysLabel, monthRemainingFraction, isCoRec, getActualsForYear
@@ -19,6 +19,28 @@ import {
 // ── Module state ───────────────────────────────────────────────────────────────
 const CHART_IDS  = ['tax-yoy-bar'];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// ── Drill-down columns (for drillRevRows/drillExpRows/drillNetRows from core/data.js) ──
+const REV_COLS = [
+  { key: 'date',   label: 'Date',   format: v => fmtDate(v), tip: 'Date the payment or invoice was recorded.' },
+  { key: 'type',   label: 'Type', tip: 'Record type (payment or invoice).' },
+  { key: 'source', label: 'Entity', tip: 'Property or client the revenue is attributed to.' },
+  { key: 'ref',    label: 'Ref', tip: 'Reference or confirmation number for the transaction.' },
+  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the transaction date.' }
+];
+const EXP_COLS = [
+  { key: 'date',        label: 'Date',     format: v => fmtDate(v), tip: 'Date the expense was recorded.' },
+  { key: 'source',      label: 'Property', tip: 'Property the expense is attributed to.' },
+  { key: 'category',    label: 'Category', tip: 'Expense category (e.g. maintenance, utilities).' },
+  { key: 'description', label: 'Description', tip: 'Free-text description of the expense.' },
+  { key: 'eur',         label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR at the expense date.' }
+];
+const NET_COLS = [
+  { key: 'date',   label: 'Date',   format: v => fmtDate(v), tip: 'Date of the transaction.' },
+  { key: 'kind',   label: 'Kind', tip: 'Revenue or Expense.' },
+  { key: 'source', label: 'Source', tip: 'Property/client (revenue), or property · category (expense).' },
+  { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Amount converted to EUR.' }
+];
 
 let gYear  = null;
 let gOwner = '';
@@ -332,7 +354,7 @@ function buildPnLTable(data, taxRate, year) {
   const tbody = el('tbody');
 
   const mkRow = (label, value, opts = {}) => {
-    const { isSectionHeader = false, isSectionTotal = false, isSubtotal = false, isSeparator = false, isPositive = null, indent = 0, onClick = null, explain = null } = opts;
+    const { isSectionHeader = false, isSectionTotal = false, isSubtotal = false, isSeparator = false, isPositive = null, indent = 0, onClick = null, explain = null, drill = null } = opts;
     if (isSeparator) {
       const tr = el('tr');
       tr.appendChild(el('td', { colspan: '2', style: 'padding:4px 16px;border-bottom:1px solid rgba(255,255,255,0.12)' }));
@@ -363,7 +385,7 @@ function buildPnLTable(data, taxRate, year) {
       labelTd.appendChild(document.createTextNode(label ?? ''));
     }
     tr.appendChild(labelTd);
-    if (!isSectionHeader) tr.appendChild(el('td', { style: valueStyle }, formatEUR(value)));
+    if (!isSectionHeader) tr.appendChild(el('td', { style: valueStyle }, drill || formatEUR(value)));
     if (onClick) {
       tr.style.cursor = 'pointer';
       tr.title = 'Click for breakdown';
