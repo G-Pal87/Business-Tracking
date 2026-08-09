@@ -122,16 +122,30 @@ function getData(start, end, isIncomplete = false) {
     const annualizedROI = annualizedPropertyROI(prop.id, { netIncome: annualNetIncome, totalInvested });
     const cashOnCashROI = cashOnCashPropertyROI(prop.id, { annualCashFlow: annualNetIncome });
 
-    // Potential ROI: the same full-year run-rate projection Simple ROI
-    // already shows for a *completed* period, but forced through for an
-    // *in-progress* one (YTD, this-month, etc.) too, where Simple ROI instead
-    // intentionally shows the raw actual-so-far figure. Null (not shown) for
-    // a completed period, since Simple ROI already is this number there.
-    const potentialROI = isIncomplete
+    // Run-Rate ROI (formerly "Potential ROI"): the same full-year run-rate
+    // projection Simple ROI already shows for a *completed* period, but
+    // forced through for an *in-progress* one (YTD, this-month, etc.) too,
+    // where Simple ROI instead intentionally shows the raw actual-so-far
+    // figure. Null (not shown) for a completed period, since Simple ROI
+    // already is this number there. Still reflects any real vacancy/downtime
+    // that happened so far — it projects what ACTUALLY occurred, unlike
+    // Steady-State Yield below, which is a fully-let hypothetical.
+    const runRateROI = isIncomplete
       ? simplePropertyROI(prop.id, {
           netIncome: annualizeForProperty(prop, netIncome, { start, end, isIncomplete }, { force: true }),
           totalInvested
         })
+      : null;
+
+    // Steady-State Yield: what this property would yield if let at its
+    // CURRENT contracted rent for a full, uninterrupted year — ignores
+    // actual vacancy/downtime this year entirely (unlike Run-Rate ROI, which
+    // is anchored to real performance so far). Long-term only: short-term
+    // properties have no single fixed contracted rate to project from, since
+    // nightly rate × occupancy varies booking to booking.
+    const steadyStateAnnualEUR = currentContractedAnnualRentEUR(prop);
+    const steadyStateYield = (steadyStateAnnualEUR !== null && totalInvested > 0)
+      ? (steadyStateAnnualEUR / totalInvested) * 100
       : null;
 
     const expectedBookedEUR = isFuturePeriod ? computeExpectedBookedEUR(prop, start, end) : null;
@@ -141,7 +155,7 @@ function getData(start, end, isIncomplete = false) {
       netIncome,
       profit: rev - opEx,
       net:    rev - opEx - capEx,
-      simpleROI, annualizedROI, cashOnCashROI, potentialROI, expectedBookedEUR,
+      simpleROI, annualizedROI, cashOnCashROI, runRateROI, steadyStateYield, expectedBookedEUR,
       propPayments:    propPay,
       propOpExpenses:  propOpEx,
       propCapExpenses: propCapEx
@@ -209,6 +223,24 @@ function computeExpectedBookedEUR(prop, start, end) {
   return listActivePayments()
     .filter(p => p.propertyId === prop.id && p.date >= start && p.date <= end)
     .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+}
+
+// Current contracted rent, annualized — the input to Steady-State Yield.
+// Long-term only: finds whichever tenant's lease covers today (mirrors the
+// "earlier lease wins" month-lookup computeExpectedBookedEUR uses above).
+// Returns null for a short-term property (no fixed contracted rate) or a
+// currently-vacant long-term one (nothing to project from).
+function currentContractedAnnualRentEUR(prop) {
+  if (prop.type !== 'long_term') return null;
+  const now = today();
+  const tenant = listActive('tenants').find(t => {
+    if (t.propertyId !== prop.id || !t.monthlyRent) return false;
+    const ls = t.leaseStartDate || null;
+    const le = t.leaseEndDate   || null;
+    return (!ls || now >= ls) && (!le || now <= le);
+  });
+  if (!tenant) return null;
+  return toEUR(tenant.monthlyRent, tenant.currency || 'EUR', now) * 12;
 }
 
 // ── Operational metrics helpers ───────────────────────────────────────────────
@@ -1004,16 +1036,25 @@ function openPropertySummaryModal(d) {
         { label: 'Total Invested', value: formatEUR(d.totalInvested) }
       ],
       source: 'core/data.js simplePropertyROI()',
-      note: 'For an in-progress period (e.g. YTD) this uses the raw actual-so-far net income, unprojected — see Potential ROI for a full-year run-rate instead.'
+      note: 'For an in-progress period (e.g. YTD) this uses the raw actual-so-far net income, unprojected — see Run-Rate ROI for a full-year run-rate instead.'
     }
   });
-  if (d.potentialROI !== null) roiBoxes.push({
-    label: 'Potential ROI', value: d.potentialROI.toFixed(1) + '%', sub: 'Full-year run-rate',
+  if (d.runRateROI !== null) roiBoxes.push({
+    label: 'Run-Rate ROI', value: d.runRateROI.toFixed(1) + '%', sub: 'Full-year run-rate (actual so far)',
     explain: {
-      title: 'Potential ROI', formula: '(Net Income so far ÷ months elapsed × 12) ÷ Total Invested × 100',
+      title: 'Run-Rate ROI', formula: '(Net Income so far ÷ months elapsed × 12) ÷ Total Invested × 100',
       inputs: [{ label: 'Total Invested', value: formatEUR(d.totalInvested) }],
       source: 'analytics-properties.js annualizeForProperty(..., {force:true}) → simplePropertyROI()',
-      note: 'Only shown for an in-progress period. Projects the current run-rate to a full year instead of showing the partial-period actual — relies on purchaseDate being accurate, since the projection is anchored to it.'
+      note: 'Only shown for an in-progress period. Projects ACTUAL performance so far to a full year — still reflects any real vacancy/downtime this year. See Steady-State Yield for a fully-let hypothetical instead. Relies on purchaseDate being accurate, since the projection is anchored to it.'
+    }
+  });
+  if (d.steadyStateYield !== null) roiBoxes.push({
+    label: 'Steady-State Yield', value: d.steadyStateYield.toFixed(1) + '%', sub: 'If fully let all year, at today\'s rent',
+    explain: {
+      title: 'Steady-State Yield', formula: 'Current Contracted Monthly Rent × 12 ÷ Total Invested × 100',
+      inputs: [{ label: 'Total Invested', value: formatEUR(d.totalInvested) }],
+      source: 'analytics-properties.js currentContractedAnnualRentEUR() → active tenant\'s monthlyRent',
+      note: 'A hypothetical: what this property would yield if let at its CURRENT rent for a full, uninterrupted year — ignores any actual vacancy/downtime this year, unlike Run-Rate ROI. Long-term rentals only; short-term/Airbnb properties have no single fixed contracted rate to project from.'
     }
   });
   if (d.annualizedROI !== null) roiBoxes.push({
@@ -2491,7 +2532,8 @@ function buildSummaryTable(container, propData) {
   const hasSimpleROI     = propData.some(d => d.simpleROI       !== null);
   const hasAnnROI        = propData.some(d => d.annualizedROI   !== null);
   const hasCoCROI        = propData.some(d => d.cashOnCashROI   !== null);
-  const hasPotentialROI  = propData.some(d => d.potentialROI    !== null);
+  const hasRunRateROI    = propData.some(d => d.runRateROI      !== null);
+  const hasSteadyState   = propData.some(d => d.steadyStateYield !== null);
   const hasExpectedBooked = propData.some(d => d.expectedBookedEUR !== null);
 
   const COLS = [
@@ -2506,10 +2548,11 @@ function buildSummaryTable(container, propData) {
     { key: 'capEx',     label: 'CapEx',              right: true, fmt: formatEUR, tip: 'Capital/renovation expenses in the selected period.' },
     { key: 'net',       label: 'Net (after CapEx)',  right: true, fmt: formatEUR, colored: true, tip: 'Revenue minus Operating Expenses minus CapEx for the selected period.' },
     { key: 'costRatio', label: 'Cost %',             right: true, fmt: v => v != null ? v.toFixed(0) + '%' : '—', tip: 'Operating Expenses as a percentage of Revenue.' },
-    ...(hasSimpleROI    ? [{ key: 'simpleROI',    label: 'Simple ROI',    right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Net income ÷ total invested × 100. For an in-progress period (e.g. YTD) this is the raw actual-so-far figure, not projected.' }] : []),
-    ...(hasPotentialROI ? [{ key: 'potentialROI', label: 'Potential ROI', right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Simple ROI, but projected to a full-year run-rate even mid-period. Only shown for an in-progress period.' }] : []),
-    ...(hasAnnROI       ? [{ key: 'annualizedROI', label: 'Ann. ROI',  right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Simple ROI divided by years owned since purchase — average annual return per year of ownership.' }] : []),
-    ...(hasCoCROI       ? [{ key: 'cashOnCashROI', label: 'CoC ROI',   right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Annual net income ÷ actual cash invested (purchase price minus mortgage). Null for cash purchases with no mortgage.' }] : [])
+    ...(hasSimpleROI    ? [{ key: 'simpleROI',    label: 'Simple ROI',        right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Net income ÷ total invested × 100. For an in-progress period (e.g. YTD) this is the raw actual-so-far figure, not projected.' }] : []),
+    ...(hasRunRateROI   ? [{ key: 'runRateROI',   label: 'Run-Rate ROI',     right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Simple ROI, but this period\'s actual net income projected to a full-year run-rate. Only shown for an in-progress period. Still reflects any real vacancy this year — see Steady-State Yield for a fully-let hypothetical.' }] : []),
+    ...(hasAnnROI       ? [{ key: 'annualizedROI', label: 'Ann. ROI',         right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Simple ROI divided by years owned since purchase — average annual return per year of ownership (lifetime average, not this year\'s figure).' }] : []),
+    ...(hasCoCROI       ? [{ key: 'cashOnCashROI', label: 'CoC ROI',          right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Annual net income ÷ actual cash invested (purchase price minus mortgage). Null for cash purchases with no mortgage.' }] : []),
+    ...(hasSteadyState  ? [{ key: 'steadyStateYield', label: 'SS Yield',      right: true, colored: true, fmt: v => v != null ? v.toFixed(1) + '%' : '—', tip: 'Steady-State Yield: current contracted rent × 12 ÷ total invested — what this property would yield if let all year at today\'s rent, ignoring any actual vacancy this year. Long-term only.' }] : [])
   ];
 
   const sorted = [...propData]
