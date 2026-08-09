@@ -1263,7 +1263,9 @@ function buildPersonColumn(label, color, data, months, cmpData) {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
         const exps = data.strIncomeExps;
         body.appendChild(mkSummaryGrid([
-          { label: 'Total STR Income', value: formatEUR(data.strIncomeTotal),
+          { label: 'Total STR Income', value: exps.length > 0
+              ? mkDrillValue(formatEUR(data.strIncomeTotal), () => drillDownModal(`${label} — STR Income`, drillExpRows(exps), EXP_COLS))
+              : formatEUR(data.strIncomeTotal),
             explain: {
               title: 'Total STR Income', formula: 'Sum of "str_fee" category expenses linked to this person and flagged countsAsPersonalIncome, dated within the selected period.',
               inputs: [{ label: 'Records', value: String(exps.length) }, { label: 'Total', value: formatEUR(data.strIncomeTotal) }],
@@ -1285,7 +1287,9 @@ function buildPersonColumn(label, color, data, months, cmpData) {
           body.appendChild(mkSectionLabel('STR Income by Property'));
           const propRows = [...byProp.entries()]
             .sort((a, b) => b[1].total - a[1].total)
-            .map(([name, v]) => [name, String(v.count), formatEUR(v.total)]);
+            .map(([name, v]) => [name, String(v.count),
+              mkDrillValue(formatEUR(v.total), () =>
+                drillDownModal(`${label} — STR Income — ${name}`, drillExpRows(exps.filter(e => (byId('properties', e.propertyId)?.name || 'Unassigned') === name)), EXP_COLS))]);
           body.appendChild(mkModalTable(
             [
               { label: 'Property', tip: 'Property this STR fee income is linked to.' },
@@ -1339,7 +1343,9 @@ function buildPersonColumn(label, color, data, months, cmpData) {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
         const exps = data.piExps;
         body.appendChild(mkSummaryGrid([
-          { label: 'Total',      value: formatEUR(data.piExpTotal),
+          { label: 'Total',      value: exps.length > 0
+              ? mkDrillValue(formatEUR(data.piExpTotal), () => drillDownModal(`${label} — Other Personal Income`, drillExpRows(exps), EXP_COLS))
+              : formatEUR(data.piExpTotal),
             explain: {
               title: 'Total', formula: 'Sum of expenses linked to this person, flagged countsAsPersonalIncome, excluding salary/reimbursement/social_contributions/str_fee (counted elsewhere), dated within the selected period.',
               inputs: [{ label: 'Records', value: String(exps.length) }, { label: 'Total', value: formatEUR(data.piExpTotal) }],
@@ -1361,7 +1367,9 @@ function buildPersonColumn(label, color, data, months, cmpData) {
           body.appendChild(mkSectionLabel('By Category'));
           const catRows = [...byCat.entries()]
             .sort((a, b) => b[1].total - a[1].total)
-            .map(([cat, v]) => [cat, String(v.count), formatEUR(v.total)]);
+            .map(([cat, v]) => [cat, String(v.count),
+              mkDrillValue(formatEUR(v.total), () =>
+                drillDownModal(`${label} — Other Personal Income — ${cat}`, drillExpRows(exps.filter(e => (EXPENSE_CATEGORIES[e.category]?.label || e.category || '—') === cat)), EXP_COLS))]);
           body.appendChild(mkModalTable(
             [
               { label: 'Category', tip: 'Expense category this personal-income record was filed under.' },
@@ -1575,12 +1583,17 @@ function renderStreamMonthly(youData, ritaData, months) {
   const onClickItem = (_, idx) => {
     const m = months[idx];
     if (!m) return;
+    const byMonth = e => (e.date || '').slice(0, 7) === m.key;
     const items = [
-      { label: 'Director Salary',     val: salaryData[idx] },
+      { label: 'Director Salary',     val: salaryData[idx],
+        drill: () => drillDownModal(`${m.label} — Director Salary`, drillExpRows([...youData.salaryExps, ...ritaData.salaryExps].filter(byMonth)), EXP_COLS) },
       { label: 'Owner Rent',          val: rentData[idx]   },
-      { label: 'Reimbursements',      val: reimbData[idx]  },
-      { label: 'Dividends (Net SDC)', val: divsData[idx]   },
-      { label: 'Personal Properties', val: persData[idx]   },
+      { label: 'Reimbursements',      val: reimbData[idx],
+        drill: () => drillDownModal(`${m.label} — Reimbursements`, drillExpRows([...youData.reimbExps, ...ritaData.reimbExps].filter(byMonth)), EXP_COLS) },
+      { label: 'Dividends (Net SDC)', val: divsData[idx],
+        drill: () => drillDownModal(`${m.label} — Dividends`, toDivDrillRows([...youData.divRecords, ...ritaData.divRecords].filter(byMonth)), DIV_COLS) },
+      { label: 'Personal Properties', val: persData[idx],
+        drill: () => drillDownModal(`${m.label} — Personal Properties`, drillRevRows([...youData.personalPayments, ...ritaData.personalPayments].filter(byMonth), []), REV_COLS) },
     ].filter(i => i.val > 0);
     const total = items.reduce((s, i) => s + i.val, 0);
     const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
@@ -1591,7 +1604,7 @@ function renderStreamMonthly(youData, ritaData, months) {
         { label: 'Amount', right: true, tip: 'Combined amount for both directors in this stream, that month.' },
         { label: '% of Month', right: true, muted: true, tip: 'Share of this month\'s combined income coming from this stream.' }
       ],
-      items.map(i => [i.label, formatEUR(i.val), total > 0 ? (i.val / total * 100).toFixed(0) + '%' : '—'])
+      items.map(i => [i.label, i.drill ? mkDrillValue(formatEUR(i.val), i.drill) : formatEUR(i.val), total > 0 ? (i.val / total * 100).toFixed(0) + '%' : '—'])
     ));
     body.appendChild(mkSummaryGrid([{ label: 'Total Combined', value: formatEUR(total),
       explain: {

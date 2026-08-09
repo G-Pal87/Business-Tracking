@@ -1001,8 +1001,12 @@ function buildView(gF, curRange, cmpRange, onChange) {
     onClick: () => {
       const body = el('div');
       const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px' });
-      sgrid.appendChild(mkSummaryBox('New Client Revenue',       formatEUR(newClientRevenue),       `${newClientIds.length} client(s)`));
-      sgrid.appendChild(mkSummaryBox('Recurring Client Revenue', formatEUR(recurringClientRevenue), `${recurringClientIds.length} client(s)`));
+      sgrid.appendChild(mkSummaryBox('New Client Revenue',
+        mkDrillValue(formatEUR(newClientRevenue), () => drillDownModal('New vs Recurring — New Client Revenue', toInvDrillRows(nonDraft.filter(i => newClientIds.includes(i.clientId))), INV_DRILL_COLS)),
+        `${newClientIds.length} client(s)`));
+      sgrid.appendChild(mkSummaryBox('Recurring Client Revenue',
+        mkDrillValue(formatEUR(recurringClientRevenue), () => drillDownModal('New vs Recurring — Recurring Client Revenue', toInvDrillRows(nonDraft.filter(i => recurringClientIds.includes(i.clientId))), INV_DRILL_COLS)),
+        `${recurringClientIds.length} client(s)`));
       body.appendChild(sgrid);
 
       if (newClientIds.length) {
@@ -1011,7 +1015,7 @@ function buildView(gF, curRange, cmpRange, onChange) {
           const name = byId('clients', id)?.name || '—';
           const invs = nonDraft.filter(i => i.clientId === id);
           const rev  = invs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-          return { name, rev, count: invs.length };
+          return { name, invs, rev, count: invs.length };
         }).sort((a, b) => b.rev - a.rev);
         body.appendChild(mkModalTable(
           [
@@ -1019,7 +1023,7 @@ function buildView(gF, curRange, cmpRange, onChange) {
             { label: 'Invoices', right: true, muted: true, tip: 'Count of this client\'s non-draft invoices in the period.' },
             { label: 'Revenue', right: true, tip: 'Sum of this client\'s non-draft invoice totals in the period.' }
           ],
-          newRows.map(r => [r.name, String(r.count), formatEUR(r.rev)])
+          newRows.map(r => [r.name, String(r.count), mkDrillValue(formatEUR(r.rev), () => drillDownModal(`New Client — ${r.name}`, toInvDrillRows(r.invs), INV_DRILL_COLS))])
         ));
       }
 
@@ -1031,7 +1035,7 @@ function buildView(gF, curRange, cmpRange, onChange) {
           const periodRev  = periodInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
           const allInvs    = allHistoricalInvs.filter(i => i.clientId === id && i.status !== 'draft');
           const histRev    = allInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-          return { name, periodRev, histRev, count: periodInvs.length };
+          return { name, periodInvs, periodRev, allInvs, histRev, count: periodInvs.length };
         }).sort((a, b) => b.histRev - a.histRev);
         body.appendChild(mkModalTable(
           [
@@ -1039,7 +1043,11 @@ function buildView(gF, curRange, cmpRange, onChange) {
             { label: 'Period Revenue', right: true, tip: 'Sum of this client\'s non-draft invoice totals within the selected period.' },
             { label: 'Historical Revenue', right: true, muted: true, tip: 'Sum of this client\'s non-draft invoice totals across all time (all service invoices ever recorded, any period).' }
           ],
-          recurRows.map(r => [r.name, formatEUR(r.periodRev), formatEUR(r.histRev)])
+          recurRows.map(r => [
+            r.name,
+            mkDrillValue(formatEUR(r.periodRev), () => drillDownModal(`Recurring Client — ${r.name} — Period Revenue`, toInvDrillRows(r.periodInvs), INV_DRILL_COLS)),
+            mkDrillValue(formatEUR(r.histRev), () => drillDownModal(`Recurring Client — ${r.name} — Historical Revenue`, toInvDrillRows(r.allInvs), INV_DRILL_COLS))
+          ])
         ));
       }
 
@@ -1171,8 +1179,8 @@ function renderClientBar({ paid, kpiBase }) {
       const inv_ = clientInvs.filter(i => i.status !== 'draft').reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
       const body = el('div');
       const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
-      sgrid.appendChild(mkSummaryBox('Paid Revenue', formatEUR(d.eur), null));
-      sgrid.appendChild(mkSummaryBox('Outstanding', formatEUR(out_), null));
+      sgrid.appendChild(mkSummaryBox('Paid Revenue', mkDrillValue(formatEUR(d.eur), () => drillDownModal(`${d.name} — Paid Revenue`, toInvDrillRows(clientInvs.filter(i => i.status === 'paid')), INV_DRILL_COLS)), null));
+      sgrid.appendChild(mkSummaryBox('Outstanding', mkDrillValue(formatEUR(out_), () => drillDownModal(`${d.name} — Outstanding`, toInvDrillRows(clientInvs.filter(i => ['sent', 'overdue'].includes(i.status))), INV_DRILL_COLS)), null));
       sgrid.appendChild(mkSummaryBox('Collection Rate', inv_ > 0 ? `${(d.eur / inv_ * 100).toFixed(0)}%` : '—', null));
       body.appendChild(sgrid);
       const streamMap = new Map();
@@ -1186,7 +1194,11 @@ function renderClientBar({ paid, kpiBase }) {
             { label: 'Revenue', right: true, tip: 'Sum of this client\'s paid invoice totals in this stream.' },
             { label: '% of Paid', right: true, muted: true, tip: 'This stream\'s share of this client\'s total paid revenue.' }
           ],
-          streams.map(([s, v]) => [STREAMS[s]?.label || s, formatEUR(v), d.eur > 0 ? (v / d.eur * 100).toFixed(0) + '%' : '—'])
+          streams.map(([s, v]) => [
+            STREAMS[s]?.label || s,
+            mkDrillValue(formatEUR(v), () => drillDownModal(`${d.name} — ${STREAMS[s]?.label || s} (Paid)`, toInvDrillRows(clientInvs.filter(i => i.status === 'paid' && i.stream === s)), INV_DRILL_COLS)),
+            d.eur > 0 ? (v / d.eur * 100).toFixed(0) + '%' : '—'
+          ])
         ));
       }
       openModal({ title: `${d.name} — Client Profile`, body, large: true });
@@ -1231,11 +1243,13 @@ function renderMonthBar({ base }, monthKeys) {
       const statuses = [...statusMap.entries()].sort((a, b) => b[1] - a[1]);
       if (statuses.length) {
         const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${Math.min(statuses.length, 4)},1fr);gap:10px;margin-bottom:20px` });
-        statuses.forEach(([s, v]) => sgrid.appendChild(mkSummaryBox(INVOICE_STATUSES[s]?.label || s, formatEUR(v), streamTotal > 0 ? `${(v / streamTotal * 100).toFixed(0)}%` : null)));
+        statuses.forEach(([s, v]) => sgrid.appendChild(mkSummaryBox(INVOICE_STATUSES[s]?.label || s,
+          mkDrillValue(formatEUR(v), () => drillDownModal(`${label} — ${STREAMS[sk]?.label || sk} — ${INVOICE_STATUSES[s]?.label || s}`, toInvDrillRows(streamRows.filter(i => i.status === s)), INV_DRILL_COLS)),
+          streamTotal > 0 ? `${(v / streamTotal * 100).toFixed(0)}%` : null)));
         body.appendChild(sgrid);
       }
       const clientMap = new Map();
-      streamRows.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, v: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); clientMap.set(id, x); });
+      streamRows.forEach(i => { const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown'; const x = clientMap.get(id) || { n, id, v: 0 }; x.v += toEUR(i.total, i.currency, i.issueDate); clientMap.set(id, x); });
       const clients = [...clientMap.values()].sort((a, b) => b.v - a.v);
       if (clients.length) {
         body.appendChild(mkSectionLabel(`${STREAMS[sk]?.label || sk} — By Client`));
@@ -1245,7 +1259,11 @@ function renderMonthBar({ base }, monthKeys) {
             { label: 'Revenue', right: true, tip: 'Sum of this client\'s invoice totals for this month and stream.' },
             { label: '% of Stream', right: true, muted: true, tip: 'This client\'s share of the stream\'s total for this month.' }
           ],
-          clients.map(c => [c.n, formatEUR(c.v), streamTotal > 0 ? (c.v / streamTotal * 100).toFixed(0) + '%' : '—'])
+          clients.map(c => [
+            c.n,
+            mkDrillValue(formatEUR(c.v), () => drillDownModal(`${label} — ${STREAMS[sk]?.label || sk} — ${c.n}`, toInvDrillRows(streamRows.filter(i => i.clientId === c.id)), INV_DRILL_COLS)),
+            streamTotal > 0 ? (c.v / streamTotal * 100).toFixed(0) + '%' : '—'
+          ])
         ));
       }
       openModal({ title: `${label} — ${STREAMS[sk]?.label || sk}`, body, large: true });
@@ -1280,13 +1298,13 @@ function renderStatusDonut({ kpiBase }) {
       body.appendChild(mkSectionLabel('Summary'));
       body.appendChild(mkSummaryGrid([
         { label: 'Invoices',   value: String(rows.length) },
-        { label: 'Total Value', value: formatEUR(total) }
+        { label: 'Total Value', value: mkDrillValue(formatEUR(total), () => drillDownModal(`Invoices — ${label}`, toInvDrillRows(rows), INV_DRILL_COLS)) }
       ], 2));
 
       const clientMap = new Map();
       rows.forEach(i => {
         const id = i.clientId; const n = byId('clients', id)?.name || 'Unknown';
-        const x = clientMap.get(id) || { n, v: 0, cnt: 0 };
+        const x = clientMap.get(id) || { n, id, v: 0, cnt: 0 };
         x.v += toEUR(i.total, i.currency, i.issueDate); x.cnt++;
         clientMap.set(id, x);
       });
@@ -1300,7 +1318,11 @@ function renderStatusDonut({ kpiBase }) {
             { label: 'Total', right: true, tip: 'Sum of this client\'s invoice totals in this status.' },
             { label: '% of Total', right: true, muted: true, tip: 'This client\'s share of the total value in this status.' }
           ],
-          clients.map(c => [c.n, String(c.cnt), formatEUR(c.v), total > 0 ? (c.v / total * 100).toFixed(1) + '%' : '—'])
+          clients.map(c => [
+            c.n, String(c.cnt),
+            mkDrillValue(formatEUR(c.v), () => drillDownModal(`Invoices — ${label} — ${c.n}`, toInvDrillRows(rows.filter(i => i.clientId === c.id)), INV_DRILL_COLS)),
+            total > 0 ? (c.v / total * 100).toFixed(1) + '%' : '—'
+          ])
         ));
       }
 
@@ -1348,8 +1370,8 @@ function renderOutstandingBar({ outstanding }) {
       body.appendChild(mkSectionLabel('Summary'));
       body.appendChild(mkSummaryGrid([
         { label: 'Invoices',    value: String(clientInvs.length) },
-        { label: 'Outstanding', value: formatEUR(d.eur) },
-        { label: 'Overdue',     value: overdueAmt > 0 ? formatEUR(overdueAmt) : '—' }
+        { label: 'Outstanding', value: mkDrillValue(formatEUR(d.eur), () => drillDownModal(`Outstanding — ${d.name}`, toInvDrillRows(clientInvs), INV_DRILL_COLS)) },
+        { label: 'Overdue',     value: overdueAmt > 0 ? mkDrillValue(formatEUR(overdueAmt), () => drillDownModal(`Outstanding — ${d.name} — Overdue`, toInvDrillRows(clientInvs.filter(i => i.status === 'overdue')), INV_DRILL_COLS)) : '—' }
       ], 3));
 
       const streamMap = new Map();
@@ -1363,7 +1385,11 @@ function renderOutstandingBar({ outstanding }) {
             { label: 'Outstanding', right: true, tip: 'Sum of this client\'s sent + overdue invoice totals in this stream.' },
             { label: '% of Total', right: true, muted: true, tip: 'This stream\'s share of this client\'s total outstanding.' }
           ],
-          streams.map(([s, v]) => [STREAMS[s]?.label || s, formatEUR(v), d.eur > 0 ? (v / d.eur * 100).toFixed(0) + '%' : '—'])
+          streams.map(([s, v]) => [
+            STREAMS[s]?.label || s,
+            mkDrillValue(formatEUR(v), () => drillDownModal(`Outstanding — ${d.name} — ${STREAMS[s]?.label || s}`, toInvDrillRows(clientInvs.filter(i => i.stream === s)), INV_DRILL_COLS)),
+            d.eur > 0 ? (v / d.eur * 100).toFixed(0) + '%' : '—'
+          ])
         ));
       }
 
@@ -1431,7 +1457,7 @@ function renderAgingBar({ outstanding }) {
         const name = byId('clients', id)?.name || 'Unknown';
         const eur = toEUR(i.total, i.currency, i.issueDate);
         const due = i.dueDate || i.issueDate || i.date || '';
-        const existing = clientMap.get(id) || { name, total: 0, count: 0, oldestDue: '' };
+        const existing = clientMap.get(id) || { name, id, total: 0, count: 0, oldestDue: '' };
         existing.total += eur;
         existing.count++;
         if (!existing.oldestDue || due < existing.oldestDue) existing.oldestDue = due;
@@ -1442,7 +1468,7 @@ function renderAgingBar({ outstanding }) {
       const body = el('div');
       const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px' });
       sgrid.appendChild(mkSummaryBox('Invoices in Bucket', String(b.items.length), null));
-      sgrid.appendChild(mkSummaryBox('Total Outstanding', formatEUR(bucketTotal), null));
+      sgrid.appendChild(mkSummaryBox('Total Outstanding', mkDrillValue(formatEUR(bucketTotal), () => drillDownModal(`Aging — ${b.label}`, toInvDrillRows(b.items), INV_DRILL_COLS)), null));
       body.appendChild(sgrid);
 
       body.appendChild(mkSectionLabel('By Client (worst first)'));
@@ -1456,7 +1482,7 @@ function renderAgingBar({ outstanding }) {
         clientRows.map(c => [
           c.name,
           String(c.count),
-          formatEUR(c.total),
+          mkDrillValue(formatEUR(c.total), () => drillDownModal(`Aging — ${b.label} — ${c.name}`, toInvDrillRows(b.items.filter(i => i.clientId === c.id)), INV_DRILL_COLS)),
           c.oldestDue ? fmtDate(c.oldestDue) : '—'
         ])
       ));

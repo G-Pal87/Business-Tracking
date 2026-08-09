@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK, groupByMonthKey, mkTh } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK, groupByMonthKey, mkTh, mkDrillValue } from './analytics-helpers.js';
 import { buildServicesSection, destroyServiceCharts, resetServiceStatusFilter } from './analytics-services.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -217,20 +217,20 @@ function buildKpiSection(cur, cmp, cmpRange) {
     } else {
       // Rental vs Service summary boxes
       const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
-      sgrid.appendChild(mkSummaryBox('Rental Revenue', formatEUR(propRev),
+      sgrid.appendChild(mkSummaryBox('Rental Revenue', mkDrillValue(formatEUR(propRev), () => openStreamDrill('Rental Revenue', payments, [])),
         total > 0 ? `${(propRev / total * 100).toFixed(0)}% of total · ${activePropIds.size} propert${activePropIds.size !== 1 ? 'ies' : 'y'}` : null));
-      sgrid.appendChild(mkSummaryBox('Service Revenue', formatEUR(svcRev),
+      sgrid.appendChild(mkSummaryBox('Service Revenue', mkDrillValue(formatEUR(svcRev), () => openStreamDrill('Service Revenue', [], invoices)),
         total > 0 ? `${(svcRev / total * 100).toFixed(0)}% of total · ${activeClientIds.size} client${activeClientIds.size !== 1 ? 's' : ''}` : null));
       body.appendChild(sgrid);
     }
 
     // Stream breakdown table
     const streamRows = [
-      ['Short-term Rental', formatEUR(stRev), total > 0 ? (stRev / total * 100).toFixed(1) + '%' : '—'],
-      ['Long-term Rental',  formatEUR(ltRev), total > 0 ? (ltRev / total * 100).toFixed(1) + '%' : '—'],
-      ['Customer Success',  formatEUR(csRev), total > 0 ? (csRev / total * 100).toFixed(1) + '%' : '—'],
-      ['Marketing Services', formatEUR(mktRev), total > 0 ? (mktRev / total * 100).toFixed(1) + '%' : '—'],
-    ].filter(r => r[1] !== formatEUR(0));
+      { label: 'Short-term Rental', eur: stRev, drill: () => openStreamDrill('Short-term Rental', payments.filter(p => p.stream === 'short_term_rental'), []) },
+      { label: 'Long-term Rental',  eur: ltRev, drill: () => openStreamDrill('Long-term Rental',  payments.filter(p => p.stream === 'long_term_rental'),  []) },
+      { label: 'Customer Success',  eur: csRev, drill: () => openStreamDrill('Customer Success',  [], invoices.filter(i => i.stream === 'customer_success')) },
+      { label: 'Marketing Services', eur: mktRev, drill: () => openStreamDrill('Marketing Services', [], invoices.filter(i => i.stream === 'marketing_services')) },
+    ].filter(r => r.eur > 0);
     if (streamRows.length) {
       body.appendChild(mkSectionLabel('Revenue by Stream'));
       const hdrs = [
@@ -238,7 +238,10 @@ function buildKpiSection(cur, cmp, cmpRange) {
         { label: 'Revenue', right: true, tip: 'Total EUR revenue from this stream for the current period.' },
         { label: '% of Total', right: true, muted: true, tip: 'This stream\'s share of total revenue for the period.' }
       ];
-      body.appendChild(mkModalTable(hdrs, streamRows));
+      body.appendChild(mkModalTable(hdrs, streamRows.map(r => [
+        r.label, mkDrillValue(formatEUR(r.eur), r.drill),
+        total > 0 ? (r.eur / total * 100).toFixed(1) + '%' : '—'
+      ])));
     }
 
     // Top contributors
@@ -253,7 +256,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
         { label: 'Share', right: true, muted: true, tip: 'This contributor\'s share of total revenue.' }
       ];
       const rows = contribs.slice(0, 8).map((c, i) => [
-        String(i + 1), c.name, c.type, formatEUR(c.val),
+        String(i + 1), c.name, c.type, mkDrillValue(formatEUR(c.val), () => contribDrill(c)),
         total > 0 ? (c.val / total * 100).toFixed(1) + '%' : '—'
       ]);
       body.appendChild(mkModalTable(hdrs, rows));
@@ -277,12 +280,13 @@ function buildKpiSection(cur, cmp, cmpRange) {
     } else {
       // CS vs Marketing boxes
       const streamData = [
-        { label: 'Customer Success',   eur: csRev  },
-        { label: 'Marketing Services', eur: mktRev },
+        { label: 'Customer Success',   eur: csRev,  key: 'customer_success'   },
+        { label: 'Marketing Services', eur: mktRev, key: 'marketing_services' },
       ].filter(s => s.eur > 0);
       if (streamData.length) {
         const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${streamData.length},1fr);gap:12px;margin-bottom:20px` });
-        streamData.forEach(s => sgrid.appendChild(mkSummaryBox(s.label, formatEUR(s.eur),
+        streamData.forEach(s => sgrid.appendChild(mkSummaryBox(s.label,
+          mkDrillValue(formatEUR(s.eur), () => openStreamDrill(s.label, [], invoices.filter(i => i.stream === s.key))),
           svcRev > 0 ? `${(s.eur / svcRev * 100).toFixed(0)}% of service revenue` : null)));
         body.appendChild(sgrid);
       }
@@ -294,7 +298,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
       const id   = i.clientId;
       const name = byId('clients', id)?.name || 'Unknown';
       const eur  = toEUR(i.total, i.currency, i.issueDate);
-      const e    = clientMap.get(id) || { name, eur: 0, count: 0 };
+      const e    = clientMap.get(id) || { id, name, eur: 0, count: 0 };
       e.eur  += eur;
       e.count++;
       clientMap.set(id, e);
@@ -309,7 +313,8 @@ function buildKpiSection(cur, cmp, cmpRange) {
         { label: '% of Service', right: true, muted: true, tip: 'This client\'s share of total service revenue.' }
       ];
       const rows = clients.map(c => [
-        c.name, String(c.count), formatEUR(c.eur),
+        c.name, String(c.count),
+        mkDrillValue(formatEUR(c.eur), () => drillDownModal(`Service Revenue — ${c.name}`, drillRevRows([], invoices.filter(i => i.clientId === c.id)), REV_COLS)),
         svcRev > 0 ? (c.eur / svcRev * 100).toFixed(1) + '%' : '—'
       ]);
       body.appendChild(mkModalTable(hdrs, rows));
@@ -333,12 +338,13 @@ function buildKpiSection(cur, cmp, cmpRange) {
     } else {
       // STR vs LTR summary boxes
       const typeData = [
-        { label: 'Short-term Rental', eur: stRev, props: strPropIds.size },
-        { label: 'Long-term Rental',  eur: ltRev, props: ltrPropIds.size },
+        { label: 'Short-term Rental', eur: stRev, props: strPropIds.size, key: 'short_term_rental' },
+        { label: 'Long-term Rental',  eur: ltRev, props: ltrPropIds.size, key: 'long_term_rental'  },
       ].filter(t => t.eur > 0);
       if (typeData.length) {
         const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${typeData.length},1fr);gap:12px;margin-bottom:20px` });
-        typeData.forEach(t => sgrid.appendChild(mkSummaryBox(t.label, formatEUR(t.eur),
+        typeData.forEach(t => sgrid.appendChild(mkSummaryBox(t.label,
+          mkDrillValue(formatEUR(t.eur), () => openStreamDrill(t.label, payments.filter(p => p.stream === t.key), [])),
           `${t.props} prop${t.props !== 1 ? 's' : ''} · ${propRev > 0 ? (t.eur / propRev * 100).toFixed(0) : 0}% of rental`)));
         body.appendChild(sgrid);
       }
@@ -352,7 +358,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
       const name = prop?.name || 'Unknown';
       const type = p.stream === 'short_term_rental' ? 'STR' : p.stream === 'long_term_rental' ? 'LTR' : 'Other';
       const eur  = toEUR(p.amount, p.currency, p.date);
-      const e    = propRevMap.get(id) || { name, type, eur: 0, count: 0 };
+      const e    = propRevMap.get(id) || { id, name, type, eur: 0, count: 0 };
       e.eur  += eur;
       e.count++;
       propRevMap.set(id, e);
@@ -368,7 +374,8 @@ function buildKpiSection(cur, cmp, cmpRange) {
         { label: '% of Rental', right: true, muted: true, tip: 'This property\'s share of total rental revenue.' }
       ];
       const rows = props.map(p => [
-        p.name, p.type, String(p.count), formatEUR(p.eur),
+        p.name, p.type, String(p.count),
+        mkDrillValue(formatEUR(p.eur), () => drillDownModal(`Rental Revenue — ${p.name}`, drillRevRows(payments.filter(pp => pp.propertyId === p.id), []), REV_COLS)),
         propRev > 0 ? (p.eur / propRev * 100).toFixed(1) + '%' : '—'
       ]);
       body.appendChild(mkModalTable(hdrs, rows));
@@ -528,7 +535,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
         body.appendChild(mkSectionLabel('All Contributors'));
         body.appendChild(mkModalTable(
           [{ label: 'Type', muted: true }, { label: 'Name' }, { label: 'Revenue', right: true }, { label: 'Share', right: true, muted: true }],
-          contribs.map(c => [c.type, c.name, formatEUR(c.val), total > 0 ? (c.val / total * 100).toFixed(1) + '%' : '0%'])
+          contribs.map(c => [c.type, c.name, mkDrillValue(formatEUR(c.val), () => contribDrill(c)), total > 0 ? (c.val / total * 100).toFixed(1) + '%' : '0%'])
         ));
         openModal({ title: `Revenue Concentration — ${total > 0 ? concPct.toFixed(1) + '%' : '0%'}`, body, large: true });
       }
@@ -558,8 +565,8 @@ function buildKpiSection(cur, cmp, cmpRange) {
       body.appendChild(mkModalTable(
         [{ label: 'Rental Type' }, { label: 'Revenue', right: true }, { label: 'Revenue Properties', right: true, muted: true }, { label: 'Avg / Property', right: true }],
         [
-          ['Short-term', formatEUR(stRev), String(strPropIds.size), formatEUR(strPropIds.size > 0 ? avgStr : 0)],
-          ['Long-term',  formatEUR(ltRev), String(ltrPropIds.size), formatEUR(ltrPropIds.size > 0 ? avgLtr : 0)]
+          ['Short-term', mkDrillValue(formatEUR(stRev), () => openStreamDrill('Short-term Rental', payments.filter(p => p.stream === 'short_term_rental'), [])), String(strPropIds.size), formatEUR(strPropIds.size > 0 ? avgStr : 0)],
+          ['Long-term',  mkDrillValue(formatEUR(ltRev), () => openStreamDrill('Long-term Rental',  payments.filter(p => p.stream === 'long_term_rental'),  [])), String(ltrPropIds.size), formatEUR(ltrPropIds.size > 0 ? avgLtr : 0)]
         ]
       ));
       openModal({ title: 'Avg Rental Revenue / Property', body, large: true });

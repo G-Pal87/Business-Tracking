@@ -792,11 +792,11 @@ function renderCharts(data, year, ownerFilter) {
       const d = yoyCache.get(clickedYear) || getYearData(clickedYear, ownerFilter);
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       body.appendChild(mkSummaryGrid([
-        { label: 'Total Revenue',    value: formatEUR(d.totalRevenue) },
-        { label: 'Total OpEx',       value: formatEUR(d.totalOpEx) },
-        { label: 'Operating Profit', value: formatEUR(d.opProfit) },
-        { label: 'CapEx',            value: formatEUR(d.totalCapEx) },
-        { label: 'Net Cash Used',    value: formatEUR(d.netCash) },
+        { label: 'Total Revenue',    value: mkDrillValue(formatEUR(d.totalRevenue), () => drillDownModal(`${clickedYear} — Total Revenue`, drillRevRows(d.payments, d.invoices), REV_COLS)) },
+        { label: 'Total OpEx',       value: mkDrillValue(formatEUR(d.totalOpEx), () => drillDownModal(`${clickedYear} — Total Operating Expenses`, drillExpRows(d.opExpenses), EXP_COLS)) },
+        { label: 'Operating Profit', value: mkDrillValue(formatEUR(d.opProfit), () => drillDownModal(`${clickedYear} — Operating Profit`, drillNetRows(d.payments, d.invoices, d.opExpenses), NET_COLS)) },
+        { label: 'CapEx',            value: mkDrillValue(formatEUR(d.totalCapEx), () => drillDownModal(`${clickedYear} — Total CapEx`, drillExpRows(d.capExpenses), EXP_COLS)) },
+        { label: 'Net Cash Used',    value: mkDrillValue(formatEUR(d.netCash), () => drillDownModal(`${clickedYear} — Net Cash Used`, drillNetRows(d.payments, d.invoices, [...d.opExpenses, ...d.capExpenses]), NET_COLS)) },
         { label: 'Operating Margin', value: d.totalRevenue > 0 ? (d.opProfit / d.totalRevenue * 100).toFixed(1) + '%' : '—' }
       ], 3));
       const catEnt = [...d.catMap.entries()].sort((a, b) => b[1] - a[1]);
@@ -1010,7 +1010,10 @@ function modalRentalPayments() {
   const moRows   = Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b));
 
   const body = el('div');
-  body.appendChild(mkSummaryGrid([{ label: 'Total Revenue', value: fmtE(total) }, { label: 'Payments', value: String(pays.length) }, { label: 'Avg / Payment', value: fmtE(total / pays.length) }, { label: 'Properties', value: String(propRows.length) }], 4));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Total Revenue', value: mkDrillValue(fmtE(total), () => drillDownModal(`Rental Payments — ${year}`, drillRevRows(pays, []), REV_COLS)) },
+    { label: 'Payments', value: String(pays.length) }, { label: 'Avg / Payment', value: fmtE(total / pays.length) }, { label: 'Properties', value: String(propRows.length) }
+  ], 4));
   body.appendChild(mkSectionLabel('Revenue by Property'));
   body.appendChild(mkModalTable([
     { label: 'Property', tip: 'The property this rental payment was recorded against.' },
@@ -1044,7 +1047,10 @@ function modalInvoiceRevenue() {
   const clRows = Object.entries(byClient).sort(([, a], [, b]) => b.rev - a.rev);
 
   const body = el('div');
-  body.appendChild(mkSummaryGrid([{ label: 'Total Invoiced', value: fmtE(total) }, { label: 'Invoices', value: String(invs.length) }, { label: 'Avg Invoice', value: fmtE(total / invs.length) }, { label: 'Clients', value: String(clRows.length) }], 4));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Total Invoiced', value: mkDrillValue(fmtE(total), () => drillDownModal(`Invoice Revenue — ${year}`, drillRevRows([], invs), REV_COLS)) },
+    { label: 'Invoices', value: String(invs.length) }, { label: 'Avg Invoice', value: fmtE(total / invs.length) }, { label: 'Clients', value: String(clRows.length) }
+  ], 4));
   body.appendChild(mkSectionLabel('Revenue by Client'));
   body.appendChild(mkModalTable([
     { label: 'Client', tip: 'The client billed on the invoice.' },
@@ -1069,7 +1075,10 @@ function modalExpenseCategory(cat) {
   const topRecs = [...catExps].sort((a, b) => toEUR(b.amount, b.currency, year) - toEUR(a.amount, a.currency, year)).slice(0, 8);
 
   const body = el('div');
-  body.appendChild(mkSummaryGrid([{ label: 'Category Total', value: fmtE(total) }, { label: 'Records', value: String(catExps.length) }, { label: 'Avg / Record', value: fmtE(total / catExps.length) }, { label: '% of All Expenses', value: pct(total, allTotal) }], 4));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Category Total', value: mkDrillValue(fmtE(total), () => drillDownModal(`${cat} — ${year}`, drillExpRows(catExps), EXP_COLS)) },
+    { label: 'Records', value: String(catExps.length) }, { label: 'Avg / Record', value: fmtE(total / catExps.length) }, { label: '% of All Expenses', value: pct(total, allTotal) }
+  ], 4));
   body.appendChild(mkSectionLabel('Monthly Distribution'));
   body.appendChild(mkModalTable([
     { label: 'Month', tip: 'Calendar month (YYYY-MM) the expense was dated in.' },
@@ -1157,7 +1166,10 @@ function modalRevenueDetail() {
   const invsTotal = invs.reduce((a, i) => a + toEUR(i.total, i.currency, year), 0);
 
   const body = el('div');
-  body.appendChild(mkSummaryGrid([{ label: 'Actual Collected', value: fmtE(actTotal) }, { label: 'Forecast Remaining', value: fmtE(safeN(s.forecastRevenue)) }, { label: 'Rental Share', value: pct(paysTotal, actTotal) }, { label: 'Invoice Share', value: pct(invsTotal, actTotal) }], 4));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Actual Collected', value: mkDrillValue(fmtE(actTotal), () => drillDownModal(`Annual Revenue — ${year}`, drillRevRows(pays, invs), REV_COLS)) },
+    { label: 'Forecast Remaining', value: fmtE(safeN(s.forecastRevenue)) }, { label: 'Rental Share', value: pct(paysTotal, actTotal) }, { label: 'Invoice Share', value: pct(invsTotal, actTotal) }
+  ], 4));
   if (moRows.length) {
     body.appendChild(mkSectionLabel('Month-by-Month Actual Collections'));
     let cum = 0;
@@ -1180,7 +1192,10 @@ function modalExpensesDetail() {
   const catRows  = Object.entries(byCat).sort(([, a], [, b]) => b - a);
 
   const body = el('div');
-  body.appendChild(mkSummaryGrid([{ label: 'Actual to Date', value: fmtE(actTotal) }, { label: 'Forecast Remaining', value: fmtE(safeN(s.forecastExpenses)) }, { label: 'Expense Categories', value: String(catRows.length) }, { label: 'Largest Category', value: catRows[0]?.[0] || '—', sub: catRows[0] ? fmtE(catRows[0][1]) : '' }], 4));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Actual to Date', value: mkDrillValue(fmtE(actTotal), () => drillDownModal(`Deductible Expenses — ${year}`, drillExpRows(exps), EXP_COLS)) },
+    { label: 'Forecast Remaining', value: fmtE(safeN(s.forecastExpenses)) }, { label: 'Expense Categories', value: String(catRows.length) }, { label: 'Largest Category', value: catRows[0]?.[0] || '—', sub: catRows[0] ? fmtE(catRows[0][1]) : '' }
+  ], 4));
   if (catRows.length) {
     body.appendChild(mkSectionLabel('All Categories — Actual to Date'));
     body.appendChild(mkModalTable([
