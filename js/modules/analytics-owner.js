@@ -239,23 +239,33 @@ function buildShareKpiModal(owner, partnerLabel, revenue, pct, allRecords) {
 // ── Shared drill-down modal openers (reused by KPI cards, charts, and the
 //    partner columns so identical numbers always open identical modals) ──────
 function openRevenueSplitModal(data, cmpData, cmpRange) {
-  const { total, revSplit } = data;
+  const { total, revSplit, annotatedPayments, annotatedInvoices } = data;
+  const revRecords = [...annotatedPayments, ...annotatedInvoices];
   const youPct  = total > 0 ? revSplit.you  / total * 100 : 0;
   const ritaPct = total > 0 ? revSplit.rita / total * 100 : 0;
   const cl = cmpRange?.label || '';
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   if (cmpData) {
+    const cmpRevRecords = [...cmpData.annotatedPayments, ...cmpData.annotatedInvoices];
     const cmpYou  = cmpData.revSplit.you;
     const cmpRita = cmpData.revSplit.rita;
     body.appendChild(mkCmpGrid([
-      { label: YOU_LABEL,  curVal: formatEUR(revSplit.you),  cmpVal: formatEUR(cmpYou)  },
-      { label: RITA_LABEL, curVal: formatEUR(revSplit.rita), cmpVal: formatEUR(cmpRita) },
-      { label: 'Total',    curVal: formatEUR(total),          cmpVal: formatEUR(cmpData.total) },
+      { label: YOU_LABEL,
+        curVal: mkDrillValue(formatEUR(revSplit.you), () => drillDownModal(`${YOU_LABEL} Revenue`, toOwnerRevRows(revRecords, 'you'), OWNER_REV_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cmpYou), () => drillDownModal(`${YOU_LABEL} Revenue — ${cl}`, toOwnerRevRows(cmpRevRecords, 'you'), OWNER_REV_COLS)) },
+      { label: RITA_LABEL,
+        curVal: mkDrillValue(formatEUR(revSplit.rita), () => drillDownModal(`${RITA_LABEL} Revenue`, toOwnerRevRows(revRecords, 'rita'), OWNER_REV_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cmpRita), () => drillDownModal(`${RITA_LABEL} Revenue — ${cl}`, toOwnerRevRows(cmpRevRecords, 'rita'), OWNER_REV_COLS)) },
+      { label: 'Total',
+        curVal: mkDrillValue(formatEUR(total), () => drillDownModal('Total Revenue', toOwnerRevRows(revRecords), OWNER_REV_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cmpData.total), () => drillDownModal(`Total Revenue — ${cl}`, toOwnerRevRows(cmpRevRecords), OWNER_REV_COLS)) },
     ], 'Current Period', cl));
   } else {
     body.appendChild(mkSummaryGrid([
-      { label: YOU_LABEL,  value: formatEUR(revSplit.you),  sub: youPct.toFixed(1) + '%',
+      { label: YOU_LABEL,
+        value: mkDrillValue(formatEUR(revSplit.you), () => drillDownModal(`${YOU_LABEL} Revenue`, toOwnerRevRows(revRecords, 'you'), OWNER_REV_COLS)),
+        sub: youPct.toFixed(1) + '%',
         explain: {
           title: `${YOU_LABEL} Revenue`,
           formula: "Owner-split revenue: 'you' records count 100%, 'both' records count 50%.",
@@ -266,7 +276,9 @@ function openRevenueSplitModal(data, cmpData, cmpRange) {
           source: 'analytics-owner.js:44 splitByOwner()'
         }
       },
-      { label: RITA_LABEL, value: formatEUR(revSplit.rita), sub: ritaPct.toFixed(1) + '%',
+      { label: RITA_LABEL,
+        value: mkDrillValue(formatEUR(revSplit.rita), () => drillDownModal(`${RITA_LABEL} Revenue`, toOwnerRevRows(revRecords, 'rita'), OWNER_REV_COLS)),
+        sub: ritaPct.toFixed(1) + '%',
         explain: {
           title: `${RITA_LABEL} Revenue`,
           formula: "Owner-split revenue: 'rita' records count 100%, 'both' records count 50%.",
@@ -277,7 +289,8 @@ function openRevenueSplitModal(data, cmpData, cmpRange) {
           source: 'analytics-owner.js:44 splitByOwner()'
         }
       },
-      { label: 'Total',    value: formatEUR(total),
+      { label: 'Total',
+        value: mkDrillValue(formatEUR(total), () => drillDownModal('Total Revenue', toOwnerRevRows(revRecords), OWNER_REV_COLS)),
         explain: {
           title: 'Total Portfolio Revenue',
           formula: `${YOU_LABEL} Revenue + ${RITA_LABEL} Revenue`,
@@ -485,6 +498,7 @@ function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cm
 // ── KPI section ───────────────────────────────────────────────────────────────
 function buildKpiSection(data, cmpData, propsData, cmpRange) {
   const { total, revSplit, annotatedPayments, annotatedInvoices } = data;
+  const revRecords = [...annotatedPayments, ...annotatedInvoices];
   const youPct  = total > 0 ? revSplit.you  / total * 100 : 0;
   const ritaPct = total > 0 ? revSplit.rita / total * 100 : 0;
   const sharedCount = propsData.bothProps.length;
@@ -497,7 +511,7 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
   const cl = cmpRange?.label || '';
   grid.appendChild(mkKpiCard({
     label: 'Total Portfolio Revenue',
-    value: formatEUR(total),
+    value: mkDrillValue(formatEUR(total), () => drillDownModal('Total Portfolio Revenue', toOwnerRevRows(revRecords), OWNER_REV_COLS)),
     subtitle: 'All partners combined',
     delta: safePct(total, cmpData?.total),
     compLabel: cl,
@@ -683,7 +697,8 @@ function buildServiceStreamSection(annotatedInvoices, curRange) {
 
 // ── Settlement section ────────────────────────────────────────────────────────
 function buildSettlementBody(data) {
-  const { revSplit, expSplit, netSplit } = data;
+  const { revSplit, expSplit, netSplit, annotatedPayments, annotatedInvoices, annotatedExpenses } = data;
+  const revRecords = [...annotatedPayments, ...annotatedInvoices];
   const body = el('div', { style: 'padding:0 16px 16px' });
 
   // Summary grid
@@ -692,7 +707,9 @@ function buildSettlementBody(data) {
   const totNet = netSplit.you + netSplit.rita;
 
   const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px' });
-  sgrid.appendChild(mkSummaryBox('Total Revenue', formatEUR(totRev), null, {
+  sgrid.appendChild(mkSummaryBox('Total Revenue',
+    mkDrillValue(formatEUR(totRev), () => drillDownModal('Total Revenue', toOwnerRevRows(revRecords), OWNER_REV_COLS)),
+    null, {
     title: 'Total Revenue',
     formula: 'Giorgos Revenue + Rita Revenue (owner-split totals)',
     inputs: [
@@ -701,7 +718,9 @@ function buildSettlementBody(data) {
     ],
     source: 'analytics-owner.js:608 buildSettlementBody() — `totRev = revSplit.you + revSplit.rita`'
   }));
-  sgrid.appendChild(mkSummaryBox('Total OpEx', formatEUR(totExp), null, {
+  sgrid.appendChild(mkSummaryBox('Total OpEx',
+    mkDrillValue(formatEUR(totExp), () => drillDownModal('Total OpEx', toOwnerExpRows(annotatedExpenses), OWNER_EXP_COLS)),
+    null, {
     title: 'Total OpEx',
     formula: 'Giorgos OpEx + Rita OpEx (owner-split totals, CapEx excluded)',
     inputs: [
@@ -710,7 +729,8 @@ function buildSettlementBody(data) {
     ],
     source: 'analytics-owner.js:609 buildSettlementBody() — `totExp = expSplit.you + expSplit.rita`'
   }));
-  sgrid.appendChild(mkSummaryBox('Net Profit', formatEUR(totNet),
+  sgrid.appendChild(mkSummaryBox('Net Profit',
+    mkDrillValue(formatEUR(totNet), () => drillDownModal('Net Profit', toOwnerMixedRows(revRecords, annotatedExpenses), OWNER_MIXED_COLS)),
     totNet >= 0 ? 'Portfolio profitable' : 'Portfolio at a loss', {
     title: 'Net Profit',
     formula: 'Total Revenue − Total OpEx',
@@ -727,7 +747,6 @@ function buildSettlementBody(data) {
   // how expSplit/netSplit compute them via splitByOwner() — otherwise this
   // table's own "Total Expenses" row (below) is derived differently than the
   // "Net Profit" row right underneath it, and the two don't reconcile.
-  const { annotatedExpenses } = data;
   let youDirectExp = 0, ritaDirectExp = 0, sharedExp = 0;
   for (const e of annotatedExpenses) {
     const owner = e._resolvedOwner;

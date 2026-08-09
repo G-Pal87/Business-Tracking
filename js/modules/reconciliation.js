@@ -1,7 +1,7 @@
 // Reconciliation – best-in-class heatmap dashboard
 import { el, fmtDate, drillDownModal, escapeHtml, openModal } from '../core/ui.js';
 import { availableYears, formatEUR, buildReconciliationData, listActivePayments, listActive, toEUR, getPersonName, byId, companyPropIds, isCompanyRecord } from '../core/data.js';
-import { mkSectionLabel, mkSummaryGrid, mkModalTable, groupByMonthKey, mkTh, mkExplainButton } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryGrid, mkModalTable, groupByMonthKey, mkTh, mkExplainButton, mkDrillValue } from './analytics-helpers.js';
 
 export default {
   id: 'reconciliation',
@@ -260,6 +260,38 @@ function collectionRateExplain(totExp, totAct, cr) {
   };
 }
 
+// entRowsFor(list) / appendEntityTable(body, rows, yr) — shared "By Entity"
+// breakdown table used by onExpected()/onReceived()/onOutstanding() below and
+// by the Kind Subtotal/Grand Total row drills in renderDetail(), so every
+// place this breakdown appears looks and drills the same way. Expected/
+// Received cells drill into that entity's full-year modal (openEntityModal);
+// Outstanding is a derived shortfall, not a record sum, so it's left plain.
+function entRowsFor(list) {
+  return list.map(e => ({
+    entity: e.label,
+    type: e.kind === 'lt' ? 'LT Rental' : e.kind === 'st' ? 'ST Rental' : 'Service',
+    expected: e.totExp, received: e.totAct, outstanding: Math.max(0, e.totExp - e.totAct),
+    _ent: e
+  }));
+}
+function appendEntityTable(body, rows, yr) {
+  body.appendChild(mkModalTable(
+    [
+      { label: 'Entity', tip: 'Property or service stream.' },
+      { label: 'Type', tip: 'LT Rental, ST Rental, or Service — the entity\'s stream kind.' },
+      { label: 'Expected', right: true, tip: 'Sum of the entity\'s monthly Expected figures for the year (formula varies by type — see the ⓘ on the KPI card above).' },
+      { label: 'Received', right: true, tip: 'Sum of the entity\'s monthly Received (status:\'paid\' only) figures for the year.' },
+      { label: 'Outstanding', right: true, tip: 'Expected minus Received, floored at zero.' }
+    ],
+    rows.map(r => [
+      r.entity, r.type,
+      mkDrillValue(formatEUR(r.expected), () => openEntityModal(r._ent, yr)),
+      mkDrillValue(formatEUR(r.received), () => openEntityModal(r._ent, yr)),
+      formatEUR(r.outstanding)
+    ])
+  ));
+}
+
 // ── Drill-down openers ──────────────────────────────────────────────────────
 
 function openCellModal(ent, m, yr) {
@@ -440,6 +472,70 @@ function openEntityModal(ent, yr) {
   openModal({ title, body, large: true });
 }
 
+// openKindExpectedModal(kindLabel, gEnts, yr) / openKindReceivedModal(...) —
+// same shape as onExpected()/onReceived() inside build()/render() below, just
+// scoped to one kind's entities instead of every entity. Used by the
+// heatmap-detail table's per-kind "Subtotal" rows (renderDetail()).
+function openKindExpectedModal(kindLabel, gEnts, yr) {
+  const rows = entRowsFor(gEnts.filter(e => e.totExp > 0));
+  const body = el('div');
+  body.appendChild(mkSectionLabel('Summary'));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Total Expected', value: formatEUR(rows.reduce((s, r) => s + r.expected, 0)), explain: totalExpectedExplain(rows, 'reconciliation.js openKindExpectedModal()') },
+    { label: 'Total Received', value: formatEUR(rows.reduce((s, r) => s + r.received, 0)), explain: totalReceivedExplain(rows, 'reconciliation.js openKindExpectedModal()') },
+    { label: 'Entities',       value: String(rows.length) }
+  ], 3));
+  body.appendChild(mkSectionLabel('By Entity'));
+  appendEntityTable(body, rows, yr);
+  openModal({ title: `${kindLabel} Expected — ${yr}`, body, large: true });
+}
+
+function openKindReceivedModal(kindLabel, gEnts, yr) {
+  const ids = new Set(gEnts.map(e => e.id));
+  const nameById = new Map(gEnts.map(e => [e.id, e.label]));
+  const isService = gEnts.some(e => e.kind === 'service');
+  const pays = isService ? [] : listActivePayments().filter(p => p.status === 'paid' && (p.date || '').startsWith(yr) && ids.has(p.propertyId));
+  const invs = isService ? listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '').startsWith(yr) && ids.has(i.stream) && matchInvOwner(i) && matchInvScope(i)) : [];
+  const allRows = [
+    ...pays.map(p => ({ label: nameById.get(p.propertyId) || '', eur: toEUR(p.amount, p.currency, p.date) })),
+    ...invs.map(i => ({ label: nameById.get(i.stream) || '', eur: toEUR(i.total, i.currency, i.issueDate) }))
+  ];
+  const total = allRows.reduce((s, r) => s + r.eur, 0);
+
+  const body = el('div');
+  body.appendChild(mkSectionLabel('Summary'));
+  body.appendChild(mkSummaryGrid([
+    { label: 'Total Received', value: formatEUR(total) },
+    { label: isService ? 'Invoices' : 'Payments', value: String(allRows.length) },
+    { label: 'Average', value: allRows.length > 0 ? formatEUR(total / allRows.length) : '—' }
+  ], 3));
+
+  const byEntity = new Map();
+  for (const r of allRows) {
+    const cur = byEntity.get(r.label) || { count: 0, total: 0 };
+    cur.count++; cur.total += r.eur;
+    byEntity.set(r.label, cur);
+  }
+  const entRows = [...byEntity.entries()].sort((a, b) => b[1].total - a[1].total);
+  if (entRows.length) {
+    body.appendChild(mkSectionLabel('By Entity'));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Entity', tip: 'Property or service stream that received the payment/invoice.' },
+        { label: 'Records', right: true, tip: `Number of paid ${isService ? 'invoices' : 'payments'} for this entity in the year.` },
+        { label: 'Total', right: true, tip: 'Sum of paid amounts (EUR) for this entity in the year.' }
+      ],
+      entRows.map(([label, v]) => [label, String(v.count), formatEUR(v.total)])
+    ));
+  }
+
+  const title = `${kindLabel} Received — ${yr}`;
+  appendRawLinkFooter(body, allRows.length, () => drillDownModal(title, byDate(
+    isService ? invs.map(i => invRow(i, nameById.get(i.stream) || '')) : pays.map(p => payRow(p, nameById.get(p.propertyId) || ''))
+  ), REC_COLS));
+  openModal({ title, body, large: true });
+}
+
 // ── Main build ──────────────────────────────────────────────────────────────
 
 function build() {
@@ -568,22 +664,6 @@ function build() {
     const outstanding = withData.reduce((s, e) => s + Math.max(0, e.totExp - e.totAct), 0);
     const cr          = rate(totAct, totExp);
 
-    const entRowsFor = list => list.map(e => ({
-      entity: e.label,
-      type: e.kind === 'lt' ? 'LT Rental' : e.kind === 'st' ? 'ST Rental' : 'Service',
-      expected: e.totExp, received: e.totAct, outstanding: Math.max(0, e.totExp - e.totAct)
-    }));
-    const appendEntityTable = (body, rows) => body.appendChild(mkModalTable(
-      [
-        { label: 'Entity', tip: 'Property or service stream.' },
-        { label: 'Type', tip: 'LT Rental, ST Rental, or Service — the entity\'s stream kind.' },
-        { label: 'Expected', right: true, tip: 'Sum of the entity\'s monthly Expected figures for the year (formula varies by type — see the ⓘ on the KPI card above).' },
-        { label: 'Received', right: true, tip: 'Sum of the entity\'s monthly Received (status:\'paid\' only) figures for the year.' },
-        { label: 'Outstanding', right: true, tip: 'Expected minus Received, floored at zero.' }
-      ],
-      rows.map(r => [r.entity, r.type, formatEUR(r.expected), formatEUR(r.received), formatEUR(r.outstanding)])
-    ));
-
     const onExpected = () => {
       const rows = entRowsFor(withData.filter(e => e.totExp > 0));
       const body = el('div');
@@ -594,7 +674,7 @@ function build() {
         { label: 'Entities',       value: String(rows.length) }
       ], 3));
       body.appendChild(mkSectionLabel('By Entity'));
-      appendEntityTable(body, rows);
+      appendEntityTable(body, rows, yr);
       openModal({ title: `Expected — ${yr}`, body, large: true });
     };
 

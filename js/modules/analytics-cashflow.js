@@ -1623,10 +1623,18 @@ function renderCumulativeLine({ payments, invoices, opExpenses, capExpenses }, m
 
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(5,1fr);gap:10px' });
-      summaryGrid.appendChild(mkSummaryBox('Cash In', formatEUR(mIn), `${mPay.length + mInv.length} items`));
-      summaryGrid.appendChild(mkSummaryBox('Op. Cash Out', formatEUR(mOpOut), `${mOp.length} expenses`));
-      summaryGrid.appendChild(mkSummaryBox('Invest. Cash Out', formatEUR(mCapOut), `${mCap.length} items`));
-      summaryGrid.appendChild(mkSummaryBox('Net', formatEUR(mNet), mNet >= 0 ? 'Surplus' : 'Deficit', {
+      summaryGrid.appendChild(mkSummaryBox('Cash In',
+        mkDrillValue(formatEUR(mIn), () => drillDownModal(`${label} — Cash In`, buildCashFlowRows(mPay, mInv, [], []), CF_DRILL_COLS)),
+        `${mPay.length + mInv.length} items`));
+      summaryGrid.appendChild(mkSummaryBox('Op. Cash Out',
+        mkDrillValue(formatEUR(mOpOut), () => drillDownModal(`${label} — Operating Cash Out`, buildCashFlowRows([], [], mOp, []), CF_DRILL_COLS)),
+        `${mOp.length} expenses`));
+      summaryGrid.appendChild(mkSummaryBox('Invest. Cash Out',
+        mkDrillValue(formatEUR(mCapOut), () => drillDownModal(`${label} — Investment Cash Out`, buildCashFlowRows([], [], [], mCap), CF_DRILL_COLS)),
+        `${mCap.length} items`));
+      summaryGrid.appendChild(mkSummaryBox('Net',
+        mkDrillValue(formatEUR(mNet), () => drillDownModal(`${label} — Net Cash Flow`, buildCashFlowRows(mPay, mInv, mOp, mCap), CF_DRILL_COLS)),
+        mNet >= 0 ? 'Surplus' : 'Deficit', {
         title: 'Net Cash Flow (Month)', formula: 'Cash In − Op. Cash Out − Invest. Cash Out, for this month.',
         inputs: [
           { label: 'Cash In', value: formatEUR(mIn) },
@@ -1635,7 +1643,15 @@ function renderCumulativeLine({ payments, invoices, opExpenses, capExpenses }, m
         ],
         source: 'analytics-cashflow.js:1501,1540 renderCumulativeLine() — onClickItem handler (`mNet`)'
       }));
-      summaryGrid.appendChild(mkSummaryBox('Cumulative Balance', formatEUR(cumBalance), `through ${label}`, {
+      summaryGrid.appendChild(mkSummaryBox('Cumulative Balance',
+        mkDrillValue(formatEUR(cumBalance), () => {
+          const throughPay = payments   .filter(p => (p.date?.slice(0, 7) || '')              <= mk);
+          const throughInv = invoices   .filter(i => ((i.issueDate || '').slice(0, 7))          <= mk);
+          const throughOp  = opExpenses .filter(e => (e.date?.slice(0, 7) || '')                <= mk);
+          const throughCap = capExpenses.filter(e => (e.date?.slice(0, 7) || '')                <= mk);
+          drillDownModal(`Cumulative through ${label}`, buildCashFlowRows(throughPay, throughInv, throughOp, throughCap), CF_DRILL_COLS);
+        }),
+        `through ${label}`, {
         title: 'Cumulative Balance', formula: 'Running sum of each month\'s net cash flow (Cash In − Op. Cash Out − Invest. Cash Out) from the start of the chart through this month.',
         inputs: [{ label: 'This month\'s net', value: formatEUR(mNet) }, { label: 'Cumulative through this month', value: formatEUR(cumBalance) }],
         source: 'analytics-cashflow.js:1501,1553 renderCumulativeLine() — `cumData` running total'
@@ -1703,10 +1719,13 @@ function renderMonthBar({ payments, invoices, opExpenses, capExpenses }, monthKe
       const dsLabel = dsIdx === 0 ? 'Cash In' : dsIdx === 1 ? 'Operating Cash Out' : 'Investment Cash Out';
       const items = dsIdx === 0 ? [...mPay, ...mInv] : dsIdx === 1 ? mOp : mCap;
       const totalAmt = items.reduce((s, x) => s + toEUR(x.amount ?? x.total, x.currency, x.date ?? x.issueDate), 0);
+      const drillRows = dsIdx === 0 ? buildCashFlowRows(mPay, mInv, [], []) : dsIdx === 1 ? buildCashFlowRows([], [], mOp, []) : buildCashFlowRows([], [], [], mCap);
 
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px' });
-      summaryGrid.appendChild(mkSummaryBox(dsLabel, formatEUR(totalAmt), `${items.length} items`));
+      summaryGrid.appendChild(mkSummaryBox(dsLabel,
+        mkDrillValue(formatEUR(totalAmt), () => drillDownModal(`${label} — ${dsLabel}`, drillRows, CF_DRILL_COLS)),
+        `${items.length} items`));
       summaryGrid.appendChild(mkSummaryBox('Month', label, mk));
       body.appendChild(summaryGrid);
 
@@ -1801,7 +1820,9 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
         ];
 
         const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px' });
-        summaryGrid.appendChild(mkSummaryBox('Total Cash In', formatEUR(totalCashIn), `${allIn.length} items`));
+        summaryGrid.appendChild(mkSummaryBox('Total Cash In',
+          mkDrillValue(formatEUR(totalCashIn), () => drillDownModal('Cash In', buildCashFlowRows(payments, invoices, [], []), CF_DRILL_COLS)),
+          `${allIn.length} items`));
         summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(allIn.length > 0 ? totalCashIn / allIn.length : 0), 'per record'));
         body.appendChild(summaryGrid);
 
@@ -1841,7 +1862,9 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
         const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
 
         const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px' });
-        summaryGrid.appendChild(mkSummaryBox('Total OpEx Out', formatEUR(totalOpCashOut), `${opExpenses.length} expenses`));
+        summaryGrid.appendChild(mkSummaryBox('Total OpEx Out',
+          mkDrillValue(formatEUR(totalOpCashOut), () => drillDownModal('Operating Cash Out', buildCashFlowRows([], [], opExpenses, []), CF_DRILL_COLS)),
+          `${opExpenses.length} expenses`));
         summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(opExpenses.length > 0 ? totalOpCashOut / opExpenses.length : 0), 'per expense'));
         body.appendChild(summaryGrid);
 
@@ -1885,7 +1908,9 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
         const catEntries = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
 
         const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:10px' });
-        summaryGrid.appendChild(mkSummaryBox('Total Invest. Out', formatEUR(totalInvCashOut), `${capExpenses.length} items`));
+        summaryGrid.appendChild(mkSummaryBox('Total Invest. Out',
+          mkDrillValue(formatEUR(totalInvCashOut), () => drillDownModal('Investment Cash Out', buildCashFlowRows([], [], [], capExpenses), CF_DRILL_COLS)),
+          `${capExpenses.length} items`));
         summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(capExpenses.length > 0 ? totalInvCashOut / capExpenses.length : 0), 'per item'));
         body.appendChild(summaryGrid);
 
