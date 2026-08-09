@@ -769,7 +769,7 @@ function build() {
         { label: 'Entities',          value: String(rows.length) }
       ], 3));
       body.appendChild(mkSectionLabel('By Entity'));
-      appendEntityTable(body, rows);
+      appendEntityTable(body, rows, yr);
       openModal({ title: `Outstanding — ${yr}`, body, large: true });
     };
 
@@ -782,7 +782,7 @@ function build() {
     renderHeatmap(heatmapCard, filtered, yr);
 
     // ── Detail table ─────────────────────────────────────────────────────────
-    renderDetail(detailCard, withData, yr);
+    renderDetail(detailCard, withData, yr, onExpected, onReceived);
   };
 
   // ── Heatmap renderer ──────────────────────────────────────────────────────
@@ -948,7 +948,7 @@ function build() {
   }
 
   // ── Detail table renderer ─────────────────────────────────────────────────
-  function renderDetail(container, entities, yr) {
+  function renderDetail(container, entities, yr, onExpected, onReceived) {
     container.appendChild(el('div', { class: 'card-header' },
       el('div', { class: 'card-title' }, `${yr} — Entity Summary`),
       el('div', { style: 'font-size:11px;color:var(--text-muted)' }, 'Click a row to view records')
@@ -997,16 +997,16 @@ function build() {
       const kAct  = gEnts.reduce((s, e) => s + e.totAct, 0);
       const kOut  = Math.max(0, kExp - kAct);
       const kRate = rate(kAct, kExp);
-      const subTr = document.createElement('tr');
-      subTr.style.cssText = 'font-weight:600;border-top:1px solid var(--border);background:var(--surface)';
-      subTr.innerHTML = `
-        <td style="color:var(--text-muted);font-size:11px">${kindLabel} Subtotal</td>
-        <td></td>
-        <td class="right num">${formatEUR(kExp)}</td>
-        <td class="right num">${formatEUR(kAct)}</td>
-        <td class="right num ${kOut > 0 ? 'danger' : 'success'}">${kOut > 0 ? formatEUR(kOut) : '—'}</td>
-        <td class="right">${kRate !== null ? `<span class="badge ${kRate >= 100 ? 'success' : kRate >= 75 ? 'warning' : 'danger'}">${kRate}%</span>` : '<span class="muted">—</span>'}</td>
-      `;
+      const subTr = el('tr', { style: 'font-weight:600;border-top:1px solid var(--border);background:var(--surface)' },
+        el('td', { style: 'color:var(--text-muted);font-size:11px' }, `${kindLabel} Subtotal`),
+        el('td'),
+        el('td', { class: 'right num' }, mkDrillValue(formatEUR(kExp), () => openKindExpectedModal(kindLabel, gEnts, yr))),
+        el('td', { class: 'right num' }, mkDrillValue(formatEUR(kAct), () => openKindReceivedModal(kindLabel, gEnts, yr))),
+        el('td', { class: `right num ${kOut > 0 ? 'danger' : 'success'}` }, kOut > 0 ? formatEUR(kOut) : '—'),
+        el('td', { class: 'right' }, kRate !== null
+          ? el('span', { class: `badge ${kRate >= 100 ? 'success' : kRate >= 75 ? 'warning' : 'danger'}` }, `${kRate}%`)
+          : el('span', { class: 'muted' }, '—'))
+      );
       tb.appendChild(subTr);
     }
 
@@ -1015,15 +1015,16 @@ function build() {
     const gAct  = entities.reduce((s, e) => s + e.totAct, 0);
     const gOut  = Math.max(0, gExp - gAct);
     const gRate = rate(gAct, gExp);
-    const totTr = document.createElement('tr');
-    totTr.style.cssText = 'font-weight:700;border-top:2px solid var(--border)';
-    totTr.innerHTML = `
-      <td>Grand Total</td><td></td>
-      <td class="right num">${formatEUR(gExp)}</td>
-      <td class="right num">${formatEUR(gAct)}</td>
-      <td class="right num ${gOut > 0 ? 'danger' : 'success'}">${gOut > 0 ? formatEUR(gOut) : '—'}</td>
-      <td class="right">${gRate !== null ? `<span class="badge ${gRate >= 100 ? 'success' : gRate >= 75 ? 'warning' : 'danger'}">${gRate}%</span>` : '<span class="muted">—</span>'}</td>
-    `;
+    const totTr = el('tr', { style: 'font-weight:700;border-top:2px solid var(--border)' },
+      el('td', {}, 'Grand Total'),
+      el('td'),
+      el('td', { class: 'right num' }, mkDrillValue(formatEUR(gExp), onExpected)),
+      el('td', { class: 'right num' }, mkDrillValue(formatEUR(gAct), onReceived)),
+      el('td', { class: `right num ${gOut > 0 ? 'danger' : 'success'}` }, gOut > 0 ? formatEUR(gOut) : '—'),
+      el('td', { class: 'right' }, gRate !== null
+        ? el('span', { class: `badge ${gRate >= 100 ? 'success' : gRate >= 75 ? 'warning' : 'danger'}` }, `${gRate}%`)
+        : el('span', { class: 'muted' }, '—'))
+    );
     tb.appendChild(totTr);
     t.appendChild(tb);
     container.appendChild(el('div', { class: 'table-wrap' }, t));

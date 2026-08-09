@@ -1988,10 +1988,18 @@ function renderNetMonthBar({ payments, invoices, opExpenses, capExpenses }, mont
 
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px' });
-      summaryGrid.appendChild(mkSummaryBox('Cash In', formatEUR(mIn), `${mPay.length + mInv.length} items`));
-      summaryGrid.appendChild(mkSummaryBox('Op. Cash Out', formatEUR(mOpOut), `${mOp.length} expenses`));
-      summaryGrid.appendChild(mkSummaryBox('Invest. Out', formatEUR(mCapOut), `${mCap.length} items`));
-      summaryGrid.appendChild(mkSummaryBox('Net CF', formatEUR(mNet), mNet >= 0 ? 'Surplus' : 'Deficit', {
+      summaryGrid.appendChild(mkSummaryBox('Cash In',
+        mkDrillValue(formatEUR(mIn), () => drillDownModal(`${mLabel} — Cash In`, buildCashFlowRows(mPay, mInv, [], []), CF_DRILL_COLS)),
+        `${mPay.length + mInv.length} items`));
+      summaryGrid.appendChild(mkSummaryBox('Op. Cash Out',
+        mkDrillValue(formatEUR(mOpOut), () => drillDownModal(`${mLabel} — Operating Cash Out`, buildCashFlowRows([], [], mOp, []), CF_DRILL_COLS)),
+        `${mOp.length} expenses`));
+      summaryGrid.appendChild(mkSummaryBox('Invest. Out',
+        mkDrillValue(formatEUR(mCapOut), () => drillDownModal(`${mLabel} — Investment Cash Out`, buildCashFlowRows([], [], [], mCap), CF_DRILL_COLS)),
+        `${mCap.length} items`));
+      summaryGrid.appendChild(mkSummaryBox('Net CF',
+        mkDrillValue(formatEUR(mNet), () => drillDownModal(`${mLabel} — Net Cash Flow`, buildCashFlowRows(mPay, mInv, mOp, mCap), CF_DRILL_COLS)),
+        mNet >= 0 ? 'Surplus' : 'Deficit', {
         title: 'Net Cash Flow (Month)', formula: 'Cash In − Op. Cash Out − Invest. Out, for this month.',
         inputs: [
           { label: 'Cash In', value: formatEUR(mIn) },
