@@ -476,7 +476,7 @@ function buildView() {
 
 // ── Portfolio KPI row ─────────────────────────────────────────────────────────
 function buildPortfolioKpis(data) {
-  const { totalRev, prevRev, totalNights, prevNights, avgADR, avgOcc, targetRev, payments, props, rangeLabel, cmpLabel } = data;
+  const { totalRev, prevRev, totalNights, prevNights, avgADR, avgOcc, targetRev, payments, props, rangeLabel, cmpLabel, occByProp } = data;
   const vsTarget = targetRev > 0 ? (totalRev / targetRev) * 100 : null;
   const propCount = props.length;
   const hasCmp = !!cmpLabel;
