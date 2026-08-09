@@ -11,7 +11,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner, mkTh } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner, mkTh, mkDrillValue } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -154,14 +154,17 @@ function openCostPressureModal(allExp, opTotal, opRatio, revenue) {
   const opExArr = allExp.filter(e => !isCapEx(e));
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Operating Expenses', value: formatEUR(opTotal),
+    { label: 'Operating Expenses',
+      value: mkDrillValue(formatEUR(opTotal), () => drillDownModal('Operating Expenses', toExpDrillRows(opExArr), DRILL_COLS)),
       explain: {
         title: 'Operating Expenses', formula: 'Sum of expenses in the selected period, excluding CapEx/renovation.',
         inputs: [{ label: 'Records', value: String(opExArr.length) }, { label: 'Total', value: formatEUR(opTotal) }],
         source: 'analytics-expenses.js:87 getData() — `opTotal` (opEx reduce)'
       }
     },
-    { label: 'Records',            value: String(opExArr.length) },
+    { label: 'Records',
+      value: mkDrillValue(String(opExArr.length), () => drillDownModal('Operating Expenses', toExpDrillRows(opExArr), DRILL_COLS))
+    },
     { label: 'Cost Ratio',         value: `${opRatio.toFixed(0)}%`, sub: 'OpEx / Revenue',
       explain: {
         title: 'Cost Ratio', formula: 'Operating Expenses ÷ Revenue × 100.',
@@ -181,7 +184,11 @@ function openCostPressureModal(allExp, opTotal, opRatio, revenue) {
     body.appendChild(mkSectionLabel('By Category'));
     body.appendChild(mkModalTable(
       [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of OpEx', right: true, muted: true, tip: 'Share of total operating expenses shown above.' }],
-      cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—'])
+      cats.map(([k, v]) => [
+        COST_CATEGORIES[k]?.label || k,
+        mkDrillValue(formatEUR(v), () => drillDownModal(`Operating Expenses — ${COST_CATEGORIES[k]?.label || k}`, toExpDrillRows(opExArr.filter(e => (resolveExpenseFields(e).costCategory || 'other') === k)), DRILL_COLS)),
+        opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—'
+      ])
     ));
   }
   body.appendChild(mkRawLinkFooter(opExArr.length, () => drillDownModal('Operating Expenses', toExpDrillRows(opExArr), DRILL_COLS)));
@@ -192,14 +199,17 @@ function openCapExConcentrationModal(allExp, capTotal, capPct, total) {
   const capExArr = allExp.filter(e => isCapEx(e));
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Capital Expenditure', value: formatEUR(capTotal),
+    { label: 'Capital Expenditure',
+      value: mkDrillValue(formatEUR(capTotal), () => drillDownModal('CapEx', toExpDrillRows(capExArr), DRILL_COLS)),
       explain: {
         title: 'Capital Expenditure', formula: 'Sum of expenses in the selected period flagged as CapEx (capital/renovation spend).',
         inputs: [{ label: 'Records', value: String(capExArr.length) }, { label: 'Total', value: formatEUR(capTotal) }],
         source: 'analytics-expenses.js:88 getData() — `capTotal` (capEx reduce)'
       }
     },
-    { label: 'Records',             value: String(capExArr.length) },
+    { label: 'Records',
+      value: mkDrillValue(String(capExArr.length), () => drillDownModal('CapEx', toExpDrillRows(capExArr), DRILL_COLS))
+    },
     { label: '% of Total Expenses', value: `${capPct.toFixed(0)}%`,
       explain: {
         title: '% of Total Expenses', formula: 'Capital Expenditure ÷ Total Expenses × 100.',
@@ -218,7 +228,11 @@ function openCapExConcentrationModal(allExp, capTotal, capPct, total) {
     body.appendChild(mkSectionLabel('By Property'));
     body.appendChild(mkModalTable(
       [{ label: 'Property', tip: 'Property this CapEx spend is linked to.' }, { label: 'Records', right: true, muted: true, tip: 'Number of CapEx records for this property.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of CapEx', right: true, muted: true, tip: 'Share of total CapEx shown above.' }],
-      props.map(p => [p.n, String(p.cnt), formatEUR(p.v), capTotal > 0 ? (p.v / capTotal * 100).toFixed(1) + '%' : '—'])
+      props.map(p => [
+        p.n, String(p.cnt),
+        mkDrillValue(formatEUR(p.v), () => drillDownModal(`CapEx — ${p.n}`, toExpDrillRows(capExArr.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+        capTotal > 0 ? (p.v / capTotal * 100).toFixed(1) + '%' : '—'
+      ])
     ));
   }
   body.appendChild(mkRawLinkFooter(capExArr.length, () => drillDownModal('CapEx', toExpDrillRows(capExArr), DRILL_COLS)));
@@ -229,14 +243,17 @@ function openCostConcentrationModal(allExp, topCat, lbl, pct, total) {
   const catExp = allExp.filter(e => resolveExpenseFields(e).costCategory === topCat[0]);
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: lbl,          value: formatEUR(topCat[1]),
+    { label: lbl,
+      value: mkDrillValue(formatEUR(topCat[1]), () => drillDownModal(`Expenses — ${lbl}`, toExpDrillRows(catExp), DRILL_COLS)),
       explain: {
         title: lbl, formula: 'All expenses in the selected period are grouped by cost category and summed; this is the total for the dominant category.',
         inputs: [{ label: 'Records', value: String(catExp.length) }, { label: 'Total', value: formatEUR(topCat[1]) }],
         source: 'analytics-expenses.js:353 computeExpenseInsights() — `catMap`/`topCat`'
       }
     },
-    { label: 'Records',    value: String(catExp.length) },
+    { label: 'Records',
+      value: mkDrillValue(String(catExp.length), () => drillDownModal(`Expenses — ${lbl}`, toExpDrillRows(catExp), DRILL_COLS))
+    },
     { label: '% of Total', value: `${pct}%`,
       explain: {
         title: '% of Total', formula: 'Category total ÷ Total expenses × 100.',
@@ -255,7 +272,11 @@ function openCostConcentrationModal(allExp, topCat, lbl, pct, total) {
     body.appendChild(mkSectionLabel('By Vendor'));
     body.appendChild(mkModalTable(
       [{ label: 'Vendor', tip: 'Vendor/supplier the expense was paid to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Category', right: true, muted: true, tip: 'Share of this category\'s total shown above.' }],
-      vends.map(([v, amt]) => [v, formatEUR(amt), topCat[1] > 0 ? (amt / topCat[1] * 100).toFixed(1) + '%' : '—'])
+      vends.map(([v, amt]) => [
+        v,
+        mkDrillValue(formatEUR(amt), () => drillDownModal(`${lbl} — ${v}`, toExpDrillRows(catExp.filter(e => vendorLabel(e) === v)), DRILL_COLS)),
+        topCat[1] > 0 ? (amt / topCat[1] * 100).toFixed(1) + '%' : '—'
+      ])
     ));
   }
   body.appendChild(mkRawLinkFooter(catExp.length, () => drillDownModal(`Expenses — ${lbl}`, toExpDrillRows(catExp), DRILL_COLS)));
@@ -266,14 +287,17 @@ function openVendorConcentrationModal(allExp, topVend, pct, total) {
   const vendExp = allExp.filter(e => vendorLabel(e) === topVend[0]);
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Vendor Total', value: formatEUR(topVend[1]),
+    { label: 'Vendor Total',
+      value: mkDrillValue(formatEUR(topVend[1]), () => drillDownModal(`Expenses — ${topVend[0]}`, toExpDrillRows(vendExp), DRILL_COLS)),
       explain: {
         title: 'Vendor Total', formula: 'All expenses in the selected period are grouped by vendor and summed; this is the total for the highest-spend vendor.',
         inputs: [{ label: 'Vendor', value: topVend[0] }, { label: 'Records', value: String(vendExp.length) }, { label: 'Total', value: formatEUR(topVend[1]) }],
         source: 'analytics-expenses.js:373 computeExpenseInsights() — `vendMap`/`topVend`'
       }
     },
-    { label: 'Records',      value: String(vendExp.length) },
+    { label: 'Records',
+      value: mkDrillValue(String(vendExp.length), () => drillDownModal(`Expenses — ${topVend[0]}`, toExpDrillRows(vendExp), DRILL_COLS))
+    },
     { label: '% of Total',   value: `${pct}%`,
       explain: {
         title: '% of Total', formula: 'Vendor total ÷ Total expenses × 100.',
@@ -292,7 +316,11 @@ function openVendorConcentrationModal(allExp, topVend, pct, total) {
     body.appendChild(mkSectionLabel('By Category'));
     body.appendChild(mkModalTable(
       [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Vendor Total', right: true, muted: true, tip: 'Share of this vendor\'s total spend shown above.' }],
-      cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), topVend[1] > 0 ? (v / topVend[1] * 100).toFixed(1) + '%' : '—'])
+      cats.map(([k, v]) => [
+        COST_CATEGORIES[k]?.label || k,
+        mkDrillValue(formatEUR(v), () => drillDownModal(`${topVend[0]} — ${COST_CATEGORIES[k]?.label || k}`, toExpDrillRows(vendExp.filter(e => (resolveExpenseFields(e).costCategory || 'other') === k)), DRILL_COLS)),
+        topVend[1] > 0 ? (v / topVend[1] * 100).toFixed(1) + '%' : '—'
+      ])
     ));
   }
   body.appendChild(mkRawLinkFooter(vendExp.length, () => drillDownModal(`Expenses — ${topVend[0]}`, toExpDrillRows(vendExp), DRILL_COLS)));
@@ -584,20 +612,31 @@ function buildView() {
     const body = el('div');
     if (cmp) {
       body.appendChild(mkCmpGrid([
-        { label: 'Total Expenses',      curVal: formatEUR(total),    cmpVal: formatEUR(cmp.total)    },
-        { label: 'Operating Expenses',  curVal: formatEUR(opTotal),  cmpVal: formatEUR(cmp.opTotal)  },
-        { label: 'Capital Expenditure', curVal: formatEUR(capTotal), cmpVal: formatEUR(cmp.capTotal) },
+        { label: 'Total Expenses',
+          curVal: mkDrillValue(formatEUR(total), () => drillDownModal('Total Expenses', toExpDrillRows(allExp), DRILL_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.total), () => drillDownModal(`Total Expenses — ${cmpLabel}`, toExpDrillRows(cmp.allExp), DRILL_COLS))
+        },
+        { label: 'Operating Expenses',
+          curVal: mkDrillValue(formatEUR(opTotal), () => drillDownModal('Operating Expenses', toExpDrillRows(opEx), DRILL_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.opTotal), () => drillDownModal(`Operating Expenses — ${cmpLabel}`, toExpDrillRows(cmp.opEx), DRILL_COLS))
+        },
+        { label: 'Capital Expenditure',
+          curVal: mkDrillValue(formatEUR(capTotal), () => drillDownModal('CapEx', toExpDrillRows(capEx), DRILL_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.capTotal), () => drillDownModal(`CapEx — ${cmpLabel}`, toExpDrillRows(cmp.capEx), DRILL_COLS))
+        },
       ], 'Current Period', cmpLabel));
     } else {
       const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px' });
-      sgrid.appendChild(mkSummaryBox('Operating Expenses', formatEUR(opTotal),
+      sgrid.appendChild(mkSummaryBox('Operating Expenses',
+        mkDrillValue(formatEUR(opTotal), () => drillDownModal('Operating Expenses', toExpDrillRows(opEx), DRILL_COLS)),
         total > 0 ? `${(opTotal / total * 100).toFixed(0)}% of total · ${opEx.length} record${opEx.length !== 1 ? 's' : ''}` : null,
         {
           title: 'Operating Expenses', formula: 'Sum of expenses in the selected period, excluding CapEx/renovation.',
           inputs: [{ label: 'Records', value: String(opEx.length) }, { label: 'Total', value: formatEUR(opTotal) }],
           source: 'analytics-expenses.js:87 getData() — `opTotal` (opEx reduce)'
         }));
-      sgrid.appendChild(mkSummaryBox('Capital Expenditure', formatEUR(capTotal),
+      sgrid.appendChild(mkSummaryBox('Capital Expenditure',
+        mkDrillValue(formatEUR(capTotal), () => drillDownModal('CapEx', toExpDrillRows(capEx), DRILL_COLS)),
         total > 0 ? `${(capTotal / total * 100).toFixed(0)}% of total · ${capEx.length} record${capEx.length !== 1 ? 's' : ''}` : null,
         {
           title: 'Capital Expenditure', formula: 'Sum of expenses in the selected period flagged as CapEx (capital/renovation spend).',
@@ -627,7 +666,7 @@ function buildView() {
           return [
             COST_CATEGORIES[k]?.label || k,
             capExCats.has(k) ? 'CapEx' : 'OpEx',
-            formatEUR(v),
+            mkDrillValue(formatEUR(v), () => drillDownModal(`Total Expenses — ${COST_CATEGORIES[k]?.label || k}`, toExpDrillRows(allExp.filter(e => (resolveExpenseFields(e).costCategory || 'other') === k)), DRILL_COLS)),
             total > 0 ? (v / total * 100).toFixed(1) + '%' : '—',
             budgetShare !== null ? formatEUR(budgetShare) : '—',
             variance !== null ? (variance >= 0 ? '+' : '') + formatEUR(variance) : '—'
@@ -659,7 +698,7 @@ function buildView() {
           const variance = budgetShare !== null ? v - budgetShare : null;
           return [
             COST_CATEGORIES[k]?.label || k,
-            formatEUR(v),
+            mkDrillValue(formatEUR(v), () => drillDownModal(`Operating Expenses — ${COST_CATEGORIES[k]?.label || k}`, toExpDrillRows(opEx.filter(e => (resolveExpenseFields(e).costCategory || 'other') === k)), DRILL_COLS)),
             opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—',
             budgetShare !== null ? formatEUR(budgetShare) : '—',
             variance !== null ? (variance >= 0 ? '+' : '') + formatEUR(variance) : '—'
@@ -675,7 +714,11 @@ function buildView() {
       body.appendChild(mkSectionLabel('By Property'));
       body.appendChild(mkModalTable(
         [{ label: 'Property', tip: 'Property this operating expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of OpEx', right: true, muted: true, tip: 'Share of total operating expenses shown above.' }],
-        props.map(p => [p.n, formatEUR(p.v), opTotal > 0 ? (p.v / opTotal * 100).toFixed(1) + '%' : '—'])
+        props.map(p => [
+          p.n,
+          mkDrillValue(formatEUR(p.v), () => drillDownModal(`Operating Expenses — ${p.n}`, toExpDrillRows(opEx.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+          opTotal > 0 ? (p.v / opTotal * 100).toFixed(1) + '%' : '—'
+        ])
       ));
     }
     openModal({ title: `Operating Expenses — ${formatEUR(opTotal)}`, body, large: true });
@@ -689,12 +732,18 @@ function buildView() {
     if (props.length) {
       const top = props.slice(0, 3);
       const pgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${top.length},1fr);gap:12px;margin-bottom:20px` });
-      top.forEach(p => pgrid.appendChild(mkSummaryBox(p.n, formatEUR(p.v), `${p.cnt} record${p.cnt !== 1 ? 's' : ''} · ${capTotal > 0 ? (p.v / capTotal * 100).toFixed(0) : 0}% of CapEx`)));
+      top.forEach(p => pgrid.appendChild(mkSummaryBox(p.n,
+        mkDrillValue(formatEUR(p.v), () => drillDownModal(`CapEx — ${p.n}`, toExpDrillRows(capEx.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+        `${p.cnt} record${p.cnt !== 1 ? 's' : ''} · ${capTotal > 0 ? (p.v / capTotal * 100).toFixed(0) : 0}% of CapEx`)));
       body.appendChild(pgrid);
       body.appendChild(mkSectionLabel('All Properties'));
       body.appendChild(mkModalTable(
         [{ label: 'Property', tip: 'Property this CapEx spend is linked to.' }, { label: 'Records', right: true, muted: true, tip: 'Number of CapEx records for this property.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of CapEx', right: true, muted: true, tip: 'Share of total CapEx for the selected period.' }],
-        props.map(p => [p.n, String(p.cnt), formatEUR(p.v), capTotal > 0 ? (p.v / capTotal * 100).toFixed(1) + '%' : '—'])
+        props.map(p => [
+          p.n, String(p.cnt),
+          mkDrillValue(formatEUR(p.v), () => drillDownModal(`CapEx — ${p.n}`, toExpDrillRows(capEx.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+          capTotal > 0 ? (p.v / capTotal * 100).toFixed(1) + '%' : '—'
+        ])
       ));
     }
     const catMap = new Map();
@@ -705,7 +754,11 @@ function buildView() {
       body.appendChild(mkSectionLabel('By Category'));
       body.appendChild(mkModalTable(
         [{ label: 'Category', tip: 'Cost category this CapEx expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of CapEx', right: true, muted: true, tip: 'Share of total CapEx for the selected period.' }],
-        cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), capTotal > 0 ? (v / capTotal * 100).toFixed(1) + '%' : '—'])
+        cats.map(([k, v]) => [
+          COST_CATEGORIES[k]?.label || k,
+          mkDrillValue(formatEUR(v), () => drillDownModal(`CapEx — ${COST_CATEGORIES[k]?.label || k}`, toExpDrillRows(capEx.filter(e => (resolveExpenseFields(e).costCategory || 'other') === k)), DRILL_COLS)),
+          capTotal > 0 ? (v / capTotal * 100).toFixed(1) + '%' : '—'
+        ])
       ));
     }
     openModal({ title: `CapEx — ${formatEUR(capTotal)}`, body, large: true });
@@ -715,7 +768,9 @@ function buildView() {
     const body = el('div');
     body.appendChild(mkSummaryGrid([
       { label: 'Revenue',              value: formatEUR(revenue) },
-      { label: 'Operating Expenses',   value: formatEUR(opTotal) },
+      { label: 'Operating Expenses',
+        value: mkDrillValue(formatEUR(opTotal), () => drillDownModal('Operating Expenses', toExpDrillRows(opEx), DRILL_COLS))
+      },
       { label: 'Expense Ratio',        value: expRatio !== null ? `${expRatio.toFixed(1)}%` : '—', sub: 'OpEx / Revenue',
         explain: {
           title: 'Expense Ratio', formula: 'Operating Expenses ÷ Revenue × 100.',
@@ -746,7 +801,11 @@ function buildView() {
       body.appendChild(mkSectionLabel('OpEx by Category'));
       body.appendChild(mkModalTable(
         [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of OpEx', right: true, muted: true, tip: 'Share of total operating expenses shown above.' }],
-        cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—'])
+        cats.map(([k, v]) => [
+          COST_CATEGORIES[k]?.label || k,
+          mkDrillValue(formatEUR(v), () => drillDownModal(`Operating Expenses — ${COST_CATEGORIES[k]?.label || k}`, toExpDrillRows(opEx.filter(e => (resolveExpenseFields(e).costCategory || 'other') === k)), DRILL_COLS)),
+          opTotal > 0 ? (v / opTotal * 100).toFixed(1) + '%' : '—'
+        ])
       ));
     }
     openModal({ title: `Expense Ratio — ${expRatio !== null ? expRatio.toFixed(1) + '%' : '—'}`, body, large: true });
