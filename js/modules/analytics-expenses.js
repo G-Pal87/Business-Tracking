@@ -1509,8 +1509,12 @@ function renderPropHBar({ allExp }) {
       const body = el('div');
       if (propOpEx > 0 || propCapEx > 0) {
         const sgrid = el('div', { style: `display:grid;grid-template-columns:${propOpEx > 0 && propCapEx > 0 ? '1fr 1fr' : '1fr'};gap:12px;margin-bottom:20px` });
-        if (propOpEx  > 0) sgrid.appendChild(mkSummaryBox('OpEx',  formatEUR(propOpEx),  `${(propOpEx  / propTotal * 100).toFixed(0)}% of property costs`));
-        if (propCapEx > 0) sgrid.appendChild(mkSummaryBox('CapEx', formatEUR(propCapEx), `${(propCapEx / propTotal * 100).toFixed(0)}% of property costs`));
+        if (propOpEx  > 0) sgrid.appendChild(mkSummaryBox('OpEx',
+          mkDrillValue(formatEUR(propOpEx), () => drillDownModal(`${name} — OpEx`, toExpDrillRows(propExp.filter(e => !isCapEx(e))), DRILL_COLS)),
+          `${(propOpEx  / propTotal * 100).toFixed(0)}% of property costs`));
+        if (propCapEx > 0) sgrid.appendChild(mkSummaryBox('CapEx',
+          mkDrillValue(formatEUR(propCapEx), () => drillDownModal(`${name} — CapEx`, toExpDrillRows(propExp.filter(e => isCapEx(e))), DRILL_COLS)),
+          `${(propCapEx / propTotal * 100).toFixed(0)}% of property costs`));
         body.appendChild(sgrid);
       }
       const catMap = new Map();
@@ -1520,7 +1524,12 @@ function renderPropHBar({ allExp }) {
         body.appendChild(mkSectionLabel('By Category'));
         body.appendChild(mkModalTable(
           [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Type', muted: true, tip: 'OpEx (operating) or CapEx (capital) expense.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Property', right: true, muted: true, tip: 'Share of this property\'s total costs shown above.' }],
-          cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, getCapExCatKeys(allExp).has(k) ? 'CapEx' : 'OpEx', formatEUR(v), propTotal > 0 ? (v / propTotal * 100).toFixed(1) + '%' : '—'])
+          cats.map(([k, v]) => [
+            COST_CATEGORIES[k]?.label || k,
+            getCapExCatKeys(allExp).has(k) ? 'CapEx' : 'OpEx',
+            mkDrillValue(formatEUR(v), () => drillDownModal(`${name} — ${COST_CATEGORIES[k]?.label || k}`, toExpDrillRows(propExp.filter(e => (resolveExpenseFields(e).costCategory || 'other') === k)), DRILL_COLS)),
+            propTotal > 0 ? (v / propTotal * 100).toFixed(1) + '%' : '—'
+          ])
         ));
       }
       const vendMap = new Map();
@@ -1531,9 +1540,14 @@ function renderPropHBar({ allExp }) {
         body.appendChild(mkSectionLabel('By Vendor'));
         body.appendChild(mkModalTable(
           [{ label: 'Vendor', tip: 'Vendor/supplier the expense was paid to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Property', right: true, muted: true, tip: 'Share of this property\'s total costs shown above.' }],
-          vends.map(([n, v]) => [n, formatEUR(v), propTotal > 0 ? (v / propTotal * 100).toFixed(1) + '%' : '—'])
+          vends.map(([n, v]) => [
+            n,
+            mkDrillValue(formatEUR(v), () => drillDownModal(`${name} — ${n}`, toExpDrillRows(propExp.filter(e => vendorLabel(e) === n)), DRILL_COLS)),
+            propTotal > 0 ? (v / propTotal * 100).toFixed(1) + '%' : '—'
+          ])
         ));
       }
+      body.appendChild(mkRawLinkFooter(propExp.length, () => drillDownModal(`${name} Expenses`, toExpDrillRows(propExp), DRILL_COLS)));
       openModal({ title: `${name} — ${formatEUR(propTotal)}`, body, large: true });
     }
   });
