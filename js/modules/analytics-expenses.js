@@ -1171,7 +1171,12 @@ function renderCatBar({ allExp }, curRange) {
       body.appendChild(mkModalTable(
         [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Type', muted: true, tip: 'OpEx (operating) or CapEx (capital) expense.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Month', right: true, muted: true, tip: 'Share of total spend in this month.' }],
         cats.map(([k, v]) => {
-          const row = [COST_CATEGORIES[k]?.label || k, capExCats.has(k) ? 'CapEx' : 'OpEx', formatEUR(v), monthTotal > 0 ? (v / monthTotal * 100).toFixed(1) + '%' : '—'];
+          const row = [
+            COST_CATEGORIES[k]?.label || k,
+            capExCats.has(k) ? 'CapEx' : 'OpEx',
+            mkDrillValue(formatEUR(v), () => drillDownModal(`${label} — ${COST_CATEGORIES[k]?.label || k}`, toExpDrillRows(monthExp.filter(e => (resolveExpenseFields(e).costCategory || 'other') === k)), DRILL_COLS)),
+            monthTotal > 0 ? (v / monthTotal * 100).toFixed(1) + '%' : '—'
+          ];
           if (k === clickedCat) row[0] = `▶ ${row[0]}`;
           return row;
         })
@@ -1195,7 +1200,11 @@ function openExpenseStreamModal(sk, allExp) {
     body.appendChild(mkSectionLabel('By Category'));
     body.appendChild(mkModalTable(
       [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Stream', right: true, muted: true, tip: 'Share of this stream\'s total spend shown above.' }],
-      cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), streamTotal > 0 ? (v / streamTotal * 100).toFixed(1) + '%' : '—'])
+      cats.map(([k, v]) => [
+        COST_CATEGORIES[k]?.label || k,
+        mkDrillValue(formatEUR(v), () => drillDownModal(`${STREAMS[sk]?.label || sk} Expenses — ${COST_CATEGORIES[k]?.label || k}`, toExpDrillRows(streamExp.filter(e => (resolveExpenseFields(e).costCategory || 'other') === k)), DRILL_COLS)),
+        streamTotal > 0 ? (v / streamTotal * 100).toFixed(1) + '%' : '—'
+      ])
     ));
   }
   const propMap = new Map();
@@ -1206,9 +1215,14 @@ function openExpenseStreamModal(sk, allExp) {
     body.appendChild(mkSectionLabel('By Property'));
     body.appendChild(mkModalTable(
       [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Stream', right: true, muted: true, tip: 'Share of this stream\'s total spend shown above.' }],
-      props.map(p => [p.n, formatEUR(p.v), streamTotal > 0 ? (p.v / streamTotal * 100).toFixed(1) + '%' : '—'])
+      props.map(p => [
+        p.n,
+        mkDrillValue(formatEUR(p.v), () => drillDownModal(`${STREAMS[sk]?.label || sk} Expenses — ${p.n}`, toExpDrillRows(streamExp.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+        streamTotal > 0 ? (p.v / streamTotal * 100).toFixed(1) + '%' : '—'
+      ])
     ));
   }
+  body.appendChild(mkRawLinkFooter(streamExp.length, () => drillDownModal(`${STREAMS[sk]?.label || sk} Expenses`, toExpDrillRows(streamExp), DRILL_COLS)));
   openModal({ title: `${STREAMS[sk]?.label || sk} Expenses — ${formatEUR(streamTotal)}`, body, large: true });
 }
 
@@ -1308,8 +1322,12 @@ function renderCatHBar({ allExp }) {
       const body = el('div');
       if (catOpEx > 0 || catCapEx > 0) {
         const sgrid = el('div', { style: `display:grid;grid-template-columns:${catOpEx > 0 && catCapEx > 0 ? '1fr 1fr' : '1fr'};gap:12px;margin-bottom:20px` });
-        if (catOpEx  > 0) sgrid.appendChild(mkSummaryBox('OpEx',  formatEUR(catOpEx),  `${(catOpEx  / catTotal * 100).toFixed(0)}% of category`));
-        if (catCapEx > 0) sgrid.appendChild(mkSummaryBox('CapEx', formatEUR(catCapEx), `${(catCapEx / catTotal * 100).toFixed(0)}% of category`));
+        if (catOpEx  > 0) sgrid.appendChild(mkSummaryBox('OpEx',
+          mkDrillValue(formatEUR(catOpEx), () => drillDownModal(`${COST_CATEGORIES[cat]?.label || cat} — OpEx`, toExpDrillRows(catExp.filter(e => !isCapEx(e))), DRILL_COLS)),
+          `${(catOpEx  / catTotal * 100).toFixed(0)}% of category`));
+        if (catCapEx > 0) sgrid.appendChild(mkSummaryBox('CapEx',
+          mkDrillValue(formatEUR(catCapEx), () => drillDownModal(`${COST_CATEGORIES[cat]?.label || cat} — CapEx`, toExpDrillRows(catExp.filter(e => isCapEx(e))), DRILL_COLS)),
+          `${(catCapEx / catTotal * 100).toFixed(0)}% of category`));
         body.appendChild(sgrid);
       }
       const vendMap = new Map();
@@ -1319,7 +1337,11 @@ function renderCatHBar({ allExp }) {
         body.appendChild(mkSectionLabel('By Vendor'));
         body.appendChild(mkModalTable(
           [{ label: 'Vendor', tip: 'Vendor/supplier the expense was paid to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Category', right: true, muted: true, tip: 'Share of this category\'s total shown above.' }],
-          vends.map(([n, v]) => [n, formatEUR(v), catTotal > 0 ? (v / catTotal * 100).toFixed(1) + '%' : '—'])
+          vends.map(([n, v]) => [
+            n,
+            mkDrillValue(formatEUR(v), () => drillDownModal(`${COST_CATEGORIES[cat]?.label || cat} — ${n}`, toExpDrillRows(catExp.filter(e => vendorLabel(e) === n)), DRILL_COLS)),
+            catTotal > 0 ? (v / catTotal * 100).toFixed(1) + '%' : '—'
+          ])
         ));
       }
       const propMap = new Map();
@@ -1330,9 +1352,14 @@ function renderCatHBar({ allExp }) {
         body.appendChild(mkSectionLabel('By Property'));
         body.appendChild(mkModalTable(
           [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Category', right: true, muted: true, tip: 'Share of this category\'s total shown above.' }],
-          props.map(p => [p.n, formatEUR(p.v), catTotal > 0 ? (p.v / catTotal * 100).toFixed(1) + '%' : '—'])
+          props.map(p => [
+            p.n,
+            mkDrillValue(formatEUR(p.v), () => drillDownModal(`${COST_CATEGORIES[cat]?.label || cat} — ${p.n}`, toExpDrillRows(catExp.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+            catTotal > 0 ? (p.v / catTotal * 100).toFixed(1) + '%' : '—'
+          ])
         ));
       }
+      body.appendChild(mkRawLinkFooter(catExp.length, () => drillDownModal(`${COST_CATEGORIES[cat]?.label || cat} Expenses`, toExpDrillRows(catExp), DRILL_COLS)));
       openModal({ title: `${COST_CATEGORIES[cat]?.label || cat} — ${formatEUR(catTotal)}`, body, large: true });
     }
   });
@@ -1373,7 +1400,11 @@ function renderVendorBar({ allExp }) {
         body.appendChild(mkSectionLabel('By Category'));
         body.appendChild(mkModalTable(
           [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Vendor Total', right: true, muted: true, tip: 'Share of this vendor\'s total spend shown above.' }],
-          cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), vendTotal > 0 ? (v / vendTotal * 100).toFixed(1) + '%' : '—'])
+          cats.map(([k, v]) => [
+            COST_CATEGORIES[k]?.label || k,
+            mkDrillValue(formatEUR(v), () => drillDownModal(`${name} — ${COST_CATEGORIES[k]?.label || k}`, toExpDrillRows(vendExp.filter(e => (resolveExpenseFields(e).costCategory || 'other') === k)), DRILL_COLS)),
+            vendTotal > 0 ? (v / vendTotal * 100).toFixed(1) + '%' : '—'
+          ])
         ));
       }
       const propMap = new Map();
@@ -1384,9 +1415,14 @@ function renderVendorBar({ allExp }) {
         body.appendChild(mkSectionLabel('By Property'));
         body.appendChild(mkModalTable(
           [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Vendor Total', right: true, muted: true, tip: 'Share of this vendor\'s total spend shown above.' }],
-          props.map(p => [p.n, formatEUR(p.v), vendTotal > 0 ? (p.v / vendTotal * 100).toFixed(1) + '%' : '—'])
+          props.map(p => [
+            p.n,
+            mkDrillValue(formatEUR(p.v), () => drillDownModal(`${name} — ${p.n}`, toExpDrillRows(vendExp.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+            vendTotal > 0 ? (p.v / vendTotal * 100).toFixed(1) + '%' : '—'
+          ])
         ));
       }
+      body.appendChild(mkRawLinkFooter(vendExp.length, () => drillDownModal(`${name} Expenses`, toExpDrillRows(vendExp), DRILL_COLS)));
       openModal({ title: `${name} — ${formatEUR(vendTotal)}`, body, large: true });
     }
   });
@@ -1412,7 +1448,11 @@ function renderTypeDonut({ opTotal, capTotal, opEx, capEx }) {
         body.appendChild(mkSectionLabel('By Category'));
         body.appendChild(mkModalTable(
           [{ label: 'Category', tip: 'Cost category this expense was classified under.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: `% of ${typeShort}`, right: true, muted: true, tip: `Share of total ${typeShort} shown above.` }],
-          cats.map(([k, v]) => [COST_CATEGORIES[k]?.label || k, formatEUR(v), expTotal > 0 ? (v / expTotal * 100).toFixed(1) + '%' : '—'])
+          cats.map(([k, v]) => [
+            COST_CATEGORIES[k]?.label || k,
+            mkDrillValue(formatEUR(v), () => drillDownModal(`${typeName} — ${COST_CATEGORIES[k]?.label || k}`, toExpDrillRows(expenses.filter(e => (resolveExpenseFields(e).costCategory || 'other') === k)), DRILL_COLS)),
+            expTotal > 0 ? (v / expTotal * 100).toFixed(1) + '%' : '—'
+          ])
         ));
       }
       const propMap = new Map();
@@ -1423,9 +1463,14 @@ function renderTypeDonut({ opTotal, capTotal, opEx, capEx }) {
         body.appendChild(mkSectionLabel('By Property'));
         body.appendChild(mkModalTable(
           [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: `% of ${typeShort}`, right: true, muted: true, tip: `Share of total ${typeShort} shown above.` }],
-          props.map(p => [p.n, formatEUR(p.v), expTotal > 0 ? (p.v / expTotal * 100).toFixed(1) + '%' : '—'])
+          props.map(p => [
+            p.n,
+            mkDrillValue(formatEUR(p.v), () => drillDownModal(`${typeName} — ${p.n}`, toExpDrillRows(expenses.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+            expTotal > 0 ? (p.v / expTotal * 100).toFixed(1) + '%' : '—'
+          ])
         ));
       }
+      body.appendChild(mkRawLinkFooter(expenses.length, () => drillDownModal(typeName, toExpDrillRows(expenses), DRILL_COLS)));
       openModal({ title: `${typeName} — ${formatEUR(expTotal)}`, body, large: true });
     }
   });

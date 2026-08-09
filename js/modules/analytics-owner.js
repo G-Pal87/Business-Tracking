@@ -651,7 +651,7 @@ function buildServiceStreamSection(annotatedInvoices, curRange) {
       else if (o === 'rita') { rita += i._eur; }
       else { you += i._eur * 0.5; rita += i._eur * 0.5; }
     }
-    return { stream, you, rita, total: you + rita, count: invoices.length };
+    return { stream, you, rita, total: you + rita, count: invoices.length, invoices };
   }).filter(r => r.total > 0);
 
   if (streamTotals.length === 0) return null;
@@ -668,13 +668,22 @@ function buildServiceStreamSection(annotatedInvoices, curRange) {
   const body = el('div', { style: 'padding:0 16px 16px' });
 
   const streamLabel = s => s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-  const rows = streamTotals.map(r => [
-    streamLabel(r.stream),
-    formatEUR(r.you),
-    formatEUR(r.rita),
-    formatEUR(r.total)
+  const rows = streamTotals.map(r => {
+    const sLabel = streamLabel(r.stream);
+    return [
+      sLabel,
+      mkDrillValue(formatEUR(r.you), () => drillDownModal(`${sLabel} — ${YOU_LABEL}`, toOwnerRevRows(r.invoices, 'you'), OWNER_REV_COLS)),
+      mkDrillValue(formatEUR(r.rita), () => drillDownModal(`${sLabel} — ${RITA_LABEL}`, toOwnerRevRows(r.invoices, 'rita'), OWNER_REV_COLS)),
+      mkDrillValue(formatEUR(r.total), () => drillDownModal(`${sLabel} — Total`, toOwnerRevRows(r.invoices), OWNER_REV_COLS))
+    ];
+  });
+  const allStreamInvoices = streamTotals.flatMap(r => r.invoices);
+  rows.push([
+    'Total',
+    mkDrillValue(formatEUR(grandYou), () => drillDownModal(`Service Revenue — ${YOU_LABEL}`, toOwnerRevRows(allStreamInvoices, 'you'), OWNER_REV_COLS)),
+    mkDrillValue(formatEUR(grandRita), () => drillDownModal(`Service Revenue — ${RITA_LABEL}`, toOwnerRevRows(allStreamInvoices, 'rita'), OWNER_REV_COLS)),
+    mkDrillValue(formatEUR(grandTotal), () => drillDownModal('Service Revenue — Total', toOwnerRevRows(allStreamInvoices), OWNER_REV_COLS))
   ]);
-  rows.push(['Total', formatEUR(grandYou), formatEUR(grandRita), formatEUR(grandTotal)]);
 
   body.appendChild(mkModalTable(
     [
@@ -867,7 +876,9 @@ function renderRevBar(annotatedPayments, annotatedInvoices, months) {
       const split = splitByOwner(items, r => r._eur);
       const body = el('div');
       body.appendChild(mkSummaryGrid([
-        { label: YOU_LABEL,  value: formatEUR(split.you),  sub: `${items.filter(r => (r._resolvedOwner === 'you' || r._resolvedOwner === 'both')).length} records`,
+        { label: YOU_LABEL,
+          value: mkDrillValue(formatEUR(split.you), () => drillDownModal(`${YOU_LABEL} Revenue — ${months[idx].label}`, toOwnerRevRows(items, 'you'), OWNER_REV_COLS)),
+          sub: `${items.filter(r => (r._resolvedOwner === 'you' || r._resolvedOwner === 'both')).length} records`,
           explain: {
             title: `${YOU_LABEL} Revenue — ${months[idx].label}`,
             formula: "Owner-split revenue for this month: 'you' records count 100%, 'both' records count 50%.",
@@ -875,7 +886,9 @@ function renderRevBar(annotatedPayments, annotatedInvoices, months) {
             source: 'analytics-owner.js:44 splitByOwner()'
           }
         },
-        { label: RITA_LABEL, value: formatEUR(split.rita), sub: `${items.filter(r => (r._resolvedOwner === 'rita' || r._resolvedOwner === 'both')).length} records`,
+        { label: RITA_LABEL,
+          value: mkDrillValue(formatEUR(split.rita), () => drillDownModal(`${RITA_LABEL} Revenue — ${months[idx].label}`, toOwnerRevRows(items, 'rita'), OWNER_REV_COLS)),
+          sub: `${items.filter(r => (r._resolvedOwner === 'rita' || r._resolvedOwner === 'both')).length} records`,
           explain: {
             title: `${RITA_LABEL} Revenue — ${months[idx].label}`,
             formula: "Owner-split revenue for this month: 'rita' records count 100%, 'both' records count 50%.",
@@ -1023,9 +1036,16 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
       const item = items[idx];
       if (!item) return;
 
+      const propRevRecords = item.id === '__services__'
+        ? [...annotatedPayments, ...annotatedInvoices].filter(r => !r.propertyId)
+        : [...annotatedPayments, ...annotatedInvoices].filter(r => r.propertyId === item.id);
+      const propExpRecords = item.id === '__services__' ? [] : annotatedExpenses.filter(e => e.propertyId === item.id);
+
       const body = el('div');
       body.appendChild(mkSummaryGrid([
-        { label: 'Revenue — Giorgos',  value: formatEUR(item.youRev),  sub: `OpEx: ${formatEUR(item.youExp)}`,
+        { label: 'Revenue — Giorgos',
+          value: mkDrillValue(formatEUR(item.youRev), () => drillDownModal(`${item.name} — Revenue (${YOU_LABEL})`, toOwnerRevRows(propRevRecords, 'you'), OWNER_REV_COLS)),
+          sub: `OpEx: ${formatEUR(item.youExp)}`,
           explain: {
             title: 'Revenue — Giorgos',
             formula: "Owner-split revenue for this property: 'you' records count 100%, 'both' records count 50%.",
@@ -1033,7 +1053,9 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
             source: 'analytics-owner.js:847 renderProfitHBar()'
           }
         },
-        { label: 'Revenue — Rita',     value: formatEUR(item.ritaRev), sub: `OpEx: ${formatEUR(item.ritaExp)}`,
+        { label: 'Revenue — Rita',
+          value: mkDrillValue(formatEUR(item.ritaRev), () => drillDownModal(`${item.name} — Revenue (${RITA_LABEL})`, toOwnerRevRows(propRevRecords, 'rita'), OWNER_REV_COLS)),
+          sub: `OpEx: ${formatEUR(item.ritaExp)}`,
           explain: {
             title: 'Revenue — Rita',
             formula: "Owner-split revenue for this property: 'rita' records count 100%, 'both' records count 50%.",
@@ -1041,7 +1063,9 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
             source: 'analytics-owner.js:847 renderProfitHBar()'
           }
         },
-        { label: 'Net Profit — Giorgos', value: formatEUR(item.youNet),  sub: null,
+        { label: 'Net Profit — Giorgos',
+          value: mkDrillValue(formatEUR(item.youNet), () => drillDownModal(`${item.name} — Net Profit (${YOU_LABEL})`, toOwnerMixedRows(propRevRecords, propExpRecords, 'you'), OWNER_MIXED_COLS)),
+          sub: null,
           explain: {
             title: 'Net Profit — Giorgos',
             formula: 'Revenue — Giorgos − OpEx — Giorgos',
@@ -1052,7 +1076,9 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
             source: 'analytics-owner.js:903 renderProfitHBar() — `youNet: rev.youRev - exp.youExp`'
           }
         },
-        { label: 'Net Profit — Rita',    value: formatEUR(item.ritaNet), sub: null,
+        { label: 'Net Profit — Rita',
+          value: mkDrillValue(formatEUR(item.ritaNet), () => drillDownModal(`${item.name} — Net Profit (${RITA_LABEL})`, toOwnerMixedRows(propRevRecords, propExpRecords, 'rita'), OWNER_MIXED_COLS)),
+          sub: null,
           explain: {
             title: 'Net Profit — Rita',
             formula: 'Revenue — Rita − OpEx — Rita',
@@ -1235,7 +1261,8 @@ function buildView() {
 
     const totalProps = propsData.allProps.length;
     const pGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px' });
-    pGrid.appendChild(mkSummaryBox(YOU_LABEL, `${propsData.youCount} propert${propsData.youCount !== 1 ? 'ies' : 'y'}`, formatEUR(propsData.youValue), {
+    pGrid.appendChild(mkSummaryBox(YOU_LABEL, `${propsData.youCount} propert${propsData.youCount !== 1 ? 'ies' : 'y'}`,
+      mkDrillValue(formatEUR(propsData.youValue), () => openValueSplitModal(YOU_LABEL, 0, propsData)), {
       title: `${YOU_LABEL} Book Value`,
       formula: "Sum of purchase price (EUR) for properties fully owned by Giorgos, plus 50% of purchase price for jointly-owned ('both') properties.",
       inputs: [
@@ -1245,7 +1272,8 @@ function buildView() {
       source: 'analytics-owner.js:153 getPropertiesData() — `youValue`',
       note: 'A shared property is counted in both youCount and ritaCount, and its value split 50/50 between both — it is not double-counted in the portfolio total.'
     }));
-    pGrid.appendChild(mkSummaryBox(RITA_LABEL, `${propsData.ritaCount} propert${propsData.ritaCount !== 1 ? 'ies' : 'y'}`, formatEUR(propsData.ritaValue), {
+    pGrid.appendChild(mkSummaryBox(RITA_LABEL, `${propsData.ritaCount} propert${propsData.ritaCount !== 1 ? 'ies' : 'y'}`,
+      mkDrillValue(formatEUR(propsData.ritaValue), () => openValueSplitModal(RITA_LABEL, 1, propsData)), {
       title: `${RITA_LABEL} Book Value`,
       formula: "Sum of purchase price (EUR) for properties fully owned by Rita, plus 50% of purchase price for jointly-owned ('both') properties.",
       inputs: [
