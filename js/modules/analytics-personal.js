@@ -261,7 +261,7 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(youData.total, youCmp?.total),
     compLabel: cmpRange?.label,
     compValue: youCmp ? formatEUR(youCmp.total) : undefined,
-    onClick: () => showPersonModal(YOU_LABEL, youData),
+    onClick: () => showPersonModal(YOU_LABEL, youData, youCmp),
     explain: {
       title: `Total — ${YOU_LABEL}`, formula: 'From Company + Personal Properties',
       inputs: [
@@ -281,7 +281,7 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(ritaData.total, ritaCmp?.total),
     compLabel: cmpRange?.label,
     compValue: ritaCmp ? formatEUR(ritaCmp.total) : undefined,
-    onClick: () => showPersonModal(RITA_LABEL, ritaData),
+    onClick: () => showPersonModal(RITA_LABEL, ritaData, ritaCmp),
     explain: {
       title: `Total — ${RITA_LABEL}`, formula: 'From Company + Personal Properties',
       inputs: [
@@ -331,7 +331,7 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     delta: safePct(avgMonth, cmpAvg),
     compLabel: cmpRange?.label,
     compValue: cmpAvg ? formatEUR(cmpAvg) : undefined,
-    onClick: () => showAvgMonthModal(youData, ritaData, months),
+    onClick: () => showAvgMonthModal(youData, ritaData, months, youCmp, ritaCmp, cmpMonths),
     explain: {
       title: 'Avg / Month', formula: 'Combined Gross ÷ Number of months in period',
       inputs: [
@@ -371,48 +371,62 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
 }
 
 // ── Person summary modal ──────────────────────────────────────────────────────
-function showPersonModal(label, data) {
+function showPersonModal(label, data, cmp) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-  body.appendChild(mkSummaryGrid([
-    { label: 'Total Gross',       value: formatEUR(data.total),
-      explain: {
-        title: 'Total Gross', formula: 'From Company + Personal Properties',
-        inputs: [
-          { label: 'From Company', value: formatEUR(data.fromCompany) },
-          { label: 'Personal Properties', value: formatEUR(data.personalIncome) }
-        ],
-        source: 'analytics-personal.js:211 getPersonData() — `total`'
+  const totalExplain = {
+    title: 'Total Gross', formula: 'From Company + Personal Properties',
+    inputs: [
+      { label: 'From Company', value: formatEUR(data.fromCompany) },
+      { label: 'Personal Properties', value: formatEUR(data.personalIncome) }
+    ],
+    source: 'analytics-personal.js:211 getPersonData() — `total`'
+  };
+  const fromCompanyExplain = {
+    title: 'From Company', formula: 'Director Salary + Property Rent (Owner) + Reimbursements + STR Income + Other Personal Income + Dividends (net SDC)',
+    inputs: [
+      { label: 'Director Salary', value: formatEUR(data.salary) },
+      { label: 'Property Rent (Owner)', value: formatEUR(data.ownerRentTotal) },
+      { label: 'Reimbursements', value: formatEUR(data.reimb) },
+      { label: 'STR Income', value: formatEUR(data.strIncomeTotal) },
+      { label: 'Other Personal Income', value: formatEUR(data.piExpTotal) },
+      { label: 'Dividends (net SDC)', value: formatEUR(data.netDivs) }
+    ],
+    source: 'analytics-personal.js:183 getPersonData() — `grossFromCompany`',
+    note: 'Zeroed out entirely when the Scope toggle is set to "Personal only".'
+  };
+  const personalPropsExplain = {
+    title: 'Personal Properties', formula: 'Sum of paid payments on personal-channel properties owned by this person, in the selected period.',
+    inputs: [
+      { label: 'Payments counted', value: String(data.personalPayments.length) },
+      { label: 'Total', value: formatEUR(data.personalIncome) }
+    ],
+    source: 'analytics-personal.js:181 getPersonData() — `personalIncome`',
+    note: 'Zeroed out entirely when the Scope toggle is set to "Company only".'
+  };
+  if (cmp) {
+    body.appendChild(mkCmpGrid([
+      { label: 'Total Gross', curVal: formatEUR(data.total), cmpVal: formatEUR(cmp.total), explain: totalExplain },
+      { label: 'From Company', curVal: formatEUR(data.fromCompany), cmpVal: formatEUR(cmp.fromCompany), explain: fromCompanyExplain },
+      { label: 'Personal Properties',
+        curVal: data.personalPayments.length > 0
+          ? mkDrillValue(formatEUR(data.personalIncome), () => drillDownModal(`${label} — Personal Properties`, drillRevRows(data.personalPayments, []), REV_COLS))
+          : formatEUR(data.personalIncome),
+        cmpVal: cmp.personalPayments.length > 0
+          ? mkDrillValue(formatEUR(cmp.personalIncome), () => drillDownModal(`${label} — Personal Properties (prev)`, drillRevRows(cmp.personalPayments, []), REV_COLS))
+          : formatEUR(cmp.personalIncome),
+        explain: personalPropsExplain }
+    ], 'Current Period', 'Comparison Period'));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: 'Total Gross',       value: formatEUR(data.total), explain: totalExplain },
+      { label: 'From Company',      value: formatEUR(data.fromCompany), explain: fromCompanyExplain },
+      { label: 'Personal Properties',
+        value: mkDrillValue(formatEUR(data.personalIncome), () =>
+          drillDownModal(`${label} — Personal Properties`, drillRevRows(data.personalPayments, []), REV_COLS)),
+        explain: personalPropsExplain
       }
-    },
-    { label: 'From Company',      value: formatEUR(data.fromCompany),
-      explain: {
-        title: 'From Company', formula: 'Director Salary + Property Rent (Owner) + Reimbursements + STR Income + Other Personal Income + Dividends (net SDC)',
-        inputs: [
-          { label: 'Director Salary', value: formatEUR(data.salary) },
-          { label: 'Property Rent (Owner)', value: formatEUR(data.ownerRentTotal) },
-          { label: 'Reimbursements', value: formatEUR(data.reimb) },
-          { label: 'STR Income', value: formatEUR(data.strIncomeTotal) },
-          { label: 'Other Personal Income', value: formatEUR(data.piExpTotal) },
-          { label: 'Dividends (net SDC)', value: formatEUR(data.netDivs) }
-        ],
-        source: 'analytics-personal.js:183 getPersonData() — `grossFromCompany`',
-        note: 'Zeroed out entirely when the Scope toggle is set to "Personal only".'
-      }
-    },
-    { label: 'Personal Properties',
-      value: mkDrillValue(formatEUR(data.personalIncome), () =>
-        drillDownModal(`${label} — Personal Properties`, drillRevRows(data.personalPayments, []), REV_COLS)),
-      explain: {
-        title: 'Personal Properties', formula: 'Sum of paid payments on personal-channel properties owned by this person, in the selected period.',
-        inputs: [
-          { label: 'Payments counted', value: String(data.personalPayments.length) },
-          { label: 'Total', value: formatEUR(data.personalIncome) }
-        ],
-        source: 'analytics-personal.js:181 getPersonData() — `personalIncome`',
-        note: 'Zeroed out entirely when the Scope toggle is set to "Company only".'
-      }
-    }
-  ], 3));
+    ], 3));
+  }
   // Grouped into the same two buckets as the summary boxes above (and as
   // buildPersonColumn's "From Company" / "Personal Properties" sections) —
   // a flat list mixing company-sourced and personal-property rows together
@@ -423,25 +437,45 @@ function showPersonModal(label, data) {
       [
         { label: 'Source', tip: 'Which company-sourced income stream this row represents.' },
         { label: 'Amount', right: true, tip: 'Total for this stream in the selected period, converted to EUR.' },
+        ...(cmp ? [{ label: 'Prev', right: true, muted: true, tip: 'Same stream, comparison period.' }] : []),
         { label: 'Notes', right: true, tip: 'Supporting detail — record count, property count, or the gross/SDC breakdown for dividends.' }
       ],
       [
         ['Director Salary',             mkDrillValue(formatEUR(data.salary), () =>
-          drillDownModal(`${label} — Director Salary`, drillExpRows(data.salaryExps), EXP_COLS)),        `${data.salaryExps.length} expense records`],
-        ['Property Rent (owner)',        formatEUR(data.ownerRentTotal),  `${data.companyProps.length} company-operated properties`],
+          drillDownModal(`${label} — Director Salary`, drillExpRows(data.salaryExps), EXP_COLS)),
+          ...(cmp ? [cmp.salaryExps.length > 0
+            ? mkDrillValue(formatEUR(cmp.salary), () => drillDownModal(`${label} — Director Salary (prev)`, drillExpRows(cmp.salaryExps), EXP_COLS))
+            : formatEUR(cmp.salary)] : []),
+          `${data.salaryExps.length} expense records`],
+        ['Property Rent (owner)',        formatEUR(data.ownerRentTotal),
+          ...(cmp ? [formatEUR(cmp.ownerRentTotal)] : []),
+          `${data.companyProps.length} company-operated properties`],
         ['Reimbursements',               mkDrillValue(formatEUR(data.reimb), () =>
-          drillDownModal(`${label} — Reimbursements`, drillExpRows(data.reimbExps), EXP_COLS)),           `${data.reimbExps.length} records`],
+          drillDownModal(`${label} — Reimbursements`, drillExpRows(data.reimbExps), EXP_COLS)),
+          ...(cmp ? [cmp.reimbExps.length > 0
+            ? mkDrillValue(formatEUR(cmp.reimb), () => drillDownModal(`${label} — Reimbursements (prev)`, drillExpRows(cmp.reimbExps), EXP_COLS))
+            : formatEUR(cmp.reimb)] : []),
+          `${data.reimbExps.length} records`],
         ['STR Income',                   data.strIncomeExps.length > 0
           ? mkDrillValue(formatEUR(data.strIncomeTotal), () => drillDownModal(`${label} — STR Income`, drillExpRows(data.strIncomeExps), EXP_COLS))
           : formatEUR(data.strIncomeTotal),
+          ...(cmp ? [cmp.strIncomeExps.length > 0
+            ? mkDrillValue(formatEUR(cmp.strIncomeTotal), () => drillDownModal(`${label} — STR Income (prev)`, drillExpRows(cmp.strIncomeExps), EXP_COLS))
+            : formatEUR(cmp.strIncomeTotal)] : []),
           data.strIncomeExps.length > 0 ? `${data.strIncomeExps.length} STR fee records` : 'None'],
         ['Other Personal Income',        data.piExps.length > 0
           ? mkDrillValue(formatEUR(data.piExpTotal), () => drillDownModal(`${label} — Other Personal Income`, drillExpRows(data.piExps), EXP_COLS))
           : formatEUR(data.piExpTotal),
+          ...(cmp ? [cmp.piExps.length > 0
+            ? mkDrillValue(formatEUR(cmp.piExpTotal), () => drillDownModal(`${label} — Other Personal Income (prev)`, drillExpRows(cmp.piExps), EXP_COLS))
+            : formatEUR(cmp.piExpTotal)] : []),
           data.piExps.length > 0 ? `${data.piExps.length} linked expenses` : 'None'],
         ['Dividends (net SDC)',          data.divRecords.length > 0
           ? mkDrillValue(formatEUR(data.netDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
           : formatEUR(data.netDivs),
+          ...(cmp ? [cmp.divRecords.length > 0
+            ? mkDrillValue(formatEUR(cmp.netDivs), () => drillDownModal(`${label} — Dividends (prev)`, toDivDrillRows(cmp.divRecords), DIV_COLS))
+            : formatEUR(cmp.netDivs)] : []),
           data.grossDivs > 0 ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}` : 'No dividends'],
       ],
       { highlight: 1 }
@@ -453,11 +487,16 @@ function showPersonModal(label, data) {
       [
         { label: 'Source', tip: 'Personal-channel property income line.' },
         { label: 'Amount', right: true, tip: 'Total personal-property rental income received in the selected period.' },
+        ...(cmp ? [{ label: 'Prev', right: true, muted: true, tip: 'Same line, comparison period.' }] : []),
         { label: 'Notes', right: true, tip: 'Number of paid payments included in this total.' }
       ],
       [['Personal Properties', data.personalPayments.length > 0
         ? mkDrillValue(formatEUR(data.personalIncome), () => drillDownModal(`${label} — Personal Properties`, drillRevRows(data.personalPayments, []), REV_COLS))
-        : formatEUR(data.personalIncome), `${data.personalPayments.length} payments`]],
+        : formatEUR(data.personalIncome),
+        ...(cmp ? [cmp.personalPayments.length > 0
+          ? mkDrillValue(formatEUR(cmp.personalIncome), () => drillDownModal(`${label} — Personal Properties (prev)`, drillRevRows(cmp.personalPayments, []), REV_COLS))
+          : formatEUR(cmp.personalIncome)] : []),
+        `${data.personalPayments.length} payments`]],
       { highlight: 1 }
     ));
   }
@@ -491,9 +530,22 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
     source: 'analytics-personal.js:211 getPersonData() — `total`'
   });
   if (youCmp && ritaCmp && cmpRange) {
+    // YOU_LABEL/RITA_LABEL rows: both the current and comparison figure open
+    // showPersonModal for that director — the natural "what's behind this
+    // total" drill for a composite figure spanning several income streams
+    // (salary/rent/reimb/STR/PI/dividends/personal-props) that don't share a
+    // single drillDownModal column shape. 'Combined' has no equivalent
+    // single-person data shape to drill into safely, so it stays a plain
+    // figure (still explained via the ⓘ button) — see report note.
     body.appendChild(mkCmpGrid([
-      { label: YOU_LABEL,  curVal: formatEUR(youData.total),  cmpVal: formatEUR(youCmp.total),  explain: personTotalExplain(youData)  },
-      { label: RITA_LABEL, curVal: formatEUR(ritaData.total), cmpVal: formatEUR(ritaCmp.total), explain: personTotalExplain(ritaData) },
+      { label: YOU_LABEL,
+        curVal: mkDrillValue(formatEUR(youData.total), () => showPersonModal(YOU_LABEL, youData, youCmp)),
+        cmpVal: mkDrillValue(formatEUR(youCmp.total), () => showPersonModal(YOU_LABEL, youData, youCmp)),
+        explain: personTotalExplain(youData) },
+      { label: RITA_LABEL,
+        curVal: mkDrillValue(formatEUR(ritaData.total), () => showPersonModal(RITA_LABEL, ritaData, ritaCmp)),
+        cmpVal: mkDrillValue(formatEUR(ritaCmp.total), () => showPersonModal(RITA_LABEL, ritaData, ritaCmp)),
+        explain: personTotalExplain(ritaData) },
       { label: 'Combined', curVal: formatEUR(combined),       cmpVal: formatEUR(cmpCombined),   explain: combinedExplain },
     ], 'Current Period', cmpRange.label));
   } else {
@@ -504,6 +556,7 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
     ], 3));
   }
   // Grouped Company/Personal, same rationale as showPersonModal above.
+  const hasCmp = !!(youCmp && ritaCmp);
   if (youData.scope !== 'personal') {
     body.appendChild(mkSectionLabel('From Company'));
     body.appendChild(mkModalTable(
@@ -511,19 +564,40 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
         { label: 'Source', tip: 'Company-sourced income stream.' },
         { label: YOU_LABEL, right: true, tip: `${YOU_LABEL}'s amount for this stream in the selected period.` },
         { label: RITA_LABEL, right: true, tip: `${RITA_LABEL}'s amount for this stream in the selected period.` },
-        { label: 'Combined', right: true, tip: 'Sum of both directors for this stream.' }
+        { label: 'Combined', right: true, tip: 'Sum of both directors for this stream.' },
+        ...(hasCmp ? [
+          { label: `${YOU_LABEL} (prev)`, right: true, muted: true, tip: `${YOU_LABEL}'s amount for this stream, comparison period.` },
+          { label: `${RITA_LABEL} (prev)`, right: true, muted: true, tip: `${RITA_LABEL}'s amount for this stream, comparison period.` },
+          { label: 'Combined (prev)', right: true, muted: true, tip: 'Sum of both directors for this stream, comparison period.' }
+        ] : [])
       ],
       [
         ['Director Salary',       mkDrillValue(formatEUR(youData.salary), () => drillDownModal(`${YOU_LABEL} — Director Salary`, drillExpRows(youData.salaryExps), EXP_COLS)),
                                    mkDrillValue(formatEUR(ritaData.salary), () => drillDownModal(`${RITA_LABEL} — Director Salary`, drillExpRows(ritaData.salaryExps), EXP_COLS)),
-                                   mkDrillValue(formatEUR(youData.salary + ritaData.salary), () => drillDownModal('Director Salary — Combined', drillExpRows([...youData.salaryExps, ...ritaData.salaryExps]), EXP_COLS))],
-        ['Property Rent (Owner)', formatEUR(youData.ownerRentTotal), formatEUR(ritaData.ownerRentTotal), formatEUR(youData.ownerRentTotal + ritaData.ownerRentTotal)],
+                                   mkDrillValue(formatEUR(youData.salary + ritaData.salary), () => drillDownModal('Director Salary — Combined', drillExpRows([...youData.salaryExps, ...ritaData.salaryExps]), EXP_COLS)),
+                                   ...(hasCmp ? [
+                                     mkDrillValue(formatEUR(youCmp.salary), () => drillDownModal(`${YOU_LABEL} — Director Salary (prev)`, drillExpRows(youCmp.salaryExps), EXP_COLS)),
+                                     mkDrillValue(formatEUR(ritaCmp.salary), () => drillDownModal(`${RITA_LABEL} — Director Salary (prev)`, drillExpRows(ritaCmp.salaryExps), EXP_COLS)),
+                                     mkDrillValue(formatEUR(youCmp.salary + ritaCmp.salary), () => drillDownModal('Director Salary — Combined (prev)', drillExpRows([...youCmp.salaryExps, ...ritaCmp.salaryExps]), EXP_COLS)),
+                                   ] : [])],
+        ['Property Rent (Owner)', formatEUR(youData.ownerRentTotal), formatEUR(ritaData.ownerRentTotal), formatEUR(youData.ownerRentTotal + ritaData.ownerRentTotal),
+                                   ...(hasCmp ? [formatEUR(youCmp.ownerRentTotal), formatEUR(ritaCmp.ownerRentTotal), formatEUR(youCmp.ownerRentTotal + ritaCmp.ownerRentTotal)] : [])],
         ['Reimbursements',        mkDrillValue(formatEUR(youData.reimb), () => drillDownModal(`${YOU_LABEL} — Reimbursements`, drillExpRows(youData.reimbExps), EXP_COLS)),
                                    mkDrillValue(formatEUR(ritaData.reimb), () => drillDownModal(`${RITA_LABEL} — Reimbursements`, drillExpRows(ritaData.reimbExps), EXP_COLS)),
-                                   mkDrillValue(formatEUR(youData.reimb + ritaData.reimb), () => drillDownModal('Reimbursements — Combined', drillExpRows([...youData.reimbExps, ...ritaData.reimbExps]), EXP_COLS))],
+                                   mkDrillValue(formatEUR(youData.reimb + ritaData.reimb), () => drillDownModal('Reimbursements — Combined', drillExpRows([...youData.reimbExps, ...ritaData.reimbExps]), EXP_COLS)),
+                                   ...(hasCmp ? [
+                                     mkDrillValue(formatEUR(youCmp.reimb), () => drillDownModal(`${YOU_LABEL} — Reimbursements (prev)`, drillExpRows(youCmp.reimbExps), EXP_COLS)),
+                                     mkDrillValue(formatEUR(ritaCmp.reimb), () => drillDownModal(`${RITA_LABEL} — Reimbursements (prev)`, drillExpRows(ritaCmp.reimbExps), EXP_COLS)),
+                                     mkDrillValue(formatEUR(youCmp.reimb + ritaCmp.reimb), () => drillDownModal('Reimbursements — Combined (prev)', drillExpRows([...youCmp.reimbExps, ...ritaCmp.reimbExps]), EXP_COLS)),
+                                   ] : [])],
         ['Dividends (Net SDC)',   mkDrillValue(formatEUR(youData.netDivs), () => drillDownModal(`${YOU_LABEL} — Dividends`, toDivDrillRows(youData.divRecords), DIV_COLS)),
                                    mkDrillValue(formatEUR(ritaData.netDivs), () => drillDownModal(`${RITA_LABEL} — Dividends`, toDivDrillRows(ritaData.divRecords), DIV_COLS)),
-                                   mkDrillValue(formatEUR(youData.netDivs + ritaData.netDivs), () => drillDownModal('Dividends — Combined', toDivDrillRows([...youData.divRecords, ...ritaData.divRecords]), DIV_COLS))],
+                                   mkDrillValue(formatEUR(youData.netDivs + ritaData.netDivs), () => drillDownModal('Dividends — Combined', toDivDrillRows([...youData.divRecords, ...ritaData.divRecords]), DIV_COLS)),
+                                   ...(hasCmp ? [
+                                     mkDrillValue(formatEUR(youCmp.netDivs), () => drillDownModal(`${YOU_LABEL} — Dividends (prev)`, toDivDrillRows(youCmp.divRecords), DIV_COLS)),
+                                     mkDrillValue(formatEUR(ritaCmp.netDivs), () => drillDownModal(`${RITA_LABEL} — Dividends (prev)`, toDivDrillRows(ritaCmp.divRecords), DIV_COLS)),
+                                     mkDrillValue(formatEUR(youCmp.netDivs + ritaCmp.netDivs), () => drillDownModal('Dividends — Combined (prev)', toDivDrillRows([...youCmp.divRecords, ...ritaCmp.divRecords]), DIV_COLS)),
+                                   ] : [])],
       ],
       { highlight: 3 }
     ));
@@ -535,12 +609,22 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
         { label: 'Source', tip: 'Personal-channel property income.' },
         { label: YOU_LABEL, right: true, tip: `${YOU_LABEL}'s personal-property income in the selected period.` },
         { label: RITA_LABEL, right: true, tip: `${RITA_LABEL}'s personal-property income in the selected period.` },
-        { label: 'Combined', right: true, tip: 'Sum of both directors\' personal-property income.' }
+        { label: 'Combined', right: true, tip: 'Sum of both directors\' personal-property income.' },
+        ...(hasCmp ? [
+          { label: `${YOU_LABEL} (prev)`, right: true, muted: true, tip: `${YOU_LABEL}'s personal-property income, comparison period.` },
+          { label: `${RITA_LABEL} (prev)`, right: true, muted: true, tip: `${RITA_LABEL}'s personal-property income, comparison period.` },
+          { label: 'Combined (prev)', right: true, muted: true, tip: 'Sum of both directors\' personal-property income, comparison period.' }
+        ] : [])
       ],
       [['Personal Properties',
         mkDrillValue(formatEUR(youData.personalIncome), () => drillDownModal(`${YOU_LABEL} — Personal Properties`, drillRevRows(youData.personalPayments, []), REV_COLS)),
         mkDrillValue(formatEUR(ritaData.personalIncome), () => drillDownModal(`${RITA_LABEL} — Personal Properties`, drillRevRows(ritaData.personalPayments, []), REV_COLS)),
-        mkDrillValue(formatEUR(youData.personalIncome + ritaData.personalIncome), () => drillDownModal('Personal Properties — Combined', drillRevRows([...youData.personalPayments, ...ritaData.personalPayments], []), REV_COLS))]],
+        mkDrillValue(formatEUR(youData.personalIncome + ritaData.personalIncome), () => drillDownModal('Personal Properties — Combined', drillRevRows([...youData.personalPayments, ...ritaData.personalPayments], []), REV_COLS)),
+        ...(hasCmp ? [
+          mkDrillValue(formatEUR(youCmp.personalIncome), () => drillDownModal(`${YOU_LABEL} — Personal Properties (prev)`, drillRevRows(youCmp.personalPayments, []), REV_COLS)),
+          mkDrillValue(formatEUR(ritaCmp.personalIncome), () => drillDownModal(`${RITA_LABEL} — Personal Properties (prev)`, drillRevRows(ritaCmp.personalPayments, []), REV_COLS)),
+          mkDrillValue(formatEUR(youCmp.personalIncome + ritaCmp.personalIncome), () => drillDownModal('Personal Properties — Combined (prev)', drillRevRows([...youCmp.personalPayments, ...ritaCmp.personalPayments], []), REV_COLS)),
+        ] : [])]],
       { highlight: 3 }
     ));
   }
@@ -548,54 +632,78 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
 }
 
 // ── Avg / Month drill-down ────────────────────────────────────────────────────
-function showAvgMonthModal(youData, ritaData, months) {
+// combinedMonthlyRows(yData, rData, monthList) — one row per month: label +
+// formatted combined (both directors) income for that month. Shared between
+// the current-period and comparison-period tables below.
+function combinedMonthlyRows(yData, rData, monthList) {
+  return monthList.map(m => {
+    const mk = m.key;
+    const sal = yData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
+              + rData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    const rent = (yData.ownerRentByMonth[mk] || 0) + (rData.ownerRentByMonth[mk] || 0);
+    const reimb = yData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
+                + rData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    const divs = yData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk).reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0)
+               + rData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk).reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0);
+    const pers = yData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
+               + rData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+    return [m.label, formatEUR(sal + rent + reimb + divs + pers)];
+  });
+}
+
+function showAvgMonthModal(youData, ritaData, months, youCmp, ritaCmp, cmpMonths) {
   const combined = youData.total + ritaData.total;
   const avg      = months.length > 0 ? combined / months.length : 0;
+  const hasCmp      = !!(youCmp && ritaCmp);
+  const cmpCombined = hasCmp ? youCmp.total + ritaCmp.total : null;
+  const cmpAvg      = hasCmp ? cmpCombined / Math.max(1, (cmpMonths || []).length) : null;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-  body.appendChild(mkSummaryGrid([
-    { label: 'Avg / Month',  value: formatEUR(avg),
-      explain: {
-        title: 'Avg / Month', formula: 'Total Period ÷ Number of months in period',
-        inputs: [
-          { label: 'Total Period', value: formatEUR(combined) },
-          { label: 'Months', value: String(months.length) }
-        ],
-        source: 'analytics-personal.js:497 showAvgMonthModal() — `avg`'
-      }
-    },
-    { label: 'Total Period', value: formatEUR(combined),
-      explain: {
-        title: 'Total Period', formula: `${YOU_LABEL} Total Gross + ${RITA_LABEL} Total Gross`,
-        inputs: [
-          { label: YOU_LABEL, value: formatEUR(youData.total) },
-          { label: RITA_LABEL, value: formatEUR(ritaData.total) }
-        ],
-        source: 'analytics-personal.js:496 showAvgMonthModal() — `combined`'
-      }
-    },
-    { label: 'Months',       value: String(months.length) }
-  ], 3));
+  const avgExplain = {
+    title: 'Avg / Month', formula: 'Total Period ÷ Number of months in period',
+    inputs: [
+      { label: 'Total Period', value: formatEUR(combined) },
+      { label: 'Months', value: String(months.length) }
+    ],
+    source: 'analytics-personal.js:497 showAvgMonthModal() — `avg`'
+  };
+  const totalPeriodExplain = {
+    title: 'Total Period', formula: `${YOU_LABEL} Total Gross + ${RITA_LABEL} Total Gross`,
+    inputs: [
+      { label: YOU_LABEL, value: formatEUR(youData.total) },
+      { label: RITA_LABEL, value: formatEUR(ritaData.total) }
+    ],
+    source: 'analytics-personal.js:496 showAvgMonthModal() — `combined`'
+  };
+  if (hasCmp) {
+    body.appendChild(mkCmpGrid([
+      { label: 'Avg / Month',  curVal: formatEUR(avg), cmpVal: formatEUR(cmpAvg), explain: avgExplain },
+      { label: 'Total Period', curVal: formatEUR(combined), cmpVal: formatEUR(cmpCombined), explain: totalPeriodExplain },
+      { label: 'Months',       curVal: String(months.length), cmpVal: String((cmpMonths || []).length) }
+    ], 'Current Period', 'Comparison Period'));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: 'Avg / Month',  value: formatEUR(avg), explain: avgExplain },
+      { label: 'Total Period', value: formatEUR(combined), explain: totalPeriodExplain },
+      { label: 'Months',       value: String(months.length) }
+    ], 3));
+  }
   if (months.length > 0) {
     body.appendChild(mkSectionLabel('Combined Income by Month'));
-    const rows = months.map(m => {
-      const mk = m.key;
-      const sal = youData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
-                + ritaData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-      const rent = (youData.ownerRentByMonth[mk] || 0) + (ritaData.ownerRentByMonth[mk] || 0);
-      const reimb = youData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
-                  + ritaData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-      const divs = youData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk).reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0)
-                 + ritaData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk).reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0);
-      const pers = youData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
-                 + ritaData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-      return [m.label, formatEUR(sal + rent + reimb + divs + pers)];
-    });
     body.appendChild(mkModalTable(
       [
         { label: 'Month', tip: 'Calendar month within the selected period.' },
         { label: 'Combined Income', right: true, tip: 'Salary + Owner Rent + Reimbursements + Net Dividends + Personal Property income, both directors combined, for that month.' }
       ],
-      rows, { highlight: 1 }));
+      combinedMonthlyRows(youData, ritaData, months), { highlight: 1 }));
+  }
+  if (hasCmp && (cmpMonths || []).length > 0) {
+    body.appendChild(mkSectionLabel('Combined Income by Month — Comparison Period'));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Month', tip: 'Calendar month within the comparison period.' },
+        { label: 'Combined Income', right: true, tip: 'Salary + Owner Rent + Reimbursements + Net Dividends + Personal Property income, both directors combined, for that month.' }
+      ],
+      combinedMonthlyRows(youCmp, ritaCmp, cmpMonths), { highlight: 1 }));
   }
   openModal({ title: 'Average Monthly Income', body, large: true });
 }
@@ -875,50 +983,73 @@ function showGesyModal(youData, ritaData) {
 }
 
 // ── Salary drill-down ─────────────────────────────────────────────────────────
-function showSalaryModal(label, data) {
+// salaryByMonthRows(label, exps, titleSuffix) — Month/Records/Amount rows,
+// each Amount drillable into that month's salary expense records. Shared
+// between the current-period and comparison-period tables in showSalaryModal.
+function salaryByMonthRows(label, exps, titleSuffix = '') {
+  const byMonth = new Map();
+  for (const e of exps) {
+    const mk  = (e.date || '').slice(0, 7) || '—';
+    const cur = byMonth.get(mk) || { total: 0, count: 0 };
+    cur.total += toEUR(e.amount, e.currency, e.date);
+    cur.count += 1;
+    byMonth.set(mk, cur);
+  }
+  return [...byMonth.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([mk, v]) => [mk, String(v.count),
+      mkDrillValue(formatEUR(v.total), () => drillDownModal(`${label} — Salary — ${mk}${titleSuffix}`, drillExpRows(exps.filter(e => (e.date || '').slice(0, 7) === mk)), EXP_COLS))]);
+}
+
+function showSalaryModal(label, data, cmp) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-  body.appendChild(mkSummaryGrid([
-    { label: 'Total Salary',  value: data.salaryExps.length > 0
-        ? mkDrillValue(formatEUR(data.salary), () => drillDownModal(`${label} — Director Salary`, drillExpRows(data.salaryExps), EXP_COLS))
-        : formatEUR(data.salary),
-      explain: {
-        title: 'Total Salary', formula: 'Sum of expenses with category "salary" linked to this person, dated within the selected period.',
-        inputs: [{ label: 'Records', value: String(data.salaryExps.length) }, { label: 'Total', value: formatEUR(data.salary) }],
-        source: 'analytics-personal.js:107 getPersonData() — `salary`'
-      }
-    },
-    { label: 'Records',       value: String(data.salaryExps.length) },
-    ...(data.gesyTotal > 0 ? [{ label: 'GESY (company cost)', value: mkDrillValue(formatEUR(data.gesyTotal), () =>
-        drillDownModal(`${label} — GESY`, drillExpRows(data.gesyExps), EXP_COLS)),
-      explain: {
-        title: 'GESY (company cost)', formula: 'Sum of expenses with category "social_contributions" linked to this person, in the selected period.',
-        inputs: [{ label: 'Total', value: formatEUR(data.gesyTotal) }],
-        source: 'analytics-personal.js:113 getPersonData() — `gesyTotal`',
-        note: 'Employer cost shown for context — not personal income, not included in Total Salary.'
-      }
-    }] : [])
-  ], 3));
+  const totalSalaryExplain = {
+    title: 'Total Salary', formula: 'Sum of expenses with category "salary" linked to this person, dated within the selected period.',
+    inputs: [{ label: 'Records', value: String(data.salaryExps.length) }, { label: 'Total', value: formatEUR(data.salary) }],
+    source: 'analytics-personal.js:107 getPersonData() — `salary`'
+  };
+  const gesyExplain = {
+    title: 'GESY (company cost)', formula: 'Sum of expenses with category "social_contributions" linked to this person, in the selected period.',
+    inputs: [{ label: 'Total', value: formatEUR(data.gesyTotal) }],
+    source: 'analytics-personal.js:113 getPersonData() — `gesyTotal`',
+    note: 'Employer cost shown for context — not personal income, not included in Total Salary.'
+  };
+  const showGesy = data.gesyTotal > 0 || (cmp && cmp.gesyTotal > 0);
+  if (cmp) {
+    body.appendChild(mkCmpGrid([
+      { label: 'Total Salary',
+        curVal: data.salaryExps.length > 0 ? mkDrillValue(formatEUR(data.salary), () => drillDownModal(`${label} — Director Salary`, drillExpRows(data.salaryExps), EXP_COLS)) : formatEUR(data.salary),
+        cmpVal: cmp.salaryExps.length > 0 ? mkDrillValue(formatEUR(cmp.salary), () => drillDownModal(`${label} — Director Salary (prev)`, drillExpRows(cmp.salaryExps), EXP_COLS)) : formatEUR(cmp.salary),
+        explain: totalSalaryExplain },
+      { label: 'Records', curVal: String(data.salaryExps.length), cmpVal: String(cmp.salaryExps.length) },
+      ...(showGesy ? [{ label: 'GESY (company cost)',
+        curVal: data.gesyExps.length > 0 ? mkDrillValue(formatEUR(data.gesyTotal), () => drillDownModal(`${label} — GESY`, drillExpRows(data.gesyExps), EXP_COLS)) : formatEUR(data.gesyTotal),
+        cmpVal: cmp.gesyExps.length > 0 ? mkDrillValue(formatEUR(cmp.gesyTotal), () => drillDownModal(`${label} — GESY (prev)`, drillExpRows(cmp.gesyExps), EXP_COLS)) : formatEUR(cmp.gesyTotal),
+        explain: gesyExplain }] : [])
+    ], 'Current Period', 'Comparison Period'));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: 'Total Salary',  value: data.salaryExps.length > 0
+          ? mkDrillValue(formatEUR(data.salary), () => drillDownModal(`${label} — Director Salary`, drillExpRows(data.salaryExps), EXP_COLS))
+          : formatEUR(data.salary),
+        explain: totalSalaryExplain
+      },
+      { label: 'Records',       value: String(data.salaryExps.length) },
+      ...(data.gesyTotal > 0 ? [{ label: 'GESY (company cost)', value: mkDrillValue(formatEUR(data.gesyTotal), () =>
+          drillDownModal(`${label} — GESY`, drillExpRows(data.gesyExps), EXP_COLS)),
+        explain: gesyExplain
+      }] : [])
+    ], 3));
+  }
   if (data.salaryExps.length > 0) {
-    const byMonth = new Map();
-    for (const e of data.salaryExps) {
-      const mk  = (e.date || '').slice(0, 7) || '—';
-      const cur = byMonth.get(mk) || { total: 0, count: 0 };
-      cur.total += toEUR(e.amount, e.currency, e.date);
-      cur.count += 1;
-      byMonth.set(mk, cur);
-    }
     body.appendChild(mkSectionLabel('Salary by Month'));
-    const monthRows = [...byMonth.entries()]
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([mk, v]) => [mk, String(v.count),
-        mkDrillValue(formatEUR(v.total), () => drillDownModal(`${label} — Salary — ${mk}`, drillExpRows(data.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk)), EXP_COLS))]);
     body.appendChild(mkModalTable(
       [
         { label: 'Month', tip: 'Calendar month within the selected period.' },
         { label: 'Records', right: true, tip: 'Number of salary expense records in that month.' },
         { label: 'Amount', right: true, tip: 'Total salary paid that month, converted to EUR.' }
       ],
-      monthRows, { highlight: 2 }));
+      salaryByMonthRows(label, data.salaryExps), { highlight: 2 }));
 
     const footer = el('div', { style: 'margin-top:4px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);display:flex;justify-content:flex-end' });
     const link = el('a', { style: 'font-size:12px;cursor:pointer;color:var(--accent)' }, 'View all salary records →');
@@ -941,28 +1072,49 @@ function showSalaryModal(label, data) {
   } else {
     body.appendChild(mkEmptyState('No salary records for this period. Add expenses with category "Salary".'));
   }
+  if (cmp && cmp.salaryExps.length > 0) {
+    body.appendChild(mkSectionLabel('Salary by Month — Comparison Period'));
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Month', tip: 'Calendar month within the comparison period.' },
+        { label: 'Records', right: true, tip: 'Number of salary expense records in that month.' },
+        { label: 'Amount', right: true, tip: 'Total salary paid that month, converted to EUR.' }
+      ],
+      salaryByMonthRows(label, cmp.salaryExps, ' (prev)'), { highlight: 2 }));
+  }
   openModal({ title: `${label} — Director Salary`, body, large: true });
 }
 
 // ── Owner rent drill-down ─────────────────────────────────────────────────────
-function showRentModal(label, data, months) {
+function showRentModal(label, data, months, cmp) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-  body.appendChild(mkSummaryGrid([
-    { label: 'Total Owner Rent', value: formatEUR(data.ownerRentTotal),
-      explain: {
-        title: 'Total Owner Rent', formula: 'For each month in the period, sum each company property\'s active owner-rent rate (from its rate history) × this director\'s ownership share, then add across all months.',
-        inputs: [
-          { label: 'Company-operated properties', value: String(data.companyProps.length) },
-          { label: 'Months in period', value: String(months.length) },
-          { label: 'Total', value: formatEUR(data.ownerRentTotal) }
-        ],
-        source: 'analytics-personal.js:146 getPersonData() — `ownerRentTotal` (uses rentForMonth() at :32)',
-        note: 'A property\'s rent stops counting from its soldDate onward; owner:"both" properties count at a 50% share.'
-      }
-    },
-    { label: 'Properties',       value: String(data.companyProps.length) },
-    { label: 'Months in Period', value: String(months.length) }
-  ], 3));
+  const totalRentExplain = {
+    title: 'Total Owner Rent', formula: 'For each month in the period, sum each company property\'s active owner-rent rate (from its rate history) × this director\'s ownership share, then add across all months.',
+    inputs: [
+      { label: 'Company-operated properties', value: String(data.companyProps.length) },
+      { label: 'Months in period', value: String(months.length) },
+      { label: 'Total', value: formatEUR(data.ownerRentTotal) }
+    ],
+    source: 'analytics-personal.js:146 getPersonData() — `ownerRentTotal` (uses rentForMonth() at :32)',
+    note: 'A property\'s rent stops counting from its soldDate onward; owner:"both" properties count at a 50% share.'
+  };
+  // No drillable record list backs owner rent (it's a rate × ownership-share
+  // computation, not a set of transactions) on the current-period side
+  // either, so the comparison side stays a plain figure too — mirrored via
+  // mkCmpGrid rather than mkDrillValue.
+  if (cmp) {
+    body.appendChild(mkCmpGrid([
+      { label: 'Total Owner Rent', curVal: formatEUR(data.ownerRentTotal), cmpVal: formatEUR(cmp.ownerRentTotal), explain: totalRentExplain },
+      { label: 'Properties',       curVal: String(data.companyProps.length), cmpVal: String(cmp.companyProps.length) },
+      { label: 'Months in Period', curVal: String(months.length), cmpVal: String(Object.keys(cmp.ownerRentByMonth || {}).length) }
+    ], 'Current Period', 'Comparison Period'));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: 'Total Owner Rent', value: formatEUR(data.ownerRentTotal), explain: totalRentExplain },
+      { label: 'Properties',       value: String(data.companyProps.length) },
+      { label: 'Months in Period', value: String(months.length) }
+    ], 3));
+  }
   if (data.companyProps.length > 0) {
     body.appendChild(mkSectionLabel('Company-Operated Properties (Monthly Rent)'));
     const rows = data.companyProps.map(p => {
@@ -998,28 +1150,41 @@ function showRentModal(label, data, months) {
 }
 
 // ── Reimbursements drill-down ─────────────────────────────────────────────────
-function showReimbModal(label, data) {
+function showReimbModal(label, data, cmp) {
   const body  = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   const count = data.reimbExps.length;
-  body.appendChild(mkSummaryGrid([
-    { label: 'Total Reimbursed', value: count > 0
-        ? mkDrillValue(formatEUR(data.reimb), () => drillDownModal(`${label} — Reimbursements`, drillExpRows(data.reimbExps), EXP_COLS))
-        : formatEUR(data.reimb),
-      explain: {
-        title: 'Total Reimbursed', formula: 'Sum of expenses with category "reimbursement" linked to this person, dated within the selected period.',
-        inputs: [{ label: 'Records', value: String(count) }, { label: 'Total', value: formatEUR(data.reimb) }],
-        source: 'analytics-personal.js:119 getPersonData() — `reimb`'
+  const cmpCount = cmp ? cmp.reimbExps.length : 0;
+  const totalReimbExplain = {
+    title: 'Total Reimbursed', formula: 'Sum of expenses with category "reimbursement" linked to this person, dated within the selected period.',
+    inputs: [{ label: 'Records', value: String(count) }, { label: 'Total', value: formatEUR(data.reimb) }],
+    source: 'analytics-personal.js:119 getPersonData() — `reimb`'
+  };
+  if (cmp) {
+    body.appendChild(mkCmpGrid([
+      { label: 'Total Reimbursed',
+        curVal: count > 0 ? mkDrillValue(formatEUR(data.reimb), () => drillDownModal(`${label} — Reimbursements`, drillExpRows(data.reimbExps), EXP_COLS)) : formatEUR(data.reimb),
+        cmpVal: cmpCount > 0 ? mkDrillValue(formatEUR(cmp.reimb), () => drillDownModal(`${label} — Reimbursements (prev)`, drillExpRows(cmp.reimbExps), EXP_COLS)) : formatEUR(cmp.reimb),
+        explain: totalReimbExplain },
+      { label: 'Records', curVal: String(count), cmpVal: String(cmpCount) },
+      { label: 'Average', curVal: count > 0 ? formatEUR(data.reimb / count) : '—', cmpVal: cmpCount > 0 ? formatEUR(cmp.reimb / cmpCount) : '—' }
+    ], 'Current Period', 'Comparison Period'));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: 'Total Reimbursed', value: count > 0
+          ? mkDrillValue(formatEUR(data.reimb), () => drillDownModal(`${label} — Reimbursements`, drillExpRows(data.reimbExps), EXP_COLS))
+          : formatEUR(data.reimb),
+        explain: totalReimbExplain
+      },
+      { label: 'Records',          value: String(count) },
+      { label: 'Average',          value: count > 0 ? formatEUR(data.reimb / count) : '—',
+        explain: {
+          title: 'Average', formula: 'Total Reimbursed ÷ number of reimbursement records',
+          inputs: [{ label: 'Total Reimbursed', value: formatEUR(data.reimb) }, { label: 'Records', value: String(count) }],
+          source: 'analytics-personal.js:931 showReimbModal()'
+        }
       }
-    },
-    { label: 'Records',          value: String(count) },
-    { label: 'Average',          value: count > 0 ? formatEUR(data.reimb / count) : '—',
-      explain: {
-        title: 'Average', formula: 'Total Reimbursed ÷ number of reimbursement records',
-        inputs: [{ label: 'Total Reimbursed', value: formatEUR(data.reimb) }, { label: 'Records', value: String(count) }],
-        source: 'analytics-personal.js:931 showReimbModal()'
-      }
-    }
-  ], 3));
+    ], 3));
+  }
   if (count > 0) {
     body.appendChild(mkSectionLabel('Reimbursement Records'));
     const rows = data.reimbExps
@@ -1035,41 +1200,75 @@ function showReimbModal(label, data) {
   } else {
     body.appendChild(mkEmptyState('No reimbursements this period.'));
   }
+  if (cmpCount > 0) {
+    body.appendChild(mkSectionLabel('Reimbursement Records — Comparison Period'));
+    const cmpRows = cmp.reimbExps
+      .slice()
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .map(e => [e.date || '—', formatEUR(toEUR(e.amount, e.currency, e.date)), e.description || '—']);
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Date', tip: 'Expense date.' },
+        { label: 'Amount (EUR)', right: true, tip: 'Amount converted to EUR at the expense date.' },
+        { label: 'Description', right: true, tip: 'Free-text note entered on the expense record.' }
+      ],
+      cmpRows, { highlight: 1 }));
+  }
   openModal({ title: `${label} — Reimbursements`, body, large: true });
 }
 
 // ── Dividends drill-down ──────────────────────────────────────────────────────
-function showDivModal(label, data) {
+function showDivModal(label, data, cmp) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-  body.appendChild(mkSummaryGrid([
-    { label: 'Gross Dividends', value: data.divRecords.length > 0
-        ? mkDrillValue(formatEUR(data.grossDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
-        : formatEUR(data.grossDivs),
-      explain: {
-        title: 'Gross Dividends', formula: 'Sum of grossAmount across dividend records for this director\'s recipient, dated within the selected period.',
-        inputs: [{ label: 'Records', value: String(data.divRecords.length) }, { label: 'Total', value: formatEUR(data.grossDivs) }],
-        source: 'analytics-personal.js:164 getPersonData() — `grossDivs`'
+  const grossExplain = {
+    title: 'Gross Dividends', formula: 'Sum of grossAmount across dividend records for this director\'s recipient, dated within the selected period.',
+    inputs: [{ label: 'Records', value: String(data.divRecords.length) }, { label: 'Total', value: formatEUR(data.grossDivs) }],
+    source: 'analytics-personal.js:164 getPersonData() — `grossDivs`'
+  };
+  const sdcExplain = {
+    title: 'SDC (2.65%)', formula: 'Gross Dividends × 2.65% (Special Defence Contribution)',
+    inputs: [{ label: 'Gross Dividends', value: formatEUR(data.grossDivs) }],
+    source: 'analytics-personal.js:165 getPersonData() — `sdcAmount` (SDC_RATE = 0.0265, line 17)'
+  };
+  const netExplain = {
+    title: 'Net Dividends', formula: 'Gross Dividends − SDC',
+    inputs: [{ label: 'Gross Dividends', value: formatEUR(data.grossDivs) }, { label: 'SDC', value: formatEUR(data.sdcAmount) }],
+    source: 'analytics-personal.js:166 getPersonData() — `netDivs`'
+  };
+  if (cmp) {
+    body.appendChild(mkCmpGrid([
+      { label: 'Gross Dividends',
+        curVal: data.divRecords.length > 0 ? mkDrillValue(formatEUR(data.grossDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS)) : formatEUR(data.grossDivs),
+        cmpVal: cmp.divRecords.length > 0 ? mkDrillValue(formatEUR(cmp.grossDivs), () => drillDownModal(`${label} — Dividends (prev)`, toDivDrillRows(cmp.divRecords), DIV_COLS)) : formatEUR(cmp.grossDivs),
+        explain: grossExplain },
+      { label: 'SDC (2.65%)',
+        curVal: data.divRecords.length > 0 ? mkDrillValue(formatEUR(data.sdcAmount), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS)) : formatEUR(data.sdcAmount),
+        cmpVal: cmp.divRecords.length > 0 ? mkDrillValue(formatEUR(cmp.sdcAmount), () => drillDownModal(`${label} — Dividends (prev)`, toDivDrillRows(cmp.divRecords), DIV_COLS)) : formatEUR(cmp.sdcAmount),
+        explain: sdcExplain },
+      { label: 'Net Dividends',
+        curVal: data.divRecords.length > 0 ? mkDrillValue(formatEUR(data.netDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS)) : formatEUR(data.netDivs),
+        cmpVal: cmp.divRecords.length > 0 ? mkDrillValue(formatEUR(cmp.netDivs), () => drillDownModal(`${label} — Dividends (prev)`, toDivDrillRows(cmp.divRecords), DIV_COLS)) : formatEUR(cmp.netDivs),
+        explain: netExplain }
+    ], 'Current Period', 'Comparison Period'));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: 'Gross Dividends', value: data.divRecords.length > 0
+          ? mkDrillValue(formatEUR(data.grossDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
+          : formatEUR(data.grossDivs),
+        explain: grossExplain
+      },
+      { label: 'SDC (2.65%)',     value: data.divRecords.length > 0
+          ? mkDrillValue(formatEUR(data.sdcAmount), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
+          : formatEUR(data.sdcAmount),
+        explain: sdcExplain
+      },
+      { label: 'Net Dividends',   value: data.divRecords.length > 0
+          ? mkDrillValue(formatEUR(data.netDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
+          : formatEUR(data.netDivs),
+        explain: netExplain
       }
-    },
-    { label: 'SDC (2.65%)',     value: data.divRecords.length > 0
-        ? mkDrillValue(formatEUR(data.sdcAmount), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
-        : formatEUR(data.sdcAmount),
-      explain: {
-        title: 'SDC (2.65%)', formula: 'Gross Dividends × 2.65% (Special Defence Contribution)',
-        inputs: [{ label: 'Gross Dividends', value: formatEUR(data.grossDivs) }],
-        source: 'analytics-personal.js:165 getPersonData() — `sdcAmount` (SDC_RATE = 0.0265, line 17)'
-      }
-    },
-    { label: 'Net Dividends',   value: data.divRecords.length > 0
-        ? mkDrillValue(formatEUR(data.netDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
-        : formatEUR(data.netDivs),
-      explain: {
-        title: 'Net Dividends', formula: 'Gross Dividends − SDC',
-        inputs: [{ label: 'Gross Dividends', value: formatEUR(data.grossDivs) }, { label: 'SDC', value: formatEUR(data.sdcAmount) }],
-        source: 'analytics-personal.js:166 getPersonData() — `netDivs`'
-      }
-    }
-  ], 3));
+    ], 3));
+  }
   if (data.divRecords.length > 0) {
     const byYear = new Map();
     for (const d of data.divRecords) {
@@ -1122,30 +1321,64 @@ function showDivModal(label, data) {
   } else {
     body.appendChild(mkEmptyState('No dividends for this period. Add dividends in the Tax → Dividends tab.'));
   }
+  if (cmp && cmp.divRecords.length > 0) {
+    body.appendChild(mkSectionLabel('Dividend Records — Comparison Period'));
+    const cmpRows = cmp.divRecords
+      .slice()
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .map(d => [
+        d.date || '—',
+        formatEUR(d.grossAmount || 0),
+        formatEUR((d.grossAmount || 0) * SDC_RATE),
+        formatEUR((d.grossAmount || 0) * (1 - SDC_RATE)),
+        d.notes || '—'
+      ]);
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Date', tip: 'Date the dividend was declared.' },
+        { label: 'Gross', right: true, tip: 'Gross dividend amount declared.' },
+        { label: 'SDC', right: true, tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
+        { label: 'Net', right: true, tip: 'Gross dividend minus SDC — amount actually received.' },
+        { label: 'Notes', right: true, tip: 'Free-text note entered on the dividend record.' }
+      ],
+      cmpRows, { highlight: 3 }));
+  }
   openModal({ title: `${label} — Dividends`, body, large: true });
 }
 
 // ── Personal properties drill-down ────────────────────────────────────────────
-function showPersonalPropsModal(label, data) {
+function showPersonalPropsModal(label, data, cmp) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-  body.appendChild(mkSummaryGrid([
-    { label: 'Total Income',  value: data.personalPayments.length > 0
-        ? mkDrillValue(formatEUR(data.personalIncome), () => drillDownModal(`${label} — Personal Properties`, drillRevRows(data.personalPayments, []), REV_COLS))
-        : formatEUR(data.personalIncome),
-      explain: {
-        title: 'Total Income', formula: 'Sum of paid payments dated within the selected period, across this director\'s personal-channel properties.',
-        inputs: [
-          { label: 'Personal-channel properties', value: String(data.personalProps.length) },
-          { label: 'Payments counted', value: String(data.personalPayments.length) },
-          { label: 'Total', value: formatEUR(data.personalIncome) }
-        ],
-        source: 'analytics-personal.js:181 getPersonData() — `personalIncome`',
-        note: 'Only status:\'paid\' payments on properties with channel:\'personal\' owned by this director count.'
-      }
-    },
-    { label: 'Properties',    value: String(data.personalProps.length) },
-    { label: 'Payments',      value: String(data.personalPayments.length) }
-  ], 3));
+  const totalIncomeExplain = {
+    title: 'Total Income', formula: 'Sum of paid payments dated within the selected period, across this director\'s personal-channel properties.',
+    inputs: [
+      { label: 'Personal-channel properties', value: String(data.personalProps.length) },
+      { label: 'Payments counted', value: String(data.personalPayments.length) },
+      { label: 'Total', value: formatEUR(data.personalIncome) }
+    ],
+    source: 'analytics-personal.js:181 getPersonData() — `personalIncome`',
+    note: 'Only status:\'paid\' payments on properties with channel:\'personal\' owned by this director count.'
+  };
+  if (cmp) {
+    body.appendChild(mkCmpGrid([
+      { label: 'Total Income',
+        curVal: data.personalPayments.length > 0 ? mkDrillValue(formatEUR(data.personalIncome), () => drillDownModal(`${label} — Personal Properties`, drillRevRows(data.personalPayments, []), REV_COLS)) : formatEUR(data.personalIncome),
+        cmpVal: cmp.personalPayments.length > 0 ? mkDrillValue(formatEUR(cmp.personalIncome), () => drillDownModal(`${label} — Personal Properties (prev)`, drillRevRows(cmp.personalPayments, []), REV_COLS)) : formatEUR(cmp.personalIncome),
+        explain: totalIncomeExplain },
+      { label: 'Properties', curVal: String(data.personalProps.length), cmpVal: String(cmp.personalProps.length) },
+      { label: 'Payments',   curVal: String(data.personalPayments.length), cmpVal: String(cmp.personalPayments.length) }
+    ], 'Current Period', 'Comparison Period'));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: 'Total Income',  value: data.personalPayments.length > 0
+          ? mkDrillValue(formatEUR(data.personalIncome), () => drillDownModal(`${label} — Personal Properties`, drillRevRows(data.personalPayments, []), REV_COLS))
+          : formatEUR(data.personalIncome),
+        explain: totalIncomeExplain
+      },
+      { label: 'Properties',    value: String(data.personalProps.length) },
+      { label: 'Payments',      value: String(data.personalPayments.length) }
+    ], 3));
+  }
   if (data.personalProps.length > 0) {
     body.appendChild(mkSectionLabel('Income by Property'));
     const rows = data.personalProps
@@ -1164,6 +1397,23 @@ function showPersonalPropsModal(label, data) {
       rows, { highlight: 3 }));
   } else {
     body.appendChild(mkEmptyState('No personal-channel properties. Mark properties as Personal in the Properties form.'));
+  }
+  if (cmp && cmp.personalProps.length > 0) {
+    body.appendChild(mkSectionLabel('Income by Property — Comparison Period'));
+    const cmpRows = cmp.personalProps
+      .map(p => ({ prop: p, income: cmp.personalByProp.get(p.id) || 0 }))
+      .sort((a, b) => b.income - a.income)
+      .map(({ prop, income }) => [prop.name, prop.city, prop.country,
+        mkDrillValue(formatEUR(income), () =>
+          drillDownModal(`${label} — ${prop.name} (prev)`, drillRevRows(cmp.personalPayments.filter(p => p.propertyId === prop.id), []), REV_COLS))]);
+    body.appendChild(mkModalTable(
+      [
+        { label: 'Property', tip: 'Personal-channel property name.' },
+        { label: 'City', right: true, tip: 'Property location.' },
+        { label: 'Country', right: true, tip: 'Property location.' },
+        { label: 'Income (EUR)', right: true, tip: 'Sum of paid payments for this property in the comparison period.' }
+      ],
+      cmpRows, { highlight: 3 }));
   }
   openModal({ title: `${label} — Personal Properties`, body, large: true });
 }
@@ -1216,6 +1466,17 @@ function buildPersonColumn(label, color, data, months, cmpData) {
   // Helper: % of total sub-text
   const pctOf = (val) => data.total > 0 ? `${(val / data.total * 100).toFixed(0)}% of total` : null;
 
+  // cmpPrevValue — the "€X prev" note next to each row. When `records` (the
+  // comparison-period's underlying record list) is non-empty, wraps the
+  // amount in mkDrillValue so it opens drillDownModal over those records
+  // directly, same as the current-period value beside it; otherwise (or when
+  // there's no drillable record list for this stream, e.g. owner rent) falls
+  // back to the previous plain-text rendering.
+  const cmpPrevValue = (amount, records, onClick) =>
+    records && records.length > 0
+      ? el('span', {}, mkDrillValue(formatEUR(amount), onClick), ' prev')
+      : `${formatEUR(amount)} prev`;
+
   // ── From Company ────────────────────────────────────────────────────────────
   col.appendChild(mkSectionLabel('From Company'));
   if (data.scope === 'personal') {
@@ -1225,65 +1486,90 @@ function buildPersonColumn(label, color, data, months, cmpData) {
   col.appendChild(makeRow(
     'Director Salary', formatEUR(data.salary),
     data.salaryExps.length > 0 || true,
-    () => showSalaryModal(label, data),
+    () => showSalaryModal(label, data, cmpData),
     [
       data.salaryExps.length > 0 ? `${data.salaryExps.length} records` : 'No records — add salary expenses',
       pctOf(data.salary)
     ].filter(Boolean).join(' · '),
-    cmpData ? `${formatEUR(cmpData.salary)} prev` : null
+    cmpData ? cmpPrevValue(cmpData.salary, cmpData.salaryExps, () =>
+      drillDownModal(`${label} — Director Salary (prev)`, drillExpRows(cmpData.salaryExps), EXP_COLS)) : null
   ));
 
   col.appendChild(makeRow(
     'Property Rent (Owner)', formatEUR(data.ownerRentTotal),
     true,
-    () => showRentModal(label, data, months),
+    () => showRentModal(label, data, months, cmpData),
     [
       data.companyProps.length > 0 ? `${data.companyProps.length} properties × ${months.length} months` : 'Configure rent rates on company properties',
       pctOf(data.ownerRentTotal)
     ].filter(Boolean).join(' · '),
+    // Owner rent has no underlying transaction list to drill into (it's a
+    // rate × ownership-share computation) on the current-period side either
+    // — the "prev" note stays plain text, matching that.
     cmpData ? `${formatEUR(cmpData.ownerRentTotal)} prev` : null
   ));
 
   col.appendChild(makeRow(
     'Reimbursements', formatEUR(data.reimb),
     data.reimbExps.length > 0,
-    () => showReimbModal(label, data),
+    () => showReimbModal(label, data, cmpData),
     [
       data.reimbExps.length > 0 ? `${data.reimbExps.length} records` : null,
       pctOf(data.reimb)
     ].filter(Boolean).join(' · '),
-    cmpData ? `${formatEUR(cmpData.reimb)} prev` : null
+    cmpData ? cmpPrevValue(cmpData.reimb, cmpData.reimbExps, () =>
+      drillDownModal(`${label} — Reimbursements (prev)`, drillExpRows(cmpData.reimbExps), EXP_COLS)) : null
   ));
 
   if (data.strIncomeTotal > 0 || data.strIncomeExps.length > 0) {
+    // cmpData is already a closure variable here (buildPersonColumn's own
+    // param) — no threading needed to use it inside this inline handler.
+    const cmp = cmpData;
+    const strByProp = exps => {
+      const byProp = new Map();
+      for (const e of exps) {
+        const name = byId('properties', e.propertyId)?.name || 'Unassigned';
+        const cur  = byProp.get(name) || { total: 0, count: 0 };
+        cur.total += toEUR(e.amount, e.currency, e.date);
+        cur.count += 1;
+        byProp.set(name, cur);
+      }
+      return byProp;
+    };
     col.appendChild(makeRow(
       'STR Income', formatEUR(data.strIncomeTotal),
       data.strIncomeExps.length > 0,
       () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
         const exps = data.strIncomeExps;
-        body.appendChild(mkSummaryGrid([
-          { label: 'Total STR Income', value: exps.length > 0
-              ? mkDrillValue(formatEUR(data.strIncomeTotal), () => drillDownModal(`${label} — STR Income`, drillExpRows(exps), EXP_COLS))
-              : formatEUR(data.strIncomeTotal),
-            explain: {
-              title: 'Total STR Income', formula: 'Sum of "str_fee" category expenses linked to this person and flagged countsAsPersonalIncome, dated within the selected period.',
-              inputs: [{ label: 'Records', value: String(exps.length) }, { label: 'Total', value: formatEUR(data.strIncomeTotal) }],
-              source: 'analytics-personal.js:122 getPersonData() — `strIncomeTotal`'
-            }
-          },
-          { label: 'Records',          value: String(exps.length) },
-          { label: 'Properties',       value: String(new Set(exps.map(e => e.propertyId).filter(Boolean)).size) }
-        ], 3));
+        const cmpExps = cmp ? cmp.strIncomeExps : [];
+        const strTotalExplain = {
+          title: 'Total STR Income', formula: 'Sum of "str_fee" category expenses linked to this person and flagged countsAsPersonalIncome, dated within the selected period.',
+          inputs: [{ label: 'Records', value: String(exps.length) }, { label: 'Total', value: formatEUR(data.strIncomeTotal) }],
+          source: 'analytics-personal.js:122 getPersonData() — `strIncomeTotal`'
+        };
+        if (cmp) {
+          body.appendChild(mkCmpGrid([
+            { label: 'Total STR Income',
+              curVal: exps.length > 0 ? mkDrillValue(formatEUR(data.strIncomeTotal), () => drillDownModal(`${label} — STR Income`, drillExpRows(exps), EXP_COLS)) : formatEUR(data.strIncomeTotal),
+              cmpVal: cmpExps.length > 0 ? mkDrillValue(formatEUR(cmp.strIncomeTotal), () => drillDownModal(`${label} — STR Income (prev)`, drillExpRows(cmpExps), EXP_COLS)) : formatEUR(cmp.strIncomeTotal),
+              explain: strTotalExplain },
+            { label: 'Records',    curVal: String(exps.length), cmpVal: String(cmpExps.length) },
+            { label: 'Properties', curVal: String(new Set(exps.map(e => e.propertyId).filter(Boolean)).size), cmpVal: String(new Set(cmpExps.map(e => e.propertyId).filter(Boolean)).size) }
+          ], 'Current Period', 'Comparison Period'));
+        } else {
+          body.appendChild(mkSummaryGrid([
+            { label: 'Total STR Income', value: exps.length > 0
+                ? mkDrillValue(formatEUR(data.strIncomeTotal), () => drillDownModal(`${label} — STR Income`, drillExpRows(exps), EXP_COLS))
+                : formatEUR(data.strIncomeTotal),
+              explain: strTotalExplain
+            },
+            { label: 'Records',          value: String(exps.length) },
+            { label: 'Properties',       value: String(new Set(exps.map(e => e.propertyId).filter(Boolean)).size) }
+          ], 3));
+        }
         if (exps.length > 0) {
-          const byProp = new Map();
-          for (const e of exps) {
-            const name = byId('properties', e.propertyId)?.name || 'Unassigned';
-            const cur  = byProp.get(name) || { total: 0, count: 0 };
-            cur.total += toEUR(e.amount, e.currency, e.date);
-            cur.count += 1;
-            byProp.set(name, cur);
-          }
+          const byProp = strByProp(exps);
           body.appendChild(mkSectionLabel('STR Income by Property'));
           const propRows = [...byProp.entries()]
             .sort((a, b) => b[1].total - a[1].total)
@@ -1325,45 +1611,82 @@ function buildPersonColumn(label, color, data, months, cmpData) {
         } else {
           body.appendChild(mkEmptyState('No STR income records this period.'));
         }
+        if (cmpExps.length > 0) {
+          const cmpByProp = strByProp(cmpExps);
+          body.appendChild(mkSectionLabel('STR Income by Property — Comparison Period'));
+          const cmpPropRows = [...cmpByProp.entries()]
+            .sort((a, b) => b[1].total - a[1].total)
+            .map(([name, v]) => [name, String(v.count),
+              mkDrillValue(formatEUR(v.total), () =>
+                drillDownModal(`${label} — STR Income — ${name} (prev)`, drillExpRows(cmpExps.filter(e => (byId('properties', e.propertyId)?.name || 'Unassigned') === name)), EXP_COLS))]);
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Property', tip: 'Property this STR fee income is linked to.' },
+              { label: 'Records', right: true, tip: 'Number of STR fee expense records for that property.' },
+              { label: 'Amount', right: true, tip: 'Total STR income for that property in the comparison period.' }
+            ],
+            cmpPropRows, { highlight: 2 }));
+        }
         openModal({ title: `${label} — STR Income`, body, large: true });
       },
       [
         data.strIncomeExps.length > 0 ? `${data.strIncomeExps.length} STR fee record(s)` : 'No STR income yet',
         pctOf(data.strIncomeTotal)
       ].filter(Boolean).join(' · '),
-      cmpData ? `${formatEUR(cmpData.strIncomeTotal || 0)} prev` : null
+      cmpData ? cmpPrevValue(cmpData.strIncomeTotal || 0, cmpData.strIncomeExps, () =>
+        drillDownModal(`${label} — STR Income (prev)`, drillExpRows(cmpData.strIncomeExps), EXP_COLS)) : null
     ));
   }
 
   if (data.piExpTotal > 0 || data.piExps.length > 0) {
+    // cmpData is already a closure variable here (buildPersonColumn's own
+    // param) — no threading needed to use it inside this inline handler.
+    const cmp = cmpData;
+    const piByCat = exps => {
+      const byCat = new Map();
+      for (const e of exps) {
+        const cat = EXPENSE_CATEGORIES[e.category]?.label || e.category || '—';
+        const cur = byCat.get(cat) || { total: 0, count: 0 };
+        cur.total += toEUR(e.amount, e.currency, e.date);
+        cur.count += 1;
+        byCat.set(cat, cur);
+      }
+      return byCat;
+    };
     col.appendChild(makeRow(
       'Other Personal Income', formatEUR(data.piExpTotal),
       data.piExps.length > 0,
       () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
         const exps = data.piExps;
-        body.appendChild(mkSummaryGrid([
-          { label: 'Total',      value: exps.length > 0
-              ? mkDrillValue(formatEUR(data.piExpTotal), () => drillDownModal(`${label} — Other Personal Income`, drillExpRows(exps), EXP_COLS))
-              : formatEUR(data.piExpTotal),
-            explain: {
-              title: 'Total', formula: 'Sum of expenses linked to this person, flagged countsAsPersonalIncome, excluding salary/reimbursement/social_contributions/str_fee (counted elsewhere), dated within the selected period.',
-              inputs: [{ label: 'Records', value: String(exps.length) }, { label: 'Total', value: formatEUR(data.piExpTotal) }],
-              source: 'analytics-personal.js:128 getPersonData() — `piExpTotal`'
-            }
-          },
-          { label: 'Records',    value: String(exps.length) },
-          { label: 'Categories', value: String(new Set(exps.map(e => e.category)).size) }
-        ], 3));
+        const cmpExps = cmp ? cmp.piExps : [];
+        const piTotalExplain = {
+          title: 'Total', formula: 'Sum of expenses linked to this person, flagged countsAsPersonalIncome, excluding salary/reimbursement/social_contributions/str_fee (counted elsewhere), dated within the selected period.',
+          inputs: [{ label: 'Records', value: String(exps.length) }, { label: 'Total', value: formatEUR(data.piExpTotal) }],
+          source: 'analytics-personal.js:128 getPersonData() — `piExpTotal`'
+        };
+        if (cmp) {
+          body.appendChild(mkCmpGrid([
+            { label: 'Total',
+              curVal: exps.length > 0 ? mkDrillValue(formatEUR(data.piExpTotal), () => drillDownModal(`${label} — Other Personal Income`, drillExpRows(exps), EXP_COLS)) : formatEUR(data.piExpTotal),
+              cmpVal: cmpExps.length > 0 ? mkDrillValue(formatEUR(cmp.piExpTotal), () => drillDownModal(`${label} — Other Personal Income (prev)`, drillExpRows(cmpExps), EXP_COLS)) : formatEUR(cmp.piExpTotal),
+              explain: piTotalExplain },
+            { label: 'Records',    curVal: String(exps.length), cmpVal: String(cmpExps.length) },
+            { label: 'Categories', curVal: String(new Set(exps.map(e => e.category)).size), cmpVal: String(new Set(cmpExps.map(e => e.category)).size) }
+          ], 'Current Period', 'Comparison Period'));
+        } else {
+          body.appendChild(mkSummaryGrid([
+            { label: 'Total',      value: exps.length > 0
+                ? mkDrillValue(formatEUR(data.piExpTotal), () => drillDownModal(`${label} — Other Personal Income`, drillExpRows(exps), EXP_COLS))
+                : formatEUR(data.piExpTotal),
+              explain: piTotalExplain
+            },
+            { label: 'Records',    value: String(exps.length) },
+            { label: 'Categories', value: String(new Set(exps.map(e => e.category)).size) }
+          ], 3));
+        }
         if (exps.length > 0) {
-          const byCat = new Map();
-          for (const e of exps) {
-            const cat = EXPENSE_CATEGORIES[e.category]?.label || e.category || '—';
-            const cur = byCat.get(cat) || { total: 0, count: 0 };
-            cur.total += toEUR(e.amount, e.currency, e.date);
-            cur.count += 1;
-            byCat.set(cat, cur);
-          }
+          const byCat = piByCat(exps);
           body.appendChild(mkSectionLabel('By Category'));
           const catRows = [...byCat.entries()]
             .sort((a, b) => b[1].total - a[1].total)
@@ -1400,27 +1723,45 @@ function buildPersonColumn(label, color, data, months, cmpData) {
         } else {
           body.appendChild(mkEmptyState('No personal income expenses linked to this person.'));
         }
+        if (cmpExps.length > 0) {
+          const cmpByCat = piByCat(cmpExps);
+          body.appendChild(mkSectionLabel('By Category — Comparison Period'));
+          const cmpCatRows = [...cmpByCat.entries()]
+            .sort((a, b) => b[1].total - a[1].total)
+            .map(([cat, v]) => [cat, String(v.count),
+              mkDrillValue(formatEUR(v.total), () =>
+                drillDownModal(`${label} — Other Personal Income — ${cat} (prev)`, drillExpRows(cmpExps.filter(e => (EXPENSE_CATEGORIES[e.category]?.label || e.category || '—') === cat)), EXP_COLS))]);
+          body.appendChild(mkModalTable(
+            [
+              { label: 'Category', tip: 'Expense category this personal-income record was filed under.' },
+              { label: 'Records', right: true, tip: 'Number of expense records in that category.' },
+              { label: 'Amount', right: true, tip: 'Total for that category in the comparison period.' }
+            ],
+            cmpCatRows, { highlight: 2 }));
+        }
         openModal({ title: `${label} — Other Personal Income`, body, large: true });
       },
       [
         data.piExps.length > 0 ? `${data.piExps.length} linked expense(s)` : 'No linked expenses yet',
         pctOf(data.piExpTotal)
       ].filter(Boolean).join(' · '),
-      cmpData ? `${formatEUR(cmpData.piExpTotal || 0)} prev` : null
+      cmpData ? cmpPrevValue(cmpData.piExpTotal || 0, cmpData.piExps, () =>
+        drillDownModal(`${label} — Other Personal Income (prev)`, drillExpRows(cmpData.piExps), EXP_COLS)) : null
     ));
   }
 
   col.appendChild(makeRow(
     'Dividends (net SDC)', formatEUR(data.netDivs),
     data.divRecords.length > 0,
-    () => showDivModal(label, data),
+    () => showDivModal(label, data, cmpData),
     [
       data.grossDivs > 0
         ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}`
         : 'No dividends this period',
       pctOf(data.netDivs)
     ].filter(Boolean).join(' · '),
-    cmpData ? `${formatEUR(cmpData.netDivs)} prev` : null
+    cmpData ? cmpPrevValue(cmpData.netDivs, cmpData.divRecords, () =>
+      drillDownModal(`${label} — Dividends (prev)`, toDivDrillRows(cmpData.divRecords), DIV_COLS)) : null
   ));
 
   // Subtotal from company
@@ -1439,14 +1780,15 @@ function buildPersonColumn(label, color, data, months, cmpData) {
     col.appendChild(makeRow(
       'Rental Income', formatEUR(data.personalIncome),
       data.personalPayments.length > 0 || data.personalProps.length > 0,
-      () => showPersonalPropsModal(label, data),
+      () => showPersonalPropsModal(label, data, cmpData),
       [
         data.personalProps.length > 0
           ? `${data.personalProps.length} properties · ${data.personalPayments.length} payments`
           : 'No personal-channel properties',
         pctOf(data.personalIncome)
       ].filter(Boolean).join(' · '),
-      cmpData ? `${formatEUR(cmpData.personalIncome)} prev` : null
+      cmpData ? cmpPrevValue(cmpData.personalIncome, cmpData.personalPayments, () =>
+        drillDownModal(`${label} — Personal Properties (prev)`, drillRevRows(cmpData.personalPayments, []), REV_COLS)) : null
     ));
   }
 
