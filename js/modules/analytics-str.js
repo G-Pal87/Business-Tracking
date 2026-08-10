@@ -10,7 +10,8 @@ import {
 } from './analytics-filters.js';
 import {
   mkKpiCard, mkSummaryGrid, mkSummaryBox, mkModalTable, mkSectionLabel,
-  mkEmptyState, mkVarianceBadge, mkProgressBar, fmtK, safePct, mkTh, mkDrillValue
+  mkEmptyState, mkVarianceBadge, mkProgressBar, fmtK, safePct, mkTh, mkDrillValue,
+  mkCmpGrid
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -294,9 +295,11 @@ function getPortfolioData(curRange, cmpRange) {
   const avgOcc = totalAvail > 0 ? totalOcc / totalAvail * 100 : 0;
 
   // Comparison range for KPI deltas — same active prop ids. Null when off.
-  let prevRev = null, prevNights = null;
+  // cmpPayments is retained (not just reduced to scalars) so drill-downs can
+  // show the comparison period's actual records, mirroring `payments` above.
+  let prevRev = null, prevNights = null, cmpPayments = null;
   if (cmpRange) {
-    const cmpPayments = getPaymentsInRange(cmpRange.start, cmpRange.end, propIds);
+    cmpPayments = getPaymentsInRange(cmpRange.start, cmpRange.end, propIds);
     prevRev = cmpPayments.reduce((s, p) => s + p.amount, 0);
     prevNights = sumNights(cmpPayments);
   }
@@ -306,9 +309,10 @@ function getPortfolioData(curRange, cmpRange) {
     targetRevByProp,
     totalNights, avgADR, avgOcc, occByProp, targetRev,
     occByMonth, availByMonth,
-    prevRev, prevNights,
+    prevRev, prevNights, cmpPayments,
     rangeLabel: curRange.label,
-    cmpLabel: cmpRange ? cmpRange.label : null
+    cmpLabel: cmpRange ? cmpRange.label : null,
+    hasCmp: !!cmpRange
   };
 }
 
@@ -1163,25 +1167,46 @@ function openPipelineDetailModal(pipeline, { propId = null, type = null, title }
 
 // ── Modal drill-downs ─────────────────────────────────────────────────────────
 function openRevenueModal(data) {
-  const { payments, props, revByProp, totalRev } = data;
+  const { payments, props, revByProp, totalRev, hasCmp, cmpPayments, cmpLabel } = data;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
-  body.appendChild(mkSummaryGrid([
-    { label: 'Total Revenue',
-      value: mkDrillValue(formatEUR(totalRev), () =>
-        drillDownModal(`STR Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
-      explain: {
-        title: 'Total Revenue', formula: 'Sum of paid STR payments\' amount, across all filtered properties, in the selected period.',
-        inputs: [{ label: 'Bookings counted', value: String(payments.length) }, { label: 'Total', value: formatEUR(totalRev) }],
-        source: 'analytics-str.js:234 getPortfolioData()',
-        note: 'Only status:\'paid\' payments count.'
+  const revExplain = {
+    title: 'Total Revenue', formula: 'Sum of paid STR payments\' amount, across all filtered properties, in the selected period.',
+    inputs: [{ label: 'Bookings counted', value: String(payments.length) }, { label: 'Total', value: formatEUR(totalRev) }],
+    source: 'analytics-str.js:234 getPortfolioData()',
+    note: 'Only status:\'paid\' payments count.'
+  };
+
+  if (hasCmp) {
+    const cmpTotalRev = cmpPayments.reduce((s, p) => s + p.amount, 0);
+    body.appendChild(mkCmpGrid([
+      { label: 'Total Revenue',
+        curVal: mkDrillValue(formatEUR(totalRev), () =>
+          drillDownModal(`STR Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
+        cmpVal: mkDrillValue(formatEUR(cmpTotalRev), () =>
+          drillDownModal(`STR Revenue — ${cmpLabel}`, cmpPayments, BOOKING_COLS_WITH_PROPERTY)),
+        explain: revExplain
+      },
+      { label: 'Bookings',
+        curVal: mkDrillValue(payments.length.toString(), () =>
+          drillDownModal(`STR Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
+        cmpVal: mkDrillValue(cmpPayments.length.toString(), () =>
+          drillDownModal(`STR Revenue — ${cmpLabel}`, cmpPayments, BOOKING_COLS_WITH_PROPERTY))
       }
-    },
-    { label: 'Bookings',
-      value: mkDrillValue(payments.length.toString(), () =>
-        drillDownModal(`STR Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY))
-    }
-  ], 2));
+    ], 'Current Period', cmpLabel));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: 'Total Revenue',
+        value: mkDrillValue(formatEUR(totalRev), () =>
+          drillDownModal(`STR Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
+        explain: revExplain
+      },
+      { label: 'Bookings',
+        value: mkDrillValue(payments.length.toString(), () =>
+          drillDownModal(`STR Revenue — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY))
+      }
+    ], 2));
+  }
 
   body.appendChild(mkSectionLabel('Revenue by Property'));
   body.appendChild(mkModalTable(
@@ -1228,8 +1253,31 @@ function openRevenueModal(data) {
 }
 
 function openNightsModal(data) {
-  const { payments, props, monthKeys, keyIndex } = data;
+  const { payments, props, monthKeys, keyIndex, hasCmp, cmpPayments, cmpLabel, totalNights, prevNights } = data;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+  if (hasCmp) {
+    body.appendChild(mkCmpGrid([
+      { label: 'Nights Sold',
+        curVal: mkDrillValue(totalNights.toString(), () =>
+          drillDownModal(`Nights Sold — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
+        cmpVal: mkDrillValue((prevNights ?? 0).toString(), () =>
+          drillDownModal(`Nights Sold — ${cmpLabel}`, cmpPayments, BOOKING_COLS_WITH_PROPERTY)),
+        explain: {
+          title: 'Nights Sold', formula: 'Sum of bookedNights(payment) over all paid STR payments in the selected period.',
+          inputs: [{ label: 'Total nights', value: totalNights.toLocaleString() }],
+          source: 'analytics-str.js:96 bookedNights() → analytics-str.js:247 getPortfolioData()',
+          note: 'bookedNights() returns 0 for Airbnb payout adjustments since they repeat the check-in/check-out of their originating Reservation.'
+        }
+      },
+      { label: 'Bookings',
+        curVal: mkDrillValue(payments.length.toString(), () =>
+          drillDownModal(`Nights Sold — ${data.rangeLabel}`, payments, BOOKING_COLS_WITH_PROPERTY)),
+        cmpVal: mkDrillValue(cmpPayments.length.toString(), () =>
+          drillDownModal(`Nights Sold — ${cmpLabel}`, cmpPayments, BOOKING_COLS_WITH_PROPERTY))
+      }
+    ], 'Current Period', cmpLabel));
+  }
 
   const rows = props.map(p => {
     const pPays = payments.filter(pay => pay.propertyId === p.id);
