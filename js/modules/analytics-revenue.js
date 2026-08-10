@@ -210,9 +210,15 @@ function buildKpiSection(cur, cmp, cmpRange) {
 
     if (cmp) {
       body.appendChild(mkCmpGrid([
-        { label: 'Total Revenue',   curVal: formatEUR(total),   cmpVal: formatEUR(cTotal)   },
-        { label: 'Rental Revenue',  curVal: formatEUR(propRev), cmpVal: formatEUR(cPropRev) },
-        { label: 'Service Revenue', curVal: formatEUR(svcRev),  cmpVal: formatEUR(cSvcRev)  },
+        { label: 'Total Revenue',
+          curVal: mkDrillValue(formatEUR(total), () => drillDownModal('Total Revenue', drillRevRows(payments, invoices), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cTotal), () => drillDownModal(`Total Revenue — ${cl}`, drillRevRows(cmp.payments, cmp.invoices), REV_COLS)) },
+        { label: 'Rental Revenue',
+          curVal: mkDrillValue(formatEUR(propRev), () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cPropRev), () => drillDownModal(`Rental Revenue — ${cl}`, drillRevRows(cmp.payments, []), REV_COLS)) },
+        { label: 'Service Revenue',
+          curVal: mkDrillValue(formatEUR(svcRev), () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cSvcRev), () => drillDownModal(`Service Revenue — ${cl}`, drillRevRows([], cmp.invoices), REV_COLS)) },
       ], 'Current Period', cl));
     } else {
       // Rental vs Service summary boxes
@@ -256,7 +262,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
         { label: 'Share', right: true, muted: true, tip: 'This contributor\'s share of total revenue.' }
       ];
       const rows = contribs.slice(0, 8).map((c, i) => [
-        String(i + 1), c.name, c.type, mkDrillValue(formatEUR(c.val), () => contribDrill(c)),
+        String(i + 1), c.name, c.type, mkDrillValue(formatEUR(c.val), () => contribDrill(c, cmp)),
         total > 0 ? (c.val / total * 100).toFixed(1) + '%' : '—'
       ]);
       body.appendChild(mkModalTable(hdrs, rows));
@@ -273,9 +279,15 @@ function buildKpiSection(cur, cmp, cmpRange) {
       const cmpStr = new Map();
       (cmp.invoices || []).forEach(i => { const s = i.stream || 'other'; cmpStr.set(s, (cmpStr.get(s)||0) + toEUR(i.total, i.currency, i.issueDate)); });
       body.appendChild(mkCmpGrid([
-        { label: 'Service Revenue',    curVal: formatEUR(svcRev), cmpVal: formatEUR(cmp.svcRev) },
-        { label: 'Customer Success',   curVal: formatEUR(csRev),  cmpVal: formatEUR(cmpStr.get('customer_success')  || 0) },
-        { label: 'Marketing Services', curVal: formatEUR(mktRev), cmpVal: formatEUR(cmpStr.get('marketing_services')|| 0) },
+        { label: 'Service Revenue',
+          curVal: mkDrillValue(formatEUR(svcRev), () => drillDownModal('Service Revenue', drillRevRows([], invoices), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.svcRev), () => drillDownModal(`Service Revenue — ${cl}`, drillRevRows([], cmp.invoices), REV_COLS)) },
+        { label: 'Customer Success',
+          curVal: mkDrillValue(formatEUR(csRev), () => drillDownModal('Customer Success', drillRevRows([], invoices.filter(i => i.stream === 'customer_success')), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmpStr.get('customer_success') || 0), () => drillDownModal(`Customer Success — ${cl}`, drillRevRows([], (cmp.invoices || []).filter(i => i.stream === 'customer_success')), REV_COLS)) },
+        { label: 'Marketing Services',
+          curVal: mkDrillValue(formatEUR(mktRev), () => drillDownModal('Marketing Services', drillRevRows([], invoices.filter(i => i.stream === 'marketing_services')), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmpStr.get('marketing_services') || 0), () => drillDownModal(`Marketing Services — ${cl}`, drillRevRows([], (cmp.invoices || []).filter(i => i.stream === 'marketing_services')), REV_COLS)) },
       ], 'Current Period', cl));
     } else {
       // CS vs Marketing boxes
@@ -331,9 +343,15 @@ function buildKpiSection(cur, cmp, cmpRange) {
       const cmpStr = new Map();
       (cmp.payments || []).forEach(p => { const s = p.stream || 'other'; cmpStr.set(s, (cmpStr.get(s)||0) + toEUR(p.amount, p.currency, p.date)); });
       body.appendChild(mkCmpGrid([
-        { label: 'Rental Revenue',    curVal: formatEUR(propRev), cmpVal: formatEUR(cmp.propRev) },
-        { label: 'Short-term Rental', curVal: formatEUR(stRev),   cmpVal: formatEUR(cmpStr.get('short_term_rental') || 0) },
-        { label: 'Long-term Rental',  curVal: formatEUR(ltRev),   cmpVal: formatEUR(cmpStr.get('long_term_rental')  || 0) },
+        { label: 'Rental Revenue',
+          curVal: mkDrillValue(formatEUR(propRev), () => drillDownModal('Rental Revenue', drillRevRows(payments, []), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.propRev), () => drillDownModal(`Rental Revenue — ${cl}`, drillRevRows(cmp.payments, []), REV_COLS)) },
+        { label: 'Short-term Rental',
+          curVal: mkDrillValue(formatEUR(stRev), () => drillDownModal('Short-term Rental', drillRevRows(payments.filter(p => p.stream === 'short_term_rental'), []), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmpStr.get('short_term_rental') || 0), () => drillDownModal(`Short-term Rental — ${cl}`, drillRevRows((cmp.payments || []).filter(p => p.stream === 'short_term_rental'), []), REV_COLS)) },
+        { label: 'Long-term Rental',
+          curVal: mkDrillValue(formatEUR(ltRev), () => drillDownModal('Long-term Rental', drillRevRows(payments.filter(p => p.stream === 'long_term_rental'), []), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmpStr.get('long_term_rental') || 0), () => drillDownModal(`Long-term Rental — ${cl}`, drillRevRows((cmp.payments || []).filter(p => p.stream === 'long_term_rental'), []), REV_COLS)) },
       ], 'Current Period', cl));
     } else {
       // STR vs LTR summary boxes
@@ -385,17 +403,29 @@ function buildKpiSection(cur, cmp, cmpRange) {
   };
 
   // ── Top Contributor drill-down (scoped to a single entity) ─────────────────
-  const contribDrill = c => {
+  const contribDrill = (c, cmp) => {
     if (!c) return;
     const pays = c.type === 'Property' ? payments.filter(p => p.propertyId === c.id) : [];
     const invs = c.type === 'Client'   ? invoices.filter(i => i.clientId   === c.id) : [];
     const eur  = pays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0) + invs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
     const body = el('div');
-    body.appendChild(mkSummaryGrid([
-      { label: 'Revenue', value: formatEUR(eur) },
-      { label: 'Records', value: String(pays.length + invs.length) },
-      { label: 'Share of Total', value: total > 0 ? (eur / total * 100).toFixed(1) + '%' : '—' }
-    ], 3));
+
+    if (cmp) {
+      const cPays = c.type === 'Property' ? (cmp.payments || []).filter(p => p.propertyId === c.id) : [];
+      const cInvs = c.type === 'Client'   ? (cmp.invoices || []).filter(i => i.clientId   === c.id) : [];
+      const cEur  = cPays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0) + cInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+      body.appendChild(mkCmpGrid([
+        { label: 'Revenue',
+          curVal: mkDrillValue(formatEUR(eur), () => drillDownModal(`Revenue — ${c.name}`, drillRevRows(pays, invs), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cEur), () => drillDownModal(`Revenue — ${c.name} — ${cl}`, drillRevRows(cPays, cInvs), REV_COLS)) },
+      ], 'Current Period', cl));
+    } else {
+      body.appendChild(mkSummaryGrid([
+        { label: 'Revenue', value: formatEUR(eur) },
+        { label: 'Records', value: String(pays.length + invs.length) },
+        { label: 'Share of Total', value: total > 0 ? (eur / total * 100).toFixed(1) + '%' : '—' }
+      ], 3));
+    }
     const byMonth = revByMonth(pays, invs);
     if (byMonth.length) {
       body.appendChild(mkSectionLabel('By Month'));
@@ -484,7 +514,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
   compGrid.appendChild(mkKpiCard({
     label: 'Top Contributor', value: contribs[0]?.name || '—',
     delta: null, compLabel: '',
-    onClick: () => contribDrill(contribs[0]),
+    onClick: () => contribDrill(contribs[0], cmp),
     explain: {
       title: 'Top Contributor',
       formula: 'All revenue is grouped by property (payments) or client (invoices) and summed; the highest-revenue entity is shown.',
@@ -498,7 +528,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
     },
     lines: contribs.slice(0, 3).map((c, i) => ({
       label: `#${i + 1} ${c.type}`, value: c.name, pct: pct(c.val, total),
-      onClick: () => contribDrill(c),
+      onClick: () => contribDrill(c, cmp),
     }))
   }));
 
