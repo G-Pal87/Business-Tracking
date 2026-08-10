@@ -679,6 +679,14 @@ function buildView() {
 
   const opExDrill = () => {
     const body = el('div');
+    if (cmp) {
+      body.appendChild(mkCmpGrid([
+        { label: 'Operating Expenses',
+          curVal: mkDrillValue(formatEUR(opTotal), () => drillDownModal('Operating Expenses', toExpDrillRows(opEx), DRILL_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.opTotal), () => drillDownModal(`Operating Expenses — ${cmpLabel}`, toExpDrillRows(cmp.opEx), DRILL_COLS))
+        },
+      ], 'Current Period', cmpLabel));
+    }
     const catMap = new Map();
     opEx.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
     const cats = [...catMap.entries()].sort((a, b) => b[1] - a[1]);
@@ -726,6 +734,14 @@ function buildView() {
 
   const capExDrill = () => {
     const body = el('div');
+    if (cmp) {
+      body.appendChild(mkCmpGrid([
+        { label: 'Capital Expenditure',
+          curVal: mkDrillValue(formatEUR(capTotal), () => drillDownModal('CapEx', toExpDrillRows(capEx), DRILL_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.capTotal), () => drillDownModal(`CapEx — ${cmpLabel}`, toExpDrillRows(cmp.capEx), DRILL_COLS))
+        },
+      ], 'Current Period', cmpLabel));
+    }
     const propMap = new Map();
     capEx.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0, cnt: 0 }; x.v += toEUR(e.amount, e.currency, e.date); x.cnt++; propMap.set(e.propertyId, x); });
     const props = [...propMap.values()].sort((a, b) => b.v - a.v);
