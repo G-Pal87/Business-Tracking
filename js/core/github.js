@@ -1,6 +1,6 @@
 // GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
 import { state, notify, invalidateActiveCache } from './state.js';
-import { isEncryptedEnvelope, decryptEnvelopeToJson, encryptJsonToEnvelope, isUnlocked, encryptBytes, decryptBytes, isEncryptedBytes } from './crypto.js';
+import { isEncryptedEnvelope, decryptEnvelopeToJson, encryptJsonToEnvelope, isUnlocked, hasWrappedKeyConfigured, encryptBytes, decryptBytes, isEncryptedBytes } from './crypto.js';
 
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
@@ -244,6 +244,18 @@ async function doPushDb(message = 'Update data') {
   const { owner, repo, branch, dbPath, token } = state.github;
   if (!owner || !repo) throw new Error('GitHub not configured');
   if (!token) throw new Error('GitHub token not configured — add it in Settings');
+
+  // Fail closed, not open: once a team key exists, a device pushing while
+  // that key is locked must never be allowed to silently write plaintext
+  // over an encrypted db.json — that regression then propagates to every
+  // backup taken afterward (manual or scheduled), with nobody the wiser.
+  // Only blocks when a key is actually configured; pre-encryption setups
+  // (no key ever generated) are unaffected.
+  if (!isUnlocked() && hasWrappedKeyConfigured()) {
+    const err = new Error('Encryption key not unlocked on this device — unlock it in Settings → Encryption before saving.');
+    err.code = 'NO_ENC_KEY';
+    throw err;
+  }
 
   // Without a remoteDb base, mergeDb() below can't tell a genuine concurrent
   // edit from an unrelated one and falls back to plain last-writer-wins for
