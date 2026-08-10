@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-10T08:06:45.556Z",
+  "generatedAt": "2026-08-10T08:08:01.309Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -709,8 +709,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -719,8 +719,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -729,8 +729,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -739,8 +739,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -749,8 +749,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -759,8 +759,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -769,8 +769,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -779,8 +779,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -789,8 +789,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -799,8 +799,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -809,8 +809,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -819,8 +819,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -829,8 +829,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
@@ -839,8 +839,8 @@
       "status": "open",
       "basis": "confirmed target",
       "originalAmount": 60,
-      "discountPct": 30,
-      "amount": 42,
+      "discountPct": 0,
+      "amount": 60,
       "airbnbCheckout": 68
     },
     {
