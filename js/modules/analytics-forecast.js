@@ -16,7 +16,7 @@ import {
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, safePct, mkTh, mkDrillValue } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkTh, mkDrillValue } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = [
@@ -730,79 +730,131 @@ function netMoDrillRows(monthlyBreakdown) {
 // ── Pending pipeline modal ────────────────────────────────────────────────────
 // Shared by the Pending Pipeline KPI and the Forecast Performance Insights
 // signals that point at it, so both open the identical breakdown.
-function openPendingPipelineModal(data) {
+const PENDING_STR_COLS = [
+  { label: 'Property', tip: 'Property the reservation belongs to.' },
+  { label: 'Confirmation', right: true, tip: 'Airbnb confirmation/reference code for the reservation.' },
+  { label: 'Check-in', right: true, tip: 'Reservation check-in date.' },
+  { label: 'Nights', right: true, tip: 'Number of nights booked.' },
+  { label: 'Amount', right: true, tip: 'Reservation payout amount, converted to EUR, pending collection.' }
+];
+function pendingStrRows(reservations) {
+  return reservations
+    .slice()
+    .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
+    .map(p => [
+      byId('properties', p.propertyId)?.name || '—',
+      p.confirmationCode || p.airbnbRef || '—',
+      p.airbnbCheckIn || '—',
+      String(p.airbnbNights || '—'),
+      formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
+    ]);
+}
+const PENDING_LTR_COLS = [
+  { label: 'Property', tip: 'Property with the unpaid lease month.' },
+  { label: 'Tenant', right: true, tip: 'Tenant on the active lease.' },
+  { label: 'Due Date', right: true, tip: 'Scheduled rent due date from the lease payment schedule.' },
+  { label: 'Status', right: true, tip: 'Whether the due date has already passed (Overdue) or is still upcoming.' },
+  { label: 'Amount', right: true, tip: 'Scheduled rent amount, converted to EUR.' }
+];
+function pendingLtrRows(items) {
+  return items
+    .slice()
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .map(i => [i.label, i.detail, i.dueDate, i.overdue ? 'Overdue' : 'Upcoming', formatEUR(i.amountEUR)]);
+}
+const PENDING_SVC_COLS = [
+  { label: 'Client', tip: 'Client the outstanding invoice was issued to.' },
+  { label: 'Invoice #', right: true, tip: 'Invoice number.' },
+  { label: 'Due Date', right: true, tip: 'Invoice due date (or issue date if no due date is set).' },
+  { label: 'Status', right: true, tip: 'Whether the due date has already passed (Overdue) or is still upcoming.' },
+  { label: 'Amount', right: true, tip: 'Invoice total, converted to EUR, not yet paid.' }
+];
+function pendingSvcRows(items) {
+  return items
+    .slice()
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .map(i => [i.label, i.detail, i.dueDate, i.overdue ? 'Overdue' : 'Upcoming', formatEUR(i.amountEUR)]);
+}
+
+function openPendingPipelineModal(data, cmpData, cmpLabel) {
   const { pendingPipeline, pendingReservations, pendingSTRTotal, ltrPendingItems, ltrPendingTotal, svcPendingItems, svcPendingTotal } = data;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
-  body.appendChild(mkSummaryGrid([
-    { label: 'Short-Term Rental', value: pendingSTRTotal > 0 ? formatEUR(pendingSTRTotal) : '—', sub: `${pendingReservations.length} reservation${pendingReservations.length !== 1 ? 's' : ''}`,
-      explain: {
-        title: 'Short-Term Rental Pending', formula: 'Sum of pending Airbnb payments (source: airbnb, status: pending) with check-in date inside the selected period, converted to EUR.',
-        inputs: [
-          { label: 'Reservations', value: String(pendingReservations.length) },
-          { label: 'Total', value: formatEUR(pendingSTRTotal) }
-        ],
-        source: 'analytics-forecast.js:401 calculateDashboardData()',
-        note: 'Already-paid Airbnb payments and non-Airbnb sources are excluded.'
+  if (cmpData) {
+    body.appendChild(mkCmpGrid([
+      { label: 'Short-Term Rental',
+        curVal: mkDrillValue(pendingSTRTotal > 0 ? formatEUR(pendingSTRTotal) : '—', () => drillDownModal('Short-Term Rental Pending', pendingStrRows(pendingReservations), PENDING_STR_COLS)),
+        cmpVal: mkDrillValue(cmpData.pendingSTRTotal > 0 ? formatEUR(cmpData.pendingSTRTotal) : '—', () => drillDownModal(`Short-Term Rental Pending — ${cmpLabel}`, pendingStrRows(cmpData.pendingReservations), PENDING_STR_COLS)),
+        curSub: `${pendingReservations.length} reservation${pendingReservations.length !== 1 ? 's' : ''}`,
+        cmpSub: `${cmpData.pendingReservations.length} reservation${cmpData.pendingReservations.length !== 1 ? 's' : ''}` },
+      { label: 'Long-Term Rental',
+        curVal: mkDrillValue(ltrPendingTotal > 0 ? formatEUR(ltrPendingTotal) : '—', () => drillDownModal('Long-Term Rental Pending', pendingLtrRows(ltrPendingItems), PENDING_LTR_COLS)),
+        cmpVal: mkDrillValue(cmpData.ltrPendingTotal > 0 ? formatEUR(cmpData.ltrPendingTotal) : '—', () => drillDownModal(`Long-Term Rental Pending — ${cmpLabel}`, pendingLtrRows(cmpData.ltrPendingItems), PENDING_LTR_COLS)),
+        curSub: `${ltrPendingItems.length} month${ltrPendingItems.length !== 1 ? 's' : ''}`,
+        cmpSub: `${cmpData.ltrPendingItems.length} month${cmpData.ltrPendingItems.length !== 1 ? 's' : ''}` },
+      { label: 'Services',
+        curVal: mkDrillValue(svcPendingTotal > 0 ? formatEUR(svcPendingTotal) : '—', () => drillDownModal('Services Pending', pendingSvcRows(svcPendingItems), PENDING_SVC_COLS)),
+        cmpVal: mkDrillValue(cmpData.svcPendingTotal > 0 ? formatEUR(cmpData.svcPendingTotal) : '—', () => drillDownModal(`Services Pending — ${cmpLabel}`, pendingSvcRows(cmpData.svcPendingItems), PENDING_SVC_COLS)),
+        curSub: `${svcPendingItems.length} invoice${svcPendingItems.length !== 1 ? 's' : ''}`,
+        cmpSub: `${cmpData.svcPendingItems.length} invoice${cmpData.svcPendingItems.length !== 1 ? 's' : ''}` },
+      { label: 'Total Pipeline', curVal: formatEUR(pendingPipeline), cmpVal: formatEUR(cmpData.pendingPipeline) },
+    ], 'Current Period', cmpLabel));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: 'Short-Term Rental', value: pendingSTRTotal > 0 ? formatEUR(pendingSTRTotal) : '—', sub: `${pendingReservations.length} reservation${pendingReservations.length !== 1 ? 's' : ''}`,
+        explain: {
+          title: 'Short-Term Rental Pending', formula: 'Sum of pending Airbnb payments (source: airbnb, status: pending) with check-in date inside the selected period, converted to EUR.',
+          inputs: [
+            { label: 'Reservations', value: String(pendingReservations.length) },
+            { label: 'Total', value: formatEUR(pendingSTRTotal) }
+          ],
+          source: 'analytics-forecast.js:401 calculateDashboardData()',
+          note: 'Already-paid Airbnb payments and non-Airbnb sources are excluded.'
+        }
+      },
+      { label: 'Long-Term Rental',  value: ltrPendingTotal > 0 ? formatEUR(ltrPendingTotal) : '—', sub: `${ltrPendingItems.length} month${ltrPendingItems.length !== 1 ? 's' : ''}`,
+        explain: {
+          title: 'Long-Term Rental Pending', formula: 'Sum of unpaid scheduled rent months (from each active long-term lease\'s payment schedule) with due dates inside the selected period, converted to EUR.',
+          inputs: [
+            { label: 'Unpaid months', value: String(ltrPendingItems.length) },
+            { label: 'Total', value: formatEUR(ltrPendingTotal) }
+          ],
+          source: 'analytics-forecast.js:404 calculateDashboardData() (getLtRentPendingItems())',
+          note: 'Only schedule entries not yet marked paid are counted.'
+        }
+      },
+      { label: 'Services',          value: svcPendingTotal > 0 ? formatEUR(svcPendingTotal) : '—', sub: `${svcPendingItems.length} invoice${svcPendingItems.length !== 1 ? 's' : ''}`,
+        explain: {
+          title: 'Services Pending', formula: 'Sum of sent/overdue invoices with issue date inside the selected period, converted to EUR.',
+          inputs: [
+            { label: 'Invoices', value: String(svcPendingItems.length) },
+            { label: 'Total', value: formatEUR(svcPendingTotal) }
+          ],
+          source: 'analytics-forecast.js:405 calculateDashboardData() (getServicesPendingItems())',
+          note: 'Paid and draft invoices are excluded — only status "sent" or "overdue" counts.'
+        }
+      },
+      { label: 'Total Pipeline',    value: formatEUR(pendingPipeline),
+        explain: {
+          title: 'Total Pending Pipeline', formula: 'Short-Term Rental Pending + Long-Term Rental Pending + Services Pending.',
+          inputs: [
+            { label: 'Short-Term Rental', value: formatEUR(pendingSTRTotal) },
+            { label: 'Long-Term Rental',  value: formatEUR(ltrPendingTotal) },
+            { label: 'Services',          value: formatEUR(svcPendingTotal) },
+            { label: 'Total', value: formatEUR(pendingPipeline) }
+          ],
+          source: 'analytics-forecast.js:409 calculateDashboardData()',
+          note: 'Confirmed pipeline only — forecasted service revenue with no invoice raised yet (Projected Services) is deliberately excluded.'
+        }
       }
-    },
-    { label: 'Long-Term Rental',  value: ltrPendingTotal > 0 ? formatEUR(ltrPendingTotal) : '—', sub: `${ltrPendingItems.length} month${ltrPendingItems.length !== 1 ? 's' : ''}`,
-      explain: {
-        title: 'Long-Term Rental Pending', formula: 'Sum of unpaid scheduled rent months (from each active long-term lease\'s payment schedule) with due dates inside the selected period, converted to EUR.',
-        inputs: [
-          { label: 'Unpaid months', value: String(ltrPendingItems.length) },
-          { label: 'Total', value: formatEUR(ltrPendingTotal) }
-        ],
-        source: 'analytics-forecast.js:404 calculateDashboardData() (getLtRentPendingItems())',
-        note: 'Only schedule entries not yet marked paid are counted.'
-      }
-    },
-    { label: 'Services',          value: svcPendingTotal > 0 ? formatEUR(svcPendingTotal) : '—', sub: `${svcPendingItems.length} invoice${svcPendingItems.length !== 1 ? 's' : ''}`,
-      explain: {
-        title: 'Services Pending', formula: 'Sum of sent/overdue invoices with issue date inside the selected period, converted to EUR.',
-        inputs: [
-          { label: 'Invoices', value: String(svcPendingItems.length) },
-          { label: 'Total', value: formatEUR(svcPendingTotal) }
-        ],
-        source: 'analytics-forecast.js:405 calculateDashboardData() (getServicesPendingItems())',
-        note: 'Paid and draft invoices are excluded — only status "sent" or "overdue" counts.'
-      }
-    },
-    { label: 'Total Pipeline',    value: formatEUR(pendingPipeline),
-      explain: {
-        title: 'Total Pending Pipeline', formula: 'Short-Term Rental Pending + Long-Term Rental Pending + Services Pending.',
-        inputs: [
-          { label: 'Short-Term Rental', value: formatEUR(pendingSTRTotal) },
-          { label: 'Long-Term Rental',  value: formatEUR(ltrPendingTotal) },
-          { label: 'Services',          value: formatEUR(svcPendingTotal) },
-          { label: 'Total', value: formatEUR(pendingPipeline) }
-        ],
-        source: 'analytics-forecast.js:409 calculateDashboardData()',
-        note: 'Confirmed pipeline only — forecasted service revenue with no invoice raised yet (Projected Services) is deliberately excluded.'
-      }
-    }
-  ], 4));
+    ], 4));
+  }
 
   if (pendingReservations.length > 0) {
     body.appendChild(mkSectionLabel('Short-Term Rental — Pending Airbnb Reservations'));
     body.appendChild(mkModalTable(
-      [
-        { label: 'Property', tip: 'Property the reservation belongs to.' },
-        { label: 'Confirmation', right: true, tip: 'Airbnb confirmation/reference code for the reservation.' },
-        { label: 'Check-in', right: true, tip: 'Reservation check-in date.' },
-        { label: 'Nights', right: true, tip: 'Number of nights booked.' },
-        { label: 'Amount', right: true, tip: 'Reservation payout amount, converted to EUR, pending collection.' }
-      ],
-      pendingReservations
-        .slice()
-        .sort((a, b) => (a.airbnbCheckIn || '').localeCompare(b.airbnbCheckIn || ''))
-        .map(p => [
-          byId('properties', p.propertyId)?.name || '—',
-          p.confirmationCode || p.airbnbRef || '—',
-          p.airbnbCheckIn || '—',
-          String(p.airbnbNights || '—'),
-          formatEUR(toEUR(p.amount, p.currency || 'EUR', p.airbnbCheckIn || p.date))
-        ]),
+      PENDING_STR_COLS,
+      pendingStrRows(pendingReservations),
       { highlight: 4 }
     ));
   }
@@ -810,17 +862,8 @@ function openPendingPipelineModal(data) {
   if (ltrPendingItems.length > 0) {
     body.appendChild(mkSectionLabel('Long-Term Rental — Unpaid Scheduled Rent'));
     body.appendChild(mkModalTable(
-      [
-        { label: 'Property', tip: 'Property with the unpaid lease month.' },
-        { label: 'Tenant', right: true, tip: 'Tenant on the active lease.' },
-        { label: 'Due Date', right: true, tip: 'Scheduled rent due date from the lease payment schedule.' },
-        { label: 'Status', right: true, tip: 'Whether the due date has already passed (Overdue) or is still upcoming.' },
-        { label: 'Amount', right: true, tip: 'Scheduled rent amount, converted to EUR.' }
-      ],
-      ltrPendingItems
-        .slice()
-        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-        .map(i => [i.label, i.detail, i.dueDate, i.overdue ? 'Overdue' : 'Upcoming', formatEUR(i.amountEUR)]),
+      PENDING_LTR_COLS,
+      pendingLtrRows(ltrPendingItems),
       { highlight: 4 }
     ));
   }
@@ -828,17 +871,8 @@ function openPendingPipelineModal(data) {
   if (svcPendingItems.length > 0) {
     body.appendChild(mkSectionLabel('Services — Outstanding Invoices'));
     body.appendChild(mkModalTable(
-      [
-        { label: 'Client', tip: 'Client the outstanding invoice was issued to.' },
-        { label: 'Invoice #', right: true, tip: 'Invoice number.' },
-        { label: 'Due Date', right: true, tip: 'Invoice due date (or issue date if no due date is set).' },
-        { label: 'Status', right: true, tip: 'Whether the due date has already passed (Overdue) or is still upcoming.' },
-        { label: 'Amount', right: true, tip: 'Invoice total, converted to EUR, not yet paid.' }
-      ],
-      svcPendingItems
-        .slice()
-        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-        .map(i => [i.label, i.detail, i.dueDate, i.overdue ? 'Overdue' : 'Upcoming', formatEUR(i.amountEUR)]),
+      PENDING_SVC_COLS,
+      pendingSvcRows(svcPendingItems),
       { highlight: 4 }
     ));
   }
@@ -895,6 +929,14 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     value: formatEUR(actualRev),
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+      if (cmpData) {
+        body.appendChild(mkCmpGrid([
+          { label: 'Actual Revenue',
+            curVal: mkDrillValue(formatEUR(actualRev), () => drillDownModal('Actual Revenue', drillRevRows(actPayments, actInvoices), REV_COLS)),
+            cmpVal: mkDrillValue(formatEUR(cmpData.actualRev), () => drillDownModal(`Actual Revenue — ${cmpLabel}`, drillRevRows(cmpData.actPayments, cmpData.actInvoices), REV_COLS)) },
+        ], 'Current Period', cmpLabel));
+      }
 
       // Stream summary boxes
       const streamBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px' });
@@ -1023,6 +1065,14 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
+      if (cmpData) {
+        body.appendChild(mkCmpGrid([
+          { label: 'Actual OpEx',
+            curVal: mkDrillValue(formatEUR(actualExp), () => drillDownModal('Actual OpEx', drillExpRows(actOpExpenses), EXP_COLS)),
+            cmpVal: mkDrillValue(formatEUR(cmpData.actualExp), () => drillDownModal(`Actual OpEx — ${cmpLabel}`, drillExpRows(cmpData.actOpExpenses), EXP_COLS)) },
+        ], 'Current Period', cmpLabel));
+      }
+
       // Category summary boxes
       const catMap = new Map();
       actOpExpenses.forEach(e => {
@@ -1107,7 +1157,19 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     label: 'Actual Net',
     value: formatEUR(actualNet),
     variant: actualNet >= 0 ? 'success' : 'danger',
-    onClick: () => drillDownModal('Actual Net Breakdown', netMoDrillRows(monthlyBreakdown), NET_MO_COLS),
+    onClick: () => {
+      if (cmpData) {
+        const body = el('div');
+        body.appendChild(mkCmpGrid([
+          { label: 'Actual Net',
+            curVal: mkDrillValue(formatEUR(actualNet), () => drillDownModal('Actual Net Breakdown', netMoDrillRows(monthlyBreakdown), NET_MO_COLS)),
+            cmpVal: mkDrillValue(formatEUR(cmpData.actualNet), () => drillDownModal(`Actual Net Breakdown — ${cmpLabel}`, netMoDrillRows(cmpData.monthlyBreakdown), NET_MO_COLS)) },
+        ], 'Current Period', cmpLabel));
+        openModal({ title: 'Actual Net Breakdown', body, large: true });
+      } else {
+        drillDownModal('Actual Net Breakdown', netMoDrillRows(monthlyBreakdown), NET_MO_COLS);
+      }
+    },
     delta: cmpData ? safePct(actualNet, cmpData.actualNet) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.actualNet) : undefined,
@@ -1232,7 +1294,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     subtitle: 'Confirmed — all streams',
     value: pendingPipeline > 0 ? formatEUR(pendingPipeline) : '—',
     variant: pendingPipeline > 0 ? 'info' : '',
-    onClick: () => openPendingPipelineModal(data),
+    onClick: () => openPendingPipelineModal(data, cmpData, cmpLabel),
     delta: cmpData ? safePct(pendingPipeline, cmpData.pendingPipeline) : null,
     invertDelta: false, compLabel: cmpLabel,
     compValue: cmpData ? formatEUR(cmpData.pendingPipeline) : undefined,
@@ -1260,47 +1322,56 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     variant: '',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+      const svcProjCols = [
+        { label: 'Stream', tip: 'Service stream (Customer Success or Marketing Services) the projection belongs to.' },
+        { label: 'Month', right: true, tip: 'Forecasted month.' },
+        { label: 'Status', right: true, tip: 'Whether the forecasted month has already passed with no invoice raised, or is still a future projection.' },
+        { label: 'Amount', right: true, tip: 'Forecasted service revenue for the month, converted to EUR — not yet invoiced.' }
+      ];
+      const svcProjRows = items => items
+        .slice()
+        .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+        .map(i => [i.label, i.detail, i.overdue ? 'Past — no invoice raised' : 'Future projection', formatEUR(i.amountEUR)]);
 
-      body.appendChild(mkSummaryGrid([
-        { label: 'Projected Total',       value: svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', sub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}`,
-          explain: {
-            title: 'Projected Services', formula: 'Sum of forecasted service-stream revenue (Customer Success, Marketing Services) for months with no invoice raised yet, converted to EUR.',
-            inputs: [
-              { label: 'Months', value: String(svcProjectedItems.length) },
-              { label: 'Total', value: formatEUR(svcProjectedTotal) }
-            ],
-            source: 'analytics-forecast.js:406 calculateDashboardData() (getServicesProjectedItems())',
-            note: 'This is a typed-in target, not a signed contract, confirmed booking, or invoice — a different confidence level from Pending Pipeline. A month already invoiced (draft/sent/paid/overdue) is excluded so it isn\'t double counted.'
+      if (cmpData) {
+        body.appendChild(mkCmpGrid([
+          { label: 'Projected Total',
+            curVal: mkDrillValue(svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', () => drillDownModal('Projected Services', svcProjRows(svcProjectedItems), svcProjCols)),
+            cmpVal: mkDrillValue(cmpData.svcProjectedTotal > 0 ? formatEUR(cmpData.svcProjectedTotal) : '—', () => drillDownModal(`Projected Services — ${cmpLabel}`, svcProjRows(cmpData.svcProjectedItems), svcProjCols)),
+            curSub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}`,
+            cmpSub: `${cmpData.svcProjectedItems.length} month${cmpData.svcProjectedItems.length !== 1 ? 's' : ''}` },
+          { label: 'Pipeline + Projected', curVal: formatEUR(pendingPipeline + svcProjectedTotal), cmpVal: formatEUR(cmpData.pendingPipeline + cmpData.svcProjectedTotal) },
+        ], 'Current Period', cmpLabel));
+      } else {
+        body.appendChild(mkSummaryGrid([
+          { label: 'Projected Total',       value: svcProjectedTotal > 0 ? formatEUR(svcProjectedTotal) : '—', sub: `${svcProjectedItems.length} month${svcProjectedItems.length !== 1 ? 's' : ''}`,
+            explain: {
+              title: 'Projected Services', formula: 'Sum of forecasted service-stream revenue (Customer Success, Marketing Services) for months with no invoice raised yet, converted to EUR.',
+              inputs: [
+                { label: 'Months', value: String(svcProjectedItems.length) },
+                { label: 'Total', value: formatEUR(svcProjectedTotal) }
+              ],
+              source: 'analytics-forecast.js:406 calculateDashboardData() (getServicesProjectedItems())',
+              note: 'This is a typed-in target, not a signed contract, confirmed booking, or invoice — a different confidence level from Pending Pipeline. A month already invoiced (draft/sent/paid/overdue) is excluded so it isn\'t double counted.'
+            }
+          },
+          { label: 'Pipeline + Projected',  value: formatEUR(pendingPipeline + svcProjectedTotal),
+            explain: {
+              title: 'Pipeline + Projected', formula: 'Pending Pipeline (confirmed) + Projected Services (forecasted, not yet invoiced).',
+              inputs: [
+                { label: 'Pending Pipeline', value: formatEUR(pendingPipeline) },
+                { label: 'Projected Services', value: formatEUR(svcProjectedTotal) },
+                { label: 'Total', value: formatEUR(pendingPipeline + svcProjectedTotal) }
+              ],
+              source: 'analytics-forecast.js:835 buildKpiGrid()'
+            }
           }
-        },
-        { label: 'Pipeline + Projected',  value: formatEUR(pendingPipeline + svcProjectedTotal),
-          explain: {
-            title: 'Pipeline + Projected', formula: 'Pending Pipeline (confirmed) + Projected Services (forecasted, not yet invoiced).',
-            inputs: [
-              { label: 'Pending Pipeline', value: formatEUR(pendingPipeline) },
-              { label: 'Projected Services', value: formatEUR(svcProjectedTotal) },
-              { label: 'Total', value: formatEUR(pendingPipeline + svcProjectedTotal) }
-            ],
-            source: 'analytics-forecast.js:835 buildKpiGrid()'
-          }
-        }
-      ], 2));
+        ], 2));
+      }
 
       if (svcProjectedItems.length > 0) {
         body.appendChild(mkSectionLabel('Services — Forecasted, Not Yet Invoiced'));
-        body.appendChild(mkModalTable(
-          [
-            { label: 'Stream', tip: 'Service stream (Customer Success or Marketing Services) the projection belongs to.' },
-            { label: 'Month', right: true, tip: 'Forecasted month.' },
-            { label: 'Status', right: true, tip: 'Whether the forecasted month has already passed with no invoice raised, or is still a future projection.' },
-            { label: 'Amount', right: true, tip: 'Forecasted service revenue for the month, converted to EUR — not yet invoiced.' }
-          ],
-          svcProjectedItems
-            .slice()
-            .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-            .map(i => [i.label, i.detail, i.overdue ? 'Past — no invoice raised' : 'Future projection', formatEUR(i.amountEUR)]),
-          { highlight: 3 }
-        ));
+        body.appendChild(mkModalTable(svcProjCols, svcProjRows(svcProjectedItems), { highlight: 3 }));
       } else {
         body.appendChild(mkEmptyState('No forecasted service revenue is missing an invoice for the selected period.'));
       }
@@ -1329,6 +1400,14 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     variant: actualCapEx > 0 ? 'warning' : '',
     onClick: () => {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
+
+      if (cmpData) {
+        body.appendChild(mkCmpGrid([
+          { label: 'Actual CapEx',
+            curVal: mkDrillValue(formatEUR(actualCapEx), () => drillDownModal('Actual CapEx', drillExpRows(actCapExpenses), EXP_COLS)),
+            cmpVal: mkDrillValue(formatEUR(cmpData.actualCapEx), () => drillDownModal(`Actual CapEx — ${cmpLabel}`, drillExpRows(cmpData.actCapExpenses), EXP_COLS)) },
+        ], 'Current Period', cmpLabel));
+      }
 
       // Summary box
       const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(2,1fr);gap:8px' });
@@ -1497,10 +1576,11 @@ function buildKpiGrid(data, cmpData, cmpRange) {
 }
 
 // ── Forecast Performance Insights ─────────────────────────────────────────────
-function buildForecastInsights(data, cmpData) {
+function buildForecastInsights(data, cmpData, cmpRange) {
   const { actualRev, forecastRev, variancePct, pendingPipeline,
           pendingSTRTotal, ltrPendingTotal, svcPendingTotal, svcProjectedTotal,
           streamBreakdown, propertyBreakdown, monthlyBreakdown } = data;
+  const cmpLabel = cmpRange?.label || '';
 
   const signals = [];
 
@@ -1585,7 +1665,7 @@ function buildForecastInsights(data, cmpData) {
       text: `${formatEUR(pendingPipeline)} in confirmed pending/upcoming revenue for the selected period (${parts.join(', ')}).`,
       severity: 'info',
       inspect: 'Pending Pipeline',
-      onClick: () => openPendingPipelineModal(data)
+      onClick: () => openPendingPipelineModal(data, cmpData, cmpLabel)
     });
   }
 
@@ -1597,7 +1677,7 @@ function buildForecastInsights(data, cmpData) {
       text: `${formatEUR(svcProjectedTotal)} in forecasted service revenue has no invoice raised yet — not included in the confirmed Pending Pipeline total.`,
       severity: 'info',
       inspect: 'Pending Pipeline',
-      onClick: () => openPendingPipelineModal(data)
+      onClick: () => openPendingPipelineModal(data, cmpData, cmpLabel)
     });
   }
 
@@ -2692,7 +2772,7 @@ function buildView() {
   const streamKpiRow = buildStreamKpiRow(data);
   if (streamKpiRow) wrap.appendChild(streamKpiRow);
 
-  wrap.appendChild(buildForecastInsights(data, cmpData));
+  wrap.appendChild(buildForecastInsights(data, cmpData, cmpRange));
 
   const dqSection = buildDataQualityWarnings();
   if (dqSection) wrap.appendChild(dqSection);
