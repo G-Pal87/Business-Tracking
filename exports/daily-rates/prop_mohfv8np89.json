@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-09T08:16:47.326Z",
+  "generatedAt": "2026-08-10T06:58:32.001Z",
   "property": {
     "id": "prop_mohfv8np89",
     "name": "Rooftop Tenerife",
@@ -13,16 +13,6 @@
   "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": [
-    {
-      "date": "2026-08-09",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "August 2025 (27n, 1.95×) + August 2024 (14n, 1.27×) + August 2023 (22n, 0.82×)",
-      "originalAmount": 52,
-      "discountPct": 10,
-      "amount": 47,
-      "airbnbCheckout": 59
-    },
     {
       "date": "2026-08-10",
       "currency": "EUR",
@@ -2696,7 +2686,7 @@
     {
       "date": "2027-05-04",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "May 2026 day 04 (1n, 1.95×) + May 2025 day 04 (1n, 1.27×) + May 2024 day 04 (1n, 0.82×) + May 2023 day 04 (1n, 0.54×)",
       "originalAmount": 32,
       "discountPct": 10,
@@ -2706,7 +2696,7 @@
     {
       "date": "2027-05-05",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "May 2026 day 05 (1n, 1.95×) + May 2025 day 05 (1n, 1.27×) + May 2023 day 05 (1n, 0.54×)",
       "originalAmount": 34,
       "discountPct": 10,
@@ -2716,7 +2706,7 @@
     {
       "date": "2027-05-06",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "May 2026 day 06 (1n, 1.95×) + May 2025 day 06 (1n, 1.27×) + May 2023 day 06 (1n, 0.54×)",
       "originalAmount": 38,
       "discountPct": 10,
@@ -3656,7 +3646,17 @@
     {
       "date": "2027-08-08",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
+      "basis": "August 2025 (27n, 1.27×) + August 2024 (14n, 0.82×) + August 2023 (22n, 0.54×)",
+      "originalAmount": 52,
+      "discountPct": 10,
+      "amount": 47,
+      "airbnbCheckout": 59
+    },
+    {
+      "date": "2027-08-09",
+      "currency": "EUR",
+      "status": "blocked",
       "basis": "August 2025 (27n, 1.27×) + August 2024 (14n, 0.82×) + August 2023 (22n, 0.54×)",
       "originalAmount": 52,
       "discountPct": 10,
