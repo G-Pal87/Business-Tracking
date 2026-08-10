@@ -885,7 +885,7 @@ const MORTGAGE_DETAIL_COLS = [
 // ── Shared KPI/insight modal builders ─────────────────────────────────────────
 // Extracted so the Property Insights banner can open the same modals as the
 // KPI cards and the Operating Profit chart instead of duplicating their bodies.
-function openOperatingProfitModal({ totals, propData }) {
+function openOperatingProfitModal({ totals, propData, cmpTotals, cmpPropData, cmpLabel }) {
   const body = el('div');
   const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
   sgrid.appendChild(mkSummaryBox('Revenue', formatEUR(totals.rev), null));
@@ -900,10 +900,21 @@ function openOperatingProfitModal({ totals, propData }) {
       sorted.map(d => [d.prop.name, formatEUR(d.rev), formatEUR(d.opEx), formatEUR(d.profit), d.rev > 0 ? (d.profit / d.rev * 100).toFixed(0) + '%' : '—'])
     ));
   }
+  if (cmpPropData && cmpTotals) {
+    const cmpSorted = [...cmpPropData].filter(d => d.rev > 0 || d.opEx > 0).sort((a, b) => b.profit - a.profit);
+    if (cmpSorted.length) {
+      body.appendChild(el('div', { style: 'margin-top:20px' }));
+      body.appendChild(mkSectionLabel(`P&L by Property — ${cmpLabel}`));
+      body.appendChild(mkModalTable(
+        ['Property', 'Revenue', 'OpEx', 'Profit', 'Margin'],
+        cmpSorted.map(d => [d.prop.name, formatEUR(d.rev), formatEUR(d.opEx), formatEUR(d.profit), d.rev > 0 ? (d.profit / d.rev * 100).toFixed(0) + '%' : '—'])
+      ));
+    }
+  }
   openModal({ title: `Operating Profit — ${formatEUR(totals.profit)}`, body, large: true });
 }
 
-function openOperatingExpensesModal({ totals, opExpenses }) {
+function openOperatingExpensesModal({ totals, opExpenses, cmpTotals, cmpOpExpenses, cmpLabel }) {
   const body = el('div');
   const catMap = new Map();
   opExpenses.forEach(e => { const c = e.category || '—'; catMap.set(c, (catMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
@@ -926,10 +937,34 @@ function openOperatingExpensesModal({ totals, opExpenses }) {
       props.map(p => [p.n, formatEUR(p.v), totals.opEx > 0 ? (p.v / totals.opEx * 100).toFixed(1) + '%' : '—'])
     ));
   }
+  if (cmpOpExpenses && cmpTotals) {
+    const cmpCatMap = new Map();
+    cmpOpExpenses.forEach(e => { const c = e.category || '—'; cmpCatMap.set(c, (cmpCatMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+    const cmpCats = [...cmpCatMap.entries()].sort((a, b) => b[1] - a[1]);
+    if (cmpCats.length) {
+      body.appendChild(el('div', { style: 'margin-top:20px' }));
+      body.appendChild(mkSectionLabel(`By Category — ${cmpLabel}`));
+      body.appendChild(mkModalTable(
+        ['Category', 'Amount', '% of OpEx'],
+        cmpCats.map(([c, v]) => [c, formatEUR(v), cmpTotals.opEx > 0 ? (v / cmpTotals.opEx * 100).toFixed(1) + '%' : '—'])
+      ));
+    }
+    const cmpPropOpMap = new Map();
+    cmpOpExpenses.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = cmpPropOpMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); cmpPropOpMap.set(e.propertyId, x); });
+    const cmpProps = [...cmpPropOpMap.values()].sort((a, b) => b.v - a.v);
+    if (cmpProps.length) {
+      body.appendChild(el('div', { style: 'margin-top:20px' }));
+      body.appendChild(mkSectionLabel(`By Property — ${cmpLabel}`));
+      body.appendChild(mkModalTable(
+        ['Property', 'Amount', '% of OpEx'],
+        cmpProps.map(p => [p.n, formatEUR(p.v), cmpTotals.opEx > 0 ? (p.v / cmpTotals.opEx * 100).toFixed(1) + '%' : '—'])
+      ));
+    }
+  }
   openModal({ title: `Operating Expenses — ${formatEUR(totals.opEx)}`, body, large: true });
 }
 
-function openPropertyCapExModal({ totals, capExpenses }) {
+function openPropertyCapExModal({ totals, capExpenses, cmpTotals, cmpCapExpenses, cmpLabel }) {
   const body = el('div');
   const propCapMap = new Map();
   capExpenses.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propCapMap.get(e.propertyId) || { n, v: 0, cnt: 0 }; x.v += toEUR(e.amount, e.currency, e.date); x.cnt++; propCapMap.set(e.propertyId, x); });
@@ -951,6 +986,30 @@ function openPropertyCapExModal({ totals, capExpenses }) {
       [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Total', right: true, muted: true }],
       cats.map(([c, v]) => [c, formatEUR(v), totals.capEx > 0 ? (v / totals.capEx * 100).toFixed(1) + '%' : '—'])
     ));
+  }
+  if (cmpCapExpenses && cmpTotals) {
+    const cmpPropCapMap = new Map();
+    cmpCapExpenses.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = cmpPropCapMap.get(e.propertyId) || { n, v: 0, cnt: 0 }; x.v += toEUR(e.amount, e.currency, e.date); x.cnt++; cmpPropCapMap.set(e.propertyId, x); });
+    const cmpProps = [...cmpPropCapMap.values()].sort((a, b) => b.v - a.v);
+    if (cmpProps.length) {
+      body.appendChild(el('div', { style: 'margin-top:20px' }));
+      body.appendChild(mkSectionLabel(`CapEx by Property — ${cmpLabel}`));
+      body.appendChild(mkModalTable(
+        ['Property', 'Records', 'Amount', '% of Total'],
+        cmpProps.map(p => [p.n, String(p.cnt), formatEUR(p.v), cmpTotals.capEx > 0 ? (p.v / cmpTotals.capEx * 100).toFixed(1) + '%' : '—'])
+      ));
+    }
+    const cmpCatMap = new Map();
+    cmpCapExpenses.forEach(e => { const c = e.category || '—'; cmpCatMap.set(c, (cmpCatMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
+    const cmpCats = [...cmpCatMap.entries()].sort((a, b) => b[1] - a[1]);
+    if (cmpCats.length) {
+      body.appendChild(el('div', { style: 'margin-top:20px' }));
+      body.appendChild(mkSectionLabel(`By Category — ${cmpLabel}`));
+      body.appendChild(mkModalTable(
+        [{ label: 'Category' }, { label: 'Amount', right: true }, { label: '% of Total', right: true, muted: true }],
+        cmpCats.map(([c, v]) => [c, formatEUR(v), cmpTotals.capEx > 0 ? (v / cmpTotals.capEx * 100).toFixed(1) + '%' : '—'])
+      ));
+    }
   }
   openModal({ title: `Property CapEx — ${formatEUR(totals.capEx)}`, body, large: true });
 }
@@ -1721,6 +1780,17 @@ function buildView() {
           sorted.map(d => [d.prop.name, formatEUR(d.rev), totals.rev > 0 ? (d.rev / totals.rev * 100).toFixed(1) + '%' : '—'])
         ));
       }
+      if (cmpData) {
+        const cmpSorted = [...cmpData.propData].filter(d => d.rev > 0).sort((a, b) => b.rev - a.rev);
+        if (cmpSorted.length) {
+          body.appendChild(el('div', { style: 'margin-top:20px' }));
+          body.appendChild(mkSectionLabel(`Revenue by Property — ${cmpRange.label}`));
+          body.appendChild(mkModalTable(
+            ['Property', 'Revenue', '% of Total'],
+            cmpSorted.map(d => [d.prop.name, formatEUR(d.rev), cmpData.totals.rev > 0 ? (d.rev / cmpData.totals.rev * 100).toFixed(1) + '%' : '—'])
+          ));
+        }
+      }
       openModal({ title: `Rental Revenue — ${formatEUR(totals.rev)}`, body, large: true });
     }
   }));
@@ -1731,7 +1801,7 @@ function buildView() {
     invertDelta: true,
     compLabel:   cmpRange?.label,
     compValue:   cmpData ? formatEUR(cmpData.totals.opEx) : undefined,
-    onClick:     () => openOperatingExpensesModal({ totals, opExpenses })
+    onClick:     () => openOperatingExpensesModal({ totals, opExpenses, cmpTotals: cmpData?.totals, cmpOpExpenses: cmpData?.opExpenses, cmpLabel: cmpRange?.label })
   }));
   kpiRow.appendChild(mkKpiCard({
     label:   'Operating Profit',
@@ -1740,7 +1810,7 @@ function buildView() {
     delta:      deltaProfit,
     compLabel:  cmpRange?.label,
     compValue:  cmpData ? formatEUR(cmpData.totals.profit) : undefined,
-    onClick: () => openOperatingProfitModal({ totals, propData })
+    onClick: () => openOperatingProfitModal({ totals, propData, cmpTotals: cmpData?.totals, cmpPropData: cmpData?.propData, cmpLabel: cmpRange?.label })
   }));
   kpiRow.appendChild(mkKpiCard({
     label:       'Property CapEx',
@@ -1750,7 +1820,7 @@ function buildView() {
     invertDelta: true,
     compLabel:   cmpRange?.label,
     compValue:   cmpData ? formatEUR(cmpData.totals.capEx) : undefined,
-    onClick:     () => openPropertyCapExModal({ totals, capExpenses })
+    onClick:     () => openPropertyCapExModal({ totals, capExpenses, cmpTotals: cmpData?.totals, cmpCapExpenses: cmpData?.capExpenses, cmpLabel: cmpRange?.label })
   }));
   wrap.appendChild(kpiRow);
 

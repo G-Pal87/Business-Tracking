@@ -193,21 +193,43 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     if (!cur.overdueInvoices.length) {
       body.appendChild(mkEmptyState('No overdue invoices for this period.'));
     } else {
-      body.appendChild(mkSummaryGrid([
-        { label: 'Overdue Count',  value: String(overdueCount) },
-        { label: 'Overdue Amount', value: formatEUR(overdueEur),
-          explain: {
-            title: 'Overdue Amount',
-            formula: 'Sum of outstanding invoices whose due date is before today.',
-            inputs: [
-              { label: 'Overdue Count',  value: String(overdueCount) },
-              { label: 'Overdue Amount', value: formatEUR(overdueEur) }
-            ],
-            source: 'analytics.js:66-68,127 getData()',
-            note: 'Cancelled/void invoices are excluded from the outstanding pool before the overdue check runs.'
+      if (cmp) {
+        body.appendChild(mkCmpGrid([
+          { label: 'Overdue Count',
+            curVal: String(overdueCount),
+            cmpVal: String(cmp.overdueCount) },
+          { label: 'Overdue Amount',
+            curVal: mkDrillValue(formatEUR(overdueEur), () => drillDownModal('Overdue Invoices', drillRevRows([], cur.overdueInvoices), REV_COLS)),
+            cmpVal: mkDrillValue(formatEUR(cmp.overdueEur), () => drillDownModal(`Overdue Invoices — ${cl}`, drillRevRows([], cmp.overdueInvoices), REV_COLS)),
+            explain: {
+              title: 'Overdue Amount',
+              formula: 'Sum of outstanding invoices whose due date is before today.',
+              inputs: [
+                { label: 'Overdue Count',  value: String(overdueCount) },
+                { label: 'Overdue Amount', value: formatEUR(overdueEur) }
+              ],
+              source: 'analytics.js:66-68,127 getData()',
+              note: 'Cancelled/void invoices are excluded from the outstanding pool before the overdue check runs.'
+            }
           }
-        }
-      ]));
+        ], 'Current Period', cl));
+      } else {
+        body.appendChild(mkSummaryGrid([
+          { label: 'Overdue Count',  value: String(overdueCount) },
+          { label: 'Overdue Amount', value: formatEUR(overdueEur),
+            explain: {
+              title: 'Overdue Amount',
+              formula: 'Sum of outstanding invoices whose due date is before today.',
+              inputs: [
+                { label: 'Overdue Count',  value: String(overdueCount) },
+                { label: 'Overdue Amount', value: formatEUR(overdueEur) }
+              ],
+              source: 'analytics.js:66-68,127 getData()',
+              note: 'Cancelled/void invoices are excluded from the outstanding pool before the overdue check runs.'
+            }
+          }
+        ]));
+      }
       body.appendChild(mkSectionLabel('Overdue Invoices'));
       const rows = cur.overdueInvoices.map(i => [
         i.issueDate || '—',
@@ -564,46 +586,65 @@ function buildKpiGrid(cur, cmp, cmpRange) {
           if (p.date && p.date < today) { pastDueAmt += amt; pastDueCount++; pastDuePayments.push(p); }
           else { upcomingAmt += amt; upcomingCount++; upcomingPayments.push(p); }
         });
-        body.appendChild(mkSummaryGrid([
-          { label: 'Total Pending', value: formatEUR(pipeline), sub: `${cur.pendingPayments.length} payment${cur.pendingPayments.length !== 1 ? 's' : ''}`,
-            explain: {
-              title: 'Total Pending',
-              formula: 'Sum of payment amounts with status "pending", dated within the selected period.',
-              inputs: [
-                { label: 'Pending payments', value: String(cur.pendingPayments.length) },
-                { label: 'Total Pending',    value: formatEUR(pipeline) }
-              ],
-              source: 'analytics.js:54,88 getData()',
-              note: 'Not yet collected — excluded from Total Revenue and Net Cash figures.'
+        if (cmp) {
+          let cmpPastDueAmt = 0, cmpUpcomingAmt = 0;
+          const cmpPastDuePayments = [], cmpUpcomingPayments = [];
+          cmp.pendingPayments.forEach(p => {
+            const amt = toEUR(p.amount, p.currency, p.date);
+            if (p.date && p.date < today) { cmpPastDueAmt += amt; cmpPastDuePayments.push(p); }
+            else { cmpUpcomingAmt += amt; cmpUpcomingPayments.push(p); }
+          });
+          body.appendChild(mkCmpGrid([
+            { label: 'Total Pending', curVal: formatEUR(pipeline), cmpVal: formatEUR(cmp.pipeline) },
+            { label: 'Past Expected Date',
+              curVal: mkDrillValue(formatEUR(pastDueAmt), () => drillDownModal('Past Expected Date — Pending Payments', drillRevRows(pastDuePayments, []), REV_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmpPastDueAmt), () => drillDownModal(`Past Expected Date — Pending Payments — ${cl}`, drillRevRows(cmpPastDuePayments, []), REV_COLS)) },
+            { label: 'Upcoming',
+              curVal: mkDrillValue(formatEUR(upcomingAmt), () => drillDownModal('Upcoming — Pending Payments', drillRevRows(upcomingPayments, []), REV_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmpUpcomingAmt), () => drillDownModal(`Upcoming — Pending Payments — ${cl}`, drillRevRows(cmpUpcomingPayments, []), REV_COLS)) },
+          ], 'Current Period', cl));
+        } else {
+          body.appendChild(mkSummaryGrid([
+            { label: 'Total Pending', value: formatEUR(pipeline), sub: `${cur.pendingPayments.length} payment${cur.pendingPayments.length !== 1 ? 's' : ''}`,
+              explain: {
+                title: 'Total Pending',
+                formula: 'Sum of payment amounts with status "pending", dated within the selected period.',
+                inputs: [
+                  { label: 'Pending payments', value: String(cur.pendingPayments.length) },
+                  { label: 'Total Pending',    value: formatEUR(pipeline) }
+                ],
+                source: 'analytics.js:54,88 getData()',
+                note: 'Not yet collected — excluded from Total Revenue and Net Cash figures.'
+              }
+            },
+            { label: 'Past Expected Date',
+              value: mkDrillValue(formatEUR(pastDueAmt), () => drillDownModal('Past Expected Date — Pending Payments', drillRevRows(pastDuePayments, []), REV_COLS)),
+              sub: `${pastDueCount} payment${pastDueCount !== 1 ? 's' : ''}`,
+              explain: {
+                title: 'Past Expected Date',
+                formula: 'Of the pending payments, those whose expected date is before today.',
+                inputs: [
+                  { label: 'Past-due payments', value: String(pastDueCount) },
+                  { label: 'Past-due amount',   value: formatEUR(pastDueAmt) }
+                ],
+                source: 'analytics.js — buildKpiGrid() Pending Pipeline onClick handler'
+              }
+            },
+            { label: 'Upcoming',
+              value: mkDrillValue(formatEUR(upcomingAmt), () => drillDownModal('Upcoming — Pending Payments', drillRevRows(upcomingPayments, []), REV_COLS)),
+              sub: `${upcomingCount} payment${upcomingCount !== 1 ? 's' : ''}`,
+              explain: {
+                title: 'Upcoming',
+                formula: 'Of the pending payments, those whose expected date is today or later (or has no date).',
+                inputs: [
+                  { label: 'Upcoming payments', value: String(upcomingCount) },
+                  { label: 'Upcoming amount',   value: formatEUR(upcomingAmt) }
+                ],
+                source: 'analytics.js — buildKpiGrid() Pending Pipeline onClick handler'
+              }
             }
-          },
-          { label: 'Past Expected Date',
-            value: mkDrillValue(formatEUR(pastDueAmt), () => drillDownModal('Past Expected Date — Pending Payments', drillRevRows(pastDuePayments, []), REV_COLS)),
-            sub: `${pastDueCount} payment${pastDueCount !== 1 ? 's' : ''}`,
-            explain: {
-              title: 'Past Expected Date',
-              formula: 'Of the pending payments, those whose expected date is before today.',
-              inputs: [
-                { label: 'Past-due payments', value: String(pastDueCount) },
-                { label: 'Past-due amount',   value: formatEUR(pastDueAmt) }
-              ],
-              source: 'analytics.js — buildKpiGrid() Pending Pipeline onClick handler'
-            }
-          },
-          { label: 'Upcoming',
-            value: mkDrillValue(formatEUR(upcomingAmt), () => drillDownModal('Upcoming — Pending Payments', drillRevRows(upcomingPayments, []), REV_COLS)),
-            sub: `${upcomingCount} payment${upcomingCount !== 1 ? 's' : ''}`,
-            explain: {
-              title: 'Upcoming',
-              formula: 'Of the pending payments, those whose expected date is today or later (or has no date).',
-              inputs: [
-                { label: 'Upcoming payments', value: String(upcomingCount) },
-                { label: 'Upcoming amount',   value: formatEUR(upcomingAmt) }
-              ],
-              source: 'analytics.js — buildKpiGrid() Pending Pipeline onClick handler'
-            }
-          }
-        ], 3));
+          ], 3));
+        }
         body.appendChild(mkSectionLabel('Pending Payments'));
         const rows = cur.pendingPayments
           .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
@@ -996,37 +1037,72 @@ const STREAM_COLORS = {
 // Revenue drill-down for one stream — shared by the per-stream KPI card row
 // and the "Business Mix" donut's click handler so both surfaces open the
 // identical detail view.
-function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur) {
+function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur, cmp, cmpLabel) {
   const streamLabel = STREAM_LABELS[streamKey] || streamKey;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   const pays = cur.payments.filter(p => (p.stream || 'other') === streamKey);
   const invs = cur.invoices.filter(i => (i.stream || 'other') === streamKey);
-  body.appendChild(mkSummaryGrid([
-    { label: 'Stream',   value: streamLabel },
-    { label: 'Revenue',
-      value: mkDrillValue(formatEUR(streamTotal), () => drillDownModal(`${streamLabel} — Revenue`, drillRevRows(pays, invs), REV_COLS)),
-      explain: {
-        title: `${streamLabel} Revenue`,
-        formula: 'Sum of paid payments + paid invoices tagged with this stream, within the selected period.',
-        inputs: [
-          { label: 'Stream',  value: streamLabel },
-          { label: 'Revenue', value: formatEUR(streamTotal) }
-        ],
-        source: 'analytics.js:130-132 getData() (streamMap)'
+  if (cmp) {
+    const cmpPays = cmp.payments.filter(p => (p.stream || 'other') === streamKey);
+    const cmpInvs = cmp.invoices.filter(i => (i.stream || 'other') === streamKey);
+    const cmpTotal = cmp.streamMap.get(streamKey) || 0;
+    body.appendChild(mkCmpGrid([
+      { label: 'Stream', curVal: streamLabel, cmpVal: streamLabel },
+      { label: 'Revenue',
+        curVal: mkDrillValue(formatEUR(streamTotal), () => drillDownModal(`${streamLabel} — Revenue`, drillRevRows(pays, invs), REV_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cmpTotal), () => drillDownModal(`${streamLabel} — Revenue — ${cmpLabel}`, drillRevRows(cmpPays, cmpInvs), REV_COLS)),
+        explain: {
+          title: `${streamLabel} Revenue`,
+          formula: 'Sum of paid payments + paid invoices tagged with this stream, within the selected period.',
+          inputs: [
+            { label: 'Stream',  value: streamLabel },
+            { label: 'Revenue', value: formatEUR(streamTotal) }
+          ],
+          source: 'analytics.js:130-132 getData() (streamMap)'
+        }
+      },
+      { label: '% of Mix',
+        curVal: totalRevMix > 0 ? (streamTotal / totalRevMix * 100).toFixed(1) + '%' : '—',
+        cmpVal: cmp.totalRev > 0 ? (cmpTotal / cmp.totalRev * 100).toFixed(1) + '%' : '—',
+        explain: {
+          title: '% of Mix',
+          formula: 'This stream\'s revenue ÷ total revenue across all streams × 100.',
+          inputs: [
+            { label: 'Stream Revenue', value: formatEUR(streamTotal) },
+            { label: 'Total Revenue (all streams)', value: formatEUR(totalRevMix) }
+          ],
+          source: 'analytics.js — openStreamRevenueModal()'
+        }
       }
-    },
-    { label: '% of Mix', value: totalRevMix > 0 ? (streamTotal / totalRevMix * 100).toFixed(1) + '%' : '—',
-      explain: {
-        title: '% of Mix',
-        formula: 'This stream\'s revenue ÷ total revenue across all streams × 100.',
-        inputs: [
-          { label: 'Stream Revenue', value: formatEUR(streamTotal) },
-          { label: 'Total Revenue (all streams)', value: formatEUR(totalRevMix) }
-        ],
-        source: 'analytics.js — openStreamRevenueModal()'
+    ], 'Current Period', cmpLabel));
+  } else {
+    body.appendChild(mkSummaryGrid([
+      { label: 'Stream',   value: streamLabel },
+      { label: 'Revenue',
+        value: mkDrillValue(formatEUR(streamTotal), () => drillDownModal(`${streamLabel} — Revenue`, drillRevRows(pays, invs), REV_COLS)),
+        explain: {
+          title: `${streamLabel} Revenue`,
+          formula: 'Sum of paid payments + paid invoices tagged with this stream, within the selected period.',
+          inputs: [
+            { label: 'Stream',  value: streamLabel },
+            { label: 'Revenue', value: formatEUR(streamTotal) }
+          ],
+          source: 'analytics.js:130-132 getData() (streamMap)'
+        }
+      },
+      { label: '% of Mix', value: totalRevMix > 0 ? (streamTotal / totalRevMix * 100).toFixed(1) + '%' : '—',
+        explain: {
+          title: '% of Mix',
+          formula: 'This stream\'s revenue ÷ total revenue across all streams × 100.',
+          inputs: [
+            { label: 'Stream Revenue', value: formatEUR(streamTotal) },
+            { label: 'Total Revenue (all streams)', value: formatEUR(totalRevMix) }
+          ],
+          source: 'analytics.js — openStreamRevenueModal()'
+        }
       }
-    }
-  ], 3));
+    ], 3));
+  }
   if (pays.length) {
     body.appendChild(mkSectionLabel('Payments'));
     body.appendChild(mkModalTable([
@@ -1075,7 +1151,7 @@ function buildStreamKpiRow(cur, cmp, cmpRange) {
       delta:     cmp ? safePct(streamTotal, cmpTotal) : null,
       compLabel: cmpLabel,
       compValue: cmp ? formatEUR(cmpTotal ?? 0) : undefined,
-      onClick:   () => openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur),
+      onClick:   () => openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur, cmp, cmpLabel),
       explain: {
         title: `${STREAM_LABELS[streamKey] || streamKey} Revenue`,
         formula: 'Sum of paid payments + paid invoices tagged with this stream, within the selected period.',
