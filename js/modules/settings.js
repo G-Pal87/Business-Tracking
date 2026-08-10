@@ -3916,6 +3916,15 @@ function buildDangerCard() {
       statusEl.style.color = 'var(--danger,#dc3545)';
       return;
     }
+    // Fail closed, not open: a team key existing but not unlocked on this
+    // device must block the backup, not silently downgrade it to plaintext
+    // — this snapshot holds the exact same sensitive data as db.json
+    // (every record + other users' password hashes).
+    if (!isUnlocked() && hasWrappedKeyConfigured()) {
+      statusEl.textContent = 'Encryption key not unlocked on this device — unlock it in the Encryption section above before backing up.';
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
     backupNowBtn.disabled = true;
     backupNowBtn.textContent = 'Backing up…';
     statusEl.style.color = 'var(--text-muted)';
