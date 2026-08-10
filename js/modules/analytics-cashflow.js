@@ -216,7 +216,7 @@ function computeCashflowByStream({ payments, invoices, opExpenses, capExpenses }
 
 // Cash-flow drill-down for one stream — mirrors the per-month heatmap-cell
 // drill-down further down this file (summary boxes + transaction list).
-function openCashflowStreamModal(sk, curData) {
+function openCashflowStreamModal(sk, curData, cmpData, cmpLabel) {
   const sPay = curData.payments.filter(p => (p.stream || 'other') === sk);
   const sInv = curData.invoices.filter(i => (i.stream || 'other') === sk);
   const sOp  = curData.opExpenses.filter(e => expStream(e) === sk);
@@ -230,29 +230,57 @@ function openCashflowStreamModal(sk, curData) {
   const rows = buildCashFlowRows(sPay, sInv, sOp, sCap);
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-  const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px' });
-  summaryGrid.appendChild(mkSummaryBox('Cash In',
-    mkDrillValue(formatEUR(inV), () => drillDownModal(`${streamLabel} — Cash In`, buildCashFlowRows(sPay, sInv, [], []), CF_DRILL_COLS)),
-    `${sPay.length + sInv.length} items`));
-  summaryGrid.appendChild(mkSummaryBox('Op. Cash Out',
-    mkDrillValue(formatEUR(opOutV), () => drillDownModal(`${streamLabel} — Operating Cash Out`, buildCashFlowRows([], [], sOp, []), CF_DRILL_COLS)),
-    `${sOp.length} expenses`));
-  summaryGrid.appendChild(mkSummaryBox('Invest. Cash Out',
-    mkDrillValue(formatEUR(capOutV), () => drillDownModal(`${streamLabel} — Investment Cash Out`, buildCashFlowRows([], [], [], sCap), CF_DRILL_COLS)),
-    `${sCap.length} items`));
-  summaryGrid.appendChild(mkSummaryBox('Net Cash Flow',
-    mkDrillValue(formatEUR(net), () => drillDownModal(`${streamLabel} — Net Cash Flow`, rows, CF_DRILL_COLS)),
-    net >= 0 ? 'Surplus' : 'Deficit', {
-    title: 'Net Cash Flow (by Stream)', formula: 'Cash In − Op. Cash Out − Invest. Cash Out, for this stream and period.',
-    inputs: [
-      { label: 'Cash In', value: formatEUR(inV) },
-      { label: 'Op. Cash Out', value: formatEUR(opOutV) },
-      { label: 'Invest. Cash Out', value: formatEUR(capOutV) }
-    ],
-    source: 'analytics-cashflow.js:207 openCashflowStreamModal() — `net = inV - opOutV - capOutV`',
-    note: 'Only status:\'paid\' payments/invoices and their matching expenses for this stream are counted.'
-  }));
-  body.appendChild(summaryGrid);
+
+  if (cmpData) {
+    const cPay = cmpData.payments.filter(p => (p.stream || 'other') === sk);
+    const cInv = cmpData.invoices.filter(i => (i.stream || 'other') === sk);
+    const cOp  = cmpData.opExpenses.filter(e => expStream(e) === sk);
+    const cCap = cmpData.capExpenses.filter(e => expStream(e) === sk);
+    const cInV     = cPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
+                   + cInv.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+    const cOpOutV  = cOp.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    const cCapOutV = cCap.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    const cNet = cInV - cOpOutV - cCapOutV;
+
+    body.appendChild(mkCmpGrid([
+      { label: 'Cash In',
+        curVal: mkDrillValue(formatEUR(inV), () => drillDownModal(`${streamLabel} — Cash In`, buildCashFlowRows(sPay, sInv, [], []), CF_DRILL_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cInV), () => drillDownModal(`${streamLabel} — Cash In — ${cmpLabel || 'Comparison'}`, buildCashFlowRows(cPay, cInv, [], []), CF_DRILL_COLS)) },
+      { label: 'Op. Cash Out',
+        curVal: mkDrillValue(formatEUR(opOutV), () => drillDownModal(`${streamLabel} — Operating Cash Out`, buildCashFlowRows([], [], sOp, []), CF_DRILL_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cOpOutV), () => drillDownModal(`${streamLabel} — Operating Cash Out — ${cmpLabel || 'Comparison'}`, buildCashFlowRows([], [], cOp, []), CF_DRILL_COLS)) },
+      { label: 'Invest. Cash Out',
+        curVal: mkDrillValue(formatEUR(capOutV), () => drillDownModal(`${streamLabel} — Investment Cash Out`, buildCashFlowRows([], [], [], sCap), CF_DRILL_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cCapOutV), () => drillDownModal(`${streamLabel} — Investment Cash Out — ${cmpLabel || 'Comparison'}`, buildCashFlowRows([], [], [], cCap), CF_DRILL_COLS)) },
+      { label: 'Net Cash Flow',
+        curVal: mkDrillValue(formatEUR(net), () => drillDownModal(`${streamLabel} — Net Cash Flow`, rows, CF_DRILL_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cNet), () => drillDownModal(`${streamLabel} — Net Cash Flow — ${cmpLabel || 'Comparison'}`, buildCashFlowRows(cPay, cInv, cOp, cCap), CF_DRILL_COLS)) },
+    ], 'Current Period', cmpLabel || ''));
+  } else {
+    const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(4,1fr);gap:10px' });
+    summaryGrid.appendChild(mkSummaryBox('Cash In',
+      mkDrillValue(formatEUR(inV), () => drillDownModal(`${streamLabel} — Cash In`, buildCashFlowRows(sPay, sInv, [], []), CF_DRILL_COLS)),
+      `${sPay.length + sInv.length} items`));
+    summaryGrid.appendChild(mkSummaryBox('Op. Cash Out',
+      mkDrillValue(formatEUR(opOutV), () => drillDownModal(`${streamLabel} — Operating Cash Out`, buildCashFlowRows([], [], sOp, []), CF_DRILL_COLS)),
+      `${sOp.length} expenses`));
+    summaryGrid.appendChild(mkSummaryBox('Invest. Cash Out',
+      mkDrillValue(formatEUR(capOutV), () => drillDownModal(`${streamLabel} — Investment Cash Out`, buildCashFlowRows([], [], [], sCap), CF_DRILL_COLS)),
+      `${sCap.length} items`));
+    summaryGrid.appendChild(mkSummaryBox('Net Cash Flow',
+      mkDrillValue(formatEUR(net), () => drillDownModal(`${streamLabel} — Net Cash Flow`, rows, CF_DRILL_COLS)),
+      net >= 0 ? 'Surplus' : 'Deficit', {
+      title: 'Net Cash Flow (by Stream)', formula: 'Cash In − Op. Cash Out − Invest. Cash Out, for this stream and period.',
+      inputs: [
+        { label: 'Cash In', value: formatEUR(inV) },
+        { label: 'Op. Cash Out', value: formatEUR(opOutV) },
+        { label: 'Invest. Cash Out', value: formatEUR(capOutV) }
+      ],
+      source: 'analytics-cashflow.js:207 openCashflowStreamModal() — `net = inV - opOutV - capOutV`',
+      note: 'Only status:\'paid\' payments/invoices and their matching expenses for this stream are counted.'
+    }));
+    body.appendChild(summaryGrid);
+  }
 
   if (inV > 0) {
     const propMap = new Map();
@@ -326,7 +354,7 @@ function buildCashflowStreamKpiRow(curData, cmpData, cmpLabel) {
       delta:     cmpData ? safePct(net, cmpNet) : null,
       compLabel: cmpLabel,
       compValue: cmpData ? formatEUR(cmpNet ?? 0) : undefined,
-      onClick:   () => openCashflowStreamModal(sk, curData),
+      onClick:   () => openCashflowStreamModal(sk, curData, cmpData, cmpLabel),
       explain: {
         title: `${STREAMS[sk]?.label || sk} — Net Cash Flow`,
         formula: 'Cash In − Op. Cash Out − Invest. Cash Out, for this stream and period.',
@@ -364,7 +392,7 @@ function computeCashFlowInsights(curData, cmpData, cmpRange) {
       title: 'NEGATIVE OPERATING CASH FLOW',
       text: `Operating cash flow is ${formatEUR(opCashFlow)} — operating expenses exceed cash in before CapEx.`,
       inspect: 'Transactions',
-      onClick: () => openOperatingCashFlowModal(curData)
+      onClick: () => openOperatingCashFlowModal(curData, cmpData, cmpRange)
     });
   }
 
@@ -390,7 +418,7 @@ function computeCashFlowInsights(curData, cmpData, cmpRange) {
         title: 'INVESTMENT PRESSURE',
         text: `Investment cash out (CapEx) is ${investPct.toFixed(0)}% of total cash out — significant capital deployment.`,
         inspect: 'Investment Cash Out',
-        onClick: () => openInvestmentCashOutModal(curData)
+        onClick: () => openInvestmentCashOutModal(curData, cmpData, cmpRange)
       });
     }
   }
@@ -601,27 +629,42 @@ function buildCashSeasonalityHeatmap() {
 }
 
 // ── Shared KPI modal openers — reused by both KPI cards and Cash Flow Insights ─
-function openOperatingCashFlowModal({ payments, invoices, opExpenses, cashIn, opExCashOut, opCashFlow }) {
+function openOperatingCashFlowModal(curData, cmpData, cmpRange) {
+  const { payments, invoices, opExpenses, cashIn, opExCashOut, opCashFlow } = curData;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
-  const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
-  summaryGrid.appendChild(mkSummaryBox('Cash In',
-    mkDrillValue(formatEUR(cashIn), () => drillDownModal('Cash In', buildCashFlowRows(payments, invoices, [], []), CF_DRILL_COLS)),
-    `${payments.length + invoices.length} items`));
-  summaryGrid.appendChild(mkSummaryBox('Op. Cash Out',
-    mkDrillValue(formatEUR(opExCashOut), () => drillDownModal('Operating Cash Out', buildCashFlowRows([], [], opExpenses, []), CF_DRILL_COLS)),
-    `${opExpenses.length} expenses`));
-  summaryGrid.appendChild(mkSummaryBox('Operating CF',
-    mkDrillValue(formatEUR(opCashFlow), () => drillDownModal('Operating Cash Flow', buildCashFlowRows(payments, invoices, opExpenses, []), CF_DRILL_COLS)),
-    opCashFlow >= 0 ? 'Surplus' : 'Deficit', {
-    title: 'Operating Cash Flow', formula: 'Cash In − Operating Cash Out.',
-    inputs: [
-      { label: 'Cash In', value: formatEUR(cashIn) },
-      { label: 'Op. Cash Out', value: formatEUR(opExCashOut) }
-    ],
-    source: 'analytics-cashflow.js getData() — `opCashFlow: cashIn - opExCashOut` (line 74)'
-  }));
-  body.appendChild(summaryGrid);
+  if (cmpData) {
+    body.appendChild(mkCmpGrid([
+      { label: 'Cash In',
+        curVal: mkDrillValue(formatEUR(cashIn), () => drillDownModal('Cash In', buildCashFlowRows(payments, invoices, [], []), CF_DRILL_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cmpData.cashIn), () => drillDownModal(`Cash In — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows(cmpData.payments, cmpData.invoices, [], []), CF_DRILL_COLS)) },
+      { label: 'Op. Cash Out',
+        curVal: mkDrillValue(formatEUR(opExCashOut), () => drillDownModal('Operating Cash Out', buildCashFlowRows([], [], opExpenses, []), CF_DRILL_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cmpData.opExCashOut), () => drillDownModal(`Operating Cash Out — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows([], [], cmpData.opExpenses, []), CF_DRILL_COLS)) },
+      { label: 'Operating CF',
+        curVal: mkDrillValue(formatEUR(opCashFlow), () => drillDownModal('Operating Cash Flow', buildCashFlowRows(payments, invoices, opExpenses, []), CF_DRILL_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cmpData.opCashFlow), () => drillDownModal(`Operating Cash Flow — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows(cmpData.payments, cmpData.invoices, cmpData.opExpenses, []), CF_DRILL_COLS)) },
+    ], 'Current Period', cmpRange?.label || ''));
+  } else {
+    const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
+    summaryGrid.appendChild(mkSummaryBox('Cash In',
+      mkDrillValue(formatEUR(cashIn), () => drillDownModal('Cash In', buildCashFlowRows(payments, invoices, [], []), CF_DRILL_COLS)),
+      `${payments.length + invoices.length} items`));
+    summaryGrid.appendChild(mkSummaryBox('Op. Cash Out',
+      mkDrillValue(formatEUR(opExCashOut), () => drillDownModal('Operating Cash Out', buildCashFlowRows([], [], opExpenses, []), CF_DRILL_COLS)),
+      `${opExpenses.length} expenses`));
+    summaryGrid.appendChild(mkSummaryBox('Operating CF',
+      mkDrillValue(formatEUR(opCashFlow), () => drillDownModal('Operating Cash Flow', buildCashFlowRows(payments, invoices, opExpenses, []), CF_DRILL_COLS)),
+      opCashFlow >= 0 ? 'Surplus' : 'Deficit', {
+      title: 'Operating Cash Flow', formula: 'Cash In − Operating Cash Out.',
+      inputs: [
+        { label: 'Cash In', value: formatEUR(cashIn) },
+        { label: 'Op. Cash Out', value: formatEUR(opExCashOut) }
+      ],
+      source: 'analytics-cashflow.js getData() — `opCashFlow: cashIn - opExCashOut` (line 74)'
+    }));
+    body.appendChild(summaryGrid);
+  }
 
   const monthMap = new Map();
   const addM = (mk, inV, outV) => {
@@ -668,32 +711,47 @@ function openOperatingCashFlowModal({ payments, invoices, opExpenses, cashIn, op
   openModal({ title: 'Operating Cash Flow — Breakdown', body, large: true });
 }
 
-function openInvestmentCashOutModal({ capExpenses, investCashOut, cashOut }) {
+function openInvestmentCashOutModal(curData, cmpData, cmpRange) {
+  const { capExpenses, investCashOut, cashOut } = curData;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   const avg = capExpenses.length > 0 ? investCashOut / capExpenses.length : 0;
-  const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
-  summaryGrid.appendChild(mkSummaryBox('Total CapEx Out',
-    mkDrillValue(formatEUR(investCashOut), () => drillDownModal('Investment Cash Out', buildCashFlowRows([], [], [], capExpenses), CF_DRILL_COLS)),
-    `${capExpenses.length} items`));
-  summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(avg), 'per investment expense', {
-    title: 'Avg CapEx per Item', formula: 'Total CapEx Out ÷ number of CapEx expense records.',
-    inputs: [
-      { label: 'Total CapEx Out', value: formatEUR(investCashOut) },
-      { label: 'CapEx items', value: String(capExpenses.length) }
-    ],
-    source: 'analytics-cashflow.js:629 openInvestmentCashOutModal() — `avg = investCashOut / capExpenses.length`'
-  }));
-  const pctOfOut = cashOut > 0 ? (investCashOut / cashOut * 100).toFixed(1) + '%' : '—';
-  summaryGrid.appendChild(mkSummaryBox('% of Total Cash Out', pctOfOut, `vs ${formatEUR(cashOut)} total`, {
-    title: '% of Total Cash Out', formula: 'Investment Cash Out ÷ (Operating Cash Out + Investment Cash Out) × 100.',
-    inputs: [
-      { label: 'Investment Cash Out', value: formatEUR(investCashOut) },
-      { label: 'Total Cash Out', value: formatEUR(cashOut) }
-    ],
-    source: 'analytics-cashflow.js:640 openInvestmentCashOutModal() — `pctOfOut = investCashOut / cashOut * 100`'
-  }));
-  body.appendChild(summaryGrid);
+
+  if (cmpData) {
+    const cmpAvg = cmpData.capExpenses.length > 0 ? cmpData.investCashOut / cmpData.capExpenses.length : 0;
+    const pctOfOut = cashOut > 0 ? (investCashOut / cashOut * 100).toFixed(1) + '%' : '—';
+    const cmpPctOfOut = cmpData.cashOut > 0 ? (cmpData.investCashOut / cmpData.cashOut * 100).toFixed(1) + '%' : '—';
+    body.appendChild(mkCmpGrid([
+      { label: 'Total CapEx Out',
+        curVal: mkDrillValue(formatEUR(investCashOut), () => drillDownModal('Investment Cash Out', buildCashFlowRows([], [], [], capExpenses), CF_DRILL_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cmpData.investCashOut), () => drillDownModal(`Investment Cash Out — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows([], [], [], cmpData.capExpenses), CF_DRILL_COLS)) },
+      { label: 'Avg per Item', curVal: formatEUR(avg), cmpVal: formatEUR(cmpAvg) },
+      { label: '% of Total Cash Out', curVal: pctOfOut, cmpVal: cmpPctOfOut },
+    ], 'Current Period', cmpRange?.label || ''));
+  } else {
+    const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
+    summaryGrid.appendChild(mkSummaryBox('Total CapEx Out',
+      mkDrillValue(formatEUR(investCashOut), () => drillDownModal('Investment Cash Out', buildCashFlowRows([], [], [], capExpenses), CF_DRILL_COLS)),
+      `${capExpenses.length} items`));
+    summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(avg), 'per investment expense', {
+      title: 'Avg CapEx per Item', formula: 'Total CapEx Out ÷ number of CapEx expense records.',
+      inputs: [
+        { label: 'Total CapEx Out', value: formatEUR(investCashOut) },
+        { label: 'CapEx items', value: String(capExpenses.length) }
+      ],
+      source: 'analytics-cashflow.js:629 openInvestmentCashOutModal() — `avg = investCashOut / capExpenses.length`'
+    }));
+    const pctOfOut = cashOut > 0 ? (investCashOut / cashOut * 100).toFixed(1) + '%' : '—';
+    summaryGrid.appendChild(mkSummaryBox('% of Total Cash Out', pctOfOut, `vs ${formatEUR(cashOut)} total`, {
+      title: '% of Total Cash Out', formula: 'Investment Cash Out ÷ (Operating Cash Out + Investment Cash Out) × 100.',
+      inputs: [
+        { label: 'Investment Cash Out', value: formatEUR(investCashOut) },
+        { label: 'Total Cash Out', value: formatEUR(cashOut) }
+      ],
+      source: 'analytics-cashflow.js:640 openInvestmentCashOutModal() — `pctOfOut = investCashOut / cashOut * 100`'
+    }));
+    body.appendChild(summaryGrid);
+  }
 
   const propMap = new Map();
   capExpenses.forEach(e => {
@@ -924,18 +982,34 @@ function buildView() {
       const totalInv = invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
-      // Summary boxes
-      const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
-      summaryGrid.appendChild(mkSummaryBox('Total Cash In',
-        mkDrillValue(formatEUR(cashIn), () => drillDownModal('Cash In', buildCashFlowRows(payments, invoices, [], []), CF_DRILL_COLS)),
-        `${payments.length + invoices.length} items`));
-      summaryGrid.appendChild(mkSummaryBox('From Payments',
-        mkDrillValue(formatEUR(totalPay), () => drillDownModal('Cash In — From Payments', buildCashFlowRows(payments, [], [], []), CF_DRILL_COLS)),
-        `${payments.length} payments`));
-      summaryGrid.appendChild(mkSummaryBox('From Invoices',
-        mkDrillValue(formatEUR(totalInv), () => drillDownModal('Cash In — From Invoices', buildCashFlowRows([], invoices, [], []), CF_DRILL_COLS)),
-        `${invoices.length} invoices`));
-      body.appendChild(summaryGrid);
+      if (cmpData) {
+        const cmpTotalPay = cmpData.payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+        const cmpTotalInv = cmpData.invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+        body.appendChild(mkCmpGrid([
+          { label: 'Total Cash In',
+            curVal: mkDrillValue(formatEUR(cashIn), () => drillDownModal('Cash In', buildCashFlowRows(payments, invoices, [], []), CF_DRILL_COLS)),
+            cmpVal: mkDrillValue(formatEUR(cmpData.cashIn), () => drillDownModal(`Cash In — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows(cmpData.payments, cmpData.invoices, [], []), CF_DRILL_COLS)) },
+          { label: 'From Payments',
+            curVal: mkDrillValue(formatEUR(totalPay), () => drillDownModal('Cash In — From Payments', buildCashFlowRows(payments, [], [], []), CF_DRILL_COLS)),
+            cmpVal: mkDrillValue(formatEUR(cmpTotalPay), () => drillDownModal(`Cash In — From Payments — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows(cmpData.payments, [], [], []), CF_DRILL_COLS)) },
+          { label: 'From Invoices',
+            curVal: mkDrillValue(formatEUR(totalInv), () => drillDownModal('Cash In — From Invoices', buildCashFlowRows([], invoices, [], []), CF_DRILL_COLS)),
+            cmpVal: mkDrillValue(formatEUR(cmpTotalInv), () => drillDownModal(`Cash In — From Invoices — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows([], cmpData.invoices, [], []), CF_DRILL_COLS)) },
+        ], 'Current Period', cmpRange?.label || ''));
+      } else {
+        // Summary boxes
+        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
+        summaryGrid.appendChild(mkSummaryBox('Total Cash In',
+          mkDrillValue(formatEUR(cashIn), () => drillDownModal('Cash In', buildCashFlowRows(payments, invoices, [], []), CF_DRILL_COLS)),
+          `${payments.length + invoices.length} items`));
+        summaryGrid.appendChild(mkSummaryBox('From Payments',
+          mkDrillValue(formatEUR(totalPay), () => drillDownModal('Cash In — From Payments', buildCashFlowRows(payments, [], [], []), CF_DRILL_COLS)),
+          `${payments.length} payments`));
+        summaryGrid.appendChild(mkSummaryBox('From Invoices',
+          mkDrillValue(formatEUR(totalInv), () => drillDownModal('Cash In — From Invoices', buildCashFlowRows([], invoices, [], []), CF_DRILL_COLS)),
+          `${invoices.length} invoices`));
+        body.appendChild(summaryGrid);
+      }
 
       // Breakdown by stream
       const streamMap = new Map();
@@ -980,27 +1054,55 @@ function buildView() {
 
       // Summary boxes: total, count, avg per item
       const avg = opExpenses.length > 0 ? opExCashOut / opExpenses.length : 0;
-      const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
-      summaryGrid.appendChild(mkSummaryBox('Total OpEx Out',
-        mkDrillValue(formatEUR(opExCashOut), () => drillDownModal('Operating Cash Out', buildCashFlowRows([], [], opExpenses, []), CF_DRILL_COLS)),
-        `${opExpenses.length} expenses`));
-      summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(avg), 'per expense', {
-        title: 'Avg OpEx per Item', formula: 'Total OpEx Out ÷ number of operating expense records.',
-        inputs: [
-          { label: 'Total OpEx Out', value: formatEUR(opExCashOut) },
-          { label: 'OpEx items', value: String(opExpenses.length) }
-        ],
-        source: 'analytics-cashflow.js:915 buildView() — kpiRow1 Operating Cash Out onClick handler (`avg`)'
-      }));
       // Largest single expense
       const largest = opExpenses.reduce((max, e) => {
         const v = toEUR(e.amount, e.currency, e.date);
         return v > max.v ? { v, e } : max;
       }, { v: 0, e: null });
-      summaryGrid.appendChild(mkSummaryBox('Largest Item',
-        largest.e ? mkDrillValue(formatEUR(largest.v), () => drillDownModal('Operating Cash Out — Largest Item', buildCashFlowRows([], [], [largest.e], []), CF_DRILL_COLS)) : '—',
-        largest.e?.description || largest.e?.category || ''));
-      body.appendChild(summaryGrid);
+
+      if (cmpData) {
+        const cmpAvg = cmpData.opExpenses.length > 0 ? cmpData.opExCashOut / cmpData.opExpenses.length : 0;
+        const cmpLargest = cmpData.opExpenses.reduce((max, e) => {
+          const v = toEUR(e.amount, e.currency, e.date);
+          return v > max.v ? { v, e } : max;
+        }, { v: 0, e: null });
+        body.appendChild(mkCmpGrid([
+          { label: 'Total OpEx Out',
+            curVal: mkDrillValue(formatEUR(opExCashOut), () => drillDownModal('Operating Cash Out', buildCashFlowRows([], [], opExpenses, []), CF_DRILL_COLS)),
+            cmpVal: mkDrillValue(formatEUR(cmpData.opExCashOut), () => drillDownModal(`Operating Cash Out — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows([], [], cmpData.opExpenses, []), CF_DRILL_COLS)) },
+          { label: 'Avg per Item',
+            curVal: formatEUR(avg),
+            cmpVal: formatEUR(cmpAvg),
+            explain: {
+              title: 'Avg OpEx per Item', formula: 'Total OpEx Out ÷ number of operating expense records.',
+              inputs: [
+                { label: 'Total OpEx Out', value: formatEUR(opExCashOut) },
+                { label: 'OpEx items', value: String(opExpenses.length) }
+              ],
+              source: 'analytics-cashflow.js:915 buildView() — kpiRow1 Operating Cash Out onClick handler (`avg`)'
+            } },
+          { label: 'Largest Item',
+            curVal: largest.e ? mkDrillValue(formatEUR(largest.v), () => drillDownModal('Operating Cash Out — Largest Item', buildCashFlowRows([], [], [largest.e], []), CF_DRILL_COLS)) : '—',
+            cmpVal: cmpLargest.e ? mkDrillValue(formatEUR(cmpLargest.v), () => drillDownModal(`Operating Cash Out — Largest Item — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows([], [], [cmpLargest.e], []), CF_DRILL_COLS)) : '—' },
+        ], 'Current Period', cmpRange?.label || ''));
+      } else {
+        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
+        summaryGrid.appendChild(mkSummaryBox('Total OpEx Out',
+          mkDrillValue(formatEUR(opExCashOut), () => drillDownModal('Operating Cash Out', buildCashFlowRows([], [], opExpenses, []), CF_DRILL_COLS)),
+          `${opExpenses.length} expenses`));
+        summaryGrid.appendChild(mkSummaryBox('Avg per Item', formatEUR(avg), 'per expense', {
+          title: 'Avg OpEx per Item', formula: 'Total OpEx Out ÷ number of operating expense records.',
+          inputs: [
+            { label: 'Total OpEx Out', value: formatEUR(opExCashOut) },
+            { label: 'OpEx items', value: String(opExpenses.length) }
+          ],
+          source: 'analytics-cashflow.js:915 buildView() — kpiRow1 Operating Cash Out onClick handler (`avg`)'
+        }));
+        summaryGrid.appendChild(mkSummaryBox('Largest Item',
+          largest.e ? mkDrillValue(formatEUR(largest.v), () => drillDownModal('Operating Cash Out — Largest Item', buildCashFlowRows([], [], [largest.e], []), CF_DRILL_COLS)) : '—',
+          largest.e?.description || largest.e?.category || ''));
+        body.appendChild(summaryGrid);
+      }
 
       // Breakdown by category
       const catMap = new Map();
@@ -1059,7 +1161,7 @@ function buildView() {
       ],
       source: 'analytics-cashflow.js getData() — `opCashFlow: cashIn - opExCashOut` (line 74)'
     },
-    onClick:   () => openOperatingCashFlowModal(curData)
+    onClick:   () => openOperatingCashFlowModal(curData, cmpData, cmpRange)
   }));
   wrap.appendChild(kpiRow1);
 
@@ -1083,7 +1185,7 @@ function buildView() {
       source: 'analytics-cashflow.js getData() — `investCashOut` / `sum(capExpenses)` (lines 68, 72)',
       note: 'Expenses flagged isCapEx() === true — renovation/capital spend, kept separate from Operating Cash Out.'
     },
-    onClick:     () => openInvestmentCashOutModal(curData)
+    onClick:     () => openInvestmentCashOutModal(curData, cmpData, cmpRange)
   }));
   kpiRow2.appendChild(mkKpiCard({
     label:     'Net Cash Flow',
@@ -1139,14 +1241,40 @@ function buildView() {
 
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
-      // Summary boxes
-      const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
-      summaryGrid.appendChild(mkSummaryBox('Avg Monthly Net', formatEUR(avgMonthlyNet), `over ${monthCount} active month${monthCount !== 1 ? 's' : ''}`));
-      summaryGrid.appendChild(mkSummaryBox('Positive Months', `${posMonths} / ${monthCount}`, posMonths === monthCount ? 'All surplus' : posMonths === 0 ? 'All deficit' : 'Mixed'));
-      summaryGrid.appendChild(mkSummaryBox('Total Net',
-        mkDrillValue(formatEUR(totalNet), () => drillDownModal('Net Cash Flow', buildCashFlowRows(payments, invoices, opExpenses, capExpenses), CF_DRILL_COLS)),
-        'across all months'));
-      body.appendChild(summaryGrid);
+      if (cmpData) {
+        const cmpMonthMap = new Map();
+        const addCmpMk = (mk, inAmt, opOut, capOut) => {
+          if (!mk) return;
+          const c = cmpMonthMap.get(mk) || { in: 0, opOut: 0, capOut: 0 };
+          c.in += inAmt; c.opOut += opOut; c.capOut += capOut;
+          cmpMonthMap.set(mk, c);
+        };
+        cmpData.payments   .forEach(p => addCmpMk(p.date?.slice(0, 7),              toEUR(p.amount, p.currency, p.date), 0, 0));
+        cmpData.invoices   .forEach(i => addCmpMk((i.issueDate || '').slice(0, 7),  toEUR(i.total, i.currency, i.issueDate), 0, 0));
+        cmpData.opExpenses .forEach(e => addCmpMk(e.date?.slice(0, 7),              0, toEUR(e.amount, e.currency, e.date), 0));
+        cmpData.capExpenses.forEach(e => addCmpMk(e.date?.slice(0, 7),              0, 0, toEUR(e.amount, e.currency, e.date)));
+        const cmpMonthEntries = [...cmpMonthMap.entries()].sort(([a], [b]) => a.localeCompare(b));
+        const cmpMonthCount = cmpMonthEntries.length;
+        const cmpTotalNet = cmpMonthEntries.reduce((s, [, d]) => s + d.in - d.opOut - d.capOut, 0);
+        const cmpPosMonths = cmpMonthEntries.filter(([, d]) => d.in - d.opOut - d.capOut >= 0).length;
+
+        body.appendChild(mkCmpGrid([
+          { label: 'Avg Monthly Net', curVal: formatEUR(avgMonthlyNet), cmpVal: formatEUR(cmpData.avgMonthlyNet) },
+          { label: 'Positive Months', curVal: `${posMonths} / ${monthCount}`, cmpVal: `${cmpPosMonths} / ${cmpMonthCount}` },
+          { label: 'Total Net',
+            curVal: mkDrillValue(formatEUR(totalNet), () => drillDownModal('Net Cash Flow', buildCashFlowRows(payments, invoices, opExpenses, capExpenses), CF_DRILL_COLS)),
+            cmpVal: mkDrillValue(formatEUR(cmpTotalNet), () => drillDownModal(`Net Cash Flow — ${cmpRange?.label || 'Comparison'}`, buildCashFlowRows(cmpData.payments, cmpData.invoices, cmpData.opExpenses, cmpData.capExpenses), CF_DRILL_COLS)) },
+        ], 'Current Period', cmpRange?.label || ''));
+      } else {
+        // Summary boxes
+        const summaryGrid = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:10px' });
+        summaryGrid.appendChild(mkSummaryBox('Avg Monthly Net', formatEUR(avgMonthlyNet), `over ${monthCount} active month${monthCount !== 1 ? 's' : ''}`));
+        summaryGrid.appendChild(mkSummaryBox('Positive Months', `${posMonths} / ${monthCount}`, posMonths === monthCount ? 'All surplus' : posMonths === 0 ? 'All deficit' : 'Mixed'));
+        summaryGrid.appendChild(mkSummaryBox('Total Net',
+          mkDrillValue(formatEUR(totalNet), () => drillDownModal('Net Cash Flow', buildCashFlowRows(payments, invoices, opExpenses, capExpenses), CF_DRILL_COLS)),
+          'across all months'));
+        body.appendChild(summaryGrid);
+      }
 
       // Monthly table
       const monthSection = el('div');
