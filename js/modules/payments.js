@@ -577,9 +577,10 @@ function buildAllPayments(wrap) {
 // payment records in one batch — shared by the single "Mark Paid" button
 // below and by tenants.js's "mark this backfilled lease as paid" prompt.
 export function recordRentPaymentsBulk(prop, entries) {
+  const created = [];
   runBatch(() => {
     for (const entry of entries) {
-      upsert('payments', {
+      const pay = {
         id: newId('pay'),
         propertyId: prop.id,
         tenantId: entry.tenantId || null,
@@ -591,16 +592,44 @@ export function recordRentPaymentsBulk(prop, entries) {
         source: 'manual',
         stream: 'long_term_rental',
         notes: `Rent ${entry.monthKey}`
-      });
+      };
+      upsert('payments', pay);
+      created.push(pay);
     }
   });
-  return entries.length;
+  return created;
 }
 
-function recordRentPayment(prop, entry, onDone) {
-  recordRentPaymentsBulk(prop, [entry]);
+// Opens a small "add a comment?" modal after a payment is marked paid.
+// Resolves to the trimmed comment text, or null if the user skips/closes.
+function promptForComment() {
+  return new Promise(resolve => {
+    let resolved = false;
+    const settle = v => { if (!resolved) { resolved = true; resolve(v); } };
+    const notesI = textarea({ placeholder: 'Optional comment about this payment...' });
+    const skipBtn = button('Skip', { variant: 'ghost' });
+    const saveBtn = button('Save Comment', { variant: 'primary' });
+    const { close } = openModal({
+      title: 'Add a comment?',
+      body: formRow('Comment', notesI),
+      footer: [skipBtn, saveBtn],
+      onClose: () => settle(null)
+    });
+    skipBtn.onclick = () => { close(); settle(null); };
+    saveBtn.onclick = () => { close(); settle(notesI.value.trim()); };
+  });
+}
+
+async function recordRentPayment(prop, entry, onDone) {
+  const [created] = recordRentPaymentsBulk(prop, [entry]);
   toast('Payment recorded', 'success');
   if (onDone) onDone();
+  const comment = await promptForComment();
+  if (comment) {
+    upsert('payments', { ...created, notes: comment });
+    toast('Comment saved', 'success');
+    if (onDone) onDone();
+  }
 }
 
 function buildScheduleSection(wrap) {
@@ -816,6 +845,7 @@ function buildScheduleSection(wrap) {
       { label: 'Amount', right: true, tip: 'Monthly rent amount from the tenant\'s lease, in the lease currency.' },
       { label: 'Cur.', tip: 'Currency the lease amount is denominated in.' },
       { label: 'Status', tip: 'Paid (a matching payment record exists), Overdue (past due date and unpaid), Due this month, or Upcoming.' },
+      { label: 'Comment', tip: 'Free-text note on the linked payment record, if one exists.' },
       { label: '' }
     ];
     SCHED_HEADERS.forEach(col => htr.appendChild(mkTh(col)));
@@ -865,6 +895,8 @@ function buildScheduleSection(wrap) {
           : isThisMonth ? el('span', { class: 'badge warning' }, 'Due this month')
           : el('span', { class: 'badge' }, 'Upcoming')
         ));
+        const linkedForNotes = s.linkedPaymentId ? byId('payments', s.linkedPaymentId) : null;
+        tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis' }, linkedForNotes?.notes || '—'));
         const td = el('td', { class: 'right', style: 'white-space:nowrap' });
         if (!s.paid) {
           td.appendChild(button('Mark Paid', { variant: 'sm primary', onClick: () => recordRentPayment(prop, s, render) }));
@@ -913,7 +945,7 @@ function buildScheduleSection(wrap) {
           statusS.appendChild(opt);
         }
 
-        const notesI = el('input', { type: 'text', class: 'input', value: linked?.notes || `Rent ${s.monthKey}`, placeholder: 'Notes', style: 'width:100%;margin-bottom:6px' });
+        const notesI = el('input', { type: 'text', class: 'input', value: linked?.notes || `Rent ${s.monthKey}`, placeholder: 'Notes', style: 'width:100%' });
 
         // `{ once: true }` — renderEditRow() re-adds this listener on the same
         // persistent `tr` every time Edit is clicked, and without `once` each
@@ -948,13 +980,13 @@ function buildScheduleSection(wrap) {
         tr.appendChild(el('td', {}, amtI));
         tr.appendChild(el('td', {}, curS));
         tr.appendChild(el('td', {}, statusS));
-        const lastTd = el('td', {});
-        lastTd.appendChild(notesI);
+        tr.appendChild(el('td', {}, notesI));
+        const actionsTd = el('td', {});
         const btnRow = el('div', { class: 'flex gap-4', style: 'justify-content:flex-end' });
         btnRow.appendChild(cancelBtn);
         btnRow.appendChild(saveBtn);
-        lastTd.appendChild(btnRow);
-        tr.appendChild(lastTd);
+        actionsTd.appendChild(btnRow);
+        tr.appendChild(actionsTd);
       };
 
       renderViewRow();
