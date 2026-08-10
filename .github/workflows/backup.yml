@@ -33,13 +33,47 @@ jobs:
               return;
             }
 
+            // The Contents API only inlines `content` for files under ~1MB —
+            // past that it omits `content` entirely and expects a follow-up
+            // fetch of `download_url` instead. Mirrors fetchDb()'s fallback
+            // in js/core/github.js, which the app itself already relies on.
+            // Without this, every run silently failed with "Unexpected end
+            // of JSON input" the moment db.json crossed that size (it's
+            // currently ~2MB) — Buffer.from(undefined, 'base64') decodes to
+            // an empty string, and JSON.parse('') throws exactly that error.
+            let text;
+            if (dbFile.content) {
+              text = Buffer.from(dbFile.content, 'base64').toString('utf8');
+            } else if (dbFile.download_url) {
+              const res = await fetch(dbFile.download_url);
+              if (!res.ok) {
+                core.setFailed(`Failed to download data/db.json via download_url (${res.status})`);
+                return;
+              }
+              text = await res.text();
+            } else {
+              core.setFailed('data/db.json: Contents API returned neither content nor download_url');
+              return;
+            }
+
             let db;
             try {
-              const text = Buffer.from(dbFile.content, 'base64').toString('utf8');
               db = JSON.parse(text);
             } catch (e) {
               core.setFailed(`data/db.json is not valid JSON: ${e.message}`);
               return;
+            }
+
+            // Passive tripwire: this workflow has no access to the app's
+            // encryption key (by design) and can't encrypt/decrypt anything
+            // itself, so it can only mirror whatever state db.json is
+            // already in. If a key is meant to be in use but db.json somehow
+            // isn't encrypted right now, flag it loudly — silently backing
+            // up plaintext without anyone noticing is the actual risk here.
+            const looksEncrypted = db && typeof db === 'object' && db.enc === 1
+              && typeof db.iv === 'string' && typeof db.ct === 'string';
+            if (!looksEncrypted) {
+              core.warning('data/db.json does not look like an encrypted envelope ({enc:1,iv,ct}) — this backup will be stored as PLAIN JSON. If encryption is supposed to be in use, check why the last push to db.json went out unencrypted.');
             }
 
             // Strip token — must never appear in backup files
