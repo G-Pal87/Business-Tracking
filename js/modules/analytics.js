@@ -781,6 +781,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
 // ── Insights Banner ───────────────────────────────────────────────────────────
 function buildInsights(cur, cmp, cmpRange, start, end) {
   const { totalRev, expenseRatio, overdueCount, overdueEur } = cur;
+  const cl = cmpRange?.label || '';
 
   const section = el('div', { class: 'card mb-16' });
   section.appendChild(el('div', { class: 'card-header' },
@@ -800,7 +801,17 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
       const bg    = delta > 0 ? 'rgba(34,197,94,0.06)' : delta < 0 ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.04)';
       insights.push({ icon, color, bg,
         title: 'Revenue vs Prior Period',
-        body: `Revenue ${sign}${delta.toFixed(1)}% vs ${cmpRange.label} — ${formatEUR(cmp.totalRev)} → ${formatEUR(totalRev)}.`
+        body: `Revenue ${sign}${delta.toFixed(1)}% vs ${cmpRange.label} — ${formatEUR(cmp.totalRev)} → ${formatEUR(totalRev)}.`,
+        onClick: () => {
+          const body = el('div');
+          body.appendChild(mkCmpGrid([
+            { label: 'Total Revenue',
+              curVal: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Total Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.totalRev), () => drillDownModal(`Total Revenue — ${cl}`, drillRevRows(cmp.payments, cmp.invoices), REV_COLS)) }
+          ], 'Current Period', cl));
+          body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:-8px' }, `Change: ${sign}${delta.toFixed(1)}% vs ${cl}`));
+          openModal({ title: 'Revenue vs Prior Period', body });
+        }
       });
     }
   }
@@ -820,7 +831,26 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
     }
     insights.push({ icon, color, bg,
       title: 'Expense Ratio',
-      body: `OpEx is ${expenseRatio.toFixed(1)}% of revenue.${trendStr} ${expenseRatio > 80 ? 'High expense burden — review costs.' : expenseRatio > 60 ? 'Moderate expenses — monitor trend.' : 'Healthy expense level.'}`
+      body: `OpEx is ${expenseRatio.toFixed(1)}% of revenue.${trendStr} ${expenseRatio > 80 ? 'High expense burden — review costs.' : expenseRatio > 60 ? 'Moderate expenses — monitor trend.' : 'Healthy expense level.'}`,
+      onClick: () => {
+        const body = el('div');
+        if (cmp && trend !== null) {
+          body.appendChild(mkCmpGrid([
+            { label: 'Operating Expenses',
+              curVal: mkDrillValue(formatEUR(cur.opEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.opEx), () => drillDownModal(`Operating Expenses — ${cl}`, drillExpRows(cmp.opExpenses), EXP_COLS)) },
+            { label: 'Revenue', curVal: formatEUR(totalRev), cmpVal: formatEUR(cmp.totalRev) },
+            { label: 'Expense Ratio', curVal: `${expenseRatio.toFixed(1)}%`, cmpVal: `${cmp.expenseRatio.toFixed(1)}%` }
+          ], 'Current Period', cl));
+        } else {
+          body.appendChild(mkSummaryGrid([
+            { label: 'Operating Expenses', value: mkDrillValue(formatEUR(cur.opEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)) },
+            { label: 'Revenue',            value: formatEUR(totalRev) },
+            { label: 'Expense Ratio',      value: `${expenseRatio.toFixed(1)}%` }
+          ], 3));
+        }
+        openModal({ title: 'Expense Ratio', body });
+      }
     });
   }
 
@@ -831,7 +861,8 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
       color: 'var(--danger, #ef4444)',
       bg:    'rgba(239,68,68,0.06)',
       title: 'Overdue Invoices',
-      body:  `${overdueCount} overdue invoice${overdueCount !== 1 ? 's' : ''} totalling ${formatEUR(overdueEur)}. Follow up with clients to improve cash flow.`
+      body:  `${overdueCount} overdue invoice${overdueCount !== 1 ? 's' : ''} totalling ${formatEUR(overdueEur)}. Follow up with clients to improve cash flow.`,
+      onClick: () => drillDownModal('Overdue Invoices', drillRevRows([], cur.overdueInvoices), REV_COLS)
     });
   } else if (cur.outTotal > 0) {
     insights.push({
@@ -839,7 +870,8 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
       color: 'var(--success, #22c55e)',
       bg:    'rgba(34,197,94,0.06)',
       title: 'Overdue Status',
-      body:  `No overdue invoices. ${formatEUR(cur.outTotal)} outstanding invoices are all within due dates.`
+      body:  `No overdue invoices. ${formatEUR(cur.outTotal)} outstanding invoices are all within due dates.`,
+      onClick: () => drillDownModal('Outstanding Invoices', drillRevRows([], cur.outstandingInvoices), REV_COLS)
     });
   }
 
@@ -856,7 +888,16 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
       const bg    = accuracy >= 90 ? 'rgba(34,197,94,0.06)' : accuracy >= 70 ? 'rgba(245,158,11,0.06)' : 'rgba(239,68,68,0.06)';
       insights.push({ icon, color, bg,
         title: 'Forecast Accuracy',
-        body:  `Revenue is at ${accuracy.toFixed(0)}% of the ${year} annual target (${formatEUR(cur.totalRev)} of ${formatEUR(fcRevTarget)}).`
+        body:  `Revenue is at ${accuracy.toFixed(0)}% of the ${year} annual target (${formatEUR(cur.totalRev)} of ${formatEUR(fcRevTarget)}).`,
+        onClick: () => {
+          const body = el('div');
+          body.appendChild(mkSummaryGrid([
+            { label: 'Annual Target', value: formatEUR(fcRevTarget) },
+            { label: 'Actual Revenue', value: mkDrillValue(formatEUR(cur.totalRev), () => drillDownModal('Actual Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)) },
+            { label: 'Accuracy',       value: `${accuracy.toFixed(0)}%` }
+          ], 3));
+          openModal({ title: `Forecast Accuracy — ${year}`, body });
+        }
       });
     }
   }
@@ -872,8 +913,10 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
 
   for (const ins of insights) {
     const block = el('div', {
-      style: `padding:10px 12px;border-radius:4px;border-left:3px solid ${ins.color};background:${ins.bg}`
+      style: `padding:10px 12px;border-radius:4px;border-left:3px solid ${ins.color};background:${ins.bg}` +
+             (ins.onClick ? ';cursor:pointer' : '')
     });
+    if (ins.onClick) { block.title = 'Click for breakdown'; block.onclick = ins.onClick; }
     const titleRow = el('div', { style: 'display:flex;align-items:center;gap:6px;margin-bottom:4px' });
     titleRow.appendChild(el('span', { style: 'font-size:14px' }, ins.icon));
     titleRow.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted)' }, ins.title));
