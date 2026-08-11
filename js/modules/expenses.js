@@ -657,19 +657,36 @@ function openForm(existing, defaults = {}, onSave = null) {
   };
 
   const body = el('div', {});
-  // "Allocated To" — a specific property, or a business line (stream) for
-  const COMPANY_VALUE = '__company__';
-  const allocS = el('select', { class: 'select' });
-  {
-    const propOg = el('optgroup', { label: 'Properties' });
-    for (const p of (state.db.properties || [])) propOg.appendChild(el('option', { value: p.id }, p.name));
-    if (propOg.children.length) allocS.appendChild(propOg);
-    allocS.appendChild(el('option', { value: COMPANY_VALUE }, 'Company'));
-  }
-  allocS.value = r.propertyId ? r.propertyId : COMPANY_VALUE;
-  const allocPid = () => allocS.value === COMPANY_VALUE ? '' : allocS.value;
   const catS = buildCategorySelect(r.category);
   const resolved = resolveExpenseFields(r);
+
+  // "Allocated To" — a specific property, or Company. Which options are valid
+  // depends on the category: salary, social contributions, VAT, reimbursement
+  // and STR fee are company-wide costs (not tied to one apartment), so those
+  // categories only ever offer "Company" here; every other category is a
+  // property-operational cost and only offers the property list.
+  const COMPANY_VALUE = '__company__';
+  const COMPANY_ONLY_CATEGORIES = new Set(['vat', 'reimbursement', 'salary', 'social_contributions', 'str_fee']);
+  const allocS = el('select', { class: 'select' });
+  const rebuildAllocOptions = () => {
+    const prevValue = allocS.value;
+    allocS.innerHTML = '';
+    if (COMPANY_ONLY_CATEGORIES.has(catS.value)) {
+      allocS.appendChild(el('option', { value: COMPANY_VALUE }, 'Company'));
+      allocS.value = COMPANY_VALUE;
+    } else {
+      const propOg = el('optgroup', { label: 'Properties' });
+      for (const p of (state.db.properties || [])) propOg.appendChild(el('option', { value: p.id }, p.name));
+      allocS.appendChild(propOg);
+      // Keep the current selection if it's still a valid property; otherwise
+      // fall back to the record's own propertyId, then the first property.
+      const candidate = prevValue && prevValue !== COMPANY_VALUE ? prevValue : (r.propertyId || '');
+      const valid = [...propOg.children].some(o => o.value === candidate);
+      allocS.value = valid ? candidate : (propOg.children[0]?.value || '');
+    }
+  };
+  rebuildAllocOptions();
+  const allocPid = () => allocS.value === COMPANY_VALUE ? '' : allocS.value;
   const accountingTypeS = select(Object.entries(ACCOUNTING_TYPES).map(([v, m]) => ({ value: v, label: m.label })), resolved.accountingType);
   const costCategoryS   = select(Object.entries(COST_CATEGORIES).map(([v, m]) => ({ value: v, label: m.label })), resolved.costCategory);
   const recurrenceS     = select(Object.entries(RECURRENCE_TYPES).map(([v, m]) => ({ value: v, label: m.label })), resolved.recurrence);
@@ -768,8 +785,8 @@ function openForm(existing, defaults = {}, onSave = null) {
 
   const accountingTypeRow = el('div', { class: 'form-row horizontal' }, formRow('Expense Type', accountingTypeS));
 
-  body.appendChild(formRow('Allocated To', allocS));
   body.appendChild(formRow('Category', catS));
+  body.appendChild(formRow('Allocated To', allocS));
   body.appendChild(accountingTypeRow);
   body.appendChild(invRow);
   body.appendChild(assocToggle);
@@ -920,6 +937,12 @@ function openForm(existing, defaults = {}, onSave = null) {
   };
   syncAccountingTypeRow();
 
+  const syncFromAlloc = () => {
+    const p = byId('properties', allocPid());
+    if (p) currencyS.value = p.currency;
+    autoFillAmount();
+    updateInvItemOpts();
+  };
   catS.onchange = () => {
     if (catS.value === 'renovation') {
       accountingTypeS.value = 'capex';
@@ -930,17 +953,16 @@ function openForm(existing, defaults = {}, onSave = null) {
     }
     syncAccountingTypeRow();
     syncInventoryRow();
+    // The set of valid "Allocated To" options depends on the category —
+    // rebuild it, then resync currency/inventory-item options off whatever
+    // it landed on, same as a direct allocS change would.
+    rebuildAllocOptions();
+    syncFromAlloc();
     if (catS.value === 'inventory') syncInventoryAmount();
-    else autoFillAmount();
   };
   vendorS.onchange = autoFillAmount;
   dateI.onchange   = autoFillAmount;
-  allocS.onchange = () => {
-    const p = byId('properties', allocPid());
-    if (p) currencyS.value = p.currency;
-    autoFillAmount();
-    updateInvItemOpts();
-  };
+  allocS.onchange = syncFromAlloc;
   invItemS.onchange = syncInventoryAmount;
   invQtyI.oninput   = syncInventoryAmount;
 
