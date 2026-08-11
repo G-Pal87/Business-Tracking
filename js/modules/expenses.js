@@ -321,8 +321,11 @@ function build() {
     const catLabel = cat?.label || r.category;
     const vendorPerson = vendorNameOf(r);
     const eur = toEUR(r.amount, r.currency);
-    // No property → business-line allocation: show the stream label instead of "-"
-    const allocName = prop?.name || (r.stream ? (STREAMS[r.stream]?.label || 'Company') : 'Company');
+    // No property → allocated to Company. (Previously fell back to the
+    // expense's `stream` field, e.g. "Short-term Rentals" — a leftover
+    // default from the form, not a meaningful allocation once Company was
+    // chosen, and confusingly showed up under a column labeled "Property".)
+    const allocName = prop?.name || 'Company';
     return {
       r, res, prop, cat, catLabel, vendorPerson, eur,
       propName: allocName,
@@ -336,7 +339,7 @@ function build() {
     d => d.r.date, d => d.propName, d => d.catLabel, d => (d.r.description || ''), d => d.vendorPerson, d => d.eur, d => d.eur
   ];
   const HEADERS = [
-    ['Date', ''], ['Property', ''], ['Category', ''], ['Description', ''], ['Vendor / Person', ''],
+    ['Date', ''], ['Allocated To', ''], ['Category', ''], ['Description', ''], ['Vendor / Person', ''],
     ['Amount', 'right'], ['EUR', 'right']
   ];
 
@@ -505,7 +508,7 @@ function build() {
   // Drilldown helpers shared by both charts
   const drillCols = [
     { key: 'date',          label: 'Date',        format: v => fmtDate(v) },
-    { key: 'property',      label: 'Property' },
+    { key: 'property',      label: 'Allocated To' },
     { key: 'category',      label: 'Category' },
     { key: 'accountingType',label: 'Type' },
     { key: 'recurrence',    label: 'Recurrence' },
@@ -518,7 +521,7 @@ function build() {
       const res = resolveExpenseFields(r);
       return {
         date:          r.date,
-        property:      byId('properties', r.propertyId)?.name || '—',
+        property:      byId('properties', r.propertyId)?.name || 'Company',
         category:      EXPENSE_CATEGORIES[r.category]?.label || r.category,
         accountingType: ACCOUNTING_TYPES[res.accountingType]?.label || res.accountingType,
         recurrence:    RECURRENCE_TYPES[res.recurrence]?.label || res.recurrence,
@@ -583,7 +586,7 @@ function build() {
     const propLabels = [], propData = [], propIds = [];
     const propColors = ['#6366f1', '#8b5cf6', '#14b8a6', '#ec4899', '#f59e0b', '#3b82f6'];
     for (const [id, val] of [...byProp.entries()].sort((a, b) => b[1] - a[1])) {
-      propLabels.push(byId('properties', id)?.name || 'Unknown');
+      propLabels.push(byId('properties', id)?.name || 'Company');
       propData.push(Math.round(val));
       propIds.push(id);
     }
@@ -594,7 +597,7 @@ function build() {
       onClickItem: (_label, idx) => {
         const pid = propIds[idx];
         drillDownModal(
-          `Expenses — ${byId('properties', pid)?.name || 'Unknown'}`,
+          `Expenses — ${byId('properties', pid)?.name || 'Company'}`,
           toDrillRows(bkRows.filter(r => r.propertyId === pid)),
           drillCols
         );
