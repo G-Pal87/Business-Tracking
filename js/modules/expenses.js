@@ -661,29 +661,38 @@ function openForm(existing, defaults = {}, onSave = null) {
   const resolved = resolveExpenseFields(r);
 
   // "Allocated To" — a specific property, or Company. Which options are valid
-  // depends on the category: salary, social contributions, GESY, VAT,
+  // depends on the category: salary, social contributions, GESY,
   // reimbursement and STR fee are company-wide costs (not tied to one
-  // apartment), so those categories only ever offer "Company" here; every
-  // other category is a property-operational cost and only offers the
-  // property list.
+  // apartment), so those categories only ever offer "Company" here. VAT can
+  // legitimately be either (a property's own rental VAT, or a company-level
+  // filing), so it offers both. Every other category is a property-
+  // operational cost and only offers the property list.
   const COMPANY_VALUE = '__company__';
-  const COMPANY_ONLY_CATEGORIES = new Set(['vat', 'reimbursement', 'salary', 'social_contributions', 'gesy', 'str_fee']);
+  const COMPANY_ONLY_CATEGORIES = new Set(['reimbursement', 'salary', 'social_contributions', 'gesy', 'str_fee']);
+  const COMPANY_AND_PROPERTY_CATEGORIES = new Set(['vat']);
   const allocS = el('select', { class: 'select' });
   const rebuildAllocOptions = () => {
     const prevValue = allocS.value;
     allocS.innerHTML = '';
-    if (COMPANY_ONLY_CATEGORIES.has(catS.value)) {
-      allocS.appendChild(el('option', { value: COMPANY_VALUE }, 'Company'));
-      allocS.value = COMPANY_VALUE;
-    } else {
-      const propOg = el('optgroup', { label: 'Properties' });
+    const showProperties = !COMPANY_ONLY_CATEGORIES.has(catS.value);
+    const showCompany    = COMPANY_ONLY_CATEGORIES.has(catS.value) || COMPANY_AND_PROPERTY_CATEGORIES.has(catS.value);
+    let propOg = null;
+    if (showProperties) {
+      propOg = el('optgroup', { label: 'Properties' });
       for (const p of (state.db.properties || [])) propOg.appendChild(el('option', { value: p.id }, p.name));
       allocS.appendChild(propOg);
-      // Keep the current selection if it's still a valid property; otherwise
-      // fall back to the record's own propertyId, then the first property.
-      const candidate = prevValue && prevValue !== COMPANY_VALUE ? prevValue : (r.propertyId || '');
-      const valid = [...propOg.children].some(o => o.value === candidate);
-      allocS.value = valid ? candidate : (propOg.children[0]?.value || '');
+    }
+    if (showCompany) allocS.appendChild(el('option', { value: COMPANY_VALUE }, 'Company'));
+
+    if (!showProperties) {
+      allocS.value = COMPANY_VALUE;
+    } else {
+      // Keep the current selection if it's still valid (a real property, or
+      // Company when that's still offered); otherwise fall back to the
+      // record's own propertyId, then the first property.
+      const candidate = prevValue && (prevValue !== COMPANY_VALUE || showCompany) ? prevValue : (r.propertyId || '');
+      const valid = candidate === COMPANY_VALUE ? showCompany : [...propOg.children].some(o => o.value === candidate);
+      allocS.value = valid ? candidate : (propOg.children[0]?.value || (showCompany ? COMPANY_VALUE : ''));
     }
   };
   rebuildAllocOptions();
