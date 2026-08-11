@@ -25,6 +25,7 @@ export const EXPENSE_CATEGORIES = {
   reimbursement:         { label: 'Reimbursement',          icon: 'Rb', color: '#a855f7' },
   salary:               { label: 'Salary',                icon: 'S',  color: '#818cf8' },
   social_contributions: { label: 'Social Contributions',  icon: 'SC', color: '#34d399' },
+  gesy:                 { label: 'GESY',                  icon: 'G',  color: '#fbbf24' },
   eurolife:             { label: 'Eurolife',              icon: 'EL', color: '#60a5fa' },
   str_fee:               { label: 'STR Fee',                icon: 'SF', color: '#fb923c' },
   owner_rent:            { label: 'Owner Rent',             icon: 'OR', color: '#2dd4bf' },
