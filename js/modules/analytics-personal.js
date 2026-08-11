@@ -138,9 +138,11 @@ function getPersonData(person, start, end, months) {
   );
   const salary = salaryExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
-  // Social contributions (company cost — shown for context)
+  // GESY (company cost — shown for context, not personal income). Distinct
+  // from the generic 'social_contributions' category, which is excluded from
+  // every income bucket below rather than counted anywhere on this dashboard.
   const gesyExps = listActive('expenses').filter(e =>
-    e.category === 'social_contributions' && matchesPerson(e) && inRange(e.date)
+    e.category === 'gesy' && matchesPerson(e) && inRange(e.date)
   );
   const gesyTotal = gesyExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
@@ -160,7 +162,7 @@ function getPersonData(person, start, end, months) {
   const piExps = listActive('expenses').filter(e =>
     matchesPerson(e) &&
     e.countsAsPersonalIncome &&
-    !['salary', 'reimbursement', 'social_contributions', 'str_fee'].includes(e.category) &&
+    !['salary', 'reimbursement', 'social_contributions', 'gesy', 'str_fee'].includes(e.category) &&
     inRange(e.date)
   );
   const piExpTotal = piExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
@@ -502,7 +504,7 @@ function showPersonModal(label, data, cmp) {
   }
   if (data.gesyTotal > 0) {
     body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);padding:4px 0' },
-      `ℹ Social contributions (GESY) paid by company: ${formatEUR(data.gesyTotal)} — employer cost, not personal income`
+      `ℹ GESY paid by company: ${formatEUR(data.gesyTotal)} — employer cost, not personal income`
     ));
   }
   openModal({ title: `${label} — Full Gross Income`, body, large: true });
@@ -906,7 +908,7 @@ function showGesyModal(youData, ritaData) {
     { label: 'GESY Total',            value: mkDrillValue(formatEUR(gesyTotal), () =>
         drillDownModal('GESY — Combined', drillExpRows([...youData.gesyExps, ...ritaData.gesyExps]), EXP_COLS)),
       explain: {
-        title: 'GESY Total', formula: 'Sum of "social_contributions" category expenses linked to each director, both directors combined',
+        title: 'GESY Total', formula: 'Sum of "gesy" category expenses linked to each director, both directors combined',
         inputs: [
           { label: `${YOU_LABEL} GESY`, value: formatEUR(youData.gesyTotal) },
           { label: `${RITA_LABEL} GESY`, value: formatEUR(ritaData.gesyTotal) }
@@ -1009,7 +1011,7 @@ function showSalaryModal(label, data, cmp) {
     source: 'analytics-personal.js:107 getPersonData() — `salary`'
   };
   const gesyExplain = {
-    title: 'GESY (company cost)', formula: 'Sum of expenses with category "social_contributions" linked to this person, in the selected period.',
+    title: 'GESY (company cost)', formula: 'Sum of expenses with category "gesy" linked to this person, in the selected period.',
     inputs: [{ label: 'Total', value: formatEUR(data.gesyTotal) }],
     source: 'analytics-personal.js:113 getPersonData() — `gesyTotal`',
     note: 'Employer cost shown for context — not personal income, not included in Total Salary.'
@@ -1661,7 +1663,7 @@ function buildPersonColumn(label, color, data, months, cmpData) {
         const exps = data.piExps;
         const cmpExps = cmp ? cmp.piExps : [];
         const piTotalExplain = {
-          title: 'Total', formula: 'Sum of expenses linked to this person, flagged countsAsPersonalIncome, excluding salary/reimbursement/social_contributions/str_fee (counted elsewhere), dated within the selected period.',
+          title: 'Total', formula: 'Sum of expenses linked to this person, flagged countsAsPersonalIncome, excluding salary/reimbursement/social_contributions/gesy/str_fee (counted elsewhere), dated within the selected period.',
           inputs: [{ label: 'Records', value: String(exps.length) }, { label: 'Total', value: formatEUR(data.piExpTotal) }],
           source: 'analytics-personal.js:128 getPersonData() — `piExpTotal`'
         };
@@ -1871,7 +1873,7 @@ function buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange) {
     signals.push({
       title:    'Employer GESY Cost',
       severity: 'Note',
-      text:     `Company paid ${formatEUR(gesyTotal)} in GESY / social contributions on top of salaries — the true employment cost is ${formatEUR(salary + gesyTotal)}.`,
+      text:     `Company paid ${formatEUR(gesyTotal)} in GESY on top of salaries — the true employment cost is ${formatEUR(salary + gesyTotal)}.`,
       onClick:  () => showGesyModal(youData, ritaData)
     });
   }
