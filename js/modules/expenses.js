@@ -666,13 +666,13 @@ function openForm(existing, defaults = {}, onSave = null) {
   // "Allocated To" — a specific property, or Company. Which options are valid
   // depends on the category: salary, social contributions, GESY,
   // reimbursement and STR fee are company-wide costs (not tied to one
-  // apartment), so those categories only ever offer "Company" here. VAT can
-  // legitimately be either (a property's own rental VAT, or a company-level
-  // filing), so it offers both. Every other category is a property-
-  // operational cost and only offers the property list.
+  // apartment), so those categories only ever offer "Company" here. VAT and
+  // Other can legitimately be either (a property's own cost, or a
+  // company-level one), so they offer both. Every other category is a
+  // property-operational cost and only offers the property list.
   const COMPANY_VALUE = '__company__';
   const COMPANY_ONLY_CATEGORIES = new Set(['reimbursement', 'salary', 'social_contributions', 'gesy', 'str_fee']);
-  const COMPANY_AND_PROPERTY_CATEGORIES = new Set(['vat']);
+  const COMPANY_AND_PROPERTY_CATEGORIES = new Set(['vat', 'other']);
   const allocS = el('select', { class: 'select' });
   const rebuildAllocOptions = () => {
     const prevValue = allocS.value;
