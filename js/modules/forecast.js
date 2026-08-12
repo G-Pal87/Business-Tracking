@@ -886,7 +886,7 @@ function getActualRevRows(entityId, type, monthKey) {
       source: byId('clients', i.clientId)?.name || '—',
       ref:    i.invoiceNumber || '—',
       code:   '',
-      eur:    toEUR(i.total, i.currency, i.issueDate)
+      eur:    toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)
     })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }
   return listActivePayments().filter(p =>

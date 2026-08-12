@@ -92,7 +92,8 @@ function getData(start, end) {
     return {
       ...i,
       _resolvedOwner: i.owner || prop?.owner || 'both',
-      _eur: toEUR(i.total, i.currency, i.issueDate)
+      // VAT-exclusive: this is a revenue/profit split, not a cash figure — VAT collected isn't the owners' revenue.
+      _eur: toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)
     };
   });
 
