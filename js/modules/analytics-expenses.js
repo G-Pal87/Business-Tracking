@@ -98,10 +98,11 @@ function getRevenue(start, end) {
   const rentals = listActivePayments()
     .filter(p => p.status === 'paid' && (p.date || '') >= start && (p.date || '') <= end && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p))
     .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-  // Include paid service invoices so expense ratio reflects total revenue, not rental-only
+  // Include paid service invoices so expense ratio reflects total revenue, not rental-only.
+  // VAT-exclusive (subtotal) — this feeds Expense Ratio, a P&L figure, and VAT collected isn't revenue.
   const services = listActive('invoices')
     .filter(i => i.status === 'paid' && (i.issueDate || '') >= start && (i.issueDate || '') <= end && mStream(i) && mOwner(i) && mClient(i))
-    .reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+    .reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), 0);
   return { total: rentals + services, rentals, services };
 }
 
