@@ -160,7 +160,9 @@ function buildRatesFeed(db, prop) {
   return {
     schema: 'str-daily-rates/v1',
     generatedAt: new Date().toISOString(),
-    property: { id: prop.id, name: prop.name || '', currency: ccy, airbnbCalUrl: prop.airbnbCalUrl || '' },
+    // airbnbCalUrl deliberately omitted from this public feed — it's a secret
+    // access token for the property's live Airbnb calendar, not public data.
+    property: { id: prop.id, name: prop.name || '', currency: ccy, airbnbCalUrl: '' },
     guestFeePct: feePct,
     taxPct,
     cleaningFee: Math.round(cleanFee),
@@ -187,7 +189,7 @@ function main() {
     fs.writeFileSync(path.join(OUT_DIR, file), JSON.stringify(feed, null, 2) + '\n');
     manifest.properties.push({
       id: p.id, name: p.name || '', currency: p.currency || 'EUR',
-      file, airbnbCalUrl: p.airbnbCalUrl || '', nights: feed.rates.length
+      file, nights: feed.rates.length
     });
     console.log(`wrote ${file} (${feed.rates.length} nights)`);
   }
