@@ -1114,7 +1114,9 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
   return {
     schema: 'str-daily-rates/v1',
     generatedAt: new Date().toISOString(),
-    property: { id: prop?.id || propertyId, name: prop?.name || '', currency: ccy, airbnbCalUrl: prop?.airbnbCalUrl || '' },
+    // airbnbCalUrl deliberately omitted from this public feed — it's a secret
+    // access token for the property's live Airbnb calendar, not public data.
+    property: { id: prop?.id || propertyId, name: prop?.name || '', currency: ccy, airbnbCalUrl: '' },
     guestFeePct: feePct,
     taxPct,
     cleaningFee: Math.round(cleanFee),                       // flat cleaning fee, charged once per booking
