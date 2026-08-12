@@ -10,6 +10,10 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
+  <!-- frame-ancestors/report-uri are deliberately omitted: they're no-ops in a
+       meta-tag CSP (only take effect as a real HTTP header), and a static site
+       with no server can't send one — GitHub Pages doesn't support custom headers. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.github.com https://corsproxy.io https://api.allorigins.win https://cors.eu.org; worker-src 'self' blob:; base-uri 'self'; object-src 'none'">
   <title>Business Tracking</title>
   <link rel="icon" href="assets/favicon.png?v=4">
   <link rel="apple-touch-icon" href="assets/favicon.png?v=4">
@@ -19,11 +23,16 @@
   <link rel="stylesheet" href="css/base.css?v=20260526">
   <link rel="stylesheet" href="css/layout.css?v=20260526">
   <link rel="stylesheet" href="css/components.css?v=20260526">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <!-- chart.js has no pre-built .min.js in the npm package, so jsdelivr would minify
+       it on the fly — bytes that can't be pinned with a reproducible SRI hash. Using
+       the unminified UMD build instead, which ships as-is and hashes reproducibly. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>
+  <!-- pinned to 5.1.1 (was the unversioned "@5" tag) so the integrity hash below
+       stays valid — an unpinned major version can resolve to different bytes over time. -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js" integrity="sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG" crossorigin="anonymous"></script>
 </head>
 <body>
   <div id="app">
@@ -62,10 +71,6 @@
   <div id="modal-overlay" class="modal-overlay"></div>
   <div id="toasts"></div>
 
-  <script type="module">
-    const _v = Date.now();
-    window._appV = _v;
-    import(`./js/app.js?v=${_v}`);
-  </script>
+  <script type="module" src="js/bootstrap.js"></script>
 </body>
 </html>

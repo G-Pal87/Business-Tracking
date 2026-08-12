@@ -332,7 +332,9 @@ function buildRatesFeed(db, propertyId) {
   return {
     schema: 'str-daily-rates/v1',
     generatedAt: new Date().toISOString(),
-    property: { id: prop?.id || propertyId, name: prop?.name || '', currency: ccy, airbnbCalUrl: prop?.airbnbCalUrl || '' },
+    // airbnbCalUrl deliberately omitted from this public feed — it's a secret
+    // access token for the property's live Airbnb calendar, not public data.
+    property: { id: prop?.id || propertyId, name: prop?.name || '', currency: ccy, airbnbCalUrl: '' },
     guestFeePct: feePct, taxPct,
     cleaningFee: Math.round(cleanFee),
     cleaningGuestTotal: Math.round(cleanFee),
