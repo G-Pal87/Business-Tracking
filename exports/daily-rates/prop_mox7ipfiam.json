@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-12T18:35:12.646Z",
+  "generatedAt": "2026-08-12T19:01:31.129Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -216,42 +216,42 @@
     {
       "date": "2026-09-01",
       "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 70,
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 67,
       "discountPct": 0,
-      "amount": 70,
-      "airbnbCheckout": 80
+      "amount": 67,
+      "airbnbCheckout": 76
     },
     {
       "date": "2026-09-02",
       "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 70,
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 67,
       "discountPct": 0,
-      "amount": 70,
-      "airbnbCheckout": 80
+      "amount": 67,
+      "airbnbCheckout": 76
     },
     {
       "date": "2026-09-03",
       "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 70,
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 67,
       "discountPct": 0,
-      "amount": 70,
-      "airbnbCheckout": 80
+      "amount": 67,
+      "airbnbCheckout": 76
     },
     {
       "date": "2026-09-04",
       "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 70,
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 67,
       "discountPct": 0,
-      "amount": 70,
-      "airbnbCheckout": 80
+      "amount": 67,
+      "airbnbCheckout": 76
     },
     {
       "date": "2026-09-05",
@@ -3596,7 +3596,7 @@
     {
       "date": "2027-08-05",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "August 2026 day 05 (1n, 1.95×) + August 2025 day 05 (1n, 1.27×)",
       "originalAmount": 60,
       "discountPct": 0,
@@ -3606,7 +3606,7 @@
     {
       "date": "2027-08-06",
       "currency": "EUR",
-      "status": "blocked",
+      "status": "open",
       "basis": "August 2026 day 06 (1n, 1.95×) + August 2025 day 06 (1n, 1.27×)",
       "originalAmount": 60,
       "discountPct": 0,
@@ -3656,7 +3656,7 @@
     {
       "date": "2027-08-11",
       "currency": "EUR",
-      "status": "open",
+      "status": "blocked",
       "basis": "August 2026 day 11 (1n, 1.95×) + August 2025 day 11 (1n, 1.27×)",
       "originalAmount": 61,
       "discountPct": 0,
