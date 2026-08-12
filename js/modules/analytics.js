@@ -4,7 +4,7 @@ import * as charts from '../core/charts.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments, isCapEx, companyPropIds, isCompanyRecord,
-  drillRevRows, drillExpRows, drillNetRows
+  drillRevRows, drillExpRows, drillNetRows, drillRevRowsPnL, drillNetRowsPnL
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -94,10 +94,15 @@ function getData(start, end) {
   const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mOwner(e) && mProperty(e) && isCoRec(e));
   const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mOwner(e) && mProperty(e) && isCoRec(e));
 
-  // Revenue totals
-  const propRev  = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-  const svcRev   = invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-  const totalRev = propRev + svcRev;
+  // Revenue totals. P&L figures (Total Revenue, Net Operating Profit, Expense Ratio) use
+  // subtotal (VAT-exclusive) — VAT collected on invoices isn't the company's revenue, it's
+  // money held for the tax authority. Cash-purpose figures (Cash Position, Collection Rate)
+  // keep the VAT-inclusive total since VAT collected is real cash in hand until remitted.
+  const propRev      = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+  const svcRev       = invoices.reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), 0);
+  const svcRevCash   = invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const totalRev     = propRev + svcRev;
+  const totalRevCash = propRev + svcRevCash;
 
   // Expense totals
   const opEx  = opExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
@@ -106,7 +111,7 @@ function getData(start, end) {
 
   // Derived
   const netOpProfit = totalRev - opEx;
-  const cashPos     = totalRev - totalExp;
+  const cashPos     = totalRevCash - totalExp;
   const pipeline    = pendingPayments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
 
   // Burn coverage: how many months of OpEx does this period's net cash cover?
@@ -115,8 +120,8 @@ function getData(start, end) {
   const avgMonthlyOpEx  = opEx / periodMonths;
   const burnCoverage    = avgMonthlyOpEx > 0 ? cashPos / avgMonthlyOpEx : null;
 
-  // Collection rate: paid invoices / (paid + outstanding)
-  const paidInvTotal = svcRev;
+  // Collection rate: paid invoices / (paid + outstanding) — cash-based, VAT-inclusive
+  const paidInvTotal = svcRevCash;
   const outTotal     = outstandingInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
   const invoicedTotal = paidInvTotal + outTotal;
   const collectionRate = invoicedTotal > 0 ? (paidInvTotal / invoicedTotal) * 100 : null;
@@ -137,7 +142,7 @@ function getData(start, end) {
   invoices.forEach(i => {
     const id   = i.clientId;
     const name = byId('clients', id)?.name || 'Unknown Client';
-    const eur  = toEUR(i.total, i.currency, i.issueDate);
+    const eur  = toEUR(i.subtotal ?? i.total, i.currency, i.issueDate);
     const e    = contribMap.get('c:' + id) || { name, eur: 0, type: 'Client' };
     e.eur += eur;
     contribMap.set('c:' + id, e);
@@ -151,12 +156,12 @@ function getData(start, end) {
   // Revenue by stream
   const streamMap = new Map();
   payments.forEach(p => { const s = p.stream || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date)); });
-  invoices.forEach(i => { const s = i.stream || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+  invoices.forEach(i => { const s = i.stream || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)); });
 
   return {
     payments, invoices, pendingPayments, outstandingInvoices, overdueInvoices,
     opExpenses, capExpenses,
-    propRev, svcRev, totalRev,
+    propRev, svcRev, svcRevCash, totalRev, totalRevCash,
     opEx, capEx, totalExp,
     netOpProfit, cashPos, pipeline,
     collectionRate, expenseRatio,
@@ -170,7 +175,7 @@ function getData(start, end) {
 // ── KPI Grid ──────────────────────────────────────────────────────────────────
 function buildKpiGrid(cur, cmp, cmpRange) {
   const {
-    totalRev, netOpProfit, cashPos, pipeline,
+    totalRev, totalRevCash, netOpProfit, cashPos, pipeline,
     collectionRate,
     overdueCount, overdueEur,
     opEx, propRev, svcRev, streamMap,
@@ -257,8 +262,8 @@ function buildKpiGrid(cur, cmp, cmpRange) {
           curVal: mkDrillValue(formatEUR(propRev), () => drillDownModal('Rental Income', drillRevRows(cur.payments, []), REV_COLS)),
           cmpVal: mkDrillValue(formatEUR(cmp.propRev), () => drillDownModal(`Rental Income — ${cl}`, drillRevRows(cmp.payments, []), REV_COLS)) },
         { label: 'Service Income',
-          curVal: mkDrillValue(formatEUR(svcRev), () => drillDownModal('Service Income', drillRevRows([], cur.invoices), REV_COLS)),
-          cmpVal: mkDrillValue(formatEUR(cmp.svcRev), () => drillDownModal(`Service Income — ${cl}`, drillRevRows([], cmp.invoices), REV_COLS)) },
+          curVal: mkDrillValue(formatEUR(svcRev), () => drillDownModal('Service Income', drillRevRowsPnL([], cur.invoices), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.svcRev), () => drillDownModal(`Service Income — ${cl}`, drillRevRowsPnL([], cmp.invoices), REV_COLS)) },
       ], 'Current Period', cl));
     } else {
       body.appendChild(mkSummaryGrid([
@@ -277,7 +282,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
           }
         },
         { label: 'Service Income',
-          value: mkDrillValue(formatEUR(svcRev), () => drillDownModal('Service Income', drillRevRows([], cur.invoices), REV_COLS)),
+          value: mkDrillValue(formatEUR(svcRev), () => drillDownModal('Service Income', drillRevRowsPnL([], cur.invoices), REV_COLS)),
           sub: pct(svcRev,  totalRev) + ' of total',
           explain: {
             title: 'Service Income',
@@ -325,8 +330,8 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     if (cmp) {
       body.appendChild(mkCmpGrid([
         { label: 'Total Revenue',
-          curVal: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Total Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)),
-          cmpVal: mkDrillValue(formatEUR(cmp.totalRev), () => drillDownModal(`Total Revenue — ${cl}`, drillRevRows(cmp.payments, cmp.invoices), REV_COLS)) },
+          curVal: mkDrillValue(formatEUR(totalRevCash), () => drillDownModal('Total Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmp.totalRevCash), () => drillDownModal(`Total Revenue — ${cl}`, drillRevRows(cmp.payments, cmp.invoices), REV_COLS)) },
         { label: 'OpEx',
           curVal: mkDrillValue(formatEUR(cur.opEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)),
           cmpVal: mkDrillValue(formatEUR(cmp.opEx), () => drillDownModal(`Operating Expenses — ${cl}`, drillExpRows(cmp.opExpenses), EXP_COLS)) },
@@ -340,7 +345,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     } else {
       body.appendChild(mkSummaryGrid([
         { label: 'Total Revenue',
-          value: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Total Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)) },
+          value: mkDrillValue(formatEUR(totalRevCash), () => drillDownModal('Total Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)) },
         { label: 'OpEx',
           value: mkDrillValue(formatEUR(cur.opEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)),
           sub: 'Operating expenses' },
@@ -354,7 +359,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
             title: 'Net Cash Flow',
             formula: 'Total Revenue − (OpEx + CapEx).',
             inputs: [
-              { label: 'Total Revenue',  value: formatEUR(totalRev) },
+              { label: 'Total Revenue',  value: formatEUR(totalRevCash) },
               { label: 'OpEx',           value: formatEUR(cur.opEx) },
               { label: 'CapEx',          value: formatEUR(cur.capEx) },
               { label: 'Net Cash Flow',  value: formatEUR(cashPos) }
@@ -411,23 +416,23 @@ function buildKpiGrid(cur, cmp, cmpRange) {
         if (cmp) {
           body.appendChild(mkCmpGrid([
             { label: 'Revenue',
-              curVal: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)),
-              cmpVal: mkDrillValue(formatEUR(cmp.totalRev), () => drillDownModal(`Revenue — ${cl}`, drillRevRows(cmp.payments, cmp.invoices), REV_COLS)) },
+              curVal: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Revenue', drillRevRowsPnL(cur.payments, cur.invoices), REV_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.totalRev), () => drillDownModal(`Revenue — ${cl}`, drillRevRowsPnL(cmp.payments, cmp.invoices), REV_COLS)) },
             { label: 'OpEx',
               curVal: mkDrillValue(formatEUR(opEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)),
               cmpVal: mkDrillValue(formatEUR(cmp.opEx), () => drillDownModal(`Operating Expenses — ${cl}`, drillExpRows(cmp.opExpenses), EXP_COLS)) },
             { label: 'Net Op. Profit',
-              curVal: mkDrillValue(formatEUR(netOpProfit), () => drillDownModal('Net Operating Profit', drillNetRows(cur.payments, cur.invoices, cur.opExpenses), NET_COLS)),
-              cmpVal: mkDrillValue(formatEUR(cmp.netOpProfit), () => drillDownModal(`Net Operating Profit — ${cl}`, drillNetRows(cmp.payments, cmp.invoices, cmp.opExpenses), NET_COLS)) },
+              curVal: mkDrillValue(formatEUR(netOpProfit), () => drillDownModal('Net Operating Profit', drillNetRowsPnL(cur.payments, cur.invoices, cur.opExpenses), NET_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.netOpProfit), () => drillDownModal(`Net Operating Profit — ${cl}`, drillNetRowsPnL(cmp.payments, cmp.invoices, cmp.opExpenses), NET_COLS)) },
           ], 'Current Period', cl));
         } else {
           body.appendChild(mkSummaryGrid([
             { label: 'Revenue',
-              value: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)) },
+              value: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Revenue', drillRevRowsPnL(cur.payments, cur.invoices), REV_COLS)) },
             { label: 'OpEx',
               value: mkDrillValue(formatEUR(opEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)) },
             { label: 'Net Op. Profit',
-              value: mkDrillValue(formatEUR(netOpProfit), () => drillDownModal('Net Operating Profit', drillNetRows(cur.payments, cur.invoices, cur.opExpenses), NET_COLS)),
+              value: mkDrillValue(formatEUR(netOpProfit), () => drillDownModal('Net Operating Profit', drillNetRowsPnL(cur.payments, cur.invoices, cur.opExpenses), NET_COLS)),
               sub: margin !== null ? `${margin.toFixed(1)}% margin` : '',
               explain: {
                 title: 'Net Operating Profit',
@@ -461,7 +466,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
 
   // 3. Cash Position
   {
-    const variant = cashPos < 0 ? 'danger' : cashPos < totalRev * 0.05 ? 'warning' : '';
+    const variant = cashPos < 0 ? 'danger' : cashPos < totalRevCash * 0.05 ? 'warning' : '';
     grid.appendChild(mkKpiCard({
       label:    'Period Net Cash',
       value:    formatEUR(cashPos),
@@ -475,7 +480,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
         title: 'Period Net Cash',
         formula: 'Total Revenue − Total Expenses (OpEx + CapEx).',
         inputs: [
-          { label: 'Total Revenue',   value: formatEUR(totalRev) },
+          { label: 'Total Revenue',   value: formatEUR(totalRevCash) },
           { label: 'Total Expenses',  value: formatEUR(cur.totalExp) },
           { label: 'Period Net Cash', value: formatEUR(cashPos) }
         ],
@@ -806,8 +811,8 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
           const body = el('div');
           body.appendChild(mkCmpGrid([
             { label: 'Total Revenue',
-              curVal: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Total Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)),
-              cmpVal: mkDrillValue(formatEUR(cmp.totalRev), () => drillDownModal(`Total Revenue — ${cl}`, drillRevRows(cmp.payments, cmp.invoices), REV_COLS)) }
+              curVal: mkDrillValue(formatEUR(totalRev), () => drillDownModal('Total Revenue', drillRevRowsPnL(cur.payments, cur.invoices), REV_COLS)),
+              cmpVal: mkDrillValue(formatEUR(cmp.totalRev), () => drillDownModal(`Total Revenue — ${cl}`, drillRevRowsPnL(cmp.payments, cmp.invoices), REV_COLS)) }
           ], 'Current Period', cl));
           body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:-8px' }, `Change: ${sign}${delta.toFixed(1)}% vs ${cl}`));
           openModal({ title: 'Revenue vs Prior Period', body });
@@ -893,7 +898,7 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
           const body = el('div');
           body.appendChild(mkSummaryGrid([
             { label: 'Annual Target', value: formatEUR(fcRevTarget) },
-            { label: 'Actual Revenue', value: mkDrillValue(formatEUR(cur.totalRev), () => drillDownModal('Actual Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)) },
+            { label: 'Actual Revenue', value: mkDrillValue(formatEUR(cur.totalRev), () => drillDownModal('Actual Revenue', drillRevRowsPnL(cur.payments, cur.invoices), REV_COLS)) },
             { label: 'Accuracy',       value: `${accuracy.toFixed(0)}%` }
           ], 3));
           openModal({ title: `Forecast Accuracy — ${year}`, body });
@@ -1092,8 +1097,8 @@ function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur, cmp, c
     body.appendChild(mkCmpGrid([
       { label: 'Stream', curVal: streamLabel, cmpVal: streamLabel },
       { label: 'Revenue',
-        curVal: mkDrillValue(formatEUR(streamTotal), () => drillDownModal(`${streamLabel} — Revenue`, drillRevRows(pays, invs), REV_COLS)),
-        cmpVal: mkDrillValue(formatEUR(cmpTotal), () => drillDownModal(`${streamLabel} — Revenue — ${cmpLabel}`, drillRevRows(cmpPays, cmpInvs), REV_COLS)),
+        curVal: mkDrillValue(formatEUR(streamTotal), () => drillDownModal(`${streamLabel} — Revenue`, drillRevRowsPnL(pays, invs), REV_COLS)),
+        cmpVal: mkDrillValue(formatEUR(cmpTotal), () => drillDownModal(`${streamLabel} — Revenue — ${cmpLabel}`, drillRevRowsPnL(cmpPays, cmpInvs), REV_COLS)),
         explain: {
           title: `${streamLabel} Revenue`,
           formula: 'Sum of paid payments + paid invoices tagged with this stream, within the selected period.',
@@ -1122,7 +1127,7 @@ function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur, cmp, c
     body.appendChild(mkSummaryGrid([
       { label: 'Stream',   value: streamLabel },
       { label: 'Revenue',
-        value: mkDrillValue(formatEUR(streamTotal), () => drillDownModal(`${streamLabel} — Revenue`, drillRevRows(pays, invs), REV_COLS)),
+        value: mkDrillValue(formatEUR(streamTotal), () => drillDownModal(`${streamLabel} — Revenue`, drillRevRowsPnL(pays, invs), REV_COLS)),
         explain: {
           title: `${streamLabel} Revenue`,
           formula: 'Sum of paid payments + paid invoices tagged with this stream, within the selected period.',
@@ -1165,7 +1170,7 @@ function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur, cmp, c
       { label: 'Amount', right: true, tip: 'Invoice total in EUR.' }
     ],
       invs.sort((a,b) => (b.issueDate||'').localeCompare(a.issueDate||'')).slice(0,8)
-          .map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', formatEUR(toEUR(i.total,i.currency,i.issueDate))])
+          .map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', formatEUR(toEUR(i.subtotal ?? i.total,i.currency,i.issueDate))])
     ));
   }
   if (!pays.length && !invs.length) body.appendChild(mkEmptyState('No records for this stream.'));

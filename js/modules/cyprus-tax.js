@@ -261,7 +261,7 @@ function modalInvoiceRevenue() {
   const clientMap = Object.fromEntries((state.db.clients || []).map(c => [c.id, c]));
   const byClient  = {};
   for (const i of invs) {
-    const rev = toEUR(i.total, i.currency, year);
+    const rev = toEUR(i.subtotal ?? i.total, i.currency, year); // VAT-exclusive — taxable revenue, not VAT collected
     const id  = i.clientId || '_';
     if (!byClient[id]) byClient[id] = { rev: 0, n: 0 };
     byClient[id].rev += rev; byClient[id].n++;
@@ -404,11 +404,12 @@ function modalRevenueDetail() {
   const { pays, invs } = getActualsForYear(year);
   const byMonth = {};
   for (const p of pays) { const mo = p.date.slice(0, 7); byMonth[mo] = (byMonth[mo] || 0) + toEUR(p.amount, p.currency, year); }
-  for (const i of invs) { const mo = (i.issueDate || '').slice(0, 7); if (mo) byMonth[mo] = (byMonth[mo] || 0) + toEUR(i.total, i.currency, year); }
+  for (const i of invs) { const mo = (i.issueDate || '').slice(0, 7); if (mo) byMonth[mo] = (byMonth[mo] || 0) + toEUR(i.subtotal ?? i.total, i.currency, year); }
   const moRows   = Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b));
   const actTotal = moRows.reduce((a, [, v]) => a + v, 0);
   const paysTotal = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
-  const invsTotal = invs.reduce((a, i) => a + toEUR(i.total, i.currency, year), 0);
+  // VAT-exclusive — this feeds the taxable-revenue estimate (s.actualRevenue), not a cash figure.
+  const invsTotal = invs.reduce((a, i) => a + toEUR(i.subtotal ?? i.total, i.currency, year), 0);
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
@@ -1075,7 +1076,8 @@ function prefillFromActuals(onChange) {
 
   const rnd = v => Math.round(v * 100) / 100;
   const paysRevenue = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
-  const invsRevenue = invs.reduce((a, i) => a + toEUR(i.total, i.currency, year), 0);
+  // VAT-exclusive (subtotal) — taxable revenue for the provisional/corporate tax estimate.
+  const invsRevenue = invs.reduce((a, i) => a + toEUR(i.subtotal ?? i.total, i.currency, year), 0);
   const actualRevenue  = paysRevenue + invsRevenue;
   const actualExpenses = exps.reduce((a, e) => a + toEUR(e.amount, e.currency, year), 0);
 
