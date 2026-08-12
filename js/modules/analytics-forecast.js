@@ -5,7 +5,7 @@ import { STREAMS } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
-  isCapEx, drillRevRows, drillExpRows,
+  isCapEx, drillRevRows, drillRevRowsPnL, drillExpRows,
   sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR,
   softDelete, upsert, newId, companyPropIds, isCompanyRecord, generatePaymentSchedule,
   sumForecastEntries
@@ -582,7 +582,7 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
   });
   actInvoices.forEach(i => {
     const s = resolveStream(i) || 'other';
-    actByStream.set(s, (actByStream.get(s) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date));
+    actByStream.set(s, (actByStream.get(s) || 0) + toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date));
   });
 
   const fcByEntityYear = new Map(listActive('forecasts').map(fc => [fc.entityId + ':' + fc.year, fc]));
@@ -933,8 +933,8 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       if (cmpData) {
         body.appendChild(mkCmpGrid([
           { label: 'Actual Revenue',
-            curVal: mkDrillValue(formatEUR(actualRev), () => drillDownModal('Actual Revenue', drillRevRows(actPayments, actInvoices), REV_COLS)),
-            cmpVal: mkDrillValue(formatEUR(cmpData.actualRev), () => drillDownModal(`Actual Revenue — ${cmpLabel}`, drillRevRows(cmpData.actPayments, cmpData.actInvoices), REV_COLS)) },
+            curVal: mkDrillValue(formatEUR(actualRev), () => drillDownModal('Actual Revenue', drillRevRowsPnL(actPayments, actInvoices), REV_COLS)),
+            cmpVal: mkDrillValue(formatEUR(cmpData.actualRev), () => drillDownModal(`Actual Revenue — ${cmpLabel}`, drillRevRowsPnL(cmpData.actPayments, cmpData.actInvoices), REV_COLS)) },
         ], 'Current Period', cmpLabel));
       }
 
@@ -947,7 +947,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       });
       actInvoices.forEach(i => {
         const key = resolveStream(i) || 'other';
-        streamGroups[key] = (streamGroups[key] || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date);
+        streamGroups[key] = (streamGroups[key] || 0) + toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date);
       });
       const streamLabels = { customer_success: 'Customer Success', marketing_services: 'Marketing Services', short_term_rental: 'Short-Term Rental', long_term_rental: 'Long-Term Rental', other: 'Other' };
       Object.entries(streamGroups).filter(([, v]) => v > 0).forEach(([key, val]) => {
@@ -968,7 +968,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
       });
       actInvoices.forEach(i => {
         const clientName = byId('clients', i.clientId)?.name || byId('clients', i.clientId)?.company || i.clientId || '—';
-        clientMap.set(clientName, (clientMap.get(clientName) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date));
+        clientMap.set(clientName, (clientMap.get(clientName) || 0) + toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date));
       });
       const clientRows = [...clientMap.entries()]
         .sort((a, b) => b[1] - a[1])
@@ -2077,7 +2077,7 @@ function openStreamDetailModal(s, data) {
   streamInvoices.forEach(i => {
     const mk = (i.issueDate || '').slice(0, 7);
     if (!mk) return;
-    monthMap.set(mk, (monthMap.get(mk) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate));
+    monthMap.set(mk, (monthMap.get(mk) || 0) + toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate));
   });
   const MN9 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const monthRows = [...monthMap.entries()]
@@ -2122,7 +2122,7 @@ function openStreamDetailModal(s, data) {
       if (streamInvoices.length > 0) {
         const invRows = streamInvoices
           .slice().sort((a, b) => (b.issueDate || '').localeCompare(a.issueDate || ''))
-          .map(i => [fmtDate(i.issueDate), byId('clients', i.clientId)?.name || i.clientId || '—', i.ref || i.number || '—', formatEUR(toEUR(i.total || i.amount, i.currency, i.issueDate))]);
+          .map(i => [fmtDate(i.issueDate), byId('clients', i.clientId)?.name || i.clientId || '—', i.ref || i.number || '—', formatEUR(toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate))]);
         detailBody.appendChild(mkSectionLabel('Invoices'));
         detailBody.appendChild(mkModalTable(
           [
@@ -2236,7 +2236,7 @@ function renderCharts(data) {
         });
         m.invoices.forEach(i => {
           const s = resolveStream(i) || 'other';
-          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date));
+          streamMap.set(s, (streamMap.get(s) || 0) + toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date));
         });
         const streamRows = [...streamMap.entries()]
           .sort((a, b) => b[1] - a[1])
@@ -2295,7 +2295,7 @@ function renderCharts(data) {
         });
         m.invoices.forEach(i => {
           const s = resolveStream(i) || 'other';
-          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date));
+          streamMap.set(s, (streamMap.get(s) || 0) + toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date));
         });
         const streamRows = [...streamMap.entries()]
           .sort((a, b) => b[1] - a[1])
@@ -2404,7 +2404,7 @@ function renderCharts(data) {
         const monthlyRows = data.monthlyBreakdown.map(m => {
           let mAct = 0;
           m.payments.forEach(p => { if ((resolveStream(p) || 'other') === s.key) mAct += toEUR(p.amount, p.currency, p.date); });
-          m.invoices.forEach(i => { if ((resolveStream(i) || 'other') === s.key) mAct += toEUR(i.total || i.amount, i.currency, i.issueDate || i.date); });
+          m.invoices.forEach(i => { if ((resolveStream(i) || 'other') === s.key) mAct += toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date); });
           return [m.label, formatEUR(mAct)];
         }).filter(([, val]) => val !== formatEUR(0));
         if (monthlyRows.length > 0) {
@@ -2695,7 +2695,7 @@ function renderCharts(data) {
         });
         m.invoices.forEach(i => {
           const s = resolveStream(i) || 'other';
-          streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.total || i.amount, i.currency, i.issueDate || i.date));
+          streamMap.set(s, (streamMap.get(s) || 0) + toEUR((i.subtotal ?? i.total) || i.amount, i.currency, i.issueDate || i.date));
         });
         const streamRows = [...streamMap.entries()]
           .sort((a, b) => b[1] - a[1])
