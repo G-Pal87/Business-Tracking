@@ -282,7 +282,10 @@ export function totalRevenueEUR(filters) {
 
   let total = 0;
   for (const p of payments) total += toEUR(p.amount, p.currency, p.date);
-  for (const i of invoices) total += toEUR(i.total, i.currency, i.issueDate);
+  // Revenue excludes VAT/tax collected on behalf of the tax authority — use
+  // subtotal (pre-tax), not total. Falls back to total only for legacy
+  // records that predate the subtotal field.
+  for (const i of invoices) total += toEUR(i.subtotal ?? i.total, i.currency, i.issueDate);
   return total;
 }
 
@@ -305,8 +308,11 @@ export function renovationCapexEUR(filters) {
 export function sumPaymentsEUR(payments) {
   return payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
 }
+// Revenue excludes VAT/tax collected on the tax authority's behalf — sums
+// subtotal (pre-tax), not total. Falls back to total only for legacy
+// records that predate the subtotal field.
 export function sumInvoicesEUR(invoices) {
-  return invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  return invoices.reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), 0);
 }
 export function sumExpensesEUR(expenses) {
   return expenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
@@ -344,7 +350,9 @@ export function revenueInRangeEUR(start, end, filters = {}) {
   const fInvs = applyFilters(invs.map(i => ({ ...i, date: i.issueDate })), filters);
   let total = 0;
   for (const p of fRows) total += toEUR(p.amount, p.currency, p.date);
-  for (const i of fInvs) total += toEUR(i.total, i.currency, i.date);
+  // Revenue excludes VAT/tax — subtotal, not total (falls back to total for
+  // legacy records that predate the subtotal field).
+  for (const i of fInvs) total += toEUR(i.subtotal ?? i.total, i.currency, i.date);
   return total;
 }
 
@@ -626,7 +634,9 @@ export function getForecastVsActual(type, entityId, year) {
     if (type === 'property') {
       actualRev = entityPayments.filter(p => p.date >= start && p.date <= end).reduce((s, p) => s + toEUR(p.amount, p.currency, year), 0);
     } else {
-      actualRev = entityInvoices.filter(i => i.issueDate >= start && i.issueDate <= end).reduce((s, i) => s + toEUR(i.total, i.currency, year), 0);
+      // Revenue excludes VAT/tax — subtotal, not total (falls back to total
+      // for legacy records that predate the subtotal field).
+      actualRev = entityInvoices.filter(i => i.issueDate >= start && i.issueDate <= end).reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, year), 0);
     }
     actualExp = entityExpenses.filter(e => e.date >= start && e.date <= end).reduce((s, e) => s + toEUR(e.amount, e.currency, year), 0);
     const fd = fc?.months?.[key] || {};
@@ -669,7 +679,10 @@ export function forecastMonthlyEUR(year) {
 
 export function estimateTaxForYear(year, rate) {
   const s = `${year}-01-01`, e = `${year}-12-31`;
-  const rev = [...listActivePayments().filter(p => p.status === 'paid' && p.date >= s && p.date <= e).map(p => toEUR(p.amount, p.currency, year)), ...listActive('invoices').filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e).map(i => toEUR(i.total, i.currency, year))].reduce((a, b) => a + b, 0);
+  // Taxable revenue excludes VAT/tax collected on the tax authority's
+  // behalf — subtotal, not total (falls back to total for legacy records
+  // that predate the subtotal field).
+  const rev = [...listActivePayments().filter(p => p.status === 'paid' && p.date >= s && p.date <= e).map(p => toEUR(p.amount, p.currency, year)), ...listActive('invoices').filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e).map(i => toEUR(i.subtotal ?? i.total, i.currency, year))].reduce((a, b) => a + b, 0);
   const exp = listActive('expenses').filter(ex => !isCapEx(ex) && ex.date >= s && ex.date <= e).reduce((a, ex) => a + toEUR(ex.amount, ex.currency, year), 0);
   const taxable = Math.max(0, rev - exp);
   const forecastRev = (state.db.forecasts || []).filter(f => f.year === Number(year)).reduce((sum, f) => sum + Object.values(f.months || {}).reduce((ms, md) => ms + (md.revenue || 0), 0), 0);
@@ -933,7 +946,9 @@ export function buildReportData(filters = {}) {
   const opExpenses   = allExpenses.filter(e => !isCapEx(e) && matchDate(e) && matchStream(e) && matchProperty(e));
   const renoExpenses = allExpenses.filter(e =>  isCapEx(e) && matchDate(e) && matchProperty(e));
 
-  const rev = [...payments, ...invoices.map(i => ({ ...i, amount: i.total, date: i.date || i.issueDate }))].reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
+  // Revenue excludes VAT/tax — subtotal, not total (falls back to total for
+  // legacy records that predate the subtotal field).
+  const rev = [...payments, ...invoices.map(i => ({ ...i, amount: i.subtotal ?? i.total, date: i.date || i.issueDate }))].reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
   const exp = opExpenses.reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
   const reno = renoExpenses.reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
 
@@ -977,6 +992,22 @@ export function drillNetRows(payments, invoices, expenses) {
     ...drillRevRows(payments, invoices).map(r => ({ date: r.date, kind: 'Revenue', source: r.source + (r.ref ? ' · ' + r.ref : ''), eur: r.eur })),
     ...drillExpRows(expenses).map(r => ({ date: r.date, kind: 'Expense', source: (r.source ? r.source + ' · ' : '') + r.category, eur: r.eur }))
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+// VAT-exclusive variants for P&L-purpose drill-downs (Revenue, Net Operating Profit, etc.) —
+// invoices carry VAT in `total`; P&L figures must use pre-tax `subtotal`. Cash-purpose call
+// sites (Net Cash Flow, Outstanding/Overdue/Paid Invoices, Actual Collected) keep using
+// drillRevRows/drillNetRows directly since VAT collected is real cash.
+function pnlInvoices(invoices) {
+  return (invoices || []).map(i => ({ ...i, total: i.subtotal ?? i.total }));
+}
+
+export function drillRevRowsPnL(payments, invoices) {
+  return drillRevRows(payments, pnlInvoices(invoices));
+}
+
+export function drillNetRowsPnL(payments, invoices, expenses) {
+  return drillNetRows(payments, pnlInvoices(invoices), expenses);
 }
 
 // ============== Trash / Soft-delete management ==============

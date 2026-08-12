@@ -8,7 +8,7 @@ import {
   listActive, listActivePayments,
   resolveExpenseFields, isCapEx,
   newId, upsert, softDelete, companyPropIds, isCompanyRecord,
-  getPersonName, drillRevRows, drillExpRows, drillNetRows
+  getPersonName, drillRevRows, drillExpRows, drillNetRows, drillRevRowsPnL, drillNetRowsPnL
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue } from './analytics-helpers.js';
 import {
@@ -241,14 +241,16 @@ function getYearData(year, ownerFilter) {
     console.warn('[analytics-tax] invoicesOther catch-all:', invoicesOther.length, 'record(s). Streams:', [...new Set(invoicesOther.map(i => i.stream || '(none)'))]);
   }
 
+  // Invoice revenue is VAT-exclusive (subtotal) throughout this P&L/tax report — VAT collected
+  // isn't taxable income, so it must not inflate Total Revenue / Operating Profit / tax estimates.
   const sum = (arr, getAmt, getDate) => arr.reduce((s, x) => s + toEUR(getAmt(x), x.currency, getDate(x)), 0);
   const revSTR   = sum(rentalPaymentsSTR, p => p.amount, p => p.date);
   const revLTR   = sum(rentalPaymentsLTR, p => p.amount, p => p.date);
-  const revCS    = sum(invoicesCS,        i => i.total,  i => i.issueDate || i.date);
-  const revMkt   = sum(invoicesMkt,       i => i.total,  i => i.issueDate || i.date);
+  const revCS    = sum(invoicesCS,        i => i.subtotal ?? i.total,  i => i.issueDate || i.date);
+  const revMkt   = sum(invoicesMkt,       i => i.subtotal ?? i.total,  i => i.issueDate || i.date);
   // Includes any unresolvable-stream payments so totalRevenue always matches
   // the sum of `monthly` (which sums all paid payments/invoices unfiltered).
-  const revOther = sum(invoicesOther, i => i.total, i => i.issueDate || i.date) + sum(rentalPaymentsOther, p => p.amount, p => p.date);
+  const revOther = sum(invoicesOther, i => i.subtotal ?? i.total, i => i.issueDate || i.date) + sum(rentalPaymentsOther, p => p.amount, p => p.date);
   const totalRevenue = revSTR + revLTR + revCS + revMkt + revOther;
 
   const catMap = new Map();
@@ -265,7 +267,7 @@ function getYearData(year, ownerFilter) {
   const monthly = Array.from({ length: 12 }, (_, mi) => {
     const mk  = `${year}-${String(mi + 1).padStart(2, '0')}`;
     const rev = payments.filter(p => p.date?.startsWith(mk)).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
-              + invoices.filter(i => (i.issueDate || '').startsWith(mk)).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+              + invoices.filter(i => (i.issueDate || '').startsWith(mk)).reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), 0);
     const opex = opExpenses.filter(e => e.date?.startsWith(mk)).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
     return { mk, rev, opex };
   });
@@ -406,7 +408,7 @@ function buildPnLTable(data, taxRate, year) {
   tbody.appendChild(mkRow('Total Revenue', totalRevenue, {
     isSectionTotal: true, isPositive: totalRevenue >= 0,
     drill: mkDrillValue(formatEUR(totalRevenue), () =>
-      drillDownModal(`${year} — Total Revenue`, drillRevRows(data.payments, data.invoices), REV_COLS)),
+      drillDownModal(`${year} — Total Revenue`, drillRevRowsPnL(data.payments, data.invoices), REV_COLS)),
     explain: {
       title: 'Total Revenue',
       formula: 'Rental Revenue (STR) + Rental Revenue (LTR) + Service Revenue (CS) + Service Revenue (Marketing) + Other Services',
@@ -444,7 +446,7 @@ function buildPnLTable(data, taxRate, year) {
   tbody.appendChild(mkRow('Operating Profit', opProfit, {
     isSubtotal: true, isPositive: opProfit >= 0,
     drill: mkDrillValue(formatEUR(opProfit), () =>
-      drillDownModal(`${year} — Operating Profit`, drillNetRows(data.payments, data.invoices, data.opExpenses), NET_COLS)),
+      drillDownModal(`${year} — Operating Profit`, drillNetRowsPnL(data.payments, data.invoices, data.opExpenses), NET_COLS)),
     explain: {
       title: 'Operating Profit',
       formula: 'Total Revenue − Total Operating Expenses',
@@ -475,7 +477,7 @@ function buildPnLTable(data, taxRate, year) {
   tbody.appendChild(mkRow('Net Cash Used', netCash, {
     isSubtotal: true, isPositive: netCash >= 0,
     drill: mkDrillValue(formatEUR(netCash), () =>
-      drillDownModal(`${year} — Net Cash Used`, drillNetRows(data.payments, data.invoices, [...data.opExpenses, ...data.capExpenses]), NET_COLS)),
+      drillDownModal(`${year} — Net Cash Used`, drillNetRowsPnL(data.payments, data.invoices, [...data.opExpenses, ...data.capExpenses]), NET_COLS)),
     explain: {
       title: 'Net Cash Used',
       formula: 'Operating Profit − Total CapEx',
@@ -544,7 +546,7 @@ function openPnLRevenueModal(streamLabel, records, isInvoice, year) {
   const clientMap = new Map(listActive('clients').map(c => [c.id, c]));
   const byEntity = new Map(), byMonth = new Map();
   for (const r of records) {
-    const amt  = isInvoice ? toEUR(r.total, r.currency, r.issueDate || r.date) : toEUR(r.amount, r.currency, r.date);
+    const amt  = isInvoice ? toEUR(r.subtotal ?? r.total, r.currency, r.issueDate || r.date) : toEUR(r.amount, r.currency, r.date);
     const date = isInvoice ? (r.issueDate || r.date) : r.date;
     const eid  = isInvoice ? (r.clientId || '_') : (r.propertyId || '_');
     const cur  = byEntity.get(eid) || { rev: 0, n: 0 };
@@ -560,7 +562,7 @@ function openPnLRevenueModal(streamLabel, records, isInvoice, year) {
   const body = el('div');
   body.appendChild(mkSummaryGrid([
     { label: 'Total Revenue', value: mkDrillValue(formatEUR(total), () =>
-        drillDownModal(`${streamLabel} — Records`, isInvoice ? drillRevRows([], records) : drillRevRows(records, []), REV_COLS)) },
+        drillDownModal(`${streamLabel} — Records`, isInvoice ? drillRevRowsPnL([], records) : drillRevRows(records, []), REV_COLS)) },
     { label: isInvoice ? 'Invoices' : 'Payments', value: String(records.length) },
     { label: 'Avg', value: formatEUR(total / records.length) },
     { label: isInvoice ? 'Clients' : 'Properties', value: String(entRows.length) }
@@ -792,11 +794,11 @@ function renderCharts(data, year, ownerFilter) {
       const d = yoyCache.get(clickedYear) || getYearData(clickedYear, ownerFilter);
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       body.appendChild(mkSummaryGrid([
-        { label: 'Total Revenue',    value: mkDrillValue(formatEUR(d.totalRevenue), () => drillDownModal(`${clickedYear} — Total Revenue`, drillRevRows(d.payments, d.invoices), REV_COLS)) },
+        { label: 'Total Revenue',    value: mkDrillValue(formatEUR(d.totalRevenue), () => drillDownModal(`${clickedYear} — Total Revenue`, drillRevRowsPnL(d.payments, d.invoices), REV_COLS)) },
         { label: 'Total OpEx',       value: mkDrillValue(formatEUR(d.totalOpEx), () => drillDownModal(`${clickedYear} — Total Operating Expenses`, drillExpRows(d.opExpenses), EXP_COLS)) },
-        { label: 'Operating Profit', value: mkDrillValue(formatEUR(d.opProfit), () => drillDownModal(`${clickedYear} — Operating Profit`, drillNetRows(d.payments, d.invoices, d.opExpenses), NET_COLS)) },
+        { label: 'Operating Profit', value: mkDrillValue(formatEUR(d.opProfit), () => drillDownModal(`${clickedYear} — Operating Profit`, drillNetRowsPnL(d.payments, d.invoices, d.opExpenses), NET_COLS)) },
         { label: 'CapEx',            value: mkDrillValue(formatEUR(d.totalCapEx), () => drillDownModal(`${clickedYear} — Total CapEx`, drillExpRows(d.capExpenses), EXP_COLS)) },
-        { label: 'Net Cash Used',    value: mkDrillValue(formatEUR(d.netCash), () => drillDownModal(`${clickedYear} — Net Cash Used`, drillNetRows(d.payments, d.invoices, [...d.opExpenses, ...d.capExpenses]), NET_COLS)) },
+        { label: 'Net Cash Used',    value: mkDrillValue(formatEUR(d.netCash), () => drillDownModal(`${clickedYear} — Net Cash Used`, drillNetRowsPnL(d.payments, d.invoices, [...d.opExpenses, ...d.capExpenses]), NET_COLS)) },
         { label: 'Operating Margin', value: d.totalRevenue > 0 ? (d.opProfit / d.totalRevenue * 100).toFixed(1) + '%' : '—' }
       ], 3));
       const catEnt = [...d.catMap.entries()].sort((a, b) => b[1] - a[1]);
@@ -1038,7 +1040,7 @@ function modalInvoiceRevenue() {
   const clientMap = Object.fromEntries((state.db.clients || []).map(c => [c.id, c]));
   const byClient  = {};
   for (const i of invs) {
-    const rev = toEUR(i.total, i.currency, year);
+    const rev = toEUR(i.subtotal ?? i.total, i.currency, year); // VAT-exclusive — taxable revenue, not VAT collected
     const id  = i.clientId || '_';
     if (!byClient[id]) byClient[id] = { rev: 0, n: 0 };
     byClient[id].rev += rev; byClient[id].n++;
@@ -1048,7 +1050,7 @@ function modalInvoiceRevenue() {
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Total Invoiced', value: mkDrillValue(fmtE(total), () => drillDownModal(`Invoice Revenue — ${year}`, drillRevRows([], invs), REV_COLS)) },
+    { label: 'Total Invoiced', value: mkDrillValue(fmtE(total), () => drillDownModal(`Invoice Revenue — ${year}`, drillRevRowsPnL([], invs), REV_COLS)) },
     { label: 'Invoices', value: String(invs.length) }, { label: 'Avg Invoice', value: fmtE(total / invs.length) }, { label: 'Clients', value: String(clRows.length) }
   ], 4));
   body.appendChild(mkSectionLabel('Revenue by Client'));
@@ -1159,15 +1161,16 @@ function modalRevenueDetail() {
   const { pays, invs } = getActualsForYear(year);
   const byMonth = {};
   for (const p of pays) { const mo = p.date.slice(0, 7); byMonth[mo] = (byMonth[mo] || 0) + toEUR(p.amount, p.currency, year); }
-  for (const i of invs) { const mo = (i.issueDate || '').slice(0, 7); if (mo) byMonth[mo] = (byMonth[mo] || 0) + toEUR(i.total, i.currency, year); }
+  for (const i of invs) { const mo = (i.issueDate || '').slice(0, 7); if (mo) byMonth[mo] = (byMonth[mo] || 0) + toEUR(i.subtotal ?? i.total, i.currency, year); }
   const moRows    = Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b));
   const actTotal  = moRows.reduce((a, [, v]) => a + v, 0);
   const paysTotal = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
-  const invsTotal = invs.reduce((a, i) => a + toEUR(i.total, i.currency, year), 0);
+  // VAT-exclusive — this feeds the taxable-revenue estimate (s.actualRevenue), not a cash figure.
+  const invsTotal = invs.reduce((a, i) => a + toEUR(i.subtotal ?? i.total, i.currency, year), 0);
 
   const body = el('div');
   body.appendChild(mkSummaryGrid([
-    { label: 'Actual Collected', value: mkDrillValue(fmtE(actTotal), () => drillDownModal(`Annual Revenue — ${year}`, drillRevRows(pays, invs), REV_COLS)) },
+    { label: 'Actual Collected', value: mkDrillValue(fmtE(actTotal), () => drillDownModal(`Annual Revenue — ${year}`, drillRevRowsPnL(pays, invs), REV_COLS)) },
     { label: 'Forecast Remaining', value: fmtE(safeN(s.forecastRevenue)) }, { label: 'Rental Share', value: pct(paysTotal, actTotal) }, { label: 'Invoice Share', value: pct(invsTotal, actTotal) }
   ], 4));
   if (moRows.length) {
@@ -1606,7 +1609,8 @@ function ptPrefillFromActuals(onChange) {
 
   const rnd = v => Math.round(v * 100) / 100;
   const paysRevenue    = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
-  const invsRevenue    = invs.reduce((a, i) => a + toEUR(i.total, i.currency, year), 0);
+  // VAT-exclusive (subtotal) — taxable revenue for the provisional/corporate tax estimate.
+  const invsRevenue    = invs.reduce((a, i) => a + toEUR(i.subtotal ?? i.total, i.currency, year), 0);
   const actualRevenue  = paysRevenue + invsRevenue;
   const actualExpenses = exps.reduce((a, e) => a + toEUR(e.amount, e.currency, year), 0);
 

@@ -7,7 +7,7 @@ import {
   listActive, listActivePayments,
   resolveExpenseFields, isCapEx,
   newId, upsert, softDelete, companyPropIds, isCompanyRecord,
-  getPersonName, drillRevRows, drillExpRows, drillNetRows
+  getPersonName, drillRevRows, drillExpRows, drillNetRows, drillRevRowsPnL, drillNetRowsPnL
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue } from './analytics-helpers.js';
 import { hasCyprusTaxYearConfig, getCyprusTaxYearConfig } from './cyprus-tax.js';
@@ -149,9 +149,11 @@ function getOpProfit(year) {
     inYear(e.date, year) && isCapEx(e) && isCoRec(e)
   );
 
+  // VAT-exclusive (subtotal) — Operating Profit is a P&L figure; VAT collected on invoices
+  // isn't company revenue and shouldn't inflate the profit available for dividends.
   const totalRevenue = [
     ...payments.map(p => toEUR(p.amount, p.currency, p.date)),
-    ...invoices.map(i => toEUR(i.total, i.currency, i.issueDate || i.date))
+    ...invoices.map(i => toEUR(i.subtotal ?? i.total, i.currency, i.issueDate || i.date))
   ].reduce((s, v) => s + v, 0);
 
   const totalOpEx = opExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
@@ -312,11 +314,11 @@ function buildView() {
         const body = el('div');
         body.appendChild(mkSummaryGrid([
           { label: 'Total Revenue',    value: mkDrillValue(fmtE(pnlData.totalRevenue), () =>
-              drillDownModal(`Total Revenue — ${gYear}`, drillRevRows(pnlData.payments, pnlData.invoices), REV_COLS)) },
+              drillDownModal(`Total Revenue — ${gYear}`, drillRevRowsPnL(pnlData.payments, pnlData.invoices), REV_COLS)) },
           { label: 'Total OpEx',       value: mkDrillValue(fmtE(pnlData.totalOpEx), () =>
               drillDownModal(`Total OpEx — ${gYear}`, drillExpRows(pnlData.opExpenses), EXP_COLS)) },
           { label: 'Operating Profit', value: mkDrillValue(fmtE(pnlData.opProfit), () =>
-              drillDownModal(`Operating Profit — ${gYear}`, drillNetRows(pnlData.payments, pnlData.invoices, pnlData.opExpenses), NET_COLS)) },
+              drillDownModal(`Operating Profit — ${gYear}`, drillNetRowsPnL(pnlData.payments, pnlData.invoices, pnlData.opExpenses), NET_COLS)) },
           { label: 'CapEx (excluded)', value: mkDrillValue(fmtE(pnlData.totalCapEx), () =>
               drillDownModal(`CapEx — ${gYear}`, drillExpRows(pnlData.capExpenses), EXP_COLS)) },
         ], 2));
@@ -346,7 +348,7 @@ function buildView() {
         if (corpTaxEst !== null) {
           body.appendChild(mkSummaryGrid([
             { label: 'Operating Profit',   value: mkDrillValue(fmtE(pnlData.opProfit), () =>
-                drillDownModal(`Operating Profit — ${gYear}`, drillNetRows(pnlData.payments, pnlData.invoices, pnlData.opExpenses), NET_COLS)) },
+                drillDownModal(`Operating Profit — ${gYear}`, drillNetRowsPnL(pnlData.payments, pnlData.invoices, pnlData.opExpenses), NET_COLS)) },
             { label: 'Est. Corporation Tax', value: fmtE(corpTaxEst) },
             { label: 'After-Tax Profit',   value: fmtE(Math.max(0, afterTax)) },
             { label: 'Tax Rate Applied',   value: `${getCyprusTaxYearConfig(gYear).corpTaxRate}%` },
@@ -443,7 +445,7 @@ function buildView() {
         const body = el('div');
         body.appendChild(mkSummaryGrid([
           { label: 'Operating Profit',     value: mkDrillValue(fmtE(pnlData.opProfit), () =>
-              drillDownModal(`Operating Profit — ${gYear}`, drillNetRows(pnlData.payments, pnlData.invoices, pnlData.opExpenses), NET_COLS)) },
+              drillDownModal(`Operating Profit — ${gYear}`, drillNetRowsPnL(pnlData.payments, pnlData.invoices, pnlData.opExpenses), NET_COLS)) },
           { label: 'Est. Corporation Tax', value: corpTaxEst !== null ? fmtE(corpTaxEst) : '—' },
           { label: 'Gross Dividends',      value: mkDrillValue(fmtE(totalGross), () =>
               drillDownModal(`Dividends — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
