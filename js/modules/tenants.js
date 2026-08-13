@@ -1,6 +1,6 @@
 // Tenants module – CRUD for long-term rental tenants
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
 import { recordRentPaymentsBulk } from './payments.js';
 import { mkTh } from './analytics-helpers.js';
@@ -30,10 +30,12 @@ function build() {
   const ltProps = allProps.filter(p => p.type === 'long_term');
   const propMap = new Map(allProps.map(p => [p.id, p]));
   const propFilter   = new Set();
+  const ownerFilter  = new Set();
   const statusFilter = new Set();
 
   const matchesExcept = (t, skip) => {
     if (skip !== 'prop'   && propFilter.size   > 0 && !propFilter.has(t.propertyId)) return false;
+    if (skip !== 'owner'  && ownerFilter.size  > 0 && !ownerFilter.has(propMap.get(t.propertyId)?.owner)) return false;
     if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(t.status))   return false;
     return true;
   };
@@ -41,21 +43,25 @@ function build() {
   let _rtTimer;
   const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => { rebuildFilters(); renderTable(); }, 250); };
   const propMS   = buildMultiSelect([], propFilter,   'All Properties', debouncedRT, 'ten_props');
+  const ownerMS  = buildMultiSelect([], ownerFilter,  'All Owners',     debouncedRT, 'ten_owners');
   const statusMS = buildMultiSelect([], statusFilter, 'All Statuses',   debouncedRT, 'ten_statuses');
 
   const rebuildFilters = () => {
     const allTenants = listActive('tenants');
-    const validProps = new Set(), validStatuses = new Set();
+    const validProps = new Set(), validOwners = new Set(), validStatuses = new Set();
     for (const t of allTenants) {
       if (matchesExcept(t, 'prop'))   { if (t.propertyId) validProps.add(t.propertyId); }
+      if (matchesExcept(t, 'owner'))  { const ow = propMap.get(t.propertyId)?.owner; if (ow) validOwners.add(ow); }
       if (matchesExcept(t, 'status')) { if (t.status) validStatuses.add(t.status); }
     }
     propMS.setItems([...validProps].map(id => allProps.find(p => p.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name })));
+    ownerMS.setItems(getPeopleOwners({ includeBoth: true }).filter(o => validOwners.has(o.value)));
     statusMS.setItems([...validStatuses].map(s => { const m = STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
   };
 
-  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
+  const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); ownerMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
   filterBar.appendChild(propMS);
+  filterBar.appendChild(ownerMS);
   filterBar.appendChild(statusMS);
   filterBar.appendChild(resetFiltersBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
@@ -70,6 +76,7 @@ function build() {
     tableWrap.innerHTML = '';
     let rows = [...listActive('tenants')];
     if (propFilter.size > 0)   rows = rows.filter(r => propFilter.has(r.propertyId));
+    if (ownerFilter.size > 0)  rows = rows.filter(r => ownerFilter.has(propMap.get(r.propertyId)?.owner));
     if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(r.status));
     rows.sort((a, b) => (b.leaseStartDate || '').localeCompare(a.leaseStartDate || ''));
 
@@ -81,6 +88,7 @@ function build() {
     const TEN_COLS = [
       { label: 'Name',         tip: "Tenant's full name." },
       { label: 'Property',     tip: 'The long-term rental property this tenant is leasing.' },
+      { label: 'Owner',        tip: 'Which partner owns the property this tenant is leasing.' },
       { label: 'Email',        tip: "Tenant's contact email address." },
       { label: 'Phone',        tip: "Tenant's contact phone number." },
       { label: 'Lease Start',  tip: "Date the tenant's lease began." },
@@ -102,6 +110,7 @@ function build() {
       const tr = el('tr');
       tr.appendChild(el('td', { style: 'font-weight:500' }, r.name));
       tr.appendChild(el('td', {}, prop?.name || '—'));
+      tr.appendChild(el('td', { class: 'muted' }, prop?.owner ? getPersonName(prop.owner) : '—'));
       tr.appendChild(el('td', { class: 'muted' }, r.email || '—'));
       tr.appendChild(el('td', { class: 'muted' }, r.phone || '—'));
       tr.appendChild(el('td', {}, r.leaseStartDate ? fmtDate(r.leaseStartDate) : '—'));
