@@ -20,7 +20,7 @@ let _propRebuildTimer = null;
 const _propDetailYear = new Map();
 
 // ── Filter + sort state (persists across navigation via localStorage) ─────────
-const _pf = { years: new Set(), channels: new Set(), owners: new Set(), types: new Set(), countries: new Set() };
+const _pf = { years: new Set(), channels: new Set(), owners: new Set(), types: new Set(), countries: new Set(), statuses: new Set() };
 let _pSortDir = 1; // 1 = asc, -1 = desc
 let _pSortKey = 'name'; // 'name' | 'type'
 
@@ -30,7 +30,7 @@ function loadPropFilters() {
   try {
     const d = JSON.parse(localStorage.getItem(PF_KEY) || 'null');
     if (!d) return;
-    ['years', 'channels', 'owners', 'types', 'countries'].forEach(k => {
+    ['years', 'channels', 'owners', 'types', 'countries', 'statuses'].forEach(k => {
       _pf[k].clear();
       if (Array.isArray(d[k])) d[k].forEach(v => _pf[k].add(v));
     });
@@ -43,7 +43,7 @@ function savePropFilters() {
   try {
     localStorage.setItem(PF_KEY, JSON.stringify({
       years: [..._pf.years], channels: [..._pf.channels], owners: [..._pf.owners],
-      types: [..._pf.types], countries: [..._pf.countries],
+      types: [..._pf.types], countries: [..._pf.countries], statuses: [..._pf.statuses],
       sortDir: _pSortDir, sortKey: _pSortKey
     }));
   } catch { /* ignore */ }
@@ -201,6 +201,7 @@ function rebuildPropFilters(filterBar, grid, titleEl) {
     if (skip !== 'owners'    && _pf.owners.size    && !_pf.owners.has(p.owner || ''))                       return false;
     if (skip !== 'types'     && _pf.types.size     && !_pf.types.has(p.type || ''))                         return false;
     if (skip !== 'countries' && _pf.countries.size && !_pf.countries.has(p.country || ''))                  return false;
+    if (skip !== 'statuses'  && _pf.statuses.size  && !_pf.statuses.has(p.status || ''))                    return false;
     return true;
   };
   const uniq = (arr) => [...new Set(arr)].sort();
@@ -210,6 +211,7 @@ function rebuildPropFilters(filterBar, grid, titleEl) {
   const validOwners    = uniq(all.filter(p => matchesExcept(p, 'owners'   )).map(p => p.owner).filter(Boolean));
   const validTypes     = uniq(all.filter(p => matchesExcept(p, 'types'    )).map(p => p.type).filter(Boolean));
   const validCountries = uniq(all.filter(p => matchesExcept(p, 'countries')).map(p => p.country).filter(Boolean));
+  const validStatuses  = uniq(all.filter(p => matchesExcept(p, 'statuses' )).map(p => p.status).filter(Boolean));
 
   // Prune selections that are no longer valid given other active filters
   [..._pf.years    ].forEach(v => { if (!validYears.includes(v))    _pf.years.delete(v); });
@@ -217,6 +219,7 @@ function rebuildPropFilters(filterBar, grid, titleEl) {
   [..._pf.owners   ].forEach(v => { if (!validOwners.includes(v))   _pf.owners.delete(v); });
   [..._pf.types    ].forEach(v => { if (!validTypes.includes(v))    _pf.types.delete(v); });
   [..._pf.countries].forEach(v => { if (!validCountries.includes(v)) _pf.countries.delete(v); });
+  [..._pf.statuses ].forEach(v => { if (!validStatuses.includes(v)) _pf.statuses.delete(v); });
   savePropFilters();
 
   const onChange = () => { savePropFilters(); clearTimeout(_propRebuildTimer); _propRebuildTimer = setTimeout(() => rebuildPropFilters(filterBar, grid, titleEl), 250); };
@@ -226,12 +229,13 @@ function rebuildPropFilters(filterBar, grid, titleEl) {
   const ownerMS   = buildMultiSelect(validOwners.map(v => ({ value: v, label: getPersonName(v) })), _pf.owners, 'All Owners', onChange);
   const typeMS    = buildMultiSelect(validTypes.map(v => ({ value: v, label: PROPERTY_TYPES[v] || v })), _pf.types, 'All Types', onChange);
   const countryMS = buildMultiSelect(validCountries.map(v => ({ value: v, label: v })), _pf.countries, 'All Countries', onChange);
+  const statusMS  = buildMultiSelect(validStatuses.map(v => ({ value: v, label: PROPERTY_STATUSES[v]?.label || v })), _pf.statuses, 'All Statuses', onChange);
 
   const resetBtn = button('Reset Filters', {
     variant: 'sm ghost',
     onClick: () => {
-      yearMS.reset(); channelMS.reset(); ownerMS.reset(); typeMS.reset(); countryMS.reset();
-      _pf.years.clear(); _pf.channels.clear(); _pf.owners.clear(); _pf.types.clear(); _pf.countries.clear();
+      yearMS.reset(); channelMS.reset(); ownerMS.reset(); typeMS.reset(); countryMS.reset(); statusMS.reset();
+      _pf.years.clear(); _pf.channels.clear(); _pf.owners.clear(); _pf.types.clear(); _pf.countries.clear(); _pf.statuses.clear();
       _pSortDir = 1; _pSortKey = 'name';
       savePropFilters();
       rebuildPropFilters(filterBar, grid, titleEl);
@@ -257,6 +261,7 @@ function rebuildPropFilters(filterBar, grid, titleEl) {
   filterBar.appendChild(ownerMS);
   filterBar.appendChild(typeMS);
   filterBar.appendChild(countryMS);
+  filterBar.appendChild(statusMS);
   filterBar.appendChild(resetBtn);
   filterBar.appendChild(el('div', { class: 'flex-1' }));
   filterBar.appendChild(mkSortBtn('name', 'Name'));
@@ -277,9 +282,10 @@ function renderPropGrid(grid, preloaded, titleEl) {
   if (_pf.owners.size)    props = props.filter(p => _pf.owners.has(p.owner || ''));
   if (_pf.types.size)     props = props.filter(p => _pf.types.has(p.type || ''));
   if (_pf.countries.size) props = props.filter(p => _pf.countries.has(p.country || ''));
+  if (_pf.statuses.size)  props = props.filter(p => _pf.statuses.has(p.status || ''));
 
   if (titleEl) {
-    const hasFilter = _pf.years.size || _pf.channels.size || _pf.owners.size || _pf.types.size || _pf.countries.size;
+    const hasFilter = _pf.years.size || _pf.channels.size || _pf.owners.size || _pf.types.size || _pf.countries.size || _pf.statuses.size;
     titleEl.textContent = hasFilter ? `${props.length} of ${total.length} Properties` : `${total.length} Properties`;
   }
 
@@ -302,7 +308,7 @@ function renderPropGrid(grid, preloaded, titleEl) {
   });
 
   if (props.length === 0) {
-    const hasFilter = _pf.years.size || _pf.channels.size || _pf.owners.size || _pf.types.size || _pf.countries.size;
+    const hasFilter = _pf.years.size || _pf.channels.size || _pf.owners.size || _pf.types.size || _pf.countries.size || _pf.statuses.size;
     grid.appendChild(el('div', { class: 'empty' },
       el('div', { class: 'empty-icon' }, 'H'),
       hasFilter ? 'No properties match your filters.' : 'No properties yet. Add your first one.'
