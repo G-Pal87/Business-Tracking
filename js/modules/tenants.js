@@ -1,6 +1,6 @@
 // Tenants module – CRUD for long-term rental tenants
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
 import { recordRentPaymentsBulk } from './payments.js';
 import { mkTh } from './analytics-helpers.js';
@@ -108,7 +108,14 @@ function build() {
       tr.appendChild(el('td', {}, r.leaseEndDate ? fmtDate(r.leaseEndDate) : 'Open-ended'));
       tr.appendChild(el('td', { class: 'right num' }, r.monthlyRent ? formatMoney(r.monthlyRent, r.currency || 'EUR', { maxFrac: 0 }) : '—'));
       tr.appendChild(el('td', { class: 'right num muted' }, r.deposit ? formatMoney(r.deposit, r.currency || 'EUR', { maxFrac: 0 }) : '—'));
-      tr.appendChild(el('td', {}, el('span', { class: `badge ${sm.css}` }, sm.label)));
+      const statusCell = el('td', {}, el('span', { class: `badge ${sm.css}` }, sm.label));
+      const expiryFlag = getContractExpiryFlag(r);
+      if (expiryFlag) {
+        statusCell.appendChild(expiryFlag.status === 'expired'
+          ? el('span', { class: 'badge danger', style: 'margin-left:6px' }, 'Contract expired')
+          : el('span', { class: 'badge warning', style: 'margin-left:6px' }, `Expires in ${expiryFlag.days}d`));
+      }
+      tr.appendChild(statusCell);
       const actions = el('td', { class: 'right' });
       actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => openForm(r, renderTable) }));
       if (r.status !== 'past') {
