@@ -754,6 +754,19 @@ function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDa
   return results;
 }
 
+export const CONTRACT_EXPIRY_WARNING_DAYS = 60;
+
+// Flags an active tenant's lease as already ended or ending soon (within
+// CONTRACT_EXPIRY_WARNING_DAYS). Returns null when there's nothing to flag
+// (no end date, lease not active, or the end date is far in the future).
+export function getContractExpiryFlag(tenant) {
+  if (!tenant || !tenant.leaseEndDate || tenant.status !== 'active') return null;
+  const diffDays = Math.ceil((new Date(tenant.leaseEndDate) - new Date()) / 86400000);
+  if (diffDays < 0) return { status: 'expired', days: diffDays };
+  if (diffDays <= CONTRACT_EXPIRY_WARNING_DAYS) return { status: 'expiring-soon', days: diffDays };
+  return null;
+}
+
 export function generatePaymentSchedule(property) {
   if (property.type !== 'long_term') return [];
 
