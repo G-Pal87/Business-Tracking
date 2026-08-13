@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, getForecastEntries, upsertForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildGeneratedExpenseCategoryIndex, buildReservationExpenseRefMap, formatRuleConflictWarning, getPeopleOwners, getPersonName } from '../core/data.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, getForecastEntries, upsertForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildGeneratedExpenseCategoryIndex, buildReservationExpenseRefMap, formatRuleConflictWarning, getPeopleOwners, getPersonName, getContractExpiryFlag } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT } from '../core/config.js';
 import { mkTh, mkExplainButton } from './analytics-helpers.js';
 import { navigate } from '../core/router.js';
@@ -1207,7 +1207,14 @@ function buildUpcomingSection(wrap) {
       tr.appendChild(el('td', {}, prop.name));
       tr.appendChild(el('td', { class: 'muted' }, getPersonName(prop.owner)));
       const entryTenant = entry.tenantId ? byId('tenants', entry.tenantId) : null;
-      tr.appendChild(el('td', { class: 'muted' }, entryTenant?.name || prop.tenantName || '—'));
+      const tenantCell = el('td', { class: 'muted' }, entryTenant?.name || prop.tenantName || '—');
+      const tenantExpiryFlag = entryTenant ? getContractExpiryFlag(entryTenant) : null;
+      if (tenantExpiryFlag) {
+        tenantCell.appendChild(tenantExpiryFlag.status === 'expired'
+          ? el('span', { class: 'badge danger', style: 'margin-left:6px' }, 'Contract expired')
+          : el('span', { class: 'badge warning', style: 'margin-left:6px' }, `Expires in ${tenantExpiryFlag.days}d`));
+      }
+      tr.appendChild(tenantCell);
       tr.appendChild(el('td', { class: 'right num' }, formatMoney(entry.amount, entry.currency, { maxFrac: 0 })));
       tr.appendChild(el('td', { class: 'right num muted' }, entry.currency === 'EUR' ? '' : formatEUR(entry.amountEUR)));
       tr.appendChild(el('td', {}, statusBadge));
