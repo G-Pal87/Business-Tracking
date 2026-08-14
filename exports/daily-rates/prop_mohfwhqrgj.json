@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-13T17:08:23.388Z",
+  "generatedAt": "2026-08-14T06:50:12.396Z",
   "property": {
     "id": "prop_mohfwhqrgj",
     "name": "Studio Tenerife",
@@ -13,16 +13,6 @@
   "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": [
-    {
-      "date": "2026-08-13",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "August 2025 day 13 (1n, 1.95×) + August 2024 day 13 (1n, 1.27×)",
-      "originalAmount": 29,
-      "discountPct": 0,
-      "amount": 29,
-      "airbnbCheckout": 33
-    },
     {
       "date": "2026-08-14",
       "currency": "EUR",
@@ -3662,6 +3652,16 @@
       "discountPct": 0,
       "amount": 31,
       "airbnbCheckout": 35
+    },
+    {
+      "date": "2027-08-13",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2025 day 13 (1n, 1.27×) + August 2024 day 13 (1n, 0.82×)",
+      "originalAmount": 29,
+      "discountPct": 0,
+      "amount": 29,
+      "airbnbCheckout": 33
     }
   ]
 }
