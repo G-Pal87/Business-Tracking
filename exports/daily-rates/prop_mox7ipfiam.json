@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-19T10:10:17.607Z",
+  "generatedAt": "2026-08-19T10:35:50.798Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -206,72 +206,72 @@
     {
       "date": "2026-09-07",
       "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 70,
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 69,
       "discountPct": 0,
-      "amount": 70,
-      "airbnbCheckout": 80
+      "amount": 69,
+      "airbnbCheckout": 79
     },
     {
       "date": "2026-09-08",
       "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 70,
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 69,
       "discountPct": 0,
-      "amount": 70,
-      "airbnbCheckout": 80
+      "amount": 69,
+      "airbnbCheckout": 79
     },
     {
       "date": "2026-09-09",
       "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 70,
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 69,
       "discountPct": 0,
-      "amount": 70,
-      "airbnbCheckout": 80
+      "amount": 69,
+      "airbnbCheckout": 79
     },
     {
       "date": "2026-09-10",
       "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 70,
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 69,
       "discountPct": 0,
-      "amount": 70,
-      "airbnbCheckout": 80
+      "amount": 69,
+      "airbnbCheckout": 79
     },
     {
       "date": "2026-09-11",
       "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 70,
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 69,
       "discountPct": 0,
-      "amount": 70,
-      "airbnbCheckout": 80
+      "amount": 69,
+      "airbnbCheckout": 79
     },
     {
       "date": "2026-09-12",
       "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 70,
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 69,
       "discountPct": 0,
-      "amount": 70,
-      "airbnbCheckout": 80
+      "amount": 69,
+      "airbnbCheckout": 79
     },
     {
       "date": "2026-09-13",
       "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 70,
+      "status": "booked",
+      "basis": "historic actual",
+      "originalAmount": 69,
       "discountPct": 0,
-      "amount": 70,
-      "airbnbCheckout": 80
+      "amount": 69,
+      "airbnbCheckout": 79
     },
     {
       "date": "2026-09-14",
