@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-19T10:35:50.794Z",
+  "generatedAt": "2026-08-25T05:38:37.815Z",
   "property": {
     "id": "prop_mohfwhqrgj",
     "name": "Studio Tenerife",
@@ -13,66 +13,6 @@
   "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": [
-    {
-      "date": "2026-08-19",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "August 2025 day 19 (1n, 1.95×) + August 2023 day 19 (1n, 0.82×)",
-      "originalAmount": 33,
-      "discountPct": 0,
-      "amount": 33,
-      "airbnbCheckout": 38
-    },
-    {
-      "date": "2026-08-20",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "August 2025 day 20 (1n, 1.95×) + August 2024 day 20 (1n, 1.27×) + August 2023 day 20 (1n, 0.82×)",
-      "originalAmount": 32,
-      "discountPct": 0,
-      "amount": 32,
-      "airbnbCheckout": 36
-    },
-    {
-      "date": "2026-08-21",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "August 2025 day 21 (1n, 1.95×) + August 2024 day 21 (1n, 1.27×)",
-      "originalAmount": 32,
-      "discountPct": 0,
-      "amount": 32,
-      "airbnbCheckout": 36
-    },
-    {
-      "date": "2026-08-22",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "August 2025 day 22 (1n, 1.95×) + August 2024 day 22 (1n, 1.27×)",
-      "originalAmount": 30,
-      "discountPct": 0,
-      "amount": 30,
-      "airbnbCheckout": 34
-    },
-    {
-      "date": "2026-08-23",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "August 2025 day 23 (1n, 1.95×) + August 2024 day 23 (1n, 1.27×)",
-      "originalAmount": 30,
-      "discountPct": 0,
-      "amount": 30,
-      "airbnbCheckout": 34
-    },
-    {
-      "date": "2026-08-24",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "August 2025 day 24 (1n, 1.95×) + August 2024 day 24 (1n, 1.27×)",
-      "originalAmount": 30,
-      "discountPct": 0,
-      "amount": 30,
-      "airbnbCheckout": 34
-    },
     {
       "date": "2026-08-25",
       "currency": "EUR",
@@ -3662,6 +3602,66 @@
       "discountPct": 0,
       "amount": 33,
       "airbnbCheckout": 38
+    },
+    {
+      "date": "2027-08-19",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2025 day 19 (1n, 1.27×) + August 2023 day 19 (1n, 0.54×)",
+      "originalAmount": 33,
+      "discountPct": 0,
+      "amount": 33,
+      "airbnbCheckout": 38
+    },
+    {
+      "date": "2027-08-20",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2025 day 20 (1n, 1.27×) + August 2024 day 20 (1n, 0.82×) + August 2023 day 20 (1n, 0.54×)",
+      "originalAmount": 32,
+      "discountPct": 0,
+      "amount": 32,
+      "airbnbCheckout": 36
+    },
+    {
+      "date": "2027-08-21",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2025 day 21 (1n, 1.27×) + August 2024 day 21 (1n, 0.82×)",
+      "originalAmount": 32,
+      "discountPct": 0,
+      "amount": 32,
+      "airbnbCheckout": 36
+    },
+    {
+      "date": "2027-08-22",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2025 day 22 (1n, 1.27×) + August 2024 day 22 (1n, 0.82×)",
+      "originalAmount": 30,
+      "discountPct": 0,
+      "amount": 30,
+      "airbnbCheckout": 34
+    },
+    {
+      "date": "2027-08-23",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2025 day 23 (1n, 1.27×) + August 2024 day 23 (1n, 0.82×)",
+      "originalAmount": 30,
+      "discountPct": 0,
+      "amount": 30,
+      "airbnbCheckout": 34
+    },
+    {
+      "date": "2027-08-24",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2025 day 24 (1n, 1.27×) + August 2024 day 24 (1n, 0.82×)",
+      "originalAmount": 30,
+      "discountPct": 0,
+      "amount": 30,
+      "airbnbCheckout": 34
     }
   ]
 }
