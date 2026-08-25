@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-19T10:35:50.806Z",
+  "generatedAt": "2026-08-25T05:38:37.826Z",
   "property": {
     "id": "prop_mox7p43s8o",
     "name": "Colourful Venus Beach Retreat | Pool & 2 Terraces",
@@ -13,66 +13,6 @@
   "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": [
-    {
-      "date": "2026-08-19",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 111,
-      "discountPct": 0,
-      "amount": 111,
-      "airbnbCheckout": 127
-    },
-    {
-      "date": "2026-08-20",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 111,
-      "discountPct": 0,
-      "amount": 111,
-      "airbnbCheckout": 127
-    },
-    {
-      "date": "2026-08-21",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 111,
-      "discountPct": 0,
-      "amount": 111,
-      "airbnbCheckout": 127
-    },
-    {
-      "date": "2026-08-22",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 111,
-      "discountPct": 0,
-      "amount": 111,
-      "airbnbCheckout": 127
-    },
-    {
-      "date": "2026-08-23",
-      "currency": "EUR",
-      "status": "open",
-      "basis": "confirmed target",
-      "originalAmount": 110,
-      "discountPct": 0,
-      "amount": 110,
-      "airbnbCheckout": 125
-    },
-    {
-      "date": "2026-08-24",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 108,
-      "discountPct": 0,
-      "amount": 108,
-      "airbnbCheckout": 123
-    },
     {
       "date": "2026-08-25",
       "currency": "EUR",
@@ -3662,6 +3602,66 @@
       "discountPct": 0,
       "amount": 101,
       "airbnbCheckout": 115
+    },
+    {
+      "date": "2027-08-19",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2026 day 19 (1n, 1.95×) + August 2025 day 19 (1n, 1.27×)",
+      "originalAmount": 101,
+      "discountPct": 0,
+      "amount": 101,
+      "airbnbCheckout": 115
+    },
+    {
+      "date": "2027-08-20",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2026 day 20 (1n, 1.95×) + August 2025 day 20 (1n, 1.27×)",
+      "originalAmount": 101,
+      "discountPct": 0,
+      "amount": 101,
+      "airbnbCheckout": 115
+    },
+    {
+      "date": "2027-08-21",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2026 day 21 (1n, 1.95×) + August 2025 day 21 (1n, 1.27×)",
+      "originalAmount": 101,
+      "discountPct": 0,
+      "amount": 101,
+      "airbnbCheckout": 115
+    },
+    {
+      "date": "2027-08-22",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2026 day 22 (1n, 1.95×) + August 2025 day 22 (1n, 1.27×)",
+      "originalAmount": 101,
+      "discountPct": 0,
+      "amount": 101,
+      "airbnbCheckout": 115
+    },
+    {
+      "date": "2027-08-23",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2026 (27n, 1.95×) + August 2025 (31n, 1.27×)",
+      "originalAmount": 99,
+      "discountPct": 0,
+      "amount": 99,
+      "airbnbCheckout": 113
+    },
+    {
+      "date": "2027-08-24",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2026 day 24 (1n, 1.95×) + August 2025 day 24 (1n, 1.27×)",
+      "originalAmount": 89,
+      "discountPct": 0,
+      "amount": 89,
+      "airbnbCheckout": 101
     }
   ]
 }
