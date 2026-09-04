@@ -8,6 +8,15 @@
       "device": "Chrome on Windows",
       "deviceType": "desktop",
       "at": 1788523566811
+    },
+    {
+      "type": "failed_login",
+      "sessionId": "fd9b77d3-dc30-4dd1-bfe0-51f377701f94",
+      "username": "Ritak",
+      "name": "Ritak",
+      "device": "Chrome on Windows",
+      "deviceType": "desktop",
+      "at": 1788533415617
     }
   ]
 }
