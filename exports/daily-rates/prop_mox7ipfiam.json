@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-08-31T13:21:27.726Z",
+  "generatedAt": "2026-09-04T11:33:13.679Z",
   "property": {
     "id": "prop_mox7ipfiam",
     "name": "Poolside Central Studio | Balcony & Beach Walk",
@@ -13,46 +13,6 @@
   "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": [
-    {
-      "date": "2026-08-31",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 69,
-      "discountPct": 0,
-      "amount": 69,
-      "airbnbCheckout": 79
-    },
-    {
-      "date": "2026-09-01",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 67,
-      "discountPct": 0,
-      "amount": 67,
-      "airbnbCheckout": 76
-    },
-    {
-      "date": "2026-09-02",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 67,
-      "discountPct": 0,
-      "amount": 67,
-      "airbnbCheckout": 76
-    },
-    {
-      "date": "2026-09-03",
-      "currency": "EUR",
-      "status": "booked",
-      "basis": "historic actual",
-      "originalAmount": 67,
-      "discountPct": 0,
-      "amount": 67,
-      "airbnbCheckout": 76
-    },
     {
       "date": "2026-09-04",
       "currency": "EUR",
@@ -3662,6 +3622,46 @@
       "discountPct": 0,
       "amount": 65,
       "airbnbCheckout": 74
+    },
+    {
+      "date": "2027-08-31",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "August 2026 day 31 (1n, 1.95×) + August 2025 day 31 (1n, 1.27×)",
+      "originalAmount": 65,
+      "discountPct": 0,
+      "amount": 65,
+      "airbnbCheckout": 74
+    },
+    {
+      "date": "2027-09-01",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "September 2026 (20n, 1.95×) + September 2025 (29n, 1.27×)",
+      "originalAmount": 64,
+      "discountPct": 0,
+      "amount": 64,
+      "airbnbCheckout": 73
+    },
+    {
+      "date": "2027-09-02",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "September 2026 day 02 (1n, 1.95×) + September 2025 day 02 (1n, 1.27×)",
+      "originalAmount": 67,
+      "discountPct": 0,
+      "amount": 67,
+      "airbnbCheckout": 76
+    },
+    {
+      "date": "2027-09-03",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "September 2026 day 03 (1n, 1.95×) + September 2025 day 03 (1n, 1.27×)",
+      "originalAmount": 67,
+      "discountPct": 0,
+      "amount": 67,
+      "airbnbCheckout": 76
     }
   ]
 }
