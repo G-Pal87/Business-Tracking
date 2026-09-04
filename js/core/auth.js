@@ -280,8 +280,26 @@ function renderLogin(screen, resolve) {
     errEl.textContent = '';
     btn.disabled = true;
     try {
-      const user = listActive('users').find(u => u.username === username);
-      const result = user ? await verifyPassword(password, user) : { ok: false };
+      let user = listActive('users').find(u => u.username === username);
+      let result = user ? await verifyPassword(password, user) : { ok: false };
+      // A "wrong" password on THIS device can actually be stale data: app.js
+      // Phase 1 logs in against whatever db.json this browser's localStorage
+      // last cached, before the background GitHub sync ever runs — so a
+      // password changed elsewhere (or on another device) still fails here
+      // until that cache catches up. One fresh pull, only on a failed check,
+      // tells a genuinely wrong password apart from a stale local cache
+      // instead of reporting the same generic error for both.
+      if (!result.ok && state.github?.owner && state.github?.repo) {
+        try {
+          const github = await import('./github.js');
+          const remoteDb = await github.fetchDb();
+          setDb(remoteDb);
+          github.applyDbConfig(remoteDb.appConfig?.github);
+          github.saveLocalCache(remoteDb);
+          user = listActive('users').find(u => u.username === username);
+          result = user ? await verifyPassword(password, user) : { ok: false };
+        } catch { /* GitHub unreachable — fall through to the cached result */ }
+      }
       if (!result.ok) {
         errEl.textContent = 'Invalid username or password';
         passwordI.value = '';
