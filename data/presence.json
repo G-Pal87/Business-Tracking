@@ -24,15 +24,15 @@
       "lastSeen": 1788537058040
     },
     "e6ee8a00-c5c3-402a-8e0d-0621e8122b77": {
-      "username": "Giorgos",
-      "name": "Giorgos",
+      "username": "RitaK",
+      "name": "Rita",
       "role": "admin",
       "device": "Safari on macOS",
       "deviceType": "desktop",
-      "hasKey": false,
+      "hasKey": true,
       "keyConfigured": true,
-      "connectedAt": 1788536701208,
-      "lastSeen": 1788536966011
+      "connectedAt": 1788536993013,
+      "lastSeen": 1788537060150
     }
   }
 }
