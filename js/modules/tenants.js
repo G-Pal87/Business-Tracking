@@ -303,8 +303,9 @@ function openForm(existing, onSave) {
               { okLabel: `Mark ${unpaidEntries.length} Paid` }
             );
             if (!ok) return;
-            recordRentPaymentsBulk(prop, unpaidEntries);
-            toast(`${unpaidEntries.length} rent payment(s) recorded`, 'success');
+            const { created, skipped } = recordRentPaymentsBulk(prop, unpaidEntries);
+            if (created.length) toast(`${created.length} rent payment(s) recorded`, 'success');
+            if (skipped.length) toast(`${skipped.length} month(s) already had a paid payment — skipped`, 'info');
             if (onSave) onSave();
           }, 220);
         }
