@@ -957,7 +957,10 @@ function buildScheduleSection(wrap) {
 
         const saveBtn = button('Save', { variant: 'sm primary', onClick: () => {
           const newDate  = dateI.value, newAmt = Number(amtI.value), newCur = curS.value;
-          const newStat  = statusS.value, newNotes = notesI.value.trim() || `Rent ${s.monthKey}`;
+          // Only fall back to the auto-generated label for a brand-new record
+          // (no `linked` yet) — an existing payment's comment can be cleared
+          // to genuinely empty instead of silently reverting to the default.
+          const newStat  = statusS.value, newNotes = notesI.value.trim() || (linked ? '' : `Rent ${s.monthKey}`);
           if (!newDate) { toast('Date is required', 'danger'); return; }
           if (newAmt <= 0) { toast('Amount must be greater than zero', 'danger'); return; }
           if (newStat === 'revert') {
