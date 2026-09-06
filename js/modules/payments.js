@@ -627,7 +627,8 @@ async function recordRentPayment(prop, entry, onDone) {
   const comment = await promptForComment();
   if (comment) {
     upsert('payments', { ...created, notes: comment });
-    toast('Comment saved', 'success');
+    const shown = comment.length > 120 ? comment.slice(0, 117) + '…' : comment;
+    toast(`Comment saved: "${shown}"`, 'success', 5000);
     if (onDone) onDone();
   }
 }
