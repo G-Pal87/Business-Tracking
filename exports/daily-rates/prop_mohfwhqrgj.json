@@ -1,6 +1,6 @@
 {
   "schema": "str-daily-rates/v1",
-  "generatedAt": "2026-09-04T12:02:11.248Z",
+  "generatedAt": "2026-09-06T11:03:44.170Z",
   "property": {
     "id": "prop_mohfwhqrgj",
     "name": "Studio Tenerife",
@@ -13,26 +13,6 @@
   "cleaningGuestTotal": 60,
   "horizonDays": 365,
   "rates": [
-    {
-      "date": "2026-09-04",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "September 2025 day 04 (1n, 1.95×) + September 2023 day 04 (1n, 0.82×)",
-      "originalAmount": 24,
-      "discountPct": 0,
-      "amount": 24,
-      "airbnbCheckout": 27
-    },
-    {
-      "date": "2026-09-05",
-      "currency": "EUR",
-      "status": "blocked",
-      "basis": "September 2025 day 05 (1n, 1.95×) + September 2023 day 05 (1n, 0.82×)",
-      "originalAmount": 24,
-      "discountPct": 0,
-      "amount": 24,
-      "airbnbCheckout": 27
-    },
     {
       "date": "2026-09-06",
       "currency": "EUR",
@@ -3658,6 +3638,26 @@
       "currency": "EUR",
       "status": "open",
       "basis": "September 2025 day 03 (1n, 1.27×) + September 2023 day 03 (1n, 0.54×)",
+      "originalAmount": 24,
+      "discountPct": 0,
+      "amount": 24,
+      "airbnbCheckout": 27
+    },
+    {
+      "date": "2027-09-04",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "September 2025 day 04 (1n, 1.27×) + September 2023 day 04 (1n, 0.54×)",
+      "originalAmount": 24,
+      "discountPct": 0,
+      "amount": 24,
+      "airbnbCheckout": 27
+    },
+    {
+      "date": "2027-09-05",
+      "currency": "EUR",
+      "status": "open",
+      "basis": "September 2025 day 05 (1n, 1.27×) + September 2023 day 05 (1n, 0.54×)",
       "originalAmount": 24,
       "discountPct": 0,
       "amount": 24,
