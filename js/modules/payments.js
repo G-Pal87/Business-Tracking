@@ -83,7 +83,8 @@ function buildAllPayments(wrap) {
     // Per-night host metrics
     ['Avg/Night', 'right'], ['Avg Gross/N', 'right'],
     // Estimated guest-facing price
-    ['Guest Fee', 'right'], ['Guest Total', 'right'], ['Guest/Night', 'right']
+    ['Guest Fee', 'right'], ['Guest Total', 'right'], ['Guest/Night', 'right'],
+    ['Comment', '']
   ];
   // Frozen (sticky) leading columns so Property + Owner stay visible while
   // scrolling through the many financial columns to the right. Offsets are
@@ -117,7 +118,8 @@ function buildAllPayments(wrap) {
     'Avg Gross/N':  'Average gross earnings per night = Gross ÷ Nights',
     'Guest Fee':    'Estimated guest service fee + tax added on top of your gross (Guest Total − Gross)',
     'Guest Total':  'Estimated all-in price the guest paid = Gross × (1 + guest fee % + tax %)',
-    'Guest/Night':  'Estimated guest total ÷ nights — what each night costs the guest'
+    'Guest/Night':  'Estimated guest total ÷ nights — what each night costs the guest',
+    'Comment':      'Free-text note on this payment record'
   };
 
   const filterBar = el('div', { class: 'flex gap-8 mb-16', style: 'flex-wrap:wrap' });
@@ -359,7 +361,8 @@ function buildAllPayments(wrap) {
     d => d.checkIn, d => d.checkOut, d => (d.nights ?? -Infinity),
     d => (d.dispGross ?? -Infinity), d => (d.serviceFee ?? -Infinity), d => (d.cleaningFee ?? -Infinity), d => d.eur, d => d.eur,
     d => (d.avgNight ?? -Infinity), d => (d.avgGross ?? -Infinity),
-    d => (d.guestFee ?? -Infinity), d => (d.guestTotal ?? -Infinity), d => (d.guestPerNight ?? -Infinity)
+    d => (d.guestFee ?? -Infinity), d => (d.guestTotal ?? -Infinity), d => (d.guestPerNight ?? -Infinity),
+    d => d.r.notes || ''
   ];
 
   const renderTable = () => {
@@ -501,7 +504,8 @@ function buildAllPayments(wrap) {
         el('td', { class: 'right num muted' }, d.avgGross != null ? formatMoney(d.avgGross, r.currency, { maxFrac: 0 }) : ''),
         el('td', { class: 'right num muted' }, d.guestFee != null ? formatMoney(d.guestFee, r.currency, { maxFrac: 0 }) : ''),
         el('td', { class: 'right num' }, d.guestTotal != null ? formatMoney(d.guestTotal, r.currency, { maxFrac: 0 }) : ''),
-        el('td', { class: 'right num muted' }, d.guestPerNight != null ? formatMoney(d.guestPerNight, r.currency, { maxFrac: 0 }) : '')
+        el('td', { class: 'right num muted' }, d.guestPerNight != null ? formatMoney(d.guestPerNight, r.currency, { maxFrac: 0 }) : ''),
+        (() => { const td = el('td', { class: 'muted', style: 'font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, r.notes || '—'); td.title = r.notes || ''; return td; })()
       ];
       if (propShown)  applyFrozen(propTd, PROP_IDX, PROP_W);
       if (ownerShown) applyFrozen(cells[OWNER_IDX], OWNER_IDX, OWNER_W);
@@ -576,10 +580,23 @@ function buildAllPayments(wrap) {
 // Turns N schedule entries (from generatePaymentSchedule) into real, paid
 // payment records in one batch — shared by the single "Mark Paid" button
 // below and by tenants.js's "mark this backfilled lease as paid" prompt.
+// Both callers decide "unpaid" from a schedule snapshot taken before an
+// intervening await (a comment-prompt modal, a confirm dialog) — re-check
+// against the current data right here so a month that got paid in the
+// meantime doesn't silently get a second "paid" payment record.
+// Returns { created, skipped } — skipped entries already had a paid payment
+// for that property + month and were left untouched.
 export function recordRentPaymentsBulk(prop, entries) {
   const created = [];
+  const skipped = [];
+  const paidMonths = new Set(
+    listActivePayments()
+      .filter(p => p.propertyId === prop.id && p.status === 'paid' && (p.stream === 'long_term_rental' || p.type === 'rental'))
+      .map(p => (p.date || '').slice(0, 7))
+  );
   runBatch(() => {
     for (const entry of entries) {
+      if (paidMonths.has(entry.monthKey)) { skipped.push(entry); continue; }
       const pay = {
         id: newId('pay'),
         propertyId: prop.id,
@@ -595,9 +612,10 @@ export function recordRentPaymentsBulk(prop, entries) {
       };
       upsert('payments', pay);
       created.push(pay);
+      paidMonths.add(entry.monthKey);
     }
   });
-  return created;
+  return { created, skipped };
 }
 
 // Opens a small "add a comment?" modal after a payment is marked paid.
@@ -621,7 +639,12 @@ function promptForComment() {
 }
 
 async function recordRentPayment(prop, entry, onDone) {
-  const [created] = recordRentPaymentsBulk(prop, [entry]);
+  const { created: [created] } = recordRentPaymentsBulk(prop, [entry]);
+  if (!created) {
+    toast(`A paid rent payment already exists for ${entry.monthKey} — skipped`, 'warning');
+    if (onDone) onDone();
+    return;
+  }
   toast('Payment recorded', 'success');
   if (onDone) onDone();
   const comment = await promptForComment();
