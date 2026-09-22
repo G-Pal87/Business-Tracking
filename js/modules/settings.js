@@ -1094,7 +1094,7 @@ function buildCurrencyCard() {
   const card = el('div', { class: 'card mb-16' });
 
   const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
-  const addYearBtn = button('+ Add Year', { variant: 'primary', onClick: (e) => { e.stopPropagation(); openAddYearForm(renderCard); } });
+  const addYearBtn = button('+ Add Year', { variant: 'primary', onClick: async (e) => { e.stopPropagation(); const added = await openAddYearForm(); if (added) renderCard(); } });
   const header = el('div', { class: 'card-header card-header--toggle' },
     el('div', {},
       el('div', { class: 'card-title' }, 'HUF/EUR Annual Rates'),
@@ -1159,25 +1159,40 @@ function buildCurrencyCard() {
   return card;
 }
 
-function openAddYearForm(onDone) {
-  const yearI = input({ type: 'number', value: new Date().getFullYear(), min: 2000, max: 2100, step: 1 });
-  const rateI = input({ type: 'number', step: 0.000001, min: 0, placeholder: 'e.g. 0.00256' });
-  const body = el('div', {});
-  body.appendChild(formRow('Year', yearI));
-  body.appendChild(formRow('1 HUF = EUR', rateI));
-  const save = button('Add', { variant: 'primary', onClick: () => {
-    const yr = String(Number(yearI.value) | 0);
-    const r = Number(rateI.value);
-    if (!yr || Number(yr) < 2000) { toast('Enter a valid year', 'danger'); return; }
-    if (!r || r <= 0) { toast('Enter a valid rate', 'danger'); return; }
-    if (!state.db.settings.fxRates.yearRates) state.db.settings.fxRates.yearRates = {};
-    state.db.settings.fxRates.yearRates[yr] = r;
-    markDirty();
-    toast(`${yr} rate added`, 'success');
-    closeModal();
-    onDone();
-  }});
-  openModal({ title: 'Add Annual Rate', body, footer: [button('Cancel', { onClick: closeModal }), save] });
+// Opens the "Add Annual Rate" modal, optionally prefilled with a specific
+// year (e.g. a HUF record whose year has no rate configured yet). Resolves
+// once the modal closes however it closes — added, cancelled, or dismissed —
+// with true only if a rate was actually saved, so a caller that needs to
+// proceed either way (e.g. finishing an expense save) doesn't need a
+// separate onClose handler.
+export function openAddYearForm(prefillYear) {
+  return new Promise(resolve => {
+    let settled = false;
+    const settle = v => { if (!settled) { settled = true; resolve(v); } };
+    const yearI = input({ type: 'number', value: prefillYear || new Date().getFullYear(), min: 2000, max: 2100, step: 1 });
+    const rateI = input({ type: 'number', step: 0.000001, min: 0, placeholder: 'e.g. 0.00256' });
+    const body = el('div', {});
+    body.appendChild(formRow('Year', yearI));
+    body.appendChild(formRow('1 HUF = EUR', rateI));
+    const saveBtn = button('Add', { variant: 'primary', onClick: () => {
+      const yr = String(Number(yearI.value) | 0);
+      const r = Number(rateI.value);
+      if (!yr || Number(yr) < 2000) { toast('Enter a valid year', 'danger'); return; }
+      if (!r || r <= 0) { toast('Enter a valid rate', 'danger'); return; }
+      if (!state.db.settings.fxRates) state.db.settings.fxRates = { yearRates: {} };
+      if (!state.db.settings.fxRates.yearRates) state.db.settings.fxRates.yearRates = {};
+      state.db.settings.fxRates.yearRates[yr] = r;
+      markDirty();
+      toast(`${yr} rate added`, 'success');
+      close();
+      settle(true);
+    }});
+    const { close } = openModal({
+      title: 'Add Annual Rate', body,
+      footer: [button('Cancel', { onClick: () => { close(); settle(false); } }), saveBtn],
+      onClose: () => settle(false)
+    });
+  });
 }
 
 function buildBusinessCard() {
