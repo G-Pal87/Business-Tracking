@@ -399,7 +399,7 @@ export function openDetail(id, preStats) {
     const ri = propertyROI(id);
     const n  = r - ex;
     statsGrid.innerHTML = '';
-    statsGrid.appendChild(smallStat('Purchase Price', formatMoney(p.purchasePrice, p.currency, { maxFrac: 0 }), p.currency !== 'EUR' ? `${formatEUR(toEUR(p.purchasePrice, p.currency))} EUR` : null));
+    statsGrid.appendChild(smallStat('Purchase Price', formatMoney(p.purchasePrice, p.currency, { maxFrac: 0 }), p.currency !== 'EUR' ? `${formatEUR(toEUR(p.purchasePrice, p.currency, p.purchaseDate))} EUR` : null));
     statsGrid.appendChild(smallStat(`Revenue ${y}`, formatEUR(r)));
     statsGrid.appendChild(smallStat(`Expenses ${y}`, formatEUR(ex)));
     statsGrid.appendChild(smallStat(`Net ${y}`, formatEUR(n)));

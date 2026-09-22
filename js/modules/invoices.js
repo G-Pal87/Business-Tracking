@@ -36,7 +36,7 @@ function exportInvoicesCSV(rows) {
       r.subtotal ?? '',
       r.tax ?? '',
       r.total ?? '',
-      toEUR(r.total, r.currency).toFixed(2),
+      toEUR(r.total, r.currency, r.issueDate).toFixed(2),
       r.stream || '',
       r.notes || ''
     ].map(escape).join(','));
@@ -62,7 +62,7 @@ const INV_COLS = [
 ];
 
 function invDrillRows(invs) {
-  return invs.map(i => ({ ...i, clientName: byId('clients', i.clientId)?.name || '-', eur: toEUR(i.total, i.currency) }));
+  return invs.map(i => ({ ...i, clientName: byId('clients', i.clientId)?.name || '-', eur: toEUR(i.total, i.currency, i.issueDate) }));
 }
 
 let _sortCol = -1, _sortDir = 1, _invSearch = '';
@@ -475,7 +475,7 @@ function build() {
     let totalV = 0, paidV = 0, sentV = 0, overdueV = 0, paidN = 0, sentN = 0, overdueN = 0;
     const paidRows = [], sentRows = [], overdueRows = [];
     for (const r of rows) {
-      const eur = toEUR(r.total, r.currency);
+      const eur = toEUR(r.total, r.currency, r.issueDate);
       totalV += eur;
       const st = _invStatCache.get(r.id);
       if (st === 'paid')    { paidV += eur; paidN++;    paidRows.push(r); }
@@ -544,7 +544,7 @@ function build() {
       };
 
       const tr = el('tr');
-      tr.dataset.eur = String(toEUR(r.total, r.currency));
+      tr.dataset.eur = String(toEUR(r.total, r.currency, r.issueDate));
       tr.dataset.paid = eff === 'paid' ? '1' : '0';
       const chkTd = el('td', { style: 'width:36px' }); chkTd.appendChild(chk);
       chkTd.onclick = e => e.stopPropagation();
