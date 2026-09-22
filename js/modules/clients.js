@@ -156,8 +156,8 @@ function build() {
 
 function card(c, invs = []) {
   const paid = invs.filter(i => i.status === 'paid');
-  const totalPaidEUR = paid.reduce((s, i) => s + toEUR(i.total, i.currency), 0);
-  const totalOutEUR = invs.filter(i => i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + toEUR(i.total, i.currency), 0);
+  const totalPaidEUR = paid.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const totalOutEUR = invs.filter(i => i.status !== 'paid' && i.status !== 'draft').reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
   const streamMeta = STREAMS[c.stream] || { short: c.stream, css: '' };
 
   const node = el('div', { class: 'prop-card' });

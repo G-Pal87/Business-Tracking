@@ -4,7 +4,7 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI,
-  getPeopleOwners, getPersonName, restoreInventoryStock, removeReservationExpenses, buildReservationExpenseRefMap
+  getPeopleOwners, getPersonName, getTenantDisplayStatus, restoreInventoryStock, removeReservationExpenses, buildReservationExpenseRefMap
 } from '../core/data.js';
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { openExpenseForm } from './expenses.js';
@@ -399,7 +399,7 @@ export function openDetail(id, preStats) {
     const ri = propertyROI(id);
     const n  = r - ex;
     statsGrid.innerHTML = '';
-    statsGrid.appendChild(smallStat('Purchase Price', formatMoney(p.purchasePrice, p.currency, { maxFrac: 0 }), p.currency !== 'EUR' ? `${formatEUR(toEUR(p.purchasePrice, p.currency))} EUR` : null));
+    statsGrid.appendChild(smallStat('Purchase Price', formatMoney(p.purchasePrice, p.currency, { maxFrac: 0 }), p.currency !== 'EUR' ? `${formatEUR(toEUR(p.purchasePrice, p.currency, p.purchaseDate))} EUR` : null));
     statsGrid.appendChild(smallStat(`Revenue ${y}`, formatEUR(r)));
     statsGrid.appendChild(smallStat(`Expenses ${y}`, formatEUR(ex)));
     statsGrid.appendChild(smallStat(`Net ${y}`, formatEUR(n)));
@@ -653,6 +653,7 @@ function buildTenantTimelineCard(propId) {
     el('div', { class: 'card-title' }, `Tenant Timeline (${list.length})`),
     el('div', { class: 'flex gap-16', style: 'font-size:11px;color:var(--text-muted)' },
       el('span', {}, swatch('var(--success)'), 'Current'),
+      el('span', {}, swatch('var(--warning)'), 'Terminating'),
       el('span', {}, swatch('var(--accent)'), 'Past')
     )
   ));
@@ -683,7 +684,9 @@ function buildTenantTimelineCard(propId) {
   rowsWrap.appendChild(overlay);
 
   for (const t of list) {
-    const isCurrent = t.status === 'active';
+    const dispStatus = getTenantDisplayStatus(t);
+    const isCurrent = dispStatus === 'active';
+    const isTerminating = dispStatus === 'terminating';
     const hasEnd = !!(t.leaseEndDate || t.terminationDate);
     const endStr = endOf(t);
     const endLabel = hasEnd ? fmtDate(endStr) : 'Present';
@@ -696,8 +699,9 @@ function buildTenantTimelineCard(propId) {
       el('div', { class: 'muted', style: 'font-size:11px' }, `${fmtDate(t.leaseStartDate)} – ${endLabel}`)
     ));
     const track = el('div', { style: 'flex:1;position:relative;height:20px' });
+    const barColor = isCurrent ? 'var(--success)' : isTerminating ? 'var(--warning)' : 'var(--accent)';
     const bar = el('div', {
-      style: `position:absolute;left:${left}%;width:${width}%;height:100%;border-radius:4px;background:${isCurrent ? 'var(--success)' : 'var(--accent)'};box-shadow:var(--shadow-sm)`
+      style: `position:absolute;left:${left}%;width:${width}%;height:100%;border-radius:4px;background:${barColor};box-shadow:var(--shadow-sm)`
     });
     bar.title = `${t.name} · ${fmtDate(t.leaseStartDate)} – ${endLabel}` +
       (t.monthlyRent ? ` · ${formatMoney(t.monthlyRent, t.currency, { maxFrac: 0 })}/mo` : '');

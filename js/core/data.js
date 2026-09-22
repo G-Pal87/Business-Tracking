@@ -1,6 +1,7 @@
 // Data layer: CRUD + aggregations + currency conversion
 import { state, markDirty, runBatch } from './state.js';
 import { MASTER_CURRENCY } from './config.js';
+import { today } from './ui.js';
 
 const _fmtCache    = new Map();
 const _numFmtCache = new Map();
@@ -765,6 +766,19 @@ export function getContractExpiryFlag(tenant) {
   if (diffDays < 0) return { status: 'expired', days: diffDays };
   if (diffDays <= CONTRACT_EXPIRY_WARNING_DAYS) return { status: 'expiring-soon', days: diffDays };
   return null;
+}
+
+// A tenant's stored `status` flips to 'past' the instant a lease is
+// terminated, even when the termination date entered is still in the
+// future — so terminating "as of tomorrow" would otherwise already read
+// as a past tenant today, everywhere status is displayed. This computes
+// the effective display status, holding at 'terminating' until that date
+// actually arrives.
+export function getTenantDisplayStatus(tenant) {
+  if (tenant?.status === 'past' && tenant.terminationDate && tenant.terminationDate > today()) {
+    return 'terminating';
+  }
+  return tenant?.status;
 }
 
 export function generatePaymentSchedule(property) {

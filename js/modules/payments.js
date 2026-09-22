@@ -322,7 +322,7 @@ function buildAllPayments(wrap) {
     const source    = r.source || 'manual';
     const conf      = r.confirmationCode || r.airbnbRef || '';
     const guest     = r.guestName || (r.source === 'airbnb' ? (r.notes || '').split(' · ')[0] : (r.notes || ''));
-    const eur       = toEUR(dispAmt, r.currency);
+    const eur       = toEUR(dispAmt, r.currency, r.date);
     // Estimated guest-facing price. The host CSV has no guest total, so we gross
     // up the host gross earnings by the configured guest service fee + tax.
     const af        = state.db.settings?.airbnb || {};

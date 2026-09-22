@@ -1,6 +1,6 @@
 // Tenants module – CRUD for long-term rental tenants
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag, getPeopleOwners, getPersonName } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePaymentSchedule, getContractExpiryFlag, getTenantDisplayStatus, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES } from '../core/config.js';
 import { recordRentPaymentsBulk } from './payments.js';
 import { mkTh } from './analytics-helpers.js';
@@ -21,6 +21,10 @@ const STATUSES = {
   past:        { label: 'Past',        css: '' },
   prospective: { label: 'Prospective', css: 'warning' }
 };
+// Layers the computed 'terminating' state (see getTenantDisplayStatus in
+// core/data.js) on top of STATUSES, for badges/filters only — never offered
+// in the manual status dropdown below, since it isn't a value a user sets.
+const DISPLAY_STATUSES = { ...STATUSES, terminating: { label: 'Terminating', css: 'warning' } };
 
 function build() {
   const wrap = el('div', { class: 'view active' });
@@ -36,7 +40,7 @@ function build() {
   const matchesExcept = (t, skip) => {
     if (skip !== 'prop'   && propFilter.size   > 0 && !propFilter.has(t.propertyId)) return false;
     if (skip !== 'owner'  && ownerFilter.size  > 0 && !ownerFilter.has(propMap.get(t.propertyId)?.owner)) return false;
-    if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(t.status))   return false;
+    if (skip !== 'status' && statusFilter.size > 0 && !statusFilter.has(getTenantDisplayStatus(t))) return false;
     return true;
   };
 
@@ -52,11 +56,11 @@ function build() {
     for (const t of allTenants) {
       if (matchesExcept(t, 'prop'))   { if (t.propertyId) validProps.add(t.propertyId); }
       if (matchesExcept(t, 'owner'))  { const ow = propMap.get(t.propertyId)?.owner; if (ow) validOwners.add(ow); }
-      if (matchesExcept(t, 'status')) { if (t.status) validStatuses.add(t.status); }
+      if (matchesExcept(t, 'status')) { const ds = getTenantDisplayStatus(t); if (ds) validStatuses.add(ds); }
     }
     propMS.setItems([...validProps].map(id => allProps.find(p => p.id === id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name })));
     ownerMS.setItems(getPeopleOwners({ includeBoth: true }).filter(o => validOwners.has(o.value)));
-    statusMS.setItems([...validStatuses].map(s => { const m = STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
+    statusMS.setItems([...validStatuses].map(s => { const m = DISPLAY_STATUSES[s] || { label: s, css: '' }; return { value: s, label: m.label, css: m.css }; }));
   };
 
   const resetFiltersBtn = button('Reset Filters', { variant: 'sm ghost', onClick: () => { propMS.reset(); ownerMS.reset(); statusMS.reset(); rebuildFilters(); renderTable(); } });
@@ -77,7 +81,7 @@ function build() {
     let rows = [...listActive('tenants')];
     if (propFilter.size > 0)   rows = rows.filter(r => propFilter.has(r.propertyId));
     if (ownerFilter.size > 0)  rows = rows.filter(r => ownerFilter.has(propMap.get(r.propertyId)?.owner));
-    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(r.status));
+    if (statusFilter.size > 0) rows = rows.filter(r => statusFilter.has(getTenantDisplayStatus(r)));
     rows.sort((a, b) => (b.leaseStartDate || '').localeCompare(a.leaseStartDate || ''));
 
     if (rows.length === 0) {
@@ -106,7 +110,7 @@ function build() {
     const tb = el('tbody');
     for (const r of rows) {
       const prop = propMap.get(r.propertyId);
-      const sm = STATUSES[r.status] || { label: r.status, css: '' };
+      const sm = DISPLAY_STATUSES[getTenantDisplayStatus(r)] || { label: r.status, css: '' };
       const tr = el('tr');
       tr.appendChild(el('td', { style: 'font-weight:500' }, r.name));
       tr.appendChild(el('td', {}, prop?.name || '—'));
