@@ -391,8 +391,12 @@ function build() {
     }
 
     // Footer totals computed over the full filtered set
-    let totalEUR = 0, capexEUR = 0;
-    for (const d of derived) { totalEUR += d.eur; if (d.isCapex) capexEUR += d.eur; }
+    let totalEUR = 0, capexEUR = 0, totalHUF = 0;
+    for (const d of derived) {
+      totalEUR += d.eur;
+      if (d.isCapex) capexEUR += d.eur;
+      if (d.r.currency === 'HUF') totalHUF += Number(d.r.amount) || 0;
+    }
 
     // 4. Paginate
     const pageCount = Math.max(1, Math.ceil(total / _expPageSize));
@@ -487,7 +491,10 @@ function build() {
 
     tableWrap.appendChild(el('div', { class: 'flex justify-between table-footer', style: 'padding:14px 16px;border-top:1px solid var(--border);font-size:13px' },
       el('span', { class: 'muted' }, `${total} expense(s) · CapEx: `, formatEUR(capexEUR)),
-      el('span', {}, 'Total: ', el('strong', { class: 'num' }, formatEUR(totalEUR)))
+      el('span', {},
+        totalHUF ? el('span', { class: 'muted', style: 'margin-right:12px' }, 'HUF Total: ', el('strong', {}, formatMoney(totalHUF, 'HUF', { maxFrac: 0 }))) : null,
+        'Total: ', el('strong', { class: 'num' }, formatEUR(totalEUR))
+      )
     ));
 
     // Pagination controls
