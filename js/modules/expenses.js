@@ -6,6 +6,7 @@ import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
+import { openAddYearForm } from './settings.js';
 
 function readFileAsBase64(file) {
   return new Promise((resolve, reject) => {
@@ -111,6 +112,9 @@ function build() {
   charts.destroyAll();
 
   const wrap = el('div', { class: 'view active' });
+
+  const missingRateBanner = el('div', { style: 'display:none' });
+  wrap.appendChild(missingRateBanner);
 
   const chartsGrid = el('div', { class: 'grid grid-2' },
     el('div', { class: 'card' },
@@ -320,7 +324,7 @@ function build() {
     const cat  = EXPENSE_CATEGORIES[r.category];
     const catLabel = cat?.label || r.category;
     const vendorPerson = vendorNameOf(r);
-    const eur = toEUR(r.amount, r.currency);
+    const eur = toEUR(r.amount, r.currency, r.date);
     // No property → allocated to Company. (Previously fell back to the
     // expense's `stream` field, e.g. "Short-term Rentals" — a leftover
     // default from the form, not a meaningful allocation once Company was
@@ -534,7 +538,7 @@ function build() {
         recurrence:    RECURRENCE_TYPES[res.recurrence]?.label || res.recurrence,
         desc:          r.description || '—',
         vendor:        vendorNameOf(r) || '—',
-        eur:           toEUR(r.amount, r.currency),
+        eur:           toEUR(r.amount, r.currency, r.date),
       };
     })
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -565,7 +569,7 @@ function build() {
     const byCostCat = new Map();
     for (const r of bkRows) {
       const k = _expFieldCache.get(r.id)?.costCategory;
-      byCostCat.set(k, (byCostCat.get(k) || 0) + toEUR(r.amount, r.currency));
+      byCostCat.set(k, (byCostCat.get(k) || 0) + toEUR(r.amount, r.currency, r.date));
     }
     const catLabels = [], catData = [], catColors = [], catKeys = [];
     for (const [k, m] of Object.entries(COST_CATEGORIES)) {
@@ -589,7 +593,7 @@ function build() {
 
     // By Property bar chart
     const byProp = new Map();
-    for (const r of bkRows) byProp.set(r.propertyId, (byProp.get(r.propertyId) || 0) + toEUR(r.amount, r.currency));
+    for (const r of bkRows) byProp.set(r.propertyId, (byProp.get(r.propertyId) || 0) + toEUR(r.amount, r.currency, r.date));
     const propLabels = [], propData = [], propIds = [];
     const propColors = ['#6366f1', '#8b5cf6', '#14b8a6', '#ec4899', '#f59e0b', '#3b82f6'];
     for (const [id, val] of [...byProp.entries()].sort((a, b) => b[1] - a[1])) {
@@ -612,9 +616,39 @@ function build() {
     });
   };
 
-  const renderAll = () => { renderTable(); requestAnimationFrame(() => renderDash()); };
+  // Flags any year that has at least one HUF expense but no configured
+  // conversion rate — those expenses silently show as €0 in every EUR total
+  // (see toEUR() in core/data.js), so surface it instead of leaving it to be
+  // noticed by a number that looks wrong.
+  const renderMissingRateBanner = () => {
+    missingRateBanner.innerHTML = '';
+    const yearRates = state.db.settings?.fxRates?.yearRates || {};
+    const missingYears = [...new Set(
+      listActive('expenses').filter(e => e.currency === 'HUF' && e.date).map(e => e.date.slice(0, 4))
+    )].filter(yr => !yearRates[yr]).sort();
+    if (missingYears.length === 0) { missingRateBanner.style.display = 'none'; return; }
+    missingRateBanner.style.display = '';
+    const btnRow = el('div', { class: 'flex gap-8', style: 'flex-wrap:wrap' });
+    for (const yr of missingYears) {
+      btnRow.appendChild(button(`Add ${yr} rate`, { variant: 'sm primary', onClick: async () => {
+        const added = await openAddYearForm(yr);
+        if (added) { renderMissingRateBanner(); renderAll(); }
+      }}));
+    }
+    missingRateBanner.appendChild(el('div', {
+      style: 'display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;' +
+        'margin-bottom:16px;padding:10px 14px;border-radius:8px;font-size:13px;' +
+        'background:var(--warning-soft);border:1px solid var(--warning);color:var(--text)'
+    },
+      el('span', {}, `No HUF→EUR rate set for ${missingYears.length === 1 ? 'year' : 'years'} ${missingYears.join(', ')} — HUF expenses ${missingYears.length === 1 ? 'that year show' : 'in those years show'} as €0 in totals.`),
+      btnRow
+    ));
+  };
+
+  const renderAll = () => { renderMissingRateBanner(); renderTable(); requestAnimationFrame(() => renderDash()); };
 
   rebuildFilters();
+  renderMissingRateBanner();
   requestAnimationFrame(() => { renderTable(); requestAnimationFrame(() => renderDash()); });
 
   return { element: wrap, update: () => { _expFieldCache = new Map(); rebuildFilters(); renderAll(); } };
@@ -1140,8 +1174,17 @@ function openForm(existing, defaults = {}, onSave = null) {
       toast(existing ? 'Expense updated' : 'Expense added', 'success');
     }
     closeModal();
-    if (onSave) setTimeout(onSave, 200);
-    else setTimeout(() => navigate('expenses'), 200);
+    const proceed = () => { if (onSave) onSave(); else navigate('expenses'); };
+    const savedYear = String(r.date || '').slice(0, 4);
+    const hasRate = !!(state.db.settings?.fxRates?.yearRates || {})[savedYear];
+    if (r.currency === 'HUF' && savedYear && !hasRate) {
+      // The rate table has no entry for this expense's year — prompt for it
+      // right away instead of letting it silently convert to €0 (see
+      // toEUR() in core/data.js) until someone notices a total looks wrong.
+      setTimeout(async () => { await openAddYearForm(savedYear); proceed(); }, 200);
+    } else {
+      setTimeout(proceed, 200);
+    }
   }
   const cancel = button('Cancel', { onClick: closeModal });
   openModal({ title: existing ? 'Edit Expense' : 'New Expense', body, footer: [cancel, save] });
