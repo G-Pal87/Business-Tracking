@@ -3,7 +3,7 @@ import { el, buildMultiSelect, button, fmtDate, today, drillDownModal, attachSor
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, PROPERTY_STREAMS, PROPERTY_STATUSES } from '../core/config.js';
 import {
-  formatEUR, formatMoney, toEUR, byId, getPersonName,
+  formatEUR, formatMoney, toEUR, byId, getPersonName, getTenantDisplayStatus,
   listActive, listActivePayments, isCapEx, isReservationNight,
   simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
@@ -1504,6 +1504,7 @@ function buildPropertyLifecycleTimeline(propData) {
       el('span', {}, swatch('var(--warning)'), 'Renovation'),
       el('span', {}, swatch('var(--text-dim)'), 'Vacant'),
       el('span', {}, swatch('var(--success)'), 'Current tenant'),
+      el('span', {}, swatch('var(--warning)'), 'Terminating'),
       el('span', {}, swatch('var(--accent)'), 'Past tenant'),
       el('span', {}, swatch('var(--danger)'), 'Sold')
     )
@@ -1623,20 +1624,24 @@ function buildPropertyLifecycleTimeline(propData) {
     }
 
     tenants.forEach((t, i) => {
-      const isCurrent = t.status === 'active';
+      const dispStatus = getTenantDisplayStatus(t);
+      const isCurrent = dispStatus === 'active';
+      const isTerminating = dispStatus === 'terminating';
       const hasEnd = !!(t.leaseEndDate || t.terminationDate);
       const endStr = tenantEnd(t);
       const endLabel = hasEnd ? fmtDate(endStr) : 'Present';
       const left = pct(t.leaseStartDate);
       const width = Math.max(0.8, pct(endStr) - left);
+      const barColor = isCurrent ? 'var(--success)' : isTerminating ? 'var(--warning)' : 'var(--accent)';
+      const statusLabel = isCurrent ? 'Current tenant' : isTerminating ? 'Terminating' : 'Past tenant';
       const bar = el('div', {
-        style: `position:absolute;left:${left}%;width:${width}%;top:${lanes[i] * (LANE_H + LANE_GAP)}px;height:${LANE_H}px;border-radius:4px;cursor:pointer;background:${isCurrent ? 'var(--success)' : 'var(--accent)'};box-shadow:var(--shadow-sm)`
+        style: `position:absolute;left:${left}%;width:${width}%;top:${lanes[i] * (LANE_H + LANE_GAP)}px;height:${LANE_H}px;border-radius:4px;cursor:pointer;background:${barColor};box-shadow:var(--shadow-sm)`
       });
       bar.title = `${t.name} · ${fmtDate(t.leaseStartDate)} – ${endLabel}` +
         (t.monthlyRent ? ` · ${formatMoney(t.monthlyRent, t.currency, { maxFrac: 0 })}/mo` : '');
       bar.onclick = () => openTimelineInfoModal(`${t.name} — Tenant`, [
         ['Property', prop.name],
-        ['Status', isCurrent ? 'Current tenant' : 'Past tenant'],
+        ['Status', statusLabel],
         ['Lease Start', fmtDate(t.leaseStartDate)],
         ['Lease End', endLabel],
         ['Duration', durationLabel(t.leaseStartDate, endStr)],
