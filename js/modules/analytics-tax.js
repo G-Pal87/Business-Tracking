@@ -10,10 +10,11 @@ import {
   newId, upsert, softDelete, companyPropIds, isCompanyRecord,
   getPersonName, drillRevRows, drillExpRows, drillNetRows, drillRevRowsPnL, drillNetRowsPnL
 } from '../core/data.js';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue, recordOwner, invoiceOwner, ownerShare, groupByMonthKey } from './analytics-helpers.js';
 import {
   getCyprusTaxYearConfig, setCyprusTaxYear, persistCyprusTaxYearConfig,
-  daysLabel, monthRemainingFraction, isCoRec, getActualsForYear
+  daysLabel, monthRemainingFraction, isCoRec, getActualsForYear,
+  hasCyprusTaxYearConfig, defaultCorpTaxRate, forecastRemainingForYear
 } from './cyprus-tax.js';
 
 // ── Module state ───────────────────────────────────────────────────────────────
@@ -154,38 +155,54 @@ function defaultYear() {
   return years[0];
 }
 
-function ownerMatches(record, ownerFilter) {
-  if (!ownerFilter) return true;
-  const ow = record.owner || 'both';
-  if (ownerFilter === 'both') return true;
-  return ow === ownerFilter || ow === 'both';
-}
-
-function invOwnerMatches(inv, ownerFilter) {
-  if (!ownerFilter) return true;
-  let ow = inv.owner;
-  if (!ow && inv.clientId) ow = byId('clients', inv.clientId)?.owner;
-  ow = ow || 'both';
-  if (ownerFilter === 'both') return true;
-  return ow === ownerFilter || ow === 'both';
+// Owner filter for the P&L — ONE owner rule shared with the rest of
+// Analytics: payments/expenses use recordOwner() (the linked property's
+// owner, else the record's own — same as makeMatchers().mOwner), invoices use
+// invoiceOwner(). With a partner selected, their own records count 100% and
+// shared ('both') records 50% — the same split as the Partners dashboard, so
+// the two partners' P&Ls add up to the whole. A shared record is represented
+// by a copy with its amount fields scaled, so every total, table, chart and
+// drill-down built from these arrays stays consistent. 'Both'/'All' = no
+// owner weighting (unchanged).
+function applyOwnerWeight(rows, ownerOf, amountFields, ownerFilter) {
+  if (ownerFilter !== 'you' && ownerFilter !== 'rita') return rows;
+  const out = [];
+  for (const r of rows) {
+    const w = ownerShare(ownerOf(r), ownerFilter);
+    if (!w) continue;
+    if (w === 1) { out.push(r); continue; }
+    const c = { ...r, _ownerShare: w };
+    for (const f of amountFields) if (c[f] != null && isFinite(Number(c[f]))) c[f] = Number(c[f]) * w;
+    out.push(c);
+  }
+  return out;
 }
 
 function inYear(date, year) {
   return !!date && date.startsWith(year + '-');
 }
 
+// One rate source per year, shared with the Provisional Tax tab: a year that
+// has a Provisional Tax (cyprusTax) config uses ITS corpTaxRate; otherwise the
+// legacy per-year P&L override (settings.taxRates), then the legacy global
+// settings.corpTaxRate, then defaultCorpTaxRate(year) (12.5% before tax year
+// 2026, 15% from 2026 — OECD Pillar Two). hasCyprusTaxYearConfig() is a
+// read-only probe, so viewing never creates a config bucket.
 function getTaxRate(year) {
+  if (hasCyprusTaxYearConfig(year)) {
+    const r = Number(getCyprusTaxYearConfig(year).corpTaxRate);
+    if (isFinite(r)) return r;
+  }
   const rates = state.db.settings?.taxRates || {};
   if (rates[String(year)] != null) return rates[String(year)];
   if (state.db.settings?.corpTaxRate != null) return state.db.settings.corpTaxRate;
-  // Cyprus's standard corporate tax rate rose from 12.5% to 15% for tax years
-  // starting 1 January 2026 (OECD Pillar Two alignment) — a flat fallback
-  // here would either overcharge every pre-2026 year or undercharge every
-  // 2026+ year the moment neither a per-year nor a global rate was ever set.
-  return Number(year) >= 2026 ? 15 : 12.5;
+  return defaultCorpTaxRate(year);
 }
 
 function saveTaxRate(year, rate) {
+  // Keep the single source in sync: a year with a Provisional Tax config
+  // stores its rate there (so both tabs always show the same rate).
+  if (hasCyprusTaxYearConfig(year)) persistCyprusTaxYearConfig({ corpTaxRate: rate }, year);
   if (!state.db.settings) state.db.settings = {};
   if (!state.db.settings.taxRates) state.db.settings.taxRates = {};
   state.db.settings.taxRates[String(year)] = rate;
@@ -203,18 +220,38 @@ function resolvedCatKey(e) {
   return fields.costCategory || e.costCategory || e.category || 'other';
 }
 
+// Memoized per (year, owner, scope) and invalidated by any edit (editSeq) or
+// a whole-db swap (identity) — renderCharts() needs every year's figures on
+// each render for the YoY chart, which used to rebuild them all every time.
+let _yearDataCache = { seq: -1, db: null, map: new Map() };
 function getYearData(year, ownerFilter) {
+  // The memoized listActive() arrays are also compared: sync can change
+  // records in place (e.g. adopting other users' edits after a push) without
+  // an editSeq bump, but it always invalidates those arrays.
+  const src = [listActive('payments'), listActive('invoices'), listActive('expenses')];
+  if (_yearDataCache.seq !== state.editSeq || _yearDataCache.db !== state.db ||
+      !_yearDataCache.src || _yearDataCache.src.some((a, i) => a !== src[i])) {
+    _yearDataCache = { seq: state.editSeq, db: state.db, src, map: new Map() };
+  }
+  const key = `${year}|${ownerFilter || ''}|${gScope}`;
+  if (!_yearDataCache.map.has(key)) _yearDataCache.map.set(key, computeYearData(year, ownerFilter));
+  return _yearDataCache.map.get(key);
+}
+
+function computeYearData(year, ownerFilter) {
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
     : r => isCompanyRecord(r, coPropIds);
-  const payments = listActivePayments().filter(p =>
-    p.status === 'paid' && inYear(p.date, year) && ownerMatches(p, ownerFilter) && isCoRec(p)
-  );
-  const invoices = listActive('invoices').filter(i =>
-    i.status === 'paid' && inYear(i.issueDate || i.date, year) && invOwnerMatches(i, ownerFilter)
-  );
-  const allExp      = listActive('expenses').filter(e => inYear(e.date, year) && ownerMatches(e, ownerFilter) && isCoRec(e));
+  const payments = applyOwnerWeight(listActivePayments().filter(p =>
+    p.status === 'paid' && inYear(p.date, year) && isCoRec(p)
+  ), recordOwner, ['amount'], ownerFilter);
+  // Invoices get the scope check too (an invoice linked to a personal-channel
+  // property is outside Company scope), so the P&L tax estimate respects it.
+  const invoices = applyOwnerWeight(listActive('invoices').filter(i =>
+    i.status === 'paid' && inYear(i.issueDate || i.date, year) && isCoRec(i)
+  ), invoiceOwner, ['subtotal', 'total', 'amount'], ownerFilter);
+  const allExp      = applyOwnerWeight(listActive('expenses').filter(e => inYear(e.date, year) && isCoRec(e)), recordOwner, ['amount'], ownerFilter);
   const opExpenses  = allExp.filter(e => !isCapEx(e));
   const capExpenses = allExp.filter(e =>  isCapEx(e));
 
@@ -264,22 +301,19 @@ function getYearData(year, ownerFilter) {
   const opProfit   = totalRevenue - totalOpEx;
   const netCash    = opProfit - totalCapEx;
 
+  // Grouped once per collection instead of re-filtering per month.
+  const paysByMk = groupByMonthKey(payments, p => p.date);
+  const invsByMk = groupByMonthKey(invoices, i => i.issueDate);
+  const opexByMk = groupByMonthKey(opExpenses, e => e.date);
   const monthly = Array.from({ length: 12 }, (_, mi) => {
     const mk  = `${year}-${String(mi + 1).padStart(2, '0')}`;
-    const rev = payments.filter(p => p.date?.startsWith(mk)).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
-              + invoices.filter(i => (i.issueDate || '').startsWith(mk)).reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), 0);
-    const opex = opExpenses.filter(e => e.date?.startsWith(mk)).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    const rev = (paysByMk.get(mk) || []).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
+              + (invsByMk.get(mk) || []).reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), 0);
+    const opex = (opexByMk.get(mk) || []).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
     return { mk, rev, opex };
   });
 
-  const forecasts = listActive('forecasts').filter(f => String(f.year) === String(year));
-  let forecastRevenue = 0, forecastExpenses = 0;
-  for (const f of forecasts) {
-    if (f.yearTarget?.revenue)  forecastRevenue  += Number(f.yearTarget.revenue)  || 0;
-    if (f.yearTarget?.expenses) forecastExpenses += Number(f.yearTarget.expenses) || 0;
-  }
-  const hasForecast = forecastRevenue > 0 || forecastExpenses > 0;
-  const forecastNet = forecastRevenue - forecastExpenses;
+  const fc = getYearForecastLikeForLike(year, ownerFilter);
 
   return {
     payments, invoices, opExpenses, capExpenses,
@@ -287,7 +321,71 @@ function getYearData(year, ownerFilter) {
     revSTR, revLTR, revCS, revMkt, revOther, totalRevenue,
     catMap, totalOpEx, totalCapEx, opProfit, netCash,
     monthly,
-    hasForecast, forecastRevenue, forecastExpenses, forecastNet
+    ...fc
+  };
+}
+
+// "Year vs Forecast" — like-for-like forecast for the selected year/scope.
+// Source (never summed together, so a portfolio target can't double-count
+// per-property targets):
+//   1. the monthly forecasts (Operations → Forecast; one per entity, entries/
+//      manual figures, long-term lease fallback, company scope unless 'All')
+//      via forecastRemainingForYear() — the same engine as Provisional Tax;
+//   2. else the whole-portfolio annual target (_portfolio_target);
+//   3. else the sum of per-entity annual targets (yearTarget).
+// For the in-progress year only the elapsed part is compared (monthly: the
+// forecast up to today, the current month pro-rated; annual targets: pro-rated
+// by days elapsed), so partial actuals aren't measured against a full year.
+// Forecasts aren't owner-attributed, so with a partner filter there is no
+// comparable forecast (hasForecast false, ownerFiltered true).
+function getYearForecastLikeForLike(year, ownerFilter) {
+  const empty = { hasForecast: false, forecastRevenue: 0, forecastExpenses: 0, forecastNet: 0,
+                  forecastFullRevenue: 0, forecastFullExpenses: 0, forecastSource: '', forecastElapsedPct: 100,
+                  ownerFiltered: ownerFilter === 'you' || ownerFilter === 'rita' };
+  if (empty.ownerFiltered) return empty;
+  const yr = Number(year);
+  const todayStr = today();
+  const yearEnd = `${yr}-12-31`;
+  const cutoff = todayStr < yearEnd ? todayStr : yearEnd;
+  const scope = gScope === 'all' ? 'all' : 'company';
+  let fullRev = 0, fullExp = 0, revToDate = 0, expToDate = 0, source = '';
+  if (cutoff >= `${yr}-01-01`) {
+    const full = forecastRemainingForYear(yr, { cutoff: `${yr - 1}-12-31`, scope }); // whole year
+    if (full.revenue > 0 || full.expenses > 0) {
+      const rem = forecastRemainingForYear(yr, { cutoff, scope });
+      fullRev = full.revenue; fullExp = full.expenses;
+      revToDate = full.revenue - rem.revenue; expToDate = full.expenses - rem.expenses;
+      source = 'monthly';
+    }
+  }
+  if (!source) {
+    const fcs = listActive('forecasts').filter(f => String(f.year) === String(year));
+    const pt = fcs.find(f => f.entityId === '_portfolio_target' && (Number(f.yearTarget?.revenue) > 0 || Number(f.yearTarget?.expenses) > 0));
+    if (pt) {
+      fullRev = Number(pt.yearTarget.revenue) || 0; fullExp = Number(pt.yearTarget.expenses) || 0; source = 'portfolio';
+    } else {
+      for (const f of fcs) {
+        if (f.entityId === '_portfolio_target' || f.type === 'portfolio') continue;
+        fullRev += Number(f.yearTarget?.revenue) || 0;
+        fullExp += Number(f.yearTarget?.expenses) || 0;
+      }
+      if (fullRev > 0 || fullExp > 0) source = 'targets';
+    }
+    if (source) {
+      const daysInYear = (yr % 4 === 0 && yr % 100 !== 0) || yr % 400 === 0 ? 366 : 365;
+      const elapsed = cutoff < `${yr}-01-01` ? 0
+        : Math.round((Date.UTC(+cutoff.slice(0, 4), +cutoff.slice(5, 7) - 1, +cutoff.slice(8, 10)) - Date.UTC(yr, 0, 1)) / 86400000) + 1;
+      const frac = Math.min(1, elapsed / daysInYear);
+      revToDate = fullRev * frac; expToDate = fullExp * frac;
+    }
+  }
+  if (!source) return empty;
+  return {
+    hasForecast: true,
+    forecastRevenue: revToDate, forecastExpenses: expToDate, forecastNet: revToDate - expToDate,
+    forecastFullRevenue: fullRev, forecastFullExpenses: fullExp, forecastSource: source,
+    forecastElapsedPct: fullRev + fullExp > 0 ? (revToDate + expToDate) / (fullRev + fullExp) * 100 : 100,
+    ownerFiltered: false
   };
 }
 
@@ -403,7 +501,12 @@ function buildPnLTable(data, taxRate, year) {
   if (revLTR   > 0) tbody.appendChild(mkRow('Rental Revenue (LTR)',       revLTR,   { indent: 1, onClick: () => openPnLRevenueModal('Rental Revenue (LTR)', data.rentalPaymentsLTR, false, year) }));
   if (revCS    > 0) tbody.appendChild(mkRow('Service Revenue (CS)',        revCS,    { indent: 1, onClick: () => openPnLRevenueModal('Service Revenue (CS)', data.invoicesCS, true, year) }));
   if (revMkt   > 0) tbody.appendChild(mkRow('Service Revenue (Marketing)', revMkt,   { indent: 1, onClick: () => openPnLRevenueModal('Service Revenue (Marketing)', data.invoicesMkt, true, year) }));
-  if (revOther > 0) tbody.appendChild(mkRow('Other Services',              revOther, { indent: 1, onClick: () => openPnLRevenueModal('Other Services', data.invoicesOther, true, year) }));
+  // revOther also includes payments with no resolvable rental stream, so the
+  // drill must show those too or it won't add up to this row.
+  if (revOther > 0) {
+    const otherInvs = new Set(data.invoicesOther);
+    tbody.appendChild(mkRow('Other Services', revOther, { indent: 1, onClick: () => openPnLRevenueModal('Other Services', [...data.invoicesOther, ...data.rentalPaymentsOther], r => otherInvs.has(r), year) }));
+  }
   tbody.appendChild(mkRow(null, null, { isSeparator: true }));
   tbody.appendChild(mkRow('Total Revenue', totalRevenue, {
     isSectionTotal: true, isPositive: totalRevenue >= 0,
@@ -517,7 +620,7 @@ function buildPnLTable(data, taxRate, year) {
         { label: 'Estimated Corporation Tax', value: formatEUR(estimatedTax) }
       ],
       source: 'analytics-tax.js:323 buildPnLTable()',
-      note: `Tax rate comes from a per-year override, the global corpTaxRate setting, or the built-in default (12.5% before tax year 2026, 15% from 2026 — see getTaxRate()). This is a planning estimate only, not a filed tax calculation.`
+      note: `Tax rate comes from the year's Provisional Tax configuration when one exists (the same rate that tab uses), else a per-year P&L override, the global corpTaxRate setting, or the built-in default (12.5% before tax year 2026, 15% from 2026 — see getTaxRate()). The taxable base respects the Scope toggle. This is a planning estimate only, not a filed tax calculation.`
     }
   }));
   tbody.appendChild(mkRow('', 0, {}));
@@ -540,15 +643,27 @@ function buildPnLTable(data, taxRate, year) {
   return wrap;
 }
 
+// `isInvoice` is a boolean for a single-kind list, or a predicate
+// (record → boolean) for a mixed invoices + payments list (Other Services).
 function openPnLRevenueModal(streamLabel, records, isInvoice, year) {
+  const mixed = typeof isInvoice === 'function';
+  const isInv = mixed ? isInvoice : () => isInvoice;
+  if (mixed) {
+    // Mixed list: an entity id is prefixed so a client and a property can't collide.
+    const invs = records.filter(isInv), pays = records.filter(r => !isInv(r));
+    if (!invs.length) return openPnLRevenueModal(streamLabel, pays, false, year);
+    if (!pays.length) return openPnLRevenueModal(streamLabel, invs, true, year);
+  }
   if (!records || !records.length) { emptyModal(streamLabel, `No ${isInvoice ? 'invoices' : 'payments'} found for this stream in ${year}.`); return; }
   const propMap   = new Map(listActive('properties').map(p => [p.id, p]));
   const clientMap = new Map(listActive('clients').map(c => [c.id, c]));
   const byEntity = new Map(), byMonth = new Map();
   for (const r of records) {
-    const amt  = isInvoice ? toEUR(r.subtotal ?? r.total, r.currency, r.issueDate || r.date) : toEUR(r.amount, r.currency, r.date);
-    const date = isInvoice ? (r.issueDate || r.date) : r.date;
-    const eid  = isInvoice ? (r.clientId || '_') : (r.propertyId || '_');
+    const inv  = isInv(r);
+    const amt  = inv ? toEUR(r.subtotal ?? r.total, r.currency, r.issueDate || r.date) : toEUR(r.amount, r.currency, r.date);
+    const date = inv ? (r.issueDate || r.date) : r.date;
+    const eid  = mixed ? (inv ? 'c:' + (r.clientId || '_') : 'p:' + (r.propertyId || '_'))
+               : inv ? (r.clientId || '_') : (r.propertyId || '_');
     const cur  = byEntity.get(eid) || { rev: 0, n: 0 };
     cur.rev += amt; cur.n++;
     byEntity.set(eid, cur);
@@ -562,21 +677,25 @@ function openPnLRevenueModal(streamLabel, records, isInvoice, year) {
   const body = el('div');
   body.appendChild(mkSummaryGrid([
     { label: 'Total Revenue', value: mkDrillValue(formatEUR(total), () =>
-        drillDownModal(`${streamLabel} — Records`, isInvoice ? drillRevRowsPnL([], records) : drillRevRows(records, []), REV_COLS)) },
-    { label: isInvoice ? 'Invoices' : 'Payments', value: String(records.length) },
+        drillDownModal(`${streamLabel} — Records`,
+          mixed ? drillRevRowsPnL(records.filter(r => !isInv(r)), records.filter(isInv))
+                : isInvoice ? drillRevRowsPnL([], records) : drillRevRows(records, []), REV_COLS)) },
+    { label: mixed ? 'Records' : isInvoice ? 'Invoices' : 'Payments', value: String(records.length) },
     { label: 'Avg', value: formatEUR(total / records.length) },
-    { label: isInvoice ? 'Clients' : 'Properties', value: String(entRows.length) }
+    { label: mixed ? 'Clients / Properties' : isInvoice ? 'Clients' : 'Properties', value: String(entRows.length) }
   ], 4));
-  body.appendChild(mkSectionLabel(`Revenue by ${isInvoice ? 'Client' : 'Property'}`));
+  body.appendChild(mkSectionLabel(`Revenue by ${mixed ? 'Client / Property' : isInvoice ? 'Client' : 'Property'}`));
   body.appendChild(mkModalTable(
     [
-      { label: isInvoice ? 'Client' : 'Property', tip: isInvoice ? 'The client billed on the invoice.' : 'The property this payment was recorded against.' },
-      { label: isInvoice ? 'Invoices' : 'Pmts', right: true, tip: isInvoice ? 'Number of paid invoices for this client in the selected stream/year.' : 'Number of paid payments for this property in the selected stream/year.' },
+      { label: mixed ? 'Client / Property' : isInvoice ? 'Client' : 'Property', tip: mixed ? 'The client billed (invoices) or the property (payments).' : isInvoice ? 'The client billed on the invoice.' : 'The property this payment was recorded against.' },
+      { label: mixed ? 'Records' : isInvoice ? 'Invoices' : 'Pmts', right: true, tip: isInvoice ? 'Number of paid invoices for this client in the selected stream/year.' : 'Number of paid payments for this property in the selected stream/year.' },
       { label: 'Revenue', right: true, tip: 'Total revenue from this entity, converted to EUR.' },
       { label: 'Share', right: true, muted: true, tip: "This row's revenue as a percentage of the stream total shown above." }
     ],
-    entRows.map(([id, d]) => {
-      const name = isInvoice ? (clientMap.get(id)?.name || clientMap.get(id)?.company || 'Unknown') : (propMap.get(id)?.name || propMap.get(id)?.address || 'Unknown');
+    entRows.map(([rawId, d]) => {
+      const idInv = mixed ? rawId.startsWith('c:') : isInvoice;
+      const id    = mixed ? rawId.slice(2) : rawId;
+      const name = idInv ? (clientMap.get(id)?.name || clientMap.get(id)?.company || 'Unknown') : (propMap.get(id)?.name || propMap.get(id)?.address || 'Unknown');
       return [name, String(d.n), formatEUR(d.rev), total > 0 ? `${(d.rev / total * 100).toFixed(1)}%` : '—'];
     })
   ));
@@ -669,6 +788,8 @@ function buildKpiCards(data, year, taxRate) {
   if (hasForecast) {
     const actualNet    = opProfit;
     const variance     = actualNet - forecastNet;
+    const fcSourceLabel = data.forecastSource === 'monthly' ? 'monthly forecasts (Operations → Forecast)'
+      : data.forecastSource === 'portfolio' ? 'portfolio annual target' : 'per-entity annual targets';
     const forecastCard = mkKpiCard({
       label: 'Year vs Forecast', value: formatEUR(actualNet), variant: variance >= 0 ? 'success' : 'danger',
       explain: {
@@ -676,24 +797,28 @@ function buildKpiCards(data, year, taxRate) {
         formula: 'Variance = Actual Net (Operating Profit) − Forecast Net (Forecast Revenue − Forecast Expenses)',
         inputs: [
           { label: 'Actual Net (Operating Profit)', value: formatEUR(actualNet) },
-          { label: 'Forecast Revenue', value: formatEUR(data.forecastRevenue) },
-          { label: 'Forecast Expenses', value: formatEUR(data.forecastExpenses) },
-          { label: 'Forecast Net', value: formatEUR(forecastNet) },
+          { label: 'Forecast Revenue (to date)', value: formatEUR(data.forecastRevenue) },
+          { label: 'Forecast Expenses (to date)', value: formatEUR(data.forecastExpenses) },
+          { label: 'Forecast Net (to date)', value: formatEUR(forecastNet) },
+          { label: 'Full-year Forecast Revenue', value: formatEUR(data.forecastFullRevenue) },
+          { label: 'Full-year Forecast Expenses', value: formatEUR(data.forecastFullExpenses) },
           { label: 'Variance', value: formatEUR(variance) }
         ],
-        source: 'analytics-tax.js:612-613 buildKpiCards()',
-        note: 'Forecast Net/Revenue/Expenses are the sum of yearTarget.revenue/yearTarget.expenses across active forecasts for this year — a manually entered target, not a system projection.'
+        source: 'analytics-tax.js getYearForecastLikeForLike()',
+        note: `Forecast source: ${fcSourceLabel}. Like-for-like: for a year still in progress only the elapsed part of the forecast is compared (monthly forecasts up to today with the current month pro-rated; annual targets pro-rated by days elapsed). The portfolio target and per-entity targets are never added together.`
       },
       onClick: () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
         body.appendChild(mkSummaryGrid([
           { label: 'Actual Revenue',    value: formatEUR(totalRevenue) },
-          { label: 'Forecast Revenue',  value: formatEUR(data.forecastRevenue) },
+          { label: 'Forecast Revenue (to date)',  value: formatEUR(data.forecastRevenue), sub: `Full year ${formatEUR(data.forecastFullRevenue)}` },
           { label: 'Actual OpEx',       value: formatEUR(totalOpEx) },
-          { label: 'Forecast Expenses', value: formatEUR(data.forecastExpenses) },
+          { label: 'Forecast Expenses (to date)', value: formatEUR(data.forecastExpenses), sub: `Full year ${formatEUR(data.forecastFullExpenses)}` },
           { label: 'Actual Net (OpEx)', value: formatEUR(actualNet) },
-          { label: 'Forecast Net',      value: formatEUR(forecastNet) }
+          { label: 'Forecast Net (to date)',      value: formatEUR(forecastNet) }
         ], 2));
+        body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);line-height:1.5' },
+          `Forecast source: ${fcSourceLabel}. For a year still in progress, only the forecast for the elapsed part of the year is compared with actuals.`));
         body.appendChild(mkSectionLabel('Variance'));
         body.appendChild(mkModalTable([
           { label: 'Metric', tip: 'The P&L line being compared to its forecast target.' },
@@ -714,6 +839,11 @@ function buildKpiCards(data, year, taxRate) {
     const accentBar = forecastCard.querySelector('.kpi-accent-bar');
     forecastCard.insertBefore(subtitleEl, accentBar);
     grid.appendChild(forecastCard);
+  } else if (data.ownerFiltered) {
+    grid.appendChild(mkKpiCard({
+      label: 'Year vs Forecast', value: '—',
+      subtitle: 'Forecasts aren\'t split by owner — select All to compare'
+    }));
   } else {
     grid.appendChild(mkKpiCard({
       label: 'Year vs Forecast', value: '—', subtitle: 'No forecast set for this year',
@@ -902,6 +1032,10 @@ function buildPnLContent(years) {
     rebuildView();
   });
   wrap.appendChild(selectorBar);
+  if (gOwner === 'you' || gOwner === 'rita') {
+    wrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin:-8px 0 12px;font-style:italic' },
+      `Showing ${getPersonName(gOwner)}'s share: their own records count 100%, shared ('both') records 50% — the same split as the Partners dashboard.`));
+  }
 
   const data = getYearData(gYear, gOwner);
   wrap.appendChild(buildPnLTable(data, taxRate, gYear));
@@ -1108,23 +1242,11 @@ function modalForecastEntities(forRevenue) {
   const propMap  = Object.fromEntries((state.db.properties || []).map(p => [p.id, p]));
   const humanize = id => id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-  // Current, still-in-progress month contributes only its not-yet-elapsed
-  // fraction — counting it in full would double-count days already folded
-  // into actuals; the old `mk > curMonth` check instead dropped it (and its
-  // remaining days) entirely. See monthRemainingFraction in cyprus-tax.js.
-  const curMonthFrac = monthRemainingFraction(cutoff);
-  const fcData = {};
-  for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
-    const eid = fc.entityId || fc.propertyId || fc.id;
-    if (!fcData[eid]) fcData[eid] = { rev: 0, exp: 0, months: 0, type: fc.type };
-    for (const [mk, md] of Object.entries(fc.months || {})) {
-      if (mk < curMonth) continue;
-      const frac = mk === curMonth ? curMonthFrac : 1;
-      if (frac <= 0) continue;
-      const rev = (Number(md.revenue) || 0) * frac, exp = (Number(md.expenses) || 0) * frac;
-      if (rev > 0 || exp > 0) { fcData[eid].rev += rev; fcData[eid].exp += exp; fcData[eid].months++; }
-    }
-  }
+  // Same engine as the prefill (ptPrefillFromActuals) so this breakdown adds
+  // up to the prefilled Forecast figure: one forecast per entity, company
+  // scope, long-term lease fallback, current month counting only its
+  // not-yet-elapsed fraction (see cyprus-tax.js forecastRemainingForYear).
+  const fcData = forecastRemainingForYear(year, { cutoff }).byEntity;
 
   const rows = Object.entries(fcData).filter(([, d]) => forRevenue ? d.rev > 0 : d.exp > 0).sort(([, a], [, b]) => forRevenue ? b.rev - a.rev : b.exp - a.exp);
   if (!rows.length) { emptyModal('Forecast', 'No forecast data found for remaining months.'); return; }
@@ -1598,14 +1720,13 @@ function ptPrefillFromActuals(onChange) {
   const todayStr = today();
   const cutoff   = todayStr < `${year}-12-31` ? todayStr : `${year}-12-31`;
   const curMonth = cutoff.slice(0, 7);
-  const s1       = `${year}-01-01`;
 
-  // isCoRec: corporation tax is a company-only liability — records tied to a
-  // 'personal'-channel property (or individually flagged personal) must be
-  // excluded from the base, same as cyprus-tax.js's own prefill.
-  const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff && isCoRec(p));
-  const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff);
-  const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff && isCoRec(e));
+  // Actuals via cyprus-tax.js getActualsForYear() — the shared definition:
+  // corporation tax is a company-only liability, so records tied to a
+  // 'personal'-channel property (or flagged personal) are excluded (isCoRec,
+  // with companyPropIds() computed once), and invoices are dated by
+  // issueDate || date. Same cutoff as computed above.
+  const { pays, invs, exps } = getActualsForYear(year);
 
   const rnd = v => Math.round(v * 100) / 100;
   const paysRevenue    = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
@@ -1617,25 +1738,15 @@ function ptPrefillFromActuals(onChange) {
   const expsByCat = {};
   for (const e of exps) { const cat = e.category || 'Other'; expsByCat[cat] = (expsByCat[cat] || 0) + toEUR(e.amount, e.currency, year); }
 
-  // Current, still-in-progress month contributes only its not-yet-elapsed
-  // fraction — see monthRemainingFraction's comment in cyprus-tax.js. The
-  // old `mk > curMonth` check dropped the current month's remaining days
-  // from the forecast total entirely instead.
-  let forecastRevenue = 0, forecastExpenses = 0;
-  const fcRevIds = new Set(), fcExpIds = new Set();
+  // Forecast for the rest of the year via cyprus-tax.js
+  // forecastRemainingForYear() — the same engine as the Settings → Provisional
+  // Tax card: one forecast per entity, company scope, long-term lease
+  // fallback for months with no forecast revenue, and the current month
+  // counting only its not-yet-elapsed fraction.
+  const fcRem = forecastRemainingForYear(year, { cutoff });
+  const forecastRevenue = fcRem.revenue, forecastExpenses = fcRem.expenses;
+  const fcRevIds = fcRem.revIds, fcExpIds = fcRem.expIds;
   const propIds  = new Set((state.db.properties || []).map(p => p.id));
-  const curMonthFrac = monthRemainingFraction(cutoff);
-  for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
-    const eid = fc.entityId || fc.propertyId || fc.id;
-    for (const [mk, md] of Object.entries(fc.months || {})) {
-      if (mk < curMonth) continue;
-      const frac = mk === curMonth ? curMonthFrac : 1;
-      if (frac <= 0) continue;
-      const rev = (Number(md.revenue) || 0) * frac, exp = (Number(md.expenses) || 0) * frac;
-      if (rev > 0) { fcRevIds.add(eid); forecastRevenue  += rev; }
-      if (exp > 0) { fcExpIds.add(eid); forecastExpenses += exp; }
-    }
-  }
 
   const fcLabel = ids => {
     const pCount = [...ids].filter(id => propIds.has(id)).length;

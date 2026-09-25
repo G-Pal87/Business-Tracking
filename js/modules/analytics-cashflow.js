@@ -8,9 +8,30 @@ import {
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
-  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
+  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner, mkTh, mkDrillValue } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
+
+// Per-stream bucket for a cash-in record: the single stream resolver
+// (record.stream → linked property's type), else 'other' — so a payment
+// with no stream field still lands in its property's rental stream, the same
+// way the stream filter (mStream) classifies it.
+const cashInStream = r => resolveStream(r, 'other');
+
+// Net cash flow per 'YYYY-MM' (cash in − op. out − invest. out). `onlyKeys`
+// (a Set) restricts to those months; omitted, every month with activity is
+// included. Shared by the cumulative line, the monthly net bar and the Net
+// Coverage Days KPI so the monthly net is defined in one place.
+function monthlyNetMap({ payments, invoices, opExpenses, capExpenses }, onlyKeys = null) {
+  const m = new Map();
+  if (onlyKeys) onlyKeys.forEach(k => m.set(k, 0));
+  const add = (mk, v) => { if (!mk || (onlyKeys && !onlyKeys.has(mk))) return; m.set(mk, (m.get(mk) || 0) + v); };
+  payments   .forEach(p => add(p.date?.slice(0, 7),              toEUR(p.amount, p.currency, p.date)));
+  invoices   .forEach(i => add((i.issueDate || '').slice(0, 7), toEUR(i.total, i.currency, i.issueDate)));
+  opExpenses .forEach(e => add(e.date?.slice(0, 7),              -toEUR(e.amount, e.currency, e.date)));
+  capExpenses.forEach(e => add(e.date?.slice(0, 7),              -toEUR(e.amount, e.currency, e.date)));
+  return m;
+}
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -33,19 +54,12 @@ export default {
 
 // ── Data aggregation ──────────────────────────────────────────────────────────
 function getData(start, end) {
-  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  // mInvOwner: the shared invoiceOwner() rule (inv.owner → property owner →
+  // client owner → 'both'), same as every other dashboard.
+  const { mStream, mOwner, mInvOwner, mProperty, mClient } = makeMatchers(gF);
 
   // Expense stream uses expStream() fallback — custom to avoid null rejection
   const mExpStream = e => !gF.streams.size || gF.streams.has(expStream(e));
-
-  // Invoice owner with client-owner fallback
-  const mInvOwner = inv => {
-    if (!gF.owners.size) return true;
-    let ow = inv.owner;
-    if (!ow && inv.clientId) ow = byId('clients', inv.clientId)?.owner;
-    ow = ow || 'both';
-    return ow === 'both' || gF.owners.has(ow);
-  };
 
   const inRange = d => !!d && d >= start && d <= end;
   const coPropIds = companyPropIds();
@@ -57,7 +71,7 @@ function getData(start, end) {
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
   );
   const invoices = listActive('invoices').filter(i =>
-    i.status === 'paid' && inRange(i.issueDate || i.date) && mStream(i) && mInvOwner(i) && mClient(i)
+    i.status === 'paid' && inRange(i.issueDate || i.date) && mStream(i) && mInvOwner(i) && mClient(i) && isCoRec(i)
   );
 
   const allExp    = listActive('expenses');
@@ -207,8 +221,8 @@ function computeCashflowByStream({ payments, invoices, opExpenses, capExpenses }
     c.in += inV; c.opOut += opV; c.capOut += capV;
     m.set(sk, c);
   };
-  payments.forEach(p => add(p.stream || 'other', toEUR(p.amount, p.currency, p.date), 0, 0));
-  invoices.forEach(i => add(i.stream || 'other', toEUR(i.total, i.currency, i.issueDate), 0, 0));
+  payments.forEach(p => add(cashInStream(p), toEUR(p.amount, p.currency, p.date), 0, 0));
+  invoices.forEach(i => add(cashInStream(i), toEUR(i.total, i.currency, i.issueDate), 0, 0));
   opExpenses.forEach(e => add(expStream(e), 0, toEUR(e.amount, e.currency, e.date), 0));
   capExpenses.forEach(e => add(expStream(e), 0, 0, toEUR(e.amount, e.currency, e.date)));
   return m;
@@ -217,8 +231,8 @@ function computeCashflowByStream({ payments, invoices, opExpenses, capExpenses }
 // Cash-flow drill-down for one stream — mirrors the per-month heatmap-cell
 // drill-down further down this file (summary boxes + transaction list).
 function openCashflowStreamModal(sk, curData, cmpData, cmpLabel) {
-  const sPay = curData.payments.filter(p => (p.stream || 'other') === sk);
-  const sInv = curData.invoices.filter(i => (i.stream || 'other') === sk);
+  const sPay = curData.payments.filter(p => cashInStream(p) === sk);
+  const sInv = curData.invoices.filter(i => cashInStream(i) === sk);
   const sOp  = curData.opExpenses.filter(e => expStream(e) === sk);
   const sCap = curData.capExpenses.filter(e => expStream(e) === sk);
   const inV     = sPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
@@ -232,8 +246,8 @@ function openCashflowStreamModal(sk, curData, cmpData, cmpLabel) {
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   if (cmpData) {
-    const cPay = cmpData.payments.filter(p => (p.stream || 'other') === sk);
-    const cInv = cmpData.invoices.filter(i => (i.stream || 'other') === sk);
+    const cPay = cmpData.payments.filter(p => cashInStream(p) === sk);
+    const cInv = cmpData.invoices.filter(i => cashInStream(i) === sk);
     const cOp  = cmpData.opExpenses.filter(e => expStream(e) === sk);
     const cCap = cmpData.capExpenses.filter(e => expStream(e) === sk);
     const cInV     = cPay.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
@@ -477,21 +491,17 @@ function computeCashFlowInsights(curData, cmpData, cmpRange) {
 // ── Cash Seasonality Heatmap ──────────────────────────────────────────────────
 function buildCashSeasonalityHeatmap() {
   // Build net cash flow heatmap across ALL available years (not just filtered period)
-  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mOwner, mInvOwner, mProperty, mClient } = makeMatchers(gF);
   const mExpStream = e => !gF.streams.size || gF.streams.has(expStream(e));
-  const mInvOwner = inv => {
-    if (!gF.owners.size) return true;
-    let ow = inv.owner;
-    if (!ow && inv.clientId) ow = byId('clients', inv.clientId)?.owner;
-    ow = ow || 'both';
-    return ow === 'both' || gF.owners.has(ow);
-  };
+  // Same Company/All scope rule as the period figures (getData()).
+  const coPropIds = companyPropIds();
+  const isCoRec = gScope === 'all' ? () => true : r => isCompanyRecord(r, coPropIds);
 
   // For the heatmap we pull ALL data (no date filter) so all years are visible
-  const allPays = listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p));
-  const allInvs = listActive('invoices').filter(i => i.status === 'paid' && mStream(i) && mInvOwner(i) && mClient(i));
-  const allOpEx = listActive('expenses').filter(e => !isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e));
-  const allCapEx = listActive('expenses').filter(e => isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e));
+  const allPays = listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p));
+  const allInvs = listActive('invoices').filter(i => i.status === 'paid' && mStream(i) && mInvOwner(i) && mClient(i) && isCoRec(i));
+  const allOpEx = listActive('expenses').filter(e => !isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
+  const allCapEx = listActive('expenses').filter(e => isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
 
   const allYears = [...new Set([
     ...allPays .map(p => p.date?.slice(0, 4)),
@@ -501,11 +511,7 @@ function buildCashSeasonalityHeatmap() {
   ].filter(Boolean))].sort();
   if (!allYears.length) return null;
 
-  const grid = new Map(); // key: 'YYYY-MM' → net EUR
-  allPays .forEach(p => { const k = p.date?.slice(0, 7);              if (k) grid.set(k, (grid.get(k) || 0) + toEUR(p.amount, p.currency, p.date)); });
-  allInvs .forEach(i => { const k = (i.issueDate || '').slice(0, 7); if (k) grid.set(k, (grid.get(k) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
-  allOpEx .forEach(e => { const k = e.date?.slice(0, 7);              if (k) grid.set(k, (grid.get(k) || 0) - toEUR(e.amount, e.currency, e.date)); });
-  allCapEx.forEach(e => { const k = e.date?.slice(0, 7);              if (k) grid.set(k, (grid.get(k) || 0) - toEUR(e.amount, e.currency, e.date)); });
+  const grid = monthlyNetMap({ payments: allPays, invoices: allInvs, opExpenses: allOpEx, capExpenses: allCapEx }); // key: 'YYYY-MM' → net EUR
 
   const allVals = [...grid.values()];
   const maxAbs = Math.max(...allVals.map(Math.abs), 1);
@@ -593,8 +599,8 @@ function buildCashSeasonalityHeatmap() {
             c.in += inV; c.opOut += opV; c.capOut += capV;
             streamMap.set(sk, c);
           };
-          mPay.forEach(p => addS(p.stream || 'other', toEUR(p.amount, p.currency, p.date), 0, 0));
-          mInv.forEach(i => addS(i.stream || 'other', toEUR(i.total, i.currency, i.issueDate), 0, 0));
+          mPay.forEach(p => addS(cashInStream(p), toEUR(p.amount, p.currency, p.date), 0, 0));
+          mInv.forEach(i => addS(cashInStream(i), toEUR(i.total, i.currency, i.issueDate), 0, 0));
           mOp .forEach(e => addS(expStream(e), 0, toEUR(e.amount, e.currency, e.date), 0));
           mCap.forEach(e => addS(expStream(e), 0, 0, toEUR(e.amount, e.currency, e.date)));
           const streamEntries = [...streamMap.entries()].sort((a, b) => (b[1].in - b[1].opOut - b[1].capOut) - (a[1].in - a[1].opOut - a[1].capOut));
@@ -691,8 +697,8 @@ function openOperatingCashFlowModal(curData, cmpData, cmpRange) {
   body.appendChild(monthSection);
 
   const streamMap = new Map();
-  payments   .forEach(p => { const k = STREAMS[p.stream]?.label || p.stream || 'Other'; const c = streamMap.get(k) || { in: 0, out: 0 }; c.in  += toEUR(p.amount, p.currency, p.date);  streamMap.set(k, c); });
-  invoices   .forEach(i => { const k = STREAMS[i.stream]?.label || i.stream || 'Other'; const c = streamMap.get(k) || { in: 0, out: 0 }; c.in  += toEUR(i.total, i.currency, i.issueDate); streamMap.set(k, c); });
+  payments   .forEach(p => { const k = STREAMS[cashInStream(p)]?.label || cashInStream(p); const c = streamMap.get(k) || { in: 0, out: 0 }; c.in  += toEUR(p.amount, p.currency, p.date);  streamMap.set(k, c); });
+  invoices   .forEach(i => { const k = STREAMS[cashInStream(i)]?.label || cashInStream(i); const c = streamMap.get(k) || { in: 0, out: 0 }; c.in  += toEUR(i.total, i.currency, i.issueDate); streamMap.set(k, c); });
   opExpenses .forEach(e => { const k = STREAMS[expStream(e)]?.label || expStream(e) || 'Other'; const c = streamMap.get(k) || { in: 0, out: 0 }; c.out += toEUR(e.amount, e.currency, e.date); streamMap.set(k, c); });
   const streamEntries = [...streamMap.entries()].sort((a, b) => (b[1].in - b[1].out) - (a[1].in - a[1].out));
   const streamSection = el('div');
@@ -1013,8 +1019,8 @@ function buildView() {
 
       // Breakdown by stream
       const streamMap = new Map();
-      payments.forEach(p => { const k = STREAMS[p.stream]?.label || p.stream || 'Other'; streamMap.set(k, (streamMap.get(k) || 0) + toEUR(p.amount, p.currency, p.date)); });
-      invoices.forEach(i => { const k = STREAMS[i.stream]?.label || i.stream || 'Other'; streamMap.set(k, (streamMap.get(k) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
+      payments.forEach(p => { const k = STREAMS[cashInStream(p)]?.label || cashInStream(p); streamMap.set(k, (streamMap.get(k) || 0) + toEUR(p.amount, p.currency, p.date)); });
+      invoices.forEach(i => { const k = STREAMS[cashInStream(i)]?.label || cashInStream(i); streamMap.set(k, (streamMap.get(k) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
       const streamEntries = [...streamMap.entries()].sort((a, b) => b[1] - a[1]);
 
       const streamSection = el('div');
@@ -1302,11 +1308,7 @@ function buildView() {
   // Net Coverage Days: (periodNetCashFlow / avgMonthlyOpEx) × 30
   {
     // Build monthly net to find cumulative running balance
-    const netByMk = new Map();
-    payments   .forEach(p => { const mk = p.date?.slice(0, 7);              if (mk) netByMk.set(mk, (netByMk.get(mk) || 0) + toEUR(p.amount, p.currency, p.date)); });
-    invoices   .forEach(i => { const mk = (i.issueDate || '').slice(0, 7); if (mk) netByMk.set(mk, (netByMk.get(mk) || 0) + toEUR(i.total, i.currency, i.issueDate)); });
-    opExpenses .forEach(e => { const mk = e.date?.slice(0, 7);              if (mk) netByMk.set(mk, (netByMk.get(mk) || 0) - toEUR(e.amount, e.currency, e.date)); });
-    capExpenses.forEach(e => { const mk = e.date?.slice(0, 7);              if (mk) netByMk.set(mk, (netByMk.get(mk) || 0) - toEUR(e.amount, e.currency, e.date)); });
+    const netByMk = monthlyNetMap({ payments, invoices, opExpenses, capExpenses });
 
     const sortedMks = [...netByMk.keys()].sort();
     let running = 0;
@@ -1355,10 +1357,11 @@ function buildView() {
           const posSection = el('div');
           posSection.appendChild(mkSectionLabel('Monthly Cash Position'));
           let cum = 0;
+          const opByMk = groupByMonthKey(opExpenses, e => e.date); // once, not per month
           const tableRows = sortedMks.map(mk => {
             const net = netByMk.get(mk);
             cum += net;
-            const opMk = opExpenses.filter(e => e.date?.slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+            const opMk = (opByMk.get(mk) || []).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
             return [mk, formatEUR(net >= 0 ? net : 0), formatEUR(net < 0 ? Math.abs(net) : 0), formatEUR(opMk), formatEUR(cum)];
           });
           posSection.appendChild(mkModalTable(
@@ -1710,13 +1713,7 @@ function buildView() {
 function renderCumulativeLine({ payments, invoices, opExpenses, capExpenses }, monthKeys) {
   if (!monthKeys.length) return;
 
-  const netByMonth = new Map();
-  monthKeys.forEach(m => netByMonth.set(m.key, 0));
-
-  payments   .forEach(p => { const mk = p.date?.slice(0, 7);              if (netByMonth.has(mk)) netByMonth.set(mk, netByMonth.get(mk) + toEUR(p.amount, p.currency, p.date)); });
-  invoices   .forEach(i => { const mk = (i.issueDate || '').slice(0, 7); if (netByMonth.has(mk)) netByMonth.set(mk, netByMonth.get(mk) + toEUR(i.total, i.currency, i.issueDate)); });
-  opExpenses .forEach(e => { const mk = e.date?.slice(0, 7);              if (netByMonth.has(mk)) netByMonth.set(mk, netByMonth.get(mk) - toEUR(e.amount, e.currency, e.date)); });
-  capExpenses.forEach(e => { const mk = e.date?.slice(0, 7);              if (netByMonth.has(mk)) netByMonth.set(mk, netByMonth.get(mk) - toEUR(e.amount, e.currency, e.date)); });
+  const netByMonth = monthlyNetMap({ payments, invoices, opExpenses, capExpenses }, new Set(monthKeys.map(m => m.key)));
 
   let cumulative = 0;
   const cumData = monthKeys.map(m => { cumulative += netByMonth.get(m.key) || 0; return Math.round(cumulative); });
@@ -1788,8 +1785,8 @@ function renderCumulativeLine({ payments, invoices, opExpenses, capExpenses }, m
 
       // Stream breakdown for this month
       const streamMap = new Map();
-      mPay.forEach(p => { const k = STREAMS[p.stream]?.label || p.stream || 'Other'; const c = streamMap.get(k) || { in: 0, opOut: 0, capOut: 0 }; c.in += toEUR(p.amount, p.currency, p.date); streamMap.set(k, c); });
-      mInv.forEach(i => { const k = STREAMS[i.stream]?.label || i.stream || 'Other'; const c = streamMap.get(k) || { in: 0, opOut: 0, capOut: 0 }; c.in += toEUR(i.total, i.currency, i.issueDate); streamMap.set(k, c); });
+      mPay.forEach(p => { const k = STREAMS[cashInStream(p)]?.label || cashInStream(p); const c = streamMap.get(k) || { in: 0, opOut: 0, capOut: 0 }; c.in += toEUR(p.amount, p.currency, p.date); streamMap.set(k, c); });
+      mInv.forEach(i => { const k = STREAMS[cashInStream(i)]?.label || cashInStream(i); const c = streamMap.get(k) || { in: 0, opOut: 0, capOut: 0 }; c.in += toEUR(i.total, i.currency, i.issueDate); streamMap.set(k, c); });
       mOp .forEach(e => { const k = STREAMS[expStream(e)]?.label || expStream(e) || 'Other'; const c = streamMap.get(k) || { in: 0, opOut: 0, capOut: 0 }; c.opOut += toEUR(e.amount, e.currency, e.date); streamMap.set(k, c); });
       mCap.forEach(e => { const k = STREAMS[expStream(e)]?.label || expStream(e) || 'Other'; const c = streamMap.get(k) || { in: 0, opOut: 0, capOut: 0 }; c.capOut += toEUR(e.amount, e.currency, e.date); streamMap.set(k, c); });
       const streamEntries = [...streamMap.entries()].sort((a, b) => (b[1].in - b[1].opOut - b[1].capOut) - (a[1].in - a[1].opOut - a[1].capOut));
@@ -2081,13 +2078,7 @@ function renderNetStreamDonut({ payments, invoices, opExpenses, capExpenses }) {
 function renderNetMonthBar({ payments, invoices, opExpenses, capExpenses }, monthKeys) {
   if (!monthKeys.length) return;
 
-  const netByMonth = new Map();
-  monthKeys.forEach(m => netByMonth.set(m.key, 0));
-
-  payments   .forEach(p => { const mk = p.date?.slice(0, 7);              if (netByMonth.has(mk)) netByMonth.set(mk, netByMonth.get(mk) + toEUR(p.amount,  p.currency,  p.date)); });
-  invoices   .forEach(i => { const mk = (i.issueDate || '').slice(0, 7); if (netByMonth.has(mk)) netByMonth.set(mk, netByMonth.get(mk) + toEUR(i.total,   i.currency,  i.issueDate)); });
-  opExpenses .forEach(e => { const mk = e.date?.slice(0, 7);              if (netByMonth.has(mk)) netByMonth.set(mk, netByMonth.get(mk) - toEUR(e.amount,  e.currency,  e.date)); });
-  capExpenses.forEach(e => { const mk = e.date?.slice(0, 7);              if (netByMonth.has(mk)) netByMonth.set(mk, netByMonth.get(mk) - toEUR(e.amount,  e.currency,  e.date)); });
+  const netByMonth = monthlyNetMap({ payments, invoices, opExpenses, capExpenses }, new Set(monthKeys.map(m => m.key)));
 
   const netData = monthKeys.map(m => Math.round(netByMonth.get(m.key) || 0));
   if (netData.every(v => v === 0)) return;

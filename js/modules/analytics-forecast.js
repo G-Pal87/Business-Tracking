@@ -1,5 +1,6 @@
 // Analysis Forecast Dashboard — forecast vs actual performance reporting
-import { el, fmtDate, drillDownModal, openModal, toast, input, formRow, button } from '../core/ui.js';
+import { el, fmtDate, drillDownModal, openModal, closeModal, toast, input, formRow, button } from '../core/ui.js';
+import { todayYmd, thisMonthYm, daysInMonth, diffDaysYmd } from '../core/dates.js';
 import * as charts from '../core/charts.js';
 import { STREAMS } from '../core/config.js';
 import {
@@ -16,7 +17,7 @@ import {
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkTh, mkDrillValue } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const CHART_IDS = [
@@ -95,6 +96,25 @@ function fmtVarPct(actual, forecast) {
 function fmtVar(actual, forecast) {
   const v = actual - forecast;
   return (v >= 0 ? '+' : '') + formatEUR(v);
+}
+
+// ── Like-for-like forecast proration ──────────────────────────────────────────
+// Fraction (0–1) of calendar month `mk` that has actually elapsed inside the
+// selected range: the days of the month within [range.start, min(range.end,
+// today)] ÷ days in the month. Forecast-vs-actual comparisons (variance,
+// variance %, MAPE) multiply a month's forecast by this, so an in-progress
+// month's partial actuals are compared with the matching share of its
+// forecast and a future month (0) is never counted as a 100% miss. The plain
+// "Forecast Revenue/OpEx" figures stay full-period.
+function monthElapsedFrac(mk, range, todayStr = todayYmd()) {
+  const y = +mk.slice(0, 4), m = +mk.slice(5, 7);
+  const dim = daysInMonth(y, m);
+  const mStart = `${mk}-01`, mEnd = `${mk}-${String(dim).padStart(2, '0')}`;
+  const end = range.end < todayStr ? range.end : todayStr;
+  const s = range.start > mStart ? range.start : mStart;
+  const e = end < mEnd ? end : mEnd;
+  if (e < s) return 0;
+  return (diffDaysYmd(s, e) + 1) / dim;
 }
 
 // ── Property forecast filter predicate ────────────────────────────────────────
@@ -184,7 +204,7 @@ function getLtRentPendingItems(range) {
 // bucket Actual Revenue, so a service's actual and pending totals reconcile.
 function getServicesPendingItems(range, mStream, mOwner, mClient) {
   const inRange = d => d && d >= range.start && d <= range.end;
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayYmd();
   return listActive('invoices')
     .filter(i => ['sent', 'overdue'].includes(i.status) && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i))
     .map(i => {
@@ -218,7 +238,7 @@ function getServicesProjectedItems(range) {
 
   const startMk = range.start.slice(0, 7);
   const endMk   = range.end.slice(0, 7);
-  const todayMk = new Date().toISOString().slice(0, 7);
+  const todayMk = thisMonthYm();
 
   const items = [];
   listActive('forecasts').filter(fc => fc.type === 'service').forEach(fc => {
@@ -324,7 +344,7 @@ function buildFcMaps(startY, endY) {
 // ── Core data calculation ─────────────────────────────────────────────────────
 function calculateDashboardData(range) {
   if (!range) return null;
-  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mOwner, mInvOwner, mProperty, mClient } = makeMatchers(gF);
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
@@ -335,7 +355,7 @@ function calculateDashboardData(range) {
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
   );
   const actInvoices = listActive('invoices').filter(i =>
-    i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
+    i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mInvOwner(i) && mClient(i)
   );
   const allExpenses = listActive('expenses').filter(e => inRange(e.date) && mOwner(e) && mProperty(e) && isCoRec(e));
   const actOpExpenses  = allExpenses.filter(e => !isCapEx(e) && mStream(e));
@@ -351,14 +371,22 @@ function calculateDashboardData(range) {
   const endY   = parseInt(range.end.slice(0, 4));
   const { fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp, fcMonthlyPropRev, fcMonthlyPropExp } = buildFcMaps(startY, endY);
 
-  let forecastRev = 0, forecastExp = 0;
+  const todayStr = todayYmd();
+  months.forEach(m => { m.elapsedFrac = monthElapsedFrac(m.key, range, todayStr); });
+  let forecastRev = 0, forecastExp = 0, forecastRevToDate = 0, forecastExpToDate = 0;
   months.forEach(m => {
-    forecastRev += fcMonthlyRev.get(m.key) || 0;
-    forecastExp += fcMonthlyExp.get(m.key) || 0;
+    const fr = fcMonthlyRev.get(m.key) || 0, fe = fcMonthlyExp.get(m.key) || 0;
+    forecastRev += fr;
+    forecastExp += fe;
+    forecastRevToDate += fr * m.elapsedFrac;
+    forecastExpToDate += fe * m.elapsedFrac;
   });
   const forecastNet = forecastRev - forecastExp;
-  const variance    = actualRev - forecastRev;
-  const variancePct = safeVariancePct(actualRev, forecastRev);
+  // Variance is like-for-like: actuals vs the forecast for the part of the
+  // period that has elapsed (see monthElapsedFrac) — identical to the full
+  // forecast for a completed period.
+  const variance    = actualRev - forecastRevToDate;
+  const variancePct = safeVariancePct(actualRev, forecastRevToDate);
 
   // Pending pipeline — confirmed but not-yet-collected revenue across all
   // streams: STR (Airbnb reservations awaiting payout), LTR (unpaid months on
@@ -395,7 +423,7 @@ function calculateDashboardData(range) {
   });
 
   const ltrPendingItems = getLtRentPendingItems(range);
-  const svcPendingItems = getServicesPendingItems(range, mStream, mOwner, mClient);
+  const svcPendingItems = getServicesPendingItems(range, mStream, mInvOwner, mClient);
   const svcProjectedItems = getServicesProjectedItems(range);
 
   const pendingSTRTotal = pendingReservations.reduce(
@@ -416,11 +444,12 @@ function calculateDashboardData(range) {
   ];
 
   // Pre-group payments/invoices/expenses by month key for efficiency
-  const paysByMk = new Map(), invsByMk = new Map(), expsByMk = new Map(), capexByMk = new Map();
-  actPayments.forEach(p => { const mk = (p.date || '').slice(0,7); paysByMk.set(mk, [...(paysByMk.get(mk)||[]), p]); });
-  actInvoices.forEach(i => { const mk = (i.issueDate||'').slice(0,7); invsByMk.set(mk, [...(invsByMk.get(mk)||[]), i]); });
-  actOpExpenses.forEach(e => { const mk = (e.date||'').slice(0,7); expsByMk.set(mk, [...(expsByMk.get(mk)||[]), e]); });
-  actCapExpenses.forEach(e => { const mk = (e.date||'').slice(0,7); capexByMk.set(mk, [...(capexByMk.get(mk)||[]), e]); });
+  // (single O(n) pass each — groupByMonthKey; rows without a date can't be
+  // in range anyway, so skipping them changes nothing)
+  const paysByMk  = groupByMonthKey(actPayments, p => p.date);
+  const invsByMk  = groupByMonthKey(actInvoices, i => i.issueDate);
+  const expsByMk  = groupByMonthKey(actOpExpenses, e => e.date);
+  const capexByMk = groupByMonthKey(actCapExpenses, e => e.date);
 
   const monthlyBreakdown = months.map(m => {
     const mk = m.key;
@@ -431,6 +460,7 @@ function calculateDashboardData(range) {
     const mActExp = sumExpensesEUR(mExps);
     const mFcRev  = fcMonthlyRev.get(mk) || 0;
     const mFcExp  = fcMonthlyExp.get(mk) || 0;
+    const mFcRevCmp = mFcRev * m.elapsedFrac; // like-for-like share for variance
     // Property-only figures (excl. Customer Success/Marketing) — payments are
     // always property-linked (no propertyId means client/service revenue), and
     // property-linked expenses always carry a propertyId (service-stream costs
@@ -441,8 +471,8 @@ function calculateDashboardData(range) {
     const mFcPropExp  = fcMonthlyPropExp.get(mk) || 0;
     return {
       label: m.label, key: mk,
-      fcRev: mFcRev, actRev: mActRev,
-      variance: mActRev - mFcRev, variancePct: safeVariancePct(mActRev, mFcRev),
+      fcRev: mFcRev, actRev: mActRev, fcRevCmp: mFcRevCmp, elapsedFrac: m.elapsedFrac,
+      variance: mActRev - mFcRevCmp, variancePct: safeVariancePct(mActRev, mFcRevCmp),
       fcExp: mFcExp, actExp: mActExp,
       fcNet: mFcRev - mFcExp, actNet: mActRev - mActExp,
       actPropRev: mActPropRev, actPropExp: mActPropExp,
@@ -452,8 +482,10 @@ function calculateDashboardData(range) {
     };
   });
 
-  // MAPE — mean absolute percentage error over months with a forecast value
-  const mapeValidMonths = monthlyBreakdown.filter(m => m.fcRev > 0);
+  // MAPE — mean absolute percentage error over COMPLETED months (fully
+  // elapsed within the range) with a forecast value; future and in-progress
+  // months would otherwise count as near-100% misses.
+  const mapeValidMonths = monthlyBreakdown.filter(m => m.fcRev > 0 && m.elapsedFrac >= 1);
   let mape = null;
   if (mapeValidMonths.length > 0) {
     const sumAbsPct = mapeValidMonths.reduce((s, m) => s + Math.abs(m.actRev - m.fcRev) / m.fcRev, 0);
@@ -466,7 +498,7 @@ function calculateDashboardData(range) {
 
   return {
     actualRev, actualExp, actualCapEx, actualNet,
-    forecastRev, forecastExp, forecastNet,
+    forecastRev, forecastExp, forecastNet, forecastRevToDate, forecastExpToDate,
     variance, variancePct,
     pendingPipeline, pendingReservations, allPendingReservations,
     pendingSTRTotal, ltrPendingItems, ltrPendingTotal, svcPendingItems, svcPendingTotal,
@@ -494,7 +526,7 @@ function calculateDashboardData(range) {
 // anymore. Selecting other streams in the filter bar doesn't change that —
 // this card always reflects properties regardless of the stream filter.
 function computeBlendedRoi(monthlyBreakdown, actPayments, fcPropMonthlyRev) {
-  const todayMk = new Date().toISOString().slice(0, 7);
+  const todayMk = thisMonthYm();
   let blendedRev = 0, blendedExp = 0;
   const monthSource = monthlyBreakdown.map(m => {
     // The current, still-in-progress month is the one ambiguous case: it's
@@ -588,6 +620,11 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
   const fcByEntityYear = new Map(listActive('forecasts').map(fc => [fc.entityId + ':' + fc.year, fc]));
 
   const fcByStream = new Map();
+  const fcCmpByStream = new Map(); // like-for-like (elapsed share) — see monthElapsedFrac
+  const addFc = (s, val, m) => {
+    fcByStream.set(s, (fcByStream.get(s) || 0) + val);
+    fcCmpByStream.set(s, (fcCmpByStream.get(s) || 0) + val * (m.elapsedFrac ?? 1));
+  };
 
   // Property-type forecasts (with the long-term lease-schedule fallback).
   listActive('properties').forEach(prop => {
@@ -608,7 +645,7 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
         const entries = Array.isArray(md.entries) ? md.entries : [];
         val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
       }
-      if (val > 0) fcByStream.set(stream, (fcByStream.get(stream) || 0) + val);
+      if (val > 0) addFc(stream, val, m);
     });
   });
 
@@ -622,7 +659,7 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
       if (!md) return;
       const entries = Array.isArray(md.entries) ? md.entries : [];
       const val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
-      if (val > 0) fcByStream.set(fc.entityId, (fcByStream.get(fc.entityId) || 0) + val);
+      if (val > 0) addFc(fc.entityId, val, m);
     });
   });
 
@@ -630,7 +667,8 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
   return [...allStreams].map(s => {
     const act = actByStream.get(s) || 0;
     const fc  = fcByStream.get(s)  || 0;
-    return { key: s, label: STREAMS[s]?.label || s, actRev: act, fcRev: fc, variance: act - fc, variancePct: safeVariancePct(act, fc) };
+    const fcCmp = fcCmpByStream.get(s) || 0;
+    return { key: s, label: STREAMS[s]?.label || s, actRev: act, fcRev: fc, fcRevCmp: fcCmp, variance: act - fcCmp, variancePct: safeVariancePct(act, fcCmp) };
   }).sort((a, b) => b.actRev - a.actRev);
 }
 
@@ -646,6 +684,7 @@ function computePropertyBreakdown(actPayments, months, pendingItems) {
   );
 
   const fcByProp = new Map();
+  const fcCmpByProp = new Map(); // like-for-like (elapsed share) — see monthElapsedFrac
   listActive('properties').forEach(prop => {
     if (!propMatchesForecastFilters(prop)) return;
     months.forEach(m => {
@@ -661,7 +700,10 @@ function computePropertyBreakdown(actPayments, months, pendingItems) {
         const entries = Array.isArray(md.entries) ? md.entries : [];
         val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
       }
-      if (val > 0) fcByProp.set(prop.id, (fcByProp.get(prop.id) || 0) + val);
+      if (val > 0) {
+        fcByProp.set(prop.id, (fcByProp.get(prop.id) || 0) + val);
+        fcCmpByProp.set(prop.id, (fcCmpByProp.get(prop.id) || 0) + val * (m.elapsedFrac ?? 1));
+      }
     });
   });
 
@@ -678,7 +720,8 @@ function computePropertyBreakdown(actPayments, months, pendingItems) {
     const act  = actByProp.get(propId)     || 0;
     const fc   = fcByProp.get(propId)      || 0;
     const pend = pendingByProp.get(propId) || 0;
-    return { propId, label: prop?.name || propId, actRev: act, fcRev: fc, variance: act - fc, variancePct: safeVariancePct(act, fc), pending: pend };
+    const fcCmp = fcCmpByProp.get(propId) || 0;
+    return { propId, label: prop?.name || propId, actRev: act, fcRev: fc, fcRevCmp: fcCmp, variance: act - fcCmp, variancePct: safeVariancePct(act, fcCmp), pending: pend };
   }).sort((a, b) => b.actRev - a.actRev);
 }
 
@@ -687,8 +730,8 @@ const MO_COLS = [
   { key: 'month', label: 'Month', tip: 'Calendar month.' },
   { key: 'fcRev', label: 'Forecast',  right: true, tip: 'Forecast revenue for the month, from property/service forecast records.' },
   { key: 'actRev',label: 'Actual',    right: true, tip: 'Actual revenue recorded for the month (paid payments + paid invoices).' },
-  { key: 'var',   label: 'Variance',  right: true, tip: 'Actual Revenue minus Forecast Revenue.' },
-  { key: 'pct',   label: 'Var %',     right: true, tip: 'Variance as a percentage of Forecast Revenue.' }
+  { key: 'var',   label: 'Variance',  right: true, tip: 'Actual Revenue minus Forecast Revenue for the elapsed part of the month (in-progress month pro-rated by days elapsed; future months not counted).' },
+  { key: 'pct',   label: 'Var %',     right: true, tip: 'Variance as a percentage of the elapsed-share Forecast Revenue.' }
 ];
 function monthDrillRows(monthlyBreakdown) {
   return monthlyBreakdown
@@ -697,8 +740,8 @@ function monthDrillRows(monthlyBreakdown) {
       month:  m.label,
       fcRev:  formatEUR(m.fcRev),
       actRev: formatEUR(m.actRev),
-      var:    fmtVar(m.actRev, m.fcRev),
-      pct:    fmtVarPct(m.actRev, m.fcRev)
+      var:    fmtVar(m.actRev, m.fcRevCmp),
+      pct:    fmtVarPct(m.actRev, m.fcRevCmp)
     }));
 }
 
@@ -888,7 +931,7 @@ function openPendingPipelineModal(data, cmpData, cmpLabel) {
 function buildKpiGrid(data, cmpData, cmpRange) {
   const {
     actualRev, actualExp, actualCapEx, actualNet,
-    forecastRev, forecastExp, forecastNet,
+    forecastRev, forecastExp, forecastNet, forecastRevToDate,
     variance, pendingPipeline, pendingReservations,
     pendingSTRTotal, ltrPendingItems, ltrPendingTotal, svcPendingItems, svcPendingTotal,
     svcProjectedItems, svcProjectedTotal,
@@ -1003,24 +1046,26 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   // 3. Forecast Variance
   grid.appendChild(mkKpiCard({
     label: 'Forecast Variance',
-    value: forecastRev > 0 ? fmtVar(actualRev, forecastRev) : '—',
+    value: forecastRev > 0 ? fmtVar(actualRev, forecastRevToDate) : '—',
     variant: varVariant,
     onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS),
     delta: null, compLabel: '',
     explain: {
-      title: 'Forecast Variance', formula: 'Actual Revenue − Forecast Revenue.',
+      title: 'Forecast Variance', formula: 'Actual Revenue − Forecast Revenue to date.',
       inputs: [
         { label: 'Actual Revenue', value: formatEUR(actualRev) },
-        { label: 'Forecast Revenue', value: formatEUR(forecastRev) },
-        { label: 'Variance', value: fmtVar(actualRev, forecastRev) }
+        { label: 'Forecast Revenue to date', value: formatEUR(forecastRevToDate) },
+        { label: 'Forecast Revenue (full period)', value: formatEUR(forecastRev) },
+        { label: 'Variance', value: fmtVar(actualRev, forecastRevToDate) }
       ],
-      source: 'analytics-forecast.js:360 calculateDashboardData()'
+      source: 'analytics-forecast.js calculateDashboardData() (monthElapsedFrac())',
+      note: 'Forecast is pro-rated to the part of the period that has elapsed (an in-progress month counts only its elapsed days, future months count 0), so partial actuals are compared like-for-like. The Forecast Revenue card still shows the full-period forecast.'
     }
   }));
 
   // 4. Forecast Variance %
   const varPctStr = forecastRev > 0
-    ? fmtVarPct(actualRev, forecastRev)
+    ? fmtVarPct(actualRev, forecastRevToDate)
     : (actualRev > 0 ? 'No forecast' : '—');
   grid.appendChild(mkKpiCard({
     label: 'Forecast Variance %',
@@ -1029,14 +1074,14 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS),
     delta: null, compLabel: '',
     explain: {
-      title: 'Forecast Variance %', formula: '(Actual Revenue − Forecast Revenue) ÷ |Forecast Revenue| × 100.',
+      title: 'Forecast Variance %', formula: '(Actual Revenue − Forecast Revenue to date) ÷ |Forecast Revenue to date| × 100.',
       inputs: [
         { label: 'Actual Revenue', value: formatEUR(actualRev) },
-        { label: 'Forecast Revenue', value: formatEUR(forecastRev) },
+        { label: 'Forecast Revenue to date', value: formatEUR(forecastRevToDate) },
         { label: 'Variance %', value: varPctStr }
       ],
-      source: 'analytics-forecast.js:361 calculateDashboardData() (safeVariancePct())',
-      note: 'Shows "No forecast" when actual revenue exists but forecast revenue is zero.'
+      source: 'analytics-forecast.js calculateDashboardData() (safeVariancePct())',
+      note: 'Shows "No forecast" when actual revenue exists but forecast revenue is zero. Forecast is pro-rated to the part of the period that has elapsed (an in-progress month counts only its elapsed days, future months count 0), so partial actuals are compared like-for-like. The Forecast Revenue card still shows the full-period forecast.'
     }
   }));
 
@@ -1501,7 +1546,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
   // 12. Forecast Accuracy (MAPE)
   const mapeVariant = mape === null ? '' : mape < 10 ? 'success' : mape < 25 ? 'warning' : 'danger';
   const mapeValue   = mape === null ? '—' : mape.toFixed(1) + '%';
-  const mapeSubtitle = mapeMonthCount > 0 ? `avg error over ${mapeMonthCount} month${mapeMonthCount !== 1 ? 's' : ''}` : 'no forecast months';
+  const mapeSubtitle = mapeMonthCount > 0 ? `avg error over ${mapeMonthCount} completed month${mapeMonthCount !== 1 ? 's' : ''}` : 'no completed forecast months';
   grid.appendChild(mkKpiCard({
     label: 'Forecast Accuracy (MAPE)',
     subtitle: mapeSubtitle,
@@ -1509,7 +1554,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     variant: mapeVariant,
     onClick: () => {
       const mapeRows = monthlyBreakdown
-        .filter(m => m.fcRev > 0)
+        .filter(m => m.fcRev > 0 && m.elapsedFrac >= 1)
         .map(m => {
           const absErr = Math.abs(m.actRev - m.fcRev);
           const pctErr = (absErr / m.fcRev) * 100;
@@ -1521,13 +1566,13 @@ function buildKpiGrid(data, cmpData, cmpRange) {
 
       const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
       summaryBoxes.appendChild(mkSummaryBox('MAPE', mapeValue, 'lower is better', {
-        title: 'MAPE (Mean Absolute Percentage Error)', formula: 'Average, over all months with a forecast value, of |Actual − Forecast| ÷ Forecast × 100.',
+        title: 'MAPE (Mean Absolute Percentage Error)', formula: 'Average, over completed months with a forecast value, of |Actual − Forecast| ÷ Forecast × 100.',
         inputs: [
           { label: 'Months measured', value: String(mapeMonthCount) },
           { label: 'MAPE', value: mapeValue }
         ],
         source: 'analytics-forecast.js:460 calculateDashboardData()',
-        note: 'Only months where Forecast Revenue > 0 are included, so a month with no forecast set can\'t distort the average.'
+        note: 'Only fully elapsed months where Forecast Revenue > 0 are included — a month with no forecast set, the in-progress month and future months can\'t distort the average.'
       }));
       summaryBoxes.appendChild(mkSummaryBox('Months Measured', String(mapeMonthCount)));
       if (mape !== null) {
@@ -1562,7 +1607,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
     },
     delta: null, compLabel: '',
     explain: {
-      title: 'Forecast Accuracy (MAPE)', formula: 'Average, over all months with a forecast value, of |Actual − Forecast| ÷ Forecast × 100.',
+      title: 'Forecast Accuracy (MAPE)', formula: 'Average, over completed months with a forecast value, of |Actual − Forecast| ÷ Forecast × 100.',
       inputs: [
         { label: 'Months measured', value: String(mapeMonthCount) },
         { label: 'MAPE', value: mapeValue }
@@ -1577,7 +1622,7 @@ function buildKpiGrid(data, cmpData, cmpRange) {
 
 // ── Forecast Performance Insights ─────────────────────────────────────────────
 function buildForecastInsights(data, cmpData, cmpRange) {
-  const { actualRev, forecastRev, variancePct, pendingPipeline,
+  const { actualRev, forecastRev, forecastRevToDate, variancePct, pendingPipeline,
           pendingSTRTotal, ltrPendingTotal, svcPendingTotal, svcProjectedTotal,
           streamBreakdown, propertyBreakdown, monthlyBreakdown } = data;
   const cmpLabel = cmpRange?.label || '';
@@ -1589,7 +1634,7 @@ function buildForecastInsights(data, cmpData, cmpRange) {
     if (variancePct < -25) {
       signals.push({
         title: 'Forecast Gap',
-        text: `Actual revenue is ${Math.abs(variancePct).toFixed(0)}% below forecast (${fmtVar(actualRev, forecastRev)} variance).`,
+        text: `Actual revenue is ${Math.abs(variancePct).toFixed(0)}% below forecast to date (${fmtVar(actualRev, forecastRevToDate)} variance).`,
         severity: 'At Risk',
         inspect: 'Monthly Forecast Breakdown',
         onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS)
@@ -1597,7 +1642,7 @@ function buildForecastInsights(data, cmpData, cmpRange) {
     } else if (variancePct < -10) {
       signals.push({
         title: 'Forecast Gap',
-        text: `Actual revenue is ${Math.abs(variancePct).toFixed(0)}% below forecast (${fmtVar(actualRev, forecastRev)} variance).`,
+        text: `Actual revenue is ${Math.abs(variancePct).toFixed(0)}% below forecast to date (${fmtVar(actualRev, forecastRevToDate)} variance).`,
         severity: 'Watch',
         inspect: 'Monthly Forecast Breakdown',
         onClick: () => drillDownModal('Monthly Forecast', monthDrillRows(monthlyBreakdown), MO_COLS)
@@ -1846,8 +1891,8 @@ function buildMonthlyTable(data) {
     m.label,
     formatEUR(m.fcRev),
     formatEUR(m.actRev),
-    fmtVar(m.actRev, m.fcRev),
-    fmtVarPct(m.actRev, m.fcRev),
+    fmtVar(m.actRev, m.fcRevCmp),
+    fmtVarPct(m.actRev, m.fcRevCmp),
     formatEUR(m.fcExp),
     formatEUR(m.actExp),
     formatEUR(m.fcNet),
@@ -1871,8 +1916,8 @@ function buildStreamTable(data) {
     s.label,
     formatEUR(s.fcRev),
     formatEUR(s.actRev),
-    fmtVar(s.actRev, s.fcRev),
-    fmtVarPct(s.actRev, s.fcRev)
+    fmtVar(s.actRev, s.fcRevCmp),
+    fmtVarPct(s.actRev, s.fcRevCmp)
   ]);
   return mkModalTable(headers, rows);
 }
@@ -1905,8 +1950,8 @@ function buildPropertyTable(data) {
       r.label,
       formatEUR(r.fcRev),
       formatEUR(r.actRev),
-      fmtVar(r.actRev, r.fcRev),
-      fmtVarPct(r.actRev, r.fcRev),
+      fmtVar(r.actRev, r.fcRevCmp),
+      fmtVarPct(r.actRev, r.fcRevCmp),
       ...(hasPending ? [r.pending > 0 ? formatEUR(r.pending) : '—'] : [])
     ].forEach((val, i) => {
       const isRight = i > 0;
@@ -1932,77 +1977,178 @@ function buildPropertyTable(data) {
   return wrap;
 }
 
-// Open a modal to quick-edit a property's forecast targets for the active year
-function openForecastEditModal(propRow, data) {
-  const curRange  = getCurrentPeriodRange(gF);
-  const year      = parseInt((curRange?.start || '').slice(0, 4)) || new Date().getFullYear();
-
-  // Find existing forecast record for this property + year
-  const allFcs    = listActive('forecasts');
-  const existing  = allFcs.find(fc => fc.type === 'property' && fc.entityId === propRow.propId && fc.year === year);
-
-  // Compute current annual revenue + expense totals from months
-  let curFcRev = 0, curFcExp = 0;
-  if (existing?.months) {
-    Object.values(existing.months).forEach(md => {
+// Pure planner behind openForecastEditModal() — decides, month by month, what
+// a new annual Revenue/Expense target writes WITHOUT destroying existing data:
+//   - a month with booking/itemized entries[] keeps its entries (incl.
+//     cancelled/removed Airbnb tombstones) and its entry-derived revenue;
+//   - a month before the current month that already has a value keeps it;
+//   - a long-term property month with no manual revenue keeps its lease-rent
+//     fallback (revenue stays unset so the lease schedule still drives it);
+//   - only the remaining ("open") months share what's left of the target
+//     (target − kept months), split evenly in whole euros with the rounding
+//     remainder on the last open month so the year sums exactly to the target.
+// newRev/newExp === null means "unchanged — don't touch that field at all".
+// Returns { months (a new object; untouched months keep their original
+// object), rev: {open, kept, keptTotal, perMonth, shortfall}, exp: {…} }.
+function planForecastTargets(existingMonths, year, newRev, newExp, curMk, ltMap) {
+  const src = existingMonths || {};
+  const months = { ...src };
+  const mks = [];
+  for (let m = 1; m <= 12; m++) mks.push(`${year}-${String(m).padStart(2, '0')}`);
+  const hasVal = v => v !== undefined && v !== null && v !== '';
+  const plan = (field, target) => {
+    const res = { open: [], kept: [], keptTotal: 0, perMonth: 0, shortfall: 0 };
+    mks.forEach(mk => {
+      const md = src[mk] || {};
       const entries = Array.isArray(md.entries) ? md.entries : [];
-      curFcRev += entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
-      curFcExp += Number(md.expenses) || 0;
+      let keepVal = null;
+      if (field === 'revenue' && entries.length > 0) keepVal = sumForecastEntries(entries);
+      else if (mk < curMk && hasVal(md[field])) keepVal = Number(md[field]) || 0;
+      else if (field === 'revenue' && ltMap && !hasVal(md.revenue) && (ltMap[mk] || 0) > 0) keepVal = ltMap[mk];
+      if (keepVal !== null) { res.kept.push(mk); res.keptTotal += keepVal; }
+      else res.open.push(mk);
     });
-  }
+    if (target === null) return res;
+    const remaining = target - res.keptTotal;
+    if (remaining < 0) res.shortfall = -remaining;
+    if (!res.open.length) return res;
+    const pool = Math.max(0, Math.round(remaining));
+    const base = Math.floor(pool / res.open.length);
+    res.perMonth = base;
+    res.open.forEach((mk, i) => {
+      const v = i === res.open.length - 1 ? pool - base * (res.open.length - 1) : base;
+      months[mk] = { ...(months[mk] || {}), [field]: v };
+    });
+    return res;
+  };
+  const rev = plan('revenue', newRev);
+  const exp = plan('expenses', newExp);
+  return { months, rev, exp };
+}
 
-  // Inputs
-  const revInput = input({ type: 'number', value: String(Math.round(curFcRev)), min: '0', step: '1', style: 'width:100%' });
-  const expInput = input({ type: 'number', value: String(Math.round(curFcExp)), min: '0', step: '1', style: 'width:100%' });
-
-  const saveBtn = button('Save', {
-    variant: 'primary',
-    onClick: () => {
-      const newRev = Number(revInput.value) || 0;
-      const newExp = Number(expInput.value) || 0;
-      const monthlyRev = Math.round(newRev / 12);
-      const monthlyExp = Math.round(newExp / 12);
-
-      // Build months object distributing evenly across all 12 months
-      const months = {};
-      for (let m = 1; m <= 12; m++) {
-        const mk = `${year}-${String(m).padStart(2, '0')}`;
-        months[mk] = { revenue: monthlyRev, expenses: monthlyExp };
-      }
-
-      const record = existing
-        ? { ...existing, months }
-        : { id: newId('fc'), type: 'property', entityId: propRow.propId, year, months };
-
-      upsert('forecasts', record);
-      markDirty();
-      rebuildView();
-      toast(`Forecast for ${propRow.label} updated`, 'success');
-    }
+// Open a modal to quick-edit a property's forecast targets for one year.
+// The year is chosen explicitly (defaults to the current year) — it used to
+// follow the period filter's start year, which is last year for e.g.
+// "Last 12 Months". See planForecastTargets() for what a save does and
+// doesn't overwrite.
+function openForecastEditModal(propRow, data) {
+  const curYear = +todayYmd().slice(0, 4);
+  const curMk   = thisMonthYm();
+  const years = new Set([curYear - 1, curYear, curYear + 1]);
+  listActive('forecasts').forEach(fc => { if (fc.type === 'property' && fc.entityId === propRow.propId && fc.year) years.add(fc.year); });
+  const yearSel = el('select', { class: 'select', style: 'width:100%' });
+  [...years].sort((a, b) => a - b).forEach(y => {
+    const o = el('option', { value: String(y) }, String(y));
+    if (y === curYear) o.selected = true;
+    yearSel.appendChild(o);
   });
 
+  const content = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
-  body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:4px' },
-    `Editing annual forecast for ${year}. Revenue and expenses will be distributed evenly across all 12 months.`
-  ));
+  body.appendChild(formRow('Forecast year', yearSel));
+  body.appendChild(content);
 
-  const curGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px' });
-  curGrid.appendChild(mkSummaryBox('Current Forecast Revenue', formatEUR(curFcRev), `${year} total`, {
-    title: 'Current Forecast Revenue', formula: 'Sum, across the 12 months of the selected year, of each month\'s forecast revenue.',
-    inputs: [{ label: 'Total', value: formatEUR(curFcRev) }],
-    source: 'analytics-forecast.js:1841 openForecastEditModal()',
-    note: 'Cancelled/removed Airbnb forecast entries (tombstones) are excluded via sumForecastEntries(), matching every other forecast total in this dashboard.'
-  }));
-  curGrid.appendChild(mkSummaryBox('Current Forecast Expenses', formatEUR(curFcExp), `${year} total`, {
-    title: 'Current Forecast Expenses', formula: 'Sum, across the 12 months of the selected year, of each month\'s forecast expenses.',
-    inputs: [{ label: 'Total', value: formatEUR(curFcExp) }],
-    source: 'analytics-forecast.js:1841 openForecastEditModal()'
-  }));
-  body.appendChild(curGrid);
+  function renderForYear() {
+    content.innerHTML = '';
+    const year = Number(yearSel.value) || curYear;
+    // Look up live each time (not a stale reference) so a save always
+    // merges onto the latest stored record.
+    const existing = listActive('forecasts').find(fc => fc.type === 'property' && fc.entityId === propRow.propId && fc.year === year);
+    const ltMap = getLtRentByMonth(propRow.propId, year);
 
-  body.appendChild(formRow(`Revenue Target (€) — ${year}`, revInput));
-  body.appendChild(formRow(`Expense Target (€) — ${year}`, expInput));
-  body.appendChild(el('div', { style: 'display:flex;justify-content:flex-end;margin-top:8px' }, saveBtn));
+    // Current totals — same per-month resolution the dashboard uses
+    // (entries → manual revenue → long-term lease fallback).
+    let curFcRev = 0, curFcExp = 0;
+    for (let m = 1; m <= 12; m++) {
+      const mk = `${year}-${String(m).padStart(2, '0')}`;
+      const md = existing?.months?.[mk];
+      curFcRev += resolvePropertyMonthRevenue(propRow.propId, year, mk, md);
+      curFcExp += Number(md?.expenses) || 0;
+    }
+    const initRev = Math.round(curFcRev), initExp = Math.round(curFcExp);
+
+    const revInput = input({ type: 'number', value: String(initRev), min: '0', step: '1', style: 'width:100%' });
+    const expInput = input({ type: 'number', value: String(initExp), min: '0', step: '1', style: 'width:100%' });
+    const preview  = el('div', { style: 'font-size:12px;color:var(--text-muted);line-height:1.5' });
+
+    // null = field left unchanged → not written at all.
+    const readTargets = () => {
+      const r = Number(revInput.value), x = Number(expInput.value);
+      return {
+        newRev: revInput.value !== '' && isFinite(r) && Math.round(r) !== initRev ? Math.max(0, r) : null,
+        newExp: expInput.value !== '' && isFinite(x) && Math.round(x) !== initExp ? Math.max(0, x) : null
+      };
+    };
+    const describe = (label, res, target) => {
+      if (target === null) return `${label}: unchanged.`;
+      if (!res.open.length) return `${label}: no open months to change — every month of ${year} is kept (entries, past values or lease rent); edit individual months in Operations → Forecast.`;
+      let s = `${label}: ${formatEUR(res.perMonth)}/month across ${res.open.length} open month${res.open.length !== 1 ? 's' : ''}` +
+              (res.kept.length ? `, ${res.kept.length} month${res.kept.length !== 1 ? 's' : ''} kept as-is (${formatEUR(res.keptTotal)})` : '') + '.';
+      if (res.shortfall > 0) s += ` Kept months already total ${formatEUR(res.shortfall)} more than the target, so open months are set to €0 and the year will total ${formatEUR(res.keptTotal)}.`;
+      return s;
+    };
+    const refreshPreview = () => {
+      const { newRev, newExp } = readTargets();
+      const p = planForecastTargets(existing?.months, year, newRev, newExp, curMk, ltMap);
+      preview.innerHTML = '';
+      preview.appendChild(el('div', {}, describe('Revenue', p.rev, newRev)));
+      preview.appendChild(el('div', {}, describe('Expenses', p.exp, newExp)));
+    };
+    revInput.addEventListener('input', refreshPreview);
+    expInput.addEventListener('input', refreshPreview);
+
+    const saveBtn = button('Save', {
+      variant: 'primary',
+      onClick: () => {
+        const { newRev, newExp } = readTargets();
+        if (newRev === null && newExp === null) { closeModal(); return; }
+        const latest = listActive('forecasts').find(fc => fc.type === 'property' && fc.entityId === propRow.propId && fc.year === year);
+        const p = planForecastTargets(latest?.months, year, newRev, newExp, curMk, ltMap);
+        const noRoom = (newRev !== null && !p.rev.open.length) || (newExp !== null && !p.exp.open.length);
+        if ((newRev === null || !p.rev.open.length) && (newExp === null || !p.exp.open.length)) {
+          toast('Nothing to change — every month is kept (entries, past values or lease rent). Edit individual months in Operations → Forecast.', 'warning');
+          return;
+        }
+        const record = latest
+          ? { ...latest, months: p.months }
+          : { id: newId('fc'), type: 'property', entityId: propRow.propId, year, months: p.months };
+        upsert('forecasts', record);
+        markDirty();
+        closeModal();
+        rebuildView();
+        toast(`Forecast for ${propRow.label} (${year}) updated` + (noRoom ? ' — some fields had no open months and were left unchanged' : ''), noRoom ? 'warning' : 'success');
+      }
+    });
+
+    content.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);line-height:1.5' },
+      `Set an annual target for ${year}. Existing data is never deleted: months with booking/itemized entries keep them ` +
+      `(including cancelled-booking records), months before the current month keep any value already entered, and ` +
+      `long-term lease months with no manual figure keep their lease rent. The rest of the target (target − kept months) ` +
+      `is split evenly across the remaining open months. A field you don't change is left exactly as it is.`
+    ));
+
+    const curGrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px' });
+    curGrid.appendChild(mkSummaryBox('Current Forecast Revenue', formatEUR(curFcRev), `${year} total`, {
+      title: 'Current Forecast Revenue', formula: 'Sum, across the 12 months of the selected year, of each month\'s forecast revenue.',
+      inputs: [{ label: 'Total', value: formatEUR(curFcRev) }],
+      source: 'analytics-forecast.js openForecastEditModal() (resolvePropertyMonthRevenue())',
+      note: 'Itemized entries win, then a manual monthly figure, then (long-term properties) the lease rent schedule. Cancelled/removed Airbnb forecast entries (tombstones) are excluded via sumForecastEntries(), matching every other forecast total in this dashboard.'
+    }));
+    curGrid.appendChild(mkSummaryBox('Current Forecast Expenses', formatEUR(curFcExp), `${year} total`, {
+      title: 'Current Forecast Expenses', formula: 'Sum, across the 12 months of the selected year, of each month\'s forecast expenses.',
+      inputs: [{ label: 'Total', value: formatEUR(curFcExp) }],
+      source: 'analytics-forecast.js openForecastEditModal()'
+    }));
+    content.appendChild(curGrid);
+
+    content.appendChild(formRow(`Revenue Target (€) — ${year}`, revInput));
+    content.appendChild(formRow(`Expense Target (€) — ${year}`, expInput));
+    content.appendChild(preview);
+    content.appendChild(el('div', { style: 'display:flex;justify-content:flex-end;margin-top:8px' }, saveBtn));
+    refreshPreview();
+  }
+  yearSel.addEventListener('change', renderForYear);
+  renderForYear();
 
   openModal({ title: `Edit Forecast — ${propRow.label}`, body });
 }
@@ -2053,12 +2199,12 @@ function openStreamDetailModal(s, data) {
     inputs: [{ label: 'Total', value: formatEUR(s.actRev) }],
     source: 'analytics-forecast.js:558 computeStreamBreakdown()'
   }));
-  summaryBoxes.appendChild(mkSummaryBox('Variance',         fmtVar(s.actRev, s.fcRev), fmtVarPct(s.actRev, s.fcRev), {
+  summaryBoxes.appendChild(mkSummaryBox('Variance',         fmtVar(s.actRev, s.fcRevCmp), fmtVarPct(s.actRev, s.fcRevCmp), {
     title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for this stream.',
     inputs: [
       { label: 'Actual Revenue', value: formatEUR(s.actRev) },
       { label: 'Forecast Revenue', value: formatEUR(s.fcRev) },
-      { label: 'Variance', value: fmtVar(s.actRev, s.fcRev) }
+      { label: 'Variance', value: fmtVar(s.actRev, s.fcRevCmp) }
     ],
     source: 'analytics-forecast.js:558 computeStreamBreakdown()'
   }));
@@ -2155,13 +2301,13 @@ function buildStreamKpiRow(data) {
     style: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px'
   });
   for (const s of streams) {
-    const variance = s.actRev - s.fcRev;
+    const variance = s.actRev - s.fcRevCmp;
     grid.appendChild(mkKpiCard({
       label: s.label,
       value: formatEUR(s.actRev),
       subtitle: s.fcRev > 0 ? `Forecast ${formatEUR(s.fcRev)}` : 'No forecast set',
       variant: s.fcRev > 0 ? (variance > 0 ? 'success' : variance < 0 ? 'danger' : '') : '',
-      delta: s.fcRev > 0 ? safeVariancePct(s.actRev, s.fcRev) : null,
+      delta: s.fcRev > 0 ? safeVariancePct(s.actRev, s.fcRevCmp) : null,
       compLabel: 'forecast',
       onClick: () => openStreamDetailModal(s, data),
       explain: {
@@ -2169,7 +2315,7 @@ function buildStreamKpiRow(data) {
         inputs: [
           { label: 'Actual Revenue', value: formatEUR(s.actRev) },
           { label: 'Forecast Revenue', value: formatEUR(s.fcRev) },
-          { label: 'Variance', value: fmtVar(s.actRev, s.fcRev) }
+          { label: 'Variance', value: fmtVar(s.actRev, s.fcRevCmp) }
         ],
         source: 'analytics-forecast.js:558 computeStreamBreakdown()'
       }
@@ -2195,7 +2341,7 @@ function renderCharts(data) {
   const netData    = data.monthlyBreakdown.map(m => Math.round(m.actNet));
   const fcNetData  = months.map((_, i) => fcRevData[i] - fcExpData[i]);
   const varPctData = data.monthlyBreakdown.map(m => {
-    const p = safeVariancePct(m.actRev, m.fcRev);
+    const p = safeVariancePct(m.actRev, m.fcRevCmp);
     return p !== null ? Math.round(p * 10) / 10 : 0;
   });
 
@@ -2216,12 +2362,12 @@ function renderCharts(data) {
         const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
         summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(m.actRev)));
         summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(m.fcRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(m.actRev, m.fcRev), fmtVarPct(m.actRev, m.fcRev), {
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(m.actRev, m.fcRevCmp), fmtVarPct(m.actRev, m.fcRevCmp), {
           title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for the month.',
           inputs: [
             { label: 'Actual Revenue', value: formatEUR(m.actRev) },
             { label: 'Budget (Forecast)', value: formatEUR(m.fcRev) },
-            { label: 'Variance', value: fmtVar(m.actRev, m.fcRev) }
+            { label: 'Variance', value: fmtVar(m.actRev, m.fcRevCmp) }
           ],
           source: 'analytics-forecast.js:445 calculateDashboardData()'
         }));
@@ -2275,12 +2421,12 @@ function renderCharts(data) {
         const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
         summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(m.actRev)));
         summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(m.fcRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(m.actRev, m.fcRev), fmtVarPct(m.actRev, m.fcRev), {
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(m.actRev, m.fcRevCmp), fmtVarPct(m.actRev, m.fcRevCmp), {
           title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for the month.',
           inputs: [
             { label: 'Actual Revenue', value: formatEUR(m.actRev) },
             { label: 'Budget (Forecast)', value: formatEUR(m.fcRev) },
-            { label: 'Variance', value: fmtVar(m.actRev, m.fcRev) }
+            { label: 'Variance', value: fmtVar(m.actRev, m.fcRevCmp) }
           ],
           source: 'analytics-forecast.js:445 calculateDashboardData()'
         }));
@@ -2388,12 +2534,12 @@ function renderCharts(data) {
         const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
         summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(s.actRev)));
         summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(s.fcRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(s.actRev, s.fcRev), fmtVarPct(s.actRev, s.fcRev), {
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(s.actRev, s.fcRevCmp), fmtVarPct(s.actRev, s.fcRevCmp), {
           title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for this stream.',
           inputs: [
             { label: 'Actual Revenue', value: formatEUR(s.actRev) },
             { label: 'Budget (Forecast)', value: formatEUR(s.fcRev) },
-            { label: 'Variance', value: fmtVar(s.actRev, s.fcRev) }
+            { label: 'Variance', value: fmtVar(s.actRev, s.fcRevCmp) }
           ],
           source: 'analytics-forecast.js:558 computeStreamBreakdown()'
         }));
@@ -2442,12 +2588,12 @@ function renderCharts(data) {
         const summaryBoxes = el('div', { style: 'display:grid;grid-template-columns:repeat(3,1fr);gap:8px' });
         summaryBoxes.appendChild(mkSummaryBox('Actual Revenue', formatEUR(prop.actRev)));
         summaryBoxes.appendChild(mkSummaryBox('Budget (Forecast)', formatEUR(prop.fcRev)));
-        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(prop.actRev, prop.fcRev), fmtVarPct(prop.actRev, prop.fcRev), {
+        summaryBoxes.appendChild(mkSummaryBox('Variance', fmtVar(prop.actRev, prop.fcRevCmp), fmtVarPct(prop.actRev, prop.fcRevCmp), {
           title: 'Variance', formula: 'Actual Revenue − Forecast Revenue for this property.',
           inputs: [
             { label: 'Actual Revenue', value: formatEUR(prop.actRev) },
             { label: 'Budget (Forecast)', value: formatEUR(prop.fcRev) },
-            { label: 'Variance', value: fmtVar(prop.actRev, prop.fcRev) }
+            { label: 'Variance', value: fmtVar(prop.actRev, prop.fcRevCmp) }
           ],
           source: 'analytics-forecast.js:618 computePropertyBreakdown()'
         }));
@@ -2609,7 +2755,7 @@ function renderCharts(data) {
   }
 
   // 9. Forecast Accuracy Trend — line chart of per-month absolute % error
-  const accuracyTrendMonths = data.monthlyBreakdown.filter(m => m.fcRev > 0);
+  const accuracyTrendMonths = data.monthlyBreakdown.filter(m => m.fcRev > 0 && m.elapsedFrac >= 1);
   if (accuracyTrendMonths.length > 0) {
     const accLabels = accuracyTrendMonths.map(m => m.label);
     const accData   = accuracyTrendMonths.map(m => {
