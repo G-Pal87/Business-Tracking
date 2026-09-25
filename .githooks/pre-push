@@ -1,0 +1,22 @@
+#!/bin/sh
+# Privacy guard for every commit about to be pushed (this repository is public).
+# Stops the push BEFORE anything becomes public; CI only notices afterwards.
+# Enable once per clone:  git config core.hooksPath .githooks
+top="$(git rev-parse --show-toplevel)" || exit 1
+guard="$top/.github/scripts/privacy-guard.py"
+zero=0000000000000000000000000000000000000000
+status=0
+# stdin: <local ref> <local sha> <remote ref> <remote sha>, one line per ref
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue          # deleting a remote ref
+  case "$remote_ref" in
+    refs/heads/*) branch="${remote_ref#refs/heads/}" ;;
+    *) branch="" ;;
+  esac
+  echo "privacy guard: checking $local_ref -> $remote_ref"
+  python3 "$guard" "$remote_sha" "$local_sha" --branch "$branch" || status=1
+done
+if [ "$status" -ne 0 ]; then
+  echo "Push blocked by the privacy guard. Remove the listed files/commits (git reset / git rebase) and push again." >&2
+fi
+exit $status

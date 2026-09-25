@@ -1,0 +1,6 @@
+#!/bin/sh
+# Privacy guard for staged files (this repository is public).
+# Enable once per clone:  git config core.hooksPath .githooks
+top="$(git rev-parse --show-toplevel)" || exit 1
+branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+PRIVACY_GUARD_BRANCH="$branch" exec python3 "$top/.github/scripts/privacy-guard.py" --staged
