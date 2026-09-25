@@ -6,6 +6,7 @@ import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX
 import { mkTh, mkExplainButton } from './analytics-helpers.js';
 import { navigate } from '../core/router.js';
 import { todayYmd, localYmd, diffDaysYmd } from '../core/dates.js';
+import { parseCsvRows, parseAmountSigned, parseImportDate, detectDateOrder, downloadCsv } from '../core/csv.js';
 
 let _allPaySortCol = -1, _allPaySortDir = 1;
 let _allPayPage = 0, _allPayPageSize = 100, _allPaySearch = '';
@@ -1535,7 +1536,7 @@ function openCSVImport() {
     if (completedFile) {
       const text = await completedFile.text();
       const rows = mergeReservationRows(parseAirbnbCSV(text));
-      const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
+      const csvKeys = completedCsvKeySet(rows);
       // Only properties this CSV actually mentions can have orphans detected
       // against it — a per-listing/per-account export naturally won't include
       // every other property's transactions, and that's not evidence they
@@ -1605,6 +1606,9 @@ function openCSVImport() {
         fileBlock.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:4px' },
           `⚠ Column${rows.unrecognizedHeaders.length === 1 ? '' : 's'} not recognized (ignored): ${rows.unrecognizedHeaders.join(', ')}`));
       }
+      for (const w of rows.warnings || []) {
+        fileBlock.appendChild(el('div', { style: 'font-size:12px;margin-top:4px;color:var(--warning, #b45309)' }, `⚠ ${w}`));
+      }
       preview.appendChild(fileBlock);
     }
 
@@ -1668,6 +1672,9 @@ function openCSVImport() {
       if (rows.unrecognizedHeaders?.length) {
         fileBlock.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:4px' },
           `⚠ Column${rows.unrecognizedHeaders.length === 1 ? '' : 's'} not recognized (ignored): ${rows.unrecognizedHeaders.join(', ')}`));
+      }
+      for (const w of rows.warnings || []) {
+        fileBlock.appendChild(el('div', { style: 'font-size:12px;margin-top:4px;color:var(--warning, #b45309)' }, `⚠ ${w}`));
       }
       preview.appendChild(fileBlock);
     }
@@ -1768,7 +1775,7 @@ function openCSVImport() {
       }
 
       // Collect keys and confirmation codes present in the CSV
-      const csvKeys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
+      const csvKeys = completedCsvKeySet(rows);
       const csvReservationCodes = new Set(
         rows.filter(r => r.type.toLowerCase() === 'reservation').map(r => r.confirmationCode).filter(Boolean)
       );
@@ -2204,8 +2211,18 @@ function csvDateRangesByProperty(rows, findProp) {
 
 // Shared by the import preview and the apply step so their counts agree.
 // Never touches pending payments — those come from the separate pending CSV.
+// Airbnb keys present in a completed CSV. `skippedCodes` holds the
+// confirmation codes of rows skipped for an unreadable date: those bookings
+// are still in the export, so they must never be treated as removed.
+function completedCsvKeySet(rows) {
+  const keys = new Set(rows.map(r => r.airbnbKey).filter(Boolean));
+  keys.skippedCodes = new Set((rows.invalidRows || []).map(r => r.confirmationCode).filter(Boolean));
+  return keys;
+}
+
 function isCompletedCsvOrphan(p, csvKeys, csvRanges) {
   if (p.source !== 'airbnb' || p.status === 'pending' || !p.airbnbKey || csvKeys.has(p.airbnbKey)) return false;
+  if (p.confirmationCode && csvKeys.skippedCodes?.has(p.confirmationCode)) return false;
   const range = csvRanges.get(p.propertyId);
   if (!range || !p.date) return false;
   return p.date >= range.min && p.date <= range.max;
@@ -2251,70 +2268,35 @@ function fieldsChanged(existing, newFields) {
   return !existing || Object.keys(newFields).some(k => (existing[k] ?? null) !== (newFields[k] ?? null));
 }
 
-// RFC-4180-compliant CSV parser with flexible Airbnb column mapping
+// RFC-4180-compliant CSV parser with flexible Airbnb column mapping.
+// The returned array carries extra properties for the import preview:
+// `unrecognizedHeaders`, `warnings` (strings) and `invalidRows` ({ line,
+// reason, confirmationCode, listing, type } — rows skipped because a date
+// could not be read as a real calendar date).
 function parseAirbnbCSV(text) {
-  // Strip BOM, normalise line endings
-  const clean = text.replace(/^﻿/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-
-  // Parse the whole file into rows of raw fields in a single pass, only
-  // splitting a row on '\n' when outside a quoted field. Splitting on '\n'
-  // first (the previous approach) breaks any quoted field that itself
-  // contains a newline (e.g. a multi-line guest note) — the remainder gets
-  // parsed as its own row with columns shifted out of alignment.
-  const rawRows = [];
-  {
-    let field = '', row = [], inQuote = false;
-    for (let i = 0; i < clean.length; i++) {
-      const c = clean[i];
-      if (inQuote) {
-        if (c === '"') { if (clean[i + 1] === '"') { field += '"'; i++; } else inQuote = false; }
-        else field += c;
-      } else if (c === '"') {
-        inQuote = true;
-      } else if (c === ',') {
-        row.push(field.trim()); field = '';
-      } else if (c === '\n') {
-        row.push(field.trim()); rawRows.push(row); row = []; field = '';
-      } else {
-        field += c;
-      }
-    }
-    if (field.length > 0 || row.length > 0) { row.push(field.trim()); rawRows.push(row); }
+  // Single pass over the whole file; a quoted field may contain newlines
+  // (e.g. a multi-line guest note). See core/csv.js.
+  const { rows: rawRows, unterminatedQuote } = parseCsvRows(text);
+  const warnings = [];
+  if (unterminatedQuote) {
+    warnings.push(`A quote opened on line ${unterminatedQuote} is never closed — everything after it was read as one field. Check the file; rows from that line on may be missing.`);
   }
 
-  // Handles both US (1,234.56) and European (1.234,56 / 1234,56) formatting.
-  // Blindly stripping everything but digits/dot/minus (the old behavior)
-  // assumed US formatting unconditionally — a European-formatted amount like
-  // "1.234,56" became "1.234.56" after stripping, and parseFloat stops at
-  // the second dot, silently truncating it to 1.234 (a ~1000× undercount).
-  // parseAmtSigned keeps the CSV's true sign (Airbnb exports deductions such
-  // as adjustments as negative amounts; "(12.34)" and a Unicode minus are
-  // read as negative too). parseAmt is its magnitude, used for fee columns.
-  const parseAmtSigned = str => {
-    const raw = String(str || '').trim();
-    const neg = /^\(.*\)$/.test(raw) || /[-\u2212]/.test(raw);
-    let s = raw.replace(/[^0-9.,]/g, '');
-    if (!s) return 0;
-    const lastComma = s.lastIndexOf(',');
-    const lastDot   = s.lastIndexOf('.');
-    if (lastComma > -1 && lastDot > -1) {
-      // Both present — whichever comes last is the decimal separator.
-      s = lastComma > lastDot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
-    } else if (lastComma > -1) {
-      // Comma only: a lone comma followed by exactly 1-2 digits is a decimal
-      // separator ("1234,56"); anything else (multiple commas, or a 3-digit
-      // group) is a thousands separator ("1,234").
-      const parts = s.split(',');
-      s = (parts.length === 2 && parts[1].length <= 2) ? s.replace(',', '.') : s.replace(/,/g, '');
-    }
-    const v = Math.abs(parseFloat(s) || 0);
-    return neg && v ? -v : v;
-  };
+  // Amounts: US (1,234.56), European (1.234,56 / 1234,56) and Hungarian
+  // (150.000) formatting; parseAmtSigned keeps the CSV's true sign (Airbnb
+  // exports deductions such as adjustments as negative amounts; "(12.34)",
+  // a leading/trailing minus and a Unicode minus are read as negative).
+  // parseAmt is its magnitude, used for fee columns.
+  const parseAmtSigned = parseAmountSigned;
   const parseAmt = str => Math.abs(parseAmtSigned(str));
 
   // Find the header row (first row with any non-empty field)
   const headerRowIdx = rawRows.findIndex(r => r.some(f => f));
-  if (headerRowIdx === -1) return [];
+  if (headerRowIdx === -1) {
+    const empty = [];
+    empty.unrecognizedHeaders = []; empty.warnings = warnings; empty.invalidRows = [];
+    return empty;
+  }
   const headers = rawRows[headerRowIdx].map(h =>
     h.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
   );
@@ -2349,9 +2331,31 @@ function parseAirbnbCSV(text) {
   };
 
   const results = [];
+  const invalidRows = [];
+  const DATE_COLS = {
+    date:     ['date', 'paid date', 'payout date', 'transaction date'],
+    booking:  ['booking date', 'booked date', 'booked on'],
+    checkIn:  ['start date', 'check in', 'checkin', 'arrival date'],
+    checkOut: ['end date', 'checkout', 'check out', 'departure date']
+  };
+  const dataRows = [];
+  rawRows.forEach((r, i) => { if (i > headerRowIdx && r.some(f => f)) dataRows.push({ row: r, lineNo: i + 1 }); });
 
-  for (const row of rawRows.slice(headerRowIdx + 1)) {
-    if (!row.some(f => f)) continue;
+  // Day/month order is decided once per file: Airbnb's US export is
+  // MM/DD/YYYY, an EU-locale export is DD/MM/YYYY. Reading "13/02/2026" as
+  // MM/DD used to store "2026-13-02" and file the row under a month that
+  // doesn't exist.
+  const dateOrder = detectDateOrder(dataRows.flatMap(({ row }) =>
+    Object.values(DATE_COLS).map(names => col(row, ...names))));
+  const dayFirst = dateOrder.dayFirst;
+  if (dateOrder.conflicting) {
+    warnings.push('This file mixes DD/MM and MM/DD dates — rows whose date is not a real calendar date in MM/DD order were skipped. Check the dates in the file.');
+  } else if (dateOrder.ambiguous) {
+    warnings.push('No date in this file has a day above 12, so DD/MM and MM/DD can\'t be told apart — dates were read as MM/DD (Airbnb\'s US format). Check a few dates in the preview.');
+  }
+  const pd = raw => parseImportDate(raw, { dayFirst });
+
+  for (const { row, lineNo } of dataRows) {
 
     // Transaction type — skip "Payout" rows (settlement rows, not reservation data)
     const type = col(row, 'type', 'transaction type') || 'Reservation';
@@ -2361,12 +2365,25 @@ function parseAirbnbCSV(text) {
     const confirmationCode = col(row, 'confirmation code', 'confirmation', 'reservation code', 'reference', 'transaction id', 'trans id', 'code');
 
     // Dates
-    const dateRaw        = col(row, 'date', 'paid date', 'payout date', 'transaction date');
-    const bookingDateRaw = col(row, 'booking date', 'booked date', 'booked on');
-    const checkInRaw     = col(row, 'start date', 'check in', 'checkin', 'arrival date');
-    const checkOutRaw    = col(row, 'end date', 'checkout', 'check out', 'departure date');
-    const date           = parseDateStr(dateRaw) || parseDateStr(checkInRaw);
-    if (!date) continue;
+    const dateRaw        = col(row, ...DATE_COLS.date);
+    const bookingDateRaw = col(row, ...DATE_COLS.booking);
+    const checkInRaw     = col(row, ...DATE_COLS.checkIn);
+    const checkOutRaw    = col(row, ...DATE_COLS.checkOut);
+    // A date cell that is present but isn't a real calendar date makes the
+    // row untrustworthy (month keys, sorting, nights) — skip it and report
+    // it in the preview rather than storing an invalid date.
+    const badDate = [dateRaw, bookingDateRaw, checkInRaw, checkOutRaw].find(v => v && !pd(v));
+    const date    = pd(dateRaw) || pd(checkInRaw);
+    if (badDate || !date) {
+      invalidRows.push({
+        line: lineNo,
+        reason: badDate ? `Invalid date "${badDate}"` : 'No date',
+        confirmationCode,
+        listing: col(row, 'listing', 'listing name', 'property'),
+        type
+      });
+      continue;
+    }
 
     const nights = parseInt(col(row, 'nights', 'number of nights'), 10) || 0;
 
@@ -2397,9 +2414,9 @@ function parseAirbnbCSV(text) {
 
     results.push({
       date,
-      bookingDate:          parseDateStr(bookingDateRaw) || '',
-      checkIn:              parseDateStr(checkInRaw) || '',
-      checkOut:             parseDateStr(checkOutRaw) || '',
+      bookingDate:          pd(bookingDateRaw) || '',
+      checkIn:              pd(checkInRaw) || '',
+      checkOut:             pd(checkOutRaw) || '',
       nights,
       type,
       confirmationCode,
@@ -2422,6 +2439,12 @@ function parseAirbnbCSV(text) {
   // plain array of rows — keeps working unchanged; callers that want to
   // surface the warning (the import preview) can opt in via this property.
   results.unrecognizedHeaders = headers.filter((h, i) => h && !recognizedIdx.has(i));
+  if (invalidRows.length) {
+    const sample = invalidRows.slice(0, 3).map(r => `line ${r.line}: ${r.reason}`).join('; ');
+    warnings.push(`${invalidRows.length} row${invalidRows.length === 1 ? '' : 's'} skipped — ${sample}${invalidRows.length > 3 ? '; …' : ''}`);
+  }
+  results.warnings = warnings;
+  results.invalidRows = invalidRows;
   return results;
 }
 
@@ -2462,21 +2485,9 @@ function mergeReservationRows(rows) {
   }
 
   out.unrecognizedHeaders = rows.unrecognizedHeaders;
+  out.warnings = rows.warnings || [];
+  out.invalidRows = rows.invalidRows || [];
   return out;
-}
-
-function parseDateStr(raw) {
-  if (!raw) return null;
-  // MM/DD/YYYY (Airbnb US export format) — parse manually to avoid timezone shift
-  const mdy = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (mdy) return `${mdy[3]}-${mdy[1].padStart(2, '0')}-${mdy[2].padStart(2, '0')}`;
-  // ISO 8601 (YYYY-MM-DD) — Date constructor treats as UTC, no shift
-  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return raw.slice(0, 10);
-  // Last resort: Date constructor (may drift ±1 day near midnight in non-UTC zones)
-  const d = new Date(raw);
-  if (!isNaN(d)) return d.toISOString().slice(0, 10);
-  return null;
 }
 
 // ── Property forecast revenue: one itemized entry per Airbnb booking ───────
@@ -2614,7 +2625,8 @@ function detectAirbnbCancellations(rows, findProp) {
   // live reservations in one sweep before this fix: each was recreated from
   // the same CSV row seconds later, but the stale-keyed original still got
   // cancelled first. Falling back to confirmationCode closes that gap.
-  const csvCodes = new Set(rows.map(r => r.confirmationCode).filter(Boolean));
+  // Rows skipped for an unreadable date still name a live booking.
+  const csvCodes = new Set([...rows, ...(rows.invalidRows || [])].map(r => r.confirmationCode).filter(Boolean));
   const csvPropertyIds = new Set(rows.map(r => findProp(r.listing)?.id).filter(Boolean));
   const paidCodes = new Set(listActivePayments().filter(p => p.status === 'paid' && p.confirmationCode).map(p => p.confirmationCode));
   const todayStr = today();
@@ -2656,22 +2668,7 @@ function exportCSV(rows) {
     'confirmationCode', 'notes', 'airbnbCheckIn', 'airbnbCheckOut', 'airbnbNights',
     'airbnbGrossEarnings', 'airbnbServiceFee', 'airbnbCleaningFee', 'avgNightExclCleaning', 'avgGross'
   ];
-  const lines = [headers.join(',')];
-  // RFC 4180: quote fields containing a comma, quote or line break, and
-  // double embedded quotes (JSON.stringify wrote \" instead of "").
-  const esc = v => {
-    const str = String(v ?? '');
-    return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
-  };
-  for (const r of rows) lines.push(headers.map(h => esc(r[h])).join(','));
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `payments-${today()}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  // core/csv.js: RFC 4180 quoting, formula-injection guard, UTF-8 BOM.
+  downloadCsv(`payments-${today()}.csv`, [headers, ...rows.map(r => headers.map(h => r[h]))]);
   toast(`CSV downloaded (${rows.length} payment(s))`, 'success');
 }
