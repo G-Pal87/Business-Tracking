@@ -92,7 +92,7 @@ async function migrateEmbeddedDocuments(pending) {
       const repoPath = isUnlocked()
         ? `Clients/${c.id}/${doc.id}${ext}`
         : `Clients/${sanitizeName(c.name)}/${sanitizeName(doc.name)}`;
-      await uploadGithubFileEncrypted(repoPath, doc.data, `Migrate document: ${doc.name}`);
+      await uploadGithubFileEncrypted(repoPath, doc.data, 'Update file');
       const newDocs = c.documents.map(x => {
         if (x.id !== docId) return x;
         const { data, ...rest } = x;
@@ -318,7 +318,7 @@ export function openDetail(id) {
           c.documents = (c.documents || []).filter(x => x.id !== d.id);
           upsert('clients', c);
           renderDetailDocList();
-          try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
+          try { await deleteGithubFile(d.path, null, 'Delete file'); }
           catch (e) { toast(`Repo cleanup failed: ${e.message}`, 'warning', 5000); }
         }}));
       }
@@ -485,7 +485,7 @@ function openForm(existing) {
         const repoPath = isUnlocked() ? `Clients/${c.id}/${d.id}${ext}` : `Clients/${sanitizeName(clientName)}/${sanitizeName(d.name)}`;
         try {
           const b64 = await readFileAsBase64(d._file);
-          await uploadGithubFileEncrypted(repoPath, b64, `Upload document: ${d.name}`);
+          await uploadGithubFileEncrypted(repoPath, b64, 'Update file');
           const meta = { id: d.id, name: d.name, type: d.type, size: d.size, uploadedAt: d.uploadedAt, path: repoPath, clientId: c.id };
           docsToSave.push(meta);
           // Remember the upload succeeded so a retry after a later failure
@@ -527,7 +527,7 @@ function openForm(existing) {
     const removals = pendingRemovals;
     pendingRemovals = [];
     for (const rem of removals) {
-      try { await deleteGithubFile(rem.path, null, `Remove document: ${rem.name}`); }
+      try { await deleteGithubFile(rem.path, null, 'Delete file'); }
       catch (e) { toast(`Repo cleanup failed for ${rem.name}: ${e.message}`, 'warning', 5000); }
     }
 
