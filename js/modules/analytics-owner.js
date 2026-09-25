@@ -7,7 +7,8 @@ import {
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers
 } from './analytics-filters.js?v=20260519';
 import {
-  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkExplainButton, mkDrillValue
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkExplainButton, mkDrillValue,
+  invoiceOwner, invoiceNetEUR, recordOwner, partnerKey, groupByMonthKey
 } from './analytics-helpers.js';
 import { SERVICE_STREAMS, STREAMS, PROPERTY_STREAMS } from '../core/config.js';
 
@@ -45,7 +46,7 @@ function splitByOwner(records, amountFn) {
   let you = 0, rita = 0;
   for (const rec of records) {
     const amount = amountFn(rec);
-    const owner  = rec._resolvedOwner || rec.owner || 'both';
+    const owner  = partnerKey(rec._resolvedOwner || rec.owner || 'both');
     if (owner === 'you') {
       you += amount;
     } else if (owner === 'rita') {
@@ -64,9 +65,6 @@ function getData(start, end) {
   const inRange = d => d && d >= start && d <= end;
   const { mStream, mProperty } = makeMatchers(gF);
 
-  // Build Map once so annotation loops use O(1) lookups instead of O(n) byId scans
-  const propMap = new Map(listActive('properties').map(p => [p.id, p]));
-
   const coPropIds = companyPropIds();
   const isCoRec = r => gScope === 'all' || isCompanyRecord(r, coPropIds);
 
@@ -75,43 +73,43 @@ function getData(start, end) {
     p.status === 'paid' && inRange(p.date) && mStream(p) && mProperty(p) && isCoRec(p)
   );
 
-  // Annotate payments with resolved owner
-  const annotatedPayments = payments.map(p => {
-    const prop = p.propertyId ? propMap.get(p.propertyId) : null;
-    return { ...p, _resolvedOwner: p.owner || prop?.owner || 'both', _eur: toEUR(p.amount, p.currency, p.date) };
-  });
+  // Owner attribution — ONE rule per record kind, shared with the filter
+  // matchers: payments/expenses use recordOwner() (property's owner for a
+  // property-linked record, else the record's own owner — same as
+  // makeMatchers().mOwner); invoices use invoiceOwner(). partnerKey()
+  // normalises people-record ids to 'you' | 'rita' | 'both'.
+  const annotatedPayments = payments.map(p =>
+    ({ ...p, _resolvedOwner: partnerKey(recordOwner(p)), _eur: toEUR(p.amount, p.currency, p.date) }));
 
   // Invoices — service income. mProperty is applied for consistency with the
   // payments/expenses filters just above — a property-linked invoice used to
   // count toward revenue/splits regardless of which property was selected.
+  // isCoRec: an invoice linked to a personal-channel property (or flagged
+  // personal) is out of Company scope, same as payments/expenses.
   const invoices = listActive('invoices').filter(i =>
-    i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mProperty(i)
+    i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mProperty(i) && isCoRec(i)
   );
-  const annotatedInvoices = invoices.map(i => {
-    const prop = i.propertyId ? propMap.get(i.propertyId) : null;
-    return {
-      ...i,
-      _resolvedOwner: i.owner || prop?.owner || 'both',
-      // VAT-exclusive: this is a revenue/profit split, not a cash figure — VAT collected isn't the owners' revenue.
-      _eur: toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)
-    };
-  });
+  const annotatedInvoices = invoices.map(i => ({
+    ...i,
+    _resolvedOwner: partnerKey(invoiceOwner(i)),
+    // VAT-exclusive: this is a revenue/profit split, not a cash figure — VAT collected isn't the owners' revenue.
+    _eur: invoiceNetEUR(i)
+  }));
 
   // Expenses (OpEx only for profit)
   const expenses = listActive('expenses').filter(e => {
     const d = e.date || '';
     return d >= start && d <= end && !isCapEx(e) && mProperty(e) && mStream(e) && isCoRec(e);
   });
-  const annotatedExpenses = expenses.map(e => {
-    const prop = e.propertyId ? propMap.get(e.propertyId) : null;
-    return { ...e, _resolvedOwner: prop?.owner || e.owner || 'both', _eur: toEUR(e.amount, e.currency, e.date) };
-  });
+  const annotatedExpenses = expenses.map(e =>
+    ({ ...e, _resolvedOwner: partnerKey(recordOwner(e)), _eur: toEUR(e.amount, e.currency, e.date) }));
+
+  // All revenue records (payments + invoices), built once and reused by
+  // every section/modal instead of re-spreading both arrays each time.
+  const revRecords = [...annotatedPayments, ...annotatedInvoices];
 
   // Revenue split
-  const revSplit = splitByOwner(
-    [...annotatedPayments, ...annotatedInvoices],
-    r => r._eur
-  );
+  const revSplit = splitByOwner(revRecords, r => r._eur);
   // Expense split
   const expSplit = splitByOwner(annotatedExpenses, r => r._eur);
 
@@ -121,6 +119,7 @@ function getData(start, end) {
     annotatedPayments,
     annotatedInvoices,
     annotatedExpenses,
+    revRecords,
     revSplit,
     expSplit,
     total,
@@ -136,13 +135,17 @@ function propStream(p) {
 }
 
 // ── Properties data ───────────────────────────────────────────────────────────
+// Current portfolio only: sold properties are excluded from book value, and
+// the Company scope excludes personal-channel properties (same rule as the
+// revenue/expense figures above via isCompanyRecord()).
 function getPropertiesData(filterState) {
   const mPropStream = p => !filterState.streams.size || filterState.streams.has(propStream(p));
   const mPropId     = p => !filterState.propertyIds.size || filterState.propertyIds.has(p.id);
-  const allProps = listActive('properties').filter(p => mPropStream(p) && mPropId(p));
-  const youProps  = allProps.filter(p => p.owner === 'you');
-  const ritaProps = allProps.filter(p => p.owner === 'rita');
-  const bothProps = allProps.filter(p => !p.owner || p.owner === 'both');
+  const mPropScope  = p => gScope === 'all' || (p.channel || 'company') === 'company';
+  const allProps = listActive('properties').filter(p => p.status !== 'sold' && mPropScope(p) && mPropStream(p) && mPropId(p));
+  const youProps  = allProps.filter(p => partnerKey(p.owner) === 'you');
+  const ritaProps = allProps.filter(p => partnerKey(p.owner) === 'rita');
+  const bothProps = allProps.filter(p => partnerKey(p.owner) === 'both');
 
   function bookValue(props, splitHalf = false) {
     return props.reduce((s, p) => {
@@ -181,7 +184,7 @@ function buildShareKpiModal(owner, partnerLabel, revenue, pct, allRecords, cmpDa
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   if (cmpData) {
-    const cmpRecords = [...cmpData.annotatedPayments, ...cmpData.annotatedInvoices];
+    const cmpRecords = cmpData.revRecords;
     const cmpRevenue = cmpData.revSplit[owner];
     const cmpTotal   = cmpData.revSplit.you + cmpData.revSplit.rita;
     const cmpPct     = cmpTotal > 0 ? cmpRevenue / cmpTotal * 100 : 0;
@@ -256,15 +259,14 @@ function buildShareKpiModal(owner, partnerLabel, revenue, pct, allRecords, cmpDa
 // ── Shared drill-down modal openers (reused by KPI cards, charts, and the
 //    partner columns so identical numbers always open identical modals) ──────
 function openRevenueSplitModal(data, cmpData, cmpRange) {
-  const { total, revSplit, annotatedPayments, annotatedInvoices } = data;
-  const revRecords = [...annotatedPayments, ...annotatedInvoices];
+  const { total, revSplit, revRecords } = data;
   const youPct  = total > 0 ? revSplit.you  / total * 100 : 0;
   const ritaPct = total > 0 ? revSplit.rita / total * 100 : 0;
   const cl = cmpRange?.label || '';
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   if (cmpData) {
-    const cmpRevRecords = [...cmpData.annotatedPayments, ...cmpData.annotatedInvoices];
+    const cmpRevRecords = cmpData.revRecords;
     const cmpYou  = cmpData.revSplit.you;
     const cmpRita = cmpData.revSplit.rita;
     body.appendChild(mkCmpGrid([
@@ -501,7 +503,7 @@ function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cm
   const count  = isYou ? propsData.youCount : propsData.ritaCount;
   const value  = isYou ? propsData.youValue : propsData.ritaValue;
   const owner  = isYou ? 'you' : 'rita';
-  const revRecords = [...data.annotatedPayments, ...data.annotatedInvoices];
+  const revRecords = data.revRecords;
 
   const col = el('div', {
     style: `background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:16px;border-top:3px solid ${color}`
@@ -593,8 +595,7 @@ function buildPartnerColumn(label, color, data, cmpData, propsData, curRange, cm
 
 // ── KPI section ───────────────────────────────────────────────────────────────
 function buildKpiSection(data, cmpData, propsData, cmpRange) {
-  const { total, revSplit, annotatedPayments, annotatedInvoices } = data;
-  const revRecords = [...annotatedPayments, ...annotatedInvoices];
+  const { total, revSplit, revRecords } = data;
   const youPct  = total > 0 ? revSplit.you  / total * 100 : 0;
   const ritaPct = total > 0 ? revSplit.rita / total * 100 : 0;
   const sharedCount = propsData.bothProps.length;
@@ -640,7 +641,7 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     compLabel: cl,
     compValue: cmpYouPct != null ? `${cmpYouPct.toFixed(1)}%` : undefined,
     onClick: () => {
-      const body = buildShareKpiModal('you', 'Giorgos', revSplit.you, youPct, [...annotatedPayments, ...annotatedInvoices], cmpData, cmpRange);
+      const body = buildShareKpiModal('you', 'Giorgos', revSplit.you, youPct, revRecords, cmpData, cmpRange);
       openModal({ title: 'Giorgos Share — Detail', body, large: true });
     },
     explain: {
@@ -665,7 +666,7 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
     compLabel: cl,
     compValue: cmpRitaPct != null ? `${cmpRitaPct.toFixed(1)}%` : undefined,
     onClick: () => {
-      const body = buildShareKpiModal('rita', 'Rita', revSplit.rita, ritaPct, [...annotatedPayments, ...annotatedInvoices], cmpData, cmpRange);
+      const body = buildShareKpiModal('rita', 'Rita', revSplit.rita, ritaPct, revRecords, cmpData, cmpRange);
       openModal({ title: 'Rita Share — Detail', body, large: true });
     },
     explain: {
@@ -689,7 +690,7 @@ function buildKpiSection(data, cmpData, propsData, cmpRange) {
       const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
       if (propsData.bothProps.length > 0) {
         // Compute period revenue per shared property
-        const allRecords = [...annotatedPayments, ...annotatedInvoices];
+        const allRecords = revRecords;
         const sharedRevMap = new Map();
         for (const r of allRecords) {
           if (!r.propertyId) continue;
@@ -740,13 +741,7 @@ function buildPartnerComparison(data, cmpData, propsData, curRange, cmpRange) {
 function buildServiceStreamSection(annotatedInvoices, curRange) {
   const streamTotals = SERVICE_STREAMS.map(stream => {
     const invoices = annotatedInvoices.filter(i => i.stream === stream);
-    let you = 0, rita = 0;
-    for (const i of invoices) {
-      const o = i._resolvedOwner;
-      if (o === 'you')  { you  += i._eur; }
-      else if (o === 'rita') { rita += i._eur; }
-      else { you += i._eur * 0.5; rita += i._eur * 0.5; }
-    }
+    const { you, rita } = splitByOwner(invoices, i => i._eur);
     return { stream, you, rita, total: you + rita, count: invoices.length, invoices };
   }).filter(r => r.total > 0);
 
@@ -802,8 +797,7 @@ function buildServiceStreamSection(annotatedInvoices, curRange) {
 
 // ── Settlement section ────────────────────────────────────────────────────────
 function buildSettlementBody(data) {
-  const { revSplit, expSplit, netSplit, annotatedPayments, annotatedInvoices, annotatedExpenses } = data;
-  const revRecords = [...annotatedPayments, ...annotatedInvoices];
+  const { revSplit, expSplit, netSplit, revRecords, annotatedExpenses } = data;
   const body = el('div', { style: 'padding:0 16px 16px' });
 
   // Summary grid
@@ -890,6 +884,12 @@ function buildSettlementBody(data) {
   // Implied settlement
   const diff = netSplit.you - netSplit.rita;
   if (Math.abs(diff) > 0.01) {
+    // Net profits here are ENTITLEMENTS (what each partner's ownership share
+    // earned), not cash received — all cash lands in the shared/company
+    // account. If that pooled net is taken out 50/50, the partner entitled to
+    // more is short by half the difference, so the LOWER-net partner owes
+    // the HIGHER-net partner |diff| ÷ 2 (after which each has exactly their
+    // entitlement).
     const who  = diff > 0 ? RITA_LABEL : YOU_LABEL;
     const to   = diff > 0 ? YOU_LABEL  : RITA_LABEL;
     const amt  = Math.abs(diff) / 2;
@@ -899,18 +899,18 @@ function buildSettlementBody(data) {
     const noteTitleRow = el('div', { style: 'display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-muted);margin-bottom:4px' }, 'Implied Settlement');
     noteTitleRow.appendChild(mkExplainButton({
       title: 'Implied Settlement',
-      formula: '|Giorgos Net − Rita Net| ÷ 2, paid by the partner with the higher net profit to the partner with the lower net profit — this equalizes both partners’ net take for the period.',
+      formula: '|Giorgos Net − Rita Net| ÷ 2, owed by the partner with the LOWER net profit to the partner with the HIGHER net profit — assuming the period’s pooled net profit is paid out 50/50, this gives each partner exactly their ownership-based net.',
       inputs: [
         { label: 'Giorgos Net', value: formatEUR(netSplit.you) },
         { label: 'Rita Net', value: formatEUR(netSplit.rita) },
         { label: 'Difference', value: formatEUR(Math.abs(diff)) }
       ],
       source: 'analytics-owner.js:685 buildSettlementBody() — `diff`/`amt`',
-      note: "This assumes both partners should end each period with equal net profit — it is not derived from any ownership-percentage config, since none exists in the data model beyond the per-record/per-property `owner` tag ('you' | 'rita' | 'both')."
+      note: "The Net figures are entitlements from the per-record/per-property `owner` tag ('you' 100% · 'rita' 100% · 'both' 50/50), not cash each partner actually received — the data model doesn't record who withdrew what. The settlement assumes the pooled net profit is (or will be) paid out 50/50; if each partner has already been paid their own net, no settlement is due."
     }));
     note.appendChild(noteTitleRow);
     note.appendChild(el('div', { style: 'font-size:13px;color:var(--text)' },
-      `To equalise net profits, ${who} owes ${to} ${formatEUR(amt)}.`
+      `If the period's net profit is paid out 50/50, ${who} owes ${to} ${formatEUR(amt)} so each partner ends with their ownership-based net.`
     ));
     note.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px' },
       `Giorgos net: ${formatEUR(netSplit.you)} · Rita net: ${formatEUR(netSplit.rita)} · Difference: ${formatEUR(Math.abs(diff))}`
@@ -944,8 +944,8 @@ function openSettlementModal(data, cmpData, curRange, cmpRange) {
     const cmpTotExp = cmpData.expSplit.you + cmpData.expSplit.rita;
     const cmpTotNet = cmpData.netSplit.you + cmpData.netSplit.rita;
     const cl = cmpRange?.label || '';
-    const revRecords    = [...data.annotatedPayments, ...data.annotatedInvoices];
-    const cmpRevRecords = [...cmpData.annotatedPayments, ...cmpData.annotatedInvoices];
+    const revRecords    = data.revRecords;
+    const cmpRevRecords = cmpData.revRecords;
 
     const cmpSection = el('div', { style: 'display:flex;flex-direction:column;gap:8px;margin-bottom:20px' });
     cmpSection.appendChild(mkSectionLabel(`vs ${cl}`));
@@ -967,16 +967,18 @@ function openSettlementModal(data, cmpData, curRange, cmpRange) {
 
 // ── Charts ────────────────────────────────────────────────────────────────────
 
-function renderRevBar(annotatedPayments, annotatedInvoices, months) {
+function renderRevBar(allRecords, months) {
   if (!months.length) return;
 
-  const allRecords = [...annotatedPayments, ...annotatedInvoices];
   const youData  = [];
   const ritaData = [];
+  // Grouped once (same date expression as before) instead of re-filtering
+  // every record for every month and again on each bar click.
+  const byMonth = groupByMonthKey(allRecords, r => r.date || r.issueDate);
 
   for (const m of months) {
     const mk = m.key;
-    const pays = allRecords.filter(r => (r.date || r.issueDate || '').slice(0, 7) === mk);
+    const pays = byMonth.get(mk) || [];
     const split = splitByOwner(pays, r => r._eur);
     youData.push(Math.round(split.you));
     ritaData.push(Math.round(split.rita));
@@ -993,7 +995,7 @@ function renderRevBar(annotatedPayments, annotatedInvoices, months) {
     onClickItem: (_, idx) => {
       const mk = months[idx]?.key;
       if (!mk) return;
-      const items = allRecords.filter(r => (r.date || r.issueDate || '').slice(0, 7) === mk);
+      const items = [...(byMonth.get(mk) || [])]; // copy — sorted in place below
       if (!items.length) { openModal({ title: `${months[idx].label} — No Data`, body: mkEmptyState('No revenue this month.') }); return; }
 
       const split = splitByOwner(items, r => r._eur);
@@ -1081,58 +1083,47 @@ function renderRevBar(annotatedPayments, annotatedInvoices, months) {
   });
 }
 
-function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpenses) {
+// Every revenue/expense record lands in exactly one bar so the chart
+// reconciles with the Settlement totals: its property; 'Services' for revenue
+// with no property (service invoices); 'Unallocated / Company' for expenses
+// with no property (company overheads) and for any record whose property no
+// longer exists. Owner split uses each record's own _resolvedOwner via
+// splitByOwner() — the same rule as the KPIs/Settlement.
+const SVC_BUCKET = '__services__';
+const UNALLOC_BUCKET = '__unallocated__';
+const BUCKET_NAMES = { [SVC_BUCKET]: 'Services', [UNALLOC_BUCKET]: 'Unallocated / Company' };
+
+function renderProfitHBar(revRecords, annotatedExpenses) {
   const allProps = listActive('properties');
-  if (!allProps.length) return;
 
   // Pre-build Map for O(1) property lookups instead of O(n) byId scans per record
   const propMap  = new Map(allProps.map(p => [p.id, p]));
+  const revBucket = r => !r.propertyId ? SVC_BUCKET : propMap.has(r.propertyId) ? r.propertyId : UNALLOC_BUCKET;
+  const expBucket = e => e.propertyId && propMap.has(e.propertyId) ? e.propertyId : UNALLOC_BUCKET;
   const propRevs = new Map();
   const propExps = new Map();
 
-  for (const r of [...annotatedPayments, ...annotatedInvoices]) {
-    const propId = r.propertyId;
-    if (!propId) {
-      // Service invoices have no propertyId — bucket under a virtual 'Services' entry
-      const svcKey = '__services__';
-      const e = propRevs.get(svcKey) || { name: 'Services', owner: r._resolvedOwner || 'both', youRev: 0, ritaRev: 0 };
-      const o = r._resolvedOwner; const half = r._eur * 0.5;
-      if (o === 'you') { e.youRev += r._eur; } else if (o === 'rita') { e.ritaRev += r._eur; } else { e.youRev += half; e.ritaRev += half; }
-      propRevs.set(svcKey, e);
-      continue;
-    }
-    const prop  = propMap.get(propId);
-    if (!prop)  continue;
-    // Use the record's own _resolvedOwner (payments/invoices already fall back
-    // to the linked property's owner in getData()) rather than re-deriving from
-    // the property directly — otherwise this chart can disagree with the KPIs/
-    // Settlement section's totals for the exact same records.
-    const owner = r._resolvedOwner || 'both';
-    const e     = propRevs.get(propId) || { name: prop.name, owner, youRev: 0, ritaRev: 0 };
-    const half  = r._eur * 0.5;
-    if (owner === 'you') { e.youRev += r._eur; } else if (owner === 'rita') { e.ritaRev += r._eur; } else { e.youRev += half; e.ritaRev += half; }
-    propRevs.set(propId, e);
+  for (const r of revRecords) {
+    const key = revBucket(r);
+    const e   = propRevs.get(key) || { name: BUCKET_NAMES[key] || propMap.get(key).name, youRev: 0, ritaRev: 0 };
+    const sp  = splitByOwner([r], rec => rec._eur);
+    e.youRev += sp.you; e.ritaRev += sp.rita;
+    propRevs.set(key, e);
   }
 
-  for (const e of annotatedExpenses) {
-    const propId = e.propertyId;
-    if (!propId) continue;
-    const prop  = propMap.get(propId);
-    if (!prop)  continue;
-    // Same reasoning as the revenue loop above — use the expense's own
-    // _resolvedOwner instead of re-deriving from the property.
-    const owner = e._resolvedOwner || 'both';
-    const entry = propExps.get(propId) || { youExp: 0, ritaExp: 0 };
-    const half  = e._eur * 0.5;
-    if (owner === 'you') { entry.youExp += e._eur; } else if (owner === 'rita') { entry.ritaExp += e._eur; } else { entry.youExp += half; entry.ritaExp += half; }
-    propExps.set(propId, entry);
+  for (const x of annotatedExpenses) {
+    const key   = expBucket(x);
+    const entry = propExps.get(key) || { youExp: 0, ritaExp: 0 };
+    const sp    = splitByOwner([x], rec => rec._eur);
+    entry.youExp += sp.you; entry.ritaExp += sp.rita;
+    propExps.set(key, entry);
   }
 
   const propIds = new Set([...propRevs.keys(), ...propExps.keys()]);
   if (!propIds.size) return;
 
   const items = [...propIds].map(id => {
-    const rev = propRevs.get(id) || { name: id === '__services__' ? 'Services' : (propMap.get(id)?.name || 'Unknown'), owner: 'both', youRev: 0, ritaRev: 0 };
+    const rev = propRevs.get(id) || { name: BUCKET_NAMES[id] || propMap.get(id)?.name || 'Unknown', youRev: 0, ritaRev: 0 };
     const exp = propExps.get(id) || { youExp: 0, ritaExp: 0 };
     return {
       id,
@@ -1159,10 +1150,8 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
       const item = items[idx];
       if (!item) return;
 
-      const propRevRecords = item.id === '__services__'
-        ? [...annotatedPayments, ...annotatedInvoices].filter(r => !r.propertyId)
-        : [...annotatedPayments, ...annotatedInvoices].filter(r => r.propertyId === item.id);
-      const propExpRecords = item.id === '__services__' ? [] : annotatedExpenses.filter(e => e.propertyId === item.id);
+      const propRevRecords = revRecords.filter(r => revBucket(r) === item.id);
+      const propExpRecords = annotatedExpenses.filter(e => expBucket(e) === item.id);
 
       const body = el('div');
       body.appendChild(mkSummaryGrid([
@@ -1237,11 +1226,12 @@ function renderProfitHBar(annotatedPayments, annotatedInvoices, annotatedExpense
 function openValueSplitModal(label, idx, propsData) {
   const isYou  = idx === 0;
   const ownedOwners = isYou ? ['you', 'both'] : ['rita', 'both'];
-  const props  = propsData.allProps.filter(p => ownedOwners.includes(p.owner || 'both'));
+  const props  = propsData.allProps.filter(p => ownedOwners.includes(partnerKey(p.owner)));
   const rows   = props.map(p => {
     const fullEur = toEUR(p.purchasePrice || 0, p.currency || 'EUR', p.purchaseDate || null);
-    const share   = (p.owner === 'both' || !p.owner) ? fullEur * 0.5 : fullEur;
-    return [p.name, p.owner === 'both' ? 'Shared (50%)' : isYou ? 'Giorgos' : 'Rita', formatEUR(share)];
+    const shared  = partnerKey(p.owner) === 'both';
+    const share   = shared ? fullEur * 0.5 : fullEur;
+    return [p.name, shared ? 'Shared (50%)' : isYou ? YOU_LABEL : RITA_LABEL, formatEUR(share)];
   });
   const totalValue = isYou ? propsData.youValue : propsData.ritaValue;
 
@@ -1441,8 +1431,8 @@ function buildView() {
 
   // Render charts after DOM is ready
   setTimeout(() => {
-    renderRevBar(data.annotatedPayments, data.annotatedInvoices, months);
-    renderProfitHBar(data.annotatedPayments, data.annotatedInvoices, data.annotatedExpenses);
+    renderRevBar(data.revRecords, months);
+    renderProfitHBar(data.revRecords, data.annotatedExpenses);
     renderValueDonut(propsData);
   }, 0);
 

@@ -9,12 +9,21 @@ import {
 } from './analytics-filters.js?v=20260519';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge,
-  mkEmptyState, mkKpiCard, mkCmpGrid, mkInsightsBanner, safePct, fmtK, mkDrillValue
+  mkEmptyState, mkKpiCard, mkCmpGrid, mkInsightsBanner, safePct, fmtK, mkDrillValue,
+  GHS_RATE, ghsByDividend, periodDays, DAYS_PER_MONTH, DAYS_PER_YEAR, groupByMonthKey, partnerKey
 } from './analytics-helpers.js';
 import { EXPENSE_CATEGORIES } from '../core/config.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-const SDC_RATE  = 0.0265;
+// Dividend withholding is the 2.65% GHS/GESY healthcare contribution (not the
+// Special Defence Contribution), capped at the first €180,000 of a
+// recipient's dividends per calendar year — same rule as dividends.js, via
+// analytics-helpers.js ghsByDividend(). gGhsById is rebuilt from ALL
+// dividends on each render (buildView) so earlier dividends in a year consume
+// the cap before later ones, whatever period is selected.
+let gGhsById = new Map();
+const ghsOf    = d => gGhsById.get(d.id) ?? (Number(d.grossAmount) || 0) * GHS_RATE;
+const netDivOf = d => (d.grossAmount || 0) - ghsOf(d);
 const CHART_IDS = ['pi-stream-monthly', 'pi-person-monthly'];
 const YOU_HEX   = '#6366f1';
 const RITA_HEX  = '#ec4899';
@@ -26,7 +35,9 @@ const INCOME_COLORS = {
   rent:     '#14b8a6',
   reimb:    '#f59e0b',
   divs:     '#22c55e',
-  personal: '#ec4899'
+  personal: '#ec4899',
+  str:      '#0ea5e9',
+  pi:       '#a855f7'
 };
 
 // ── Drill-down row builders ───────────────────────────────────────────────────
@@ -48,16 +59,16 @@ function toDivDrillRows(records) {
   return (records || []).map(d => ({
     date: d.date,
     gross: d.grossAmount || 0,
-    sdc: (d.grossAmount || 0) * SDC_RATE,
-    net: (d.grossAmount || 0) * (1 - SDC_RATE),
+    sdc: ghsOf(d),
+    net: netDivOf(d),
     notes: d.notes || '—'
   })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 }
 const DIV_COLS = [
   { key: 'date',  label: 'Date',  format: v => fmtDate(v), tip: 'Date the dividend was declared.' },
   { key: 'gross', label: 'Gross', right: true, format: v => formatEUR(v), tip: 'Gross dividend amount declared.' },
-  { key: 'sdc',   label: 'SDC',   right: true, format: v => formatEUR(v), tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
-  { key: 'net',   label: 'Net',   right: true, format: v => formatEUR(v), tip: 'Gross dividend minus SDC — amount actually received.' },
+  { key: 'sdc',   label: 'GHS',   right: true, format: v => formatEUR(v), tip: 'GHS/GESY healthcare contribution withheld — 2.65% of gross, on the first €180,000 of each recipient’s dividends per year.' },
+  { key: 'net',   label: 'Net',   right: true, format: v => formatEUR(v), tip: 'Gross dividend minus GHS — amount actually received.' },
   { key: 'notes', label: 'Notes', tip: 'Free-text note entered on the dividend record.' }
 ];
 
@@ -97,9 +108,16 @@ function emptyPersonData() {
     ownerRentTotal: 0, ownerRentByMonth: {}, companyProps: [],
     grossDivs: 0, sdcAmount: 0, netDivs: 0, divRecords: [],
     personalIncome: 0, personalPayments: [], personalProps: [], personalByProp: new Map(),
-    fromCompany: 0, total: 0
+    fromCompany: 0, total: 0, periodDays: 0
   };
 }
+
+// Month-equivalents in a period, from its day count (≈30.44 days/month) — the
+// Avg / Month divisor. Counting calendar months touched instead made e.g.
+// "Last 30 Days" (spanning 2 months) halve the average and "×12" annualise it
+// as if it were 2 months long.
+const monthsEquiv = data => (data?.periodDays || 0) / DAYS_PER_MONTH;
+const fmtMonthsEquiv = data => { const m = monthsEquiv(data); return Number.isInteger(Math.round(m * 10) / 10) ? String(Math.round(m)) : m.toFixed(1); };
 
 function getPersonData(person, start, end, months) {
   const inRange    = d => d && d >= start && d <= end;
@@ -174,20 +192,27 @@ function getPersonData(person, start, end, months) {
   // the sale. The inner loop already stops counting once soldDate is passed.
   const companyProps = listActive('properties').filter(p =>
     (p.channel === 'company' || !p.channel) &&
-    ownerKeys.includes(p.owner || 'both') &&
+    ownerKeys.includes(partnerKey(p.owner)) &&
     (p.ownerRentHistory || []).length > 0
   );
+  // Each month's rent is pro-rated by how many of its days fall inside the
+  // selected range, so a partial month (e.g. "Last 30 Days" touching two
+  // months) contributes only its covered share instead of a full month each.
   const ownerRentByMonth = {};
   let ownerRentTotal = 0;
   for (const m of months) {
     const mDate = m.key + '-15';
+    const dim   = new Date(Date.UTC(+m.key.slice(0, 4), +m.key.slice(5, 7), 0)).getUTCDate();
+    const mS    = `${m.key}-01`, mE = `${m.key}-${String(dim).padStart(2, '0')}`;
+    const cover = periodDays(start > mS ? start : mS, end < mE ? end : mE) / dim;
+    if (cover <= 0) { ownerRentByMonth[m.key] = 0; continue; }
     let mo = 0;
     for (const prop of companyProps) {
       if (prop.soldDate && prop.soldDate < m.key + '-01') continue;
       const entry = rentForMonth(prop.ownerRentHistory || [], m.key);
       if (!entry) continue;
-      const share = prop.owner === 'both' ? 0.5 : 1;
-      mo += toEUR(entry.amount || 0, entry.currency || prop.currency || 'EUR', mDate) * share;
+      const share = partnerKey(prop.owner) === 'both' ? 0.5 : 1; // unset owner = shared (50%), like 'both'
+      mo += toEUR(entry.amount || 0, entry.currency || prop.currency || 'EUR', mDate) * share * cover;
     }
     ownerRentByMonth[m.key] = mo;
     ownerRentTotal += mo;
@@ -196,12 +221,12 @@ function getPersonData(person, start, end, months) {
   // Dividends
   const divRecords  = listActive('dividends').filter(d => d.recipient === recipient && inRange(d.date));
   const grossDivs   = divRecords.reduce((s, d) => s + (d.grossAmount || 0), 0);
-  const sdcAmount   = grossDivs * SDC_RATE;
+  const sdcAmount   = divRecords.reduce((s, d) => s + ghsOf(d), 0); // GHS (capped)
   const netDivs     = grossDivs - sdcAmount;
 
   // Personal-channel property income
   const personalProps = listActive('properties').filter(p =>
-    p.channel === 'personal' && ownerKeys.includes(p.owner || 'both')
+    p.channel === 'personal' && ownerKeys.includes(partnerKey(p.owner))
   );
   const personalPropIds = new Set(personalProps.map(p => p.id));
   const personalPayments = listActivePayments().filter(p =>
@@ -242,7 +267,8 @@ function getPersonData(person, start, end, months) {
     personalProps:    showPersonal ? personalProps : [],
     personalByProp:   showPersonal ? personalByProp : new Map(),
     fromCompany: showCompany ? grossFromCompany : 0,
-    total: (showCompany ? grossFromCompany : 0) + (showPersonal ? personalIncome : 0)
+    total: (showCompany ? grossFromCompany : 0) + (showPersonal ? personalIncome : 0),
+    periodDays: periodDays(start, end)
   };
 }
 
@@ -315,9 +341,9 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
   }));
 
   // Avg / Month with annualised run-rate
-  const avgMonth = months.length > 0 ? combined / months.length : 0;
-  const cmpAvg   = cmpRange && youCmp && ritaCmp
-    ? (youCmp.total + ritaCmp.total) / Math.max(1, cmpMonths.length)
+  const avgMonth = monthsEquiv(youData) > 0 ? combined / monthsEquiv(youData) : 0;
+  const cmpAvg   = cmpRange && youCmp && ritaCmp && monthsEquiv(youCmp) > 0
+    ? (youCmp.total + ritaCmp.total) / monthsEquiv(youCmp)
     : null;
   grid.appendChild(mkKpiCard({
     label: 'Avg / Month',
@@ -327,21 +353,22 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
     // "this is what the year will total" when it's really just an average of
     // whatever's happened so far. Only offer the annualised projection for a
     // genuinely fixed/completed range.
-    subtitle: (months.length < 12 && !isIncomplete)
-      ? `~${formatEUR(avgMonth * 12)} annualised`
+    subtitle: (youData.periodDays < 365 && youData.periodDays > 0 && !isIncomplete)
+      ? `~${formatEUR(combined / youData.periodDays * DAYS_PER_YEAR)} annualised`
       : 'Combined both directors',
     delta: safePct(avgMonth, cmpAvg),
     compLabel: cmpRange?.label,
     compValue: cmpAvg ? formatEUR(cmpAvg) : undefined,
     onClick: () => showAvgMonthModal(youData, ritaData, months, youCmp, ritaCmp, cmpMonths),
     explain: {
-      title: 'Avg / Month', formula: 'Combined Gross ÷ Number of months in period',
+      title: 'Avg / Month', formula: 'Combined Gross ÷ (days in period ÷ 30.44)',
       inputs: [
         { label: 'Combined Gross', value: formatEUR(combined) },
-        { label: 'Months', value: String(months.length) }
+        { label: 'Days in period', value: String(youData.periodDays) },
+        { label: 'Months (days ÷ 30.44)', value: fmtMonthsEquiv(youData) }
       ],
       source: 'analytics-personal.js:284 buildKpiSection() — `avgMonth`',
-      note: 'The "annualised" subtitle (×12) is only shown for a complete period spanning fewer than 12 months — never for a still-accumulating one like YTD.'
+      note: 'The "annualised" subtitle (Combined Gross ÷ days × 365.25) is only shown for a complete period shorter than a year — never for a still-accumulating one like YTD.'
     }
   }));
 
@@ -349,23 +376,23 @@ function buildKpiSection(youData, ritaData, youCmp, ritaCmp, cmpRange, months, c
   const divsCombined    = youData.netDivs + ritaData.netDivs;
   const cmpDivsCombined = youCmp && ritaCmp ? youCmp.netDivs + ritaCmp.netDivs : null;
   grid.appendChild(mkKpiCard({
-    label: 'Dividends (Net SDC)',
+    label: 'Dividends (Net GHS)',
     value: divsCombined > 0 ? formatEUR(divsCombined) : '—',
     subtitle: divsCombined > 0
-      ? `Gross ${formatEUR(youData.grossDivs + ritaData.grossDivs)} − SDC ${formatEUR(youData.sdcAmount + ritaData.sdcAmount)}`
+      ? `Gross ${formatEUR(youData.grossDivs + ritaData.grossDivs)} − GHS ${formatEUR(youData.sdcAmount + ritaData.sdcAmount)}`
       : 'No dividends this period',
     delta: safePct(divsCombined, cmpDivsCombined),
     compLabel: cmpRange?.label,
     compValue: cmpDivsCombined && cmpDivsCombined > 0 ? formatEUR(cmpDivsCombined) : undefined,
     onClick: () => showDivCombinedModal(youData, ritaData),
     explain: {
-      title: 'Dividends (Net SDC)', formula: `${YOU_LABEL} Net Dividends + ${RITA_LABEL} Net Dividends`,
+      title: 'Dividends (Net GHS)', formula: `${YOU_LABEL} Net Dividends + ${RITA_LABEL} Net Dividends`,
       inputs: [
         { label: `${YOU_LABEL} Net`, value: formatEUR(youData.netDivs) },
         { label: `${RITA_LABEL} Net`, value: formatEUR(ritaData.netDivs) }
       ],
       source: 'analytics-personal.js:315 buildKpiSection() — `divsCombined`',
-      note: 'Net dividends = gross dividends minus 2.65% SDC (getPersonData():166).'
+      note: 'Net dividends = gross dividends minus the 2.65% GHS/GESY contribution, capped at the first €180,000 per recipient per year (getPersonData()).'
     }
   }));
 
@@ -384,14 +411,14 @@ function showPersonModal(label, data, cmp) {
     source: 'analytics-personal.js:211 getPersonData() — `total`'
   };
   const fromCompanyExplain = {
-    title: 'From Company', formula: 'Director Salary + Property Rent (Owner) + Reimbursements + STR Income + Other Personal Income + Dividends (net SDC)',
+    title: 'From Company', formula: 'Director Salary + Property Rent (Owner) + Reimbursements + STR Income + Other Personal Income + Dividends (net GHS)',
     inputs: [
       { label: 'Director Salary', value: formatEUR(data.salary) },
       { label: 'Property Rent (Owner)', value: formatEUR(data.ownerRentTotal) },
       { label: 'Reimbursements', value: formatEUR(data.reimb) },
       { label: 'STR Income', value: formatEUR(data.strIncomeTotal) },
       { label: 'Other Personal Income', value: formatEUR(data.piExpTotal) },
-      { label: 'Dividends (net SDC)', value: formatEUR(data.netDivs) }
+      { label: 'Dividends (net GHS)', value: formatEUR(data.netDivs) }
     ],
     source: 'analytics-personal.js:183 getPersonData() — `grossFromCompany`',
     note: 'Zeroed out entirely when the Scope toggle is set to "Personal only".'
@@ -440,7 +467,7 @@ function showPersonModal(label, data, cmp) {
         { label: 'Source', tip: 'Which company-sourced income stream this row represents.' },
         { label: 'Amount', right: true, tip: 'Total for this stream in the selected period, converted to EUR.' },
         ...(cmp ? [{ label: 'Prev', right: true, muted: true, tip: 'Same stream, comparison period.' }] : []),
-        { label: 'Notes', right: true, tip: 'Supporting detail — record count, property count, or the gross/SDC breakdown for dividends.' }
+        { label: 'Notes', right: true, tip: 'Supporting detail — record count, property count, or the gross/GHS breakdown for dividends.' }
       ],
       [
         ['Director Salary',             mkDrillValue(formatEUR(data.salary), () =>
@@ -472,13 +499,13 @@ function showPersonModal(label, data, cmp) {
             ? mkDrillValue(formatEUR(cmp.piExpTotal), () => drillDownModal(`${label} — Other Personal Income (prev)`, drillExpRows(cmp.piExps), EXP_COLS))
             : formatEUR(cmp.piExpTotal)] : []),
           data.piExps.length > 0 ? `${data.piExps.length} linked expenses` : 'None'],
-        ['Dividends (net SDC)',          data.divRecords.length > 0
+        ['Dividends (net GHS)',          data.divRecords.length > 0
           ? mkDrillValue(formatEUR(data.netDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
           : formatEUR(data.netDivs),
           ...(cmp ? [cmp.divRecords.length > 0
             ? mkDrillValue(formatEUR(cmp.netDivs), () => drillDownModal(`${label} — Dividends (prev)`, toDivDrillRows(cmp.divRecords), DIV_COLS))
             : formatEUR(cmp.netDivs)] : []),
-          data.grossDivs > 0 ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}` : 'No dividends'],
+          data.grossDivs > 0 ? `Gross ${formatEUR(data.grossDivs)} − GHS ${formatEUR(data.sdcAmount)}` : 'No dividends'],
       ],
       { highlight: 1 }
     ));
@@ -592,7 +619,7 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
                                      mkDrillValue(formatEUR(ritaCmp.reimb), () => drillDownModal(`${RITA_LABEL} — Reimbursements (prev)`, drillExpRows(ritaCmp.reimbExps), EXP_COLS)),
                                      mkDrillValue(formatEUR(youCmp.reimb + ritaCmp.reimb), () => drillDownModal('Reimbursements — Combined (prev)', drillExpRows([...youCmp.reimbExps, ...ritaCmp.reimbExps]), EXP_COLS)),
                                    ] : [])],
-        ['Dividends (Net SDC)',   mkDrillValue(formatEUR(youData.netDivs), () => drillDownModal(`${YOU_LABEL} — Dividends`, toDivDrillRows(youData.divRecords), DIV_COLS)),
+        ['Dividends (Net GHS)',   mkDrillValue(formatEUR(youData.netDivs), () => drillDownModal(`${YOU_LABEL} — Dividends`, toDivDrillRows(youData.divRecords), DIV_COLS)),
                                    mkDrillValue(formatEUR(ritaData.netDivs), () => drillDownModal(`${RITA_LABEL} — Dividends`, toDivDrillRows(ritaData.divRecords), DIV_COLS)),
                                    mkDrillValue(formatEUR(youData.netDivs + ritaData.netDivs), () => drillDownModal('Dividends — Combined', toDivDrillRows([...youData.divRecords, ...ritaData.divRecords]), DIV_COLS)),
                                    ...(hasCmp ? [
@@ -638,33 +665,57 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
 // formatted combined (both directors) income for that month. Shared between
 // the current-period and comparison-period tables below.
 function combinedMonthlyRows(yData, rData, monthList) {
-  return monthList.map(m => {
+  const y = personMonthlyBreakdown(yData, monthList), r = personMonthlyBreakdown(rData, monthList);
+  return monthList.map(m => [m.label, formatEUR(y.get(m.key).total + r.get(m.key).total)]);
+}
+
+// personMonthlyBreakdown(data, monthList) — THE per-month split of one
+// person's income (getPersonData() result), so every monthly table/chart
+// sums to that person's Total KPI: salary, owner rent, reimbursements, STR
+// income, other personal income, net dividends (after capped GHS) and
+// personal-property income. Each record list is grouped by month once.
+// Returns Map<monthKey, { sal, rent, reimb, str, pi, divs, pers, total }>.
+function personMonthlyBreakdown(data, monthList) {
+  const eurSum = (rows, amt) => (rows || []).reduce((s, r) => s + amt(r), 0);
+  const expEur = e => toEUR(e.amount, e.currency, e.date);
+  const g = {
+    sal:   groupByMonthKey(data.salaryExps, e => e.date),
+    reimb: groupByMonthKey(data.reimbExps, e => e.date),
+    str:   groupByMonthKey(data.strIncomeExps || [], e => e.date),
+    pi:    groupByMonthKey(data.piExps || [], e => e.date),
+    divs:  groupByMonthKey(data.divRecords, d => d.date),
+    pers:  groupByMonthKey(data.personalPayments, p => p.date)
+  };
+  const out = new Map();
+  for (const m of monthList) {
     const mk = m.key;
-    const sal = yData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
-              + rData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    const rent = (yData.ownerRentByMonth[mk] || 0) + (rData.ownerRentByMonth[mk] || 0);
-    const reimb = yData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
-                + rData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    const divs = yData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk).reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0)
-               + rData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk).reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0);
-    const pers = yData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
-               + rData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-    return [m.label, formatEUR(sal + rent + reimb + divs + pers)];
-  });
+    const row = {
+      sal:   eurSum(g.sal.get(mk), expEur),
+      rent:  data.ownerRentByMonth[mk] || 0,
+      reimb: eurSum(g.reimb.get(mk), expEur),
+      str:   eurSum(g.str.get(mk), expEur),
+      pi:    eurSum(g.pi.get(mk), expEur),
+      divs:  eurSum(g.divs.get(mk), netDivOf),
+      pers:  eurSum(g.pers.get(mk), p => toEUR(p.amount, p.currency, p.date))
+    };
+    row.total = row.sal + row.rent + row.reimb + row.str + row.pi + row.divs + row.pers;
+    out.set(mk, row);
+  }
+  return out;
 }
 
 function showAvgMonthModal(youData, ritaData, months, youCmp, ritaCmp, cmpMonths) {
   const combined = youData.total + ritaData.total;
-  const avg      = months.length > 0 ? combined / months.length : 0;
+  const avg      = monthsEquiv(youData) > 0 ? combined / monthsEquiv(youData) : 0;
   const hasCmp      = !!(youCmp && ritaCmp);
   const cmpCombined = hasCmp ? youCmp.total + ritaCmp.total : null;
-  const cmpAvg      = hasCmp ? cmpCombined / Math.max(1, (cmpMonths || []).length) : null;
+  const cmpAvg      = hasCmp && monthsEquiv(youCmp) > 0 ? cmpCombined / monthsEquiv(youCmp) : null;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   const avgExplain = {
-    title: 'Avg / Month', formula: 'Total Period ÷ Number of months in period',
+    title: 'Avg / Month', formula: 'Total Period ÷ (days in period ÷ 30.44)',
     inputs: [
       { label: 'Total Period', value: formatEUR(combined) },
-      { label: 'Months', value: String(months.length) }
+      { label: 'Months (days ÷ 30.44)', value: fmtMonthsEquiv(youData) }
     ],
     source: 'analytics-personal.js:497 showAvgMonthModal() — `avg`'
   };
@@ -680,13 +731,13 @@ function showAvgMonthModal(youData, ritaData, months, youCmp, ritaCmp, cmpMonths
     body.appendChild(mkCmpGrid([
       { label: 'Avg / Month',  curVal: formatEUR(avg), cmpVal: formatEUR(cmpAvg), explain: avgExplain },
       { label: 'Total Period', curVal: formatEUR(combined), cmpVal: formatEUR(cmpCombined), explain: totalPeriodExplain },
-      { label: 'Months',       curVal: String(months.length), cmpVal: String((cmpMonths || []).length) }
+      { label: 'Months',       curVal: fmtMonthsEquiv(youData), cmpVal: fmtMonthsEquiv(youCmp) }
     ], 'Current Period', 'Comparison Period'));
   } else {
     body.appendChild(mkSummaryGrid([
       { label: 'Avg / Month',  value: formatEUR(avg), explain: avgExplain },
       { label: 'Total Period', value: formatEUR(combined), explain: totalPeriodExplain },
-      { label: 'Months',       value: String(months.length) }
+      { label: 'Months',       value: fmtMonthsEquiv(youData) }
     ], 3));
   }
   if (months.length > 0) {
@@ -694,7 +745,7 @@ function showAvgMonthModal(youData, ritaData, months, youCmp, ritaCmp, cmpMonths
     body.appendChild(mkModalTable(
       [
         { label: 'Month', tip: 'Calendar month within the selected period.' },
-        { label: 'Combined Income', right: true, tip: 'Salary + Owner Rent + Reimbursements + Net Dividends + Personal Property income, both directors combined, for that month.' }
+        { label: 'Combined Income', right: true, tip: 'Salary + Owner Rent + Reimbursements + STR Income + Other Personal Income + Net Dividends + Personal Property income, both directors combined, for that month.' }
       ],
       combinedMonthlyRows(youData, ritaData, months), { highlight: 1 }));
   }
@@ -703,7 +754,7 @@ function showAvgMonthModal(youData, ritaData, months, youCmp, ritaCmp, cmpMonths
     body.appendChild(mkModalTable(
       [
         { label: 'Month', tip: 'Calendar month within the comparison period.' },
-        { label: 'Combined Income', right: true, tip: 'Salary + Owner Rent + Reimbursements + Net Dividends + Personal Property income, both directors combined, for that month.' }
+        { label: 'Combined Income', right: true, tip: 'Salary + Owner Rent + Reimbursements + STR Income + Other Personal Income + Net Dividends + Personal Property income, both directors combined, for that month.' }
       ],
       combinedMonthlyRows(youCmp, ritaCmp, cmpMonths), { highlight: 1 }));
   }
@@ -778,7 +829,7 @@ function showRecurringModal(youData, ritaData) {
       ['Reimbursements',      mkDrillValue(formatEUR(youData.reimb), () => drillDownModal(`${YOU_LABEL} — Reimbursements`, drillExpRows(youData.reimbExps), EXP_COLS)),
                                mkDrillValue(formatEUR(ritaData.reimb), () => drillDownModal(`${RITA_LABEL} — Reimbursements`, drillExpRows(ritaData.reimbExps), EXP_COLS)),
                                mkDrillValue(formatEUR(youData.reimb + ritaData.reimb), () => drillDownModal('Reimbursements — Combined', drillExpRows([...youData.reimbExps, ...ritaData.reimbExps]), EXP_COLS))],
-      ['Dividends (Net SDC)', mkDrillValue(formatEUR(youData.netDivs), () => drillDownModal(`${YOU_LABEL} — Dividends`, toDivDrillRows(youData.divRecords), DIV_COLS)),
+      ['Dividends (Net GHS)', mkDrillValue(formatEUR(youData.netDivs), () => drillDownModal(`${YOU_LABEL} — Dividends`, toDivDrillRows(youData.divRecords), DIV_COLS)),
                                mkDrillValue(formatEUR(ritaData.netDivs), () => drillDownModal(`${RITA_LABEL} — Dividends`, toDivDrillRows(ritaData.divRecords), DIV_COLS)),
                                mkDrillValue(formatEUR(youData.netDivs + ritaData.netDivs), () => drillDownModal('Dividends — Combined', toDivDrillRows([...youData.divRecords, ...ritaData.divRecords]), DIV_COLS))],
       ['Personal Properties', mkDrillValue(formatEUR(youData.personalIncome), () => drillDownModal(`${YOU_LABEL} — Personal Properties`, drillRevRows(youData.personalPayments, []), REV_COLS)),
@@ -809,10 +860,10 @@ function showDivCombinedModal(youData, ritaData) {
     { label: `${YOU_LABEL} Net`,  value: mkDrillValue(formatEUR(youData.netDivs), () =>
         drillDownModal(`${YOU_LABEL} — Dividends`, toDivDrillRows(youData.divRecords), DIV_COLS)),
       explain: {
-        title: `${YOU_LABEL} Net Dividends`, formula: 'Gross Dividends − SDC (2.65%)',
+        title: `${YOU_LABEL} Net Dividends`, formula: 'Gross Dividends − GHS (2.65%)',
         inputs: [
           { label: 'Gross Dividends', value: formatEUR(youData.grossDivs) },
-          { label: 'SDC', value: formatEUR(youData.sdcAmount) }
+          { label: 'GHS', value: formatEUR(youData.sdcAmount) }
         ],
         source: 'analytics-personal.js:166 getPersonData() — `netDivs`'
       }
@@ -820,23 +871,23 @@ function showDivCombinedModal(youData, ritaData) {
     { label: `${RITA_LABEL} Net`, value: mkDrillValue(formatEUR(ritaData.netDivs), () =>
         drillDownModal(`${RITA_LABEL} — Dividends`, toDivDrillRows(ritaData.divRecords), DIV_COLS)),
       explain: {
-        title: `${RITA_LABEL} Net Dividends`, formula: 'Gross Dividends − SDC (2.65%)',
+        title: `${RITA_LABEL} Net Dividends`, formula: 'Gross Dividends − GHS (2.65%)',
         inputs: [
           { label: 'Gross Dividends', value: formatEUR(ritaData.grossDivs) },
-          { label: 'SDC', value: formatEUR(ritaData.sdcAmount) }
+          { label: 'GHS', value: formatEUR(ritaData.sdcAmount) }
         ],
         source: 'analytics-personal.js:166 getPersonData() — `netDivs`'
       }
     },
-    { label: 'SDC Total',         value: mkDrillValue(formatEUR(youData.sdcAmount + ritaData.sdcAmount), () =>
+    { label: 'GHS Total',         value: mkDrillValue(formatEUR(youData.sdcAmount + ritaData.sdcAmount), () =>
         drillDownModal('Dividends — Combined', toDivDrillRows([...youData.divRecords, ...ritaData.divRecords]), DIV_COLS)),
       explain: {
-        title: 'SDC Total', formula: 'Gross Dividends × 2.65% (Special Defence Contribution), both directors combined',
+        title: 'GHS Total', formula: 'Σ min(gross, €180k annual cap remaining) × 2.65% (GHS/GESY healthcare contribution), both directors combined',
         inputs: [
-          { label: `${YOU_LABEL} SDC`, value: formatEUR(youData.sdcAmount) },
-          { label: `${RITA_LABEL} SDC`, value: formatEUR(ritaData.sdcAmount) }
+          { label: `${YOU_LABEL} GHS`, value: formatEUR(youData.sdcAmount) },
+          { label: `${RITA_LABEL} GHS`, value: formatEUR(ritaData.sdcAmount) }
         ],
-        source: 'analytics-personal.js:165 getPersonData() — `sdcAmount` (SDC_RATE = 0.0265, line 17)'
+        source: 'analytics-personal.js:165 getPersonData() — `sdcAmount` (GHS_RATE 2.65%, €180k annual cap — ghsByDividend())'
       }
     },
   ], 4));
@@ -848,8 +899,9 @@ function showDivCombinedModal(youData, ritaData) {
     const byYear = new Map();
     for (const d of merged) {
       const yr  = (d.date || '').slice(0, 4) || '—';
-      const cur = byYear.get(yr) || { gross: 0, count: 0 };
+      const cur = byYear.get(yr) || { gross: 0, ghs: 0, count: 0 };
       cur.gross += d.grossAmount || 0;
+      cur.ghs   += ghsOf(d);
       cur.count += 1;
       byYear.set(yr, cur);
     }
@@ -861,16 +913,16 @@ function showDivCombinedModal(youData, ritaData) {
           const yrRecords = merged.filter(d => ((d.date || '').slice(0, 4) || '—') === yr);
           return [yr, String(v.count),
             mkDrillValue(formatEUR(v.gross), () => drillDownModal(`Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS)),
-            mkDrillValue(formatEUR(v.gross * SDC_RATE), () => drillDownModal(`Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS)),
-            mkDrillValue(formatEUR(v.gross * (1 - SDC_RATE)), () => drillDownModal(`Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS))];
+            mkDrillValue(formatEUR(v.ghs), () => drillDownModal(`Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS)),
+            mkDrillValue(formatEUR(v.gross - v.ghs), () => drillDownModal(`Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS))];
         });
       body.appendChild(mkModalTable(
         [
           { label: 'Year', tip: 'Calendar year the dividend(s) were declared.' },
           { label: 'Records', right: true, tip: 'Number of dividend records declared that year.' },
           { label: 'Gross', right: true, tip: 'Sum of gross dividend amounts declared that year.' },
-          { label: 'SDC', right: true, tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
-          { label: 'Net', right: true, tip: 'Gross dividends minus SDC — amount actually received.' }
+          { label: 'GHS', right: true, tip: 'GHS/GESY healthcare contribution withheld — 2.65% of gross, on the first €180,000 of each recipient’s dividends per year.' },
+          { label: 'Net', right: true, tip: 'Gross dividends minus GHS — amount actually received.' }
         ],
         yearRows, { highlight: 4 }));
     }
@@ -881,16 +933,16 @@ function showDivCombinedModal(youData, ritaData) {
         d.date || '—',
         d._label,
         formatEUR(d.grossAmount || 0),
-        formatEUR((d.grossAmount || 0) * SDC_RATE),
-        formatEUR((d.grossAmount || 0) * (1 - SDC_RATE)),
+        formatEUR(ghsOf(d)),
+        formatEUR(netDivOf(d)),
       ]);
     body.appendChild(mkModalTable(
       [
         { label: 'Date', tip: 'Date the dividend was declared.' },
         { label: 'Person', right: true, tip: 'Which director this dividend record belongs to.' },
         { label: 'Gross', right: true, tip: 'Gross dividend amount declared.' },
-        { label: 'SDC', right: true, tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
-        { label: 'Net', right: true, tip: 'Gross dividend minus SDC — amount actually received.' }
+        { label: 'GHS', right: true, tip: 'GHS/GESY healthcare contribution withheld — 2.65% of gross, on the first €180,000 of each recipient’s dividends per year.' },
+        { label: 'Net', right: true, tip: 'Gross dividend minus GHS — amount actually received.' }
       ],
       rows, { highlight: 4 }));
   } else {
@@ -1098,7 +1150,7 @@ function showRentModal(label, data, months, cmp) {
       { label: 'Total', value: formatEUR(data.ownerRentTotal) }
     ],
     source: 'analytics-personal.js:146 getPersonData() — `ownerRentTotal` (uses rentForMonth() at :32)',
-    note: 'A property\'s rent stops counting from its soldDate onward; owner:"both" properties count at a 50% share.'
+    note: 'A property\'s rent stops counting from its soldDate onward; owner:"both" properties count at a 50% share. A month only partly inside the period counts pro-rata by days covered.'
   };
   // No drillable record list backs owner rent (it's a rate × ownership-share
   // computation, not a set of transactions) on the current-period side
@@ -1120,7 +1172,7 @@ function showRentModal(label, data, months, cmp) {
   if (data.companyProps.length > 0) {
     body.appendChild(mkSectionLabel('Company-Operated Properties (Monthly Rent)'));
     const rows = data.companyProps.map(p => {
-      const share   = p.owner === 'both' ? 0.5 : 1;
+      const share   = partnerKey(p.owner) === 'both' ? 0.5 : 1;
       const history = p.ownerRentHistory || [];
       const latest  = [...history].sort((a, b) => a.from.localeCompare(b.from)).pop();
       const curMonthly = latest ? toEUR(latest.amount || 0, latest.currency || p.currency || 'EUR', null) : 0;
@@ -1228,13 +1280,13 @@ function showDivModal(label, data, cmp) {
     source: 'analytics-personal.js:164 getPersonData() — `grossDivs`'
   };
   const sdcExplain = {
-    title: 'SDC (2.65%)', formula: 'Gross Dividends × 2.65% (Special Defence Contribution)',
+    title: 'GHS (2.65%)', formula: 'Σ min(gross, €180k annual cap remaining) × 2.65% (GHS/GESY healthcare contribution)',
     inputs: [{ label: 'Gross Dividends', value: formatEUR(data.grossDivs) }],
-    source: 'analytics-personal.js:165 getPersonData() — `sdcAmount` (SDC_RATE = 0.0265, line 17)'
+    source: 'analytics-personal.js:165 getPersonData() — `sdcAmount` (GHS_RATE 2.65%, €180k annual cap — ghsByDividend())'
   };
   const netExplain = {
-    title: 'Net Dividends', formula: 'Gross Dividends − SDC',
-    inputs: [{ label: 'Gross Dividends', value: formatEUR(data.grossDivs) }, { label: 'SDC', value: formatEUR(data.sdcAmount) }],
+    title: 'Net Dividends', formula: 'Gross Dividends − GHS',
+    inputs: [{ label: 'Gross Dividends', value: formatEUR(data.grossDivs) }, { label: 'GHS', value: formatEUR(data.sdcAmount) }],
     source: 'analytics-personal.js:166 getPersonData() — `netDivs`'
   };
   if (cmp) {
@@ -1243,7 +1295,7 @@ function showDivModal(label, data, cmp) {
         curVal: data.divRecords.length > 0 ? mkDrillValue(formatEUR(data.grossDivs), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS)) : formatEUR(data.grossDivs),
         cmpVal: cmp.divRecords.length > 0 ? mkDrillValue(formatEUR(cmp.grossDivs), () => drillDownModal(`${label} — Dividends (prev)`, toDivDrillRows(cmp.divRecords), DIV_COLS)) : formatEUR(cmp.grossDivs),
         explain: grossExplain },
-      { label: 'SDC (2.65%)',
+      { label: 'GHS (2.65%)',
         curVal: data.divRecords.length > 0 ? mkDrillValue(formatEUR(data.sdcAmount), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS)) : formatEUR(data.sdcAmount),
         cmpVal: cmp.divRecords.length > 0 ? mkDrillValue(formatEUR(cmp.sdcAmount), () => drillDownModal(`${label} — Dividends (prev)`, toDivDrillRows(cmp.divRecords), DIV_COLS)) : formatEUR(cmp.sdcAmount),
         explain: sdcExplain },
@@ -1259,7 +1311,7 @@ function showDivModal(label, data, cmp) {
           : formatEUR(data.grossDivs),
         explain: grossExplain
       },
-      { label: 'SDC (2.65%)',     value: data.divRecords.length > 0
+      { label: 'GHS (2.65%)',     value: data.divRecords.length > 0
           ? mkDrillValue(formatEUR(data.sdcAmount), () => drillDownModal(`${label} — Dividends`, toDivDrillRows(data.divRecords), DIV_COLS))
           : formatEUR(data.sdcAmount),
         explain: sdcExplain
@@ -1275,8 +1327,9 @@ function showDivModal(label, data, cmp) {
     const byYear = new Map();
     for (const d of data.divRecords) {
       const yr  = (d.date || '').slice(0, 4) || '—';
-      const cur = byYear.get(yr) || { gross: 0, count: 0 };
+      const cur = byYear.get(yr) || { gross: 0, ghs: 0, count: 0 };
       cur.gross += d.grossAmount || 0;
+      cur.ghs   += ghsOf(d);
       cur.count += 1;
       byYear.set(yr, cur);
     }
@@ -1288,16 +1341,16 @@ function showDivModal(label, data, cmp) {
           const yrRecords = data.divRecords.filter(d => ((d.date || '').slice(0, 4) || '—') === yr);
           return [yr, String(v.count),
             mkDrillValue(formatEUR(v.gross), () => drillDownModal(`${label} — Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS)),
-            mkDrillValue(formatEUR(v.gross * SDC_RATE), () => drillDownModal(`${label} — Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS)),
-            mkDrillValue(formatEUR(v.gross * (1 - SDC_RATE)), () => drillDownModal(`${label} — Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS))];
+            mkDrillValue(formatEUR(v.ghs), () => drillDownModal(`${label} — Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS)),
+            mkDrillValue(formatEUR(v.gross - v.ghs), () => drillDownModal(`${label} — Dividends — ${yr}`, toDivDrillRows(yrRecords), DIV_COLS))];
         });
       body.appendChild(mkModalTable(
         [
           { label: 'Year', tip: 'Calendar year the dividend(s) were declared.' },
           { label: 'Records', right: true, tip: 'Number of dividend records declared that year.' },
           { label: 'Gross', right: true, tip: 'Sum of gross dividend amounts declared that year.' },
-          { label: 'SDC', right: true, tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
-          { label: 'Net', right: true, tip: 'Gross dividends minus SDC — amount actually received.' }
+          { label: 'GHS', right: true, tip: 'GHS/GESY healthcare contribution withheld — 2.65% of gross, on the first €180,000 of each recipient’s dividends per year.' },
+          { label: 'Net', right: true, tip: 'Gross dividends minus GHS — amount actually received.' }
         ],
         yearRows, { highlight: 4 }));
     }
@@ -1307,16 +1360,16 @@ function showDivModal(label, data, cmp) {
       .map(d => [
         d.date || '—',
         formatEUR(d.grossAmount || 0),
-        formatEUR((d.grossAmount || 0) * SDC_RATE),
-        formatEUR((d.grossAmount || 0) * (1 - SDC_RATE)),
+        formatEUR(ghsOf(d)),
+        formatEUR(netDivOf(d)),
         d.notes || '—'
       ]);
     body.appendChild(mkModalTable(
       [
         { label: 'Date', tip: 'Date the dividend was declared.' },
         { label: 'Gross', right: true, tip: 'Gross dividend amount declared.' },
-        { label: 'SDC', right: true, tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
-        { label: 'Net', right: true, tip: 'Gross dividend minus SDC — amount actually received.' },
+        { label: 'GHS', right: true, tip: 'GHS/GESY healthcare contribution withheld — 2.65% of gross, on the first €180,000 of each recipient’s dividends per year.' },
+        { label: 'Net', right: true, tip: 'Gross dividend minus GHS — amount actually received.' },
         { label: 'Notes', right: true, tip: 'Free-text note entered on the dividend record.' }
       ],
       rows, { highlight: 3 }));
@@ -1331,16 +1384,16 @@ function showDivModal(label, data, cmp) {
       .map(d => [
         d.date || '—',
         formatEUR(d.grossAmount || 0),
-        formatEUR((d.grossAmount || 0) * SDC_RATE),
-        formatEUR((d.grossAmount || 0) * (1 - SDC_RATE)),
+        formatEUR(ghsOf(d)),
+        formatEUR(netDivOf(d)),
         d.notes || '—'
       ]);
     body.appendChild(mkModalTable(
       [
         { label: 'Date', tip: 'Date the dividend was declared.' },
         { label: 'Gross', right: true, tip: 'Gross dividend amount declared.' },
-        { label: 'SDC', right: true, tip: 'Special Defence Contribution withheld — 2.65% of gross.' },
-        { label: 'Net', right: true, tip: 'Gross dividend minus SDC — amount actually received.' },
+        { label: 'GHS', right: true, tip: 'GHS/GESY healthcare contribution withheld — 2.65% of gross, on the first €180,000 of each recipient’s dividends per year.' },
+        { label: 'Net', right: true, tip: 'Gross dividend minus GHS — amount actually received.' },
         { label: 'Notes', right: true, tip: 'Free-text note entered on the dividend record.' }
       ],
       cmpRows, { highlight: 3 }));
@@ -1753,12 +1806,12 @@ function buildPersonColumn(label, color, data, months, cmpData) {
   }
 
   col.appendChild(makeRow(
-    'Dividends (net SDC)', formatEUR(data.netDivs),
+    'Dividends (net GHS)', formatEUR(data.netDivs),
     data.divRecords.length > 0,
     () => showDivModal(label, data, cmpData),
     [
       data.grossDivs > 0
-        ? `Gross ${formatEUR(data.grossDivs)} − SDC ${formatEUR(data.sdcAmount)}`
+        ? `Gross ${formatEUR(data.grossDivs)} − GHS ${formatEUR(data.sdcAmount)}`
         : 'No dividends this period',
       pctOf(data.netDivs)
     ].filter(Boolean).join(' · '),
@@ -1842,16 +1895,16 @@ function buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange) {
     signals.push({
       title:    'No Dividends',
       severity: 'Note',
-      text:     'No dividends declared this period. Dividends (after 2.65% SDC) can be a tax-efficient way to extract company profits when surplus exists.',
+      text:     'No dividends declared this period. Dividends (after 2.65% GHS) can be a tax-efficient way to extract company profits when surplus exists.',
       onClick:  () => showDivCombinedModal(youData, ritaData)
     });
   } else {
     const sdcTotal   = youData.sdcAmount + ritaData.sdcAmount;
     const grossTotal = youData.grossDivs + ritaData.grossDivs;
     signals.push({
-      title:    'Dividends & SDC',
+      title:    'Dividends & GHS',
       severity: 'Note',
-      text:     `${formatEUR(grossTotal)} gross dividends paid. SDC withheld: ${formatEUR(sdcTotal)} (2.65%). Net to directors: ${formatEUR(divs)}.`,
+      text:     `${formatEUR(grossTotal)} gross dividends paid. GHS withheld: ${formatEUR(sdcTotal)} (2.65%). Net to directors: ${formatEUR(divs)}.`,
       onClick:  () => showDivCombinedModal(youData, ritaData)
     });
   }
@@ -1887,41 +1940,21 @@ function buildInsights(youData, ritaData, youCmp, ritaCmp, cmpRange) {
 function renderStreamMonthly(youData, ritaData, months) {
   if (!months.length) return;
 
-  const salaryData = [], rentData = [], reimbData = [], divsData = [], persData = [];
+  const salaryData = [], rentData = [], reimbData = [], strData = [], piData = [], divsData = [], persData = [];
+  const yB = personMonthlyBreakdown(youData, months), rB = personMonthlyBreakdown(ritaData, months);
 
   for (const m of months) {
-    const mk = m.key;
-
-    const sal = youData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk)
-                  .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
-              + ritaData.salaryExps.filter(e => (e.date || '').slice(0, 7) === mk)
-                  .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-
-    const rent = (youData.ownerRentByMonth[mk] || 0) + (ritaData.ownerRentByMonth[mk] || 0);
-
-    const reimb = youData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk)
-                    .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
-                + ritaData.reimbExps.filter(e => (e.date || '').slice(0, 7) === mk)
-                    .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-
-    const divs = youData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk)
-                   .reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0)
-               + ritaData.divRecords.filter(d => (d.date || '').slice(0, 7) === mk)
-                   .reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0);
-
-    const pers = youData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk)
-                   .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)
-               + ritaData.personalPayments.filter(p => (p.date || '').slice(0, 7) === mk)
-                   .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-
-    salaryData.push(Math.round(sal));
-    rentData.push(Math.round(rent));
-    reimbData.push(Math.round(reimb));
-    divsData.push(Math.round(divs));
-    persData.push(Math.round(pers));
+    const y = yB.get(m.key), r = rB.get(m.key);
+    salaryData.push(Math.round(y.sal + r.sal));
+    rentData.push(Math.round(y.rent + r.rent));
+    reimbData.push(Math.round(y.reimb + r.reimb));
+    strData.push(Math.round(y.str + r.str));
+    piData.push(Math.round(y.pi + r.pi));
+    divsData.push(Math.round(y.divs + r.divs));
+    persData.push(Math.round(y.pers + r.pers));
   }
 
-  const hasData = [...salaryData, ...rentData, ...reimbData, ...divsData, ...persData].some(v => v > 0);
+  const hasData = [...salaryData, ...rentData, ...reimbData, ...strData, ...piData, ...divsData, ...persData].some(v => v > 0);
   if (!hasData) return;
 
   const onClickItem = (_, idx) => {
@@ -1934,7 +1967,11 @@ function renderStreamMonthly(youData, ritaData, months) {
       { label: 'Owner Rent',          val: rentData[idx]   },
       { label: 'Reimbursements',      val: reimbData[idx],
         drill: () => drillDownModal(`${m.label} — Reimbursements`, drillExpRows([...youData.reimbExps, ...ritaData.reimbExps].filter(byMonth)), EXP_COLS) },
-      { label: 'Dividends (Net SDC)', val: divsData[idx],
+      { label: 'STR Income',          val: strData[idx],
+        drill: () => drillDownModal(`${m.label} — STR Income`, drillExpRows([...youData.strIncomeExps, ...ritaData.strIncomeExps].filter(byMonth)), EXP_COLS) },
+      { label: 'Other Personal Income', val: piData[idx],
+        drill: () => drillDownModal(`${m.label} — Other Personal Income`, drillExpRows([...youData.piExps, ...ritaData.piExps].filter(byMonth)), EXP_COLS) },
+      { label: 'Dividends (Net GHS)', val: divsData[idx],
         drill: () => drillDownModal(`${m.label} — Dividends`, toDivDrillRows([...youData.divRecords, ...ritaData.divRecords].filter(byMonth)), DIV_COLS) },
       { label: 'Personal Properties', val: persData[idx],
         drill: () => drillDownModal(`${m.label} — Personal Properties`, drillRevRows([...youData.personalPayments, ...ritaData.personalPayments].filter(byMonth), []), REV_COLS) },
@@ -1952,7 +1989,7 @@ function renderStreamMonthly(youData, ritaData, months) {
     ));
     body.appendChild(mkSummaryGrid([{ label: 'Total Combined', value: formatEUR(total),
       explain: {
-        title: 'Total Combined', formula: 'Director Salary + Owner Rent + Reimbursements + Dividends (Net SDC) + Personal Properties, both directors, for this month.',
+        title: 'Total Combined', formula: 'Director Salary + Owner Rent + Reimbursements + STR Income + Other Personal Income + Dividends (Net GHS) + Personal Properties, both directors, for this month.',
         inputs: items.map(i => ({ label: i.label, value: formatEUR(i.val) })),
         source: 'analytics-personal.js:1485 renderStreamMonthly() onClickItem() — `total`'
       }
@@ -1964,6 +2001,8 @@ function renderStreamMonthly(youData, ritaData, months) {
   if (salaryData.some(v => v > 0)) datasets.push({ label: 'Salary',         data: salaryData, backgroundColor: INCOME_COLORS.salary   });
   if (rentData.some(v => v > 0))   datasets.push({ label: 'Owner Rent',     data: rentData,   backgroundColor: INCOME_COLORS.rent     });
   if (reimbData.some(v => v > 0))  datasets.push({ label: 'Reimbursements', data: reimbData,  backgroundColor: INCOME_COLORS.reimb    });
+  if (strData.some(v => v > 0))    datasets.push({ label: 'STR Income',     data: strData,    backgroundColor: INCOME_COLORS.str      });
+  if (piData.some(v => v > 0))     datasets.push({ label: 'Other Personal', data: piData,     backgroundColor: INCOME_COLORS.pi       });
   if (divsData.some(v => v > 0))   datasets.push({ label: 'Dividends',      data: divsData,   backgroundColor: INCOME_COLORS.divs     });
   if (persData.some(v => v > 0))   datasets.push({ label: 'Personal Props', data: persData,   backgroundColor: INCOME_COLORS.personal });
 
@@ -1979,46 +2018,9 @@ function renderStreamMonthly(youData, ritaData, months) {
 function renderPersonMonthly(youData, ritaData, months) {
   if (!months.length) return;
 
-  const youMonthly  = [];
-  const ritaMonthly = [];
-
-  for (const m of months) {
-    const mk = m.key;
-
-    const youSal = youData.salaryExps
-      .filter(e => (e.date || '').slice(0, 7) === mk)
-      .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    const ritaSal = ritaData.salaryExps
-      .filter(e => (e.date || '').slice(0, 7) === mk)
-      .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-
-    const youRent  = youData.ownerRentByMonth[mk] || 0;
-    const ritaRent = ritaData.ownerRentByMonth[mk] || 0;
-
-    const youReimb = youData.reimbExps
-      .filter(e => (e.date || '').slice(0, 7) === mk)
-      .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    const ritaReimb = ritaData.reimbExps
-      .filter(e => (e.date || '').slice(0, 7) === mk)
-      .reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-
-    const youDivs = youData.divRecords
-      .filter(d => (d.date || '').slice(0, 7) === mk)
-      .reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0);
-    const ritaDivs = ritaData.divRecords
-      .filter(d => (d.date || '').slice(0, 7) === mk)
-      .reduce((s, d) => s + (d.grossAmount || 0) * (1 - SDC_RATE), 0);
-
-    const youPers = youData.personalPayments
-      .filter(p => (p.date || '').slice(0, 7) === mk)
-      .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-    const ritaPers = ritaData.personalPayments
-      .filter(p => (p.date || '').slice(0, 7) === mk)
-      .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-
-    youMonthly.push(Math.round(youSal + youRent + youReimb + youDivs + youPers));
-    ritaMonthly.push(Math.round(ritaSal + ritaRent + ritaReimb + ritaDivs + ritaPers));
-  }
+  const yB = personMonthlyBreakdown(youData, months), rB = personMonthlyBreakdown(ritaData, months);
+  const youMonthly  = months.map(m => Math.round(yB.get(m.key).total));
+  const ritaMonthly = months.map(m => Math.round(rB.get(m.key).total));
 
   if (!youMonthly.some(v => v > 0) && !ritaMonthly.some(v => v > 0)) return;
 
@@ -2037,14 +2039,14 @@ function renderPersonMonthly(youData, ritaData, months) {
       body.appendChild(mkSummaryGrid([
         { label: YOU_LABEL,  value: formatEUR(yTot),
           explain: {
-            title: `${YOU_LABEL} — ${m.label}`, formula: 'Salary + Owner Rent + Reimbursements + Dividends (Net SDC) + Personal Properties for this director, that month.',
+            title: `${YOU_LABEL} — ${m.label}`, formula: 'Salary + Owner Rent + Reimbursements + STR Income + Other Personal Income + Dividends (Net GHS) + Personal Properties for this director, that month.',
             inputs: [{ label: 'Total', value: formatEUR(yTot) }],
             source: 'analytics-personal.js:1562 renderPersonMonthly() — `youMonthly`'
           }
         },
         { label: RITA_LABEL, value: formatEUR(rTot),
           explain: {
-            title: `${RITA_LABEL} — ${m.label}`, formula: 'Salary + Owner Rent + Reimbursements + Dividends (Net SDC) + Personal Properties for this director, that month.',
+            title: `${RITA_LABEL} — ${m.label}`, formula: 'Salary + Owner Rent + Reimbursements + STR Income + Other Personal Income + Dividends (Net GHS) + Personal Properties for this director, that month.',
             inputs: [{ label: 'Total', value: formatEUR(rTot) }],
             source: 'analytics-personal.js:1563 renderPersonMonthly() — `ritaMonthly`'
           }
@@ -2075,6 +2077,7 @@ function rebuildView() {
 function buildView() {
   YOU_LABEL  = getPersonName('you');
   RITA_LABEL = getPersonName('rita');
+  gGhsById   = ghsByDividend(listActive('dividends')); // capped GHS per dividend (see ghsOf)
 
   const wrap = el('div', { class: 'view active' });
 
@@ -2160,7 +2163,7 @@ function buildView() {
   // ── Footnote ────────────────────────────────────────────────────────────────
   wrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-dim);padding:4px 0 16px' },
     'Owner rent is calculated from the Owner Rent rate history on each property (rate-per-month aware). ' +
-    'Dividends shown net of SDC (2.65%). Social contributions (GESY) paid by the company are not personal income and are excluded.'
+    'Dividends shown net of the GHS/GESY contribution (2.65%, on the first €180,000 per person per year). Social contributions (GESY) paid by the company are not personal income and are excluded.'
   ));
 
   setTimeout(() => {

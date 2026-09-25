@@ -675,3 +675,94 @@ export function mkInsightsBanner(signals, title) {
   card.appendChild(grid);
   return card;
 }
+
+// ── Owner attribution (payments / expenses) & partner keys ───────────────────
+// (import placed here so the helpers above stay untouched; ES imports are
+// hoisted, so position doesn't matter)
+import { listActive as _listActiveForOwners } from '../core/data.js';
+
+/**
+ * recordOwner(r) — THE owner rule for PAYMENTS and EXPENSES, identical to
+ * analytics-filters.js makeMatchers().mOwner so the owner filter and every
+ * owner split agree: a property-linked record takes its property's owner
+ * (unset → 'both'); a record with no property uses its own `owner`, else
+ * 'both'. (Invoices use invoiceOwner() instead.)
+ */
+export function recordOwner(r) {
+  if (r.propertyId) return byId('properties', r.propertyId)?.owner || 'both';
+  return r.owner || 'both';
+}
+
+const _warnedOwnerKeys = new Set();
+/**
+ * partnerKey(key) — normalise any stored owner value to 'you' | 'rita' |
+ * 'both'. Owner fields hold getPeopleOwners() values (a people record's
+ * legacyKey, or its id when it has none), so a people-id is resolved to that
+ * person's legacyKey, else by name ('giorgos' → 'you', 'rita' → 'rita' —
+ * the same fallback analytics-personal.js getPersonData() uses). A key that
+ * still can't be resolved is counted as 'both' (the two-partner dashboards
+ * have no other bucket) but logged once, so it is never silently re-assigned.
+ */
+export function partnerKey(key) {
+  if (!key || key === 'both') return 'both';
+  if (key === 'you' || key === 'rita') return key;
+  const person = _listActiveForOwners('people').find(p => p.id === key || p.legacyKey === key);
+  if (person?.legacyKey === 'you' || person?.legacyKey === 'rita') return person.legacyKey;
+  const name = (person?.name || '').toLowerCase();
+  if (name.includes('giorgos')) return 'you';
+  if (name.includes('rita')) return 'rita';
+  if (!_warnedOwnerKeys.has(key)) {
+    _warnedOwnerKeys.add(key);
+    console.warn(`[analytics] owner "${key}" does not resolve to Giorgos ('you') or Rita ('rita') — counted as shared (50/50). Set a legacyKey on that people record to attribute it correctly.`);
+  }
+  return 'both';
+}
+
+/**
+ * ownerShare(owner, person) — the fraction of a record that belongs to
+ * `person` ('you' | 'rita') given its (already resolved) owner: 1 for their
+ * own records, 0.5 for shared ('both'), 0 for the other partner's.
+ */
+export function ownerShare(owner, person) {
+  const k = partnerKey(owner);
+  return k === 'both' ? 0.5 : k === person ? 1 : 0;
+}
+
+// ── Period length (day-based annualisation) ──────────────────────────────────
+export const DAYS_PER_YEAR  = 365.25;
+export const DAYS_PER_MONTH = DAYS_PER_YEAR / 12; // ≈ 30.44
+
+/** periodDays(start, end) — inclusive calendar days in 'YYYY-MM-DD' range (≥ 0). */
+export function periodDays(start, end) {
+  if (!start || !end || end < start) return 0;
+  return diffDaysYmd(start, end) + 1;
+}
+
+// ── Dividend GHS/GESY contribution ───────────────────────────────────────────
+// Same figures as dividends.js (GHS_RATE / GHS_ANNUAL_CAP, which that module
+// doesn't export): 2.65% General Healthcare System contribution on dividends,
+// capped at the first €180,000 of a recipient's dividends per calendar year.
+// It is NOT the Special Defence Contribution (SDC).
+export const GHS_RATE       = 0.0265;
+export const GHS_ANNUAL_CAP = 180000;
+
+/**
+ * ghsByDividend(divs) — Map dividend.id → GHS withheld, applying the annual
+ * €180k cap per recipient per calendar year in date order (mirrors
+ * dividends.js ghsScheduleForYear()). Pass ALL of a recipient's dividends for
+ * the years involved (not just the period's) so earlier dividends in the same
+ * year consume the cap first.
+ */
+export function ghsByDividend(divs) {
+  const sorted = [...divs].sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.id).localeCompare(String(b.id)));
+  const cum = new Map();
+  const out = new Map();
+  for (const d of sorted) {
+    const key = `${d.recipient || ''}|${(d.date || '').slice(0, 4)}`;
+    const prior = cum.get(key) || 0;
+    const amt = Number(d.grossAmount) || 0;
+    out.set(d.id, Math.min(amt, Math.max(0, GHS_ANNUAL_CAP - prior)) * GHS_RATE);
+    cum.set(key, prior + amt);
+  }
+  return out;
+}

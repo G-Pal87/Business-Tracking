@@ -4,12 +4,13 @@ import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, PROPERTY_STREAMS, PROPERTY_STATUSES } from '../core/config.js';
 import {
   formatEUR, formatMoney, toEUR, byId, getPersonName, getTenantDisplayStatus,
-  listActive, listActivePayments, isCapEx, isReservationNight,
+  listActive, listActivePayments, isCapEx,
   simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
+import { todayYmd, diffDaysYmd, addDaysYmd } from '../core/dates.js';
 import { openDetail as openPropertyDetail } from './properties.js';
 import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct, mkTh, mkExplainButton, mkDrillValue } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct, mkTh, mkExplainButton, mkDrillValue, periodDays, DAYS_PER_YEAR } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -68,11 +69,15 @@ function getData(start, end, isIncomplete = false) {
     p.status === 'paid' && matchDate(p) && propIds.has(p.propertyId) &&
     (gScope === 'all' || !p.personal)
   );
+  // Same Company-scope rule as payments: a record individually flagged
+  // `personal` is excluded unless the Scope is "All".
   const opExpenses  = listActive('expenses').filter(e =>
-    !isCapEx(e) && matchDate(e) && propIds.has(e.propertyId)
+    !isCapEx(e) && matchDate(e) && propIds.has(e.propertyId) &&
+    (gScope === 'all' || !e.personal)
   );
   const capExpenses = listActive('expenses').filter(e =>
-    isCapEx(e) && matchDate(e) && propIds.has(e.propertyId)
+    isCapEx(e) && matchDate(e) && propIds.has(e.propertyId) &&
+    (gScope === 'all' || !e.personal)
   );
   // All-time CapEx is never filtered by current period date range
   const allCapExpenses = listActive('expenses').filter(e => isCapEx(e));
@@ -86,6 +91,20 @@ function getData(start, end, isIncomplete = false) {
   for (const e of opExpenses)    { const a = opExByProp.get(e.propertyId)     || []; a.push(e); opExByProp.set(e.propertyId, a); }
   for (const e of capExpenses)   { const a = capExByProp.get(e.propertyId)    || []; a.push(e); capExByProp.set(e.propertyId, a); }
   for (const e of allCapExpenses) { const a = allCapExByProp.get(e.propertyId) || []; a.push(e); allCapExByProp.set(e.propertyId, a); }
+
+  // Lifetime (all-time, not period-scoped) operating net per property — the
+  // input Annualized ROI needs: annualizedPropertyROI() divides a LIFETIME
+  // return by years owned, so feeding it the period's already-annualized net
+  // divided it by time twice.
+  const lifetimeNetByProp = new Map();
+  for (const p of listActivePayments()) {
+    if (p.status !== 'paid' || !propIds.has(p.propertyId) || (gScope !== 'all' && p.personal)) continue;
+    lifetimeNetByProp.set(p.propertyId, (lifetimeNetByProp.get(p.propertyId) || 0) + toEUR(p.amount, p.currency, p.date));
+  }
+  for (const e of listActive('expenses')) {
+    if (isCapEx(e) || !propIds.has(e.propertyId) || (gScope !== 'all' && e.personal)) continue;
+    lifetimeNetByProp.set(e.propertyId, (lifetimeNetByProp.get(e.propertyId) || 0) - toEUR(e.amount, e.currency, e.date));
+  }
 
   // A period that hasn't started yet has no actual transactions at all, so
   // there's nothing to annualize/project from past performance — instead
@@ -114,12 +133,12 @@ function getData(start, end, isIncomplete = false) {
     // filter period (e.g. YTD is always a partial year). Annualize it the same
     // way the Rental Yield KPI does (see annualizeForProperty) before feeding it
     // in, so a partial period doesn't masquerade as a full year of underperformance.
-    // annualizedPropertyROI separately divides by years-owned to turn a lifetime
-    // return into a per-year rate — that's a different denominator, so annualizing
-    // netIncome here first doesn't double up with it.
+    // annualizedPropertyROI instead divides a LIFETIME return by years owned
+    // (average annual return per year of ownership), so it gets the
+    // property's all-time operating net, not this period's annualized one.
     const annualNetIncome = annualizeForProperty(prop, netIncome, { start, end, isIncomplete });
     const simpleROI     = simplePropertyROI(prop.id,     { netIncome: annualNetIncome, totalInvested });
-    const annualizedROI = annualizedPropertyROI(prop.id, { netIncome: annualNetIncome, totalInvested });
+    const annualizedROI = annualizedPropertyROI(prop.id, { netIncome: lifetimeNetByProp.get(prop.id) || 0, totalInvested });
     const cashOnCashROI = cashOnCashPropertyROI(prop.id, { annualCashFlow: annualNetIncome });
 
     // Run-Rate ROI (formerly "Potential ROI"): the same full-year run-rate
@@ -245,25 +264,6 @@ function currentContractedAnnualRentEUR(prop) {
 
 // ── Operational metrics helpers ───────────────────────────────────────────────
 
-/**
- * Extract nights from a payment record.
- * Returns null if the record doesn't carry enough date/nights info, and for
- * Airbnb payout adjustments (Resolution Adjustment, Resolution Payout,
- * Cancellation Fee, Adjustment) — these repeat the same check-in/check-out as
- * their originating Reservation and would otherwise double-count nights.
- */
-function paymentNights(p) {
-  if (!isReservationNight(p)) return null;
-  if (p.airbnbNights > 0) return p.airbnbNights;
-  const ci = p.airbnbCheckIn  || p.checkIn;
-  const co = p.airbnbCheckOut || p.checkOut;
-  if (ci && co) {
-    const diff = (new Date(co) - new Date(ci)) / (1000 * 60 * 60 * 24);
-    if (diff > 0) return diff;
-  }
-  return null;
-}
-
 // Annualizes a raw figure (revenue, net income) for ONE property, capping the
 // denominator at that property's own ownership span (purchaseDate..soldDate)
 // intersected with the selected range — never the portfolio-wide range
@@ -281,73 +281,17 @@ function annualizeForProperty(prop, rawValue, range, { force = false } = {}) {
   const ownedStart = (prop.purchaseDate && prop.purchaseDate > range.start) ? prop.purchaseDate : range.start;
   const ownedEnd = (prop.soldDate && prop.soldDate < range.end) ? prop.soldDate : range.end;
   if (ownedStart > ownedEnd) return 0;
-  const s = ownedStart.split('-'), e = ownedEnd.split('-');
-  const ownedMonths = Math.max(1, (parseInt(e[0]) - parseInt(s[0])) * 12 + (parseInt(e[1]) - parseInt(s[1])) + 1);
-  return (rawValue / ownedMonths) * 12;
+  // Day-based: counting calendar months touched made e.g. "Last 30 Days"
+  // (spanning 2 months) annualize ×6 instead of ×~12.
+  const ownedDays = periodDays(ownedStart, ownedEnd);
+  return ownedDays > 0 ? rawValue / ownedDays * DAYS_PER_YEAR : 0;
 }
 
 /**
  * Compute operational KPI data for the selected period.
- * Returns: { occupancy, adr, rentalYield, vacancy }
+ * Returns: { rentalYield, vacancy }
  */
 function getOperationalData({ propData, payments, start, end, isIncomplete }) {
-  // ── STR nights: Occupancy & ADR ───────────────────────────────────────────
-  const strPropIds = new Set(
-    propData.filter(d => d.prop.type === 'short_term').map(d => d.prop.id)
-  );
-  const strPayments = payments.filter(p => strPropIds.has(p.propertyId));
-
-  // Count nights booked
-  let totalNightsBooked = 0;
-  let nightsDataAvail   = false;
-  let strRevenue        = 0;
-
-  for (const p of strPayments) {
-    const n = paymentNights(p);
-    if (n !== null) {
-      totalNightsBooked += n;
-      nightsDataAvail    = true;
-    }
-    strRevenue += toEUR(p.amount, p.currency, p.date);
-  }
-
-  // Available nights in period: number of months × days_per_month × number of STR properties
-  // We count calendar days in [start, end]
-  const daysBetween = (() => {
-    const s = new Date(start + '-01');
-    const eParts = end.split('-');
-    const eDate  = new Date(parseInt(eParts[0]), parseInt(eParts[1]), 0); // last day of end month
-    return Math.round((eDate - s) / (1000 * 60 * 60 * 24)) + 1;
-  })();
-  const totalAvailNights = daysBetween * strPropIds.size;
-
-  const occupancyRate = (nightsDataAvail && totalAvailNights > 0)
-    ? (totalNightsBooked / totalAvailNights) * 100 : null;
-  const adr = (nightsDataAvail && totalNightsBooked > 0)
-    ? strRevenue / totalNightsBooked : null;
-
-  // Per-property occupancy breakdown
-  const perPropOccupancy = [...strPropIds].map(pid => {
-    const prop     = propData.find(d => d.prop.id === pid)?.prop;
-    const propPays = strPayments.filter(p => p.propertyId === pid);
-    let booked = 0;
-    let hasData = false;
-    for (const p of propPays) {
-      const n = paymentNights(p);
-      if (n !== null) { booked += n; hasData = true; }
-    }
-    const pRev = propPays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-    return {
-      name:      prop?.name || pid,
-      booked,
-      available: daysBetween,
-      pct:       (hasData && daysBetween > 0) ? (booked / daysBetween) * 100 : null,
-      rev:       pRev,
-      adr:       (hasData && booked > 0) ? pRev / booked : null,
-      hasData
-    };
-  });
-
   // ── Rental Yield ─────────────────────────────────────────────────────────
   // Annualize revenue per property (see annualizeForProperty) rather than by
   // a single portfolio-wide period length.
@@ -399,9 +343,10 @@ function getOperationalData({ propData, payments, start, end, isIncomplete }) {
     }
   }
 
+  // (The former STR occupancy/ADR block was removed: its results were never
+  // rendered, and its day count parsed a full date as `start + '-01'`,
+  // which is an Invalid Date.)
   return {
-    occupancy: { rate: occupancyRate, nightsBooked: totalNightsBooked, availNights: totalAvailNights, nightsDataAvail, perProp: perPropOccupancy, strCount: strPropIds.size },
-    adr:       { value: adr, nightsDataAvail, strRevenue, totalNightsBooked, perProp: perPropOccupancy },
     rentalYield: { avg: avgYield, perProp: yieldData },
     vacancy:   { details: vacancyDetails, count: vacancyDetails.length }
   };
@@ -676,6 +621,7 @@ function computeMortgageEstimate(prop) {
 
 // ── Financing data aggregation ────────────────────────────────────────────────
 // ── CapEx Impact — Revenue Before vs After ────────────────────────────────────
+const CAPEX_WINDOW_MAX_DAYS = 183; // ≈ 6 months
 function buildCapExImpactSection({ propData, curRange }) {
   // Only properties that had CapEx in the current period
   const capExProps = propData.filter(d => d.propCapExpenses.length > 0);
@@ -690,33 +636,39 @@ function buildCapExImpactSection({ propData, curRange }) {
     const sortedCapEx = [...d.propCapExpenses].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     const firstCapExDate = sortedCapEx[0]?.date;
 
-    // Look back 6 months from first CapEx date for a pre-period baseline
-    let preRev = null;
+    // Equal before/after windows around the first CapEx date: the "after"
+    // window runs from the first CapEx date to the period end (or today, if
+    // earlier), capped at CAPEX_WINDOW_MAX_DAYS; the "before" window is the
+    // same number of days immediately preceding it. (It used to compare the
+    // whole period's revenue — incl. pre-CapEx months — with a fixed 6-month
+    // lookback, so the two sides covered different lengths of time.)
+    let preRev = null, postRev = null, windowDays = 0;
     let prePayments = [];
     let postPayments = [];
     if (firstCapExDate) {
-      const preEnd   = firstCapExDate;
-      const preStart = new Date(firstCapExDate);
-      preStart.setMonth(preStart.getMonth() - 6);
-      const preStartStr = preStart.toISOString().slice(0, 10);
-
-      prePayments = listActivePayments().filter(p =>
-        p.status === 'paid' && p.propertyId === d.prop.id &&
-        p.date >= preStartStr && p.date < preEnd &&
-        (gScope === 'all' || !p.personal)
-      );
-      preRev = prePayments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-      postPayments = d.propPayments.filter(p => p.date >= firstCapExDate);
+      const todayStr = todayYmd();
+      const effEnd   = curRange.end < todayStr ? curRange.end : todayStr;
+      windowDays     = Math.min(CAPEX_WINDOW_MAX_DAYS, Math.max(1, periodDays(firstCapExDate, effEnd)));
+      const preStart  = addDaysYmd(firstCapExDate, -windowDays);
+      const postEnd   = addDaysYmd(firstCapExDate, windowDays - 1);
+      const propPaid  = listActivePayments().filter(p =>
+        p.status === 'paid' && p.propertyId === d.prop.id && (gScope === 'all' || !p.personal));
+      prePayments  = propPaid.filter(p => p.date >= preStart && p.date < firstCapExDate);
+      postPayments = propPaid.filter(p => p.date >= firstCapExDate && p.date <= postEnd);
+      preRev  = prePayments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+      postRev = postPayments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
     }
 
     const revChange = preRev !== null && preRev > 0
-      ? ((curRev - preRev) / preRev * 100).toFixed(1)
+      ? ((postRev - preRev) / preRev * 100).toFixed(1)
       : null;
 
     return {
       name:      d.prop.name,
       capEx:     capExTotal,
       preRev,
+      postRev,
+      windowDays,
       curRev,
       curNet,
       revChange,
@@ -735,7 +687,7 @@ function buildCapExImpactSection({ propData, curRange }) {
 
   const body = el('div', { style: 'padding:0 16px 16px' });
 
-  const COLS = ['Property', 'CapEx Spent', 'Pre-CapEx Rev (6mo)', 'Current Rev', 'Rev Change', 'Current Net'];
+  const COLS = ['Property', 'CapEx Spent', 'Rev Before (window)', 'Rev After (window)', 'Rev Change', 'Period Net'];
   const table = el('table', { class: 'table' });
   const htr   = el('tr');
   COLS.forEach((h, i) => htr.appendChild(el('th', { class: i > 0 ? 'right' : '' }, h)));
@@ -744,11 +696,11 @@ function buildCapExImpactSection({ propData, curRange }) {
   const tbody = el('tbody');
   rows.forEach(r => {
     const changeStr = r.revChange !== null
-      ? (parseFloat(r.revChange) >= 0 ? '+' : '') + r.revChange + '% vs 6mo pre'
+      ? (parseFloat(r.revChange) >= 0 ? '+' : '') + r.revChange + `% (${r.windowDays}d vs ${r.windowDays}d)`
       : '—';
     const tr = el('tr', { style: 'cursor:pointer', title: 'Click for payment detail' });
     tr.onclick = () => openCapExImpactModal(r);
-    [r.name, formatEUR(r.capEx), r.preRev !== null ? formatEUR(r.preRev) : '—', formatEUR(r.curRev), changeStr, formatEUR(r.curNet)]
+    [r.name, formatEUR(r.capEx), r.preRev !== null ? formatEUR(r.preRev) : '—', r.postRev !== null ? formatEUR(r.postRev) : '—', changeStr, formatEUR(r.curNet)]
       .forEach((val, i) => {
         const td = el('td', { class: i > 0 ? 'right num' : '', style: i === 5 ? 'font-weight:700' : '' }, val);
         tr.appendChild(td);
@@ -762,7 +714,7 @@ function buildCapExImpactSection({ propData, curRange }) {
   body.appendChild(tableWrap);
 
   body.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:8px' },
-    'Pre-CapEx Rev: paid rental payments in the 6 months before first CapEx date · Current Rev: this period'
+    'Rev Before / After: paid rental payments in equal windows immediately before and from the first CapEx date (window = first CapEx → period end or today, max 183 days) · Period Net: this period’s revenue − OpEx'
   ));
 
   section.appendChild(body);
@@ -773,8 +725,8 @@ function openCapExImpactModal(r) {
   const body = el('div');
   const sgrid = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px' });
   sgrid.appendChild(mkSummaryBox('CapEx Spent', formatEUR(r.capEx), r.firstDate ? `First CapEx: ${fmtDate(r.firstDate)}` : null));
-  sgrid.appendChild(mkSummaryBox('Pre-CapEx Revenue (6mo)', r.preRev !== null ? formatEUR(r.preRev) : '—', null));
-  sgrid.appendChild(mkSummaryBox('Current Revenue', formatEUR(r.curRev), null));
+  sgrid.appendChild(mkSummaryBox(`Revenue Before (${r.windowDays}d)`, r.preRev !== null ? formatEUR(r.preRev) : '—', null));
+  sgrid.appendChild(mkSummaryBox(`Revenue After (${r.windowDays}d)`, r.postRev !== null ? formatEUR(r.postRev) : '—', null));
   body.appendChild(sgrid);
 
   const PAY_HEADERS = [{ label: 'Date' }, { label: 'Type' }, { label: 'Stream' }, { label: 'EUR', right: true }];
@@ -782,16 +734,16 @@ function openCapExImpactModal(r) {
     .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
     .map(p => [fmtDate(p.date), p.type || '—', STREAMS[p.stream]?.short || p.stream || '—', formatEUR(toEUR(p.amount, p.currency, p.date))]);
 
-  body.appendChild(mkSectionLabel('Payments Before CapEx (6-month lookback)'));
+  body.appendChild(mkSectionLabel(`Payments Before CapEx (${r.windowDays} days)`));
   body.appendChild(r.prePayments.length
     ? mkModalTable(PAY_HEADERS, paymentRows(r.prePayments))
-    : mkEmptyState('No payments recorded in the 6 months before the CapEx event.'));
+    : mkEmptyState(`No payments recorded in the ${r.windowDays} days before the CapEx event.`));
 
   body.appendChild(el('div', { style: 'margin-top:20px' }));
-  body.appendChild(mkSectionLabel('Payments After CapEx (this period)'));
+  body.appendChild(mkSectionLabel(`Payments After CapEx (${r.windowDays} days)`));
   body.appendChild(r.postPayments.length
     ? mkModalTable(PAY_HEADERS, paymentRows(r.postPayments))
-    : mkEmptyState('No payments recorded after the CapEx event in this period.'));
+    : mkEmptyState(`No payments recorded in the ${r.windowDays} days from the CapEx event.`));
 
   if (r.capExItems.length) {
     body.appendChild(el('div', { style: 'margin-top:20px' }));
@@ -1316,7 +1268,7 @@ function computePropertyInsights({ totals, propData, opExpenses, capExpenses, av
 // ── Lease Expiry Alerts ───────────────────────────────────────────────────────
 function toLeaseDetailRows(t) {
   const propName  = byId('properties', t.propertyId)?.name || '—';
-  const daysLeft  = t.leaseEndDate ? Math.ceil((new Date(t.leaseEndDate) - new Date()) / 86400000) : null;
+  const daysLeft  = t.leaseEndDate ? diffDaysYmd(todayYmd(), t.leaseEndDate) : null;
   const rateDate  = t.leaseStartDate || null;
   return [
     { metric: 'Property',       value: propName },
@@ -1342,8 +1294,8 @@ function buildLeaseExpiryCard() {
     el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Tenants whose lease ends within the next 90 days')
   ));
 
-  const today = new Date().toISOString().slice(0, 10);
-  const in90  = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
+  const today = todayYmd();            // local calendar date (not UTC)
+  const in90  = addDaysYmd(today, 90);
 
   const expiring = listActive('tenants').filter(t => {
     const end = t.leaseEndDate;
@@ -2556,8 +2508,10 @@ function renderSingleTrend({ propData, payments, opExpenses }, monthKeys) {
   const datasets = topData.map((d, i) => {
     const revByMonth = new Map();
     const expByMonth = new Map();
-    payments   .filter(p => p.propertyId === d.prop.id).forEach(p => { const mk = p.date?.slice(0, 7); if (mk) revByMonth.set(mk, (revByMonth.get(mk) || 0) + toEUR(p.amount, p.currency, p.date)); });
-    opExpenses .filter(e => e.propertyId === d.prop.id).forEach(e => { const mk = e.date?.slice(0, 7); if (mk) expByMonth.set(mk, (expByMonth.get(mk) || 0) + toEUR(e.amount, e.currency, e.date)); });
+    // d.propPayments / d.propOpExpenses are this property's slice of the
+    // same payments/opExpenses (pre-grouped in getData) — no re-filtering.
+    d.propPayments  .forEach(p => { const mk = p.date?.slice(0, 7); if (mk) revByMonth.set(mk, (revByMonth.get(mk) || 0) + toEUR(p.amount, p.currency, p.date)); });
+    d.propOpExpenses.forEach(e => { const mk = e.date?.slice(0, 7); if (mk) expByMonth.set(mk, (expByMonth.get(mk) || 0) + toEUR(e.amount, e.currency, e.date)); });
 
     const color = PALETTE[i % PALETTE.length];
     return {
