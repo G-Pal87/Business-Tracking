@@ -7,6 +7,7 @@ import { navigate } from '../core/router.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
 import { isUnlocked } from '../core/crypto.js';
 import { todayYmd } from '../core/dates.js';
+import { openFileSafely, base64ToBytes } from '../core/files.js';
 
 // ── Document helpers (same pattern as properties.js) ─────────────────────────
 
@@ -27,21 +28,20 @@ function readFileAsBase64(file) {
 }
 
 async function previewDoc(doc) {
-  const mime = doc.type || 'application/octet-stream';
-  let b64;
-  if (doc.path) {
-    const file = await fetchGithubFileEncrypted(doc.path);
-    b64 = file.content.replace(/\n/g, '');
-  } else {
-    b64 = doc.data;
+  try {
+    let b64;
+    if (doc.path) {
+      const file = await fetchGithubFileEncrypted(doc.path);
+      b64 = file.content;
+    } else {
+      b64 = doc.data;
+    }
+    // The stored doc.type is never trusted for the preview: see core/files.js.
+    const how = openFileSafely(base64ToBytes(b64), doc.name || 'document');
+    if (how === 'download') toast('This file type can’t be previewed safely, so it was downloaded instead.', 'info');
+  } catch (e) {
+    toast('Could not open document: ' + e.message, 'danger');
   }
-  const byteChars = atob(b64);
-  const bytes = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
-  const blob = new Blob([bytes], { type: mime });
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function docIcon(type) {
