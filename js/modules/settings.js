@@ -1420,6 +1420,16 @@ function buildStrSettingsCard() {
   const globalDiscI = input({ value: af.globalDiscountPct != null ? af.globalDiscountPct : '', type: 'number', min: '0', max: '100', placeholder: '0' });
   body.appendChild(formRow('Global promotional discount %', globalDiscI, 'Applied to all properties and months when publishing rates. Override per month in STR Rates → Promotional Discount.'));
 
+  // Master switch for the public website (Short-Term-Rentals): overrides every
+  // property's own "Website prices" toggle. The published feeds then carry no
+  // amounts at all and the site shows "Price on request" everywhere.
+  const hideAllChk = el('input', { type: 'checkbox' });
+  hideAllChk.checked = af.hideAllSitePrices === true;
+  body.appendChild(formRow('Public website prices',
+    el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' }, hideAllChk,
+      'Hide all prices on the website (every property)'),
+    'Overrides each property\'s own "Website prices" setting. Guests see "Price on request" and ask for a quote on WhatsApp. Takes effect a few minutes after saving, once the website rebuilds.'));
+
   const save = button('Save', { variant: 'primary', onClick: () => {
     const fee = parseFloat(feeI.value);
     const tax = parseFloat(taxI.value);
@@ -1430,7 +1440,8 @@ function buildStrSettingsCard() {
     if (cleanI.value !== '' && (isNaN(clean) || clean < 0)) { toast('Cleaning fee must be a positive number', 'warning'); return; }
     if (globalDiscI.value !== '' && (isNaN(globalDisc) || globalDisc < 0 || globalDisc > 100)) { toast('Global discount must be between 0 and 100', 'warning'); return; }
     state.db.settings.airbnb = {
-      ...af,
+      ...(state.db.settings.airbnb || af),
+      hideAllSitePrices: hideAllChk.checked,
       guestFeePct:       feeI.value === '' ? AIRBNB_GUEST_FEE_PCT : fee,
       taxPct:            taxI.value === '' ? AIRBNB_TAX_PCT : tax,
       cleaningFee:       cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean,

@@ -806,6 +806,15 @@ function openForm(existing) {
   // ── Personal-LT tenant rent row ─────────────────────────────────────────────
   const ltRow   = el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Payment Due Day (1–28)', payDayI));
   const icalRow = formRow('Airbnb iCal URL', icalI);
+  // Public website pricing (Short-Term-Rentals site, via the daily-rate feed).
+  // Off = the published feed carries no amounts for this property and the
+  // website shows "Price on request" everywhere instead of prices.
+  const showPricesChk = el('input', { type: 'checkbox' });
+  showPricesChk.checked = p.showPricesOnSite !== false;
+  const showPricesRow = formRow('Website prices',
+    el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' }, showPricesChk,
+      'Show prices for this property on the public website'),
+    'When off, the website shows "Price on request" and guests ask for a quote on WhatsApp. Takes effect a few minutes after saving (the site rebuilds automatically). Settings → STR can also hide prices for all properties at once.');
   const listingNameRow = formRow('Airbnb Listing Name', listingNameI,
     'Exact "Listing" title as it appears in your Airbnb CSV exports — often very different from this property\'s name here. Set this so CSV imports match the right property instead of skipping or guessing by name.');
 
@@ -878,6 +887,7 @@ function openForm(existing) {
     ownerRentCard.style.display = isCompany ? '' : 'none';
     ltRow.style.display         = !isCompany && isLT ? '' : 'none';
     icalRow.style.display       = !isLT ? '' : 'none';
+    showPricesRow.style.display = !isLT ? '' : 'none';
     listingNameRow.style.display = !isLT ? '' : 'none';
   };
   typeS.onchange    = updateTypeFields;
@@ -903,6 +913,7 @@ function openForm(existing) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Mortgage Amount', mAmtI), formRow('Monthly Payment', mMoI)));
   body.appendChild(formRow('Interest Rate %', mRateI));
   body.appendChild(icalRow);
+  body.appendChild(showPricesRow);
   body.appendChild(listingNameRow);
 
   // Vacant periods editor
@@ -1129,6 +1140,7 @@ function openForm(existing) {
       mortgageMonthly: Number(mMoI.value) || 0,
       mortgageRate: Number(mRateI.value) || 0,
       airbnbCalUrl: icalI.value.trim(),
+      showPricesOnSite: showPricesChk.checked,
       airbnbListingName: listingNameI.value.trim(),
       notes: notesT.value.trim(),
       soldDate: soldDateI.value,
