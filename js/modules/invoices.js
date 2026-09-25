@@ -1153,15 +1153,15 @@ function previewInvoice(inv, clientId) {
             <td>${escape(li.description)}</td>
             <td>${escape(li.quantity)}</td>
             <td>${escape(li.unit || '')}</td>
-            <td style="text-align:right">${formatMoney(li.rate, inv.currency)}</td>
-            <td style="text-align:right">${formatMoney(li.total, inv.currency)}</td>
+            <td style="text-align:right">${escape(formatMoney(li.rate, inv.currency))}</td>
+            <td style="text-align:right">${escape(formatMoney(li.total, inv.currency))}</td>
           </tr>`).join('')}
       </tbody>
     </table>
     <div class="totals">
-      <div class="totals-row"><span>Subtotal</span><span>${formatMoney(inv.subtotal, inv.currency)}</span></div>
-      <div class="totals-row"><span>Tax (${escape(inv.taxRate || 0)}%)</span><span>${formatMoney(inv.tax || 0, inv.currency)}</span></div>
-      <div class="totals-row total"><span>Total</span><span>${formatMoney(inv.total, inv.currency)}</span></div>
+      <div class="totals-row"><span>Subtotal</span><span>${escape(formatMoney(inv.subtotal, inv.currency))}</span></div>
+      <div class="totals-row"><span>Tax (${escape(inv.taxRate || 0)}%)</span><span>${escape(formatMoney(inv.tax || 0, inv.currency))}</span></div>
+      <div class="totals-row total"><span>Total</span><span>${escape(formatMoney(inv.total, inv.currency))}</span></div>
     </div>
     ${inv.notes ? `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#666">${escape(inv.notes)}</div>` : ''}
   `;
