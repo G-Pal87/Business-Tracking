@@ -872,7 +872,6 @@ export function resyncDb(remote, local) {
   // saw it on GitHub, and the next reload's mergeLocalPending would then read
   // that false confirmation as "remote must have deleted this" and drop it.
   let staleFetch = false;
-  const syncedAt = local?._syncedAt ?? null;
   // Union of every id ever permanently deleted, from either side — see
   // recordTombstone() in data.js.
   const tombstones = unionTombstones(remote?._tombstones, local?._tombstones);
@@ -905,7 +904,6 @@ export function resyncDb(remote, local) {
     }
     const remoteArr = result[col];
     if (!Array.isArray(remoteArr)) { result[col] = localArr; continue; }
-    const localIds = new Set(localArr.map(x => x.id));
     const map = new Map(remoteArr.map(x => [x.id, x]));
     for (const item of localArr) {
       const rv = map.get(item.id);
@@ -922,24 +920,17 @@ export function resyncDb(remote, local) {
       }
       // else: remote is same-age or newer → already in map, keep remote.
     }
-    // Propagate hard deletes (records fully removed from state.db, e.g. via
-    // Settings → "Delete Permanently") that haven't reached remote yet — this
-    // runs every 60s in the background, not just on reload, so an unpushed
-    // delete could otherwise resurrect mid-session with no refresh at all.
-    // Same rule as mergeLocalPending, deliberately using the RAW syncedAt (not
-    // the margin-adjusted effSyncedAt) for the same reason: the margin exists
-    // to protect additions from a stale post-push read, not to arbitrate
-    // deletes, and reusing it here would make deleting anything touched in
-    // the last 15 minutes silently fail to stick.
-    if (syncedAt) {
-      for (const id of map.keys()) {
-        if (localIds.has(id)) continue;
-        const remoteItem = map.get(id);
-        if ((remoteItem.updatedAt || 0) <= syncedAt) map.delete(id);
-      }
-    }
-    // Final, unconditional backstop, independent of sync history — see the
-    // matching comment in mergeDb().
+    // Unpushed hard deletes (records fully removed from state.db, e.g. via
+    // Settings → "Delete Permanently") are kept out by their tombstone below —
+    // every hard-delete path records one. A remote-only record is NOT inferred
+    // "deleted here" from `updatedAt <= _syncedAt` any more: _syncedAt is
+    // stamped when a fetch finishes, while another device's new record carries
+    // the (earlier) time it was edited, so a record created elsewhere moments
+    // before an idle tab's poll — or on a device whose clock runs slow — read
+    // as deleted, was dropped here, and the tab's next push deleted it from
+    // GitHub with no tombstone and no warning.
+    // Tombstones are the only delete signal, independent of sync history — see
+    // the matching comment in mergeDb().
     for (const [id, item] of map) {
       if (isTombstoned(tombstones, col, item)) map.delete(id);
     }
@@ -1090,42 +1081,27 @@ export function mergeLocalPending(remoteDb, localCache) {
       // Otherwise: remote is same age or newer, or we have no sync baseline → remote wins
     }
 
-    // Propagate hard deletes (records fully removed from state.db, e.g. via
-    // Settings → "Delete Permanently") that never made it to remote — e.g. the
-    // push that would have carried the delete failed or hadn't fired yet before
-    // this reload. Without this, mergeLocalPending only ever ADDS records from
-    // local on top of remote and a not-yet-pushed hard delete comes right back.
-    // Only safe to infer "local deleted this" when we have real sync history
-    // AND remote's copy hasn't changed since that last known sync — if remote
-    // is newer, local's absence just means the cache predates it, not a delete.
+    // Hard deletes (records fully removed from state.db, e.g. via Settings →
+    // "Delete Permanently") that never made it to remote — e.g. the push that
+    // would have carried the delete failed or hadn't fired yet before this
+    // reload — are carried by their tombstone: every hard-delete path records
+    // one in state.db._tombstones, which the cache keeps, so the union above
+    // includes it. A remote-only record is NOT inferred "deleted here" from
+    // `updatedAt <= _syncedAt` any more: _syncedAt is stamped when a fetch
+    // finishes, while another device's new record carries the (earlier) time
+    // it was edited, so a record created elsewhere just before this cache's
+    // last sync — or on a device whose clock runs slow — was dropped on reload
+    // and then deleted from GitHub by the next push.
     //
-    // Deliberately compares against the RAW syncedAt here, not the margin-
-    // adjusted effSyncedAt — matching mergeDb's own (margin-free) delete
-    // propagation. The margin exists to protect ADDITIONS from a stale
-    // post-push read that momentarily doesn't show them yet; applying the
-    // same margin here instead breaks the common case of deleting something
-    // that was itself touched recently (e.g. import it, then delete it) — a
-    // delete on a record last changed 1-14 minutes ago would silently fail to
-    // stick on the very next reload. Withholding a genuine delete is merely
-    // annoying (redo it, or it propagates on the next successful push); it
-    // carries none of the addition case's silent-data-loss risk, so it
-    // doesn't need the same conservative padding.
-    if (syncedAt) {
-      for (const id of merged.keys()) {
-        if (localMap.has(id)) continue;
-        const remoteItem = merged.get(id);
-        if ((remoteItem.updatedAt || 0) <= syncedAt) {
-          merged.delete(id);
-          hasLocalChanges = true;
-        }
-      }
-    }
-
-    // Final, unconditional backstop, independent of sync history — see the
-    // matching comment in mergeDb(). A remote-only id that's tombstoned is
+    // Tombstones are the only delete signal, independent of sync history — see
+    // the matching comment in mergeDb(). A remote-only id that's tombstoned is
     // never resurrected here regardless of timestamps.
     for (const [id, item] of merged) {
-      if (isTombstoned(tombstones, col, item)) merged.delete(id);
+      if (isTombstoned(tombstones, col, item)) {
+        merged.delete(id);
+        // Remote still has it, so the delete itself is an unpushed local change.
+        if (!localMap.has(id)) hasLocalChanges = true;
+      }
     }
 
     result[col] = [...merged.values()];
