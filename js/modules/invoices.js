@@ -1519,7 +1519,7 @@ function openPDFImport() {
 async function extractPDFLines(arrayBuffer, onStatus) {
   const lib = await loadLib('pdfjs');
   lib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-  const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
+  const pdf = await lib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
   const allLines = [];
   for (let p = 1; p <= pdf.numPages; p++) {
     const page = await pdf.getPage(p);

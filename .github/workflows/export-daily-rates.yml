@@ -10,23 +10,28 @@ name: Export daily-rate feeds
 #
 # Triggers are therefore limited to manual dispatch. Use it only to bootstrap or
 # repair feeds when the app hasn't published; expect simpler pricing than the app.
+# It only works on an unencrypted db.json (this workflow has no key) and refuses
+# to run otherwise.
 on:
   workflow_dispatch:
 
 permissions:
   contents: write
 
+# Every workflow that writes the rates-feed branch shares this group, so two
+# runs never race each other's force-push (the app itself can't join it;
+# publish-rates-feed.sh uses --force-with-lease against that case).
 concurrency:
-  group: export-daily-rates
+  group: rates-feed
   cancel-in-progress: false
 
 jobs:
   export:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "20"
 
@@ -42,9 +47,11 @@ jobs:
           bash .github/scripts/publish-rates-feed.sh
 
       - name: Trigger Short-Term-Rentals site rebuild
+        env:
+          STR_DEPLOY_TOKEN: ${{ secrets.STR_DEPLOY_TOKEN }}
         run: |
-          curl -s -f -X POST https://api.github.com/repos/G-Pal87/Short-Term-Rentals/dispatches \
-            -H "Authorization: token ${{ secrets.STR_DEPLOY_TOKEN }}" \
+          curl -sS --fail-with-body -X POST https://api.github.com/repos/G-Pal87/Short-Term-Rentals/dispatches \
+            -H "Authorization: token $STR_DEPLOY_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Content-Type: application/json" \
             -d '{"event_type":"rates-updated"}'

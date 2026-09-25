@@ -1,17 +1,26 @@
 // On-demand loading of heavy third-party libraries that only a few actions
 // need (PDF text extraction, OCR, ZIP downloads). They used to be loaded as
-// render-blocking <script> tags on every page load. Same pinned versions and
-// SRI hashes as before; the CSP already allows cdn.jsdelivr.net scripts.
+// render-blocking <script> tags on every page load. Every file is pinned to an
+// exact version; the CSP already allows cdn.jsdelivr.net scripts.
+//
+// Integrity: the main scripts load with SRI. Web workers can't take an
+// `integrity` attribute, so their scripts are fetched here with fetch()'s own
+// `integrity` option (the browser rejects a mismatching response), then started
+// from a blob: URL (CSP worker-src allows blob:). Only the Tesseract core
+// (importScripts'ed inside its worker) and its language data (fetched by the
+// worker) can't be integrity-checked; both are pinned to exact versions.
 const LIBS = {
   pdfjs: {
     global: 'pdfjsLib',
     src: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
-    integrity: 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e'
+    integrity: 'sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e',
+    setup: setupPdfjs
   },
   tesseract: {
     global: 'Tesseract',
     src: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
-    integrity: 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F'
+    integrity: 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F',
+    setup: setupTesseract
   },
   jszip: {
     global: 'JSZip',
@@ -20,15 +29,73 @@ const LIBS = {
   }
 };
 
+const PDFJS_WORKER = {
+  src: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
+  integrity: 'sha384-SnzOobpRMLXZ52iJvZm/C0fYw0OQemTXzTjIsdsfMcrCtCEe9qgzxTd3RSklO5x2'
+};
+const TESSERACT_WORKER = {
+  src: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+  integrity: 'sha384-zxn+VqofFzXpH99dUb3fa4ywoSBQJPy6/6oEaJHPlblZXr53a0g1Jl6720vgSzB7'
+};
+// Exact versions (tesseract.js 5.1.1 depends on tesseract.js-core ^5.1.1).
+const TESSERACT_CORE = 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/tesseract-core-simd-lstm.wasm.js';
+const TESSERACT_LANG = 'https://tessdata.projectnaptha.com/4.0.0';
+
+const _blobUrls = new Map();
+
+// Fetches a script with an integrity check and returns a blob: URL for it.
+function verifiedScriptUrl({ src, integrity }) {
+  if (_blobUrls.has(src)) return _blobUrls.get(src);
+  const p = fetch(src, { integrity, credentials: 'omit', cache: 'force-cache' })
+    .then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.blob();
+    })
+    .then(blob => URL.createObjectURL(new Blob([blob], { type: 'text/javascript' })))
+    .catch(err => {
+      _blobUrls.delete(src);
+      throw new Error(`Could not load a verified copy of ${src.split('/npm/')[1] || src} (${err.message})`);
+    });
+  _blobUrls.set(src, p);
+  return p;
+}
+
+// pdf.js uses GlobalWorkerOptions.workerPort, when set, instead of workerSrc,
+// so the worker is always the integrity-checked copy (a workerSrc set later by
+// a caller is ignored).
+async function setupPdfjs(lib) {
+  if (lib.GlobalWorkerOptions.workerPort) return;
+  const url = await verifiedScriptUrl(PDFJS_WORKER);
+  lib.GlobalWorkerOptions.workerPort = new Worker(url);
+}
+
+// Every OCR worker gets the pinned, integrity-checked worker script and the
+// pinned core/language data, whatever paths the caller passes.
+async function setupTesseract(T) {
+  if (T.__btPinned) return;
+  const createWorker = T.createWorker;
+  T.createWorker = async (langs, oem, options = {}, config) => {
+    const workerPath = await verifiedScriptUrl(TESSERACT_WORKER);
+    return createWorker(langs, oem, {
+      ...options,
+      workerPath,
+      workerBlobURL: false, // start the verified blob directly (no importScripts wrapper)
+      corePath: TESSERACT_CORE,
+      langPath: TESSERACT_LANG
+    }, config);
+  };
+  T.__btPinned = true;
+}
+
 const _loading = new Map();
 
 // Resolves to the library's global once loaded; rejects with a readable error.
 export function loadLib(name) {
   const lib = LIBS[name];
   if (!lib) return Promise.reject(new Error(`Unknown library: ${name}`));
-  if (window[lib.global]) return Promise.resolve(window[lib.global]);
   if (_loading.has(name)) return _loading.get(name);
   const p = new Promise((resolve, reject) => {
+    if (window[lib.global]) { resolve(window[lib.global]); return; }
     const s = document.createElement('script');
     s.src = lib.src;
     s.integrity = lib.integrity;
@@ -36,9 +103,11 @@ export function loadLib(name) {
     s.onload = () => window[lib.global]
       ? resolve(window[lib.global])
       : reject(new Error(`${name} loaded but is unavailable`));
-    s.onerror = () => { _loading.delete(name); s.remove(); reject(new Error(`Could not load ${name} — check your connection and try again`)); };
+    s.onerror = () => { s.remove(); reject(new Error(`Could not load ${name} — check your connection and try again`)); };
     document.head.appendChild(s);
-  });
+  })
+    .then(async g => { if (lib.setup) await lib.setup(g); return g; })
+    .catch(err => { _loading.delete(name); throw err; });
   _loading.set(name, p);
   return p;
 }

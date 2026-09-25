@@ -2,3 +2,7 @@
 # Rate feeds are published to the single-commit `rates-feed` branch, never
 # committed to main (see .github/scripts/publish-rates-feed.sh).
 exports/
+
+# Python bytecode (e.g. from running the privacy guard locally)
+__pycache__/
+*.pyc
