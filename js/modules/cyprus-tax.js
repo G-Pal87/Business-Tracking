@@ -1,7 +1,7 @@
 // Cyprus Provisional Corporation Tax Calculator
 import { state, markDirty } from '../core/state.js';
 import { el, input, select, button, formRow, toast, openModal, today } from '../core/ui.js';
-import { formatEUR, toEUR, listActivePayments, listActive, availableYears, isCapEx, byId, companyPropIds, isCompanyRecord } from '../core/data.js';
+import { formatEUR, toEUR, listActivePayments, listActive, availableYears, isCapEx, byId, companyPropIds, isCompanyRecord, generatePaymentSchedule } from '../core/data.js';
 import { mkKpiCard, mkModalTable, mkSectionLabel, mkSummaryGrid } from './analytics-helpers.js';
 
 // Per-year figures only — `year` itself lives once at the root (see
@@ -10,7 +10,9 @@ import { mkKpiCard, mkModalTable, mkSectionLabel, mkSummaryGrid } from './analyt
 // Cyprus's standard corporate tax rate rose from 12.5% to 15% for tax years
 // starting 1 January 2026 (OECD Pillar Two alignment). Existing saved
 // configs keep whatever rate they were set to — this only affects the
-// default a brand-new (never-configured) year starts from.
+// default a brand-new (never-configured) year starts from. The rate below is
+// the 2026+ figure; use cyprusTaxYearDefaults(year) for a year-correct
+// default (12.5% for tax years before 2026).
 export const CYPRUS_TAX_YEAR_DEFAULTS = {
   corpTaxRate: 15,
   bufferEnabled: true,
@@ -29,6 +31,14 @@ export const CYPRUS_TAX_YEAR_DEFAULTS = {
   decRevAllowances: 0,
 };
 
+export function defaultCorpTaxRate(year) {
+  return Number(year) >= 2026 ? 15 : 12.5;
+}
+
+export function cyprusTaxYearDefaults(year) {
+  return { ...CYPRUS_TAX_YEAR_DEFAULTS, corpTaxRate: defaultCorpTaxRate(year) };
+}
+
 // Legacy shape (before per-year isolation) stored every field flat on
 // `cyprusTax` itself, with a single `year` field selecting which year's
 // figures were "currently" being edited — switching that dropdown never
@@ -42,7 +52,7 @@ function migrateLegacyCyprusTax(root) {
   for (const k of Object.keys(CYPRUS_TAX_YEAR_DEFAULTS)) {
     if (root[k] !== undefined) { legacyData[k] = root[k]; delete root[k]; }
   }
-  root.byYear = { [legacyYear]: { ...CYPRUS_TAX_YEAR_DEFAULTS, ...legacyData } };
+  root.byYear = { [legacyYear]: { ...cyprusTaxYearDefaults(legacyYear), ...legacyData } };
 }
 
 export function getCyprusTaxRoot() {
@@ -68,11 +78,13 @@ export function hasCyprusTaxYearConfig(year) {
 // shape so every existing call site here and in analytics-tax.js (which reads
 // `cfg().year`/`s.corpTaxRate`/etc. throughout) keeps working unchanged.
 // Never mutate the returned object directly — use persistCyprusTaxYearConfig.
+// Read-only: a never-configured year returns its defaults WITHOUT creating a
+// bucket (only persistCyprusTaxYearConfig does), so merely viewing a year
+// can't make hasCyprusTaxYearConfig() true for it.
 export function getCyprusTaxYearConfig(year) {
   const root = getCyprusTaxRoot();
   const yr = year != null ? String(year) : (root.year || String(new Date().getFullYear()));
-  if (!root.byYear[yr]) root.byYear[yr] = { ...CYPRUS_TAX_YEAR_DEFAULTS };
-  return { year: yr, ...root.byYear[yr] };
+  return { year: yr, ...(root.byYear[yr] || cyprusTaxYearDefaults(yr)) };
 }
 
 export function setCyprusTaxYear(year) {
@@ -83,7 +95,7 @@ export function setCyprusTaxYear(year) {
 export function persistCyprusTaxYearConfig(patch, year) {
   const root = getCyprusTaxRoot();
   const yr = year != null ? String(year) : (root.year || String(new Date().getFullYear()));
-  if (!root.byYear[yr]) root.byYear[yr] = { ...CYPRUS_TAX_YEAR_DEFAULTS };
+  if (!root.byYear[yr]) root.byYear[yr] = cyprusTaxYearDefaults(yr);
   Object.assign(root.byYear[yr], patch);
   markDirty();
 }
@@ -185,19 +197,86 @@ export function monthRemainingFraction(cutoff) {
 // individually flagged `personal` (e.g. off-platform bookings), are
 // excluded — corporation tax is a company-only liability, and Dividends
 // (getOpProfit) already applies this same filter.
-export function isCoRec(r) {
-  const coPropIds = companyPropIds();
-  return isCompanyRecord(r, coPropIds);
+// Pass a precomputed companyPropIds() Set as `coPropIds` when filtering many
+// records (rebuilding it per record is O(properties) each time); omitted (or
+// a non-Set, e.g. an Array.filter index) it's computed on the spot as before.
+export function isCoRec(r, coPropIds) {
+  return isCompanyRecord(r, coPropIds instanceof Set ? coPropIds : companyPropIds());
+}
+
+// Forecast revenue/expenses for the REST of `year` (from `cutoff`, default
+// today or year-end), for corporation-tax estimates. Mirrors what the
+// Forecast grid shows (data.js getForecastVsActual): one forecast per
+// entity, and a long-term property month with no forecast revenue entered
+// (revenue == null) falls back to its lease-schedule rent. The cutoff month
+// counts only its remaining fraction (monthRemainingFraction).
+// scope 'company' (default): company-channel, non-deleted properties + all
+// service forecasts; 'all': any non-deleted property + services.
+// Returns { revenue, expenses, byEntity: { [entityId]: { rev, exp, months, type } },
+//           revIds: Set, expIds: Set, cutoff, curMonth }.
+export function forecastRemainingForYear(year, { cutoff = null, scope = 'company' } = {}) {
+  const yr = Number(year);
+  if (!cutoff) { const t = today(); cutoff = t < `${yr}-12-31` ? t : `${yr}-12-31`; }
+  const curMonth = cutoff.slice(0, 7);
+  const curMonthFrac = monthRemainingFraction(cutoff);
+  const allowedProps = scope === 'all' ? new Set(listActive('properties').map(p => p.id)) : companyPropIds();
+
+  const out = { revenue: 0, expenses: 0, byEntity: {}, revIds: new Set(), expIds: new Set(), cutoff, curMonth };
+  const add = (eid, type, mk, rawRev, rawExp) => {
+    if (mk < curMonth || !mk.startsWith(String(yr))) return;
+    const frac = mk === curMonth ? curMonthFrac : 1;
+    if (frac <= 0) return;
+    const rev = (Number(rawRev) || 0) * frac, exp = (Number(rawExp) || 0) * frac;
+    if (!(rev > 0) && !(exp > 0)) return;
+    const d = out.byEntity[eid] || (out.byEntity[eid] = { rev: 0, exp: 0, months: 0, type });
+    d.months++;
+    if (rev > 0) { d.rev += rev; out.revenue += rev; out.revIds.add(eid); }
+    if (exp > 0) { d.exp += exp; out.expenses += exp; out.expIds.add(eid); }
+  };
+
+  const seen = new Set();
+  const propForecast = new Map();
+  for (const fc of (state.db.forecasts || [])) {
+    if (fc.deletedAt || fc.year !== yr || fc.type === 'portfolio') continue;
+    const isProp = fc.type === 'property' || (!fc.type && !!fc.propertyId);
+    const eid = fc.entityId || fc.propertyId || fc.id;
+    if (isProp && !allowedProps.has(eid)) continue;
+    const key = `${isProp ? 'property' : fc.type}:${eid}`;
+    if (seen.has(key)) continue; // one forecast per entity, like getForecastVsActual
+    seen.add(key);
+    if (isProp) { propForecast.set(eid, fc); continue; }
+    for (const [mk, md] of Object.entries(fc.months || {})) add(eid, fc.type || 'service', mk, md?.revenue, md?.expenses);
+  }
+
+  for (const pid of allowedProps) {
+    const prop = byId('properties', pid);
+    const fc = propForecast.get(pid);
+    if (!prop || (!fc && prop.type !== 'long_term')) continue;
+    const ltRentByMonth = {};
+    if (prop.type === 'long_term') {
+      for (const entry of generatePaymentSchedule(prop)) {
+        if (entry.monthKey?.startsWith(String(yr))) ltRentByMonth[entry.monthKey] = toEUR(entry.amount, entry.currency, yr);
+      }
+    }
+    for (let m = 1; m <= 12; m++) {
+      const mk = `${yr}-${String(m).padStart(2, '0')}`;
+      const fd = fc?.months?.[mk] || {};
+      add(pid, 'property', mk, fd.revenue != null ? fd.revenue : (ltRentByMonth[mk] ?? 0), fd.expenses);
+    }
+  }
+  return out;
 }
 
 export function getActualsForYear(year) {
   const todayStr = today();
   const cutoff = todayStr < `${year}-12-31` ? todayStr : `${year}-12-31`;
   const s1     = `${year}-01-01`;
+  const coIds  = companyPropIds();
+  const invDate = i => i.issueDate || i.date || '';
   return {
-    pays:   listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff && isCoRec(p)),
-    invs:   listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff),
-    exps:   listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff && isCoRec(e)),
+    pays:   listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff && isCoRec(p, coIds)),
+    invs:   listActive('invoices').filter(i => i.status === 'paid' && invDate(i) >= s1 && invDate(i) <= cutoff),
+    exps:   listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff && isCoRec(e, coIds)),
     cutoff, year,
   };
 }
@@ -348,19 +427,8 @@ function modalForecastEntities(forRevenue) {
   const propMap  = Object.fromEntries((state.db.properties || []).map(p => [p.id, p]));
   const humanize = id => id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
-  const curMonthFrac = monthRemainingFraction(cutoff);
-  const fcData = {};
-  for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
-    const eid = fc.entityId || fc.propertyId || fc.id;
-    if (!fcData[eid]) fcData[eid] = { rev: 0, exp: 0, months: 0, type: fc.type };
-    for (const [mk, md] of Object.entries(fc.months || {})) {
-      if (mk < curMonth) continue;
-      const frac = mk === curMonth ? curMonthFrac : 1;
-      if (frac <= 0) continue;
-      const rev = (Number(md.revenue) || 0) * frac, exp = (Number(md.expenses) || 0) * frac;
-      if (rev > 0 || exp > 0) { fcData[eid].rev += rev; fcData[eid].exp += exp; fcData[eid].months++; }
-    }
-  }
+  // Company-scope only (+ lease-schedule fallback) — see forecastRemainingForYear.
+  const fcData = forecastRemainingForYear(year, { cutoff }).byEntity;
 
   const rows = Object.entries(fcData)
     .filter(([, d]) => forRevenue ? d.rev > 0 : d.exp > 0)
@@ -404,7 +472,7 @@ function modalRevenueDetail() {
   const { pays, invs } = getActualsForYear(year);
   const byMonth = {};
   for (const p of pays) { const mo = p.date.slice(0, 7); byMonth[mo] = (byMonth[mo] || 0) + toEUR(p.amount, p.currency, year); }
-  for (const i of invs) { const mo = (i.issueDate || '').slice(0, 7); if (mo) byMonth[mo] = (byMonth[mo] || 0) + toEUR(i.subtotal ?? i.total, i.currency, year); }
+  for (const i of invs) { const mo = (i.issueDate || i.date || '').slice(0, 7); if (mo) byMonth[mo] = (byMonth[mo] || 0) + toEUR(i.subtotal ?? i.total, i.currency, year); }
   const moRows   = Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b));
   const actTotal = moRows.reduce((a, [, v]) => a + v, 0);
   const paysTotal = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
@@ -556,8 +624,8 @@ function modalCorpTax() {
     { label: 'Corp Tax Rate',              value: `${c.rate}%`,
       explain: { title: 'Corp Tax Rate', formula: 'Rate set in Tax Settings for this tax year.',
         inputs: [{ label: 'Rate', value: `${c.rate}%` }],
-        source: 'cyprus-tax.js:15 CYPRUS_TAX_YEAR_DEFAULTS.corpTaxRate (default for new years)',
-        note: `Default for a never-configured year is ${CYPRUS_TAX_YEAR_DEFAULTS.corpTaxRate}% (code comment: standard rate rises from 12.5% to 15% for tax years starting 1 Jan 2026). Existing saved years keep whatever rate they were already set to — changing the default doesn't retroactively change past years.` } },
+        source: 'cyprus-tax.js defaultCorpTaxRate(year) (default for new years)',
+        note: `Default for a never-configured year is ${defaultCorpTaxRate(year)}% (code comment: standard rate rises from 12.5% to 15% for tax years starting 1 Jan 2026). Existing saved years keep whatever rate they were already set to — changing the default doesn't retroactively change past years.` } },
     { label: 'Taxable Profit',             value: fmtE(c.taxableProfit),
       explain: { title: 'Taxable Profit', formula: 'Buffered taxable profit if the safety buffer is enabled, otherwise Est. Taxable Profit unchanged.',
         inputs: [{ label: 'Taxable Profit', value: fmtE(c.taxableProfit) }],
@@ -894,7 +962,10 @@ function build() {
     renderDecDisplay();
   };
 
-  wrap.appendChild(buildSettingsCard(recalc));
+  // Switching the tax year must reload every input with that year's figures
+  // (recalc alone left the previous year's values in the fields).
+  const rebuild = () => { if (wrap.parentNode) wrap.replaceWith(build()); else recalc(); };
+  wrap.appendChild(buildSettingsCard(recalc, rebuild));
   wrap.appendChild(buildEstimateCard(recalc));
   wrap.appendChild(resultsEl);
   wrap.appendChild(buildSafetyCard(safetyDisplayEl, renderSafetyDisplay, recalc));
@@ -905,7 +976,7 @@ function build() {
 }
 
 // ── Section 1 ────────────────────────────────────────────────────────────────
-function buildSettingsCard(onChange) {
+function buildSettingsCard(onChange, onYearChange = onChange) {
   const s    = cfg();
   const card = el('div', { class: 'card mb-16' });
   card.appendChild(el('div', { class: 'card-header' },
@@ -919,7 +990,7 @@ function buildSettingsCard(onChange) {
   const curYear = String(new Date().getFullYear());
   const years   = [...new Set([curYear, ...availableYears()])].sort().reverse();
   const yearSel = select(years.map(y => ({ value: y, label: y })), s.year || curYear);
-  yearSel.onchange = () => { persist({ year: yearSel.value }); onChange(); };
+  yearSel.onchange = () => { persist({ year: yearSel.value }); onYearChange(); };
 
   const rateI = input({ type: 'number', value: s.corpTaxRate ?? 15, min: 0, max: 100, step: 0.1, style: 'width:110px' });
   rateI.oninput = () => { persist({ corpTaxRate: safeN(rateI.value) }); onChange(); };
@@ -1070,9 +1141,11 @@ function prefillFromActuals(onChange) {
   const curMonth = cutoff.slice(0, 7);
   const s1       = `${year}-01-01`;
 
-  const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff && isCoRec(p));
-  const invs = listActive('invoices').filter(i => i.status === 'paid' && (i.issueDate || '') >= s1 && (i.issueDate || '') <= cutoff);
-  const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff && isCoRec(e));
+  const coIds = companyPropIds();
+  const invDate = i => i.issueDate || i.date || '';
+  const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff && isCoRec(p, coIds));
+  const invs = listActive('invoices').filter(i => i.status === 'paid' && invDate(i) >= s1 && invDate(i) <= cutoff);
+  const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff && isCoRec(e, coIds));
 
   const rnd = v => Math.round(v * 100) / 100;
   const paysRevenue = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);
@@ -1087,22 +1160,13 @@ function prefillFromActuals(onChange) {
     expsByCat[cat] = (expsByCat[cat] || 0) + toEUR(e.amount, e.currency, year);
   }
 
-  let forecastRevenue = 0, forecastExpenses = 0;
-  const fcRevIds = new Set(), fcExpIds = new Set();
+  // Company-scope forecast (personal-channel and deleted properties
+  // excluded) with the long-term lease-schedule fallback, matching the
+  // Forecast grid — see forecastRemainingForYear.
+  const fcRem = forecastRemainingForYear(year, { cutoff });
+  const forecastRevenue = fcRem.revenue, forecastExpenses = fcRem.expenses;
+  const fcRevIds = fcRem.revIds, fcExpIds = fcRem.expIds;
   const propIds  = new Set((state.db.properties || []).map(p => p.id));
-  const curMonthFrac = monthRemainingFraction(cutoff);
-  for (const fc of (state.db.forecasts || []).filter(f => !f.deletedAt && f.year === Number(year))) {
-    const eid = fc.entityId || fc.propertyId || fc.id;
-    for (const [mk, md] of Object.entries(fc.months || {})) {
-      if (mk < curMonth) continue;
-      const frac = mk === curMonth ? curMonthFrac : 1;
-      if (frac <= 0) continue;
-      const rev = (Number(md.revenue) || 0) * frac;
-      const exp = (Number(md.expenses) || 0) * frac;
-      if (rev > 0) { fcRevIds.add(eid); forecastRevenue  += rev; }
-      if (exp > 0) { fcExpIds.add(eid); forecastExpenses += exp; }
-    }
-  }
 
   const fcLabel = ids => {
     const pCount = [...ids].filter(id => propIds.has(id)).length;

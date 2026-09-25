@@ -25,9 +25,19 @@ function matchInvOwner(inv) {
   ow = ow || 'both';
   return ow === 'both' || ow === _recOwner;
 }
+// companyPropIds() rebuilds a Set from all properties on every call — it was
+// being called once per invoice inside filters. Cache it against the
+// memoized listActive('properties') array, which is replaced whenever the
+// properties collection changes, so the cache can never go stale.
+let _cpIdsSrc = null, _cpIds = null;
+function cachedCompanyPropIds() {
+  const src = listActive('properties');
+  if (src !== _cpIdsSrc || !_cpIds) { _cpIdsSrc = src; _cpIds = companyPropIds(); }
+  return _cpIds;
+}
 function matchInvScope(inv) {
   if (_recScope !== 'company') return true;
-  return isCompanyRecord(inv, companyPropIds());
+  return isCompanyRecord(inv, cachedCompanyPropIds());
 }
 
 // Filter selections persisted at module scope so they survive refresh()/

@@ -87,6 +87,18 @@ function smallStat(label, value, sub) {
   );
 }
 
+// Fresh, editable copy of a vendor for a save. Forms hold on to the object
+// captured when they opened; editing that in place and upserting it wrote a
+// stale snapshot over anything a background sync changed meanwhile. Re-read
+// the current record and edit a copy instead (nested rates/periods copied too).
+function latestVendorCopy(v) {
+  const cur = byId('vendors', v.id) || v;
+  const copy = { ...cur };
+  if (cur.rates) copy.rates = { ...cur.rates };
+  if (cur.cleaningPeriods) copy.cleaningPeriods = [...cur.cleaningPeriods];
+  return copy;
+}
+
 function openDetail(id) {
   const v = byId('vendors', id);
   if (!v) return;
@@ -161,8 +173,9 @@ function openDetail(id) {
           onClick: async () => {
             const ok = await confirmDialog(`Remove rate for "${prop.name}" from ${period.startDate}?`, { danger: true, okLabel: 'Remove' });
             if (!ok) return;
-            v.cleaningPeriods = (v.cleaningPeriods || []).filter(p => p.id !== period.id);
-            upsert('vendors', v);
+            const upd = latestVendorCopy(v);
+            upd.cleaningPeriods = (upd.cleaningPeriods || []).filter(p => p.id !== period.id);
+            upsert('vendors', upd);
             toast('Rate removed', 'success');
             closeModal();
             setTimeout(() => openDetail(id), 220);
@@ -219,8 +232,9 @@ function openDetail(id) {
           onClick: async () => {
             const ok = await confirmDialog(`Remove rate for "${prop.name}"?`, { danger: true, okLabel: 'Remove' });
             if (!ok) return;
-            delete v.rates[propId];
-            upsert('vendors', v);
+            const upd = latestVendorCopy(v);
+            if (upd.rates) delete upd.rates[propId];
+            upsert('vendors', upd);
             toast('Rate removed', 'success');
             closeModal();
             setTimeout(() => openDetail(id), 220);
@@ -282,13 +296,14 @@ function openCleaningPeriodForm(vendor, existingPeriodId, onDone) {
       if (Number(feeI.value) <= 0) { toast('Fee must be greater than 0', 'danger'); return; }
       if (endI.value && endI.value < startI.value) { toast('End date must be after start date', 'danger'); return; }
 
-      if (!vendor.cleaningPeriods) vendor.cleaningPeriods = [];
+      const upd = latestVendorCopy(vendor);
+      if (!upd.cleaningPeriods) upd.cleaningPeriods = [];
 
       // Two overlapping periods for the same property leave no deterministic
       // way to know which fee applies on a given date — treat an empty
       // endDate as open-ended (extends indefinitely) for this check.
       const newEnd = endI.value || '9999-12-31';
-      const overlap = vendor.cleaningPeriods.find(p => {
+      const overlap = upd.cleaningPeriods.find(p => {
         if (p.propertyId !== propS.value || p.id === existingPeriodId) return false;
         const pEnd = p.endDate || '9999-12-31';
         return startI.value <= pEnd && p.startDate <= newEnd;
@@ -299,10 +314,10 @@ function openCleaningPeriodForm(vendor, existingPeriodId, onDone) {
       }
 
       if (existing) {
-        const idx = vendor.cleaningPeriods.findIndex(p => p.id === existingPeriodId);
+        const idx = upd.cleaningPeriods.findIndex(p => p.id === existingPeriodId);
         if (idx >= 0) {
-          vendor.cleaningPeriods[idx] = {
-            ...vendor.cleaningPeriods[idx],
+          upd.cleaningPeriods[idx] = {
+            ...upd.cleaningPeriods[idx],
             propertyId: propS.value,
             startDate:  startI.value,
             endDate:    endI.value,
@@ -310,7 +325,7 @@ function openCleaningPeriodForm(vendor, existingPeriodId, onDone) {
           };
         }
       } else {
-        vendor.cleaningPeriods.push({
+        upd.cleaningPeriods.push({
           id:         newId('cp'),
           propertyId: propS.value,
           startDate:  startI.value,
@@ -319,7 +334,7 @@ function openCleaningPeriodForm(vendor, existingPeriodId, onDone) {
         });
       }
 
-      upsert('vendors', vendor);
+      upsert('vendors', upd);
       toast('Rate saved', 'success');
       closeModal();
       if (onDone) onDone();
@@ -330,11 +345,11 @@ function openCleaningPeriodForm(vendor, existingPeriodId, onDone) {
 }
 
 function openRateForm(vendor, existingPropId, onDone) {
-  if (!vendor.rates) vendor.rates = {};
+  const vRates = vendor.rates || {};
   const allProps = listActive('properties');
   const available = existingPropId
     ? allProps.filter(p => p.id === existingPropId)
-    : allProps.filter(p => !(p.id in vendor.rates));
+    : allProps.filter(p => !(p.id in vRates));
 
   if (available.length === 0) {
     toast('All properties already have rates configured', 'info');
@@ -345,7 +360,7 @@ function openRateForm(vendor, existingPropId, onDone) {
   const defaultProp = available[0];
   const body = el('div', {});
   const propS   = select(available.map(p => ({ value: p.id, label: p.name })), existingPropId || defaultProp?.id);
-  const amountI = input({ type: 'number', value: existingPropId ? (vendor.rates[existingPropId] || 0) : 0, min: 0, step: 0.01 });
+  const amountI = input({ type: 'number', value: existingPropId ? (vRates[existingPropId] || 0) : 0, min: 0, step: 0.01 });
 
   body.appendChild(formRow('Property', propS));
   body.appendChild(formRow('Rate', amountI));
@@ -355,8 +370,9 @@ function openRateForm(vendor, existingPropId, onDone) {
     onClick: () => {
       if (!propS.value) { toast('Select a property', 'danger'); return; }
       if (Number(amountI.value) <= 0) { toast('Rate must be greater than 0', 'danger'); return; }
-      vendor.rates[propS.value] = Number(amountI.value);
-      upsert('vendors', vendor);
+      const upd = latestVendorCopy(vendor);
+      upd.rates = { ...(upd.rates || {}), [propS.value]: Number(amountI.value) };
+      upsert('vendors', upd);
       toast('Rate saved', 'success');
       closeModal();
       if (onDone) onDone();
@@ -392,14 +408,17 @@ function openForm(existing) {
     variant: 'primary',
     onClick: () => {
       if (!nameI.value.trim()) { toast('Name is required', 'danger'); return; }
-      Object.assign(v, {
+      // Merge the form fields onto the CURRENT record (not the snapshot taken
+      // when the form opened) so a background sync isn't overwritten.
+      const upd = existing ? latestVendorCopy(v) : v;
+      Object.assign(upd, {
         name:  nameI.value.trim(),
         role:  roleS.value,
         phone: phoneI.value.trim(),
         email: emailI.value.trim(),
         notes: notesT.value.trim()
       });
-      upsert('vendors', v);
+      upsert('vendors', upd);
       toast(existing ? 'Vendor updated' : 'Vendor added', 'success');
       closeModal();
       setTimeout(() => navigate('vendors'), 200);

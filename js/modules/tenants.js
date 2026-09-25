@@ -230,6 +230,9 @@ function openForm(existing, onSave) {
     if (!propS.value) { toast('Select a property', 'danger'); return; }
     if (Number(rentI.value) <= 0) { toast('Monthly rent must be greater than zero', 'danger'); return; }
     if (Number(depositI.value) < 0) { toast('Deposit cannot be negative', 'danger'); return; }
+    if (leaseStartI.value && leaseEndI.value && leaseEndI.value < leaseStartI.value) {
+      toast('Lease end cannot be before lease start', 'danger'); return;
+    }
 
     const updated = {
       ...r,
@@ -364,7 +367,7 @@ function openTerminationModal(tenant, onSave) {
     lW.appendChild(document.createTextNode('Withheld — record as revenue'));
     const lR = el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' });
     lR.appendChild(rReturned);
-    lR.appendChild(document.createTextNode('Returned to tenant — deduct from revenue'));
+    lR.appendChild(document.createTextNode('Returned to tenant — no revenue impact'));
     depWrap.appendChild(lW);
     depWrap.appendChild(lR);
     body.appendChild(formRow('Deposit', depWrap));
@@ -385,6 +388,9 @@ function openTerminationModal(tenant, onSave) {
     const addPay      = Number(addPayI.value) || 0;
     const comments    = commentsT.value.trim();
     const finalAction = hasDeposit ? depositAction : 'none';
+    if (tenant.leaseStartDate && termDate < tenant.leaseStartDate) {
+      toast('Termination date cannot be before the lease start', 'danger'); return;
+    }
 
     const ok = await confirmDialog(
       `Terminate the lease for "${tenant.name}" effective ${fmtDate(termDate)}?\nStatus will be set to Past and payments recorded accordingly.`,
@@ -409,7 +415,14 @@ function openTerminationModal(tenant, onSave) {
       notes:                     updatedNotes
     });
 
-    // Deposit: withheld → revenue payment; returned → expense deduction
+    // Deposit: withheld → revenue payment; returned → nothing to book. The
+    // deposit was never recorded as income, so booking its return as an opex
+    // expense understated profit; the tenant record keeps
+    // terminationDepositAction: 'returned' for reference.
+    //
+    // Distinct payment types (not 'rental') so these don't count as that
+    // month's rent in the rent schedule; stream stays long_term_rental and
+    // status 'paid' so they still count as revenue.
     if (hasDeposit && finalAction === 'withheld') {
       upsert('payments', {
         id:         newId('pay'),
@@ -418,23 +431,11 @@ function openTerminationModal(tenant, onSave) {
         amount:     tenant.deposit,
         currency,
         date:       termDate,
-        type:       'rental',
+        type:       'deposit_withheld',
         status:     'paid',
         source:     'manual',
         stream:     'long_term_rental',
         notes:      `Deposit withheld — lease termination (${tenant.name})`
-      });
-    } else if (hasDeposit && finalAction === 'returned') {
-      upsert('expenses', {
-        id:             newId('exp'),
-        propertyId:     tenant.propertyId,
-        amount:         tenant.deposit,
-        currency,
-        date:           termDate,
-        category:       'deposit_return',
-        accountingType: 'opex',
-        description:    `Deposit returned — lease termination (${tenant.name})`,
-        notes:          comments || null
       });
     }
 
@@ -447,7 +448,7 @@ function openTerminationModal(tenant, onSave) {
         amount:     addPay,
         currency,
         date:       termDate,
-        type:       'rental',
+        type:       'termination_fee',
         status:     'paid',
         source:     'manual',
         stream:     'long_term_rental',
