@@ -5,6 +5,7 @@ import * as github from './core/github.js';
 import * as router from './core/router.js';
 import { toast, confirmDialog } from './core/ui.js';
 import { requireAuth, clearSession } from './core/auth.js';
+import { hasWrappedKeyConfigured, isUnlocked } from './core/crypto.js';
 import { startPresence, recordSessionEvent } from './core/presence.js';
 
 const VERSION = window._appV || '20260702c';
@@ -90,6 +91,12 @@ async function boot() {
   let needAutoSave = false;
   let initialSyncDone = false;
   let pendingSaveBeforeSync = false;
+  // Set when unpushed edits from a pending-edits journal were applied during
+  // load (see github.applyPendingJournals) — pushed once saving is wired up.
+  let pushAfterBoot = false;
+  // Last db.json sha whose content this tab has fully reconciled (resync or
+  // push) — lets the 60s poll skip all work when nothing changed.
+  let lastAppliedSha = null;
 
   // Confirmatory re-pull after a first-ever load (see Phase 2). Only replaces
   // data when there is provably nothing local to lose.
@@ -99,14 +106,18 @@ async function boot() {
     if (state.github.disconnected || isBusy()) return;
     const prevBase = state.github.remoteDb;
     const confirmDb = await github.fetchDb();
-    if (isBusy()) { state.github.remoteDb = prevBase; return; }
+    // Restore the base only if nothing (e.g. a push) replaced it meanwhile —
+    // otherwise this would move it backwards past that push.
+    const fetchedBase = state.github.remoteDb;
+    const restoreBase = () => { if (state.github.remoteDb === fetchedBase) state.github.remoteDb = prevBase; };
+    if (isBusy()) { restoreBase(); return; }
     const reconciled = github.mergeLocalPending(confirmDb, structuredClone(state.db));
     const hasLocal = reconciled._hasLocalChanges;
     delete reconciled._hasLocalChanges;
     // Anything "local" here is most likely a record the first (possibly
-    // stale) read missed, which mergeLocalPending would read as a local
-    // delete — leave reconciliation to the next push's 3-way merge instead.
-    if (hasLocal) { state.github.remoteDb = prevBase; return; }
+    // stale) read missed — leave reconciliation to the next push's 3-way
+    // merge instead.
+    if (hasLocal) { restoreBase(); return; }
     reconciled._syncedAt = Date.now();
     if (github.deepEqual({ ...reconciled, _syncedAt: 0, _syncedPlain: 0 }, { ...state.db, _syncedAt: 0, _syncedPlain: 0 })) {
       state.db._syncedAt = reconciled._syncedAt;
@@ -126,8 +137,18 @@ async function boot() {
       try {
         const qs = hash.slice(hash.indexOf('?') + 1);
         const p  = new URLSearchParams(qs);
-        if (p.get('owner')) {
-          // Always override — setup link is the authoritative source
+        // A setup link replaces this browser's GitHub settings (and token).
+        // Ask first when it would change an existing setup — a crafted link
+        // could otherwise point the app at someone else's repo, or swap the
+        // token, just by being opened.
+        const differs = state.github.owner && (
+          state.github.owner !== p.get('owner') || state.github.repo !== (p.get('repo') || '') ||
+          (p.get('token') && state.github.token && p.get('token') !== state.github.token));
+        const accepted = !differs || await confirmDialog(
+          `This link changes where this browser saves data: ${p.get('owner')}/${p.get('repo') || ''} instead of ${state.github.owner}/${state.github.repo}${p.get('token') ? ', with a different GitHub token' : ''}. Only continue if you trust whoever sent it.`,
+          { title: 'Apply setup link?', danger: true, okLabel: 'Apply link' });
+        if (p.get('owner') && accepted) {
+          // Setup link is the authoritative source
           state.github.owner  = p.get('owner');
           state.github.repo   = p.get('repo')   || '';
           state.github.branch = p.get('branch') || 'main';
@@ -141,19 +162,19 @@ async function boot() {
             dbPath: state.github.dbPath,
             token:  state.github.token
           });
-          // Remove setup params from the URL bar
-          history.replaceState(null, '', window.location.pathname + window.location.search);
         }
+        // Remove setup params (and the token) from the URL bar either way
+        history.replaceState(null, '', window.location.pathname + window.location.search);
       } catch { /* ignore malformed hash */ }
     }
   }
 
   // ── Phase 1: load from local cache instantly (< 1 ms if localStorage is warm)
-  const localCache = await github.fetchLocalDb();
+  let localCache = await github.fetchLocalDb();
   // Deep-clone before setDb() shares its array references with state.db.
   // migrateDb() mutates those shared objects (stamps updatedAt = now), which
   // would make every stale local record look newer than remote during Phase 4 merge.
-  const localSnapshot = localCache ? structuredClone(localCache) : null;
+  let localSnapshot = localCache ? structuredClone(localCache) : null;
   if (localCache) {
     setDb(localCache);
     github.applyDbConfig(localCache.appConfig?.github);
@@ -178,19 +199,22 @@ async function boot() {
   }
 
   // ── Phase 2: if no local cache, block on GitHub once (first-ever load)
-  if (!loaded && state.github.owner && state.github.repo) {
+  const initialPull = async () => {
     updateSyncStatus('syncing', 'Pulling from GitHub…');
     try {
       const remoteDb = await github.fetchDb();
       remoteDb._syncedAt = Date.now();
       remoteDb._syncedPlain = github.plainFieldsOf(remoteDb);
+      // Unpushed edits kept in pending-edits journals (e.g. the full cache
+      // didn't fit in localStorage) — re-apply them on top and push.
+      if (isUnlocked() && await github.applyPendingJournals(remoteDb)) pushAfterBoot = true;
       setDb(remoteDb);
       github.applyDbConfig(remoteDb.appConfig?.github);
       github.saveLocalCache(remoteDb);
       loaded = true;
       initialSyncDone = true;
+      if (!pushAfterBoot) lastAppliedSha = state.github.lastFetchedSha;
       updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
-
       // GitHub's Contents API can occasionally serve a read that lags a few
       // seconds behind the very latest commit — documented eventual-consistency
       // behavior on their end, confirmed elsewhere in this file (see mergeDb's
@@ -224,11 +248,33 @@ async function boot() {
       state.github.lastSyncError = normalizeNetworkError(e.message);
       initialSyncDone = true; // unblock saves — GitHub is unreachable, not a sync issue
     }
-  }
+  };
+
+  // The local cache is encrypted: on a device with a key, nothing can be read
+  // (cache or GitHub) until sign-in unlocks it. requireAuth() then calls this.
+  const loadAfterUnlock = async () => {
+    if (loaded) return;
+    const cached = await github.openPendingEncryptedCache();
+    if (cached) {
+      localCache = cached;
+      localSnapshot = structuredClone(cached);
+      setDb(cached);
+      github.applyDbConfig(cached.appConfig?.github);
+      loaded = true;
+      return;
+    }
+    if (state.github.owner && state.github.repo) await initialPull();
+    if (!loaded) throw new Error(state.github.lastSyncError || 'Could not load data — check your connection and try again.');
+  };
+  const unlockFirst = !loaded && hasWrappedKeyConfigured() && !isUnlocked();
+
+  if (!loaded && !unlockFirst && state.github.owner && state.github.repo) await initialPull();
 
   if (!loaded) {
     setDb({});
-    if (state.github.owner && state.github.repo) {
+    if (unlockFirst) {
+      updateSyncStatus('syncing', 'Sign in to load your data');
+    } else if (state.github.owner && state.github.repo) {
       updateSyncStatus('offline', 'GitHub unreachable — no local data available');
     } else {
       updateSyncStatus('offline', 'Offline — configure GitHub in Settings');
@@ -248,7 +294,7 @@ async function boot() {
   updateStrGapBadge();
 
   // ── Phase 3: auth + render — runs immediately when local cache was available
-  await requireAuth();
+  await requireAuth({ loadAfterUnlock });
   // requireAuth() may have retried and successfully loaded real data along the
   // way (e.g. this device needed the encryption key, entered via the bootstrap
   // unlock screen) — but that retry lives in auth.js and never touches this
@@ -271,6 +317,20 @@ async function boot() {
   let pushPending = false; // true while doSave is queued or running
   let retryTimer = null;    // automatic retry after a failed push (see doSave)
   let ratesFeedTimer = null; // debounce for auto-publishing the STR daily-rate feeds
+  // Edits are batched: a push starts this long after the LAST edit (and at
+  // the latest MAX_PUSH_WAIT_MS after the first unpushed one), instead of
+  // 300ms after every edit — each push is a full commit of the encrypted
+  // db.json, so a burst of edits used to become a burst of multi-100KB
+  // commits. Hiding/closing the tab pushes immediately.
+  const PUSH_DEBOUNCE_MS = 3000;
+  const MAX_PUSH_WAIT_MS = 15000;
+  let firstPendingAt = 0;
+  const schedulePush = () => {
+    if (!firstPendingAt) firstPendingAt = Date.now();
+    const wait = Math.max(0, Math.min(PUSH_DEBOUNCE_MS, firstPendingAt + MAX_PUSH_WAIT_MS - Date.now()));
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, wait);
+  };
 
   // Warn before closing/navigating away with edits that haven't been
   // confirmed-pushed to GitHub yet — without this, an edit made in the last
@@ -319,6 +379,7 @@ async function boot() {
     pushPending = true;
     clearTimeout(pushTimer);
     pushTimer = null;
+    firstPendingAt = 0;
     state.saving = true;
     document.body.classList.add('app-saving');
     let hadNewChanges = false;
@@ -332,6 +393,7 @@ async function boot() {
       // genuinely new edits instead, so an unrelated push no longer re-triggers itself.
       hadNewChanges = state.editSeq !== result.editSeqAtSnapshot;
       state.dirty = hadNewChanges;
+      lastAppliedSha = state.github.sha;
       saveFailCount = 0;
       state.github.lastSyncError = null;
       scheduleRatesFeedPublish(); // keep the public daily-rate feeds current
@@ -368,13 +430,14 @@ async function boot() {
           ? 'Encryption key changed elsewhere — paste the new key in Settings → Encryption'
           : e.code === 'NEWER_FORMAT' ? 'App updated — reload the page to keep saving'
           : e.code === 'UNSUPPORTED_BROWSER' ? 'Browser too old to read the data — update it'
+          : e.code === 'PLAINTEXT_REMOTE' ? 'db.json on GitHub was changed outside the app — not saving'
           : 'Push failed — changes saved locally only', true);
         // Retry on its own with backoff. A transient failure (5xx, rate limit,
         // dropped connection) used to leave the edit stranded until the next
         // edit, an 'online' event or a manual Retry click — and while dirty,
         // backgroundResync also stands down, so the tab stopped converging.
         // Key problems can't fix themselves by retrying, so skip those.
-        if (!['NO_ENC_KEY', 'KEY_MISMATCH', 'NEWER_FORMAT', 'UNSUPPORTED_BROWSER'].includes(e.code)) {
+        if (!['NO_ENC_KEY', 'KEY_MISMATCH', 'NEWER_FORMAT', 'UNSUPPORTED_BROWSER', 'PLAINTEXT_REMOTE'].includes(e.code)) {
           clearTimeout(retryTimer);
           const delay = Math.min(120000, 5000 * 2 ** Math.min(5, saveFailCount - 1));
           retryTimer = setTimeout(() => {
@@ -399,10 +462,9 @@ async function boot() {
       document.body.classList.remove('app-saving');
     }
 
-    // Changes arrived during the push — do one more push immediately instead
-    // of waiting for the subscriber's 1.5 s timer to fire again.
+    // Changes arrived during the push — schedule the next batch.
     if (hadNewChanges && state.github.token && state.github.owner && state.github.repo) {
-      doSave().catch(() => {});
+      schedulePush();
     }
   };
 
@@ -432,6 +494,14 @@ async function boot() {
     if (!state.github.token || !state.github.owner || !state.github.repo) return;
     if (state.dirty || pushPending || state.saving || pendingSaveBeforeSync) return;
     if (typeof document !== 'undefined' && document.hidden) return;
+    // Open (asleep) for longer than tombstones are kept: records deleted
+    // elsewhere in the meantime may no longer carry a tombstone, and this
+    // tab would push them back. A reload re-derives everything safely.
+    if (state.github.lastPulledAt && Date.now() - state.github.lastPulledAt > 20 * 24 * 60 * 60 * 1000) {
+      await github.flushLocalCache();
+      location.reload();
+      return;
+    }
     // Don't disrupt an open form/dialog, or an open filter dropdown — a full
     // view refresh rebuilds buildMultiSelect() widgets from scratch, which
     // would silently collapse whichever one the user has open (see ui.js
@@ -444,10 +514,18 @@ async function boot() {
     // "only local changed" and silently revert them. Restore it on bail-out.
     const prevBase = state.github.remoteDb;
     try {
-      const remoteDb = await github.fetchDb();          // also refreshes sha + remoteDb base
+      const remoteDb = await github.fetchDb({ conditional: true }); // also refreshes sha + remoteDb base
+      const fetchedBase = state.github.remoteDb;
       // Re-check after the await — the user may have started editing meanwhile.
+      // Restore the base only if nothing (e.g. a push) replaced it meanwhile.
       if (state.dirty || pushPending || state.saving || document.querySelector('.modal-overlay.open, .ms-menu.open')) {
-        state.github.remoteDb = prevBase;
+        if (state.github.remoteDb === fetchedBase) state.github.remoteDb = prevBase;
+        return;
+      }
+      // Same db.json as the last one this tab reconciled — nothing to do
+      // (skips the whole-database diff every 60s on an idle tab).
+      if (state.github.lastFetchedSha && state.github.lastFetchedSha === lastAppliedSha) {
+        updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
         return;
       }
       // resyncDb: pure last-writer-wins by updatedAt — no 3-way base.
@@ -467,6 +545,7 @@ async function boot() {
       delete synced._staleFetch; // never persist this transient flag
       synced._syncedAt = staleFetch ? (state.db._syncedAt ?? null) : Date.now();
 
+      if (!staleFetch) lastAppliedSha = state.github.lastFetchedSha;
       if (!staleFetch && sameDbContent(synced, state.db)) {
         // Remote matches what's already on screen — just advance the
         // confirmed-synced marker, skip the rebuild entirely.
@@ -481,15 +560,16 @@ async function boot() {
       updateSyncStatus('online', `Synced ${new Date().toLocaleTimeString()}`);
       // A stale fetch means local has something this push cycle should confirm
       // properly — nudge a real push rather than leaving it to the next edit.
-      if (staleFetch && state.github.token && !pushPending) {
-        clearTimeout(pushTimer);
-        pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 300);
-      }
+      if (staleFetch && state.github.token && !pushPending) schedulePush();
     } catch (e) {
       // offline / transient — keep working from current state
       if (e?.code === 'KEY_MISMATCH') updateSyncStatus('offline', 'Encryption key changed elsewhere — paste the new key in Settings → Encryption', true);
       else if (e?.code === 'NEWER_FORMAT') updateSyncStatus('offline', 'App updated — reload the page to keep saving', true);
       else if (e?.code === 'UNSUPPORTED_BROWSER') updateSyncStatus('offline', 'Browser too old to read the data — update it', true);
+      else if (e?.code === 'PLAINTEXT_REMOTE') {
+        updateSyncStatus('offline', 'db.json on GitHub was changed outside the app — not loading it', true);
+        toast(e.message, 'danger', 15000);
+      }
     }
     finally { resyncing = false; }
   };
@@ -502,7 +582,11 @@ async function boot() {
   });
   // Returning to the tab — surface anything that changed while it was hidden.
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) github.flushLocalCache(); // tab backgrounded/closing — beforeunload alone isn't reliable (esp. mobile)
+    if (document.hidden) {
+      github.flushLocalCache(); // tab backgrounded/closing — beforeunload alone isn't reliable (esp. mobile)
+      // Don't leave a batch waiting on a tab that may never come back.
+      if (pushTimer && !pushPending) { clearTimeout(pushTimer); pushTimer = null; doSave().catch(() => {}); }
+    }
     else backgroundResync();
   });
   window.addEventListener('pagehide', () => github.flushLocalCache());
@@ -539,10 +623,9 @@ async function boot() {
           pendingSaveBeforeSync = true;
           updateSyncStatus('syncing', 'Waiting for pull before pushing…');
         } else if (!pushPending) {
-          // No push in flight — start the debounce timer.
+          // No push in flight — (re)start the batching timer.
           updateSyncStatus('syncing', 'Changes pending — pushing soon…');
-          clearTimeout(pushTimer);
-          pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 300);
+          schedulePush();
         }
         // If pushPending, the in-flight push will detect state.dirty and re-push
         // automatically — no need to schedule another timer.
@@ -551,6 +634,14 @@ async function boot() {
       }
     }
   });
+
+  // Unpushed edits recovered from a journal during the initial pull.
+  if (pushAfterBoot && initialSyncDone && state.github.token) {
+    pushAfterBoot = false;
+    state.dirty = true;
+    state.editSeq = (state.editSeq || 0) + 1;
+    doSave().catch(() => {});
+  }
 
   // ── Phase 4: background GitHub sync (only when we served from local cache)
   // Runs after router.init so setDb() triggers a live refresh of the current view.
@@ -575,8 +666,11 @@ async function boot() {
         const merged = github.mergeLocalPending(remoteDb, structuredClone(state.db));
         // Read-and-strip the merge's flag rather than leaving it on the object —
         // setDb + the next push would otherwise persist it into the repo's db.json.
-        const hasLocalChanges = merged._hasLocalChanges;
+        let hasLocalChanges = merged._hasLocalChanges;
         delete merged._hasLocalChanges;
+        // Unpushed edits from pending-edits journals (another tab's, or this
+        // one's from before the reload) that the cache didn't carry.
+        if (isUnlocked() && await github.applyPendingJournals(merged)) hasLocalChanges = true;
         // Advance the sync marker to "now" ONLY when the merge kept nothing local.
         // When unpushed local records survived the merge (hasLocalChanges), they are
         // NOT on remote yet — stamping Date.now() here would make them compare as
@@ -586,6 +680,7 @@ async function boot() {
         // marker instead; the successful push stamps the real value itself.
         merged._syncedAt = hasLocalChanges ? (state.db._syncedAt ?? localSnapshot?._syncedAt ?? null) : Date.now();
         setDb(merged);                              // triggers data-loaded → view refresh
+        if (!hasLocalChanges) lastAppliedSha = state.github.lastFetchedSha;
         github.applyDbConfig(merged.appConfig?.github);
         github.saveLocalCache(merged);
         updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);

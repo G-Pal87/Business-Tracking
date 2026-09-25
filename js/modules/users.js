@@ -2,7 +2,7 @@
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, input, select, formRow, button, attachSortFilter } from '../core/ui.js';
 import { upsert, softDelete, listActive, newId } from '../core/data.js';
-import { hashPassword } from '../core/auth.js';
+import { hashPassword, MIN_PASSWORD_LENGTH, refreshSessionIssued } from '../core/auth.js';
 import { rewrapKeysForNewPassword } from '../core/crypto.js';
 
 let _sortCol = -1, _sortDir = 1, _usrSearch = '';
@@ -110,7 +110,7 @@ function openForm(existing, wrap) {
         const password = passwordI.value;
         if (!name || !username) { toast('Name and username are required', 'danger'); return; }
         if (isNew && !password) { toast('Password is required', 'danger'); return; }
-        if (password && password.length < 6) { toast('Password must be at least 6 characters', 'danger'); return; }
+        if (password && password.length < MIN_PASSWORD_LENGTH) { toast(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`, 'danger'); return; }
         const dup = listActive('users').find(x => x.username === username && x.id !== u.id);
         if (dup) { toast('Username already taken', 'danger'); return; }
         // Prevent locking everyone out of user management: block demoting
@@ -122,11 +122,15 @@ function openForm(existing, wrap) {
         }
         Object.assign(u, { name, username, role: roleS.value });
         if (password) {
-          const { hash, salt } = await hashPassword(password);
+          const { hash, salt, iter } = await hashPassword(password);
           u.passwordHash = hash;
           u.passwordSalt = salt;
+          u.passwordIter = iter;
+          // Ends this user's sessions on other devices (see requireAuth).
+          if (!isNew) u.passwordChangedAt = Date.now();
         }
         upsert('users', u);
+        if (password && !isNew && u.id === state.session?.userId) refreshSessionIssued();
         // The encryption key on this device is wrapped under a key derived
         // from the logged-in user's password — re-wrap it when that user
         // changes their OWN password, or their next sign-in here can't unlock
