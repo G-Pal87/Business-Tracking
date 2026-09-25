@@ -2,7 +2,8 @@
 // Import these instead of copy-pasting the equivalent mkExp* functions
 // into every analytics module.
 import { el, openModal } from '../core/ui.js';
-import { formatEUR, byId } from '../core/data.js';
+import { formatEUR, byId, toEUR } from '../core/data.js';
+import { todayYmd, addDaysYmd, diffDaysYmd } from '../core/dates.js';
 
 // ── Section label ─────────────────────────────────────────────────────────────
 
@@ -286,6 +287,8 @@ export function mkProgressBar(pct, color) {
  * @param {string}   [opts.subtitle]   - Small muted text below the value / lines.
  * @param {number}   [opts.delta]      - Period-over-period change percentage.
  * @param {boolean}  [opts.deltaIsPp]  - Treat delta as percentage points (pp).
+ * @param {string}   [opts.deltaUnit]  - Show delta as an absolute change in this unit
+ *   (e.g. 'mo') instead of % / pp. Takes precedence over deltaIsPp.
  * @param {boolean}  [opts.invertDelta]- Flip green/red (e.g. expenses: lower is better).
  * @param {string}   [opts.compLabel]  - Label shown after "vs " in the trend line.
  * @param {string}   [opts.variant]    - CSS class suffix: 'danger' | 'warning' | 'success'.
@@ -297,7 +300,7 @@ export function mkProgressBar(pct, color) {
  *   Independent of onClick (stops propagation so it never also triggers the card's
  *   own drill-down click).
  */
-export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelta, compLabel, compValue, variant, onClick, lines, explain } = {}) {
+export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, deltaUnit, invertDelta, compLabel, compValue, variant, onClick, lines, explain } = {}) {
   const card = el('div', {
     class: 'kpi' + (variant ? ' ' + variant : ''),
     style: onClick ? 'cursor:pointer;transition:box-shadow 120ms' : '',
@@ -321,7 +324,8 @@ export function mkKpiCard({ label, value, subtitle, delta, deltaIsPp, invertDelt
   if (delta !== null && delta !== undefined && isFinite(delta)) {
     const trend = el('div', { class: 'kpi-trend' });
     const sign  = delta > 0 ? '+' : '';
-    const disp  = deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
+    const disp  = deltaUnit ? `${sign}${delta.toFixed(1)} ${deltaUnit}`
+                : deltaIsPp ? `${sign}${delta.toFixed(1)} pp` : `${sign}${delta.toFixed(1)}%`;
     const cls   = delta === 0 ? '' : delta > 0 ? (invertDelta ? 'down' : 'up') : (invertDelta ? 'up' : 'down');
     trend.appendChild(el('span', { class: cls }, disp));
     if (compLabel && !compValue) trend.appendChild(document.createTextNode(` vs ${compLabel}`));
@@ -473,17 +477,158 @@ export function groupByMonthKey(rows, dateOf) {
 }
 
 /**
- * expStream(e) — resolve the business stream for an expense record.
- * Checks e.stream first, then infers from the linked property type.
+ * streamOf(row, fallback=null) — THE single business-stream resolver for any
+ * record (payment, invoice, expense): row.stream first, then inferred from the
+ * linked property's type, else `fallback`.
+ *
+ * Use `fallback: null` (the default — what analytics-filters.js resolveStream()
+ * returns) for filter matching, where "no stream" must not match a selected
+ * stream; use 'other' for breakdowns/charts so every record lands in some
+ * bucket and the breakdown sums to the headline total.
  */
-export function expStream(e) {
-  if (e.stream) return e.stream;
-  if (e.propertyId) {
-    const p = byId('properties', e.propertyId);
+export function streamOf(row, fallback = null) {
+  if (row.stream) return row.stream;
+  if (row.propertyId) {
+    const p = byId('properties', row.propertyId);
     if (p?.type === 'short_term') return 'short_term_rental';
     if (p?.type === 'long_term')  return 'long_term_rental';
   }
-  return 'other';
+  return fallback;
+}
+
+/**
+ * expStream(e) — resolve the business stream for an expense record.
+ * Same as streamOf(e, 'other') (kept for existing importers).
+ */
+export function expStream(e) {
+  return streamOf(e, 'other');
+}
+
+// ── Invoice semantics (single definitions — reuse, don't re-derive) ───────────
+
+/**
+ * invoiceNetEUR(inv) — invoice REVENUE in EUR: VAT-exclusive `subtotal`
+ * (falls back to `total` for legacy records without a subtotal), converted at
+ * the issue date. Revenue is net of VAT everywhere — same rule as data.js
+ * sumInvoicesEUR(). Use this for any figure labelled "revenue".
+ */
+export function invoiceNetEUR(inv) {
+  return toEUR(inv.subtotal ?? inv.total, inv.currency, inv.issueDate);
+}
+
+/**
+ * invoiceGrossEUR(inv) — VAT-inclusive `total` in EUR at the issue date.
+ * Only for cash/receivable figures (outstanding/overdue balances, aging,
+ * collection rate) — the client owes the full amount including VAT.
+ */
+export function invoiceGrossEUR(inv) {
+  return toEUR(inv.total, inv.currency, inv.issueDate);
+}
+
+/** Payment terms assumed when an invoice has no dueDate. */
+export const INVOICE_DEFAULT_TERMS_DAYS = 30;
+
+/**
+ * invoiceDueDate(inv) — 'YYYY-MM-DD' due date: inv.dueDate, else
+ * issueDate + INVOICE_DEFAULT_TERMS_DAYS (timezone-safe), else ''.
+ */
+export function invoiceDueDate(inv) {
+  if (inv.dueDate) return inv.dueDate;
+  return inv.issueDate ? addDaysYmd(inv.issueDate, INVOICE_DEFAULT_TERMS_DAYS) : '';
+}
+
+/**
+ * classifyInvoice(inv, todayStr=todayYmd()) → one of
+ *   'paid'        — status paid
+ *   'draft'       — status draft (never outstanding, never in collection rate)
+ *   'void'        — status cancelled/void (ignored everywhere)
+ *   'overdue'     — outstanding AND (status 'overdue' OR due date < today)
+ *   'outstanding' — outstanding (sent / any other unpaid status), not yet overdue
+ * "Outstanding" in the broad sense = 'outstanding' + 'overdue'.
+ */
+export function classifyInvoice(inv, todayStr = todayYmd()) {
+  const s = inv.status;
+  if (s === 'paid')  return 'paid';
+  if (s === 'draft') return 'draft';
+  if (s === 'cancelled' || s === 'void') return 'void';
+  if (s === 'overdue') return 'overdue';
+  const due = invoiceDueDate(inv);
+  return due && due < todayStr ? 'overdue' : 'outstanding';
+}
+
+/**
+ * invoiceBuckets(invs, todayStr=todayYmd()) — classify a list once.
+ * Returns {
+ *   paid, draft, voided,           // arrays
+ *   outstanding,                   // sent+overdue (every unpaid, non-draft, non-void)
+ *   overdue,                       // subset of outstanding past due (see classifyInvoice)
+ *   notDue,                        // outstanding minus overdue
+ *   paidGross, outstandingGross, overdueGross,  // VAT-inclusive EUR (cash view)
+ *   paidNet,                       // VAT-exclusive EUR (revenue view)
+ *   collectionRate                 // paidGross / (paidGross + outstandingGross) × 100, or null
+ * }
+ */
+export function invoiceBuckets(invs, todayStr = todayYmd()) {
+  const r = { paid: [], draft: [], voided: [], outstanding: [], overdue: [], notDue: [],
+              paidGross: 0, paidNet: 0, outstandingGross: 0, overdueGross: 0, collectionRate: null };
+  for (const i of invs) {
+    const c = classifyInvoice(i, todayStr);
+    if (c === 'paid') { r.paid.push(i); r.paidGross += invoiceGrossEUR(i); r.paidNet += invoiceNetEUR(i); }
+    else if (c === 'draft') r.draft.push(i);
+    else if (c === 'void')  r.voided.push(i);
+    else {
+      const g = invoiceGrossEUR(i);
+      r.outstanding.push(i); r.outstandingGross += g;
+      if (c === 'overdue') { r.overdue.push(i); r.overdueGross += g; }
+      else r.notDue.push(i);
+    }
+  }
+  const den = r.paidGross + r.outstandingGross;
+  r.collectionRate = den > 0 ? r.paidGross / den * 100 : null;
+  return r;
+}
+
+/** Aging bucket labels, index-aligned with invoiceAgingBucket(). */
+export const AGING_BUCKETS = ['Not due', '1–30 days', '31–60 days', '61–90 days', '90+ days'];
+
+/**
+ * invoiceDaysPastDue(inv, todayStr=todayYmd()) — whole days since
+ * invoiceDueDate(inv), floored at 0 (0 = not yet due or no dates at all).
+ */
+export function invoiceDaysPastDue(inv, todayStr = todayYmd()) {
+  const due = invoiceDueDate(inv);
+  return due ? Math.max(0, diffDaysYmd(due, todayStr)) : 0;
+}
+
+/**
+ * invoiceAgingBucket(inv, todayStr=todayYmd()) — index into AGING_BUCKETS for
+ * an OUTSTANDING invoice. 0 = 'Not due' exactly when classifyInvoice() isn't
+ * 'overdue'; an invoice manually marked overdue before its due date goes in
+ * the first overdue bucket so the chart agrees with the overdue KPI.
+ */
+export function invoiceAgingBucket(inv, todayStr = todayYmd()) {
+  if (classifyInvoice(inv, todayStr) !== 'overdue') return 0;
+  const days = invoiceDaysPastDue(inv, todayStr);
+  return days <= 30 ? 1 : days <= 60 ? 2 : days <= 90 ? 3 : 4;
+}
+
+/**
+ * invoiceOwner(inv) — THE owner rule for invoices: inv.owner, else the linked
+ * property's owner (when inv.propertyId), else the client's owner, else
+ * 'both' (shared). Match with `ow === 'both' || selectedOwners.has(ow)` — see
+ * analytics-filters.js makeMatchers().mInvOwner.
+ */
+export function invoiceOwner(inv) {
+  if (inv.owner) return inv.owner;
+  if (inv.propertyId) {
+    const ow = byId('properties', inv.propertyId)?.owner;
+    if (ow) return ow;
+  }
+  if (inv.clientId) {
+    const ow = byId('clients', inv.clientId)?.owner;
+    if (ow) return ow;
+  }
+  return 'both';
 }
 
 // ── Insights banner ───────────────────────────────────────────────────────────

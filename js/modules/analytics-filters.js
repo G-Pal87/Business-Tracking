@@ -2,6 +2,8 @@
 import { el, buildMultiSelect, button } from '../core/ui.js';
 import { STREAMS, OWNERS } from '../core/config.js';
 import { listActive, listActivePayments, listActiveClients, byId, getPeopleOwners } from '../core/data.js';
+import { todayYmd, addDaysYmd, addMonthsYmd, addYearsYmd, daysInMonth, diffDaysYmd } from '../core/dates.js';
+import { streamOf, invoiceOwner } from './analytics-helpers.js';
 
 const ML = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const SS = 'background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;font-size:12px;color:var(--text);cursor:pointer';
@@ -107,27 +109,21 @@ export function createFilterState(overrides = {}) {
 }
 
 // ── Date utilities (internal) ─────────────────────────────────────────────────
-// A Date object's LOCAL calendar date, not its UTC one — `.toISOString()`
-// reads the UTC date, which for any positive-UTC-offset viewer (e.g. Cyprus,
-// UTC+2/+3) is a day BEHIND the real local date for the first few hours
-// after local midnight. A date-only string (no time component) round-trips
-// safely through `new Date(str).toISOString()` unchanged (both sides read
-// the same UTC-midnight instant), so only the Date-object branch — which
-// represents a real "now" moment — needs the local-getters fix.
-const fmtD = dt => {
-  if (!(dt instanceof Date)) return new Date(dt).toISOString().slice(0, 10);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-};
-const addDays = (d, n) => { const dt = new Date(d); dt.setDate(dt.getDate() + n); return fmtD(dt); };
-const addYrs  = (d, n) => { const dt = new Date(d); dt.setFullYear(dt.getFullYear() + n); return fmtD(dt); };
+// All range math is pure 'YYYY-MM-DD' calendar arithmetic via core/dates.js
+// ("today" is the viewer's LOCAL date), so results never shift a day for a
+// UTC+2/+3 viewer or across DST.
+const addDays = addDaysYmd;
+const addYrs  = addYearsYmd;
+const pad2    = n => String(n).padStart(2, '0');
+// Last day of the calendar month containing ymd.
+const monthEnd = ymd => `${ymd.slice(0, 7)}-${pad2(daysInMonth(+ymd.slice(0, 4), +ymd.slice(5, 7)))}`;
 
 // ── Period range ──────────────────────────────────────────────────────────────
 export function getCurrentPeriodRange(gF) {
-  const now   = new Date();
-  const today = fmtD(now);
-  const y     = now.getFullYear();
-  const m     = now.getMonth(); // 0-based
-  const d     = now.getDate();
+  const today = todayYmd();
+  const y     = +today.slice(0, 4);
+  const m     = +today.slice(5, 7) - 1; // 0-based
+  const d     = +today.slice(8, 10);
 
   switch (gF.period) {
     case 'ytd':
@@ -135,14 +131,14 @@ export function getCurrentPeriodRange(gF) {
 
     case 'this-month': {
       const mm = String(m + 1).padStart(2, '0');
-      const lastDay = new Date(y, m + 1, 0).getDate();
+      const lastDay = daysInMonth(y, m + 1);
       return { start: `${y}-${mm}-01`, end: today, label: `${ML[m]} ${y}`, isIncomplete: d < lastDay };
     }
 
     case 'last-month': {
       const lm = m === 0 ? 12 : m, ly = m === 0 ? y - 1 : y;
       const lmS = String(lm).padStart(2, '0');
-      return { start: `${ly}-${lmS}-01`, end: `${ly}-${lmS}-${new Date(ly, lm, 0).getDate()}`, label: `${ML[lm - 1]} ${ly}`, isIncomplete: false };
+      return { start: `${ly}-${lmS}-01`, end: `${ly}-${lmS}-${daysInMonth(ly, lm)}`, label: `${ML[lm - 1]} ${ly}`, isIncomplete: false };
     }
 
     case 'this-quarter': {
@@ -153,7 +149,7 @@ export function getCurrentPeriodRange(gF) {
     case 'last-quarter': {
       const cq = Math.floor(m / 3), pq = cq === 0 ? 3 : cq - 1, py = cq === 0 ? y - 1 : y;
       const qsm = pq * 3 + 1, qem = qsm + 2;
-      return { start: `${py}-${String(qsm).padStart(2, '0')}-01`, end: `${py}-${String(qem).padStart(2, '0')}-${new Date(py, qem, 0).getDate()}`, label: `Q${pq + 1} ${py}`, isIncomplete: false };
+      return { start: `${py}-${String(qsm).padStart(2, '0')}-01`, end: `${py}-${String(qem).padStart(2, '0')}-${daysInMonth(py, qem)}`, label: `Q${pq + 1} ${py}`, isIncomplete: false };
     }
 
     case 'this-year': {
@@ -167,17 +163,13 @@ export function getCurrentPeriodRange(gF) {
     }
 
     case 'last-30-days':
-      return { start: addDays(now, -29), end: today, label: 'Last 30 Days', isIncomplete: false };
+      return { start: addDays(today, -29), end: today, label: 'Last 30 Days', isIncomplete: false };
 
     case 'last-90-days':
-      return { start: addDays(now, -89), end: today, label: 'Last 90 Days', isIncomplete: false };
+      return { start: addDays(today, -89), end: today, label: 'Last 90 Days', isIncomplete: false };
 
-    case 'last-12-months': {
-      const s = new Date(now);
-      s.setFullYear(s.getFullYear() - 1);
-      s.setDate(s.getDate() + 1);
-      return { start: fmtD(s), end: today, label: 'Last 12 Months', isIncomplete: false };
-    }
+    case 'last-12-months':
+      return { start: addDays(addYrs(today, -1), 1), end: today, label: 'Last 12 Months', isIncomplete: false };
 
     case 'all': {
       const years = getDataYears();
@@ -205,32 +197,31 @@ export function getComparisonRange(gF, cur) {
   if (gF.compareTo === 'none') return null;
   if (gF.period === 'all') return null;
 
-  const durMs = new Date(cur.end) - new Date(cur.start);
-
   switch (gF.compareTo) {
     case 'prev-period': {
-      const newEnd   = new Date(new Date(cur.start) - 86400000);
-      const newStart = new Date(newEnd - durMs);
-      return { start: fmtD(newStart), end: fmtD(newEnd), label: 'Prev Period' };
+      // Same number of days, ending the day before the current period starts.
+      const newEnd = addDays(cur.start, -1);
+      return { start: addDays(newEnd, -diffDaysYmd(cur.start, cur.end)), end: newEnd, label: 'Prev Period' };
     }
 
+    // 'last-month' / 'last-quarter' / 'last-year' are RELATIVE TO THE SELECTED
+    // PERIOD: the calendar month / quarter / year immediately before the one
+    // containing cur.start (e.g. Q3 2026 → Jun 2026 / Q2 2026 / 2025; a past
+    // "2024" period → Dec 2023 / Q4 2023 / 2023) — not relative to today.
     case 'last-month': {
-      const now = new Date();
-      const lm  = now.getMonth() === 0 ? 12 : now.getMonth();
-      const ly  = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-      const lmS = String(lm).padStart(2, '0');
-      return { start: `${ly}-${lmS}-01`, end: `${ly}-${lmS}-${new Date(ly, lm, 0).getDate()}`, label: `${ML[lm - 1]} ${ly}` };
+      const start = addMonthsYmd(`${cur.start.slice(0, 7)}-01`, -1);
+      return { start, end: monthEnd(start), label: `${ML[+start.slice(5, 7) - 1]} ${start.slice(0, 4)}` };
     }
 
     case 'last-quarter': {
-      const now = new Date();
-      const cq  = Math.floor(now.getMonth() / 3), pq = cq === 0 ? 3 : cq - 1, py = cq === 0 ? now.getFullYear() - 1 : now.getFullYear();
-      const qsm = pq * 3 + 1, qem = qsm + 2;
-      return { start: `${py}-${String(qsm).padStart(2, '0')}-01`, end: `${py}-${String(qem).padStart(2, '0')}-${new Date(py, qem, 0).getDate()}`, label: `Q${pq + 1} ${py}` };
+      const qsm   = Math.floor((+cur.start.slice(5, 7) - 1) / 3) * 3 + 1; // cur.start's quarter's first month
+      const start = addMonthsYmd(`${cur.start.slice(0, 4)}-${pad2(qsm)}-01`, -3);
+      const end   = monthEnd(addMonthsYmd(start, 2));
+      return { start, end, label: `Q${Math.floor((+start.slice(5, 7) - 1) / 3) + 1} ${start.slice(0, 4)}` };
     }
 
     case 'last-year': {
-      const ly = new Date().getFullYear() - 1;
+      const ly = +cur.start.slice(0, 4) - 1;
       return { start: `${ly}-01-01`, end: `${ly}-12-31`, label: String(ly) };
     }
 
@@ -238,9 +229,22 @@ export function getComparisonRange(gF, cur) {
       return { start: addYrs(cur.start, -1), end: addYrs(cur.end, -1), label: 'Same Period LY' };
 
     case 'prev-year': {
-      const py  = new Date(cur.start).getFullYear() - 1;
-      const end = cur.isIncomplete ? addYrs(cur.end, -1) : `${py}-12-31`;
-      return { start: `${py}-01-01`, end, label: String(py) };
+      // The current range shifted back exactly one year, so like is compared
+      // with like (This Quarter → the same quarter last year, not Jan–Sep).
+      // When the current range runs past today (e.g. Full Year while the year
+      // is in progress) the comparison stops at today−1y, so an in-progress
+      // period is never compared against a complete one.
+      const start = addYrs(cur.start, -1);
+      let end     = addYrs(cur.end, -1);
+      const today = todayYmd();
+      if (cur.end > today) { const cap = addYrs(today, -1); if (cap < end) end = cap; }
+      if (end < start) end = start;
+      const py      = start.slice(0, 4);
+      const sameYr  = py === end.slice(0, 4);
+      // Plain year label only for a whole calendar year; a capped/partial one
+      // (e.g. YTD) reads "Same Period 2025" so it isn't mistaken for the full year.
+      const label   = sameYr && start.endsWith('-01-01') && end.endsWith('-12-31') ? py : sameYr ? `Same Period ${py}` : 'Prev Year';
+      return { start, end, label };
     }
 
     case 'last-30-days': {
@@ -257,10 +261,7 @@ export function getComparisonRange(gF, cur) {
 
     case 'last-12-months': {
       const end2 = addDays(cur.start, -1);
-      const s    = new Date(end2);
-      s.setFullYear(s.getFullYear() - 1);
-      s.setDate(s.getDate() + 1);
-      return { start: fmtD(s), end: end2, label: 'Prev 12 Months' };
+      return { start: addDays(addYrs(end2, -1), 1), end: end2, label: 'Prev 12 Months' };
     }
 
     case 'cmp-custom':
@@ -288,20 +289,22 @@ export function getMonthKeysForRange(start, end) {
 }
 
 // ── Filter matchers ───────────────────────────────────────────────────────────
-export function resolveStream(row) {
-  if (row.stream) return row.stream;
-  if (row.propertyId) {
-    const p = byId('properties', row.propertyId);
-    if (p?.type === 'short_term') return 'short_term_rental';
-    if (p?.type === 'long_term')  return 'long_term_rental';
-  }
-  return null;
+// Business stream of a record, or `fallback` (default null) when none can be
+// resolved. Thin wrapper over analytics-helpers.js streamOf() — the single
+// resolver. Filters use the null fallback (unresolved never matches a selected
+// stream); breakdowns should use `resolveStream(r) || 'other'` (or
+// resolveStream(r, 'other')) so their buckets sum to the headline totals.
+export function resolveStream(row, fallback = null) {
+  return streamOf(row, fallback);
 }
 
 export function makeMatchers(gF) {
   return {
     mStream:   row => { if (!gF.streams.size) return true; const s = resolveStream(row); return s !== null && gF.streams.has(s); },
     mOwner:    row => { if (!gF.owners.size)       return true; const ow = row.propertyId ? (byId('properties', row.propertyId)?.owner || 'both') : (row.owner || 'both'); return ow === 'both' || gF.owners.has(ow); },
+    // Owner match for INVOICES — uses the single invoiceOwner() rule
+    // (inv.owner → property owner → client owner → 'both').
+    mInvOwner: inv => { if (!gF.owners.size)       return true; const ow = invoiceOwner(inv); return ow === 'both' || gF.owners.has(ow); },
     mProperty: row => { if (!gF.propertyIds.size)  return true; if (!row.propertyId) return false; return gF.propertyIds.has(row.propertyId); },
     mClient:   row => { if (!gF.clientIds.size)    return true; if (!row.clientId)   return false; return gF.clientIds.has(row.clientId); },
   };
@@ -355,8 +358,7 @@ function computeAvailableOptions(gF, channelScope) {
       if (!s || !gF.streams.has(s)) return;
     }
     if (gF.clientIds.size > 0 && !gF.clientIds.has(i.clientId)) return;
-    const ow = i.propertyId ? ownerOf(i.propertyId) : (i.owner || 'both');
-    availOwners.add(ow);
+    availOwners.add(invoiceOwner(i)); // same owner rule the invoice matchers use
   });
   for (const o of [...gF.owners]) if (!availOwners.has(o)) gF.owners.delete(o);
 

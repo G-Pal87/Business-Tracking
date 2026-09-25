@@ -2,7 +2,8 @@
 import { el, openModal, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { state } from '../core/state.js';
-import { formatEUR, listActive, listActivePayments, byId, isReservationNight } from '../core/data.js';
+import { formatEUR, toEUR, listActive, listActivePayments, byId, isReservationNight, companyPropIds, isCompanyRecord } from '../core/data.js';
+import { todayYmd, addDaysYmd, parseYmd, utcYmd } from '../core/dates.js';
 import { isOwnerBlockSummary } from '../core/ical.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -20,20 +21,26 @@ const PROP_COLORS = ['#6366f1','#14b8a6','#f59e0b','#ec4899','#22c55e'];
 
 // Reused drill-down column shapes (same fields already used by the file's
 // existing drillDownModal calls — heatmap/month-revenue/month-spotlight footers).
+// A payment's amount in EUR at its own date (HUF-safe). Amounts are signed —
+// Airbnb adjustment rows may be negative — and are summed as-is.
+const payEUR = p => toEUR(p.amount, p.currency, p.date);
+const AMOUNT_COL = { key: 'amount', label: 'Amount', right: true, tip: 'Paid amount for this record, in EUR.', format: (_v, row) => formatEUR(payEUR(row)) };
+
 const BOOKING_COLS = [
   { key: 'date', label: 'Date', tip: 'Payment date.', format: v => fmtDate(v) },
   { key: 'airbnbNights', label: 'Nights', right: true, tip: 'Nights booked on this payment record.', format: v => v != null ? String(v) : '—' },
-  { key: 'amount', label: 'Amount', right: true, tip: 'Paid amount for this record.', format: v => formatEUR(v) }
+  AMOUNT_COL
 ];
 const BOOKING_COLS_WITH_PROPERTY = [
   { key: 'date', label: 'Date', tip: 'Payment date.', format: v => fmtDate(v) },
   { key: 'propertyId', label: 'Property', tip: 'Property this booking is attributed to.', format: v => shortName(byId('properties', v)?.name || '—') },
   { key: 'airbnbNights', label: 'Nights', right: true, tip: 'Nights booked on this payment record.', format: v => v != null ? String(v) : '—' },
-  { key: 'amount', label: 'Amount', right: true, tip: 'Paid amount for this record.', format: v => formatEUR(v) }
+  AMOUNT_COL
 ];
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let gF = createFilterState({ period: 'this-year', compareTo: 'prev-year' });
+let gScope = 'company'; // 'company' | 'all' — same Scope rule as the other dashboards
 let gSpotlightPropId = null;
 
 // ── Module export ─────────────────────────────────────────────────────────────
@@ -54,22 +61,61 @@ function allStrProps() {
 // Short-term properties passing the active owner / property dimension filters.
 // Everything downstream (portfolio, pipeline, spotlight) builds on this, so the
 // filters flow through the whole dashboard.
+// Company scope keeps only company-channel properties (channel unset =
+// company), like the other dashboards' Scope toggle.
 function getStrProps() {
   const { mOwner } = makeMatchers(gF);
   return allStrProps().filter(p =>
-    mOwner(p) && (!gF.propertyIds.size || gF.propertyIds.has(p.id))
+    mOwner(p) && (!gF.propertyIds.size || gF.propertyIds.has(p.id)) &&
+    (gScope === 'all' || (p.channel || 'company') === 'company')
   );
 }
 
 // Paid STR payments inside an inclusive [start,end] date range, restricted to
-// the supplied property ids.
+// the supplied property ids and the Scope (company scope drops payments
+// flagged `personal` — isCompanyRecord(), same matcher as the other dashboards).
 function getPaymentsInRange(start, end, propIds) {
+  const coPropIds = gScope === 'all' ? null : companyPropIds();
   return listActivePayments().filter(p =>
     p.stream === 'short_term_rental' &&
     p.status === 'paid' &&
     (p.date || '') >= start && (p.date || '') <= end &&
-    p.propertyId && propIds.has(p.propertyId)
+    p.propertyId && propIds.has(p.propertyId) &&
+    (!coPropIds || isCompanyRecord(p, coPropIds))
   );
+}
+
+// ── Per-render caches ─────────────────────────────────────────────────────────
+// Paid STR payments grouped by property, plus lazily-built per-property
+// occupancy sets and ADR suggesters — rebuilt only when the data changes
+// (state.db identity / state.editSeq / the memoized payments array), instead
+// of rescanning every payment once per property per helper on every render.
+let _strCache = null;
+function strCache() {
+  const pays = listActivePayments();
+  if (_strCache && _strCache.db === state.db && _strCache.seq === state.editSeq && _strCache.pays === pays) return _strCache;
+  const paidByProp = new Map();
+  for (const p of pays) {
+    if (p.stream !== 'short_term_rental' || p.status !== 'paid' || !p.propertyId) continue;
+    let arr = paidByProp.get(p.propertyId);
+    if (!arr) { arr = []; paidByProp.set(p.propertyId, arr); }
+    arr.push(p);
+  }
+  _strCache = { db: state.db, seq: state.editSeq, pays, paidByProp, occ: new Map(), adr: new Map() };
+  return _strCache;
+}
+// All paid STR payments of one property (unscoped — physical stays).
+function paidStrPays(propId) {
+  return strCache().paidByProp.get(propId) || [];
+}
+
+// Calls fn(ymd) for every night in [from, toExcl) — pure calendar arithmetic
+// on 'YYYY-MM-DD' strings (check-in inclusive, check-out exclusive), so the
+// same stay lands on the same days whatever the viewer's timezone.
+function eachNight(from, toExcl, fn) {
+  if (!from || !toExcl) return;
+  const d = parseYmd(from), e = parseYmd(toExcl);
+  while (d < e) { fn(utcYmd(d)); d.setUTCDate(d.getUTCDate() + 1); }
 }
 
 function getTargetADR(propertyId, monthKey) {
@@ -79,25 +125,6 @@ function getTargetADR(propertyId, monthKey) {
 
 function getCalendar(propertyId) {
   return (state.db.strCalendars || []).find(c => c.propertyId === propertyId) || null;
-}
-
-// Count nights blocked (booked/reserved) in a given month from iCal blocks
-function countBlockedNights(blocks, year, monthIdx) {
-  if (!blocks?.length) return 0;
-  const monthStart = new Date(year, monthIdx, 1);
-  const monthEnd   = new Date(year, monthIdx + 1, 1);
-  let nights = 0;
-  for (const b of blocks) {
-    if (!b.start || !b.end) continue;
-    const bs = new Date(b.start);
-    const be = new Date(b.end);
-    const overlapStart = bs > monthStart ? bs : monthStart;
-    const overlapEnd   = be < monthEnd   ? be : monthEnd;
-    if (overlapEnd > overlapStart) {
-      nights += Math.round((overlapEnd - overlapStart) / 86400000);
-    }
-  }
-  return nights;
 }
 
 function daysInMonth(year, monthIdx) {
@@ -115,7 +142,7 @@ function sumNights(payments) {
   return payments.reduce((s, p) => s + bookedNights(p), 0);
 }
 function sumNightRevenue(payments) {
-  return payments.reduce((s, p) => s + (p.avgNightlyRate || 0) * bookedNights(p), 0);
+  return payments.reduce((s, p) => s + toEUR((p.avgNightlyRate || 0) * bookedNights(p), p.currency, p.date), 0);
 }
 
 // Split iCal blocks into { reserved, owner } date sets (each [start,end) → nights).
@@ -124,8 +151,7 @@ function buildBlockDateSets(blocks) {
   for (const b of blocks || []) {
     if (!b.start || !b.end) continue;
     const target = isOwnerBlockSummary(b.summary) ? owner : reserved;
-    const d = new Date(b.start), be = new Date(b.end);
-    while (d < be) { target.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+    eachNight(b.start, b.end, ds => target.add(ds));
   }
   return { reserved, owner };
 }
@@ -134,12 +160,13 @@ function buildBlockDateSets(blocks) {
 // sales recorded as payments, and past stays the Airbnb iCal no longer carries).
 function buildBookedDateSet(propId) {
   const set = new Set();
-  listActivePayments().forEach(p => {
-    if (p.propertyId !== propId || p.stream !== 'short_term_rental' || p.status !== 'paid') return;
+  paidStrPays(propId).forEach(p => {
+    // Payout adjustments (Cancellation Fee, Resolution…) repeat their
+    // reservation's dates — same exclusion as bookedNights(), so a cancelled
+    // stay's fee row can't mark its nights occupied.
+    if (!isReservationNight(p)) return;
     const ci = p.airbnbCheckIn || p.checkIn, co = p.airbnbCheckOut || p.checkOut;
-    if (!ci || !co) return;
-    const d = new Date(ci + 'T00:00:00'), e = new Date(co + 'T00:00:00');
-    while (d < e) { set.add(d.toISOString().slice(0, 10)); d.setDate(d.getDate() + 1); }
+    eachNight(ci, co, ds => set.add(ds));
   });
   return set;
 }
@@ -149,11 +176,20 @@ function buildBookedDateSet(propId) {
 //   ownerBlockSet — manually-closed nights, EXCLUDED from available (you can't
 //                   sell a day you closed). A payment on such a day wins (it
 //                   becomes occupied), so off-platform sales count normally.
+// Cached per property (see strCache) while the data and the calendar's blocks
+// array are unchanged. Callers must treat the returned sets as read-only.
+const NO_BLOCKS = Object.freeze([]);
 function buildOccupancySets(propId, blocks) {
+  if (!blocks || !blocks.length) blocks = NO_BLOCKS; // stable cache key for "no calendar"
+  const c = strCache();
+  const hit = c.occ.get(propId);
+  if (hit && hit.blocks === blocks) return hit.sets;
   const { reserved, owner } = buildBlockDateSets(blocks);
   const occupiedSet = buildBookedDateSet(propId);
   for (const d of reserved) occupiedSet.add(d);
-  return { occupiedSet, ownerBlockSet: owner };
+  const sets = { occupiedSet, ownerBlockSet: owner };
+  c.occ.set(propId, { blocks, sets });
+  return sets;
 }
 
 // Iterate each day in [start,end] inclusive. Occupancy = occupied ÷ available,
@@ -162,10 +198,8 @@ function buildOccupancySets(propId, blocks) {
 function rangeOccupancy(occupiedSet, ownerBlockSet, start, end, rateFn) {
   let totalDays = 0, available = 0, occupied = 0, blocked = 0, rev = 0;
   const occByMonth = new Map(), availByMonth = new Map();
-  const d   = new Date(start + 'T00:00:00');
-  const lim = new Date(end + 'T00:00:00');
-  while (d <= lim) {
-    const ds = d.toISOString().slice(0, 10), mk = ds.slice(0, 7);
+  eachNight(start, addDaysYmd(end, 1), ds => {
+    const mk = ds.slice(0, 7);
     totalDays++;
     const isOcc     = occupiedSet.has(ds);
     const isUnavail = !isOcc && ownerBlockSet.has(ds); // payment/reservation wins
@@ -176,43 +210,43 @@ function rangeOccupancy(occupiedSet, ownerBlockSet, start, end, rateFn) {
       occByMonth.set(mk, (occByMonth.get(mk) || 0) + 1);
       if (rateFn) rev += rateFn(ds, false);
     }
-    d.setDate(d.getDate() + 1);
-  }
+  });
   return { totalDays, available, occupied, blocked, occByMonth, availByMonth, rev };
 }
 
 // Historic achieved-ADR suggester for a property — same priority as the daily-
 // rate feed: same calendar day across prior years → same month → overall average.
 function buildAdrSuggester(propId) {
+  const cache = strCache().adr;
+  if (cache.has(propId)) return cache.get(propId);
   const byMonthDay = new Map(), byMonth = new Map(), all = [];
-  listActivePayments().forEach(p => {
-    if (p.propertyId !== propId || p.stream !== 'short_term_rental' || p.status !== 'paid') return;
+  paidStrPays(propId).forEach(p => {
     // Exclude Airbnb payout adjustments (Resolution Adjustment, Cancellation Fee,
     // etc.) — they repeat the same check-in/check-out/nights as their originating
     // Reservation but carry a much smaller amount, which would pollute the
     // historic per-night rate buckets with a tiny, unrelated rate.
     if (!isReservationNight(p)) return;
-    const rate = p.avgNightExclCleaning != null ? p.avgNightExclCleaning
-               : (p.avgNightlyRate != null ? p.avgNightlyRate : null);
-    if (rate == null || rate <= 0) return;
+    const rawRate = p.avgNightExclCleaning != null ? p.avgNightExclCleaning
+                  : (p.avgNightlyRate != null ? p.avgNightlyRate : null);
+    if (rawRate == null || rawRate <= 0) return;
+    const rate = toEUR(rawRate, p.currency, p.date); // EUR, like every figure on this page
     const ci = p.airbnbCheckIn || p.checkIn, co = p.airbnbCheckOut || p.checkOut;
-    if (!ci || !co) return;
-    const d = new Date(ci + 'T00:00:00'), e = new Date(co + 'T00:00:00');
-    while (d < e) {
-      const ds = d.toISOString().slice(0, 10), md = ds.slice(5), mo = ds.slice(5, 7);
+    eachNight(ci, co, ds => {
+      const md = ds.slice(5), mo = ds.slice(5, 7);
       (byMonthDay.get(md) || byMonthDay.set(md, []).get(md)).push(rate);
       (byMonth.get(mo)    || byMonth.set(mo, []).get(mo)).push(rate);
       all.push(rate);
-      d.setDate(d.getDate() + 1);
-    }
+    });
   });
   const avg = a => a.reduce((s, r) => s + r, 0) / a.length;
   const overall = all.length ? avg(all) : null;
-  return (date) => {
+  const fn = (date) => {
     const md = byMonthDay.get(date.slice(5));   if (md && md.length) return avg(md);
     const mo = byMonth.get(date.slice(5, 7));   if (mo && mo.length) return avg(mo);
     return overall;
   };
+  cache.set(propId, fn);
+  return fn;
 }
 
 // Published nightly rate for a property on a date — mirrors the daily-rate feed:
@@ -221,12 +255,13 @@ function buildAdrSuggester(propId) {
 // instead of zeroing months that have no confirmed target.
 function makeRateForNight(propId) {
   const globalDisc = state.db.settings?.airbnb?.globalDiscountPct ?? 0;
-  const suggest = buildAdrSuggester(propId);
+  const suggest = buildAdrSuggester(propId);  // already EUR
+  const ccy = byId('properties', propId)?.currency || 'EUR'; // targets are set in the property's currency
   return (date, applyDiscount) => {
     const t = getTargetADR(propId, date.slice(0, 7));
     if (t) {
       const disc = (t.discountPct != null ? t.discountPct : globalDisc) / 100;
-      return (t.targetADR || 0) * (applyDiscount ? (1 - disc) : 1);
+      return toEUR((t.targetADR || 0) * (applyDiscount ? (1 - disc) : 1), ccy, date);
     }
     return suggest(date) || 0;
   };
@@ -244,7 +279,7 @@ function getPortfolioData(curRange, cmpRange) {
   const revByProp = new Map();
   props.forEach(p => revByProp.set(p.id, 0));
   payments.forEach(p => {
-    if (p.propertyId) revByProp.set(p.propertyId, (revByProp.get(p.propertyId) || 0) + p.amount);
+    if (p.propertyId) revByProp.set(p.propertyId, (revByProp.get(p.propertyId) || 0) + payEUR(p));
   });
   const totalRev = [...revByProp.values()].reduce((s, v) => s + v, 0);
 
@@ -254,7 +289,7 @@ function getPortfolioData(curRange, cmpRange) {
     const mk  = (p.date || '').slice(0, 7);
     const idx = keyIndex.get(mk);
     if (idx != null && p.propertyId) {
-      revByMonth[idx][p.propertyId] = (revByMonth[idx][p.propertyId] || 0) + p.amount;
+      revByMonth[idx][p.propertyId] = (revByMonth[idx][p.propertyId] || 0) + payEUR(p);
     }
   });
 
@@ -265,7 +300,7 @@ function getPortfolioData(curRange, cmpRange) {
   payments.forEach(p => {
     const n = bookedNights(p);
     totalNights += n;
-    if (n > 0 && p.avgNightlyRate) { adrSum += p.avgNightlyRate * n; nightsWithADR += n; }
+    if (n > 0 && p.avgNightlyRate) { adrSum += toEUR(p.avgNightlyRate * n, p.currency, p.date); nightsWithADR += n; }
   });
   const avgADR = nightsWithADR > 0 ? adrSum / nightsWithADR : 0;
 
@@ -300,7 +335,7 @@ function getPortfolioData(curRange, cmpRange) {
   let prevRev = null, prevNights = null, cmpPayments = null;
   if (cmpRange) {
     cmpPayments = getPaymentsInRange(cmpRange.start, cmpRange.end, propIds);
-    prevRev = cmpPayments.reduce((s, p) => s + p.amount, 0);
+    prevRev = cmpPayments.reduce((s, p) => s + payEUR(p), 0);
     prevNights = sumNights(cmpPayments);
   }
 
@@ -335,13 +370,15 @@ function getSpotlightData(propId, curRange) {
     const mk       = k.key;
     const target   = getTargetADR(propId, mk);
     const paysInMo = payments.filter(p => (p.date || '').startsWith(mk));
-    const rev      = paysInMo.reduce((s, p) => s + p.amount, 0);
+    const rev      = paysInMo.reduce((s, p) => s + payEUR(p), 0);
     const nights   = sumNights(paysInMo);
     const adr      = nights > 0 ? sumNightRevenue(paysInMo) / nights : 0;
     const occupied  = occByMonth.get(mk) || 0;    // occupied nights in range
     const available = availByMonth.get(mk) || 0;  // available nights in range (excl. owner-blocks)
     const occ       = available > 0 ? occupied / available * 100 : 0;
-    return { mk, label: k.label, target: target?.targetADR || null, rev, nights, adr, occupied, available, occ };
+    // Target ADR is entered in the property's currency; shown next to the EUR achieved ADR.
+    const targetEUR = target?.targetADR ? toEUR(target.targetADR, byId('properties', propId)?.currency || 'EUR', `${mk}-01`) : null;
+    return { mk, label: k.label, target: targetEUR || null, rev, nights, adr, occupied, available, occ };
   });
 
   const totalRev    = months.reduce((s, m) => s + m.rev, 0);
@@ -353,10 +390,10 @@ function getSpotlightData(propId, curRange) {
 
 // ── Forward pipeline (next 90 days) ──────────────────────────────────────────
 function getForwardPipeline() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const end90 = new Date(today);
-  end90.setDate(today.getDate() + 90);
+  // Local calendar dates as 'YYYY-MM-DD' — the old local-midnight Date +
+  // toISOString() labelled every night one day early for a UTC+ viewer.
+  const today = todayYmd();
+  const end90 = addDaysYmd(today, 90); // exclusive
 
   const props = getStrProps();
   const results = [];
@@ -369,9 +406,7 @@ function getForwardPipeline() {
     const blocks = (cal?.blocks || []).filter(b => {
       if (!b.start || !b.end) return false;
       if (isOwnerBlockSummary(b.summary)) return false;
-      const bs = new Date(b.start);
-      const be = new Date(b.end);
-      return be > today && bs < end90;
+      return b.end > today && b.start < end90;
     });
 
     let lockedNights = 0;
@@ -386,9 +421,7 @@ function getForwardPipeline() {
     const rateForNight = makeRateForNight(prop.id);
     const segments = [];
     let cur = null;
-    const d = new Date(today);
-    while (d < end90) {
-      const ds = d.toISOString().slice(0, 10);
+    eachNight(today, end90, ds => {
       const isBlocked = blocks.some(b => ds >= b.start && ds < b.end);
       const rate = isBlocked ? rateForNight(ds, true) : rateForNight(ds, false);
       if (isBlocked) {
@@ -405,8 +438,7 @@ function getForwardPipeline() {
         if (cur) segments.push(cur);
         cur = { type, start: ds, end: ds, nights: 1, rev: rate };
       }
-      d.setDate(d.getDate() + 1);
-    }
+    });
     if (cur) segments.push(cur);
 
     results.push({
@@ -426,10 +458,14 @@ function getForwardPipeline() {
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 let _container = null;
 
+// Swap the whole view root for a fresh one (buildView() creates a new root
+// each time — appending it into the old root nested one level deeper per
+// filter change) and destroy the charts first so they are re-created cleanly.
 function rebuildView() {
-  if (!_container) return;
-  _container.innerHTML = '';
-  _container.appendChild(buildView());
+  const old = _container;
+  if (!old) return;
+  CHART_IDS.forEach(id => charts.destroy(id));
+  old.replaceWith(buildView());
 }
 
 // ── Main view builder ─────────────────────────────────────────────────────────
@@ -456,9 +492,27 @@ function buildView() {
   // off because STR is a single stream.
   const filterBar = buildFilterBar(gF, {
     showOwner: true, showStream: false, showProperty: true, showClient: false,
-    storagePrefix: 'str'
+    storagePrefix: 'str', channelScope: gScope === 'all' ? null : 'company'
   }, (newState) => { if (newState) Object.assign(gF, newState); rebuildView(); });
   _container.appendChild(filterBar);
+
+  // Scope toggle (Company only / All incl. personal) — same as the other dashboards.
+  const scopeBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:12px' });
+  scopeBar.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)' }, 'Scope'));
+  for (const [val, label] of [['company', 'Company only'], ['all', 'All (incl. personal)']]) {
+    const isActive = gScope === val;
+    const btn = el('button', {
+      style: [
+        'padding:4px 14px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer;transition:all 120ms',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (gScope !== val) { gScope = val; rebuildView(); } };
+    scopeBar.appendChild(btn);
+  }
+  _container.appendChild(scopeBar);
 
   // Comparison line — reuses the shared helper.
   _container.appendChild(buildComparisonLine(curRange, cmpRange));
@@ -675,7 +729,7 @@ function buildStrOccupancyHeatmap(data) {
   const card = el('div', { class: 'card', style: 'margin-bottom:16px' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Occupancy Heatmap'),
-    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Booked nights ÷ days per month')
+    el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Occupied ÷ available nights per month (stay dates)')
   ));
   if (!props.length) { card.appendChild(mkEmptyState('No short-term rental properties found.')); return card; }
 
@@ -685,39 +739,51 @@ function buildStrOccupancyHeatmap(data) {
   htr.appendChild(mkTh({ label: 'Property', tip: 'Property name.' }));
   monthKeys.forEach(k => htr.appendChild(mkTh({
     label: k.label, right: true,
-    tip: 'Booked nights ÷ days in this month (color-coded: green ≥70%, amber ≥40%, red below).'
+    tip: 'Occupied ÷ available nights in this month, by stay date — the same calculation as the cell\'s detail and the Occupancy KPI (color-coded: green ≥70%, amber ≥40%, red below).'
   })));
   table.appendChild(el('thead', {}, htr));
+
+  // Payments grouped once by property|month (for the bookings footer), instead
+  // of filtering the whole period's payments for every cell.
+  const paysByPropMonth = new Map();
+  for (const pay of payments) {
+    const key = `${pay.propertyId}|${(pay.date || '').slice(0, 7)}`;
+    let arr = paysByPropMonth.get(key);
+    if (!arr) { arr = []; paysByPropMonth.set(key, arr); }
+    arr.push(pay);
+  }
 
   let anyNights = false;
   const tbody = el('tbody');
   for (const p of props) {
     const tr = el('tr');
     tr.appendChild(el('td', { style: 'white-space:nowrap;font-weight:600' }, shortName(p.name)));
+    const cal = getCalendar(p.id);
+    const { occupiedSet, ownerBlockSet } = buildOccupancySets(p.id, cal?.blocks || []);
     monthKeys.forEach(k => {
       const mk = k.key;
-      const monthPays = payments.filter(pay => pay.propertyId === p.id && (pay.date || '').slice(0, 7) === mk);
-      const nights = sumNights(monthPays);
-      const hasField = monthPays.some(pay => pay.airbnbNights != null);
-      if (nights > 0) anyNights = true;
+      const monthPays = paysByPropMonth.get(`${p.id}|${mk}`) || [];
       const dim = daysInMonth(+k.y, k.m - 1);
-      const pct = Math.min(100, dim > 0 ? nights / dim * 100 : 0);
+      const monthStart = `${mk}-01`;
+      const monthEnd   = `${mk}-${String(dim).padStart(2, '0')}`;
+      // Same stay-date calculation as this cell's detail modal and the
+      // Occupancy KPI: occupied ÷ available (owner-blocked, unsold nights
+      // excluded) — not payout-dated nights ÷ calendar days.
+      const occ = rangeOccupancy(occupiedSet, ownerBlockSet, monthStart, monthEnd);
+      const pct = occ.available > 0 ? occ.occupied / occ.available * 100 : 0;
+      if (occ.occupied > 0) anyNights = true;
+      const hasData = occ.occupied > 0 || monthPays.length > 0;
       const td = el('td', { class: 'right', style: 'cursor:pointer' });
-      if (!hasField || nights === 0) {
-        td.textContent = monthPays.length > 0 ? '—' : '';
+      if (!hasData || occ.available === 0) {
+        td.textContent = hasData ? '—' : '';
         td.style.color = 'var(--text-muted)';
       } else {
         td.textContent = pct.toFixed(0) + '%';
         td.style.color = pct >= 70 ? 'var(--success)' : pct >= 40 ? '#f59e0b' : 'var(--danger)';
       }
-      if (monthPays.length > 0) {
+      if (hasData) {
         td.title = 'Click for occupancy detail';
         td.onclick = () => {
-          const monthStart = `${mk}-01`;
-          const monthEnd   = `${mk}-${String(dim).padStart(2, '0')}`;
-          const cal = getCalendar(p.id);
-          const { occupiedSet, ownerBlockSet } = buildOccupancySets(p.id, cal?.blocks || []);
-          const occ = rangeOccupancy(occupiedSet, ownerBlockSet, monthStart, monthEnd);
           const monthOpen = Math.max(0, occ.available - occ.occupied);
           const monthPct  = occ.available > 0 ? occ.occupied / occ.available * 100 : 0;
 
@@ -734,7 +800,7 @@ function buildStrOccupancyHeatmap(data) {
                   { label: 'Occupied', value: occ.occupied.toString() },
                   { label: 'Available', value: occ.available.toString() }
                 ],
-                source: 'analytics-str.js:656 (rangeOccupancy():147)',
+                source: 'analytics-str.js buildStrOccupancyHeatmap() (rangeOccupancy())',
                 note: 'Available excludes owner-blocked nights that were never sold — a payment/reservation on an owner-blocked day still counts as occupied.'
               }
             }
@@ -749,7 +815,7 @@ function buildStrOccupancyHeatmap(data) {
               [
                 { key: 'date', label: 'Date', tip: 'Payment date.', format: v => fmtDate(v) },
                 { key: 'airbnbNights', label: 'Nights', right: true, tip: 'Nights booked on this payment record.', format: v => v != null ? String(v) : '—' },
-                { key: 'amount', label: 'Amount', right: true, tip: 'Paid amount for this record.', format: v => formatEUR(v) }
+                AMOUNT_COL
               ]
             );
           };
@@ -767,7 +833,7 @@ function buildStrOccupancyHeatmap(data) {
   if (!anyNights) {
     body.appendChild(el('div', {
       style: 'margin-top:10px;padding:10px 12px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;font-size:12px;color:#92400e'
-    }, '⚠ Occupancy data requires Airbnb nights. Import an Airbnb CSV in the Payments section to populate this field.'));
+    }, '⚠ Occupancy data requires booking check-in/check-out dates or an iCal calendar. Import an Airbnb CSV in the Payments section or connect the property\'s iCal feed.'));
   }
   card.appendChild(body);
   return card;
@@ -990,6 +1056,7 @@ function buildSpotlightContent(propId, curRange) {
     });
 
     charts.bar('str-spotlight-occ', {
+      formatValue: v => v.toFixed(0) + '%', // a percentage chart — not "€"
       labels: months.map(m => m.label),
       datasets: [{
         label: 'Occupancy %',
@@ -1011,7 +1078,7 @@ function buildForwardPipelineCard() {
   const card = el('div', { class: 'card', style: 'margin-bottom:16px' });
   card.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, 'Forward Pipeline — Next 90 Days'),
-    el('div', { class: 'card-subtitle' }, new Date().toISOString().slice(0,10) + ' → ' + (() => { const d = new Date(); d.setDate(d.getDate()+90); return d.toISOString().slice(0,10); })())
+    el('div', { class: 'card-subtitle' }, todayYmd() + ' → ' + addDaysYmd(todayYmd(), 90))
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
 
@@ -1178,7 +1245,7 @@ function openRevenueModal(data) {
   };
 
   if (hasCmp) {
-    const cmpTotalRev = cmpPayments.reduce((s, p) => s + p.amount, 0);
+    const cmpTotalRev = cmpPayments.reduce((s, p) => s + payEUR(p), 0);
     body.appendChild(mkCmpGrid([
       { label: 'Total Revenue',
         curVal: mkDrillValue(formatEUR(totalRev), () =>
@@ -1232,7 +1299,7 @@ function openRevenueModal(data) {
   ));
 
   body.appendChild(mkSectionLabel(`Top Bookings — ${data.rangeLabel}`));
-  const top = [...payments].sort((a, b) => b.amount - a.amount).slice(0, 10);
+  const top = [...payments].sort((a, b) => payEUR(b) - payEUR(a)).slice(0, 10);
   body.appendChild(mkModalTable(
     [
       { label: 'Date', tip: 'Payment date.' },
@@ -1244,7 +1311,7 @@ function openRevenueModal(data) {
       p.date || '—',
       shortName(byId('properties', p.propertyId)?.name || '—'),
       (p.airbnbNights || '—').toString(),
-      formatEUR(p.amount)
+      formatEUR(payEUR(p))
     ]),
     { highlight: 3 }
   ));
@@ -1562,7 +1629,7 @@ function openMonthRevenueModal(monthIdx, data) {
   const k = monthKeys[monthIdx];
   if (!k) return;
   const moPays = payments.filter(p => (p.date || '').startsWith(k.key));
-  const moRev  = moPays.reduce((s, p) => s + p.amount, 0);
+  const moRev  = moPays.reduce((s, p) => s + payEUR(p), 0);
 
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
   body.appendChild(mkSummaryGrid([
@@ -1590,7 +1657,7 @@ function openMonthRevenueModal(monthIdx, data) {
     });
     const propRows = [...byProp.entries()].map(([propId, pays]) => ({
       name: shortName(byId('properties', propId)?.name || '—'),
-      rev: pays.reduce((s, p) => s + p.amount, 0),
+      rev: pays.reduce((s, p) => s + payEUR(p), 0),
       nights: sumNights(pays),
       count: pays.length,
       pays
@@ -1622,7 +1689,7 @@ function openMonthRevenueModal(monthIdx, data) {
           { key: 'airbnbCheckIn', label: 'Check-in', tip: 'Check-in date (falls back to payment date).', format: (v, row) => v || row.date || '—' },
           { key: 'propertyId', label: 'Property', tip: 'Property this booking is attributed to.', format: v => shortName(byId('properties', v)?.name || '—') },
           { key: 'airbnbNights', label: 'Nights', right: true, tip: 'Nights booked on this payment record.', format: v => v != null ? String(v) : '—' },
-          { key: 'amount', label: 'Amount', right: true, tip: 'Paid amount for this record.', format: v => formatEUR(v) }
+          AMOUNT_COL
         ]
       );
     };
@@ -1694,8 +1761,8 @@ function openMonthSpotlightModal(monthIdx, propId, months, curRange) {
           { key: 'airbnbCheckIn', label: 'Check-in', tip: 'Check-in date.', format: (v, row) => v || row.date || '—' },
           { key: 'airbnbCheckOut', label: 'Check-out', tip: 'Check-out date.', format: v => v || '—' },
           { key: 'airbnbNights', label: 'Nights', right: true, tip: 'Nights booked on this payment record.', format: v => v != null ? String(v) : '—' },
-          { key: 'avgNightlyRate', label: 'ADR', right: true, tip: 'Average nightly rate for this booking.', format: v => v ? formatEUR(v) : '—' },
-          { key: 'amount', label: 'Amount', right: true, tip: 'Paid amount for this record.', format: v => formatEUR(v) }
+          { key: 'avgNightlyRate', label: 'ADR', right: true, tip: 'Average nightly rate for this booking, in EUR.', format: (v, row) => v ? formatEUR(toEUR(v, row.currency, row.date)) : '—' },
+          AMOUNT_COL
         ]
       );
     };

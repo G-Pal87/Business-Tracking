@@ -9,9 +9,9 @@ import {
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
-  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
+  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK, groupByMonthKey, mkTh, mkDrillValue } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK, groupByMonthKey, mkTh, mkDrillValue, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceOwner, invoiceDueDate, invoiceAgingBucket, AGING_BUCKETS } from './analytics-helpers.js';
 import { buildServicesSection, destroyServiceCharts, resetServiceStatusFilter } from './analytics-services.js';
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -37,10 +37,14 @@ const REV_COLS = [
 // (outstanding/aging), so they stay VAT-inclusive (`.total`) like drillRevRows — P&L call
 // sites pre-map their invoices through pnlInvs() below before calling in, rather than
 // baking VAT treatment into the shared helper.
+// Stream bucket of a payment/invoice — the shared resolver (stream, else
+// property type) with an 'other' fallback so breakdowns sum to totals.
+const streamKey = r => resolveStream(r) || 'other';
+
 function revByStream(pays, invs) {
   const m = new Map();
-  (pays || []).forEach(p => { const k = p.stream || 'other'; const e = m.get(k) || { key: k, eur: 0, count: 0 }; e.eur += toEUR(p.amount, p.currency, p.date); e.count++; m.set(k, e); });
-  (invs || []).forEach(i => { const k = i.stream || 'other'; const e = m.get(k) || { key: k, eur: 0, count: 0 }; e.eur += toEUR(i.total, i.currency, i.issueDate); e.count++; m.set(k, e); });
+  (pays || []).forEach(p => { const k = streamKey(p); const e = m.get(k) || { key: k, eur: 0, count: 0 }; e.eur += toEUR(p.amount, p.currency, p.date); e.count++; m.set(k, e); });
+  (invs || []).forEach(i => { const k = streamKey(i); const e = m.get(k) || { key: k, eur: 0, count: 0 }; e.eur += toEUR(i.total, i.currency, i.issueDate); e.count++; m.set(k, e); });
   return [...m.values()].sort((a, b) => b.eur - a.eur).map(e => ({ ...e, name: STREAMS[e.key]?.label || e.key }));
 }
 
@@ -134,34 +138,39 @@ export default {
 };
 
 // ── Data ──────────────────────────────────────────────────────────────────────
+// Invoices passing this dashboard's filters (any status): stream, the shared
+// invoiceOwner() rule, property (invoices without a propertyId drop out while
+// a property filter is active) and client. `extra` adds e.g. a date test.
+function filteredInvoices(extra = () => true) {
+  const { mStream, mInvOwner, mProperty, mClient } = makeMatchers(gF);
+  return listActive('invoices').filter(i => extra(i) && mStream(i) && mInvOwner(i) && mProperty(i) && mClient(i));
+}
+
 function getData(start, end) {
   const inRange = d => d && d >= start && d <= end;
-  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mOwner, mProperty } = makeMatchers(gF);
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
     : r => isCompanyRecord(r, coPropIds);
 
-  // Property filter → isolate rental revenue (exclude invoices entirely)
+  // Property filter → invoices not tied to a selected property drop out (mProperty)
   // Client filter   → isolate service revenue (exclude payments entirely)
   const payments = gF.clientIds.size > 0 ? [] : listActivePayments().filter(p =>
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
   );
-  const invoices = gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i =>
-    i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
-  );
-  const outstanding = gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i =>
-    ['sent', 'overdue'].includes(i.status) &&
-    inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
-  );
+  // Invoices classified once by the shared invoiceBuckets() rule.
+  const invBk = invoiceBuckets(filteredInvoices(i => inRange(i.issueDate)));
+  const invoices    = invBk.paid;
+  const outstanding = invBk.outstanding;
 
   // svcRev/total are P&L revenue figures throughout this dashboard, so they exclude VAT
   // (subtotal). `outstanding`/outstandingTotal stay VAT-inclusive — that's the real amount
   // still owed by clients.
   const propRev     = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-  const svcRev      = invoices.reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), 0);
-  const svcRevCash  = invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
-  const outTotal = outstanding.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const svcRev      = invBk.paidNet;
+  const svcRevCash  = invBk.paidGross;
+  const outTotal = invBk.outstandingGross;
   // Pre-bucket by month once so the chart renderers don't re-filter the full
   // arrays per month (keys/derivation match the inline filters exactly).
   return {
@@ -178,8 +187,8 @@ function buildKpiSection(cur, cmp, cmpRange) {
 
   // Stream-level revenue
   const strMap = new Map();
-  payments.forEach(p => { const s = p.stream || 'other'; strMap.set(s, (strMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date)); });
-  invoices.forEach(i => { const s = i.stream || 'other'; strMap.set(s, (strMap.get(s) || 0) + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)); });
+  payments.forEach(p => { const s = streamKey(p); strMap.set(s, (strMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date)); });
+  invoices.forEach(i => { const s = streamKey(i); strMap.set(s, (strMap.get(s) || 0) + invoiceNetEUR(i)); });
   const stRev  = strMap.get('short_term_rental')  || 0;
   const ltRev  = strMap.get('long_term_rental')   || 0;
   const csRev  = strMap.get('customer_success')   || 0;
@@ -189,8 +198,8 @@ function buildKpiSection(cur, cmp, cmpRange) {
   const activeClientIds = new Set(invoices.map(i => i.clientId).filter(Boolean));
 
   // STR / LTR revenue-generating property sets (denominator = only props with paid revenue)
-  const strPropIds = new Set(payments.filter(p => p.stream === 'short_term_rental' && p.propertyId).map(p => p.propertyId));
-  const ltrPropIds = new Set(payments.filter(p => p.stream === 'long_term_rental'  && p.propertyId).map(p => p.propertyId));
+  const strPropIds = new Set(payments.filter(p => streamKey(p) === 'short_term_rental' && p.propertyId).map(p => p.propertyId));
+  const ltrPropIds = new Set(payments.filter(p => streamKey(p) === 'long_term_rental'  && p.propertyId).map(p => p.propertyId));
   const avgStr     = strPropIds.size > 0 ? stRev / strPropIds.size : 0;
   const avgLtr     = ltrPropIds.size > 0 ? ltRev / ltrPropIds.size : 0;
   const allRentalPropIds = new Set([...strPropIds, ...ltrPropIds]);
@@ -201,7 +210,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
   {
     const pMap = new Map(), iMap = new Map();
     payments.forEach(p => pMap.set(p.propertyId, (pMap.get(p.propertyId) || 0) + toEUR(p.amount, p.currency, p.date)));
-    invoices.forEach(i => iMap.set(i.clientId,   (iMap.get(i.clientId)   || 0) + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)));
+    invoices.forEach(i => iMap.set(i.clientId,   (iMap.get(i.clientId)   || 0) + invoiceNetEUR(i)));
     pMap.forEach((v, id) => contribs.push({ id, name: byId('properties', id)?.name || 'Unknown', val: v, type: 'Property' }));
     iMap.forEach((v, id) => contribs.push({ id, name: byId('clients',    id)?.name || 'Unknown', val: v, type: 'Client'   }));
     contribs.sort((a, b) => b.val - a.val);
@@ -246,10 +255,10 @@ function buildKpiSection(cur, cmp, cmpRange) {
 
     // Stream breakdown table
     const streamRows = [
-      { label: 'Short-term Rental', eur: stRev, drill: () => openStreamDrill('Short-term Rental', payments.filter(p => p.stream === 'short_term_rental'), []) },
-      { label: 'Long-term Rental',  eur: ltRev, drill: () => openStreamDrill('Long-term Rental',  payments.filter(p => p.stream === 'long_term_rental'),  []) },
-      { label: 'Customer Success',  eur: csRev, drill: () => openStreamDrill('Customer Success',  [], invoices.filter(i => i.stream === 'customer_success')) },
-      { label: 'Marketing Services', eur: mktRev, drill: () => openStreamDrill('Marketing Services', [], invoices.filter(i => i.stream === 'marketing_services')) },
+      { label: 'Short-term Rental', eur: stRev, drill: () => openStreamDrill('Short-term Rental', payments.filter(p => streamKey(p) === 'short_term_rental'), []) },
+      { label: 'Long-term Rental',  eur: ltRev, drill: () => openStreamDrill('Long-term Rental',  payments.filter(p => streamKey(p) === 'long_term_rental'),  []) },
+      { label: 'Customer Success',  eur: csRev, drill: () => openStreamDrill('Customer Success',  [], invoices.filter(i => streamKey(i) === 'customer_success')) },
+      { label: 'Marketing Services', eur: mktRev, drill: () => openStreamDrill('Marketing Services', [], invoices.filter(i => streamKey(i) === 'marketing_services')) },
     ].filter(r => r.eur > 0);
     if (streamRows.length) {
       body.appendChild(mkSectionLabel('Revenue by Stream'));
@@ -291,17 +300,17 @@ function buildKpiSection(cur, cmp, cmpRange) {
 
     if (cmp) {
       const cmpStr = new Map();
-      (cmp.invoices || []).forEach(i => { const s = i.stream || 'other'; cmpStr.set(s, (cmpStr.get(s)||0) + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)); });
+      (cmp.invoices || []).forEach(i => { const s = streamKey(i); cmpStr.set(s, (cmpStr.get(s)||0) + invoiceNetEUR(i)); });
       body.appendChild(mkCmpGrid([
         { label: 'Service Revenue',
           curVal: mkDrillValue(formatEUR(svcRev), () => drillDownModal('Service Revenue', drillRevRowsPnL([], invoices), REV_COLS)),
           cmpVal: mkDrillValue(formatEUR(cmp.svcRev), () => drillDownModal(`Service Revenue — ${cl}`, drillRevRowsPnL([], cmp.invoices), REV_COLS)) },
         { label: 'Customer Success',
-          curVal: mkDrillValue(formatEUR(csRev), () => drillDownModal('Customer Success', drillRevRowsPnL([], invoices.filter(i => i.stream === 'customer_success')), REV_COLS)),
-          cmpVal: mkDrillValue(formatEUR(cmpStr.get('customer_success') || 0), () => drillDownModal(`Customer Success — ${cl}`, drillRevRowsPnL([], (cmp.invoices || []).filter(i => i.stream === 'customer_success')), REV_COLS)) },
+          curVal: mkDrillValue(formatEUR(csRev), () => drillDownModal('Customer Success', drillRevRowsPnL([], invoices.filter(i => streamKey(i) === 'customer_success')), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmpStr.get('customer_success') || 0), () => drillDownModal(`Customer Success — ${cl}`, drillRevRowsPnL([], (cmp.invoices || []).filter(i => streamKey(i) === 'customer_success')), REV_COLS)) },
         { label: 'Marketing Services',
-          curVal: mkDrillValue(formatEUR(mktRev), () => drillDownModal('Marketing Services', drillRevRowsPnL([], invoices.filter(i => i.stream === 'marketing_services')), REV_COLS)),
-          cmpVal: mkDrillValue(formatEUR(cmpStr.get('marketing_services') || 0), () => drillDownModal(`Marketing Services — ${cl}`, drillRevRowsPnL([], (cmp.invoices || []).filter(i => i.stream === 'marketing_services')), REV_COLS)) },
+          curVal: mkDrillValue(formatEUR(mktRev), () => drillDownModal('Marketing Services', drillRevRowsPnL([], invoices.filter(i => streamKey(i) === 'marketing_services')), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmpStr.get('marketing_services') || 0), () => drillDownModal(`Marketing Services — ${cl}`, drillRevRowsPnL([], (cmp.invoices || []).filter(i => streamKey(i) === 'marketing_services')), REV_COLS)) },
       ], 'Current Period', cl));
     } else {
       // CS vs Marketing boxes
@@ -312,7 +321,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
       if (streamData.length) {
         const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${streamData.length},1fr);gap:12px;margin-bottom:20px` });
         streamData.forEach(s => sgrid.appendChild(mkSummaryBox(s.label,
-          mkDrillValue(formatEUR(s.eur), () => openStreamDrill(s.label, [], invoices.filter(i => i.stream === s.key))),
+          mkDrillValue(formatEUR(s.eur), () => openStreamDrill(s.label, [], invoices.filter(i => streamKey(i) === s.key))),
           svcRev > 0 ? `${(s.eur / svcRev * 100).toFixed(0)}% of service revenue` : null)));
         body.appendChild(sgrid);
       }
@@ -323,7 +332,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
     invoices.forEach(i => {
       const id   = i.clientId;
       const name = byId('clients', id)?.name || 'Unknown';
-      const eur  = toEUR(i.subtotal ?? i.total, i.currency, i.issueDate);
+      const eur  = invoiceNetEUR(i);
       const e    = clientMap.get(id) || { id, name, eur: 0, count: 0 };
       e.eur  += eur;
       e.count++;
@@ -355,17 +364,17 @@ function buildKpiSection(cur, cmp, cmpRange) {
 
     if (cmp) {
       const cmpStr = new Map();
-      (cmp.payments || []).forEach(p => { const s = p.stream || 'other'; cmpStr.set(s, (cmpStr.get(s)||0) + toEUR(p.amount, p.currency, p.date)); });
+      (cmp.payments || []).forEach(p => { const s = streamKey(p); cmpStr.set(s, (cmpStr.get(s)||0) + toEUR(p.amount, p.currency, p.date)); });
       body.appendChild(mkCmpGrid([
         { label: 'Rental Revenue',
           curVal: mkDrillValue(formatEUR(propRev), () => drillDownModal('Rental Revenue', drillRevRowsPnL(payments, []), REV_COLS)),
           cmpVal: mkDrillValue(formatEUR(cmp.propRev), () => drillDownModal(`Rental Revenue — ${cl}`, drillRevRowsPnL(cmp.payments, []), REV_COLS)) },
         { label: 'Short-term Rental',
-          curVal: mkDrillValue(formatEUR(stRev), () => drillDownModal('Short-term Rental', drillRevRowsPnL(payments.filter(p => p.stream === 'short_term_rental'), []), REV_COLS)),
-          cmpVal: mkDrillValue(formatEUR(cmpStr.get('short_term_rental') || 0), () => drillDownModal(`Short-term Rental — ${cl}`, drillRevRowsPnL((cmp.payments || []).filter(p => p.stream === 'short_term_rental'), []), REV_COLS)) },
+          curVal: mkDrillValue(formatEUR(stRev), () => drillDownModal('Short-term Rental', drillRevRowsPnL(payments.filter(p => streamKey(p) === 'short_term_rental'), []), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmpStr.get('short_term_rental') || 0), () => drillDownModal(`Short-term Rental — ${cl}`, drillRevRowsPnL((cmp.payments || []).filter(p => streamKey(p) === 'short_term_rental'), []), REV_COLS)) },
         { label: 'Long-term Rental',
-          curVal: mkDrillValue(formatEUR(ltRev), () => drillDownModal('Long-term Rental', drillRevRowsPnL(payments.filter(p => p.stream === 'long_term_rental'), []), REV_COLS)),
-          cmpVal: mkDrillValue(formatEUR(cmpStr.get('long_term_rental') || 0), () => drillDownModal(`Long-term Rental — ${cl}`, drillRevRowsPnL((cmp.payments || []).filter(p => p.stream === 'long_term_rental'), []), REV_COLS)) },
+          curVal: mkDrillValue(formatEUR(ltRev), () => drillDownModal('Long-term Rental', drillRevRowsPnL(payments.filter(p => streamKey(p) === 'long_term_rental'), []), REV_COLS)),
+          cmpVal: mkDrillValue(formatEUR(cmpStr.get('long_term_rental') || 0), () => drillDownModal(`Long-term Rental — ${cl}`, drillRevRowsPnL((cmp.payments || []).filter(p => streamKey(p) === 'long_term_rental'), []), REV_COLS)) },
       ], 'Current Period', cl));
     } else {
       // STR vs LTR summary boxes
@@ -376,7 +385,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
       if (typeData.length) {
         const sgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${typeData.length},1fr);gap:12px;margin-bottom:20px` });
         typeData.forEach(t => sgrid.appendChild(mkSummaryBox(t.label,
-          mkDrillValue(formatEUR(t.eur), () => openStreamDrill(t.label, payments.filter(p => p.stream === t.key), [])),
+          mkDrillValue(formatEUR(t.eur), () => openStreamDrill(t.label, payments.filter(p => streamKey(p) === t.key), [])),
           `${t.props} prop${t.props !== 1 ? 's' : ''} · ${propRev > 0 ? (t.eur / propRev * 100).toFixed(0) : 0}% of rental`)));
         body.appendChild(sgrid);
       }
@@ -388,7 +397,7 @@ function buildKpiSection(cur, cmp, cmpRange) {
       const id   = p.propertyId;
       const prop = byId('properties', id);
       const name = prop?.name || 'Unknown';
-      const type = p.stream === 'short_term_rental' ? 'STR' : p.stream === 'long_term_rental' ? 'LTR' : 'Other';
+      const type = streamKey(p) === 'short_term_rental' ? 'STR' : streamKey(p) === 'long_term_rental' ? 'LTR' : 'Other';
       const eur  = toEUR(p.amount, p.currency, p.date);
       const e    = propRevMap.get(id) || { id, name, type, eur: 0, count: 0 };
       e.eur  += eur;
@@ -497,9 +506,9 @@ function buildKpiSection(cur, cmp, cmpRange) {
     },
     lines: [
       { label: 'Customer Success',   value: formatEUR(csRev),  pct: pct(csRev,  svcRev),
-        onClick: () => openStreamDrill('Customer Success',   [], invoices.filter(i => i.stream === 'customer_success')) },
+        onClick: () => openStreamDrill('Customer Success',   [], invoices.filter(i => streamKey(i) === 'customer_success')) },
       { label: 'Marketing Services', value: formatEUR(mktRev), pct: pct(mktRev, svcRev),
-        onClick: () => openStreamDrill('Marketing Services', [], invoices.filter(i => i.stream === 'marketing_services')) },
+        onClick: () => openStreamDrill('Marketing Services', [], invoices.filter(i => streamKey(i) === 'marketing_services')) },
     ]
   }));
 
@@ -519,9 +528,9 @@ function buildKpiSection(cur, cmp, cmpRange) {
     },
     lines: [
       { label: 'Short-term', value: formatEUR(stRev), pct: pct(stRev, propRev),
-        onClick: () => openStreamDrill('Short-term Rental', payments.filter(p => p.stream === 'short_term_rental'), []) },
+        onClick: () => openStreamDrill('Short-term Rental', payments.filter(p => streamKey(p) === 'short_term_rental'), []) },
       { label: 'Long-term',  value: formatEUR(ltRev), pct: pct(ltRev, propRev),
-        onClick: () => openStreamDrill('Long-term Rental',  payments.filter(p => p.stream === 'long_term_rental'),  []) },
+        onClick: () => openStreamDrill('Long-term Rental',  payments.filter(p => streamKey(p) === 'long_term_rental'),  []) },
     ]
   }));
 
@@ -609,8 +618,8 @@ function buildKpiSection(cur, cmp, cmpRange) {
       body.appendChild(mkModalTable(
         [{ label: 'Rental Type' }, { label: 'Revenue', right: true }, { label: 'Revenue Properties', right: true, muted: true }, { label: 'Avg / Property', right: true }],
         [
-          ['Short-term', mkDrillValue(formatEUR(stRev), () => openStreamDrill('Short-term Rental', payments.filter(p => p.stream === 'short_term_rental'), [])), String(strPropIds.size), formatEUR(strPropIds.size > 0 ? avgStr : 0)],
-          ['Long-term',  mkDrillValue(formatEUR(ltRev), () => openStreamDrill('Long-term Rental',  payments.filter(p => p.stream === 'long_term_rental'),  [])), String(ltrPropIds.size), formatEUR(ltrPropIds.size > 0 ? avgLtr : 0)]
+          ['Short-term', mkDrillValue(formatEUR(stRev), () => openStreamDrill('Short-term Rental', payments.filter(p => streamKey(p) === 'short_term_rental'), [])), String(strPropIds.size), formatEUR(strPropIds.size > 0 ? avgStr : 0)],
+          ['Long-term',  mkDrillValue(formatEUR(ltRev), () => openStreamDrill('Long-term Rental',  payments.filter(p => streamKey(p) === 'long_term_rental'),  [])), String(ltrPropIds.size), formatEUR(ltrPropIds.size > 0 ? avgLtr : 0)]
         ]
       ));
       openModal({ title: 'Avg Rental Revenue / Property', body, large: true });
@@ -620,13 +629,13 @@ function buildKpiSection(cur, cmp, cmpRange) {
         label: 'Short-term',
         value: strPropIds.size > 0 ? formatEUR(avgStr) : '€0',
         pct:   strPropIds.size > 0 ? `${strPropIds.size} prop${strPropIds.size > 1 ? 's' : ''}` : 'no revenue',
-        onClick: () => openStreamDrill('Short-term Rental', payments.filter(p => p.stream === 'short_term_rental'), [])
+        onClick: () => openStreamDrill('Short-term Rental', payments.filter(p => streamKey(p) === 'short_term_rental'), [])
       },
       {
         label: 'Long-term',
         value: ltrPropIds.size > 0 ? formatEUR(avgLtr) : '€0',
         pct:   ltrPropIds.size > 0 ? `${ltrPropIds.size} prop${ltrPropIds.size > 1 ? 's' : ''}` : 'no revenue',
-        onClick: () => openStreamDrill('Long-term Rental', payments.filter(p => p.stream === 'long_term_rental'), [])
+        onClick: () => openStreamDrill('Long-term Rental', payments.filter(p => streamKey(p) === 'long_term_rental'), [])
       }
     ]
   }));
@@ -661,7 +670,7 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
     const key  = 'c:' + (i.clientId || 'unknown');
     const name = byId('clients', i.clientId)?.name || 'Unknown Client';
     const e    = entityMap.get(key) || { name, rev: 0, pays: [], invs: [] };
-    e.rev += toEUR(i.subtotal ?? i.total, i.currency, i.issueDate);
+    e.rev += invoiceNetEUR(i);
     e.invs.push({ ...i, total: i.subtotal ?? i.total });
     entityMap.set(key, e);
   });
@@ -801,13 +810,13 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
     const pct = outstandingTotal / invoicedTotal * 100;
     signals.push({
       title:   'Outstanding Revenue',
-      text:    `${formatEUR(outstandingTotal)} outstanding — ${pct.toFixed(0)}% of invoiced service revenue.${pct > 30 ? ' High collection risk.' : ''}`,
+      text:    `${formatEUR(outstandingTotal)} outstanding (incl. VAT) — ${pct.toFixed(0)}% of invoiced service revenue.${pct > 30 ? ' High collection risk.' : ''}`,
       severity: pct > 50 ? 'At Risk' : 'Watch',
       inspect: 'Services Dashboard',
       onClick: () => {
         const body = el('div');
         body.appendChild(mkSummaryGrid([
-          { label: 'Outstanding',   value: formatEUR(outstandingTotal) },
+          { label: 'Outstanding (incl. VAT)', value: formatEUR(outstandingTotal) },
           { label: 'Invoices',     value: String(outstanding.length) },
           { label: '% of Invoiced', value: `${pct.toFixed(1)}%` }
         ], 3));
@@ -875,6 +884,8 @@ function buildRevenueInsights(curData, cmpData, cmpRange) {
 // ── Rebuild ───────────────────────────────────────────────────────────────────
 function rebuildView() {
   CHART_IDS.forEach(id => charts.destroy(id));
+  destroyServiceCharts(); // the Services section is rebuilt with this page
+
   const c = document.getElementById('content');
   if (!c) return;
   c.innerHTML = '';
@@ -886,7 +897,7 @@ function rebuildView() {
 function renderTrend({ payments, invoices, payByMonth, invByMonth }, months) {
   const data = months.map(m => {
     const p = (payByMonth.get(m.key) || []).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0);
-    const i = (invByMonth.get(m.key) || []).reduce((s, x) => s + toEUR(x.subtotal ?? x.total, x.currency, x.issueDate), 0);
+    const i = (invByMonth.get(m.key) || []).reduce((s, x) => s + invoiceNetEUR(x), 0);
     return Math.round(p + i);
   });
   if (!data.some(v => v > 0)) return;
@@ -927,8 +938,8 @@ function renderTrend({ payments, invoices, payByMonth, invByMonth }, months) {
 function renderStreamBar({ payments, invoices }, months) {
   const smMap = new Map();
   const add   = (sk, mk, eur) => { if (!smMap.has(sk)) smMap.set(sk, new Map()); const m = smMap.get(sk); m.set(mk, (m.get(mk) || 0) + eur); };
-  payments.forEach(p => { const mk = p.date?.slice(0, 7); if (mk) add(p.stream || 'other', mk, toEUR(p.amount, p.currency, p.date)); });
-  invoices.forEach(i => { const mk = (i.issueDate || '').slice(0, 7); if (mk) add(i.stream || 'other', mk, toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)); });
+  payments.forEach(p => { const mk = p.date?.slice(0, 7); if (mk) add(streamKey(p), mk, toEUR(p.amount, p.currency, p.date)); });
+  invoices.forEach(i => { const mk = (i.issueDate || '').slice(0, 7); if (mk) add(streamKey(i), mk, invoiceNetEUR(i)); });
   if (!smMap.size) return;
   const orderedKeys = [...Object.keys(STREAMS).filter(k => smMap.has(k)), ...[...smMap.keys()].filter(k => !STREAMS[k])];
   charts.bar('rev-stream-bar', {
@@ -944,8 +955,8 @@ function renderStreamBar({ payments, invoices }, months) {
       if (!mk) return;
       const sk = orderedKeys[dsIdx];
       const title = `${label} — ${STREAMS[sk]?.label || sk}`;
-      const sPays = payments.filter(p => p.date?.slice(0, 7) === mk && (p.stream || 'other') === sk);
-      const sInvs = pnlInvs(invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk && (i.stream || 'other') === sk));
+      const sPays = payments.filter(p => p.date?.slice(0, 7) === mk && streamKey(p) === sk);
+      const sInvs = pnlInvs(invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk && streamKey(i) === sk));
       const sTotal = sPays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0) + sInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
       const body = el('div');
       body.appendChild(mkSummaryGrid([
@@ -973,7 +984,7 @@ function renderStreamBar({ payments, invoices }, months) {
 function renderOwnerDonut({ payments, invoices }) {
   const owMap = new Map();
   payments.forEach(p => { const ow = byId('properties', p.propertyId)?.owner || 'both'; owMap.set(ow, (owMap.get(ow) || 0) + toEUR(p.amount, p.currency, p.date)); });
-  invoices.forEach(i => { const ow = i.owner || 'both'; owMap.set(ow, (owMap.get(ow) || 0) + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)); });
+  invoices.forEach(i => { const ow = invoiceOwner(i); owMap.set(ow, (owMap.get(ow) || 0) + invoiceNetEUR(i)); });
   const keys = Object.keys(OWNERS).filter(k => (owMap.get(k) || 0) > 0);
   if (!keys.length) return;
   charts.doughnut('rev-owner-donut', {
@@ -983,7 +994,7 @@ function renderOwnerDonut({ payments, invoices }) {
     onClickItem: (_, idx) => {
       const ok = keys[idx];
       const oPays = payments.filter(p => (byId('properties', p.propertyId)?.owner || 'both') === ok);
-      const oInvs = pnlInvs(invoices.filter(i => (i.owner || 'both') === ok));
+      const oInvs = pnlInvs(invoices.filter(i => invoiceOwner(i) === ok));
       const oTotal = oPays.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0) + oInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
       const body = el('div');
       body.appendChild(mkSummaryGrid([
@@ -1059,7 +1070,7 @@ function renderPropBar({ payments }) {
 
 function renderMixEvolution({ payments, invoices, payByMonth, invByMonth }, months) {
   const rental  = months.map(m => Math.round((payByMonth.get(m.key) || []).reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0)));
-  const service = months.map(m => Math.round((invByMonth.get(m.key) || []).reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), 0)));
+  const service = months.map(m => Math.round((invByMonth.get(m.key) || []).reduce((s, i) => s + invoiceNetEUR(i), 0)));
   if (!rental.some(v => v > 0) && !service.some(v => v > 0)) return;
   charts.bar('rev-mix-evolution', {
     labels: months.map(m => m.label),
@@ -1083,7 +1094,7 @@ function renderMixEvolution({ payments, invoices, payByMonth, invByMonth }, mont
 function renderGrowthTrend({ payments, invoices, payByMonth, invByMonth }, months) {
   const totals = months.map(m => {
     const p = (payByMonth.get(m.key) || []).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0);
-    const i = (invByMonth.get(m.key) || []).reduce((s, x) => s + toEUR(x.subtotal ?? x.total, x.currency, x.issueDate), 0);
+    const i = (invByMonth.get(m.key) || []).reduce((s, x) => s + invoiceNetEUR(x), 0);
     return p + i;
   });
   const growthData = totals.map((v, i) => {
@@ -1143,32 +1154,27 @@ function renderGrowthTrend({ payments, invoices, payByMonth, invByMonth }, month
   });
 }
 
-function renderPaidOutstanding({ invoices, invByMonth }, months, start, end) {
-  const { mStream, mOwner, mClient } = makeMatchers(gF);
-  const allOut = gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i =>
-    ['sent', 'overdue'].includes(i.status) &&
-    i.issueDate && i.issueDate >= start && i.issueDate <= end &&
-    mStream(i) && mOwner(i) && mClient(i)
-  );
-  const outByMonth = groupByMonthKey(allOut, i => i.issueDate);
-  const paidData = months.map(m => Math.round((invByMonth.get(m.key) || []).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0)));
-  const outData  = months.map(m => Math.round((outByMonth.get(m.key) || []).reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0)));
+function renderPaidOutstanding({ invByMonth, outstanding }, months) {
+  // Collections view: both series are VAT-inclusive invoice totals (what the
+  // client pays / still owes), so Paid and Outstanding are comparable — the
+  // same basis as the collection rate. P&L revenue elsewhere is net of VAT.
+  const outByMonth = groupByMonthKey(outstanding, i => i.issueDate);
+  const paidData = months.map(m => Math.round((invByMonth.get(m.key) || []).reduce((s, i) => s + invoiceGrossEUR(i), 0)));
+  const outData  = months.map(m => Math.round((outByMonth.get(m.key) || []).reduce((s, i) => s + invoiceGrossEUR(i), 0)));
   if (!paidData.some(v => v > 0) && !outData.some(v => v > 0)) return;
   charts.bar('rev-paid-outstanding', {
     labels: months.map(m => m.label),
     datasets: [
-      { label: 'Paid',        data: paidData, backgroundColor: '#10b981' },
-      { label: 'Outstanding', data: outData,  backgroundColor: '#f59e0b' }
+      { label: 'Paid (incl. VAT)',        data: paidData, backgroundColor: '#10b981' },
+      { label: 'Outstanding (incl. VAT)', data: outData,  backgroundColor: '#f59e0b' }
     ],
     onClickItem: (_, idx, dsIdx) => {
       const mk = months[idx]?.key;
       if (!mk) return;
-      const title = dsIdx === 0 ? `${months[idx].label} — Paid` : `${months[idx].label} — Outstanding`;
-      // Paid bucket is P&L revenue (VAT-exclusive); Outstanding bucket is AR (VAT-inclusive, real amount owed).
-      const mInvs = dsIdx === 0
-        ? pnlInvs(invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk))
-        : allOut.filter(i => (i.issueDate || '').slice(0, 7) === mk);
-      const eur = mInvs.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+      const title = dsIdx === 0 ? `${months[idx].label} — Paid (incl. VAT)` : `${months[idx].label} — Outstanding (incl. VAT)`;
+      // Same VAT-inclusive basis as the bar that was clicked.
+      const mInvs = (dsIdx === 0 ? invByMonth : outByMonth).get(mk) || [];
+      const eur = mInvs.reduce((s, i) => s + invoiceGrossEUR(i), 0);
       const body = el('div');
       body.appendChild(mkSummaryGrid([
         { label: dsIdx === 0 ? 'Paid' : 'Outstanding', value: formatEUR(eur) },
@@ -1195,7 +1201,7 @@ function renderPaidOutstanding({ invoices, invByMonth }, months, start, end) {
 function renderConcentration({ payments, invoices }) {
   const cMap = new Map();
   payments.forEach(p => { const k = 'p:' + p.propertyId; cMap.set(k, { name: byId('properties', p.propertyId)?.name || 'Unknown', eur: (cMap.get(k)?.eur || 0) + toEUR(p.amount, p.currency, p.date), id: p.propertyId, isPay: true }); });
-  invoices.forEach(i => { const k = 'c:' + i.clientId;   cMap.set(k, { name: byId('clients', i.clientId)?.name || 'Unknown', eur: (cMap.get(k)?.eur || 0) + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), id: i.clientId,   isPay: false }); });
+  invoices.forEach(i => { const k = 'c:' + i.clientId;   cMap.set(k, { name: byId('clients', i.clientId)?.name || 'Unknown', eur: (cMap.get(k)?.eur || 0) + invoiceNetEUR(i), id: i.clientId,   isPay: false }); });
   const sorted = [...cMap.values()].sort((a, b) => b.eur - a.eur);
   if (!sorted.length) return;
   const top5   = sorted.slice(0, 5);
@@ -1259,38 +1265,26 @@ function renderConcentration({ payments, invoices }) {
 
 function renderAging({ outstanding }) {
   if (!outstanding.length) return;
-  const today   = new Date().toISOString().slice(0, 10);
-  const buckets = [0, 0, 0, 0];
-  const items   = [[], [], [], []];
+  // Shared aging rule (analytics-helpers invoiceAgingBucket): days past the
+  // due date (issue date + 30 when none is set); not-yet-due invoices get
+  // their own "Not due" bucket. Same rule as the Services aging chart.
+  const buckets = AGING_BUCKETS.map(() => 0);
+  const items   = AGING_BUCKETS.map(() => []);
   outstanding.forEach(i => {
-    // Use dueDate if available; otherwise compute due date as issueDate + 30 days
-    let dueDate = i.dueDate;
-    if (!dueDate && i.issueDate) {
-      // `new Date(i.issueDate)` parses a date-only string as UTC midnight;
-      // setDate/getDate operate in local time, so in negative-UTC-offset
-      // timezones this could shift the computed due date a day off once
-      // re-serialized via toISOString (which is UTC). Do the whole
-      // computation in UTC to match how it was parsed and re-serialized.
-      const d = new Date(i.issueDate);
-      d.setUTCDate(d.getUTCDate() + 30);
-      dueDate = d.toISOString().slice(0, 10);
-    }
-    const ref  = dueDate || today;
-    const days = Math.max(0, Math.floor((new Date(today) - new Date(ref)) / 86400000));
-    const b    = days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3;
-    buckets[b] += toEUR(i.total, i.currency, i.issueDate);
+    const b = invoiceAgingBucket(i);
+    buckets[b] += invoiceGrossEUR(i);
     items[b].push(i);
   });
   if (!buckets.some(v => v > 0)) return;
   charts.bar('rev-aging', {
-    labels:   ['0–30 days', '31–60 days', '61–90 days', '90+ days'],
-    datasets: [{ label: 'Outstanding (EUR)', data: buckets.map(Math.round), backgroundColor: ['#10b981', '#f59e0b', '#f97316', '#ef4444'] }],
+    labels:   AGING_BUCKETS,
+    datasets: [{ label: 'Outstanding (EUR, incl. VAT)', data: buckets.map(Math.round), backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#f97316', '#ef4444'] }],
     onClickItem: (label, idx) => {
       const AGING_COLS = [
         { key: 'source', label: 'Client',    tip: 'Client billed on this outstanding invoice.' },
         { key: 'date',   label: 'Issued',    tip: 'Date the invoice was issued.' },
         { key: 'due',    label: 'Due Date',  tip: 'Date payment is due (issue date + 30 days when no due date is set).' },
-        { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Outstanding invoice amount converted to EUR.' }
+        { key: 'eur',    label: 'EUR', right: true, format: v => formatEUR(v), tip: 'Outstanding invoice amount (incl. VAT) converted to EUR.' }
       ];
       const bucketInvs = items[idx];
       const eur = buckets[idx];
@@ -1315,8 +1309,8 @@ function renderAging({ outstanding }) {
         bucketInvs.map(i => ({
           source: byId('clients', i.clientId)?.name || '',
           date:   i.issueDate || '',
-          due:    i.dueDate   || '—',
-          eur:    toEUR(i.total, i.currency, i.issueDate)
+          due:    invoiceDueDate(i) || '—',
+          eur:    invoiceGrossEUR(i)
         })), AGING_COLS));
       openModal({ title: `Outstanding — ${label}`, body, large: true });
     }
@@ -1325,12 +1319,14 @@ function renderAging({ outstanding }) {
 
 // ── Seasonality heatmap (DOM table, shows all available years for context) ────
 function buildSeasonalityHeatmap() {
-  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mOwner, mProperty } = makeMatchers(gF);
   const coPropIds = companyPropIds();
-  const isCoRec   = r => isCompanyRecord(r, coPropIds);
-  const pays = listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p));
+  // Respects the Scope toggle, like getData().
+  const isCoRec   = gScope === 'all' ? () => true : r => isCompanyRecord(r, coPropIds);
+  // Client filter isolates service revenue, as in getData().
+  const pays = gF.clientIds.size > 0 ? [] : listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p));
   // P&L revenue heatmap — VAT-exclusive, via pnlInvs (this dashboard's `invs` here is always paid-only).
-  const invs = pnlInvs(gF.propertyIds.size > 0 ? [] : listActive('invoices').filter(i => i.status === 'paid' && mStream(i) && mOwner(i) && mClient(i)));
+  const invs = pnlInvs(filteredInvoices(i => i.status === 'paid'));
   const years = [...new Set([...pays.map(p => p.date?.slice(0, 4)), ...invs.map(i => i.issueDate?.slice(0, 4))].filter(Boolean))].sort();
   if (!years.length) return null;
 
@@ -1415,11 +1411,11 @@ function buildRevenueTable(container, { payments, invoices }) {
   const rows = [];
   payments.forEach(p => {
     const prop = byId('properties', p.propertyId);
-    rows.push({ _date: p.date, _eur: toEUR(p.amount, p.currency, p.date), type: 'Payment', date: fmtDate(p.date), stream: STREAMS[p.stream]?.short || p.stream || '—', entity: prop?.name || '—', owner: OWNERS[prop?.owner] || prop?.owner || '—', status: p.status || '—', amountEUR: formatEUR(toEUR(p.amount, p.currency, p.date)) });
+    rows.push({ _date: p.date, _eur: toEUR(p.amount, p.currency, p.date), type: 'Payment', date: fmtDate(p.date), stream: STREAMS[streamKey(p)]?.short || resolveStream(p) || '—', entity: prop?.name || '—', owner: OWNERS[prop?.owner] || prop?.owner || '—', status: p.status || '—', amountEUR: formatEUR(toEUR(p.amount, p.currency, p.date)) });
   });
   invoices.forEach(i => {
     const client = byId('clients', i.clientId);
-    rows.push({ _date: i.issueDate, _eur: toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), type: 'Invoice', date: fmtDate(i.issueDate), stream: STREAMS[i.stream]?.short || i.stream || '—', entity: client?.name || '—', owner: OWNERS[client?.owner] || client?.owner || '—', status: i.status || '—', amountEUR: formatEUR(toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)) });
+    rows.push({ _date: i.issueDate, _eur: invoiceNetEUR(i), type: 'Invoice', date: fmtDate(i.issueDate), stream: STREAMS[streamKey(i)]?.short || resolveStream(i) || '—', entity: client?.name || '—', owner: OWNERS[invoiceOwner(i)] || invoiceOwner(i), status: i.status || '—', amountEUR: formatEUR(invoiceNetEUR(i)) });
   });
   rows.sort((a, b) => (b._date || '').localeCompare(a._date || ''));
 
@@ -1548,11 +1544,11 @@ function buildView() {
   // Row 5: Paid vs Outstanding + Aging
   const row5 = el('div', { class: 'grid grid-2 mb-16' });
   row5.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Paid vs Outstanding (Invoices)')),
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Paid vs Outstanding (Invoices, incl. VAT)')),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-paid-outstanding' }))
   ));
   row5.appendChild(el('div', { class: 'card' },
-    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Outstanding Aging')),
+    el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Outstanding Aging (incl. VAT)')),
     el('div', { class: 'chart-wrap tall' }, el('canvas', { id: 'rev-aging' }))
   ));
   wrap.appendChild(row5);
@@ -1592,7 +1588,7 @@ function buildView() {
     renderPropBar(curData);
     renderConcentration(curData);
     renderOwnerDonut(curData);
-    renderPaidOutstanding(curData, months, curRange.start, curRange.end);
+    renderPaidOutstanding(curData, months);
     renderAging(curData);
   }, 0);
 

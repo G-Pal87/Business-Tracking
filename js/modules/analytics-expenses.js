@@ -11,7 +11,8 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
 } from './analytics-filters.js?v=20260519';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner, mkTh, mkDrillValue } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner, mkTh, mkDrillValue, invoiceNetEUR } from './analytics-helpers.js';
+import { daysInMonth } from '../core/dates.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -90,7 +91,7 @@ function getData(start, end) {
 }
 
 function getRevenue(start, end) {
-  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mOwner, mInvOwner, mProperty, mClient } = makeMatchers(gF);
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
@@ -100,9 +101,11 @@ function getRevenue(start, end) {
     .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
   // Include paid service invoices so expense ratio reflects total revenue, not rental-only.
   // VAT-exclusive (subtotal) — this feeds Expense Ratio, a P&L figure, and VAT collected isn't revenue.
+  // Owner via the shared invoiceOwner() rule; a property filter drops
+  // invoices not tied to a selected property (same rule as Revenue).
   const services = listActive('invoices')
-    .filter(i => i.status === 'paid' && (i.issueDate || '') >= start && (i.issueDate || '') <= end && mStream(i) && mOwner(i) && mClient(i))
-    .reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), 0);
+    .filter(i => i.status === 'paid' && (i.issueDate || '') >= start && (i.issueDate || '') <= end && mStream(i) && mInvOwner(i) && mProperty(i) && mClient(i))
+    .reduce((s, i) => s + invoiceNetEUR(i), 0);
   return { total: rentals + services, rentals, services };
 }
 
@@ -223,7 +226,7 @@ function openCapExConcentrationModal(allExp, capTotal, capPct, total) {
     }
   ], 3));
   const propMap = new Map();
-  capExArr.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0, cnt: 0 }; x.v += toEUR(e.amount, e.currency, e.date); x.cnt++; propMap.set(e.propertyId, x); });
+  capExArr.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { id: e.propertyId, n, v: 0, cnt: 0 }; x.v += toEUR(e.amount, e.currency, e.date); x.cnt++; propMap.set(e.propertyId, x); });
   const props = [...propMap.values()].sort((a, b) => b.v - a.v);
   if (props.length) {
     body.appendChild(mkSectionLabel('By Property'));
@@ -231,7 +234,7 @@ function openCapExConcentrationModal(allExp, capTotal, capPct, total) {
       [{ label: 'Property', tip: 'Property this CapEx spend is linked to.' }, { label: 'Records', right: true, muted: true, tip: 'Number of CapEx records for this property.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of CapEx', right: true, muted: true, tip: 'Share of total CapEx shown above.' }],
       props.map(p => [
         p.n, String(p.cnt),
-        mkDrillValue(formatEUR(p.v), () => drillDownModal(`CapEx — ${p.n}`, toExpDrillRows(capExArr.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+        mkDrillValue(formatEUR(p.v), () => drillDownModal(`CapEx — ${p.n}`, toExpDrillRows(capExArr.filter(e => e.propertyId === p.id)), DRILL_COLS)),
         capTotal > 0 ? (p.v / capTotal * 100).toFixed(1) + '%' : '—'
       ])
     ));
@@ -594,20 +597,50 @@ function buildView() {
   const kpiRow1 = el('div', { class: 'grid grid-4 mb-16' });
 
   // ── Shared KPI drill helpers (close over cur data) ─────────────────────────
-  // ── Forecast budget helper: sum fc.months[mk].expenses for all active forecasts
-  //    within the current date range (Fix 1)
+  // ── Forecast budget helper: sum fc.months[mk].expenses for the forecasts
+  //    matching the active filters, over the months of the current range
+  //    (partial first/last months prorated by days), so Budget compares like
+  //    for like with the filtered Actuals. Property forecasts follow the
+  //    owner/stream/property filters and Scope; service-stream forecasts
+  //    (entityId = stream key) follow the stream filter and drop out under a
+  //    property filter. The category/vendor/type expense filters can't be
+  //    applied to a budget, so it ignores them.
   function getForecastOpExBudget() {
+    const { mStream, mOwner, mProperty } = makeMatchers(gF);
+    const coPropIds = companyPropIds();
     const { keys: mks } = getMonthKeysForRange(curRange.start, curRange.end);
-    const mkSet = new Set(mks.map(m => m.key));
+    const fracByMonth = new Map(mks.map(m => {
+      const dim   = daysInMonth(+m.y, m.m);
+      const first = `${m.key}-01`, last = `${m.key}-${String(dim).padStart(2, '0')}`;
+      const from  = curRange.start > first ? curRange.start : first;
+      const to    = curRange.end   < last  ? curRange.end   : last;
+      return [m.key, (+to.slice(8, 10) - +from.slice(8, 10) + 1) / dim];
+    }));
     let total = 0;
     listActive('forecasts').forEach(fc => {
+      if (fc.type === 'property') {
+        const row = { propertyId: fc.entityId };
+        if (!mStream(row) || !mOwner(row) || !mProperty(row)) return;
+        if (gScope !== 'all' && !isCompanyRecord(row, coPropIds)) return;
+      } else if (fc.type === 'service') {
+        if (gF.propertyIds.size > 0) return;
+        if (gF.streams.size > 0 && !gF.streams.has(fc.entityId)) return;
+      } else {
+        return; // only per-entity (property / service) forecasts
+      }
       Object.entries(fc.months || {}).forEach(([mk, md]) => {
-        if (!mkSet.has(mk)) return;
-        total += Number(md.expenses) || 0;
+        const frac = fracByMonth.get(mk);
+        if (!frac || frac <= 0) return;
+        total += frac * (Number(md.expenses) || 0);
       });
     });
     return total > 0 ? total : null;
   }
+
+  // OpEx actual per cost category — the budget is an OpEx budget, so it is
+  // allocated only across OpEx spend (never to CapEx categories).
+  const opCatMap = new Map();
+  opEx.forEach(e => { const c = resolveExpenseFields(e).costCategory || 'other'; opCatMap.set(c, (opCatMap.get(c) || 0) + toEUR(e.amount, e.currency, e.date)); });
 
   const totalExpDrill = () => {
     const body = el('div');
@@ -658,12 +691,13 @@ function buildView() {
           { label: 'Type', muted: true, tip: 'OpEx (operating) or CapEx (capital) expense.' },
           { label: 'Actual', right: true, tip: 'Total amount actually spent in this category during the selected period.' },
           { label: '% of Total', right: true, muted: true, tip: 'Share of total expenses (OpEx + CapEx) in the selected period.' },
-          { label: 'Budget', right: true, muted: true, tip: 'Forecast operating-expense budget for the period, allocated to this category in proportion to its share of actual spend.' },
-          { label: 'Variance', right: true, muted: true, tip: 'Actual minus Budget — positive means overspend vs. forecast.' }
+          { label: 'Budget', right: true, muted: true, tip: 'Forecast operating-expense budget for the period (matching the active filters), allocated across OpEx categories in proportion to their share of actual OpEx. CapEx is not budgeted here.' },
+          { label: 'Variance', right: true, muted: true, tip: 'This category\'s OpEx actual minus Budget — positive means overspend vs. forecast.' }
         ],
         cats.map(([k, v]) => {
-          const budgetShare = fcBudget !== null ? (catMap.get(k) || 0) / (total || 1) * fcBudget : null;
-          const variance = budgetShare !== null ? v - budgetShare : null;
+          const opV = opCatMap.get(k) || 0;
+          const budgetShare = fcBudget !== null && opV > 0 ? opV / (opTotal || 1) * fcBudget : null;
+          const variance = budgetShare !== null ? opV - budgetShare : null;
           return [
             COST_CATEGORIES[k]?.label || k,
             capExCats.has(k) ? 'CapEx' : 'OpEx',
@@ -699,7 +733,7 @@ function buildView() {
           { label: 'Category', tip: 'Cost category this expense was classified under.' },
           { label: 'Actual', right: true, tip: 'Total amount actually spent in this category during the selected period.' },
           { label: '% of OpEx', right: true, muted: true, tip: 'Share of total operating expenses in the selected period.' },
-          { label: 'Budget', right: true, muted: true, tip: 'Forecast operating-expense budget for the period, allocated to this category in proportion to its share of actual spend.' },
+          { label: 'Budget', right: true, muted: true, tip: 'Forecast operating-expense budget for the period (matching the active filters), allocated to this category in proportion to its share of actual OpEx.' },
           { label: 'Variance', right: true, muted: true, tip: 'Actual minus Budget — positive means overspend vs. forecast.' }
         ],
         cats.map(([k, v]) => {
@@ -716,7 +750,7 @@ function buildView() {
       ));
     }
     const propMap = new Map();
-    opEx.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
+    opEx.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { id: e.propertyId, n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
     const props = [...propMap.values()].sort((a, b) => b.v - a.v);
     if (props.length) {
       body.appendChild(el('div', { style: 'margin-top:20px' }));
@@ -725,7 +759,7 @@ function buildView() {
         [{ label: 'Property', tip: 'Property this operating expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of OpEx', right: true, muted: true, tip: 'Share of total operating expenses shown above.' }],
         props.map(p => [
           p.n,
-          mkDrillValue(formatEUR(p.v), () => drillDownModal(`Operating Expenses — ${p.n}`, toExpDrillRows(opEx.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+          mkDrillValue(formatEUR(p.v), () => drillDownModal(`Operating Expenses — ${p.n}`, toExpDrillRows(opEx.filter(e => e.propertyId === p.id)), DRILL_COLS)),
           opTotal > 0 ? (p.v / opTotal * 100).toFixed(1) + '%' : '—'
         ])
       ));
@@ -744,13 +778,13 @@ function buildView() {
       ], 'Current Period', cmpLabel));
     }
     const propMap = new Map();
-    capEx.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0, cnt: 0 }; x.v += toEUR(e.amount, e.currency, e.date); x.cnt++; propMap.set(e.propertyId, x); });
+    capEx.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { id: e.propertyId, n, v: 0, cnt: 0 }; x.v += toEUR(e.amount, e.currency, e.date); x.cnt++; propMap.set(e.propertyId, x); });
     const props = [...propMap.values()].sort((a, b) => b.v - a.v);
     if (props.length) {
       const top = props.slice(0, 3);
       const pgrid = el('div', { style: `display:grid;grid-template-columns:repeat(${top.length},1fr);gap:12px;margin-bottom:20px` });
       top.forEach(p => pgrid.appendChild(mkSummaryBox(p.n,
-        mkDrillValue(formatEUR(p.v), () => drillDownModal(`CapEx — ${p.n}`, toExpDrillRows(capEx.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+        mkDrillValue(formatEUR(p.v), () => drillDownModal(`CapEx — ${p.n}`, toExpDrillRows(capEx.filter(e => e.propertyId === p.id)), DRILL_COLS)),
         `${p.cnt} record${p.cnt !== 1 ? 's' : ''} · ${capTotal > 0 ? (p.v / capTotal * 100).toFixed(0) : 0}% of CapEx`)));
       body.appendChild(pgrid);
       body.appendChild(mkSectionLabel('All Properties'));
@@ -758,7 +792,7 @@ function buildView() {
         [{ label: 'Property', tip: 'Property this CapEx spend is linked to.' }, { label: 'Records', right: true, muted: true, tip: 'Number of CapEx records for this property.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of CapEx', right: true, muted: true, tip: 'Share of total CapEx for the selected period.' }],
         props.map(p => [
           p.n, String(p.cnt),
-          mkDrillValue(formatEUR(p.v), () => drillDownModal(`CapEx — ${p.n}`, toExpDrillRows(capEx.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+          mkDrillValue(formatEUR(p.v), () => drillDownModal(`CapEx — ${p.n}`, toExpDrillRows(capEx.filter(e => e.propertyId === p.id)), DRILL_COLS)),
           capTotal > 0 ? (p.v / capTotal * 100).toFixed(1) + '%' : '—'
         ])
       ));
@@ -1275,7 +1309,7 @@ function openExpenseStreamModal(sk, allExp, cmp, cmpLabel) {
     ));
   }
   const propMap = new Map();
-  streamExp.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
+  streamExp.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { id: e.propertyId, n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
   const props = [...propMap.values()].sort((a, b) => b.v - a.v);
   if (props.length) {
     body.appendChild(el('div', { style: 'margin-top:20px' }));
@@ -1284,7 +1318,7 @@ function openExpenseStreamModal(sk, allExp, cmp, cmpLabel) {
       [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Stream', right: true, muted: true, tip: 'Share of this stream\'s total spend shown above.' }],
       props.map(p => [
         p.n,
-        mkDrillValue(formatEUR(p.v), () => drillDownModal(`${STREAMS[sk]?.label || sk} Expenses — ${p.n}`, toExpDrillRows(streamExp.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+        mkDrillValue(formatEUR(p.v), () => drillDownModal(`${STREAMS[sk]?.label || sk} Expenses — ${p.n}`, toExpDrillRows(streamExp.filter(e => e.propertyId === p.id)), DRILL_COLS)),
         streamTotal > 0 ? (p.v / streamTotal * 100).toFixed(1) + '%' : '—'
       ])
     ));
@@ -1412,7 +1446,7 @@ function renderCatHBar({ allExp }) {
         ));
       }
       const propMap = new Map();
-      catExp.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
+      catExp.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { id: e.propertyId, n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
       const props = [...propMap.values()].sort((a, b) => b.v - a.v);
       if (props.length) {
         body.appendChild(el('div', { style: 'margin-top:20px' }));
@@ -1421,7 +1455,7 @@ function renderCatHBar({ allExp }) {
           [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Category', right: true, muted: true, tip: 'Share of this category\'s total shown above.' }],
           props.map(p => [
             p.n,
-            mkDrillValue(formatEUR(p.v), () => drillDownModal(`${COST_CATEGORIES[cat]?.label || cat} — ${p.n}`, toExpDrillRows(catExp.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+            mkDrillValue(formatEUR(p.v), () => drillDownModal(`${COST_CATEGORIES[cat]?.label || cat} — ${p.n}`, toExpDrillRows(catExp.filter(e => e.propertyId === p.id)), DRILL_COLS)),
             catTotal > 0 ? (p.v / catTotal * 100).toFixed(1) + '%' : '—'
           ])
         ));
@@ -1475,7 +1509,7 @@ function renderVendorBar({ allExp }) {
         ));
       }
       const propMap = new Map();
-      vendExp.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
+      vendExp.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { id: e.propertyId, n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
       const props = [...propMap.values()].sort((a, b) => b.v - a.v);
       if (props.length) {
         body.appendChild(el('div', { style: 'margin-top:20px' }));
@@ -1484,7 +1518,7 @@ function renderVendorBar({ allExp }) {
           [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: '% of Vendor Total', right: true, muted: true, tip: 'Share of this vendor\'s total spend shown above.' }],
           props.map(p => [
             p.n,
-            mkDrillValue(formatEUR(p.v), () => drillDownModal(`${name} — ${p.n}`, toExpDrillRows(vendExp.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+            mkDrillValue(formatEUR(p.v), () => drillDownModal(`${name} — ${p.n}`, toExpDrillRows(vendExp.filter(e => e.propertyId === p.id)), DRILL_COLS)),
             vendTotal > 0 ? (p.v / vendTotal * 100).toFixed(1) + '%' : '—'
           ])
         ));
@@ -1523,7 +1557,7 @@ function renderTypeDonut({ opTotal, capTotal, opEx, capEx }) {
         ));
       }
       const propMap = new Map();
-      expenses.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
+      expenses.forEach(e => { if (!e.propertyId) return; const n = byId('properties', e.propertyId)?.name || 'Unknown'; const x = propMap.get(e.propertyId) || { id: e.propertyId, n, v: 0 }; x.v += toEUR(e.amount, e.currency, e.date); propMap.set(e.propertyId, x); });
       const props = [...propMap.values()].sort((a, b) => b.v - a.v);
       if (props.length) {
         body.appendChild(el('div', { style: 'margin-top:20px' }));
@@ -1532,7 +1566,7 @@ function renderTypeDonut({ opTotal, capTotal, opEx, capEx }) {
           [{ label: 'Property', tip: 'Property this expense is linked to.' }, { label: 'Amount', right: true, tip: 'Total amount in EUR.' }, { label: `% of ${typeShort}`, right: true, muted: true, tip: `Share of total ${typeShort} shown above.` }],
           props.map(p => [
             p.n,
-            mkDrillValue(formatEUR(p.v), () => drillDownModal(`${typeName} — ${p.n}`, toExpDrillRows(expenses.filter(e => (byId('properties', e.propertyId)?.name || 'Unknown') === p.n)), DRILL_COLS)),
+            mkDrillValue(formatEUR(p.v), () => drillDownModal(`${typeName} — ${p.n}`, toExpDrillRows(expenses.filter(e => e.propertyId === p.id)), DRILL_COLS)),
             expTotal > 0 ? (p.v / expTotal * 100).toFixed(1) + '%' : '—'
           ])
         ));
