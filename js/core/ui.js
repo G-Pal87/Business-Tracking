@@ -23,7 +23,45 @@ export function escapeHtml(str) {
 
 // ========== Modal ==========
 let modalOverlay = null;
-let _activeModal = null; // { onClose, escHandler } for whichever modal is currently open, if any
+let _activeModal = null; // { onClose, escHandler, isDirty } for whichever modal is currently open, if any
+// A closing modal clears the overlay 200 ms later (after the fade). Kept here
+// so a modal opened inside that window cancels the clean-up instead of being
+// wiped by it; the closed modal's onClose then runs straight away.
+let _pendingClose = null; // { timer, onClose }
+
+function flushPendingClose() {
+  if (!_pendingClose) return;
+  const { timer, onClose } = _pendingClose;
+  _pendingClose = null;
+  clearTimeout(timer);
+  if (onClose) onClose();
+}
+
+function scheduleOverlayClear(overlay, onClose) {
+  flushPendingClose();
+  const pending = { onClose, timer: null };
+  pending.timer = setTimeout(() => {
+    if (_pendingClose !== pending) return;
+    _pendingClose = null;
+    overlay.innerHTML = '';
+    if (onClose) onClose();
+    document.dispatchEvent(new CustomEvent('bt:modal-closed'));
+  }, 200);
+  _pendingClose = pending;
+}
+
+// Inputs that don't count as unsaved form edits (filter boxes and the like).
+function countsAsEdit(target) {
+  if (!(target instanceof Element)) return false;
+  if (target.closest('[data-no-dirty]')) return false;
+  if (target.matches('input[type=search]')) return false;
+  return target.matches('input, textarea, select, [contenteditable]');
+}
+
+// True while an open modal holds edits the user typed and hasn't saved.
+export function hasUnsavedModalEdits() {
+  return !!_activeModal?.isDirty?.();
+}
 
 function ensureOverlay() {
   if (!modalOverlay) {
@@ -46,10 +84,14 @@ export function openModal({ title, body, footer, large = false, onClose } = {}) 
   // invoking its close().
   if (_activeModal) {
     document.removeEventListener('keydown', _activeModal.escHandler);
+    // Its own close() must not act on the overlay once this modal owns it.
+    _activeModal.markClosed?.();
     const prevOnClose = _activeModal.onClose;
     _activeModal = null;
     if (prevOnClose) prevOnClose();
   }
+  // A modal that is still fading out must not clear this one 200 ms from now.
+  flushPendingClose();
   overlay.innerHTML = '';
   const modal = el('div', { class: 'modal' + (large ? ' lg' : '') });
   const closeBtn = el('button', { class: 'modal-close', title: 'Close' }, '\u00d7');
@@ -72,19 +114,58 @@ export function openModal({ title, body, footer, large = false, onClose } = {}) 
   overlay.appendChild(modal);
   requestAnimationFrame(() => overlay.classList.add('open'));
 
+  // Unsaved-edit tracking: any user input in a form field marks the modal
+  // dirty (programmatic value changes don't fire these events). Only the
+  // user-dismiss paths below (×, Escape, backdrop) ask before discarding;
+  // the returned close() — used by Save/Cancel buttons — never does.
+  let dirty = false;
+  const markEdited = e => { if (countsAsEdit(e.target)) dirty = true; };
+  modal.addEventListener('input', markEdited);
+  modal.addEventListener('change', markEdited);
+
+  let closed = false;
+  let discardBar = null;
+  const hideDiscardBar = () => { discardBar?.remove(); discardBar = null; };
+  const requestClose = () => {
+    if (closed) return;
+    if (!dirty) { close(); return; }
+    if (discardBar) return;
+    const keepBtn = el('button', { class: 'btn', type: 'button' }, 'Keep editing');
+    const discardBtn = el('button', { class: 'btn danger', type: 'button' }, 'Discard');
+    keepBtn.onclick = hideDiscardBar;
+    discardBtn.onclick = () => { hideDiscardBar(); close(); };
+    discardBar = el('div', {
+      role: 'alertdialog',
+      style: 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--bg-elev-2);font-size:13px'
+    }, el('span', { style: 'flex:1' }, 'Discard your unsaved changes?'), keepBtn, discardBtn);
+    header.after(discardBar);
+    keepBtn.focus();
+  };
+
   function escHandler(e) {
-    if (e.key === 'Escape') close();
+    if (e.key !== 'Escape') return;
+    if (discardBar) hideDiscardBar(); else requestClose();
   }
   const close = () => {
+    if (closed) return;
+    closed = true;
     document.removeEventListener('keydown', escHandler);
     if (_activeModal && _activeModal.escHandler === escHandler) _activeModal = null;
     overlay.classList.remove('open');
-    setTimeout(() => { overlay.innerHTML = ''; if (onClose) onClose(); }, 200);
+    scheduleOverlayClear(overlay, onClose);
   };
-  closeBtn.onclick = close;
-  overlay.onclick = e => { if (e.target === overlay) close(); };
+  closeBtn.onclick = requestClose;
+  // Only a click that both starts and ends on the backdrop closes the modal:
+  // selecting text in an input and releasing over the backdrop used to close it.
+  let downOnBackdrop = false;
+  overlay.onmousedown = e => { downOnBackdrop = e.target === overlay; };
+  overlay.onclick = e => {
+    const fromBackdrop = downOnBackdrop && e.target === overlay;
+    downOnBackdrop = false;
+    if (fromBackdrop) requestClose();
+  };
   document.addEventListener('keydown', escHandler);
-  _activeModal = { onClose, escHandler };
+  _activeModal = { onClose, escHandler, isDirty: () => dirty && !closed, markClosed: () => { closed = true; } };
   return { modal, close, body: bodyEl };
 }
 
@@ -93,11 +174,17 @@ export function closeModal() {
   // Drop the tracked Escape-key listener so it doesn't leak (and so the next
   // openModal() call doesn't try to force-close a modal that was already
   // closed through this path instead of its own close()).
+  let onClose = null;
   if (_activeModal) {
     document.removeEventListener('keydown', _activeModal.escHandler);
+    _activeModal.markClosed?.();
+    onClose = _activeModal.onClose;
     _activeModal = null;
   }
-  if (o) { o.classList.remove('open'); setTimeout(() => { o.innerHTML = ''; }, 200); }
+  // No modal open and none fading out: nothing to clear (router calls this
+  // on every navigation).
+  if (!onClose && !_pendingClose && !(o && o.classList.contains('open'))) return;
+  if (o) { o.classList.remove('open'); scheduleOverlayClear(o, onClose); }
 }
 
 export function drillDownModal(title, rows, columns) {
@@ -299,6 +386,9 @@ export function monthLabel(yyyymm) {
 }
 
 // ========== Table sort + filter ==========
+const SORT_TYPE_RANK = { n: 0, d: 1, s: 2 };
+const SORT_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
 export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', initialCol = -1, initialDir = 1, initialSearch = '', onSortChange = null, onSearchChange = null } = {}) {
   let sortCol = initialCol, sortDir = initialDir, searchTerm = initialSearch.toLowerCase();
 
@@ -315,6 +405,9 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
   const DATE_LIKE_RE = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{2,4}|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s*\d{2,4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{2,4})$/i;
 
   const parseCell = txt => {
+    // Placeholders ("—", "-", "N/A", blank) are their own type and always
+    // sort last, whichever the direction.
+    if (!txt || /^[—–-]+$/.test(txt) || /^n\/?a$/i.test(txt)) return { t: 'e', v: 0 };
     if ((/^\d{4}-\d{2}/.test(txt) || DATE_LIKE_RE.test(txt.trim())) && !isNaN(new Date(txt)))
       return { t: 'd', v: new Date(txt).getTime() };
     // Only treat as numeric when the cell is a plain number, currency amount,
@@ -341,15 +434,22 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
     // Disconnect while re-ordering rows to prevent MutationObserver from
     // triggering enhance() → applySort() in an infinite loop.
     obs?.disconnect();
-    const rows = [...tbody.querySelectorAll('tr')];
-    rows.sort((a, b) => {
-      const getText = cell => cell?.dataset?.sort ?? cell?.textContent?.trim() ?? '';
-      const ap = parseCell(getText(a.cells[sortCol]));
-      const bp = parseCell(getText(b.cells[sortCol]));
-      if (ap.t === bp.t && ap.t !== 's') return (ap.v - bp.v) * sortDir;
-      return String(ap.v).localeCompare(String(bp.v)) * sortDir;
+    // Parse each row's sort key once (not twice per comparison), then order
+    // by type first — numbers, dates, text, placeholders — so a column that
+    // mixes them sorts the same way every time.
+    const getText = cell => (cell?.dataset?.sort ?? cell?.textContent ?? '').trim();
+    const keyed = [...tbody.querySelectorAll('tr')].map(r => ({ r, k: parseCell(getText(r.cells[sortCol])) }));
+    keyed.sort((a, b) => {
+      const ak = a.k, bk = b.k;
+      if (ak.t !== bk.t) {
+        if (ak.t === 'e' || bk.t === 'e') return ak.t === 'e' ? 1 : -1;
+        return (SORT_TYPE_RANK[ak.t] - SORT_TYPE_RANK[bk.t]) * sortDir;
+      }
+      if (ak.t === 'e') return 0;
+      if (ak.t === 's') return SORT_COLLATOR.compare(ak.v, bk.v) * sortDir;
+      return (ak.v - bk.v) * sortDir;
     });
-    rows.forEach(r => tbody.appendChild(r));
+    keyed.forEach(({ r }) => tbody.appendChild(r));
     obs?.observe(tableWrap, { childList: true });
   };
 
@@ -407,6 +507,32 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
   enhance();
 }
 
+// ── Detach clean-up ───────────────────────────────────────────────────────────
+// Runs `cleanup` once `node` has been attached to the document and then
+// removed from it — for document-level listeners a widget adds, which would
+// otherwise outlive the widget when a module rebuilds its DOM. One shared
+// observer serves every watched node.
+const _detachWatchers = new Set();
+let _detachObserver = null;
+
+function checkDetached() {
+  for (const w of _detachWatchers) {
+    if (w.node.isConnected) { w.attached = true; continue; }
+    if (!w.attached) continue; // built but not inserted yet
+    _detachWatchers.delete(w);
+    try { w.cleanup(); } catch (e) { console.error(e); }
+  }
+  if (_detachWatchers.size === 0 && _detachObserver) { _detachObserver.disconnect(); _detachObserver = null; }
+}
+
+export function whenDetached(node, cleanup) {
+  _detachWatchers.add({ node, cleanup, attached: node.isConnected });
+  if (!_detachObserver && typeof MutationObserver === 'function' && document.body) {
+    _detachObserver = new MutationObserver(checkDetached);
+    _detachObserver.observe(document.body, { childList: true, subtree: true });
+  }
+}
+
 // ── Shared multi-select dropdown ──────────────────────────────────────────────
 // items:      [{ value, label, css?, color? }]
 // filterSet:  a Set that is mutated to hold selected values (empty = all)
@@ -422,7 +548,7 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
 // `filterSet.has(realValue)` checks simply never match it, so an "explicit
 // none" filterSet correctly excludes every real row without requiring any
 // caller-side changes.
-const MS_NONE_SENTINEL = ' __ms_none__';
+const MS_NONE_SENTINEL = '\u0000__ms_none__';
 
 export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, storageKey = null) {
   // ── Restore persisted state into the Set before building the UI ────────────
@@ -579,13 +705,7 @@ export function buildMultiSelect(initialItems, filterSet, allLabel, onRefresh, s
   // runs on the NEXT document click, so on an idle tab with no clicks these
   // pile up indefinitely, each one holding this whole widget's DOM alive via
   // its closure. Detect removal proactively instead of waiting for a click.
-  const detachObserver = new MutationObserver(() => {
-    if (!wrapper.isConnected) {
-      document.removeEventListener('click', closeMenu);
-      detachObserver.disconnect();
-    }
-  });
-  detachObserver.observe(document.body, { childList: true, subtree: true });
+  whenDetached(wrapper, () => document.removeEventListener('click', closeMenu));
 
   wrapper.appendChild(trigger);
   wrapper.appendChild(menu);
