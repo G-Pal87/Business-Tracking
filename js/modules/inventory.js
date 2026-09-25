@@ -82,11 +82,29 @@ function daysBetween(fromISO, toISO) {
   return Math.round((b - a) / 86400000);
 }
 
+// Recent consumption grouped by item id, built in one pass over expenses and
+// reused until the expenses list changes (listActive returns the same array
+// reference until a mutation) or the day rolls over — consumptionRate() runs
+// for every item, twice per render.
+let _consCache = { src: null, now: null, byItem: null };
+function recentConsumptionByItem(now) {
+  const src = listActive('expenses');
+  if (_consCache.src === src && _consCache.now === now) return _consCache.byItem;
+  const byItem = new Map();
+  for (const e of src) {
+    if (!e.inventoryItemId || !((e.inventoryQty || 0) > 0) || !e.date) continue;
+    const age = daysBetween(e.date, now);
+    if (age < 0 || age > LOOKBACK_DAYS) continue;
+    if (!byItem.has(e.inventoryItemId)) byItem.set(e.inventoryItemId, []);
+    byItem.get(e.inventoryItemId).push(e);
+  }
+  _consCache = { src, now, byItem };
+  return byItem;
+}
+
 // Returns { ratePerDay, recentUsed, spanDays } for an item, or null if no recent usage.
 function consumptionRate(item, now) {
-  const cons = listActive('expenses')
-    .filter(e => e.inventoryItemId === item.id && (e.inventoryQty || 0) > 0 && e.date)
-    .filter(e => daysBetween(e.date, now) >= 0 && daysBetween(e.date, now) <= LOOKBACK_DAYS);
+  const cons = recentConsumptionByItem(now).get(item.id) || [];
   if (!cons.length) return null;
 
   const recentUsed = cons.reduce((s, e) => s + (e.inventoryQty || 0), 0);

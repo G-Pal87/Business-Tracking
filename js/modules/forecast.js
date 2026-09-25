@@ -2,13 +2,28 @@
 import { state, markDirty } from '../core/state.js';
 import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, confirmDialog, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, getForecastEntries, upsertForecastEntry, removeForecastEntry, sumForecastEntries, listActive, listActivePayments, generatePaymentSchedule } from '../core/data.js';
+import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, getForecastEntries, upsertForecastEntry, removeForecastEntry, sumForecastEntries, listActive, listActivePayments, generatePaymentSchedule, isCapEx } from '../core/data.js';
 import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { backfillAirbnbForecastEntries } from './payments.js';
 // mkExplainButton is the same "ⓘ how is this calculated" affordance used by
 // the analytics dashboards (see analytics-helpers.js) — reused here for the
 // Annual Summary panel's computed figures rather than re-implementing it.
 import { mkExplainButton } from './analytics-helpers.js';
+import { todayYmd, daysInMonth } from '../core/dates.js';
+
+// Share of a forecast month already elapsed (local today): 1 for past months,
+// days-so-far ÷ days-in-month for the current one, 0 for future months. Used
+// so "YTD" variances compare actuals against only the forecast for the same
+// elapsed period — comparing to the full-year forecast flagged a false
+// "significant shortfall" all year long.
+function elapsedFraction(monthKey) {
+  if (!monthKey) return 1;
+  const t = todayYmd(), cur = t.slice(0, 7);
+  if (monthKey < cur) return 1;
+  if (monthKey > cur) return 0;
+  return Number(t.slice(8, 10)) / daysInMonth(Number(cur.slice(0, 4)), Number(cur.slice(5, 7)));
+}
+const ytdForecast = (months, field) => months.reduce((s, m) => s + (m[field] || 0) * elapsedFraction(m.key), 0);
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -398,6 +413,7 @@ function buildPropertySection(wrap) {
     const el2 = document.getElementById('fc-prop-summary');
     if (!el2) return;
     el2.innerHTML = '';
+    const forecastRevYtd = ytdForecast(allMonths, 'forecastRev');
     const insightItems = buildForecastInsightItems(allMonths, yearTarget);
     const items = [
       ...insightItems,
@@ -434,17 +450,17 @@ function buildPropertySection(wrap) {
         source: 'js/modules/forecast.js buildPropertySection() renderSummary()'
       }),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
-      summaryRow('Revenue Variance YTD',  formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger', {
-        title: 'Revenue Variance YTD', formula: 'Actual Revenue YTD − Forecast Revenue',
-        inputs: [{ label: 'Actual Revenue YTD', value: formatEUR(actualRev) }, { label: 'Forecast Revenue', value: formatEUR(forecastRev) }],
+      summaryRow('Revenue Variance YTD',  formatEUR(actualRev - forecastRevYtd), actualRev >= forecastRevYtd ? 'success' : 'danger', {
+        title: 'Revenue Variance YTD', formula: 'Actual Revenue YTD − Forecast Revenue to date (past months in full, the current month pro-rated by days elapsed, future months excluded)',
+        inputs: [{ label: 'Actual Revenue YTD', value: formatEUR(actualRev) }, { label: 'Forecast Revenue to date', value: formatEUR(forecastRevYtd) }],
         source: 'js/modules/forecast.js buildPropertySection() renderSummary()'
       }),
-      summaryRow('Revenue Variance %',    forecastRev > 0 ? ((actualRev - forecastRev) / forecastRev * 100).toFixed(1) + '%' : '—',
-        actualRev >= forecastRev ? 'success' : 'danger', {
-        title: 'Revenue Variance %', formula: '(Actual Revenue YTD − Forecast Revenue) ÷ Forecast Revenue × 100',
-        inputs: [{ label: 'Revenue Variance YTD', value: formatEUR(actualRev - forecastRev) }, { label: 'Forecast Revenue', value: formatEUR(forecastRev) }],
+      summaryRow('Revenue Variance %',    forecastRevYtd > 0 ? ((actualRev - forecastRevYtd) / forecastRevYtd * 100).toFixed(1) + '%' : '—',
+        actualRev >= forecastRevYtd ? 'success' : 'danger', {
+        title: 'Revenue Variance %', formula: '(Actual Revenue YTD − Forecast Revenue to date) ÷ Forecast Revenue to date × 100',
+        inputs: [{ label: 'Revenue Variance YTD', value: formatEUR(actualRev - forecastRevYtd) }, { label: 'Forecast Revenue to date', value: formatEUR(forecastRevYtd) }],
         source: 'js/modules/forecast.js buildPropertySection() renderSummary()',
-        note: 'Shows "—" when Forecast Revenue is €0 to avoid dividing by zero.'
+        note: 'Shows "—" when Forecast Revenue to date is €0 to avoid dividing by zero.'
       }),
     ];
     if (yearTarget.revenue || yearTarget.expenses) {
@@ -773,6 +789,7 @@ function buildServiceSection(wrap) {
     const el2 = document.getElementById('fc-svc-summary');
     if (!el2) return;
     el2.innerHTML = '';
+    const forecastRevYtd = ytdForecast(allMonths, 'forecastRev');
     const insightItems = buildForecastInsightItems(allMonths, yearTarget);
     const items = [
       ...insightItems,
@@ -789,17 +806,17 @@ function buildServiceSection(wrap) {
         source: 'js/core/data.js getForecastVsActual() — `actualRev`'
       }),
       el('hr', { style: 'border-color:var(--border);margin:8px 0' }),
-      summaryRow('Revenue Variance YTD', formatEUR(actualRev - forecastRev), actualRev >= forecastRev ? 'success' : 'danger', {
-        title: 'Revenue Variance YTD', formula: 'Actual Revenue YTD − Forecast Revenue',
-        inputs: [{ label: 'Actual Revenue YTD', value: formatEUR(actualRev) }, { label: 'Forecast Revenue', value: formatEUR(forecastRev) }],
+      summaryRow('Revenue Variance YTD', formatEUR(actualRev - forecastRevYtd), actualRev >= forecastRevYtd ? 'success' : 'danger', {
+        title: 'Revenue Variance YTD', formula: 'Actual Revenue YTD − Forecast Revenue to date (past months in full, the current month pro-rated by days elapsed, future months excluded)',
+        inputs: [{ label: 'Actual Revenue YTD', value: formatEUR(actualRev) }, { label: 'Forecast Revenue to date', value: formatEUR(forecastRevYtd) }],
         source: 'js/modules/forecast.js buildServiceSection() renderSummary()'
       }),
-      summaryRow('Revenue Variance %',   forecastRev > 0 ? ((actualRev - forecastRev) / forecastRev * 100).toFixed(1) + '%' : '—',
-        actualRev >= forecastRev ? 'success' : 'danger', {
-        title: 'Revenue Variance %', formula: '(Actual Revenue YTD − Forecast Revenue) ÷ Forecast Revenue × 100',
-        inputs: [{ label: 'Revenue Variance YTD', value: formatEUR(actualRev - forecastRev) }, { label: 'Forecast Revenue', value: formatEUR(forecastRev) }],
+      summaryRow('Revenue Variance %',   forecastRevYtd > 0 ? ((actualRev - forecastRevYtd) / forecastRevYtd * 100).toFixed(1) + '%' : '—',
+        actualRev >= forecastRevYtd ? 'success' : 'danger', {
+        title: 'Revenue Variance %', formula: '(Actual Revenue YTD − Forecast Revenue to date) ÷ Forecast Revenue to date × 100',
+        inputs: [{ label: 'Revenue Variance YTD', value: formatEUR(actualRev - forecastRevYtd) }, { label: 'Forecast Revenue to date', value: formatEUR(forecastRevYtd) }],
         source: 'js/modules/forecast.js buildServiceSection() renderSummary()',
-        note: 'Shows "—" when Forecast Revenue is €0 to avoid dividing by zero.'
+        note: 'Shows "—" when Forecast Revenue to date is €0 to avoid dividing by zero.'
       }),
     ];
     if (yearTarget.revenue) {
@@ -841,11 +858,14 @@ function buildForecastInsightItems(months, yearTarget) {
   const insights = [];
   const forecastRev = months.reduce((s, m) => s + m.forecastRev, 0);
   const actualRev   = months.reduce((s, m) => s + m.actualRev, 0);
-  const forecastExp = months.reduce((s, m) => s + m.forecastExp, 0);
   const actualExp   = months.reduce((s, m) => s + m.actualExp, 0);
+  // Actuals only exist up to today — compare them against the forecast for
+  // the same elapsed period, not the full year (see elapsedFraction).
+  const forecastRevYtd = ytdForecast(months, 'forecastRev');
+  const forecastExpYtd = ytdForecast(months, 'forecastExp');
 
-  if (forecastRev > 0) {
-    const varPct = ((actualRev - forecastRev) / forecastRev) * 100;
+  if (forecastRevYtd > 0) {
+    const varPct = ((actualRev - forecastRevYtd) / forecastRevYtd) * 100;
     if (varPct < -20) {
       insights.push({ level: 'danger',  text: `Actual revenue is ${Math.abs(varPct).toFixed(0)}% below forecast — significant shortfall detected.` });
     } else if (varPct < -10) {
@@ -854,8 +874,8 @@ function buildForecastInsightItems(months, yearTarget) {
       insights.push({ level: 'info',    text: `Actual revenue is ${varPct.toFixed(0)}% above forecast — outperforming projections.` });
     }
   }
-  if (forecastExp > 0) {
-    const expVarPct = ((actualExp - forecastExp) / forecastExp) * 100;
+  if (forecastExpYtd > 0) {
+    const expVarPct = ((actualExp - forecastExpYtd) / forecastExpYtd) * 100;
     if (expVarPct > 25) {
       insights.push({ level: 'warning', text: `Actual expenses are ${expVarPct.toFixed(0)}% above forecast — overspending detected.` });
     }
@@ -902,7 +922,7 @@ function getActualRevRows(entityId, type, monthKey) {
 
 function getActualExpRows(entityId, type, monthKey) {
   return listActive('expenses').filter(e =>
-    e.date?.slice(0, 7) === monthKey &&
+    e.date?.slice(0, 7) === monthKey && !isCapEx(e) && // grid (getForecastVsActual) excludes CapEx too
     (type === 'property' ? e.propertyId === entityId : (e.stream === entityId))
   ).map(e => ({
     date:     e.date,
@@ -941,8 +961,8 @@ const BOOKING_STATUS_LABELS = { pending: 'Pending', materialized: 'Paid', cancel
 // for past and future months, since a booking's entry sticks around (frozen
 // or tombstoned) instead of vanishing once it pays out or gets cancelled.
 function getAirbnbForecastEntries(propertyId, monthKey) {
-  const fc = getOrCreateForecast('property', propertyId, monthKey.slice(0, 4));
-  return getForecastEntries(fc.id, monthKey)
+  const fc = findForecast('property', propertyId, monthKey.slice(0, 4)); // read-only: never creates on view
+  return entriesOf(fc, monthKey)
     .filter(e => e.auto)
     .map(e => ({
       id: e.id, date: e.checkIn, guest: e.guest || '—', code: e.confirmationCode || '—',
@@ -952,6 +972,26 @@ function getAirbnbForecastEntries(propertyId, monthKey) {
     .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 }
 
+// ===== READ-ONLY FORECAST LOOKUPS =====
+// Rendering must not write: getOrCreateForecast() creates (and marks the DB
+// dirty/pushes) a record for every entity/year merely viewed. These read the
+// same record getOrCreateForecast would return (identical match) without
+// creating it; lazyForecast()'s `.id` — read only by edit handlers, since the
+// data.js save helpers need a real record id — creates it on first edit.
+function findForecast(type, entityId, year) {
+  return (state.db.forecasts || []).find(f => f.type === type && f.entityId === entityId && f.year === Number(year)) || null;
+}
+function entriesOf(fc, monthKey) {
+  return fc?.months?.[monthKey]?.entries || [];
+}
+function lazyForecast(type, entityId, year) {
+  return {
+    get id()         { return getOrCreateForecast(type, entityId, year).id; },
+    get months()     { return findForecast(type, entityId, year)?.months || {}; },
+    get yearTarget() { return findForecast(type, entityId, year)?.yearTarget || { revenue: 0, expenses: 0 }; },
+  };
+}
+
 // ===== SHARED MONTHLY GRID =====
 function buildMonthlyGrid(entityId, year, type, onChange) {
   // Idempotent, self-healing backfill: reconstructs any missing itemized
@@ -959,7 +999,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
   // from a past month whose entry had already been recalculated away to
   // zero) so past months keep their forecast instead of showing zero.
   if (type === 'property') backfillAirbnbForecastEntries(entityId);
-  const fc = getOrCreateForecast(type, entityId, year);
+  const fc = lazyForecast(type, entityId, year);
   const now = new Date();
 
   const card = el('div', { class: 'card' });
@@ -1112,7 +1152,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
       // itemized entries yet.
       function makePropertyRevCell(current, mk, monthIdx) {
         const pending = getAirbnbForecastEntries(entityId, mk).filter(e => e.bookingStatus === 'pending' || e.bookingStatus === 'materialized');
-        const entries = getForecastEntries(fc.id, mk);
+        const entries = entriesOf(fc, mk);
         const cell = el('td', { class: 'right num', style: 'white-space:nowrap' });
 
         const amtSpan = el('span', {}, formatEUR(current));
@@ -1184,7 +1224,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         // and becomes a read-only, restorable tombstone once cancelled/removed.
         const refresh = () => {
           listWrap.innerHTML = '';
-          const entries = getForecastEntries(fc.id, monthKey)
+          const entries = entriesOf(fc, monthKey)
             .slice()
             .sort((a, b) => (a.checkIn || '').localeCompare(b.checkIn || ''));
 
@@ -1284,7 +1324,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         const addBtn = button('+ Add Booking', { variant: 'primary', onClick: () => {
           // Migrate an existing flat forecast number into the first entry so
           // switching to itemized mode never silently drops it.
-          const existing = getForecastEntries(fc.id, monthKey);
+          const existing = entriesOf(fc, monthKey);
           if (existing.length === 0) {
             const flat = Number(fc.months?.[monthKey]?.revenue) || 0;
             if (flat > 0) upsertForecastEntry(fc.id, monthKey, { description: 'Existing forecast', amount: flat, notes: '' });
@@ -1368,7 +1408,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
 
   function makeEntriesCell(monthKey, current, monthIdx) {
     const cell = el('td', { class: 'right num' });
-    const entries = getForecastEntries(fc.id, monthKey);
+    const entries = entriesOf(fc, monthKey);
     const sub = entries.length ? el('div', { class: 'muted', style: 'font-size:11px;font-weight:400' }, `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}`) : null;
     cell.appendChild(el('div', {}, formatEUR(current)));
     if (sub) cell.appendChild(sub);
@@ -1385,7 +1425,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
 
     const refresh = () => {
       listWrap.innerHTML = '';
-      const entries = getForecastEntries(fc.id, monthKey);
+      const entries = entriesOf(fc, monthKey);
 
       if (entries.length === 0) {
         listWrap.appendChild(el('div', { class: 'empty', style: 'padding:24px' }, 'No entries yet — click "Add Entry" below.'));
@@ -1422,7 +1462,7 @@ function buildMonthlyGrid(entityId, year, type, onChange) {
         listWrap.appendChild(tw);
       }
 
-      const total = getForecastEntries(fc.id, monthKey).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+      const total = entriesOf(fc, monthKey).reduce((s, e) => s + (Number(e.amount) || 0), 0);
       listWrap.appendChild(el('div', { class: 'flex justify-between', style: 'padding:12px 16px;margin-top:12px;border-top:1px solid var(--border);font-weight:600' },
         el('span', {}, 'Monthly Total'),
         el('span', { class: 'num' }, formatEUR(total))
@@ -1635,7 +1675,7 @@ function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
 
   // Precompute each entity's forecast doc once — reused below by both the
   // Forecast Revenue and Forecast Expenses drill-downs, for every month.
-  const fcByEntity = new Map(entityIds.map(id => [id, getOrCreateForecast(type, id, year)]));
+  const fcByEntity = new Map(entityIds.map(id => [id, findForecast(type, id, year)])); // read-only
   const entityWord = type === 'service' ? 'Service' : 'Property';
   const FC_ENTRY_DRILL_COLS = [
     { key: 'entityName',  label: entityWord, tip: `${entityWord} this forecast entry belongs to.` },
@@ -1655,7 +1695,7 @@ function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
   // it's the same breakdown regardless of property vs service.
   const getRevEntriesForMonth = monthKey => entityIds.flatMap(id => {
     const efc = fcByEntity.get(id);
-    return getForecastEntries(efc.id, monthKey)
+    return entriesOf(efc, monthKey)
       .filter(e => e.bookingStatus !== 'cancelled' && e.bookingStatus !== 'removed')
       .map(e => ({
         entityName: entityLabel(id, type),
@@ -1666,7 +1706,7 @@ function buildAggregatedGrid(entityIds, year, type = 'property', onChange) {
   }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const getExpEntriesForMonth = monthKey => entityIds.flatMap(id => {
     const efc = fcByEntity.get(id);
-    return (efc.months?.[monthKey]?.expenseEntries || []).map(e => ({
+    return (efc?.months?.[monthKey]?.expenseEntries || []).map(e => ({
       entityName: entityLabel(id, type), description: e.description || '—',
       notes: e.notes || '', eur: Number(e.amount) || 0
     }));

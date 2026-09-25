@@ -86,12 +86,37 @@ export function isOwnerBlockSummary(summary) {
 // the past, Airbnb can prune it from the feed entirely. Future/current blocks
 // always defer to the fresh feed (so cancellations there are still reflected);
 // only already-elapsed blocks that vanished from the feed get carried forward.
+//
+// Safety net: a fresh feed with zero events while the stored snapshot still
+// has current/future blocks is far more likely a bad fetch (proxy error page,
+// truncated body) than every booking vanishing at once — keep the existing
+// blocks unchanged rather than wiping all future bookings.
 export function mergeBlocks(existingBlocks, freshBlocks, today) {
-  const freshUids = new Set(freshBlocks.filter(b => b.uid).map(b => b.uid));
-  const preserved = (existingBlocks || []).filter(b =>
-    b.end && b.end <= today && !freshUids.has(b.uid)
-  );
-  return [...preserved, ...freshBlocks];
+  const existing = existingBlocks || [];
+  const fresh = freshBlocks || [];
+  if (fresh.length === 0 && existing.some(b => b.end && b.end > today)) return existing;
+  const freshUids = new Set(fresh.filter(b => b.uid).map(b => b.uid));
+  // Also dedupe on the date range: Airbnb can re-issue a UID for the same
+  // stay, which used to carry the old copy forward next to the new one.
+  const seenRanges = new Set(fresh.map(b => `${b.start}|${b.end}`));
+  const seenUids = new Set(freshUids);
+  const preserved = [];
+  for (const b of existing) {
+    if (!b.end || b.end > today) continue;
+    const range = `${b.start}|${b.end}`;
+    if ((b.uid && seenUids.has(b.uid)) || seenRanges.has(range)) continue;
+    if (b.uid) seenUids.add(b.uid);
+    seenRanges.add(range);
+    preserved.push(b);
+  }
+  return [...preserved, ...fresh];
+}
+
+// A real iCal body. CORS proxies can answer 200 with an HTML error page or
+// a JSON error; treating that as the feed parsed to zero events and wiped
+// every future booking on save.
+function looksLikeICal(body) {
+  return typeof body === 'string' && body.includes('BEGIN:VCALENDAR');
 }
 
 // Fetches an iCal URL (through a CORS proxy if needed). Airbnb blocks direct
@@ -104,7 +129,10 @@ export function mergeBlocks(existingBlocks, freshBlocks, today) {
 export async function fetchICal(url) {
   try {
     const res = await fetch(url);
-    if (res.ok) return await res.text();
+    if (res.ok) {
+      const body = await res.text();
+      if (looksLikeICal(body)) return body;
+    }
   } catch (e) { /* CORS — expected, fall through to proxies */ }
 
   const proxies = [
@@ -119,9 +147,13 @@ export async function fetchICal(url) {
       const body = await res.text();
       // allorigins.win wraps the response in { contents: "…" }
       if (proxyUrl.includes('allorigins')) {
-        try { return JSON.parse(body).contents; } catch { continue; }
+        let contents;
+        try { contents = JSON.parse(body).contents; } catch { continue; }
+        if (looksLikeICal(contents)) return contents;
+        continue;
       }
-      return body;
+      if (looksLikeICal(body)) return body;
+      // Not a calendar (error page etc.) — try the next proxy.
     } catch (e) { /* try the next proxy */ }
   }
   throw new Error('Failed to fetch iCal — direct request and all proxy fallbacks failed');

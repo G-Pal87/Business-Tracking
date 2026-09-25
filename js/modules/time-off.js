@@ -17,6 +17,7 @@
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, addDays } from '../core/ui.js';
 import { upsert, softDelete, listActive, newId, byId, formatMoney, getPersonName, patchSettings } from '../core/data.js';
 import { state } from '../core/state.js';
+import { parseYmd } from '../core/dates.js';
 
 const TYPE_META = {
   standard:  { label: 'Standard day off',      short: 'Standard',  deducts: true,  css: '' },
@@ -96,8 +97,28 @@ function monthBilling(eng, year, monthIdx) {
   const deducted = sumAmount(entries, t => TYPE_META[t.type]?.deducts);
   const carryIn  = sumAmount(entries, t => t.type === 'carry_in');
   const billable = Math.max(0, working - deducted);
-  const invoiceId = entries.find(t => t.invoiceId)?.invoiceId || null;
+  const invoiceId = monthInvoiceId(eng.id, year, monthIdx, entries);
   return { entries, working, deducted, carryIn, billable, amount: billable * (eng.dailyRate || 0), invoiceId };
+}
+
+// A month is invoiced when a live (not soft-deleted) invoice carries this
+// engagement+month marker (set by createMonthInvoice — works even for a
+// month with no time-off entries), or — for invoices created before the
+// marker existed — when one of the month's entries links to a live invoice.
+function isLiveInvoice(id) {
+  const inv = id ? byId('invoices', id) : null;
+  return !!(inv && !inv.deletedAt);
+}
+function monthInvoiceId(engId, year, monthIdx, entries) {
+  const ym = `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
+  const marked = listActive('invoices').find(i => i.engagementId === engId && i.engagementMonth === ym);
+  if (marked) return marked.id;
+  return entries.find(t => isLiveInvoice(t.invoiceId))?.invoiceId || null;
+}
+
+function isWeekend(ymd) {
+  const dow = parseYmd(ymd).getUTCDay();
+  return dow === 0 || dow === 6;
 }
 
 // Carry bank = the manual carry_out/carry_in ledger, PLUS unused quota
@@ -105,16 +126,18 @@ function monthBilling(eng, year, monthIdx) {
 // leftover isn't final until the year ends, so it never contributes yet).
 // `excludeId` lets a save-time check compute the bank as it would be
 // WITHOUT the entry currently being edited/saved, so the guard and the
-// displayed balance can never disagree.
-function computeCarryBank(eng, excludeId = null) {
+// displayed balance can never disagree. `extra` (optional) is a hypothetical
+// entry added in its place, to compute the bank as it WOULD be after a save.
+function computeCarryBank(eng, excludeId = null, extra = null) {
   const all = listActive('timeOff').filter(t => t.engagementId === eng.id && t.id !== excludeId);
+  if (extra) all.push(extra);
   const manualCarry = sumAmount(all, t => t.type === 'carry_out') - sumAmount(all, t => t.type === 'carry_in');
 
   const thisYear = new Date().getFullYear();
   const startYear = eng.quotaStartYear ?? thisYear;
   let rolledOverQuota = 0;
   for (let y = startYear; y < thisYear; y++) {
-    const consumedY = sumAmount(entriesFor(eng.id, y, null).filter(t => t.id !== excludeId), t => TYPE_META[t.type]?.deducts);
+    const consumedY = sumAmount(all.filter(t => (t.date || '').startsWith(String(y))), t => TYPE_META[t.type]?.deducts);
     rolledOverQuota += Math.max(0, (eng.annualQuota || 0) - consumedY);
   }
   return manualCarry + rolledOverQuota;
@@ -207,7 +230,7 @@ function build() {
     tr.appendChild(el('td', { class: 'right num' }, formatMoney(b.amount, eng.currency, { maxFrac: 0 })));
 
     const actions = el('td', { class: 'right', style: 'white-space:nowrap' });
-    if (b.invoiceId && byId('invoices', b.invoiceId)) {
+    if (b.invoiceId) { // monthBilling only returns live (non-deleted) invoices
       const inv = byId('invoices', b.invoiceId);
       actions.appendChild(el('span', { class: 'badge success' }, `Invoiced ${inv.number ? '#' + inv.number : ''}`.trim()));
     } else if (hasActivity || b.billable > 0) {
@@ -283,6 +306,14 @@ function openMonthDetail(eng, year, monthIdx) {
       actions.appendChild(button('Delete', { variant: 'sm danger', onClick: async () => {
         const ok = await confirmDialog(`Delete time off on ${fmtDate(en.date)}?`, { danger: true, okLabel: 'Delete' });
         if (!ok) return;
+        // Removing a carry-out (or a past-year day) can pull the carry bank
+        // below zero when carry-ins already spent it — block rather than
+        // leave a negative bank.
+        const bankAfter = computeCarryBank(eng, en.id);
+        if (bankAfter < -1e-9 && bankAfter < computeCarryBank(eng) - 1e-9) {
+          toast(`Can't delete: the carry bank would drop to ${fmtDays(bankAfter)} day(s). Remove or change the carry-in days that use it first.`, 'danger', 6000);
+          return;
+        }
         softDelete('timeOff', en.id);
         toast('Deleted', 'success');
         closeModal(); setTimeout(rerender, 100);
@@ -364,6 +395,19 @@ function openEntryForm(eng, existing, defaultDate) {
     if (!dateI.value) { toast('Date required', 'danger'); return; }
     const newType = typeS.value;
     const newAmount = Number(amountS.value) || 1;
+    // Billing counts Mon–Fri only (workingDaysInMonth), so a weekend "day
+    // off" would wrongly cut a working day from the invoice. An entry that is
+    // already on a weekend (older data) can still be edited in place.
+    if (isWeekend(dateI.value) && !(existing && existing.date === dateI.value)) {
+      toast('That date is a weekend — only Mon–Fri days count as working days.', 'danger', 5000);
+      return;
+    }
+    // Same day logged twice (more than one full day in total) would deduct it twice.
+    const sameDay = listActive('timeOff').filter(t => t.engagementId === eng.id && t.id !== en.id && t.date === dateI.value);
+    if (sumAmount(sameDay) + newAmount > 1 + 1e-9) {
+      toast(`Time off is already logged on ${fmtDate(dateI.value)}.`, 'danger', 5000);
+      return;
+    }
     // Guard: a carry-in can't spend more than the bank actually holds — the
     // bank is a running total (see computeCarryBank), it has no built-in
     // floor, so without this check it would silently go negative. Uses the
@@ -373,6 +417,15 @@ function openEntryForm(eng, existing, defaultDate) {
       const bankBeforeThis = computeCarryBank(eng, en.id);
       if (newAmount > bankBeforeThis + 1e-9) {
         toast(`Carry bank only has ${fmtDays(Math.max(0, bankBeforeThis))} day(s) available — can't carry in ${fmtDays(newAmount)}.`, 'danger', 5000);
+        return;
+      }
+    }
+    // Retyping/shrinking a carry-out (or any change) must not leave the carry
+    // bank negative when carry-ins already spent it.
+    {
+      const bankAfter = computeCarryBank(eng, en.id, { ...en, date: dateI.value, amount: newAmount, type: newType });
+      if (bankAfter < -1e-9 && bankAfter < computeCarryBank(eng) - 1e-9) {
+        toast(`This change would leave the carry bank at ${fmtDays(bankAfter)} day(s). Adjust the carry-in days first.`, 'danger', 6000);
         return;
       }
     }
@@ -441,6 +494,7 @@ function openEngagementForm(eng) {
 
 async function createMonthInvoice(eng, year, monthIdx) {
   const b = monthBilling(eng, year, monthIdx);
+  if (b.invoiceId) { toast(`${MONTHS[monthIdx]} ${year} has already been invoiced`, 'warning'); return; }
   if (b.billable <= 0) { toast('No billable days this month', 'warning'); return; }
   const client = byId('clients', eng.clientId);
   if (!client) { toast('Engagement client not found', 'danger'); return; }
@@ -458,6 +512,10 @@ async function createMonthInvoice(eng, year, monthIdx) {
     owner: client.owner,
     issueDate: issue,
     dueDate: addDays(issue, 30),
+    // Engagement+month marker: lets monthBilling see this month as invoiced
+    // even when it has no time-off entries to carry the link.
+    engagementId: eng.id,
+    engagementMonth: `${year}-${String(monthIdx + 1).padStart(2, '0')}`,
     stream: client.stream,
     currency: eng.currency,
     status: 'draft',
@@ -483,7 +541,7 @@ async function createMonthInvoice(eng, year, monthIdx) {
     const saved = byId('invoices', invId);
     if (saved) {
       for (const en of entriesFor(eng.id, year, monthIdx)) {
-        if (!en.invoiceId) { en.invoiceId = invId; upsert('timeOff', en); }
+        if (!isLiveInvoice(en.invoiceId)) { upsert('timeOff', { ...en, invoiceId: invId }); }
       }
     }
     rerender();

@@ -130,6 +130,10 @@ function renderLineItems(doc, invoice, startY, margin, pageH) {
 
   y += 20;
 
+  // Keep the totals block (~70pt) together and on the page — it used to be
+  // drawn past the bottom edge when the last line item ended near it.
+  if (y + 70 > pageH - 60) { doc.addPage(); y = margin + 20; }
+
   // Totals
   doc.setFontSize(10);
   doc.setTextColor(0);
@@ -154,16 +158,31 @@ function renderLineItems(doc, invoice, startY, margin, pageH) {
 
 function renderNotes(doc, invoice, y, margin) {
   if (!invoice.notes) return y;
-  y += 28;
+  // Page-break aware: long notes used to run off the bottom of the page.
+  // Bottom limit leaves room for the Corporate template's footer band (820pt).
+  const limit = doc.internal.pageSize.getHeight() - 60;
   doc.setFontSize(9);
+  const lines = doc.splitTextToSize(invoice.notes, 500);
+  const lineH = doc.getFontSize() * (typeof doc.getLineHeightFactor === 'function' ? doc.getLineHeightFactor() : 1.15);
+  y += 28;
+  // Heading + at least the first line must fit, else start on a new page.
+  if (y + 14 + lineH > limit) { doc.addPage(); y = margin; }
   doc.setTextColor(120);
   doc.text('NOTES', margin, y);
   doc.setTextColor(0);
   y += 14;
-  const lines = doc.splitTextToSize(invoice.notes, 500);
   doc.setFontSize(9);
-  doc.text(lines, margin, y);
-  return y;
+  if (y + (lines.length - 1) * lineH <= limit) {
+    // Fits — single call, same output as before.
+    doc.text(lines, margin, y);
+    return y + (lines.length - 1) * lineH;
+  }
+  for (const line of lines) {
+    if (y > limit) { doc.addPage(); y = margin; }
+    doc.text(line, margin, y);
+    y += lineH;
+  }
+  return y - lineH;
 }
 
 // ── Template: Standard ────────────────────────────────────────────────────────
@@ -634,6 +653,19 @@ async function renderLuxury(doc, invoice) {
     doc.line(ML, y, MR, y);
   }
 
+  // Start a fresh parchment page when the next block wouldn't fit — the
+  // totals/footer used to be drawn past the bottom edge after a long table.
+  const luxEnsureRoom = (needed, bottom) => {
+    if (y + needed <= bottom) return;
+    doc.addPage();
+    doc.setFillColor(...PARCH);
+    doc.rect(0, 0, W, 841, 'F');
+    doc.setFillColor(...GOLD);
+    doc.rect(0, 0, W, 3, 'F');
+    y = MT;
+  };
+  luxEnsureRoom(80, 800);
+
   // ── Totals (.tot: margin-top 20px→15pt, width 230px→172pt) ───────────────
   y += 15;
   const TOT_L = MR - 172;
@@ -677,6 +709,7 @@ async function renderLuxury(doc, invoice) {
   ].filter(Boolean);
 
   if (footerFields.length) {
+    luxEnsureRoom(60, 820);
     y += 30;
     doc.setDrawColor(...HAIR);
     doc.setLineWidth(0.5);

@@ -11,6 +11,7 @@ import { openExpenseForm } from './expenses.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
 import { isUnlocked } from '../core/crypto.js';
+import { todayYmd, thisMonthYm, addMonthsYmd } from '../core/dates.js';
 
 let selectedId = null;
 let _propRebuildTimer = null;
@@ -723,19 +724,25 @@ function generateOwnerRentExpenses(prop, history) {
   if (!history || history.length === 0) return;
   const sorted = [...history].sort((a, b) => a.from.localeCompare(b.from));
   const startMonth = sorted[0].from.slice(0, 7);
-  const nowMonth   = new Date().toISOString().slice(0, 7);
+  const nowMonth   = thisMonthYm();
   const stream     = prop.type === 'short_term' ? 'short_term_rental' : 'long_term_rental';
-  let monthKey = startMonth;
-  while (monthKey <= nowMonth) {
-    const applicable = [...sorted].reverse().find(e => e.from.slice(0, 7) <= monthKey);
-    if (applicable) {
-      const already = (state.db.expenses || []).some(e =>
-        !e.deletedAt &&
-        e.propertyId === prop.id &&
-        e.category === 'owner_rent' &&
-        (e.date || '').slice(0, 7) === monthKey
-      );
-      if (!already) {
+  // Months that already have an owner_rent row, built once. A soft-deleted
+  // GENERATED row also counts as present — the user deleted that month on
+  // purpose, so re-saving the property must not silently recreate it.
+  // (Rows generated before the ownerRentGenerated marker existed are
+  // recognised by their generated description.)
+  const genDesc = `Owner rent — ${prop.name}`;
+  const existingMonths = new Set();
+  for (const e of (state.db.expenses || [])) {
+    if (e.propertyId !== prop.id || e.category !== 'owner_rent') continue;
+    if (e.deletedAt && !(e.ownerRentGenerated || (e.description || '').startsWith('Owner rent — '))) continue;
+    existingMonths.add((e.date || '').slice(0, 7));
+  }
+  runBatch(() => {
+    let monthKey = startMonth;
+    while (monthKey <= nowMonth) {
+      const applicable = [...sorted].reverse().find(e => e.from.slice(0, 7) <= monthKey);
+      if (applicable && !existingMonths.has(monthKey)) {
         upsert('expenses', {
           id: newId('exp'),
           propertyId: prop.id,
@@ -743,17 +750,19 @@ function generateOwnerRentExpenses(prop, history) {
           amount: applicable.amount,
           currency: applicable.currency || prop.currency || 'EUR',
           date: monthKey + '-01',
-          description: `Owner rent — ${prop.name}`,
+          description: genDesc,
           stream,
           owner: prop.owner || 'both',
           accountingType: 'opex',
           costCategory: 'property_management',
-          recurrence: 'recurring'
+          recurrence: 'recurring',
+          ownerRentGenerated: true
         });
+        existingMonths.add(monthKey);
       }
+      monthKey = nextMonthKey(monthKey);
     }
-    monthKey = nextMonthKey(monthKey);
-  }
+  });
 }
 
 function openForm(existing) {
@@ -762,7 +771,7 @@ function openForm(existing) {
     name: '', address: '', city: '', country: '', flag: '',
     type: 'short_term', status: 'active', channel: 'company',
     bedrooms: 1, bathrooms: 1,
-    purchasePrice: 0, currency: 'EUR', purchaseDate: new Date().toISOString().slice(0, 10),
+    purchasePrice: 0, currency: 'EUR', purchaseDate: todayYmd(),
     monthlyRent: 0, nightlyRate: 0,
     mortgageAmount: 0, mortgageMonthly: 0, mortgageRate: 0,
     owner: 'both', airbnbCalUrl: '', notes: ''
@@ -848,8 +857,7 @@ function openForm(existing) {
   rhInline.appendChild(button('Cancel', { variant: 'ghost', onClick: () => { rhInline.style.display = 'none'; } }));
 
   const addRateBtn = button('+ Add Rate', { variant: 'sm', onClick: () => {
-    const now = new Date();
-    rhFromI.value = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString().slice(0, 10);
+    rhFromI.value = addMonthsYmd(thisMonthYm() + '-01', 1); // 1st of next month (local)
     rhInline.style.display = '';
   }});
 

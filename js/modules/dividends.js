@@ -11,6 +11,7 @@ import {
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue } from './analytics-helpers.js';
 import { hasCyprusTaxYearConfig, getCyprusTaxYearConfig } from './cyprus-tax.js';
+import { todayYmd } from '../core/dates.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 // This 2.65% withholding is the General Healthcare System (GHS/GESY)
@@ -76,7 +77,7 @@ const fmtEAny = v => formatEUR(v, { minFrac: 2 });
 
 function getDataYears() {
   const y = new Set();
-  listActive('invoices').forEach(i => { const yr = (i.issueDate || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
+  listActive('invoices').forEach(i => { const yr = (i.issueDate || i.date || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
   listActivePayments().forEach(p => { const yr = (p.date || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
   listActive('expenses').forEach(e => { const yr = (e.date || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
   listActive('dividends').forEach(d => { const yr = (d.date || '').slice(0, 4); if (yr >= '2000') y.add(yr); });
@@ -684,7 +685,9 @@ function buildAddForm(year) {
   ));
   const formBody = el('div', { style: 'padding:0 16px 16px' });
 
-  let formDate      = `${year}-01-01`;
+  // Today when it falls in the selected year, otherwise that year's last day.
+  const todayStr    = todayYmd();
+  let formDate      = todayStr.startsWith(`${year}-`) ? todayStr : `${year}-12-31`;
   let formAmount    = 0;
   let formRecipient = 'giorgos';
   let formNotes     = '';

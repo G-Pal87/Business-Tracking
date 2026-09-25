@@ -8,6 +8,7 @@ import { fetchICal, parseICal, mergeBlocks, isOwnerBlockSummary } from '../core/
 import { uploadGithubFile } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { openPaymentForm } from './payments.js';
+import { todayYmd } from '../core/dates.js';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const WEEKDAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -18,6 +19,10 @@ let _anchor  = null; // "YYYY-MM" of the month being displayed
 
 // Track in-flight iCal refreshes so concurrent renders don't spawn duplicate fetches.
 const _icalRefreshing = new Set();
+// Last automatic attempt per property (in memory). A failed fetch leaves the
+// record's updatedAt stale, so without this every rerender re-fetched.
+const _icalLastAttempt = new Map();
+const ICAL_RETRY_MS = 10 * 60 * 1000;
 
 export default {
   id: 'str-rates',
@@ -32,7 +37,10 @@ export default {
 function parseYMD(s) { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
 function ymd(date)   { return date.toISOString().slice(0, 10); }
 function addDays(s, n) { const d = parseYMD(s); d.setUTCDate(d.getUTCDate() + n); return ymd(d); }
-function todayStr()  { return new Date().toISOString().slice(0, 10); }
+// Local calendar date — the UTC date is still "yesterday" for the first hours
+// after local midnight in Cyprus (feed started a day early, confirmedAt
+// stamped a day early).
+function todayStr()  { return todayYmd(); }
 function thisMonth() { return todayStr().slice(0, 7); }
 function daysInMonth(year, month1) { return new Date(Date.UTC(year, month1, 0)).getUTCDate(); }
 
@@ -333,29 +341,21 @@ function buildConfidenceNote(pools, effectiveN, confidence, moName, yr, dayStr, 
 }
 
 // ── Monthly stats (for trend chart + insights) ───────────────────────────────
-function buildMonthlyStats(propertyId, anchor, numMonths = 12) {
-  const bookings = listActivePayments().filter(p =>
-    p.propertyId === propertyId &&
-    p.stream === 'short_term_rental' &&
-    p.status !== 'materialized' &&
-    checkInOf(p) && checkOutOf(p) &&
-    isReservationNight(p)
-  );
+// Both helpers below read from historicNightMap — the deduplicated per-night
+// view (duplicate records of one reservation merged, Airbnb winning shared
+// nights) — so a night is counted at most once and occupancy can't exceed
+// 100%. Iterating raw payments (as these used to) double-counted duplicates.
+function buildMonthlyStats(propertyId, anchor, numMonths = 12, histMap = historicNightMap(propertyId)) {
   const months = [];
   let cur = anchor;
   for (let i = 0; i < numMonths; i++) { months.unshift(cur); cur = shiftMonth(cur, -1); }
 
   const byMo = new Map();
-  for (const p of bookings) {
-    const adr = adrNightOf(p), net = avgNightOf(p);
-    if (!adr && !net) continue;
-    const ci = checkInOf(p), co = checkOutOf(p);
-    for (let d = ci; d < co; d = addDays(d, 1)) {
-      const mo = d.slice(0, 7);
-      if (!byMo.has(mo)) byMo.set(mo, { adrSum: 0, netSum: 0, nights: 0 });
-      const b = byMo.get(mo);
-      b.adrSum += (adr || net || 0); b.netSum += (net || adr || 0); b.nights++;
-    }
+  for (const [d, info] of histMap) {
+    const mo = d.slice(0, 7);
+    if (!byMo.has(mo)) byMo.set(mo, { adrSum: 0, netSum: 0, nights: 0 });
+    const b = byMo.get(mo);
+    b.adrSum += (info.adr || info.rate || 0); b.netSum += (info.rate || info.adr || 0); b.nights++;
   }
   return months.map(mo => {
     const [y, m] = mo.split('-').map(Number);
@@ -366,32 +366,22 @@ function buildMonthlyStats(propertyId, anchor, numMonths = 12) {
       adr:     b.nights ? b.adrSum / b.nights : null,
       netRate: b.nights ? b.netSum / b.nights : null,
       nights: b.nights, days: dim,
-      occ: Math.round((b.nights / dim) * 100)
+      occ: Math.min(100, Math.round((b.nights / dim) * 100))
     };
   });
 }
 
 // ── Occupancy × ADR by year (for a given calendar month) ─────────────────────
 // Returns one row per year that has bookings in that month.
-function buildOccupancyByYear(propertyId, month1) {
+function buildOccupancyByYear(propertyId, month1, histMap = historicNightMap(propertyId)) {
   const mo = String(month1).padStart(2, '0');
-  const bookings = listActivePayments().filter(p =>
-    p.propertyId === propertyId && p.stream === 'short_term_rental' &&
-    p.status !== 'materialized' && checkInOf(p) && checkOutOf(p) &&
-    isReservationNight(p)
-  );
   const byYear = new Map();
-  for (const p of bookings) {
-    const adr = adrNightOf(p), net = avgNightOf(p);
-    if (!adr && !net) continue;
-    const ci = checkInOf(p), co = checkOutOf(p);
-    for (let d = ci; d < co; d = addDays(d, 1)) {
-      if (d.slice(5, 7) !== mo) continue;
-      const yr = d.slice(0, 4);
-      if (!byYear.has(yr)) byYear.set(yr, { adrSum: 0, netSum: 0, nights: 0 });
-      const b = byYear.get(yr);
-      b.nights++; b.adrSum += (adr || net || 0); b.netSum += (net || adr || 0);
-    }
+  for (const [d, info] of histMap) {
+    if (d.slice(5, 7) !== mo) continue;
+    const yr = d.slice(0, 4);
+    if (!byYear.has(yr)) byYear.set(yr, { adrSum: 0, netSum: 0, nights: 0 });
+    const b = byYear.get(yr);
+    b.nights++; b.adrSum += (info.adr || info.rate || 0); b.netSum += (info.rate || info.adr || 0);
   }
   return [...byYear.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
@@ -399,7 +389,7 @@ function buildOccupancyByYear(propertyId, month1) {
       year: yr,
       nights: b.nights,
       total: daysInMonth(Number(yr), month1),
-      occ: b.nights / daysInMonth(Number(yr), month1),
+      occ: Math.min(1, b.nights / daysInMonth(Number(yr), month1)),
       adr: b.nights ? b.adrSum / b.nights : null,
       net: b.nights ? b.netSum / b.nights : null,
       revenue: b.nights ? b.adrSum : null   // sum of ADR×nights = total ADR revenue
@@ -505,313 +495,17 @@ function renderYearComparisonTable(data, month1, ccy) {
   return wrap;
 }
 
-// Legacy SVG occupancy chart — kept for reference but no longer rendered.
-function renderOccupancyHistory(data, month1, ccy, confirmedADR) {
-  const wrap = el('div', { style: 'margin-bottom:14px' });
-  if (!data.length) {
-    wrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'No historical data yet.'));
-    return wrap;
-  }
-
-  const moName = MONTHS[month1 - 1];
-  const fmt    = v => formatMoney(v, ccy, { maxFrac: 0 });
-  const pct    = v => `${Math.round(v * 100)}%`;
-  const today  = todayStr();
-  const curYr  = today.slice(0, 4);
-  const curMo  = today.slice(5, 7);
-
-  // ── SVG bar chart ─────────────────────────────────────────────────────
-  const W = 560, H = 190, PAD = { t: 50, b: 44, l: 32, r: 12 };
-  const chartW = W - PAD.l - PAD.r;
-  const chartH = H - PAD.t - PAD.b;
-  const cols   = data.length;
-  const barW   = Math.min(52, (chartW / cols) * 0.58);
-  const slot   = chartW / cols;
-
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.style.cssText = 'width:100%;max-width:560px;height:auto;display:block;overflow:visible';
-
-  // Grid lines at 25 / 50 / 75 / 100 %
-  for (const level of [0.25, 0.5, 0.75, 1]) {
-    const y = PAD.t + chartH * (1 - level);
-    const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    ln.setAttribute('x1', PAD.l); ln.setAttribute('x2', W - PAD.r);
-    ln.setAttribute('y1', y);     ln.setAttribute('y2', y);
-    ln.setAttribute('stroke', level === 0.5 ? 'rgba(128,128,128,0.25)' : 'rgba(128,128,128,0.10)');
-    ln.setAttribute('stroke-dasharray', level === 1 ? '' : '3,3');
-    svg.appendChild(ln);
-    const lbl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    lbl.setAttribute('x', PAD.l - 4); lbl.setAttribute('y', y + 4);
-    lbl.setAttribute('text-anchor', 'end'); lbl.setAttribute('font-size', '9');
-    lbl.setAttribute('fill', 'var(--text-muted)');
-    lbl.textContent = level === 1 ? '100%' : level === 0.5 ? '50%' : '';
-    svg.appendChild(lbl);
-  }
-
-  // Confirmed ADR target line (if set) — drawn as a labelled horizontal reference on a second pass
-  // We'll add it after bars so it sits on top.
-
-  // Bars
-  data.forEach((d, i) => {
-    const cx   = PAD.l + i * slot + slot / 2;
-    const barH = Math.max(d.occ * chartH, 2);
-    const barY = PAD.t + chartH - barH;
-    const isCurrentYr  = d.year === curYr;
-    const isPartial = isCurrentYr && String(month1).padStart(2, '0') === curMo;
-
-    const fillColor = d.occ >= 0.8 ? '#10b981' : d.occ >= 0.5 ? '#6366f1' : '#f59e0b';
-
-    // Bar (hatched/lighter for partial current month)
-    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    rect.setAttribute('x', cx - barW / 2); rect.setAttribute('y', barY);
-    rect.setAttribute('width', barW); rect.setAttribute('height', barH);
-    rect.setAttribute('rx', '3');
-    rect.setAttribute('fill', fillColor);
-    rect.setAttribute('opacity', isPartial ? '0.45' : '0.82');
-    svg.appendChild(rect);
-
-    // Occupancy % above bar
-    const occTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    occTxt.setAttribute('x', cx); occTxt.setAttribute('y', barY - 16);
-    occTxt.setAttribute('text-anchor', 'middle'); occTxt.setAttribute('font-size', '10');
-    occTxt.setAttribute('fill', 'var(--text-muted)');
-    occTxt.textContent = pct(d.occ) + (isPartial ? '*' : '');
-    svg.appendChild(occTxt);
-
-    // ADR above occupancy % — amber, bold
-    if (d.adr) {
-      const adrTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      adrTxt.setAttribute('x', cx); adrTxt.setAttribute('y', barY - 28);
-      adrTxt.setAttribute('text-anchor', 'middle'); adrTxt.setAttribute('font-size', '11');
-      adrTxt.setAttribute('font-weight', '700'); adrTxt.setAttribute('fill', '#f59e0b');
-      adrTxt.textContent = fmt(d.adr);
-      svg.appendChild(adrTxt);
-    }
-
-    // Year label
-    const yrTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    yrTxt.setAttribute('x', cx); yrTxt.setAttribute('y', PAD.t + chartH + 14);
-    yrTxt.setAttribute('text-anchor', 'middle'); yrTxt.setAttribute('font-size', '11');
-    yrTxt.setAttribute('font-weight', isCurrentYr ? '700' : '400');
-    yrTxt.setAttribute('fill', isCurrentYr ? 'var(--text)' : 'var(--text-muted)');
-    yrTxt.textContent = d.year;
-    svg.appendChild(yrTxt);
-
-    // Nights label
-    const nTxt2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    nTxt2.setAttribute('x', cx); nTxt2.setAttribute('y', PAD.t + chartH + 26);
-    nTxt2.setAttribute('text-anchor', 'middle'); nTxt2.setAttribute('font-size', '9');
-    nTxt2.setAttribute('fill', 'var(--text-muted)');
-    nTxt2.textContent = `${d.nights}/${d.total}n`;
-    svg.appendChild(nTxt2);
-  });
-
-  wrap.appendChild(svg);
-
-  // ── Insight strip ─────────────────────────────────────────────────────
-  if (data.length >= 2) {
-    const newest = data[data.length - 1];
-    const prev   = data[data.length - 2];
-    const adrDiff = newest.adr && prev.adr ? newest.adr - prev.adr : null;
-    const occDiff = newest.occ - prev.occ;
-    const insights = [];
-
-    if (adrDiff !== null) {
-      const dir = adrDiff > 0 ? '↑' : '↓';
-      insights.push(`ADR ${dir} ${fmt(Math.abs(adrDiff))} vs ${prev.year} (${fmt(prev.adr)} → ${fmt(newest.adr)})`);
-    }
-    if (Math.abs(occDiff) > 0.02) {
-      const dir = occDiff > 0 ? '↑' : '↓';
-      insights.push(`Occupancy ${dir} ${Math.round(Math.abs(occDiff) * 100)}pp vs ${prev.year} (${pct(prev.occ)} → ${pct(newest.occ)})`);
-    }
-    // ADR elasticity hint
-    if (adrDiff !== null && Math.abs(occDiff) > 0.03) {
-      if (adrDiff > 0 && occDiff < 0)
-        insights.push(`Higher ADR appears to correlate with lower occupancy — consider whether the revenue trade-off is worth it`);
-      else if (adrDiff > 0 && occDiff > 0)
-        insights.push(`Higher ADR with higher occupancy — pricing pressure may support a further increase`);
-      else if (adrDiff < 0 && occDiff > 0)
-        insights.push(`Lower ADR drove higher occupancy — the rate cut filled more nights`);
-    }
-
-    if (insights.length) {
-      const strip = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.6' });
-      for (const ins of insights) {
-        strip.appendChild(el('div', {}, `· ${ins}`));
-      }
-      wrap.appendChild(strip);
-    }
-  }
-
-  const curYrData = data.find(d => d.year === curYr);
-  if (curYrData) {
-    const isPartialMonth = String(month1).padStart(2, '0') === curMo;
-    if (isPartialMonth)
-      wrap.appendChild(el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:3px' },
-        `* ${curYr} occupancy is partial — month not yet complete (${curYrData.nights} of ${curYrData.total} nights booked so far)`));
-  }
-
-  return wrap;
-}
-
-// Revenue vs ADR bar chart — shows total monthly revenue per year with ADR annotated
-// so the user can directly see whether raising or lowering the rate moved revenue.
-function renderRevenueADRChart(data, month1, ccy) {
-  const wrap = el('div', { style: 'margin-bottom:14px' });
-  const active = data.filter(d => d.revenue);
-  if (!active.length) {
-    wrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'No historical data yet.'));
-    return wrap;
-  }
-
-  const fmt    = v => formatMoney(v, ccy, { maxFrac: 0 });
-  const today  = todayStr();
-  const curYr  = today.slice(0, 4);
-  const curMo  = today.slice(5, 7);
-  const mo1Str = String(month1).padStart(2, '0');
-
-  const W = 560, H = 170;
-  const PAD = { t: 54, b: 48, l: 32, r: 12 };
-  const chartH = H - PAD.t - PAD.b;
-  const ns  = 'http://www.w3.org/2000/svg';
-  const maxRev = Math.max(...active.map(d => d.revenue), 1);
-  const n   = data.length;
-  const colW = (W - PAD.l - PAD.r) / Math.max(n, 1);
-
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.setAttribute('style', 'width:100%;max-width:560px;display:block');
-
-  // Grid at 50% and 100% revenue
-  for (const frac of [0.5, 1.0]) {
-    const y = PAD.t + chartH * (1 - frac);
-    const gl = document.createElementNS(ns, 'line');
-    gl.setAttribute('x1', PAD.l); gl.setAttribute('x2', W - PAD.r);
-    gl.setAttribute('y1', y);    gl.setAttribute('y2', y);
-    gl.setAttribute('stroke', 'var(--border)'); gl.setAttribute('stroke-dasharray', '3,3');
-    svg.appendChild(gl);
-    if (frac === 1.0) {
-      const lbl = document.createElementNS(ns, 'text');
-      lbl.setAttribute('x', PAD.l - 2); lbl.setAttribute('y', y + 3);
-      lbl.setAttribute('text-anchor', 'end'); lbl.setAttribute('font-size', '8');
-      lbl.setAttribute('fill', 'var(--text-muted)');
-      lbl.textContent = fmt(maxRev);
-      svg.appendChild(lbl);
-    }
-  }
-
-  data.forEach((d, i) => {
-    if (!d.revenue) return;
-    const isPartial = d.year === curYr && mo1Str === curMo;
-    const isBest    = d.revenue === maxRev;
-    const cx   = PAD.l + (i + 0.5) * colW;
-    const barW = Math.min(colW * 0.55, 44);
-    const barH = Math.max(chartH * (d.revenue / maxRev), 2);
-    const barY = PAD.t + chartH - barH;
-    const color = isBest ? '#10b981' : '#6366f1';
-
-    const rect = document.createElementNS(ns, 'rect');
-    rect.setAttribute('x', cx - barW / 2); rect.setAttribute('y', barY);
-    rect.setAttribute('width', barW); rect.setAttribute('height', barH);
-    rect.setAttribute('rx', '3'); rect.setAttribute('fill', color);
-    rect.setAttribute('opacity', isPartial ? '0.5' : '1');
-    svg.appendChild(rect);
-
-    // Revenue above bar
-    const revTxt = document.createElementNS(ns, 'text');
-    revTxt.setAttribute('x', cx);
-    revTxt.setAttribute('y', Math.max(barY - 18, PAD.t - 32));
-    revTxt.setAttribute('text-anchor', 'middle'); revTxt.setAttribute('font-size', '10');
-    revTxt.setAttribute('font-weight', '700');
-    revTxt.setAttribute('fill', isBest ? '#10b981' : 'var(--text)');
-    revTxt.textContent = fmt(d.revenue) + (isPartial ? '*' : '');
-    svg.appendChild(revTxt);
-
-    // ADR just above bar top (amber)
-    const adrTxt = document.createElementNS(ns, 'text');
-    adrTxt.setAttribute('x', cx);
-    adrTxt.setAttribute('y', Math.max(barY - 4, PAD.t - 18));
-    adrTxt.setAttribute('text-anchor', 'middle'); adrTxt.setAttribute('font-size', '9');
-    adrTxt.setAttribute('fill', '#f59e0b');
-    adrTxt.textContent = d.adr ? fmt(d.adr) : '';
-    svg.appendChild(adrTxt);
-
-    // Year below bar
-    const yrTxt = document.createElementNS(ns, 'text');
-    yrTxt.setAttribute('x', cx); yrTxt.setAttribute('y', PAD.t + chartH + 14);
-    yrTxt.setAttribute('text-anchor', 'middle'); yrTxt.setAttribute('font-size', '10');
-    yrTxt.setAttribute('font-weight', '600'); yrTxt.setAttribute('fill', 'var(--text)');
-    yrTxt.textContent = d.year;
-    svg.appendChild(yrTxt);
-
-    // Nights booked
-    const nTxt = document.createElementNS(ns, 'text');
-    nTxt.setAttribute('x', cx); nTxt.setAttribute('y', PAD.t + chartH + 26);
-    nTxt.setAttribute('text-anchor', 'middle'); nTxt.setAttribute('font-size', '9');
-    nTxt.setAttribute('fill', 'var(--text-muted)');
-    nTxt.textContent = isPartial ? `${d.nights}/${d.total}n` : `${d.nights}n`;
-    svg.appendChild(nTxt);
-
-    // Occupancy %
-    const occTxt = document.createElementNS(ns, 'text');
-    occTxt.setAttribute('x', cx); occTxt.setAttribute('y', PAD.t + chartH + 38);
-    occTxt.setAttribute('text-anchor', 'middle'); occTxt.setAttribute('font-size', '9');
-    occTxt.setAttribute('fill', 'var(--text-muted)');
-    occTxt.textContent = `${Math.round(d.occ * 100)}%${isPartial ? '*' : ''}`;
-    svg.appendChild(occTxt);
-  });
-
-  wrap.appendChild(svg);
-
-  // Insight strip — YoY ADR → Revenue impact
-  if (active.length >= 2) {
-    const prev    = active[active.length - 2];
-    const curr    = active[active.length - 1];
-    const revDiff = curr.revenue - prev.revenue;
-    const adrDiff = (curr.adr || 0) - (prev.adr || 0);
-    const revPct  = prev.revenue ? Math.round(Math.abs(revDiff) / prev.revenue * 100) : null;
-    const isPartialCurr = curr.year === curYr && mo1Str === curMo;
-    const insights = [];
-    const partTag = isPartialCurr ? ` (${curr.year} partial)` : '';
-
-    insights.push(
-      `${prev.year}→${curr.year}${partTag}: ADR ${adrDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(adrDiff))} (${fmt(prev.adr)} → ${fmt(curr.adr)}) | Revenue ${revDiff >= 0 ? '↑' : '↓'} ${fmt(Math.abs(revDiff))}${revPct != null ? ` (${revPct}%)` : ''}`
-    );
-    if      (adrDiff > 0 && revDiff < 0) insights.push('Higher ADR reduced total revenue — the occupancy drop more than offset the rate increase');
-    else if (adrDiff > 0 && revDiff > 0) insights.push('Higher ADR grew total revenue — demand held despite the rate increase');
-    else if (adrDiff < 0 && revDiff > 0) insights.push('Lower ADR boosted revenue — more nights booked outweighed the rate reduction');
-    else if (adrDiff < 0 && revDiff < 0) insights.push('Lower ADR did not recover revenue — occupancy lift was insufficient');
-
-    const strip = el('div', { style: 'font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.6' });
-    for (const ins of insights) strip.appendChild(el('div', {}, `· ${ins}`));
-    wrap.appendChild(strip);
-  }
-
-  const partialEntry = active.find(d => d.year === curYr && mo1Str === curMo);
-  if (partialEntry)
-    wrap.appendChild(el('div', { style: 'font-size:10px;color:var(--text-muted);margin-top:3px' },
-      `* ${curYr} revenue is partial — ${partialEntry.nights} of ${partialEntry.total} nights booked so far`));
-
-  return wrap;
-}
-
-// Recommended ADR = average ADR for the same calendar month across all years.
-function computeRecommendedADR(propertyId, month1) {
+// Recommended target = average NET nightly rate (excl. cleaning) for the same
+// calendar month across all years, from the deduplicated night map. Net of
+// cleaning on purpose: a confirmed target is published as the nightly
+// `amount` in the rates feed, same basis as booked/suggested nights, while
+// the feed carries the cleaning fee separately (once per booking) — a target
+// with cleaning amortised in double-counted it.
+function computeRecommendedADR(propertyId, month1, histMap = historicNightMap(propertyId)) {
   const mo = String(month1).padStart(2, '0');
-  const bookings = listActivePayments().filter(p =>
-    p.propertyId === propertyId && p.stream === 'short_term_rental' &&
-    p.status !== 'materialized' && checkInOf(p) && checkOutOf(p) &&
-    isReservationNight(p)
-  );
   let sum = 0, n = 0;
-  for (const p of bookings) {
-    const adr = adrNightOf(p);
-    if (adr == null || adr <= 0) continue;
-    const ci = checkInOf(p), co = checkOutOf(p);
-    for (let d = ci; d < co; d = addDays(d, 1)) {
-      if (d.slice(5, 7) === mo) { sum += adr; n++; }
-    }
+  for (const [d, info] of histMap) {
+    if (d.slice(5, 7) === mo && info.rate > 0) { sum += info.rate; n++; }
   }
   return n > 0 ? Math.round(sum / n) : null;
 }
@@ -1742,6 +1436,8 @@ async function autoRefreshICal(propertyId, onDone, { force = false } = {}) {
   if (!url) return;
   const freshMs  = 4 * 60 * 60 * 1000; // 4-hour cache window
   if (!force && existing && (Date.now() - (existing.updatedAt || 0)) < freshMs) return;
+  if (!force && Date.now() - (_icalLastAttempt.get(propertyId) || 0) < ICAL_RETRY_MS) return;
+  _icalLastAttempt.set(propertyId, Date.now());
 
   _icalRefreshing.add(propertyId);
   try {
@@ -1750,6 +1446,10 @@ async function autoRefreshICal(propertyId, onDone, { force = false } = {}) {
     const fresh  = events
       .filter(e => e.start && e.end)
       .map(e => ({ start: e.start, end: e.end, uid: e.uid || '', summary: e.summary || '' }));
+    // Defensive: an empty feed while future blocks are stored is far more
+    // likely a bad/partial response than every booking vanishing — keep the
+    // stored calendar untouched (don't even re-stamp importedAt).
+    if (fresh.length === 0 && (existing?.blocks || []).some(b => b.end && b.end > todayStr())) return;
     const blocks = mergeBlocks(existing?.blocks, fresh, todayStr());
     const rec = existing
       ? { ...existing, url, blocks, importedAt: todayStr() }
@@ -1765,8 +1465,9 @@ async function autoRefreshICal(propertyId, onDone, { force = false } = {}) {
 function renderAnalysis(container, { propertyId, year, month1, ccy, onRerender }) {
   container.innerHTML = '';
   const anchor = `${year}-${String(month1).padStart(2, '0')}`;
-  const monthStats   = buildMonthlyStats(propertyId, anchor, 12);
-  const recommendedADR = computeRecommendedADR(propertyId, month1);
+  const histMap      = historicNightMap(propertyId); // built once, shared by the three helpers below
+  const monthStats   = buildMonthlyStats(propertyId, anchor, 12, histMap);
+  const recommendedADR = computeRecommendedADR(propertyId, month1, histMap);
   const confirmed    = getConfirmedTarget(propertyId, anchor);
   const currentStats = monthStats.find(s => s.month === anchor) || { month: anchor, adr: null, netRate: null, nights: 0, days: daysInMonth(year, month1), occ: 0 };
 
@@ -1776,7 +1477,7 @@ function renderAnalysis(container, { propertyId, year, month1, ccy, onRerender }
 
   inner.appendChild(el('div', { style: 'font-size:14px;font-weight:700;margin-bottom:14px' }, 'ADR Analysis'));
 
-  const occData = buildOccupancyByYear(propertyId, month1);
+  const occData = buildOccupancyByYear(propertyId, month1, histMap);
   inner.appendChild(el('div', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-muted);margin-bottom:8px' }, `${MONTHS[month1 - 1]} — Year over Year`));
   inner.appendChild(renderYearComparisonTable(occData, month1, ccy));
 
@@ -1926,10 +1627,10 @@ function renderInsights({ monthStats, anchor, currentStats, recommendedADR, conf
     }
   }
 
-  // Upside vs recommendation
-  if (currentStats.adr && recommendedADR && currentStats.adr < recommendedADR * 0.92) {
-    const upside = recommendedADR - currentStats.adr;
-    insights.push({ text: `Current ADR ${fmt(currentStats.adr)} is ${fmt(upside)} below the ${MONTHS[mo1 - 1]} historical average — pricing may be conservative`, color: '#f59e0b' });
+  // Upside vs recommendation — both net of cleaning (see computeRecommendedADR)
+  if (currentStats.netRate && recommendedADR && currentStats.netRate < recommendedADR * 0.92) {
+    const upside = recommendedADR - currentStats.netRate;
+    insights.push({ text: `Current net rate ${fmt(currentStats.netRate)} is ${fmt(upside)} below the ${MONTHS[mo1 - 1]} historical average — pricing may be conservative`, color: '#f59e0b' });
   }
 
   // Confirmed target note
@@ -1937,7 +1638,7 @@ function renderInsights({ monthStats, anchor, currentStats, recommendedADR, conf
     const adj = confirmed.adjustmentPct ? ` (${confirmed.adjustmentPct > 0 ? '+' : ''}${confirmed.adjustmentPct}% adjustment)` : '';
     insights.push({ text: `Confirmed target for ${MONTHS[mo1 - 1]} ${yr}: ${fmt(confirmed.targetADR)}${adj} — will be used when publishing the rate feed`, color: '#6366f1' });
   } else if (recommendedADR) {
-    insights.push({ text: `Recommended ADR: ${fmt(recommendedADR)} (${MONTHS[mo1 - 1]} historical avg, all years) — approve or override below`, color: '#6366f1' });
+    insights.push({ text: `Recommended ADR: ${fmt(recommendedADR)} per night excl. cleaning (${MONTHS[mo1 - 1]} historical avg, all years) — approve or override below`, color: '#6366f1' });
   }
 
   if (!insights.length) return el('div', {});
@@ -1974,7 +1675,7 @@ function renderADRTargetForm({ propertyId, anchor, recommendedADR, confirmed, cc
     const recRow = el('div', { style: 'font-size:13px;margin-bottom:12px' });
     recRow.appendChild(el('span', { style: 'color:var(--text-muted)' }, 'Recommended: '));
     recRow.appendChild(el('strong', {}, fmt(recommendedADR)));
-    recRow.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted);margin-left:6px' }, `(${MONTHS[mo1 - 1]} historical average, all years)`));
+    recRow.appendChild(el('span', { style: 'font-size:11px;color:var(--text-muted);margin-left:6px' }, `(${MONTHS[mo1 - 1]} historical average net of cleaning, all years)`));
     wrap.appendChild(recRow);
   } else {
     wrap.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:12px' }, 'No historical data for this month yet. Enter a target ADR manually.'));

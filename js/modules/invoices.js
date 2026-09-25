@@ -9,6 +9,8 @@ const generateInvoicePDF  = (...a) => _pdfMod().then(m => m.generateInvoicePDF(.
 import { navigate } from '../core/router.js';
 import { uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFile, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
 import { encryptFilename, decryptFilename, isUnlocked } from '../core/crypto.js';
+import { toLocalYmd } from '../core/dates.js';
+import { loadLib } from '../core/libs.js';
 
 // Returns the display status for an invoice. Sent invoices past their due date
 // are shown as overdue without changing the stored value.
@@ -126,6 +128,8 @@ async function sha256Hex(str) {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Only for PERMANENT removal (bin purge). Soft delete must not call this —
+// a restored invoice would otherwise point at a file that no longer exists.
 async function deleteInvoiceFile(inv) {
   if (inv.pdfPath) {
     try { await deleteGithubFile(inv.pdfPath, null, `Delete PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
@@ -251,8 +255,8 @@ function buildZipFilename(yearFilter, monthFilter, clientFilter, ownerFilter, st
 }
 
 async function downloadInvoicesAsZip(invoices, zipFilename) {
-  const JSZip = window.JSZip;
-  if (!JSZip) { toast('ZIP library not loaded — refresh and try again', 'danger'); return; }
+  const JSZip = await loadLib('jszip').catch(() => null);
+  if (!JSZip) { toast('ZIP library could not be loaded — check your connection and try again', 'danger'); return; }
 
   const zip = new JSZip();
   let ok = 0, failed = 0;
@@ -303,7 +307,7 @@ function build() {
 
   let filteredRows = [];
   let _invStatCache = new Map(); // effectiveStatus cache — rebuilt each renderTable cycle
-  const totalKpi   = makeKpiCard('Total Issued', null,      () => drillDownModal('All Invoices',          invDrillRows(filteredRows), INV_COLS));
+  const totalKpi   = makeKpiCard('Total Issued', null,      () => drillDownModal('Issued Invoices',       invDrillRows(filteredRows.filter(i => _invStatCache.get(i.id) !== 'draft')), INV_COLS));
   const paidKpi    = makeKpiCard('Paid',          'success', () => drillDownModal('Paid Invoices',          invDrillRows(filteredRows.filter(i => _invStatCache.get(i.id) === 'paid')), INV_COLS));
   const openKpi    = makeKpiCard('Outstanding',   'warning', () => drillDownModal('Outstanding Invoices',   invDrillRows(filteredRows.filter(i => _invStatCache.get(i.id) === 'sent')), INV_COLS));
   const overdueKpi = makeKpiCard('Overdue',       'danger',  () => drillDownModal('Overdue Invoices',       invDrillRows(filteredRows.filter(i => _invStatCache.get(i.id) === 'overdue')), INV_COLS));
@@ -370,8 +374,8 @@ function build() {
     const ok = await confirmDeleteTwice(`${count} invoice(s)`);
     if (!ok) return;
     for (const id of [...selected]) {
-      const inv = byId('invoices', id);
-      if (inv) { try { await deleteInvoiceFile(inv); } catch { /* best-effort */ } }
+      // Soft delete only — the PDF stays in the repo so the invoice can be
+      // restored from the bin with its file intact (removal belongs to purge).
       softDelete('invoices', id);
     }
     selected.clear();
@@ -403,7 +407,8 @@ function build() {
       if (monthFilter.size  > 0 && !monthFilter.has(r.issueDate?.slice(5, 7))) return false;
       if (clientFilter.size > 0 && !clientFilter.has(r.clientId))               return false;
       if (ownerFilter.size  > 0 && !ownerFilter.has(r.owner))                   return false;
-      if (statusFilter.size > 0 && !statusFilter.has(r.status))                 return false;
+      // Same computed status as the table (sent + past due → 'overdue').
+      if (statusFilter.size > 0 && !statusFilter.has(effectiveStatus(r)))       return false;
       return true;
     });
     exportInvoicesCSV(fil);
@@ -472,18 +477,19 @@ function build() {
 
     // Update KPI cards — single pass using cached statuses
     filteredRows = rows;
-    let totalV = 0, paidV = 0, sentV = 0, overdueV = 0, paidN = 0, sentN = 0, overdueN = 0;
+    let totalV = 0, totalN = 0, paidV = 0, sentV = 0, overdueV = 0, paidN = 0, sentN = 0, overdueN = 0;
     const paidRows = [], sentRows = [], overdueRows = [];
     for (const r of rows) {
       const eur = toEUR(r.total, r.currency, r.issueDate);
-      totalV += eur;
       const st = _invStatCache.get(r.id);
+      // Drafts haven't been issued yet — keep them out of "Total Issued".
+      if (st !== 'draft') { totalV += eur; totalN++; }
       if (st === 'paid')    { paidV += eur; paidN++;    paidRows.push(r); }
       else if (st === 'sent')    { sentV += eur; sentN++;    sentRows.push(r); }
       else if (st === 'overdue') { overdueV += eur; overdueN++; overdueRows.push(r); }
     }
     totalKpi.valEl.textContent   = formatEUR(totalV);
-    totalKpi.subEl.textContent   = `${rows.length} invoices`;
+    totalKpi.subEl.textContent   = `${totalN} invoices`;
     paidKpi.valEl.textContent    = formatEUR(paidV);
     paidKpi.subEl.textContent    = String(paidN);
     openKpi.valEl.textContent    = formatEUR(sentV);
@@ -570,7 +576,7 @@ function build() {
         const ok = await confirmDeleteTwice(r.number || 'this invoice');
         if (ok) {
           _invStatCache = new Map();
-          try { await deleteInvoiceFile(r); } catch { /* best-effort */ }
+          // Soft delete keeps the PDF file (restorable from the bin).
           softDelete('invoices', r.id);
           toast('Deleted', 'success');
           renderTable();
@@ -643,23 +649,37 @@ function nextInvoiceSequence(year, excludeId) {
 }
 
 // ============ BUILDER ============
-export function openBuilder(existing, { onSaved } = {}) {
+// `existing` is an invoice to edit (or a pre-built draft that already carries
+// its own id, e.g. from time-off). To start a NEW invoice with some fields
+// pre-filled, pass `null` and `{ defaults: { clientId, ... } }`.
+export function openBuilder(existing, { onSaved, defaults = null } = {}) {
   const clients = listActive('clients');
   if (clients.length === 0) { toast('Add a client first', 'warning'); return; }
 
+  // Defensive: an "existing" object without an id is really a set of defaults
+  // for a new invoice. Treating it as existing used to save an invoice with no
+  // id, and every later such save overwrote the previous one via upsert.
+  if (existing && !existing.id) {
+    defaults = { ...existing, ...(defaults || {}) };
+    existing = null;
+  }
+
   const round2 = v => Math.round((Number(v) || 0) * 100) / 100;
+  const baseClient = (defaults?.clientId && clients.find(c => c.id === defaults.clientId)) || clients[0];
   const inv = existing ? { ...existing, lineItems: existing.lineItems?.map(l => ({ ...l, total: round2(l.total), rate: round2(l.rate) })) || [] } : {
-    id: newId('inv'),
     number: '',
-    clientId: clients[0].id,
-    owner: clients[0].owner,
+    owner: baseClient.owner,
     issueDate: today(),
     dueDate: addDays(today(), 30),
-    stream: clients[0].stream,
-    currency: clients[0].currency,
+    stream: baseClient.stream,
+    currency: baseClient.currency,
     status: 'draft',
-    lineItems: [],
-    subtotal: 0, taxRate: 0, tax: 0, total: 0, notes: ''
+    subtotal: 0, taxRate: 0, tax: 0, total: 0, notes: '',
+    ...(defaults || {}),
+    lineItems: (defaults?.lineItems || []).map(l => ({ ...l })),
+    // Always a fresh id and a client that exists in the dropdown.
+    id: newId('inv'),
+    clientId: baseClient.id,
   };
 
   const body = el('div', {});
@@ -849,6 +869,10 @@ export function openBuilder(existing, { onSaved } = {}) {
   }});
   const save = button('Save Invoice', { variant: 'primary', onClick: async () => {
     if (inv.lineItems.length === 0) { toast('Add at least one line item', 'danger'); return; }
+    if (inv.lineItems.some(l => (Number(l.quantity) || 0) < 0 || (Number(l.rate) || 0) < 0)) {
+      toast('Line item quantity and rate cannot be negative', 'danger'); return;
+    }
+    if (issueI.value && dueI.value && dueI.value < issueI.value) { toast('Due date cannot be before the issue date', 'danger'); return; }
     inv.clientId = clientS.value;
     inv.owner = ownerS.value;
     inv.currency = currencyS.value;
@@ -1075,7 +1099,7 @@ function renderLuxuryPreview(inv, client, biz) {
       <div class="lux-totals-wrap">
         <div class="lux-totals">
           <div class="lux-row"><span>Subtotal</span><span>${escape(formatMoney(inv.subtotal, inv.currency))}</span></div>
-          <div class="lux-row"><span>Tax (${inv.taxRate || 0}%)</span><span>${escape(formatMoney(inv.tax || 0, inv.currency))}</span></div>
+          <div class="lux-row"><span>Tax (${escape(inv.taxRate || 0)}%)</span><span>${escape(formatMoney(inv.tax || 0, inv.currency))}</span></div>
           <div class="lux-row lux-total"><span>Total</span><span>${escape(formatMoney(inv.total, inv.currency))}</span></div>
         </div>
       </div>
@@ -1110,8 +1134,8 @@ function previewInvoice(inv, clientId) {
       </div>
       <div class="inv-meta">
         <div style="font-size:16px;font-weight:700;margin-bottom:12px">${escape(inv.number || 'DRAFT')}</div>
-        Issued: ${fmtDate(inv.issueDate)}<br>
-        Due: ${fmtDate(inv.dueDate)}<br>
+        Issued: ${escape(fmtDate(inv.issueDate))}<br>
+        Due: ${escape(fmtDate(inv.dueDate))}<br>
         <br>
         <strong>BILL TO:</strong><br>
         ${escape(client.name || '')}<br>
@@ -1127,7 +1151,7 @@ function previewInvoice(inv, clientId) {
         ${(inv.lineItems || []).map(li => `
           <tr>
             <td>${escape(li.description)}</td>
-            <td>${li.quantity}</td>
+            <td>${escape(li.quantity)}</td>
             <td>${escape(li.unit || '')}</td>
             <td style="text-align:right">${formatMoney(li.rate, inv.currency)}</td>
             <td style="text-align:right">${formatMoney(li.total, inv.currency)}</td>
@@ -1136,7 +1160,7 @@ function previewInvoice(inv, clientId) {
     </table>
     <div class="totals">
       <div class="totals-row"><span>Subtotal</span><span>${formatMoney(inv.subtotal, inv.currency)}</span></div>
-      <div class="totals-row"><span>Tax (${inv.taxRate || 0}%)</span><span>${formatMoney(inv.tax || 0, inv.currency)}</span></div>
+      <div class="totals-row"><span>Tax (${escape(inv.taxRate || 0)}%)</span><span>${formatMoney(inv.tax || 0, inv.currency)}</span></div>
       <div class="totals-row total"><span>Total</span><span>${formatMoney(inv.total, inv.currency)}</span></div>
     </div>
     ${inv.notes ? `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#666">${escape(inv.notes)}</div>` : ''}
@@ -1174,15 +1198,19 @@ function previewInvoice(inv, clientId) {
           r.onerror = rej;
           r.readAsDataURL(file);
         });
-        // Delete old file from GitHub if it was stored there
-        if (inv.pdfPath) {
-          try { await deleteGithubFile(inv.pdfPath, null, `Replace PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
-        }
+        // Upload the new file FIRST — deleting the old one up front meant a
+        // failed upload left the invoice with no PDF at all.
         const newPath = await invoicePdfPath(inv);
         await uploadGithubFileEncrypted(newPath, b64, `Upload PDF for invoice ${inv.number || inv.id}`);
+        const oldPath = inv.pdfPath;
         const updated = { ...inv, pdfPath: newPath };
         delete updated.pdfData;
         upsert('invoices', updated);
+        // Only now remove the old file, and never when the upload just
+        // overwrote it in place (same path).
+        if (oldPath && oldPath !== newPath) {
+          try { await deleteGithubFile(oldPath, null, `Replace PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
+        }
         toast('PDF replaced', 'success');
         closeModal();
       } catch (err) {
@@ -1420,12 +1448,17 @@ function openPDFImport() {
     const issueDate  = dateI.value || today();
     const dueDate    = dueDateI.value || addDays(issueDate, 30);
     const invoiceNum = numI.value.trim();
-    const total = items.reduce((s, l) => s + l.total, 0);
+    // Rounded to cents — summing float line totals can leave e.g. 1234.5000000001.
+    const total = Math.round(items.reduce((s, l) => s + (Number(l.total) || 0), 0) * 100) / 100;
     const year = issueDate.slice(0, 4);
-    const dup = (state.db.invoices || []).some(i =>
-      i.source === 'pdf_import' && i.issueDate === issueDate && Math.abs(i.total - total) < 0.01
+    // Duplicate = same client + date + total among live (non-deleted) imports;
+    // previously any client's (or a binned) invoice with the same date/total blocked it.
+    const dupClientId = clientS.value || '';
+    const dup = listActive('invoices').some(i =>
+      i.source === 'pdf_import' && i.issueDate === issueDate && (i.clientId || '') === dupClientId &&
+      Math.abs((Math.round((Number(i.total) || 0) * 100) / 100) - total) < 0.005
     );
-    if (dup) { toast('Invoice already imported (same date & total)', 'warning'); return; }
+    if (dup) { toast('Invoice already imported (same client, date & total)', 'warning'); return; }
 
     const finalNumber = invoiceNum || String(nextInvoiceSequence(year, null));
     // Same duplicate-number check the builder's Save flow uses: purely numeric
@@ -1489,8 +1522,7 @@ function openPDFImport() {
 }
 
 async function extractPDFLines(arrayBuffer, onStatus) {
-  const lib = window.pdfjsLib;
-  if (!lib) throw new Error('PDF.js not loaded. Refresh the page and try again.');
+  const lib = await loadLib('pdfjs');
   lib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
   const pdf = await lib.getDocument({ data: arrayBuffer }).promise;
   const allLines = [];
@@ -1517,8 +1549,8 @@ async function extractPDFLines(arrayBuffer, onStatus) {
 }
 
 async function extractPDFLinesOCR(pdf, onStatus) {
-  if (!window.Tesseract) throw new Error('Tesseract.js not loaded. Refresh the page and try again.');
-  const worker = await window.Tesseract.createWorker('eng', 1, {
+  const Tesseract = await loadLib('tesseract');
+  const worker = await Tesseract.createWorker('eng', 1, {
     workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
     langPath: 'https://tessdata.projectnaptha.com/4.0.0',
     corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd-lstm.wasm.js',
@@ -1556,7 +1588,7 @@ function parsePDFInvoice(lines, fallbackStream = 'customer_success') {
     // Invoice date
     if (!invoiceDate) {
       const dm = line.match(/(?:date|issued?)\s*[:\s]+(.+)/i);
-      if (dm) { const d = new Date(dm[1].trim()); if (!isNaN(d)) invoiceDate = d.toISOString().slice(0, 10); }
+      if (dm) { const d = new Date(dm[1].trim()); if (!isNaN(d)) invoiceDate = toLocalYmd(d); } // local calendar day, not UTC (was a day early in UTC+ zones)
     }
     // Invoice number
     if (!invoiceNumber) {
@@ -1646,15 +1678,20 @@ async function openPDFViewer(inv) {
     if (inv.source === 'pdf_import' && hasAttached) downloadOriginalPDF(inv);
     else downloadInvoicePDF(inv, `${invoicePdfFilename(inv)}.pdf`);
   }});
-  const { close } = openModal({ title: titleLabel, body: bodyWrap, footer: [button('Close', { onClick: () => close() }), dlBtn], large: true });
-
   let objectUrl = null;
+  let closed = false;
   const cleanup = () => { if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; } };
+  // Revoke the object URL however the modal is dismissed (button, overlay,
+  // Escape, or being replaced by another modal) via openModal's onClose —
+  // the old per-open keydown listener was only removed on Escape and leaked.
+  const { close } = openModal({ title: titleLabel, body: bodyWrap, footer: [button('Close', { onClick: () => close() }), dlBtn], large: true,
+    onClose: () => { closed = true; cleanup(); } });
 
   if (inv.source === 'pdf_import' && hasAttached) {
     // Imported invoices: show the original uploaded file as-is
     try {
       const blob  = await resolveInvoiceBlob(inv);
+      if (closed) return; // dismissed while loading
       objectUrl   = URL.createObjectURL(blob);
       frame.src   = objectUrl;
       bodyWrap.replaceChildren(frame);
@@ -1666,6 +1703,7 @@ async function openPDFViewer(inv) {
     // (business info, template, SWIFT etc.) are reflected immediately
     try {
       const blob = (await generateInvoicePDF(inv)).output('blob');
+      if (closed) return; // dismissed while rendering
       objectUrl  = URL.createObjectURL(blob);
       frame.src  = objectUrl;
       bodyWrap.replaceChildren(frame);
@@ -1673,9 +1711,4 @@ async function openPDFViewer(inv) {
       bodyWrap.replaceChildren(el('div', { style: 'padding:24px;color:var(--danger,#ef4444)' }, `Could not render invoice: ${err.message}`));
     }
   }
-
-  // Revoke object URL when modal is dismissed
-  const overlay = document.getElementById('modal-overlay');
-  if (overlay) overlay.addEventListener('click', cleanup, { once: true });
-  document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { cleanup(); document.removeEventListener('keydown', esc); } });
 }

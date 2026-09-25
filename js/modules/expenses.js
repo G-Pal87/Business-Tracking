@@ -5,6 +5,7 @@ import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, to
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
+import { addDaysYmd, addMonthsYmd, addYearsYmd } from '../core/dates.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
 import { openAddYearForm } from './settings.js';
 
@@ -92,19 +93,20 @@ export default {
   destroy() { _updateFn = null; charts.destroyAll(); }
 };
 
-function addPeriod(date, period) {
-  const d = new Date(date);
-  if (period === 'weekly')         d.setDate(d.getDate() + 7);
-  else if (period === 'monthly')   d.setMonth(d.getMonth() + 1);
-  else if (period === 'quarterly') d.setMonth(d.getMonth() + 3);
-  else if (period === 'annually')  d.setFullYear(d.getFullYear() + 1);
-  return d;
+// The i-th occurrence of a recurring series, always computed from the
+// ORIGINAL start date (pure calendar arithmetic, see core/dates.js) so a
+// month-end start clamps per month (Jan 31 → Feb 28 → Mar 31) instead of
+// drifting, and DST never shifts a date. null = unknown period.
+function occurrenceDate(start, period, i) {
+  if (period === 'weekly')    return addDaysYmd(start, 7 * i);
+  if (period === 'monthly')   return addMonthsYmd(start, i);
+  if (period === 'quarterly') return addMonthsYmd(start, 3 * i);
+  if (period === 'annually')  return addMonthsYmd(start, 12 * i);
+  return null;
 }
 
 function addOneYear(dateStr) {
-  const d = new Date(dateStr);
-  d.setFullYear(d.getFullYear() + 1);
-  return d.toISOString().slice(0, 10);
+  return addYearsYmd(dateStr, 1);
 }
 
 
@@ -172,22 +174,6 @@ function build() {
   deleteSelBtn.style.display = 'none';
 
   const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  function matchesAll(e, skip) {
-    const res = resolveExpenseFields(e);
-    const yr  = (e.date || '').slice(0, 4);
-    const mo  = (e.date || '').slice(5, 7);
-    return (
-      (skip === 'year'   || yearFilter.size === 0           || yearFilter.has(yr)) &&
-      (skip === 'month'  || monthFilter.size === 0          || monthFilter.has(mo)) &&
-      (skip === 'stream' || streamFilter.size === 0         || streamFilter.has(e.stream || '')) &&
-      (skip === 'prop'   || propFilter.size === 0           || propFilter.has(e.propertyId)) &&
-      (skip === 'cat'    || catFilter.size === 0            || catFilter.has(e.category)) &&
-      (skip === 'vendor' || vendorFilter.size === 0         || vendorFilter.has(vendorNameOf(e))) &&
-      (skip === 'type'   || accountingTypeFilter.size === 0 || accountingTypeFilter.has(res.accountingType)) &&
-      (skip === 'rec'    || recurrenceFilter.size === 0     || recurrenceFilter.has(res.recurrence))
-    );
-  }
 
   function rebuildFilters() {
     const all = listActive('expenses');
@@ -691,7 +677,7 @@ function buildCategorySelect(currentValue) {
 function openForm(existing, defaults = {}, onSave = null) {
   const r = existing ? { ...existing } : {
     id: newId('exp'),
-    propertyId: state.db.properties?.[0]?.id || '',
+    propertyId: listActive('properties')[0]?.id || '',
     category: 'maintenance',
     amount: 0, currency: 'EUR',
     date: today(),
@@ -723,7 +709,11 @@ function openForm(existing, defaults = {}, onSave = null) {
     let propOg = null;
     if (showProperties) {
       propOg = el('optgroup', { label: 'Properties' });
-      for (const p of (state.db.properties || [])) propOg.appendChild(el('option', { value: p.id }, p.name));
+      // Active properties only — plus the record's own (possibly deleted)
+      // property when editing, so opening the form never silently changes it.
+      const propList = listActive('properties');
+      const ownProp = r.propertyId && !propList.some(p => p.id === r.propertyId) ? byId('properties', r.propertyId) : null;
+      for (const p of (ownProp ? [...propList, ownProp] : propList)) propOg.appendChild(el('option', { value: p.id }, p.name));
       allocS.appendChild(propOg);
     }
     if (showCompany) allocS.appendChild(el('option', { value: COMPANY_VALUE }, 'Company'));
@@ -747,7 +737,9 @@ function openForm(existing, defaults = {}, onSave = null) {
   // Association toggle (Vendor | Person)
   let assocMode = r.personId ? 'person' : 'vendor';
 
-  const vendorOpts = [{ value: '', label: '— No vendor —' }, ...(state.db.vendors || []).map(v => ({ value: v.id, label: v.name }))];
+  const vendorList = listActive('vendors');
+  const ownVendor = r.vendorId && !vendorList.some(v => v.id === r.vendorId) ? byId('vendors', r.vendorId) : null;
+  const vendorOpts = [{ value: '', label: '— No vendor —' }, ...(ownVendor ? [...vendorList, ownVendor] : vendorList).map(v => ({ value: v.id, label: v.name }))];
   const vendorS = select(vendorOpts, r.vendorId || '');
 
   const personOpts = [{ value: '', label: '— Select person —' }, ...getPeopleOwners()];
@@ -1032,76 +1024,63 @@ function openForm(existing, defaults = {}, onSave = null) {
 
   async function doSave() {
     if (!allocS.value) { toast('Select what this expense is allocated to', 'danger'); return; }
+    if (!dateI.value) { toast('Date required', 'danger'); return; }
 
-    if (catS.value === 'inventory') {
-      const itemId = invItemS.value;
-      const qty    = Number(invQtyI.value) || 0;
-      if (!itemId) { toast('Select an inventory item', 'danger'); return; }
-      if (qty <= 0) { toast('Quantity must be > 0', 'danger'); return; }
+    // Validate and ask every question FIRST — nothing (inventory stock
+    // included) is written until the user has confirmed everything, so a
+    // cancel/early return can never leave stock restored or deducted without
+    // the matching expense save (which previously double-restored stock).
+    const isInventory = catS.value === 'inventory';
+    let invItemId = '', invQty = 0;
+    if (isInventory) {
+      invItemId = invItemS.value;
+      invQty    = Number(invQtyI.value) || 0;
+      if (!invItemId) { toast('Select an inventory item', 'danger'); return; }
+      if (invQty <= 0) { toast('Quantity must be > 0', 'danger'); return; }
 
-      // Restore previous consumption first (handles item switch or qty change)
-      if (existing?.inventoryItemId) restoreInventoryStock(existing);
-
-      const item = byId('inventory', itemId);
+      const item = byId('inventory', invItemId);
       if (!item) { toast('Item not found', 'danger'); return; }
-      const available = totalRemaining(item);
+      // Stock available once this expense's previous consumption is credited
+      // back (it's only actually restored below, inside the save batch).
+      const available = totalRemaining(item) +
+        (existing?.inventoryItemId === invItemId ? (Number(existing.inventoryQty) || 0) : 0);
 
-      if (qty > available) {
+      if (invQty > available) {
         const ok = await confirmDialog(
           `Only ${available} in stock. Record expense anyway?`,
           { okLabel: 'Override', danger: true }
         );
         if (!ok) return;
       }
+    } else if (Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
 
-      const { updatedBatches, consumed, totalCost, totalCostEUR, mixedCurrency, deficit } = fifoDeduct(item, qty, dateI.value);
-      upsert('inventory', { ...item, batches: updatedBatches });
-      if (mixedCurrency) {
-        amountI.value = totalCostEUR.toFixed(2);
-        currencyS.value = 'EUR';
-      } else {
-        amountI.value = totalCost.toFixed(2);
-        currencyS.value = consumed[0]?.currency || item.batches?.[0]?.currency || 'EUR';
-      }
-      if (deficit > 0) toast(`Stock ran short by ${deficit} — recorded cost may be understated`, 'warning', 6000);
-      r.inventoryItemId  = itemId;
-      r.inventoryQty     = qty;
-      r.inventoryBatches = consumed;
-    } else {
-      if (existing?.inventoryItemId) restoreInventoryStock(existing);
-      r.inventoryItemId  = '';
-      r.inventoryQty     = 0;
-      r.inventoryBatches = [];
+    let choice = null;
+    if (existing?.recurringGroupId) {
+      choice = await new Promise(resolve => {
+        let settled = false;
+        const settle = v => { if (!settled) { settled = true; resolve(v); } };
+        const thisBtn = button('This instance only', { variant: 'primary', onClick: () => { close(); settle('one'); } });
+        const allBtn  = button('All occurrences',    { variant: 'primary', onClick: () => { close(); settle('all'); } });
+        const cancelBtn = button('Cancel', { onClick: () => { close(); settle(null); } });
+        const { close } = openModal({
+          title: 'Edit Recurring Expense',
+          body: el('p', {}, 'Do you want to apply this change to this instance only, or to all occurrences in the group?'),
+          footer: [cancelBtn, thisBtn, allBtn],
+          onClose: () => settle(null),
+        });
+      });
+      if (!choice) return;
     }
 
-    if (catS.value !== 'inventory' && Number(amountI.value) <= 0) { toast('Amount required', 'danger'); return; }
-    const selectedVendor = vendorS.value ? byId('vendors', vendorS.value) : null;
-    const prop = byId('properties', allocPid());
-    const autoStream = prop?.type === 'short_term' ? 'short_term_rental'
-      : prop?.type === 'long_term' ? 'long_term_rental'
-      : (r.stream || null);
-    const appliedFee = catS.value === 'cleaning' && Number(amountI.value) > 0 ? Number(amountI.value) : undefined;
-    Object.assign(r, {
-      propertyId:    allocPid(),
-      category:      catS.value,
-      accountingType: catS.value === 'renovation' ? 'capex' : accountingTypeS.value,
-      costCategory:   catS.value === 'renovation' ? 'renovation' : costCategoryS.value,
-      recurrence:    recurrenceS.value,
-      amount:        Number(amountI.value),
-      currency:      currencyS.value,
-      date:          dateI.value,
-      personId:             assocMode === 'person' ? (personS.value || '') : '',
-      countsAsPersonalIncome: assocMode === 'person' && !!piChk.checked,
-      vendorId:      assocMode === 'vendor' ? (vendorS.value || '') : '',
-      vendor:        assocMode === 'vendor' ? (selectedVendor?.name || r.vendor || '') : '',
-      description:   descT.value.trim(),
-      stream:        autoStream,
-      ...(appliedFee !== undefined ? { appliedCleaningFee: appliedFee } : {})
-    });
-
     // ── Receipt handling ────────────────────────────────────────────────────────
+    // A receipt path can be shared by several records (e.g. a recurring
+    // series created with a receipt) — only delete the repo file when no
+    // other active expense still points at it.
+    const receiptShared = path => (state.db.expenses || []).some(e => e.id !== r.id && !e.deletedAt && e.receipt?.path === path);
     if (removeExistingReceipt && r.receipt?.path) {
-      try { await deleteGithubFile(r.receipt.path, null, `Remove receipt for expense ${r.id}`); } catch { /* ignore */ }
+      if (!receiptShared(r.receipt.path)) {
+        try { await deleteGithubFile(r.receipt.path, null, `Remove receipt for expense ${r.id}`); } catch { /* ignore */ }
+      }
       delete r.receipt;
     }
     if (pendingReceiptFile) {
@@ -1110,7 +1089,7 @@ function openForm(existing, defaults = {}, onSave = null) {
       const { token, owner, repo } = state.github;
       if (token && owner && repo) {
         // Delete old receipt file if replacing
-        if (r.receipt?.path && r.receipt.path !== repoPath) {
+        if (r.receipt?.path && r.receipt.path !== repoPath && !receiptShared(r.receipt.path)) {
           try { await deleteGithubFile(r.receipt.path, null, `Replace receipt for expense ${r.id}`); } catch { /* ignore */ }
         }
         try {
@@ -1128,51 +1107,91 @@ function openForm(existing, defaults = {}, onSave = null) {
       delete r.receipt;
     }
 
-    if (!existing && recurChk.checked && catS.value !== 'inventory') {
-      const period  = recurPeriodS.value;
-      const endDate = recurEndI.value || addOneYear(r.date);
-      const groupId = newId('rgrp');
-      let d = new Date(r.date);
-      const end = new Date(endDate);
-      let count = 0;
-      while (d <= end && count < 120) {
-        upsert('expenses', { ...r, id: newId('exp'), date: d.toISOString().slice(0, 10), recurringGroupId: groupId });
-        d = addPeriod(d, period);
-        count++;
+    // ── Write everything in one synchronous batch ───────────────────────────────
+    runBatch(() => {
+      // Restore previous consumption first (handles item switch, qty change,
+      // or switching away from the inventory category), then re-deduct.
+      if (existing?.inventoryItemId) restoreInventoryStock(existing);
+      if (isInventory) {
+        const item = byId('inventory', invItemId); // re-read: may have just been restored
+        const { updatedBatches, consumed, totalCost, totalCostEUR, mixedCurrency, deficit } = fifoDeduct(item, invQty, dateI.value);
+        upsert('inventory', { ...item, batches: updatedBatches });
+        if (mixedCurrency) {
+          amountI.value = totalCostEUR.toFixed(2);
+          currencyS.value = 'EUR';
+        } else {
+          amountI.value = totalCost.toFixed(2);
+          currencyS.value = consumed[0]?.currency || item.batches?.[0]?.currency || 'EUR';
+        }
+        if (deficit > 0) toast(`Stock ran short by ${deficit} — recorded cost may be understated`, 'warning', 6000);
+        r.inventoryItemId  = invItemId;
+        r.inventoryQty     = invQty;
+        r.inventoryBatches = consumed;
+      } else {
+        r.inventoryItemId  = '';
+        r.inventoryQty     = 0;
+        r.inventoryBatches = [];
       }
-      toast(`${count} recurring expense(s) added`, 'success');
-    } else if (existing?.recurringGroupId) {
-      const choice = await new Promise(resolve => {
-        let settled = false;
-        const settle = v => { if (!settled) { settled = true; resolve(v); } };
-        const thisBtn = button('This instance only', { variant: 'primary', onClick: () => { close(); settle('one'); } });
-        const allBtn  = button('All occurrences',    { variant: 'primary', onClick: () => { close(); settle('all'); } });
-        const cancelBtn = button('Cancel', { onClick: () => { close(); settle(null); } });
-        const { close } = openModal({
-          title: 'Edit Recurring Expense',
-          body: el('p', {}, 'Do you want to apply this change to this instance only, or to all occurrences in the group?'),
-          footer: [cancelBtn, thisBtn, allBtn],
-          onClose: () => settle(null),
-        });
+
+      const selectedVendor = vendorS.value ? byId('vendors', vendorS.value) : null;
+      const prop = byId('properties', allocPid());
+      const autoStream = prop?.type === 'short_term' ? 'short_term_rental'
+        : prop?.type === 'long_term' ? 'long_term_rental'
+        : (r.stream || null);
+      const appliedFee = catS.value === 'cleaning' && Number(amountI.value) > 0 ? Number(amountI.value) : undefined;
+      Object.assign(r, {
+        propertyId:    allocPid(),
+        category:      catS.value,
+        accountingType: catS.value === 'renovation' ? 'capex' : accountingTypeS.value,
+        costCategory:   catS.value === 'renovation' ? 'renovation' : costCategoryS.value,
+        recurrence:    recurrenceS.value,
+        amount:        Number(amountI.value),
+        currency:      currencyS.value,
+        date:          dateI.value,
+        personId:             assocMode === 'person' ? (personS.value || '') : '',
+        countsAsPersonalIncome: assocMode === 'person' && !!piChk.checked,
+        vendorId:      assocMode === 'vendor' ? (vendorS.value || '') : '',
+        vendor:        assocMode === 'vendor' ? (selectedVendor?.name || r.vendor || '') : '',
+        description:   descT.value.trim(),
+        stream:        autoStream,
+        ...(appliedFee !== undefined ? { appliedCleaningFee: appliedFee } : {})
       });
-      if (!choice) return;
-      if (choice === 'all') {
+
+      if (!existing && recurChk.checked && !isInventory) {
+        const period  = recurPeriodS.value;
+        const endDate = recurEndI.value || addOneYear(r.date);
+        const groupId = newId('rgrp');
+        let count = 0;
+        for (let d = r.date; d && d <= endDate && count < 120; d = occurrenceDate(r.date, period, count)) {
+          upsert('expenses', { ...r, id: newId('exp'), date: d, recurringGroupId: groupId });
+          count++;
+        }
+        toast(`${count} recurring expense(s) added`, 'success');
+      } else if (choice === 'all') {
         const siblings = listActive('expenses').filter(e => e.recurringGroupId === existing.recurringGroupId);
-        const { id: _id, date: _date, recurringGroupId: _grp, isGenerated: _gen, manualOverride: _mo, ...sharedFields } = r;
+        // Per-instance fields are never copied across the group: the receipt/
+        // documents (removing one instance's receipt deletes its repo file),
+        // inventory consumption (each record restores its own batches) and
+        // the applied cleaning fee.
+        const { id: _id, date: _date, recurringGroupId: _grp, isGenerated: _gen, manualOverride: _mo,
+          receipt: _rc, documents: _docs, inventoryItemId: _ii, inventoryQty: _iq, inventoryBatches: _ib,
+          appliedCleaningFee: _acf, ...sharedFields } = r;
+        const PER_INSTANCE = ['receipt', 'documents', 'inventoryItemId', 'inventoryQty', 'inventoryBatches', 'appliedCleaningFee'];
         for (const sib of siblings) {
-          upsert('expenses', { ...sib, ...sharedFields });
+          const next = { ...sib, ...sharedFields };
+          if (sib.id === r.id) {
+            // The edited record itself still gets its own receipt/inventory changes.
+            for (const k of PER_INSTANCE) { if (k in r) next[k] = r[k]; else delete next[k]; }
+          }
+          upsert('expenses', next);
         }
         toast(`${siblings.length} occurrence(s) updated`, 'success');
       } else {
-        if (existing.isGenerated) r.manualOverride = true;
+        if (existing?.isGenerated) r.manualOverride = true;
         upsert('expenses', r);
-        toast('Expense updated', 'success');
+        toast(existing ? 'Expense updated' : 'Expense added', 'success');
       }
-    } else {
-      if (existing?.isGenerated) r.manualOverride = true;
-      upsert('expenses', r);
-      toast(existing ? 'Expense updated' : 'Expense added', 'success');
-    }
+    });
     closeModal();
     const proceed = () => { if (onSave) onSave(); else navigate('expenses'); };
     const savedYear = String(r.date || '').slice(0, 4);

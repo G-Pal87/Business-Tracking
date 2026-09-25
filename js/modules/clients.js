@@ -6,6 +6,7 @@ import { CURRENCIES, OWNERS, STREAMS, SERVICE_STREAMS } from '../core/config.js'
 import { navigate } from '../core/router.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
 import { isUnlocked } from '../core/crypto.js';
+import { todayYmd } from '../core/dates.js';
 
 // ── Document helpers (same pattern as properties.js) ─────────────────────────
 
@@ -213,7 +214,9 @@ export function openDetail(id) {
     button('+ New Invoice', { variant: 'primary sm', onClick: async () => {
       closeModal();
       const { openBuilder } = await import('./invoices.js');
-      setTimeout(() => openBuilder({ clientId: id }, { onSaved: () => openDetail(id) }), 220);
+      // `null` = new invoice; passing `{ clientId }` as the first arg used to be
+      // treated as an existing invoice and saved without an id.
+      setTimeout(() => openBuilder(null, { defaults: { clientId: id }, onSaved: () => openDetail(id) }), 220);
     }})
   );
   invSection.appendChild(invHeader);
@@ -310,11 +313,13 @@ export function openDetail(id) {
         row.appendChild(button('Delete', { variant: 'ghost', onClick: async () => {
           const ok = await confirmDialog(`Delete document "${d.name}"?`, { danger: true, okLabel: 'Delete' });
           if (!ok) return;
-          try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
-          catch (e) { toast(`Repo cleanup failed: ${e.message}`, 'warning', 5000); }
+          // Drop the reference first, then delete the file (a failed delete
+          // leaves at worst an orphan file, never a dangling reference).
           c.documents = (c.documents || []).filter(x => x.id !== d.id);
           upsert('clients', c);
           renderDetailDocList();
+          try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
+          catch (e) { toast(`Repo cleanup failed: ${e.message}`, 'warning', 5000); }
         }}));
       }
       dl.appendChild(row);
@@ -330,13 +335,9 @@ export function openDetail(id) {
     if (invCount) { toast(`Cannot delete — ${invCount} invoice(s) are linked to this client.`, 'danger', 5000); return; }
     const ok = await confirmDialog(`Delete client "${c.name}"?`, { danger: true, okLabel: 'Delete' });
     if (!ok) return;
-    // Best-effort cleanup of GitHub-hosted documents — one failed deletion
-    // shouldn't block the others or the record's own soft-delete.
-    for (const d of (c.documents || [])) {
-      if (!d.path) continue;
-      try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
-      catch (e) { console.warn(`[Client delete] could not remove document ${d.path}:`, e); }
-    }
+    // Soft delete only: the client can be restored from the bin, so its
+    // GitHub-hosted documents are kept (deleting them here left a restored
+    // client pointing at missing files). File removal belongs to the purge.
     softDelete('clients', c.id);
     toast('Deleted', 'success');
     closeModal(); setTimeout(() => navigate('clients'), 200);
@@ -351,7 +352,7 @@ function openForm(existing) {
     currency: 'EUR',
     stream: SERVICE_STREAMS[0] || '',
     owner: getPeopleOwners()[0]?.value || 'you',
-    contractStart: new Date().toISOString().slice(0, 10),
+    contractStart: todayYmd(), // local date (toISOString gave yesterday's UTC date after local midnight)
     notes: ''
   };
   const body = el('div', {});
@@ -473,13 +474,6 @@ function openForm(existing) {
     if (emailI.value.trim() && !emailI.checkValidity()) { toast('Enter a valid email address', 'danger'); return; }
     const clientName = nameI.value.trim();
 
-    // Now that Save was actually clicked, delete anything the user removed
-    // from the list during this session (see pendingRemovals above).
-    for (const rem of pendingRemovals) {
-      try { await deleteGithubFile(rem.path, null, `Remove document: ${rem.name}`); }
-      catch (e) { toast(`Repo cleanup failed for ${rem.name}: ${e.message}`, 'warning', 5000); }
-    }
-
     // Upload any pending new files to the repo; keep only metadata in db.json.
     // Path uses the client's and document's own stable, already-opaque IDs
     // (never the client/file name) -- see the matching comment in
@@ -492,8 +486,15 @@ function openForm(existing) {
         try {
           const b64 = await readFileAsBase64(d._file);
           await uploadGithubFileEncrypted(repoPath, b64, `Upload document: ${d.name}`);
-          docsToSave.push({ id: d.id, name: d.name, type: d.type, size: d.size, uploadedAt: d.uploadedAt, path: repoPath, clientId: c.id });
+          const meta = { id: d.id, name: d.name, type: d.type, size: d.size, uploadedAt: d.uploadedAt, path: repoPath, clientId: c.id };
+          docsToSave.push(meta);
+          // Remember the upload succeeded so a retry after a later failure
+          // doesn't re-upload it (and the file isn't orphaned).
+          const idx = pendingDocs.indexOf(d);
+          if (idx !== -1) pendingDocs[idx] = meta;
         } catch (e) {
+          // Nothing has been deleted yet (removals run only after a
+          // successful save), so the stored record is still consistent.
           toast(`Failed to upload ${d.name}: ${e.message}`, 'danger', 6000);
           return;
         }
@@ -518,6 +519,18 @@ function openForm(existing) {
       documents: docsToSave
     });
     upsert('clients', c);
+
+    // Only now — every upload succeeded and the record no longer references
+    // them — delete the files the user removed in this session (see
+    // pendingRemovals above). Running this first used to leave the saved
+    // record pointing at deleted files whenever an upload then failed.
+    const removals = pendingRemovals;
+    pendingRemovals = [];
+    for (const rem of removals) {
+      try { await deleteGithubFile(rem.path, null, `Remove document: ${rem.name}`); }
+      catch (e) { toast(`Repo cleanup failed for ${rem.name}: ${e.message}`, 'warning', 5000); }
+    }
+
     toast(existing ? 'Client updated' : 'Client added', 'success');
     closeModal();
     setTimeout(() => navigate('clients'), 200);
