@@ -1,7 +1,7 @@
 // Invoice PDF generator using jsPDF — supports multiple templates
 import { byId, formatMoney } from './data.js';
 import { state } from './state.js';
-import { fmtDate } from './ui.js';
+import { fmtDate, toast } from './ui.js';
 
 export const PDF_TEMPLATES = [
   { value: 'standard',  label: 'Standard',      description: 'Clean two-column header, light table' },
@@ -56,12 +56,171 @@ const FONT_SPECS = [
   ['Gelasio-BoldItalic.ttf',            'Georgia',       'bolditalic'],
 ];
 
+// Glyph fallback for text the template fonts can't show — none of DM Sans,
+// Cormorant or Gelasio has Greek, and jsPDF silently drops everything from
+// the first missing glyph to the end of the string. Optional: when the files
+// aren't deployed, text is drawn as before and a warning is shown.
+// Noto Sans (SIL Open Font License 1.1) covers Latin, Greek and Cyrillic.
+const FALLBACK_FAMILY = 'NotoSans';
+const FALLBACK_SPECS = [
+  ['NotoSans-Regular.ttf',    FALLBACK_FAMILY, 'normal'],
+  ['NotoSans-Bold.ttf',       FALLBACK_FAMILY, 'bold'],
+  ['NotoSans-Italic.ttf',     FALLBACK_FAMILY, 'italic'],
+  ['NotoSans-BoldItalic.ttf', FALLBACK_FAMILY, 'bolditalic'],
+];
+
+// Fallback files that aren't deployed (404) — not re-requested on every PDF.
+const _fallbackMissing = new Set();
+
+// Fetches every font (concurrently), then registers the template fonts that
+// loaded in the fixed FONT_SPECS order (see fetchFont for why order
+// matters). A font that fails to load no longer aborts the whole PDF: the
+// template's family falls back to the built-in Helvetica (installFontGuards)
+// and the caller gets a warning. The fallback fonts are only fetched here;
+// they are registered on first use (jsPDF embeds every registered font, so
+// registering them up front would bloat every Latin-only invoice).
 async function loadAllFonts(doc) {
-  await Promise.all(FONT_SPECS.map(([filename, family, style]) => fetchFont(filename, family, style)));
-  for (const [filename, family, style] of FONT_SPECS) {
-    doc.addFileToVFS(filename, _fontCache[`${family}:${style}`]);
-    doc.addFont(filename, family, style);
+  if (doc.__fontsLoaded) return;
+  doc.__fontsLoaded = true;
+  const fallbackWanted = FALLBACK_SPECS.filter(([filename]) => !_fallbackMissing.has(filename));
+  const [coreResults, fbResults] = await Promise.all([
+    Promise.allSettled(FONT_SPECS.map(([filename, family, style]) => fetchFont(filename, family, style))),
+    Promise.allSettled(fallbackWanted.map(([filename, family, style]) => fetchFont(filename, family, style))),
+  ]);
+  fbResults.forEach((r, i) => { if (r.status !== 'fulfilled') _fallbackMissing.add(fallbackWanted[i][0]); });
+  const missing = [];
+  FONT_SPECS.forEach(([filename, family, style], i) => {
+    const b64 = _fontCache[`${family}:${style}`];
+    if (coreResults[i].status !== 'fulfilled' || !b64) { missing.push(filename); return; }
+    try {
+      doc.addFileToVFS(filename, b64);
+      doc.addFont(filename, family, style);
+    } catch (e) {
+      missing.push(filename);
+    }
+  });
+  if (missing.length) {
+    pdfWarn(doc, `Some invoice fonts could not be loaded (${missing.join(', ')}) — the PDF uses Helvetica for that text instead.`);
   }
+  installFontGuards(doc);
+}
+
+// Registers the fetched fallback fonts with `doc` (once). Returns whether
+// at least one style is available.
+function registerFallbackFonts(doc) {
+  if (doc.__fallbackRegistered === undefined) {
+    doc.__fallbackRegistered = false;
+    for (const [filename, family, style] of FALLBACK_SPECS) {
+      const b64 = _fontCache[`${family}:${style}`];
+      if (!b64) continue;
+      try {
+        doc.addFileToVFS(filename, b64);
+        doc.addFont(filename, family, style);
+        doc.__fallbackRegistered = true;
+      } catch (e) { /* unusable file — treat as missing */ }
+    }
+  }
+  return doc.__fallbackRegistered;
+}
+
+function pdfWarn(doc, msg) {
+  doc.__pdfWarnings = doc.__pdfWarnings || [];
+  if (!doc.__pdfWarnings.includes(msg)) doc.__pdfWarnings.push(msg);
+}
+
+function hasFont(doc, family, style) {
+  const list = doc.getFontList();
+  return !!(list[family] && list[family].includes(style));
+}
+
+// Built-in Helvetica style closest to a template font/style.
+function helveticaStyle(family, style) {
+  if (style === 'bolditalic') return 'bolditalic';
+  if (style === 'bold' || family === 'CormorantBold') return 'bold';
+  if (style === 'italic') return 'italic';
+  return 'normal';
+}
+
+// Characters the built-in (WinAnsi-encoded) standard fonts can draw.
+const WIN_ANSI_EXTRA = new Set([0x20ac, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030, 0x0160, 0x2039, 0x0152, 0x017d,
+  0x2018, 0x2019, 0x201c, 0x201d, 0x2022, 0x2013, 0x2014, 0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0x017e, 0x0178]);
+
+// True when the current font has no glyph for some character of `str`.
+function fontLacksGlyphs(font, str) {
+  const s = String(str ?? '');
+  const meta = font && font.metadata;
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code < 0x20 || code === 0x20 || code === 0xa0) continue;
+    if (meta && typeof meta.characterToGlyph === 'function') {
+      if (!meta.characterToGlyph(code)) return true;
+    } else if (code > 0xff && !WIN_ANSI_EXTRA.has(code)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Wraps setFont / text / splitTextToSize / getTextWidth on this document:
+//   - setFont with a family that failed to load resolves to Helvetica;
+//   - text the current font can't draw (e.g. Greek) is measured and drawn
+//     with the Noto Sans fallback in the matching style, when available.
+function installFontGuards(doc) {
+  const origSetFont = doc.setFont.bind(doc);
+  doc.setFont = (family, style = 'normal', weight) => {
+    if (!hasFont(doc, family, style)) {
+      const lc = String(family || '').toLowerCase();
+      if (!['helvetica', 'times', 'courier'].includes(lc)) return origSetFont('helvetica', helveticaStyle(family, style));
+    }
+    return weight !== undefined ? origSetFont(family, style, weight) : origSetFont(family, style);
+  };
+
+  const withFallback = (text, fn) => {
+    const cur = doc.getFont();
+    const parts = Array.isArray(text) ? text : [text];
+    if (!parts.some(t => fontLacksGlyphs(cur, t))) return fn();
+    if (!registerFallbackFonts(doc)) {
+      pdfWarn(doc, 'This invoice has characters (e.g. Greek) that the invoice fonts can\'t show, and the fallback font (assets/fonts/NotoSans-*.ttf) isn\'t available — some text may be missing from the PDF.');
+      return fn();
+    }
+    let style = helveticaStyle(cur.fontName, cur.fontStyle);
+    if (!hasFont(doc, FALLBACK_FAMILY, style)) style = 'normal';
+    if (!hasFont(doc, FALLBACK_FAMILY, style)) style = FALLBACK_SPECS.find(([, fam, st]) => hasFont(doc, fam, st))[2];
+    origSetFont(FALLBACK_FAMILY, style);
+    try { return fn(); } finally { origSetFont(cur.fontName, cur.fontStyle); }
+  };
+
+  const origText = doc.text.bind(doc);
+  doc.text = (text, ...rest) => withFallback(text, () => origText(text, ...rest));
+  const origSplit = doc.splitTextToSize.bind(doc);
+  doc.splitTextToSize = (text, ...rest) => withFallback(text, () => origSplit(text, ...rest));
+  const origWidth = doc.getTextWidth.bind(doc);
+  doc.getTextWidth = (text) => withFallback(text, () => origWidth(text));
+}
+
+// Wraps `text` to `width` with the current font and returns the lines
+// (always at least one, possibly '').
+function wrap(doc, text, width) {
+  const lines = doc.splitTextToSize(String(text ?? ''), width);
+  return lines.length ? lines : [''];
+}
+
+// Every line of `lines`, each wrapped to `width`.
+function wrapAll(doc, lines, width) {
+  return lines.flatMap(l => wrap(doc, l, width));
+}
+
+// Largest font size (from `size` down to `min`) at which `text` fits on one
+// line of `width`; sets it on doc and returns the (possibly truncated) text.
+function fitOneLine(doc, text, width, size, min) {
+  const s = String(text ?? '');
+  let fs = size;
+  doc.setFontSize(fs);
+  while (fs > min && doc.getTextWidth(s) > width) { fs -= 1; doc.setFontSize(fs); }
+  if (doc.getTextWidth(s) <= width) return s;
+  let t = s;
+  while (t.length > 1 && doc.getTextWidth(`${t}…`) > width) t = t.slice(0, -1);
+  return `${t.trimEnd()}…`;
 }
 
 
@@ -96,31 +255,37 @@ function renderLineItems(doc, invoice, startY, margin, pageH) {
   const C_AMT_X   = 548;
   const tableW    = C_AMT_X - margin;
 
-  // Header row
-  doc.setFillColor(243, 244, 246);
-  doc.rect(margin, startY, tableW, rowH, 'F');
-  doc.setFontSize(9);
-  doc.setTextColor(80);
-  doc.setFont('DMSans', 'bold');
-  doc.text('DESCRIPTION', C_DESC_X,  startY + 16);
-  doc.text('QTY',         C_QTY_X,   startY + 16, { align: 'right' });
-  doc.text('RATE',        C_RATE_X,  startY + 16, { align: 'right' });
-  doc.text('AMOUNT',      C_AMT_X,   startY + 16, { align: 'right' });
-  doc.setFont('DMSans', 'normal');
-  doc.setTextColor(0);
-  doc.setDrawColor(180);
-  doc.setLineWidth(0.5);
-  doc.line(margin, startY + rowH, C_AMT_X, startY + rowH);
-  let y = startY + rowH;
+  const drawHeader = (hy) => {
+    doc.setFillColor(243, 244, 246);
+    doc.rect(margin, hy, tableW, rowH, 'F');
+    doc.setFontSize(9);
+    doc.setTextColor(80);
+    doc.setFont('DMSans', 'bold');
+    doc.text('DESCRIPTION', C_DESC_X,  hy + 16);
+    doc.text('QTY',         C_QTY_X,   hy + 16, { align: 'right' });
+    doc.text('RATE',        C_RATE_X,  hy + 16, { align: 'right' });
+    doc.text('AMOUNT',      C_AMT_X,   hy + 16, { align: 'right' });
+    doc.setFont('DMSans', 'normal');
+    doc.setTextColor(0);
+    doc.setDrawColor(180);
+    doc.setLineWidth(0.5);
+    doc.line(margin, hy + rowH, C_AMT_X, hy + rowH);
+    doc.setFontSize(10);
+    return hy + rowH;
+  };
+  let y = drawHeader(startY);
 
-  doc.setFontSize(10);
+  // QTY is right-aligned at C_QTY_X; the space left of it after the
+  // description column is its width ("12 nights" or a long unit wraps).
+  const C_QTY_W = C_QTY_X - (C_DESC_X + C_DESC_W) - 6;
   for (const li of invoice.lineItems || []) {
     const descLines = doc.splitTextToSize(li.description || '', C_DESC_W);
-    const itemH = Math.max(rowH, descLines.length * 14 + 8);
-    if (y + itemH > pageH - 80) { doc.addPage(); y = margin; }
+    const qtyLines  = wrap(doc, `${li.quantity} ${li.unit || ''}`.trim(), C_QTY_W);
+    const itemH = Math.max(rowH, Math.max(descLines.length, qtyLines.length) * 14 + 8);
+    if (y + itemH > pageH - 80) { doc.addPage(); y = drawHeader(margin); }
     const midY = y + 16;
     doc.text(descLines,                                             C_DESC_X, midY);
-    doc.text(`${li.quantity} ${li.unit || ''}`.trim(),             C_QTY_X,  midY, { align: 'right' });
+    doc.text(qtyLines,                                              C_QTY_X,  midY, { align: 'right' });
     doc.text(formatMoney(li.rate,  invoice.currency),              C_RATE_X, midY, { align: 'right' });
     doc.text(formatMoney(li.total, invoice.currency),              C_AMT_X,  midY, { align: 'right' });
     y += itemH;
@@ -203,11 +368,13 @@ async function renderStandard(doc, invoice) {
   doc.text('INVOICE', margin, y);
   y += 20;
   doc.setFontSize(11);
-  doc.text(biz.name || ownerName, margin, y);
-  y += 16;
+  // Left column ends before the invoice-number column at rightX.
+  const leftW = rightX - margin - 12;
+  wrap(doc, biz.name || ownerName, leftW).forEach(line => { doc.text(line, margin, y); y += 14; });
+  y += 2;
   doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
-  bizLines(biz).forEach(line => { doc.text(line, margin, y); y += 12; });
+  wrapAll(doc, bizLines(biz), leftW).forEach(line => { doc.text(line, margin, y); y += 12; });
 
   doc.setFontSize(9);
   doc.setTextColor(120);
@@ -244,11 +411,10 @@ async function renderStandard(doc, invoice) {
   y += 14;
   doc.setFontSize(11);
   doc.setFont('DMSans', 'bold');
-  doc.text(client.name || '', margin, y);
-  y += 14;
+  wrap(doc, client.name || '', 548 - margin).forEach(line => { doc.text(line, margin, y); y += 14; });
   doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
-  clientLines(client).forEach(line => { doc.text(line, margin, y); y += 12; });
+  wrapAll(doc, clientLines(client), 548 - margin).forEach(line => { doc.text(line, margin, y); y += 12; });
   y += 24;
 
   y = renderLineItems(doc, invoice, y, margin, 841);
@@ -278,15 +444,18 @@ async function renderCorporate(doc, invoice) {
   doc.rect(0, 0, W, hdrH, 'F');
 
   // Company name left in white
-  doc.setFontSize(20);
+  // The band's left side stops short of the right-aligned "INVOICE" title.
+  // Only two business lines fit in the band; every line (IBAN/BIC included)
+  // is printed in full in the FROM column below.
+  const hdrLeftW = W - margin * 2 - 190;
   doc.setFont('DMSans', 'bold');
   doc.setTextColor(255, 255, 255);
-  doc.text(biz.name || ownerName, margin, 34);
+  doc.text(fitOneLine(doc, biz.name || ownerName, hdrLeftW, 20, 12), margin, 34);
   doc.setFont('DMSans', 'normal');
-  doc.setFontSize(9);
   doc.setTextColor(200, 210, 230);
   const bl = bizLines(biz);
-  bl.slice(0, 2).forEach((line, i) => doc.text(line, margin, 50 + i * 13));
+  bl.slice(0, 2).forEach((line, i) => doc.text(fitOneLine(doc, line, hdrLeftW, 9, 7), margin, 50 + i * 13));
+  doc.setFontSize(9);
 
   // "INVOICE" right in white
   doc.setFontSize(30);
@@ -325,14 +494,19 @@ async function renderCorporate(doc, invoice) {
   doc.setFont('DMSans', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(0);
-  doc.text(biz.name || ownerName, margin, y);
-  doc.text(client.name || '', col2X, y);
-  y += 14;
+  const fromName = wrap(doc, biz.name || ownerName, colW);
+  const toName   = wrap(doc, client.name || '', colW);
+  const nameRows = Math.max(fromName.length, toName.length);
+  for (let i = 0; i < nameRows; i++) {
+    if (fromName[i]) doc.text(fromName[i], margin, y);
+    if (toName[i])   doc.text(toName[i],   col2X, y);
+    y += 14;
+  }
 
   doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
-  const bl2 = bizLines(biz);
-  const cl  = clientLines(client);
+  const bl2 = wrapAll(doc, bizLines(biz), colW);
+  const cl  = wrapAll(doc, clientLines(client), colW);
   const maxRows = Math.max(bl2.length, cl.length);
   for (let i = 0; i < maxRows; i++) {
     if (bl2[i]) doc.text(bl2[i], margin,  y);
@@ -400,32 +574,38 @@ async function renderMinimal(doc, invoice) {
   y += 16;
 
   // Company name + date meta side by side
+  // Left column stops short of the right-aligned Issued/Due dates.
+  const leftW = W - margin * 2 - 140;
   doc.setFont('DMSans', 'bold');
   doc.setFontSize(11);
   doc.setTextColor(20, 20, 20);
-  doc.text(biz.name || ownerName, margin, y);
+  const nameLines = wrap(doc, biz.name || ownerName, leftW);
+  nameLines.forEach((line, i) => doc.text(line, margin, y + i * 13));
 
   doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(120);
   doc.text(`Issued  ${fmtDate(invoice.issueDate)}`, W - margin, y, { align: 'right' });
-  y += 14;
+  doc.text(`Due      ${fmtDate(invoice.dueDate)}`, W - margin, y + 28, { align: 'right' });
+  y += 14 + (nameLines.length - 1) * 13;
 
   doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(100);
-  bizLines(biz).forEach(line => { doc.text(line, margin, y); y += 11; });
-
-  doc.setTextColor(120);
-  doc.text(`Due      ${fmtDate(invoice.dueDate)}`, W - margin, y - (bizLines(biz).length * 11) + 14, { align: 'right' });
+  wrapAll(doc, bizLines(biz), leftW).forEach(line => { doc.text(line, margin, y); y += 11; });
 
   doc.setTextColor(0);
   y += 20;
 
   // Bill-to box (light gray background)
-  const billToLines = [client.name || ''];
-  clientLines(client).forEach(l => billToLines.push(l));
-  const boxH = billToLines.length * 13 + 22;
+  const boxInnerW = W - margin * 2 - 20;
+  doc.setFont('DMSans', 'bold');
+  doc.setFontSize(10);
+  const clientNameLines = wrap(doc, client.name || '', boxInnerW);
+  doc.setFont('DMSans', 'normal');
+  doc.setFontSize(9);
+  const clientInfoLines = wrapAll(doc, clientLines(client), boxInnerW);
+  const boxH = (clientNameLines.length + clientInfoLines.length) * 13 + 22;
 
   doc.setFillColor(248, 249, 250);
   doc.setDrawColor(230);
@@ -440,12 +620,13 @@ async function renderMinimal(doc, invoice) {
   doc.setFont('DMSans', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(20, 20, 20);
-  doc.text(client.name || '', margin + 10, y + 27);
+  clientNameLines.forEach((line, i) => doc.text(line, margin + 10, y + 27 + i * 13));
 
   doc.setFont('DMSans', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(80);
-  clientLines(client).forEach((line, i) => doc.text(line, margin + 10, y + 40 + i * 13));
+  const infoY = y + 40 + (clientNameLines.length - 1) * 13;
+  clientInfoLines.forEach((line, i) => doc.text(line, margin + 10, infoY + i * 13));
 
   y += boxH + 24;
 
@@ -489,10 +670,15 @@ async function renderLuxury(doc, invoice) {
   let y = MT;
 
   // Left: company name — Georgia bolditalic 17pt #2B2926
+  // Left column: everything left of the right-aligned "Invoice" / number.
+  const LEFT_W = 300;
   doc.setFont('Georgia', 'bolditalic');
   doc.setFontSize(17);
   doc.setTextColor(...BNAME);
-  doc.text(biz.name || 'Your Company', ML, y, { charSpace: 0.6 });
+  // charSpace widens every glyph gap; splitTextToSize doesn't know about it,
+  // so wrap to a proportionally narrower width.
+  const nameLines = wrap(doc, biz.name || 'Your Company', LEFT_W * 0.93);
+  nameLines.forEach((line, i) => doc.text(line, ML, y + i * 20, { charSpace: 0.6 }));
 
   // Left: sub-info — DMSans regular 8pt gold uppercase (Word sub-line style)
   const subItems = [
@@ -501,13 +687,13 @@ async function renderLuxury(doc, invoice) {
     biz.address            || '',
   ].filter(Boolean);
 
-  let leftY = y + 15;
+  let leftY = y + 15 + (nameLines.length - 1) * 20;
   if (subItems.length) {
     doc.setFont('DMSans', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...GOLD);
-    subItems.forEach(line => {
-      doc.text(line.toUpperCase(), ML, leftY, { charSpace: 1.6 });
+    wrapAll(doc, subItems.map(l => l.toUpperCase()), LEFT_W * 0.7).forEach(line => {
+      doc.text(line, ML, leftY, { charSpace: 1.6 });
       leftY += 12;
     });
   }
@@ -524,8 +710,9 @@ async function renderLuxury(doc, invoice) {
   doc.setTextColor(...GHOST);
   doc.text(`#${invoice.number || 'DRAFT'}`, MR, y + 34, { align: 'right' }); // Word: 28pt × 1.2 line height = 34pt baseline gap
 
-  // header block height + margin-bottom
-  y += 40 + 24;
+  // header block height + margin-bottom (a wrapped name / long address
+  // pushes the rule down instead of running into it)
+  y = Math.max(y + 40, leftY - 11) + 24;
 
   // ── Hairline rule (.rule: 0.5px solid #d6c9b0, margin-bottom 28px→21pt) ──
   doc.setDrawColor(...HAIR);
@@ -581,19 +768,23 @@ async function renderLuxury(doc, invoice) {
   const C_AMT    = MR;               // right edge
   const DESC_W   = 213;              // description wrap width (Word: 215pt col)
 
-  // Labels — helvetica bolditalic 6pt gold (Word: Arial 6pt bold italic)
-  doc.setFont('helvetica', 'bolditalic');
-  doc.setFontSize(6);
-  doc.setTextColor(...GOLD);
-  doc.text('DESCRIPTION', C_DESC,  y, { charSpace: 1.2 });
-  doc.text('QTY',         C_QTY_R, y, { align: 'right', charSpace: 1.2 });
-  doc.text('RATE',        C_RATE,  y, { align: 'right', charSpace: 1.2 });
-  doc.text('AMOUNT',      C_AMT,   y, { align: 'right', charSpace: 1.2 });
-  y += 2; // space-after: 2pt (Word: 40 twips)
-  doc.setDrawColor(...HAIR);
-  doc.setLineWidth(0.5);
-  doc.line(ML, y, MR, y);
-  y += 12;
+  // Labels — helvetica bolditalic 6pt gold (Word: Arial 6pt bold italic).
+  // Drawn again at the top of every continuation page.
+  const drawTableHeader = () => {
+    doc.setFont('helvetica', 'bolditalic');
+    doc.setFontSize(6);
+    doc.setTextColor(...GOLD);
+    doc.text('DESCRIPTION', C_DESC,  y, { charSpace: 1.2 });
+    doc.text('QTY',         C_QTY_R, y, { align: 'right', charSpace: 1.2 });
+    doc.text('RATE',        C_RATE,  y, { align: 'right', charSpace: 1.2 });
+    doc.text('AMOUNT',      C_AMT,   y, { align: 'right', charSpace: 1.2 });
+    y += 2; // space-after: 2pt (Word: 40 twips)
+    doc.setDrawColor(...HAIR);
+    doc.setLineWidth(0.5);
+    doc.line(ML, y, MR, y);
+    y += 12;
+  };
+  drawTableHeader();
 
   for (const li of invoice.lineItems || []) {
     const parts       = (li.description || '').split('\n');
@@ -604,7 +795,9 @@ async function renderLuxury(doc, invoice) {
     doc.setFontSize(11);
     const mainWrapped = doc.splitTextToSize(mainDesc, DESC_W);
     const mainH       = mainWrapped.length * 14; // 14pt line height for 11pt font
-    const subH        = subDesc ? 10 : 0;
+    doc.setFontSize(8);
+    const subWrapped  = subDesc ? doc.splitTextToSize(subDesc, DESC_W) : [];
+    const subH        = subWrapped.length * 10;
     const descTotal   = mainH + (subDesc ? 1.5 + subH : 0);
     const rowH        = 14 + descTotal + 10; // 14pt top padding + content + 10pt bottom
 
@@ -615,6 +808,7 @@ async function renderLuxury(doc, invoice) {
       doc.setFillColor(...GOLD);
       doc.rect(0, 0, W, 3, 'F');
       y = MT;
+      drawTableHeader();
     }
 
     // Single baseline for all columns; for multi-line desc, numbers center on the block
@@ -632,7 +826,7 @@ async function renderLuxury(doc, invoice) {
       doc.setFont('Georgia', 'bolditalic');
       doc.setFontSize(8);
       doc.setTextColor(...GOLD);
-      doc.text(subDesc, C_DESC, descY + mainH + 1.5);
+      doc.text(subWrapped, C_DESC, descY + mainH + 1.5, { lineHeightFactor: 10 / 8 });
     }
 
     // Qty center / Rate right / Amount right — Georgia bolditalic 10pt (Word: Georgia 10pt bold italic)
@@ -719,10 +913,14 @@ async function renderLuxury(doc, invoice) {
     // Footer — Word col widths: IBAN=135pt, BIC=85pt, SWIFT=295pt
     // Labels: helvetica bolditalic 6pt gold, 2pt gap to value (Word: Arial 6pt bold italic)
     // Values: helvetica bolditalic 8pt #7A7975 (Word: Arial 8pt bold italic)
-    const footerX = [ML, ML + 135, ML + 220];
+    // Columns start at those widths but grow to fit their value — a full
+    // 34-character IBAN is wider than 135pt and used to run into the BIC.
+    let fx = ML;
     footerFields.forEach((f, idx) => {
-      const fx = footerX[idx] ?? (ML + idx * 135);
+      const minW = [135, 85, 295][idx] ?? 135;
       doc.setFont('helvetica', 'bolditalic');
+      doc.setFontSize(8);
+      const colWidth = Math.max(minW, doc.getTextWidth(f.value) + 14);
       doc.setFontSize(6);
       doc.setTextColor(...GOLD);
       doc.text(f.label, fx, y, { charSpace: 1.2 });
@@ -730,6 +928,7 @@ async function renderLuxury(doc, invoice) {
       doc.setFontSize(8);
       doc.setTextColor(...FTR);
       doc.text(f.value, fx, y + 8); // 2pt space-after label (Word: 40 twips)
+      fx += colWidth;
     });
   }
 }
@@ -768,6 +967,13 @@ export async function generateInvoicePDF(invoice, templateOverride) {
     await renderMinimal(doc, invoice);
   } else {
     await renderStandard(doc, invoice);
+  }
+
+  // Font problems (a template font that failed to load, or characters no
+  // available font can draw) don't stop the PDF; tell the user once.
+  for (const msg of doc.__pdfWarnings || []) {
+    console.warn(`[pdf] ${msg}`);
+    try { toast(msg, 'warning'); } catch { /* no UI (e.g. tests) */ }
   }
 
   return doc;
