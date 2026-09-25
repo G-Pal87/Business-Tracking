@@ -356,14 +356,51 @@ export function isEncryptedEnvelope(parsed) {
     && typeof parsed.iv === 'string' && typeof parsed.ct === 'string';
 }
 
-export async function encryptJsonToEnvelope(obj) {
+// ── Optional gzip compression inside the envelope ──────────────────────────
+// A compressed envelope is { enc: 1, v: 2, z: 'gzip', iv, ct, kid }: the JSON
+// is gzipped BEFORE encryption (ciphertext itself can't be compressed), which
+// shrinks db.json ~5-8x. `v` is the envelope format version: code that sees a
+// version newer than it understands refuses to read (and therefore to save)
+// instead of guessing — see decryptEnvelopeWithInfo.
+//
+// Compression is only ever written when the caller asks for it (doPushDb,
+// gated by the synced settings.compressDb switch), because an app version
+// from before this change can't read it. Reading is always supported.
+export const ENVELOPE_FORMAT_VERSION = 2;
+
+export function supportsCompression() {
+  return typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
+}
+
+async function gzipBytes(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function gunzipBytes(bytes) {
+  if (typeof DecompressionStream !== 'function') {
+    const err = new Error('The data is stored compressed, and this browser is too old to read it. Update the browser (Safari/iOS 16.4+, Chrome 80+, Firefox 113+). Nothing will be saved from this device until then.');
+    err.code = 'UNSUPPORTED_BROWSER';
+    throw err;
+  }
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+export async function encryptJsonToEnvelope(obj, { compress = false } = {}) {
   if (!_dataKey) throw new Error('No encryption key configured on this device');
   const iv = randomBytes(12);
-  const plaintext = new TextEncoder().encode(JSON.stringify(obj));
+  let plaintext = new TextEncoder().encode(JSON.stringify(obj));
+  const zip = compress && supportsCompression();
+  if (zip) plaintext = await gzipBytes(plaintext);
   const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _dataKey, plaintext);
   // `kid` is additive: older app versions ignore unknown envelope fields.
-  return { enc: 1, iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)), kid: await keyIdOf(_dataKey) };
+  const env = { enc: 1, iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)), kid: await keyIdOf(_dataKey) };
+  if (zip) { env.v = ENVELOPE_FORMAT_VERSION; env.z = 'gzip'; }
+  return env;
 }
+
+export function isCompressedEnvelope(env) { return !!env && env.z === 'gzip'; }
 
 // Candidate keys for decryption: the one the envelope names (if we hold it),
 // then the current key, then previous keys.
@@ -397,11 +434,17 @@ export async function decryptEnvelopeWithInfo(envelope) {
     err.code = 'NO_ENC_KEY';
     throw err;
   }
+  if ((Number(envelope.v) || 1) > ENVELOPE_FORMAT_VERSION || (envelope.z && envelope.z !== 'gzip')) {
+    const err = new Error('The data on GitHub was saved by a newer version of the app. Reload the page to update. Nothing will be saved from this tab until then.');
+    err.code = 'NEWER_FORMAT';
+    throw err;
+  }
   const iv = b64decode(envelope.iv), ct = b64decode(envelope.ct);
   for (const key of await candidateKeys(envelope.kid)) {
     let plaintext;
-    try { plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct); }
+    try { plaintext = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)); }
     catch { continue; } // wrong key — try the next one
+    if (envelope.z === 'gzip') plaintext = await gunzipBytes(plaintext);
     return { data: JSON.parse(new TextDecoder().decode(plaintext)), usedPrevious: key !== _dataKey, usedKid: await keyIdOf(key) };
   }
   throw keyMismatchError();
