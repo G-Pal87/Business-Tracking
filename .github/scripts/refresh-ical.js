@@ -480,6 +480,10 @@ async function main() {
     properties: []
   };
 
+  // Feeds aren't kept on main (publish-rates-feed.sh publishes them to the
+  // rates-feed branch), so the folder usually doesn't exist in the checkout.
+  fs.mkdirSync(path.join(root, FEED_DIR), { recursive: true });
+
   for (const prop of stProps) {
     const feedPath = path.join(root, FEED_DIR, `${prop.id}.json`);
     const newFeed  = buildRatesFeed(db, prop.id);

@@ -1,10 +1,14 @@
 name: Notify Short-Term-Rentals on rate update
 
+# The rate feeds live on the single-commit `rates-feed` branch, which carries
+# no workflow files, so a push there can't trigger anything. Instead the app
+# fires a repository_dispatch (`rates-feed-published`) after each publish, and
+# this forwards it to the Short-Term-Rentals site. That site also polls the
+# feed on its own (watch-rates), so a missed event only delays the rebuild.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'exports/daily-rates/index.json'
+  repository_dispatch:
+    types: [rates-feed-published]
+  workflow_dispatch:
 
 jobs:
   notify:

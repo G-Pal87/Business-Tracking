@@ -1499,6 +1499,104 @@ export async function deleteGithubFile(path, sha = null, message = 'Delete file'
   throw new Error(`File delete failed after ${ATTEMPTS} attempts (${lastErr}) for path "${path}"`);
 }
 
+// ── Snapshot branches (public files that must not accumulate history) ────────
+// Some public files (the STR daily-rate feeds) only ever need their CURRENT
+// content. Committing them to main kept every past version in the public git
+// history. A snapshot branch instead holds exactly one commit with no parent:
+// each publish builds a fresh tree + parentless commit and force-moves the
+// branch to it, so the branch never carries more than the current files.
+
+async function ghApi(method, apiPath, body) {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) throw new Error('GitHub not configured — add owner/repo/token in Settings');
+  const headers = {
+    'Accept':        'application/vnd.github+json',
+    'Authorization': `token ${token}`,
+    'Content-Type':  'application/json'
+  };
+  const url = `https://api.github.com/repos/${owner}/${repo}${apiPath}`;
+  const ATTEMPTS = 4;
+  for (let attempt = 1; ; attempt++) {
+    let res;
+    try {
+      res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+    } catch {
+      if (attempt < ATTEMPTS) { await sleep(backoff(attempt)); continue; }
+      throw new Error(`Cannot reach GitHub (${method} ${apiPath})`);
+    }
+    if (res.status === 403 && attempt < ATTEMPTS) {
+      const waitMs = rateLimitWaitMs(res);
+      if (waitMs > 0) { await sleep(waitMs); continue; }
+    }
+    if (res.status >= 500 && attempt < ATTEMPTS) { await sleep(backoff(attempt)); continue; }
+    return res;
+  }
+}
+
+/**
+ * Replace `branchName` with a single parentless commit containing exactly
+ * `files` (text only). Creates the branch if it doesn't exist yet.
+ * @param {string} branchName - e.g. "rates-feed" (never the data branch)
+ * @param {Array<{path: string, content: string}>} files - repo-relative paths, UTF-8 text
+ * @param {string} message - commit message
+ * @returns {Promise<{commit: string}>}
+ */
+export async function publishSnapshotBranch(branchName, files, message) {
+  if (!branchName || branchName === (state.github.branch || 'main')) {
+    throw new Error('Refusing to replace the data branch with a snapshot');
+  }
+  const fail = async (res, what) => {
+    let t = ''; try { t = await res.text(); } catch { /* ignore */ }
+    if (res.status === 401 || res.status === 403) throw new Error('Token lacks write access');
+    throw new Error(`${what} failed (${res.status}): ${t}`);
+  };
+  const tree = files.map(f => ({ path: f.path.replace(/^\/+/, ''), mode: '100644', type: 'blob', content: f.content }));
+  const treeRes = await ghApi('POST', '/git/trees', { tree });
+  if (!treeRes.ok) await fail(treeRes, 'Creating feed tree');
+  const treeSha = (await treeRes.json()).sha;
+
+  const commitRes = await ghApi('POST', '/git/commits', { message, tree: treeSha, parents: [] });
+  if (!commitRes.ok) await fail(commitRes, 'Creating feed commit');
+  const commitSha = (await commitRes.json()).sha;
+
+  const refPath = `/git/refs/heads/${branchName.split('/').map(encodeURIComponent).join('/')}`;
+  let refRes = await ghApi('PATCH', refPath, { sha: commitSha, force: true });
+  if (refRes.status === 422 || refRes.status === 404) {
+    // Branch doesn't exist yet — create it.
+    refRes = await ghApi('POST', '/git/refs', { ref: `refs/heads/${branchName}`, sha: commitSha });
+    // 422 here = someone else created it in the meantime; move it instead.
+    if (refRes.status === 422) refRes = await ghApi('PATCH', refPath, { sha: commitSha, force: true });
+  }
+  if (!refRes.ok) await fail(refRes, `Updating branch ${branchName}`);
+  return { commit: commitSha };
+}
+
+/**
+ * Read a UTF-8 text file from a specific branch. Returns null if the file
+ * (or the branch) doesn't exist.
+ */
+export async function fetchBranchFileText(branchName, path) {
+  const encodedPath = path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
+  const res = await ghApi('GET', `/contents/${encodedPath}?ref=${encodeURIComponent(branchName)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`File fetch failed (${res.status})`);
+  const data = await res.json();
+  const b64 = data.content || (data.sha ? await fetchGithubBlobBase64(data.sha) : '');
+  return b64decode(b64);
+}
+
+/**
+ * Fire a repository_dispatch event on this repo (lets a workflow react to
+ * something the app did that isn't a push to a workflow-carrying branch).
+ * Best-effort: resolves false instead of throwing.
+ */
+export async function dispatchRepoEvent(eventType) {
+  try {
+    const res = await ghApi('POST', '/dispatches', { event_type: eventType });
+    return res.ok;
+  } catch { return false; }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }

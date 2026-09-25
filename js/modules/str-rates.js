@@ -5,7 +5,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, toast, select, input, textarea, button, formRow, fmtDate, confirmDialog } from '../core/ui.js';
 import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney, isReservationNight } from '../core/data.js';
 import { fetchICal, parseICal, mergeBlocks, isOwnerBlockSummary } from '../core/ical.js';
-import { uploadGithubFile, listGithubFolder, deleteGithubFile } from '../core/github.js';
+import { publishSnapshotBranch, fetchBranchFileText, dispatchRepoEvent } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { openPaymentForm } from './payments.js';
 import { todayYmd } from '../core/dates.js';
@@ -737,11 +737,17 @@ function renderGapRow(gap, propertyId, onRerender) {
 // Publishes one JSON file per short-term property mapping each upcoming date to
 // the rate amount to push into a channel/iCal. The external repo only needs the
 // `amount` per `date`; `status`/`basis` are extra context it can ignore.
+//
+// The feeds live on their own branch (FEED_BRANCH), which always holds exactly
+// ONE commit: every publish replaces the whole branch with the current files
+// (see publishSnapshotBranch). They used to be committed to main, which kept
+// every past price in the public git history.
 const FEED_DIR = 'exports/daily-rates';
+const FEED_BRANCH = 'rates-feed';
 const FEED_HORIZON_DAYS = 365;
-
-// UTF-8 safe base64 (GitHub Contents API expects base64-encoded content).
-function toB64(str) { return btoa(unescape(encodeURIComponent(str))); }
+// repository_dispatch event that tells this repo's notify-str-rebuild workflow
+// to ask the Short-Term-Rentals site to rebuild with the new rates.
+const FEED_PUBLISHED_EVENT = 'rates-feed-published';
 
 // Whether this property's prices may appear on the public website: the global
 // switch (Settings → STR, `hideAllSitePrices`) wins, then the per-property
@@ -844,60 +850,81 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
 // Content signature of a feed (ignores generatedAt so unchanged data is a no-op).
 function feedSig(feed) { return JSON.stringify({ p: feed.property, s: feed.showPrices, c: feed.cleaningFee, r: feed.rates }); }
 
-// Removes published feed files for properties that are no longer active
-// short-term properties (deleted, sold, test entries) — they are public and
-// were never cleaned up. Only touches `prop_*.json` files in FEED_DIR.
-async function removeStaleFeeds(activeIds) {
-  let files = [];
-  try { files = await listGithubFolder(FEED_DIR); } catch { return 0; }
-  let removed = 0;
-  for (const f of files) {
-    const m = /^(prop_[A-Za-z0-9_-]+)\.json$/.exec(f.name);
-    if (!m || activeIds.has(m[1])) continue;
-    try { await deleteGithubFile(f.path, f.sha, `Remove stale daily-rate feed: ${f.name}`); removed++; }
-    catch (e) { console.warn('Could not remove stale feed', f.name, e.message); }
-  }
-  return removed;
-}
-let _staleFeedsChecked = false;
-
 // Cache of the last-published signature per property, so auto-publish only
-// uploads feeds whose rates actually changed. In-memory only (resets on reload,
-// in which case the next publish simply re-uploads everything once).
+// republishes when some feed's rates actually changed. In-memory only; on the
+// first publish of a session it is seeded from what the feed branch currently
+// holds (seedPublishedSigs), so a reload alone doesn't republish.
 const _lastFeedSig = new Map();
 let _lastManifestSig = '';
+let _publishedSeeded = false;
 let _publishing = false;
 
 const feedBase = () => {
-  const { owner, repo, branch } = state.github;
-  return `https://raw.githubusercontent.com/${owner}/${repo}/${branch || 'main'}/${FEED_DIR}`;
+  const { owner, repo } = state.github;
+  return `https://raw.githubusercontent.com/${owner}/${repo}/${FEED_BRANCH}/${FEED_DIR}`;
 };
 
-// Publish a feed file per STR property plus an index manifest. Always uploads
-// every property (used by the manual button). Returns the public base URL + manifest.
+function manifestEntry(p, feed) {
+  return { id: p.id, name: p.name, currency: p.currency || 'EUR', file: `${p.id}.json`, nights: feed.rates.length, showPrices: feed.showPrices };
+}
+
+// Reads the currently published feeds once per session and records their
+// signatures. Any failure just leaves the cache empty (→ one republish).
+async function seedPublishedSigs() {
+  _publishedSeeded = true;
+  try {
+    const idxText = await fetchBranchFileText(FEED_BRANCH, `${FEED_DIR}/index.json`);
+    if (!idxText) return;
+    const idx = JSON.parse(idxText);
+    const props = Array.isArray(idx.properties) ? idx.properties : [];
+    for (const mp of props) {
+      const text = await fetchBranchFileText(FEED_BRANCH, `${FEED_DIR}/${mp.file}`);
+      if (!text) return; // incomplete branch — let the next publish rewrite it
+      _lastFeedSig.set(mp.id, feedSig(JSON.parse(text)));
+    }
+    _lastManifestSig = JSON.stringify(props);
+  } catch (e) {
+    console.warn('Could not read published daily-rate feeds:', e.message);
+    _lastFeedSig.clear();
+    _lastManifestSig = '';
+  }
+}
+
+// Builds every active STR property's feed + the index and publishes them all
+// as the single commit on FEED_BRANCH. Properties that are no longer active
+// short-term properties simply drop out, since the branch is replaced whole.
+async function publishAllFeeds(feeds, message) {
+  const manifest = { schema: 'str-daily-rates-index/v1', generatedAt: new Date().toISOString(), properties: feeds.map(({ p, feed }) => manifestEntry(p, feed)) };
+  const files = feeds.map(({ p, feed }) => ({ path: `${FEED_DIR}/${p.id}.json`, content: JSON.stringify(feed, null, 2) }));
+  files.push({ path: `${FEED_DIR}/index.json`, content: JSON.stringify(manifest, null, 2) });
+  await publishSnapshotBranch(FEED_BRANCH, files, message);
+  for (const { p, sig } of feeds) _lastFeedSig.set(p.id, sig);
+  _lastManifestSig = JSON.stringify(manifest.properties);
+  // Best-effort nudge so the website rebuilds right away; its own poller
+  // (Short-Term-Rentals watch-rates) catches the change anyway if this fails.
+  dispatchRepoEvent(FEED_PUBLISHED_EVENT);
+  return manifest;
+}
+
+function buildAllFeeds(stProps) {
+  return stProps.map(p => {
+    const feed = buildRatesFeed(p.id);
+    return { p, feed, sig: feedSig(feed) };
+  });
+}
+
+// Publish every STR property's feed plus the index manifest, unconditionally
+// (used by the manual button). Returns the public base URL + manifest.
 async function publishRatesFeeds() {
   const stProps = listActive('properties').filter(p => p.type === 'short_term');
   if (!stProps.length) throw new Error('No short-term properties to export');
-
-  const manifest = { schema: 'str-daily-rates-index/v1', generatedAt: new Date().toISOString(), properties: [] };
-  for (const p of stProps) {
-    const feed = buildRatesFeed(p.id);
-    const file = `${p.id}.json`;
-    await uploadGithubFile(`${FEED_DIR}/${file}`, toB64(JSON.stringify(feed, null, 2)), `Publish daily-rate feed: ${p.name}`);
-    _lastFeedSig.set(p.id, feedSig(feed));
-    manifest.properties.push({ id: p.id, name: p.name, currency: p.currency || 'EUR', file, nights: feed.rates.length, showPrices: feed.showPrices });
-  }
-  await uploadGithubFile(`${FEED_DIR}/index.json`, toB64(JSON.stringify(manifest, null, 2)), 'Publish daily-rate feed index');
-  _lastManifestSig = JSON.stringify(manifest.properties);
-  await removeStaleFeeds(new Set(stProps.map(p => p.id)));
-  _staleFeedsChecked = true;
-
+  const manifest = await publishAllFeeds(buildAllFeeds(stProps), 'Publish daily-rate feeds');
   return { base: feedBase(), manifest };
 }
 
-// Auto-publish hook (called after a successful data sync). Incremental: only
-// uploads property feeds whose content changed, and only rewrites the index when
-// a feed changed or the property set changed. Silent and best-effort.
+// Auto-publish hook (called after a successful data sync). Only republishes
+// when a feed's content changed or the property set changed. Silent and
+// best-effort.
 export async function autoPublishRatesFeeds() {
   if (_publishing) return;
   const { owner, repo, token } = state.github;
@@ -907,31 +934,11 @@ export async function autoPublishRatesFeeds() {
 
   _publishing = true;
   try {
-    const feeds = stProps.map(p => ({ p, feed: buildRatesFeed(p.id), sig: '' }));
-    for (const f of feeds) f.sig = feedSig(f.feed);
-    const manifestProps = feeds.map(({ p, feed }) => ({
-      id: p.id, name: p.name, currency: p.currency || 'EUR', file: `${p.id}.json`, nights: feed.rates.length, showPrices: feed.showPrices
-    }));
-
-    // Upload all changed property feeds in parallel.
-    const changed = await Promise.all(feeds.map(async ({ p, feed, sig }) => {
-      if (_lastFeedSig.get(p.id) === sig) return false;
-      await uploadGithubFile(`${FEED_DIR}/${p.id}.json`, toB64(JSON.stringify(feed, null, 2)), `Update daily-rate feed: ${p.name}`);
-      _lastFeedSig.set(p.id, sig);
-      return true;
-    }));
-
-    const manifestSig = JSON.stringify(manifestProps);
-    if (changed.some(Boolean) || manifestSig !== _lastManifestSig) {
-      const manifest = { schema: 'str-daily-rates-index/v1', generatedAt: new Date().toISOString(), properties: manifestProps };
-      await uploadGithubFile(`${FEED_DIR}/index.json`, toB64(JSON.stringify(manifest, null, 2)), 'Update daily-rate feed index');
-      _lastManifestSig = manifestSig;
-    }
-    // Once per session, clean up feeds of properties that no longer exist.
-    if (!_staleFeedsChecked) {
-      _staleFeedsChecked = true;
-      await removeStaleFeeds(new Set(stProps.map(p => p.id)));
-    }
+    if (!_publishedSeeded) await seedPublishedSigs();
+    const feeds = buildAllFeeds(stProps);
+    const manifestSig = JSON.stringify(feeds.map(({ p, feed }) => manifestEntry(p, feed)));
+    const changed = feeds.some(({ p, sig }) => _lastFeedSig.get(p.id) !== sig) || manifestSig !== _lastManifestSig;
+    if (changed) await publishAllFeeds(feeds, 'Update daily-rate feeds');
   } catch (e) {
     console.warn('Auto-publish daily-rate feeds failed:', e);
   } finally {
@@ -995,7 +1002,7 @@ function build() {
   bar.appendChild(el('div', { class: 'flex-1' }));
   const publishBtn = button('Publish Rates Feed', { onClick: async () => {
     const ok = await confirmDialog(
-      `Publish daily-rate feeds for all short-term properties to GitHub (under ${FEED_DIR}/)? These JSON files are read by the Short-Term-Rentals repo.`,
+      `Publish daily-rate feeds for all short-term properties to GitHub (branch "${FEED_BRANCH}", which only ever keeps the current files)? These JSON files are read by the Short-Term-Rentals repo.`,
       { okLabel: 'Publish' }
     );
     if (!ok) return;

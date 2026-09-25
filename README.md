@@ -50,7 +50,7 @@ js/
 data/
   db.json                     # Single source of truth (encrypted envelope)
 backups/                      # Daily encrypted snapshots (GitHub Action)
-exports/daily-rates/          # Public STR daily-rate feeds (plain JSON)
+# exports/daily-rates/ lives on the single-commit `rates-feed` branch, not here
 ```
 
 ### Adding a new module
