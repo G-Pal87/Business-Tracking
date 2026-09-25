@@ -2372,7 +2372,8 @@ function parseAirbnbCSV(text) {
     // A date cell that is present but isn't a real calendar date makes the
     // row untrustworthy (month keys, sorting, nights) — skip it and report
     // it in the preview rather than storing an invalid date.
-    const badDate = [dateRaw, bookingDateRaw, checkInRaw, checkOutRaw].find(v => v && !pd(v));
+    // (A cell without any digit, e.g. "—", counts as empty.)
+    const badDate = [dateRaw, bookingDateRaw, checkInRaw, checkOutRaw].find(v => v && /\d/.test(v) && !pd(v));
     const date    = pd(dateRaw) || pd(checkInRaw);
     if (badDate || !date) {
       invalidRows.push({
@@ -2440,7 +2441,7 @@ function parseAirbnbCSV(text) {
   // surface the warning (the import preview) can opt in via this property.
   results.unrecognizedHeaders = headers.filter((h, i) => h && !recognizedIdx.has(i));
   if (invalidRows.length) {
-    const sample = invalidRows.slice(0, 3).map(r => `line ${r.line}: ${r.reason}`).join('; ');
+    const sample = invalidRows.slice(0, 3).map(r => `row ${r.line}: ${r.reason}`).join('; ');
     warnings.push(`${invalidRows.length} row${invalidRows.length === 1 ? '' : 's'} skipped — ${sample}${invalidRows.length > 3 ? '; …' : ''}`);
   }
   results.warnings = warnings;
