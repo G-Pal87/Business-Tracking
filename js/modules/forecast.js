@@ -1,6 +1,6 @@
 // Forecast module: monthly grid per property/service
 import { state, markDirty } from '../core/state.js';
-import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, confirmDialog, drillDownModal, attachSortFilter } from '../core/ui.js';
+import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, confirmDialog, drillDownModal, attachSortFilter, whenDetached } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, getForecastEntries, upsertForecastEntry, removeForecastEntry, sumForecastEntries, listActive, listActivePayments, generatePaymentSchedule, isCapEx } from '../core/data.js';
 import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
@@ -298,6 +298,9 @@ function buildPropertySection(wrap) {
     yearMenu.style.display = 'none';
   };
   document.addEventListener('click', closeForecMenus);
+  // Removed as soon as the widget leaves the page (refresh() rebuilds it on
+  // every sync), not on the next click.
+  whenDetached(streamWrapper, () => document.removeEventListener('click', closeForecMenus));
 
   streamWrapper.appendChild(streamTrigger);
   streamWrapper.appendChild(streamMenu);
@@ -684,6 +687,7 @@ function buildServiceSection(wrap) {
     svcYearMenu.style.display = 'none';
   };
   document.addEventListener('click', closeSvcMenus);
+  whenDetached(svcWrapper, () => document.removeEventListener('click', closeSvcMenus));
   svcYearWrapper.appendChild(svcYearTrigger);
   svcYearWrapper.appendChild(svcYearMenu);
 
