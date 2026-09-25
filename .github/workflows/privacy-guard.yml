@@ -3,29 +3,82 @@ name: Privacy guard
 # This repository is public. Fails (and GitHub emails the pusher) if a push or
 # pull request adds anything that must not be public: unencrypted data files
 # (db.json, backups, invoices, documents), rate feeds outside the rates-feed
-# branch, or secrets in source files. Prints only paths and reasons, never
-# contents. See .github/scripts/privacy-guard.py.
+# branch, file types that don't belong in source folders, or secrets in source
+# files and commit messages. Prints only paths and reasons, never contents.
+# See .github/scripts/privacy-guard.py and docs/security.md.
+#
+# A push check can only report a leak after it is public. The pre-push hook
+# (.githooks/pre-push, `git config core.hooksPath .githooks`) stops it before.
 on:
   push:
   pull_request:
+  schedule:
+    - cron: '41 3 * * *'   # daily full scan of every branch (presence, rates-feed, ...)
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  guard:
+  push:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       # Full history but no file contents up front (blob:none): only the files
       # the pushed commits touched are downloaded, so the frequent app saves
       # stay fast.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
           filter: blob:none
+          persist-credentials: false
 
       - name: Check pushed commits for data that must not be public
         env:
-          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-          AFTER: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-        run: python3 .github/scripts/privacy-guard.py "$BEFORE" "$AFTER"
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: python3 .github/scripts/privacy-guard.py "$BEFORE" "$AFTER" --branch "$BRANCH"
+
+  pull-request:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      # The guard itself comes from the BASE branch, not from the pull request:
+      # a PR must not be able to weaken the check that judges it.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .base-guard
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Check the pull request's commits (guard from the base branch)
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        # Only the two-argument form, which every guard version understands.
+        run: python3 .base-guard/.github/scripts/privacy-guard.py "$BASE" "$HEAD"
+
+  all-branches:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Branches without workflow files (presence, rates-feed) are never
+      # checked on push, so this scan is their only check.
+      - name: Fetch every branch
+        run: git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Scan the full history of every branch
+        run: python3 .github/scripts/privacy-guard.py --all
