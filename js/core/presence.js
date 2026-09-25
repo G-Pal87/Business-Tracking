@@ -328,7 +328,9 @@ function onHashChange() {
 async function handleNavigate() {
   navTimer = null;
   const view = currentView();
-  if (!TRACKED.has(view)) return;
+  // Leaving the tracked views drops our entry rather than letting it linger
+  // (entries now go stale only after STALE_MS) and raise false conflicts.
+  if (!TRACKED.has(view)) { if (lastWrittenView !== null) await clearOwnPresence(); return; }
   if (view === lastWrittenView) return;
   if (!canWrite()) return;
   await writeOwnState({ view });
