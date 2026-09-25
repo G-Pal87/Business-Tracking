@@ -4,7 +4,7 @@
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, toast, select, input, textarea, button, formRow, fmtDate, confirmDialog } from '../core/ui.js';
 import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney, isReservationNight } from '../core/data.js';
-import { fetchICal, parseICal, mergeBlocks, isOwnerBlockSummary } from '../core/ical.js';
+import { fetchICal, parseICal, mergeBlocksChecked, isOwnerBlockSummary } from '../core/ical.js';
 import { publishSnapshotBranch, fetchBranchFileText, dispatchRepoEvent } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { openPaymentForm } from './payments.js';
@@ -37,6 +37,21 @@ export default {
 function parseYMD(s) { const [y, m, d] = s.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)); }
 function ymd(date)   { return date.toISOString().slice(0, 10); }
 function addDays(s, n) { const d = parseYMD(s); d.setUTCDate(d.getUTCDate() + n); return ymd(d); }
+// Nights of a stay/block [start, end), day by day. Both ends must be real
+// 'YYYY-MM-DD' dates and the span is capped: a malformed stored value (e.g.
+// a raw "TBD" DTEND kept by the old iCal parser) compares greater than every
+// date string, and the loop used to run towards the year 10000, freezing the
+// view.
+const MAX_SPAN_NIGHTS = 1500;
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+function nightsOf(start, end) {
+  const out = [];
+  const s = typeof start === 'string' ? start.slice(0, 10) : '';
+  const e = typeof end === 'string' ? end.slice(0, 10) : '';
+  if (!YMD_RE.test(s) || !YMD_RE.test(e)) return out;
+  for (let cur = s; cur < e && out.length < MAX_SPAN_NIGHTS; cur = addDays(cur, 1)) out.push(cur);
+  return out;
+}
 // Local calendar date — the UTC date is still "yesterday" for the first hours
 // after local midnight in Cyprus (feed started a day early, confirmedAt
 // stamped a day early).
@@ -137,7 +152,7 @@ function historicNightMap(propertyId) {
     if (rate == null || rate <= 0) continue;
     const adr  = nights > 0 && p.amount != null ? p.amount / nights : (adrNightOf(p) || rate);
     const guest = p.guestName || (p.notes || '').split(' · ')[0] || '';
-    for (let cur = ci; cur < co; cur = addDays(cur, 1)) {
+    for (const cur of nightsOf(ci, co)) {
       map.set(cur, {
         rate, adr,
         currency: p.currency || 'EUR',
@@ -528,7 +543,7 @@ function blockedDateSet(propertyId) {
   if (!cal) return set;
   for (const b of cal.blocks || []) {
     if (!b.start || !b.end) continue;
-    for (let cur = b.start; cur < b.end; cur = addDays(cur, 1)) set.add(cur);
+    for (const cur of nightsOf(b.start, b.end)) set.add(cur);
   }
   return set;
 }
@@ -565,7 +580,7 @@ function classifyBlockedDates(propertyId) {
     if (!b.start || !b.end || !b.uid) continue;
     const type = isOwnerBlockSummary(b.summary) ? 'owner' : 'reserved';
     const annotation = type === 'reserved' ? getBlockAnnotation(propertyId, b.uid) : null;
-    for (let cur = b.start; cur < b.end; cur = addDays(cur, 1)) {
+    for (const cur of nightsOf(b.start, b.end)) {
       map.set(cur, { type, uid: b.uid, summary: b.summary, annotation });
     }
   }
@@ -585,7 +600,7 @@ function findCalendarPaymentGaps(propertyId) {
   for (const b of cal.blocks || []) {
     if (!b.start || !b.end || !b.uid || isOwnerBlockSummary(b.summary)) continue;
     let total = 0, missing = 0;
-    for (let cur = b.start; cur < b.end; cur = addDays(cur, 1)) {
+    for (const cur of nightsOf(b.start, b.end)) {
       total++;
       if (!covered.has(cur)) missing++;
     }
@@ -1532,7 +1547,21 @@ async function autoRefreshICal(propertyId, onDone, { force = false } = {}) {
     // likely a bad/partial response than every booking vanishing — keep the
     // stored calendar untouched (don't even re-stamp importedAt).
     if (fresh.length === 0 && (existing?.blocks || []).some(b => b.end && b.end > todayStr())) return;
-    const blocks = mergeBlocks(existing?.blocks, fresh, todayStr());
+    // mergeBlocksChecked keeps the stored blocks when the fresh feed lost
+    // most upcoming blocks (a cut-off response); a refresh the user clicked
+    // accepts the drop but says so.
+    const { blocks, refused } = mergeBlocksChecked(existing?.blocks, fresh, todayStr(), { allowSharpDrop: force });
+    if (refused) {
+      console.warn(`[ical] ${refused}`);
+      if (force) toast(refused, 'warning');
+      return;
+    }
+    if (force) {
+      const isFut = b => b.end && b.end > todayStr();
+      const before = (existing?.blocks || []).filter(isFut).length;
+      const after = fresh.filter(isFut).length;
+      if (before >= 3 && after * 2 < before) toast(`Calendar refreshed: ${after} upcoming block(s), down from ${before}.`, 'warning');
+    }
     const rec = existing
       ? { ...existing, url, blocks, importedAt: todayStr() }
       : { id: newId('stc'), propertyId, url, blocks, importedAt: todayStr() };
