@@ -122,32 +122,28 @@ function buildRatesFeed(db, prop) {
   const globalDisc = af.globalDiscountPct || 0;
   const guestMult = 1 + (feePct + taxPct) / 100;
 
+  // Same public-privacy rules as the in-app publisher (str-rates.js
+  // buildRatesFeed): booked and blocked nights are 'unavailable' with no
+  // amount, and a property with prices hidden publishes availability only.
+  const showPrices = db.settings?.airbnb?.hideAllSitePrices !== true && prop.showPricesOnSite !== false;
   const rates = [];
   let date = todayStr();
   for (let i = 0; i < HORIZON_DAYS; i++) {
     const hist = histMap.get(date);
-    let amount = null, basis = null, status;
-    if (hist) {
-      amount = hist.rate; basis = 'historic actual'; status = 'booked';
-    } else {
+    const status = (hist || blocked.has(date)) ? 'unavailable' : 'open';
+    let amount = null, basis = null;
+    if (status === 'open' && showPrices) {
       const target = getConfirmedTarget(db.strRateTargets, prop.id, date.slice(0, 7));
       if (target) { amount = target.targetADR; basis = 'confirmed target'; }
-      else { const s = suggest(date); if (s) { amount = s.rate; basis = s.basis; } }
-      status = blocked.has(date) ? 'blocked' : 'open';
+      else { const s = suggest(date); if (s) { amount = s.rate; basis = 'suggested'; } }
     }
-    if (amount != null) {
+    if (amount == null) {
+      rates.push({ date, currency: ccy, status });
+    } else {
       const entry  = { date, currency: ccy, status, basis };
       const rawAmt = Math.round(amount);
-      // Effective discount for this night: monthly override (explicit, incl.
-      // 0) beats the global default; historic/booked nights are actuals, not
-      // a forward-looking offer, so no discount applies to them. Always set
-      // on every entry (even 0%) so a consumer can read "what's on offer
-      // right now" unconditionally instead of treating a missing field as 0%.
-      let discPct = 0;
-      if (!hist) {
-        const target = getConfirmedTarget(db.strRateTargets, prop.id, date.slice(0, 7));
-        discPct = target?.discountPct != null ? target.discountPct : globalDisc;
-      }
+      const target = getConfirmedTarget(db.strRateTargets, prop.id, date.slice(0, 7));
+      const discPct = target?.discountPct != null ? target.discountPct : globalDisc;
       entry.originalAmount = rawAmt;
       entry.discountPct    = discPct;
       entry.amount         = discPct > 0 ? Math.round(rawAmt * (1 - discPct / 100)) : rawAmt;
@@ -157,19 +153,23 @@ function buildRatesFeed(db, prop) {
     date = addDays(date, 1);
   }
 
-  return {
+  const feed = {
     schema: 'str-daily-rates/v1',
     generatedAt: new Date().toISOString(),
     // airbnbCalUrl deliberately omitted from this public feed — it's a secret
     // access token for the property's live Airbnb calendar, not public data.
     property: { id: prop.id, name: prop.name || '', currency: ccy, airbnbCalUrl: '' },
-    guestFeePct: feePct,
-    taxPct,
-    cleaningFee: Math.round(cleanFee),
-    cleaningGuestTotal: Math.round(cleanFee),
+    showPrices,
     horizonDays: HORIZON_DAYS,
     rates
   };
+  if (showPrices) {
+    feed.guestFeePct = feePct;
+    feed.taxPct = taxPct;
+    feed.cleaningFee = Math.round(cleanFee);
+    feed.cleaningGuestTotal = Math.round(cleanFee);
+  }
+  return feed;
 }
 
 function main() {
@@ -201,7 +201,7 @@ function main() {
     fs.writeFileSync(path.join(OUT_DIR, file), JSON.stringify(feed, null, 2) + '\n');
     manifest.properties.push({
       id: p.id, name: p.name || '', currency: p.currency || 'EUR',
-      file, nights: feed.rates.length
+      file, nights: feed.rates.length, showPrices: feed.showPrices
     });
     console.log(`wrote ${file} (${feed.rates.length} nights)`);
   }

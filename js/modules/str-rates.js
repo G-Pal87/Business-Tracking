@@ -5,7 +5,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, toast, select, input, textarea, button, formRow, fmtDate, confirmDialog } from '../core/ui.js';
 import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney, isReservationNight } from '../core/data.js';
 import { fetchICal, parseICal, mergeBlocks, isOwnerBlockSummary } from '../core/ical.js';
-import { uploadGithubFile } from '../core/github.js';
+import { uploadGithubFile, listGithubFolder, deleteGithubFile } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { openPaymentForm } from './payments.js';
 import { todayYmd } from '../core/dates.js';
@@ -743,8 +743,26 @@ const FEED_HORIZON_DAYS = 365;
 // UTF-8 safe base64 (GitHub Contents API expects base64-encoded content).
 function toB64(str) { return btoa(unescape(encodeURIComponent(str))); }
 
-// Build the per-property rate feed: actual rate on booked nights, suggested rate
-// on open/blocked nights, for the next FEED_HORIZON_DAYS days from today.
+// Whether this property's prices may appear on the public website: the global
+// switch (Settings → STR, `hideAllSitePrices`) wins, then the per-property
+// toggle (property form / STR Daily Rates, `showPricesOnSite`, default on).
+export function sitePricesVisible(prop) {
+  return state.db.settings?.airbnb?.hideAllSitePrices !== true && prop?.showPricesOnSite !== false;
+}
+
+// Build the per-property rate feed for the next FEED_HORIZON_DAYS days.
+//
+// This file is PUBLIC (raw GitHub URL, read by the Short-Term-Rentals site),
+// so it only carries what the website needs, and nothing about actual
+// business results:
+//   - open nights: the advertised price (confirmed target or suggestion);
+//   - booked AND owner-blocked nights: status 'unavailable' with NO amount —
+//     booked nights used to publish the real payout each booking earned
+//     ("historic actual"), and 'booked' vs 'blocked' revealed which nights
+//     were genuinely sold;
+//   - when prices are hidden for the property (sitePricesVisible), every night
+//     carries only date + status, and `showPrices: false` tells the website
+//     to show "Price on request" instead of any price.
 // Each night carries the NIGHTLY price only:
 //   amount          — published/direct booking rate (after any promo discount)
 //   airbnbCheckout  — full price if booked on Airbnb (originalAmount × guestMult)
@@ -767,21 +785,24 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
   const globalDisc = af.globalDiscountPct || 0;
   const guestMult  = 1 + (feePct + taxPct) / 100;
 
+  const showPrices = sitePricesVisible(prop);
   const rates = [];
   let date = todayStr();
   for (let i = 0; i < horizonDays; i++) {
     const hist = histMap.get(date);
-    let amount = null, basis = null, status;
-    if (hist) {
-      amount = hist.rate; basis = 'historic actual'; status = 'booked';
-    } else {
+    let amount = null, basis = null;
+    const status = (hist || blocked.has(date)) ? 'unavailable' : 'open';
+    if (status === 'open' && showPrices) {
       const mo = date.slice(0, 7);
       const target = getConfirmedTarget(propertyId, mo);
       if (target) { amount = target.targetADR; basis = 'confirmed target'; }
-      else { const s = suggest(date); if (s) { amount = s.rate; basis = s.basis; } }
-      status = blocked.has(date) ? 'blocked' : 'open';
+      else { const s = suggest(date); if (s) { amount = s.rate; basis = 'suggested'; } }
     }
-    if (amount != null) {
+    if (amount == null) {
+      // No price published for this night (unavailable, hidden, or no rate
+      // could be suggested) — availability only.
+      rates.push({ date, currency: ccy, status });
+    } else {
       const entry  = { date, currency: ccy, status, basis };
       const rawAmt = Math.round(amount);
       // Effective discount for this night: monthly override (explicit, incl.
@@ -790,12 +811,8 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
       // on every entry (even 0%) — omitting it when there's no discount left
       // a consumer with no reliable field to read "what's on offer right now"
       // from, since a missing field and an explicit 0% are indistinguishable.
-      let discPct = 0;
-      if (!hist) {
-        const mo     = date.slice(0, 7);
-        const target = getConfirmedTarget(propertyId, mo);
-        discPct = target?.discountPct != null ? target.discountPct : globalDisc;
-      }
+      const target = getConfirmedTarget(propertyId, date.slice(0, 7));
+      const discPct = target?.discountPct != null ? target.discountPct : globalDisc;
       entry.originalAmount = rawAmt;
       entry.discountPct    = discPct;
       entry.amount         = discPct > 0 ? Math.round(rawAmt * (1 - discPct / 100)) : rawAmt;
@@ -805,23 +822,44 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
     date = addDays(date, 1);
   }
 
-  return {
+  const feed = {
     schema: 'str-daily-rates/v1',
     generatedAt: new Date().toISOString(),
     // airbnbCalUrl deliberately omitted from this public feed — it's a secret
     // access token for the property's live Airbnb calendar, not public data.
     property: { id: prop?.id || propertyId, name: prop?.name || '', currency: ccy, airbnbCalUrl: '' },
-    guestFeePct: feePct,
-    taxPct,
-    cleaningFee: Math.round(cleanFee),                       // flat cleaning fee, charged once per booking
-    cleaningGuestTotal: Math.round(cleanFee),                // flat fee the guest pays for cleaning (no fee/tax added)
+    showPrices,
     horizonDays,
     rates
   };
+  if (showPrices) {
+    feed.guestFeePct = feePct;
+    feed.taxPct = taxPct;
+    feed.cleaningFee = Math.round(cleanFee);        // flat cleaning fee, charged once per booking
+    feed.cleaningGuestTotal = Math.round(cleanFee); // flat fee the guest pays for cleaning (no fee/tax added)
+  }
+  return feed;
 }
 
 // Content signature of a feed (ignores generatedAt so unchanged data is a no-op).
-function feedSig(feed) { return JSON.stringify({ p: feed.property, r: feed.rates }); }
+function feedSig(feed) { return JSON.stringify({ p: feed.property, s: feed.showPrices, c: feed.cleaningFee, r: feed.rates }); }
+
+// Removes published feed files for properties that are no longer active
+// short-term properties (deleted, sold, test entries) — they are public and
+// were never cleaned up. Only touches `prop_*.json` files in FEED_DIR.
+async function removeStaleFeeds(activeIds) {
+  let files = [];
+  try { files = await listGithubFolder(FEED_DIR); } catch { return 0; }
+  let removed = 0;
+  for (const f of files) {
+    const m = /^(prop_[A-Za-z0-9_-]+)\.json$/.exec(f.name);
+    if (!m || activeIds.has(m[1])) continue;
+    try { await deleteGithubFile(f.path, f.sha, `Remove stale daily-rate feed: ${f.name}`); removed++; }
+    catch (e) { console.warn('Could not remove stale feed', f.name, e.message); }
+  }
+  return removed;
+}
+let _staleFeedsChecked = false;
 
 // Cache of the last-published signature per property, so auto-publish only
 // uploads feeds whose rates actually changed. In-memory only (resets on reload,
@@ -847,10 +885,12 @@ async function publishRatesFeeds() {
     const file = `${p.id}.json`;
     await uploadGithubFile(`${FEED_DIR}/${file}`, toB64(JSON.stringify(feed, null, 2)), `Publish daily-rate feed: ${p.name}`);
     _lastFeedSig.set(p.id, feedSig(feed));
-    manifest.properties.push({ id: p.id, name: p.name, currency: p.currency || 'EUR', file, nights: feed.rates.length });
+    manifest.properties.push({ id: p.id, name: p.name, currency: p.currency || 'EUR', file, nights: feed.rates.length, showPrices: feed.showPrices });
   }
   await uploadGithubFile(`${FEED_DIR}/index.json`, toB64(JSON.stringify(manifest, null, 2)), 'Publish daily-rate feed index');
   _lastManifestSig = JSON.stringify(manifest.properties);
+  await removeStaleFeeds(new Set(stProps.map(p => p.id)));
+  _staleFeedsChecked = true;
 
   return { base: feedBase(), manifest };
 }
@@ -870,7 +910,7 @@ export async function autoPublishRatesFeeds() {
     const feeds = stProps.map(p => ({ p, feed: buildRatesFeed(p.id), sig: '' }));
     for (const f of feeds) f.sig = feedSig(f.feed);
     const manifestProps = feeds.map(({ p, feed }) => ({
-      id: p.id, name: p.name, currency: p.currency || 'EUR', file: `${p.id}.json`, nights: feed.rates.length
+      id: p.id, name: p.name, currency: p.currency || 'EUR', file: `${p.id}.json`, nights: feed.rates.length, showPrices: feed.showPrices
     }));
 
     // Upload all changed property feeds in parallel.
@@ -886,6 +926,11 @@ export async function autoPublishRatesFeeds() {
       const manifest = { schema: 'str-daily-rates-index/v1', generatedAt: new Date().toISOString(), properties: manifestProps };
       await uploadGithubFile(`${FEED_DIR}/index.json`, toB64(JSON.stringify(manifest, null, 2)), 'Update daily-rate feed index');
       _lastManifestSig = manifestSig;
+    }
+    // Once per session, clean up feeds of properties that no longer exist.
+    if (!_staleFeedsChecked) {
+      _staleFeedsChecked = true;
+      await removeStaleFeeds(new Set(stProps.map(p => p.id)));
     }
   } catch (e) {
     console.warn('Auto-publish daily-rate feeds failed:', e);
@@ -966,6 +1011,36 @@ function build() {
       publishBtn.disabled = false; publishBtn.textContent = orig;
     }
   }});
+  // Quick switch for the selected property's prices on the public website
+  // (same `showPricesOnSite` flag as the property form). The global switch in
+  // Settings → STR / Airbnb overrides it — shown here when active.
+  const sitePriceBtn = button('', { variant: 'sm', onClick: async () => {
+    const prop = byId('properties', _propId);
+    if (!prop) return;
+    if (state.db.settings?.airbnb?.hideAllSitePrices === true) {
+      toast('All website prices are hidden in Settings → STR / Airbnb — turn that off first to show prices for individual properties.', 'info', 7000);
+      return;
+    }
+    const show = prop.showPricesOnSite === false;
+    const ok = await confirmDialog(show
+      ? `Show prices for "${prop.name}" on the website again?`
+      : `Hide prices for "${prop.name}" on the website? Guests will see "Price on request" and ask for a quote on WhatsApp.`,
+      { okLabel: show ? 'Show prices' : 'Hide prices' });
+    if (!ok) return;
+    upsert('properties', { ...prop, showPricesOnSite: show });
+    toast(`Website prices ${show ? 'shown' : 'hidden'} for ${prop.name} — the site updates in a few minutes`, 'success');
+    syncSitePriceBtn();
+  }});
+  const syncSitePriceBtn = () => {
+    const prop = byId('properties', _propId);
+    const allHidden = state.db.settings?.airbnb?.hideAllSitePrices === true;
+    const visible = prop ? sitePricesVisible(prop) : true;
+    sitePriceBtn.textContent = allHidden ? 'Website prices: hidden (all)' : `Website prices: ${visible ? 'shown' : 'hidden'}`;
+    sitePriceBtn.title = allHidden ? 'Hidden for every property in Settings → STR / Airbnb' : 'Click to show/hide this property\'s prices on the public website';
+  };
+  syncSitePriceBtn();
+  propSel.addEventListener('change', syncSitePriceBtn);
+  bar.appendChild(sitePriceBtn);
   bar.appendChild(publishBtn);
   wrap.appendChild(bar);
 
