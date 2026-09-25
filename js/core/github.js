@@ -1,6 +1,6 @@
 // GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
 import { state, notify, invalidateActiveCache } from './state.js';
-import { isEncryptedEnvelope, decryptEnvelopeToJson, encryptJsonToEnvelope, isUnlocked, hasWrappedKeyConfigured, encryptBytes, decryptBytes, isEncryptedBytes } from './crypto.js';
+import { isEncryptedEnvelope, decryptEnvelopeToJson, decryptEnvelopeWithInfo, isRotationPending, setRotationPending, activeKeyId, encryptJsonToEnvelope, isUnlocked, hasWrappedKeyConfigured, encryptBytes, decryptBytes, isEncryptedBytes } from './crypto.js';
 
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
@@ -14,6 +14,7 @@ const CFG_LS_KEY = 'bt_github_config';
 const SYNC_SAFETY_MARGIN_MS = 15 * 60 * 1000; // 15 minutes
 
 let pushQueue = Promise.resolve();
+let _lastFetched = null; // { sha, path, db } — see fetchDb()
 let _sizeWarned = false; // throttles the db.json size-warning toast to once per session per threshold-crossing
 
 // Cheap recency watermark for a whole db snapshot — the highest updatedAt
@@ -31,6 +32,97 @@ function maxUpdatedAt(db) {
     }
   }
   return max;
+}
+
+// ── Merge helpers ────────────────────────────────────────────────────────────
+
+// Tombstones older than this are dropped when merging — must match
+// pruneTombstones()'s default in data.js. Pruning only in data.js never stuck:
+// every merge unions tombstones from all sides, so the pruned entries came
+// straight back from the remote/base copy on the next sync.
+const TOMBSTONE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+export function unionTombstones(...sources) {
+  const cutoff = Date.now() - TOMBSTONE_MAX_AGE_MS;
+  const out = {};
+  for (const src of sources) {
+    if (!src) continue;
+    for (const [k, ts] of Object.entries(src)) {
+      if (typeof ts === 'number' && ts < cutoff) continue;
+      if (out[k] === undefined || ts > out[k]) out[k] = ts;
+    }
+  }
+  return out;
+}
+
+// A tombstone blocks a record from ever coming back — except one that was
+// deliberately restored from a backup AFTER the tombstone was written
+// (restoredAt, stamped by Settings → Restore). Without that exception a
+// restore could never bring back anything that had been permanently deleted
+// since the backup was taken, and other devices' merges would re-delete it.
+export function isTombstoned(tombstones, col, item) {
+  const ts = tombstones?.[`${col}:${item?.id}`];
+  if (ts === undefined) return false;
+  if (item && typeof item.restoredAt === 'number' && item.restoredAt > ts) return false;
+  return true;
+}
+
+// Record equality ignoring who/when stamped the last edit.
+function sameContent(a, b) {
+  const strip = ({ updatedAt, updatedBy, ...rest }) => rest;
+  return deepEqual(strip(a), strip(b));
+}
+
+// Last-synced copy of the plain (non-record) top-level fields — kept in the
+// local cache as `_syncedPlain` so a reload can 3-way merge settings edits
+// (see mergeLocalPending). Device-local: never pushed to db.json.
+export function plainFieldsOf(db) {
+  const out = {};
+  for (const [k, v] of Object.entries(db || {})) {
+    if (k.startsWith('_') || Array.isArray(v) || v === undefined) continue;
+    out[k] = structuredClone(v);
+  }
+  return out;
+}
+
+function isPlainObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
+
+// Structural equality, insensitive to object key order (deepMerge/patch
+// helpers don't preserve it, so JSON.stringify comparison would misfire).
+export function deepEqual(a, b) {
+  if (a === b) return true;
+  if (typeof a !== typeof b || a === null || b === null || typeof a !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false;
+    return true;
+  }
+  const ka = Object.keys(a).filter(k => a[k] !== undefined);
+  const kb = Object.keys(b).filter(k => b[k] !== undefined);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) if (!deepEqual(a[k], b[k])) return false;
+  return true;
+}
+
+// Three-way merge of a plain (non-record) value such as `settings`: whichever
+// side changed relative to the common ancestor wins; when both changed,
+// recurse into sub-keys so edits to DIFFERENT settings (e.g. one device's FX
+// rates, another's business details) both survive. A true same-leaf
+// conflict keeps the local value.
+export function merge3(base, local, remote) {
+  if (deepEqual(local, base)) return remote;
+  if (deepEqual(remote, base)) return local;
+  if (isPlainObj(local) && isPlainObj(remote)) {
+    const b = isPlainObj(base) ? base : {};
+    const out = {};
+    for (const k of new Set([...Object.keys(local), ...Object.keys(remote)])) {
+      const v = merge3(b[k], local[k], remote[k]);
+      if (v !== undefined) out[k] = v;
+    }
+    return out;
+  }
+  return local;
 }
 
 // ── Config ───────────────────────────────────────────────────────────────────
@@ -179,20 +271,23 @@ export async function fetchDb() {
   }
 
   const data = await res.json();
-  const { sha, content, download_url } = data;
+  const { sha, content } = data;
 
+  // db.json is >1MB, so `content` is normally empty here and the file is read
+  // by sha (see doPushDb for why never via download_url). Either way the
+  // parsed content is exactly the version `sha` names, which is what makes
+  // the _lastFetched sha cache below safe.
   let parsed;
-  if (content) {
+  if (_lastFetched && _lastFetched.sha === sha && _lastFetched.path === dbPath) {
+    // Same blob sha as the last successful fetch = byte-identical content.
+    // db.json is >1MB, so the Contents API response above carries no content
+    // and the expensive part is the raw download + decrypt + parse below —
+    // every tab used to repeat all of it every 60s even when nothing changed.
+    parsed = structuredClone(_lastFetched.db);
+  } else if (content) {
     parsed = safeParseDb(b64decode(content));
-  } else if (download_url) {
-    const bustUrl = download_url.includes('?')
-      ? `${download_url}&_=${Date.now()}`
-      : `${download_url}?_=${Date.now()}`;
-    const raw = await fetch(bustUrl, { cache: 'no-store' }).then(r => {
-      if (!r.ok) throw new Error(`Download failed (${r.status})`);
-      return r.text();
-    });
-    parsed = safeParseDb(raw);
+  } else if (sha) {
+    parsed = safeParseDb(b64decode(await fetchGithubBlobBase64(sha)));
   } else {
     throw new Error('GitHub returned no content');
   }
@@ -201,7 +296,9 @@ export async function fetchDb() {
   // encryption / no key ever configured) or the { enc: 1, iv, ct } envelope —
   // decryptEnvelopeToJson throws a clear error if this device has no data
   // key configured yet rather than silently returning ciphertext as "data".
-  if (isEncryptedEnvelope(parsed)) parsed = await decryptEnvelopeToJson(parsed);
+  let decKid = _lastFetched?.sha === sha ? _lastFetched.decKid : null;
+  if (isEncryptedEnvelope(parsed)) ({ data: parsed, usedKid: decKid } = await decryptEnvelopeWithInfo(parsed));
+  if (!_lastFetched || _lastFetched.sha !== sha) _lastFetched = { sha, path: dbPath, db: structuredClone(parsed), decKid };
 
   state.github.sha           = sha;
   state.github.connected     = true;
@@ -279,12 +376,12 @@ async function doPushDb(message = 'Update data') {
       // deleted record that this fresh GET happens to still show (a stale
       // read, or simply the very first fetch of a session that never saw the
       // delete) would get pushed straight into state.db and resurrected.
-      const tombstones = { ...freshBase._tombstones, ...state.db._tombstones };
+      const tombstones = unionTombstones(freshBase._tombstones, state.db._tombstones);
       for (const [col, items] of Object.entries(freshBase)) {
         if (!Array.isArray(items) || !Array.isArray(state.db[col])) continue;
         const localIds = new Set(state.db[col].map(x => x.id));
         for (const item of items) {
-          if (!localIds.has(item.id) && tombstones[`${col}:${item.id}`] === undefined) {
+          if (!localIds.has(item.id) && !isTombstoned(tombstones, col, item)) {
             state.db[col].push(item);
             localIds.add(item.id);
             // Keep the id index in sync — this path bypasses upsert/markDirty,
@@ -358,42 +455,57 @@ async function doPushDb(message = 'Update data') {
     const getData = await getRes.json();
     const { sha } = getData;
     let freshDb;
-    if (getData.content) {
+    let remoteKid = null; // id of the key that decrypted the remote (null = plaintext)
+    if (_lastFetched && _lastFetched.sha === sha && _lastFetched.path === dbPath) {
+      // Unchanged since our last read/push (same blob sha) — skip the ~2MB
+      // download + decrypt; see fetchDb().
+      freshDb = structuredClone(_lastFetched.db);
+      remoteKid = _lastFetched.decKid;
+    } else if (getData.content) {
       freshDb = safeParseDb(b64decode(getData.content));
-    } else if (getData.download_url) {
-      // Bust CDN cache on the raw download URL too, same as the API GET above.
-      const bustUrl = getData.download_url.includes('?')
-        ? `${getData.download_url}&_=${Date.now()}`
-        : `${getData.download_url}?_=${Date.now()}`;
-      const raw = await fetch(bustUrl, { cache: 'no-store' }).then(r => {
-        if (!r.ok) throw new Error(`Download failed (${r.status})`);
-        return r.text();
-      });
-      freshDb = safeParseDb(raw);
+    } else if (sha) {
+      // Read the content BY SHA (git blobs API) rather than via download_url.
+      // download_url is a raw.githubusercontent URL tied to the branch, which
+      // can lag behind the sha this same response reports — merging against
+      // that older content and then PUTting with the newer sha "succeeds" and
+      // silently erases whatever the newer commit added. A blob read is
+      // content-addressed: it is exactly the version the sha names.
+      freshDb = safeParseDb(b64decode(await fetchGithubBlobBase64(sha)));
     } else {
       throw new Error('GitHub returned no content for db.json');
     }
     if (isEncryptedEnvelope(freshDb)) {
-      try {
-        freshDb = await decryptEnvelopeToJson(freshDb);
-      } catch (err) {
-        // The remote copy is encrypted under a DIFFERENT key than the one
-        // active right now. In normal operation this can't happen — it only
-        // occurs mid-key-rotation, in the exact window after this device has
-        // switched to a new key but before any push has actually landed on
-        // GitHub with it yet. There's nothing to merge against since we can't
-        // read it; without this fallback every attempt (and every future
-        // save) hits this same unreadable remote and never makes progress,
-        // since the remote never changes until some push finally succeeds.
-        // Falling back to "push our own snapshot, unmerged" breaks that
-        // deadlock — an acceptable tradeoff for a rare, deliberate,
-        // admin-initiated operation against the alternative of bricking sync
-        // for everyone until someone manually intervenes.
-        console.warn('[BT] Could not decrypt remote db.json for merge — pushing local snapshot without merging:', err.message);
-        freshDb = null;
+      // Never push over a remote we can't read. This used to fall back to
+      // "push our own snapshot, unmerged" — meant for the moment mid-key-
+      // rotation — but the same path fired for ANY device still holding the
+      // old key after a rotation elsewhere: its first save overwrote the
+      // whole remote with its stale local copy under the old key, the
+      // rotating device then couldn't read that and did the same back, and
+      // the two kept wiping each other's data. decryptEnvelopeToJson now
+      // also tries previously-held keys (crypto.js), so the rotating device
+      // itself can still read the old-key remote and merge normally; a
+      // device that genuinely lacks the key gets KEY_MISMATCH and keeps its
+      // edits locally (state.dirty stays set) until the new key is entered.
+      const { data, usedKid } = await decryptEnvelopeWithInfo(freshDb);
+      remoteKid = usedKid;
+      freshDb = data;
+    }
+    {
+      // Refuse when the remote is readable only with a key OTHER than this
+      // device's current one (checked for cached reads too — the key may
+      // have changed since the content was cached).
+      const curKid = await activeKeyId();
+      if (remoteKid && curKid && remoteKid !== curKid && !isRotationPending()) {
+        // Only an OLDER key on this device can read the remote: the current
+        // key is not the team's key (e.g. a wrong key pasted in Settings).
+        // Pushing would re-encrypt everything under it and lock every other
+        // device out, while looking fine here.
+        const err = new Error('The encryption key currently set on this device cannot read the data on GitHub (only an older key on this device can). It is probably the wrong key — re-enter the team key in Settings → Encryption. Nothing was saved to GitHub; your changes are kept locally.');
+        err.code = 'KEY_MISMATCH';
+        throw err;
       }
     }
-    const merged  = freshDb ? mergeDb(freshDb, snapshot, base) : snapshot;
+    const merged  = mergeDb(freshDb, snapshot, base);
     if (merged.appConfig?.github?.token) delete merged.appConfig.github.token;
 
     // PUT merged content — encrypted if this device has a data key configured,
@@ -455,6 +567,10 @@ async function doPushDb(message = 'Update data') {
 
     state.github.sha          = newSha;
     state.github.remoteDb     = structuredClone(merged);
+    _lastFetched = { sha: newSha, path: dbPath, db: structuredClone(merged), decKid: isUnlocked() ? await activeKeyId() : null };
+    // db.json is now encrypted under the current key — an interrupted
+    // rotation (see setRotationPending) has completed its db.json part.
+    if (isUnlocked() && isRotationPending()) setRotationPending(false);
     state.github.lastPushOk   = true;
     state.github.lastPushedAt = Date.now();
     state.github.lastSyncError = null;
@@ -466,6 +582,7 @@ async function doPushDb(message = 'Update data') {
     // must still compare as newer than _syncedAt so mergeLocalPending treats it
     // as a genuine unsynced edit on the next reload instead of discarding it.
     state.db._syncedAt = snapshotTakenAt;
+    applyMergedToUntouched(merged, snapshot);
 
     // Adopt remote-only additions, but never re-add items permanently deleted
     // during this push (items that were in snapshot but are now gone from state.db).
@@ -506,6 +623,65 @@ async function doPushDb(message = 'Update data') {
   throw err;
 }
 
+// After a successful push, `merged` (now the remote AND the new merge base)
+// can contain other users' changes to records this tab already holds. The
+// adoption loop in doPushDb only added records that were missing locally, so
+// a record another user had updated stayed stale in state.db while the base
+// moved ahead to their version. The next local edit of that record then
+// looked like "only local changed" to mergeDb and last-writer-wins silently
+// reverted the other user's fields, with no conflict raised. Bring those
+// changes in — but only for records (and plain fields like settings) this
+// tab has NOT touched since the snapshot was taken, so nothing edited
+// mid-push is ever overwritten.
+function applyMergedToUntouched(merged, snapshot) {
+  let changed = false;
+  for (const [col, mergedArr] of Object.entries(merged)) {
+    if (col.startsWith('_')) continue;
+    const localVal = state.db[col];
+    if (!Array.isArray(mergedArr)) {
+      if (Array.isArray(localVal) || mergedArr === undefined) continue;
+      if (deepEqual(localVal, snapshot[col]) && !deepEqual(localVal, mergedArr)) {
+        state.db[col] = structuredClone(mergedArr);
+        changed = true;
+      }
+      continue;
+    }
+    if (!Array.isArray(localVal) || !Array.isArray(snapshot[col])) continue;
+    const snapMap   = new Map(snapshot[col].map(x => [x.id, x]));
+    const mergedMap = new Map(mergedArr.map(x => [x.id, x]));
+    const ix = state._ix?.get(col);
+    let w = 0;
+    for (let r = 0; r < localVal.length; r++) {
+      const item = localVal[r];
+      const snapItem = snapMap.get(item.id);
+      const untouched = snapItem && item.updatedAt === snapItem.updatedAt;
+      if (untouched) {
+        const m = mergedMap.get(item.id);
+        if (!m) {
+          // The merge dropped it (removed/purged remotely, or tombstoned).
+          ix?.delete(item.id);
+          changed = true;
+          continue;
+        }
+        if (m.updatedAt !== item.updatedAt) {
+          localVal[w++] = m;
+          ix?.set(m.id, m);
+          changed = true;
+          continue;
+        }
+      }
+      localVal[w++] = item;
+    }
+    localVal.length = w;
+  }
+  if (merged._mtimes) state.db._mtimes = { ...merged._mtimes };
+  state.db._syncedPlain = plainFieldsOf(merged);
+  // Union, never replace — a hard delete made mid-push has a tombstone only
+  // in state.db, and dropping it would let that record resurrect.
+  if (merged._tombstones) state.db._tombstones = unionTombstones(state.db._tombstones, merged._tombstones);
+  if (changed) invalidateActiveCache();
+}
+
 // ── Three-way merge ───────────────────────────────────────────────────────────
 
 export function mergeDb(freshRemote, localCurrent, lastSynced) {
@@ -520,16 +696,36 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
   // recordTombstone() in data.js for why this exists. Always a union, never
   // "pick one side", since either side may know about a delete the other
   // doesn't yet.
-  const tombstones = { ...(freshRemote?._tombstones), ...(lastSynced?._tombstones), ...(localCurrent?._tombstones) };
+  const tombstones = unionTombstones(freshRemote?._tombstones, lastSynced?._tombstones, localCurrent?._tombstones);
+  // Per-field "last changed at" stamps for plain (non-record) fields like
+  // `settings` — see mergePlainField(). Carried forward from the remote and
+  // re-stamped for every field this push changes.
+  const mtimes = { ...(freshRemote?._mtimes || {}) };
+  const now = Date.now();
+  // Stamps must strictly increase across devices regardless of clock skew:
+  // a device whose clock runs behind would otherwise stamp its newer change
+  // as "older" than a skewed-ahead device's earlier one, and that device
+  // would then treat the newer value as a stale read and revert it.
+  const stampFor = col => Math.max(now, (freshRemote?._mtimes?.[col] || 0) + 1, (lastSynced?._mtimes?.[col] || 0) + 1);
 
   for (const col of cols) {
     if (col === '_tombstones') { result._tombstones = tombstones; continue; }
+    if (col === '_mtimes') continue; // written after the loop
+    if (col === '_syncedPlain') continue; // device-local sync metadata, never pushed
     const fresh = freshRemote[col];
     const local = localCurrent[col];
     const base  = lastSynced ? lastSynced[col] : undefined;
 
     if (!Array.isArray(local) || !Array.isArray(fresh)) {
-      result[col] = local !== undefined ? local : fresh;
+      if (col.startsWith('_') || !lastSynced || local === undefined || fresh === undefined
+          || Array.isArray(local) || Array.isArray(fresh)) {
+        result[col] = local !== undefined ? local : fresh;
+        if (!col.startsWith('_') && lastSynced && local !== undefined && !deepEqual(local, base)) mtimes[col] = stampFor(col);
+        continue;
+      }
+      const { value, localChanged } = mergePlainField(col, fresh, local, base, freshRemote, lastSynced);
+      result[col] = value;
+      if (localChanged) mtimes[col] = stampFor(col);
       continue;
     }
 
@@ -571,6 +767,11 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
       // manufactured a "concurrent edit" conflict out of nothing but CDN lag.
       const remoteChanged = !baseItem || remoteItem.updatedAt > baseItem.updatedAt;
 
+      if (localChanged && remoteChanged && baseItem && sameContent(item, remoteItem)) {
+        // Both sides made the IDENTICAL change (e.g. the same one-time data
+        // repair run by two devices after an update) — nothing to reconcile.
+        continue;
+      }
       if (localChanged && remoteChanged && baseItem) {
         // Both sides edited a known common ancestor → genuine concurrent-edit conflict.
         // Carry enough detail to diagnose from the console without reproducing —
@@ -621,12 +822,13 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
     // successful delete), and nothing else in this function would catch
     // that, since the delete-propagation loop above only ever looks at ids
     // still present in `baseMap`.
-    for (const id of merged.keys()) {
-      if (tombstones[`${col}:${id}`] !== undefined) merged.delete(id);
+    for (const [id, item] of merged) {
+      if (isTombstoned(tombstones, col, item)) merged.delete(id);
     }
 
     result[col] = [...merged.values()];
   }
+  result._mtimes = mtimes;
 
   if (conflicts.length > 0) {
     const err = new Error('Concurrent edit conflict — another user modified the same records');
@@ -636,6 +838,23 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
   }
 
   return result;
+}
+
+// Plain (non-record) top-level fields — `settings`, `appConfig` — used to be
+// "local always wins" in every merge, so a device with a stale copy reverted
+// other devices' settings changes (FX rates, business details…) on its next
+// push. Now a proper 3-way merge against the last-synced base. `_mtimes`
+// guards against GitHub's occasional stale read: a remote copy whose
+// recorded change time for this field is OLDER than the base's is a lagging
+// replica, not someone else's edit, and must not overwrite anything.
+function mergePlainField(col, fresh, local, base, freshRemote, lastSynced) {
+  const baseMt   = lastSynced?._mtimes?.[col] || 0;
+  const remoteMt = freshRemote?._mtimes?.[col] || 0;
+  const localChanged  = !deepEqual(local, base);
+  const remoteChanged = !deepEqual(fresh, base) && remoteMt >= baseMt;
+  if (!localChanged)  return { value: remoteChanged ? fresh : local, localChanged: false };
+  if (!remoteChanged) return { value: local, localChanged: true };
+  return { value: merge3(base, local, fresh), localChanged: true };
 }
 
 // ── Background-resync merge (last-writer-wins, no 3-way base) ────────────────
@@ -657,13 +876,32 @@ export function resyncDb(remote, local) {
   const syncedAt = local?._syncedAt ?? null;
   // Union of every id ever permanently deleted, from either side — see
   // recordTombstone() in data.js.
-  const tombstones = { ...remote?._tombstones, ...local?._tombstones };
+  const tombstones = unionTombstones(remote?._tombstones, local?._tombstones);
+  const remoteMt = remote?._mtimes || {};
+  const localMt  = local?._mtimes || {};
+  result._mtimes = { ...remoteMt };
   for (const col of Object.keys(local)) {
     if (col === '_tombstones') { result._tombstones = tombstones; continue; }
+    if (col === '_mtimes') continue; // handled per field below
     const localArr = local[col];
     if (!Array.isArray(localArr)) {
-      // Non-array fields (settings, config, etc.) — prefer local.
-      result[col] = localArr;
+      // Non-array fields (settings, config, etc.). This only runs when the
+      // tab has nothing unpushed (backgroundResync bails while dirty), so
+      // the local value is simply the last-synced one: take the remote's
+      // when it records a NEWER change than we know of (another device
+      // edited it), otherwise keep local — which also ignores a stale read.
+      // Used to be "always local", so settings changed elsewhere never
+      // reached an open tab and its next push reverted them.
+      // `>=`: a differing value with an EQUAL stamp comes from an older app
+      // version, which rewrites fields without updating _mtimes — i.e. a
+      // genuine change elsewhere (a stale read carries an OLDER stamp).
+      if (!col.startsWith('_') && remote[col] !== undefined && (remoteMt[col] || 0) >= (localMt[col] || 0)
+          && !deepEqual(remote[col], localArr)) {
+        result[col] = remote[col];
+      } else {
+        result[col] = localArr;
+        if (localMt[col] !== undefined && (localMt[col] || 0) > (remoteMt[col] || 0)) result._mtimes[col] = localMt[col];
+      }
       continue;
     }
     const remoteArr = result[col];
@@ -703,11 +941,14 @@ export function resyncDb(remote, local) {
     }
     // Final, unconditional backstop, independent of sync history — see the
     // matching comment in mergeDb().
-    for (const id of map.keys()) {
-      if (tombstones[`${col}:${id}`] !== undefined) map.delete(id);
+    for (const [id, item] of map) {
+      if (isTombstoned(tombstones, col, item)) map.delete(id);
     }
     result[col] = [...map.values()];
   }
+  // Nothing local is unpushed when resync runs, so the result IS the
+  // last-synced state of the plain fields.
+  result._syncedPlain = plainFieldsOf(result);
   result._staleFetch = staleFetch;
   return result;
 }
@@ -777,7 +1018,8 @@ export function mergeLocalPending(remoteDb, localCache) {
   // recordTombstone() in data.js. Must survive this merge (it's excluded by
   // the "skip internal meta fields" line below like other `_`-prefixed keys)
   // so it keeps protecting future merges, not just this one.
-  const tombstones = { ...remoteDb?._tombstones, ...localCache?._tombstones };
+  const tombstones = unionTombstones(remoteDb?._tombstones, localCache?._tombstones);
+  if (remoteDb?._mtimes) result._mtimes = { ...remoteDb._mtimes };
 
   for (const col of cols) {
     if (col === '_tombstones') { result._tombstones = tombstones; continue; }
@@ -786,6 +1028,25 @@ export function mergeLocalPending(remoteDb, localCache) {
     const local  = localCache[col];
 
     if (!Array.isArray(remote) || !Array.isArray(local)) {
+      // The remote records a change to this field made after this cache last
+      // synced (another device edited it) → the remote value is newer. The
+      // old rule below ("with sync history, local wins") reverted such edits
+      // every time a device reloaded with an older cache.
+      const rMt = remoteDb?._mtimes?.[col] || 0;
+      const lMt = localCache?._mtimes?.[col] || 0;
+      // With the last-synced copy of this field (_syncedPlain) available, do
+      // a real 3-way merge: an unpushed local edit and another device's edit
+      // to a different key both survive. (Without it, taking the whole remote
+      // value silently dropped the local edit.) A remote whose stamp is OLDER
+      // than the one this cache last saw is a stale read — keep local.
+      const sp = localCache?._syncedPlain;
+      if (syncedAt && sp && local !== undefined && remote !== undefined) {
+        const value = rMt < lMt ? local : merge3(sp[col], local, remote);
+        result[col] = value;
+        if (!deepEqual(value, remote)) hasLocalChanges = true;
+        continue;
+      }
+      if (remote !== undefined && rMt > lMt) { result[col] = remote; continue; }
       // Non-array fields (settings, appConfig): without sync history remote is
       // authoritative (old cache can't be trusted). With sync history local wins
       // because the user may have intentionally changed settings since last sync.
@@ -864,21 +1125,33 @@ export function mergeLocalPending(remoteDb, localCache) {
     // Final, unconditional backstop, independent of sync history — see the
     // matching comment in mergeDb(). A remote-only id that's tombstoned is
     // never resurrected here regardless of timestamps.
-    for (const id of merged.keys()) {
-      if (tombstones[`${col}:${id}`] !== undefined) merged.delete(id);
+    for (const [id, item] of merged) {
+      if (isTombstoned(tombstones, col, item)) merged.delete(id);
     }
 
     result[col] = [...merged.values()];
   }
 
+  result._syncedPlain = plainFieldsOf(remoteDb);
   result._hasLocalChanges = hasLocalChanges;
   return result;
 }
 
 let _saveCacheTimer = null;
 let _pendingSaveDb  = null;
+let _cacheDisabled  = false;
+
+// Called on sign-out: cancels any pending debounced write and ignores all
+// further ones, so nothing re-creates the cache after clearCachedDb().
+export function disableLocalCache() {
+  _cacheDisabled = true;
+  clearTimeout(_saveCacheTimer);
+  _saveCacheTimer = null;
+  _pendingSaveDb = null;
+}
 
 function writeLocalCacheNow(db) {
+  if (_cacheDisabled) return;
   try {
     const safe = { ...db };
     // Strip heavy fields that are already externalized to the GitHub repo
@@ -1106,7 +1379,35 @@ export async function fetchGithubFile(path) {
     if (res.status === 401 || res.status === 403) throw new Error('GitHub auth failed — check your token');
     throw new Error(`File fetch failed (${res.status})`);
   }
-  return res.json(); // { content (b64), sha, download_url, ... }
+  const data = await res.json(); // { content (b64), sha, download_url, ... }
+  // The Contents API only inlines `content` for files up to 1MB — past that
+  // it returns an empty string (encoding "none"). Every daily backup is ~2MB,
+  // so without this fallback "Restore from Backup" (and key rotation, which
+  // re-reads every backup) always failed with "Unexpected end of JSON input".
+  // The git blobs API returns base64 content for files up to 100MB, with the
+  // same auth, so callers keep receiving the same { content: base64 } shape.
+  if (!data.content && data.sha && data.type !== 'dir') {
+    data.content = await fetchGithubBlobBase64(data.sha);
+  }
+  return data;
+}
+
+async function fetchGithubBlobBase64(sha) {
+  const { owner, repo, token } = state.github;
+  const headers = { 'Accept': 'application/vnd.github+json' };
+  if (token) headers['Authorization'] = `token ${token}`;
+  const url = `https://api.github.com/repos/${owner}/${repo}/git/blobs/${sha}`;
+  let res = await fetch(url, { headers, cache: 'no-store' });
+  if (res.status === 403) {
+    const waitMs = rateLimitWaitMs(res);
+    if (waitMs > 0) { await sleep(waitMs); res = await fetch(url, { headers, cache: 'no-store' }); }
+  }
+  if (!res.ok) throw new Error(`File download failed (${res.status})`);
+  const blob = await res.json();
+  if (blob.encoding !== 'base64' || typeof blob.content !== 'string') {
+    throw new Error('File download returned an unexpected encoding');
+  }
+  return blob.content.replace(/\s/g, '');
 }
 
 /**

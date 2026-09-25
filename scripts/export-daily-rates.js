@@ -178,7 +178,19 @@ function main() {
     process.exit(1);
   }
   const db = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
+  // db.json is normally an encrypted envelope ({enc, iv, ct}) that this script
+  // has no key for. Reading it as plain data found no properties and wrote an
+  // EMPTY index.json — which then triggered the public site to rebuild with
+  // no listings. Refuse instead of publishing nothing.
+  if (db && db.enc && typeof db.iv === 'string' && typeof db.ct === 'string') {
+    console.error('db.json is encrypted — this script cannot read it. Publish feeds from the app (STR Daily Rates) instead. Nothing was written.');
+    process.exit(1);
+  }
   const stProps = (db.properties || []).filter(p => isActive(p) && p.type === 'short_term');
+  if (stProps.length === 0) {
+    console.error('No active short-term properties found in db.json — refusing to overwrite the feeds with an empty index. Nothing was written.');
+    process.exit(1);
+  }
 
   fs.mkdirSync(OUT_DIR, { recursive: true });
 

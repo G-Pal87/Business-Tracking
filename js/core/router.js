@@ -67,7 +67,8 @@ function onHashChange() {
     mod.render(container, state);
   } catch (e) {
     console.error('render error', e);
-    container.innerHTML = `<div class="empty"><div class="empty-icon">!</div>Error rendering module: ${e.message}</div>`;
+    container.innerHTML = '<div class="empty"><div class="empty-icon">!</div><span></span></div>';
+    container.querySelector('span').textContent = `Error rendering module: ${e.message}`;
   }
   // Every render() today is synchronous, so this never actually fires — it's
   // a guard against a future module doing async work before appending to

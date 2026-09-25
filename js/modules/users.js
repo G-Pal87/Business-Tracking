@@ -3,6 +3,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, input, select, formRow, button, attachSortFilter } from '../core/ui.js';
 import { upsert, softDelete, listActive, newId } from '../core/data.js';
 import { hashPassword } from '../core/auth.js';
+import { rewrapKeysForNewPassword } from '../core/crypto.js';
 
 let _sortCol = -1, _sortDir = 1, _usrSearch = '';
 
@@ -126,6 +127,17 @@ function openForm(existing, wrap) {
           u.passwordSalt = salt;
         }
         upsert('users', u);
+        // The encryption key on this device is wrapped under a key derived
+        // from the logged-in user's password — re-wrap it when that user
+        // changes their OWN password, or their next sign-in here can't unlock
+        // the data. (Another user's devices can't be updated from here: they
+        // unlock with the new password once the team key is pasted again.)
+        if (password && !isNew && u.id === state.session?.userId) {
+          try { await rewrapKeysForNewPassword(password); }
+          catch (e) { toast('Password changed, but the encryption key could not be re-secured on this device — you may need to paste the team key again after signing in. ' + e.message, 'warning', 10000); }
+        } else if (password && !isNew) {
+          toast('Password changed. If this user has the encryption key on their own device, they will need to paste the team key again after signing in with the new password.', 'info', 8000);
+        }
         toast(isNew ? 'User created' : 'User updated', 'success');
         closeModal();
         const c = document.getElementById('content');

@@ -2,10 +2,12 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, attachSortFilter } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
+import { canDecryptWith, setRotationPending } from '../core/crypto.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64, generateDebugKey, installDebugKey, exportActiveDebugKeyBase64, hasDebugKeyConfigured, isDebugKeyUnlocked, encryptJsonWithDebugKey } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
-import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, removeDevices, listSessionHistory, clearSessionHistory } from '../core/presence.js';
+import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, removeDevices, listSessionHistory, clearSessionHistory, DEVICE_ONLINE_MS } from '../core/presence.js';
 import { navigate } from '../core/router.js';
+import { loadLib } from '../core/libs.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
@@ -66,10 +68,17 @@ function build() {
   wrap.appendChild(buildStrSettingsCard());
   wrap.appendChild(buildServicesCard());
   wrap.appendChild(buildReservationExpenseRulesCard());
-  wrap.appendChild(buildRepositoryMaintenanceCard());
-  wrap.appendChild(buildDebugExportCard());
+  // Destructive / data-exfiltrating tools (bulk file deletes, debug export,
+  // full restore/import, plaintext export) are admin-only — they used to be
+  // shown to every role. Roles are advisory in a static app, but this
+  // removes the easy footgun for regular users.
+  const isAdmin = state.session?.role === 'admin';
+  if (isAdmin) {
+    wrap.appendChild(buildRepositoryMaintenanceCard());
+    wrap.appendChild(buildDebugExportCard());
+  }
   wrap.appendChild(buildTrashCard());
-  wrap.appendChild(buildDangerCard());
+  if (isAdmin) wrap.appendChild(buildDangerCard());
   return wrap;
 }
 
@@ -171,7 +180,7 @@ function buildGithubCard() {
   body.appendChild(formRow(
     effToken ? 'Token (configured)' : 'Token (PAT)',
     tokenI,
-    'Stored in db.json and shared across all users/devices.'
+    'Stored only in this browser (never written to db.json). Share it with other devices via Copy Setup Link.'
   ));
 
   const saveBtn = button('Save & Pull', { variant: 'primary', onClick: async () => {
@@ -451,6 +460,19 @@ function buildEncryptionCard() {
     saveKeyBtn.disabled = true;
     try {
       const key = await importDataKeyFromBase64(raw);
+      // Check the key against the live data first — installing a wrong key
+      // (e.g. the debug key pasted by mistake) would otherwise go unnoticed.
+      let remoteEnv = null;
+      try {
+        const f = await fetchGithubFile(state.github.dbPath || 'data/db.json');
+        const parsed = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob((f.content || '').replace(/\s/g, '')), c => c.charCodeAt(0))));
+        if (isEncryptedEnvelope(parsed)) remoteEnv = parsed;
+      } catch { /* offline — can't verify; proceed */ }
+      if (remoteEnv && !(await canDecryptWith(key, remoteEnv))) {
+        const proceed = await confirmDialog('This key cannot decrypt the data currently on GitHub — it is probably not the team key. Save it anyway? (This device will not save to GitHub until the correct key is entered.)', { danger: true, okLabel: 'Save anyway' });
+        if (!proceed) { saveKeyBtn.disabled = false; return; }
+        await new Promise(r => setTimeout(r, 250));
+      }
       if (!(await promptForPasswordAndUnlock())) { saveKeyBtn.disabled = false; return; }
       await installDataKey(key);
       refreshAfterKeyChange();
@@ -704,6 +726,41 @@ function buildEncryptionCard() {
         let key, base64;
         try {
           ({ key, base64 } = await generateDataKey());
+        } catch (e) {
+          genBtn.disabled = false;
+          genBtn.textContent = defaultGenLabel;
+          progressEnd();
+          toast('Failed to generate the new key: ' + e.message, 'danger', 6000);
+          return;
+        }
+        // Escrow the new key BEFORE anything is re-encrypted under it. It used
+        // to be revealed only at the very end — a tab closed or crashed during
+        // the (many-minute) re-upload loop below left attachments encrypted
+        // under a key nobody had ever seen. Cancelling here changes nothing.
+        {
+          const escrowBody = el('div');
+          escrowBody.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px' },
+            'Copy this NEW key into your password manager now, before continuing. Everything will be re-encrypted under it, and every other device/user will need it afterward. (The current key stays stored on this device as a fallback until the rotation has fully finished.)'));
+          escrowBody.appendChild(input({ value: base64, readonly: true, style: 'width:100%;font-family:monospace;font-size:12px' }));
+          const saved = await confirmDialog(escrowBody, { title: 'Save the new encryption key', okLabel: 'I saved it — continue' });
+          if (!saved) {
+            genBtn.disabled = false;
+            genBtn.textContent = defaultGenLabel;
+            progressEnd();
+            toast('Key rotation cancelled — nothing was changed.', 'info');
+            return;
+          }
+          await new Promise(r => setTimeout(r, 250)); // let the dialog's close() settle
+        }
+        try {
+          // installDataKey() keeps the replaced key as a "previous" key
+          // (crypto.js), so anything not yet re-encrypted — if this loop is
+          // interrupted — remains readable on this device. The pending flag
+          // is what allows this device's pushes to re-encrypt db.json under
+          // the new key (doPushDb otherwise refuses when only an older key
+          // can read the remote); it survives a reload so an interrupted
+          // rotation still completes on the next save.
+          setRotationPending(true);
           await installDataKey(key);
           progressStep();
         } catch (e) {
@@ -772,8 +829,12 @@ function buildEncryptionCard() {
         genBtn.textContent = 'Pushing data…';
         let pushFailed = false;
         if (state.github.syncNow) {
+          // Mark dirty so a push really happens even if nothing else changed —
+          // db.json itself must be re-encrypted under the new key.
+          markDirty();
           try { await state.github.syncNow(); } catch { pushFailed = true; }
         }
+        if (!pushFailed) setRotationPending(false);
         progressStep();
 
         genBtn.disabled = false;
@@ -887,7 +948,7 @@ function buildDevicesCard() {
   card.appendChild(body);
   wireCollapsible('devices', header, body, chevron);
 
-  const ONLINE_MS = 2 * 60 * 1000; // matches presence.js's own STALE_MS
+  const ONLINE_MS = DEVICE_ONLINE_MS; // see presence.js — device rows refresh every ~2.5 min
 
   const renderDevicesTable = (container, devices) => {
     const entries = Object.entries(devices).sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0));
@@ -1814,10 +1875,12 @@ function buildTrashCard() {
     };
 
     // --- Filter + bulk action bar ---
+    // Permanent deletion is admin-only; everyone can still restore.
+    const canPurge = state.session?.role === 'admin';
     body.appendChild(el('div', {
       class: 'flex gap-8 mb-16',
       style: 'align-items:center;flex-wrap:wrap;padding-top:12px'
-    }, colSel, el('div', { class: 'flex-1' }), selCountEl, restoreSelBtn, deleteSelBtn, deleteAllBtn));
+    }, colSel, el('div', { class: 'flex-1' }), selCountEl, restoreSelBtn, canPurge ? deleteSelBtn : null, canPurge ? deleteAllBtn : null));
 
     // --- Table ---
     const vis = getVisible();
@@ -1871,7 +1934,7 @@ function buildTrashCard() {
           renderCard(colSel.value);
         }
       }));
-      actions.appendChild(button('Delete', {
+      if (state.session?.role === 'admin') actions.appendChild(button('Delete', {
         variant: 'sm ghost',
         onClick: async () => {
           const ok = await confirmDialog(
@@ -2113,7 +2176,7 @@ function fillInvoiceRepoBody(body) {
     if (dbBytes > DB_WARN_BYTES) {
       discrepancies.push({
         type: 'db_size_warning',
-        detail: `db.json is ${(dbBytes / 1024).toFixed(0)} KB (as actually pushed${isUnlocked() ? ', encrypted' : ''}) — ${dbBytes > 1_000_000 ? 'already over' : 'approaching'} GitHub's 1 MB API limit. Consider purging old soft-deleted records or moving pdfData to GitHub files.`,
+        detail: `db.json is ${(dbBytes / 1024).toFixed(0)} KB (as actually pushed${isUnlocked() ? ', encrypted' : ''}) — ${dbBytes > 1_000_000 ? 'already over' : 'approaching'} 1 MB, past which GitHub no longer inlines it in API reads (the app falls back to a slower extra download; saving still works). Consider purging old soft-deleted records or moving pdfData to GitHub files.`,
         noResolve: true
       });
     }
@@ -2773,9 +2836,9 @@ async function runDownloadZip(listFn, zipBaseName, statusEl, btn) {
     statusEl.style.color = 'var(--danger,#dc3545)';
     return;
   }
-  const JSZip = window.JSZip;
+  const JSZip = await loadLib('jszip').catch(() => null);
   if (!JSZip) {
-    statusEl.textContent = 'ZIP library not loaded — refresh and try again.';
+    statusEl.textContent = 'ZIP library could not be loaded — check your connection and try again.';
     statusEl.style.color = 'var(--danger,#dc3545)';
     return;
   }
@@ -3775,6 +3838,66 @@ function buildDangerCard() {
 
   // ── Shared import logic ──────────────────────────────────────────────────────
 
+  // Turns a snapshot into data that actually REPLACES the current state once
+  // it goes through the normal sync merge. A plain setDb(snapshot) did not:
+  // mergeDb kept the newer remote version of every record edited since the
+  // snapshot (last-writer-wins by updatedAt), deleted records added since
+  // it, and tombstones kept anything purged since it gone — a silent partial
+  // restore while the UI said "replaced".
+  //   - every snapshot record is re-stamped (updatedAt/restoredAt = now) so it
+  //     wins the merge everywhere, including over a tombstone (isTombstoned
+  //     honours restoredAt);
+  //   - records that exist now but not in the snapshot are soft-deleted
+  //     (Trash, restorable) rather than dropped, so a restore of the wrong
+  //     file is recoverable and other devices can't resurrect them;
+  //   - users are kept if the snapshot has none (restoring such a file used
+  //     to empty the user list and drop everyone into first-run setup);
+  //   - the GitHub token is never written into the data.
+  function buildRestoredDb(importedData) {
+    const now = Date.now();
+    const actor = state.session?.username || 'system';
+    const restoredDb = structuredClone(importedData);
+    delete restoredDb._syncedAt;
+    delete restoredDb._hasLocalChanges;
+    delete restoredDb._staleFetch;
+    if (restoredDb.appConfig?.github?.token) delete restoredDb.appConfig.github.token;
+    if (!Array.isArray(restoredDb.users) || restoredDb.users.length === 0) {
+      restoredDb.users = structuredClone(state.db.users || []);
+    }
+    for (const [col, arr] of Object.entries(restoredDb)) {
+      if (!Array.isArray(arr)) continue;
+      restoredDb[col] = arr.filter(x => x && typeof x === 'object' && x.id);
+      for (const item of restoredDb[col]) {
+        item.updatedAt = now;
+        item.updatedBy = actor;
+        item.restoredAt = now;
+      }
+    }
+    for (const [col, arr] of Object.entries(state.db)) {
+      if (!Array.isArray(arr) || col.startsWith('_')) continue;
+      if (!Array.isArray(restoredDb[col])) restoredDb[col] = [];
+      const ids = new Set(restoredDb[col].map(x => x.id));
+      for (const item of arr) {
+        if (!item?.id || ids.has(item.id)) continue;
+        const copy = structuredClone(item);
+        if (!copy.deletedAt) { copy.deletedAt = now; copy.deletedBy = actor; }
+        copy.updatedAt = now;
+        copy.updatedBy = actor;
+        restoredDb[col].push(copy);
+      }
+    }
+    // Keep sync metadata continuous with this device's state: tombstones are
+    // unioned (restoredAt lets restored ids through), and every plain field
+    // (settings…) is marked as changed now so the restore wins it.
+    restoredDb._tombstones = { ...(state.db._tombstones || {}), ...(importedData._tombstones || {}) };
+    restoredDb._mtimes = { ...(state.db._mtimes || {}) };
+    for (const [k, v] of Object.entries(restoredDb)) {
+      if (!k.startsWith('_') && !Array.isArray(v)) restoredDb._mtimes[k] = now;
+    }
+    if (state.db._syncedAt) restoredDb._syncedAt = state.db._syncedAt;
+    return restoredDb;
+  }
+
   async function processImport(raw) {
     // Defense-in-depth: the "Import JSON" file picker below calls this
     // directly with whatever the user selected, with no decryption handling
@@ -3817,6 +3940,15 @@ function buildDangerCard() {
       return;
     }
 
+    // A real snapshot has at least one record collection. Anything else (a
+    // settings-only fragment, some unrelated JSON with a "settings" key)
+    // would otherwise "restore" as an almost-empty database.
+    if (!ALL_COLLECTIONS.some(c => Array.isArray(importedData[c]) && importedData[c].length > 0)) {
+      statusEl.textContent = 'Import failed: this file contains no records — refusing to replace your data with it.';
+      statusEl.style.color = 'var(--danger,#dc3545)';
+      return;
+    }
+
     const rows = ALL_COLLECTIONS
       .filter(c => Array.isArray(importedData[c]))
       .map(c => {
@@ -3848,7 +3980,7 @@ function buildDangerCard() {
     }
     bodyEl.appendChild(grid);
     bodyEl.appendChild(el('div', { style: 'padding:8px;background:var(--danger-bg,#f8d7da);border-radius:4px;font-size:12px;color:var(--danger,#dc3545)' },
-      'This will replace ALL current app data. Your current state will be downloaded as an automatic backup before the restore proceeds.'
+      'This will replace ALL current app data with the snapshot. Records that exist now but are not in the snapshot are moved to Trash (restorable from Settings → Trash for 5 days). Your current state will also be downloaded as an automatic backup before the restore proceeds.'
     ));
 
     const confirmed = await new Promise(resolve => {
@@ -3864,11 +3996,7 @@ function buildDangerCard() {
 
     doExport(`bt-pre-import-backup-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.json`);
 
-    const restoredDb  = structuredClone(importedData);
-    const currentToken = state.github.token || '';
-    if (!restoredDb.appConfig)        restoredDb.appConfig = {};
-    if (!restoredDb.appConfig.github) restoredDb.appConfig.github = {};
-    if (currentToken)                 restoredDb.appConfig.github.token = currentToken;
+    const restoredDb = buildRestoredDb(importedData);
 
     setDb(restoredDb);
     saveLocalCache(restoredDb);

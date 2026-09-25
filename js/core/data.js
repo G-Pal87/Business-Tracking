@@ -336,8 +336,9 @@ export function netIncomeEUR(filters) {
 }
 
 export function ytdRange() {
-  const now = new Date();
-  return { start: `${now.getFullYear()}-01-01`, end: now.toISOString().slice(0, 10) };
+  // Local date — toISOString() is the UTC date, a day behind after local midnight.
+  const t = today();
+  return { start: `${t.slice(0, 4)}-01-01`, end: t };
 }
 
 function inDateRange(date, start, end) {
@@ -686,7 +687,10 @@ export function estimateTaxForYear(year, rate) {
   const rev = [...listActivePayments().filter(p => p.status === 'paid' && p.date >= s && p.date <= e).map(p => toEUR(p.amount, p.currency, year)), ...listActive('invoices').filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e).map(i => toEUR(i.subtotal ?? i.total, i.currency, year))].reduce((a, b) => a + b, 0);
   const exp = listActive('expenses').filter(ex => !isCapEx(ex) && ex.date >= s && ex.date <= e).reduce((a, ex) => a + toEUR(ex.amount, ex.currency, year), 0);
   const taxable = Math.max(0, rev - exp);
-  const forecastRev = (state.db.forecasts || []).filter(f => f.year === Number(year)).reduce((sum, f) => sum + Object.values(f.months || {}).reduce((ms, md) => ms + (md.revenue || 0), 0), 0);
+  // Same per-month rule as forecastedRevenueEUR (itemized entries when
+  // present, else the manual revenue) — and Number() so a string-typed value
+  // can't concatenate instead of add.
+  const forecastRev = forecastedRevenueEUR(year);
   const forecastTaxable = Math.max(0, forecastRev - exp);
   const r = Number(rate) || 0;
   return { rev, exp, taxable, estimatedTax: taxable * (r / 100), forecastRev, forecastTaxable, forecastTax: forecastTaxable * (r / 100), rate: r };
@@ -696,20 +700,41 @@ export function estimateTaxForYear(year, rate) {
 
 // Internal helper: generate schedule entries for one lease segment.
 // leaseData must have: monthlyRent, currency, leaseStartDate?, leaseEndDate?, paymentDayOfMonth?
+// Payments on a long-term property that are NOT a month's rent — a withheld
+// deposit or termination fee (tenants.js) used to be stored as type
+// 'rental', which marked the final month's unpaid rent as paid.
+export const NON_RENT_PAYMENT_TYPES = new Set(['deposit_withheld', 'termination_fee']);
+export function isRentPayment(p) {
+  return (p.stream === 'long_term_rental' || p.type === 'rental') && !NON_RENT_PAYMENT_TYPES.has(p.type);
+}
+
+// Tenants whose rent is expected: never prospective ones; a past tenant only
+// up to their termination/lease-end date (or this month if neither is set —
+// switching a tenant to "Past" without an end date used to keep generating
+// overdue rent 13 months into the future).
+function _expectedRentLease(t) {
+  if (!t.monthlyRent || t.status === 'prospective') return null;
+  if (t.status !== 'past') return t;
+  const end = t.terminationDate || t.leaseEndDate || today();
+  return { ...t, leaseEndDate: t.leaseEndDate && t.leaseEndDate < end ? t.leaseEndDate : end };
+}
+
 function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDate, paysByMonth) {
   const now = new Date();
+  const todayStr = today();
   const dueDay = Math.min(Math.max(leaseData.paymentDayOfMonth || 1, 1), 28);
 
+  // Built from the YYYY-MM parts directly — no Date parsing of date strings.
   let rangeStart, rangeEnd;
   if (leaseData.leaseStartDate) {
-    const d = new Date(leaseData.leaseStartDate);
-    rangeStart = new Date(d.getFullYear(), d.getMonth(), 1);
+    const [y, m] = leaseData.leaseStartDate.split('-').map(Number);
+    rangeStart = new Date(y, m - 1, 1);
   } else {
     rangeStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
   }
   if (leaseData.leaseEndDate) {
-    const d = new Date(leaseData.leaseEndDate);
-    rangeEnd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    const [y, m] = leaseData.leaseEndDate.split('-').map(Number);
+    rangeEnd = new Date(y, m, 1);
   } else {
     rangeEnd = new Date(now.getFullYear(), now.getMonth() + 13, 1);
   }
@@ -719,12 +744,10 @@ function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDa
   while (cursor < rangeEnd) {
     const lastDay = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
     const day = Math.min(dueDay, lastDay);
-    const dueDate = new Date(cursor.getFullYear(), cursor.getMonth(), day);
     const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
     const dateStr = `${monthKey}-${String(day).padStart(2, '0')}`;
     const monthPays = (paysByMonth.get(monthKey) || []).filter(p =>
-      p.propertyId === propertyId &&
-      (p.stream === 'long_term_rental' || p.type === 'rental')
+      p.propertyId === propertyId && isRentPayment(p)
     );
     const paidPayment  = monthPays.find(p => p.status === 'paid') || null;
     const linkedPayment = paidPayment || monthPays[0] || null;
@@ -740,7 +763,9 @@ function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDa
         continue;
       }
     }
-    const overdue = !paid && dueDate < now;
+    // Overdue only AFTER the due day — comparing a local-midnight due date
+    // with "now" flagged rent overdue on the due day itself.
+    const overdue = !paid && dateStr < todayStr;
     results.push({
       date: dateStr, monthKey,
       amount: leaseData.monthlyRent, currency: leaseData.currency || 'EUR',
@@ -785,7 +810,9 @@ export function generatePaymentSchedule(property) {
   if (property.type !== 'long_term') return [];
 
   const tenants = listActive('tenants')
-    .filter(t => t.propertyId === property.id && t.monthlyRent)
+    .filter(t => t.propertyId === property.id)
+    .map(_expectedRentLease)
+    .filter(Boolean)
     .sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || ''));
 
   if (!tenants.length) return [];
@@ -848,8 +875,9 @@ export function buildReconciliationData(year, ownerFilter, scope) {
 
   // Pre-build lookup maps — avoids O(n) listActive() scans inside nested loops
   const tenantsByProp = new Map();
-  for (const t of listActive('tenants')) {
-    if (!t.monthlyRent) continue;
+  for (const t0 of listActive('tenants')) {
+    const t = _expectedRentLease(t0); // same tenant rules as generatePaymentSchedule
+    if (!t) continue;
     const arr = tenantsByProp.get(t.propertyId) || [];
     arr.push(t);
     tenantsByProp.set(t.propertyId, arr);
@@ -1289,7 +1317,7 @@ export function restoreInventoryStock(expense) {
     // actually counted; unitPrice 0 since the original per-unit cost isn't
     // recoverable here — this only restores the QUANTITY, not cost history.
     const restoredBatch = {
-      id: newId('batch'), dateBought: expense.date || new Date().toISOString().slice(0, 10),
+      id: newId('batch'), dateBought: expense.date || today(),
       qty: expense.inventoryQty, remaining: expense.inventoryQty, unitPrice: 0, currency: 'EUR',
       note: 'Restored from deleted expense (pre-batch-tracking record)'
     };
@@ -1393,6 +1421,10 @@ function _applyRuleGuarded(rule, payment, reservationRef, genIndex, tracker) {
 export function applyReservationExpenseRules(payment, genIndex = null, categoryIndex = null, { allowInventory = true } = {}) {
   const reservationRef = payment.confirmationCode || payment.id;
   if (!reservationRef || !payment.propertyId) return [];
+  // Airbnb adjustment/resolution rows share the reservation's confirmation
+  // code — they must not (re)generate its expenses, or they overwrite the
+  // reservation's generated expense with their own (usually zero) fees.
+  if (!isReservationNight(payment)) return [];
   const rules = listActive('reservationExpenseRules').filter(r =>
     r.enabled && (!r.propertyId || r.propertyId === payment.propertyId) &&
     (allowInventory || r.amountSource !== 'inventory')
@@ -1414,6 +1446,7 @@ export function applyReservationExpenseRules(payment, genIndex = null, categoryI
 export function applyRuleToPayment(rule, payment, genIndex = null, categoryIndex = null) {
   const reservationRef = payment.confirmationCode || payment.id;
   if (!reservationRef || !payment.propertyId) return [];
+  if (!isReservationNight(payment)) return []; // see applyReservationExpenseRules
   const tracker = _makeClaimTracker(reservationRef, categoryIndex);
   const conflict = _applyRuleGuarded(rule, payment, reservationRef, genIndex, tracker);
   return conflict ? [conflict] : [];
@@ -1469,12 +1502,13 @@ function _applyOneRule(rule, payment, reservationRef, genIndex = null) {
         refreshedVendorId    !== existing.vendorId ||
         refreshedDescription !== existing.description
       ) {
-        upsert('expenses', {
+        const refreshed = upsert('expenses', {
           ...existing,
           date: refreshedDate,
           vendorId: refreshedVendorId,
           description: refreshedDescription
         });
+        if (genIndex) genIndex.set(rule.id + '|' + reservationRef, refreshed);
       }
       return;
     }
@@ -1539,6 +1573,11 @@ function _applyOneRule(rule, payment, reservationRef, genIndex = null) {
   if (existing && _sameExpenseFields(existing, candidate)) return;
 
   upsert('expenses', candidate);
+  // Keep the caller's bulk index current — without this, two payments sharing
+  // a reservationRef in one bulk run (runAllReservationExpenseRules /
+  // reapplyRuleToAllPayments) both missed the index and each generated its
+  // own expense (and, for inventory rules, deducted stock twice).
+  if (genIndex) genIndex.set(rule.id + '|' + reservationRef, candidate);
 }
 
 function _sameExpenseFields(existing, candidate) {

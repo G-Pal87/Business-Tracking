@@ -1,4 +1,5 @@
 // UI utilities: modals, toasts, confirm, forms
+import { addDaysYmd, parseYmd } from './dates.js';
 export function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
@@ -271,15 +272,21 @@ export function today() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Pure calendar arithmetic (see core/dates.js) — the previous version parsed
+// as UTC but added days in local time, so across a DST change it returned the
+// wrong day (e.g. addDays('2026-03-29', 1) → '2026-03-29' in Cyprus).
 export function addDays(dateStr, days) {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return addDaysYmd(dateStr, days);
 }
 
 export function fmtDate(dateStr) {
   if (!dateStr) return '';
   try {
+    // A bare YYYY-MM-DD is formatted as that calendar day (UTC midnight read
+    // back in UTC), independent of the viewer's timezone.
+    if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return parseYmd(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+    }
     return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch { return dateStr; }
 }
