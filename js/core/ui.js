@@ -112,7 +112,9 @@ export function openModal({ title, body, footer, large = false, onClose } = {}) 
     modal.appendChild(footerEl);
   }
   overlay.appendChild(modal);
-  requestAnimationFrame(() => overlay.classList.add('open'));
+  // Skipped if the modal was closed (or replaced) before the next frame, so
+  // an emptied overlay is never left open over the page.
+  requestAnimationFrame(() => { if (!closed) overlay.classList.add('open'); });
 
   // Unsaved-edit tracking: any user input in a form field marks the modal
   // dirty (programmatic value changes don't fire these events). Only the
@@ -175,6 +177,7 @@ export function closeModal() {
   // openModal() call doesn't try to force-close a modal that was already
   // closed through this path instead of its own close()).
   let onClose = null;
+  const hadActive = !!_activeModal;
   if (_activeModal) {
     document.removeEventListener('keydown', _activeModal.escHandler);
     _activeModal.markClosed?.();
@@ -183,7 +186,7 @@ export function closeModal() {
   }
   // No modal open and none fading out: nothing to clear (router calls this
   // on every navigation).
-  if (!onClose && !_pendingClose && !(o && o.classList.contains('open'))) return;
+  if (!hadActive && !_pendingClose && !(o && o.classList.contains('open'))) return;
   if (o) { o.classList.remove('open'); scheduleOverlayClear(o, onClose); }
 }
 
@@ -515,10 +518,14 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
 const _detachWatchers = new Set();
 let _detachObserver = null;
 
+const DETACH_NEVER_ATTACHED_MS = 60 * 1000;
+
 function checkDetached() {
+  const now = Date.now();
   for (const w of _detachWatchers) {
     if (w.node.isConnected) { w.attached = true; continue; }
-    if (!w.attached) continue; // built but not inserted yet
+    // Built but not inserted yet; one never inserted is dropped after a while.
+    if (!w.attached && now - w.born < DETACH_NEVER_ATTACHED_MS) continue;
     _detachWatchers.delete(w);
     try { w.cleanup(); } catch (e) { console.error(e); }
   }
@@ -526,7 +533,7 @@ function checkDetached() {
 }
 
 export function whenDetached(node, cleanup) {
-  _detachWatchers.add({ node, cleanup, attached: node.isConnected });
+  _detachWatchers.add({ node, cleanup, attached: node.isConnected, born: Date.now() });
   if (!_detachObserver && typeof MutationObserver === 'function' && document.body) {
     _detachObserver = new MutationObserver(checkDetached);
     _detachObserver.observe(document.body, { childList: true, subtree: true });

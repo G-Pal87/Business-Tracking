@@ -780,9 +780,9 @@ function buildEncryptionCard() {
             // everything else — regenerate it under the new key so nothing
             // is left pointing at a filename only the old key can decrypt.
             const newPath = await invoicePdfPath(item.invoice);
-            await uploadGithubFileEncrypted(newPath, item.content, 'Update file');
+            await uploadGithubFileEncrypted(newPath, item.content, `Re-encrypt under new key: ${item.label}`);
             if (newPath !== item.path) {
-              try { await deleteGithubFile(item.path, null, 'Delete file'); } catch { /* old file already gone */ }
+              try { await deleteGithubFile(item.path, null, `Remove old-key path for ${item.label}`); } catch { /* old file already gone */ }
               // Re-fetch the CURRENT record rather than reusing item.invoice
               // (a snapshot taken at the start of rotation, before this long
               // attachment loop began) — another user editing this same
@@ -799,9 +799,9 @@ function buildEncryptionCard() {
             // refuse a plaintext snapshot anyway).
             const json = JSON.stringify(await encryptJsonToEnvelope(item.snapshotJson));
             const b64 = btoa(unescape(encodeURIComponent(json)));
-            await uploadGithubFile(item.path, b64, 'Update file');
+            await uploadGithubFile(item.path, b64, `Re-encrypt backup under new key: ${item.label}`);
           } else {
-            await uploadGithubFileEncrypted(item.path, item.content, 'Update file');
+            await uploadGithubFileEncrypted(item.path, item.content, `Re-encrypt under new key: ${item.label}`);
           }
         };
 
