@@ -59,7 +59,7 @@ async function migrateEmbeddedReceipts(pending) {
   for (const exp of pending) {
     try {
       const repoPath = receiptRepoPath(exp.id, exp.receipt.name);
-      await uploadGithubFileEncrypted(repoPath, exp.receipt.data, `Migrate receipt for expense ${exp.id}`);
+      await uploadGithubFileEncrypted(repoPath, exp.receipt.data, 'Update file');
       const { data, ...rest } = exp.receipt;
       upsert('expenses', { ...exp, receipt: { ...rest, path: repoPath } });
       done++;
@@ -1076,7 +1076,7 @@ function openForm(existing, defaults = {}, onSave = null) {
     const receiptShared = path => (state.db.expenses || []).some(e => e.id !== r.id && !e.deletedAt && e.receipt?.path === path);
     if (removeExistingReceipt && r.receipt?.path) {
       if (!receiptShared(r.receipt.path)) {
-        try { await deleteGithubFile(r.receipt.path, null, `Remove receipt for expense ${r.id}`); } catch { /* ignore */ }
+        try { await deleteGithubFile(r.receipt.path, null, 'Delete file'); } catch { /* ignore */ }
       }
       delete r.receipt;
     }
@@ -1087,10 +1087,10 @@ function openForm(existing, defaults = {}, onSave = null) {
       if (token && owner && repo) {
         // Delete old receipt file if replacing
         if (r.receipt?.path && r.receipt.path !== repoPath && !receiptShared(r.receipt.path)) {
-          try { await deleteGithubFile(r.receipt.path, null, `Replace receipt for expense ${r.id}`); } catch { /* ignore */ }
+          try { await deleteGithubFile(r.receipt.path, null, 'Delete file'); } catch { /* ignore */ }
         }
         try {
-          await uploadGithubFileEncrypted(repoPath, b64, `Upload receipt for expense ${r.id}`);
+          await uploadGithubFileEncrypted(repoPath, b64, 'Update file');
           r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, path: repoPath };
         } catch (err) {
           console.error('Receipt upload failed:', err);

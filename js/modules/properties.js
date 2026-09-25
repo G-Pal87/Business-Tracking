@@ -123,7 +123,7 @@ async function migrateEmbeddedDocuments(pending) {
       const repoPath = isUnlocked()
         ? `Properties/${p.id}/${doc.id}${ext}`
         : `Properties/${sanitizeName(p.name)}/${sanitizeName(doc.name)}`;
-      await uploadGithubFileEncrypted(repoPath, doc.data, `Migrate document: ${doc.name}`);
+      await uploadGithubFileEncrypted(repoPath, doc.data, 'Update file');
       const newDocs = p.documents.map(x => {
         if (x.id !== docId) return x;
         const { data, ...rest } = x;
@@ -569,7 +569,7 @@ export function openDetail(id, preStats) {
         row.appendChild(button('Delete', { variant: 'ghost', onClick: async () => {
           const ok = await confirmDialog(`Delete document "${d.name}"?`, { danger: true, okLabel: 'Delete' });
           if (!ok) return;
-          try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
+          try { await deleteGithubFile(d.path, null, 'Delete file'); }
           catch (e) { toast(`Repo cleanup failed: ${e.message}`, 'warning', 5000); }
           p.documents = (p.documents || []).filter(x => x.id !== d.id);
           upsert('properties', p);
@@ -599,7 +599,7 @@ export function openDetail(id, preStats) {
     // shouldn't block the others or the record's own soft-delete.
     for (const d of (p.documents || [])) {
       if (!d.path) continue;
-      try { await deleteGithubFile(d.path, null, `Remove document: ${d.name}`); }
+      try { await deleteGithubFile(d.path, null, 'Delete file'); }
       catch (e) { console.warn(`[Property delete] could not remove document ${d.path}:`, e); }
     }
     softDelete('properties', p.id);
@@ -1086,7 +1086,7 @@ function openForm(existing) {
     // Now that Save was actually clicked, delete anything the user removed
     // from the list during this session (see pendingRemovals above).
     for (const rem of pendingRemovals) {
-      try { await deleteGithubFile(rem.path, null, `Remove document: ${rem.name}`); }
+      try { await deleteGithubFile(rem.path, null, 'Delete file'); }
       catch (e) { toast(`Repo cleanup failed for ${rem.name}: ${e.message}`, 'warning', 5000); }
     }
 
@@ -1105,7 +1105,7 @@ function openForm(existing) {
         const repoPath = isUnlocked() ? `Properties/${p.id}/${d.id}${ext}` : `Properties/${sanitizeName(propName)}/${sanitizeName(d.name)}`;
         try {
           const b64 = await readFileAsBase64(d._file);
-          await uploadGithubFileEncrypted(repoPath, b64, `Upload document: ${d.name}`);
+          await uploadGithubFileEncrypted(repoPath, b64, 'Update file');
           docsToSave.push({ id: d.id, name: d.name, type: d.type, size: d.size, uploadedAt: d.uploadedAt, path: repoPath, propertyId: p.id });
         } catch (e) {
           toast(`Failed to upload ${d.name}: ${e.message}`, 'danger', 6000);
