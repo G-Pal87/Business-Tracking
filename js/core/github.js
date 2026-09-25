@@ -342,14 +342,14 @@ async function doPushDb(message = 'Update data') {
   if (!owner || !repo) throw new Error('GitHub not configured');
   if (!token) throw new Error('GitHub token not configured — add it in Settings');
 
-  // Fail closed, not open: once a team key exists, a device pushing while
-  // that key is locked must never be allowed to silently write plaintext
-  // over an encrypted db.json — that regression then propagates to every
-  // backup taken afterward (manual or scheduled), with nobody the wiser.
-  // Only blocks when a key is actually configured; pre-encryption setups
-  // (no key ever generated) are unaffected.
-  if (!isUnlocked() && hasWrappedKeyConfigured()) {
-    const err = new Error('Encryption key not unlocked on this device — unlock it in Settings → Encryption before saving.');
+  // Fail closed, not open: db.json lives in a PUBLIC repo, so it is never
+  // written as plaintext — not even by a device that has no key set up at
+  // all (that fallback is how unencrypted data once reached the history).
+  // The edit stays local (state.dirty) until a key is unlocked/entered.
+  if (!isUnlocked()) {
+    const err = new Error(hasWrappedKeyConfigured()
+      ? 'Encryption key not unlocked on this device — unlock it in Settings → Encryption before saving.'
+      : 'No encryption key on this device — paste the team key in Settings → Encryption before saving. Nothing was saved to GitHub; your changes are kept locally.');
     err.code = 'NO_ENC_KEY';
     throw err;
   }
@@ -508,13 +508,10 @@ async function doPushDb(message = 'Update data') {
     const merged  = mergeDb(freshDb, snapshot, base);
     if (merged.appConfig?.github?.token) delete merged.appConfig.github.token;
 
-    // PUT merged content — encrypted if this device has a data key configured,
-    // otherwise pushed as plain JSON (pre-encryption rollout / not yet set up).
-    const jsonStr = isUnlocked()
-      // Compressed only once an admin has switched it on (Settings →
-      // Encryption), after every device runs a version that can read it.
-      ? JSON.stringify(await encryptJsonToEnvelope(merged, { compress: merged.settings?.compressDb === true }))
-      : JSON.stringify(merged);
+    // PUT merged content — always encrypted (see the guard at the top).
+    // Compressed only once an admin has switched it on (Settings →
+    // Encryption), after every device runs a version that can read it.
+    const jsonStr = JSON.stringify(await encryptJsonToEnvelope(merged, { compress: merged.settings?.compressDb === true }));
     if (jsonStr.length > 8 * 1024 * 1024) {
       const mb = (jsonStr.length / 1024 / 1024).toFixed(1);
       console.warn(`[BT] DB is ${mb} MB — consider purging deleted records in Settings → Data`);
@@ -1215,6 +1212,24 @@ export function flushLocalCache() {
 
 // ── File storage (invoice PDFs, etc.) ────────────────────────────────────────
 
+// Files the app may write unencrypted: only the bootstrap config, which holds
+// nothing but owner/repo/branch/path (see settings.js pushBootstrapConfig).
+const PLAINTEXT_UPLOAD_ALLOWED = new Set(['data/github-config.json']);
+
+// True when base64 content is one of this app's encrypted formats: the
+// BTX1 byte container (encryptBytes) or a JSON envelope starting with
+// {"enc":1 (encryptJsonToEnvelope / the debug-key envelope). Only the first
+// bytes are decoded, so this is cheap even for multi-MB backups.
+export function isEncryptedUpload(b64Content) {
+  const head64 = String(b64Content || '').replace(/\s/g, '').slice(0, 96);
+  let head;
+  try { head = Uint8Array.from(atob(head64.slice(0, head64.length - (head64.length % 4))), c => c.charCodeAt(0)); }
+  catch { return false; }
+  if (isEncryptedBytes(head)) return true;
+  const text = new TextDecoder('utf-8', { fatal: false }).decode(head);
+  return /^\s*\{\s*"enc"\s*:\s*1\s*,/.test(text);
+}
+
 /**
  * Upload or replace a file in the GitHub repo.
  * @param {string} path       - repo-relative path, e.g. "invoices/inv_abc.pdf"
@@ -1230,6 +1245,15 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
   // inside their intended folder, not the repo root.
   const cleanPath = path.replace(/^\/+/, '');
   const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
+
+  // Last line of defence: the repo is public, so nothing but an encrypted
+  // file may be written to it (see isEncryptedUpload). Callers are expected
+  // to encrypt; this catches any path that forgets to.
+  if (!PLAINTEXT_UPLOAD_ALLOWED.has(cleanPath) && !isEncryptedUpload(b64Content)) {
+    const err = new Error(`Refusing to upload "${cleanPath}" unencrypted — unlock the encryption key in Settings → Encryption first. Nothing was uploaded.`);
+    err.code = 'NO_ENC_KEY';
+    throw err;
+  }
 
   const headers = {
     'Accept':        'application/vnd.github+json',
@@ -1324,7 +1348,12 @@ function base64ToRawBytes(b64) {
  * @param {string} message   - commit message
  */
 export async function uploadGithubFileEncrypted(path, b64Content, message = 'Upload file') {
-  if (!isUnlocked()) return uploadGithubFile(path, b64Content, message);
+  // Never falls back to a plaintext upload: the repo is public.
+  if (!isUnlocked()) {
+    const err = new Error('Encryption key not unlocked on this device — unlock it in Settings → Encryption before uploading. Nothing was uploaded.');
+    err.code = 'NO_ENC_KEY';
+    throw err;
+  }
   const encrypted = await encryptBytes(base64ToRawBytes(b64Content));
   return uploadGithubFile(path, rawBytesToBase64(encrypted), message);
 }

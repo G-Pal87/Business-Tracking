@@ -1,0 +1,31 @@
+name: Privacy guard
+
+# This repository is public. Fails (and GitHub emails the pusher) if a push or
+# pull request adds anything that must not be public: unencrypted data files
+# (db.json, backups, invoices, documents), rate feeds outside the rates-feed
+# branch, or secrets in source files. Prints only paths and reasons, never
+# contents. See .github/scripts/privacy-guard.py.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history but no file contents up front (blob:none): only the files
+      # the pushed commits touched are downloaded, so the frequent app saves
+      # stay fast.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Check pushed commits for data that must not be public
+        env:
+          BEFORE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          AFTER: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: python3 .github/scripts/privacy-guard.py "$BEFORE" "$AFTER"

@@ -793,9 +793,9 @@ function buildEncryptionCard() {
             // Same envelope format as db.json (see collectBackupSnapshots) —
             // build it manually rather than through uploadGithubFileEncrypted,
             // which only knows the raw-bytes attachment format.
-            const json = isUnlocked()
-              ? JSON.stringify(await encryptJsonToEnvelope(item.snapshotJson))
-              : JSON.stringify(item.snapshotJson, null, 2);
+            // Always encrypted — the repo is public (uploadGithubFile would
+            // refuse a plaintext snapshot anyway).
+            const json = JSON.stringify(await encryptJsonToEnvelope(item.snapshotJson));
             const b64 = btoa(unescape(encodeURIComponent(json)));
             await uploadGithubFile(item.path, b64, `Re-encrypt backup under new key: ${item.label}`);
           } else {
@@ -4123,12 +4123,13 @@ function buildDangerCard() {
       statusEl.style.color = 'var(--danger,#dc3545)';
       return;
     }
-    // Fail closed, not open: a team key existing but not unlocked on this
-    // device must block the backup, not silently downgrade it to plaintext
-    // — this snapshot holds the exact same sensitive data as db.json
-    // (every record + other users' password hashes).
-    if (!isUnlocked() && hasWrappedKeyConfigured()) {
-      statusEl.textContent = 'Encryption key not unlocked on this device — unlock it in the Encryption section above before backing up.';
+    // Fail closed, not open: without an unlocked key the backup is blocked,
+    // never downgraded to plaintext — this snapshot holds the exact same
+    // sensitive data as db.json (every record + other users' password hashes).
+    if (!isUnlocked()) {
+      statusEl.textContent = hasWrappedKeyConfigured()
+        ? 'Encryption key not unlocked on this device — unlock it in the Encryption section above before backing up.'
+        : 'No encryption key on this device — paste the team key in the Encryption section above before backing up.';
       statusEl.style.color = 'var(--danger,#dc3545)';
       return;
     }
@@ -4141,9 +4142,7 @@ function buildDangerCard() {
       // Same envelope as db.json — this snapshot holds the exact same
       // sensitive data (all records + password hashes), so it must not sit
       // in the public repo as plaintext just because it's a "backup".
-      const json = isUnlocked()
-        ? JSON.stringify(await encryptJsonToEnvelope(snapshot))
-        : JSON.stringify(snapshot, null, 2);
+      const json = JSON.stringify(await encryptJsonToEnvelope(snapshot));
       const b64  = btoa(unescape(encodeURIComponent(json)));
       const ts   = new Date().toISOString().slice(0, 16).replace(':', '-');
       const filename = `bt-backup-${ts}.json`;
