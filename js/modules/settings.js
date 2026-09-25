@@ -270,11 +270,11 @@ function buildGithubCard() {
     }, '⚠️ Disconnect Other Sessions'));
     killSection.appendChild(el('div', {
       style: 'font-size:12px;color:var(--text-muted);margin-bottom:10px'
-    }, 'If another tab, device, or user has this app open and is still saving with old data (e.g. their edits keep reverting yours), use this to stop every other session from pushing to GitHub. It does not delete anything or force anyone to reload — their local edits stay put, they just stop syncing until they refresh. This browser stays connected.'));
+    }, 'If another tab, device, or user has this app open and is still saving with old data (e.g. their edits keep reverting yours), use this to stop every other session from pushing to GitHub. It does not delete anything or force anyone to reload — their local edits stay put, they just stop syncing until they refresh. This browser stays connected. This is a convenience, not a security control: a reload reconnects, and the other device keeps its GitHub token, encryption key and cached data. To lock someone out, rotate the GitHub token and the encryption key.'));
 
     const killBtn = button('Disconnect Other Sessions', { variant: 'danger', onClick: async () => {
       const ok = await confirmDialog(
-        'This will stop every OTHER open session (other tabs, devices, or users) from saving to GitHub until they reload. Their local, unsaved edits are not deleted — they just stop syncing. Use this only if you suspect another session is actively conflicting with yours.',
+        'This will stop every OTHER open session (other tabs, devices, or users) from saving to GitHub until they reload. Their local, unsaved edits are not deleted — they just stop syncing. Use this only if you suspect another session is actively conflicting with yours. It does not revoke access: reloading reconnects.',
         { danger: true, okLabel: 'Disconnect Others' }
       );
       if (!ok) return;
@@ -284,7 +284,7 @@ function buildGithubCard() {
       killBtn.disabled = false;
       killBtn.textContent = 'Disconnect Other Sessions';
       toast(
-        sent ? 'Signal sent — other sessions will disconnect within ~30 seconds.' : 'Failed to send — check your connection and try again.',
+        sent ? 'Signal sent — other sessions will disconnect within about a minute.' : 'Failed to send — check your connection and try again.',
         sent ? 'success' : 'danger'
       );
     }});
@@ -969,8 +969,8 @@ function relativeTime(ts) {
 // device registry (js/core/presence.js), whether it currently has the
 // encryption key, and lets an admin disconnect one remotely. See
 // killDevice() for what "disconnect" actually means on static hosting — it
-// stops that session from syncing within ~30s, it does not force a reload
-// or touch its local data.
+// stops that session from syncing within about a minute until it reloads; it
+// does not force a reload, touch its local data, or revoke its token or key.
 const HISTORY_EVENT_LABELS = {
   login: 'Logged in', logout: 'Logged out', disconnected: 'Disconnected remotely',
   failed_login: 'Failed login attempt'
@@ -991,7 +991,7 @@ function buildDevicesCard() {
   const header = el('div', { class: 'card-header card-header--toggle' },
     el('div', {},
       el('div', { class: 'card-title' }, 'Active Devices & Login History'),
-      el('div', { class: 'card-subtitle' }, 'Sessions that have connected recently, encryption key status, and a log of logins/logouts')
+      el('div', { class: 'card-subtitle' }, 'Sessions that have connected recently (only devices with the encryption key unlocked report in), and a log of logins/logouts. Kill/Disconnect only stop a running tab from syncing; they are not a security control.')
     ),
     el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
   );
@@ -1001,7 +1001,7 @@ function buildDevicesCard() {
   card.appendChild(body);
   wireCollapsible('devices', header, body, chevron);
 
-  const ONLINE_MS = DEVICE_ONLINE_MS; // see presence.js — device rows refresh every ~2.5 min
+  const ONLINE_MS = DEVICE_ONLINE_MS; // see presence.js — device rows refresh every ~4 min
 
   const renderDevicesTable = (container, devices) => {
     const entries = Object.entries(devices).sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0));
@@ -1102,13 +1102,13 @@ function buildDevicesCard() {
       if (!isSelf && online) {
         actions.appendChild(button('Kill Session', { variant: 'sm ghost', onClick: async () => {
           const ok = await confirmDialog(
-            `Disconnect ${d.name || d.username || 'this device'}? It stops syncing to GitHub within ~30 seconds — nothing is deleted, and it isn't forced to reload.`,
+            `Disconnect ${d.name || d.username || 'this device'}? It stops syncing to GitHub within about a minute — nothing is deleted, and it isn't forced to reload. This is a convenience, not a security control: reloading reconnects it, and it keeps its GitHub token and encryption key. To lock a lost device out, rotate the GitHub token and the encryption key.`,
             { danger: true, okLabel: 'Disconnect' }
           );
           if (!ok) return;
           const sent = await killDevice(sessionId);
           toast(
-            sent ? 'Signal sent — that device disconnects within ~30 seconds.' : 'Failed to send — check your connection and try again.',
+            sent ? 'Signal sent — that device disconnects within about a minute.' : 'Failed to send — check your connection and try again.',
             sent ? 'success' : 'danger'
           );
         }}));
@@ -1155,7 +1155,7 @@ function buildDevicesCard() {
       const badgeClass = ev.type === 'login' ? 'success'
         : (ev.type === 'disconnected' || ev.type === 'failed_login') ? 'danger' : '';
       tr.appendChild(el('td', {}, el('span', { class: `badge ${badgeClass}` }, HISTORY_EVENT_LABELS[ev.type] || ev.type)));
-      tr.appendChild(el('td', {}, ev.name || ev.username || 'Unknown'));
+      tr.appendChild(el('td', {}, ev.type === 'failed_login' ? '(not recorded)' : (ev.name || ev.username || 'Unknown')));
       tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' },
         ev.deviceType ? `${capitalizeFirst(ev.deviceType)} · ${ev.device || 'Unknown'}` : (ev.device || '—')
       ));
