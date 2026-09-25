@@ -511,7 +511,9 @@ async function doPushDb(message = 'Update data') {
     // PUT merged content — encrypted if this device has a data key configured,
     // otherwise pushed as plain JSON (pre-encryption rollout / not yet set up).
     const jsonStr = isUnlocked()
-      ? JSON.stringify(await encryptJsonToEnvelope(merged))
+      // Compressed only once an admin has switched it on (Settings →
+      // Encryption), after every device runs a version that can read it.
+      ? JSON.stringify(await encryptJsonToEnvelope(merged, { compress: merged.settings?.compressDb === true }))
       : JSON.stringify(merged);
     if (jsonStr.length > 8 * 1024 * 1024) {
       const mb = (jsonStr.length / 1024 / 1024).toFixed(1);

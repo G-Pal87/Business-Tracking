@@ -2,13 +2,13 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, attachSortFilter, fmtDate } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
-import { canDecryptWith, setRotationPending } from '../core/crypto.js';
+import { canDecryptWith, setRotationPending, supportsCompression } from '../core/crypto.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64, generateDebugKey, installDebugKey, exportActiveDebugKeyBase64, hasDebugKeyConfigured, isDebugKeyUnlocked, encryptJsonWithDebugKey } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
 import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, removeDevices, listSessionHistory, clearSessionHistory, DEVICE_ONLINE_MS } from '../core/presence.js';
 import { navigate } from '../core/router.js';
 import { loadLib } from '../core/libs.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning } from '../core/data.js';
+import { patchSettings, upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { PDF_TEMPLATES } from '../core/pdf.js';
@@ -883,6 +883,8 @@ function buildEncryptionCard() {
         }
       }});
       body.appendChild(el('div', { style: 'margin-top:8px' }, revealBtn));
+
+      body.appendChild(buildCompressionControl());
     }
   }
 
@@ -898,6 +900,57 @@ function buildEncryptionCard() {
   }
 
   return card;
+}
+
+// Admin switch for gzip-compressing db.json inside the encrypted envelope
+// (~5-8x smaller file, repo growth and sync traffic). Off by default: an app
+// version from before compression support can't read a compressed file, so
+// it must only be switched on once every device has loaded the updated app.
+// The device registry (presence.js) reports each device's envFormat /
+// canCompress, which is checked here before enabling.
+function buildCompressionControl() {
+  const wrap = el('div', { style: 'margin-top:14px;padding-top:12px;border-top:1px solid var(--border)' });
+  const on = state.db.settings?.compressDb === true;
+  wrap.appendChild(el('div', { style: 'font-size:13px;font-weight:600;margin-bottom:4px' },
+    `Compressed data file: ${on ? 'ON' : 'OFF'}`));
+  wrap.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);margin-bottom:8px;line-height:1.5' },
+    'Compresses db.json before encrypting it — about 5-8x smaller, so the repository grows much more slowly and syncing is faster. ' +
+    'Only switch this on after EVERY device and open tab has reloaded the app at least once since this option appeared; ' +
+    'a device still running an older version cannot read the compressed file.'));
+  const btn = button(on ? 'Turn compression off' : 'Turn compression on', { variant: 'sm', onClick: async () => {
+    if (on) {
+      const ok = await confirmDialog('Turn compression off? The next save writes db.json uncompressed again (larger, but readable by older app versions).', { okLabel: 'Turn off' });
+      if (!ok) return;
+      patchSettings({ compressDb: false });
+      toast('Compression turned off — applies from the next save', 'info');
+      setTimeout(() => navigate('settings'), 150);
+      return;
+    }
+    if (!supportsCompression()) { toast('This browser cannot compress — use an up-to-date browser to switch this on.', 'danger', 6000); return; }
+    btn.disabled = true;
+    let devices = {};
+    try { devices = await listDevices(); } catch { /* treated as unknown below */ }
+    btn.disabled = false;
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const notReady = Object.entries(devices || {})
+      .filter(([id, d]) => id !== state.github.sessionId && (d.lastSeen || 0) >= cutoff &&
+        ((Number(d.envFormat) || 1) < 2 || d.canCompress === false))
+      .map(([, d]) => `${d.name || d.username || 'Unknown'} — ${d.device || 'unknown device'}${d.canCompress === false ? ' (browser too old)' : ' (not reloaded since the update)'}`);
+    const msg = notReady.length
+      ? el('div', {},
+          el('div', { style: 'margin-bottom:8px;color:var(--danger,#dc3545)' },
+            `${notReady.length} device(s) seen in the last 30 days have NOT loaded an app version that can read compressed data:`),
+          el('ul', { style: 'font-size:12px;margin:0 0 8px;padding-left:18px' }, ...notReady.map(t => el('li', {}, t))),
+          el('div', {}, 'Reload the app on those devices first (or remove devices no longer used in Active Devices). Switch on anyway?'))
+      : 'Every device seen in the last 30 days runs an app version that can read compressed data. Switch compression on? The next save will write the smaller file.';
+    const ok = await confirmDialog(msg, { title: 'Compress data file', danger: notReady.length > 0, okLabel: notReady.length ? 'Switch on anyway' : 'Switch on' });
+    if (!ok) return;
+    patchSettings({ compressDb: true });
+    toast('Compression switched on — applies from the next save', 'success');
+    setTimeout(() => navigate('settings'), 150);
+  }});
+  wrap.appendChild(btn);
+  return wrap;
 }
 
 function relativeTime(ts) {
@@ -2170,7 +2223,7 @@ function fillInvoiceRepoBody(body) {
     // JSON.stringify(state.db).length understates the real pushed size by
     // roughly that much and can miss the file already being over 1 MB.
     const dbBytes = isUnlocked()
-      ? JSON.stringify(await encryptJsonToEnvelope(state.db)).length
+      ? JSON.stringify(await encryptJsonToEnvelope(state.db, { compress: state.db.settings?.compressDb === true })).length
       : JSON.stringify(state.db).length;
     const DB_WARN_BYTES = 800_000;
     if (dbBytes > DB_WARN_BYTES) {

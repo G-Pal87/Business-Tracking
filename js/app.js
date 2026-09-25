@@ -366,13 +366,15 @@ async function boot() {
       } else {
         updateSyncStatus('offline', e.code === 'KEY_MISMATCH'
           ? 'Encryption key changed elsewhere — paste the new key in Settings → Encryption'
+          : e.code === 'NEWER_FORMAT' ? 'App updated — reload the page to keep saving'
+          : e.code === 'UNSUPPORTED_BROWSER' ? 'Browser too old to read the data — update it'
           : 'Push failed — changes saved locally only', true);
         // Retry on its own with backoff. A transient failure (5xx, rate limit,
         // dropped connection) used to leave the edit stranded until the next
         // edit, an 'online' event or a manual Retry click — and while dirty,
         // backgroundResync also stands down, so the tab stopped converging.
         // Key problems can't fix themselves by retrying, so skip those.
-        if (e.code !== 'NO_ENC_KEY' && e.code !== 'KEY_MISMATCH') {
+        if (!['NO_ENC_KEY', 'KEY_MISMATCH', 'NEWER_FORMAT', 'UNSUPPORTED_BROWSER'].includes(e.code)) {
           clearTimeout(retryTimer);
           const delay = Math.min(120000, 5000 * 2 ** Math.min(5, saveFailCount - 1));
           retryTimer = setTimeout(() => {
@@ -486,6 +488,8 @@ async function boot() {
     } catch (e) {
       // offline / transient — keep working from current state
       if (e?.code === 'KEY_MISMATCH') updateSyncStatus('offline', 'Encryption key changed elsewhere — paste the new key in Settings → Encryption', true);
+      else if (e?.code === 'NEWER_FORMAT') updateSyncStatus('offline', 'App updated — reload the page to keep saving', true);
+      else if (e?.code === 'UNSUPPORTED_BROWSER') updateSyncStatus('offline', 'Browser too old to read the data — update it', true);
     }
     finally { resyncing = false; }
   };

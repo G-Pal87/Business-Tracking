@@ -1,7 +1,7 @@
 // Multi-user presence tracking via data/presence.json in GitHub
 // Shows a conflict banner when two users are on the same editable view.
 import { state } from './state.js';
-import { isUnlocked, hasWrappedKeyConfigured } from './crypto.js';
+import { isUnlocked, hasWrappedKeyConfigured, ENVELOPE_FORMAT_VERSION, supportsCompression } from './crypto.js';
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -342,6 +342,11 @@ async function reportDevice() {
       deviceType:    deviceType(),
       hasKey:        isUnlocked(),
       keyConfigured: hasWrappedKeyConfigured(),
+      // Which db.json envelope format this app version can read, and whether
+      // the browser can decompress — Settings checks these before an admin
+      // switches on compressed saving.
+      envFormat:     ENVELOPE_FORMAT_VERSION,
+      canCompress:   supportsCompression(),
       connectedAt:   state.github.connectedAt,
       lastSeen:      Date.now()
     };
