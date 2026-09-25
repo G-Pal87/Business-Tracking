@@ -7,6 +7,7 @@ import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYP
 import { navigate } from '../core/router.js';
 import { addDaysYmd, addMonthsYmd, addYearsYmd } from '../core/dates.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
+import { openFileSafely, base64ToBytes } from '../core/files.js';
 import { openAddYearForm } from './settings.js';
 
 function readFileAsBase64(file) {
@@ -22,17 +23,13 @@ async function openReceipt(receipt) {
   let b64;
   if (receipt.path) {
     const file = await fetchGithubFileEncrypted(receipt.path);
-    b64 = file.content.replace(/\s/g, '');
+    b64 = file.content;
   } else {
     b64 = receipt.data;
   }
-  const byteChars = atob(b64);
-  const bytes = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
-  const blob = new Blob([bytes], { type: receipt.type || 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  // The stored receipt.type is never trusted for the preview: see core/files.js.
+  const how = openFileSafely(base64ToBytes(b64), receipt.name || 'receipt');
+  if (how === 'download') toast('This file type can’t be previewed safely, so it was downloaded instead.', 'info');
 }
 
 function receiptRepoPath(expenseId, filename) {
