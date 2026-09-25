@@ -182,8 +182,10 @@ function main() {
   // has no key for. Reading it as plain data found no properties and wrote an
   // EMPTY index.json — which then triggered the public site to rebuild with
   // no listings. Refuse instead of publishing nothing.
-  if (db && db.enc && typeof db.iv === 'string' && typeof db.ct === 'string') {
-    console.error('db.json is encrypted — this script cannot read it. Publish feeds from the app (STR Daily Rates) instead. Nothing was written.');
+  // Any `enc` marker counts (not just a well-formed envelope), so a variant
+  // envelope can never be mistaken for plain data.
+  if (!db || typeof db !== 'object' || Array.isArray(db) || 'enc' in db || 'ct' in db) {
+    console.error('db.json is encrypted (or not a plain database object) — this script cannot read it. Publish feeds from the app (STR Daily Rates) instead. Nothing was written.');
     process.exit(1);
   }
   const stProps = (db.properties || []).filter(p => isActive(p) && p.type === 'short_term');

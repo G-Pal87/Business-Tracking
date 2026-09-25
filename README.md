@@ -49,7 +49,7 @@ js/
     settings.js, users.js
 data/
   db.json                     # Single source of truth (encrypted envelope)
-backups/                      # Daily encrypted snapshots (GitHub Action)
+backups/                      # Encrypted snapshots: 14 daily, 8 weekly, 8 monthly (GitHub Action)
 # exports/daily-rates/ lives on the single-commit `rates-feed` branch, not here
 ```
 
@@ -104,6 +104,42 @@ password). Rotating the key re-encrypts everything; the previous key is kept on 
 rotating device as a fallback until the rotation finishes. A device holding an old key
 refuses to save over data it can't decrypt, and asks for the new key instead.
 
+### Security model and limits
+
+The app has no backend: the repository is the database, and it is **public**.
+Encryption keeps the *contents* private; everything else follows from that design.
+
+- **The shared token is full data access.** Every user's device holds the same
+  GitHub token and the same data key. Anyone with both can read, change or delete
+  all data and its history — treat every user as fully trusted.
+- **Roles are enforced only in the browser.** "Admin" and "user" decide what the UI
+  shows. A user can edit their own role in the synced data (or in DevTools) and push
+  it; there is nothing server-side to stop them.
+- **"Kill session" / "Disconnect others" are advisory.** They set a flag the
+  running tab obeys. A reload gets past it, and the token, key and local cache on
+  that device are untouched. Anyone with the token can also forge these signals and
+  the session log.
+- **Rotating the key doesn't protect the past.** Every earlier version of `db.json`,
+  the attachments and the backups stays in the git history (and on GitHub Pages),
+  still encrypted under the old key. Whoever had the old key can keep decrypting
+  everything written up to the rotation.
+- **Metadata is public.** File sizes, commit times and counts, the `presence`
+  branch (who is online, device names, login events) and the rate feeds are
+  readable by anyone.
+
+**When someone leaves (or a device is lost):**
+
+1. Revoke the shared PAT on GitHub and create a new one (Settings → Developer
+   settings → Fine-grained tokens); enter it on the remaining devices.
+2. Rotate the encryption key in Settings → Encryption and give the new key only
+   to the remaining users.
+3. Remove the user in Settings → Users.
+4. Accept that data up to that point stays readable to them (see above). Real
+   revocation means moving the data to a new **private** repository.
+
+See [docs/security.md](docs/security.md) for the privacy guard, the git hooks and
+what the history keeps.
+
 ### Sync model
 
 Each save fetches the latest `db.json`, three-way merges it with local changes
@@ -134,6 +170,17 @@ Open `index.html` via a local HTTP server (needed for ES modules):
 python3 -m http.server 8000
 # then open http://localhost:8000
 ```
+
+This repository is public. Enable the privacy-guard git hooks once per clone, so
+unencrypted data or secrets are caught **before** they are committed or pushed
+(CI only notices after the push, when it is already public):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Check the whole history of every branch at any time with
+`python3 .github/scripts/privacy-guard.py --all` (see [docs/security.md](docs/security.md)).
 
 ## Owners & Streams
 

@@ -5,19 +5,31 @@ name: Notify Short-Term-Rentals on rate update
 # fires a repository_dispatch (`rates-feed-published`) after each publish, and
 # this forwards it to the Short-Term-Rentals site. That site also polls the
 # feed on its own (watch-rates), so a missed event only delays the rebuild.
+#
+# Anyone holding the app's PAT can fire this dispatch; all it does is ask the
+# other site to rebuild from the public feed. Keep STR_DEPLOY_TOKEN a
+# fine-grained PAT limited to the Short-Term-Rentals repository only, with just
+# the permission the dispatch endpoint requires (Contents: write) and a short
+# expiry.
 on:
   repository_dispatch:
     types: [rates-feed-published]
   workflow_dispatch:
+
+# This job only calls another repository with its own secret; it needs no
+# access to this repository.
+permissions: {}
 
 jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Short-Term-Rentals site rebuild
+        env:
+          STR_DEPLOY_TOKEN: ${{ secrets.STR_DEPLOY_TOKEN }}
         run: |
-          curl -s -f -X POST https://api.github.com/repos/G-Pal87/Short-Term-Rentals/dispatches \
-            -H "Authorization: token ${{ secrets.STR_DEPLOY_TOKEN }}" \
+          curl -sS --fail-with-body -X POST https://api.github.com/repos/G-Pal87/Short-Term-Rentals/dispatches \
+            -H "Authorization: token $STR_DEPLOY_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             -H "Content-Type: application/json" \
             -d '{"event_type":"rates-updated"}'
