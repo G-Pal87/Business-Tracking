@@ -33,17 +33,13 @@ jobs:
       - name: Generate daily-rate feeds
         run: node scripts/export-daily-rates.js
 
-      - name: Commit feeds if changed
+      # Feeds go to the single-commit `rates-feed` branch, never to main, so
+      # past prices don't accumulate in the public history.
+      - name: Publish feeds to the rates-feed branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add exports/daily-rates
-          if git diff --cached --quiet; then
-            echo "No feed changes to commit."
-          else
-            git commit -m "Update daily-rate feeds [skip ci]"
-            git push
-          fi
+          bash .github/scripts/publish-rates-feed.sh
 
       - name: Trigger Short-Term-Rentals site rebuild
         run: |

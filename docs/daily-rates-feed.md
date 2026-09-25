@@ -9,12 +9,16 @@ Short-Term-Rentals repo.
 
 The feeds refresh **automatically** after every data sync to GitHub: whenever
 payment / property / calendar changes are pushed, the feeds whose rates changed
-are re-published (unchanged feeds are skipped, so it won't spam commits). You can
+are re-published (nothing is published when no feed changed). You can
 also publish on demand via **STR Daily Rates → Publish Rates Feed**, which also
 shows the public URLs.
 
-Both publish paths write JSON files into the configured GitHub repo under
-`exports/daily-rates/`:
+Both publish paths write the JSON files to the **`rates-feed` branch** of the
+configured GitHub repo, under `exports/daily-rates/`. That branch always holds
+exactly **one commit**: every publish replaces the whole branch with the current
+files, so past prices never accumulate in the public git history. (The feeds
+used to be committed to `main`, which kept every old version.) Don't commit
+feed files to `main`; `exports/` is gitignored there.
 
 ```
 exports/daily-rates/index.json        # manifest listing every property feed
@@ -26,8 +30,8 @@ For the raw HTTPS URLs to be readable without a token, **the repo must be public
 ## Read URLs
 
 ```
-https://raw.githubusercontent.com/<owner>/<repo>/<branch>/exports/daily-rates/index.json
-https://raw.githubusercontent.com/<owner>/<repo>/<branch>/exports/daily-rates/<propertyId>.json
+https://raw.githubusercontent.com/<owner>/<repo>/rates-feed/exports/daily-rates/index.json
+https://raw.githubusercontent.com/<owner>/<repo>/rates-feed/exports/daily-rates/<propertyId>.json
 ```
 
 The exact URLs are shown in a dialog right after publishing.

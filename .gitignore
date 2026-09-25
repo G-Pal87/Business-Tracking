@@ -1,1 +1,4 @@
 .claude/
+# Rate feeds are published to the single-commit `rates-feed` branch, never
+# committed to main (see .github/scripts/publish-rates-feed.sh).
+exports/

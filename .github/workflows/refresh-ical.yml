@@ -9,7 +9,7 @@ on:
   workflow_dispatch: # allow manual run from the Actions tab
 
 permissions:
-  contents: write   # needed to commit db.json + feed files back to main
+  contents: write   # needed to commit db.json to main and publish the rates-feed branch
 
 concurrency:
   group: refresh-ical
@@ -39,9 +39,13 @@ jobs:
       - name: Refresh iCal blocks and rebuild rate feeds
         run: node .github/scripts/refresh-ical.js
 
+      # Feed files go to the single-commit rates-feed branch (never main).
+      - name: Publish rate feeds
+        run: bash .github/scripts/publish-rates-feed.sh
+
       - name: Commit and push if anything changed
         run: |
-          git add data/db.json exports/daily-rates/
+          git add data/db.json
           if git diff --staged --quiet; then
             echo "No iCal changes — skipping commit."
           else
