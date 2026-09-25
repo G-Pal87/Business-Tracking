@@ -1,6 +1,6 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, attachSortFilter } from '../core/ui.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, attachSortFilter, fmtDate } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
 import { canDecryptWith, setRotationPending } from '../core/crypto.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64, generateDebugKey, installDebugKey, exportActiveDebugKeyBase64, hasDebugKeyConfigured, isDebugKeyUnlocked, encryptJsonWithDebugKey } from '../core/crypto.js';
