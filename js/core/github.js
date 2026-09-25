@@ -1,6 +1,6 @@
 // GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
 import { state, notify, invalidateActiveCache } from './state.js';
-import { isEncryptedEnvelope, decryptEnvelopeToJson, decryptEnvelopeWithInfo, isRotationPending, setRotationPending, activeKeyId, encryptJsonToEnvelope, isUnlocked, hasWrappedKeyConfigured, encryptBytes, decryptBytes, isEncryptedBytes } from './crypto.js';
+import { isEncryptedEnvelope, decryptEnvelopeToJson, decryptEnvelopeWithInfo, isRotationPending, setRotationPending, activeKeyId, encryptJsonToEnvelope, isUnlocked, hasWrappedKeyConfigured, encryptBytes, decryptBytes, isEncryptedBytes, supportsCompression } from './crypto.js';
 
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
@@ -12,6 +12,21 @@ const CFG_LS_KEY = 'bt_github_config';
 // at each function's delete-propagation step for why. See mergeLocalPending()
 // below for the full rationale.
 const SYNC_SAFETY_MARGIN_MS = 15 * 60 * 1000; // 15 minutes
+
+// Every GitHub request gets a deadline. Without one, a request that stalls
+// (e.g. a mobile network switch mid-PUT) never settles: pushPending stays
+// true, no later edit is ever scheduled, background resync stands down, and
+// the sidebar says "Pushing…" until the page is reloaded. A timeout surfaces
+// as an ordinary network failure, which every caller already retries.
+const GH_TIMEOUT_MS       = 30 * 1000;
+const GH_WRITE_TIMEOUT_MS = 120 * 1000; // uploads of multi-MB files on slow links
+export async function ghFetch(url, opts = {}) {
+  const ms = opts.method && opts.method !== 'GET' ? GH_WRITE_TIMEOUT_MS : GH_TIMEOUT_MS;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ctrl.signal }); }
+  finally { clearTimeout(timer); }
+}
 
 let pushQueue = Promise.resolve();
 let _lastFetched = null; // { sha, path, db } — see fetchDb()
@@ -122,20 +137,117 @@ export function merge3(base, local, remote) {
     }
     return out;
   }
+  if (isIdArray(local) && isIdArray(remote) && (base === undefined || isIdArray(base))) {
+    return merge3IdArray(base || [], local, remote);
+  }
   return local;
+}
+
+// Arrays of {id,…} objects nested in plain fields (settings.team,
+// engagements, dividendSettings…) used to be merged as one value, so two
+// devices each adding an entry kept only one of them. Merge them per id
+// instead: additions from both sides survive, a removal on one side sticks
+// unless the other side edited that entry, and each entry is itself
+// 3-way merged. Order follows remote, then local-only additions.
+function isIdArray(v) {
+  return Array.isArray(v) && v.length > 0 && v.every(x => isPlainObj(x) && x.id != null);
+}
+function merge3IdArray(base, local, remote) {
+  const bm = new Map(base.map(x => [x.id, x]));
+  const lm = new Map(local.map(x => [x.id, x]));
+  const rm = new Map(remote.map(x => [x.id, x]));
+  const out = [];
+  const pick = id => {
+    const b = bm.get(id), l = lm.get(id), r = rm.get(id);
+    if (l && r) return merge3(b, l, r);
+    // Present on one side only: an addition, or a removal on the other side.
+    const only = l || r;
+    if (!b) return only;                    // added on that side
+    return deepEqual(only, b) ? undefined : only; // removed elsewhere, unless edited here
+  };
+  for (const id of rm.keys()) { const v = pick(id); if (v !== undefined) out.push(v); }
+  for (const id of lm.keys()) { if (rm.has(id)) continue; const v = pick(id); if (v !== undefined) out.push(v); }
+  return out;
+}
+
+// ── Plaintext-remote guard ───────────────────────────────────────────────────
+// Once this device has read an encrypted db.json, a db.json that suddenly
+// comes back as plain JSON is not "legacy data" — it can only have been
+// written by something that bypassed this app (anyone holding the token can
+// PUT a file). Merging it would launder whatever it contains (an injected
+// admin user, a changed IBAN…) into the encrypted data on the next push, so
+// refuse it. Device-local flag: set the first time an envelope is decrypted,
+// which also keeps a brand-new, not-yet-encrypted setup working.
+const ENC_SEEN_LS_KEY = 'bt_enc_remote_seen';
+function markEncryptedRemoteSeen() {
+  try { localStorage.setItem(ENC_SEEN_LS_KEY, '1'); } catch { /* ignore */ }
+}
+function assertPlaintextRemoteAllowed() {
+  let seen = false;
+  try { seen = localStorage.getItem(ENC_SEEN_LS_KEY) === '1'; } catch { /* ignore */ }
+  if (!seen) return;
+  const err = new Error('db.json on GitHub is no longer encrypted. The app never writes it that way, so it was changed outside the app — nothing was loaded or saved. Restore it from a backup (Settings → Data) or check who has the GitHub token.');
+  err.code = 'PLAINTEXT_REMOTE';
+  throw err;
 }
 
 // ── Config ───────────────────────────────────────────────────────────────────
 
+// The token is stored encrypted under the team data key (`tokenEnc`, the
+// same BTX1 container as documents) once a key is unlocked, so it isn't
+// readable from localStorage by anything that isn't signed in. Before that
+// — a brand-new device that just opened a setup link — it is kept as-is
+// until the first sign-in encrypts it (adoptStoredToken).
+function readCfg() {
+  try { return JSON.parse(localStorage.getItem(CFG_LS_KEY) || '{}'); } catch { return {}; }
+}
+
+async function writeCfg() {
+  const cfg = {
+    owner:  state.github.owner,
+    repo:   state.github.repo,
+    branch: state.github.branch,
+    path:   state.github.dbPath
+  };
+  const token = state.github.token || '';
+  if (token && isUnlocked()) {
+    try {
+      const bytes = await encryptBytes(new TextEncoder().encode(token));
+      let bin = ''; for (const b of bytes) bin += String.fromCharCode(b);
+      cfg.tokenEnc = btoa(bin);
+    } catch { cfg.token = token; }
+  } else if (token) {
+    cfg.token = token;
+  } else {
+    const prev = readCfg();
+    if (prev.tokenEnc) cfg.tokenEnc = prev.tokenEnc; // locked: keep it for next sign-in
+  }
+  try { localStorage.setItem(CFG_LS_KEY, JSON.stringify(cfg)); } catch { /* ignore */ }
+}
+
 export function loadConfig() {
-  try {
-    const cfg = JSON.parse(localStorage.getItem(CFG_LS_KEY) || '{}');
-    state.github.owner  = cfg.owner  || '';
-    state.github.repo   = cfg.repo   || '';
-    state.github.branch = cfg.branch || 'main';
-    state.github.dbPath = cfg.path   || 'data/db.json';
-    state.github.token  = cfg.token  || '';
-  } catch { /* ignore */ }
+  const cfg = readCfg();
+  state.github.owner  = cfg.owner  || '';
+  state.github.repo   = cfg.repo   || '';
+  state.github.branch = cfg.branch || 'main';
+  state.github.dbPath = cfg.path   || 'data/db.json';
+  state.github.token  = cfg.token  || '';
+}
+
+// Called once the data key is unlocked (after sign-in / key entry): decrypts
+// a stored `tokenEnc`, or encrypts a still-plain token in place.
+export async function adoptStoredToken() {
+  if (!isUnlocked()) return;
+  const cfg = readCfg();
+  if (cfg.token) {
+    state.github.token = cfg.token;
+  } else if (cfg.tokenEnc && !state.github.token) {
+    try {
+      const bytes = await decryptBytes(Uint8Array.from(atob(cfg.tokenEnc), c => c.charCodeAt(0)));
+      state.github.token = new TextDecoder().decode(bytes);
+    } catch { return; } // encrypted under a key this device no longer holds
+  }
+  await writeCfg();
 }
 
 // Called after db.json is loaded — syncs owner/repo/branch/path from db.appConfig.github
@@ -148,15 +260,7 @@ export function applyDbConfig(ghCfg) {
   if (ghCfg.branch) state.github.branch = ghCfg.branch;
   if (ghCfg.path)   state.github.dbPath = ghCfg.path;
   // ghCfg.token is deliberately ignored — never read tokens from the DB
-  try {
-    localStorage.setItem(CFG_LS_KEY, JSON.stringify({
-      owner:  state.github.owner,
-      repo:   state.github.repo,
-      branch: state.github.branch,
-      path:   state.github.dbPath,
-      token:  state.github.token   // preserve the current localStorage-sourced token
-    }));
-  } catch { /* ignore */ }
+  writeCfg();
 }
 
 export function saveConfig({ owner, repo, branch, dbPath, token }) {
@@ -165,15 +269,7 @@ export function saveConfig({ owner, repo, branch, dbPath, token }) {
   state.github.branch = branch || 'main';
   state.github.dbPath = dbPath || 'data/db.json';
   if (token !== undefined) state.github.token = token || '';
-  try {
-    localStorage.setItem(CFG_LS_KEY, JSON.stringify({
-      owner:  state.github.owner,
-      repo:   state.github.repo,
-      branch: state.github.branch,
-      path:   state.github.dbPath,
-      token:  state.github.token
-    }));
-  } catch { /* ignore */ }
+  return writeCfg();
 }
 
 export function clearConfig() {
@@ -231,11 +327,18 @@ function rateLimitWaitMs(res) {
   return 0;
 }
 
-export async function fetchDb() {
+// `conditional`: only the 60s background poll passes it. It sends the ETag of
+// the last read so an unchanged db.json comes back as 304 — which GitHub does
+// not count against the rate limit (every open tab polls, all sharing one
+// token). Every other caller (first load, pre-push base, confirmatory
+// re-pulls) keeps the unique If-None-Match that forces the CDN to revalidate,
+// since those need the freshest possible read.
+export async function fetchDb({ conditional = false } = {}) {
   const { owner, repo, branch, dbPath, token } = state.github;
   if (!owner || !repo) throw new Error('GitHub not configured');
 
-  const headers = { 'Accept': 'application/vnd.github+json', 'If-None-Match': `"${Date.now()}"` };
+  const useEtag = conditional && _lastFetched?.etag && _lastFetched.path === dbPath;
+  const headers = { 'Accept': 'application/vnd.github+json', 'If-None-Match': useEtag ? _lastFetched.etag : `"${Date.now()}"` };
   if (token) headers['Authorization'] = `token ${token}`;
 
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${dbPath}?ref=${encodeURIComponent(branch || 'main')}`;
@@ -248,7 +351,7 @@ export async function fetchDb() {
   const ATTEMPTS = 3;
   let res;
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
-    try { res = await fetch(url, { headers, cache: 'no-store' }); }
+    try { res = await ghFetch(url, { headers, cache: 'no-store' }); }
     catch {
       if (attempt < ATTEMPTS) { await sleep(backoff(attempt)); continue; }
       throw new Error('Cannot reach GitHub — check your internet connection');
@@ -259,6 +362,18 @@ export async function fetchDb() {
       if (waitMs > 0) { await sleep(waitMs); continue; }
     }
     break;
+  }
+
+  state.github.lastFetchUnchanged = false;
+  if (res.status === 304 && useEtag) {
+    // Unchanged since the last read — same content, same sha.
+    state.github.lastFetchUnchanged = true;
+    state.github.connected     = true;
+    state.github.lastPullOk    = true;
+    state.github.usingCache    = false;
+    state.github.lastPulledAt  = Date.now();
+    state.github.lastSyncError = null;
+    return structuredClone(_lastFetched.db);
   }
 
   if (!res.ok) {
@@ -272,6 +387,7 @@ export async function fetchDb() {
 
   const data = await res.json();
   const { sha, content } = data;
+  const etag = res.headers.get('etag');
 
   // db.json is >1MB, so `content` is normally empty here and the file is read
   // by sha (see doPushDb for why never via download_url). Either way the
@@ -297,8 +413,15 @@ export async function fetchDb() {
   // decryptEnvelopeToJson throws a clear error if this device has no data
   // key configured yet rather than silently returning ciphertext as "data".
   let decKid = _lastFetched?.sha === sha ? _lastFetched.decKid : null;
-  if (isEncryptedEnvelope(parsed)) ({ data: parsed, usedKid: decKid } = await decryptEnvelopeWithInfo(parsed));
+  if (isEncryptedEnvelope(parsed)) {
+    ({ data: parsed, usedKid: decKid } = await decryptEnvelopeWithInfo(parsed));
+    markEncryptedRemoteSeen();
+  } else if (_lastFetched?.sha !== sha) {
+    assertPlaintextRemoteAllowed();
+  }
   if (!_lastFetched || _lastFetched.sha !== sha) _lastFetched = { sha, path: dbPath, db: structuredClone(parsed), decKid };
+  if (etag) _lastFetched.etag = etag;
+  state.github.lastFetchedSha = sha;
 
   state.github.sha           = sha;
   state.github.connected     = true;
@@ -434,7 +557,7 @@ async function doPushDb(message = 'Update data') {
     const getHeaders = { ...ghHeaders, 'If-None-Match': `"${Date.now()}"` };
     let getRes;
     try {
-      getRes = await fetch(`${apiBase}?ref=${encodeURIComponent(branch || 'main')}`, {
+      getRes = await ghFetch(`${apiBase}?ref=${encodeURIComponent(branch || 'main')}`, {
         headers: getHeaders, cache: 'no-store'
       });
     } catch {
@@ -489,6 +612,9 @@ async function doPushDb(message = 'Update data') {
       const { data, usedKid } = await decryptEnvelopeWithInfo(freshDb);
       remoteKid = usedKid;
       freshDb = data;
+      markEncryptedRemoteSeen();
+    } else if (!(_lastFetched && _lastFetched.sha === sha)) {
+      assertPlaintextRemoteAllowed();
     }
     {
       // Refuse when the remote is readable only with a key OTHER than this
@@ -529,7 +655,7 @@ async function doPushDb(message = 'Update data') {
     }
     let putRes;
     try {
-      putRes = await fetch(apiBase, {
+      putRes = await ghFetch(apiBase, {
         method: 'PUT',
         headers: ghHeaders,
         body: JSON.stringify({
@@ -544,12 +670,14 @@ async function doPushDb(message = 'Update data') {
       throw new Error('Cannot reach GitHub');
     }
 
-    if (putRes.status === 409) {
-      lastError = 'SHA conflict';
-      // Each retry re-GETs the current SHA, so we don't need to wait for CDN
-      // expiry — just pause briefly to avoid hammering and retry immediately.
-      if (attempt < 8) { await sleep(150 + Math.random() * 100); continue; }
-      break; // exhausted — fall through to ConflictError below
+    if (putRes.status === 409 || putRes.status === 422 || putRes.status >= 500) {
+      // 409: someone committed between our GET and PUT (sha moved on).
+      // 422 ("sha wasn't supplied"/stale) and 5xx are transient the same way.
+      // Each retry re-GETs the current SHA; back off exponentially (with
+      // jitter) so several busy tabs stop colliding with each other.
+      lastError = `HTTP ${putRes.status}`;
+      if (attempt < 8) { await sleep(Math.min(5000, 150 * 2 ** (attempt - 1)) + Math.random() * 150); continue; }
+      break; // exhausted — fall through below
     }
 
     if (!putRes.ok) {
@@ -563,6 +691,13 @@ async function doPushDb(message = 'Update data') {
     }
 
     const newSha = (await putRes.json()).content.sha;
+    if (merged._newConflicts?.length) {
+      const n = merged._newConflicts.length;
+      notify('sync-conflicts', merged._newConflicts);
+      import('./ui.js').then(({ toast }) =>
+        toast(`${n} record${n === 1 ? ' was' : 's were'} edited on two devices at the same time. The later edit was kept; the other version is in Settings → Data → Sync conflicts if you need it.`, 'warning', 12000)
+      ).catch(() => {});
+    }
 
     state.github.sha          = newSha;
     state.github.remoteDb     = structuredClone(merged);
@@ -612,13 +747,16 @@ async function doPushDb(message = 'Update data') {
     if (adopted) invalidateActiveCache();
 
     saveLocalCache(state.db);
+    dropAppliedJournals();
     return { sha: newSha, editSeqAtSnapshot };
   }
 
-  // All retries exhausted with SHA conflicts — treat as ConflictError so
-  // doSave stops re-queuing and prompts the user to refresh instead.
-  const err = new Error('SHA conflict after retries — refresh the page to resync');
-  err.name = 'ConflictError';
+  // All retries lost the race against other writers. This is contention,
+  // not a conflict between edits (those are resolved in mergeDb) — report it
+  // as an ordinary failure so doSave's backoff retries it automatically,
+  // instead of telling the user someone modified the same data.
+  const err = new Error(`GitHub was busy (${lastError || 'write contention'}) — will retry automatically`);
+  err.code = 'SHA_RETRY_EXHAUSTED';
   throw err;
 }
 
@@ -772,13 +910,19 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
         continue;
       }
       if (localChanged && remoteChanged && baseItem) {
-        // Both sides edited a known common ancestor → genuine concurrent-edit conflict.
-        // Carry enough detail to diagnose from the console without reproducing —
-        // this exact 3-way check has been the source of confusing false positives
-        // (e.g. a write that re-stamps updatedAt without changing any real field).
+        // Both sides edited a known common ancestor → genuine concurrent edit.
+        // This used to throw and block the whole push (every other unrelated
+        // edit stayed unpushed until a reload, which then resolved it by
+        // timestamp anyway). Now: keep the later edit, and keep the other
+        // version in the synced `syncConflicts` list so it can be reviewed
+        // and restored (Settings → Data). Everything else merges normally.
+        const localWins = (item.updatedAt || 0) >= (remoteItem.updatedAt || 0);
+        if (localWins) merged.set(item.id, item);
         conflicts.push({
           collection: col,
           id: item.id,
+          kept: localWins ? 'local' : 'remote',
+          lost: structuredClone(localWins ? remoteItem : item),
           localUpdatedAt:  item.updatedAt ?? null,
           localUpdatedBy:  item.updatedBy ?? null,
           remoteUpdatedAt: remoteItem.updatedAt ?? null,
@@ -789,10 +933,19 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
         continue;
       }
 
-      // Either only the local side changed, or there is no ancestor to arbitrate
-      // (e.g. a push after a failed initial pull). Fall back to last-writer-wins
-      // by updatedAt so a STALE local cache can never overwrite a fresher remote
-      // record — this is the root fix for the cross-user data-loss bug.
+      if (baseItem && localChanged && !remoteChanged) {
+        // Only this device changed the record since the common ancestor: its
+        // edit wins regardless of timestamps. Comparing clocks here let a
+        // device whose clock runs behind another's lose its genuinely newer
+        // edit (and applyMergedToUntouched then overwrote it locally too).
+        merged.set(item.id, item);
+        continue;
+      }
+
+      // No ancestor to arbitrate (e.g. a push after a failed initial pull).
+      // Fall back to last-writer-wins by updatedAt so a STALE local cache can
+      // never overwrite a fresher remote record — this is the root fix for
+      // the cross-user data-loss bug.
       if ((item.updatedAt || 0) >= (remoteItem.updatedAt || 0)) {
         merged.set(item.id, item);
       }
@@ -830,13 +983,34 @@ export function mergeDb(freshRemote, localCurrent, lastSynced) {
   result._mtimes = mtimes;
 
   if (conflicts.length > 0) {
-    const err = new Error('Concurrent edit conflict — another user modified the same records');
-    err.name      = 'ConflictError';
-    err.conflicts = conflicts;
-    throw err;
+    recordConflicts(result, conflicts, now);
+    // Non-enumerable so it never reaches db.json; doPushDb reports it.
+    Object.defineProperty(result, '_newConflicts', { value: conflicts, enumerable: false });
   }
 
   return result;
+}
+
+// Concurrent-edit losers, kept as ordinary synced records so every device
+// sees them and one can be restored. Bounded: at most 200, and entries
+// older than 60 days are dropped on the next conflict.
+const CONFLICT_KEEP_MS = 60 * 24 * 60 * 60 * 1000;
+function recordConflicts(result, conflicts, now) {
+  const list = Array.isArray(result.syncConflicts) ? result.syncConflicts.filter(c => !c.deletedAt && now - (c.createdAt || 0) < CONFLICT_KEEP_MS) : [];
+  for (const c of conflicts) {
+    list.push({
+      id: `cfl_${c.collection}_${c.id}_${now}`,
+      collection: c.collection,
+      recordId: c.id,
+      kept: c.kept,
+      lostVersion: c.lost,
+      localUpdatedBy: c.localUpdatedBy,
+      remoteUpdatedBy: c.remoteUpdatedBy,
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+  result.syncConflicts = list.slice(-200);
 }
 
 // Plain (non-record) top-level fields — `settings`, `appConfig` — used to be
@@ -954,13 +1128,50 @@ export function resyncDb(remote, local) {
 // finding no local cache AND no token to refetch with, which would lock
 // everyone out until an admin re-enters it in Settings.
 export function clearCachedDb() {
-  try { localStorage.removeItem(DB_LS_KEY); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(DB_LS_KEY);
+    for (const k of journalKeys()) localStorage.removeItem(k);
+  } catch { /* ignore */ }
+  _pendingEncryptedCache = null;
+}
+
+// The cache is encrypted under the data key (see writeLocalCacheNow), which
+// only exists in memory after sign-in — so on a fresh page load it can't be
+// read yet. fetchLocalDb then returns null and keeps the envelope here;
+// auth.js signs in first (which unlocks the key) and opens it afterwards.
+let _pendingEncryptedCache = null;
+export function hasPendingEncryptedCache() { return !!_pendingEncryptedCache; }
+export async function openPendingEncryptedCache() {
+  const env = _pendingEncryptedCache;
+  if (!env) return null;
+  try {
+    const db = await decryptEnvelopeToJson(env);
+    _pendingEncryptedCache = null;
+    return db;
+  } catch (e) {
+    // Key rotated away / removed — the cached copy is unreadable, but the
+    // pending-edits journals (small, separately encrypted) may still open.
+    console.warn('[BT] Local cache could not be decrypted', e);
+    if (e?.code === 'KEY_MISMATCH') _pendingEncryptedCache = null;
+    return null;
+  }
 }
 
 export async function fetchLocalDb() {
   const cached = localStorage.getItem(DB_LS_KEY);
   if (cached) {
-    try { return JSON.parse(cached); } catch { /* corrupt, fall through */ }
+    let parsed = null;
+    try { parsed = JSON.parse(cached); } catch { /* corrupt, fall through */ }
+    if (parsed && isEncryptedEnvelope(parsed)) {
+      if (isUnlocked()) {
+        try { return await decryptEnvelopeToJson(parsed); } catch { return null; }
+      }
+      _pendingEncryptedCache = parsed;
+      return null;
+    }
+    // Legacy plaintext cache (written before the cache was encrypted):
+    // used once, and replaced by an encrypted copy on the next cache write.
+    if (parsed) return parsed;
   }
   try {
     const res = await fetch('data/db.json', { cache: 'no-store' });
@@ -1125,35 +1336,167 @@ export function disableLocalCache() {
   _pendingSaveDb = null;
 }
 
-function writeLocalCacheNow(db) {
-  if (_cacheDisabled) return;
+function stripHeavyFields(db) {
+  const safe = { ...db };
+  // Strip heavy fields that are already externalized to the GitHub repo
+  // (invoice PDFs, expense receipt blobs, document blobs). They're
+  // re-fetchable on demand and would otherwise blow the localStorage quota.
+  // Soft-deleted records are intentionally kept so unpushed local deletions
+  // survive an offline reload + merge.
+  if (Array.isArray(safe.invoices)) {
+    safe.invoices = safe.invoices.map(({ pdfData, ...rest }) => rest);
+  }
+  if (Array.isArray(safe.expenses)) {
+    safe.expenses = safe.expenses.map(e => {
+      if (!e.receipt?.data && !e.documents) return e;
+      const copy = { ...e };
+      if (copy.receipt?.data) copy.receipt = { ...copy.receipt, data: undefined };
+      if (Array.isArray(copy.documents)) copy.documents = copy.documents.map(({ data, ...rest }) => rest);
+      return copy;
+    });
+  }
+  return safe;
+}
+
+// ── Pending-edits journal ────────────────────────────────────────────────────
+// Besides the full cache, each tab keeps a small journal of what it has NOT
+// pushed yet: the records whose updatedAt differs from the last-synced base,
+// changed plain fields and new tombstones. It is keyed per tab, so
+//   - two tabs no longer lose each other's unpushed edits by overwriting the
+//     one shared cache key, and
+//   - when the full cache no longer fits in localStorage, the (much smaller)
+//     journal still does, and a reload re-applies it instead of silently
+//     restoring an older snapshot.
+// Journals are applied on load (applyPendingJournals) and removed once the
+// edits they carry have been pushed.
+const JOURNAL_PREFIX = 'bt_pending_';
+const TAB_ID = (() => {
   try {
-    const safe = { ...db };
-    // Strip heavy fields that are already externalized to the GitHub repo
-    // (invoice PDFs, expense receipt blobs, document blobs). They're
-    // re-fetchable on demand and would otherwise blow the localStorage quota.
-    // Soft-deleted records are intentionally kept so unpushed local deletions
-    // survive an offline reload + merge.
-    if (Array.isArray(safe.invoices)) {
-      safe.invoices = safe.invoices.map(({ pdfData, ...rest }) => rest);
+    let id = sessionStorage.getItem('bt_tab_id');
+    if (!id) { id = crypto.randomUUID(); sessionStorage.setItem('bt_tab_id', id); }
+    return id;
+  } catch { return crypto.randomUUID(); }
+})();
+const OWN_JOURNAL_KEY = JOURNAL_PREFIX + TAB_ID;
+let _appliedJournalKeys = [];
+
+function journalKeys() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(JOURNAL_PREFIX)) out.push(k);
     }
-    if (Array.isArray(safe.expenses)) {
-      safe.expenses = safe.expenses.map(e => {
-        if (!e.receipt?.data && !e.documents) return e;
-        const copy = { ...e };
-        if (copy.receipt?.data) copy.receipt = { ...copy.receipt, data: undefined };
-        if (Array.isArray(copy.documents)) copy.documents = copy.documents.map(({ data, ...rest }) => rest);
-        return copy;
-      });
+  } catch { /* ignore */ }
+  return out;
+}
+
+export function computeJournal(db, base) {
+  if (!db || !base) return null;
+  const j = { records: {}, plain: {}, mtimes: {}, tombstones: {} };
+  let n = 0;
+  for (const [col, val] of Object.entries(db)) {
+    if (col.startsWith('_')) continue;
+    if (Array.isArray(val)) {
+      const bm = new Map((Array.isArray(base[col]) ? base[col] : []).map(x => [x.id, x]));
+      const changed = val.filter(x => { const b = bm.get(x.id); return !b || b.updatedAt !== x.updatedAt; });
+      if (changed.length) { j.records[col] = changed; n += changed.length; }
+    } else if (val !== undefined && !deepEqual(val, base[col])) {
+      j.plain[col] = val;
+      j.mtimes[col] = db._mtimes?.[col] || 0;
+      n++;
     }
-    localStorage.setItem(DB_LS_KEY, JSON.stringify(safe));
+  }
+  for (const [k, ts] of Object.entries(db._tombstones || {})) {
+    if (base._tombstones?.[k] === undefined) { j.tombstones[k] = ts; n++; }
+  }
+  return n ? j : null;
+}
+
+// Applies every journal found in this browser (this tab's from before a
+// reload, other tabs', closed tabs') onto `db` — a record only where the
+// journal's copy is newer than what `db` holds. Returns how many changes it
+// applied; the caller then pushes them. The journal keys are remembered and
+// removed after the next successful push.
+export async function applyPendingJournals(db) {
+  let applied = 0;
+  const keys = [];
+  for (const key of journalKeys()) {
+    let j;
+    try { j = await decryptEnvelopeToJson(JSON.parse(localStorage.getItem(key))); }
+    catch { continue; } // unreadable (other key) — leave it
+    keys.push(key);
+    for (const [col, items] of Object.entries(j.records || {})) {
+      if (!Array.isArray(db[col])) db[col] = [];
+      const ix = new Map(db[col].map((x, i) => [x.id, i]));
+      for (const item of items) {
+        const i = ix.get(item.id);
+        if (i === undefined) { db[col].push(item); ix.set(item.id, db[col].length - 1); applied++; }
+        else if ((item.updatedAt || 0) > (db[col][i].updatedAt || 0)) { db[col][i] = item; applied++; }
+      }
+    }
+    for (const [col, val] of Object.entries(j.plain || {})) {
+      if ((j.mtimes?.[col] || 0) >= (db._mtimes?.[col] || 0) && !deepEqual(db[col], val)) { db[col] = val; applied++; }
+    }
+    const newTs = Object.keys(j.tombstones || {}).filter(k => db._tombstones?.[k] === undefined);
+    if (newTs.length) {
+      db._tombstones = unionTombstones(db._tombstones, j.tombstones);
+      for (const k of newTs) {
+        const [col, ...rest] = k.split(':');
+        const id = rest.join(':');
+        if (Array.isArray(db[col])) db[col] = db[col].filter(x => !(x.id === id && isTombstoned(db._tombstones, col, x)));
+      }
+      applied += newTs.length;
+    }
+  }
+  _appliedJournalKeys = keys.filter(k => k !== OWN_JOURNAL_KEY);
+  return applied;
+}
+
+// After a successful push: other tabs' journals applied at load are now on
+// GitHub (a still-open tab simply rewrites its own on its next cache write).
+function dropAppliedJournals() {
+  for (const k of _appliedJournalKeys) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
+  _appliedJournalKeys = [];
+}
+
+// ── Encrypted local cache ────────────────────────────────────────────────────
+// The cache holds the whole database, so it is written only encrypted (under
+// the data key, gzipped inside the envelope where supported — ~5-8x smaller,
+// which also keeps it well inside the localStorage quota). A device without
+// an unlocked key writes nothing: it could not have loaded real data anyway.
+let _cacheWriteSeq = 0;
+async function writeLocalCacheNow(db) {
+  if (_cacheDisabled || !db) return;
+  if (!isUnlocked()) return;
+  const seq = ++_cacheWriteSeq;
+  let cacheJson, journalJson = null;
+  try {
+    cacheJson = JSON.stringify(await encryptJsonToEnvelope(stripHeavyFields(db), { compress: supportsCompression() }));
+    const j = computeJournal(db, state.github.remoteDb);
+    if (j && state.dirty) journalJson = JSON.stringify(await encryptJsonToEnvelope(j, { compress: supportsCompression() }));
+  } catch (e) { console.warn('saveLocalCache: encrypt failed', e); return; }
+  // A newer write started while this one was encrypting — let it win.
+  if (seq !== _cacheWriteSeq || _cacheDisabled) return;
+  // Journal first: it is small and is what protects unpushed edits.
+  try {
+    if (journalJson) localStorage.setItem(OWN_JOURNAL_KEY, journalJson);
+    else localStorage.removeItem(OWN_JOURNAL_KEY);
+  } catch (e) { console.warn('saveLocalCache: journal', e); }
+  try {
+    localStorage.setItem(DB_LS_KEY, cacheJson);
+    state.github.cacheQuotaFull = false;
   } catch (e) {
     console.warn('saveLocalCache:', e);
     if (e.name === 'QuotaExceededError') {
+      // Never leave the previous (now stale) snapshot behind: a reload would
+      // restore it and silently lose everything since. Without it the next
+      // load pulls from GitHub and re-applies the journal.
+      try { localStorage.removeItem(DB_LS_KEY); } catch { /* ignore */ }
       state.github.cacheQuotaFull = true;
       notify('cache-quota-exceeded');
       import('./ui.js').then(({ toast }) =>
-        toast('Local cache full — offline access may use stale data. Purge deleted records in Settings → Data to free space.', 'warning', 8000)
+        toast('Local cache full — this browser will load from GitHub next time. Unsaved changes are still kept. Purge deleted records in Settings → Data to free space.', 'warning', 8000)
       ).catch(() => {});
     }
   }
@@ -1166,24 +1509,22 @@ export function saveLocalCache(db) {
     _saveCacheTimer = null;
     const toSave = _pendingSaveDb;
     _pendingSaveDb = null;
-    writeLocalCacheNow(toSave);
-  }, 500);
+    writeLocalCacheNow(toSave).catch(() => {});
+  }, 250);
 }
 
-// Synchronously writes whatever saveLocalCache() has queued, bypassing its
-// 500ms debounce. A refresh/close within that window otherwise loses the
-// write entirely: state.dirty warns the tab is closing with unsaved changes,
-// but that warning doesn't stop a user who dismisses it (and many browsers
-// don't even show it without recent interaction) — the debounce timer is
-// simply abandoned mid-air, and next load reads the pre-edit cache with no
-// record that anything newer ever existed. Call this from beforeunload.
+// Writes whatever saveLocalCache() has queued, bypassing its debounce — call
+// from beforeunload / pagehide / visibilitychange(hidden). Encryption is
+// asynchronous, so this is best-effort when the page is being torn down; the
+// short debounce above keeps that window small, and beforeunload still warns
+// while anything is unpushed.
 export function flushLocalCache() {
-  if (!_saveCacheTimer) return;
+  if (!_saveCacheTimer) return Promise.resolve();
   clearTimeout(_saveCacheTimer);
   _saveCacheTimer = null;
   const toSave = _pendingSaveDb;
   _pendingSaveDb = null;
-  if (toSave) writeLocalCacheNow(toSave);
+  return toSave ? writeLocalCacheNow(toSave).catch(() => {}) : Promise.resolve();
 }
 
 // ── File storage (invoice PDFs, etc.) ────────────────────────────────────────
@@ -1193,17 +1534,33 @@ export function flushLocalCache() {
 const PLAINTEXT_UPLOAD_ALLOWED = new Set(['data/github-config.json']);
 
 // True when base64 content is one of this app's encrypted formats: the
-// BTX1 byte container (encryptBytes) or a JSON envelope starting with
-// {"enc":1 (encryptJsonToEnvelope / the debug-key envelope). Only the first
-// bytes are decoded, so this is cheap even for multi-MB backups.
+// BTX1 byte container (encryptBytes: magic + 12-byte IV + ciphertext with a
+// 16-byte tag) or a JSON envelope (encryptJsonToEnvelope / the debug-key
+// envelope: only enc/iv/ct plus the known metadata keys, a 12-byte IV and a
+// non-trivial ciphertext). A structural check, not just a prefix match, so
+// plaintext that merely starts with the magic bytes or with {"enc":1 is
+// refused.
+const ENVELOPE_KEYS = new Set(['enc', 'iv', 'ct', 'kid', 'v', 'z']);
+function b64Len(b64) {
+  const pad = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+  return Math.floor(b64.length * 3 / 4) - pad;
+}
 export function isEncryptedUpload(b64Content) {
-  const head64 = String(b64Content || '').replace(/\s/g, '').slice(0, 96);
+  const b64 = String(b64Content || '').replace(/\s/g, '');
+  const head64 = b64.slice(0, 96);
   let head;
   try { head = Uint8Array.from(atob(head64.slice(0, head64.length - (head64.length % 4))), c => c.charCodeAt(0)); }
   catch { return false; }
-  if (isEncryptedBytes(head)) return true;
+  if (isEncryptedBytes(head)) return b64Len(b64) >= 4 + 12 + 16;
   const text = new TextDecoder('utf-8', { fatal: false }).decode(head);
-  return /^\s*\{\s*"enc"\s*:\s*1\s*,/.test(text);
+  if (!/^\s*\{\s*"enc"\s*:\s*1\s*,/.test(text)) return false;
+  let env;
+  try { env = JSON.parse(decodeURIComponent(escape(atob(b64)))); } catch { return false; }
+  if (!env || typeof env !== 'object' || Array.isArray(env)) return false;
+  if (!Object.keys(env).every(k => ENVELOPE_KEYS.has(k))) return false;
+  if (env.enc !== 1 || typeof env.iv !== 'string' || typeof env.ct !== 'string') return false;
+  try { if (atob(env.iv).length !== 12 || atob(env.ct).length < 16) return false; } catch { return false; }
+  return true;
 }
 
 /**
@@ -1247,7 +1604,7 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
     // SHA. GitHub creates parent directories automatically.
     let existingSha = null;
     try {
-      const check = await fetch(
+      const check = await ghFetch(
         `${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`,
         { headers: { ...headers, 'If-None-Match': `"${Date.now()}"` }, cache: 'no-store' }
       );
@@ -1263,7 +1620,7 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
 
     let res;
     try {
-      res = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
+      res = await ghFetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
     } catch {
       // A dropped connection here threw a raw TypeError that skipped this
       // retry loop entirely — the surrounding ATTEMPTS loop only covered the
@@ -1350,7 +1707,7 @@ export async function listGithubFolder(folderPath) {
 
   const cleanPath = folderPath.replace(/^\/+|\/+$/g, '');
   const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
-  const res = await fetch(
+  const res = await ghFetch(
     `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`,
     { headers, cache: 'no-store' }
   );
@@ -1375,10 +1732,10 @@ export async function fetchGithubFile(path) {
   const encodedPath = path.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`;
 
-  let res = await fetch(url, { headers, cache: 'no-store' });
+  let res = await ghFetch(url, { headers, cache: 'no-store' });
   if (res.status === 403) {
     const waitMs = rateLimitWaitMs(res);
-    if (waitMs > 0) { await sleep(waitMs); res = await fetch(url, { headers, cache: 'no-store' }); }
+    if (waitMs > 0) { await sleep(waitMs); res = await ghFetch(url, { headers, cache: 'no-store' }); }
   }
   if (!res.ok) {
     if (res.status === 404) throw new Error('File not found in repository');
@@ -1404,10 +1761,10 @@ async function fetchGithubBlobBase64(sha) {
   const headers = { 'Accept': 'application/vnd.github+json' };
   if (token) headers['Authorization'] = `token ${token}`;
   const url = `https://api.github.com/repos/${owner}/${repo}/git/blobs/${sha}`;
-  let res = await fetch(url, { headers, cache: 'no-store' });
+  let res = await ghFetch(url, { headers, cache: 'no-store' });
   if (res.status === 403) {
     const waitMs = rateLimitWaitMs(res);
-    if (waitMs > 0) { await sleep(waitMs); res = await fetch(url, { headers, cache: 'no-store' }); }
+    if (waitMs > 0) { await sleep(waitMs); res = await ghFetch(url, { headers, cache: 'no-store' }); }
   }
   if (!res.ok) throw new Error(`File download failed (${res.status})`);
   const blob = await res.json();
@@ -1455,7 +1812,7 @@ export async function deleteGithubFile(path, sha = null, message = 'Delete file'
   // Resolve SHA if caller didn't provide one
   if (!sha) {
     try {
-      const check = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`, { headers, cache: 'no-store' });
+      const check = await ghFetch(`${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`, { headers, cache: 'no-store' });
       if (!check.ok) return; // already gone
       const d = await check.json();
       sha = d.sha;
@@ -1469,7 +1826,7 @@ export async function deleteGithubFile(path, sha = null, message = 'Delete file'
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     let res;
     try {
-      res = await fetch(apiUrl, {
+      res = await ghFetch(apiUrl, {
         method:  'DELETE',
         headers,
         body:    JSON.stringify({ message, sha, branch: branch || 'main' })
@@ -1484,7 +1841,7 @@ export async function deleteGithubFile(path, sha = null, message = 'Delete file'
     if (res.status === 409 && attempt < ATTEMPTS) {
       lastErr = '409 SHA conflict';
       try {
-        const check = await fetch(`${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`, { headers, cache: 'no-store' });
+        const check = await ghFetch(`${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`, { headers, cache: 'no-store' });
         if (!check.ok) return; // gone now
         sha = (await check.json()).sha;
       } catch { /* keep existing sha, retry with it anyway */ }
@@ -1524,7 +1881,7 @@ async function ghApi(method, apiPath, body) {
   for (let attempt = 1; ; attempt++) {
     let res;
     try {
-      res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+      res = await ghFetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
     } catch {
       if (attempt < ATTEMPTS) { await sleep(backoff(attempt)); continue; }
       throw new Error(`Cannot reach GitHub (${method} ${apiPath})`);

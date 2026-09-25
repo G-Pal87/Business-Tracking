@@ -13,7 +13,13 @@
 // `enc: 1` is the marker used to distinguish this from a plain (legacy,
 // unencrypted) JSON object — see isEncryptedEnvelope().
 
-const PBKDF2_ITERATIONS = 150000; // matches auth.js's password hashing cost
+// Wrap-key derivation cost. Raised from 150k; the count a device's keys were
+// wrapped with is stored next to them (WRAP_ITER_LS_KEY), so keys wrapped
+// under the old count still unlock — and are re-wrapped at the new count
+// right after (see unlockOnLogin). Matches auth.js's password hashing cost.
+export const PBKDF2_ITERATIONS = 300000;
+const LEGACY_PBKDF2_ITERATIONS = 150000;
+const WRAP_ITER_LS_KEY = 'bt_enc_wrap_iter';
 const WRAP_SALT_LS_KEY = 'bt_enc_wrap_salt';
 const WRAPPED_KEY_LS_KEY = 'bt_enc_wrapped_key';
 // A second, independent AES key used ONLY to encrypt files pushed to the
@@ -70,15 +76,59 @@ function getOrCreateWrapSalt() {
   return saltB64;
 }
 
-async function deriveWrapKey(password) {
+function storedWrapIterations() {
+  const n = Number(localStorage.getItem(WRAP_ITER_LS_KEY));
+  return Number.isFinite(n) && n > 0 ? n : LEGACY_PBKDF2_ITERATIONS;
+}
+
+async function deriveWrapKey(password, iterations = PBKDF2_ITERATIONS) {
   const salt = b64decode(getOrCreateWrapSalt());
   const keyMaterial = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
   );
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
     keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
   );
+}
+
+// Every wrapped slot on this device (all wrapped under the same wrap-key).
+const WRAPPED_SLOTS = () => [WRAPPED_KEY_LS_KEY, WRAPPED_DEBUG_KEY_LS_KEY];
+
+// Re-wraps every stored slot from `fromKey` to `toKey`. Computes everything
+// first and only then writes, so a failure part-way can't leave some slots
+// under one key and some under the other. A failure on the data-key slot
+// throws — leaving it under the old key would lock the user out.
+async function rewrapAll(fromKey, toKey, iterations, { tolerant = false } = {}) {
+  const next = {};
+  for (const lsKey of WRAPPED_SLOTS()) {
+    const stored = localStorage.getItem(lsKey);
+    if (!stored) continue;
+    try {
+      const { iv, ct } = JSON.parse(stored);
+      const raw = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64decode(iv) }, fromKey, b64decode(ct));
+      const niv = randomBytes(12);
+      const nct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: niv }, toKey, raw);
+      next[lsKey] = JSON.stringify({ iv: b64encode(niv), ct: b64encode(new Uint8Array(nct)) });
+    } catch (e) {
+      // A slot this key can't open belongs to another password on this
+      // device. The iteration upgrade must then leave everything as it is
+      // (the count is stored per device, not per slot); a password change
+      // (tolerant) only has to carry the data key across.
+      if (!tolerant || lsKey === WRAPPED_KEY_LS_KEY) throw e;
+      next[lsKey] = null;
+    }
+  }
+  const nextPrev = [];
+  for (const k of _prevKeys) {
+    const raw = await crypto.subtle.exportKey('raw', k);
+    const iv = randomBytes(12);
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, toKey, raw);
+    nextPrev.push({ iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)) });
+  }
+  for (const [k, v] of Object.entries(next)) v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v);
+  localStorage.setItem(WRAPPED_PREV_KEYS_LS_KEY, JSON.stringify(nextPrev));
+  localStorage.setItem(WRAP_ITER_LS_KEY, String(iterations));
 }
 
 // Called right after a successful login (while the plaintext password is
@@ -87,7 +137,8 @@ async function deriveWrapKey(password) {
 // decrypt data. Safe to call even if encryption has never been set up on
 // this device — _dataKey simply stays null until Settings configures it.
 export async function unlockOnLogin(password) {
-  _sessionWrapKey = await deriveWrapKey(password);
+  const iterations = storedWrapIterations();
+  _sessionWrapKey = await deriveWrapKey(password, iterations);
 
   // A key entered pre-login on a brand-new device (see setBootstrapDataKey)
   // was never persisted — it couldn't be wrapped without a password to derive
@@ -95,6 +146,9 @@ export async function unlockOnLogin(password) {
   if (_pendingBootstrapKey) {
     const key = _pendingBootstrapKey;
     _pendingBootstrapKey = null;
+    // Slots wrapped earlier on this device (if any) use `iterations`; bring
+    // them to the current cost before installing under the new wrap-key.
+    await upgradeWrapIterations(password, iterations);
     await installDataKey(key);
     return;
   }
@@ -117,17 +171,42 @@ export async function unlockOnLogin(password) {
   }
 
   const wrappedDebug = localStorage.getItem(WRAPPED_DEBUG_KEY_LS_KEY);
-  if (!wrappedDebug) { _debugKey = null; return; }
+  if (!wrappedDebug) { _debugKey = null; } else {
+    try {
+      const { iv, ct } = JSON.parse(wrappedDebug);
+      const raw = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: b64decode(iv) }, _sessionWrapKey, b64decode(ct)
+      );
+      _debugKey = await crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt', 'decrypt']);
+    } catch {
+      _debugKey = null;
+    }
+  }
+
+  // Only once the data key actually unwrapped (i.e. this is the password the
+  // slots belong to) — never re-wrap another user's slots under this one.
+  if (_dataKey || !hasWrappedKeyConfigured()) await upgradeWrapIterations(password, iterations);
+}
+
+// Keys wrapped at an older (cheaper) iteration count are re-wrapped at the
+// current one, transparently, on the first successful unlock.
+async function upgradeWrapIterations(password, iterations) {
+  if (iterations >= PBKDF2_ITERATIONS) {
+    if (!localStorage.getItem(WRAP_ITER_LS_KEY)) {
+      try { localStorage.setItem(WRAP_ITER_LS_KEY, String(iterations)); } catch { /* ignore */ }
+    }
+    return;
+  }
   try {
-    const { iv, ct } = JSON.parse(wrappedDebug);
-    const raw = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: b64decode(iv) }, _sessionWrapKey, b64decode(ct)
-    );
-    _debugKey = await crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt', 'decrypt']);
-  } catch {
-    _debugKey = null;
+    const newKey = await deriveWrapKey(password, PBKDF2_ITERATIONS);
+    await rewrapAll(_sessionWrapKey, newKey, PBKDF2_ITERATIONS);
+    _sessionWrapKey = newKey;
+  } catch (e) {
+    console.warn('[BT] Could not upgrade key wrapping; keeping the old one', e);
   }
 }
+
+
 
 export function lockOnLogout() {
   _sessionWrapKey = null;
@@ -191,33 +270,8 @@ export async function activeKeyId() { return keyIdOf(_dataKey); }
 // locked out of their data on this device until someone re-sends the key.
 export async function rewrapKeysForNewPassword(newPassword) {
   if (!_sessionWrapKey) return false;
-  const newWrapKey = await deriveWrapKey(newPassword);
-  const rewrap = async (lsKey) => {
-    const stored = localStorage.getItem(lsKey);
-    if (!stored) return;
-    const raw = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: b64decode(JSON.parse(stored).iv) }, _sessionWrapKey, b64decode(JSON.parse(stored).ct)
-    );
-    const iv = randomBytes(12);
-    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, newWrapKey, raw);
-    return JSON.stringify({ iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)) });
-  };
-  // Compute everything first, then write — a failure part-way must not
-  // leave some slots wrapped under the old password and some under the new.
-  // A failure on the data-key slot must surface — silently leaving it
-  // wrapped under the old password would lock the user out on next sign-in.
-  const nextData  = await rewrap(WRAPPED_KEY_LS_KEY);
-  const nextDebug = await rewrap(WRAPPED_DEBUG_KEY_LS_KEY).catch(() => undefined);
-  const nextPrev = [];
-  for (const k of _prevKeys) {
-    const raw = await crypto.subtle.exportKey('raw', k);
-    const iv = randomBytes(12);
-    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, newWrapKey, raw);
-    nextPrev.push({ iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)) });
-  }
-  if (nextData)  localStorage.setItem(WRAPPED_KEY_LS_KEY, nextData);
-  if (nextDebug) localStorage.setItem(WRAPPED_DEBUG_KEY_LS_KEY, nextDebug);
-  localStorage.setItem(WRAPPED_PREV_KEYS_LS_KEY, JSON.stringify(nextPrev));
+  const newWrapKey = await deriveWrapKey(newPassword, PBKDF2_ITERATIONS);
+  await rewrapAll(_sessionWrapKey, newWrapKey, PBKDF2_ITERATIONS, { tolerant: true });
   _sessionWrapKey = newWrapKey;
   return true;
 }
@@ -276,12 +330,17 @@ export async function installDataKey(key) {
   _dataKey = key;
 }
 
+// Removing the key from this device while a rotation is still pending (or
+// older keys are held) would make anything not yet re-encrypted unreadable
+// here — callers check hasPreviousKeys()/isRotationPending() and warn first.
 export function clearDataKey() {
   localStorage.removeItem(WRAPPED_KEY_LS_KEY);
   localStorage.removeItem(WRAPPED_PREV_KEYS_LS_KEY);
   _dataKey = null;
   _prevKeys = [];
 }
+
+export function hasPreviousKeys() { return _prevKeys.length > 0; }
 
 // Base64 of every previously-active key still held on this device (most
 // recent first) — lets an admin recover the old key after a rotation.

@@ -100,7 +100,11 @@ export function upsert(collection, item) {
     item.createdAt = now;
     item.createdBy = actor;
   }
-  item.updatedAt = now;
+  // Monotonic: always later than the version being replaced, even when this
+  // device's clock runs behind the one that wrote it — otherwise the merge
+  // (last-writer-wins where it can't tell) could treat this edit as older.
+  const prev = isNew ? null : (ix?.get(item.id) || arr.find(x => x.id === item.id));
+  item.updatedAt = nextStamp(prev?.updatedAt, now);
   item.updatedBy = actor;
   if (isNew) {
     arr.push(item);
@@ -135,10 +139,16 @@ export function softDelete(collection, id) {
   const actor = state.session?.username || 'system';
   item.deletedAt = now;
   item.deletedBy = actor;
-  item.updatedAt = now;
+  item.updatedAt = nextStamp(item.updatedAt, now);
   item.updatedBy = actor;
   markDirty();
   return true;
+}
+
+// updatedAt for an edit of a record last stamped `prev`: now, or just after
+// `prev` when this device's clock is behind it.
+export function nextStamp(prev, now = Date.now()) {
+  return Math.max(now, (Number(prev) || 0) + 1);
 }
 
 export function listActive(collection) {
@@ -527,7 +537,10 @@ export function getOrCreateForecast(type, entityId, year) {
     }
     return existing;
   }
-  const fc = { id: newId('fcs'), type, entityId, year: Number(year), taxRate: 0, yearTarget: { revenue: 0, expenses: 0 }, months: {} };
+  // Deterministic id: two devices creating the same year's forecast (e.g.
+  // both importing bookings) create the SAME record, which merges, instead
+  // of two records whose totals then both count.
+  const fc = { id: `fcs_${type}_${entityId}_${Number(year)}`, type, entityId, year: Number(year), taxRate: 0, yearTarget: { revenue: 0, expenses: 0 }, months: {} };
   upsert('forecasts', fc);
   return fc;
 }
@@ -1074,6 +1087,7 @@ export function listDeletedRecords() {
   const records = [];
   Object.keys(state.db).forEach(collection => {
     if (!Array.isArray(state.db[collection])) return;
+    if (collection === 'syncConflicts') return; // dismissed conflict notes, not user records
     state.db[collection]
       .filter(item => item && item.deletedAt)
       .forEach(item => records.push({ key: `${collection}:${item.id}`, collection, item }));
@@ -1088,7 +1102,7 @@ export function restoreRecord(collection, id) {
   if (!item || !item.deletedAt) return false;
   delete item.deletedAt;
   delete item.deletedBy;
-  item.updatedAt = Date.now();
+  item.updatedAt = nextStamp(item.updatedAt);
   item.updatedBy = state.session?.username || 'system';
   markDirty();
   return true;
@@ -1152,7 +1166,7 @@ export function restoreRecords(records) {
     if (!item || !item.deletedAt) return;
     delete item.deletedAt;
     delete item.deletedBy;
-    item.updatedAt = Date.now();
+    item.updatedAt = nextStamp(item.updatedAt);
     item.updatedBy = state.session?.username || 'system';
     count++;
   });

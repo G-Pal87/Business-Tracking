@@ -2,7 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, attachSortFilter, fmtDate } from '../core/ui.js';
 import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
-import { canDecryptWith, setRotationPending, supportsCompression } from '../core/crypto.js';
+import { canDecryptWith, setRotationPending, isRotationPending, hasPreviousKeys, supportsCompression } from '../core/crypto.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64, generateDebugKey, installDebugKey, exportActiveDebugKeyBase64, hasDebugKeyConfigured, isDebugKeyUnlocked, encryptJsonWithDebugKey } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
 import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, removeDevices, listSessionHistory, clearSessionHistory, DEVICE_ONLINE_MS } from '../core/presence.js';
@@ -78,6 +78,8 @@ function build() {
     wrap.appendChild(buildDebugExportCard());
   }
   wrap.appendChild(buildTrashCard());
+  const conflictsCard = buildSyncConflictsCard();
+  if (conflictsCard) wrap.appendChild(conflictsCard);
   if (isAdmin) wrap.appendChild(buildDangerCard());
   return wrap;
 }
@@ -192,7 +194,7 @@ function buildGithubCard() {
 
     if (!owner || !repo) { toast('Owner and repo are required', 'danger'); return; }
 
-    saveConfig({ owner, repo, branch, dbPath, token });
+    await saveConfig({ owner, repo, branch, dbPath, token });
 
     saveBtn.disabled = true;
     saveBtn.textContent = 'Saving\u2026';
@@ -834,7 +836,11 @@ function buildEncryptionCard() {
           markDirty();
           try { await state.github.syncNow(); } catch { pushFailed = true; }
         }
-        if (!pushFailed) setRotationPending(false);
+        // syncNow() can return without pushing at all (tab disconnected,
+        // first sync still running). The pending flag is cleared by the push
+        // itself once db.json is really on GitHub under the new key — so if
+        // it is still set, the data part of the rotation hasn't happened.
+        if (!state.github.syncNow || isRotationPending()) pushFailed = true;
         progressStep();
 
         genBtn.disabled = false;
@@ -890,7 +896,12 @@ function buildEncryptionCard() {
 
   if (configured) {
     const removeBtn = button('Remove Key From This Device', { variant: 'sm ghost', onClick: async () => {
-      const ok = await confirmDialog('Remove the encryption key from this device? You will need to paste it again to read or save data here.', { danger: true, okLabel: 'Remove' });
+      const unfinished = isRotationPending() || hasPreviousKeys();
+      const ok = await confirmDialog(
+        (unfinished
+          ? 'A key change is not finished on this device, and it still holds the previous key. Removing now also removes that previous key, so files not yet re-encrypted can no longer be opened here. '
+          : '') + 'Remove the encryption key from this device? You will need to paste it again to read or save data here.',
+        { danger: true, okLabel: 'Remove' });
       if (!ok) return;
       clearDataKey();
       toast('Key removed from this device', 'info');
@@ -1430,6 +1441,19 @@ function buildStrSettingsCard() {
       'Hide all prices on the website (every property)'),
     'Overrides each property\'s own "Website prices" setting. Guests see "Price on request" and ask for a quote on WhatsApp. Takes effect a few minutes after saving, once the website rebuilds.'));
 
+  // Airbnb calendar links contain an access token, and browsers can't fetch
+  // them directly (no CORS). A private proxy (see docs/ical-proxy.md) keeps
+  // them away from third parties; the public proxies are the fallback.
+  const proxyI = input({ value: af.icalProxyUrl || '', placeholder: 'https://calendar-proxy.<you>.workers.dev' });
+  const publicChk = el('input', { type: 'checkbox' });
+  publicChk.checked = af.allowPublicIcalProxies !== false;
+  body.appendChild(formRow('Calendar proxy (recommended)', proxyI,
+    'Your own proxy for fetching Airbnb calendars (a free Cloudflare Worker — see docs/ical-proxy.md). When set, calendar links are sent only there.'));
+  body.appendChild(formRow('Public calendar proxies',
+    el('label', { style: 'display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer' }, publicChk,
+      'Allow public CORS proxies when no own proxy is set'),
+    'Public proxies (corsproxy.io, allorigins, cors.eu.org) receive your calendar links, which include an access token. Turn this off once your own proxy works, then re-export the calendar links in Airbnb.'));
+
   const save = button('Save', { variant: 'primary', onClick: () => {
     const fee = parseFloat(feeI.value);
     const tax = parseFloat(taxI.value);
@@ -1439,13 +1463,19 @@ function buildStrSettingsCard() {
     if (taxI.value !== '' && (isNaN(tax) || tax < 0)) { toast('Tax % must be a positive number', 'warning'); return; }
     if (cleanI.value !== '' && (isNaN(clean) || clean < 0)) { toast('Cleaning fee must be a positive number', 'warning'); return; }
     if (globalDiscI.value !== '' && (isNaN(globalDisc) || globalDisc < 0 || globalDisc > 100)) { toast('Global discount must be between 0 and 100', 'warning'); return; }
+    const proxyUrl = proxyI.value.trim().replace(/\/+$/, '');
+    if (proxyUrl && !/^https:\/\/[a-z0-9.-]+\.workers\.dev(\/[^\s?#]*)?$/i.test(proxyUrl)) {
+      toast('Calendar proxy must be an https://….workers.dev address (the app only allows connections there)', 'warning', 6000); return;
+    }
     state.db.settings.airbnb = {
       ...(state.db.settings.airbnb || af),
       hideAllSitePrices: hideAllChk.checked,
       guestFeePct:       feeI.value === '' ? AIRBNB_GUEST_FEE_PCT : fee,
       taxPct:            taxI.value === '' ? AIRBNB_TAX_PCT : tax,
       cleaningFee:       cleanI.value === '' ? AIRBNB_CLEANING_FEE : clean,
-      globalDiscountPct: globalDiscI.value === '' ? 0 : globalDisc
+      globalDiscountPct: globalDiscI.value === '' ? 0 : globalDisc,
+      icalProxyUrl:           proxyUrl,
+      allowPublicIcalProxies: publicChk.checked
     };
     markDirty();
     toast('Saved', 'success');
@@ -1766,6 +1796,57 @@ function trashDisplayName(collection, item) {
 
 function capitalizeFirst(str) {
   return str ? str.charAt(0).toUpperCase() + str.slice(1) : str;
+}
+
+// Records edited on two devices at the same time: the sync keeps the later
+// edit and stores the other version here (see recordConflicts in github.js).
+function buildSyncConflictsCard() {
+  const items = listActive('syncConflicts').slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  if (!items.length) return null;
+  const card = el('div', { class: 'card mb-16' });
+  const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
+  const header = el('div', { class: 'card-header card-header--toggle' },
+    el('div', {},
+      el('div', { class: 'card-title' }, 'Sync conflicts'),
+      el('div', { class: 'card-subtitle' }, `${items.length} record${items.length === 1 ? '' : 's'} edited on two devices at once — the later edit was kept`)
+    ),
+    el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
+  );
+  card.appendChild(header);
+  const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
+  card.appendChild(body);
+  wireCollapsible('sync-conflicts', header, body, chevron);
+
+  body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:10px' },
+    'Each row is the version that was NOT kept. Restore it to make it the current version again, or dismiss it.'));
+  for (const c of items) {
+    const lost = c.lostVersion || {};
+    const label = lost.name || lost.number || lost.description || lost.guestName || lost.title || c.recordId;
+    const by = [c.localUpdatedBy, c.remoteUpdatedBy].filter(Boolean).join(' / ');
+    const row = el('div', { style: 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--border)' },
+      el('div', { style: 'min-width:0;flex:1 1 240px' },
+        el('div', { style: 'font-weight:600;overflow-wrap:anywhere' }, `${c.collection}: ${label}`),
+        el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${fmtDate(new Date(c.createdAt).toISOString().slice(0, 10))}${by ? ' · edited by ' + by : ''}`)
+      ),
+      el('div', { style: 'display:flex;gap:6px' },
+        button('Restore this version', { variant: 'sm', onClick: async () => {
+          const ok = await confirmDialog('Replace the current version of this record with this one?', { okLabel: 'Restore' });
+          if (!ok) return;
+          const current = byId(c.collection, c.recordId);
+          upsert(c.collection, { ...lost, updatedAt: current?.updatedAt ?? lost.updatedAt });
+          softDelete('syncConflicts', c.id);
+          toast('Version restored', 'success');
+          setTimeout(() => navigate('settings'), 150);
+        }}),
+        button('Dismiss', { variant: 'sm ghost', onClick: () => {
+          softDelete('syncConflicts', c.id);
+          setTimeout(() => navigate('settings'), 150);
+        }})
+      )
+    );
+    body.appendChild(row);
+  }
+  return card;
 }
 
 function buildTrashCard() {
