@@ -3,16 +3,18 @@ import { el, fmtDate, drillDownModal, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import {
   formatEUR, toEUR, byId,
-  listActive, listActivePayments, isCapEx, companyPropIds, isCompanyRecord,
+  listActive, listActivePayments, isCapEx, companyPropIds, isCompanyRecord, sumForecastEntries,
   drillRevRows, drillExpRows, drillNetRows, drillRevRowsPnL, drillNetRowsPnL
 } from '../core/data.js';
+import { STREAMS } from '../core/config.js';
+import { todayYmd, daysInMonth } from '../core/dates.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
-  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
+  getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
 } from './analytics-filters.js?v=20260519';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid,
-  safePct, fmtK, mkDrillValue
+  safePct, fmtK, mkDrillValue, groupByMonthKey, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceDueDate
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -56,7 +58,7 @@ export default {
 // ── Data aggregation ──────────────────────────────────────────────────────────
 function getData(start, end) {
   const inRange = d => !!d && d >= start && d <= end;
-  const { mStream, mOwner, mProperty, mClient } = makeMatchers(gF);
+  const { mStream, mOwner, mInvOwner, mProperty, mClient } = makeMatchers(gF);
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
@@ -67,27 +69,27 @@ function getData(start, end) {
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
   );
 
+  // All in-range invoices passing the filters, classified once by the shared
+  // invoiceBuckets() rule (drafts never outstanding; overdue = past due date
+  // or flagged overdue; missing due date → issue date + 30 days).
+  const invBk = invoiceBuckets(listActive('invoices').filter(i =>
+    inRange(i.issueDate) && mStream(i) && mInvOwner(i) && mProperty(i) && mClient(i)
+  ));
+
   // Paid service invoices
-  const invoices = listActive('invoices').filter(i =>
-    i.status === 'paid' && inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
-  );
+  const invoices = invBk.paid;
 
-  // Pending payments (pipeline)
+  // Unpaid payments (pipeline) — 'overdue' payments are unpaid too, so they
+  // belong in the pipeline alongside 'pending'.
   const pendingPayments = listActivePayments().filter(p =>
-    p.status === 'pending' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
+    (p.status === 'pending' || p.status === 'overdue') && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
   );
 
-  // Outstanding invoices (not paid, not cancelled/void)
-  const outstandingInvoices = listActive('invoices').filter(i =>
-    !['paid', 'cancelled', 'void'].includes(i.status) &&
-    inRange(i.issueDate) && mStream(i) && mOwner(i) && mClient(i)
-  );
+  // Outstanding invoices (sent/overdue — not paid, draft, cancelled or void)
+  const outstandingInvoices = invBk.outstanding;
 
   // Overdue invoices
-  const today = new Date().toISOString().slice(0, 10);
-  const overdueInvoices = outstandingInvoices.filter(i =>
-    i.dueDate && i.dueDate < today
-  );
+  const overdueInvoices = invBk.overdue;
 
   // Expenses: split OpEx / CapEx
   const allExp    = listActive('expenses');
@@ -99,8 +101,8 @@ function getData(start, end) {
   // money held for the tax authority. Cash-purpose figures (Cash Position, Collection Rate)
   // keep the VAT-inclusive total since VAT collected is real cash in hand until remitted.
   const propRev      = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
-  const svcRev       = invoices.reduce((s, i) => s + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate), 0);
-  const svcRevCash   = invoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const svcRev       = invBk.paidNet;
+  const svcRevCash   = invBk.paidGross;
   const totalRev     = propRev + svcRev;
   const totalRevCash = propRev + svcRevCash;
 
@@ -115,16 +117,16 @@ function getData(start, end) {
   const pipeline    = pendingPayments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
 
   // Burn coverage: how many months of OpEx does this period's net cash cover?
-  const startD = new Date(start), endD = new Date(end);
-  const periodMonths = Math.max(1, (endD.getFullYear() - startD.getFullYear()) * 12 + endD.getMonth() - startD.getMonth() + 1);
+  // (calendar months touched by the range, from the YYYY-MM-DD strings)
+  const periodMonths = Math.max(1, (+end.slice(0, 4) - +start.slice(0, 4)) * 12 + (+end.slice(5, 7)) - (+start.slice(5, 7)) + 1);
   const avgMonthlyOpEx  = opEx / periodMonths;
   const burnCoverage    = avgMonthlyOpEx > 0 ? cashPos / avgMonthlyOpEx : null;
 
   // Collection rate: paid invoices / (paid + outstanding) — cash-based, VAT-inclusive
   const paidInvTotal = svcRevCash;
-  const outTotal     = outstandingInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const outTotal     = invBk.outstandingGross;
   const invoicedTotal = paidInvTotal + outTotal;
-  const collectionRate = invoicedTotal > 0 ? (paidInvTotal / invoicedTotal) * 100 : null;
+  const collectionRate = invBk.collectionRate;
 
   // Expense ratio
   const expenseRatio = totalRev > 0 ? (opEx / totalRev) * 100 : null;
@@ -142,7 +144,7 @@ function getData(start, end) {
   invoices.forEach(i => {
     const id   = i.clientId;
     const name = byId('clients', id)?.name || 'Unknown Client';
-    const eur  = toEUR(i.subtotal ?? i.total, i.currency, i.issueDate);
+    const eur  = invoiceNetEUR(i);
     const e    = contribMap.get('c:' + id) || { name, eur: 0, type: 'Client' };
     e.eur += eur;
     contribMap.set('c:' + id, e);
@@ -151,12 +153,13 @@ function getData(start, end) {
 
   // Overdue totals
   const overdueCount = overdueInvoices.length;
-  const overdueEur   = overdueInvoices.reduce((s, i) => s + toEUR(i.total, i.currency, i.issueDate), 0);
+  const overdueEur   = invBk.overdueGross;
 
-  // Revenue by stream
+  // Revenue by stream — shared resolver (stream, else property type, else
+  // 'other') so the buckets always sum to Total Revenue.
   const streamMap = new Map();
-  payments.forEach(p => { const s = p.stream || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date)); });
-  invoices.forEach(i => { const s = i.stream || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)); });
+  payments.forEach(p => { const s = resolveStream(p) || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date)); });
+  invoices.forEach(i => { const s = resolveStream(i) || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + invoiceNetEUR(i)); });
 
   return {
     payments, invoices, pendingPayments, outstandingInvoices, overdueInvoices,
@@ -208,13 +211,13 @@ function buildKpiGrid(cur, cmp, cmpRange) {
             cmpVal: mkDrillValue(formatEUR(cmp.overdueEur), () => drillDownModal(`Overdue Invoices — ${cl}`, drillRevRows([], cmp.overdueInvoices), REV_COLS)),
             explain: {
               title: 'Overdue Amount',
-              formula: 'Sum of outstanding invoices whose due date is before today.',
+              formula: 'Sum of outstanding invoices (incl. VAT) whose due date is before today, or marked overdue.',
               inputs: [
                 { label: 'Overdue Count',  value: String(overdueCount) },
                 { label: 'Overdue Amount', value: formatEUR(overdueEur) }
               ],
               source: 'analytics.js:66-68,127 getData()',
-              note: 'Cancelled/void invoices are excluded from the outstanding pool before the overdue check runs.'
+              note: 'Draft and cancelled/void invoices are excluded from the outstanding pool. A missing due date is treated as issue date + 30 days.'
             }
           }
         ], 'Current Period', cl));
@@ -224,13 +227,13 @@ function buildKpiGrid(cur, cmp, cmpRange) {
           { label: 'Overdue Amount', value: formatEUR(overdueEur),
             explain: {
               title: 'Overdue Amount',
-              formula: 'Sum of outstanding invoices whose due date is before today.',
+              formula: 'Sum of outstanding invoices (incl. VAT) whose due date is before today, or marked overdue.',
               inputs: [
                 { label: 'Overdue Count',  value: String(overdueCount) },
                 { label: 'Overdue Amount', value: formatEUR(overdueEur) }
               ],
               source: 'analytics.js:66-68,127 getData()',
-              note: 'Cancelled/void invoices are excluded from the outstanding pool before the overdue check runs.'
+              note: 'Draft and cancelled/void invoices are excluded from the outstanding pool. A missing due date is treated as issue date + 30 days.'
             }
           }
         ]));
@@ -239,14 +242,14 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       const rows = cur.overdueInvoices.map(i => [
         i.issueDate || '—',
         byId('clients', i.clientId)?.name || '—',
-        i.dueDate || '—',
-        formatEUR(toEUR(i.total, i.currency, i.issueDate))
+        invoiceDueDate(i) || '—',
+        formatEUR(invoiceGrossEUR(i))
       ]);
       body.appendChild(mkModalTable([
         { label: 'Issued', tip: 'Invoice issue date.' },
         { label: 'Client',  tip: 'Client the invoice was billed to.' },
-        { label: 'Due',     tip: 'Invoice due date.' },
-        { label: 'Amount',  right: true, tip: 'Invoice total in EUR.' }
+        { label: 'Due',     tip: 'Invoice due date (issue date + 30 days when none is set).' },
+        { label: 'Amount',  right: true, tip: 'Invoice total in EUR (incl. VAT — the amount the client owes).' }
       ], rows));
     }
     openModal({ title: 'Overdue Invoices', body, large: false });
@@ -298,12 +301,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       ]));
     }
     body.appendChild(mkSectionLabel('Revenue by Stream'));
-    const streamLabels = {
-      short_term_rental:  'Short-term Rental',
-      long_term_rental:   'Long-term Rental',
-      customer_success:   'Customer Success',
-      marketing_services: 'Marketing Services',
-    };
+    const streamLabels = STREAM_LABELS;
     const streamRows = [...streamMap.entries()]
       .filter(([, v]) => v > 0)
       .sort((a, b) => b[1] - a[1])
@@ -329,7 +327,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     const body = el('div');
     if (cmp) {
       body.appendChild(mkCmpGrid([
-        { label: 'Total Revenue',
+        { label: 'Cash In (incl. VAT)',
           curVal: mkDrillValue(formatEUR(totalRevCash), () => drillDownModal('Total Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)),
           cmpVal: mkDrillValue(formatEUR(cmp.totalRevCash), () => drillDownModal(`Total Revenue — ${cl}`, drillRevRows(cmp.payments, cmp.invoices), REV_COLS)) },
         { label: 'OpEx',
@@ -344,7 +342,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       ], 'Current Period', cl));
     } else {
       body.appendChild(mkSummaryGrid([
-        { label: 'Total Revenue',
+        { label: 'Cash In (incl. VAT)',
           value: mkDrillValue(formatEUR(totalRevCash), () => drillDownModal('Total Revenue', drillRevRows(cur.payments, cur.invoices), REV_COLS)) },
         { label: 'OpEx',
           value: mkDrillValue(formatEUR(cur.opEx), () => drillDownModal('Operating Expenses', drillExpRows(cur.opExpenses), EXP_COLS)),
@@ -501,7 +499,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
       value:    months !== null ? `${months.toFixed(1)} mo` : '—',
       subtitle: 'Period net ÷ avg monthly OpEx',
       delta: dBC,
-      deltaIsPp: true,
+      deltaUnit: 'mo',
       compLabel: cl,
       compValue: cmp && cmpBC !== null ? `${cmpBC.toFixed(1)} mo` : undefined,
       variant,
@@ -576,14 +574,14 @@ function buildKpiGrid(cur, cmp, cmpRange) {
   grid.appendChild(mkKpiCard({
     label:    'Pending Pipeline',
     value:    formatEUR(pipeline),
-    subtitle: `${cur.pendingPayments.length} pending payment${cur.pendingPayments.length !== 1 ? 's' : ''}`,
+    subtitle: `${cur.pendingPayments.length} unpaid payment${cur.pendingPayments.length !== 1 ? 's' : ''} (pending/overdue)`,
     variant:  'info',
     onClick: () => {
       const body = el('div');
       if (!cur.pendingPayments.length) {
         body.appendChild(mkEmptyState('No pending payments in this period.'));
       } else {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = todayYmd();
         let pastDueAmt = 0, pastDueCount = 0, upcomingAmt = 0, upcomingCount = 0;
         const pastDuePayments = [], upcomingPayments = [];
         cur.pendingPayments.forEach(p => {
@@ -613,7 +611,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
             { label: 'Total Pending', value: formatEUR(pipeline), sub: `${cur.pendingPayments.length} payment${cur.pendingPayments.length !== 1 ? 's' : ''}`,
               explain: {
                 title: 'Total Pending',
-                formula: 'Sum of payment amounts with status "pending", dated within the selected period.',
+                formula: 'Sum of payment amounts with status "pending" or "overdue", dated within the selected period.',
                 inputs: [
                   { label: 'Pending payments', value: String(cur.pendingPayments.length) },
                   { label: 'Total Pending',    value: formatEUR(pipeline) }
@@ -668,7 +666,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     },
     explain: {
       title: 'Pending Pipeline',
-      formula: 'Sum of payment amounts with status "pending", dated within the selected period.',
+      formula: 'Sum of payment amounts with status "pending" or "overdue", dated within the selected period.',
       inputs: [
         { label: 'Pending payments', value: String(cur.pendingPayments.length) },
         { label: 'Pending Pipeline', value: formatEUR(pipeline) }
@@ -689,7 +687,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     grid.appendChild(mkKpiCard({
       label:    'Invoice Collection Rate',
       value:    collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—',
-      subtitle: cur.invoicedTotal > 0 ? `${formatEUR(cur.paidInvTotal)} paid of ${formatEUR(cur.invoicedTotal)} invoiced` : 'No invoices',
+      subtitle: cur.invoicedTotal > 0 ? `${formatEUR(cur.paidInvTotal)} paid of ${formatEUR(cur.invoicedTotal)} invoiced (incl. VAT)` : 'No invoices',
       delta:    dCollect,
       deltaIsPp: true,
       compLabel: cl,
@@ -737,7 +735,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
                   { label: 'Rate',       value: collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—' }
                 ],
                 source: 'analytics.js:96-100 getData()',
-                note: 'Outstanding excludes cancelled/void invoices.'
+                note: 'Outstanding = sent/overdue invoices (drafts and cancelled/void excluded). Amounts incl. VAT.'
               }
             }
           ]));
@@ -753,7 +751,7 @@ function buildKpiGrid(cur, cmp, cmpRange) {
           { label: 'Collection Rate', value: collectionRate !== null ? `${collectionRate.toFixed(1)}%` : '—' }
         ],
         source: 'analytics.js:96-100 getData()',
-        note: 'Outstanding excludes cancelled/void invoices.'
+        note: 'Outstanding = sent/overdue invoices (drafts and cancelled/void excluded). Amounts incl. VAT.'
       }
     }));
   }
@@ -764,18 +762,18 @@ function buildKpiGrid(cur, cmp, cmpRange) {
     grid.appendChild(mkKpiCard({
       label:    'Overdue Invoices',
       value:    overdueCount > 0 ? formatEUR(overdueEur) : '€0',
-      subtitle: overdueCount > 0 ? `${overdueCount} invoice${overdueCount !== 1 ? 's' : ''} overdue` : 'All clear',
+      subtitle: overdueCount > 0 ? `${overdueCount} invoice${overdueCount !== 1 ? 's' : ''} overdue (incl. VAT)` : 'All clear',
       variant,
       onClick:  overdueDrill,
       explain: {
         title: 'Overdue Invoices',
-        formula: 'Sum of outstanding invoices whose due date is before today.',
+        formula: 'Sum of outstanding invoices (incl. VAT) whose due date is before today, or marked overdue.',
         inputs: [
           { label: 'Overdue Count',  value: String(overdueCount) },
           { label: 'Overdue Amount', value: formatEUR(overdueEur) }
         ],
         source: 'analytics.js:64-68,126-127 getData()',
-        note: 'Cancelled/void invoices are excluded from the outstanding pool before the overdue check runs.'
+        note: 'Draft and cancelled/void invoices are excluded from the outstanding pool. A missing due date is treated as issue date + 30 days.'
       }
     }));
   }
@@ -866,7 +864,7 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
       color: 'var(--danger, #ef4444)',
       bg:    'rgba(239,68,68,0.06)',
       title: 'Overdue Invoices',
-      body:  `${overdueCount} overdue invoice${overdueCount !== 1 ? 's' : ''} totalling ${formatEUR(overdueEur)}. Follow up with clients to improve cash flow.`,
+      body:  `${overdueCount} overdue invoice${overdueCount !== 1 ? 's' : ''} totalling ${formatEUR(overdueEur)} (incl. VAT). Follow up with clients to improve cash flow.`,
       onClick: () => drillDownModal('Overdue Invoices', drillRevRows([], cur.overdueInvoices), REV_COLS)
     });
   } else if (cur.outTotal > 0) {
@@ -875,33 +873,39 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
       color: 'var(--success, #22c55e)',
       bg:    'rgba(34,197,94,0.06)',
       title: 'Overdue Status',
-      body:  `No overdue invoices. ${formatEUR(cur.outTotal)} outstanding invoices are all within due dates.`,
+      body:  `No overdue invoices. ${formatEUR(cur.outTotal)} (incl. VAT) of outstanding invoices are all within due dates.`,
       onClick: () => drillDownModal('Outstanding Invoices', drillRevRows([], cur.outstandingInvoices), REV_COLS)
     });
   }
 
-  // 4. Forecast accuracy (if forecast data exists)
+  // 4. Forecast accuracy (if forecast data exists) — like-for-like: the
+  // forecast for the SAME months as the selected period (partial months
+  // prorated by days), for the same entities the filters/scope select.
   {
-    const year = new Date(start).getFullYear();
-    const fcRevTarget = listActive('forecasts')
-      .filter(fc => fc.year === year)
-      .reduce((sum, fc) => sum + (Number(fc.yearTarget?.revenue) || 0), 0);
-    if (fcRevTarget > 0) {
-      const accuracy = (cur.totalRev / fcRevTarget) * 100;
+    const fcRev = periodForecastRevenue(start, end);
+    if (fcRev > 0) {
+      const accuracy = (cur.totalRev / fcRev) * 100;
       const icon  = accuracy >= 90 ? '🎯' : accuracy >= 70 ? '📊' : '❗';
       const color = accuracy >= 90 ? 'var(--success, #22c55e)' : accuracy >= 70 ? 'var(--warning, #f59e0b)' : 'var(--danger, #ef4444)';
       const bg    = accuracy >= 90 ? 'rgba(34,197,94,0.06)' : accuracy >= 70 ? 'rgba(245,158,11,0.06)' : 'rgba(239,68,68,0.06)';
       insights.push({ icon, color, bg,
         title: 'Forecast Accuracy',
-        body:  `Revenue is at ${accuracy.toFixed(0)}% of the ${year} annual target (${formatEUR(cur.totalRev)} of ${formatEUR(fcRevTarget)}).`,
+        body:  `Revenue is at ${accuracy.toFixed(0)}% of the forecast for this period (${formatEUR(cur.totalRev)} of ${formatEUR(fcRev)}).`,
         onClick: () => {
           const body = el('div');
           body.appendChild(mkSummaryGrid([
-            { label: 'Annual Target', value: formatEUR(fcRevTarget) },
+            { label: 'Period Forecast', value: formatEUR(fcRev),
+              explain: {
+                title: 'Period Forecast',
+                formula: 'Sum of each forecast\'s monthly revenue for the months in the selected period (partial months prorated by days).',
+                inputs: [{ label: 'Period Forecast', value: formatEUR(fcRev) }],
+                source: 'analytics.js periodForecastRevenue()',
+                note: 'A forecast with no monthly figures falls back to its annual target ÷ 12 per month — never both, so nothing is counted twice. Property forecasts follow the Owner filter and Scope; service forecasts are always company-scope.'
+              } },
             { label: 'Actual Revenue', value: mkDrillValue(formatEUR(cur.totalRev), () => drillDownModal('Actual Revenue', drillRevRowsPnL(cur.payments, cur.invoices), REV_COLS)) },
             { label: 'Accuracy',       value: `${accuracy.toFixed(0)}%` }
           ], 3));
-          openModal({ title: `Forecast Accuracy — ${year}`, body });
+          openModal({ title: 'Forecast Accuracy', body });
         }
       });
     }
@@ -935,21 +939,76 @@ function buildInsights(cur, cmp, cmpRange, start, end) {
   return section;
 }
 
+// Forecast revenue for [start, end], matching the dashboard's filters/scope.
+// Per forecast: its monthly figures (entries[] sum, else `revenue`) for each
+// month the period touches, prorated by the days of that month inside the
+// range; a forecast with no monthly figures at all falls back to its annual
+// target ÷ 12 per month. Each forecast contributes one or the other, never
+// both, so nothing is double counted.
+function periodForecastRevenue(start, end) {
+  const { mStream, mOwner, mProperty } = makeMatchers(gF);
+  const coPropIds = companyPropIds();
+  const { keys } = getMonthKeysForRange(start, end);
+  const monthVal = md => {
+    const entries = Array.isArray(md?.entries) ? md.entries : [];
+    return entries.length > 0 ? sumForecastEntries(entries) : Number(md?.revenue) || 0;
+  };
+  let total = 0;
+  for (const fc of listActive('forecasts')) {
+    if (fc.type === 'property') {
+      // Same matchers the actual rental revenue went through.
+      const row = { propertyId: fc.entityId };
+      if (!mStream(row) || !mOwner(row) || !mProperty(row)) continue;
+      if (gScope !== 'all' && !isCompanyRecord(row, coPropIds)) continue;
+    } else if (fc.type === 'service') {
+      // Service forecasts are per stream; invoices without a property drop out
+      // under a Property filter, so the service forecast does too.
+      if (!mStream({ stream: fc.entityId }) || gF.propertyIds.size) continue;
+    } else {
+      continue; // only per-entity forecasts — never an aggregate on top of them
+    }
+    const hasMonthly = Object.values(fc.months || {}).some(md => monthVal(md) !== 0);
+    for (const m of keys) {
+      if (Number(m.y) !== Number(fc.year)) continue;
+      const dim   = daysInMonth(+m.y, m.m);
+      const first = `${m.key}-01`, last = `${m.key}-${String(dim).padStart(2, '0')}`;
+      const from  = start > first ? start : first;
+      const to    = end   < last  ? end   : last;
+      const frac  = (+to.slice(8, 10) - +from.slice(8, 10) + 1) / dim;
+      if (frac <= 0) continue;
+      total += frac * (hasMonthly ? monthVal(fc.months?.[m.key]) : (Number(fc.yearTarget?.revenue) || 0) / 12);
+    }
+  }
+  return total;
+}
+
+// Month-bucketed copies of the period's records, built once per getData()
+// result and shared by the monthly charts (instead of re-filtering every
+// array for every month in every chart).
+function monthGroups(cur) {
+  if (!cur._byMonth) cur._byMonth = {
+    pays: groupByMonthKey(cur.payments,    p => p.date),
+    invs: groupByMonthKey(cur.invoices,    i => i.issueDate),
+    op:   groupByMonthKey(cur.opExpenses,  e => e.date),
+    cap:  groupByMonthKey(cur.capExpenses, e => e.date)
+  };
+  return cur._byMonth;
+}
+const sumPayEUR = rows => rows.reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0);
+
 // ── Chart: Revenue vs Expenses Monthly Bar ────────────────────────────────────
 function renderRevExpBar(cur, months) {
-  const { payments, invoices, opExpenses, capExpenses } = cur;
+  const g = monthGroups(cur);
+  const at = (map, key) => map.get(key) || [];
 
+  // Revenue here is P&L revenue (invoices net of VAT), same as Total Revenue.
   const revData = months.map(m => {
-    const p = payments.filter(x => x.date?.slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0);
-    const i = invoices.filter(x => (x.issueDate || '').slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.total, x.currency, x.issueDate), 0);
+    const p = sumPayEUR(at(g.pays, m.key));
+    const i = at(g.invs, m.key).reduce((s, x) => s + invoiceNetEUR(x), 0);
     return Math.round(p + i);
   });
 
-  const expData = months.map(m => {
-    const opE  = opExpenses.filter(e => (e.date || '').slice(0, 7) === m.key).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    const capE = capExpenses.filter(e => (e.date || '').slice(0, 7) === m.key).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-    return Math.round(opE + capE);
-  });
+  const expData = months.map(m => Math.round(sumPayEUR(at(g.op, m.key)) + sumPayEUR(at(g.cap, m.key))));
 
   if (!revData.some(v => v > 0) && !expData.some(v => v > 0)) return;
 
@@ -964,19 +1023,19 @@ function renderRevExpBar(cur, months) {
       const mk = months[idx]?.key;
       if (!mk) return;
       const mRev = revData[idx] || 0;
-      const mOpEx = Math.round(opExpenses.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0));
-      const mCapEx = Math.round(capExpenses.filter(e => (e.date || '').slice(0, 7) === mk).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0));
+      const mPays = at(g.pays, mk);
+      const mInvs = at(g.invs, mk);
+      const mOpEx2 = at(g.op, mk);
+      const mCapEx2 = at(g.cap, mk);
+      const mOpEx = Math.round(sumPayEUR(mOpEx2));
+      const mCapEx = Math.round(sumPayEUR(mCapEx2));
       const mNet  = mRev - mOpEx - mCapEx;
       const body  = el('div');
-      const mPays = cur.payments.filter(p => p.date?.slice(0,7) === mk);
-      const mInvs = cur.invoices.filter(i => (i.issueDate||'').slice(0,7) === mk);
-      const mOpEx2 = cur.opExpenses.filter(e => (e.date||'').slice(0,7) === mk);
-      const mCapEx2 = cur.capExpenses.filter(e => (e.date||'').slice(0,7) === mk);
       body.appendChild(mkSummaryGrid([
-        { label: 'Revenue',   value: mkDrillValue(formatEUR(mRev), () => drillDownModal(`${months[idx].label} — Revenue`, drillRevRows(mPays, mInvs), REV_COLS)) },
+        { label: 'Revenue',   value: mkDrillValue(formatEUR(mRev), () => drillDownModal(`${months[idx].label} — Revenue`, drillRevRowsPnL(mPays, mInvs), REV_COLS)) },
         { label: 'OpEx',      value: mkDrillValue(formatEUR(mOpEx), () => drillDownModal(`${months[idx].label} — Operating Expenses`, drillExpRows(mOpEx2), EXP_COLS)) },
         { label: 'CapEx',     value: mkDrillValue(formatEUR(mCapEx), () => drillDownModal(`${months[idx].label} — Capital Expenses`, drillExpRows(mCapEx2), EXP_COLS)) },
-        { label: 'Net',       value: mkDrillValue(formatEUR(mNet), () => drillDownModal(`${months[idx].label} — Net`, drillNetRows(mPays, mInvs, [...mOpEx2, ...mCapEx2]), NET_COLS)), sub: mNet >= 0 ? 'Profitable' : 'Loss',
+        { label: 'Net',       value: mkDrillValue(formatEUR(mNet), () => drillDownModal(`${months[idx].label} — Net`, drillNetRowsPnL(mPays, mInvs, [...mOpEx2, ...mCapEx2]), NET_COLS)), sub: mNet >= 0 ? 'Profitable' : 'Loss',
           explain: {
             title: 'Net (month)',
             formula: 'Monthly Revenue − Monthly OpEx − Monthly CapEx.',
@@ -994,12 +1053,14 @@ function renderRevExpBar(cur, months) {
       if (mPays.length || mInvs.length) {
         const streamMap2 = new Map();
         mPays.forEach(p => {
-          const key = STREAM_LABELS[p.stream || 'other'] || p.stream || 'Other';
+          const s = resolveStream(p) || 'other';
+          const key = STREAM_LABELS[s] || s;
           streamMap2.set(key, (streamMap2.get(key) || 0) + toEUR(p.amount, p.currency, p.date));
         });
         mInvs.forEach(i => {
-          const key = STREAM_LABELS[i.stream || 'other'] || i.stream || 'Other';
-          streamMap2.set(key, (streamMap2.get(key) || 0) + toEUR(i.total, i.currency, i.issueDate));
+          const s = resolveStream(i) || 'other';
+          const key = STREAM_LABELS[s] || s;
+          streamMap2.set(key, (streamMap2.get(key) || 0) + invoiceNetEUR(i));
         });
         body.appendChild(mkSectionLabel('Revenue by Stream'));
         body.appendChild(mkModalTable([
@@ -1035,10 +1096,10 @@ function renderRevExpBar(cur, months) {
               { label: 'Date',   tip: 'Payment or invoice date.' },
               { label: 'Entity', tip: 'Property (for payments) or client (for invoices).' },
               { label: 'Type',   tip: 'Whether this record is a rental payment or a service invoice.' },
-              { label: 'Amount', right: true, tip: 'Record amount in EUR.' }
+              { label: 'Amount', right: true, tip: 'Record amount in EUR (invoices net of VAT).' }
             ],
               [...mPays.map(p => [p.date||'—', byId('properties',p.propertyId)?.name||'—', 'Payment', formatEUR(toEUR(p.amount,p.currency,p.date))]),
-               ...mInvs.map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', 'Invoice', formatEUR(toEUR(i.total,i.currency,i.issueDate))])]
+               ...mInvs.map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', 'Invoice', formatEUR(invoiceNetEUR(i))])]
               .sort((a,b) => a[0].localeCompare(b[0]))
             ));
           }
@@ -1067,20 +1128,10 @@ function renderRevExpBar(cur, months) {
 }
 
 // ── Chart: Business Mix Donut ─────────────────────────────────────────────────
-const STREAM_LABELS = {
-  short_term_rental:  'STR',
-  long_term_rental:   'LTR',
-  customer_success:   'Customer Success',
-  marketing_services: 'Marketing',
-  other:              'Other'
-};
-const STREAM_COLORS = {
-  short_term_rental:  '#6366f1',
-  long_term_rental:   '#10b981',
-  customer_success:   '#f59e0b',
-  marketing_services: '#ec4899',
-  other:              '#8b93b0'
-};
+// Labels/colors come from the single STREAMS definition in config.js, plus
+// the 'other' bucket for records with no resolvable stream.
+const STREAM_LABELS = { ...Object.fromEntries(Object.entries(STREAMS).map(([k, v]) => [k, v.label])), other: 'Other' };
+const STREAM_COLORS = { ...Object.fromEntries(Object.entries(STREAMS).map(([k, v]) => [k, v.color])), other: '#8b93b0' };
 
 // Revenue drill-down for one stream — shared by the per-stream KPI card row
 // and the "Business Mix" donut's click handler so both surfaces open the
@@ -1088,11 +1139,12 @@ const STREAM_COLORS = {
 function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur, cmp, cmpLabel) {
   const streamLabel = STREAM_LABELS[streamKey] || streamKey;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
-  const pays = cur.payments.filter(p => (p.stream || 'other') === streamKey);
-  const invs = cur.invoices.filter(i => (i.stream || 'other') === streamKey);
+  const inStream = r => (resolveStream(r) || 'other') === streamKey;
+  const pays = cur.payments.filter(inStream);
+  const invs = cur.invoices.filter(inStream);
   if (cmp) {
-    const cmpPays = cmp.payments.filter(p => (p.stream || 'other') === streamKey);
-    const cmpInvs = cmp.invoices.filter(i => (i.stream || 'other') === streamKey);
+    const cmpPays = cmp.payments.filter(inStream);
+    const cmpInvs = cmp.invoices.filter(inStream);
     const cmpTotal = cmp.streamMap.get(streamKey) || 0;
     body.appendChild(mkCmpGrid([
       { label: 'Stream', curVal: streamLabel, cmpVal: streamLabel },
@@ -1167,10 +1219,10 @@ function openStreamRevenueModal(streamKey, streamTotal, totalRevMix, cur, cmp, c
     body.appendChild(mkModalTable([
       { label: 'Date',   tip: 'Invoice issue date.' },
       { label: 'Client', tip: 'Client the invoice was billed to.' },
-      { label: 'Amount', right: true, tip: 'Invoice total in EUR.' }
+      { label: 'Amount', right: true, tip: 'Invoice amount in EUR, net of VAT.' }
     ],
       invs.sort((a,b) => (b.issueDate||'').localeCompare(a.issueDate||'')).slice(0,8)
-          .map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', formatEUR(toEUR(i.subtotal ?? i.total,i.currency,i.issueDate))])
+          .map(i => [i.issueDate||'—', byId('clients',i.clientId)?.name||'—', formatEUR(invoiceNetEUR(i))])
     ));
   }
   if (!pays.length && !invs.length) body.appendChild(mkEmptyState('No records for this stream.'));
@@ -1235,13 +1287,13 @@ function renderMixDonut(cur) {
 
 // ── Chart: Net Cash Flow Trend Line ──────────────────────────────────────────
 function renderNetLine(cur, months) {
-  const { payments, invoices, opExpenses, capExpenses } = cur;
+  const g = monthGroups(cur);
+  const at = (map, key) => map.get(key) || [];
 
+  // Cash view (like Period Net Cash): invoices at their VAT-inclusive total.
   const netData = months.map(m => {
-    const rev = payments.filter(x => x.date?.slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0)
-              + invoices.filter(x => (x.issueDate || '').slice(0, 7) === m.key).reduce((s, x) => s + toEUR(x.total, x.currency, x.issueDate), 0);
-    const exp = opExpenses.filter(e => (e.date || '').slice(0, 7) === m.key).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0)
-              + capExpenses.filter(e => (e.date || '').slice(0, 7) === m.key).reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+    const rev = sumPayEUR(at(g.pays, m.key)) + at(g.invs, m.key).reduce((s, x) => s + invoiceGrossEUR(x), 0);
+    const exp = sumPayEUR(at(g.op, m.key)) + sumPayEUR(at(g.cap, m.key));
     return Math.round(rev - exp);
   });
 
@@ -1266,10 +1318,10 @@ function renderNetLine(cur, months) {
       if (!mk) return;
       const mNet = netData[idx];
       const body = el('div');
-      const mPays = payments.filter(p => p.date?.slice(0, 7) === mk);
-      const mInvs = invoices.filter(i => (i.issueDate || '').slice(0, 7) === mk);
-      const mOpEx = opExpenses.filter(e => (e.date || '').slice(0, 7) === mk);
-      const mCapEx = capExpenses.filter(e => (e.date || '').slice(0, 7) === mk);
+      const mPays = at(g.pays, mk);
+      const mInvs = at(g.invs, mk);
+      const mOpEx = at(g.op, mk);
+      const mCapEx = at(g.cap, mk);
       body.appendChild(mkSummaryGrid([
         { label: 'Month',         value: months[idx].label },
         { label: 'Net Cash Flow',
@@ -1340,15 +1392,15 @@ function buildView() {
   wrap.appendChild(buildComparisonLine(curRange, cmpRange));
 
   {
-    const now = new Date();
-    const periodStart = new Date(curRange.start);
-    const periodEnd   = new Date(curRange.end);
-    const isCurrentYear = periodStart.getFullYear() === now.getFullYear() && periodEnd >= now;
-    if (isCurrentYear && periodStart.getMonth() === 0) {
-      const monthN = now.getMonth() + 1;
+    // Compare local YYYY-MM-DD strings — new Date(curRange.end) is UTC
+    // midnight, which read the badge wrong on the period's last day.
+    const today = todayYmd();
+    const isCurrentYear = curRange.start.slice(0, 4) === today.slice(0, 4) && curRange.end >= today;
+    if (isCurrentYear && curRange.start.slice(5, 7) === '01') {
+      const monthN = +today.slice(5, 7);
       wrap.appendChild(el('div', {
         style: 'font-size:11px;color:var(--text-muted);margin-bottom:12px;padding:6px 10px;background:rgba(255,255,255,0.03);border-radius:4px;display:inline-block'
-      }, `Year to date — month ${monthN} of 12 · ${now.getFullYear()}`));
+      }, `Year to date — month ${monthN} of 12 · ${today.slice(0, 4)}`));
     }
   }
 

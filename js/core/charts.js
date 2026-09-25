@@ -87,7 +87,13 @@ export function line(id, { labels, datasets, onClickItem }) {
   registry.set(id, c);
 }
 
-export function bar(id, { labels, datasets, stacked = false, horizontal = false, onClickItem, showTotals = false }) {
+// Default value formatter for bar labels/totals — whole euros, de-DE grouping.
+const fmtEURLabel = v => '€' + Math.round(v).toLocaleString('de-DE');
+
+// `formatValue` (optional) formats the drawn value labels and the showTotals
+// footer/labels — defaults to whole euros; pass e.g. v => v.toFixed(0) + '%'
+// for a percentage chart so it isn't mislabelled with "€".
+export function bar(id, { labels, datasets, stacked = false, horizontal = false, onClickItem, showTotals = false, formatValue = fmtEURLabel }) {
   destroy(id);
   const canvas = document.getElementById(id);
   if (!canvas) return;
@@ -138,7 +144,7 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
       (s, ds, di) => s + (chart.isDatasetVisible(di) ? (ds.data[i] || 0) : 0), 0);
     opts.plugins.tooltip.callbacks = {
       footer: items => items.length
-        ? 'Total: €' + Math.round(sumAt(items[0].chart, items[0].dataIndex)).toLocaleString('de-DE')
+        ? 'Total: ' + formatValue(sumAt(items[0].chart, items[0].dataIndex))
         : ''
     };
     if (!horizontal) {
@@ -156,7 +162,7 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
           meta.data.forEach((bar, i) => {
             const total = sumAt(chart, i);
             if (total <= 0) return;
-            g.fillText('€' + Math.round(total).toLocaleString('de-DE'), bar.x, chart.scales.y.getPixelForValue(total) - 3);
+            g.fillText(formatValue(total), bar.x, chart.scales.y.getPixelForValue(total) - 3);
           });
           g.restore();
         }
@@ -168,7 +174,7 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
   // every bar one at a time. Stacked bars already get a total via showTotals
   // above; a label per segment there would just overlap, so this is
   // deliberately skipped for stacked charts.
-  if (!stacked) localPlugins.push(valueLabelsPlugin(horizontal));
+  if (!stacked) localPlugins.push(valueLabelsPlugin(horizontal, formatValue));
 
   const c = new Chart(ctx, {
     type: 'bar',
@@ -219,7 +225,7 @@ function sliceLabelsPlugin() {
   };
 }
 
-function valueLabelsPlugin(horizontal) {
+function valueLabelsPlugin(horizontal, formatValue = fmtEURLabel) {
   return {
     id: 'valueLabels',
     afterDatasetsDraw(chart) {
@@ -233,7 +239,7 @@ function valueLabelsPlugin(horizontal) {
         meta.data.forEach((el, i) => {
           const raw = ds.data[i];
           if (raw === null || raw === undefined || raw === 0) return;
-          const label = '€' + Math.round(raw).toLocaleString('de-DE');
+          const label = formatValue(raw);
           const positive = raw >= 0;
           if (horizontal) {
             g.textAlign = positive ? 'left' : 'right';
@@ -263,11 +269,13 @@ function legendLabelsWithPct(chart) {
   const visible = i => chart.getDataVisibility ? chart.getDataVisibility(i) : true;
   const total = ds.data.reduce((s, v, i) => s + (visible(i) && typeof v === 'number' ? v : 0), 0);
   return chart.data.labels.map((lbl, i) => ({
-    text: lbl + (total > 0 ? ` (${(ds.data[i] / total * 100).toFixed(1)}%)` : ''),
+    text: lbl + (total > 0 && visible(i) ? ` (${(ds.data[i] / total * 100).toFixed(1)}%)` : ''),
     fillStyle: ds.backgroundColor[i],
     strokeStyle: '#161a27',
     lineWidth: 2,
-    hidden: false,
+    // Reflect the slice's real visibility so a legend-click-hidden slice
+    // renders struck through instead of looking still active.
+    hidden: !visible(i),
     index: i,
     fontColor: '#e4e8f1'
   }));
