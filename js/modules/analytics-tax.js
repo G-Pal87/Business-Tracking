@@ -2,6 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, input, select, button, formRow, toast, openModal, today, drillDownModal, fmtDate } from '../core/ui.js';
 import * as charts from '../core/charts.js';
+import { downloadCsv } from '../core/csv.js';
 import { COST_CATEGORIES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
@@ -947,17 +948,15 @@ function renderCharts(data, year, ownerFilter) {
 
 function downloadTaxCsv(year, catData, totalOpEx, totalCapEx, totalRevenue) {
   const rows = [['Category', 'Type', 'Count', 'Amount EUR', '% of OpEx']];
-  catData.opex.forEach(c => rows.push([c.label, 'OpEx', c.count, c.total.toFixed(2), (c.total / totalOpEx * 100).toFixed(1) + '%']));
+  catData.opex.forEach(c => rows.push([c.label, 'OpEx', c.count, c.total.toFixed(2), totalOpEx > 0 ? (c.total / totalOpEx * 100).toFixed(1) + '%' : '—']));
   catData.capex.forEach(c => rows.push([c.label, 'CapEx', c.count, c.total.toFixed(2), '—']));
   rows.push(['TOTAL OpEx', '', '', totalOpEx.toFixed(2), '100%']);
   rows.push(['TOTAL CapEx', '', '', totalCapEx.toFixed(2), '—']);
   rows.push(['TOTAL Revenue', '', '', totalRevenue.toFixed(2), '—']);
-  const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = `tax-summary-${year}.csv`; a.click();
-  URL.revokeObjectURL(url);
+  // core/csv.js: RFC 4180 quoting, formula-injection guard, UTF-8 BOM, and
+  // the object URL is revoked after a delay (revoking right after click()
+  // could cancel the download in Firefox/Safari).
+  downloadCsv(`tax-summary-${year}.csv`, rows);
 }
 
 function buildTaxExportSection(data, year) {
