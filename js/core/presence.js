@@ -1,7 +1,21 @@
 // Multi-user presence tracking via data/presence.json in GitHub
 // Shows a conflict banner when two users are on the same editable view.
+//
+// Every file on the presence branch (presence.json, session-history.json,
+// session-signal.json) is stored as an encrypted {"enc":1,…} envelope under
+// the app data key: the repository is public, and these files name users,
+// roles, devices and login times. Nothing is written while the key isn't
+// unlocked on this device (so a device without the key doesn't show up in
+// "who's online"), and a plaintext file left by an older app version is read
+// once and then rewritten encrypted.
+//
+// Rewriting a file does not remove its earlier plaintext versions from the
+// branch's git history; only deleting and recreating the branch does that.
 import { state } from './state.js';
-import { isUnlocked, hasWrappedKeyConfigured, ENVELOPE_FORMAT_VERSION, supportsCompression } from './crypto.js';
+import {
+  isUnlocked, hasWrappedKeyConfigured, ENVELOPE_FORMAT_VERSION, supportsCompression,
+  encryptJsonToEnvelope, decryptEnvelopeToJson, isEncryptedEnvelope
+} from './crypto.js';
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -10,29 +24,43 @@ const PRESENCE_PATH  = 'data/presence.json';
 // so its constant commits never touch main's history and never compete with
 // db.json pushes for the same ref. See: orphan branch created via commit-tree.
 const PRESENCE_BRANCH = 'presence';
-const STALE_MS       = 2 * 60 * 1000;   // entry expires after 2 min of inactivity
-const HEARTBEAT_MS   = 50 * 1000;       // refresh own entry every 50 s while active
-const POLL_MS        = 30 * 1000;       // conflict check interval
-const THROTTLE_MS    = 5 * 60 * 1000;  // don't re-notify same user+view within 5 min
+// Generic on purpose: commit messages are public and permanent.
+const COMMIT_MESSAGE = 'Sync';
+
+// Write cadence. Each write is a commit on a public branch and counts against
+// GitHub's content-write limit, which db.json saves share, so the local tick
+// only writes when something changed or an entry is about to go stale.
+const TICK_MS             = 60 * 1000;      // local check (no network unless a write is due)
+const PRESENCE_REFRESH_MS = 4 * 60 * 1000;  // re-stamp own view entry this often
+const STALE_MS            = 7 * 60 * 1000;  // entry expires after this long without a refresh
+const POLL_MS             = 60 * 1000;      // conflict + disconnect-signal check (ETag-conditional)
+const HIDE_CLEAR_DELAY_MS = 60 * 1000;      // a briefly hidden tab keeps its entry
+const THROTTLE_MS         = 5 * 60 * 1000;  // don't re-notify same user+view within 5 min
 // Device registry (Settings → Active Devices) is a longer-lived record than
-// view presence above — it answers "what devices exist / have the key" even
-// when their tab isn't open right now, not just "who's on this page today".
-const DEVICE_HEARTBEAT_MS = HEARTBEAT_MS;
-// A device row's lastSeen is only rewritten once it's this old (unless
-// something else about the row changed); Settings → Active Devices treats a
-// device as online for DEVICE_ONLINE_MS, which must stay comfortably above
-// DEVICE_REFRESH_MS + DEVICE_HEARTBEAT_MS.
-const DEVICE_REFRESH_MS = 150 * 1000;
-export const DEVICE_ONLINE_MS = 4 * 60 * 1000;
+// view presence above — it answers "what devices exist" even when their tab
+// isn't open right now, not just "who's on this page today". A device row is
+// rewritten when something about it changes, or once its lastSeen is
+// DEVICE_REFRESH_MS old; Settings treats a device as online for
+// DEVICE_ONLINE_MS, which must stay above DEVICE_REFRESH_MS + TICK_MS.
+const DEVICE_REFRESH_MS = 4 * 60 * 1000;
+export const DEVICE_ONLINE_MS = 7 * 60 * 1000;
 const DEVICES_STALE_MS    = 30 * 24 * 60 * 60 * 1000; // prune a device unseen for 30 days
 const KILL_TTL_MS         = 7 * 24 * 60 * 60 * 1000;  // prune a per-device kill signal after 7 days
 
 // Login/logout audit log — a separate file from presence.json since this one
-// only grows on discrete events (login/logout/kill), never on the 50s
-// heartbeat, and is capped rather than pruned by age so a quiet team doesn't
-// lose its whole history, an active one doesn't grow the file forever.
+// only grows on discrete events (login/logout/kill), never on the heartbeat,
+// and is capped rather than pruned by age so a quiet team doesn't lose its
+// whole history, an active one doesn't grow the file forever.
 const SESSION_HISTORY_PATH = 'data/session-history.json';
 const HISTORY_MAX_EVENTS   = 500;
+// Failed logins happen before the key is unlocked, so they can't be written
+// right away. They wait in localStorage (without any username: people often
+// type their password into the username field) and are appended with the
+// next event this device writes while unlocked, usually the login that follows.
+const PENDING_EVENTS_LS_KEY = 'bt_pending_session_events';
+const PENDING_EVENTS_MAX    = 20;
+
+const SIGNAL_PATH = 'data/session-signal.json';
 
 // Operations + System nav groups (read-write views where conflicts matter)
 const TRACKED = new Set([
@@ -48,11 +76,14 @@ const LABELS = {
 };
 
 let pollTimer       = null;
-let heartbeatTimer  = null;
-let deviceTimer     = null;
+let tickTimer       = null;
+let hideTimer       = null;
 let banner          = null;
 let navTimer        = null;
-let lastWrittenView = null;
+let lastWrittenView = null;   // view our entry currently holds (null = no entry)
+let lastPresenceWriteAt   = 0;
+let lastDeviceWriteAt     = 0;
+let lastDeviceFingerprint = null;
 const notified      = new Map(); // `${user}:${view}` → timestamp
 
 // ── Public ────────────────────────────────────────────────────────────────────
@@ -60,58 +91,227 @@ const notified      = new Map(); // `${user}:${view}` → timestamp
 export function startPresence() {
   window.addEventListener('hashchange', onHashChange);
 
-  // Clear own entry when the tab is hidden or closed
+  // Clear own entry when the tab stays hidden for a while or is closed. A
+  // quick tab switch used to cost two commits (clear + re-announce).
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) clearOwnPresence();
-    else { lastWrittenView = null; onHashChange(); } // re-announce on return
+    clearTimeout(hideTimer);
+    hideTimer = null;
+    if (document.hidden) {
+      hideTimer = setTimeout(() => { hideTimer = null; if (document.hidden) clearOwnPresence(); }, HIDE_CLEAR_DELAY_MS);
+    } else {
+      onHashChange(); // re-announce if the entry was cleared meanwhile
+    }
   });
   window.addEventListener('pagehide', clearOwnPresence);
 
   setTimeout(() => {
     onHashChange();
     schedulePoll();
-    scheduleHeartbeat();
-    scheduleDeviceReport();
+    tick();
+    tickTimer = setInterval(tick, TICK_MS);
   }, 3000);
 }
 
-// ── Heartbeat ─────────────────────────────────────────────────────────────────
+// ── GitHub I/O (encrypted JSON files on the presence branch) ─────────────────
 
-function scheduleHeartbeat() {
-  heartbeatTimer = setInterval(heartbeat, HEARTBEAT_MS);
+function ghContext() {
+  const { owner, repo, token } = state.github;
+  if (!owner || !repo || !token) return null;
+  return { owner, repo, token };
 }
 
-async function heartbeat(isRetry = false) {
-  if (document.hidden) return;
-  const view = currentView();
-  if (!TRACKED.has(view)) return;
-  const username = state.session?.username;
-  const { owner, repo, token } = state.github;
-  if (!username || !owner || !repo || !token) return;
-  // Only refresh timestamp — and only if a write is actually needed.
-  const ok = await updatePresence(doc => {
-    if (doc.entries[username]?.view !== view) return false; // nothing to refresh
-    doc.entries[username].t = Date.now();
-    return true;
-  });
-  // A failed heartbeat used to wait the full 50s before trying again, during
-  // which this user's own entry could go stale (2 min) while they're still
-  // actively editing — silently hiding a real conflict from everyone else.
-  // One bounded retry closes most of that gap without hammering the API if
-  // it stays down (falls back to the normal cadence after this one attempt).
-  if (!ok && !isRetry) {
-    setTimeout(() => heartbeat(true), 8000);
+function contentsUrl(ctx, path) {
+  const enc = path.split('/').map(encodeURIComponent).join('/');
+  return `https://api.github.com/repos/${ctx.owner}/${ctx.repo}/contents/${enc}`;
+}
+
+function b64ToUtf8(b64) {
+  const bytes = Uint8Array.from(atob(String(b64 || '').replace(/\s/g, '')), c => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function utf8ToB64(text) {
+  return btoa(unescape(encodeURIComponent(text)));
+}
+
+// Last good response per file, keyed by repo + path. Its ETag goes back as a
+// real If-None-Match, so an unchanged file costs a 304, which GitHub doesn't
+// count against the rate limit. The old code sent a random value instead.
+const _etagCache = new Map();
+// Files already found in plaintext this page load (rewritten encrypted once).
+const _migrated = new Set();
+
+// Reads one presence-branch file. Resolves to { sha, data, legacy }: data is
+// null when the file doesn't exist; legacy means it was still plaintext.
+// Throws when GitHub isn't configured or reachable, when the key isn't
+// unlocked (nothing on this branch can be read without it), or when
+// decryption fails.
+async function readBranchJson(path) {
+  const ctx = ghContext();
+  if (!ctx) throw new Error('GitHub not configured');
+  if (!isUnlocked()) throw new Error('Encryption key not unlocked');
+  const cacheKey = `${ctx.owner}/${ctx.repo}/${path}`;
+  const cached = _etagCache.get(cacheKey);
+  const headers = { 'Accept': 'application/vnd.github+json', 'Authorization': `token ${ctx.token}` };
+  if (cached?.etag) headers['If-None-Match'] = cached.etag;
+  const res = await fetch(`${contentsUrl(ctx, path)}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`, { headers, cache: 'no-store' });
+  if (res.status === 304 && cached) {
+    return { sha: cached.sha, data: structuredClone(cached.data), legacy: cached.legacy };
   }
+  if (res.status === 404) { _etagCache.delete(cacheKey); return { sha: null, data: null, legacy: false }; }
+  if (!res.ok) throw new Error(`Presence read failed (${res.status})`);
+  const file = await res.json();
+  const parsed = file.content ? JSON.parse(b64ToUtf8(file.content)) : null;
+  let data = null, legacy = false;
+  if (isEncryptedEnvelope(parsed)) data = await decryptEnvelopeToJson(parsed);
+  else if (parsed && typeof parsed === 'object') { data = parsed; legacy = true; }
+  const etag = res.headers.get('ETag');
+  if (etag) _etagCache.set(cacheKey, { etag, sha: file.sha, data: structuredClone(data), legacy });
+  else _etagCache.delete(cacheKey);
+  if (legacy && !_migrated.has(cacheKey)) {
+    _migrated.add(cacheKey);
+    // Rewrite it encrypted in the background: the mutator changes nothing,
+    // and doUpdateBranchJson writes anyway because the file is plaintext.
+    updateBranchJson(path, () => false).catch(() => {});
+  }
+  return { sha: file.sha, data, legacy };
+}
+
+// Encrypts `data` and writes it. Refuses ({ ok: false }) when the key isn't
+// unlocked; there is no plaintext fallback.
+async function writeBranchJson(path, data, sha) {
+  const ctx = ghContext();
+  if (!ctx || !isUnlocked()) return { ok: false, status: 0 };
+  let env;
+  try { env = await encryptJsonToEnvelope(data); } catch { return { ok: false, status: 0 }; }
+  const body = {
+    message: COMMIT_MESSAGE,
+    content: utf8ToB64(JSON.stringify(env)),
+    branch:  PRESENCE_BRANCH,
+    ...(sha ? { sha } : {})
+  };
+  try {
+    const put = await fetch(contentsUrl(ctx, path), {
+      method: 'PUT',
+      headers: { 'Accept': 'application/vnd.github+json', 'Authorization': `token ${ctx.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    return { ok: put.ok, status: put.status };
+  } catch { return { ok: false, status: 0 }; }
+}
+
+// Empty shape of each file, and the clean-up applied to it on every read and write.
+const FILE_SHAPES = {
+  [PRESENCE_PATH]: {
+    empty: () => ({ entries: {}, devices: {} }),
+    normalize: d => ({ entries: d?.entries || {}, devices: d?.devices || {} })
+  },
+  [SESSION_HISTORY_PATH]: {
+    empty: () => ({ events: [] }),
+    normalize: d => ({ events: sanitizeEvents(Array.isArray(d?.events) ? d.events : []) })
+  },
+  [SIGNAL_PATH]: {
+    empty: () => ({}),
+    normalize: d => (d && typeof d === 'object' ? d : {})
+  }
+};
+
+// Serializes every read-modify-write on the presence branch. Timers,
+// navigation, logins and admin actions can fire moments apart; without this
+// queue a device's own writes would SHA-conflict against each other, not
+// just against another device.
+let writeQueue = Promise.resolve();
+
+function updateBranchJson(path, mutator, { attempts = 4, evenIfDisconnected = false } = {}) {
+  const result = writeQueue.catch(() => null).then(() => doUpdateBranchJson(path, mutator, attempts, evenIfDisconnected));
+  writeQueue = result;
+  return result;
+}
+
+// Conflict-tolerant read-modify-write. `mutator(doc)` applies this client's
+// change to the freshest doc and returns true if a write is needed. On a 409
+// (another tab/user wrote between our GET and PUT) we re-read and re-apply
+// rather than silently losing the update.
+async function doUpdateBranchJson(path, mutator, attempts, evenIfDisconnected) {
+  // A remotely-disconnected tab stops all GitHub writes.
+  if (state.github.disconnected && !evenIfDisconnected) return false;
+  if (!ghContext() || !isUnlocked()) return false;
+  const shape = FILE_SHAPES[path];
+  for (let i = 0; i < attempts; i++) {
+    // Re-read the latest sha + doc on every attempt so a retry merges
+    // against the newest remote state instead of clobbering it.
+    let current;
+    try { current = await readBranchJson(path); }
+    catch { return false; } // offline, auth error or undecryptable: never overwrite blind
+    const doc = shape.normalize(current.data || shape.empty());
+    if (!mutator(doc) && !current.legacy) return true; // nothing to write
+    const { ok, status } = await writeBranchJson(path, shape.normalize(doc), current.sha);
+    if (ok) return true;
+    if (status === 409 && i < attempts - 1) { await sleep(150 + Math.random() * 150); continue; }
+    return false; // exhausted or non-recoverable — drop silently
+  }
+  return false;
+}
+
+function canWrite() {
+  return !!state.session?.username && !!ghContext() && isUnlocked() && !state.github.disconnected;
+}
+
+// ── Heartbeat (own view entry + device row) ──────────────────────────────────
+
+async function tick() {
+  if (document.hidden || !canWrite()) return;
+  const view = currentView();
+  const now = Date.now();
+  const presenceDue = TRACKED.has(view) && lastWrittenView === view && now - lastPresenceWriteAt >= PRESENCE_REFRESH_MS;
+  if (!presenceDue && !deviceWriteDue(now)) return;
+  await writeOwnState({ view: presenceDue ? view : null });
+}
+
+function deviceWriteDue(now = Date.now()) {
+  return deviceFingerprint() !== lastDeviceFingerprint || now - lastDeviceWriteAt >= DEVICE_REFRESH_MS;
+}
+
+// One read-modify-write for both halves of presence.json: the view entry
+// (when `view` is set) and this device's registry row (when due).
+async function writeOwnState({ view = null } = {}) {
+  const username = state.session?.username;
+  if (!username) return false;
+  const now = Date.now();
+  const writeDevice = deviceWriteDue(now);
+  const sessionId = state.github.sessionId;
+  const row = deviceRow();
+  const ok = await updateBranchJson(PRESENCE_PATH, doc => {
+    let changed = false;
+    if (view) {
+      doc.entries[username] = { view, t: Date.now(), name: state.session?.name || username };
+      changed = true;
+    }
+    if (writeDevice) {
+      const cutoff = Date.now() - DEVICES_STALE_MS;
+      for (const [id, d] of Object.entries(doc.devices)) {
+        if ((d.lastSeen || 0) < cutoff) delete doc.devices[id];
+      }
+      doc.devices[sessionId] = { ...row, lastSeen: Date.now() };
+      changed = true;
+    }
+    return changed;
+  });
+  if (ok) {
+    if (view) { lastWrittenView = view; lastPresenceWriteAt = now; }
+    if (writeDevice) { lastDeviceWriteAt = now; lastDeviceFingerprint = JSON.stringify(row); }
+  }
+  return ok;
 }
 
 // ── Clear own presence on tab close / hide ────────────────────────────────────
 
 async function clearOwnPresence() {
   const username = state.session?.username;
-  const { owner, repo, token } = state.github;
-  if (!username || !owner || !repo || !token) return;
+  if (!canWrite()) return;
+  if (lastWrittenView === null) return; // no entry of ours to clear
   lastWrittenView = null;
-  await updatePresence(doc => {
+  await updateBranchJson(PRESENCE_PATH, doc => {
     if (!doc.entries[username]) return false; // already absent
     delete doc.entries[username];
     return true;
@@ -130,15 +330,8 @@ async function handleNavigate() {
   const view = currentView();
   if (!TRACKED.has(view)) return;
   if (view === lastWrittenView) return;
-  const username = state.session?.username;
-  const { owner, repo, token } = state.github;
-  if (!username || !owner || !repo || !token) return;
-
-  const ok = await updatePresence(doc => {
-    doc.entries[username] = { view, t: Date.now(), name: state.session?.name || username };
-    return true;
-  });
-  if (ok) lastWrittenView = view;
+  if (!canWrite()) return;
+  await writeOwnState({ view });
 }
 
 // ── Polling ───────────────────────────────────────────────────────────────────
@@ -149,13 +342,13 @@ function schedulePoll() {
 }
 
 async function poll() {
+  if (document.hidden) return;
   await checkDisconnectSignal(); // regardless of view — a kicked session must stop everywhere, not just tracked pages
 
   const view = currentView();
   if (!TRACKED.has(view)) return;
   const username = state.session?.username;
-  const { owner, repo, token } = state.github;
-  if (!username || !owner || !repo || !token) return;
+  if (!username || !ghContext() || !isUnlocked()) return;
 
   const now = Date.now();
   for (const [key, ts] of notified) {
@@ -182,99 +375,9 @@ async function poll() {
   } catch { /* silent */ }
 }
 
-// ── GitHub I/O ────────────────────────────────────────────────────────────────
-
 async function readPresence() {
-  const { owner, repo, token } = state.github;
-  const headers = { 'Accept': 'application/vnd.github+json' };
-  if (token) headers['Authorization'] = `token ${token}`;
-  const enc = PRESENCE_PATH.split('/').map(encodeURIComponent).join('/');
-  const res = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/contents/${enc}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`,
-    { headers, cache: 'no-store' }
-  );
-  if (res.status === 404) return { entries: {}, devices: {} };
-  if (!res.ok) throw new Error(`Presence read failed (${res.status})`);
-  const file  = await res.json();
-  const bytes = Uint8Array.from(atob(file.content.replace(/\s/g, '')), c => c.charCodeAt(0));
-  const parsed = JSON.parse(new TextDecoder().decode(bytes));
-  return { entries: parsed.entries || {}, devices: parsed.devices || {} };
-}
-
-// Serializes every read-modify-write against presence.json. heartbeat() and
-// reportDevice() run on the exact same 50s interval, both scheduled moments
-// apart at startup (see startPresence()) — without this queue, a single
-// device's own two timers would race each other's GET+PUT cycle and
-// SHA-conflict against themselves on every cycle, not just when another
-// device is genuinely active. handleNavigate() and clearOwnPresence() go
-// through the same queue for the same reason.
-let presenceQueue = Promise.resolve();
-
-async function updatePresence(mutator, attempts = 4) {
-  const result = presenceQueue.catch(() => null).then(() => doUpdatePresence(mutator, attempts));
-  presenceQueue = result;
-  return result;
-}
-
-// Conflict-tolerant read-modify-write for presence.json.
-// `mutator(doc)` applies this client's change to the freshest {entries,
-// devices} doc and returns true if a write is needed. On a 409 (another
-// tab/user wrote between our GET and PUT) we re-read and re-apply rather
-// than silently losing the update — this is what was producing the
-// swallowed 409s and lost presence.
-async function doUpdatePresence(mutator, attempts = 4) {
-  // A remotely-disconnected tab must stop all GitHub writes; applyDisconnect()
-  // clears the timers, but the hashchange/visibility listeners kept firing.
-  if (state.github.disconnected) return false;
-  const { owner, repo, token } = state.github;
-  if (!owner || !repo || !token) return false;
-  const enc    = PRESENCE_PATH.split('/').map(encodeURIComponent).join('/');
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${enc}`;
-  const headers = {
-    'Accept': 'application/vnd.github+json',
-    'Authorization': `token ${token}`,
-    'Content-Type': 'application/json'
-  };
-
-  for (let i = 0; i < attempts; i++) {
-    // Re-read the latest sha + doc on every attempt so a retry merges
-    // against the newest remote state instead of clobbering it.
-    let sha = null, doc = { entries: {}, devices: {} };
-    try {
-      const getRes = await fetch(
-        `${apiUrl}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`,
-        { headers: { ...headers, 'If-None-Match': `"${Date.now()}"` }, cache: 'no-store' }
-      );
-      if (getRes.ok) {
-        const d = await getRes.json();
-        sha = d.sha;
-        if (d.content) {
-          const bytes = Uint8Array.from(atob(d.content.replace(/\s/g, '')), c => c.charCodeAt(0));
-          const parsed = JSON.parse(new TextDecoder().decode(bytes));
-          doc = { entries: parsed.entries || {}, devices: parsed.devices || {} };
-        }
-      } else if (getRes.status !== 404) {
-        return false; // auth/other error — give up quietly
-      }
-    } catch { return false; } // offline — best-effort
-
-    if (!mutator(doc)) return true; // nothing to write
-
-    const json = JSON.stringify(doc, null, 2);
-    const body = {
-      message: 'Presence update',
-      content: btoa(unescape(encodeURIComponent(json))),
-      branch:  PRESENCE_BRANCH,
-      ...(sha ? { sha } : {})
-    };
-    try {
-      const put = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
-      if (put.ok) return true;
-      if (put.status === 409 && i < attempts - 1) { await sleep(150 + Math.random() * 150); continue; }
-      return false; // exhausted or non-recoverable — drop silently
-    } catch { return false; }
-  }
-  return false;
+  const { data } = await readBranchJson(PRESENCE_PATH);
+  return FILE_SHAPES[PRESENCE_PATH].normalize(data);
 }
 
 // ── Device registry (Settings → Active Devices) ────────────────────────────
@@ -309,54 +412,29 @@ function deviceType() {
   return 'desktop';
 }
 
-function scheduleDeviceReport() {
-  reportDevice();
-  deviceTimer = setInterval(reportDevice, DEVICE_HEARTBEAT_MS);
+// This device's registry row, minus lastSeen. Reported whichever view is
+// open (unlike the view entry, which only exists on TRACKED views): a device
+// sitting on the Dashboard should still show up as online.
+function deviceRow() {
+  return {
+    username:      state.session?.username || null,
+    name:          state.session?.name || state.session?.username || 'Unknown',
+    role:          state.session?.role || null,
+    device:        deviceLabel(),
+    deviceType:    deviceType(),
+    hasKey:        isUnlocked(),
+    keyConfigured: hasWrappedKeyConfigured(),
+    // Which db.json envelope format this app version can read, and whether
+    // the browser can decompress — Settings checks these before an admin
+    // switches on compressed saving.
+    envFormat:     ENVELOPE_FORMAT_VERSION,
+    canCompress:   supportsCompression(),
+    connectedAt:   state.github.connectedAt
+  };
 }
 
-// Reports this session into the shared registry regardless of which view is
-// open (unlike the conflict-detection heartbeat above, which only runs on
-// TRACKED views) — a device just sitting on the Dashboard should still show
-// up as online and shouldn't drop out of the list just because it's not
-// editing anything.
-async function reportDevice() {
-  const { owner, repo, token } = state.github;
-  if (!owner || !repo || !token) return;
-  // Every open tab used to commit here every 50s, hidden ones included —
-  // with a few tabs that approaches GitHub's secondary rate limit for
-  // content writes, which is shared with (and then blocks) db.json saves.
-  if (document.hidden) return;
-  const sessionId = state.github.sessionId;
-  await updatePresence(doc => {
-    const cutoff = Date.now() - DEVICES_STALE_MS;
-    let pruned = false;
-    for (const [id, d] of Object.entries(doc.devices)) {
-      if ((d.lastSeen || 0) < cutoff) { delete doc.devices[id]; pruned = true; }
-    }
-    const prev = doc.devices[sessionId];
-    const next = {
-      username:      state.session?.username || null,
-      name:          state.session?.name || state.session?.username || 'Unknown',
-      role:          state.session?.role || null,
-      device:        deviceLabel(),
-      deviceType:    deviceType(),
-      hasKey:        isUnlocked(),
-      keyConfigured: hasWrappedKeyConfigured(),
-      // Which db.json envelope format this app version can read, and whether
-      // the browser can decompress — Settings checks these before an admin
-      // switches on compressed saving.
-      envFormat:     ENVELOPE_FORMAT_VERSION,
-      canCompress:   supportsCompression(),
-      connectedAt:   state.github.connectedAt,
-      lastSeen:      Date.now()
-    };
-    // Skip the write when nothing but lastSeen would change and lastSeen is
-    // still fresh (Settings shows "online" for DEVICE_ONLINE_MS).
-    const unchanged = prev && Object.keys(next).every(k => k === 'lastSeen' || prev[k] === next[k]);
-    if (!pruned && unchanged && Date.now() - (prev.lastSeen || 0) < DEVICE_REFRESH_MS) return false;
-    doc.devices[sessionId] = next;
-    return true;
-  });
+function deviceFingerprint() {
+  return JSON.stringify(deviceRow());
 }
 
 // Settings → Active Devices reads this to render the list.
@@ -372,7 +450,7 @@ export async function listDevices() {
 // this doesn't touch session-signal.json: there's no tab left to disconnect,
 // just a stale row to clear out.
 export async function removeDevice(targetSessionId) {
-  return updatePresence(doc => {
+  return updateBranchJson(PRESENCE_PATH, doc => {
     if (!doc.devices?.[targetSessionId]) return false;
     delete doc.devices[targetSessionId];
     return true;
@@ -382,7 +460,7 @@ export async function removeDevice(targetSessionId) {
 // Bulk counterpart for multi-select delete — one read-modify-write instead of
 // one round trip per device.
 export async function removeDevices(targetSessionIds) {
-  return updatePresence(doc => {
+  return updateBranchJson(PRESENCE_PATH, doc => {
     let changed = false;
     for (const id of targetSessionIds) {
       if (doc.devices?.[id]) { delete doc.devices[id]; changed = true; }
@@ -392,106 +470,79 @@ export async function removeDevices(targetSessionIds) {
 }
 
 // ── Login/logout history (Settings → Active Devices) ───────────────────────
-// Appends one event per login/logout/kill — not the read-modify-write-with-
-// retry treatment presence.json gets, since a lost event here (rare 409 on
-// two logins landing in the same instant) is a cosmetic gap in a log, not a
-// stuck banner or state.
 
-export async function recordSessionEvent(type, extra = {}) {
-  const { owner, repo, token } = state.github;
-  if (!owner || !repo || !token) return false;
-  const headers = {
-    'Accept':        'application/vnd.github+json',
-    'Authorization': `token ${token}`,
-    'Content-Type':  'application/json'
-  };
-  const enc    = SESSION_HISTORY_PATH.split('/').map(encodeURIComponent).join('/');
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${enc}`;
-
-  let sha = null, events = [];
-  try {
-    const get = await fetch(`${apiUrl}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`, { headers, cache: 'no-store' });
-    if (get.ok) {
-      const d = await get.json();
-      sha = d.sha;
-      const bytes = Uint8Array.from(atob(d.content.replace(/\s/g, '')), c => c.charCodeAt(0));
-      events = JSON.parse(new TextDecoder().decode(bytes)).events || [];
-    }
-  } catch { /* file doesn't exist yet — create it */ }
-
-  events.push({
-    type, // 'login' | 'logout' | 'disconnected'
-    sessionId: state.github.sessionId,
-    username:  state.session?.username || null,
-    name:      state.session?.name || state.session?.username || 'Unknown',
-    device:    deviceLabel(),
-    deviceType: deviceType(),
-    at:        Date.now(),
-    ...extra
+// Failed-login events never carry the attempted username (it can be a real
+// account name or a mistyped password). Also applied to events already in a
+// legacy file when it is rewritten.
+function sanitizeEvents(events) {
+  return events.map(ev => {
+    if (!ev || ev.type !== 'failed_login') return ev;
+    return { ...ev, username: null, name: null };
   });
-  if (events.length > HISTORY_MAX_EVENTS) events = events.slice(events.length - HISTORY_MAX_EVENTS);
-
-  const body = {
-    message: `Session ${type}`,
-    content: btoa(unescape(encodeURIComponent(JSON.stringify({ events }, null, 2)))),
-    branch:  PRESENCE_BRANCH,
-    ...(sha ? { sha } : {})
-  };
-  try {
-    const put = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
-    return put.ok;
-  } catch { return false; }
 }
 
-export async function listSessionHistory() {
-  const { owner, repo, token } = state.github;
-  if (!owner || !repo || !token) return [];
-  const headers = { 'Accept': 'application/vnd.github+json', 'Authorization': `token ${token}` };
-  const enc = SESSION_HISTORY_PATH.split('/').map(encodeURIComponent).join('/');
+function readPendingEvents() {
   try {
-    const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/contents/${enc}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`,
-      { headers, cache: 'no-store' }
-    );
-    if (!res.ok) return [];
-    const d = await res.json();
-    const bytes = Uint8Array.from(atob(d.content.replace(/\s/g, '')), c => c.charCodeAt(0));
-    return JSON.parse(new TextDecoder().decode(bytes)).events || [];
+    const list = JSON.parse(localStorage.getItem(PENDING_EVENTS_LS_KEY) || '[]');
+    return Array.isArray(list) ? list : [];
   } catch { return []; }
 }
 
-// Wipes the login/logout audit log. Re-reads the current sha immediately before
-// writing (rather than trusting a sha from an earlier listSessionHistory() call)
-// so this doesn't clobber an event recorded moments ago by another login/logout.
+function writePendingEvents(list) {
+  try {
+    if (list.length) localStorage.setItem(PENDING_EVENTS_LS_KEY, JSON.stringify(list.slice(-PENDING_EVENTS_MAX)));
+    else localStorage.removeItem(PENDING_EVENTS_LS_KEY);
+  } catch { /* storage unavailable — the event is simply not recorded */ }
+}
+
+export async function recordSessionEvent(type, extra = {}) {
+  return recordEvent(type, extra, false);
+}
+
+async function recordEvent(type, extra, evenIfDisconnected) {
+  const base = { type, sessionId: state.github.sessionId, device: deviceLabel(), deviceType: deviceType(), at: Date.now() };
+  // A failed login keeps no username or name (the caller's extra is ignored).
+  const event = type === 'failed_login'
+    ? { ...base, username: null, name: null }
+    : {
+        ...base,
+        username: state.session?.username || null,
+        name:     state.session?.name || state.session?.username || 'Unknown',
+        ...extra
+      };
+  if (!ghContext() || !isUnlocked()) {
+    // Can't encrypt yet. Failed logins wait for the next unlocked write;
+    // other events without the key are not recorded.
+    if (type === 'failed_login') writePendingEvents([...readPendingEvents(), event]);
+    return false;
+  }
+  const pending = readPendingEvents();
+  const ok = await updateBranchJson(SESSION_HISTORY_PATH, doc => {
+    doc.events.push(...pending, event);
+    if (doc.events.length > HISTORY_MAX_EVENTS) doc.events = doc.events.slice(doc.events.length - HISTORY_MAX_EVENTS);
+    return true;
+  }, { evenIfDisconnected });
+  // Drop only what was written; a failed login queued meanwhile stays.
+  if (ok && pending.length) writePendingEvents(readPendingEvents().slice(pending.length));
+  return ok;
+}
+
+export async function listSessionHistory() {
+  try {
+    const { data } = await readBranchJson(SESSION_HISTORY_PATH);
+    return FILE_SHAPES[SESSION_HISTORY_PATH].normalize(data).events;
+  } catch { return []; }
+}
+
+// Wipes the login/logout audit log (read-modify-write, so an event recorded
+// moments ago by another login/logout isn't lost to a stale sha).
 export async function clearSessionHistory() {
-  const { owner, repo, token } = state.github;
-  if (!owner || !repo || !token) return false;
-  const headers = {
-    'Accept':        'application/vnd.github+json',
-    'Authorization': `token ${token}`,
-    'Content-Type':  'application/json'
-  };
-  const enc    = SESSION_HISTORY_PATH.split('/').map(encodeURIComponent).join('/');
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${enc}`;
-
-  let sha = null;
-  try {
-    const get = await fetch(`${apiUrl}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`, { headers, cache: 'no-store' });
-    if (get.ok) sha = (await get.json()).sha;
-    else if (get.status !== 404) return false;
-  } catch { return false; }
-  if (!sha) return true; // already empty/nonexistent
-
-  const body = {
-    message: 'Clear session history',
-    content: btoa(unescape(encodeURIComponent(JSON.stringify({ events: [] }, null, 2)))),
-    branch:  PRESENCE_BRANCH,
-    sha
-  };
-  try {
-    const put = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
-    return put.ok;
-  } catch { return false; }
+  if (!ghContext() || !isUnlocked()) return false;
+  return updateBranchJson(SESSION_HISTORY_PATH, doc => {
+    if (!doc.events.length) return false;
+    doc.events = [];
+    return true;
+  });
 }
 
 // ── Banner ────────────────────────────────────────────────────────────────────
@@ -540,113 +591,49 @@ function showBanner(otherNames, viewLabel) {
 }
 
 // ── Remote session-kill (Settings → "Disconnect other sessions") ─────────────
-// Static hosting has no channel to push a signal into another open tab — the
-// 30s poll every session already runs is the only way one browser can learn
-// anything about another. A disconnected session stops pushing to GitHub (so
-// it can't keep reverting someone else's saves the way a stale tab running
-// pre-fix code was doing) but never touches its own local data or forces a
-// reload — the user chooses when, so nothing of theirs gets discarded.
-const SIGNAL_PATH = 'data/session-signal.json';
+// A convenience, not a security control. Static hosting has no channel to
+// push a signal into another open tab; the poll every session already runs
+// is the only way one browser can learn anything about another. A
+// disconnected tab stops pushing to GitHub until it reloads (so a stale tab
+// can't keep reverting someone else's saves), but a reload gets past it, and
+// the device keeps its token, key and cached data. Anyone holding the token
+// and the key can also write this file. Real revocation means rotating the
+// GitHub token and the encryption key.
 let disconnectBanner = null;
 
-// Reads the current session-signal doc (broad signal + per-device kills),
-// tolerating a missing file. Shared by both writers below so neither one
-// clobbers the other's half of the file.
-async function readSignalDoc(headers, apiUrl) {
-  try {
-    const get = await fetch(`${apiUrl}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`, { headers, cache: 'no-store' });
-    if (get.ok) {
-      const d = await get.json();
-      const bytes = Uint8Array.from(atob(d.content.replace(/\s/g, '')), c => c.charCodeAt(0));
-      return { sha: d.sha, doc: JSON.parse(new TextDecoder().decode(bytes)) };
-    }
-  } catch { /* file doesn't exist yet — create it */ }
-  return { sha: null, doc: {} };
-}
-
-// Conflict-tolerant read-modify-write for session-signal.json, mirroring
-// doUpdatePresence's retry pattern above — a single GET+PUT with no retry let
-// two admin actions issued back-to-back (e.g. "Kill Session" on two devices
-// in a row, or a kill immediately followed by "Disconnect other sessions")
-// silently lose whichever one's PUT landed on the now-stale sha.
-async function writeSignalDoc(headers, apiUrl, mutator, attempts = 4) {
-  for (let i = 0; i < attempts; i++) {
-    const { sha, doc } = await readSignalDoc(headers, apiUrl);
-    mutator(doc);
-    const body = {
-      message: 'Session signal update',
-      content: btoa(unescape(encodeURIComponent(JSON.stringify(doc, null, 2)))),
-      branch:  PRESENCE_BRANCH,
-      ...(sha ? { sha } : {})
-    };
-    try {
-      const put = await fetch(apiUrl, { method: 'PUT', headers, body: JSON.stringify(body) });
-      if (put.ok) return true;
-      if (put.status === 409 && i < attempts - 1) { await sleep(150 + Math.random() * 150); continue; }
-      return false;
-    } catch { return false; }
-  }
-  return false;
-}
-
 export async function requestDisconnectOtherSessions() {
-  const { owner, repo, token } = state.github;
-  if (!owner || !repo || !token) return false;
-  const headers = {
-    'Accept':        'application/vnd.github+json',
-    'Authorization': `token ${token}`,
-    'Content-Type':  'application/json'
-  };
-  const enc    = SIGNAL_PATH.split('/').map(encodeURIComponent).join('/');
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${enc}`;
-
-  return writeSignalDoc(headers, apiUrl, doc => {
+  if (!ghContext() || !isUnlocked()) return false;
+  return updateBranchJson(SIGNAL_PATH, doc => {
     doc.disconnectAt    = Date.now();
     doc.exceptSessionId = state.github.sessionId; // the issuing tab must not disconnect itself
-    doc.issuedBy         = state.session?.name || state.session?.username || 'someone';
+    doc.issuedBy        = state.session?.name || state.session?.username || 'someone';
+    return true;
   });
 }
 
 // Targeted counterpart to requestDisconnectOtherSessions() — disconnects one
 // specific device (Settings → Active Devices → Kill Session) instead of
-// everyone. Same mechanism (a signal every session polls for every 30s),
-// just addressed to a single sessionId rather than "everyone but me".
+// everyone. Same mechanism, just addressed to a single sessionId rather than
+// "everyone but me".
 export async function killDevice(targetSessionId) {
-  const { owner, repo, token } = state.github;
-  if (!owner || !repo || !token) return false;
-  const headers = {
-    'Accept':        'application/vnd.github+json',
-    'Authorization': `token ${token}`,
-    'Content-Type':  'application/json'
-  };
-  const enc    = SIGNAL_PATH.split('/').map(encodeURIComponent).join('/');
-  const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${enc}`;
-
-  return writeSignalDoc(headers, apiUrl, doc => {
+  if (!ghContext() || !isUnlocked()) return false;
+  return updateBranchJson(SIGNAL_PATH, doc => {
     doc.kills = doc.kills || {};
     const cutoff = Date.now() - KILL_TTL_MS;
     for (const [id, k] of Object.entries(doc.kills)) {
       if ((k.at || 0) < cutoff) delete doc.kills[id];
     }
     doc.kills[targetSessionId] = { at: Date.now(), by: state.session?.name || state.session?.username || 'someone' };
+    return true;
   });
 }
 
 async function checkDisconnectSignal() {
   if (state.github.disconnected) return; // already applied — no need to keep checking
-  const { owner, repo, token } = state.github;
-  if (!owner || !repo || !token) return;
-  const headers = { 'Accept': 'application/vnd.github+json', 'Authorization': `token ${token}` };
-  const enc = SIGNAL_PATH.split('/').map(encodeURIComponent).join('/');
+  if (!ghContext() || !isUnlocked()) return;
   try {
-    const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/contents/${enc}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`,
-      { headers, cache: 'no-store' }
-    );
-    if (!res.ok) return; // 404 = no disconnect ever issued
-    const d = await res.json();
-    const bytes  = Uint8Array.from(atob(d.content.replace(/\s/g, '')), c => c.charCodeAt(0));
-    const signal = JSON.parse(new TextDecoder().decode(bytes));
+    const { data: signal } = await readBranchJson(SIGNAL_PATH);
+    if (!signal) return; // no disconnect ever issued
 
     const targeted = signal.kills?.[state.github.sessionId];
     if (targeted && targeted.at > state.github.connectedAt) {
@@ -663,10 +650,11 @@ async function checkDisconnectSignal() {
 
 function applyDisconnect(issuedBy) {
   state.github.disconnected = true;
-  clearTimeout(heartbeatTimer);
-  clearTimeout(pollTimer);
-  clearTimeout(deviceTimer);
-  recordSessionEvent('disconnected', { by: issuedBy }).catch(() => {});
+  clearInterval(tickTimer);
+  clearInterval(pollTimer);
+  clearTimeout(hideTimer);
+  // The one write a disconnected tab still makes: its own audit-log entry.
+  recordEvent('disconnected', { by: issuedBy }, true).catch(() => {});
   showDisconnectBanner(issuedBy);
 }
 
