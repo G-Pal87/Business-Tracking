@@ -47,6 +47,12 @@ These files are **public**. They only contain what the website needs:
 - When prices are hidden for a property, the feed has `showPrices: false` and **no amounts at all**
   (and no fee/cleaning fields). The website then shows "Price on request".
 
+"Replaced" is not the same as "deleted": an overwritten `rates-feed` commit stays
+reachable by its SHA on GitHub until it is garbage-collected, and old feeds that were
+committed to `main` (including the early ones with real payouts) remain in `main`'s
+history. See [security.md](security.md#if-something-leaked) for how to have them purged.
+The daily privacy-guard scan checks that the branch holds only these files, in this schema.
+
 Prices are hidden per property (property form → "Website prices", or the toggle in
 STR Daily Rates) or for every property at once (Settings → STR / Airbnb →
 "Hide all prices on the website"). Feeds of properties that no longer exist are removed
