@@ -18,6 +18,12 @@ const THROTTLE_MS    = 5 * 60 * 1000;  // don't re-notify same user+view within 
 // view presence above — it answers "what devices exist / have the key" even
 // when their tab isn't open right now, not just "who's on this page today".
 const DEVICE_HEARTBEAT_MS = HEARTBEAT_MS;
+// A device row's lastSeen is only rewritten once it's this old (unless
+// something else about the row changed); Settings → Active Devices treats a
+// device as online for DEVICE_ONLINE_MS, which must stay comfortably above
+// DEVICE_REFRESH_MS + DEVICE_HEARTBEAT_MS.
+const DEVICE_REFRESH_MS = 150 * 1000;
+export const DEVICE_ONLINE_MS = 4 * 60 * 1000;
 const DEVICES_STALE_MS    = 30 * 24 * 60 * 60 * 1000; // prune a device unseen for 30 days
 const KILL_TTL_MS         = 7 * 24 * 60 * 60 * 1000;  // prune a per-device kill signal after 7 days
 
@@ -217,6 +223,9 @@ async function updatePresence(mutator, attempts = 4) {
 // than silently losing the update — this is what was producing the
 // swallowed 409s and lost presence.
 async function doUpdatePresence(mutator, attempts = 4) {
+  // A remotely-disconnected tab must stop all GitHub writes; applyDisconnect()
+  // clears the timers, but the hashchange/visibility listeners kept firing.
+  if (state.github.disconnected) return false;
   const { owner, repo, token } = state.github;
   if (!owner || !repo || !token) return false;
   const enc    = PRESENCE_PATH.split('/').map(encodeURIComponent).join('/');
@@ -313,13 +322,19 @@ function scheduleDeviceReport() {
 async function reportDevice() {
   const { owner, repo, token } = state.github;
   if (!owner || !repo || !token) return;
+  // Every open tab used to commit here every 50s, hidden ones included —
+  // with a few tabs that approaches GitHub's secondary rate limit for
+  // content writes, which is shared with (and then blocks) db.json saves.
+  if (document.hidden) return;
   const sessionId = state.github.sessionId;
   await updatePresence(doc => {
     const cutoff = Date.now() - DEVICES_STALE_MS;
+    let pruned = false;
     for (const [id, d] of Object.entries(doc.devices)) {
-      if ((d.lastSeen || 0) < cutoff) delete doc.devices[id];
+      if ((d.lastSeen || 0) < cutoff) { delete doc.devices[id]; pruned = true; }
     }
-    doc.devices[sessionId] = {
+    const prev = doc.devices[sessionId];
+    const next = {
       username:      state.session?.username || null,
       name:          state.session?.name || state.session?.username || 'Unknown',
       role:          state.session?.role || null,
@@ -330,6 +345,11 @@ async function reportDevice() {
       connectedAt:   state.github.connectedAt,
       lastSeen:      Date.now()
     };
+    // Skip the write when nothing but lastSeen would change and lastSeen is
+    // still fresh (Settings shows "online" for DEVICE_ONLINE_MS).
+    const unchanged = prev && Object.keys(next).every(k => k === 'lastSeen' || prev[k] === next[k]);
+    if (!pruned && unchanged && Date.now() - (prev.lastSeen || 0) < DEVICE_REFRESH_MS) return false;
+    doc.devices[sessionId] = next;
     return true;
   });
 }

@@ -18,33 +18,39 @@ A modular web application for tracking properties (short-term Airbnb + long-term
 ## Architecture
 
 ```
-index.html                    # App shell + nav
+index.html                    # App shell + nav (Chart.js + jsPDF loaded up front)
 css/                          # base, layout, components
 js/
+  bootstrap.js                # cache-busting loader for app.js
+  app.js                      # Boot: load cache → sync with GitHub → auth → router
   core/                       # Reusable layer
     config.js                 # streams, categories, constants
     state.js                  # store + subscribe pattern
-    github.js                 # GitHub Contents API
-    data.js                   # CRUD + aggregations + currency
+    github.js                 # GitHub Contents API, 3-way merge, local cache
+    crypto.js                 # AES-GCM encryption of db.json + attachments
+    auth.js                   # users, sessions, login/unlock screens
+    presence.js               # who's online, device registry, remote disconnect
+    data.js                   # CRUD + aggregations + currency + rent schedules
+    dates.js                  # timezone-safe YYYY-MM-DD helpers
     router.js                 # hash routing + module registry
-    ui.js                     # modals, toasts, forms
+    ui.js                     # modals, toasts, forms, tables
     charts.js                 # Chart.js wrappers
     pdf.js                    # jsPDF invoice generator
     ical.js                   # Airbnb calendar parser
-  modules/                    # One file per feature - all plug-and-play
-    dashboard.js
-    properties.js
-    payments.js
-    expenses.js
-    reports.js
-    forecast.js
-    clients.js
-    invoices.js
-    insights.js
-    settings.js
-  app.js                      # Boots everything
+    libs.js                   # on-demand loader for pdf.js / Tesseract / JSZip
+  modules/                    # One file per feature
+    analytics*.js             # Analysis views (executive, revenue, expenses,
+                              #   properties, STR, cash flow, forecast, owner,
+                              #   personal, tax) + shared helpers/filters
+    reconciliation.js         # expected vs actual per property / stream
+    properties.js, payments.js, str-rates.js, expenses.js, dividends.js,
+    tenants.js, vendors.js, inventory.js, company-structure.js, clients.js,
+    invoices.js, time-off.js, forecast.js, cyprus-tax.js (tax helpers),
+    settings.js, users.js
 data/
-  db.json                     # Single source of truth
+  db.json                     # Single source of truth (encrypted envelope)
+backups/                      # Daily encrypted snapshots (GitHub Action)
+exports/daily-rates/          # Public STR daily-rate feeds (plain JSON)
 ```
 
 ### Adding a new module
@@ -89,9 +95,22 @@ Data lives in `data/db.json` inside a GitHub repo. The app reads/writes it via t
 
 The app caches data in `localStorage` for offline viewing.
 
-### Public read access
+### Encryption
 
-If your repo is public, **reading** works without a token — viewers can open the app and see data without signing in. Only **writes** require a token.
+Once an admin generates a key (Settings → Encryption), `data/db.json`, backups and
+uploaded documents are encrypted client-side with AES-256-GCM before being committed.
+Every device needs the key once (it is then stored wrapped under the user's login
+password). Rotating the key re-encrypts everything; the previous key is kept on the
+rotating device as a fallback until the rotation finishes. A device holding an old key
+refuses to save over data it can't decrypt, and asks for the new key instead.
+
+### Sync model
+
+Each save fetches the latest `db.json`, three-way merges it with local changes
+(per record by `updatedAt`; plain fields such as settings per key), and writes it back
+guarded by the file's SHA. Permanently deleted records leave a tombstone so stale copies
+can't resurrect them. Restoring a snapshot re-stamps its records so they win the merge,
+and moves records that aren't in the snapshot to Trash.
 
 ## Airbnb iCal Import
 

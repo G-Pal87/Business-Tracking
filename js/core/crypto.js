@@ -24,12 +24,25 @@ const WRAPPED_KEY_LS_KEY = 'bt_enc_wrapped_key';
 // revoking that access is just regenerating this key, not rotating the
 // real one for every device/user.
 const WRAPPED_DEBUG_KEY_LS_KEY = 'bt_enc_wrapped_debug_key';
+// Previously-active data keys (most recent first), each wrapped under the
+// session wrap-key exactly like the current one. Kept so that:
+//   - a key rotation interrupted part-way (tab closed, crash, network loss)
+//     can still read db.json / attachments that haven't been re-encrypted
+//     under the new key yet, instead of leaving them unreadable;
+//   - a device that is given a new key can still decrypt anything written
+//     under the one it replaced while the rest of the team catches up.
+// Decryption tries the current key first, then these. Encryption only ever
+// uses the current key.
+const WRAPPED_PREV_KEYS_LS_KEY = 'bt_enc_wrapped_prev_keys';
+const MAX_PREV_KEYS = 3;
 
 // Held only in memory for the lifetime of the tab — never persisted.
 let _sessionWrapKey = null;    // CryptoKey, derived from the login password
 let _dataKey = null;           // CryptoKey, the actual AES-256-GCM data key once unlocked
 let _debugKey = null;          // CryptoKey, AES-256-GCM — scoped only to the debug/ export folder
 let _pendingBootstrapKey = null; // set when a key is entered on a brand-new device, before login
+let _prevKeys = [];            // CryptoKey[], previously-active data keys (see WRAPPED_PREV_KEYS_LS_KEY)
+const _kidCache = new WeakMap(); // CryptoKey → key id string
 
 function b64encode(bytes) {
   // Avoid String.fromCharCode(...bytes) — spreading a large byte array (e.g.
@@ -86,6 +99,8 @@ export async function unlockOnLogin(password) {
     return;
   }
 
+  _prevKeys = await unwrapPrevKeys();
+
   const wrapped = localStorage.getItem(WRAPPED_KEY_LS_KEY);
   if (!wrapped) { _dataKey = null; } else {
     try {
@@ -119,6 +134,92 @@ export function lockOnLogout() {
   _dataKey = null;
   _debugKey = null;
   _pendingBootstrapKey = null;
+  _prevKeys = [];
+}
+
+async function wrapRawKey(raw) {
+  const iv = randomBytes(12);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _sessionWrapKey, raw);
+  return { iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)) };
+}
+
+async function unwrapToKey({ iv, ct }, wrapKey = _sessionWrapKey) {
+  const raw = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64decode(iv) }, wrapKey, b64decode(ct));
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', true, ['encrypt', 'decrypt']);
+}
+
+async function unwrapPrevKeys() {
+  let list = [];
+  try { list = JSON.parse(localStorage.getItem(WRAPPED_PREV_KEYS_LS_KEY) || '[]'); } catch { list = []; }
+  const keys = [];
+  for (const w of Array.isArray(list) ? list : []) {
+    try { keys.push(await unwrapToKey(w)); } catch { /* wrapped under another password — skip */ }
+  }
+  return keys;
+}
+
+async function persistPrevKeys() {
+  if (!_sessionWrapKey) return;
+  const wrapped = [];
+  for (const k of _prevKeys) {
+    wrapped.push(await wrapRawKey(await crypto.subtle.exportKey('raw', k)));
+  }
+  try { localStorage.setItem(WRAPPED_PREV_KEYS_LS_KEY, JSON.stringify(wrapped)); } catch { /* ignore */ }
+}
+
+// Short, non-secret fingerprint of a data key (first 9 bytes of SHA-256 of
+// the raw key, base64). Written into every db.json envelope as `kid` so a
+// device can tell "encrypted under a key I don't have" (key was rotated
+// elsewhere) apart from corrupted data — and refuse to push over it.
+export async function keyIdOf(key) {
+  if (!key) return null;
+  const hit = _kidCache.get(key);
+  if (hit) return hit;
+  const raw = await crypto.subtle.exportKey('raw', key);
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', raw));
+  const kid = b64encode(digest.subarray(0, 9));
+  _kidCache.set(key, kid);
+  return kid;
+}
+
+export async function activeKeyId() { return keyIdOf(_dataKey); }
+
+// Re-wraps every locally stored key (data, previous, debug) under a key
+// derived from `newPassword`. Must be called when the logged-in user changes
+// their OWN password: the wrap-key is derived from the login password, so
+// without this the next login can't unwrap the data key and the user is
+// locked out of their data on this device until someone re-sends the key.
+export async function rewrapKeysForNewPassword(newPassword) {
+  if (!_sessionWrapKey) return false;
+  const newWrapKey = await deriveWrapKey(newPassword);
+  const rewrap = async (lsKey) => {
+    const stored = localStorage.getItem(lsKey);
+    if (!stored) return;
+    const raw = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: b64decode(JSON.parse(stored).iv) }, _sessionWrapKey, b64decode(JSON.parse(stored).ct)
+    );
+    const iv = randomBytes(12);
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, newWrapKey, raw);
+    return JSON.stringify({ iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)) });
+  };
+  // Compute everything first, then write — a failure part-way must not
+  // leave some slots wrapped under the old password and some under the new.
+  // A failure on the data-key slot must surface — silently leaving it
+  // wrapped under the old password would lock the user out on next sign-in.
+  const nextData  = await rewrap(WRAPPED_KEY_LS_KEY);
+  const nextDebug = await rewrap(WRAPPED_DEBUG_KEY_LS_KEY).catch(() => undefined);
+  const nextPrev = [];
+  for (const k of _prevKeys) {
+    const raw = await crypto.subtle.exportKey('raw', k);
+    const iv = randomBytes(12);
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, newWrapKey, raw);
+    nextPrev.push({ iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)) });
+  }
+  if (nextData)  localStorage.setItem(WRAPPED_KEY_LS_KEY, nextData);
+  if (nextDebug) localStorage.setItem(WRAPPED_DEBUG_KEY_LS_KEY, nextDebug);
+  localStorage.setItem(WRAPPED_PREV_KEYS_LS_KEY, JSON.stringify(nextPrev));
+  _sessionWrapKey = newWrapKey;
+  return true;
 }
 
 export function isUnlocked() { return _dataKey !== null; }
@@ -156,18 +257,38 @@ export async function importDataKeyFromBase64(base64) {
 // already run this session (i.e. the user is logged in).
 export async function installDataKey(key) {
   if (!_sessionWrapKey) throw new Error('Not logged in — cannot install an encryption key');
+  // Keep the key being replaced (if any, and if actually different) as a
+  // previous key BEFORE overwriting the one wrapped slot — see
+  // WRAPPED_PREV_KEYS_LS_KEY. Persisted first, so even a crash right after
+  // the swap below can't lose the only copy of the old key.
+  if (_dataKey && (await keyIdOf(_dataKey)) !== (await keyIdOf(key))) {
+    const newKid = await keyIdOf(key);
+    const kept = [];
+    for (const k of [_dataKey, ..._prevKeys]) {
+      const kid = await keyIdOf(k);
+      if (kid !== newKid && !(await Promise.all(kept.map(keyIdOf))).includes(kid)) kept.push(k);
+    }
+    _prevKeys = kept.slice(0, MAX_PREV_KEYS);
+    await persistPrevKeys();
+  }
   const raw = await crypto.subtle.exportKey('raw', key);
-  const iv = randomBytes(12);
-  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _sessionWrapKey, raw);
-  localStorage.setItem(WRAPPED_KEY_LS_KEY, JSON.stringify({
-    iv: b64encode(iv), ct: b64encode(new Uint8Array(ct))
-  }));
+  localStorage.setItem(WRAPPED_KEY_LS_KEY, JSON.stringify(await wrapRawKey(raw)));
   _dataKey = key;
 }
 
 export function clearDataKey() {
   localStorage.removeItem(WRAPPED_KEY_LS_KEY);
+  localStorage.removeItem(WRAPPED_PREV_KEYS_LS_KEY);
   _dataKey = null;
+  _prevKeys = [];
+}
+
+// Base64 of every previously-active key still held on this device (most
+// recent first) — lets an admin recover the old key after a rotation.
+export async function exportPreviousKeysBase64() {
+  const out = [];
+  for (const k of _prevKeys) out.push(b64encode(new Uint8Array(await crypto.subtle.exportKey('raw', k))));
+  return out;
 }
 
 // ── Debug export key (separate from the real data key, see comment above) ──
@@ -240,19 +361,70 @@ export async function encryptJsonToEnvelope(obj) {
   const iv = randomBytes(12);
   const plaintext = new TextEncoder().encode(JSON.stringify(obj));
   const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _dataKey, plaintext);
-  return { enc: 1, iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)) };
+  // `kid` is additive: older app versions ignore unknown envelope fields.
+  return { enc: 1, iv: b64encode(iv), ct: b64encode(new Uint8Array(ct)), kid: await keyIdOf(_dataKey) };
+}
+
+// Candidate keys for decryption: the one the envelope names (if we hold it),
+// then the current key, then previous keys.
+async function candidateKeys(kid) {
+  const all = [_dataKey, ..._prevKeys].filter(Boolean);
+  if (!kid) return all;
+  const named = [];
+  for (const k of all) if ((await keyIdOf(k)) === kid) named.push(k);
+  // If the envelope names a key we don't hold, still try the others — a
+  // kid is only a hint and never grounds to give up without trying.
+  return [...named, ...all.filter(k => !named.includes(k))];
+}
+
+function keyMismatchError() {
+  const err = new Error('The data on GitHub is encrypted with a different key than the one on this device — the team key was probably changed on another device. Paste the new key in Settings → Encryption. Changes made here are kept locally until then.');
+  err.code = 'KEY_MISMATCH';
+  return err;
 }
 
 export async function decryptEnvelopeToJson(envelope) {
-  if (!_dataKey) {
+  return (await decryptEnvelopeWithInfo(envelope)).data;
+}
+
+// Same as decryptEnvelopeToJson, but also reports whether it took a
+// PREVIOUS key (not the current one) to read it — doPushDb uses this to
+// refuse re-encrypting the shared data under a current key that can't read
+// it (e.g. a wrong key pasted into Settings), outside a deliberate rotation.
+export async function decryptEnvelopeWithInfo(envelope) {
+  if (!_dataKey && _prevKeys.length === 0) {
     const err = new Error('Data is encrypted but no encryption key is configured on this device');
     err.code = 'NO_ENC_KEY';
     throw err;
   }
-  const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: b64decode(envelope.iv) }, _dataKey, b64decode(envelope.ct)
-  );
-  return JSON.parse(new TextDecoder().decode(plaintext));
+  const iv = b64decode(envelope.iv), ct = b64decode(envelope.ct);
+  for (const key of await candidateKeys(envelope.kid)) {
+    let plaintext;
+    try { plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct); }
+    catch { continue; } // wrong key — try the next one
+    return { data: JSON.parse(new TextDecoder().decode(plaintext)), usedPrevious: key !== _dataKey, usedKid: await keyIdOf(key) };
+  }
+  throw keyMismatchError();
+}
+
+// True if `key` alone can decrypt `envelope` — used to validate a pasted key
+// against the live data before installing it.
+export async function canDecryptWith(key, envelope) {
+  try {
+    await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64decode(envelope.iv) }, key, b64decode(envelope.ct));
+    return true;
+  } catch { return false; }
+}
+
+// Set by Settings → key rotation from the moment the new key is installed
+// until db.json has been pushed under it; persisted so an interrupted
+// rotation can still finish re-encrypting on the next save.
+const ROTATION_PENDING_LS_KEY = 'bt_enc_rotation_pending';
+export function setRotationPending(on) {
+  try { on ? localStorage.setItem(ROTATION_PENDING_LS_KEY, '1') : localStorage.removeItem(ROTATION_PENDING_LS_KEY); } catch { /* ignore */ }
+}
+export function isRotationPending() {
+  try { return localStorage.getItem(ROTATION_PENDING_LS_KEY) === '1'; } catch { return false; }
 }
 
 // ── Encrypt / decrypt raw bytes (uploaded documents/invoices) ──────────────
@@ -278,11 +450,17 @@ export async function encryptBytes(bytes) {
 }
 
 export async function decryptBytes(container) {
-  if (!_dataKey) throw new Error('File is encrypted but no encryption key is configured on this device — add it in Settings');
+  if (!_dataKey && _prevKeys.length === 0) throw new Error('File is encrypted but no encryption key is configured on this device — add it in Settings');
   const iv = container.slice(BYTES_MAGIC.length, BYTES_MAGIC.length + 12);
   const ct = container.slice(BYTES_MAGIC.length + 12);
-  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, _dataKey, ct);
-  return new Uint8Array(plaintext);
+  // Current key first, then previous keys — a file not yet re-encrypted by
+  // an interrupted rotation is still readable.
+  let lastErr = null;
+  for (const key of [_dataKey, ..._prevKeys].filter(Boolean)) {
+    try { return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct)); }
+    catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('Could not decrypt file');
 }
 
 // ── Encrypt / decrypt file/folder NAMES ─────────────────────────────────────

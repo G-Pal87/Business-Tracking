@@ -1,10 +1,11 @@
 name: Refresh Airbnb iCal blocks
 
 on:
-  schedule:
-    # Every 15 minutes. GitHub Actions min interval is 5 min;
-    # 15 min is a good balance between freshness and noise.
-    - cron: '*/15 * * * *'
+  # The 15-minute schedule was removed: data/db.json is encrypted and this
+  # workflow has no key, so every run found "nothing to refresh" while still
+  # doing a full checkout (~80MB) 96 times a day. The app refreshes iCal
+  # blocks itself (STR Daily Rates). Kept as a manual fallback for an
+  # unencrypted setup.
   workflow_dispatch: # allow manual run from the Actions tab
 
 permissions:

@@ -168,6 +168,11 @@ function renderBootstrapUnlock(screen, resolve) {
       const github = await import('./github.js');
       const remoteDb = await github.fetchDb();
       state.github.needsEncKey = false;
+      // Mark as synced (as app.js Phase 2 does) — without a _syncedAt, a
+      // record added on this brand-new device and not yet pushed before the
+      // next reload was treated as untrusted by mergeLocalPending and dropped.
+      remoteDb._syncedAt = Date.now();
+      remoteDb._syncedPlain = github.plainFieldsOf(remoteDb);
       setDb(remoteDb);
       github.applyDbConfig(remoteDb.appConfig?.github);
       github.saveLocalCache(remoteDb);
@@ -179,12 +184,20 @@ function renderBootstrapUnlock(screen, resolve) {
       // this is a brand-new device's very first load, with nothing local yet
       // to catch that lag. A confirmatory re-pull moments later, merged the
       // same way the app's own background sync does, self-heals it silently.
-      const firstLoadSnapshot = structuredClone(remoteDb);
+      // Skipped while anything is unsaved/being pushed or a form is open, and
+      // merged against the CURRENT data — it used to setDb() unconditionally,
+      // discarding whatever was entered right after sign-in.
       setTimeout(async () => {
+        const busy = () => state.dirty || state.saving || !!document.querySelector('.modal-overlay.open, .ms-menu.open');
+        if (busy()) return;
+        const prevBase = state.github.remoteDb;
         try {
           const confirmDb = await github.fetchDb();
-          const reconciled = github.mergeLocalPending(confirmDb, firstLoadSnapshot);
+          if (busy()) { state.github.remoteDb = prevBase; return; }
+          const reconciled = github.mergeLocalPending(confirmDb, structuredClone(state.db));
+          const hasLocal = reconciled._hasLocalChanges;
           delete reconciled._hasLocalChanges;
+          if (hasLocal) { state.github.remoteDb = prevBase; return; } // leave it to the next push's 3-way merge
           reconciled._syncedAt = Date.now();
           setDb(reconciled);
           github.saveLocalCache(reconciled);
@@ -293,9 +306,18 @@ function renderLogin(screen, resolve) {
         try {
           const github = await import('./github.js');
           const remoteDb = await github.fetchDb();
-          setDb(remoteDb);
-          github.applyDbConfig(remoteDb.appConfig?.github);
-          github.saveLocalCache(remoteDb);
+          // Merge rather than overwrite: the local cache can hold offline
+          // edits from the last session that haven't reached GitHub yet, and
+          // a single mistyped password used to replace them (and the cache)
+          // with the raw remote. Same rule as app.js Phase 4, which re-runs
+          // this merge after login anyway.
+          const merged = github.mergeLocalPending(remoteDb, structuredClone(state.db));
+          const hasLocal = merged._hasLocalChanges;
+          delete merged._hasLocalChanges;
+          merged._syncedAt = hasLocal ? (state.db._syncedAt ?? null) : Date.now();
+          setDb(merged);
+          github.applyDbConfig(merged.appConfig?.github);
+          github.saveLocalCache(merged);
           user = listActive('users').find(u => u.username === username);
           result = user ? await verifyPassword(password, user) : { ok: false };
         } catch { /* GitHub unreachable — fall through to the cached result */ }
@@ -307,7 +329,12 @@ function renderLogin(screen, resolve) {
         // Logged under the attempted username, not a real session — this can
         // be someone mistyping their own password or an actual intrusion
         // attempt, and admins have no other way to tell which without this.
-        recordSessionEvent('failed_login', { username, name: user?.name || username }).catch(() => {});
+        // Only a username that matches a real account is logged — this file
+        // is stored unencrypted on the presence branch, and people often
+        // type their password into the username field by mistake.
+        recordSessionEvent('failed_login', user
+          ? { username, name: user.name || username }
+          : { username: '(unknown username)', name: '(unknown username)' }).catch(() => {});
         return;
       }
       if (result.needsUpgrade) {

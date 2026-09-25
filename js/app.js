@@ -3,7 +3,7 @@ import { state, subscribe, setDb, markDirty } from './core/state.js';
 import { autoPurgeOldDeleted, listActive } from './core/data.js';
 import * as github from './core/github.js';
 import * as router from './core/router.js';
-import { toast } from './core/ui.js';
+import { toast, confirmDialog } from './core/ui.js';
 import { requireAuth, clearSession } from './core/auth.js';
 import { startPresence, recordSessionEvent } from './core/presence.js';
 
@@ -91,6 +91,32 @@ async function boot() {
   let initialSyncDone = false;
   let pendingSaveBeforeSync = false;
 
+  // Confirmatory re-pull after a first-ever load (see Phase 2). Only replaces
+  // data when there is provably nothing local to lose.
+  const isBusy = () => state.dirty || state.saving || pendingSaveBeforeSync ||
+    !!document.querySelector('.modal-overlay.open, .ms-menu.open');
+  const confirmRepull = async () => {
+    if (state.github.disconnected || isBusy()) return;
+    const prevBase = state.github.remoteDb;
+    const confirmDb = await github.fetchDb();
+    if (isBusy()) { state.github.remoteDb = prevBase; return; }
+    const reconciled = github.mergeLocalPending(confirmDb, structuredClone(state.db));
+    const hasLocal = reconciled._hasLocalChanges;
+    delete reconciled._hasLocalChanges;
+    // Anything "local" here is most likely a record the first (possibly
+    // stale) read missed, which mergeLocalPending would read as a local
+    // delete — leave reconciliation to the next push's 3-way merge instead.
+    if (hasLocal) { state.github.remoteDb = prevBase; return; }
+    reconciled._syncedAt = Date.now();
+    if (github.deepEqual({ ...reconciled, _syncedAt: 0, _syncedPlain: 0 }, { ...state.db, _syncedAt: 0, _syncedPlain: 0 })) {
+      state.db._syncedAt = reconciled._syncedAt;
+      state.db._syncedPlain = reconciled._syncedPlain;
+      return;
+    }
+    setDb(reconciled);
+    github.saveLocalCache(reconciled);
+  };
+
   // ── Phase 0: bootstrap from URL hash setup link (works for any hosting setup)
   // Admin generates this link via Settings → GitHub Storage → "Copy Setup Link"
   // and shares it with new users once. Format: #/setup?owner=…&repo=…&branch=…
@@ -157,6 +183,7 @@ async function boot() {
     try {
       const remoteDb = await github.fetchDb();
       remoteDb._syncedAt = Date.now();
+      remoteDb._syncedPlain = github.plainFieldsOf(remoteDb);
       setDb(remoteDb);
       github.applyDbConfig(remoteDb.appConfig?.github);
       github.saveLocalCache(remoteDb);
@@ -182,20 +209,14 @@ async function boot() {
       // over a longer window self-heals regardless of how long that
       // particular lag turns out to be, instead of requiring the user to
       // notice and refresh by hand.
-      const firstLoadSnapshot = structuredClone(remoteDb);
-      let confirmBase = firstLoadSnapshot;
+      //
+      // Each re-pull merges against the CURRENT state.db (not the first-load
+      // snapshot) and is skipped entirely while anything is unsaved or being
+      // pushed, or a form is open — it used to setDb() unconditionally, which
+      // silently discarded anything the user had entered in those first
+      // seconds (and reset editSeq under an in-flight push).
       for (const delay of [3000, 8000, 20000]) {
-        setTimeout(async () => {
-          try {
-            const confirmDb = await github.fetchDb();
-            const reconciled = github.mergeLocalPending(confirmDb, confirmBase);
-            delete reconciled._hasLocalChanges;
-            reconciled._syncedAt = Date.now();
-            setDb(reconciled);
-            github.saveLocalCache(reconciled);
-            confirmBase = reconciled;
-          } catch { /* best-effort — the regular 60s backgroundResync will catch it anyway */ }
-        }, delay);
+        setTimeout(() => { confirmRepull().catch(() => {}); }, delay);
       }
     } catch (e) {
       console.warn('GitHub load failed, no local cache available', e);
@@ -248,6 +269,7 @@ async function boot() {
   let lastFailToastAt = 0;
   const FAIL_TOAST_INTERVAL_MS = 2 * 60 * 1000; // re-remind at most every 2 min while sync stays broken
   let pushPending = false; // true while doSave is queued or running
+  let retryTimer = null;    // automatic retry after a failed push (see doSave)
   let ratesFeedTimer = null; // debounce for auto-publishing the STR daily-rate feeds
 
   // Warn before closing/navigating away with edits that haven't been
@@ -342,7 +364,22 @@ async function boot() {
           20000
         );
       } else {
-        updateSyncStatus('offline', 'Push failed — changes saved locally only', true);
+        updateSyncStatus('offline', e.code === 'KEY_MISMATCH'
+          ? 'Encryption key changed elsewhere — paste the new key in Settings → Encryption'
+          : 'Push failed — changes saved locally only', true);
+        // Retry on its own with backoff. A transient failure (5xx, rate limit,
+        // dropped connection) used to leave the edit stranded until the next
+        // edit, an 'online' event or a manual Retry click — and while dirty,
+        // backgroundResync also stands down, so the tab stopped converging.
+        // Key problems can't fix themselves by retrying, so skip those.
+        if (e.code !== 'NO_ENC_KEY' && e.code !== 'KEY_MISMATCH') {
+          clearTimeout(retryTimer);
+          const delay = Math.min(120000, 5000 * 2 ** Math.min(5, saveFailCount - 1));
+          retryTimer = setTimeout(() => {
+            retryTimer = null;
+            if (state.dirty && !pushPending && !state.github.disconnected) doSave().catch(() => {});
+          }, delay);
+        }
         // Re-remind periodically instead of only once ever — a persistently
         // broken sync (expired token, revoked access) previously announced
         // itself exactly once and then went silent for the rest of the
@@ -380,7 +417,7 @@ async function boot() {
   // whatever dashboard is currently open) when the remote is unchanged, which
   // is the common case for a 60s steady-state poll.
   function sameDbContent(a, b) {
-    const strip = db => { const { _syncedAt, ...rest } = db; return rest; };
+    const strip = db => { const { _syncedAt, _syncedPlain, ...rest } = db; return rest; };
     try { return JSON.stringify(strip(a)) === JSON.stringify(strip(b)); }
     catch { return false; } // be conservative — treat as changed on any comparison failure
   }
@@ -399,10 +436,18 @@ async function boot() {
     // buildMultiSelect's 'ms-menu open' class).
     if (document.querySelector('.modal-overlay.open, .ms-menu.open')) return;
     resyncing = true;
+    // fetchDb() advances the merge base (remoteDb). If we then bail out
+    // without applying the fetched data to state.db, the base would be AHEAD
+    // of state.db — and the next push would read other users' changes as
+    // "only local changed" and silently revert them. Restore it on bail-out.
+    const prevBase = state.github.remoteDb;
     try {
       const remoteDb = await github.fetchDb();          // also refreshes sha + remoteDb base
       // Re-check after the await — the user may have started editing meanwhile.
-      if (state.dirty || pushPending || state.saving || document.querySelector('.modal-overlay.open, .ms-menu.open')) return;
+      if (state.dirty || pushPending || state.saving || document.querySelector('.modal-overlay.open, .ms-menu.open')) {
+        state.github.remoteDb = prevBase;
+        return;
+      }
       // resyncDb: pure last-writer-wins by updatedAt — no 3-way base.
       // This prevents CDN-stale responses from overwriting locally-held records
       // that were saved more recently. If local.updatedAt > remote.updatedAt,
@@ -438,7 +483,10 @@ async function boot() {
         clearTimeout(pushTimer);
         pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, 300);
       }
-    } catch { /* offline / transient — keep working from current state */ }
+    } catch (e) {
+      // offline / transient — keep working from current state
+      if (e?.code === 'KEY_MISMATCH') updateSyncStatus('offline', 'Encryption key changed elsewhere — paste the new key in Settings → Encryption', true);
+    }
     finally { resyncing = false; }
   };
 
@@ -513,7 +561,14 @@ async function boot() {
     (async () => {
       try {
         const remoteDb = await github.fetchDb();
-        const merged = github.mergeLocalPending(remoteDb, localSnapshot);
+        // Merge against the CURRENT state.db, not the pre-login snapshot:
+        // anything the user entered while this fetch was in flight (it can
+        // take seconds, or minutes when rate-limited) lives only in state.db
+        // and used to be silently discarded by the setDb() below. migrateDb()
+        // hasn't run yet at this point (it runs after this merge), so state.db
+        // carries no metadata backfill that could masquerade as a local edit —
+        // which was the original reason for merging against the snapshot.
+        const merged = github.mergeLocalPending(remoteDb, structuredClone(state.db));
         // Read-and-strip the merge's flag rather than leaving it on the object —
         // setDb + the next push would otherwise persist it into the repo's db.json.
         const hasLocalChanges = merged._hasLocalChanges;
@@ -525,7 +580,7 @@ async function boot() {
         // reload's mergeLocalPending would judge them already-synced and silently
         // drop them (refresh twice during a sync outage → data loss). Keep the old
         // marker instead; the successful push stamps the real value itself.
-        merged._syncedAt = hasLocalChanges ? (localSnapshot?._syncedAt ?? null) : Date.now();
+        merged._syncedAt = hasLocalChanges ? (state.db._syncedAt ?? localSnapshot?._syncedAt ?? null) : Date.now();
         setDb(merged);                              // triggers data-loaded → view refresh
         github.applyDbConfig(merged.appConfig?.github);
         github.saveLocalCache(merged);
@@ -539,7 +594,8 @@ async function boot() {
         // (e.g. a remote record pre-dating this feature), markDirty() fires now that
         // initialSyncDone=true and the normal 1.5s debounce pushes it cleanly.
         migrateDb();
-        // If local had genuinely newer records that won the merge, push them now.
+        // If local had genuinely newer records that won the merge (including
+        // edits made while this sync was in flight), push them now.
         if (hasLocalChanges && state.github.token && !pushPending) {
           doSave().catch(() => {});
         }
@@ -572,11 +628,39 @@ function migrateDb() {
     const arr = state.db[col];
     if (!Array.isArray(arr)) continue;
     for (const item of arr) {
+      // Repair records saved without an id — "+ New Invoice" from a client's
+      // page used to create invoices with id undefined (each overwriting the
+      // previous one). A record without an id can't be edited, synced or
+      // deleted reliably; give it one (and re-stamp it so it syncs).
+      if (!item.id) {
+        // Deterministic, content-derived id: every device repairing the same
+        // record picks the SAME id, so they converge instead of each pushing
+        // its own random-id copy (a duplicate invoice double-counts revenue).
+        // The re-stamp below is then an identical change on both sides,
+        // which mergeDb's same-content check absorbs.
+        const { updatedAt: _u, updatedBy: _b, ...content } = item;
+        item.id = `${col === 'invoices' ? 'inv' : col.slice(0, 3)}_legacy_${stableHash(JSON.stringify(content))}`;
+        item.updatedAt = item.createdAt || 1;
+        state._ix?.get(col)?.delete(undefined);
+        state._ix?.get(col)?.set(item.id, item);
+        changed = true;
+      }
       if (!item.createdAt) { item.createdAt = now; changed = true; }
       if (!item.createdBy) { item.createdBy = actor; changed = true; }
       if (!item.updatedAt) { item.updatedAt = now; changed = true; }
       if (!item.updatedBy) { item.updatedBy = actor; changed = true; }
     }
+  }
+
+  // Lease-termination payments used to be stored as type 'rental', which
+  // made the rent schedule treat them as that month's rent (hiding a real
+  // unpaid final month). Re-type the ones tenants.js generated — identified
+  // precisely by the notes it wrote — to the dedicated types.
+  for (const p of (state.db.payments || [])) {
+    if (p.type !== 'rental' || p.source !== 'manual' || p.stream !== 'long_term_rental' || typeof p.notes !== 'string') continue;
+    const newType = p.notes.startsWith('Deposit withheld — lease termination') ? 'deposit_withheld'
+      : p.notes.startsWith('Additional payment — lease termination') ? 'termination_fee' : null;
+    if (newType) { p.type = newType; p.updatedAt = now; p.updatedBy = actor; changed = true; }
   }
 
   // Seed default people from legacy OWNERS if no people exist
@@ -604,6 +688,17 @@ function migrateDb() {
   } catch (e) { console.warn('autoPurgeOldDeleted failed', e); }
 }
 
+// Small deterministic string hash (FNV-1a, two rounds) → 16 hex chars.
+function stableHash(str) {
+  let h1 = 0x811c9dc5, h2 = 0x01000193 ^ str.length;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 16777619) >>> 0;
+    h2 = Math.imul(h2 ^ c, 2246822519) >>> 0;
+  }
+  return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+}
+
 function buildUserFooter() {
   const footer = document.querySelector('.sidebar-footer');
   if (!footer || !state.session) return;
@@ -623,11 +718,31 @@ function buildUserFooter() {
   logoutBtn.style.cssText = 'width:100%;font-size:11px;padding:4px 8px';
   logoutBtn.textContent = 'Sign Out';
   logoutBtn.onclick = async () => {
+    // Signing out wipes the local cache — the only copy of anything not yet
+    // pushed. Try to push first, and if that doesn't clear it, ask.
+    if (state.dirty || state.saving) {
+      logoutBtn.disabled = true;
+      logoutBtn.textContent = 'Saving…';
+      if (state.github.syncNow) { try { await state.github.syncNow(); } catch { /* handled below */ } }
+      logoutBtn.disabled = false;
+      logoutBtn.textContent = 'Sign Out';
+      if (state.dirty) {
+        const ok = await confirmDialog(
+          'Some changes have not been saved to GitHub yet (see the sync status in the sidebar). Signing out now permanently discards them from this browser. Sign out anyway?',
+          { title: 'Unsaved changes', danger: true, okLabel: 'Sign out anyway' }
+        );
+        if (!ok) return;
+      }
+    }
     // Recorded before clearSession() wipes state.session — reload() below
     // would otherwise abort this fetch mid-flight if fired afterward.
     await recordSessionEvent('logout').catch(() => {});
     clearSession();
+    // Also stops any queued/in-flight cache write from re-creating the cache
+    // right after it's cleared (beforeunload flushes pending writes).
+    github.disableLocalCache();
     github.clearCachedDb();
+    state.dirty = false; // already confirmed above — don't prompt again on reload
     location.reload();
   };
   wrap.appendChild(nameEl);

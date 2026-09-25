@@ -72,8 +72,17 @@ jobs:
             // up plaintext without anyone noticing is the actual risk here.
             const looksEncrypted = db && typeof db === 'object' && db.enc === 1
               && typeof db.iv === 'string' && typeof db.ct === 'string';
+            // Fail rather than commit a plaintext copy into the (public)
+            // repo's history forever — a silent warning here was easy to miss.
+            // Set ALLOW_PLAINTEXT_BACKUP=true (repo variable) only for a setup
+            // that deliberately doesn't use encryption.
             if (!looksEncrypted) {
-              core.warning('data/db.json does not look like an encrypted envelope ({enc:1,iv,ct}) — this backup will be stored as PLAIN JSON. If encryption is supposed to be in use, check why the last push to db.json went out unencrypted.');
+              if ('${{ vars.ALLOW_PLAINTEXT_BACKUP }}' === 'true') {
+                core.warning('data/db.json is not encrypted — storing a PLAIN JSON backup (ALLOW_PLAINTEXT_BACKUP=true).');
+              } else {
+                core.setFailed('data/db.json does not look like an encrypted envelope ({enc:1,iv,ct}) — refusing to store a plaintext backup. Check why the last push to db.json went out unencrypted.');
+                return;
+              }
             }
 
             // Strip token — must never appear in backup files

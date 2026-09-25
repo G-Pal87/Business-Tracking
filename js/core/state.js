@@ -136,8 +136,12 @@ export function invalidateActiveCache(collection) {
 }
 
 export function setDb(db) {
-  state.db = { ...initialData, ...db };
-  if (!state.db.settings) state.db.settings = initialData.settings;
+  // Fresh defaults each time — spreading initialData directly shared its
+  // nested arrays/objects (e.g. `settings`, empty collections) with state.db,
+  // so later in-place mutations silently changed the defaults themselves.
+  const defaults = structuredClone(initialData);
+  state.db = { ...defaults, ...db };
+  if (!state.db.settings) state.db.settings = defaults.settings;
   if (!state.db.settings.fxRates) state.db.settings.fxRates = { yearRates: {} };
   if (!state.db.settings.fxRates.yearRates) state.db.settings.fxRates.yearRates = {};
   if (!state.db.users) state.db.users = [];
