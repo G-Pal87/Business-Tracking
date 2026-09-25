@@ -1,9 +1,16 @@
 import { state } from './state.js';
 
-// Minimal iCal parser for Airbnb VEVENT blocks
+// Minimal iCal parser for Airbnb VEVENT blocks.
+//
+// Tolerant of real-world feeds: property names are case-insensitive and
+// trailing whitespace is ignored; only properties that belong directly to a
+// VEVENT are read (a nested VALARM's DESCRIPTION no longer overwrites the
+// event's); TEXT values are unescaped (\, \; \n \\); and an event whose
+// DTSTART/DTEND can't be read as a real date is skipped rather than carried
+// with a raw string that later loops compare against dates.
 export function parseICal(text) {
   const events = [];
-  const lines = text.replace(/\r/g, '').split('\n');
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
   // Unfold continuation lines (RFC 5545)
   const unfolded = [];
   for (const l of lines) {
@@ -18,32 +25,85 @@ export function parseICal(text) {
       unfolded.push(l.startsWith(' ') || l.startsWith('\t') ? l.slice(1) : l);
     }
   }
-  let current = null;
-  for (const line of unfolded) {
-    if (line === 'BEGIN:VEVENT') current = {};
-    else if (line === 'END:VEVENT') { if (current) events.push(current); current = null; }
-    else if (current) {
-      const [rawKey, ...rest] = line.split(':');
-      const val = rest.join(':');
-      const key = rawKey.split(';')[0];
-      if (key === 'DTSTART') current.start = parseICalDate(val);
-      else if (key === 'DTEND') current.end = parseICalDate(val);
-      else if (key === 'SUMMARY') current.summary = val;
-      else if (key === 'DESCRIPTION') current.description = val;
-      else if (key === 'UID') current.uid = val;
+  const stack = [];          // open component names, outermost first
+  let current = null;        // the VEVENT being read
+  let bad = false;           // current VEVENT has an unreadable date
+  for (const rawLine of unfolded) {
+    const line = rawLine.replace(/\s+$/, '');
+    if (!line) continue;
+    const { name, value } = splitContentLine(line);
+    if (name === 'BEGIN') {
+      const comp = value.trim().toUpperCase();
+      stack.push(comp);
+      if (comp === 'VEVENT' && stack.length <= 2) { current = {}; bad = false; }
+      continue;
     }
+    if (name === 'END') {
+      const comp = value.trim().toUpperCase();
+      const at = stack.lastIndexOf(comp);
+      if (at !== -1) stack.length = at; // also closes anything left open inside it
+      if (comp === 'VEVENT' && current) {
+        if (!bad) events.push(current);
+        current = null;
+      }
+      continue;
+    }
+    // Only properties that sit directly on the VEVENT (not on a nested
+    // VALARM etc.).
+    if (!current || stack[stack.length - 1] !== 'VEVENT') continue;
+    if (name === 'DTSTART' || name === 'DTEND') {
+      const d = parseICalDate(value);
+      if (!d) { bad = true; continue; }
+      if (name === 'DTSTART') current.start = d; else current.end = d;
+    }
+    else if (name === 'SUMMARY') current.summary = unescapeText(value);
+    else if (name === 'DESCRIPTION') current.description = unescapeText(value);
+    // UID is kept verbatim: it keys stored annotations, so it must not change
+    // for feeds that were parsed before TEXT unescaping existed.
+    else if (name === 'UID') current.uid = value.trim();
   }
   return events;
 }
 
-function parseICalDate(str) {
-  if (!str) return null;
-  if (/^\d{8}$/.test(str)) {
-    return `${str.slice(0, 4)}-${str.slice(4, 6)}-${str.slice(6, 8)}`;
+// "NAME;PARAM=x;PARAM2="a:b":value" → { name (upper-case), params, value }.
+// The first colon outside a quoted parameter value ends the name/params part.
+function splitContentLine(line) {
+  let inQuote = false, i = 0;
+  for (; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') inQuote = !inQuote;
+    else if (c === ':' && !inQuote) break;
   }
+  const head = line.slice(0, i);
+  const value = i < line.length ? line.slice(i + 1) : '';
+  const [rawName, ...params] = head.split(';');
+  return { name: rawName.trim().toUpperCase(), params, value };
+}
+
+// RFC 5545 TEXT unescaping: \\ → \, \; → ;, \, → ,, \n / \N → newline.
+function unescapeText(v) {
+  return String(v).replace(/\\([\\;,nN])/g, (_, c) => (c === 'n' || c === 'N') ? '\n' : c);
+}
+
+const pad2 = n => String(n).padStart(2, '0');
+function validYmd(y, m, d) {
+  if (!(y >= 1900 && y <= 2200) || !(m >= 1 && m <= 12) || !(d >= 1)) return null;
+  if (d > new Date(Date.UTC(y, m, 0)).getUTCDate()) return null;
+  return `${y}-${pad2(m)}-${pad2(d)}`;
+}
+
+// iCal DATE / DATE-TIME → 'YYYY-MM-DD', or null when the value isn't a real
+// date (e.g. "TBD" — returned raw before, it compared greater than every
+// date string and made day-by-day loops run to the year 10000).
+export function parseICalDate(input) {
+  const str = String(input ?? '').trim().toUpperCase();
+  if (!str) return null;
+  const dm = /^(\d{4})(\d{2})(\d{2})$/.exec(str);
+  if (dm) return validYmd(+dm[1], +dm[2], +dm[3]);
   const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/.exec(str);
   if (m) {
     const [, y, mo, d, h, mi, s, z] = m;
+    if (!validYmd(+y, +mo, +d) || +h > 23 || +mi > 59 || +s > 60) return null;
     if (z) {
       // Trailing "Z" marks a real UTC instant. Slicing the digits directly
       // (as below) reads the UTC calendar date, which is the WRONG local day
@@ -52,19 +112,26 @@ function parseICalDate(str) {
       // viewer. Build the actual UTC instant and let the Date object convert
       // it to the viewer's local calendar date.
       const dt = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s));
-      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+      return `${dt.getFullYear()}-${pad2(dt.getMonth() + 1)}-${pad2(dt.getDate())}`;
     }
     // No "Z" — a "floating" local time with no timezone attached. This is
-    // what Airbnb's own iCal exports actually use (see file/module comments
-    // above), so there is no UTC instant to convert: reading the digits
-    // straight off is already correct and must not be routed through
-    // Date/UTC math, which would introduce a spurious shift for this,
-    // the common, case. (A TZID parameter, if present, was already discarded
-    // by the caller — see `rawKey.split(';')[0]` in parseICal — so it never
-    // reaches this function; there is no usable timezone info to convert by.)
+    // what Airbnb's own iCal exports actually use, so there is no UTC
+    // instant to convert: reading the digits straight off is already correct
+    // and must not be routed through Date/UTC math, which would introduce a
+    // spurious shift for this, the common, case. (A TZID parameter, if
+    // present, is not used — there is no timezone database here to convert
+    // by.)
     return `${y}-${mo}-${d}`;
   }
-  return str;
+  return null;
+}
+
+// A complete iCal body: it opens AND closes the VCALENDAR. A body cut off
+// part-way (a proxy truncating the response) still has BEGIN:VCALENDAR and
+// parses to a plausible-looking prefix of the events — treating that as the
+// whole feed dropped every booking after the cut.
+export function isCompleteICal(body) {
+  return typeof body === 'string' && /(^|\n)BEGIN:VCALENDAR/i.test(body) && /(^|\n)END:VCALENDAR\s*$/i.test(body);
 }
 
 export function nights(startStr, endStr) {
@@ -89,14 +156,27 @@ export function isOwnerBlockSummary(summary) {
 // always defer to the fresh feed (so cancellations there are still reflected);
 // only already-elapsed blocks that vanished from the feed get carried forward.
 //
-// Safety net: a fresh feed with zero events while the stored snapshot still
-// has current/future blocks is far more likely a bad fetch (proxy error page,
-// truncated body) than every booking vanishing at once — keep the existing
-// blocks unchanged rather than wiping all future bookings.
-export function mergeBlocks(existingBlocks, freshBlocks, today) {
+// Safety nets — both keep the existing blocks unchanged and report why in
+// `refused`, since each is far more likely a bad fetch (proxy error page,
+// truncated body) than real cancellations:
+//   - a fresh feed with zero events while the stored snapshot still has
+//     current/future blocks;
+//   - the number of current/future blocks dropping sharply: fewer than half
+//     of the stored ones, when at least 3 are stored. Pass
+//     `{ allowSharpDrop: true }` (e.g. a refresh the user asked for) to
+//     accept such a drop anyway; the empty-feed rule always applies.
+export function mergeBlocksChecked(existingBlocks, freshBlocks, today, { allowSharpDrop = false } = {}) {
   const existing = existingBlocks || [];
   const fresh = freshBlocks || [];
-  if (fresh.length === 0 && existing.some(b => b.end && b.end > today)) return existing;
+  const isFuture = b => b.end && b.end > today;
+  const existingFuture = existing.filter(isFuture).length;
+  if (fresh.length === 0 && existingFuture > 0) {
+    return { blocks: existing, refused: `The calendar feed returned no bookings while ${existingFuture} upcoming block(s) are stored — kept the stored calendar.` };
+  }
+  const freshFuture = fresh.filter(isFuture).length;
+  if (!allowSharpDrop && existingFuture >= 3 && freshFuture * 2 < existingFuture) {
+    return { blocks: existing, refused: `The calendar feed has ${freshFuture} upcoming block(s) but ${existingFuture} are stored — this looks like an incomplete response, so the stored calendar was kept.` };
+  }
   const freshUids = new Set(fresh.filter(b => b.uid).map(b => b.uid));
   // Also dedupe on the date range: Airbnb can re-issue a UID for the same
   // stay, which used to carry the old copy forward next to the new one.
@@ -111,14 +191,22 @@ export function mergeBlocks(existingBlocks, freshBlocks, today) {
     seenRanges.add(range);
     preserved.push(b);
   }
-  return [...preserved, ...fresh];
+  return { blocks: [...preserved, ...fresh], refused: null };
+}
+
+// Same as mergeBlocksChecked, returning just the blocks (the existing ones,
+// unchanged, when the merge was refused).
+export function mergeBlocks(existingBlocks, freshBlocks, today, opts) {
+  const { blocks, refused } = mergeBlocksChecked(existingBlocks, freshBlocks, today, opts);
+  if (refused && typeof console !== 'undefined') console.warn(`[ical] ${refused}`);
+  return blocks;
 }
 
 // A real iCal body. CORS proxies can answer 200 with an HTML error page or
 // a JSON error; treating that as the feed parsed to zero events and wiped
-// every future booking on save.
+// every future booking on save. A body without END:VCALENDAR was cut off.
 function looksLikeICal(body) {
-  return typeof body === 'string' && body.includes('BEGIN:VCALENDAR');
+  return isCompleteICal(body);
 }
 
 // Fetches an iCal URL. Airbnb blocks direct cross-origin browser requests,

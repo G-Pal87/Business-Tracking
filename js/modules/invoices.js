@@ -11,6 +11,7 @@ import { uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFile, fetchGith
 import { encryptFilename, decryptFilename, isUnlocked } from '../core/crypto.js';
 import { toLocalYmd } from '../core/dates.js';
 import { loadLib } from '../core/libs.js';
+import { downloadCsv, findAmountsInText } from '../core/csv.js';
 
 // Returns the display status for an invoice. Sent invoices past their due date
 // are shown as overdue without changing the stored value.
@@ -22,8 +23,7 @@ function effectiveStatus(inv) {
 function exportInvoicesCSV(rows) {
   const clientMap = new Map(listActive('clients').map(c => [c.id, c]));
   const header = ['Invoice Name', 'Number', 'Client', 'Issue Date', 'Due Date', 'Owner', 'Status', 'Currency', 'Subtotal', 'Tax', 'Total', 'Total EUR', 'Stream', 'Notes'];
-  const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const lines = [header.map(escape).join(',')];
+  const lines = [header];
   for (const r of rows) {
     const eff = effectiveStatus(r);
     lines.push([
@@ -41,15 +41,10 @@ function exportInvoicesCSV(rows) {
       toEUR(r.total, r.currency, r.issueDate).toFixed(2),
       r.stream || '',
       r.notes || ''
-    ].map(escape).join(','));
+    ]);
   }
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `invoices_${today().replace(/-/g, '')}.csv`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  // core/csv.js: RFC 4180 quoting, formula-injection guard, UTF-8 BOM.
+  downloadCsv(`invoices_${today().replace(/-/g, '')}.csv`, lines);
 }
 
 const INV_COLS = [
@@ -1601,25 +1596,20 @@ function parsePDFInvoice(lines, fallbackStream = 'customer_success') {
 
     if (SKIP.test(line.trim())) continue;
 
-    // Try amounts with currency symbol first, then plain decimals for OCR output
-    let amts = [...line.matchAll(/[-]?\s*[€£$]\s*([\d,]+\.?\d*)/g)];
-    if (amts.length === 0) {
-      // OCR fallback: negative lookbehind stops "400.00" matching inside "13,400.00"
-      amts = [...line.matchAll(/(?<![,\d])(\d{1,3}(?:,\d{3})+\.\d{2}|\d+\.\d{2})(?!\d)/g)]
-        .filter(m => parseFloat(m[1].replace(/,/g, '')) >= 1);
-    }
+    // Amounts tied to a currency (€ £ $ Ft HUF EUR…, before or after the
+    // number, US "1,234.56" or EU "1.234,56" / "150.000 Ft") first, then bare
+    // two-decimal numbers for OCR output — see core/csv.js findAmountsInText.
+    const amts = findAmountsInText(line);
     if (amts.length === 0) continue;
 
-    const rawTotal = amts[amts.length - 1][1].replace(/,/g, '');
-    const total = parseFloat(rawTotal);
-    if (isNaN(total) || total <= 0) continue;
-    const rawRate = amts.length >= 2 ? amts[amts.length - 2][1].replace(/,/g, '') : rawTotal;
-    const rate = parseFloat(rawRate);
+    const total = amts[amts.length - 1].value;
+    if (!Number.isFinite(total) || total <= 0) continue;
+    const rate = amts.length >= 2 ? amts[amts.length - 2].value : total;
 
     // Remove amount spans right-to-left to preserve earlier indices
     let desc = line;
     for (const m of [...amts].sort((a, b) => b.index - a.index)) {
-      desc = desc.slice(0, m.index) + desc.slice(m.index + m[0].length);
+      desc = desc.slice(0, m.index) + desc.slice(m.index + m.length);
     }
     const qtyMatch = desc.match(/\b(\d{1,3}[.,]\d{2})\b/);
     const quantity = qtyMatch ? parseFloat(qtyMatch[1].replace(',', '.')) : 1;
