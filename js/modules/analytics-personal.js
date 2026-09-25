@@ -232,9 +232,13 @@ function getPersonData(person, start, end, months) {
   const personalPayments = listActivePayments().filter(p =>
     p.status === 'paid' && inRange(p.date) && personalPropIds.has(p.propertyId)
   );
+  // A shared ('both' / unset owner) personal property contributes half to
+  // each partner — the same 50% rule owner rent above uses. Counting it in
+  // full for BOTH partners double-counted it across the two dashboards.
+  const personalShare = new Map(personalProps.map(p => [p.id, partnerKey(p.owner) === 'both' ? 0.5 : 1]));
   const personalByProp = new Map();
   for (const pmt of personalPayments) {
-    const eur = toEUR(pmt.amount, pmt.currency, pmt.date);
+    const eur = toEUR(pmt.amount, pmt.currency, pmt.date) * (personalShare.get(pmt.propertyId) ?? 1);
     personalByProp.set(pmt.propertyId, (personalByProp.get(pmt.propertyId) || 0) + eur);
   }
   const personalIncome = [...personalByProp.values()].reduce((s, v) => s + v, 0);
@@ -266,6 +270,7 @@ function getPersonData(person, start, end, months) {
     personalPayments: showPersonal ? personalPayments : [],
     personalProps:    showPersonal ? personalProps : [],
     personalByProp:   showPersonal ? personalByProp : new Map(),
+    personalShare,
     fromCompany: showCompany ? grossFromCompany : 0,
     total: (showCompany ? grossFromCompany : 0) + (showPersonal ? personalIncome : 0),
     periodDays: periodDays(start, end)
@@ -648,11 +653,11 @@ function showCombinedGrossModal(youData, ritaData, youCmp, ritaCmp, cmpRange) {
       [['Personal Properties',
         mkDrillValue(formatEUR(youData.personalIncome), () => drillDownModal(`${YOU_LABEL} — Personal Properties`, drillRevRows(youData.personalPayments, []), REV_COLS)),
         mkDrillValue(formatEUR(ritaData.personalIncome), () => drillDownModal(`${RITA_LABEL} — Personal Properties`, drillRevRows(ritaData.personalPayments, []), REV_COLS)),
-        mkDrillValue(formatEUR(youData.personalIncome + ritaData.personalIncome), () => drillDownModal('Personal Properties — Combined', drillRevRows([...youData.personalPayments, ...ritaData.personalPayments], []), REV_COLS)),
+        mkDrillValue(formatEUR(youData.personalIncome + ritaData.personalIncome), () => drillDownModal('Personal Properties — Combined', drillRevRows(uniqById([...youData.personalPayments, ...ritaData.personalPayments]), []), REV_COLS)),
         ...(hasCmp ? [
           mkDrillValue(formatEUR(youCmp.personalIncome), () => drillDownModal(`${YOU_LABEL} — Personal Properties (prev)`, drillRevRows(youCmp.personalPayments, []), REV_COLS)),
           mkDrillValue(formatEUR(ritaCmp.personalIncome), () => drillDownModal(`${RITA_LABEL} — Personal Properties (prev)`, drillRevRows(ritaCmp.personalPayments, []), REV_COLS)),
-          mkDrillValue(formatEUR(youCmp.personalIncome + ritaCmp.personalIncome), () => drillDownModal('Personal Properties — Combined (prev)', drillRevRows([...youCmp.personalPayments, ...ritaCmp.personalPayments], []), REV_COLS)),
+          mkDrillValue(formatEUR(youCmp.personalIncome + ritaCmp.personalIncome), () => drillDownModal('Personal Properties — Combined (prev)', drillRevRows(uniqById([...youCmp.personalPayments, ...ritaCmp.personalPayments]), []), REV_COLS)),
         ] : [])]],
       { highlight: 3 }
     ));
@@ -696,7 +701,7 @@ function personMonthlyBreakdown(data, monthList) {
       str:   eurSum(g.str.get(mk), expEur),
       pi:    eurSum(g.pi.get(mk), expEur),
       divs:  eurSum(g.divs.get(mk), netDivOf),
-      pers:  eurSum(g.pers.get(mk), p => toEUR(p.amount, p.currency, p.date))
+      pers:  eurSum(g.pers.get(mk), p => toEUR(p.amount, p.currency, p.date) * (data.personalShare?.get(p.propertyId) ?? 1))
     };
     row.total = row.sal + row.rent + row.reimb + row.str + row.pi + row.divs + row.pers;
     out.set(mk, row);
@@ -834,7 +839,7 @@ function showRecurringModal(youData, ritaData) {
                                mkDrillValue(formatEUR(youData.netDivs + ritaData.netDivs), () => drillDownModal('Dividends — Combined', toDivDrillRows([...youData.divRecords, ...ritaData.divRecords]), DIV_COLS))],
       ['Personal Properties', mkDrillValue(formatEUR(youData.personalIncome), () => drillDownModal(`${YOU_LABEL} — Personal Properties`, drillRevRows(youData.personalPayments, []), REV_COLS)),
                                mkDrillValue(formatEUR(ritaData.personalIncome), () => drillDownModal(`${RITA_LABEL} — Personal Properties`, drillRevRows(ritaData.personalPayments, []), REV_COLS)),
-                               mkDrillValue(formatEUR(youData.personalIncome + ritaData.personalIncome), () => drillDownModal('Personal Properties — Combined', drillRevRows([...youData.personalPayments, ...ritaData.personalPayments], []), REV_COLS))],
+                               mkDrillValue(formatEUR(youData.personalIncome + ritaData.personalIncome), () => drillDownModal('Personal Properties — Combined', drillRevRows(uniqById([...youData.personalPayments, ...ritaData.personalPayments]), []), REV_COLS))],
     ],
     { highlight: 3 }
   ));
@@ -1473,6 +1478,8 @@ function showPersonalPropsModal(label, data, cmp) {
   openModal({ title: `${label} — Personal Properties`, body, large: true });
 }
 
+const uniqById = rows => [...new Map(rows.map(r => [r.id, r])).values()];
+
 // ── Combined personal properties drill-down ───────────────────────────────────
 function showPersonalPropsCombinedModal(youData, ritaData) {
   const propMap = new Map();
@@ -1480,8 +1487,14 @@ function showPersonalPropsCombinedModal(youData, ritaData) {
   const merged = {
     personalIncome:   youData.personalIncome + ritaData.personalIncome,
     personalProps:    [...propMap.values()],
-    personalPayments: [...youData.personalPayments, ...ritaData.personalPayments],
-    personalByProp:   new Map([...youData.personalByProp, ...ritaData.personalByProp]),
+    // A shared property's payments appear in both partners' lists — once here.
+    personalPayments: [...new Map([...youData.personalPayments, ...ritaData.personalPayments].map(p => [p.id, p])).values()],
+    // Summed, not overwritten: a shared property carries half in each map.
+    personalByProp:   (() => {
+      const m = new Map(youData.personalByProp);
+      for (const [k, v] of ritaData.personalByProp) m.set(k, (m.get(k) || 0) + v);
+      return m;
+    })(),
   };
   showPersonalPropsModal('Combined', merged);
 }

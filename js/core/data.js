@@ -429,7 +429,10 @@ export function annualizedPropertyROI(propertyId, { netIncome, totalInvested } =
   const prop = byId('properties', propertyId);
   if (!prop || !prop.purchaseDate) return null;
 
-  const years = (Date.now() - new Date(prop.purchaseDate).getTime()) / (365.25 * 24 * 3600 * 1000);
+  // Holding period ends at the sale date for a sold property — counting the
+  // years after it was sold kept shrinking its annualized ROI forever.
+  const endMs = (prop.status === 'sold' && prop.soldDate) ? new Date(prop.soldDate).getTime() : Date.now();
+  const years = (endMs - new Date(prop.purchaseDate).getTime()) / (365.25 * 24 * 3600 * 1000);
   if (years < 0.083) return null; // less than ~1 month owned — too early to be meaningful
 
   const simple = simplePropertyROI(propertyId, { netIncome, totalInvested });
