@@ -8,91 +8,96 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: daily-backup
+  cancel-in-progress: false
+
 jobs:
   backup:
     runs-on: ubuntu-latest
 
     steps:
       - name: Create daily backup
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const MAX_BACKUPS = 30;
+            // Retention (grandfather-father-son): the newest backup of each of
+            // the last KEEP_DAILY days, of each of the last KEEP_WEEKLY ISO
+            // weeks and of each of the last KEEP_MONTHLY months is kept; every
+            // other bt-backup-*.json is removed. That is at most ~28 files, so
+            // the app's own "Backup Now" trim (30 files, oldest first) only
+            // ever removes the oldest monthly copy.
+            const KEEP_DAILY = 14, KEEP_WEEKLY = 8, KEEP_MONTHLY = 8;
             const { owner, repo } = context.repo;
+            const crypto = require('crypto');
 
-            // 1. Read current db.json
-            let dbFile;
+            // 1. Read db.json at an exact commit, by its git blob SHA. The raw
+            //    CDN (download_url) can lag behind a fresh push, so a backup
+            //    read through it could silently capture a stale version.
+            const { data: repoInfo } = await github.rest.repos.get({ owner, repo });
+            const branch = repoInfo.default_branch;
+            const { data: br } = await github.rest.repos.getBranch({ owner, repo, branch });
+            const commitSha = br.commit.sha;
+            let meta;
             try {
-              const { data } = await github.rest.repos.getContent({
-                owner, repo, path: 'data/db.json'
-              });
-              dbFile = data;
+              ({ data: meta } = await github.rest.repos.getContent({ owner, repo, path: 'data/db.json', ref: commitSha }));
             } catch (e) {
               core.setFailed(`Failed to read data/db.json: ${e.message}`);
               return;
             }
-
-            // The Contents API only inlines `content` for files under ~1MB —
-            // past that it omits `content` entirely and expects a follow-up
-            // fetch of `download_url` instead. Mirrors fetchDb()'s fallback
-            // in js/core/github.js, which the app itself already relies on.
-            // Without this, every run silently failed with "Unexpected end
-            // of JSON input" the moment db.json crossed that size (it's
-            // currently ~2MB) — Buffer.from(undefined, 'base64') decodes to
-            // an empty string, and JSON.parse('') throws exactly that error.
-            let text;
-            if (dbFile.content) {
-              text = Buffer.from(dbFile.content, 'base64').toString('utf8');
-            } else if (dbFile.download_url) {
-              const res = await fetch(dbFile.download_url);
-              if (!res.ok) {
-                core.setFailed(`Failed to download data/db.json via download_url (${res.status})`);
-                return;
-              }
-              text = await res.text();
-            } else {
-              core.setFailed('data/db.json: Contents API returned neither content nor download_url');
+            if (Array.isArray(meta) || meta.type !== 'file' || !meta.sha) {
+              core.setFailed('data/db.json is not a file');
+              return;
+            }
+            const { data: blob } = await github.rest.git.getBlob({ owner, repo, file_sha: meta.sha });
+            const bytes = Buffer.from(blob.content, blob.encoding === 'base64' ? 'base64' : 'utf8');
+            // The bytes must hash to the blob SHA we asked for (git's own
+            // "blob <size>\0<content>" SHA-1) - proves this is exactly the
+            // committed version, complete.
+            const gitSha = crypto.createHash('sha1')
+              .update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+            if (gitSha !== meta.sha) {
+              core.setFailed(`data/db.json content does not match its blob SHA (${meta.sha}) - refusing to store it.`);
               return;
             }
 
             let db;
             try {
-              db = JSON.parse(text);
+              db = JSON.parse(bytes.toString('utf8'));
             } catch (e) {
               core.setFailed(`data/db.json is not valid JSON: ${e.message}`);
               return;
             }
 
-            // Passive tripwire: this workflow has no access to the app's
-            // encryption key (by design) and can't encrypt/decrypt anything
-            // itself, so it can only mirror whatever state db.json is
-            // already in. If a key is meant to be in use but db.json somehow
-            // isn't encrypted right now, flag it loudly — silently backing
-            // up plaintext without anyone noticing is the actual risk here.
-            const looksEncrypted = db && typeof db === 'object' && db.enc === 1
-              && typeof db.iv === 'string' && typeof db.ct === 'string';
-            // Fail rather than commit a plaintext copy into the (public)
-            // repo's history forever — a silent warning here was easy to miss.
-            // Set ALLOW_PLAINTEXT_BACKUP=true (repo variable) only for a setup
-            // that deliberately doesn't use encryption.
-            if (!looksEncrypted) {
-              if ('${{ vars.ALLOW_PLAINTEXT_BACKUP }}' === 'true') {
-                core.warning('data/db.json is not encrypted — storing a PLAIN JSON backup (ALLOW_PLAINTEXT_BACKUP=true).');
-              } else {
-                core.setFailed('data/db.json does not look like an encrypted envelope ({enc:1,iv,ct}) — refusing to store a plaintext backup. Check why the last push to db.json went out unencrypted.');
-                return;
-              }
+            // 2. Strict envelope check. This workflow has no key (by design)
+            //    and can only copy db.json as it is, so it must refuse
+            //    anything that is not exactly the app's encrypted envelope
+            //    ({enc:1, iv, ct[, kid][, v, z]}) - same rules as the privacy
+            //    guard. There is deliberately no plaintext mode.
+            const b64 = s => typeof s === 'string' && /^[A-Za-z0-9+/]+={0,2}$/.test(s) && s.length % 4 === 0;
+            const ALLOWED = new Set(['enc', 'iv', 'ct', 'kid', 'v', 'z']);
+            const problems = [];
+            if (!db || typeof db !== 'object' || Array.isArray(db)) problems.push('not an object');
+            else {
+              if (db.enc !== 1) problems.push('enc is not 1');
+              const extra = Object.keys(db).filter(k => !ALLOWED.has(k));
+              if (extra.length) problems.push(`${extra.length} unexpected field(s)`);
+              if (!b64(db.iv) || Buffer.from(db.iv, 'base64').length !== 12) problems.push('invalid iv');
+              if (!b64(db.ct) || Buffer.from(db.ct, 'base64').length < 16) problems.push('invalid ct');
+              if ('kid' in db && !(b64(db.kid) && db.kid.length <= 64)) problems.push('invalid kid');
+              if ('v' in db && !(Number.isInteger(db.v) && db.v >= 1 && db.v <= 16)) problems.push('invalid v');
+              if ('z' in db && db.z !== 'gzip') problems.push('invalid z');
+            }
+            if (problems.length) {
+              core.setFailed(`data/db.json is not a valid encrypted envelope (${problems.join(', ')}) - refusing to store a backup. Check why the last push to db.json went out like this.`);
+              return;
             }
 
-            // Strip token — must never appear in backup files
-            if (db.appConfig?.github?.token) delete db.appConfig.github.token;
-
-            // 2. Build snapshot (same format as manual Export JSON)
+            // 3. Build snapshot (same wrapper the app's restore understands).
             const today = new Date().toISOString().slice(0, 10);
             const filename = `bt-backup-${today}.json`;
             const backupPath = `backups/${filename}`;
-
             const snapshot = {
               exportVersion: 2,
               schemaVersion: 1,
@@ -101,56 +106,77 @@ jobs:
               snapshotName: filename,
               data: db
             };
-            const b64 = Buffer.from(JSON.stringify(snapshot, null, 2)).toString('base64');
+            const content = Buffer.from(JSON.stringify(snapshot, null, 2)).toString('base64');
 
-            // 3. Write backup (create or overwrite today's file)
+            // 4. Write backup (create or overwrite today's file).
             let existingSha;
             try {
-              const { data: ex } = await github.rest.repos.getContent({
-                owner, repo, path: backupPath
-              });
+              const { data: ex } = await github.rest.repos.getContent({ owner, repo, path: backupPath, ref: branch });
               existingSha = ex.sha;
-            } catch { /* file doesn't exist yet — that's fine */ }
+            } catch { /* file doesn't exist yet - that's fine */ }
 
             await github.rest.repos.createOrUpdateFileContents({
-              owner, repo,
+              owner, repo, branch,
               path: backupPath,
-              message: `Automated backup: ${filename}`,
-              content: b64,
+              message: `Automated backup: ${filename} (db.json ${meta.sha.slice(0, 12)} @ ${commitSha.slice(0, 12)})`,
+              content,
               ...(existingSha ? { sha: existingSha } : {})
             });
-
             core.info(`Backup saved: ${backupPath}`);
 
-            // 4. Trim oldest backups beyond MAX_BACKUPS
+            // 5. Apply the retention policy.
             let items;
             try {
-              const { data } = await github.rest.repos.getContent({
-                owner, repo, path: 'backups'
-              });
+              const { data } = await github.rest.repos.getContent({ owner, repo, path: 'backups', ref: branch });
               items = Array.isArray(data) ? data : [];
             } catch (e) {
               core.warning(`Could not list backups/ for trimming: ${e.message}`);
               return;
             }
-
-            const jsons = items
-              .filter(f => f.type === 'file' && f.name.endsWith('.json'))
-              .sort((a, b) => a.name.localeCompare(b.name)); // oldest first
-
-            const excess = jsons.length - MAX_BACKUPS;
-            for (let i = 0; i < excess; i++) {
-              try {
-                await github.rest.repos.deleteFile({
-                  owner, repo,
-                  path: jsons[i].path,
-                  message: `Auto-trim old backup: ${jsons[i].name}`,
-                  sha: jsons[i].sha
-                });
-                core.info(`Deleted old backup: ${jsons[i].path}`);
-              } catch (e) {
-                core.warning(`Failed to delete ${jsons[i].path}: ${e.message}`);
+            // bt-backup-YYYY-MM-DD.json (scheduled) and
+            // bt-backup-YYYY-MM-DDTHH-MM.json (the app's "Backup Now").
+            const NAME = /^bt-backup-(\d{4})-(\d{2})-(\d{2})(T\d{2}-\d{2})?\.json$/;
+            const files = items
+              .filter(f => f.type === 'file' && NAME.test(f.name))
+              .sort((a, b) => b.name.localeCompare(a.name)); // newest first
+            const dayMs = 86400000;
+            const now = Date.UTC(+today.slice(0, 4), +today.slice(5, 7) - 1, +today.slice(8, 10));
+            const isoWeek = (t) => {
+              // ISO 8601: a week belongs to the year of its Thursday.
+              const thu = t + (3 - (new Date(t).getUTCDay() + 6) % 7) * dayMs;
+              const y = new Date(thu).getUTCFullYear();
+              return `${y}-W${Math.floor((thu - Date.UTC(y, 0, 1)) / dayMs / 7) + 1}`;
+            };
+            const keep = new Set();
+            const seen = { day: new Set(), week: new Set(), month: new Set() };
+            for (const f of files) {
+              const [, y, m, d] = f.name.match(NAME);
+              const t = Date.UTC(+y, +m - 1, +d);
+              const ageDays = Math.round((now - t) / dayMs);
+              if (ageDays < 0) { keep.add(f.name); continue; } // future-dated name: leave it alone
+              const monthsAgo = (+today.slice(0, 4) - +y) * 12 + (+today.slice(5, 7) - +m);
+              const slots = [
+                ['day', `${y}-${m}-${d}`, ageDays < KEEP_DAILY],
+                ['week', isoWeek(t), ageDays < KEEP_WEEKLY * 7],
+                ['month', `${y}-${m}`, monthsAgo < KEEP_MONTHLY],
+              ];
+              for (const [kind, key, inRange] of slots) {
+                // files are newest first, so the first one seen per bucket wins
+                if (inRange && !seen[kind].has(key)) { seen[kind].add(key); keep.add(f.name); }
               }
             }
-
-            core.info(`Done. Active backups: ${Math.min(jsons.length, MAX_BACKUPS)}`);
+            for (const f of files) {
+              if (keep.has(f.name)) continue;
+              try {
+                await github.rest.repos.deleteFile({
+                  owner, repo, branch,
+                  path: f.path,
+                  message: `Auto-trim old backup: ${f.name}`,
+                  sha: f.sha
+                });
+                core.info(`Deleted old backup: ${f.path}`);
+              } catch (e) {
+                core.warning(`Failed to delete ${f.path}: ${e.message}`);
+              }
+            }
+            core.info(`Done. Kept ${keep.size} backup(s): ${[...keep].sort().join(', ')}`);

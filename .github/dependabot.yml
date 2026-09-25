@@ -1,0 +1,10 @@
+# Keeps the SHA-pinned GitHub Actions current. Dependabot opens a pull
+# request (checked by the privacy guard from the base branch) - review and
+# merge it; nothing is updated automatically.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
