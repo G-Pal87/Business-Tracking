@@ -6,7 +6,7 @@ import { COST_CATEGORIES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
   listActive, listActivePayments,
-  resolveExpenseFields, isCapEx,
+  resolveExpenseFields, isCapEx, isAccruedInvoice, isDeductibleExpense,
   newId, upsert, softDelete, companyPropIds, isCompanyRecord,
   getPersonName, drillRevRows, drillExpRows, drillNetRows, drillRevRowsPnL, drillNetRowsPnL
 } from '../core/data.js';
@@ -248,11 +248,17 @@ function computeYearData(year, ownerFilter) {
   ), recordOwner, ['amount'], ownerFilter);
   // Invoices get the scope check too (an invoice linked to a personal-channel
   // property is outside Company scope), so the P&L tax estimate respects it.
+  // Accrual basis, like corporation tax itself: every issued (non-draft,
+  // non-cancelled) invoice counts on its issue date, paid or not.
   const invoices = applyOwnerWeight(listActive('invoices').filter(i =>
-    i.status === 'paid' && inYear(i.issueDate || i.date, year) && isCoRec(i)
+    isAccruedInvoice(i) && inYear(i.issueDate || i.date, year) && isCoRec(i)
   ), invoiceOwner, ['subtotal', 'total', 'amount'], ownerFilter);
   const allExp      = applyOwnerWeight(listActive('expenses').filter(e => inYear(e.date, year) && isCoRec(e)), recordOwner, ['amount'], ownerFilter);
-  const opExpenses  = allExp.filter(e => !isCapEx(e));
+  // Tax payments, VAT remittances and mortgage repayments are cash out but
+  // not operating costs (isDeductibleExpense) — kept out of OpEx / Operating
+  // Profit / the tax estimate, still counted in Net Cash Used.
+  const opExpenses  = allExp.filter(e => !isCapEx(e) && isDeductibleExpense(e));
+  const nonDeductExpenses = allExp.filter(e => !isCapEx(e) && !isDeductibleExpense(e));
   const capExpenses = allExp.filter(e =>  isCapEx(e));
 
   const propMap = new Map(listActive('properties').map(p => [p.id, p]));
@@ -299,7 +305,8 @@ function computeYearData(year, ownerFilter) {
   const totalOpEx  = opExpenses.reduce((s, e)  => s + toEUR(e.amount, e.currency, e.date), 0);
   const totalCapEx = capExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
   const opProfit   = totalRevenue - totalOpEx;
-  const netCash    = opProfit - totalCapEx;
+  const totalNonDeduct = nonDeductExpenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const netCash    = opProfit - totalCapEx - totalNonDeduct;
 
   // Grouped once per collection instead of re-filtering per month.
   const paysByMk = groupByMonthKey(payments, p => p.date);
@@ -316,7 +323,7 @@ function computeYearData(year, ownerFilter) {
   const fc = getYearForecastLikeForLike(year, ownerFilter);
 
   return {
-    payments, invoices, opExpenses, capExpenses,
+    payments, invoices, opExpenses, capExpenses, nonDeductExpenses, totalNonDeduct,
     rentalPaymentsSTR, rentalPaymentsLTR, rentalPaymentsOther, invoicesCS, invoicesMkt, invoicesOther,
     revSTR, revLTR, revCS, revMkt, revOther, totalRevenue,
     catMap, totalOpEx, totalCapEx, opProfit, netCash,
@@ -350,7 +357,7 @@ function getYearForecastLikeForLike(year, ownerFilter) {
   const scope = gScope === 'all' ? 'all' : 'company';
   let fullRev = 0, fullExp = 0, revToDate = 0, expToDate = 0, source = '';
   if (cutoff >= `${yr}-01-01`) {
-    const full = forecastRemainingForYear(yr, { cutoff: `${yr - 1}-12-31`, scope }); // whole year
+    const full = forecastRemainingForYear(yr, { cutoff: `${yr - 1}-12-31`, scope, excludeSettled: false }); // whole year
     if (full.revenue > 0 || full.expenses > 0) {
       const rem = forecastRemainingForYear(yr, { cutoff, scope });
       fullRev = full.revenue; fullExp = full.expenses;
@@ -580,13 +587,14 @@ function buildPnLTable(data, taxRate, year) {
   tbody.appendChild(mkRow('Net Cash Used', netCash, {
     isSubtotal: true, isPositive: netCash >= 0,
     drill: mkDrillValue(formatEUR(netCash), () =>
-      drillDownModal(`${year} — Net Cash Used`, drillNetRowsPnL(data.payments, data.invoices, [...data.opExpenses, ...data.capExpenses]), NET_COLS)),
+      drillDownModal(`${year} — Net Cash Used`, drillNetRowsPnL(data.payments, data.invoices, [...data.opExpenses, ...data.capExpenses, ...data.nonDeductExpenses]), NET_COLS)),
     explain: {
       title: 'Net Cash Used',
-      formula: 'Operating Profit − Total CapEx',
+      formula: 'Operating Profit − Total CapEx − non-deductible payments (tax, VAT paid over, mortgage)',
       inputs: [
         { label: 'Operating Profit', value: formatEUR(opProfit) },
         { label: 'Total CapEx', value: formatEUR(totalCapEx) },
+        { label: 'Non-deductible payments', value: formatEUR(data.totalNonDeduct || 0) },
         { label: 'Net Cash Used', value: formatEUR(netCash) }
       ],
       source: 'analytics-tax.js:241 getYearData()'
@@ -688,7 +696,7 @@ function openPnLRevenueModal(streamLabel, records, isInvoice, year) {
   body.appendChild(mkModalTable(
     [
       { label: mixed ? 'Client / Property' : isInvoice ? 'Client' : 'Property', tip: mixed ? 'The client billed (invoices) or the property (payments).' : isInvoice ? 'The client billed on the invoice.' : 'The property this payment was recorded against.' },
-      { label: mixed ? 'Records' : isInvoice ? 'Invoices' : 'Pmts', right: true, tip: isInvoice ? 'Number of paid invoices for this client in the selected stream/year.' : 'Number of paid payments for this property in the selected stream/year.' },
+      { label: mixed ? 'Records' : isInvoice ? 'Invoices' : 'Pmts', right: true, tip: isInvoice ? 'Number of issued (non-draft) invoices for this client in the selected stream/year.' : 'Number of paid payments for this property in the selected stream/year.' },
       { label: 'Revenue', right: true, tip: 'Total revenue from this entity, converted to EUR.' },
       { label: 'Share', right: true, muted: true, tip: "This row's revenue as a percentage of the stream total shown above." }
     ],
@@ -928,7 +936,7 @@ function renderCharts(data, year, ownerFilter) {
         { label: 'Total OpEx',       value: mkDrillValue(formatEUR(d.totalOpEx), () => drillDownModal(`${clickedYear} — Total Operating Expenses`, drillExpRows(d.opExpenses), EXP_COLS)) },
         { label: 'Operating Profit', value: mkDrillValue(formatEUR(d.opProfit), () => drillDownModal(`${clickedYear} — Operating Profit`, drillNetRowsPnL(d.payments, d.invoices, d.opExpenses), NET_COLS)) },
         { label: 'CapEx',            value: mkDrillValue(formatEUR(d.totalCapEx), () => drillDownModal(`${clickedYear} — Total CapEx`, drillExpRows(d.capExpenses), EXP_COLS)) },
-        { label: 'Net Cash Used',    value: mkDrillValue(formatEUR(d.netCash), () => drillDownModal(`${clickedYear} — Net Cash Used`, drillNetRowsPnL(d.payments, d.invoices, [...d.opExpenses, ...d.capExpenses]), NET_COLS)) },
+        { label: 'Net Cash Used',    value: mkDrillValue(formatEUR(d.netCash), () => drillDownModal(`${clickedYear} — Net Cash Used`, drillNetRowsPnL(d.payments, d.invoices, [...d.opExpenses, ...d.capExpenses, ...d.nonDeductExpenses]), NET_COLS)) },
         { label: 'Operating Margin', value: d.totalRevenue > 0 ? (d.opProfit / d.totalRevenue * 100).toFixed(1) + '%' : '—' }
       ], 3));
       const catEnt = [...d.catMap.entries()].sort((a, b) => b[1] - a[1]);
@@ -1169,7 +1177,7 @@ function modalRentalPayments() {
 function modalInvoiceRevenue() {
   const year = cfg().year || String(new Date().getFullYear());
   const { invs } = getActualsForYear(year);
-  if (!invs.length) { emptyModal('Invoice Revenue', 'No paid invoices for this period.'); return; }
+  if (!invs.length) { emptyModal('Invoice Revenue', 'No issued invoices for this period.'); return; }
 
   const clientMap = Object.fromEntries((state.db.clients || []).map(c => [c.id, c]));
   const byClient  = {};
@@ -1190,8 +1198,8 @@ function modalInvoiceRevenue() {
   body.appendChild(mkSectionLabel('Revenue by Client'));
   body.appendChild(mkModalTable([
     { label: 'Client', tip: 'The client billed on the invoice.' },
-    { label: 'Invoices', right: true, tip: 'Number of paid invoices for this client.' },
-    { label: 'Revenue', right: true, tip: 'Total paid invoice revenue for this client, converted to EUR.' },
+    { label: 'Invoices', right: true, tip: 'Number of issued invoices for this client.' },
+    { label: 'Revenue', right: true, tip: 'Total issued invoice revenue for this client, converted to EUR.' },
     { label: 'Share', right: true, muted: true, tip: "This client's revenue as a percentage of total invoiced revenue shown above." }
   ], clRows.map(([id, d]) => { const c = clientMap[id]; return [c?.name || c?.company || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })));
   openModal({ title: `Invoice Revenue — ${year}`, body, large: true });
@@ -1300,7 +1308,7 @@ function modalRevenueDetail() {
     let cum = 0;
     body.appendChild(mkModalTable([
       { label: 'Month', tip: 'Calendar month (YYYY-MM) the revenue was recorded in.' },
-      { label: 'Revenue', right: true, tip: 'Paid rental payments plus paid invoice revenue recorded in this month, converted to EUR.' },
+      { label: 'Revenue', right: true, tip: 'Paid rental payments plus issued invoice revenue recorded in this month, converted to EUR.' },
       { label: 'Cumulative', right: true, muted: true, tip: 'Running total of Revenue from the first month shown through this month.' }
     ], moRows.map(([mo, v]) => { cum += v; return [mo, fmtE(v), fmtE(cum)]; })));
   }

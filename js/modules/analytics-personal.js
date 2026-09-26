@@ -10,7 +10,7 @@ import {
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge,
   mkEmptyState, mkKpiCard, mkCmpGrid, mkInsightsBanner, safePct, fmtK, mkDrillValue,
-  GHS_RATE, ghsByDividend, periodDays, DAYS_PER_MONTH, DAYS_PER_YEAR, groupByMonthKey, partnerKey
+  GHS_RATE, ghsByDividend, sdcForDividend, periodDays, DAYS_PER_MONTH, DAYS_PER_YEAR, groupByMonthKey, partnerKey
 } from './analytics-helpers.js';
 import { EXPENSE_CATEGORIES } from '../core/config.js';
 
@@ -23,7 +23,8 @@ import { EXPENSE_CATEGORIES } from '../core/config.js';
 // the cap before later ones, whatever period is selected.
 let gGhsById = new Map();
 const ghsOf    = d => gGhsById.get(d.id) ?? (Number(d.grossAmount) || 0) * GHS_RATE;
-const netDivOf = d => (d.grossAmount || 0) - ghsOf(d);
+// Net also deducts SDC for a recipient marked Cyprus-domiciled (0 otherwise).
+const netDivOf = d => (d.grossAmount || 0) - ghsOf(d) - sdcForDividend(d);
 const CHART_IDS = ['pi-stream-monthly', 'pi-person-monthly'];
 const YOU_HEX   = '#6366f1';
 const RITA_HEX  = '#ec4899';
@@ -222,7 +223,7 @@ function getPersonData(person, start, end, months) {
   const divRecords  = listActive('dividends').filter(d => d.recipient === recipient && inRange(d.date));
   const grossDivs   = divRecords.reduce((s, d) => s + (d.grossAmount || 0), 0);
   const sdcAmount   = divRecords.reduce((s, d) => s + ghsOf(d), 0); // GHS (capped)
-  const netDivs     = grossDivs - sdcAmount;
+  const netDivs     = grossDivs - sdcAmount - divRecords.reduce((s, d) => s + sdcForDividend(d), 0); // − SDC (domiciled only)
 
   // Personal-channel property income
   const personalProps = listActive('properties').filter(p =>
