@@ -70,15 +70,56 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
+      # The daily run only checks commits added since the last successful run
+      # (state kept in the Actions cache, keyed on the guard script's hash so a
+      # rule change forces a full rescan). Sundays and manual runs scan the
+      # full history. Incremental runs skip file contents up front
+      # (blob:none) - only the few new versions are downloaded.
+      - name: Choose full or incremental scan
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ] || [ "$(date -u +%u)" = "7" ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "full=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          filter: ${{ steps.mode.outputs.full == 'true' && '' || 'blob:none' }}
           persist-credentials: false
+
+      - name: Restore the last scan state
+        if: steps.mode.outputs.full != 'true'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/privacy-guard-state.json
+          key: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-${{ github.run_id }}
+          restore-keys: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-
 
       # Branches without workflow files (presence, rates-feed) are never
       # checked on push, so this scan is their only check.
       - name: Fetch every branch
         run: git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
 
-      - name: Scan the full history of every branch
-        run: python3 .github/scripts/privacy-guard.py --all
+      - name: Scan every branch
+        env:
+          STATE: ${{ runner.temp }}/privacy-guard-state.json
+        run: |
+          # No saved state (cache expired/evicted) on a blob:none day means a
+          # full scan; fetch every file version in bulk first instead of
+          # lazily one at a time.
+          if [ ! -s "$STATE" ] && [ -n "$(git config --get remote.origin.partialclonefilter || true)" ]; then
+            git config --unset remote.origin.partialclonefilter
+            git fetch --refetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          fi
+          python3 .github/scripts/privacy-guard.py --all --state "$STATE"
+
+      - name: Save the scan state
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/privacy-guard-state.json
+          key: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-${{ github.run_id }}

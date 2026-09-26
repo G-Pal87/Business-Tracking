@@ -1,0 +1,50 @@
+name: Squash presence branch
+
+# The app writes "who's online" heartbeats to the `presence` branch (see
+# js/core/presence.js) - ~80+ commits a day whose history nobody needs. Once a
+# week the branch is replaced by ONE parentless commit holding its current
+# files, so its reachable history (and every clone/fetch of it) stays small.
+# The files and their blob SHAs - which the app's Contents API writes use -
+# are unchanged.
+#
+# The replace is a force-push with a lease: if the app wrote in between, the
+# push is refused and nothing is lost (next week's run tries again). An app
+# write that races the push gets a 409 and retries, which presence.js handles.
+on:
+  schedule:
+    - cron: '17 4 * * 0'   # Sundays 04:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: presence-squash
+  cancel-in-progress: false
+
+jobs:
+  squash:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Replace presence with a single commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git init -q work && cd work
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          if ! git ls-remote --exit-code origin refs/heads/presence >/dev/null; then
+            echo "No presence branch - nothing to do."; exit 0
+          fi
+          git fetch -q --depth=2 origin presence
+          tip="$(git rev-parse FETCH_HEAD)"
+          if ! git rev-parse -q --verify "${tip}^" >/dev/null; then
+            echo "presence is already a single commit - nothing to do."; exit 0
+          fi
+          tree="$(git rev-parse "${tip}^{tree}")"
+          commit="$(git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit-tree "$tree" -m "Sync")"
+          git push --force-with-lease="refs/heads/presence:${tip}" origin "${commit}:refs/heads/presence"
+          echo "presence squashed to ${commit} (was ${tip})"

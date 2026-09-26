@@ -27,12 +27,20 @@ logs of a public repository are public too.
 Usage:
   privacy-guard.py <before-sha> <after-sha> [--branch NAME]   push / PR range
   privacy-guard.py --all                     every commit of every local ref
+  privacy-guard.py --all --state FILE        only commits added since the run that
+                                             wrote FILE (full scan if it's missing)
   privacy-guard.py --tree [REV]              the tree of REV (default HEAD)
   privacy-guard.py --staged                  the index (pre-commit hook)
 
 In --all mode, findings whose blob or commit SHA is listed in
 .github/privacy-guard-known.txt are reported as acknowledged and don't fail
 the run (history can't be changed after the fact; see docs/security.md).
+
+With --state, the tip of every ref is recorded in FILE after a run that found
+no problems, and the next run skips the commits already checked under the same
+branch policy (ancestors of a recorded tip of a ref with that policy). The
+scheduled workflow keys the saved state on a hash of this script, so a change
+to the rules starts over with a full scan, and it runs a full scan weekly.
 """
 import base64
 import binascii
@@ -493,6 +501,24 @@ def all_refs():
     return out
 
 
+def load_state(path):
+    """{ref: {"sha", "policy"}} recorded by a previous --state run, or None."""
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("refs"), dict):
+        return None
+    return data["refs"]
+
+
+def commit_exists(sha):
+    return (isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{40}", sha) is not None and
+            subprocess.run(["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+                           capture_output=True).returncode == 0)
+
+
 def load_known():
     known = set()
     try:
@@ -559,12 +585,33 @@ def main():
             for path, blob in files:
                 check_blob(commit, path, blob, policy)
 
+    state_file, new_state = None, None
+    if len(args) == 3 and args[0] == "--all" and args[1] == "--state":
+        state_file = args[2]
+        args = ["--all"]
+
     if args == ["--all"]:
         known = load_known()
         refs = all_refs()
+        prev = load_state(state_file) if state_file else None
+        # Tips checked by the previous run, per policy: every commit reachable
+        # from one of them was already checked under that policy.
+        done = collections.defaultdict(set)
+        for entry in (prev or {}).values():
+            if isinstance(entry, dict) and commit_exists(entry.get("sha")):
+                done[entry.get("policy")].add(entry["sha"])
+        new_state = {}
         for name, ref in refs:
-            run_revs([ref], policy_for(name))
-        print(f"Scanned {len(refs)} ref(s).")
+            policy = policy_for(name)
+            tip = git("rev-parse", f"{ref}^{{commit}}", check=False).strip()
+            seen_tips = done.get(policy.__name__, set())
+            if not (tip and tip in seen_tips):
+                exclude = sorted(seen_tips)
+                run_revs([ref, "--not", *exclude] if exclude else [ref], policy)
+            if tip:
+                new_state[ref] = {"sha": tip, "policy": policy.__name__}
+        mode = "incremental" if prev is not None else "full"
+        print(f"Scanned {len(refs)} ref(s) ({mode}).")
     elif args[:1] == ["--tree"] and len(args) <= 2:
         rev = args[1] if len(args) == 2 else "HEAD"
         policy = policy_for(branch)
@@ -601,6 +648,9 @@ def main():
         print("\nIf this is already pushed: remove it from the history (git filter-repo) before"
               " anything else is pushed; see docs/security.md and CLAUDE.md.")
         sys.exit(1)
+    if state_file and new_state is not None:
+        with open(state_file, "w") as f:
+            json.dump({"refs": new_state}, f)
     print("OK - nothing unencrypted or secret found.")
 
 
