@@ -1,0 +1,77 @@
+name: Deploy app to GitHub Pages
+
+# Publishes ONLY the app's code (index.html, js/, css/, assets/ and the public
+# data/github-config.json) to GitHub Pages. The app's data saves (data/db.json),
+# backups and attachments don't trigger a deploy, and aren't published on the
+# Pages site at all — the app reads them through the GitHub API.
+#
+# Before this workflow, Pages deployed from the branch: every app save rebuilt
+# the whole site with Jekyll (30+ builds an hour at busy times, over the 10/hour
+# soft limit, delaying real code deploys).
+#
+# ONE-TIME SETUP: Settings → Pages → Build and deployment → Source: "GitHub
+# Actions". Until then this workflow's deploy step fails harmlessly and the site
+# keeps deploying from the branch as before.
+#
+# js/version.json is stamped with the commit SHA here, so browsers cache the
+# app's modules until the next deploy (js/bootstrap.js reads it; the committed
+# value "dev" makes the app fall back to a per-load version).
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'data/db.json'
+      - 'backups/**'
+      - 'invoices/**'
+      - 'debug/**'
+      - 'docs/**'
+      - 'scripts/**'
+      - '**.md'
+      - '.github/privacy-guard-known.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            index.html
+            js
+            css
+            assets
+            data/github-config.json
+          sparse-checkout-cone-mode: false
+
+      - name: Assemble the site (code only)
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p _site/data
+          cp -R index.html js css assets _site/
+          cp data/github-config.json _site/data/
+          printf '{"v":"%s"}\n' "${SHA:0:12}" > _site/js/version.json
+          touch _site/.nojekyll
+          du -sh _site
+
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
