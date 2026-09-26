@@ -17,7 +17,7 @@ export default {
   id: 'payments',
   label: 'Property Payments',
   icon: '💳',
-  render(container) { const { element, update } = build(); _payUpdateFn = update; container.appendChild(element); },
+  render(container) { fixMisTypedLongTermPayments(); const { element, update } = build(); _payUpdateFn = update; container.appendChild(element); },
   refresh() {
     if (_payUpdateFn) { _payUpdateFn(); return; }
     const c = document.getElementById('content');
@@ -611,16 +611,14 @@ function buildAllPayments(wrap) {
 export function recordRentPaymentsBulk(prop, entries) {
   const created = [];
   const skipped = [];
-  const paidMonths = new Set(
-    listActivePayments()
-      // Lease-termination deposit/fee payments (tenants.js) aren't rent.
-      .filter(p => p.propertyId === prop.id && p.status === 'paid' && (p.stream === 'long_term_rental' || p.type === 'rental') &&
-        p.type !== 'deposit_withheld' && p.type !== 'termination_fee')
-      .map(p => (p.date || '').slice(0, 7))
-  );
+  // "Already paid" per the CURRENT schedule (same rent-month and tenant
+  // matching the schedule itself uses), keyed month|tenant so a hand-over
+  // month's second part-month can still be recorded.
+  const key = e => `${e.monthKey}|${e.tenantId || ''}`;
+  const paidKeys = new Set(generatePaymentSchedule(prop).filter(e => e.paid).map(key));
   runBatch(() => {
     for (const entry of entries) {
-      if (paidMonths.has(entry.monthKey)) { skipped.push(entry); continue; }
+      if (paidKeys.has(key(entry))) { skipped.push(entry); continue; }
       const pay = {
         id: newId('pay'),
         propertyId: prop.id,
@@ -632,11 +630,12 @@ export function recordRentPaymentsBulk(prop, entries) {
         status: 'paid',
         source: 'manual',
         stream: 'long_term_rental',
+        rentMonth: entry.monthKey, // the month it settles, whatever date it's paid on
         notes: `Rent ${entry.monthKey}`
       };
       upsert('payments', pay);
       created.push(pay);
-      paidMonths.add(entry.monthKey);
+      paidKeys.add(key(entry));
     }
   });
   return { created, skipped };
@@ -1021,7 +1020,8 @@ function buildScheduleSection(wrap) {
               id: newId('pay'), propertyId: prop.id, tenantId: s.tenantId || null,
               stream: 'long_term_rental', source: 'manual', type: 'rental'
             };
-            Object.assign(pay, { amount: newAmt, currency: newCur, date: newDate, status: newStat, notes: newNotes });
+            // rentMonth pins it to this schedule row's month even if the date moves.
+            Object.assign(pay, { amount: newAmt, currency: newCur, date: newDate, status: newStat, notes: newNotes, rentMonth: s.monthKey });
             upsert('payments', pay);
             toast(`Payment ${linked ? 'updated' : 'recorded'} as ${newStat}`, 'success');
           }
@@ -1303,6 +1303,35 @@ function buildUpcomingSection(wrap) {
   return render;
 }
 
+// type/stream a NEW manual payment gets from its property: rent on a
+// long-term property, an off-platform stay on a short-term one. Every new
+// record used to get the STR defaults, so rent entered here never settled
+// the rent schedule and was counted as short-term revenue.
+function manualPaymentKind(prop) {
+  return prop?.type === 'long_term'
+    ? { type: 'rental', stream: 'long_term_rental' }
+    : { type: 'off_platform_reservation', stream: 'short_term_rental' };
+}
+
+// One-time, idempotent fix-up for records saved by that bug: only the
+// unambiguous case — a MANUAL payment still carrying the STR form defaults
+// (type off_platform_reservation + stream short_term_rental) on a property
+// that is long-term. Imported (Airbnb) records and anything with another
+// type/stream are left alone.
+let _ltTypeFixDone = false;
+export function fixMisTypedLongTermPayments() {
+  if (_ltTypeFixDone || !listActive('properties').length) return 0; // wait until data has loaded
+  _ltTypeFixDone = true;
+  const bad = listActivePayments().filter(p =>
+    p.source === 'manual' && p.type === 'off_platform_reservation' && p.stream === 'short_term_rental' &&
+    byId('properties', p.propertyId)?.type === 'long_term'
+  );
+  if (!bad.length) return 0;
+  runBatch(() => { for (const p of bad) upsert('payments', { ...p, type: 'rental', stream: 'long_term_rental' }); });
+  console.info(`[BT] Re-tagged ${bad.length} manual payment(s) on long-term properties as rent`);
+  return bad.length;
+}
+
 // `defaults` prefills a NEW record (ignored when editing `existing`) — used
 // by callers like the STR gap-resolution flow to open this straight from a
 // specific property/date range instead of a blank form. `onSaved(record)`
@@ -1352,9 +1381,23 @@ export function openPaymentForm(existing, { defaults = {}, onSaved } = {}) {
   body.appendChild(formRow('Guest Name', guestNameI));
   body.appendChild(formRow('Notes', notesT));
 
+  // Rent month — which month's rent a long-term payment settles (September
+  // rent paid on 2 October is still September's). Shown for long-term
+  // properties only; defaults to the payment date's month.
+  const rentMonthI = input({ type: 'month', value: r.rentMonth || (r.date || '').slice(0, 7) });
+  rentMonthI.dataset.touched = r.rentMonth ? '1' : '';
+  rentMonthI.addEventListener('input', () => { rentMonthI.dataset.touched = '1'; });
+  dateI.addEventListener('change', () => { if (!rentMonthI.dataset.touched) rentMonthI.value = (dateI.value || '').slice(0, 7); });
+  const rentMonthRow = formRow('Rent for month', rentMonthI);
+  body.insertBefore(rentMonthRow, personalRow);
+  const isLtProp = () => byId('properties', propS.value)?.type === 'long_term';
+  const syncRentMonthRow = () => { rentMonthRow.style.display = isLtProp() ? '' : 'none'; };
+  syncRentMonthRow();
+
   propS.onchange = () => {
     const p = byId('properties', propS.value);
     if (p) { currencyS.value = p.currency; }
+    syncRentMonthRow();
   };
 
   const save = button('Save', { variant: 'primary', onClick: async () => {
@@ -1374,11 +1417,17 @@ export function openPaymentForm(existing, { defaults = {}, onSaved } = {}) {
         if (!ok) return;
       }
     }
-    // type/stream are NOT form fields: a new record gets the off-platform STR
-    // defaults (set in `r` above), an edited one keeps its own. Forcing them
-    // on every save turned an edited long-term rent payment into an STR
-    // reservation (reopening that rent month as unpaid) and stripped Airbnb
-    // records of type 'rental'.
+    // type/stream are NOT form fields: a new record takes them from the
+    // selected property's type (manualPaymentKind — rent on a long-term
+    // property, an off-platform stay otherwise) unless the caller passed its
+    // own; an edited one keeps its own. Forcing them on every save turned an
+    // edited long-term rent payment into an STR reservation (reopening that
+    // rent month as unpaid) and stripped Airbnb records of type 'rental'.
+    if (!existing) {
+      const kind = manualPaymentKind(byId('properties', propS.value));
+      if (!('type' in defaults)) r.type = kind.type;
+      if (!('stream' in defaults)) r.stream = kind.stream;
+    }
     const stayDates = usesAirbnbDates
       // Never blank out imported stay dates (the form may show them empty).
       ? { ...(checkInI.value ? { airbnbCheckIn: checkInI.value } : {}), ...(checkOutI.value ? { airbnbCheckOut: checkOutI.value } : {}) }
@@ -1394,6 +1443,14 @@ export function openPaymentForm(existing, { defaults = {}, onSaved } = {}) {
     // Legacy records missing these get the same defaults a save used to force.
     if (!r.type) r.type = 'off_platform_reservation';
     if (!r.stream) r.stream = 'short_term_rental';
+    // Rent month only on long-term rent; dropped when it just repeats the
+    // payment date's month (rentMonthOf falls back to that anyway).
+    if (isLtProp() && r.type !== 'deposit_withheld' && r.type !== 'termination_fee' &&
+        /^\d{4}-\d{2}$/.test(rentMonthI.value) && rentMonthI.value !== (r.date || '').slice(0, 7)) {
+      r.rentMonth = rentMonthI.value;
+    } else {
+      delete r.rentMonth;
+    }
     upsert('payments', r);
     // Reservation expense rules (cleaning etc.) only for genuine STR stays —
     // an Airbnb adjustment/resolution row, or any long-term payment, isn't one.

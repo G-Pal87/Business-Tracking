@@ -2,7 +2,7 @@
 import { state, markDirty } from '../core/state.js';
 import { el, select, input, button, formRow, toast, fmtDate, openModal, closeModal, confirmDialog, drillDownModal, attachSortFilter } from '../core/ui.js';
 import * as charts from '../core/charts.js';
-import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, getForecastEntries, upsertForecastEntry, removeForecastEntry, sumForecastEntries, listActive, listActivePayments, generatePaymentSchedule, isCapEx } from '../core/data.js';
+import { formatEUR, toEUR, byId, newId, availableYears, getOrCreateForecast, saveForecastMonth, saveForecastYear, getForecastVsActual, getForecastEntries, upsertForecastEntry, removeForecastEntry, sumForecastEntries, listActive, listActivePayments, generatePaymentSchedule, isCapEx, forecastActualMonthKey } from '../core/data.js';
 import { STREAMS, EXPENSE_CATEGORIES } from '../core/config.js';
 import { backfillAirbnbForecastEntries } from './payments.js';
 // mkExplainButton is the same "ⓘ how is this calculated" affordance used by
@@ -909,8 +909,10 @@ function getActualRevRows(entityId, type, monthKey) {
       eur:    toEUR(i.subtotal ?? i.total, i.currency, i.issueDate)
     })).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   }
+  // Same month rule as the grid (forecastActualMonthKey — an Airbnb payout
+  // counts in its stay month).
   return listActivePayments().filter(p =>
-    p.status === 'paid' && p.date?.slice(0, 7) === monthKey && p.propertyId === entityId
+    p.status === 'paid' && forecastActualMonthKey(p) === monthKey && p.propertyId === entityId
   ).map(p => ({
     date:   p.date,
     source: byId('properties', p.propertyId)?.name || p.source || '—',
