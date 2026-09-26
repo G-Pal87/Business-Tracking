@@ -8,6 +8,8 @@ import { verifyPassword } from '../core/auth.js';
 import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, removeDevices, listSessionHistory, clearSessionHistory, DEVICE_ONLINE_MS } from '../core/presence.js';
 import { navigate } from '../core/router.js';
 import { loadLib } from '../core/libs.js';
+import { redactForDebug } from '../core/redact.js';
+import { downloadBytes } from '../core/files.js';
 import { patchSettings, upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
@@ -272,11 +274,11 @@ function buildGithubCard() {
     }, '⚠️ Disconnect Other Sessions'));
     killSection.appendChild(el('div', {
       style: 'font-size:12px;color:var(--text-muted);margin-bottom:10px'
-    }, 'If another tab, device, or user has this app open and is still saving with old data (e.g. their edits keep reverting yours), use this to stop every other session from pushing to GitHub. It does not delete anything or force anyone to reload — their local edits stay put, they just stop syncing until they refresh. This browser stays connected.'));
+    }, 'If another tab, device, or user has this app open and is still saving with old data (e.g. their edits keep reverting yours), use this to stop every other session from pushing to GitHub. It does not delete anything or force anyone to reload — their local edits stay put, they just stop syncing until they refresh. This browser stays connected. This is a convenience, not a security control: a reload reconnects, and the other device keeps its GitHub token, encryption key and cached data. To lock someone out, rotate the GitHub token and the encryption key.'));
 
     const killBtn = button('Disconnect Other Sessions', { variant: 'danger', onClick: async () => {
       const ok = await confirmDialog(
-        'This will stop every OTHER open session (other tabs, devices, or users) from saving to GitHub until they reload. Their local, unsaved edits are not deleted — they just stop syncing. Use this only if you suspect another session is actively conflicting with yours.',
+        'This will stop every OTHER open session (other tabs, devices, or users) from saving to GitHub until they reload. Their local, unsaved edits are not deleted — they just stop syncing. Use this only if you suspect another session is actively conflicting with yours. It does not revoke access: reloading reconnects.',
         { danger: true, okLabel: 'Disconnect Others' }
       );
       if (!ok) return;
@@ -286,7 +288,7 @@ function buildGithubCard() {
       killBtn.disabled = false;
       killBtn.textContent = 'Disconnect Other Sessions';
       toast(
-        sent ? 'Signal sent — other sessions will disconnect within ~30 seconds.' : 'Failed to send — check your connection and try again.',
+        sent ? 'Signal sent — other sessions will disconnect within about a minute.' : 'Failed to send — check your connection and try again.',
         sent ? 'success' : 'danger'
       );
     }});
@@ -980,8 +982,8 @@ function relativeTime(ts) {
 // device registry (js/core/presence.js), whether it currently has the
 // encryption key, and lets an admin disconnect one remotely. See
 // killDevice() for what "disconnect" actually means on static hosting — it
-// stops that session from syncing within ~30s, it does not force a reload
-// or touch its local data.
+// stops that session from syncing within about a minute until it reloads; it
+// does not force a reload, touch its local data, or revoke its token or key.
 const HISTORY_EVENT_LABELS = {
   login: 'Logged in', logout: 'Logged out', disconnected: 'Disconnected remotely',
   failed_login: 'Failed login attempt'
@@ -1002,7 +1004,7 @@ function buildDevicesCard() {
   const header = el('div', { class: 'card-header card-header--toggle' },
     el('div', {},
       el('div', { class: 'card-title' }, 'Active Devices & Login History'),
-      el('div', { class: 'card-subtitle' }, 'Sessions that have connected recently, encryption key status, and a log of logins/logouts')
+      el('div', { class: 'card-subtitle' }, 'Sessions that have connected recently (only devices with the encryption key unlocked report in), and a log of logins/logouts. Kill/Disconnect only stop a running tab from syncing; they are not a security control.')
     ),
     el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
   );
@@ -1012,7 +1014,7 @@ function buildDevicesCard() {
   card.appendChild(body);
   wireCollapsible('devices', header, body, chevron);
 
-  const ONLINE_MS = DEVICE_ONLINE_MS; // see presence.js — device rows refresh every ~2.5 min
+  const ONLINE_MS = DEVICE_ONLINE_MS; // see presence.js — device rows refresh every ~4 min
 
   const renderDevicesTable = (container, devices) => {
     const entries = Object.entries(devices).sort((a, b) => (b[1].lastSeen || 0) - (a[1].lastSeen || 0));
@@ -1113,13 +1115,13 @@ function buildDevicesCard() {
       if (!isSelf && online) {
         actions.appendChild(button('Kill Session', { variant: 'sm ghost', onClick: async () => {
           const ok = await confirmDialog(
-            `Disconnect ${d.name || d.username || 'this device'}? It stops syncing to GitHub within ~30 seconds — nothing is deleted, and it isn't forced to reload.`,
+            `Disconnect ${d.name || d.username || 'this device'}? It stops syncing to GitHub within about a minute — nothing is deleted, and it isn't forced to reload. This is a convenience, not a security control: reloading reconnects it, and it keeps its GitHub token and encryption key. To lock a lost device out, rotate the GitHub token and the encryption key.`,
             { danger: true, okLabel: 'Disconnect' }
           );
           if (!ok) return;
           const sent = await killDevice(sessionId);
           toast(
-            sent ? 'Signal sent — that device disconnects within ~30 seconds.' : 'Failed to send — check your connection and try again.',
+            sent ? 'Signal sent — that device disconnects within about a minute.' : 'Failed to send — check your connection and try again.',
             sent ? 'success' : 'danger'
           );
         }}));
@@ -1166,7 +1168,7 @@ function buildDevicesCard() {
       const badgeClass = ev.type === 'login' ? 'success'
         : (ev.type === 'disconnected' || ev.type === 'failed_login') ? 'danger' : '';
       tr.appendChild(el('td', {}, el('span', { class: `badge ${badgeClass}` }, HISTORY_EVENT_LABELS[ev.type] || ev.type)));
-      tr.appendChild(el('td', {}, ev.name || ev.username || 'Unknown'));
+      tr.appendChild(el('td', {}, ev.type === 'failed_login' ? '(not recorded)' : (ev.name || ev.username || 'Unknown')));
       tr.appendChild(el('td', { style: 'font-size:12px;color:var(--text-muted)' },
         ev.deviceType ? `${capitalizeFirst(ev.deviceType)} · ${ev.device || 'Unknown'}` : (ev.device || '—')
       ));
@@ -1966,20 +1968,20 @@ function buildTrashCard() {
         if (collection === 'invoices') {
           const inv = all.find(r => r.collection === 'invoices' && r.item.id === id)?.item;
           if (!inv?.pdfPath) continue;
-          try { await deleteGithubFile(inv.pdfPath, null, `Delete PDF for invoice ${inv.number || inv.id}`); }
+          try { await deleteGithubFile(inv.pdfPath, null, 'Delete file'); }
           catch { pdfErrors++; }
         } else if (collection === 'properties') {
           const prop = all.find(r => r.collection === 'properties' && r.item.id === id)?.item;
           for (const doc of (prop?.documents || [])) {
             if (!doc.path) continue;
-            try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+            try { await deleteGithubFile(doc.path, null, 'Delete file'); }
             catch { pdfErrors++; }
           }
         } else if (collection === 'clients') {
           const cli = all.find(r => r.collection === 'clients' && r.item.id === id)?.item;
           for (const doc of (cli?.documents || [])) {
             if (!doc.path) continue;
-            try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+            try { await deleteGithubFile(doc.path, null, 'Delete file'); }
             catch { pdfErrors++; }
           }
         }
@@ -2001,12 +2003,12 @@ function buildTrashCard() {
       let pdfErrors = 0;
       for (const { collection, item } of all) {
         if (collection === 'invoices' && item.pdfPath) {
-          try { await deleteGithubFile(item.pdfPath, null, `Delete PDF for invoice ${item.number || item.id}`); }
+          try { await deleteGithubFile(item.pdfPath, null, 'Delete file'); }
           catch { pdfErrors++; }
         } else if (collection === 'properties' || collection === 'clients') {
           for (const doc of (item.documents || [])) {
             if (!doc.path) continue;
-            try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+            try { await deleteGithubFile(doc.path, null, 'Delete file'); }
             catch { pdfErrors++; }
           }
         }
@@ -2089,7 +2091,7 @@ function buildTrashCard() {
           if (!ok) return;
           if (collection === 'invoices' && item.pdfPath) {
             try {
-              await deleteGithubFile(item.pdfPath, null, `Delete PDF for invoice ${item.number || item.id}`);
+              await deleteGithubFile(item.pdfPath, null, 'Delete file');
             } catch (e) {
               const proceed = await confirmDialog(
                 `PDF cleanup failed: ${e.message}\nDelete invoice record anyway?`,
@@ -2104,13 +2106,13 @@ function buildTrashCard() {
           } else if (collection === 'properties') {
             for (const doc of (item.documents || [])) {
               if (!doc.path) continue;
-              try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+              try { await deleteGithubFile(doc.path, null, 'Delete file'); }
               catch { /* best-effort */ }
             }
           } else if (collection === 'clients') {
             for (const doc of (item.documents || [])) {
               if (!doc.path) continue;
-              try { await deleteGithubFile(doc.path, null, `Delete document: ${doc.name}`); }
+              try { await deleteGithubFile(doc.path, null, 'Delete file'); }
               catch { /* best-effort */ }
             }
           }
@@ -2173,7 +2175,7 @@ function fillInvoiceRepoBody(body) {
     try {
       repoFiles = await listGithubFolder('invoices');
     } catch (err) {
-      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not read repository: ${err.message}</div>`;
+      resultEl.replaceChildren(el('div', { style: 'color:var(--danger,#dc3545)' }, `Could not read repository: ${err.message}`));
       checkBtn.disabled = false;
       checkBtn.textContent = 'Check Invoice Repository';
       return;
@@ -2204,7 +2206,7 @@ function fillInvoiceRepoBody(body) {
       if (!byDecryptedName.has(plain.toLowerCase())) byDecryptedName.set(plain.toLowerCase(), f);
     }
     if (decryptError) {
-      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not decrypt filenames: ${decryptError.message}</div>`;
+      resultEl.replaceChildren(el('div', { style: 'color:var(--danger,#dc3545)' }, `Could not decrypt filenames: ${decryptError.message}`));
       return;
     }
 
@@ -2492,8 +2494,8 @@ function fillInvoiceRepoBody(body) {
       return async () => {
         const fileData = await fetchGithubFile(d.wrongPath);
         const b64      = fileData.content.replace(/\s/g, '');
-        await uploadGithubFile(d.expPath, b64, `Rename PDF: ${d.inv.number || d.inv.id}`);
-        await deleteGithubFile(d.wrongPath, d.wrongSha || fileData.sha, `Remove old path for invoice ${d.inv.number || d.inv.id}`);
+        await uploadGithubFile(d.expPath, b64, 'Update file');
+        await deleteGithubFile(d.wrongPath, d.wrongSha || fileData.sha, 'Delete file');
         upsert('invoices', { ...d.inv, pdfPath: d.expPath });
         markDirty();
       };
@@ -2504,7 +2506,7 @@ function fillInvoiceRepoBody(body) {
       return async () => {
         const b64 = (await generateInvoicePDF(d.inv)).output('datauristring').split(',')[1];
         if (!b64) throw new Error('PDF generation produced empty content');
-        await uploadGithubFileEncrypted(d.expPath, b64, `Regenerate PDF for invoice ${d.inv.number || d.inv.id}`);
+        await uploadGithubFileEncrypted(d.expPath, b64, 'Update file');
         upsert('invoices', { ...d.inv, pdfPath: d.expPath });
         markDirty();
       };
@@ -2528,7 +2530,7 @@ function fillInvoiceRepoBody(body) {
           { danger: true, okLabel: 'Delete File' }
         );
         if (!ok) throw new Error('cancelled');
-        await deleteGithubFile(d.file.path, d.file.sha, `Delete orphan: ${d.file.name}`);
+        await deleteGithubFile(d.file.path, d.file.sha, 'Delete file');
       };
     }
 
@@ -2540,7 +2542,7 @@ function fillInvoiceRepoBody(body) {
           { danger: true, okLabel: 'Delete File' }
         );
         if (!ok) throw new Error('cancelled');
-        await deleteGithubFile(d.file.path, d.file.sha, `Delete PDF for deleted invoice ${d.inv.number || d.inv.id}`);
+        await deleteGithubFile(d.file.path, d.file.sha, 'Delete file');
       };
     }
 
@@ -2589,7 +2591,7 @@ function fillInvoiceRepoBody(body) {
       try {
         const fileData = await fetchGithubFile(file.path);
         const b64 = fileData.content.replace(/\s/g, '');
-        await uploadGithubFile(`invoices/backup/${file.name}`, b64, `Backup: ${file.name}`);
+        await uploadGithubFile(`invoices/backup/${file.name}`, b64, 'Update file');
         done++;
       } catch (err) {
         console.warn(`[backup] Failed for ${file.name}:`, err.message);
@@ -2655,7 +2657,7 @@ function fillInvoiceRepoBody(body) {
     for (const file of files) {
       deleteStatusEl.textContent = `Deleting ${done + failed + 1} / ${files.length}: ${file.name}…`;
       try {
-        await deleteGithubFile(file.path, file.sha, `Delete invoice backup: ${file.name}`);
+        await deleteGithubFile(file.path, file.sha, 'Delete file');
         done++;
       } catch (err) {
         console.warn(`[delete-invoice-backup] Failed for ${file.name}:`, err.message);
@@ -2802,11 +2804,11 @@ async function runReencryptAndRenameInvoices(statusEl, btn) {
       const alreadyEncrypted = (await decryptFilename(base)) !== null;
       const fileData = await fetchGithubFileEncrypted(inv.pdfPath);
       if (alreadyEncrypted) {
-        await uploadGithubFileEncrypted(inv.pdfPath, fileData.content, `Re-encrypt: ${inv.number || inv.id}`);
+        await uploadGithubFileEncrypted(inv.pdfPath, fileData.content, 'Update file');
       } else {
         const newPath = await invoicePdfPath(inv);
-        await uploadGithubFileEncrypted(newPath, fileData.content, `Re-encrypt + rename: ${inv.number || inv.id}`);
-        await deleteGithubFile(inv.pdfPath, fileData.sha, `Remove old plain-named path for invoice ${inv.number || inv.id}`);
+        await uploadGithubFileEncrypted(newPath, fileData.content, 'Update file');
+        await deleteGithubFile(inv.pdfPath, fileData.sha, 'Delete file');
         upsert('invoices', { ...inv, pdfPath: newPath });
         renamed++;
       }
@@ -2877,10 +2879,10 @@ async function runReencryptAndRenameDocs(rootFolder, collection, entityLabel, st
       const correctPath = `${rootFolder}/${entity.id}/${doc.id}${ext}`;
       const fileData = await fetchGithubFileEncrypted(doc.path);
       if (doc.path === correctPath) {
-        await uploadGithubFileEncrypted(doc.path, fileData.content, `Re-encrypt: ${doc.name}`);
+        await uploadGithubFileEncrypted(doc.path, fileData.content, 'Update file');
       } else {
-        await uploadGithubFileEncrypted(correctPath, fileData.content, `Re-encrypt + rename: ${doc.name}`);
-        await deleteGithubFile(doc.path, fileData.sha, `Remove old path for ${doc.name}`);
+        await uploadGithubFileEncrypted(correctPath, fileData.content, 'Update file');
+        await deleteGithubFile(doc.path, fileData.sha, 'Delete file');
         const updatedDocs = entity.documents.map(d => d.id === doc.id ? { ...d, path: correctPath } : d);
         upsert(collection, { ...entity, documents: updatedDocs });
         renamed++;
@@ -2954,7 +2956,7 @@ async function runReencryptFiles(listFn, statusEl, btn, label) {
     btn.textContent = `Re-encrypting ${done + failed + 1} / ${files.length}…`;
     try {
       const fileData = await fetchGithubFileEncrypted(file.path);
-      await uploadGithubFileEncrypted(file.path, fileData.content, `Re-encrypt: ${file.name}`);
+      await uploadGithubFileEncrypted(file.path, fileData.content, 'Update file');
       done++;
     } catch (err) {
       console.warn(`[re-encrypt] Failed for ${file.name}:`, err.message);
@@ -3093,7 +3095,7 @@ function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLa
     try {
       repoFiles = await listDocRepoFiles(rootFolder);
     } catch (err) {
-      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not read repository: ${err.message}</div>`;
+      resultEl.replaceChildren(el('div', { style: 'color:var(--danger,#dc3545)' }, `Could not read repository: ${err.message}`));
       checkBtn.disabled = false;
       checkBtn.textContent = checkBtnLabel;
       return;
@@ -3296,7 +3298,7 @@ function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLa
           { danger: true, okLabel: 'Delete File' }
         );
         if (!ok) throw new Error('cancelled');
-        await deleteGithubFile(d.file.path, d.file.sha, `Delete orphan: ${d.file.name}`);
+        await deleteGithubFile(d.file.path, d.file.sha, 'Delete file');
       };
     }
     return null;
@@ -3343,7 +3345,7 @@ function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLa
         const b64      = fileData.content.replace(/\s/g, '');
         // Preserve sub-folder: {Root}/{name}/file → {Root}/backup/{name}/file
         const relative = file.path.replace(new RegExp(`^${rootFolder}/`), '');
-        await uploadGithubFile(`${rootFolder}/backup/${relative}`, b64, `Backup: ${file.name}`);
+        await uploadGithubFile(`${rootFolder}/backup/${relative}`, b64, 'Update file');
         done++;
       } catch (err) {
         console.warn(`[backup] Failed for ${file.name}:`, err.message);
@@ -3409,7 +3411,7 @@ function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLa
     for (const file of files) {
       deleteStatusEl.textContent = `Deleting ${done + failed + 1} / ${files.length}: ${file.name}…`;
       try {
-        await deleteGithubFile(file.path, file.sha, `Delete ${rootFolder.toLowerCase()} backup: ${file.name}`);
+        await deleteGithubFile(file.path, file.sha, 'Delete file');
         done++;
       } catch (err) {
         console.warn(`[delete-backup] Failed for ${file.name}:`, err.message);
@@ -3480,7 +3482,7 @@ function fillExpenseReceiptRepoBody(body) {
     try {
       repoFiles = await listGithubFolder('expenses/receipts');
     } catch (err) {
-      resultEl.innerHTML = `<div style="color:var(--danger,#dc3545)">Could not read repository: ${err.message}</div>`;
+      resultEl.replaceChildren(el('div', { style: 'color:var(--danger,#dc3545)' }, `Could not read repository: ${err.message}`));
       checkBtn.disabled = false;
       checkBtn.textContent = 'Check Expense Receipts';
       return;
@@ -3652,7 +3654,7 @@ function fillExpenseReceiptRepoBody(body) {
       return async () => {
         const ext = (d.receipt.name || 'file').split('.').pop().toLowerCase();
         const repoPath = `expenses/receipts/${d.exp.id}.${ext}`;
-        await uploadGithubFileEncrypted(repoPath, d.receipt.data, `Upload receipt for expense ${d.exp.id}`);
+        await uploadGithubFileEncrypted(repoPath, d.receipt.data, 'Update file');
         upsert('expenses', { ...d.exp, receipt: { name: d.receipt.name, type: d.receipt.type, path: repoPath } });
         markDirty();
       };
@@ -3672,7 +3674,7 @@ function fillExpenseReceiptRepoBody(body) {
           { danger: true, okLabel: 'Delete File' }
         );
         if (!ok) throw new Error('cancelled');
-        await deleteGithubFile(d.file.path, d.file.sha, `Delete orphan receipt: ${d.file.name}`);
+        await deleteGithubFile(d.file.path, d.file.sha, 'Delete file');
       };
     }
     return null;
@@ -3729,12 +3731,13 @@ function buildRepositoryMaintenanceCard() {
 }
 
 // ── Debug Data Export ────────────────────────────────────────────────────────
-// Lets an admin push an on-demand decrypted snapshot to debug/ for a
-// developer/AI assistant to read directly from the repo, without ever
-// handing over the real data key. Encrypted under its own separate key (see
-// crypto.js's WRAPPED_DEBUG_KEY_LS_KEY) that only ever protects this folder —
-// regenerating it cuts off access to future exports without touching the key
-// that protects db.json, documents, or invoices.
+// Lets an admin download an on-demand snapshot for a developer/AI assistant,
+// without ever handing over the real data key. Credentials and personal data
+// are stripped first (core/redact.js), and the file is encrypted under its
+// own separate debug key (see crypto.js's WRAPPED_DEBUG_KEY_LS_KEY). It is a
+// local download: snapshots used to be committed to debug/ in the public
+// repo, where every old one stays readable from history by anyone who ever
+// held a debug key. Clean Up still removes those older files.
 function buildDebugExportCard() {
   const configured = hasDebugKeyConfigured();
   const unlocked   = isDebugKeyUnlocked();
@@ -3749,7 +3752,7 @@ function buildDebugExportCard() {
   const header = el('div', { class: 'card-header card-header--toggle' },
     el('div', {},
       el('div', { class: 'card-title' }, 'Debug Data Export'),
-      el('div', { class: 'card-subtitle' }, 'Push an on-demand decrypted snapshot to debug/ for troubleshooting — encrypted under its own key, separate from your real data')
+      el('div', { class: 'card-subtitle' }, 'Download a snapshot for troubleshooting, with passwords and personal data removed and encrypted under its own key')
     ),
     el('div', { style: 'display:flex;align-items:center;gap:8px' }, statusBadge, chevron)
   );
@@ -3760,12 +3763,12 @@ function buildDebugExportCard() {
   wireCollapsible('debugExport', header, body, chevron);
 
   body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:12px' },
-    'This key only decrypts files in the debug/ folder — it has no access to db.json, documents, or invoices. Generate it once and hand it to whoever is troubleshooting. Regenerating it stops them from reading any NEW export; use Clean Up below to also remove what is already there.'));
+    'A snapshot is a copy of the database with passwords, tokens, names, contact and bank details, notes, descriptions and embedded files removed. Amounts, dates, ids, property names and the structure remain. It is encrypted under the debug key and downloaded to this computer; nothing is uploaded to the repository. The debug key cannot decrypt db.json, documents or invoices, but it decrypts every snapshot made with it, and regenerating it does not revoke snapshots someone already has. Older app versions uploaded snapshots to debug/ in the repository: Clean Up removes those from the current files, though they stay in the repository history.'));
 
   const showKeyModal = (base64) => {
     const body2 = el('div');
     body2.appendChild(el('div', { style: 'font-size:13px;margin-bottom:10px' },
-      'Share this with whoever needs debug access — it only decrypts files in the debug/ folder.'));
+      'Share this with whoever needs debug access. It decrypts debug snapshots only, not db.json, documents or invoices.'));
     const keyOut = input({ value: base64, readonly: true, style: 'width:100%;font-family:monospace;font-size:12px' });
     body2.appendChild(keyOut);
     openModal({
@@ -3780,7 +3783,7 @@ function buildDebugExportCard() {
     onClick: async () => {
       if (configured) {
         const ok = await confirmDialog(
-          'Regenerating replaces the debug key. Anyone holding the old key can still read exports already sitting in debug/, but not any new ones — run Clean Up too if you want those gone. Continue?',
+          'Regenerating replaces the debug key. Anyone holding the old key can still read any snapshot made with it (including old ones in the repository history), but not new ones. Continue?',
           { danger: true, okLabel: 'Regenerate' }
         );
         if (!ok) return;
@@ -3812,7 +3815,7 @@ function buildDebugExportCard() {
   const exportStatusEl  = el('div', { style: 'font-size:12px;margin-top:8px' });
   const cleanupStatusEl = el('div', { style: 'font-size:12px;margin-top:8px' });
 
-  const exportBtn = button('Export Debug Snapshot', { variant: 'primary', onClick: () => runExportDebugSnapshot(exportBtn, exportStatusEl) });
+  const exportBtn = button('Download Debug Snapshot', { variant: 'primary', onClick: () => runExportDebugSnapshot(exportBtn, exportStatusEl) });
   const cleanupBtn = button('Clean Up Debug Folder', { variant: 'danger', onClick: () => runCleanupDebugFolder(cleanupBtn, cleanupStatusEl) });
 
   body.appendChild(el('div', { class: 'flex gap-8' }, exportBtn, cleanupBtn));
@@ -3827,44 +3830,24 @@ async function runExportDebugSnapshot(btn, statusEl) {
     toast('Generate (or unlock) the debug key first', 'warning');
     return;
   }
-  const { owner, repo, token } = state.github;
-  if (!owner || !repo || !token) {
-    statusEl.textContent = 'GitHub not configured — cannot export.';
-    statusEl.style.color = 'var(--danger,#dc3545)';
-    return;
-  }
   btn.disabled = true;
-  btn.textContent = 'Exporting…';
+  btn.textContent = 'Preparing…';
   statusEl.style.color = 'var(--text-muted)';
-  statusEl.textContent = 'Clearing old snapshot(s)…';
+  statusEl.textContent = 'Removing personal data and encrypting…';
   try {
-    // Keep debug/ down to at most one file — a stale snapshot from an
-    // earlier round left sitting alongside a fresh one is exactly the
-    // ambiguity this folder should never have: which one is current becomes
-    // a guess. Clearing first means "the file in debug/" is always
-    // unambiguous.
-    const stale = await listGithubFolder('debug');
-    for (const f of stale) {
-      try { await deleteGithubFile(f.path, f.sha, `Debug cleanup before new export: ${f.name}`); }
-      catch { /* best-effort — an unremovable stale file shouldn't block this export */ }
-    }
-    statusEl.textContent = 'Encrypting and uploading snapshot…';
-    const data = structuredClone(state.db);
-    if (data.appConfig?.github?.token) delete data.appConfig.github.token;
-    const envelope = await encryptJsonWithDebugKey({ exportedAt: new Date().toISOString(), data });
-    const json = JSON.stringify(envelope);
-    const b64  = btoa(unescape(encodeURIComponent(json)));
+    const data = redactForDebug(state.db);
+    const envelope = await encryptJsonWithDebugKey({ exportedAt: new Date().toISOString(), redacted: true, data });
     const ts   = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-    const filename = `snapshot-${ts}.json`;
-    await uploadGithubFile(`debug/${filename}`, b64, `Debug export: ${filename}`);
-    statusEl.textContent = `Exported debug/${filename}`;
+    const filename = `debug-snapshot-${ts}.json`;
+    downloadBytes(new TextEncoder().encode(JSON.stringify(envelope)), filename);
+    statusEl.textContent = `Downloaded ${filename} (encrypted with the debug key).`;
     statusEl.style.color = 'var(--success,#198754)';
   } catch (e) {
     statusEl.textContent = 'Export failed: ' + e.message;
     statusEl.style.color = 'var(--danger,#dc3545)';
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Export Debug Snapshot';
+    btn.textContent = 'Download Debug Snapshot';
   }
 }
 
@@ -3906,7 +3889,7 @@ async function runCleanupDebugFolder(btn, statusEl) {
   statusEl.textContent = `Deleting ${files.length} file(s)…`;
   let failed = 0;
   for (const f of files) {
-    try { await deleteGithubFile(f.path, f.sha, `Debug cleanup: ${f.name}`); }
+    try { await deleteGithubFile(f.path, f.sha, 'Delete file'); }
     catch { failed++; }
   }
   btn.disabled = false;
@@ -4190,7 +4173,7 @@ function buildDangerCard() {
     const jsons = files.filter(f => f.name.endsWith('.json')).sort((a, b) => a.name.localeCompare(b.name));
     const excess = jsons.length - MAX_BACKUPS;
     for (let i = 0; i < excess; i++) {
-      try { await deleteGithubFile(jsons[i].path, jsons[i].sha, `Auto-trim: ${jsons[i].name}`); }
+      try { await deleteGithubFile(jsons[i].path, jsons[i].sha, 'Delete file'); }
       catch { /* best-effort */ }
     }
   }
@@ -4227,7 +4210,7 @@ function buildDangerCard() {
       const b64  = btoa(unescape(encodeURIComponent(json)));
       const ts   = new Date().toISOString().slice(0, 16).replace(':', '-');
       const filename = `bt-backup-${ts}.json`;
-      await uploadGithubFile(`backups/${filename}`, b64, `Manual backup: ${filename}`);
+      await uploadGithubFile(`backups/${filename}`, b64, 'Update file');
       statusEl.textContent = 'Trimming old backups…';
       await trimBackups();
 

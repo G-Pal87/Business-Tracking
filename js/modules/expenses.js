@@ -7,6 +7,7 @@ import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYP
 import { navigate } from '../core/router.js';
 import { addDaysYmd, addMonthsYmd, addYearsYmd } from '../core/dates.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
+import { openFileSafely, base64ToBytes } from '../core/files.js';
 import { openAddYearForm } from './settings.js';
 
 function readFileAsBase64(file) {
@@ -22,17 +23,13 @@ async function openReceipt(receipt) {
   let b64;
   if (receipt.path) {
     const file = await fetchGithubFileEncrypted(receipt.path);
-    b64 = file.content.replace(/\s/g, '');
+    b64 = file.content;
   } else {
     b64 = receipt.data;
   }
-  const byteChars = atob(b64);
-  const bytes = new Uint8Array(byteChars.length);
-  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
-  const blob = new Blob([bytes], { type: receipt.type || 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  // The stored receipt.type is never trusted for the preview: see core/files.js.
+  const how = openFileSafely(base64ToBytes(b64), receipt.name || 'receipt');
+  if (how === 'download') toast('This file type can’t be previewed safely, so it was downloaded instead.', 'info');
 }
 
 function receiptRepoPath(expenseId, filename) {
@@ -62,7 +59,7 @@ async function migrateEmbeddedReceipts(pending) {
   for (const exp of pending) {
     try {
       const repoPath = receiptRepoPath(exp.id, exp.receipt.name);
-      await uploadGithubFileEncrypted(repoPath, exp.receipt.data, `Migrate receipt for expense ${exp.id}`);
+      await uploadGithubFileEncrypted(repoPath, exp.receipt.data, 'Update file');
       const { data, ...rest } = exp.receipt;
       upsert('expenses', { ...exp, receipt: { ...rest, path: repoPath } });
       done++;
@@ -1079,7 +1076,7 @@ function openForm(existing, defaults = {}, onSave = null) {
     const receiptShared = path => (state.db.expenses || []).some(e => e.id !== r.id && !e.deletedAt && e.receipt?.path === path);
     if (removeExistingReceipt && r.receipt?.path) {
       if (!receiptShared(r.receipt.path)) {
-        try { await deleteGithubFile(r.receipt.path, null, `Remove receipt for expense ${r.id}`); } catch { /* ignore */ }
+        try { await deleteGithubFile(r.receipt.path, null, 'Delete file'); } catch { /* ignore */ }
       }
       delete r.receipt;
     }
@@ -1090,10 +1087,10 @@ function openForm(existing, defaults = {}, onSave = null) {
       if (token && owner && repo) {
         // Delete old receipt file if replacing
         if (r.receipt?.path && r.receipt.path !== repoPath && !receiptShared(r.receipt.path)) {
-          try { await deleteGithubFile(r.receipt.path, null, `Replace receipt for expense ${r.id}`); } catch { /* ignore */ }
+          try { await deleteGithubFile(r.receipt.path, null, 'Delete file'); } catch { /* ignore */ }
         }
         try {
-          await uploadGithubFileEncrypted(repoPath, b64, `Upload receipt for expense ${r.id}`);
+          await uploadGithubFileEncrypted(repoPath, b64, 'Update file');
           r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, path: repoPath };
         } catch (err) {
           console.error('Receipt upload failed:', err);

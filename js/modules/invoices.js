@@ -127,7 +127,7 @@ async function sha256Hex(str) {
 // a restored invoice would otherwise point at a file that no longer exists.
 async function deleteInvoiceFile(inv) {
   if (inv.pdfPath) {
-    try { await deleteGithubFile(inv.pdfPath, null, `Delete PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
+    try { await deleteGithubFile(inv.pdfPath, null, 'Delete file'); } catch { /* ignore */ }
   }
 }
 
@@ -150,7 +150,7 @@ async function migrateEmbeddedPDFs(pending) {
   for (const inv of pending) {
     try {
       const pdfPath = await invoicePdfPath(inv);
-      await uploadGithubFileEncrypted(pdfPath, inv.pdfData, `Migrate PDF for invoice ${inv.number || inv.id}`);
+      await uploadGithubFileEncrypted(pdfPath, inv.pdfData, 'Update file');
       const updated = { ...inv, pdfPath };
       delete updated.pdfData;
       upsert('invoices', updated);
@@ -200,8 +200,8 @@ async function migrateInvoicePdfPaths(pending) {
     try {
       const fileData = await fetchGithubFile(inv.pdfPath);
       const b64 = fileData.content.replace(/\s/g, '');
-      await uploadGithubFile(correctPath, b64, `Rename PDF: ${inv.number || inv.id}`);
-      await deleteGithubFile(inv.pdfPath, fileData.sha, `Remove old path for invoice ${inv.number || inv.id}`);
+      await uploadGithubFile(correctPath, b64, 'Update file');
+      await deleteGithubFile(inv.pdfPath, fileData.sha, 'Delete file');
       upsert('invoices', { ...inv, pdfPath: correctPath });
       done++;
     } catch (err) {
@@ -906,7 +906,6 @@ export function openBuilder(existing, { onSaved, defaults = null } = {}) {
     let pdfUploadStatus = null;
     if (inv.source !== 'pdf_import') {
       const pdfPath = await invoicePdfPath(inv);
-      const invLabel = inv.number || inv.id;
       const origText = save.textContent;
       save.disabled = true;
       save.textContent = 'Checking PDF…';
@@ -925,10 +924,10 @@ export function openBuilder(existing, { onSaved, defaults = null } = {}) {
           pdfUploadStatus = 'unchanged';
         } else {
           save.textContent = 'Uploading PDF…';
-          await uploadGithubFileEncrypted(pdfPath, b64, `${existing ? 'Update' : 'Create'} PDF for invoice ${invLabel}`);
+          await uploadGithubFileEncrypted(pdfPath, b64, 'Update file');
           // Delete the old file if the path changed (e.g. number, client, or date was edited)
           if (existing?.pdfPath && existing.pdfPath !== pdfPath) {
-            try { await deleteGithubFile(existing.pdfPath, null, `Rename PDF for invoice ${invLabel}`); } catch { /* old file already gone */ }
+            try { await deleteGithubFile(existing.pdfPath, null, 'Delete file'); } catch { /* old file already gone */ }
           }
           inv.pdfPath = pdfPath;
           inv.pdfHash = newHash;
@@ -1148,15 +1147,15 @@ function previewInvoice(inv, clientId) {
             <td>${escape(li.description)}</td>
             <td>${escape(li.quantity)}</td>
             <td>${escape(li.unit || '')}</td>
-            <td style="text-align:right">${formatMoney(li.rate, inv.currency)}</td>
-            <td style="text-align:right">${formatMoney(li.total, inv.currency)}</td>
+            <td style="text-align:right">${escape(formatMoney(li.rate, inv.currency))}</td>
+            <td style="text-align:right">${escape(formatMoney(li.total, inv.currency))}</td>
           </tr>`).join('')}
       </tbody>
     </table>
     <div class="totals">
-      <div class="totals-row"><span>Subtotal</span><span>${formatMoney(inv.subtotal, inv.currency)}</span></div>
-      <div class="totals-row"><span>Tax (${escape(inv.taxRate || 0)}%)</span><span>${formatMoney(inv.tax || 0, inv.currency)}</span></div>
-      <div class="totals-row total"><span>Total</span><span>${formatMoney(inv.total, inv.currency)}</span></div>
+      <div class="totals-row"><span>Subtotal</span><span>${escape(formatMoney(inv.subtotal, inv.currency))}</span></div>
+      <div class="totals-row"><span>Tax (${escape(inv.taxRate || 0)}%)</span><span>${escape(formatMoney(inv.tax || 0, inv.currency))}</span></div>
+      <div class="totals-row total"><span>Total</span><span>${escape(formatMoney(inv.total, inv.currency))}</span></div>
     </div>
     ${inv.notes ? `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #eee;font-size:12px;color:#666">${escape(inv.notes)}</div>` : ''}
   `;
@@ -1196,7 +1195,7 @@ function previewInvoice(inv, clientId) {
         // Upload the new file FIRST — deleting the old one up front meant a
         // failed upload left the invoice with no PDF at all.
         const newPath = await invoicePdfPath(inv);
-        await uploadGithubFileEncrypted(newPath, b64, `Upload PDF for invoice ${inv.number || inv.id}`);
+        await uploadGithubFileEncrypted(newPath, b64, 'Update file');
         const oldPath = inv.pdfPath;
         const updated = { ...inv, pdfPath: newPath };
         delete updated.pdfData;
@@ -1204,7 +1203,7 @@ function previewInvoice(inv, clientId) {
         // Only now remove the old file, and never when the upload just
         // overwrote it in place (same path).
         if (oldPath && oldPath !== newPath) {
-          try { await deleteGithubFile(oldPath, null, `Replace PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
+          try { await deleteGithubFile(oldPath, null, 'Delete file'); } catch { /* ignore */ }
         }
         toast('PDF replaced', 'success');
         closeModal();
@@ -1226,7 +1225,7 @@ function previewInvoice(inv, clientId) {
         const ok = await confirmDialog('Remove the attached PDF from this invoice?', { danger: true, okLabel: 'Remove' });
         if (!ok) return;
         if (inv.pdfPath) {
-          try { await deleteGithubFile(inv.pdfPath, null, `Remove PDF for invoice ${inv.number || inv.id}`); } catch { /* ignore */ }
+          try { await deleteGithubFile(inv.pdfPath, null, 'Delete file'); } catch { /* ignore */ }
         }
         const updated = { ...inv };
         delete updated.pdfPath;
@@ -1496,7 +1495,7 @@ function openPDFImport() {
           reader.readAsDataURL(file);
         });
         const pdfPath = await invoicePdfPath(inv);
-        await uploadGithubFileEncrypted(pdfPath, b64, `Upload invoice PDF ${inv.number || inv.id}`);
+        await uploadGithubFileEncrypted(pdfPath, b64, 'Update file');
         inv.pdfPath = pdfPath;
       } catch (err) {
         // GitHub not configured or upload failed — warn but still save the record.

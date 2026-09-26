@@ -1,7 +1,7 @@
 // Hash-based router + module registry
 import { state, setRoute, subscribe } from './state.js';
 import * as charts from './charts.js';
-import { closeModal } from './ui.js';
+import { closeModal, hasUnsavedModalEdits, toast } from './ui.js';
 
 const modules = new Map();
 let currentModule = null;
@@ -20,13 +20,60 @@ export function init(el) {
   window.addEventListener('hashchange', onHashChange);
   subscribe(evt => {
     if (evt === 'data-loaded' && currentModule && currentModule.refresh) {
-      try { currentModule.refresh(state); } catch (e) { console.error(e); }
+      // A refresh rebuilds the view with innerHTML = '', which would wipe
+      // whatever the user is typing (the background sync fires this when
+      // another device saved). Hold it until they're done.
+      if (editingInProgress()) { schedulePendingRefresh(); return; }
+      refreshCurrent();
     }
     if (evt === 'filter-change' && currentModule && currentModule.refresh) {
-      try { currentModule.refresh(state); } catch (e) { console.error(e); }
+      refreshCurrent();
     }
   });
+  container.addEventListener('focusout', () => { if (pendingRefresh) schedulePendingRefresh(); });
+  document.addEventListener('bt:modal-closed', () => { if (pendingRefresh) schedulePendingRefresh(); });
+  document.addEventListener('pointerdown', () => { pointerDown = true; }, true);
+  const pointerUp = () => { pointerDown = false; if (pendingRefresh) schedulePendingRefresh(); };
+  document.addEventListener('pointerup', pointerUp, true);
+  document.addEventListener('pointercancel', pointerUp, true);
   onHashChange();
+}
+
+// ── Deferred refresh while editing ────────────────────────────────────────────
+let pendingRefresh = false;
+let pendingTimer = null;
+let pointerDown = false;
+
+const EDITABLE = 'textarea, select, [contenteditable]:not([contenteditable="false"]), '
+  + 'input:not([type=button]):not([type=submit]):not([type=reset]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]):not([type=color])';
+
+function editingInProgress() {
+  const a = document.activeElement;
+  if (a && container && container.contains(a) && a.matches?.(EDITABLE)) return true;
+  return hasUnsavedModalEdits();
+}
+
+function refreshCurrent() {
+  pendingRefresh = false;
+  clearTimeout(pendingTimer);
+  pendingTimer = null;
+  if (!currentModule?.refresh) return;
+  try { currentModule.refresh(state); } catch (e) { console.error(e); }
+}
+
+// Re-checks shortly after focus leaves a field. The delay, and waiting for
+// the pointer to come up, let a click on "Save" land before the view is
+// rebuilt under it (focus moves on mousedown, the click fires on mouseup).
+function schedulePendingRefresh() {
+  pendingRefresh = true;
+  clearTimeout(pendingTimer);
+  pendingTimer = setTimeout(() => {
+    pendingTimer = null;
+    if (!pendingRefresh || pointerDown || editingInProgress()) return;
+    if (document.querySelector('.modal-overlay.open')) return; // applied when it closes
+    refreshCurrent();
+    toast('Updated from another device', 'info', 2500);
+  }, 400);
 }
 
 export function navigate(id) {
@@ -61,6 +108,10 @@ function onHashChange() {
   // holding closures over the now-destroyed module's stale form state.
   try { closeModal(); } catch (e) { console.error(e); }
   container.innerHTML = '';
+  // A fresh render shows the latest data; nothing left to apply.
+  pendingRefresh = false;
+  clearTimeout(pendingTimer);
+  pendingTimer = null;
   currentModule = mod;
   setRoute(mod.id);
   try {
