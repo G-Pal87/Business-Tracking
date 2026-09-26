@@ -1,7 +1,8 @@
 // On-demand loading of heavy third-party libraries that only a few actions
 // need (PDF text extraction, OCR, ZIP downloads). They used to be loaded as
 // render-blocking <script> tags on every page load. Every file is pinned to an
-// exact version; the CSP already allows cdn.jsdelivr.net scripts.
+// exact version. The CSP in index.html lists each of these URLs exactly —
+// changing a version here means updating script-src/worker-src there too.
 //
 // Integrity: the main scripts load with SRI. Web workers can't take an
 // `integrity` attribute, so their scripts are fetched here with fetch()'s own
