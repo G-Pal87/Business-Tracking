@@ -80,8 +80,7 @@ function build() {
     wrap.appendChild(buildDebugExportCard());
   }
   wrap.appendChild(buildTrashCard());
-  const conflictsCard = buildSyncConflictsCard();
-  if (conflictsCard) wrap.appendChild(conflictsCard);
+  wrap.appendChild(buildSyncConflictsCard());
   if (isAdmin) wrap.appendChild(buildDangerCard());
   return wrap;
 }
@@ -1804,13 +1803,14 @@ function capitalizeFirst(str) {
 // edit and stores the other version here (see recordConflicts in github.js).
 function buildSyncConflictsCard() {
   const items = listActive('syncConflicts').slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  if (!items.length) return null;
   const card = el('div', { class: 'card mb-16' });
   const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
   const header = el('div', { class: 'card-header card-header--toggle' },
     el('div', {},
       el('div', { class: 'card-title' }, 'Sync conflicts'),
-      el('div', { class: 'card-subtitle' }, `${items.length} record${items.length === 1 ? '' : 's'} edited on two devices at once — the later edit was kept`)
+      el('div', { class: 'card-subtitle' }, items.length
+        ? `${items.length} record${items.length === 1 ? '' : 's'} edited on two devices at once — the later edit was kept`
+        : 'No sync conflicts')
     ),
     el('div', { style: 'display:flex;align-items:center;gap:8px' }, chevron)
   );
@@ -1819,8 +1819,9 @@ function buildSyncConflictsCard() {
   card.appendChild(body);
   wireCollapsible('sync-conflicts', header, body, chevron);
 
-  body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:10px' },
-    'Each row is the version that was NOT kept. Restore it to make it the current version again, or dismiss it.'));
+  body.appendChild(el('div', { style: 'font-size:13px;color:var(--text-muted);margin-bottom:10px' }, items.length
+    ? 'Each row is the version that was NOT kept. Restore it to make it the current version again, or dismiss it.'
+    : 'When the same record is edited on two devices at the same time, the later edit is kept and the other version is listed here, so you can restore it if needed.'));
   for (const c of items) {
     const lost = c.lostVersion || {};
     const label = lost.name || lost.number || lost.description || lost.guestName || lost.title || c.recordId;
