@@ -147,15 +147,21 @@ async function boot() {
   }
 
   // ── Phase 1: load from local cache instantly (< 1 ms if localStorage is warm)
-  let localCache = await github.fetchLocalDb();
-  // Deep-clone before setDb() shares its array references with state.db.
-  // migrateDb() mutates those shared objects (stamps updatedAt = now), which
-  // would make every stale local record look newer than remote during Phase 4 merge.
-  let localSnapshot = localCache ? structuredClone(localCache) : null;
-  if (localCache) {
-    setDb(localCache);
-    github.applyDbConfig(localCache.appConfig?.github);
-    loaded = true;
+  // Only two facts about the cache outlive this phase: that it existed (Phase 4
+  // runs only then) and its sync marker (Phase 4's fallback when state.db has
+  // none). The cache object itself is not kept — it used to be held, plus a
+  // full structuredClone of it, for the whole session just for that marker.
+  let haveLocalCache = false;
+  let localSyncedAt = null;
+  {
+    const localCache = await github.fetchLocalDb();
+    if (localCache) {
+      haveLocalCache = true;
+      localSyncedAt = localCache._syncedAt ?? null;
+      setDb(localCache);
+      github.applyDbConfig(localCache.appConfig?.github);
+      loaded = true;
+    }
   }
 
   // ── Phase 1.5: if still no GitHub owner/repo, try bootstrap config file
@@ -227,17 +233,57 @@ async function boot() {
     }
   };
 
+  // Phase 4's GitHub read, started early — right after sign-in unlocked the
+  // key and opened the encrypted cache (with the repo settings that cache
+  // carries already applied) — instead of after the password check, the
+  // first render and router start-up. Phase 4 merges its result exactly as
+  // it would a read made at that point: nothing can push or merge before
+  // Phase 4 (initialSyncDone is still false). It is used only if no other
+  // read or push has started since (same sync generation, lastPulledAt and sha — e.g. a
+  // retry path in auth.js that fetched and merged a newer copy itself) and
+  // for the same repo/branch/path; otherwise Phase 4 reads again as before.
+  // Deliberately no age limit: this read already set the merge base
+  // (remoteDb), and merging a DIFFERENT read than the one the base came from
+  // is exactly what must not happen — an older one would make other users'
+  // newer edits look like local ones on the next push. An old-but-consistent
+  // read is just a slow first sync; the 60s poll catches up.
+  // A failed early read is ignored (Phase 4 reads again).
+  let earlyFetch = null;
+  const fetchTargetKey = () => `${state.github.owner}/${state.github.repo}@${state.github.branch}:${state.github.dbPath}`;
+  const startEarlyFetch = () => {
+    if (earlyFetch || !state.github.token || !state.github.owner || !state.github.repo) return;
+    const target = fetchTargetKey();
+    const p = github.fetchDb();
+    const gen = github.syncGeneration(); // this read's own generation
+    earlyFetch = p.then(
+      db => ({ db, target, gen, pulledAt: state.github.lastPulledAt, sha: state.github.sha }),
+      () => null);
+  };
+  const takeEarlyFetch = async () => {
+    const pending = earlyFetch;
+    earlyFetch = null;
+    const early = pending ? await pending : null;
+    // gen: no other read/push even STARTED after this one — a read sent
+    // earlier but answered later would otherwise pass the pulledAt/sha check.
+    if (early && early.gen === github.syncGeneration() && early.target === fetchTargetKey() &&
+        early.pulledAt === state.github.lastPulledAt && early.sha === state.github.sha) return early.db;
+    return null;
+  };
+
   // The local cache is encrypted: on a device with a key, nothing can be read
   // (cache or GitHub) until sign-in unlocks it. requireAuth() then calls this.
   const loadAfterUnlock = async () => {
     if (loaded) return;
     const cached = await github.openPendingEncryptedCache();
     if (cached) {
-      localCache = cached;
-      localSnapshot = structuredClone(cached);
+      haveLocalCache = true;
+      localSyncedAt = cached._syncedAt ?? null;
       setDb(cached);
       github.applyDbConfig(cached.appConfig?.github);
       loaded = true;
+      // Phase 4 will run: start its GitHub read now, alongside the rest of
+      // sign-in and the first render (see startEarlyFetch).
+      startEarlyFetch();
       return;
     }
     if (state.github.owner && state.github.repo) await initialPull();
@@ -265,11 +311,6 @@ async function boot() {
     }
   }
 
-  // The subscribe() 'data-loaded' hook below is registered after this point,
-  // so it can't catch the setDb() calls above — refresh explicitly now that
-  // real data (if any) has landed.
-  scheduleStrGapBadge();
-
   // ── Phase 3: auth + render — runs immediately when local cache was available
   await requireAuth({ loadAfterUnlock });
   // requireAuth() may have retried and successfully loaded real data along the
@@ -283,8 +324,21 @@ async function boot() {
   buildUserFooter();
 
   router.init(document.getElementById('content'));
-  // Warm the remaining views' code at idle so later navigation stays instant.
-  router.prefetchAll();
+  const firstRenderAt = Date.now();
+  // The subscribe() 'data-loaded' hook below is registered after this point,
+  // so it can't catch the setDb() calls made so far — refresh explicitly now
+  // that the user is signed in and real data (if any) has landed. (It used to
+  // run before sign-in, loading str-rates + payments against an empty db.)
+  scheduleStrGapBadge();
+  // Warm the remaining views' code at idle so later navigation stays instant —
+  // but only once the initial GitHub sync has finished (and at least 5s after
+  // the first render), so it never competes with the sync or the first screen.
+  let prefetchScheduled = false;
+  const schedulePrefetch = () => {
+    if (prefetchScheduled) return;
+    prefetchScheduled = true;
+    setTimeout(() => router.prefetchAll(), Math.max(0, firstRenderAt + 5000 - Date.now()));
+  };
 
   // ── Phase 4: multi-user presence (Operations + System views only)
   if (state.github.token) startPresence();
@@ -300,7 +354,7 @@ async function boot() {
   // the latest MAX_PUSH_WAIT_MS after the first unpushed one), instead of
   // after every edit — each push is a full commit of the encrypted db.json,
   // so a burst of edits used to become a burst of multi-100KB commits. Every
-  // edit still reaches the local cache within ~0.5s (see the 'dirty'
+  // edit still reaches the local cache within ~0.25s (see the 'dirty'
   // handler), and hiding/backgrounding the tab (visibilitychange — the reliable signal
   // on mobile), pagehide and beforeunload all flush the pending push at once.
   const PUSH_DEBOUNCE_MS = 10000;
@@ -322,11 +376,11 @@ async function boot() {
   // Warn before closing/navigating away with edits that haven't been
   // confirmed-pushed to GitHub yet — without this, an edit made in the last
   // moment before closing the tab could be lost silently (the push is
-  // debounced PUSH_DEBOUNCE_MS, the local-cache write 500ms).
-  window.addEventListener('beforeunload', e => {
+  // debounced PUSH_DEBOUNCE_MS, the local-cache write 250ms).
+  const onBeforeUnload = e => {
     flushPendingPush();
     // Force the debounced local-cache write to happen NOW. Without this, a
-    // refresh/close inside its 500ms window abandons the write entirely —
+    // refresh/close inside its 250ms window abandons the write entirely —
     // the warning below doesn't block a user who dismisses it (and many
     // browsers skip the prompt outright without recent interaction), so the
     // flush must not depend on the warning actually stopping anything.
@@ -335,7 +389,20 @@ async function boot() {
       e.preventDefault();
       e.returnValue = '';
     }
-  });
+  };
+  // Registered only while something is unpushed (an edit, a queued or running
+  // push): a permanent beforeunload listener keeps some browsers from putting
+  // the page in the back/forward cache. pagehide and visibilitychange(hidden)
+  // below flush the cache and the push regardless.
+  let beforeUnloadOn = false;
+  const syncBeforeUnload = () => {
+    const want = !!(state.dirty || pushPending || pushTimer || pendingSaveBeforeSync);
+    if (want === beforeUnloadOn) return;
+    beforeUnloadOn = want;
+    if (want) window.addEventListener('beforeunload', onBeforeUnload);
+    else window.removeEventListener('beforeunload', onBeforeUnload);
+  };
+  syncBeforeUnload();
 
   // After a real data push, re-publish the STR daily-rate feeds. Debounced so a
   // burst of edits results in a single publish; the publisher itself only
@@ -365,6 +432,7 @@ async function boot() {
       return;
     }
     pushPending = true;
+    syncBeforeUnload();
     clearTimeout(pushTimer);
     pushTimer = null;
     firstPendingAt = 0;
@@ -448,11 +516,13 @@ async function boot() {
       state.saving = false;
       pushPending = false;
       document.body.classList.remove('app-saving');
+      syncBeforeUnload();
     }
 
     // Changes arrived during the push — schedule the next batch.
     if (hadNewChanges && state.github.token && state.github.owner && state.github.repo) {
       schedulePush();
+      syncBeforeUnload();
     }
   };
 
@@ -522,7 +592,10 @@ async function boot() {
       // This prevents CDN-stale responses from overwriting locally-held records
       // that were saved more recently. If local.updatedAt > remote.updatedAt,
       // local wins regardless of whether the base (remoteDb) is fresh or stale.
-      const synced = github.resyncDb(remoteDb, state.db);
+      // A freshly read db.json is this call's own copy — resyncDb may then use
+      // it in place instead of cloning it again (never for the 304/same-sha
+      // shallow copy, whose contents are the shared read-only snapshot).
+      const synced = github.resyncDb(remoteDb, state.db, { owned: github.isOwnedFetchResult(remoteDb) });
       // resyncDb flags _staleFetch when this fetch turned out to be missing
       // something local already had (e.g. a just-imported record GitHub's read
       // path hasn't caught up to yet). In that case do NOT advance _syncedAt to
@@ -625,6 +698,7 @@ async function boot() {
         updateSyncStatus('offline', 'Unsaved — connect GitHub in Settings');
       }
     }
+    syncBeforeUnload();
   });
 
   // Unpushed edits recovered from a journal during the initial pull.
@@ -632,22 +706,24 @@ async function boot() {
     pushAfterBoot = false;
     state.dirty = true;
     state.editSeq = (state.editSeq || 0) + 1;
+    syncBeforeUnload();
     doSave().catch(() => {});
   }
 
   // ── Phase 4: background GitHub sync (only when we served from local cache)
   // Runs after router.init so setDb() triggers a live refresh of the current view.
   // If Phase 4 won't run (no local cache, or GitHub not configured), unblock saves now
-  if (!(loaded && localCache && state.github.owner && state.github.repo)) {
+  if (!(loaded && haveLocalCache && state.github.owner && state.github.repo)) {
     initialSyncDone = true;
     // No Phase 4 — migrate immediately on whatever data we have
     migrateDb();
+    schedulePrefetch();
   }
 
-  if (loaded && localCache && state.github.owner && state.github.repo) {
+  if (loaded && haveLocalCache && state.github.owner && state.github.repo) {
     (async () => {
       try {
-        const remoteDb = await github.fetchDb();
+        const remoteDb = (await takeEarlyFetch()) || await github.fetchDb();
         // Merge against the CURRENT state.db, not the pre-login snapshot:
         // anything the user entered while this fetch was in flight (it can
         // take seconds, or minutes when rate-limited) lives only in state.db
@@ -655,7 +731,12 @@ async function boot() {
         // hasn't run yet at this point (it runs after this merge), so state.db
         // carries no metadata backfill that could masquerade as a local edit —
         // which was the original reason for merging against the snapshot.
-        const merged = github.mergeLocalPending(remoteDb, structuredClone(state.db));
+        // mergeLocalPending never mutates its input, only reads it; the
+        // journal step below does write into `merged` — assigning fields and
+        // pushing/replacing array elements, never editing a record in place —
+        // so giving the merge its own copy of each collection ARRAY keeps
+        // state.db untouched without deep-cloning every record.
+        const merged = github.mergeLocalPending(remoteDb, ownCollections(state.db));
         // Read-and-strip the merge's flag rather than leaving it on the object —
         // setDb + the next push would otherwise persist it into the repo's db.json.
         let hasLocalChanges = merged._hasLocalChanges;
@@ -663,6 +744,25 @@ async function boot() {
         // Unpushed edits from pending-edits journals (another tab's, or this
         // one's from before the reload) that the cache didn't carry.
         if (isUnlocked() && await github.applyPendingJournals(merged)) hasLocalChanges = true;
+        if (!hasLocalChanges && !state.dirty && sameDbContent(merged, state.db)) {
+          // GitHub matches the cached data already on screen (the usual
+          // reload): skip setDb(), whose data-loaded event re-rendered the
+          // whole view and dropped every cache a second time. Advance only the
+          // sync bookkeeping a setDb(merged) would have brought — the same as
+          // backgroundResync's unchanged branch. Everything else in `merged`
+          // is deep-equal to state.db (sameDbContent ignores only these two).
+          state.db._syncedAt = Date.now();
+          state.db._syncedPlain = merged._syncedPlain;
+          lastAppliedSha = state.github.lastFetchedSha;
+          github.applyDbConfig(state.db.appConfig?.github);
+          github.saveLocalCache(state.db);
+          updateSyncStatus('online', `Connected: ${state.github.owner}/${state.github.repo}`);
+          initialSyncDone = true;
+          pendingSaveBeforeSync = false;
+          migrateDb();
+          schedulePrefetch();
+          return;
+        }
         // Advance the sync marker to "now" ONLY when the merge kept nothing local.
         // When unpushed local records survived the merge (hasLocalChanges), they are
         // NOT on remote yet — stamping Date.now() here would make them compare as
@@ -670,7 +770,7 @@ async function boot() {
         // reload's mergeLocalPending would judge them already-synced and silently
         // drop them (refresh twice during a sync outage → data loss). Keep the old
         // marker instead; the successful push stamps the real value itself.
-        merged._syncedAt = hasLocalChanges ? (state.db._syncedAt ?? localSnapshot?._syncedAt ?? null) : Date.now();
+        merged._syncedAt = hasLocalChanges ? (state.db._syncedAt ?? localSyncedAt ?? null) : Date.now();
         setDb(merged);                              // triggers data-loaded → view refresh
         if (!hasLocalChanges) lastAppliedSha = state.github.lastFetchedSha;
         github.applyDbConfig(merged.appConfig?.github);
@@ -683,13 +783,14 @@ async function boot() {
         pendingSaveBeforeSync = false;
         // Migrate the authoritative merged data. If any record truly lacks metadata
         // (e.g. a remote record pre-dating this feature), markDirty() fires now that
-        // initialSyncDone=true and the normal 1.5s debounce pushes it cleanly.
+        // initialSyncDone=true and the normal batched push (schedulePush) sends it.
         migrateDb();
         // If local had genuinely newer records that won the merge (including
         // edits made while this sync was in flight), push them now.
         if (hasLocalChanges && state.github.token && !pushPending) {
           doSave().catch(() => {});
         }
+        schedulePrefetch();
       } catch (e) {
         console.warn('Background GitHub sync failed', e);
         state.github.lastSyncError = normalizeNetworkError(e.message);
@@ -698,9 +799,19 @@ async function boot() {
         pendingSaveBeforeSync = false; // GitHub unreachable — can't push anyway
         initialSyncDone = true;
         migrateDb(); // migrate local cache data for this session
+        schedulePrefetch();
       }
     })();
   }
+}
+
+// Top-level copy of a db whose collection arrays are copies too (records are
+// shared): lets a merge that adds/replaces array elements or assigns fields
+// work on it without touching the original.
+function ownCollections(db) {
+  const out = {};
+  for (const [k, v] of Object.entries(db || {})) out[k] = Array.isArray(v) ? v.slice() : v;
+  return out;
 }
 
 // Backfills createdAt/createdBy/updatedAt/updatedBy on records that pre-date

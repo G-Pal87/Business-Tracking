@@ -74,6 +74,10 @@ const SIGNAL_PATH = 'data/session-signal.json';
 // an open tab, so it must not add more than a poll or so of delay.
 const SIGNAL_MISSING_RECHECK_MS = 90 * 1000;
 let signalMissingAt = 0;
+// Once per page load, a device that can write creates the file (an empty,
+// encrypted doc) when a poll finds it missing — every later poll by every tab
+// is then a free 304 instead of a rate-limited 404 (see ensureSignalFile).
+let signalCreateTried = false;
 
 // Operations + System nav groups (read-write views where conflicts matter)
 const TRACKED = new Set([
@@ -237,8 +241,10 @@ const FILE_SHAPES = {
 // just against another device.
 let writeQueue = Promise.resolve();
 
-function updateBranchJson(path, mutator, { attempts = 4, evenIfDisconnected = false } = {}) {
-  const result = writeQueue.catch(() => null).then(() => doUpdateBranchJson(path, mutator, attempts, evenIfDisconnected));
+// `onlyIfMissing`: create the file only if it doesn't exist (an existing
+// file, whatever its content, is left alone and counts as success).
+function updateBranchJson(path, mutator, { attempts = 4, evenIfDisconnected = false, onlyIfMissing = false } = {}) {
+  const result = writeQueue.catch(() => null).then(() => doUpdateBranchJson(path, mutator, attempts, evenIfDisconnected, onlyIfMissing));
   writeQueue = result;
   return result;
 }
@@ -247,7 +253,7 @@ function updateBranchJson(path, mutator, { attempts = 4, evenIfDisconnected = fa
 // change to the freshest doc and returns true if a write is needed. On a 409
 // (another tab/user wrote between our GET and PUT) we re-read and re-apply
 // rather than silently losing the update.
-async function doUpdateBranchJson(path, mutator, attempts, evenIfDisconnected) {
+async function doUpdateBranchJson(path, mutator, attempts, evenIfDisconnected, onlyIfMissing = false) {
   // A remotely-disconnected tab stops all GitHub writes.
   if (state.github.disconnected && !evenIfDisconnected) return false;
   if (!ghContext() || !isUnlocked()) return false;
@@ -258,11 +264,16 @@ async function doUpdateBranchJson(path, mutator, attempts, evenIfDisconnected) {
     let current;
     try { current = await readBranchJson(path); }
     catch { return false; } // offline, auth error or undecryptable: never overwrite blind
+    if (onlyIfMissing && current.sha) return true; // exists (someone else created it) — nothing to do
     const doc = shape.normalize(current.data || shape.empty());
     if (!mutator(doc) && !current.legacy) return true; // nothing to write
     const { ok, status } = await writeBranchJson(path, shape.normalize(doc), current.sha);
     if (ok) return true;
-    if (status === 409 && i < attempts - 1) { await sleep(150 + Math.random() * 150); continue; }
+    // 409: another write landed between our GET and PUT. A 422 on a create
+    // (PUT without sha) means the same thing for a file that didn't exist yet
+    // — someone created it meanwhile ("sha wasn't supplied"). Either way,
+    // re-read and re-apply rather than dropping this client's change.
+    if ((status === 409 || (status === 422 && !current.sha)) && i < attempts - 1) { await sleep(150 + Math.random() * 150); continue; }
     return false; // exhausted or non-recoverable — drop silently
   }
   return false;
@@ -654,6 +665,7 @@ async function checkDisconnectSignal() {
   try {
     const { sha, data: signal } = await readBranchJson(SIGNAL_PATH);
     signalMissingAt = sha ? 0 : Date.now(); // sha null = file doesn't exist (404)
+    if (!sha) ensureSignalFile();
     if (!signal) return; // no disconnect ever issued
 
     const targeted = signal.kills?.[state.github.sessionId];
@@ -667,6 +679,19 @@ async function checkDisconnectSignal() {
     if (signal.disconnectAt <= state.github.connectedAt) return;   // predates this session — a fresh reload after an old signal, ignore
     applyDisconnect(signal.issuedBy);
   } catch { /* offline — check again next poll */ }
+}
+
+// Creates session-signal.json as an empty doc through the same serialized,
+// encrypted read-modify-write as a disconnect/kill (so it can't race this
+// tab's own signal writes, and never writes plaintext). onlyIfMissing: if
+// anyone created it in the meantime — including with a real signal — it is
+// left untouched; a create that loses that race (409/422) re-reads and stops.
+function ensureSignalFile() {
+  if (signalCreateTried || !canWrite()) return;
+  signalCreateTried = true;
+  updateBranchJson(SIGNAL_PATH, () => true, { onlyIfMissing: true })
+    .then(ok => { if (ok) signalMissingAt = 0; })
+    .catch(() => {});
 }
 
 function applyDisconnect(issuedBy) {
