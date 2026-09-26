@@ -10,7 +10,7 @@ import {
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
-} from './analytics-filters.js?v=20260519';
+} from './analytics-filters.js';
 import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, fmtK, groupByMonthKey, mkTh, mkDrillValue, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceOwner, invoiceDueDate, invoiceAgingBucket, AGING_BUCKETS } from './analytics-helpers.js';
 import { buildServicesSection, destroyServiceCharts, resetServiceStatusFilter } from './analytics-services.js';
 
@@ -1440,7 +1440,7 @@ function buildRevenueTable(container, { payments, invoices }) {
   const wrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(table);
   container.appendChild(wrap);
-  attachSortFilter(wrap, { initialCol: _revSortCol, initialDir: _revSortDir, initialSearch: _revSearch, onSortChange: (c, d) => { _revSortCol = c; _revSortDir = d; }, onSearchChange: v => { _revSearch = v; } });
+  attachSortFilter(wrap, { initialCol: _revSortCol, initialDir: _revSortDir, initialSearch: _revSearch, onSortChange: (c, d) => { _revSortCol = c; _revSortDir = d; }, onSearchChange: v => { _revSearch = v; }, pageSize: 200 });
   container.appendChild(el('div', { style: 'display:flex;justify-content:space-between;margin-top:8px;font-size:13px' },
     el('span', { style: 'color:var(--text-muted)' }, `${rows.length} record(s)`),
     el('strong', { class: 'num' }, `Total: ${formatEUR(rows.reduce((s, r) => s + (r._eur || 0), 0))}`)
@@ -1561,15 +1561,20 @@ function buildView() {
   const tableCard = el('div', { class: 'card' });
   const tableBody = el('div', { style: 'display:none' });
   const toggleBtn = el('button', { style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0' }, 'Show Revenue Records');
+  // Built on first expand — the full record list (thousands of rows for "All
+  // time") used to be rendered on every rebuild even though it starts
+  // collapsed. The whole table is still built at once, so sort/search cover
+  // every row.
+  let tableBuilt = false;
   toggleBtn.onclick = () => {
     const hidden = tableBody.style.display === 'none';
+    if (hidden && !tableBuilt) { tableBuilt = true; buildRevenueTable(tableBody, curData); }
     tableBody.style.display = hidden ? '' : 'none';
     toggleBtn.textContent   = hidden ? 'Hide Revenue Records' : 'Show Revenue Records';
   };
   tableCard.appendChild(el('div', { class: 'card-header', style: 'display:flex;align-items:center;justify-content:space-between' },
     el('div', { class: 'card-title' }, 'Revenue Records'), toggleBtn
   ));
-  buildRevenueTable(tableBody, curData);
   tableCard.appendChild(tableBody);
   wrap.appendChild(tableCard);
 

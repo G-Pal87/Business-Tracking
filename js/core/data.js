@@ -7,6 +7,41 @@ import { daysInMonth, diffDaysYmd, addMonthsYmd } from './dates.js';
 const _fmtCache    = new Map();
 const _numFmtCache = new Map();
 
+// ============== Derived-data memo ==============
+// A Map of memoized results that empties itself whenever the data it was
+// derived from may have changed: a whole-db swap (setDb/sync load → new
+// state.db identity), any edit (markDirty → state.editSeq), a settings object
+// swap (sync replaces settings wholesale; FX rates live there), a change of
+// `extraKey()` (e.g. today(), for anything that depends on the current date),
+// or a new memoized listActive() array for any of `collections` — sync adopts
+// or replaces records in place WITHOUT an editSeq bump, but always
+// invalidates those arrays (invalidateActiveCache), so they're part of the
+// stamp. Pass every collection the derived value reads.
+//
+// Usage: const cache = derivedCache(['payments']);  …  cache().get(key)
+// (call cache() each time — it returns a fresh Map after invalidation).
+export function derivedCache(collections = [], extraKey = null) {
+  let stamp = null;
+  let map = new Map();
+  return function current() {
+    const next = [state.db, state.editSeq, state.db?.settings, extraKey ? extraKey() : null];
+    for (const c of collections) next.push(listActive(c));
+    if (!stamp || stamp.length !== next.length || next.some((v, i) => v !== stamp[i])) {
+      stamp = next;
+      map = new Map();
+    }
+    return map;
+  };
+}
+
+// memoGet(cache(), key, () => compute()) — get-or-compute on a derivedCache map.
+export function memoGet(map, key, compute) {
+  if (map.has(key)) return map.get(key);
+  const v = compute();
+  map.set(key, v);
+  return v;
+}
+
 // ============== Currency ==============
 // FX conversions that had to guess — a HUF amount in a year with no rate
 // configured (nearest year's rate used instead) or a currency with no rate
@@ -23,26 +58,40 @@ function _fxWarn(key, message) {
 }
 export function getFxWarnings() { return [..._fxWarnings]; }
 
+// Sorted configured HUF years, for the nearest-year fallback — rebuilt only
+// when the rate table can have changed (its identity, any edit, a db swap).
+let _hufYears = { rates: null, seq: -1, db: null, sorted: [] };
+function _sortedHufYears(yearRates) {
+  if (_hufYears.rates !== yearRates || _hufYears.seq !== state.editSeq || _hufYears.db !== state.db) {
+    _hufYears = { rates: yearRates, seq: state.editSeq, db: state.db, sorted: Object.keys(yearRates).map(Number).sort((a, b) => a - b) };
+  }
+  return _hufYears.sorted;
+}
+
 export function toEUR(amount, currency, dateOrYear) {
   if (!amount) return 0;
   if (currency === 'EUR' || !currency) return Number(amount);
   if (currency === 'HUF') {
     const yearRates = state.db.settings?.fxRates?.yearRates || {};
-    const years = Object.keys(yearRates);
-    if (years.length === 0) {
+    const exactYear = String(dateOrYear || '').slice(0, 4);
+    // Fast path: the record's own year has a rate (the table is then
+    // necessarily non-empty) — no key listing/sorting per call.
+    if (exactYear && Object.prototype.hasOwnProperty.call(yearRates, exactYear) && yearRates[exactYear] !== undefined) {
+      return Number(amount) * yearRates[exactYear];
+    }
+    const sorted = _sortedHufYears(yearRates);
+    if (sorted.length === 0) {
       // No FX table configured at all — returning the raw HUF number as if
       // it were EUR would silently inflate totals ~300-400x. 0 undercounts,
       // but it's the safer failure mode for a financial aggregate.
       console.warn('[BT] toEUR: no HUF FX rates configured — treating amount as 0 EUR instead of guessing');
       return 0;
     }
-    const exactYear = String(dateOrYear || '').slice(0, 4);
     let rate = exactYear ? yearRates[exactYear] : undefined;
     if (rate === undefined) {
       // Fall back to the nearest configured year by absolute distance (not
       // always the most recent), so a record older than the earliest
       // configured year doesn't get converted with a much-later rate.
-      const sorted = years.map(Number).sort((a, b) => a - b);
       const target = exactYear ? Number(exactYear) : sorted[sorted.length - 1];
       const nearest = sorted.reduce((best, yr) => Math.abs(yr - target) < Math.abs(best - target) ? yr : best);
       rate = yearRates[String(nearest)];
@@ -144,11 +193,14 @@ export function upsert(collection, item) {
   if (isNew) {
     arr.push(item);
   } else {
+    // state._ix maps id → record, not id → array slot, so the slot still
+    // needs a scan. It stays findIndex (first match) on purpose: identical
+    // behaviour even for legacy arrays holding a duplicated id.
     const idx = arr.findIndex(x => x.id === item.id);
     if (idx >= 0) arr[idx] = item; else arr.push(item);
   }
   ix?.set(item.id, item);
-  markDirty();
+  markDirty(collection);
   return item;
 }
 
@@ -160,7 +212,7 @@ export function remove(collection, id) {
   if (idx >= 0) {
     arr.splice(idx, 1);
     state._ix?.get(collection)?.delete(id);
-    markDirty();
+    markDirty(collection);
     return true;
   }
   return false;
@@ -176,7 +228,7 @@ export function softDelete(collection, id) {
   item.deletedBy = actor;
   item.updatedAt = nextStamp(item.updatedAt, now);
   item.updatedBy = actor;
-  markDirty();
+  markDirty(collection);
   return true;
 }
 
@@ -267,13 +319,15 @@ export function applyFilters(rows, { year, years, stream, owner, propertyId, cli
   const y = year ?? f.year;
   const s = stream ?? f.stream;
   const o = owner ?? f.owner;
+  // Year prefixes stringified once, not re-spread per row.
+  const yearStrs = years instanceof Set && years.size > 0 ? [...years].map(String) : null;
 
   return rows.filter(r => {
     // Invoices carry issueDate, not date — without the fallback they skipped
     // the year test entirely and every year's invoices were counted.
     const d = r.date || r.issueDate;
-    if (years instanceof Set && years.size > 0 && d) {
-      if (![...years].some(yr => d.startsWith(String(yr)))) return false;
+    if (yearStrs && d) {
+      if (!yearStrs.some(yr => d.startsWith(yr))) return false;
     } else if (y && y !== 'all' && d) {
       if (!d.startsWith(String(y))) return false;
     }
@@ -395,22 +449,6 @@ export function sumExpensesEUR(expenses) {
   return expenses.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 }
 
-// Unfiltered yearly totals — used for period-over-period comparisons
-export function yearTotalsEUR(year) {
-  const pays  = listActivePayments().filter(p => p.status === 'paid'    && (p.date      || '').startsWith(year));
-  const invs  = listActive('invoices').filter(i => i.status === 'paid'  && (i.issueDate || '').startsWith(year));
-  const opEx  = listActive('expenses').filter(e => !isCapEx(e)          && (e.date      || '').startsWith(year));
-  const capEx = listActive('expenses').filter(e =>  isCapEx(e)          && (e.date      || '').startsWith(year));
-  const rev   = sumPaymentsEUR(pays) + sumInvoicesEUR(invs);
-  const exp   = sumExpensesEUR(opEx);
-  const reno  = sumExpensesEUR(capEx);
-  return { rev, exp, reno, net: rev - exp, netCash: rev - exp - reno };
-}
-
-export function netIncomeEUR(filters) {
-  return totalRevenueEUR(filters) - totalExpensesEUR(filters, { includeRenovation: false });
-}
-
 export function ytdRange() {
   // Local date — toISOString() is the UTC date, a day behind after local midnight.
   const t = today();
@@ -419,19 +457,6 @@ export function ytdRange() {
 
 function inDateRange(date, start, end) {
   return date >= start && date <= end;
-}
-
-export function revenueInRangeEUR(start, end, filters = {}) {
-  const rows = listActivePayments().filter(p => inDateRange(p.date, start, end) && p.status === 'paid');
-  const invs = listActive('invoices').filter(i => inDateRange(i.issueDate, start, end) && i.status === 'paid');
-  const fRows = applyFilters(rows, filters);
-  const fInvs = applyFilters(invs.map(i => ({ ...i, date: i.issueDate })), filters);
-  let total = 0;
-  for (const p of fRows) total += toEUR(p.amount, p.currency, p.date);
-  // Revenue excludes VAT/tax — subtotal, not total (falls back to total for
-  // legacy records that predate the subtotal field).
-  for (const i of fInvs) total += toEUR(i.subtotal ?? i.total, i.currency, i.date);
-  return total;
 }
 
 export function expensesInRangeEUR(start, end, filters = {}, { includeRenovation = true } = {}) {
@@ -540,16 +565,6 @@ export function cashOnCashPropertyROI(propertyId, { annualCashFlow } = {}) {
   return (cashFlow / cashInvested) * 100;
 }
 
-export function groupByMonth(rows, dateField = 'date', amountField = 'amount', currencyField = 'currency') {
-  const map = new Map();
-  for (const r of rows) {
-    const key = (r[dateField] || '').slice(0, 7); // YYYY-MM
-    if (!key) continue;
-    map.set(key, (map.get(key) || 0) + toEUR(r[amountField], r[currencyField], r[dateField]));
-  }
-  return map;
-}
-
 export function groupByStream(rows, amountField = 'amount', currencyField = 'currency') {
   const map = new Map();
   for (const r of rows) {
@@ -566,15 +581,6 @@ export function groupByCategory(rows) {
     map.set(k, (map.get(k) || 0) + toEUR(r.amount, r.currency, r.date));
   }
   return map;
-}
-
-export function recentActivity(limit = 8) {
-  const items = [];
-  for (const p of listActivePayments()) items.push({ kind: 'payment', date: p.date, data: p });
-  for (const e of listActive('expenses')) items.push({ kind: 'expense', date: e.date, data: e });
-  for (const i of listActive('invoices')) items.push({ kind: 'invoice', date: i.issueDate, data: i });
-  items.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-  return items.slice(0, limit);
 }
 
 export function availableYears() {
@@ -687,7 +693,58 @@ export function forecastActualMonthKey(p) {
   return (d || '').slice(0, 7);
 }
 
+// Actuals for forecast-vs-actual, bucketed once per data version instead of
+// re-filtering every payment/expense/invoice for each (entity, year) the
+// forecast views ask for. Buckets are entity → 'YYYY' → rows; each keeps
+// listActive() order, so the per-month sums below add in the same order as
+// the full-collection filters they replace.
+const _fvaIdxCache = derivedCache(['payments', 'expenses', 'invoices']);
+function _fvaIndex() {
+  return memoGet(_fvaIdxCache(), 'idx', () => {
+    // Nested Map (entity → year → rows): Map keys compare like ===, same as
+    // the p.propertyId === entityId filters this replaces.
+    const push = (m, id, y, r) => {
+      let byYear = m.get(id);
+      if (!byYear) { byYear = new Map(); m.set(id, byYear); }
+      const a = byYear.get(y);
+      if (a) a.push(r); else byYear.set(y, [r]);
+    };
+    const propPays = new Map(), propExps = new Map(), streamExps = new Map(), streamInvs = new Map();
+    for (const p of listActivePayments()) {
+      if (p.status !== 'paid') continue;
+      push(propPays, p.propertyId, forecastActualMonthKey(p).slice(0, 4), p);
+    }
+    for (const e of listActive('expenses')) {
+      if (isCapEx(e)) continue;
+      const y = (e.date || '').slice(0, 4);
+      push(propExps, e.propertyId, y, e);
+      push(streamExps, e.stream, y, e);
+    }
+    for (const i of listActive('invoices')) {
+      if (i.status !== 'paid') continue;
+      push(streamInvs, i.stream, (i.issueDate || '').slice(0, 4), i);
+    }
+    return { propPays, propExps, streamExps, streamInvs };
+  });
+}
+
+// Memoized per (type, entity, year) until any edit, sync, db swap or date
+// change (the long-term rent fallback reads the rent schedule, which depends
+// on today()). The Forecast views call this (2 × years + 1) × entities times
+// per render. The months array and its rows are frozen (shared between
+// callers, which only read them); each call gets its own outer object.
+const _fvaCache = derivedCache(['payments', 'expenses', 'invoices', 'tenants', 'properties', 'forecasts'], () => today());
 export function getForecastVsActual(type, entityId, year) {
+  const r = memoGet(_fvaCache(), `${type}|${entityId}|${year}`, () => {
+    const res = _computeForecastVsActual(type, entityId, year);
+    for (const m of res.months) Object.freeze(m);
+    Object.freeze(res.months);
+    return res;
+  });
+  return { forecast: r.forecast, months: r.months, yearTarget: r.yearTarget };
+}
+
+function _computeForecastVsActual(type, entityId, year) {
   const fc = (state.db.forecasts || []).find(f => f.type === type && f.entityId === entityId && f.year === Number(year));
 
   // For LT rental properties: build a monthKey→amountEUR map from the rent schedule
@@ -709,7 +766,19 @@ export function getForecastVsActual(type, entityId, year) {
   // Pre-filter collections to entity + year — avoids 24 full-collection scans
   const yearStr = String(year);
   let entityPayments = null, entityExpenses = null, entityInvoices = null;
-  if (type === 'property') {
+  if (/^\d{4}$/.test(yearStr)) {
+    // Index lookup — same rows, same order, as the filters below (a 4-digit
+    // year prefix-matches exactly the rows whose first 4 chars equal it).
+    const ix = _fvaIndex();
+    const rows = m => m.get(entityId)?.get(yearStr) || [];
+    if (type === 'property') {
+      entityPayments = rows(ix.propPays);
+      entityExpenses = rows(ix.propExps);
+    } else {
+      entityInvoices = rows(ix.streamInvs);
+      entityExpenses = rows(ix.streamExps);
+    }
+  } else if (type === 'property') {
     entityPayments = listActivePayments().filter(p => p.propertyId === entityId && p.status === 'paid' && forecastActualMonthKey(p).startsWith(yearStr));
     entityExpenses = listActive('expenses').filter(e => e.propertyId === entityId && !isCapEx(e) && (e.date || '').startsWith(yearStr));
   } else {
@@ -817,11 +886,19 @@ export function rentMonthOf(p) {
 // month before the first entry uses the first entry. Tenants without a
 // history keep using the flat monthlyRent for every month, as before.
 export function tenantRentForMonth(t, monthKey) {
+  return _rentFromSorted(t, _sortedRentHistory(t), monthKey);
+}
+// The valid rentHistory entries sorted by `from`, or null when there are none
+// — computed once per lease by _scheduleSegment instead of once per month.
+function _sortedRentHistory(t) {
   const hist = Array.isArray(t?.rentHistory)
     ? t.rentHistory.filter(h => h && typeof h.from === 'string' && Number(h.amount) > 0)
     : [];
-  if (!hist.length) return { amount: Number(t?.monthlyRent) || 0, currency: t?.currency || 'EUR' };
-  const sorted = [...hist].sort((a, b) => a.from.localeCompare(b.from));
+  if (!hist.length) return null;
+  return [...hist].sort((a, b) => a.from.localeCompare(b.from));
+}
+function _rentFromSorted(t, sorted, monthKey) {
+  if (!sorted) return { amount: Number(t?.monthlyRent) || 0, currency: t?.currency || 'EUR' };
   let pick = sorted[0];
   for (const h of sorted) if (h.from.slice(0, 7) <= monthKey) pick = h;
   return { amount: Number(pick.amount), currency: pick.currency || t.currency || 'EUR' };
@@ -845,6 +922,7 @@ function _scheduleSegment(leaseData, tenantId) {
   const prorate = leaseData.prorateRent !== false;
   const ls = leaseData.leaseStartDate ? leaseData.leaseStartDate.slice(0, 10) : '';
   const le = leaseData.leaseEndDate   ? leaseData.leaseEndDate.slice(0, 10)   : '';
+  const rentHist = _sortedRentHistory(leaseData);
 
   const results = [];
   for (let mk = startMk, guard = 0; mk <= endMk && guard < 1200; mk = _addMonthsMk(mk, 1), guard++) {
@@ -854,7 +932,7 @@ function _scheduleSegment(leaseData, tenantId) {
     const covFrom = ls && ls > monthStart ? ls : monthStart;
     const covTo   = le && le < monthEnd   ? le : monthEnd;
     if (covTo < covFrom) continue;
-    const rent = tenantRentForMonth(leaseData, mk);
+    const rent = _rentFromSorted(leaseData, rentHist, mk);
     const days = diffDaysYmd(covFrom, covTo) + 1;
     const amount = prorate && days < dim ? Math.round(rent.amount * days / dim * 100) / 100 : rent.amount;
     let date = `${mk}-${_pad2(Math.min(payDay, dim))}`;
@@ -897,9 +975,47 @@ export function getTenantDisplayStatus(tenant) {
   return tenant?.status;
 }
 
+// Rent payments (isRentPayment) of every property, by property id then by
+// the month they cover (rentMonthOf) — built in one pass over payments and
+// shared by every property's schedule until the data changes. Each month's
+// array keeps listActivePayments() order, same as the per-property scan did.
+const _rentIdxCache = derivedCache(['payments']);
+function _rentPaymentsByProperty() {
+  return memoGet(_rentIdxCache(), 'idx', () => {
+    const byProp = new Map();
+    for (const p of listActivePayments()) {
+      if (!isRentPayment(p)) continue;
+      const mk = rentMonthOf(p);
+      if (!mk) continue;
+      let byMonth = byProp.get(p.propertyId);
+      if (!byMonth) { byMonth = new Map(); byProp.set(p.propertyId, byMonth); }
+      const arr = byMonth.get(mk);
+      if (arr) arr.push(p); else byMonth.set(mk, [p]);
+    }
+    return byProp;
+  });
+}
+
+// generatePaymentSchedule() is called from many views per render (reconciliation,
+// forecasts, tax, payments, analytics) — memoized per property until any edit,
+// sync, db swap or date change (overdue status and open-ended leases depend
+// on today()). Keyed on the property object's identity too, so a caller
+// passing an edited copy of a property never gets another object's schedule.
+// Entries are frozen and each call gets its own array, so no caller can
+// corrupt the shared copy (none mutate them — they spread into new objects).
+const _schedCache = derivedCache(['tenants', 'payments', 'properties'], () => today());
 export function generatePaymentSchedule(property) {
   if (property.type !== 'long_term') return [];
+  const cache = _schedCache();
+  const hit = cache.get(property.id);
+  if (hit && hit.prop === property) return hit.out.slice();
+  const out = _buildPaymentSchedule(property);
+  for (const e of out) Object.freeze(e);
+  cache.set(property.id, { prop: property, out });
+  return out.slice();
+}
 
+function _buildPaymentSchedule(property) {
   const tenants = listActive('tenants')
     .filter(t => t.propertyId === property.id)
     .map(_expectedRentLease)
@@ -909,15 +1025,7 @@ export function generatePaymentSchedule(property) {
   if (!tenants.length) return [];
 
   // This property's rent payments by the month they cover (rentMonthOf).
-  const paysByMonth = new Map();
-  for (const p of listActivePayments()) {
-    if (p.propertyId !== property.id || !isRentPayment(p)) continue;
-    const mk = rentMonthOf(p);
-    if (!mk) continue;
-    const arr = paysByMonth.get(mk) || [];
-    arr.push(p);
-    paysByMonth.set(mk, arr);
-  }
+  const paysByMonth = _rentPaymentsByProperty().get(property.id) || new Map();
 
   const vacantPeriods = property.vacantPeriods || [];
   const soldDate = (property.status === 'sold' && property.soldDate) ? property.soldDate : null;
@@ -1114,43 +1222,6 @@ export function buildReconciliationData(year, ownerFilter, scope) {
   return entities;
 }
 
-// ============== Centralised report data (single source of truth) ==============
-export function buildReportData(filters = {}) {
-  const f = { ...state.ui.filters, ...filters };
-  const matchDate = row => {
-    if (f.years instanceof Set) {
-      if (f.years.size === 0) return true;
-      const d = row.date || row.issueDate || '';
-      return [...f.years].some(y => d.startsWith(String(y)));
-    }
-    if (!f.year || f.year === 'all') return true;
-    const d = row.date || row.issueDate || '';
-    return d.startsWith(String(f.year));
-  };
-  const matchStream = row => {
-    if (f.streams instanceof Set) return f.streams.size === 0 || !row.stream || f.streams.has(row.stream);
-    return !f.stream || f.stream === 'all' || !row.stream || row.stream === f.stream;
-  };
-  const matchProperty = row => {
-    if (f.propertyIds instanceof Set) return f.propertyIds.size === 0 || f.propertyIds.has(row.propertyId);
-    return !f.propertyId || f.propertyId === 'all' || row.propertyId === f.propertyId;
-  };
-
-  const payments = listActivePayments().filter(p => p.status === 'paid' && matchDate(p) && matchStream(p) && matchProperty(p));
-  const invoices = listActive('invoices').filter(i => i.status === 'paid' && matchDate({ date: i.issueDate }) && matchStream(i) && matchProperty(i));
-  const allExpenses  = listActive('expenses');
-  const opExpenses   = allExpenses.filter(e => !isCapEx(e) && matchDate(e) && matchStream(e) && matchProperty(e));
-  const renoExpenses = allExpenses.filter(e =>  isCapEx(e) && matchDate(e) && matchProperty(e));
-
-  // Revenue excludes VAT/tax — subtotal, not total (falls back to total for
-  // legacy records that predate the subtotal field).
-  const rev = [...payments, ...invoices.map(i => ({ ...i, amount: i.subtotal ?? i.total, date: i.date || i.issueDate }))].reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
-  const exp = opExpenses.reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
-  const reno = renoExpenses.reduce((s, r) => s + toEUR(r.amount, r.currency, r.date), 0);
-
-  return { payments, invoices, opExpenses, renoExpenses, rev, exp, reno, net: rev - exp };
-}
-
 // Returns true if a record counts as "company" scope: payments explicitly
 // flagged `personal` (e.g. off-platform bookings that don't go through the
 // company) are always excluded, regardless of their property's channel;
@@ -1229,7 +1300,7 @@ export function restoreRecord(collection, id) {
   delete item.deletedBy;
   item.updatedAt = nextStamp(item.updatedAt);
   item.updatedBy = state.session?.username || 'system';
-  markDirty();
+  markDirty(collection);
   return true;
 }
 
@@ -1278,7 +1349,7 @@ export function permanentlyDeleteRecord(collection, id) {
   arr.splice(index, 1);
   state._ix?.get(collection)?.delete(id);
   recordTombstone(collection, id);
-  markDirty();
+  markDirty(collection);
   return true;
 }
 

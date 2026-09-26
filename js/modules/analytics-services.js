@@ -6,7 +6,7 @@ import {
   formatEUR, toEUR, byId,
   listActive, listActiveClients
 } from '../core/data.js';
-import { getMonthKeysForRange, makeMatchers } from './analytics-filters.js?v=20260519';
+import { getMonthKeysForRange, makeMatchers } from './analytics-filters.js';
 import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct, mkTh, mkDrillValue, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, classifyInvoice, invoiceOwner, invoiceDueDate, invoiceDaysPastDue, invoiceAgingBucket, AGING_BUCKETS } from './analytics-helpers.js';
 import { todayYmd, diffDaysYmd } from '../core/dates.js';
 

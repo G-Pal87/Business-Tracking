@@ -10,7 +10,7 @@ import {
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine
-} from './analytics-filters.js?v=20260519';
+} from './analytics-filters.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkKpiCard, mkCmpGrid, mkEmptyState, expStream, safePct, mkInsightsBanner, mkTh, mkDrillValue, invoiceNetEUR } from './analytics-helpers.js';
 import { daysInMonth } from '../core/dates.js';
 
@@ -1177,8 +1177,11 @@ function buildView() {
   const tableCard   = el('div', { class: 'card' });
   const tableBody   = el('div', { style: 'display:none' });
   const tableToggle = el('button', { style: 'background:none;border:none;color:var(--accent);font-size:13px;cursor:pointer;padding:0' }, 'Show Records');
+  // Built on first expand (it starts collapsed) — see analytics-revenue.js.
+  let tableBuilt = false;
   tableToggle.onclick = () => {
     const hidden = tableBody.style.display === 'none';
+    if (hidden && !tableBuilt) { tableBuilt = true; buildExpenseTable(tableBody, cur); }
     tableBody.style.display = hidden ? '' : 'none';
     tableToggle.textContent = hidden ? 'Hide Records' : 'Show Records';
   };
@@ -1198,7 +1201,6 @@ function buildView() {
       tableToggle
     )
   ));
-  buildExpenseTable(tableBody, cur);
   tableCard.appendChild(tableBody);
   wrap.appendChild(tableCard);
 
@@ -1785,7 +1787,7 @@ function buildExpenseTable(container, { allExp }) {
   const tableWrap = el('div', { class: 'table-wrap' });
   tableWrap.appendChild(table);
   container.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _expTableSortCol, initialDir: _expTableSortDir, initialSearch: _expTableSearch, onSortChange: (c, d) => { _expTableSortCol = c; _expTableSortDir = d; }, onSearchChange: v => { _expTableSearch = v; } });
+  attachSortFilter(tableWrap, { initialCol: _expTableSortCol, initialDir: _expTableSortDir, initialSearch: _expTableSearch, onSortChange: (c, d) => { _expTableSortCol = c; _expTableSortDir = d; }, onSearchChange: v => { _expTableSearch = v; }, pageSize: 200 });
 
   const totalEUR = rows.reduce((s, r) => s + (r._eur || 0), 0);
   container.appendChild(el('div', {

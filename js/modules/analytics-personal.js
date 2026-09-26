@@ -6,7 +6,7 @@ import { state } from '../core/state.js';
 import {
   createFilterState, buildFilterBar, buildComparisonLine,
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange
-} from './analytics-filters.js?v=20260519';
+} from './analytics-filters.js';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge,
   mkEmptyState, mkKpiCard, mkCmpGrid, mkInsightsBanner, safePct, fmtK, mkDrillValue,
@@ -151,40 +151,32 @@ function getPersonData(person, start, end, months) {
   const personKey = activePeople.length === 0 ? person : (personRecord?.legacyKey || personRecord?.id || person);
   const matchesPerson = e => e.personId === personKey || e.personId === person || (personId && e.personId === personId);
 
-  // Salary — expenses with category 'salary' linked to this person
-  const salaryExps = listActive('expenses').filter(e =>
-    e.category === 'salary' && matchesPerson(e) && inRange(e.date)
-  );
-  const salary = salaryExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-
-  // GESY (company cost — shown for context, not personal income). Distinct
-  // from the generic 'social_contributions' category, which is excluded from
-  // every income bucket below rather than counted anywhere on this dashboard.
-  const gesyExps = listActive('expenses').filter(e =>
-    e.category === 'gesy' && matchesPerson(e) && inRange(e.date)
-  );
-  const gesyTotal = gesyExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-
-  // Reimbursements
-  const reimbExps = listActive('expenses').filter(e =>
-    e.category === 'reimbursement' && matchesPerson(e) && inRange(e.date)
-  );
-  const reimb = reimbExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-
-  // STR Income — str_fee expenses linked to this person and flagged as personal income
-  const strIncomeExps = listActive('expenses').filter(e =>
-    e.category === 'str_fee' && matchesPerson(e) && e.countsAsPersonalIncome && inRange(e.date)
-  );
+  // One pass over expenses (used to be five full scans), bucketing each
+  // person-linked, in-range expense by the same rules as before:
+  //   salary        — category 'salary'
+  //   gesy          — category 'gesy' (company cost — shown for context, not
+  //                   personal income; distinct from the generic
+  //                   'social_contributions' category, which is excluded from
+  //                   every income bucket rather than counted anywhere here)
+  //   reimbursement — category 'reimbursement'
+  //   STR income    — 'str_fee' expenses flagged as personal income
+  //   other personal income — any other category with countsAsPersonalIncome
+  //                   (not one already counted above)
+  const PI_EXCLUDED = ['salary', 'reimbursement', 'social_contributions', 'gesy', 'str_fee'];
+  const salaryExps = [], gesyExps = [], reimbExps = [], strIncomeExps = [], piExps = [];
+  for (const e of listActive('expenses')) {
+    if (!matchesPerson(e) || !inRange(e.date)) continue;
+    if (e.category === 'salary') salaryExps.push(e);
+    if (e.category === 'gesy') gesyExps.push(e);
+    if (e.category === 'reimbursement') reimbExps.push(e);
+    if (e.category === 'str_fee' && e.countsAsPersonalIncome) strIncomeExps.push(e);
+    if (e.countsAsPersonalIncome && !PI_EXCLUDED.includes(e.category)) piExps.push(e);
+  }
+  const salary         = salaryExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const gesyTotal      = gesyExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const reimb          = reimbExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
   const strIncomeTotal = strIncomeExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
-
-  // Person-linked personal income expenses (any category, countsAsPersonalIncome=true, not already counted above)
-  const piExps = listActive('expenses').filter(e =>
-    matchesPerson(e) &&
-    e.countsAsPersonalIncome &&
-    !['salary', 'reimbursement', 'social_contributions', 'gesy', 'str_fee'].includes(e.category) &&
-    inRange(e.date)
-  );
-  const piExpTotal = piExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
+  const piExpTotal     = piExps.reduce((s, e) => s + toEUR(e.amount, e.currency, e.date), 0);
 
   // Owner rent — derived from ownerRentHistory, rate-per-month aware
   // Don't exclude currently-sold properties here — that would make the

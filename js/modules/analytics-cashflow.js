@@ -9,7 +9,7 @@ import {
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
-} from './analytics-filters.js?v=20260519';
+} from './analytics-filters.js';
 import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, expStream, safePct, fmtK, mkInsightsBanner, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
 
 // Per-stream bucket for a cash-in record: the single stream resolver
@@ -2222,7 +2222,7 @@ function buildCashFlowTable(container, { payments, invoices, opExpenses, capExpe
   const tableWrap = el('div', { class: 'table-wrap' });
   tableWrap.appendChild(table);
   container.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _cfSortCol, initialDir: _cfSortDir, initialSearch: _cfSearch, onSortChange: (c, d) => { _cfSortCol = c; _cfSortDir = d; }, onSearchChange: v => { _cfSearch = v; } });
+  attachSortFilter(tableWrap, { initialCol: _cfSortCol, initialDir: _cfSortDir, initialSearch: _cfSearch, onSortChange: (c, d) => { _cfSortCol = c; _cfSortDir = d; }, onSearchChange: v => { _cfSearch = v; }, pageSize: 200 });
 
   const totalIn  = rows.filter(r => r._type === 'in')   .reduce((s, r) => s + r._eur, 0);
   const totalOp  = rows.filter(r => r._type === 'opex') .reduce((s, r) => s + r._eur, 0);

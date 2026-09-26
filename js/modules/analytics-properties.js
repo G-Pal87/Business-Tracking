@@ -9,7 +9,7 @@ import {
 } from '../core/data.js';
 import { todayYmd, diffDaysYmd, addDaysYmd } from '../core/dates.js';
 import { openDetail as openPropertyDetail } from './properties.js';
-import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js?v=20260519';
+import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js';
 import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct, mkTh, mkExplainButton, mkDrillValue, periodDays, DAYS_PER_YEAR } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────

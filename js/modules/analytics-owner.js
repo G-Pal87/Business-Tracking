@@ -5,7 +5,7 @@ import { formatEUR, toEUR, byId, listActive, listActivePayments, isCapEx, getPer
 import {
   createFilterState, buildFilterBar, buildComparisonLine,
   getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers
-} from './analytics-filters.js?v=20260519';
+} from './analytics-filters.js';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkExplainButton, mkDrillValue,
   invoiceOwner, invoiceNetEUR, recordOwner, partnerKey, groupByMonthKey

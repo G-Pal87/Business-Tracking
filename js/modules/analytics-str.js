@@ -118,9 +118,23 @@ function eachNight(from, toExcl, fn) {
   while (d < e) { fn(utcYmd(d)); d.setUTCDate(d.getUTCDate() + 1); }
 }
 
+// Called once per occupied night (makeRateForNight) — indexed property →
+// month → FIRST matching target (same pick as the linear .find it replaces),
+// rebuilt with strCache (any edit / db swap / sync) or when the targets
+// array itself is replaced.
 function getTargetADR(propertyId, monthKey) {
   const targets = state.db.strRateTargets || [];
-  return targets.find(t => t.propertyId === propertyId && t.month === monthKey) || null;
+  const c = strCache();
+  if (!c.targets || c.targets.src !== targets) {
+    const idx = new Map();
+    for (const t of targets) {
+      let byMonth = idx.get(t.propertyId);
+      if (!byMonth) { byMonth = new Map(); idx.set(t.propertyId, byMonth); }
+      if (!byMonth.has(t.month)) byMonth.set(t.month, t);
+    }
+    c.targets = { src: targets, idx };
+  }
+  return c.targets.idx.get(propertyId)?.get(monthKey) || null;
 }
 
 function getCalendar(propertyId) {
@@ -279,9 +293,14 @@ function buildAdrSuggester(propId) {
   });
   const avg = a => a.reduce((s, r) => s + r, 0) / a.length;
   const overall = all.length ? avg(all) : null;
+  // Buckets never change after this point — average each once instead of on
+  // every call (called per night of every range).
+  const mdAvg = new Map(), moAvg = new Map();
+  for (const [k, a] of byMonthDay) if (a.length) mdAvg.set(k, avg(a));
+  for (const [k, a] of byMonth)    if (a.length) moAvg.set(k, avg(a));
   const fn = (date) => {
-    const md = byMonthDay.get(date.slice(5));   if (md && md.length) return avg(md);
-    const mo = byMonth.get(date.slice(5, 7));   if (mo && mo.length) return avg(mo);
+    const md = mdAvg.get(date.slice(5));   if (md !== undefined) return md;
+    const mo = moAvg.get(date.slice(5, 7)); if (mo !== undefined) return mo;
     return overall;
   };
   cache.set(propId, fn);
@@ -414,10 +433,18 @@ function getSpotlightData(propId, curRange) {
 
   // Nights / ADR by stay date (clipped to each month ∩ range); revenue by payout date.
   const stayPays = getStayPaymentsInRange(curRange.start, curRange.end, new Set([propId]));
+  // Payout-dated payments bucketed by 'YYYY-MM' once (same rows, same order
+  // as filtering by date prefix per month).
+  const paysByMonth = new Map();
+  for (const p of payments) {
+    const k = (p.date || '').slice(0, 7);
+    const a = paysByMonth.get(k);
+    if (a) a.push(p); else paysByMonth.set(k, [p]);
+  }
   const months = monthKeys.map(k => {
     const mk       = k.key;
     const target   = getTargetADR(propId, mk);
-    const paysInMo = payments.filter(p => (p.date || '').startsWith(mk));
+    const paysInMo = mk.length === 7 ? (paysByMonth.get(mk) || []) : payments.filter(p => (p.date || '').startsWith(mk));
     const rev      = paysInMo.reduce((s, p) => s + payEUR(p), 0);
     const moEnd    = `${mk}-${String(daysInMonth(+mk.slice(0, 4), +mk.slice(5, 7) - 1)).padStart(2, '0')}`;
     const moRange  = { start: `${mk}-01` > curRange.start ? `${mk}-01` : curRange.start, end: moEnd < curRange.end ? moEnd : curRange.end };
