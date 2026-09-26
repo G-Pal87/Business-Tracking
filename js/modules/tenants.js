@@ -4,6 +4,7 @@ import { upsert, softDelete, listActive, byId, newId, formatMoney, generatePayme
 import { CURRENCIES } from '../core/config.js';
 import { recordRentPaymentsBulk } from './payments.js';
 import { mkTh } from './analytics-helpers.js';
+import { thisMonthYm } from '../core/dates.js';
 
 let _sortCol = -1, _sortDir = 1, _tenSearch = '';
 
@@ -211,17 +212,38 @@ function openForm(existing, onSave) {
   const rentI       = input({ type: 'number', value: r.monthlyRent || 0, min: 0, step: 0.01 });
   const currencyS   = select(CURRENCIES, r.currency || 'EUR');
   const depositI    = input({ type: 'number', value: r.deposit || 0, min: 0, step: 0.01 });
-  const payDayI     = input({ type: 'number', value: r.paymentDayOfMonth || 1, min: 1, max: 28 });
+  // Due day 1–31: a day past the month's end falls on its last day (31 → 30 Apr).
+  const payDayI     = input({ type: 'number', value: r.paymentDayOfMonth || 1, min: 1, max: 31 });
   const statusS     = select(Object.entries(STATUSES).map(([v, m]) => ({ value: v, label: m.label })), r.status || 'active');
   const notesT      = textarea({ placeholder: 'Notes' });
   notesT.value = r.notes || '';
+  // Rent change effective from — only for an existing tenant whose rent or
+  // currency is edited: earlier months keep the old rent (rentHistory)
+  // instead of the whole schedule being rewritten at the new rate.
+  const rentFromI   = input({ type: 'month', value: thisMonthYm() });
+  const rentFromRow = formRow('Rent change effective from', rentFromI);
+  const syncRentFrom = () => {
+    rentFromRow.style.display = existing && (Number(rentI.value) !== Number(existing.monthlyRent) || currencyS.value !== (existing.currency || 'EUR')) ? '' : 'none';
+  };
+  rentI.addEventListener('input', syncRentFrom);
+  currencyS.addEventListener('change', syncRentFrom);
+  syncRentFrom();
+  // Part months (lease starting on the 20th, ending on the 15th) are prorated
+  // by days; untick for leases that charge a full first/last month.
+  const prorateChk  = el('input', { type: 'checkbox' });
+  prorateChk.checked = r.prorateRent !== false;
+  prorateChk.id = 'tenProrate_' + r.id;
+  const prorateRow  = el('div', { style: 'display:flex;align-items:center;gap:8px;margin:2px 0 8px' }, prorateChk,
+    el('label', { for: prorateChk.id, style: 'font-size:12px;cursor:pointer' }, 'Prorate rent for part months (move-in / move-out)'));
 
   body.appendChild(formRow('Name', nameI));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Phone', phoneI), formRow('Email', emailI)));
   body.appendChild(formRow('Property', propS));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Lease Start', leaseStartI), formRow('Lease End', leaseEndI)));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Monthly Rent', rentI), formRow('Currency', currencyS)));
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Deposit', depositI), formRow('Payment Day (1–28)', payDayI)));
+  body.appendChild(rentFromRow);
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Deposit', depositI), formRow('Payment Day (1–31)', payDayI)));
+  body.appendChild(prorateRow);
   body.appendChild(formRow('Status', statusS));
   body.appendChild(formRow('Notes', notesT));
 
@@ -245,10 +267,24 @@ function openForm(existing, onSave) {
       monthlyRent: Number(rentI.value),
       currency: currencyS.value,
       deposit: Number(depositI.value) || 0,
-      paymentDayOfMonth: Math.min(Math.max(Number(payDayI.value) || 1, 1), 28),
+      paymentDayOfMonth: Math.min(Math.max(Math.floor(Number(payDayI.value)) || 1, 1), 31),
       notes: notesT.value.trim(),
       status: statusS.value
     };
+    if (prorateChk.checked) delete updated.prorateRent; else updated.prorateRent = false;
+    // Rent / currency changed on an existing tenant → record it from the
+    // chosen month on. The first change seeds the history with the old rent
+    // for every earlier month.
+    if (existing && (updated.monthlyRent !== Number(existing.monthlyRent) || updated.currency !== (existing.currency || 'EUR'))) {
+      const from = /^\d{4}-\d{2}$/.test(rentFromI.value) ? rentFromI.value : thisMonthYm();
+      const hist = Array.isArray(existing.rentHistory) && existing.rentHistory.length
+        ? [...existing.rentHistory]
+        : [{ from: '0000-01', amount: Number(existing.monthlyRent) || 0, currency: existing.currency || 'EUR' }];
+      updated.rentHistory = [
+        ...hist.filter(h => h && typeof h.from === 'string' && h.from.slice(0, 7) < from),
+        { from, amount: updated.monthlyRent, currency: updated.currency }
+      ];
+    }
 
     // Duplicate-name guard
     if (!existing) {

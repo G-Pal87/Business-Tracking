@@ -10,18 +10,24 @@ export const STREAM_LIST = Object.keys(STREAMS);
 export const PROPERTY_STREAMS = ['short_term_rental', 'long_term_rental'];
 export const SERVICE_STREAMS = ['customer_success', 'marketing_services'];
 
+// `deductible: false` marks categories that are cash out but not a
+// deductible business cost: corporation/provisional tax payments, VAT paid
+// over to the tax office, and mortgage repayments (principal). They are left
+// out of the tax prefill and the dividend operating profit (see
+// isDeductibleExpense in data.js). A single expense can override this with
+// its own `deductible` flag (e.g. a mortgage line that is interest only).
 export const EXPENSE_CATEGORIES = {
-  mortgage:         { label: 'Mortgage',          icon: 'M',  color: '#6366f1' },
+  mortgage:         { label: 'Mortgage',          icon: 'M',  color: '#6366f1', deductible: false },
   maintenance:      { label: 'Maintenance',        icon: 'T',  color: '#10b981' },
   renovation:       { label: 'Renovation',         icon: 'R',  color: '#f59e0b' },
-  tax:              { label: 'Tax',                icon: 'X',  color: '#ef4444' },
+  tax:              { label: 'Tax',                icon: 'X',  color: '#ef4444', deductible: false },
   utilities:        { label: 'Utilities',          icon: 'U',  color: '#8b5cf6' },
   management:       { label: 'Management',         icon: 'P',  color: '#14b8a6' },
   cleaning:         { label: 'Cleaning',           icon: 'C',  color: '#ec4899' },
   electricity:      { label: 'Electricity',        icon: 'E',  color: '#f59e0b' },
   water:            { label: 'Water',              icon: 'W',  color: '#06b6d4' },
   inventory:        { label: 'Inventory',          icon: 'B',  color: '#84cc16' },
-  vat:              { label: 'VAT',                icon: 'V',  color: '#f97316' },
+  vat:              { label: 'VAT',                icon: 'V',  color: '#f97316', deductible: false },
   reimbursement:         { label: 'Reimbursement',          icon: 'Rb', color: '#a855f7' },
   salary:               { label: 'Salary',                icon: 'S',  color: '#818cf8' },
   social_contributions: { label: 'Social Contributions',  icon: 'SC', color: '#34d399' },
