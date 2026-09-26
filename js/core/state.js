@@ -166,10 +166,16 @@ export function setDb(db) {
 // the value captured at snapshot time) from the single boolean `dirty`, which stays
 // true across an entire push attempt so the tab-close warning keeps working correctly
 // if that push fails.
-export function markDirty() {
+//
+// `collection` (optional): the one collection this edit touched — only its
+// cached active list is dropped. Omit it (or pass anything but a string)
+// whenever the edit touched more than one collection, a plain field such as
+// settings, or you aren't sure: every cached list is dropped, as before.
+export function markDirty(collection) {
   state.dirty = true;
   state.editSeq = (state.editSeq || 0) + 1;
-  state._activeCache.clear();
+  if (typeof collection === 'string' && collection) state._activeCache.delete(collection);
+  else state._activeCache.clear();
   notify('dirty');
 }
 
