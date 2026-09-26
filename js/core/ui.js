@@ -369,15 +369,29 @@ export function addDays(dateStr, days) {
   return addDaysYmd(dateStr, days);
 }
 
+// toLocaleDateString() builds a fresh Intl.DateTimeFormat on every call —
+// measurable when a table formats thousands of dates. Reuse one per option set.
+const _dtfCache = new Map();
+function dateFormatter(locale, opts) {
+  const key = locale + '|' + JSON.stringify(opts);
+  let f = _dtfCache.get(key);
+  if (!f) { f = new Intl.DateTimeFormat(locale, opts); _dtfCache.set(key, f); }
+  return f;
+}
+const FMT_DATE_UTC   = { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' };
+const FMT_DATE_LOCAL = { year: 'numeric', month: 'short', day: 'numeric' };
+
 export function fmtDate(dateStr) {
   if (!dateStr) return '';
   try {
     // A bare YYYY-MM-DD is formatted as that calendar day (UTC midnight read
     // back in UTC), independent of the viewer's timezone.
     if (typeof dateStr === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-      return parseYmd(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+      return dateFormatter('en-US', FMT_DATE_UTC).format(parseYmd(dateStr));
     }
-    return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    const d = new Date(dateStr);
+    if (isNaN(d)) return 'Invalid Date'; // what toLocaleDateString() returned (format() throws)
+    return dateFormatter('en-US', FMT_DATE_LOCAL).format(d);
   } catch { return dateStr; }
 }
 
@@ -392,13 +406,30 @@ export function monthLabel(yyyymm) {
 const SORT_TYPE_RANK = { n: 0, d: 1, s: 2 };
 const SORT_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
-export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', initialCol = -1, initialDir = 1, initialSearch = '', onSortChange = null, onSearchChange = null } = {}) {
+// pageSize (optional): show at most this many matching rows, with a
+// "Show more" button for the rest. Paging is applied after sort + search, so
+// both still cover every row; paged-out rows get the `sf-paged-out` class
+// (display:none via CSS) rather than style.display, so listeners of
+// 'sf:filter' that count/sum rows with style.display !== 'none' keep seeing
+// every matching row.
+// Returns { refresh } — re-applies sort/search/paging, for callers that
+// append rows into an already-attached <tbody> (not seen by the observer).
+export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', initialCol = -1, initialDir = 1, initialSearch = '', onSortChange = null, onSearchChange = null, pageSize = 0 } = {}) {
   let sortCol = initialCol, sortDir = initialDir, searchTerm = initialSearch.toLowerCase();
+  let shown = pageSize;
 
   const searchWrap = el('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:8px' });
   const searchInput = el('input', { type: 'search', class: 'input', placeholder, value: initialSearch, style: 'max-width:220px;font-size:13px' });
   searchWrap.appendChild(searchInput);
   tableWrap.parentNode.insertBefore(searchWrap, tableWrap);
+
+  let moreWrap = null, moreBtn = null;
+  if (pageSize > 0) {
+    moreBtn = el('button', { class: 'btn sm ghost', type: 'button' });
+    moreWrap = el('div', { class: 'sf-more', style: 'display:none' }, moreBtn);
+    tableWrap.parentNode.insertBefore(moreWrap, tableWrap.nextSibling);
+    moreBtn.addEventListener('click', () => { shown += pageSize; applyFilter(); });
+  }
 
   // Matches whole-string date-like text (anchored) so a month name only
   // counts as a date when it's actually shaped like one — e.g. "Aug 7, 2026"
@@ -411,8 +442,10 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
     // Placeholders ("—", "-", "N/A", blank) are their own type and always
     // sort last, whichever the direction.
     if (!txt || /^[—–-]+$/.test(txt) || /^n\/?a$/i.test(txt)) return { t: 'e', v: 0 };
-    if ((/^\d{4}-\d{2}/.test(txt) || DATE_LIKE_RE.test(txt.trim())) && !isNaN(new Date(txt)))
-      return { t: 'd', v: new Date(txt).getTime() };
+    if (/^\d{4}-\d{2}/.test(txt) || DATE_LIKE_RE.test(txt.trim())) {
+      const time = new Date(txt).getTime();
+      if (!isNaN(time)) return { t: 'd', v: time };
+    }
     // Only treat as numeric when the cell is a plain number, currency amount,
     // or percentage (e.g. "€1,500", "HUF 50,000", "7.0%", "-4.5%") — not when
     // text merely contains digits (e.g. "Danko u. 38 -2" would otherwise sort
@@ -425,6 +458,20 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
     if (!isNaN(n) && clean !== '' && /^-?[\d.]+$/.test(clean)) return { t: 'n', v: n };
     return { t: 's', v: txt };
   };
+
+  // Lower-cased text per row, computed once and reused by every keystroke's
+  // filter pass. Any change to the rows' content (a re-render, an inline
+  // edit swapping a row's cells) drops the whole cache via textObs; row
+  // re-ordering by applySort doesn't change any text and is ignored.
+  let rowText = new WeakMap();
+  const textOf = tr => {
+    let t = rowText.get(tr);
+    if (t === undefined) { t = tr.textContent.toLowerCase(); rowText.set(tr, t); }
+    return t;
+  };
+  const textObs = new MutationObserver(() => { rowText = new WeakMap(); });
+  const TEXT_OBS_OPTS = { childList: true, subtree: true, characterData: true };
+  textObs.observe(tableWrap, TEXT_OBS_OPTS);
 
   // obs is declared below; applySort references it via closure — safe because
   // applySort is only ever called after obs is initialised.
@@ -452,16 +499,31 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
       if (ak.t === 's') return SORT_COLLATOR.compare(ak.v, bk.v) * sortDir;
       return (ak.v - bk.v) * sortDir;
     });
+    // Content changes queued before this point still invalidate the cache;
+    // the re-ordering's own records below are discarded.
+    if (textObs.takeRecords().length) rowText = new WeakMap();
     keyed.forEach(({ r }) => tbody.appendChild(r));
+    textObs.takeRecords();
     obs?.observe(tableWrap, { childList: true });
   };
 
   const applyFilter = () => {
     const tbody = tableWrap.querySelector('tbody');
-    if (!tbody) return;
-    [...tbody.querySelectorAll('tr')].forEach(tr => {
-      tr.style.display = !searchTerm || tr.textContent.toLowerCase().includes(searchTerm) ? '' : 'none';
-    });
+    if (!tbody) { if (moreWrap) moreWrap.style.display = 'none'; return; }
+    let matched = 0;
+    for (const tr of tbody.querySelectorAll('tr')) {
+      const match = !searchTerm || textOf(tr).includes(searchTerm);
+      tr.style.display = match ? '' : 'none';
+      if (pageSize > 0) {
+        if (match) matched++;
+        tr.classList.toggle('sf-paged-out', match && matched > shown);
+      }
+    }
+    if (moreWrap) {
+      const rest = matched - shown;
+      moreWrap.style.display = rest > 0 ? '' : 'none';
+      if (rest > 0) moreBtn.textContent = `Show ${Math.min(rest, pageSize)} more (${rest} not shown)`;
+    }
     tableWrap.dispatchEvent(new CustomEvent('sf:filter'));
   };
 
@@ -476,7 +538,7 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
 
   const enhance = () => {
     const table = tableWrap.querySelector('table');
-    if (!table) return;
+    if (!table) { if (moreWrap) moreWrap.style.display = 'none'; return; }
     const ths = [...table.querySelectorAll('thead th')];
     ths.forEach((th, i) => {
       if (!th.textContent.trim() || th.dataset.sfOk) return;
@@ -498,16 +560,21 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
     updateArrows(ths);
   };
 
+  // The search box filters on a short debounce — each pass touches every
+  // row, so running it per keystroke made typing lag on big tables.
+  let searchTimer;
   searchInput.addEventListener('input', () => {
     searchTerm = searchInput.value.toLowerCase();
     onSearchChange?.(searchInput.value);
-    applyFilter();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { shown = pageSize; applyFilter(); }, 150);
   });
 
   let debounce;
   obs = new MutationObserver(() => { clearTimeout(debounce); debounce = setTimeout(enhance, 0); });
   obs.observe(tableWrap, { childList: true });
   enhance();
+  return { refresh: enhance };
 }
 
 // ── Detach clean-up ───────────────────────────────────────────────────────────

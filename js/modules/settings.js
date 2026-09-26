@@ -14,7 +14,7 @@ import { patchSettings, upsert, softDelete, listActive, byId, newId, formatMoney
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
 import { PDF_TEMPLATES } from '../core/pdf.js';
-const generateInvoicePDF = (...a) => import(`../core/pdf.js?v=${window._appV || Date.now()}`).then(m => m.generateInvoicePDF(...a));
+const generateInvoicePDF = (...a) => import(`../core/pdf.js?v=${window._appV || ''}`).then(m => m.generateInvoicePDF(...a));
 import { openPreview as openInvoicePreview, invoicePdfPath, invoicePdfCanonicalName } from './invoices.js';
 import { openDetail as openClientDetail } from './clients.js';
 import { openDetail as openPropertyDetail } from './properties.js';
@@ -45,16 +45,24 @@ const _expandedCards = new Set();
 // needs to live at module scope to survive that instead of resetting.
 let _rerSortCol = -1, _rerSortDir = 1, _rerSearch = '';
 
-function wireCollapsible(key, header, body, chevron) {
+// onFirstOpen (optional): builds an expensive body lazily — called once, the
+// first time the card is open (immediately, if it was left open). The whole
+// page is rebuilt on every background sync, so a collapsed card shouldn't pay
+// for a table (or a network fetch) nobody is looking at. Call this AFTER the
+// function onFirstOpen invokes has been defined.
+function wireCollapsible(key, header, body, chevron, onFirstOpen = null) {
+  let built = !onFirstOpen;
+  const ensureBuilt = () => { if (!built) { built = true; onFirstOpen(); } };
   if (_expandedCards.has(key)) {
     body.style.display = '';
     chevron.classList.add('open');
+    ensureBuilt();
   }
   header.addEventListener('click', () => {
     const open = body.style.display !== 'none';
     body.style.display = open ? 'none' : '';
     chevron.classList.toggle('open', !open);
-    if (open) _expandedCards.delete(key); else _expandedCards.add(key);
+    if (open) _expandedCards.delete(key); else { _expandedCards.add(key); ensureBuilt(); }
   });
 }
 
@@ -1011,7 +1019,6 @@ function buildDevicesCard() {
 
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
-  wireCollapsible('devices', header, body, chevron);
 
   const ONLINE_MS = DEVICE_ONLINE_MS; // see presence.js — device rows refresh every ~4 min
 
@@ -1212,7 +1219,9 @@ function buildDevicesCard() {
     renderHistoryTable(body, history);
   };
 
-  renderAll();
+  // Fetched from GitHub only once the card is opened — not on every settings
+  // build (which the 60s background sync repeats).
+  wireCollapsible('devices', header, body, chevron, renderAll);
   return card;
 }
 
@@ -1611,8 +1620,6 @@ function buildReservationExpenseRulesCard() {
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
 
-  wireCollapsible('reservation-expense-rules', header, body, chevron);
-
   const renderCard = () => {
     body.innerHTML = '';
     const rules = listActive('reservationExpenseRules');
@@ -1677,7 +1684,7 @@ function buildReservationExpenseRulesCard() {
     }
   };
 
-  renderCard();
+  wireCollapsible('reservation-expense-rules', header, body, chevron, () => renderCard());
   return card;
 }
 
@@ -1871,15 +1878,20 @@ function buildTrashCard() {
   const body = el('div', { class: 'card-collapsible-body', style: 'display:none' });
   card.appendChild(body);
 
-  wireCollapsible('trash', header, body, chevron);
+  const setSubtitle = n => { subtitleEl.textContent = `${n} soft-deleted record${n !== 1 ? 's' : ''}`; };
+  // Rows rendered so far for the current collection filter — the table shows
+  // TRASH_PAGE at a time with "Show more" (it can hold thousands of records).
+  const TRASH_PAGE = 200;
+  let trashShown = TRASH_PAGE, trashShownCol = 'all';
 
   const renderCard = (activeCol = 'all') => {
     body.innerHTML = '';
+    if (activeCol !== trashShownCol) { trashShownCol = activeCol; trashShown = TRASH_PAGE; }
 
     const all = listDeletedRecords().sort((a, b) => (b.item.deletedAt || 0) - (a.item.deletedAt || 0));
     const colNames = [...new Set(all.map(r => r.collection))].sort();
 
-    subtitleEl.textContent = `${all.length} soft-deleted record${all.length !== 1 ? 's' : ''}`;
+    setSubtitle(all.length);
 
     if (all.length === 0) {
       body.appendChild(el('div', { class: 'empty' }, 'Trash is empty'));
@@ -1914,10 +1926,11 @@ function buildTrashCard() {
     const getVisible = () => colSel.value === 'all' ? all : all.filter(r => r.collection === colSel.value);
 
     // --- Select All checkbox ---
+    // "Visible" = the rows actually rendered so far (see "Show more" below).
     const selectAllCb = el('input', { type: 'checkbox', title: 'Select all visible' });
 
     const syncSelectAll = () => {
-      const vis = getVisible();
+      const vis = getVisible().filter(r => rowCbs.has(r.key));
       const n = vis.filter(r => selection.has(r.key)).length;
       selectAllCb.checked       = n > 0 && n === vis.length;
       selectAllCb.indeterminate = n > 0 && n < vis.length;
@@ -2055,7 +2068,7 @@ function buildTrashCard() {
     t.appendChild(thead);
 
     const tb = el('tbody');
-    for (const { key, collection, item } of vis) {
+    const buildRow = ({ key, collection, item }) => {
       const cb = el('input', { type: 'checkbox' });
       cb.onchange = () => toggleRow(key, cb.checked);
       rowCbs.set(key, cb);
@@ -2123,14 +2136,32 @@ function buildTrashCard() {
         }
       }));
       tr.appendChild(actions);
-      tb.appendChild(tr);
-    }
+      return tr;
+    };
+    let rendered = 0;
+    const moreBtn = button('', { variant: 'sm ghost' });
+    const moreWrap = el('div', { class: 'sf-more' }, moreBtn);
+    const renderMore = () => {
+      const end = Math.min(vis.length, trashShown);
+      const frag = document.createDocumentFragment();
+      for (; rendered < end; rendered++) frag.appendChild(buildRow(vis[rendered]));
+      tb.appendChild(frag);
+      const rest = vis.length - rendered;
+      moreWrap.style.display = rest > 0 ? '' : 'none';
+      moreBtn.textContent = `Show ${Math.min(rest, TRASH_PAGE)} more (${rest} not shown)`;
+      syncSelectAll();
+    };
+    moreBtn.onclick = () => { trashShown += TRASH_PAGE; renderMore(); };
+    renderMore();
     t.appendChild(tb);
     tw.appendChild(t);
     body.appendChild(tw);
+    body.appendChild(moreWrap);
   };
 
-  renderCard();
+  // The subtitle count is needed while collapsed; the table only once opened.
+  setSubtitle(listDeletedRecords().length);
+  wireCollapsible('trash', header, body, chevron, () => renderCard());
   return card;
 }
 

@@ -3,16 +3,64 @@ import { state, setRoute, subscribe } from './state.js';
 import * as charts from './charts.js';
 import { closeModal, hasUnsavedModalEdits, toast } from './ui.js';
 
+// Route registry. Each entry is a lightweight descriptor — { id, label, icon,
+// load } — whose module code is imported on first navigation (see
+// loadRoute), so boot doesn't have to download and evaluate every view
+// before the first screen. A fully-loaded module object (one with render())
+// may also be registered directly and is used as-is.
 const modules = new Map();
 let currentModule = null;
 let container = null;
 
-export function registerModule(mod) {
-  modules.set(mod.id, mod);
+export function registerModule(desc) {
+  modules.set(desc.id, desc);
 }
 
 export function getModules() {
   return [...modules.values()];
+}
+
+// Resolves to the route's module object ({ id, label, render, refresh,
+// destroy }), importing it once. A failed import isn't cached, so the next
+// navigation retries it.
+export function loadRoute(id) {
+  const desc = modules.get(id);
+  if (!desc) return Promise.reject(new Error(`Unknown route: ${id}`));
+  if (typeof desc.render === 'function') return Promise.resolve(desc);
+  if (desc.module) return Promise.resolve(desc.module);
+  if (!desc._loading) {
+    desc._loading = Promise.resolve()
+      .then(() => desc.load())
+      .then(m => {
+        const mod = m?.default || m;
+        if (!mod || typeof mod.render !== 'function') throw new Error(`Module "${id}" has no render()`);
+        if (mod.id !== id) console.warn(`[router] route "${id}" loaded module "${mod.id}"`);
+        desc.module = mod;
+        return mod;
+      })
+      .catch(err => { desc._loading = null; throw err; });
+  }
+  return desc._loading;
+}
+
+function loadedModule(desc) {
+  return typeof desc.render === 'function' ? desc : (desc.module || null);
+}
+
+// Imports every not-yet-loaded route in the background, one at a time and
+// only while the browser is idle, so later navigations render instantly
+// without competing with the first screen for the network/CPU.
+export function prefetchAll() {
+  const queue = [...modules.values()].filter(d => !loadedModule(d));
+  const idle = cb => (window.requestIdleCallback
+    ? window.requestIdleCallback(cb, { timeout: 3000 })
+    : setTimeout(cb, 200));
+  const next = () => {
+    const d = queue.shift();
+    if (!d) return;
+    loadRoute(d.id).catch(() => { /* retried on navigation */ }).finally(() => idle(next));
+  };
+  idle(next);
 }
 
 export function init(el) {
@@ -85,8 +133,8 @@ let _navToken = 0;
 
 function onHashChange() {
   const id = (location.hash || '#analytics').slice(1);
-  const mod = modules.get(id) || modules.get('analytics');
-  if (!mod) return;
+  const desc = modules.get(id) || modules.get('analytics');
+  if (!desc) return;
   if (!modules.has(id) && location.hash && location.hash !== '#analytics') {
     // Unknown route falling back to analytics — keep the address bar
     // consistent with what's actually shown instead of silently disagreeing
@@ -99,6 +147,11 @@ function onHashChange() {
   if (currentModule && currentModule.destroy) {
     try { currentModule.destroy(); } catch (e) { console.error(e); }
   }
+  // No module is "current" until the new one has rendered — a data-loaded /
+  // filter-change arriving while its code is still downloading must not
+  // refresh() the module that was just destroyed. The new one renders with
+  // the latest state anyway.
+  currentModule = null;
   // Destroy any Chart.js instances before their canvases are removed below.
   // Centralized here so a module with an incomplete destroy() can't leak charts.
   try { charts.destroyAll(); } catch (e) { console.error(e); }
@@ -112,6 +165,30 @@ function onHashChange() {
   pendingRefresh = false;
   clearTimeout(pendingTimer);
   pendingTimer = null;
+
+  // Highlight + title straight away (from the descriptor), so the click
+  // registers even while the module's code is still loading.
+  highlight(desc.id, desc.label || desc.id);
+
+  const mod = loadedModule(desc);
+  if (mod) { renderRoute(mod); return; }
+
+  container.innerHTML = '<div class="empty route-loading">Loading…</div>';
+  loadRoute(desc.id).then(loaded => {
+    // A later navigation superseded this one while the code downloaded.
+    if (myToken !== _navToken) return;
+    container.innerHTML = '';
+    renderRoute(loaded);
+  }, err => {
+    if (myToken !== _navToken) return;
+    console.error('module load error', err);
+    container.innerHTML = '<div class="empty"><div class="empty-icon">!</div><span></span><div style="margin-top:12px"><button class="btn sm">Retry</button></div></div>';
+    container.querySelector('span').textContent = `Could not load this page: ${err.message}`;
+    container.querySelector('button').onclick = () => onHashChange();
+  });
+}
+
+function renderRoute(mod) {
   currentModule = mod;
   setRoute(mod.id);
   try {
@@ -121,16 +198,14 @@ function onHashChange() {
     container.innerHTML = '<div class="empty"><div class="empty-icon">!</div><span></span></div>';
     container.querySelector('span').textContent = `Error rendering module: ${e.message}`;
   }
-  // Every render() today is synchronous, so this never actually fires — it's
-  // a guard against a future module doing async work before appending to
-  // `container`, where a second rapid navigation could otherwise interleave
-  // its output with this one's.
-  if (myToken !== _navToken) return;
+  highlight(mod.id, mod.label || mod.id);
+}
 
+function highlight(id, label) {
   // nav highlight
   document.querySelectorAll('.nav-item').forEach(n => {
-    n.classList.toggle('active', n.dataset.route === mod.id);
+    n.classList.toggle('active', n.dataset.route === id);
   });
   // header title
-  document.getElementById('header-title').textContent = mod.label || mod.id;
+  document.getElementById('header-title').textContent = label;
 }

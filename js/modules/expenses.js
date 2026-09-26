@@ -73,6 +73,10 @@ async function migrateEmbeddedReceipts(pending) {
 let _sortCol = -1, _sortDir = 1;
 let _expPage = 0, _expPageSize = 100, _expSearch = '';
 let _updateFn = null;
+// Cancels for debounce timers started by the current view — run by destroy()
+// so a pending filter re-render can't fire after navigating away.
+const _viewCleanup = new Set();
+const runViewCleanup = () => { for (const fn of _viewCleanup) { try { fn(); } catch { /* ignore */ } } _viewCleanup.clear(); };
 
 export default {
   id: 'expenses',
@@ -87,7 +91,7 @@ export default {
     _updateFn = update;
     c.appendChild(element);
   },
-  destroy() { _updateFn = null; charts.destroyAll(); }
+  destroy() { _updateFn = null; runViewCleanup(); charts.destroyAll(); }
 };
 
 // The i-th occurrence of a recurring series, always computed from the
@@ -153,6 +157,7 @@ function build() {
       : (e.vendorId ? (byId('vendors', e.vendorId)?.name || e.vendor || '') : (e.vendor || ''));
   }
   const onFilter = () => { clearTimeout(_filterTimer); _filterTimer = setTimeout(() => { rebuildFilters(); renderAll(); }, 250); };
+  _viewCleanup.add(() => clearTimeout(_filterTimer));
 
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
     const count = selected.size;
@@ -291,6 +296,7 @@ function build() {
     clearTimeout(_searchTimer);
     _searchTimer = setTimeout(() => { _expSearch = searchInput.value.trim().toLowerCase(); _expPage = 0; renderTable(); }, 200);
   });
+  _viewCleanup.add(() => clearTimeout(_searchTimer));
 
   const syncDeleteBtn = () => {
     if (selected.size > 0) {

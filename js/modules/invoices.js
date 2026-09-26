@@ -3,7 +3,7 @@ import { state } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, confirmDeleteTwice, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, addDays, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
 import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, getPeopleOwners, getPersonName } from '../core/data.js';
 import { CURRENCIES, INVOICE_STATUSES, OWNERS, STREAMS, SERVICE_UNITS } from '../core/config.js';
-const _pdfMod = () => import(`../core/pdf.js?v=${window._appV || Date.now()}`);
+const _pdfMod = () => import(`../core/pdf.js?v=${window._appV || ''}`);
 const downloadInvoicePDF  = (...a) => _pdfMod().then(m => m.downloadInvoicePDF(...a));
 const generateInvoicePDF  = (...a) => _pdfMod().then(m => m.generateInvoicePDF(...a));
 import { navigate } from '../core/router.js';
@@ -64,6 +64,9 @@ function invDrillRows(invs) {
 
 let _sortCol = -1, _sortDir = 1, _invSearch = '';
 let _invUpdateFn = null;
+// Cancels for timers/work started by the current view — run by destroy().
+const _viewCleanup = new Set();
+const runViewCleanup = () => { for (const fn of _viewCleanup) { try { fn(); } catch { /* ignore */ } } _viewCleanup.clear(); };
 
 export default {
   id: 'invoices',
@@ -78,7 +81,7 @@ export default {
     _invUpdateFn = update;
     c.appendChild(element);
   },
-  destroy() { _invUpdateFn = null; }
+  destroy() { _invUpdateFn = null; runViewCleanup(); }
 };
 
 // Canonical PDF filename: purely numeric numbers get {num}_{CLIENT}_{DDMMYY},
@@ -336,6 +339,9 @@ function build() {
 
   let _rtTimer, _invRenderToken = 0;
   const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => { rebuildFilters(); renderTable(); }, 250); };
+  // Leaving the page cancels a pending filter re-render and any in-progress
+  // chunked table build (the token check in renderChunk stops it).
+  _viewCleanup.add(() => { clearTimeout(_rtTimer); _invRenderToken++; });
   const yearMS   = buildMultiSelect([], yearFilter,   'All Years',    debouncedRT, 'inv_years');
   const monthMS  = buildMultiSelect([], monthFilter,  'All Months',   debouncedRT, 'inv_months');
   const clientMS = buildMultiSelect([], clientFilter, 'All Clients',  debouncedRT, 'inv_clients');
@@ -430,7 +436,9 @@ function build() {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _sortCol, initialDir: _sortDir, initialSearch: _invSearch, onSortChange: (c, d) => { _sortCol = c; _sortDir = d; }, onSearchChange: v => { _invSearch = v; } });
+  // 200 rows at a time ("Show more" for the rest) — sort + search still
+  // cover every row; the footer count/totals below include paged-out rows.
+  const sortFilter = attachSortFilter(tableWrap, { initialCol: _sortCol, initialDir: _sortDir, initialSearch: _invSearch, onSortChange: (c, d) => { _sortCol = c; _sortDir = d; }, onSearchChange: v => { _invSearch = v; }, pageSize: 200 });
   tableWrap.addEventListener('sf:filter', () => {
     const countEl = tableWrap.querySelector('.table-footer-count');
     const paidEl  = tableWrap.querySelector('.table-footer-paid');
@@ -605,6 +613,10 @@ function build() {
         requestAnimationFrame(renderChunk);
       } else {
         tb.appendChild(frag);
+        // Rows landing in a later frame go into the already-attached <tbody>,
+        // which attachSortFilter's observer doesn't watch — re-apply the
+        // saved sort, search and paging to them.
+        if (rows.length > 120) sortFilter.refresh();
         selectAllChk.onchange = () => {
           rowChks.forEach(c => { c.checked = selectAllChk.checked; });
           selectAllChk.indeterminate = false;

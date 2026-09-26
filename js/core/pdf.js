@@ -2,6 +2,7 @@
 import { byId, formatMoney } from './data.js';
 import { state } from './state.js';
 import { fmtDate, toast } from './ui.js';
+import { loadLib } from './libs.js';
 
 export const PDF_TEMPLATES = [
   { value: 'standard',  label: 'Standard',      description: 'Clean two-column header, light table' },
@@ -947,7 +948,9 @@ async function stableFileId(seed) {
 }
 
 export async function generateInvoicePDF(invoice, templateOverride) {
-  const { jsPDF } = window.jspdf;
+  // jsPDF is loaded on first use (pinned + SRI, see core/libs.js) rather than
+  // as a render-blocking <script> on every page load.
+  const { jsPDF } = await loadLib('jspdf');
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   // jsPDF stamps the wall-clock time into the PDF's /CreationDate metadata by
   // default, so re-generating byte-identical invoice content still produces
