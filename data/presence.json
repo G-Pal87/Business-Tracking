@@ -1,1 +1,18 @@
-{"enc":1,"iv":"PKAvtmUVq031JOtV","ct":"ew6McxMoi4GQo/UvBdNsyIWwR+o1Xz9xK97F9Ut4INOJ/bpODIk+cAfFZtK+FIrxP8+CSHeAR6TW7WINt9FiMMjFNBfgfgg5sviYn8zwzpZxWnI+tRtvlMquk313q0kfX8APub7OW23Zfzb82imDXLIOGG+FO4X//aY5msDzPPQQJUAh+KybadrqCCbw7dPSgE9Vm1a2Fz0wEy2oXZo56xPbHU1RzYNcFyPcMwoDwmBioLF+F8YE8oj0DCKO6vD4ZXJdnZdOPjAJ8uI/1zEBPla6jXsenOnfiYMMnoQNofITSpLU4BsYzJQfOI5HRlFCT3XyVnF9NEJUrhiVqRer1Z7tVLZ1TXJ5UFfbvnhDLH+DW6mlX0qqX9WKH1EGSVt/3zns3eZCBQ8Jh9xpC1GDN4aNKOXg3kNPGVcjNZKw3ILb+YhL8AeNcivNBxdCQR8hWFiA7DHnYmlSHjLLxjT2zjrCZ/fN8ye4iy3smWim7svfImEczPxrW/Bci/ZBelAJ9k31UbS269nWjWxyCikwLgJwzkRkATfyFx0s2KG9H6/rKwDyc3NvVBGSWjO1M6f3qKXgv8pOHcmRNO80e3Gj1piTvlM4WCS7SPxii9Wcha/PtZ6d94WN7587zF/BUcM/47q37Th5b78Hhu6V5ksRnwhEkZ113wcjlrtqoTkiHupzmcSrCEjfTnNIJrgYvtTOT//ES1xhLTXO/qbLQNIowpiBg1BPQTH4lAxEwWOQyoVgx/fvSo3KE8g=","kid":"jIiIF5QurCht"}
+{
+  "entries": {},
+  "devices": {
+    "fd9b77d3-dc30-4dd1-bfe0-51f377701f94": {
+      "username": "Giorgos",
+      "name": "Giorgos",
+      "role": "admin",
+      "device": "Chrome on Windows",
+      "deviceType": "desktop",
+      "hasKey": true,
+      "keyConfigured": true,
+      "envFormat": 2,
+      "canCompress": true,
+      "connectedAt": 1790335179073,
+      "lastSeen": 1790440260843
+    }
+  }
+}
