@@ -13,7 +13,7 @@ name: Deploy app to GitHub Pages
 # Actions". Until then this workflow's deploy step fails harmlessly and the site
 # keeps deploying from the branch as before.
 #
-# js/version.json is stamped with the commit SHA here, so browsers cache the
+# js/version.js is stamped with the commit SHA here, so browsers cache the
 # app's modules until the next deploy (js/bootstrap.js reads it; the committed
 # value "dev" makes the app fall back to a per-load version).
 on:
@@ -65,7 +65,20 @@ jobs:
           mkdir -p _site/data
           cp -R index.html js css assets _site/
           cp data/github-config.json _site/data/
-          printf '{"v":"%s"}\n' "${SHA:0:12}" > _site/js/version.json
+          printf "export const v = '%s';\n" "${SHA:0:12}" > _site/js/version.js
+          # Stylesheet links carry a hand-bumped ?v=; stamp them per deploy too.
+          sed -i -E "s#(href=\"css/[a-z-]+\.css)\?v=[^\"]*\"#\1?v=${SHA:0:12}\"#g" _site/index.html
+          # Stamp every relative module import (static `from './x.js'` and
+          # literal `import('./x.js')`) with the same version the router uses
+          # for the views. Otherwise a reload right after a deploy can mix the
+          # new app.js with core files still in the browser cache (Pages sends
+          # max-age=600) and fail to boot; it also makes each module load as a
+          # single instance. Template-literal imports already carry ?v=.
+          find _site/js -name '*.js' -print0 | xargs -0 sed -i -E \
+            "s#((from|import\()[[:space:]]*['\"])(\.{1,2}/[^'\"?]+\.js)(['\"])#\1\3?v=${SHA:0:12}\4#g"
+          if grep -rnE "(from|import\()[[:space:]]*['\"]\.{1,2}/[^'\"?]+\.js['\"]" _site/js; then
+            echo "Unstamped module import left (see above)"; exit 1
+          fi
           touch _site/.nojekyll
           du -sh _site
 

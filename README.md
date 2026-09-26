@@ -68,7 +68,11 @@ export default {
 };
 ```
 
-Register in `js/app.js` and add to a nav group in `buildSidebar()`. Done.
+Add a row (same `id`/`label`/`icon`, plus its `file`) to the `ROUTES` list in `js/app.js` and add its id to a nav group in `buildSidebar()`. Done. Modules are loaded on first navigation (and prefetched at idle after the first screen), so a module must not rely on import-time side effects.
+
+### Deploying
+
+Pages is deployed by `.github/workflows/pages.yml` (Settings → Pages → Source: **GitHub Actions**). It publishes only the code, and stamps `js/version.js` with the commit SHA so browsers cache the modules until the next deploy; data saves don't trigger a deploy.
 
 ## Currency
 
@@ -84,7 +88,7 @@ Data lives in `data/db.json` inside a GitHub repo. The app reads/writes it via t
 ### Setup (first time)
 
 1. Push this project to a GitHub repo (public or private)
-2. Enable **GitHub Pages** on the repo (Settings → Pages → source: main branch)
+2. Enable **GitHub Pages** on the repo (Settings → Pages → Source: GitHub Actions — see Deploying above)
 3. Open the deployed URL (e.g. `https://<user>.github.io/<repo>/`)
 4. Go to **Settings** in the app:
    - Owner: your GitHub username

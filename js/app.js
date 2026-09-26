@@ -10,79 +10,56 @@ import { startPresence, recordSessionEvent } from './core/presence.js';
 
 const VERSION = window._appV || '20260702c';
 
-// Set once str-rates.js resolves in boot() — updateStrGapBadge (a top-level
-// sibling, not nested in boot) needs a reference it can call independently.
-let _countUnresolvedGapNights = null;
+// Route manifest — what the sidebar and router need before a module's code
+// has loaded. Module code is imported on first navigation (core/router.js
+// loadRoute) and the rest are prefetched at idle after the first screen, so
+// boot no longer downloads and evaluates all ~26 views up front.
+// id/label/icon MUST mirror each module's own `export default { id, label,
+// icon }` (the header title switches to the module's label once it loads).
+// Adding a module: add a row here and its id to a nav group in buildSidebar().
+const ROUTES = [
+  { id: 'properties',           label: 'Properties',        icon: '🏠', file: 'properties.js' },
+  { id: 'payments',             label: 'Property Payments', icon: '💳', file: 'payments.js' },
+  { id: 'str-rates',            label: 'STR Daily Rates',   icon: '🛏️', file: 'str-rates.js' },
+  { id: 'expenses',             label: 'Expenses',          icon: '💸', file: 'expenses.js' },
+  { id: 'dividends',            label: 'Dividends',         icon: '💰', file: 'dividends.js' },
+  { id: 'tenants',              label: 'Tenants',           icon: '👥', file: 'tenants.js' },
+  { id: 'vendors',              label: 'Vendors',           icon: '🔧', file: 'vendors.js' },
+  { id: 'inventory',            label: 'Inventory',         icon: '📦', file: 'inventory.js' },
+  { id: 'company-structure',    label: 'Company Structure', icon: '🏢', file: 'company-structure.js' },
+  { id: 'reconciliation',       label: 'Reconciliation',    icon: '⚖️', file: 'reconciliation.js' },
+  { id: 'forecast',             label: 'Forecast',          icon: '🔭', file: 'forecast.js' },
+  { id: 'analytics',            label: 'Executive',         icon: '📊', file: 'analytics.js' },
+  { id: 'analytics-revenue',    label: 'Revenue',           icon: '📈', file: 'analytics-revenue.js' },
+  { id: 'analytics-expenses',   label: 'Expenses',          icon: '📉', file: 'analytics-expenses.js' },
+  { id: 'analytics-properties', label: 'Properties',        icon: '🏘️', file: 'analytics-properties.js' },
+  { id: 'analytics-cashflow',   label: 'Cash Flow',         icon: '💹', file: 'analytics-cashflow.js' },
+  { id: 'analytics-forecast',   label: 'Forecast',          icon: '🔮', file: 'analytics-forecast.js' },
+  { id: 'analytics-owner',      label: 'Partners',          icon: '👤', file: 'analytics-owner.js' },
+  { id: 'analytics-personal',   label: 'Personal Income',   icon: '💼', file: 'analytics-personal.js' },
+  { id: 'analytics-tax',        label: 'Tax',               icon: '🏛️', file: 'analytics-tax.js' },
+  { id: 'analytics-str',        label: 'STR Performance',   icon: '🏖️', file: 'analytics-str.js' },
+  { id: 'clients',              label: 'Clients',           icon: '🤝', file: 'clients.js' },
+  { id: 'invoices',             label: 'Invoices',          icon: '🧾', file: 'invoices.js' },
+  { id: 'time-off',             label: 'Time Off',          icon: '\u{1F334}', file: 'time-off.js' },
+  { id: 'settings',             label: 'Settings',          icon: '⚙️', file: 'settings.js' },
+  { id: 'users',                label: 'Users',             icon: '👤', file: 'users.js' }
+];
+// Same URL for every importer (router, sidebar badge, rates-feed publisher)
+// so they all share one module instance.
+const moduleUrl = file => `./modules/${file}?v=${VERSION}`;
+const importStrRates = () => import(moduleUrl('str-rates.js'));
 
 async function boot() {
-  const [
-    { default: properties },
-    { default: payments },
-    { default: expenses },
-    { default: reconciliation },
-    { default: forecast },
-    { default: analytics },
-    { default: analyticsRevenue },
-    { default: analyticsExpenses },
-    { default: analyticsProperties },
-    { default: analyticsCashflow },
-    { default: analyticsForecast },
-
-    { default: analyticsOwner },
-    { default: analyticsPersonal },
-    { default: analyticsTax },
-    { default: clients },
-    { default: invoices },
-    { default: timeOff },
-    { default: settings },
-    { default: vendors },
-    { default: users },
-    { default: inventory },
-    { default: tenants },
-    { default: dividends },
-    { default: companyStructure },
-    { default: strRates, countUnresolvedGapNights },
-    { default: analyticsStr }
-  ] = await Promise.all([
-    import(`./modules/properties.js?v=${VERSION}`),
-    import(`./modules/payments.js?v=${VERSION}`),
-    import(`./modules/expenses.js?v=${VERSION}`),
-    import(`./modules/reconciliation.js?v=${VERSION}`),
-    import(`./modules/forecast.js?v=${VERSION}`),
-    import(`./modules/analytics.js?v=${VERSION}`),
-    import(`./modules/analytics-revenue.js?v=${VERSION}`),
-    import(`./modules/analytics-expenses.js?v=${VERSION}`),
-    import(`./modules/analytics-properties.js?v=${VERSION}`),
-    import(`./modules/analytics-cashflow.js?v=${VERSION}`),
-    import(`./modules/analytics-forecast.js?v=${VERSION}`),
-
-    import(`./modules/analytics-owner.js?v=${VERSION}`),
-    import(`./modules/analytics-personal.js?v=${VERSION}`),
-    import(`./modules/analytics-tax.js?v=${VERSION}`),
-    import(`./modules/clients.js?v=${VERSION}`),
-    import(`./modules/invoices.js?v=${VERSION}`),
-    import(`./modules/time-off.js?v=${VERSION}`),
-    import(`./modules/settings.js?v=${VERSION}`),
-    import(`./modules/vendors.js?v=${VERSION}`),
-    import(`./modules/users.js?v=${VERSION}`),
-    import(`./modules/inventory.js?v=${VERSION}`),
-    import(`./modules/tenants.js?v=${VERSION}`),
-    import(`./modules/dividends.js?v=${VERSION}`),
-    import(`./modules/company-structure.js?v=${VERSION}`),
-    import(`./modules/str-rates.js?v=${VERSION}`),
-    import(`./modules/analytics-str.js?v=${VERSION}`)
-  ]);
-
-  const MODULES = [
-    properties, payments, strRates, expenses, dividends, tenants, vendors, inventory, companyStructure,
-    reconciliation, forecast, analytics, analyticsRevenue, analyticsExpenses, analyticsProperties, analyticsCashflow, analyticsForecast, analyticsOwner, analyticsPersonal, analyticsTax, analyticsStr, clients, invoices, timeOff, settings, users
-  ];
-
-  _countUnresolvedGapNights = countUnresolvedGapNights;
-
+  const MODULES = ROUTES.map(r => ({ id: r.id, label: r.label, icon: r.icon, load: () => import(moduleUrl(r.file)) }));
   MODULES.forEach(router.registerModule);
+  // Start downloading the landing route's code now, in parallel with the
+  // data load / sign-in below, so it's usually ready by router.init().
+  {
+    const first = (location.hash || '#analytics').slice(1);
+    router.loadRoute(MODULES.some(m => m.id === first) ? first : 'analytics').catch(() => {});
+  }
   buildSidebar(MODULES);
-  updateStrGapBadge();
   initMobileNav();
 
   github.loadConfig();
@@ -291,7 +268,7 @@ async function boot() {
   // The subscribe() 'data-loaded' hook below is registered after this point,
   // so it can't catch the setDb() calls above — refresh explicitly now that
   // real data (if any) has landed.
-  updateStrGapBadge();
+  scheduleStrGapBadge();
 
   // ── Phase 3: auth + render — runs immediately when local cache was available
   await requireAuth({ loadAfterUnlock });
@@ -306,6 +283,8 @@ async function boot() {
   buildUserFooter();
 
   router.init(document.getElementById('content'));
+  // Warm the remaining views' code at idle so later navigation stays instant.
+  router.prefetchAll();
 
   // ── Phase 4: multi-user presence (Operations + System views only)
   if (state.github.token) startPresence();
@@ -319,11 +298,13 @@ async function boot() {
   let ratesFeedTimer = null; // debounce for auto-publishing the STR daily-rate feeds
   // Edits are batched: a push starts this long after the LAST edit (and at
   // the latest MAX_PUSH_WAIT_MS after the first unpushed one), instead of
-  // 300ms after every edit — each push is a full commit of the encrypted
-  // db.json, so a burst of edits used to become a burst of multi-100KB
-  // commits. Hiding/closing the tab pushes immediately.
-  const PUSH_DEBOUNCE_MS = 3000;
-  const MAX_PUSH_WAIT_MS = 15000;
+  // after every edit — each push is a full commit of the encrypted db.json,
+  // so a burst of edits used to become a burst of multi-100KB commits. Every
+  // edit still reaches the local cache within ~0.5s (see the 'dirty'
+  // handler), and hiding/backgrounding the tab (visibilitychange — the reliable signal
+  // on mobile), pagehide and beforeunload all flush the pending push at once.
+  const PUSH_DEBOUNCE_MS = 10000;
+  const MAX_PUSH_WAIT_MS = 60000;
   let firstPendingAt = 0;
   const schedulePush = () => {
     if (!firstPendingAt) firstPendingAt = Date.now();
@@ -332,11 +313,18 @@ async function boot() {
     pushTimer = setTimeout(() => { pushTimer = null; doSave().catch(() => {}); }, wait);
   };
 
+  // Starts the batched push now instead of waiting out the debounce — for a
+  // tab that is being hidden/closed and may never get to run the timer.
+  const flushPendingPush = () => {
+    if (pushTimer && !pushPending) { clearTimeout(pushTimer); pushTimer = null; doSave().catch(() => {}); }
+  };
+
   // Warn before closing/navigating away with edits that haven't been
   // confirmed-pushed to GitHub yet — without this, an edit made in the last
   // moment before closing the tab could be lost silently (the push is
-  // debounced 300ms, the local-cache write 500ms).
+  // debounced PUSH_DEBOUNCE_MS, the local-cache write 500ms).
   window.addEventListener('beforeunload', e => {
+    flushPendingPush();
     // Force the debounced local-cache write to happen NOW. Without this, a
     // refresh/close inside its 500ms window abandons the write entirely —
     // the warning below doesn't block a user who dismisses it (and many
@@ -356,7 +344,7 @@ async function boot() {
     clearTimeout(ratesFeedTimer);
     ratesFeedTimer = setTimeout(() => {
       ratesFeedTimer = null;
-      import(`./modules/str-rates.js?v=${VERSION}`)
+      importStrRates()
         .then(m => m.autoPublishRatesFeeds?.())
         .catch(() => { /* best-effort; never block sync */ });
     }, 1000);
@@ -480,9 +468,11 @@ async function boot() {
   // backgroundResync skip the setDb()/data-loaded rebuild (which tears down
   // whatever dashboard is currently open) when the remote is unchanged, which
   // is the common case for a 60s steady-state poll.
+  // Order-insensitive for object keys (github.deepEqual) — JSON.stringify
+  // compared key order too, so a merge that rebuilt a record with its keys in
+  // a different order read as "changed" and forced a full re-render.
   function sameDbContent(a, b) {
-    const strip = db => { const { _syncedAt, _syncedPlain, ...rest } = db; return rest; };
-    try { return JSON.stringify(strip(a)) === JSON.stringify(strip(b)); }
+    try { return github.deepEqual({ ...a, _syncedAt: 0, _syncedPlain: 0 }, { ...b, _syncedAt: 0, _syncedPlain: 0 }); }
     catch { return false; } // be conservative — treat as changed on any comparison failure
   }
 
@@ -585,11 +575,11 @@ async function boot() {
     if (document.hidden) {
       github.flushLocalCache(); // tab backgrounded/closing — beforeunload alone isn't reliable (esp. mobile)
       // Don't leave a batch waiting on a tab that may never come back.
-      if (pushTimer && !pushPending) { clearTimeout(pushTimer); pushTimer = null; doSave().catch(() => {}); }
+      flushPendingPush();
     }
     else backgroundResync();
   });
-  window.addEventListener('pagehide', () => github.flushLocalCache());
+  window.addEventListener('pagehide', () => { github.flushLocalCache(); flushPendingPush(); });
   // Steady-state polling so long-lived sessions converge on multi-user edits.
   setInterval(backgroundResync, 60000);
 
@@ -612,8 +602,10 @@ async function boot() {
     if (evt === 'cache-quota-exceeded') {
       updateSyncStatus('offline', 'Local cache full — purge deleted records in Settings → Data', true);
     }
+    // Coalesced + deferred to idle time: the count scans every STR
+    // property's calendar, and 'dirty' fires on every single edit.
     if (evt === 'data-loaded' || evt === 'dirty') {
-      updateStrGapBadge();
+      scheduleStrGapBadge();
     }
     if (evt === 'dirty') {
       github.saveLocalCache(state.db);
@@ -892,11 +884,32 @@ function buildSidebar(MODULES) {
 // Reflects how many reserved-on-Airbnb nights across all STR properties have
 // no matching payment and no reason assigned yet — the sidebar-level cue that
 // something needs a look in STR Daily Rates, without having to open it first.
-function updateStrGapBadge() {
+// The count lives in str-rates.js, imported on demand (the same instance the
+// router loads). Runs at most once per idle period however many edits land.
+let _gapBadgePending = false;
+function scheduleStrGapBadge() {
+  if (_gapBadgePending || !document.getElementById('nav-str-gap-badge')) return;
+  _gapBadgePending = true;
+  const run = () => {
+    importStrRates().then(m => {
+      // Cleared before counting: an edit from here on schedules a fresh
+      // pass, while anything earlier is already reflected in this one.
+      _gapBadgePending = false;
+      updateStrGapBadge(m.countUnresolvedGapNights);
+    }, err => {
+      _gapBadgePending = false;
+      console.warn('STR gap badge: could not load str-rates.js', err);
+    });
+  };
+  if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 2000 });
+  else setTimeout(run, 500);
+}
+
+function updateStrGapBadge(countUnresolvedGapNights) {
   const badge = document.getElementById('nav-str-gap-badge');
-  if (!badge || !_countUnresolvedGapNights) return;
+  if (!badge || typeof countUnresolvedGapNights !== 'function') return;
   let count = 0;
-  try { count = _countUnresolvedGapNights(); } catch (e) { console.error(e); }
+  try { count = countUnresolvedGapNights(); } catch (e) { console.error(e); }
   badge.textContent = String(count);
   badge.style.display = count > 0 ? '' : 'none';
 }

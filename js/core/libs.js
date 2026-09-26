@@ -1,5 +1,5 @@
 // On-demand loading of heavy third-party libraries that only a few actions
-// need (PDF text extraction, OCR, ZIP downloads). They used to be loaded as
+// need (PDF generation and text extraction, OCR, ZIP downloads). They used to be loaded as
 // render-blocking <script> tags on every page load. Every file is pinned to an
 // exact version. The CSP in index.html lists each of these URLs exactly —
 // changing a version here means updating script-src/worker-src there too.
@@ -22,6 +22,12 @@ const LIBS = {
     src: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
     integrity: 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F',
     setup: setupTesseract
+  },
+  // Invoice PDF generation (core/pdf.js) — the UMD build exposes window.jspdf.
+  jspdf: {
+    global: 'jspdf',
+    src: 'https://cdn.jsdelivr.net/npm/jspdf@4.2.1/dist/jspdf.umd.min.js',
+    integrity: 'sha384-qovJwSBbRDPP5cEjCp8S0UP66wrvnjaa60XMOGzTNanrThcrGfXfnZkvgY8N1KT3'
   },
   jszip: {
     global: 'JSZip',

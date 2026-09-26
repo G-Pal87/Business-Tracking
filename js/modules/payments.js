@@ -13,6 +13,10 @@ let _allPayPage = 0, _allPayPageSize = 100, _allPaySearch = '';
 let _schedSortCol  = -1, _schedSortDir  = 1, _schedSearch = '';
 let _upcomSortCol  = -1, _upcomSortDir  = 1, _upcomSearch = '';
 let _payUpdateFn = null;
+// Cancels for debounce timers started by the current view — run by destroy()
+// so a pending filter re-render can't fire after navigating away.
+const _viewCleanup = new Set();
+const runViewCleanup = () => { for (const fn of _viewCleanup) { try { fn(); } catch { /* ignore */ } } _viewCleanup.clear(); };
 
 export default {
   id: 'payments',
@@ -27,7 +31,7 @@ export default {
     _payUpdateFn = update;
     c.appendChild(element);
   },
-  destroy() { _payUpdateFn = null; }
+  destroy() { _payUpdateFn = null; runViewCleanup(); }
 };
 
 function build() {
@@ -159,6 +163,7 @@ function buildAllPayments(wrap) {
 
   let _rtTimer;
   const debouncedRT = () => { clearTimeout(_rtTimer); _rtTimer = setTimeout(() => { rebuildFilters(); renderTable(); }, 250); };
+  _viewCleanup.add(() => clearTimeout(_rtTimer));
   const yearMS   = buildMultiSelect([], yearFilter,   'All Years',      debouncedRT, 'pay_years');
   const monthMS  = buildMultiSelect([], monthFilter,  'All Months',     debouncedRT, 'pay_months');
   const streamMS = buildMultiSelect([], streamFilter, 'All Streams',    debouncedRT, 'pay_streams');
@@ -302,6 +307,7 @@ function buildAllPayments(wrap) {
     clearTimeout(_searchTimer);
     _searchTimer = setTimeout(() => { _allPaySearch = searchInput.value.trim().toLowerCase(); _allPayPage = 0; renderTable(); }, 200);
   });
+  _viewCleanup.add(() => clearTimeout(_searchTimer));
 
   const syncDeleteBtn = () => {
     if (selected.size > 0) {
@@ -383,6 +389,25 @@ function buildAllPayments(wrap) {
     d => d.r.notes || ''
   ];
 
+  // derive() output per payment record, reused across renders (page change,
+  // sort, search, facet filters) until something it reads can have changed:
+  // any edit (editSeq), a reload/resync (db identity), the active-payments
+  // list itself, or the guest fee/tax settings.
+  let _derivedCache = null;
+  const derivedFor = (pays) => {
+    const seq = state.editSeq, db = state.db;
+    const c = _derivedCache;
+    if (!c || c.seq !== seq || c.db !== db || c.pays !== pays || c.feePct !== feePct || c.taxPct !== taxPct) {
+      _derivedCache = { seq, db, pays, feePct, taxPct, map: new Map() };
+    }
+    const map = _derivedCache.map;
+    return r => {
+      let d = map.get(r);
+      if (!d) { d = derive(r); map.set(r, d); }
+      return d;
+    };
+  };
+
   const renderTable = () => {
     selected.clear();
     syncDeleteBtn();
@@ -390,8 +415,10 @@ function buildAllPayments(wrap) {
     pagerWrap.innerHTML = '';
 
     loadFeeSettings();
+    const allPays = listActivePayments();
+    const derivedOf = derivedFor(allPays);
     // 1. Facet filters
-    let derived = listActivePayments().filter(r => {
+    let derived = allPays.filter(r => {
       // A materialized row is a frozen snapshot of a forecast that came
       // true — the real money is the 'paid' record it points at
       // (materializedPaymentId). Showing both by default renders the same
@@ -406,7 +433,7 @@ function buildAllPayments(wrap) {
       if (sourceFilter.size > 0 && !sourceFilter.has(r.source || 'manual'))          return false;
       if (statusFilter.size > 0 && !statusFilter.has(r.status))                      return false;
       return true;
-    }).map(derive);
+    }).map(derivedOf);
 
     // 2. Text search (whole dataset)
     if (_allPaySearch) derived = derived.filter(d => d.searchText.includes(_allPaySearch));
@@ -703,6 +730,7 @@ function buildScheduleSection(wrap) {
 
   let _schedTimer;
   const debouncedRender = () => { clearTimeout(_schedTimer); _schedTimer = setTimeout(render, 150); };
+  _viewCleanup.add(() => clearTimeout(_schedTimer));
 
   const yearMS   = buildMultiSelect([], yearFilter,   'All Years',      debouncedRender, 'sched_years');
   const monthMS  = buildMultiSelect([], monthFilter,  'All Months',     debouncedRender, 'sched_months');
@@ -731,7 +759,10 @@ function buildScheduleSection(wrap) {
 
   const tableWrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _schedSortCol, initialDir: _schedSortDir, initialSearch: _schedSearch, onSortChange: (c, d) => { _schedSortCol = c; _schedSortDir = d; }, onSearchChange: v => { _schedSearch = v; } });
+  // One row per property per month across the whole lease history, so this
+  // grows without bound — 200 rows at a time, "Show more" for the rest (sort
+  // + search still cover every row).
+  attachSortFilter(tableWrap, { initialCol: _schedSortCol, initialDir: _schedSortDir, initialSearch: _schedSearch, onSortChange: (c, d) => { _schedSortCol = c; _schedSortDir = d; }, onSearchChange: v => { _schedSearch = v; }, pageSize: 200 });
 
   let selected = new Set();
 

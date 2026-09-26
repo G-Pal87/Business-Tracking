@@ -43,6 +43,15 @@ function clearChartFallback(canvas) {
   if (fb) fb.style.display = 'none';
 }
 
+// Charts whose canvas has left the document (a view rebuilt its DOM without
+// destroying them first) — free them before creating another, so the
+// registry and Chart.js's own instance list don't grow on every re-render.
+function pruneDetached() {
+  for (const [id, c] of registry) {
+    if (!c.canvas || !c.canvas.isConnected) { try { c.destroy(); } catch { /* already gone */ } registry.delete(id); }
+  }
+}
+
 export function destroy(id) {
   const c = registry.get(id);
   if (c) { c.destroy(); registry.delete(id); }
@@ -55,6 +64,7 @@ export function destroyAll() {
 
 export function line(id, { labels, datasets, onClickItem }) {
   destroy(id);
+  pruneDetached();
   const canvas = document.getElementById(id);
   if (!canvas) return;
   if (typeof window.Chart === 'undefined') { showChartFallback(canvas); return; }
@@ -95,6 +105,7 @@ const fmtEURLabel = v => '€' + Math.round(v).toLocaleString('de-DE');
 // for a percentage chart so it isn't mislabelled with "€".
 export function bar(id, { labels, datasets, stacked = false, horizontal = false, onClickItem, showTotals = false, formatValue = fmtEURLabel }) {
   destroy(id);
+  pruneDetached();
   const canvas = document.getElementById(id);
   if (!canvas) return;
   if (typeof window.Chart === 'undefined') { showChartFallback(canvas); return; }
@@ -283,6 +294,7 @@ function legendLabelsWithPct(chart) {
 
 export function doughnut(id, { labels, data, colors, onClickItem }) {
   destroy(id);
+  pruneDetached();
   const canvas = document.getElementById(id);
   if (!canvas) return;
   if (typeof window.Chart === 'undefined') { showChartFallback(canvas); return; }
