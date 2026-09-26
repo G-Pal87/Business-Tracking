@@ -695,7 +695,7 @@ async function doPushDb(message = 'Update data') {
       const n = merged._newConflicts.length;
       notify('sync-conflicts', merged._newConflicts);
       import('./ui.js').then(({ toast }) =>
-        toast(`${n} record${n === 1 ? ' was' : 's were'} edited on two devices at the same time. The later edit was kept; the other version is in Settings → Data → Sync conflicts if you need it.`, 'warning', 12000)
+        toast(`${n} record${n === 1 ? ' was' : 's were'} edited on two devices at the same time. The later edit was kept; the other version is in Settings → Sync conflicts (below Trash) if you need it.`, 'warning', 12000)
       ).catch(() => {});
     }
 
