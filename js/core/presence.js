@@ -16,6 +16,10 @@ import {
   isUnlocked, hasWrappedKeyConfigured, ENVELOPE_FORMAT_VERSION, supportsCompression,
   encryptJsonToEnvelope, decryptEnvelopeToJson, isEncryptedEnvelope
 } from './crypto.js';
+// Every request goes through ghFetch's deadline: a presence read or write
+// that stalls (e.g. a mobile network switch) used to never settle, which
+// blocked writeQueue — and with it every later presence write — until reload.
+import { ghFetch } from './github.js';
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -61,6 +65,15 @@ const PENDING_EVENTS_LS_KEY = 'bt_pending_session_events';
 const PENDING_EVENTS_MAX    = 20;
 
 const SIGNAL_PATH = 'data/session-signal.json';
+// session-signal.json only exists once someone has issued a disconnect/kill.
+// Until then every 60s poll was a 404, and a 404 (unlike a 304) counts
+// against the rate limit all tabs share. After a 404 the poll skips the
+// file for this long. Only the poll uses this; read-modify-writes always
+// read fresh, and this tab's own signal write clears it.
+// Kept short: this is the path a disconnect-all / kill-device takes to reach
+// an open tab, so it must not add more than a poll or so of delay.
+const SIGNAL_MISSING_RECHECK_MS = 90 * 1000;
+let signalMissingAt = 0;
 
 // Operations + System nav groups (read-write views where conflicts matter)
 const TRACKED = new Set([
@@ -126,7 +139,9 @@ function contentsUrl(ctx, path) {
 }
 
 function b64ToUtf8(b64) {
-  const bytes = Uint8Array.from(atob(String(b64 || '').replace(/\s/g, '')), c => c.charCodeAt(0));
+  const binary = atob(String(b64 || '').replace(/\s/g, ''));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return new TextDecoder().decode(bytes);
 }
 
@@ -154,7 +169,7 @@ async function readBranchJson(path) {
   const cached = _etagCache.get(cacheKey);
   const headers = { 'Accept': 'application/vnd.github+json', 'Authorization': `token ${ctx.token}` };
   if (cached?.etag) headers['If-None-Match'] = cached.etag;
-  const res = await fetch(`${contentsUrl(ctx, path)}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`, { headers, cache: 'no-store' });
+  const res = await ghFetch(`${contentsUrl(ctx, path)}?ref=${encodeURIComponent(PRESENCE_BRANCH)}`, { headers, cache: 'no-store' });
   if (res.status === 304 && cached) {
     return { sha: cached.sha, data: structuredClone(cached.data), legacy: cached.legacy };
   }
@@ -191,7 +206,7 @@ async function writeBranchJson(path, data, sha) {
     ...(sha ? { sha } : {})
   };
   try {
-    const put = await fetch(contentsUrl(ctx, path), {
+    const put = await ghFetch(contentsUrl(ctx, path), {
       method: 'PUT',
       headers: { 'Accept': 'application/vnd.github+json', 'Authorization': `token ${ctx.token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
@@ -605,6 +620,7 @@ let disconnectBanner = null;
 
 export async function requestDisconnectOtherSessions() {
   if (!ghContext() || !isUnlocked()) return false;
+  signalMissingAt = 0;
   return updateBranchJson(SIGNAL_PATH, doc => {
     doc.disconnectAt    = Date.now();
     doc.exceptSessionId = state.github.sessionId; // the issuing tab must not disconnect itself
@@ -619,6 +635,7 @@ export async function requestDisconnectOtherSessions() {
 // "everyone but me".
 export async function killDevice(targetSessionId) {
   if (!ghContext() || !isUnlocked()) return false;
+  signalMissingAt = 0;
   return updateBranchJson(SIGNAL_PATH, doc => {
     doc.kills = doc.kills || {};
     const cutoff = Date.now() - KILL_TTL_MS;
@@ -633,8 +650,10 @@ export async function killDevice(targetSessionId) {
 async function checkDisconnectSignal() {
   if (state.github.disconnected) return; // already applied — no need to keep checking
   if (!ghContext() || !isUnlocked()) return;
+  if (signalMissingAt && Date.now() - signalMissingAt < SIGNAL_MISSING_RECHECK_MS) return;
   try {
-    const { data: signal } = await readBranchJson(SIGNAL_PATH);
+    const { sha, data: signal } = await readBranchJson(SIGNAL_PATH);
+    signalMissingAt = sha ? 0 : Date.now(); // sha null = file doesn't exist (404)
     if (!signal) return; // no disconnect ever issued
 
     const targeted = signal.kills?.[state.github.sessionId];

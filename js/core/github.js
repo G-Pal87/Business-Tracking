@@ -1,6 +1,6 @@
 // GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
 import { state, notify, invalidateActiveCache } from './state.js';
-import { isEncryptedEnvelope, decryptEnvelopeToJson, decryptEnvelopeWithInfo, isRotationPending, setRotationPending, activeKeyId, encryptJsonToEnvelope, isUnlocked, hasWrappedKeyConfigured, encryptBytes, decryptBytes, isEncryptedBytes, supportsCompression } from './crypto.js';
+import { isEncryptedEnvelope, decryptEnvelopeToJson, decryptEnvelopeWithInfo, isRotationPending, setRotationPending, activeKeyId, encryptJsonToEnvelope, isUnlocked, hasWrappedKeyConfigured, encryptBytes, decryptBytes, isEncryptedBytes, supportsCompression, bytesToBase64, base64ToBytes } from './crypto.js';
 
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
@@ -29,7 +29,18 @@ export async function ghFetch(url, opts = {}) {
 }
 
 let pushQueue = Promise.resolve();
-let _lastFetched = null; // { sha, path, db } — see fetchDb()
+// { sha, path, db, decKid, etag } — see fetchDb(). `db` is the decrypted
+// content of blob `sha`, and is a SHARED, READ-ONLY snapshot: the same object
+// is usually also state.github.remoteDb (the merge base), and may be the
+// push-first merge input in doPushDb. Nothing may mutate it or anything
+// inside it — records that leave this module for state.db are cloned first
+// (see adoptRecord), and fetchDb hands callers their own copy (except the
+// conditional poll's 304 path — see there).
+let _lastFetched = null;
+// Which file a _lastFetched entry describes. The push-first path must only
+// trust it for the exact same repo/branch/path (after a Settings change the
+// cached sha belongs to another file).
+const fetchTarget = (dbPath) => `${state.github.owner}/${state.github.repo}@${state.github.branch}:${dbPath}`;
 let _sizeWarned = false; // throttles the db.json size-warning toast to once per session per threshold-crossing
 
 // Cheap recency watermark for a whole db snapshot — the highest updatedAt
@@ -182,10 +193,11 @@ const ENC_SEEN_LS_KEY = 'bt_enc_remote_seen';
 function markEncryptedRemoteSeen() {
   try { localStorage.setItem(ENC_SEEN_LS_KEY, '1'); } catch { /* ignore */ }
 }
+function encryptedRemoteSeen() {
+  try { return localStorage.getItem(ENC_SEEN_LS_KEY) === '1'; } catch { return false; }
+}
 function assertPlaintextRemoteAllowed() {
-  let seen = false;
-  try { seen = localStorage.getItem(ENC_SEEN_LS_KEY) === '1'; } catch { /* ignore */ }
-  if (!seen) return;
+  if (!encryptedRemoteSeen()) return;
   const err = new Error('db.json on GitHub is no longer encrypted. The app never writes it that way, so it was changed outside the app — nothing was loaded or saved. Restore it from a backup (Settings → Data) or check who has the GitHub token.');
   err.code = 'PLAINTEXT_REMOTE';
   throw err;
@@ -288,6 +300,7 @@ export function clearConfig() {
   state.github.lastPulledAt  = null;
   state.github.lastPushedAt  = null;
   state.github.syncNow       = null;
+  _lastFetched = null;
   try { localStorage.removeItem(CFG_LS_KEY); } catch { /* ignore */ }
 }
 
@@ -373,7 +386,15 @@ export async function fetchDb({ conditional = false } = {}) {
     state.github.usingCache    = false;
     state.github.lastPulledAt  = Date.now();
     state.github.lastSyncError = null;
-    return structuredClone(_lastFetched.db);
+    // The conditional poll's only caller (app.js backgroundResync) discards
+    // this result when the sha is unchanged, or passes it to resyncDb, which
+    // copies it and never mutates or leaks its input — so skip the
+    // whole-database clone every idle tab used to pay every 60s. Only a
+    // shallow copy: setting/replacing top-level fields on it is harmless, but
+    // its collections, records and settings are the shared read-only
+    // snapshot — a conditional caller must not mutate anything nested
+    // (structuredClone it first if it ever needs to).
+    return { ..._lastFetched.db };
   }
 
   if (!res.ok) {
@@ -389,16 +410,18 @@ export async function fetchDb({ conditional = false } = {}) {
   const { sha, content } = data;
   const etag = res.headers.get('etag');
 
-  // db.json is >1MB, so `content` is normally empty here and the file is read
-  // by sha (see doPushDb for why never via download_url). Either way the
-  // parsed content is exactly the version `sha` names, which is what makes
-  // the _lastFetched sha cache below safe.
+  // The Contents API inlines `content` for files up to 1MB; past that it is
+  // empty and the file is read by sha through the git blobs API (see doPushDb
+  // for why never via download_url). Either way the parsed content is exactly
+  // the version `sha` names, which is what makes the _lastFetched sha cache
+  // below safe.
   let parsed;
-  if (_lastFetched && _lastFetched.sha === sha && _lastFetched.path === dbPath) {
-    // Same blob sha as the last successful fetch = byte-identical content.
-    // db.json is >1MB, so the Contents API response above carries no content
-    // and the expensive part is the raw download + decrypt + parse below —
-    // every tab used to repeat all of it every 60s even when nothing changed.
+  const sameAsLast = !!(_lastFetched && _lastFetched.sha === sha && _lastFetched.path === dbPath);
+  if (sameAsLast) {
+    // Same blob sha as the last successful fetch = byte-identical content:
+    // skip the (possible) blob download + decrypt + parse below — every tab
+    // used to repeat all of it every 60s even when nothing changed. Callers
+    // mutate what fetchDb returns, so they get their own copy.
     parsed = structuredClone(_lastFetched.db);
   } else if (content) {
     parsed = safeParseDb(b64decode(content));
@@ -419,7 +442,9 @@ export async function fetchDb({ conditional = false } = {}) {
   } else if (_lastFetched?.sha !== sha) {
     assertPlaintextRemoteAllowed();
   }
-  if (!_lastFetched || _lastFetched.sha !== sha) _lastFetched = { sha, path: dbPath, db: structuredClone(parsed), decKid };
+  // One private copy serves as both the sha cache and (below) the merge base —
+  // both are read-only (see _lastFetched), so they can share it.
+  if (!sameAsLast) _lastFetched = { sha, path: dbPath, target: fetchTarget(dbPath), db: structuredClone(parsed), decKid };
   if (etag) _lastFetched.etag = etag;
   state.github.lastFetchedSha = sha;
 
@@ -448,7 +473,7 @@ export async function fetchDb({ conditional = false } = {}) {
   const tombstonesGrew = Object.keys(parsed._tombstones || {}).length >
     Object.keys(state.github.remoteDb?._tombstones || {}).length;
   if (!state.github.remoteDb || tombstonesGrew || maxUpdatedAt(parsed) >= maxUpdatedAt(state.github.remoteDb)) {
-    state.github.remoteDb = structuredClone(parsed);
+    state.github.remoteDb = _lastFetched.db;
   }
   return parsed;
 }
@@ -549,53 +574,75 @@ async function doPushDb(message = 'Update data') {
   const base     = state.github.remoteDb || null;
   let   lastError = null;
 
-  for (let attempt = 1; attempt <= 8; attempt++) {
-    // GET current SHA + content — append timestamp to bypass GitHub's edge-cache,
-    // which can return a stale SHA even when cache: 'no-store' is set.
-    // If-None-Match with a unique value forces GitHub's Fastly CDN to revalidate
-    // with origin on every attempt — it's in GitHub's CORS allow-list unlike Cache-Control.
-    const getHeaders = { ...ghHeaders, 'If-None-Match': `"${Date.now()}"` };
-    let getRes;
-    try {
-      getRes = await ghFetch(`${apiBase}?ref=${encodeURIComponent(branch || 'main')}`, {
-        headers: getHeaders, cache: 'no-store'
-      });
-    } catch {
-      if (attempt < 8) { await sleep(backoff(attempt)); continue; }
-      throw new Error('Cannot reach GitHub');
-    }
+  // Push first, read only on conflict (optimistic concurrency). When this tab
+  // already holds the decrypted content of a known db.json sha, the first
+  // attempt skips the GET and merges against that content as "the remote",
+  // then PUTs with that sha. GitHub accepts the PUT only while the file's
+  // current blob sha still equals it — i.e. only if the remote really IS
+  // that content (a blob sha is a hash of the content) — so the merge is
+  // exactly what the GET path would have produced. Any other writer in
+  // between turns it into a 409/422, and the loop falls back to the normal
+  // GET + 3-way merge from attempt 1 on. Attempt 0 exists only in this mode.
+  const canPushFirst = !!(_lastFetched && _lastFetched.sha && _lastFetched.path === dbPath &&
+    _lastFetched.target === fetchTarget(dbPath) && _lastFetched.db);
 
-    if (!getRes.ok) {
-      if (getRes.status === 403) {
-        const waitMs = rateLimitWaitMs(getRes);
-        if (waitMs > 0 && attempt < 8) { await sleep(waitMs); continue; }
-        throw new Error(waitMs > 0 ? 'GitHub rate limit exceeded — try again shortly' : 'GitHub auth failed — check your token');
-      }
-      if (getRes.status === 401) throw new Error('GitHub auth failed — check your token');
-      throw new Error(`GitHub fetch failed (${getRes.status})`);
-    }
-
-    const getData = await getRes.json();
-    const { sha } = getData;
+  for (let attempt = canPushFirst ? 0 : 1; attempt <= 8; attempt++) {
+    const pushFirst = attempt === 0;
+    let sha;
     let freshDb;
     let remoteKid = null; // id of the key that decrypted the remote (null = plaintext)
-    if (_lastFetched && _lastFetched.sha === sha && _lastFetched.path === dbPath) {
-      // Unchanged since our last read/push (same blob sha) — skip the ~2MB
-      // download + decrypt; see fetchDb().
-      freshDb = structuredClone(_lastFetched.db);
+    if (pushFirst) {
+      sha       = _lastFetched.sha;
+      freshDb   = _lastFetched.db; // shared read-only snapshot — see _lastFetched
       remoteKid = _lastFetched.decKid;
-    } else if (getData.content) {
-      freshDb = safeParseDb(b64decode(getData.content));
-    } else if (sha) {
-      // Read the content BY SHA (git blobs API) rather than via download_url.
-      // download_url is a raw.githubusercontent URL tied to the branch, which
-      // can lag behind the sha this same response reports — merging against
-      // that older content and then PUTting with the newer sha "succeeds" and
-      // silently erases whatever the newer commit added. A blob read is
-      // content-addressed: it is exactly the version the sha names.
-      freshDb = safeParseDb(b64decode(await fetchGithubBlobBase64(sha)));
     } else {
-      throw new Error('GitHub returned no content for db.json');
+      // GET current SHA + content — append timestamp to bypass GitHub's edge-cache,
+      // which can return a stale SHA even when cache: 'no-store' is set.
+      // If-None-Match with a unique value forces GitHub's Fastly CDN to revalidate
+      // with origin on every attempt — it's in GitHub's CORS allow-list unlike Cache-Control.
+      const getHeaders = { ...ghHeaders, 'If-None-Match': `"${Date.now()}"` };
+      let getRes;
+      try {
+        getRes = await ghFetch(`${apiBase}?ref=${encodeURIComponent(branch || 'main')}`, {
+          headers: getHeaders, cache: 'no-store'
+        });
+      } catch {
+        if (attempt < 8) { await sleep(backoff(attempt)); continue; }
+        throw new Error('Cannot reach GitHub');
+      }
+
+      if (!getRes.ok) {
+        if (getRes.status === 403) {
+          const waitMs = rateLimitWaitMs(getRes);
+          if (waitMs > 0 && attempt < 8) { await sleep(waitMs); continue; }
+          throw new Error(waitMs > 0 ? 'GitHub rate limit exceeded — try again shortly' : 'GitHub auth failed — check your token');
+        }
+        if (getRes.status === 401) throw new Error('GitHub auth failed — check your token');
+        throw new Error(`GitHub fetch failed (${getRes.status})`);
+      }
+
+      const getData = await getRes.json();
+      sha = getData.sha;
+      if (_lastFetched && _lastFetched.sha === sha && _lastFetched.path === dbPath) {
+        // Unchanged since our last read/push (same blob sha) — skip the
+        // download + decrypt; see fetchDb(). mergeDb never mutates its inputs
+        // and records leaving `merged` for state.db are cloned (adoptRecord),
+        // so the shared snapshot is used as-is.
+        freshDb = _lastFetched.db;
+        remoteKid = _lastFetched.decKid;
+      } else if (getData.content) {
+        freshDb = safeParseDb(b64decode(getData.content));
+      } else if (sha) {
+        // Read the content BY SHA (git blobs API) rather than via download_url.
+        // download_url is a raw.githubusercontent URL tied to the branch, which
+        // can lag behind the sha this same response reports — merging against
+        // that older content and then PUTting with the newer sha "succeeds" and
+        // silently erases whatever the newer commit added. A blob read is
+        // content-addressed: it is exactly the version the sha names.
+        freshDb = safeParseDb(b64decode(await fetchGithubBlobBase64(sha)));
+      } else {
+        throw new Error('GitHub returned no content for db.json');
+      }
     }
     if (isEncryptedEnvelope(freshDb)) {
       // Never push over a remote we can't read. This used to fall back to
@@ -632,7 +679,12 @@ async function doPushDb(message = 'Update data') {
       }
     }
     const merged  = mergeDb(freshDb, snapshot, base);
-    if (merged.appConfig?.github?.token) delete merged.appConfig.github.token;
+    // Never push the token. Copy-on-write: merged.appConfig may be the
+    // shared remote snapshot's object, which must not be mutated.
+    if (merged.appConfig?.github?.token) {
+      const { token: _omit, ...ghCfg } = merged.appConfig.github;
+      merged.appConfig = { ...merged.appConfig, github: ghCfg };
+    }
 
     // PUT merged content — always encrypted (see the guard at the top).
     // Compressed only once an admin has switched it on (Settings →
@@ -673,10 +725,13 @@ async function doPushDb(message = 'Update data') {
     if (putRes.status === 409 || putRes.status === 422 || putRes.status >= 500) {
       // 409: someone committed between our GET and PUT (sha moved on).
       // 422 ("sha wasn't supplied"/stale) and 5xx are transient the same way.
-      // Each retry re-GETs the current SHA; back off exponentially (with
-      // jitter) so several busy tabs stop colliding with each other.
+      // Each retry re-GETs the current SHA; back off exponentially with full
+      // jitter so several busy tabs stop colliding with each other.
       lastError = `HTTP ${putRes.status}`;
-      if (attempt < 8) { await sleep(Math.min(5000, 150 * 2 ** (attempt - 1)) + Math.random() * 150); continue; }
+      // A push-first sha mismatch only means our cached copy is behind —
+      // not contention — so go straight to the GET + merge path.
+      if (pushFirst && putRes.status < 500) continue;
+      if (attempt < 8) { await sleep(50 + Math.random() * Math.min(5000, 150 * 2 ** attempt)); continue; }
       break; // exhausted — fall through below
     }
 
@@ -700,8 +755,13 @@ async function doPushDb(message = 'Update data') {
     }
 
     state.github.sha          = newSha;
-    state.github.remoteDb     = structuredClone(merged);
-    _lastFetched = { sha: newSha, path: dbPath, db: structuredClone(merged), decKid: isUnlocked() ? await activeKeyId() : null };
+    // `merged` becomes the shared read-only snapshot (merge base + sha cache)
+    // as-is, with no copies: it is built only from `snapshot` (this push's
+    // private clone) and the read-only remote snapshot, and nothing below
+    // mutates it — records that move from it into state.db are cloned.
+    const decKid = isUnlocked() ? await activeKeyId() : null;
+    state.github.remoteDb     = merged;
+    _lastFetched = { sha: newSha, path: dbPath, target: fetchTarget(dbPath), db: merged, decKid };
     // db.json is now encrypted under the current key — an interrupted
     // rotation (see setRotationPending) has completed its db.json part.
     if (isUnlocked() && isRotationPending()) setRotationPending(false);
@@ -735,10 +795,11 @@ async function doPushDb(message = 'Update data') {
       const localIds = new Set(state.db[col].map(x => x.id));
       for (const item of items) {
         if (!localIds.has(item.id) && !permanentlyDeletedDuringPush.has(`${col}:${item.id}`)) {
-          state.db[col].push(item);
+          const own = adoptRecord(item);
+          state.db[col].push(own);
           // Keep the id index in sync — this path bypasses upsert/markDirty,
           // so byId() would otherwise miss remote-adopted records until reload.
-          state._ix?.get(col)?.set(item.id, item);
+          state._ix?.get(col)?.set(own.id, own);
           adopted = true;
         }
       }
@@ -770,6 +831,12 @@ async function doPushDb(message = 'Update data') {
 // changes in — but only for records (and plain fields like settings) this
 // tab has NOT touched since the snapshot was taken, so nothing edited
 // mid-push is ever overwritten.
+// Records in `merged` are shared with the read-only remote snapshot (see
+// _lastFetched); state.db records are edited in place. Every record that
+// moves from one to the other goes through here, so the two never share an
+// object.
+function adoptRecord(item) { return structuredClone(item); }
+
 function applyMergedToUntouched(merged, snapshot) {
   let changed = false;
   for (const [col, mergedArr] of Object.entries(merged)) {
@@ -801,8 +868,9 @@ function applyMergedToUntouched(merged, snapshot) {
           continue;
         }
         if (m.updatedAt !== item.updatedAt) {
-          localVal[w++] = m;
-          ix?.set(m.id, m);
+          const own = adoptRecord(m);
+          localVal[w++] = own;
+          ix?.set(own.id, own);
           changed = true;
           continue;
         }
@@ -1069,7 +1137,10 @@ export function resyncDb(remote, local) {
       // genuine change elsewhere (a stale read carries an OLDER stamp).
       if (!col.startsWith('_') && remote[col] !== undefined && (remoteMt[col] || 0) >= (localMt[col] || 0)
           && !deepEqual(remote[col], localArr)) {
-        result[col] = remote[col];
+        // Keep result[col] — the remote value, already copied by the
+        // structuredClone above. Never hand out `remote[col]` itself: `remote`
+        // can be fetchDb's shared read-only snapshot, and this value ends up
+        // in state.db, where settings are edited in place.
       } else {
         result[col] = localArr;
         if (localMt[col] !== undefined && (localMt[col] || 0) > (remoteMt[col] || 0)) result._mtimes[col] = localMt[col];
@@ -1173,6 +1244,11 @@ export async function fetchLocalDb() {
     // used once, and replaced by an encrypted copy on the next cache write.
     if (parsed) return parsed;
   }
+  // Locked, on a device that has already read db.json encrypted: the static
+  // copy is an envelope that would be discarded below (return null) — skip
+  // downloading it. Anything else (a legacy plaintext file, a device that
+  // never saw an encrypted db.json) still goes through the download as before.
+  if (!isUnlocked() && encryptedRemoteSeen()) return null;
   try {
     const res = await fetch('data/db.json', { cache: 'no-store' });
     if (res.ok) {
@@ -1568,9 +1644,13 @@ export function isEncryptedUpload(b64Content) {
  * @param {string} path       - repo-relative path, e.g. "invoices/inv_abc.pdf"
  * @param {string} b64Content - base64-encoded file content (no data-URL prefix)
  * @param {string} message    - commit message
+ * @param {{assumeNew?: boolean}} [opts] - assumeNew: the path is freshly
+ *   generated and almost certainly doesn't exist yet, so the first attempt
+ *   PUTs without looking up a sha; if the file does exist (409/422), the
+ *   next attempt looks it up as usual. Leave unset for overwrites.
  * @returns {Promise<{sha: string}>}
  */
-export async function uploadGithubFile(path, b64Content, message = 'Upload file') {
+export async function uploadGithubFile(path, b64Content, message = 'Upload file', { assumeNew = false } = {}) {
   const { owner, repo, branch, token } = state.github;
   if (!owner || !repo || !token) throw new Error('GitHub not configured — add owner/repo/token in Settings');
 
@@ -1597,23 +1677,30 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
   const ATTEMPTS = 6;
 
   let lastErr = null;
+  let skipShaLookup = assumeNew;
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
     // Re-read the file's current SHA on every attempt (required for updates).
     // A 404 means the file doesn't exist yet — create it by omitting the sha.
     // If-None-Match forces the CDN to revalidate so we don't PUT against a stale
     // SHA. GitHub creates parent directories automatically.
+    // (Skipped once for assumeNew: a PUT without a sha never overwrites an
+    // existing file — GitHub rejects it — so trying it first is safe.)
+    const blind = skipShaLookup;
+    skipShaLookup = false;
     let existingSha = null;
-    try {
-      const check = await ghFetch(
-        `${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`,
-        { headers: { ...headers, 'If-None-Match': `"${Date.now()}"` }, cache: 'no-store' }
-      );
-      if (check.ok) {
-        const d = await check.json();
-        existingSha = d.sha;
-      }
-      // 404 → file does not exist yet; proceed to create without sha
-    } catch { /* network error during existence check — proceed anyway */ }
+    if (!blind) {
+      try {
+        const check = await ghFetch(
+          `${apiUrl}?ref=${encodeURIComponent(branch || 'main')}`,
+          { headers: { ...headers, 'If-None-Match': `"${Date.now()}"` }, cache: 'no-store' }
+        );
+        if (check.ok) {
+          const d = await check.json();
+          existingSha = d.sha;
+        }
+        // 404 → file does not exist yet; proceed to create without sha
+      } catch { /* network error during existence check — proceed anyway */ }
+    }
 
     const body = { message, content: b64Content, branch: branch || 'main' };
     if (existingSha) body.sha = existingSha;
@@ -1633,11 +1720,18 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
       return { sha: data.content.sha };
     }
 
+    // The blind create hit an existing file (GitHub: 422 "sha wasn't
+    // supplied", or 409) — look the sha up and retry right away.
+    if (blind && (res.status === 409 || res.status === 422) && attempt < ATTEMPTS) {
+      lastErr = `${res.status} file exists`;
+      continue;
+    }
+
     // 409 = the file changed between our GET and PUT (concurrent/parallel upload
     // or stale CDN SHA). Re-read the fresh SHA and retry instead of failing.
     if (res.status === 409 && attempt < ATTEMPTS) {
       lastErr = '409 SHA conflict';
-      await sleep(150 + Math.random() * 200);
+      await sleep(backoff(attempt));
       continue;
     }
 
@@ -1658,17 +1752,14 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
   throw new Error(`File upload failed after ${ATTEMPTS} attempts (${lastErr}) for path "${cleanPath}"`);
 }
 
+// Chunked (0x8000-byte String.fromCharCode.apply) rather than one string
+// concatenation per byte — see crypto.js bytesToBase64.
 function rawBytesToBase64(bytes) {
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
+  return bytesToBase64(bytes);
 }
 
 function base64ToRawBytes(b64) {
-  const binary = atob(b64.replace(/\s/g, ''));
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
+  return base64ToBytes(b64.replace(/\s/g, ''));
 }
 
 /**
@@ -1680,7 +1771,7 @@ function base64ToRawBytes(b64) {
  * @param {string} b64Content - base64-encoded file content (same shape callers already produce)
  * @param {string} message   - commit message
  */
-export async function uploadGithubFileEncrypted(path, b64Content, message = 'Upload file') {
+export async function uploadGithubFileEncrypted(path, b64Content, message = 'Upload file', opts = {}) {
   // Never falls back to a plaintext upload: the repo is public.
   if (!isUnlocked()) {
     const err = new Error('Encryption key not unlocked on this device — unlock it in Settings → Encryption before uploading. Nothing was uploaded.');
@@ -1688,7 +1779,7 @@ export async function uploadGithubFileEncrypted(path, b64Content, message = 'Upl
     throw err;
   }
   const encrypted = await encryptBytes(base64ToRawBytes(b64Content));
-  return uploadGithubFile(path, rawBytesToBase64(encrypted), message);
+  return uploadGithubFile(path, rawBytesToBase64(encrypted), message, opts);
 }
 
 /**
@@ -1745,7 +1836,7 @@ export async function fetchGithubFile(path) {
   }
   const data = await res.json(); // { content (b64), sha, download_url, ... }
   // The Contents API only inlines `content` for files up to 1MB — past that
-  // it returns an empty string (encoding "none"). Every daily backup is ~2MB,
+  // it returns an empty string (encoding "none"). Daily backups can exceed that,
   // so without this fallback "Restore from Backup" (and key rotation, which
   // re-reads every backup) always failed with "Unexpected end of JSON input".
   // The git blobs API returns base64 content for files up to 100MB, with the
@@ -1963,9 +2054,10 @@ export async function dispatchRepoEvent(eventType) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Exponential backoff with jitter — avoids a thundering herd when several
-// clients hit the same SHA conflict and all retry in lockstep.
+// Exponential backoff with full jitter (a uniformly random wait up to the
+// exponential cap, plus a small floor) — spreads out several clients that hit
+// the same SHA conflict far better than a fixed base + small jitter, which
+// kept them retrying nearly in lockstep.
 function backoff(attempt) {
-  const base = Math.min(8000, 250 * 2 ** attempt);
-  return base + Math.random() * 400;
+  return 100 + Math.random() * Math.min(8000, 250 * 2 ** attempt);
 }

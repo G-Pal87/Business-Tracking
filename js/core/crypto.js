@@ -61,7 +61,17 @@ function b64encode(bytes) {
   }
   return btoa(binary);
 }
-function b64decode(str) { return Uint8Array.from(atob(str), c => c.charCodeAt(0)); }
+function b64decode(str) {
+  // Plain loop: Uint8Array.from(iterable, mapFn) goes through the iterator
+  // protocol and a callback per byte, several times slower on large inputs.
+  const binary = atob(str);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+// Shared with github.js (file uploads/downloads) so there is one chunked,
+// stack-safe implementation of each direction.
+export { b64encode as bytesToBase64, b64decode as base64ToBytes };
 
 function randomBytes(n) { return crypto.getRandomValues(new Uint8Array(n)); }
 
@@ -136,9 +146,22 @@ async function rewrapAll(fromKey, toKey, iterations, { tolerant = false } = {}) 
 // key already exists in localStorage, unwraps it so the app can immediately
 // decrypt data. Safe to call even if encryption has never been set up on
 // this device — _dataKey simply stays null until Settings configures it.
-export async function unlockOnLogin(password) {
+//
+// `proceed` (optional): a promise resolving to true/false. The expensive
+// PBKDF2 derivation starts immediately, but NOTHING is changed — no key held
+// in memory, nothing persisted — until it resolves true. Lets a caller run
+// its own password check (another PBKDF2) concurrently and still leave no
+// partial unlock behind when that check fails. Resolves false when it was
+// told not to proceed.
+export async function unlockOnLogin(password, { proceed } = {}) {
   const iterations = storedWrapIterations();
-  _sessionWrapKey = await deriveWrapKey(password, iterations);
+  const wrapKey = await deriveWrapKey(password, iterations);
+  if (proceed !== undefined) {
+    let ok = false;
+    try { ok = (await proceed) === true; } catch { ok = false; }
+    if (!ok) return false;
+  }
+  _sessionWrapKey = wrapKey;
 
   // A key entered pre-login on a brand-new device (see setBootstrapDataKey)
   // was never persisted — it couldn't be wrapped without a password to derive

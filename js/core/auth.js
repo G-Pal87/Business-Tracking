@@ -382,14 +382,23 @@ function renderUnlock(screen, user, done, onSwitchUser) {
   screen.appendChild(card);
 
   const doUnlock = async () => {
+    if (btn.disabled) return; // Enter while a previous attempt is still running
     const password = passwordI.value;
     if (!password) { errEl.textContent = 'Enter your password'; return; }
     errEl.textContent = '';
     btn.disabled = true;
+    // Both checks cost a PBKDF2 derivation; run them side by side. The unlock
+    // only derives its key until `verified` resolves true — a wrong password
+    // leaves nothing unlocked or persisted, exactly as when they ran in turn.
+    let allowUnlock;
+    const verified = new Promise(r => { allowUnlock = r; });
+    const unlocking = unlockOnLogin(password, { proceed: verified });
+    unlocking.catch(() => {}); // awaited below on success; never an unhandled rejection
     try {
       const result = await verifyPassword(password, user);
-      if (!result.ok) { errEl.textContent = 'Incorrect password'; passwordI.value = ''; btn.disabled = false; return; }
-      await unlockOnLogin(password);
+      if (!result.ok) { allowUnlock(false); errEl.textContent = 'Incorrect password'; passwordI.value = ''; btn.disabled = false; return; }
+      allowUnlock(true);
+      await unlocking;
       await adoptToken();
       applyPasswordUpgrade(user, result);
       // See the matching comment in doLogin below — a wrapped key existing on
@@ -401,6 +410,7 @@ function renderUnlock(screen, user, done, onSwitchUser) {
       }
       done();
     } catch (e) { errEl.textContent = 'Unlock error'; btn.disabled = false; }
+    finally { allowUnlock(false); } // no-op once allowed; releases the gate on every other path
   };
 
   btn.onclick = doUnlock;
@@ -429,11 +439,19 @@ function renderLogin(screen, resolve) {
   screen.appendChild(card);
 
   const doLogin = async () => {
+    if (btn.disabled) return; // Enter while a previous attempt is still running
     const username = usernameI.value.trim();
     const password = passwordI.value;
     if (!username || !password) { errEl.textContent = 'Enter username and password'; return; }
     errEl.textContent = '';
     btn.disabled = true;
+    // Derive the wrap-key (PBKDF2) alongside the password check below; the
+    // unlock commits nothing until `verified` resolves true, so a failed
+    // login leaves no key unlocked or persisted — same as running in turn.
+    let allowUnlock;
+    const verified = new Promise(r => { allowUnlock = r; });
+    const unlocking = unlockOnLogin(password, { proceed: verified });
+    unlocking.catch(() => {}); // awaited below on success; never an unhandled rejection
     try {
       let user = listActive('users').find(u => u.username === username);
       let result = user ? await verifyPassword(password, user) : { ok: false };
@@ -474,7 +492,8 @@ function renderLogin(screen, resolve) {
         return;
       }
       applyPasswordUpgrade(user, result);
-      await unlockOnLogin(password);
+      allowUnlock(true);
+      await unlocking;
       await adoptToken();
       setSession(user);
       recordSessionEvent('login').catch(() => {});
@@ -491,6 +510,7 @@ function renderLogin(screen, resolve) {
       }
       resolve(state.session);
     } catch (e) { errEl.textContent = 'Sign in error'; btn.disabled = false; }
+    finally { allowUnlock(false); } // no-op once allowed; releases the gate on every other path
   };
 
   btn.onclick = doLogin;
