@@ -37,6 +37,15 @@ export function toEUR(amount, currency, dateOrYear) {
 }
 
 export function formatMoney(amount, currency = 'EUR', options = {}) {
+  // Currency comes from synced records; only a well-formed ISO 4217 code is
+  // ever passed through, so the output never carries arbitrary text (callers
+  // insert it into HTML). Anything else formats as a plain number.
+  if (typeof currency === 'string' && /^[A-Za-z]{3}$/.test(currency)) currency = currency.toUpperCase();
+  else currency = null;
+  if (!currency) {
+    const frac = options.maxFrac ?? 2;
+    return formatPlainNumber(amount, frac, Math.min(options.minFrac ?? 2, frac));
+  }
   const maxFrac = options.maxFrac ?? (currency === 'HUF' ? 0 : 2);
   const minFrac = Math.min(options.minFrac ?? (currency === 'HUF' ? 0 : 2), maxFrac);
   const key = `${currency}:${maxFrac}:${minFrac}`;
@@ -45,11 +54,17 @@ export function formatMoney(amount, currency = 'EUR', options = {}) {
     try {
       fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: maxFrac, minimumFractionDigits: minFrac });
     } catch (e) {
-      return `${amount} ${currency}`;
+      return `${formatPlainNumber(amount, maxFrac, minFrac)} ${currency}`;
     }
     _fmtCache.set(key, fmt);
   }
   return fmt.format(amount || 0);
+}
+
+function formatPlainNumber(amount, maxFrac, minFrac) {
+  const n = Number(amount);
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: maxFrac, minimumFractionDigits: minFrac })
+    .format(Number.isFinite(n) ? n : 0);
 }
 
 export function formatEUR(amount, options = {}) {
