@@ -1,18 +1,1 @@
-{
-  "entries": {},
-  "devices": {
-    "fd9b77d3-dc30-4dd1-bfe0-51f377701f94": {
-      "username": "Giorgos",
-      "name": "Giorgos",
-      "role": "admin",
-      "device": "Chrome on Windows",
-      "deviceType": "desktop",
-      "hasKey": true,
-      "keyConfigured": true,
-      "envFormat": 2,
-      "canCompress": true,
-      "connectedAt": 1790335179073,
-      "lastSeen": 1790440260843
-    }
-  }
-}
+{"enc":1,"iv":"1W1hbwNpUVI662bx","ct":"PdT/STFhN1DepDn4euF4JE/tgu3Zcf82p7dRQVsbqylP28AbwPoFSVJb8x5e8AOyTR32M0+iqD4wA1hhMntKHnWcyH+b/W+daD0IQHJYYNg0aohmDxlrJBCOjdLnRI0Rmghf9cg77HmYHnSLLl44CiatoxQRU4G2mGeOKR0ixiH2fM7yv92JEq5km147iHP5aVXHe+GXzTNQVrWbPBU2MLpl+G9/HishJsuylWItTtnswPN0O3lLbGZUXP5PwFnP5bc/QC250+EhIfZlMyhINHahcf9EOQKb7QfOtGy7gdqMaZRWT/bZkdlsHX+fIhI0yIOjZUPPcpGhSXNS8JCZAcx1H/99J98ubSSVoPmw8jAMhFTHeJFC1ubzkLjzAVn3xiMK+entLthHh+MNPTL53+fjvkX7","kid":"jIiIF5QurCht"}
