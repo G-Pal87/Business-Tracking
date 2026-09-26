@@ -159,7 +159,7 @@ function openDetail(id) {
         tr.appendChild(el('td', {}, prop.name + (prop.deletedAt ? ' (deleted)' : '')));
         tr.appendChild(el('td', {}, period.startDate || '—'));
         tr.appendChild(el('td', {}, period.endDate || 'Open-ended'));
-        tr.appendChild(el('td', { class: 'right num' }, formatMoney(period.fee, prop.currency, { maxFrac: 0 })));
+        tr.appendChild(el('td', { class: 'right num' }, formatMoney(period.fee, period.currency || prop.currency || 'EUR', { maxFrac: 0 })));
         const actions = el('td', { class: 'right' });
         actions.appendChild(button('Edit', {
           variant: 'sm ghost',
@@ -283,10 +283,15 @@ function openCleaningPeriodForm(vendor, existingPeriodId, onDone) {
   const startI  = input({ type: 'date', value: existing?.startDate || '' });
   const endI    = input({ type: 'date', value: existing?.endDate || '' });
   const feeI    = input({ type: 'number', value: existing?.fee ?? 0, min: 0, step: 0.01 });
+  // The fee's own currency — generated cleaning expenses use it (not the
+  // payout's). Legacy rates without one default to the property's currency.
+  const propCur = id => byId('properties', id)?.currency || 'EUR';
+  const curS    = select(CURRENCIES, existing?.currency || propCur(propS.value));
+  if (!existing?.currency) propS.addEventListener('change', () => { curS.value = propCur(propS.value); });
 
   body.appendChild(formRow('Property', propS));
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Start Date', startI), formRow('End Date (leave empty = open-ended)', endI)));
-  body.appendChild(formRow('Cleaning Fee', feeI));
+  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Cleaning Fee', feeI), formRow('Currency', curS)));
 
   const saveBtn = button('Save', {
     variant: 'primary',
@@ -321,7 +326,8 @@ function openCleaningPeriodForm(vendor, existingPeriodId, onDone) {
             propertyId: propS.value,
             startDate:  startI.value,
             endDate:    endI.value,
-            fee:        Number(feeI.value)
+            fee:        Number(feeI.value),
+            currency:   curS.value
           };
         }
       } else {
@@ -330,7 +336,8 @@ function openCleaningPeriodForm(vendor, existingPeriodId, onDone) {
           propertyId: propS.value,
           startDate:  startI.value,
           endDate:    endI.value,
-          fee:        Number(feeI.value)
+          fee:        Number(feeI.value),
+          currency:   curS.value
         });
       }
 

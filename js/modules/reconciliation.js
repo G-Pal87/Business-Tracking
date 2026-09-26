@@ -1,13 +1,14 @@
 // Reconciliation – best-in-class heatmap dashboard
 import { el, fmtDate, drillDownModal, escapeHtml, openModal } from '../core/ui.js';
-import { availableYears, formatEUR, buildReconciliationData, listActivePayments, listActive, toEUR, getPersonName, byId, companyPropIds, isCompanyRecord } from '../core/data.js';
+import { availableYears, formatEUR, buildReconciliationData, listActivePayments, listActive, toEUR, getPersonName, byId, companyPropIds, isCompanyRecord, generatePaymentSchedule, isRentPayment, rentMonthOf } from '../core/data.js';
 import { mkSectionLabel, mkSummaryGrid, mkModalTable, groupByMonthKey, mkTh, mkExplainButton, mkDrillValue } from './analytics-helpers.js';
+import { fixMisTypedLongTermPayments } from './payments.js';
 
 export default {
   id: 'reconciliation',
   label: 'Reconciliation',
   icon: '⚖️',
-  render(container) { container.appendChild(build()); },
+  render(container) { fixMisTypedLongTermPayments(); container.appendChild(build()); },
   refresh() { const c = document.getElementById('content'); c.innerHTML = ''; c.appendChild(build()); },
   destroy() {}
 };
@@ -147,10 +148,10 @@ function monthExpectedExplain(ent, m) {
   if (ent.kind === 'lt') {
     return {
       title: 'Expected — LT Rent',
-      formula: "Monthly rent (EUR) of whichever tenant's lease is active this month; 0 if no lease covers it.",
+      formula: "Rent due this month from the rent schedule (EUR): the rent in force that month, prorated for a part month; 0 if vacant, sold or no lease covers it.",
       inputs: [{ label: 'Expected (EUR)', value: formatEUR(m.expected) }],
-      source: 'core/data.js:854-861 buildReconciliationData()',
-      note: 'Long-term Expected comes from the active lease’s monthlyRent, not from payments received — a bonus/extra payment this month won’t raise it.'
+      source: 'core/data.js buildReconciliationData() ← generatePaymentSchedule()',
+      note: 'Received counts rent only (not a withheld deposit or termination fee), by the month the rent covers.'
     };
   }
   if (ent.kind === 'service') {
@@ -164,7 +165,7 @@ function monthExpectedExplain(ent, m) {
   }
   return {
     title: 'Expected — ST Rent',
-    formula: 'Sum of every payment dated this month, of any status.',
+    formula: 'Sum of every payment dated this month, of any status except materialized (a frozen copy of a booking already paid).',
     inputs: [{ label: 'Expected (EUR)', value: formatEUR(m.expected) }],
     source: 'core/data.js:866-867 buildReconciliationData()',
     note: 'Short-term Expected is derived from payment records already on the books for the month (any status), unlike LT rent which uses a fixed lease amount.'
@@ -195,7 +196,7 @@ function entityExpectedExplain(ent) {
     inputs: [{ label: 'Total Expected (EUR)', value: formatEUR(ent.totExp) }],
     source: ent.kind === 'service' ? 'core/data.js:900 buildReconciliationData()' : 'core/data.js:873 buildReconciliationData()',
     note: ent.kind === 'lt' ? 'LT rent is looked up from the active lease per month, not from payments received.'
-        : ent.kind === 'st' ? 'ST Expected includes every payment on the books that month regardless of status — unlike LT, which uses the lease rent.'
+        : ent.kind === 'st' ? 'ST Expected includes every payment on the books that month (paid, pending or overdue; materialized copies excluded) — unlike LT, which uses the rent schedule.'
         : 'Service Expected is invoiced (not paid) totals.'
   };
 }
@@ -225,16 +226,18 @@ function entityOutstandingExplain(ent) {
   };
 }
 
-function totalExpectedExplain(withData, source) {
+function totalExpectedExplain(withData, source, toDate = false) {
   return {
-    title: 'Expected (Total)',
-    formula: "Sum of every listed entity's year-Expected total.",
+    title: toDate ? 'Expected to date' : 'Expected (Total)',
+    formula: toDate
+      ? "Sum of every listed entity's Expected for the months up to and including the current one (future months aren't due yet)."
+      : "Sum of every listed entity's year-Expected total.",
     inputs: [
       { label: 'Entities', value: String(withData.length) },
-      { label: 'Total Expected (EUR)', value: formatEUR(withData.reduce((s, e) => s + (e.totExp ?? e.expected ?? 0), 0)) }
+      { label: 'Total Expected (EUR)', value: formatEUR(withData.reduce((s, e) => s + ((toDate ? e.expToDate : e.totExp) ?? e.expected ?? 0), 0)) }
     ],
     source,
-    note: "Each entity's own Expected formula differs by type — LT uses active-lease rent, ST uses all payments on the books that month, Services use invoiced totals. See core/data.js buildReconciliationData()."
+    note: "Each entity's own Expected formula differs by type — LT uses the rent schedule, ST uses all payments on the books that month (materialized copies excluded), Services use invoiced totals. See core/data.js buildReconciliationData()."
   };
 }
 
@@ -247,11 +250,13 @@ function totalReceivedExplain(withData, source) {
   };
 }
 
-function totalOutstandingExplain(withData, source) {
+function totalOutstandingExplain(withData, source, toDate = false) {
   return {
-    title: 'Outstanding (Total)',
-    formula: "Sum, per entity, of max(0, that entity's Expected − Received).",
-    inputs: [{ label: 'Total Outstanding (EUR)', value: formatEUR(withData.reduce((s, e) => s + (e.outstanding ?? Math.max(0, e.totExp - e.totAct)), 0)) }],
+    title: toDate ? 'Outstanding to date' : 'Outstanding (Total)',
+    formula: toDate
+      ? "Sum, per entity, of max(0, Expected − Received) over the months up to and including the current one."
+      : "Sum, per entity, of max(0, that entity's Expected − Received).",
+    inputs: [{ label: 'Total Outstanding (EUR)', value: formatEUR(withData.reduce((s, e) => s + (e.outstanding ?? (toDate ? Math.max(0, e.expToDate - e.actToDate) : Math.max(0, e.totExp - e.totAct))), 0)) }],
     source,
     note: 'The max(0, …) clamp is applied per entity before summing, so one entity running ahead of Expected never offsets another entity\'s shortfall.'
   };
@@ -276,13 +281,17 @@ function collectionRateExplain(totExp, totAct, cr) {
 // place this breakdown appears looks and drills the same way. Expected/
 // Received cells drill into that entity's full-year modal (openEntityModal);
 // Outstanding is a derived shortfall, not a record sum, so it's left plain.
-function entRowsFor(list) {
-  return list.map(e => ({
-    entity: e.label,
-    type: e.kind === 'lt' ? 'LT Rental' : e.kind === 'st' ? 'ST Rental' : 'Service',
-    expected: e.totExp, received: e.totAct, outstanding: Math.max(0, e.totExp - e.totAct),
-    _ent: e
-  }));
+// toDate: months up to and including the current one (expToDate/actToDate).
+function entRowsFor(list, toDate = false) {
+  return list.map(e => {
+    const expected = toDate ? e.expToDate : e.totExp, received = toDate ? e.actToDate : e.totAct;
+    return {
+      entity: e.label,
+      type: e.kind === 'lt' ? 'LT Rental' : e.kind === 'st' ? 'ST Rental' : 'Service',
+      expected, received, outstanding: Math.max(0, expected - received),
+      _ent: e
+    };
+  });
 }
 function appendEntityTable(body, rows, yr) {
   body.appendChild(mkModalTable(
@@ -310,22 +319,22 @@ function openCellModal(ent, m, yr) {
   const title = `${ent.label} — ${MON[m.m - 1]} ${yr}`;
 
   if (ent.kind === 'lt') {
-    const mk01 = `${m.mk}-01`;
-    const tenants = listActive('tenants').filter(t => {
-      if (t.propertyId !== ent.id || !t.monthlyRent) return false;
-      const ls = t.leaseStartDate ? t.leaseStartDate.slice(0, 7) + '-01' : null;
-      const le = t.leaseEndDate   ? t.leaseEndDate.slice(0, 7)   + '-01' : null;
-      return (!ls || mk01 >= ls) && (!le || mk01 <= le);
-    });
-    if (tenants.length || st === 'upcoming' || st === 'missing') {
-      return drillDownModal(title + (st === 'missing' ? ' — No Payment' : ' — Tenants'), tenants.map(t => ({
-        tenant: t.name,
-        lease:  `${t.leaseStartDate ? fmtDate(t.leaseStartDate) : '—'} → ${t.leaseEndDate ? fmtDate(t.leaseEndDate) : 'open-ended'}`,
-        eur:    toEUR(t.monthlyRent, t.currency || 'EUR', Number(yr))
-      })), [
+    // The rent-schedule entries behind this month's Expected (same source as
+    // buildReconciliationData — rent history, part months, vacancies, sale).
+    const prop = byId('properties', ent.id);
+    const entries = prop ? generatePaymentSchedule(prop).filter(e => e.monthKey === m.mk) : [];
+    if (entries.length || st === 'upcoming' || st === 'missing') {
+      return drillDownModal(title + (st === 'missing' ? ' — No Payment' : ' — Tenants'), entries.map(e => {
+        const t = e.tenantId ? byId('tenants', e.tenantId) : null;
+        return {
+          tenant: t?.name || '—',
+          lease:  `${t?.leaseStartDate ? fmtDate(t.leaseStartDate) : '—'} → ${t?.leaseEndDate ? fmtDate(t.leaseEndDate) : 'open-ended'}`,
+          eur:    toEUR(e.amount, e.currency, Number(yr))
+        };
+      }), [
         { key: 'tenant', label: 'Tenant', tip: 'Tenant name on the active lease for this property.' },
         { key: 'lease',  label: 'Lease Period', tip: 'Lease start and end dates (open-ended if no end date is set).' },
-        { key: 'eur',    label: 'Monthly Rent', right: true, format: v => formatEUR(v), tip: 'Monthly rent (EUR) — this is the property\'s Expected figure for months covered by the lease.' }
+        { key: 'eur',    label: 'Rent Due', right: true, format: v => formatEUR(v), tip: 'Rent due for this month from the rent schedule (EUR) — prorated for a part month, at the rent in force that month.' }
       ]);
     }
     // Fallthrough: show actual payments if we have them
@@ -345,7 +354,11 @@ function openCellModal(ent, m, yr) {
 // away via the footer link.
 function openCellPaymentModal(title, ent, m) {
   const { start, end } = monthRange(m.mk);
-  const pays = listActivePayments().filter(p => p.propertyId === ent.id && p.date >= start && p.date <= end);
+  // LT: the rent payments settling this month (by rent month, same as
+  // Received); ST: every payment dated this month.
+  const pays = ent.kind === 'lt'
+    ? listActivePayments().filter(p => p.propertyId === ent.id && isRentPayment(p) && rentMonthOf(p) === m.mk)
+    : listActivePayments().filter(p => p.propertyId === ent.id && p.date >= start && p.date <= end);
 
   const body = el('div');
   body.appendChild(mkSectionLabel('Summary'));
@@ -416,7 +429,7 @@ function openEntityModal(ent, yr) {
       })), [
         { key: 'tenant', label: 'Tenant', tip: 'Tenant name on the active lease for this property.' },
         { key: 'lease',  label: 'Lease Period', tip: 'Lease start and end dates (open-ended if no end date is set).' },
-        { key: 'eur',    label: 'Monthly Rent', right: true, format: v => formatEUR(v), tip: 'Monthly rent (EUR) — this is the property\'s Expected figure for months covered by the lease.' }
+        { key: 'eur',    label: 'Current Rent', right: true, format: v => formatEUR(v), tip: 'Current monthly rent (EUR). Each month\'s Expected comes from the rent schedule (rent in force that month, part months prorated).' }
       ]);
     }
   }
@@ -669,13 +682,17 @@ function build() {
     });
 
     // ── KPI cards (always reflect unfiltered totals) ────────────────────────
-    const totExp     = withData.reduce((s, e) => s + e.totExp, 0);
+    // Expected / Outstanding / Collection Rate run only up to the current
+    // month (expToDate/actToDate) — rent that isn't due yet isn't
+    // outstanding. Received stays the year's total.
+    const totExp     = withData.reduce((s, e) => s + e.expToDate, 0);
     const totAct     = withData.reduce((s, e) => s + e.totAct, 0);
-    const outstanding = withData.reduce((s, e) => s + Math.max(0, e.totExp - e.totAct), 0);
-    const cr          = rate(totAct, totExp);
+    const actToDate  = withData.reduce((s, e) => s + e.actToDate, 0);
+    const outstanding = withData.reduce((s, e) => s + Math.max(0, e.expToDate - e.actToDate), 0);
+    const cr          = rate(actToDate, totExp);
 
     const onExpected = () => {
-      const rows = entRowsFor(withData.filter(e => e.totExp > 0));
+      const rows = entRowsFor(withData.filter(e => e.expToDate > 0), true);
       const body = el('div');
       body.appendChild(mkSectionLabel('Summary'));
       body.appendChild(mkSummaryGrid([
@@ -685,7 +702,7 @@ function build() {
       ], 3));
       body.appendChild(mkSectionLabel('By Entity'));
       appendEntityTable(body, rows, yr);
-      openModal({ title: `Expected — ${yr}`, body, large: true });
+      openModal({ title: `Expected to date — ${yr}`, body, large: true });
     };
 
     const onReceived = () => {
@@ -759,7 +776,7 @@ function build() {
     };
 
     const onOutstanding = () => {
-      const rows = entRowsFor(withData.filter(e => e.totExp > e.totAct));
+      const rows = entRowsFor(withData.filter(e => e.expToDate > e.actToDate), true);
       const body = el('div');
       body.appendChild(mkSectionLabel('Summary'));
       body.appendChild(mkSummaryGrid([
@@ -780,13 +797,13 @@ function build() {
       ], 3));
       body.appendChild(mkSectionLabel('By Entity'));
       appendEntityTable(body, rows, yr);
-      openModal({ title: `Outstanding — ${yr}`, body, large: true });
+      openModal({ title: `Outstanding to date — ${yr}`, body, large: true });
     };
 
-    kpiRow.appendChild(kpi('Expected',       formatEUR(totExp),          '',                                                  onExpected,   totalExpectedExplain(withData, 'reconciliation.js:566 render()')));
+    kpiRow.appendChild(kpi('Expected to date', formatEUR(totExp),          '',                                                  onExpected,   totalExpectedExplain(withData, 'reconciliation.js render()', true)));
     kpiRow.appendChild(kpi('Received',        formatEUR(totAct),          '',                                                  onReceived,   totalReceivedExplain(withData, 'reconciliation.js:567 render()')));
-    kpiRow.appendChild(kpi('Outstanding',     formatEUR(outstanding),     outstanding > 0 ? 'danger' : 'success',              onOutstanding, totalOutstandingExplain(withData, 'reconciliation.js:568 render()')));
-    kpiRow.appendChild(kpi('Collection Rate', cr !== null ? `${cr}%` : '—', cr === null ? '' : cr >= 100 ? 'success' : cr >= 75 ? 'warning' : 'danger', onOutstanding, collectionRateExplain(totExp, totAct, cr)));
+    kpiRow.appendChild(kpi('Outstanding',     formatEUR(outstanding),     outstanding > 0 ? 'danger' : 'success',              onOutstanding, totalOutstandingExplain(withData, 'reconciliation.js render()', true)));
+    kpiRow.appendChild(kpi('Collection Rate', cr !== null ? `${cr}%` : '—', cr === null ? '' : cr >= 100 ? 'success' : cr >= 75 ? 'warning' : 'danger', onOutstanding, collectionRateExplain(totExp, actToDate, cr)));
 
     // ── Heatmap ─────────────────────────────────────────────────────────────
     renderHeatmap(heatmapCard, filtered, yr);

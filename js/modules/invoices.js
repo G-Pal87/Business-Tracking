@@ -300,6 +300,16 @@ function makeKpiCard(label, variant, onClick) {
 function build() {
   const wrap = el('div', { class: 'view active' });
 
+  // Numbers are assigned locally (highest + 1), so two devices issuing while
+  // offline can pick the same one — flag any collision once they've synced.
+  const dupNums = findDuplicateInvoiceNumbers();
+  if (dupNums.length) {
+    wrap.appendChild(el('div', { class: 'card mb-16', style: 'padding:10px 14px;border-left:3px solid var(--danger,#ef4444);font-size:13px' },
+      `⚠ Duplicate invoice number${dupNums.length > 1 ? 's' : ''}: ` +
+      dupNums.map(g => `${g[0].number} (${g.length}× in ${(g[0].issueDate || '').slice(0, 4) || 'no year'})`).join(', ') +
+      ' — renumber all but one before sending.'));
+  }
+
   let filteredRows = [];
   let _invStatCache = new Map(); // effectiveStatus cache — rebuilt each renderTable cycle
   const totalKpi   = makeKpiCard('Total Issued', null,      () => drillDownModal('Issued Invoices',       invDrillRows(filteredRows.filter(i => _invStatCache.get(i.id) !== 'draft')), INV_COLS));
@@ -643,6 +653,35 @@ function nextInvoiceSequence(year, excludeId) {
   return max + 1;
 }
 
+// Whether an invoice number is already used. Purely numeric numbers are
+// per-year sequences (scoped to `year`); others must be globally unique.
+// Soft-deleted invoices still hold their number (it may already have gone out
+// on a PDF), matching nextInvoiceSequence above — only deleted DRAFTS free it.
+export function invoiceNumberTaken(number, year, excludeId = null) {
+  if (!number) return false;
+  const numeric = /^\d+$/.test(number);
+  return (state.db.invoices || []).some(i =>
+    i.id !== excludeId && i.number === number &&
+    !(i.deletedAt && i.status === 'draft') &&
+    (!numeric || (i.issueDate || '').startsWith(year))
+  );
+}
+
+// Numbers used by more than one live invoice (same year for numeric ones).
+// The next number is only "highest local + 1", so two devices issuing
+// offline can both pick the same one — this surfaces that after they sync.
+export function findDuplicateInvoiceNumbers() {
+  const seen = new Map();
+  for (const i of listActive('invoices')) {
+    if (!i.number || i.status === 'draft') continue;
+    const key = /^\d+$/.test(i.number) ? `${(i.issueDate || '').slice(0, 4)}|${i.number}` : `*|${i.number}`;
+    const arr = seen.get(key) || [];
+    arr.push(i);
+    seen.set(key, arr);
+  }
+  return [...seen.values()].filter(a => a.length > 1);
+}
+
 // ============ BUILDER ============
 // `existing` is an invoice to edit (or a pre-built draft that already carries
 // its own id, e.g. from time-off). To start a NEW invoice with some fields
@@ -695,6 +734,16 @@ export function openBuilder(existing, { onSaved, defaults = null } = {}) {
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Invoice No', numberI), formRow('Status', statusS)));
   body.appendChild(namePreviewEl);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Issue Date', issueI), formRow('Due Date', dueI)));
+  // Paid date — when the money came in (cash-flow views use it; tax/P&L stay
+  // on the issue date). Shown only while the status is Paid; switching to
+  // Paid pre-fills today. A legacy paid invoice without one keeps using its
+  // issue date until a date is entered here.
+  const paidI = input({ type: 'date', value: inv.status === 'paid' ? (inv.paidDate || '') : '' });
+  const paidRow = el('div', { class: 'form-row horizontal' }, formRow('Paid Date', paidI));
+  const syncPaidRow = () => { paidRow.style.display = statusS.value === 'paid' ? '' : 'none'; };
+  statusS.addEventListener('change', () => { if (statusS.value === 'paid' && !paidI.value) paidI.value = today(); syncPaidRow(); });
+  syncPaidRow();
+  body.appendChild(paidRow);
   body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Currency', currencyS), formRow('Tax %', taxI)));
 
   // Line items editor
@@ -867,6 +916,9 @@ export function openBuilder(existing, { onSaved, defaults = null } = {}) {
     if (inv.lineItems.some(l => (Number(l.quantity) || 0) < 0 || (Number(l.rate) || 0) < 0)) {
       toast('Line item quantity and rate cannot be negative', 'danger'); return;
     }
+    // Numbering is per issue year — with no issue date the "year" was empty
+    // and the next number was taken across every year.
+    if (!issueI.value) { toast('Issue date is required', 'danger'); return; }
     if (issueI.value && dueI.value && dueI.value < issueI.value) { toast('Due date cannot be before the issue date', 'danger'); return; }
     inv.clientId = clientS.value;
     inv.owner = ownerS.value;
@@ -874,6 +926,8 @@ export function openBuilder(existing, { onSaved, defaults = null } = {}) {
     inv.issueDate = issueI.value;
     inv.dueDate = dueI.value;
     inv.status = statusS.value;
+    if (inv.status === 'paid' && paidI.value) inv.paidDate = paidI.value;
+    else if (inv.status !== 'paid') delete inv.paidDate;
     inv.stream = ownerStream(inv.owner) || byId('clients', inv.clientId)?.stream || inv.stream;
     inv.notes = notesT.value;
     if (!numberI.value.trim()) {
@@ -881,7 +935,7 @@ export function openBuilder(existing, { onSaved, defaults = null } = {}) {
       const seq = nextInvoiceSequence(year, inv.id);
       const candidate = `${seq}`;
       // Uniqueness check scoped to the same year (sequence is already per-year)
-      if (listActive('invoices').some(i => i.id !== inv.id && i.number === candidate && (i.issueDate || '').startsWith(year))) {
+      if (invoiceNumberTaken(candidate, year, inv.id)) {
         toast(`Auto-generated number ${candidate} conflicts with an existing invoice in ${year}`, 'danger');
         return;
       }
@@ -890,10 +944,7 @@ export function openBuilder(existing, { onSaved, defaults = null } = {}) {
       inv.number = numberI.value.trim();
       const year = inv.issueDate.slice(0, 4);
       // For purely numeric numbers, uniqueness is scoped to the same year
-      const sameYear = /^\d+$/.test(inv.number)
-        ? listActive('invoices').some(i => i.id !== inv.id && i.number === inv.number && (i.issueDate || '').startsWith(year))
-        : listActive('invoices').some(i => i.id !== inv.id && i.number === inv.number);
-      if (sameYear) {
+      if (invoiceNumberTaken(inv.number, year, inv.id)) {
         toast(`Invoice number ${inv.number} is already in use in ${year}`, 'danger');
         return;
       }
@@ -1274,9 +1325,15 @@ function openPDFImport() {
     { value: 'sent',  label: INVOICE_STATUSES.sent.label },
     { value: 'draft', label: INVOICE_STATUSES.draft.label }
   ], 'paid');
+  // Currency of the imported invoice — defaults to the client's (it used to be
+  // hard-coded to EUR, so a HUF 400,000 invoice was stored as €400,000).
+  const clientCur = () => byId('clients', clientS.value)?.currency || 'EUR';
+  const currencyS = select(CURRENCIES, clientCur());
+  clientS.addEventListener('change', () => { currencyS.value = clientCur(); });
   metaWrap.appendChild(formRow('Invoice Date', dateI));
   metaWrap.appendChild(formRow('Due Date', dueDateI));
   metaWrap.appendChild(formRow('Invoice #', numI));
+  metaWrap.appendChild(formRow('Currency', currencyS));
   metaWrap.appendChild(formRow('Status', statusS));
 
   const preview = el('div', { style: 'margin-top:12px;font-size:13px;min-height:20px' });
@@ -1457,10 +1514,7 @@ function openPDFImport() {
     const finalNumber = invoiceNum || String(nextInvoiceSequence(year, null));
     // Same duplicate-number check the builder's Save flow uses: purely numeric
     // numbers are scoped to the same year, others must be globally unique.
-    const numberInUse = /^\d+$/.test(finalNumber)
-      ? listActive('invoices').some(i => i.number === finalNumber && (i.issueDate || '').startsWith(year))
-      : listActive('invoices').some(i => i.number === finalNumber);
-    if (numberInUse) {
+    if (invoiceNumberTaken(finalNumber, year)) {
       toast(`Invoice number ${finalNumber} is already in use in ${year}`, 'danger');
       return;
     }
@@ -1474,7 +1528,7 @@ function openPDFImport() {
       issueDate,
       dueDate,
       stream: streamS.value,
-      currency: 'EUR',
+      currency: currencyS.value || 'EUR',
       status: statusS.value,
       lineItems: items.map(li => ({ id: newId('li'), description: li.description, quantity: li.quantity, unit: 'day', rate: li.rate, total: li.total })),
       subtotal: total, taxRate: 0, tax: 0, total,

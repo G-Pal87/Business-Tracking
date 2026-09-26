@@ -152,8 +152,9 @@ function getLtRentByMonth(propertyId, year) {
   if (prop?.type === 'long_term') {
     map = {};
     for (const entry of generatePaymentSchedule(prop)) {
+      // += : a hand-over month can carry two tenants' part-month rent.
       if (entry.monthKey?.startsWith(String(year))) {
-        map[entry.monthKey] = toEUR(entry.amount, entry.currency, year);
+        map[entry.monthKey] = (map[entry.monthKey] || 0) + toEUR(entry.amount, entry.currency, year);
       }
     }
   }
@@ -168,8 +169,11 @@ function getLtRentByMonth(propertyId, year) {
 // it — see payments.js cancelAirbnbForecastEntry) is excluded consistently.
 function resolvePropertyMonthRevenue(propertyId, year, mk, md) {
   const entries = Array.isArray(md?.entries) ? md.entries : [];
-  const manual = entries.length > 0 ? sumForecastEntries(entries) : Number(md?.revenue) || 0;
-  if (manual > 0) return manual;
+  // Any entered forecast wins, including a deliberate €0 (e.g. a move-out
+  // month) — same `!= null` rule as data.js getForecastVsActual and the tax
+  // forecast; `> 0` used to fall back to the lease rent instead.
+  if (entries.length > 0) return sumForecastEntries(entries);
+  if (md?.revenue != null) return Number(md.revenue) || 0;
   const ltMap = getLtRentByMonth(propertyId, year);
   return ltMap ? (ltMap[mk] || 0) : 0;
 }

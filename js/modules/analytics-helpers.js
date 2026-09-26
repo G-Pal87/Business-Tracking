@@ -2,6 +2,7 @@
 // Import these instead of copy-pasting the equivalent mkExp* functions
 // into every analytics module.
 import { el, openModal } from '../core/ui.js';
+import { state } from '../core/state.js';
 import { formatEUR, byId, toEUR } from '../core/data.js';
 import { todayYmd, addDaysYmd, diffDaysYmd } from '../core/dates.js';
 
@@ -738,20 +739,76 @@ export function periodDays(start, end) {
   return diffDaysYmd(start, end) + 1;
 }
 
-// ── Dividend GHS/GESY contribution ───────────────────────────────────────────
-// Same figures as dividends.js (GHS_RATE / GHS_ANNUAL_CAP, which that module
-// doesn't export): 2.65% General Healthcare System contribution on dividends,
-// capped at the first €180,000 of a recipient's dividends per calendar year.
-// It is NOT the Special Defence Contribution (SDC).
-export const GHS_RATE       = 0.0265;
+// ── Dividend GHS/GESY contribution and SDC ───────────────────────────────────
+// Single source for dividends.js and analytics-personal.js.
+// GHS (General Healthcare System) on dividends, by payment date:
+//   1.70% from 1 Mar 2019, 2.65% from 1 Mar 2020 (the temporary Apr–Jun 2020
+//   reduction is not modelled). Applies to every Cyprus tax resident.
+// The €180,000 cap is on a person's TOTAL GHS-able income for the year, so
+// salary and other income use it up first: the dividend capacity is
+// 180,000 − other income (settings.dividendTax.otherIncome[year][recipient]).
+// SDC (Special Defence Contribution) applies only to Cyprus-DOMICILED
+// residents (settings.dividendTax.domiciled[recipient], default not
+// domiciled → no SDC): 17% on dividends paid before 2026, 5% from 1 Jan 2026.
+// Either SDC rate can be overridden per year in
+// settings.dividendTax.sdcRatePct[year] (a percentage) if the rules change.
+export const GHS_RATE       = 0.0265; // current rate — see ghsRateForDate()
 export const GHS_ANNUAL_CAP = 180000;
+
+export function ghsRateForDate(date) {
+  const d = String(date || '').slice(0, 10);
+  if (!d || d >= '2020-03-01') return 0.0265;
+  if (d >= '2019-03-01') return 0.017;
+  return 0;
+}
+
+function dividendTaxSettings() {
+  return state.db?.settings?.dividendTax || {};
+}
+
+/** Other GHS-able income (salary etc.) a recipient has in `year`, in EUR. */
+export function ghsOtherIncome(recipient, year) {
+  return Math.max(0, Number(dividendTaxSettings().otherIncome?.[String(year)]?.[recipient]) || 0);
+}
+
+/** A recipient's GHS-able dividend capacity for `year` (cap − other income). */
+export function ghsDividendCap(recipient, year) {
+  return Math.max(0, GHS_ANNUAL_CAP - ghsOtherIncome(recipient, year));
+}
+
+export function isDividendRecipientDomiciled(recipient) {
+  return dividendTaxSettings().domiciled?.[recipient] === true;
+}
+
+export function sdcRateForDate(date) {
+  const year = String(date || '').slice(0, 4);
+  const raw = dividendTaxSettings().sdcRatePct?.[year];
+  if (raw != null && raw !== '' && Number.isFinite(Number(raw)) && Number(raw) >= 0) return Number(raw) / 100;
+  return year && year < '2026' ? 0.17 : 0.05;
+}
+
+/** SDC withheld on one dividend (0 unless the recipient is domiciled). */
+export function sdcForDividend(d) {
+  if (!d || !isDividendRecipientDomiciled(d.recipient)) return 0;
+  return (Number(d.grossAmount) || 0) * sdcRateForDate(d.date);
+}
+
+/**
+ * ghsForDividendAmount(amount, priorCum, recipient, date) — GHS on a single
+ * (e.g. not-yet-saved) dividend, given the recipient's cumulative gross
+ * dividends earlier in the same year.
+ */
+export function ghsForDividendAmount(amount, priorCum, recipient, date) {
+  const cap = ghsDividendCap(recipient, String(date || '').slice(0, 4));
+  return Math.min(Number(amount) || 0, Math.max(0, cap - (Number(priorCum) || 0))) * ghsRateForDate(date);
+}
 
 /**
  * ghsByDividend(divs) — Map dividend.id → GHS withheld, applying the annual
- * €180k cap per recipient per calendar year in date order (mirrors
- * dividends.js ghsScheduleForYear()). Pass ALL of a recipient's dividends for
- * the years involved (not just the period's) so earlier dividends in the same
- * year consume the cap first.
+ * cap (less the recipient's other income) per recipient per calendar year in
+ * date order. Pass ALL of a recipient's dividends for the years involved (not
+ * just the period's) so earlier dividends in the same year consume the cap
+ * first.
  */
 export function ghsByDividend(divs) {
   const sorted = [...divs].sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.id).localeCompare(String(b.id)));
@@ -761,7 +818,7 @@ export function ghsByDividend(divs) {
     const key = `${d.recipient || ''}|${(d.date || '').slice(0, 4)}`;
     const prior = cum.get(key) || 0;
     const amt = Number(d.grossAmount) || 0;
-    out.set(d.id, Math.min(amt, Math.max(0, GHS_ANNUAL_CAP - prior)) * GHS_RATE);
+    out.set(d.id, ghsForDividendAmount(amt, prior, d.recipient || '', d.date));
     cum.set(key, prior + amt);
   }
   return out;
