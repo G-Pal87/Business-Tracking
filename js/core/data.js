@@ -1,12 +1,28 @@
 // Data layer: CRUD + aggregations + currency conversion
 import { state, markDirty, runBatch } from './state.js';
-import { MASTER_CURRENCY } from './config.js';
-import { today } from './ui.js';
+import { MASTER_CURRENCY, EXPENSE_CATEGORIES } from './config.js';
+import { today, toast } from './ui.js';
+import { daysInMonth, diffDaysYmd, addMonthsYmd } from './dates.js';
 
 const _fmtCache    = new Map();
 const _numFmtCache = new Map();
 
 // ============== Currency ==============
+// FX conversions that had to guess — a HUF amount in a year with no rate
+// configured (nearest year's rate used instead) or a currency with no rate
+// table at all (counted 1:1 as EUR). Each distinct case is warned about once
+// per session instead of being absorbed silently into the totals.
+const _fxWarned = new Set();
+const _fxWarnings = [];
+function _fxWarn(key, message) {
+  if (_fxWarned.has(key)) return;
+  _fxWarned.add(key);
+  _fxWarnings.push(message);
+  console.warn('[BT] ' + message);
+  try { toast(message, 'warning', 8000); } catch { /* no DOM (tests) */ }
+}
+export function getFxWarnings() { return [..._fxWarnings]; }
+
 export function toEUR(amount, currency, dateOrYear) {
   if (!amount) return 0;
   if (currency === 'EUR' || !currency) return Number(amount);
@@ -30,9 +46,13 @@ export function toEUR(amount, currency, dateOrYear) {
       const target = exactYear ? Number(exactYear) : sorted[sorted.length - 1];
       const nearest = sorted.reduce((best, yr) => Math.abs(yr - target) < Math.abs(best - target) ? yr : best);
       rate = yearRates[String(nearest)];
+      if (exactYear) _fxWarn(`HUF:${exactYear}`, `No HUF→EUR rate set for ${exactYear} — using the ${nearest} rate instead. Add it in Settings (annual FX rates).`);
     }
     return Number(amount) * rate;
   }
+  // No rate table exists for any other currency — still counted 1:1 (as
+  // before), but flagged so a stray USD/GBP record doesn't pass unnoticed.
+  _fxWarn(`CUR:${currency}`, `No FX rate for ${currency} — ${currency} amounts are being counted 1:1 as EUR.`);
   return Number(amount);
 }
 
@@ -249,10 +269,13 @@ export function applyFilters(rows, { year, years, stream, owner, propertyId, cli
   const o = owner ?? f.owner;
 
   return rows.filter(r => {
-    if (years instanceof Set && years.size > 0 && r.date) {
-      if (![...years].some(yr => r.date.startsWith(String(yr)))) return false;
-    } else if (y && y !== 'all' && r.date) {
-      if (!r.date.startsWith(String(y))) return false;
+    // Invoices carry issueDate, not date — without the fallback they skipped
+    // the year test entirely and every year's invoices were counted.
+    const d = r.date || r.issueDate;
+    if (years instanceof Set && years.size > 0 && d) {
+      if (![...years].some(yr => d.startsWith(String(yr)))) return false;
+    } else if (y && y !== 'all' && d) {
+      if (!d.startsWith(String(y))) return false;
     }
     if (s && s !== 'all' && r.stream && r.stream !== s) return false;
     if (o && o !== 'all' && o !== 'both') {
@@ -299,6 +322,34 @@ export function resolveExpenseFields(e) {
     costCategory:   e.costCategory   || LEGACY_CAT_MAP[e.category] || 'other',
     recurrence:     e.recurrence     || (e.recurringGroupId ? 'recurring' : (e.category === 'renovation' || e.category === 'reimbursement') ? 'one_off' : 'recurring')
   };
+}
+
+// Whether an expense is a deductible business cost for corporation tax and
+// operating profit. A per-record `deductible` boolean wins; otherwise the
+// category default applies (settings.expenseDeductibility[category] can
+// override config.js EXPENSE_CATEGORIES[category].deductible). Tax payments,
+// VAT remittances and mortgage repayments default to non-deductible.
+export function isDeductibleExpense(e) {
+  if (typeof e?.deductible === 'boolean') return e.deductible;
+  const cat = e?.category || 'other';
+  const override = state.db.settings?.expenseDeductibility?.[cat];
+  if (typeof override === 'boolean') return override;
+  return EXPENSE_CATEGORIES[cat]?.deductible !== false;
+}
+
+// Invoice statuses that never represent earned revenue.
+const NON_ACCRUED_INVOICE_STATUSES = new Set(['draft', 'cancelled', 'void']);
+// Accrual basis (tax / P&L): an invoice counts once issued, paid or not,
+// on its issue date. Drafts and cancelled/void invoices never count.
+export function isAccruedInvoice(i) {
+  return !!i && !NON_ACCRUED_INVOICE_STATUSES.has(i.status);
+}
+// Cash basis: the date a paid invoice's money came in — `paidDate` when it
+// was recorded (invoices.js stamps it on "mark paid"), else the issue date
+// (legacy records). Null for an invoice that isn't paid.
+export function invoiceCashDate(i) {
+  if (!i || i.status !== 'paid') return null;
+  return i.paidDate || i.issueDate || i.date || null;
 }
 
 // ============== Aggregations ==============
@@ -626,6 +677,16 @@ export function saveForecastYear(forecastId, data) {
   upsert('forecasts', fc);
 }
 
+// Month a payment's actual lands in for forecast-vs-actual. An Airbnb payout
+// counts in its stay (check-in) month — the month its forecast line is keyed
+// by (payments.js syncAirbnbForecastEntry) — so a 31 Jul check-in paid out
+// 1 Aug doesn't read as −100% in July and +100% in August. Everything else
+// counts on its payment date, as before.
+export function forecastActualMonthKey(p) {
+  const d = (p?.source === 'airbnb' && p.airbnbCheckIn) ? p.airbnbCheckIn : p?.date;
+  return (d || '').slice(0, 7);
+}
+
 export function getForecastVsActual(type, entityId, year) {
   const fc = (state.db.forecasts || []).find(f => f.type === type && f.entityId === entityId && f.year === Number(year));
 
@@ -637,8 +698,9 @@ export function getForecastVsActual(type, entityId, year) {
     if (prop?.type === 'long_term') {
       ltRentByMonth = {};
       for (const entry of generatePaymentSchedule(prop)) {
+        // += : a hand-over month can carry two tenants' part-month rent.
         if (entry.monthKey?.startsWith(String(year))) {
-          ltRentByMonth[entry.monthKey] = toEUR(entry.amount, entry.currency, year);
+          ltRentByMonth[entry.monthKey] = (ltRentByMonth[entry.monthKey] || 0) + toEUR(entry.amount, entry.currency, year);
         }
       }
     }
@@ -648,7 +710,7 @@ export function getForecastVsActual(type, entityId, year) {
   const yearStr = String(year);
   let entityPayments = null, entityExpenses = null, entityInvoices = null;
   if (type === 'property') {
-    entityPayments = listActivePayments().filter(p => p.propertyId === entityId && p.status === 'paid' && (p.date || '').startsWith(yearStr));
+    entityPayments = listActivePayments().filter(p => p.propertyId === entityId && p.status === 'paid' && forecastActualMonthKey(p).startsWith(yearStr));
     entityExpenses = listActive('expenses').filter(e => e.propertyId === entityId && !isCapEx(e) && (e.date || '').startsWith(yearStr));
   } else {
     entityInvoices = listActive('invoices').filter(i => i.stream === entityId && i.status === 'paid' && (i.issueDate || '').startsWith(yearStr));
@@ -665,7 +727,7 @@ export function getForecastVsActual(type, entityId, year) {
     const end = `${key}-${new Date(year, m, 0).getDate().toString().padStart(2, '0')}`;
     let actualRev = 0, actualExp = 0;
     if (type === 'property') {
-      actualRev = entityPayments.filter(p => p.date >= start && p.date <= end).reduce((s, p) => s + toEUR(p.amount, p.currency, year), 0);
+      actualRev = entityPayments.filter(p => forecastActualMonthKey(p) === key).reduce((s, p) => s + toEUR(p.amount, p.currency, year), 0);
     } else {
       // Revenue excludes VAT/tax — subtotal, not total (falls back to total
       // for legacy records that predate the subtotal field).
@@ -710,27 +772,12 @@ export function forecastMonthlyEUR(year) {
   return map;
 }
 
-export function estimateTaxForYear(year, rate) {
-  const s = `${year}-01-01`, e = `${year}-12-31`;
-  // Taxable revenue excludes VAT/tax collected on the tax authority's
-  // behalf — subtotal, not total (falls back to total for legacy records
-  // that predate the subtotal field).
-  const rev = [...listActivePayments().filter(p => p.status === 'paid' && p.date >= s && p.date <= e).map(p => toEUR(p.amount, p.currency, year)), ...listActive('invoices').filter(i => i.status === 'paid' && i.issueDate >= s && i.issueDate <= e).map(i => toEUR(i.subtotal ?? i.total, i.currency, year))].reduce((a, b) => a + b, 0);
-  const exp = listActive('expenses').filter(ex => !isCapEx(ex) && ex.date >= s && ex.date <= e).reduce((a, ex) => a + toEUR(ex.amount, ex.currency, year), 0);
-  const taxable = Math.max(0, rev - exp);
-  // Same per-month rule as forecastedRevenueEUR (itemized entries when
-  // present, else the manual revenue) — and Number() so a string-typed value
-  // can't concatenate instead of add.
-  const forecastRev = forecastedRevenueEUR(year);
-  const forecastTaxable = Math.max(0, forecastRev - exp);
-  const r = Number(rate) || 0;
-  return { rev, exp, taxable, estimatedTax: taxable * (r / 100), forecastRev, forecastTaxable, forecastTax: forecastTaxable * (r / 100), rate: r };
-}
+// (estimateTaxForYear used to live here — unused, and it mixed year-to-date
+// actual expenses with a full-year revenue forecast. The tax estimate lives
+// in cyprus-tax.js getActualsForYear / forecastRemainingForYear.)
 
 // ============== LT Schedule ==============
 
-// Internal helper: generate schedule entries for one lease segment.
-// leaseData must have: monthlyRent, currency, leaseStartDate?, leaseEndDate?, paymentDayOfMonth?
 // Payments on a long-term property that are NOT a month's rent — a withheld
 // deposit or termination fee (tenants.js) used to be stored as type
 // 'rental', which marked the final month's unpaid rent as paid.
@@ -746,67 +793,78 @@ export function isRentPayment(p) {
 function _expectedRentLease(t) {
   if (!t.monthlyRent || t.status === 'prospective') return null;
   if (t.status !== 'past') return t;
-  const end = t.terminationDate || t.leaseEndDate || today();
+  // No end date at all: rent stops after the current month (a whole month,
+  // not prorated to today — the end is a guess, not a move-out date).
+  const t0 = today();
+  const end = t.terminationDate || t.leaseEndDate ||
+    `${t0.slice(0, 7)}-${String(daysInMonth(+t0.slice(0, 4), +t0.slice(5, 7))).padStart(2, '0')}`;
   return { ...t, leaseEndDate: t.leaseEndDate && t.leaseEndDate < end ? t.leaseEndDate : end };
 }
 
-function _scheduleSegment(propertyId, leaseData, tenantId, vacantPeriods, soldDate, paysByMonth) {
-  const now = new Date();
-  const todayStr = today();
-  const dueDay = Math.min(Math.max(leaseData.paymentDayOfMonth || 1, 1), 28);
+// Month a rent payment covers. Rent recorded from the schedule carries an
+// explicit `rentMonth` ('YYYY-MM'), so September rent paid on 2 October still
+// settles September; older records (and payments without one) fall back to
+// the month of the payment date.
+export function rentMonthOf(p) {
+  const rm = p?.rentMonth;
+  if (typeof rm === 'string' && /^\d{4}-\d{2}$/.test(rm)) return rm;
+  return (p?.date || '').slice(0, 7);
+}
 
-  // Built from the YYYY-MM parts directly — no Date parsing of date strings.
-  let rangeStart, rangeEnd;
-  if (leaseData.leaseStartDate) {
-    const [y, m] = leaseData.leaseStartDate.split('-').map(Number);
-    rangeStart = new Date(y, m - 1, 1);
-  } else {
-    rangeStart = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-  }
-  if (leaseData.leaseEndDate) {
-    const [y, m] = leaseData.leaseEndDate.split('-').map(Number);
-    rangeEnd = new Date(y, m, 1);
-  } else {
-    rangeEnd = new Date(now.getFullYear(), now.getMonth() + 13, 1);
-  }
+// A tenant's rent for one month. `rentHistory` ([{ from: 'YYYY-MM', amount,
+// currency? }], written by tenants.js when the rent changes) is looked up
+// per month so a rent increase doesn't rewrite the months before it; a
+// month before the first entry uses the first entry. Tenants without a
+// history keep using the flat monthlyRent for every month, as before.
+export function tenantRentForMonth(t, monthKey) {
+  const hist = Array.isArray(t?.rentHistory)
+    ? t.rentHistory.filter(h => h && typeof h.from === 'string' && Number(h.amount) > 0)
+    : [];
+  if (!hist.length) return { amount: Number(t?.monthlyRent) || 0, currency: t?.currency || 'EUR' };
+  const sorted = [...hist].sort((a, b) => a.from.localeCompare(b.from));
+  let pick = sorted[0];
+  for (const h of sorted) if (h.from.slice(0, 7) <= monthKey) pick = h;
+  return { amount: Number(pick.amount), currency: pick.currency || t.currency || 'EUR' };
+}
+
+const _pad2 = n => String(n).padStart(2, '0');
+const _addMonthsMk = (mk, n) => addMonthsYmd(`${mk}-01`, n).slice(0, 7);
+
+// Internal helper: raw (unlinked) schedule entries for one lease segment.
+// leaseData: monthlyRent, currency, rentHistory?, leaseStartDate?,
+// leaseEndDate?, paymentDayOfMonth?, prorateRent?
+// A month the lease only partly covers (starts on the 20th, ends on the 15th)
+// is prorated by days unless the tenant has prorateRent === false. The due
+// day is capped at the month's real length (31 → 30 Apr / 28 Feb), and a
+// part month is never due before the lease starts.
+function _scheduleSegment(leaseData, tenantId) {
+  const curMk = today().slice(0, 7);
+  const startMk = leaseData.leaseStartDate ? leaseData.leaseStartDate.slice(0, 7) : _addMonthsMk(curMk, -11);
+  const endMk   = leaseData.leaseEndDate   ? leaseData.leaseEndDate.slice(0, 7)   : _addMonthsMk(curMk, 12);
+  const payDay  = Math.min(Math.max(Math.floor(Number(leaseData.paymentDayOfMonth)) || 1, 1), 31);
+  const prorate = leaseData.prorateRent !== false;
+  const ls = leaseData.leaseStartDate ? leaseData.leaseStartDate.slice(0, 10) : '';
+  const le = leaseData.leaseEndDate   ? leaseData.leaseEndDate.slice(0, 10)   : '';
 
   const results = [];
-  let cursor = new Date(rangeStart);
-  while (cursor < rangeEnd) {
-    const lastDay = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
-    const day = Math.min(dueDay, lastDay);
-    const monthKey = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
-    const dateStr = `${monthKey}-${String(day).padStart(2, '0')}`;
-    const monthPays = (paysByMonth.get(monthKey) || []).filter(p =>
-      p.propertyId === propertyId && isRentPayment(p)
-    );
-    const paidPayment  = monthPays.find(p => p.status === 'paid') || null;
-    const linkedPayment = paidPayment || monthPays[0] || null;
-    const paid = !!paidPayment;
-    // Skip unpaid entries in a vacant period or on/after the sold date
-    if (!paid) {
-      const inVacant = (vacantPeriods || []).some(vp =>
-        vp.startDate && dateStr >= vp.startDate && dateStr <= (vp.endDate || '9999-12-31')
-      );
-      const afterSold = soldDate ? dateStr > soldDate : false;
-      if (inVacant || afterSold) {
-        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-        continue;
-      }
-    }
-    // Overdue only AFTER the due day — comparing a local-midnight due date
-    // with "now" flagged rent overdue on the due day itself.
-    const overdue = !paid && dateStr < todayStr;
+  for (let mk = startMk, guard = 0; mk <= endMk && guard < 1200; mk = _addMonthsMk(mk, 1), guard++) {
+    const y = Number(mk.slice(0, 4)), m = Number(mk.slice(5, 7));
+    const dim = daysInMonth(y, m);
+    const monthStart = `${mk}-01`, monthEnd = `${mk}-${_pad2(dim)}`;
+    const covFrom = ls && ls > monthStart ? ls : monthStart;
+    const covTo   = le && le < monthEnd   ? le : monthEnd;
+    if (covTo < covFrom) continue;
+    const rent = tenantRentForMonth(leaseData, mk);
+    const days = diffDaysYmd(covFrom, covTo) + 1;
+    const amount = prorate && days < dim ? Math.round(rent.amount * days / dim * 100) / 100 : rent.amount;
+    let date = `${mk}-${_pad2(Math.min(payDay, dim))}`;
+    if (date < covFrom) date = covFrom;
     results.push({
-      date: dateStr, monthKey,
-      amount: leaseData.monthlyRent, currency: leaseData.currency || 'EUR',
-      amountEUR: toEUR(leaseData.monthlyRent, leaseData.currency || 'EUR', cursor.getFullYear()),
-      paid, overdue,
-      paidPaymentId: paidPayment?.id || null,
-      linkedPaymentId: linkedPayment?.id || null,
+      date, monthKey: mk, covFrom, covTo,
+      amount, currency: rent.currency,
+      amountEUR: toEUR(amount, rent.currency, y),
       tenantId: tenantId || null
     });
-    cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
   }
   return results;
 }
@@ -818,7 +876,9 @@ export const CONTRACT_EXPIRY_WARNING_DAYS = 60;
 // (no end date, lease not active, or the end date is far in the future).
 export function getContractExpiryFlag(tenant) {
   if (!tenant || !tenant.leaseEndDate || tenant.status !== 'active') return null;
-  const diffDays = Math.ceil((new Date(tenant.leaseEndDate) - new Date()) / 86400000);
+  // Whole calendar days between local today and the end date — comparing a
+  // UTC-midnight Date with the local "now" flagged leases a few hours off.
+  const diffDays = diffDaysYmd(today(), tenant.leaseEndDate.slice(0, 10));
   if (diffDays < 0) return { status: 'expired', days: diffDays };
   if (diffDays <= CONTRACT_EXPIRY_WARNING_DAYS) return { status: 'expiring-soon', days: diffDays };
   return null;
@@ -848,11 +908,12 @@ export function generatePaymentSchedule(property) {
 
   if (!tenants.length) return [];
 
-  // Pre-build month → payments map to avoid repeated full scans inside _scheduleSegment
+  // This property's rent payments by the month they cover (rentMonthOf).
   const paysByMonth = new Map();
   for (const p of listActivePayments()) {
-    if (!p.date) continue;
-    const mk = p.date.slice(0, 7);
+    if (p.propertyId !== property.id || !isRentPayment(p)) continue;
+    const mk = rentMonthOf(p);
+    if (!mk) continue;
     const arr = paysByMonth.get(mk) || [];
     arr.push(p);
     paysByMonth.set(mk, arr);
@@ -862,17 +923,56 @@ export function generatePaymentSchedule(property) {
   const soldDate = (property.status === 'sold' && property.soldDate) ? property.soldDate : null;
 
   // Merge segments from all tenants (already sorted earlier-lease-first
-  // above), deduplicate by monthKey BEFORE re-ordering chronologically.
-  // Dedup must see entries in tenant-priority order so "earlier lease wins"
-  // is decided by lease start date — sorting by due-date string first (as
-  // this used to do) let day-of-month decide instead, since e.g. "05" sorts
-  // before "25" regardless of which tenant's lease actually started earlier.
-  const all = [];
-  for (const t of tenants) all.push(..._scheduleSegment(property.id, t, t.id, vacantPeriods, soldDate, paysByMonth));
-  const seen = new Set();
-  const deduped = all.filter(e => { if (seen.has(e.monthKey)) return false; seen.add(e.monthKey); return true; });
-  deduped.sort((a, b) => a.date.localeCompare(b.date));
-  return deduped;
+  // above) in tenant-priority order, so "earlier lease wins" is decided by
+  // lease start date rather than day-of-month. Only days two leases BOTH
+  // cover are contested: a hand-over month where one lease ends on the 15th
+  // and the next starts on the 16th keeps both part-month entries.
+  const byMonth = new Map();
+  for (const t of tenants) {
+    for (const e of _scheduleSegment(t, t.id)) {
+      const acc = byMonth.get(e.monthKey) || [];
+      if (acc.some(a => e.covFrom <= a.covTo && a.covFrom <= e.covTo)) continue;
+      acc.push(e);
+      byMonth.set(e.monthKey, acc);
+    }
+  }
+
+  const todayStr = today();
+  const out = [];
+  for (const [mk, entries] of byMonth) {
+    const monthPays = paysByMonth.get(mk) || [];
+    const used = new Set();
+    for (const e of entries) {
+      // One tenant that month: any rent payment for the property counts, as
+      // before. A hand-over month matches each part to a payment tagged with
+      // that tenant (or an untagged one), and one payment settles one part.
+      const cands = entries.length === 1 ? monthPays
+        : monthPays.filter(p => !used.has(p.id) && (!p.tenantId || p.tenantId === e.tenantId))
+          .sort((a, b) => (b.tenantId === e.tenantId) - (a.tenantId === e.tenantId));
+      const paidPayment = cands.find(p => p.status === 'paid') || null;
+      const linkedPayment = paidPayment || cands[0] || null;
+      if (entries.length > 1 && paidPayment) used.add(paidPayment.id);
+      const paid = !!paidPayment;
+      // Skip unpaid entries in a vacant period or on/after the sold date
+      if (!paid) {
+        const inVacant = vacantPeriods.some(vp =>
+          vp.startDate && e.date >= vp.startDate && e.date <= (vp.endDate || '9999-12-31')
+        );
+        const afterSold = soldDate ? e.date > soldDate : false;
+        if (inVacant || afterSold) continue;
+      }
+      // Overdue only AFTER the due day — comparing a local-midnight due date
+      // with "now" flagged rent overdue on the due day itself.
+      const overdue = !paid && e.date < todayStr;
+      out.push({
+        ...e, paid, overdue,
+        paidPaymentId: paidPayment?.id || null,
+        linkedPaymentId: linkedPayment?.id || null
+      });
+    }
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date));
+  return out;
 }
 
 // ============== Reconciliation ==============
@@ -883,10 +983,25 @@ export function generatePaymentSchedule(property) {
 // this function's original behaviour) | 'company' — excludes personal-channel
 // properties and personal-flagged invoices, same as every analytics
 // dashboard's Company-only/All scope toggle.
+// Year totals plus "to date" totals (months up to and including the current
+// one) — headline Expected / Outstanding / collection rate use the to-date
+// pair so rent that isn't due yet doesn't read as outstanding.
+function _recTotals(months, curMk) {
+  let totExp = 0, totAct = 0, expToDate = 0, actToDate = 0;
+  for (const m of months) {
+    totExp += m.expected; totAct += m.actual;
+    if (m.mk <= curMk) { expToDate += m.expected; actToDate += m.actual; }
+  }
+  return { totExp, totAct, totVariance: totAct - totExp, expToDate, actToDate };
+}
+
 export function buildReconciliationData(year, ownerFilter, scope) {
   const yr = Number(year);
-  const now = new Date();
   const yearStr = String(yr);
+  // A month is "past" once it has fully ended in local time — comparing the
+  // month-end's local midnight with "now" counted the current month as past
+  // on its own last day.
+  const curMk = today().slice(0, 7);
 
   const matchPropOwner = prop => {
     if (!ownerFilter) return true;
@@ -905,23 +1020,17 @@ export function buildReconciliationData(year, ownerFilter, scope) {
   const matchInvScope = inv => scope !== 'company' || isCompanyRecord(inv, coPropIds);
 
   // Pre-build lookup maps — avoids O(n) listActive() scans inside nested loops
-  const tenantsByProp = new Map();
-  for (const t0 of listActive('tenants')) {
-    const t = _expectedRentLease(t0); // same tenant rules as generatePaymentSchedule
-    if (!t) continue;
-    const arr = tenantsByProp.get(t.propertyId) || [];
-    arr.push(t);
-    tenantsByProp.set(t.propertyId, arr);
-  }
-  // Sort each property's tenants by lease start date so an overlapping-month
-  // lookup below (.find()) resolves to the earlier lease first — same
-  // "earlier lease wins" convention generatePaymentSchedule() uses, so the
-  // two views agree on which tenant's rent is "expected" in a transition month.
-  for (const arr of tenantsByProp.values()) {
-    arr.sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || ''));
-  }
   const paysByProp = new Map();
+  // Long-term rent is matched by the month it covers (rentMonthOf), which
+  // can sit in a different year from the payment date (December rent paid
+  // on 2 January), so it gets its own map keyed by property.
+  const rentByProp = new Map();
   for (const p of listActivePayments()) {
+    if (p.status === 'paid' && isRentPayment(p) && rentMonthOf(p).startsWith(yearStr)) {
+      const arr = rentByProp.get(p.propertyId) || [];
+      arr.push(p);
+      rentByProp.set(p.propertyId, arr);
+    }
     if (!(p.date || '').startsWith(yearStr)) continue;
     const arr = paysByProp.get(p.propertyId) || [];
     arr.push(p);
@@ -929,7 +1038,7 @@ export function buildReconciliationData(year, ownerFilter, scope) {
   }
   const invsByStream = new Map();
   for (const i of listActive('invoices')) {
-    if (i.status === 'draft' || !(i.issueDate || '').startsWith(yearStr) || !matchInvOwner(i) || !matchInvScope(i)) continue;
+    if (!isAccruedInvoice(i) || !(i.issueDate || '').startsWith(yearStr) || !matchInvOwner(i) || !matchInvScope(i)) continue;
     const arr = invsByStream.get(i.stream) || [];
     arr.push(i);
     invsByStream.set(i.stream, arr);
@@ -939,42 +1048,46 @@ export function buildReconciliationData(year, ownerFilter, scope) {
 
   for (const prop of listActive('properties')) {
     if (!matchPropOwner(prop) || !matchPropScope(prop)) continue;
-    const propTenants = tenantsByProp.get(prop.id) || [];
     const propPayments = paysByProp.get(prop.id) || [];
+    const propRent = rentByProp.get(prop.id) || [];
+    // Long-term Expected comes from the rent schedule itself, so vacancies,
+    // the sale date, rent changes and part months all apply here too.
+    const schedByMonth = new Map();
+    if (prop.type === 'long_term') {
+      for (const e of generatePaymentSchedule(prop)) {
+        if (!e.monthKey.startsWith(yearStr)) continue;
+        schedByMonth.set(e.monthKey, (schedByMonth.get(e.monthKey) || 0) + toEUR(e.amount, e.currency, yr));
+      }
+    }
     const months = [];
     for (let m = 1; m <= 12; m++) {
       const mk = `${yr}-${String(m).padStart(2, '0')}`;
       const start = `${mk}-01`;
       const end = `${mk}-${new Date(yr, m, 0).getDate().toString().padStart(2, '0')}`;
-      const monthEnd = new Date(yr, m, 0);
-      const isPast = monthEnd < now;
+      const isPast = mk < curMk;
       let expected = 0, actual = 0;
 
       if (prop.type === 'long_term') {
-        const mStr = `${mk}-01`;
-        const tenant = propTenants.find(t => {
-          const ls = t.leaseStartDate ? t.leaseStartDate.slice(0, 7) + '-01' : null;
-          const le = t.leaseEndDate   ? t.leaseEndDate.slice(0, 7)   + '-01' : null;
-          return (!ls || mStr >= ls) && (!le || mStr <= le);
-        });
-        if (tenant) expected = toEUR(tenant.monthlyRent, tenant.currency || 'EUR', yr);
-        actual = propPayments
-          .filter(p => p.date >= start && p.date <= end && p.status === 'paid')
+        expected = schedByMonth.get(mk) || 0;
+        // Rent only (no withheld deposit / termination fee), by rent month.
+        actual = propRent
+          .filter(p => rentMonthOf(p) === mk)
           .reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
       } else if (prop.type === 'short_term') {
-        const monthPays = propPayments.filter(p => p.date >= start && p.date <= end);
+        // A materialized row is a frozen copy of a forecast booking that has
+        // since paid out — its paid record is already here, so counting both
+        // doubled Expected.
+        const monthPays = propPayments.filter(p => p.date >= start && p.date <= end && p.status !== 'materialized');
         expected = monthPays.reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
         actual   = monthPays.filter(p => p.status === 'paid').reduce((s, p) => s + toEUR(p.amount, p.currency, yr), 0);
       }
 
       months.push({ mk, m, expected, actual, variance: actual - expected, isPast });
     }
-    const totExp = months.reduce((s, m) => s + m.expected, 0);
-    const totAct = months.reduce((s, m) => s + m.actual, 0);
     entities.push({
       id: prop.id, label: prop.name,
       kind: prop.type === 'long_term' ? 'lt' : 'st',
-      months, totExp, totAct, totVariance: totAct - totExp
+      months, ..._recTotals(months, curMk)
     });
   }
 
@@ -989,16 +1102,13 @@ export function buildReconciliationData(year, ownerFilter, scope) {
       const mk = `${yr}-${String(m).padStart(2, '0')}`;
       const start = `${mk}-01`;
       const end = `${mk}-${new Date(yr, m, 0).getDate().toString().padStart(2, '0')}`;
-      const monthEnd = new Date(yr, m, 0);
-      const isPast = monthEnd < now;
+      const isPast = mk < curMk;
       const invs = streamInvs.filter(i => i.issueDate >= start && i.issueDate <= end);
       const expected = invs.reduce((s, i) => s + toEUR(i.total, i.currency, yr), 0);
       const actual   = invs.filter(i => i.status === 'paid').reduce((s, i) => s + toEUR(i.total, i.currency, yr), 0);
       months.push({ mk, m, expected, actual, variance: actual - expected, isPast });
     }
-    const totExp = months.reduce((s, m) => s + m.expected, 0);
-    const totAct = months.reduce((s, m) => s + m.actual, 0);
-    entities.push({ id: stream, label, kind: 'service', months, totExp, totAct, totVariance: totAct - totExp });
+    entities.push({ id: stream, label, kind: 'service', months, ..._recTotals(months, curMk) });
   }
 
   return entities;
@@ -1573,7 +1683,10 @@ function _applyOneRule(rule, payment, reservationRef, genIndex = null) {
     } else {
       const { vendor, period } = matches[0];
       amount = period.fee;
-      currency = payment.currency || 'EUR';
+      // The fee is in its own currency (the rate's, else the property's —
+      // which is what vendors.js has always displayed it in), not the
+      // payout's: a HUF 15,000 fee on a EUR payout isn't €15,000.
+      currency = period.currency || byId('properties', payment.propertyId)?.currency || payment.currency || 'EUR';
       overrideVendorId = vendor.id;
       overrideVendorName = vendor.name;
     }

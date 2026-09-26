@@ -3,7 +3,7 @@ import { el, openModal, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { state } from '../core/state.js';
 import { formatEUR, toEUR, listActive, listActivePayments, byId, isReservationNight, companyPropIds, isCompanyRecord } from '../core/data.js';
-import { todayYmd, addDaysYmd, parseYmd, utcYmd } from '../core/dates.js';
+import { todayYmd, addDaysYmd, parseYmd, utcYmd, diffDaysYmd } from '../core/dates.js';
 import { isOwnerBlockSummary } from '../core/ical.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -135,14 +135,53 @@ function daysInMonth(year, monthIdx) {
 // (Resolution Adjustment, Resolution Payout, Cancellation Fee, Adjustment),
 // which repeat the same check-in/check-out as their originating Reservation
 // and would otherwise double-count nights and skew ADR wherever summed.
+// Off-platform stays have no airbnbNights — derive them from the stay dates.
+function stayDates(p) {
+  return { ci: p.airbnbCheckIn || p.checkIn || '', co: p.airbnbCheckOut || p.checkOut || '' };
+}
 function bookedNights(p) {
-  return isReservationNight(p) ? (p.airbnbNights || 0) : 0;
+  if (!isReservationNight(p)) return 0;
+  if (p.airbnbNights) return p.airbnbNights;
+  const { ci, co } = stayDates(p);
+  return ci && co && co > ci ? diffDaysYmd(ci, co) : 0;
 }
-function sumNights(payments) {
-  return payments.reduce((s, p) => s + bookedNights(p), 0);
+// Nights of a booking that fall inside `range` ({ start, end } inclusive),
+// by STAY date — a 28 Aug → 5 Sep stay paid out in August is 4 nights in
+// August and 4 in September, matching how occupancy counts it. A record with
+// no stay dates falls back to its payout date. No range → all its nights.
+function nightsInRange(p, range) {
+  const n = bookedNights(p);
+  if (!range || n === 0) return n;
+  const { ci, co } = stayDates(p);
+  if (!(ci && co && co > ci)) return (p.date || '') >= range.start && (p.date || '') <= range.end ? n : 0;
+  const from = ci > range.start ? ci : range.start;
+  const toExcl = co < addDaysYmd(range.end, 1) ? co : addDaysYmd(range.end, 1);
+  return toExcl > from ? diffDaysYmd(from, toExcl) : 0;
 }
-function sumNightRevenue(payments) {
-  return payments.reduce((s, p) => s + toEUR((p.avgNightlyRate || 0) * bookedNights(p), p.currency, p.date), 0);
+// Per-night revenue: the recorded average nightly rate, else payout ÷ nights.
+function nightlyRate(p) {
+  if (p.avgNightlyRate) return p.avgNightlyRate;
+  const n = bookedNights(p);
+  return n > 0 ? (Number(p.amount) || 0) / n : 0;
+}
+function sumNights(payments, range = null) {
+  return payments.reduce((s, p) => s + nightsInRange(p, range), 0);
+}
+function sumNightRevenue(payments, range = null) {
+  return payments.reduce((s, p) => s + toEUR(nightlyRate(p) * nightsInRange(p, range), p.currency, p.date), 0);
+}
+// Paid STR bookings whose STAY overlaps [start, end] (or, without stay dates,
+// whose payout date does) — the set nights and ADR are counted from, while
+// revenue stays on the payout date (getPaymentsInRange).
+function getStayPaymentsInRange(start, end, propIds) {
+  const coPropIds = gScope === 'all' ? null : companyPropIds();
+  return listActivePayments().filter(p => {
+    if (p.stream !== 'short_term_rental' || p.status !== 'paid' || !p.propertyId || !propIds.has(p.propertyId)) return false;
+    if (coPropIds && !isCompanyRecord(p, coPropIds)) return false;
+    const { ci, co } = stayDates(p);
+    if (ci && co && co > ci) return ci <= end && co > start;
+    return (p.date || '') >= start && (p.date || '') <= end;
+  });
 }
 
 // Split iCal blocks into { reserved, owner } date sets (each [start,end) → nights).
@@ -293,14 +332,18 @@ function getPortfolioData(curRange, cmpRange) {
     }
   });
 
-  // Nights sold & ADR from payments (airbnbNights field)
+  // Nights sold & ADR by STAY date (the same basis as occupancy): bookings
+  // whose stay overlaps the range, counting only the nights inside it.
+  const nightRange = { start: curRange.start, end: curRange.end };
+  const stayPays = getStayPaymentsInRange(curRange.start, curRange.end, propIds);
   let totalNights = 0;
   let nightsWithADR = 0;
   let adrSum = 0;
-  payments.forEach(p => {
-    const n = bookedNights(p);
+  stayPays.forEach(p => {
+    const n = nightsInRange(p, nightRange);
     totalNights += n;
-    if (n > 0 && p.avgNightlyRate) { adrSum += toEUR(p.avgNightlyRate * n, p.currency, p.date); nightsWithADR += n; }
+    const rate = nightlyRate(p);
+    if (n > 0 && rate) { adrSum += toEUR(rate * n, p.currency, p.date); nightsWithADR += n; }
   });
   const avgADR = nightsWithADR > 0 ? adrSum / nightsWithADR : 0;
 
@@ -332,15 +375,18 @@ function getPortfolioData(curRange, cmpRange) {
   // Comparison range for KPI deltas — same active prop ids. Null when off.
   // cmpPayments is retained (not just reduced to scalars) so drill-downs can
   // show the comparison period's actual records, mirroring `payments` above.
-  let prevRev = null, prevNights = null, cmpPayments = null;
+  let prevRev = null, prevNights = null, cmpPayments = null, cmpStayPays = null, cmpNightRange = null;
   if (cmpRange) {
     cmpPayments = getPaymentsInRange(cmpRange.start, cmpRange.end, propIds);
     prevRev = cmpPayments.reduce((s, p) => s + payEUR(p), 0);
-    prevNights = sumNights(cmpPayments);
+    cmpNightRange = { start: cmpRange.start, end: cmpRange.end };
+    cmpStayPays = getStayPaymentsInRange(cmpRange.start, cmpRange.end, propIds);
+    prevNights = sumNights(cmpStayPays, cmpNightRange);
   }
 
   return {
     payments, props, revByProp, totalRev, revByMonth, monthKeys, keyIndex,
+    stayPays, nightRange, cmpStayPays, cmpNightRange,
     targetRevByProp,
     totalNights, avgADR, avgOcc, occByProp, targetRev,
     occByMonth, availByMonth,
@@ -366,13 +412,17 @@ function getSpotlightData(propId, curRange) {
   const { occByMonth, availByMonth, rev: targetRev } =
     rangeOccupancy(occupiedSet, ownerBlockSet, curRange.start, curRange.end, rateForNight);
 
+  // Nights / ADR by stay date (clipped to each month ∩ range); revenue by payout date.
+  const stayPays = getStayPaymentsInRange(curRange.start, curRange.end, new Set([propId]));
   const months = monthKeys.map(k => {
     const mk       = k.key;
     const target   = getTargetADR(propId, mk);
     const paysInMo = payments.filter(p => (p.date || '').startsWith(mk));
     const rev      = paysInMo.reduce((s, p) => s + payEUR(p), 0);
-    const nights   = sumNights(paysInMo);
-    const adr      = nights > 0 ? sumNightRevenue(paysInMo) / nights : 0;
+    const moEnd    = `${mk}-${String(daysInMonth(+mk.slice(0, 4), +mk.slice(5, 7) - 1)).padStart(2, '0')}`;
+    const moRange  = { start: `${mk}-01` > curRange.start ? `${mk}-01` : curRange.start, end: moEnd < curRange.end ? moEnd : curRange.end };
+    const nights   = sumNights(stayPays, moRange);
+    const adr      = nights > 0 ? sumNightRevenue(stayPays, moRange) / nights : 0;
     const occupied  = occByMonth.get(mk) || 0;    // occupied nights in range
     const available = availByMonth.get(mk) || 0;  // available nights in range (excl. owner-blocks)
     const occ       = available > 0 ? occupied / available * 100 : 0;
@@ -587,7 +637,7 @@ function buildPortfolioKpis(data) {
     compLabel: hasCmp ? cmpLabel : undefined,
     onClick: () => openNightsModal(data),
     explain: {
-      title: 'Nights Sold', formula: 'Sum of bookedNights(payment) over all paid STR payments in the selected period.',
+      title: 'Nights Sold', formula: 'Nights of paid STR stays that fall inside the selected period, by stay date (a stay spanning two months is split across them).',
       inputs: [{ label: 'Total nights', value: totalNights.toLocaleString() }],
       source: 'analytics-str.js:96 bookedNights() → analytics-str.js:247 getPortfolioData()',
       note: 'bookedNights() returns 0 for Airbnb payout adjustments (Resolution Adjustment, Cancellation Fee, etc.) since they repeat the check-in/check-out of their originating Reservation — counting them would double-count nights.'
@@ -601,7 +651,7 @@ function buildPortfolioKpis(data) {
     subtitle: 'Avg nightly rate across bookings',
     onClick: () => openADRModal(data),
     explain: {
-      title: 'Avg ADR (Achieved)', formula: 'Σ(avgNightlyRate × nights) over paid bookings ÷ total nights with a recorded rate.',
+      title: 'Avg ADR (Achieved)', formula: 'Σ(nightly rate × nights in period) over paid stays ÷ nights with a rate. Nightly rate = avgNightlyRate, else payout ÷ nights.',
       inputs: [
         { label: 'Nights with a rate', value: totalNights.toLocaleString() },
         { label: 'Avg ADR', value: avgADR > 0 ? formatEUR(avgADR) : '—' }
@@ -852,8 +902,9 @@ function buildComparisonTable(data, curRange) {
     const rev   = revByProp.get(p.id) || 0;
     const occ   = occByProp.get(p.id) || { pct: 0 };
     const pPays = payments.filter(pay => pay.propertyId === p.id);
-    const nights = sumNights(pPays);
-    const adr   = nights > 0 ? sumNightRevenue(pPays) / nights : 0;
+    const sPays = data.stayPays.filter(pay => pay.propertyId === p.id); // nights/ADR by stay date
+    const nights = sumNights(sPays, data.nightRange);
+    const adr   = nights > 0 ? sumNightRevenue(sPays, data.nightRange) / nights : 0;
     const revPct = totalRev > 0 ? rev / totalRev * 100 : 0;
 
     const nameCell = el('td', { style: 'padding:8px;font-size:12px;color:var(--text)' });
@@ -1320,7 +1371,10 @@ function openRevenueModal(data) {
 }
 
 function openNightsModal(data) {
-  const { payments, props, monthKeys, keyIndex, hasCmp, cmpPayments, cmpLabel, totalNights, prevNights } = data;
+  // Nights are counted by stay date: the booking set is every stay that
+  // overlaps the period (stayPays), clipped to the period / month.
+  const { props, monthKeys, hasCmp, cmpLabel, totalNights, prevNights } = data;
+  const payments = data.stayPays, cmpPayments = data.cmpStayPays || [], range = data.nightRange;
   const body = el('div', { style: 'display:flex;flex-direction:column;gap:16px' });
 
   if (hasCmp) {
@@ -1331,7 +1385,7 @@ function openNightsModal(data) {
         cmpVal: mkDrillValue((prevNights ?? 0).toString(), () =>
           drillDownModal(`Nights Sold — ${cmpLabel}`, cmpPayments, BOOKING_COLS_WITH_PROPERTY)),
         explain: {
-          title: 'Nights Sold', formula: 'Sum of bookedNights(payment) over all paid STR payments in the selected period.',
+          title: 'Nights Sold', formula: 'Nights of paid STR stays that fall inside the selected period, by stay date (a stay spanning two months is split across them).',
           inputs: [{ label: 'Total nights', value: totalNights.toLocaleString() }],
           source: 'analytics-str.js:96 bookedNights() → analytics-str.js:247 getPortfolioData()',
           note: 'bookedNights() returns 0 for Airbnb payout adjustments since they repeat the check-in/check-out of their originating Reservation.'
@@ -1348,7 +1402,7 @@ function openNightsModal(data) {
 
   const rows = props.map(p => {
     const pPays = payments.filter(pay => pay.propertyId === p.id);
-    const nights = sumNights(pPays);
+    const nights = sumNights(pPays, range);
     return [
       shortName(p.name),
       nights > 0
@@ -1369,14 +1423,19 @@ function openNightsModal(data) {
   body.appendChild(mkSectionLabel('Monthly Breakdown (All Properties)'));
   const byMonth = monthKeys.map(() => 0);
   const byMonthPays = monthKeys.map(() => []);
-  payments.forEach(p => {
-    const idx = keyIndex.get((p.date || '').slice(0, 7));
-    if (idx != null) { byMonth[idx] += bookedNights(p); byMonthPays[idx].push(p); }
+  monthKeys.forEach((k, idx) => {
+    const mk = k.key;
+    const moEnd = `${mk}-${String(daysInMonth(+mk.slice(0, 4), +mk.slice(5, 7) - 1)).padStart(2, '0')}`;
+    const moRange = { start: `${mk}-01` > range.start ? `${mk}-01` : range.start, end: moEnd < range.end ? moEnd : range.end };
+    payments.forEach(p => {
+      const n = nightsInRange(p, moRange);
+      if (n > 0) { byMonth[idx] += n; byMonthPays[idx].push(p); }
+    });
   });
   body.appendChild(mkModalTable(
     [
       { label: 'Month', tip: 'Calendar month.' },
-      { label: 'Nights Sold', tip: 'Sum of bookedNights(payment) across all properties, for payments dated in this month.' }
+      { label: 'Nights Sold', tip: 'Nights stayed in this month across all properties (by stay date; Airbnb payout adjustments excluded).' }
     ],
     byMonth.map((n, i) => [
       monthKeys[i].label,
@@ -1403,9 +1462,9 @@ function openADRModal(data) {
       { label: 'Bookings', tip: 'Number of paid payment records for this property in the period.' }
     ],
     props.map(p => {
-      const pPays = payments.filter(pay => pay.propertyId === p.id);
-      const nights = sumNights(pPays);
-      const adr = nights > 0 ? sumNightRevenue(pPays) / nights : 0;
+      const pPays = data.stayPays.filter(pay => pay.propertyId === p.id); // by stay date
+      const nights = sumNights(pPays, data.nightRange);
+      const adr = nights > 0 ? sumNightRevenue(pPays, data.nightRange) / nights : 0;
       return [
         shortName(p.name),
         adr > 0 ? formatEUR(adr) : '—',

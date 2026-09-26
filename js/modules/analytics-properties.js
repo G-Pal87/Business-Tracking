@@ -4,7 +4,7 @@ import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, PROPERTY_STREAMS, PROPERTY_STATUSES } from '../core/config.js';
 import {
   formatEUR, formatMoney, toEUR, byId, getPersonName, getTenantDisplayStatus,
-  listActive, listActivePayments, isCapEx,
+  listActive, listActivePayments, isCapEx, generatePaymentSchedule,
   simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
 import { todayYmd, diffDaysYmd, addDaysYmd } from '../core/dates.js';
@@ -215,32 +215,21 @@ function getData(start, end, isIncomplete = false) {
 // there's no actual performance to annualize/project from. STR: every active
 // payment record already on the books in range (mostly 'pending' Airbnb
 // reservations — deliberately not restricted to a single status, so a stay
-// that's already been paid early still counts). LT: monthlyRent for whichever
-// tenant's lease is active, once per month in range — mirrors the same
-// "earlier lease wins" month-lookup buildReconciliationData uses.
+// that's already been paid early still counts). LT: the rent schedule for
+// the months in range (same source as reconciliation).
 function computeExpectedBookedEUR(prop, start, end) {
   if (prop.type === 'long_term') {
-    const tenants = listActive('tenants')
-      .filter(t => t.propertyId === prop.id && t.monthlyRent)
-      .sort((a, b) => (a.leaseStartDate || '').localeCompare(b.leaseStartDate || ''));
-    if (!tenants.length) return 0;
-    let total = 0;
-    let [y, m] = start.slice(0, 7).split('-').map(Number);
-    const [ey, em] = end.slice(0, 7).split('-').map(Number);
-    while (y < ey || (y === ey && m <= em)) {
-      const mStr = `${y}-${String(m).padStart(2, '0')}-01`;
-      const tenant = tenants.find(t => {
-        const ls = t.leaseStartDate ? t.leaseStartDate.slice(0, 7) + '-01' : null;
-        const le = t.leaseEndDate   ? t.leaseEndDate.slice(0, 7)   + '-01' : null;
-        return (!ls || mStr >= ls) && (!le || mStr <= le);
-      });
-      if (tenant) total += toEUR(tenant.monthlyRent, tenant.currency || 'EUR', mStr);
-      m++; if (m > 12) { m = 1; y++; }
-    }
-    return total;
+    // The rent schedule (rent in force each month, part months prorated,
+    // vacancies and sale date applied) — same source as reconciliation.
+    const sMk = start.slice(0, 7), eMk = end.slice(0, 7);
+    return generatePaymentSchedule(prop)
+      .filter(e => e.monthKey >= sMk && e.monthKey <= eMk)
+      .reduce((s, e) => s + toEUR(e.amount, e.currency, `${e.monthKey}-01`), 0);
   }
+  // Materialized rows are frozen copies of bookings already paid — skip them
+  // so a paid stay isn't counted twice.
   return listActivePayments()
-    .filter(p => p.propertyId === prop.id && p.date >= start && p.date <= end)
+    .filter(p => p.propertyId === prop.id && p.date >= start && p.date <= end && p.status !== 'materialized')
     .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
 }
 
