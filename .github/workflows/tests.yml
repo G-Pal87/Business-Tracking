@@ -1,0 +1,39 @@
+name: Tests
+
+# Runs the node:test suite in scripts/tests. Data-only pushes (the app's saves,
+# backups, attachments) don't run it.
+on:
+  push:
+    paths-ignore:
+      - 'data/db.json'
+      - 'backups/**'
+      - 'invoices/**'
+      - 'debug/**'
+      - 'docs/**'
+      - '**.md'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            js
+            scripts
+            .github
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - run: node --test scripts/tests/*.test.mjs

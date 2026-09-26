@@ -108,23 +108,48 @@ jobs:
             };
             const content = Buffer.from(JSON.stringify(snapshot, null, 2)).toString('base64');
 
-            // 4. Write backup (create or overwrite today's file).
-            let existingSha;
+            // 4. Skip the write when the newest existing backup already holds
+            //    exactly this db.json (same iv + ciphertext): a backup of
+            //    unchanged data only adds another ~200KB+ blob to the
+            //    repository's permanent history. Any doubt -> write it.
+            const NEWEST = /^bt-backup-\d{4}-\d{2}-\d{2}(T\d{2}-\d{2})?\.json$/;
+            let unchanged = false;
             try {
-              const { data: ex } = await github.rest.repos.getContent({ owner, repo, path: backupPath, ref: branch });
-              existingSha = ex.sha;
-            } catch { /* file doesn't exist yet - that's fine */ }
+              const { data: list } = await github.rest.repos.getContent({ owner, repo, path: 'backups', ref: commitSha });
+              const newest = (Array.isArray(list) ? list : [])
+                .filter(f => f.type === 'file' && NEWEST.test(f.name))
+                .sort((a, b) => b.name.localeCompare(a.name))[0];
+              if (newest) {
+                // Contents only inlines files up to 1MB; the blob API covers the rest.
+                const { data: b } = await github.rest.git.getBlob({ owner, repo, file_sha: newest.sha });
+                const prev = JSON.parse(Buffer.from(b.content, b.encoding === 'base64' ? 'base64' : 'utf8').toString('utf8'));
+                const d = prev && prev.data;
+                unchanged = !!d && d.iv === db.iv && d.ct === db.ct && (d.kid || '') === (db.kid || '');
+                if (unchanged) core.info(`db.json is unchanged since ${newest.name} - not writing a new backup.`);
+              }
+            } catch (e) {
+              core.info(`Could not compare with the newest backup (${e.message}) - writing one.`);
+            }
 
-            await github.rest.repos.createOrUpdateFileContents({
-              owner, repo, branch,
-              path: backupPath,
-              message: `Automated backup: ${filename} (db.json ${meta.sha.slice(0, 12)} @ ${commitSha.slice(0, 12)})`,
-              content,
-              ...(existingSha ? { sha: existingSha } : {})
-            });
-            core.info(`Backup saved: ${backupPath}`);
+            // 5. Write backup (create or overwrite today's file).
+            if (!unchanged) {
+              let existingSha;
+              try {
+                const { data: ex } = await github.rest.repos.getContent({ owner, repo, path: backupPath, ref: branch });
+                existingSha = ex.sha;
+              } catch { /* file doesn't exist yet - that's fine */ }
 
-            // 5. Apply the retention policy.
+              await github.rest.repos.createOrUpdateFileContents({
+                owner, repo, branch,
+                path: backupPath,
+                message: `Automated backup: ${filename} (db.json ${meta.sha.slice(0, 12)} @ ${commitSha.slice(0, 12)})`,
+                content,
+                ...(existingSha ? { sha: existingSha } : {})
+              });
+              core.info(`Backup saved: ${backupPath}`);
+            }
+
+            // 6. Apply the retention policy.
             let items;
             try {
               const { data } = await github.rest.repos.getContent({ owner, repo, path: 'backups', ref: branch });
