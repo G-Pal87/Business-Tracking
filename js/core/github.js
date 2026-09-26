@@ -1,6 +1,6 @@
 // GitHub API layer — direct calls from the frontend using a PAT stored in db.json.
 import { state, notify, invalidateActiveCache } from './state.js';
-import { isEncryptedEnvelope, decryptEnvelopeToJson, decryptEnvelopeWithInfo, isRotationPending, setRotationPending, activeKeyId, encryptJsonToEnvelope, isUnlocked, hasWrappedKeyConfigured, encryptBytes, decryptBytes, isEncryptedBytes, supportsCompression, bytesToBase64, base64ToBytes } from './crypto.js';
+import { isEncryptedEnvelope, decryptEnvelopeToJson, decryptEnvelopeWithInfo, isRotationPending, setRotationPending, activeKeyId, encryptJsonToEnvelope, isUnlocked, hasWrappedKeyConfigured, encryptBytes, decryptBytes, isEncryptedBytes, supportsCompression, bytesToBase64, base64ToBytes, hasPreviousKeys } from './crypto.js';
 
 const DB_LS_KEY  = 'bt_db_cache';
 const CFG_LS_KEY = 'bt_github_config';
@@ -41,6 +41,12 @@ let _lastFetched = null;
 // trust it for the exact same repo/branch/path (after a Settings change the
 // cached sha belongs to another file).
 const fetchTarget = (dbPath) => `${state.github.owner}/${state.github.repo}@${state.github.branch}:${dbPath}`;
+// fetchDb results the caller exclusively owns (freshly parsed/decrypted, or a
+// full structuredClone) — as opposed to the conditional poll's shallow copies,
+// whose nested objects are the shared read-only snapshot. Lets resyncDb skip
+// its defensive clone for exactly those results (see isOwnedFetchResult).
+const _ownedFetchResults = new WeakSet();
+export function isOwnedFetchResult(db) { return !!db && typeof db === 'object' && _ownedFetchResults.has(db); }
 let _sizeWarned = false; // throttles the db.json size-warning toast to once per session per threshold-crossing
 
 // Cheap recency watermark for a whole db snapshot — the highest updatedAt
@@ -258,6 +264,13 @@ export async function adoptStoredToken() {
       const bytes = await decryptBytes(Uint8Array.from(atob(cfg.tokenEnc), c => c.charCodeAt(0)));
       state.github.token = new TextDecoder().decode(bytes);
     } catch { return; } // encrypted under a key this device no longer holds
+    // Already stored encrypted, and nothing about it would change: skip the
+    // re-encrypt + rewrite every sign-in used to do. Only when this device
+    // holds no previous keys (so it was the CURRENT key that opened it — a
+    // token still under a rotated-away key gets rewritten under the new one)
+    // and the stored owner/repo/branch/path already match.
+    if (!hasPreviousKeys() && cfg.owner === state.github.owner && cfg.repo === state.github.repo &&
+        cfg.branch === state.github.branch && cfg.path === state.github.dbPath) return;
   }
   await writeCfg();
 }
@@ -314,6 +327,15 @@ function b64encode(str) {
   return btoa(unescape(encodeURIComponent(str)));
 }
 
+// The db.json push body is JSON of an encryption envelope (enc/v numbers,
+// base64 iv/ct/kid, 'gzip') — pure ASCII, for which btoa(str) is exactly
+// b64encode(str) without the two multi-MB intermediate strings. Anything
+// that isn't provably ASCII takes the UTF-8 path.
+const NON_ASCII_RE = /[^\x00-\x7f]/;
+export function b64encodeAscii(str) {
+  return NON_ASCII_RE.test(str) ? b64encode(str) : btoa(str);
+}
+
 function safeParseDb(content) {
   if (typeof content !== 'string' || !content.trim()) {
     throw new Error('GitHub returned empty content for db.json');
@@ -346,7 +368,13 @@ function rateLimitWaitMs(res) {
 // token). Every other caller (first load, pre-push base, confirmatory
 // re-pulls) keeps the unique If-None-Match that forces the CDN to revalidate,
 // since those need the freshest possible read.
+// Bumped when any fetchDb/push STARTS, so a caller can tell whether another
+// read or write began after its own (see app.js takeEarlyFetch).
+let _syncGen = 0;
+export const syncGeneration = () => _syncGen;
+
 export async function fetchDb({ conditional = false } = {}) {
+  _syncGen++;
   const { owner, repo, branch, dbPath, token } = state.github;
   if (!owner || !repo) throw new Error('GitHub not configured');
 
@@ -478,12 +506,16 @@ export async function fetchDb({ conditional = false } = {}) {
   if (!state.github.remoteDb || tombstonesGrew || maxUpdatedAt(parsed) >= maxUpdatedAt(state.github.remoteDb)) {
     state.github.remoteDb = _lastFetched.db;
   }
+  // Private to the caller unless it is the conditional same-sha shallow copy
+  // (the snapshot itself is _lastFetched.db, a separate structuredClone).
+  if (!(sameAsLast && conditional)) _ownedFetchResults.add(parsed);
   return parsed;
 }
 
 // ── Push db.json ──────────────────────────────────────────────────────────────
 
 export async function pushDb(message = 'Update data') {
+  _syncGen++;
   pushQueue = pushQueue.catch(() => null).then(() => doPushDb(message));
   return pushQueue;
 }
@@ -715,7 +747,7 @@ async function doPushDb(message = 'Update data') {
         headers: ghHeaders,
         body: JSON.stringify({
           message,
-          content: b64encode(jsonStr),
+          content: b64encodeAscii(jsonStr),
           branch:  branch || 'main',
           sha
         })
@@ -1108,8 +1140,12 @@ function mergePlainField(col, fresh, local, base, freshRemote, lastSynced) {
 // CDN returns an old version of a record (low updatedAt), the locally-held
 // newer version wins. If another user genuinely updated a record (high updatedAt),
 // the remote wins.
-export function resyncDb(remote, local) {
-  const result = structuredClone(remote);
+// `owned: true` — the caller guarantees `remote` is its own private copy
+// (see isOwnedFetchResult): it is then used, and modified, in place instead
+// of being cloned first. Never pass it for a conditional fetch's shallow
+// copy, whose nested objects are the shared read-only snapshot.
+export function resyncDb(remote, local, { owned = false } = {}) {
+  const result = owned ? remote : structuredClone(remote);
   // True if this fetch of `remote` turned out to be missing/behind something
   // local already had — i.e. the fetch was stale relative to local. The
   // caller MUST NOT advance _syncedAt to "now" when this is true: it would
@@ -1141,9 +1177,10 @@ export function resyncDb(remote, local) {
       if (!col.startsWith('_') && remote[col] !== undefined && (remoteMt[col] || 0) >= (localMt[col] || 0)
           && !deepEqual(remote[col], localArr)) {
         // Keep result[col] — the remote value, already copied by the
-        // structuredClone above. Never hand out `remote[col]` itself: `remote`
-        // can be fetchDb's shared read-only snapshot, and this value ends up
-        // in state.db, where settings are edited in place.
+        // structuredClone above (or the caller's own private copy, `owned`).
+        // Never hand out a shared `remote[col]`: `remote` can be fetchDb's
+        // shared read-only snapshot, and this value ends up in state.db,
+        // where settings are edited in place.
       } else {
         result[col] = localArr;
         if (localMt[col] !== undefined && (localMt[col] || 0) > (remoteMt[col] || 0)) result._mtimes[col] = localMt[col];
@@ -1413,6 +1450,7 @@ export function disableLocalCache() {
   clearTimeout(_saveCacheTimer);
   _saveCacheTimer = null;
   _pendingSaveDb = null;
+  _cacheWriteQueued = null;
 }
 
 function stripHeavyFields(db) {
@@ -1552,8 +1590,10 @@ async function writeLocalCacheNow(db) {
   let cacheJson, journalJson = null;
   try {
     cacheJson = JSON.stringify(await encryptJsonToEnvelope(stripHeavyFields(db), { compress: supportsCompression() }));
-    const j = computeJournal(db, state.github.remoteDb);
-    if (j && state.dirty) journalJson = JSON.stringify(await encryptJsonToEnvelope(j, { compress: supportsCompression() }));
+    // The journal is only written while there are unpushed edits, so don't
+    // diff the whole database against the base when there are none.
+    const j = state.dirty ? computeJournal(db, state.github.remoteDb) : null;
+    if (j) journalJson = JSON.stringify(await encryptJsonToEnvelope(j, { compress: supportsCompression() }));
   } catch (e) { console.warn('saveLocalCache: encrypt failed', e); return; }
   // A newer write started while this one was encrypting — let it win.
   if (seq !== _cacheWriteSeq || _cacheDisabled) return;
@@ -1581,6 +1621,32 @@ async function writeLocalCacheNow(db) {
   }
 }
 
+// Serialized writer: at most one encrypt + write in flight (flushLocalCache
+// on page teardown is the one exception, see there). A write requested
+// while one is running is remembered (latest db wins) and runs right after it,
+// instead of starting another full-database encrypt alongside — a burst of
+// edits on a large database used to stack up overlapping encrypts, all but
+// the last of which were then thrown away. Resolves once everything queued
+// up to that point has been written (or skipped).
+let _cacheWriteChain  = null; // promise of the running write loop, null when idle
+let _cacheWriteQueued = null; // db requested while a write was in flight
+function startCacheWrite(db) {
+  if (_cacheWriteChain) { _cacheWriteQueued = db; return _cacheWriteChain; }
+  const run = async (first) => {
+    let cur = first;
+    while (cur) {
+      try { await writeLocalCacheNow(cur); } catch { /* logged inside */ }
+      // Picked up and cleared synchronously with the idle reset below, so a
+      // request can never land between "loop saw nothing queued" and "idle".
+      cur = _cacheDisabled ? null : _cacheWriteQueued;
+      _cacheWriteQueued = null;
+    }
+    _cacheWriteChain = null;
+  };
+  _cacheWriteChain = run(db);
+  return _cacheWriteChain;
+}
+
 export function saveLocalCache(db) {
   _pendingSaveDb = db;
   clearTimeout(_saveCacheTimer);
@@ -1588,7 +1654,7 @@ export function saveLocalCache(db) {
     _saveCacheTimer = null;
     const toSave = _pendingSaveDb;
     _pendingSaveDb = null;
-    writeLocalCacheNow(toSave).catch(() => {});
+    if (toSave) startCacheWrite(toSave);
   }, 250);
 }
 
@@ -1596,14 +1662,25 @@ export function saveLocalCache(db) {
 // from beforeunload / pagehide / visibilitychange(hidden). Encryption is
 // asynchronous, so this is best-effort when the page is being torn down; the
 // short debounce above keeps that window small, and beforeunload still warns
-// while anything is unpushed.
+// while anything is unpushed. The returned promise also covers a write that
+// is already running (e.g. before a deliberate reload).
 export function flushLocalCache() {
-  if (!_saveCacheTimer) return Promise.resolve();
-  clearTimeout(_saveCacheTimer);
-  _saveCacheTimer = null;
-  const toSave = _pendingSaveDb;
-  _pendingSaveDb = null;
-  return toSave ? writeLocalCacheNow(toSave).catch(() => {}) : Promise.resolve();
+  if (_saveCacheTimer) {
+    clearTimeout(_saveCacheTimer);
+    _saveCacheTimer = null;
+    const toSave = _pendingSaveDb;
+    _pendingSaveDb = null;
+    if (toSave) {
+      if (!_cacheWriteChain) return startCacheWrite(toSave);
+      // The page may be going away: don't wait behind the running (older)
+      // write. Start this one now; the running one is superseded by the
+      // _cacheWriteSeq check in writeLocalCacheNow, and nothing older may
+      // run after it.
+      _cacheWriteQueued = null;
+      return writeLocalCacheNow(toSave).catch(() => {});
+    }
+  }
+  return _cacheWriteChain || Promise.resolve();
 }
 
 // ── File storage (invoice PDFs, etc.) ────────────────────────────────────────

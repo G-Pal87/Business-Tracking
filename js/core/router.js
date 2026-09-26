@@ -47,14 +47,18 @@ function loadedModule(desc) {
   return typeof desc.render === 'function' ? desc : (desc.module || null);
 }
 
-// Imports every not-yet-loaded route in the background, one at a time and
-// only while the browser is idle, so later navigations render instantly
-// without competing with the first screen for the network/CPU.
+// Imports every not-yet-loaded route in the background, one per idle
+// callback, so later navigations render instantly without competing with the
+// first screen for the network/CPU. No rIC timeout: this is optional work and
+// must never be forced onto a busy main thread. Skipped entirely on a
+// data-saver or 2G connection (views still load on first navigation).
 export function prefetchAll() {
+  const conn = typeof navigator !== 'undefined' ? navigator.connection : null;
+  if (conn && (conn.saveData || conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g')) return;
   const queue = [...modules.values()].filter(d => !loadedModule(d));
   const idle = cb => (window.requestIdleCallback
-    ? window.requestIdleCallback(cb, { timeout: 3000 })
-    : setTimeout(cb, 200));
+    ? window.requestIdleCallback(cb)
+    : setTimeout(cb, 1000));
   const next = () => {
     const d = queue.shift();
     if (!d) return;

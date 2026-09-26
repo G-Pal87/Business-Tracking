@@ -53,10 +53,21 @@ export async function hashPassword(password, saltB64 = null, iterations = PBKDF2
 // salted scheme and the legacy unsalted one, so pre-existing accounts don't
 // need a forced reset — a successful legacy login is transparently upgraded
 // (caller should upsert the returned newHash/newSalt onto the user record).
-export async function verifyPassword(password, user) {
+//
+// `pre` (optional): { salt, iter, hash: Promise<{hash}|null> } — a derivation
+// of this same password already started with a remembered salt/count (see
+// readLoginHint). Used ONLY when both match the user record exactly, i.e.
+// when it is the very computation below; anything else (no match, or it
+// failed) computes as usual. The result is compared against the record's
+// hash either way, so a stale hint can cost time but never change the answer.
+export async function verifyPassword(password, user, pre = null) {
   if (user.passwordSalt) {
     const iter = Number(user.passwordIter) || LEGACY_ITERATIONS;
-    const { hash } = await hashPassword(password, user.passwordSalt, iter);
+    let hash = null;
+    if (pre && pre.salt === user.passwordSalt && pre.iter === iter) {
+      try { hash = (await pre.hash)?.hash || null; } catch { hash = null; }
+    }
+    if (!hash) ({ hash } = await hashPassword(password, user.passwordSalt, iter));
     if (hash !== user.passwordHash) return { ok: false, needsUpgrade: false };
     if (iter >= PBKDF2_ITERATIONS) return { ok: true, needsUpgrade: false };
     const up = await hashPassword(password);
@@ -107,8 +118,43 @@ export function refreshSessionIssued() {
 
 export function clearSession() {
   localStorage.removeItem(SESSION_KEY);
+  try { localStorage.removeItem(LOGIN_HINT_KEY); } catch { /* ignore */ }
   state.session = null;
   lockOnLogout();
+}
+
+// Login hint: the password SALT and iteration count of the signed-in user's
+// record (never the hash), kept beside the session. On a reload whose data is
+// still encrypted (renderUnlockFirst), the user record — and so its salt —
+// is only readable after the key unlock, which forced the two PBKDF2
+// derivations to run one after the other. With the hint, the password check's
+// derivation starts alongside the unlock; verifyPassword uses it only if the
+// loaded record still has exactly this salt and count, and always compares
+// against the record's hash. Salt and count are not secret (they only make
+// a hash unique) and are useless without the hash, which stays in the
+// encrypted data. Removed on sign-out with the session.
+const LOGIN_HINT_KEY = 'bt_login_hint';
+function saveLoginHint(user) {
+  try {
+    if (user?.id && user.passwordSalt) {
+      localStorage.setItem(LOGIN_HINT_KEY, JSON.stringify({
+        userId: user.id, salt: user.passwordSalt, iter: Number(user.passwordIter) || LEGACY_ITERATIONS
+      }));
+    } else localStorage.removeItem(LOGIN_HINT_KEY);
+  } catch { /* storage unavailable — the hint is only an optimization */ }
+}
+function readLoginHint(userId) {
+  try {
+    const h = JSON.parse(localStorage.getItem(LOGIN_HINT_KEY) || 'null');
+    if (h && h.userId === userId && typeof h.salt === 'string' && h.salt &&
+        Number.isInteger(h.iter) && h.iter > 0 && h.iter <= 5000000) return h; // sane bound: never start a runaway derivation
+  } catch { /* ignore */ }
+  return null;
+}
+// The user record as it stands after a successful sign-in (an upgrade
+// re-hashes it with a new salt and count).
+function hintSourceAfter(user, result) {
+  return result?.needsUpgrade ? { ...user, passwordSalt: result.newSalt, passwordIter: result.newIter } : user;
 }
 
 // `opts.loadAfterUnlock` (from app.js): loads this device's data once the
@@ -143,6 +189,7 @@ export function requireAuth(opts = {}) {
       // Also rolls the idle-timeout expiry forward — see SESSION_IDLE_MS.
       state.session = { userId: liveUser.id, username: liveUser.username, role: liveUser.role, name: liveUser.name, issuedAt: stored.issuedAt || Date.now(), expiresAt: Date.now() + SESSION_IDLE_MS };
       localStorage.setItem(SESSION_KEY, JSON.stringify(state.session));
+      saveLoginHint(liveUser);
       // A resumed session never re-enters the password, so the encryption
       // data key (only ever unwrapped from a plaintext password) isn't in
       // memory yet on a fresh page load/tab — prompt for it once per tab
@@ -222,6 +269,11 @@ function renderUnlockFirst(screen, stored, opts, resolve) {
     errEl.textContent = '';
     btn.disabled = true;
     const fail = (msg) => { lockOnLogout(); errEl.textContent = msg; passwordI.value = ''; btn.disabled = false; };
+    // Resuming a session: start the password check's derivation now, with the
+    // remembered salt/count, alongside the unlock (see LOGIN_HINT_KEY).
+    const hint = stored ? readLoginHint(stored.userId) : null;
+    const pre = hint ? { salt: hint.salt, iter: hint.iter, hash: hashPassword(password, hint.salt, hint.iter) } : null;
+    pre?.hash.catch(() => {}); // a failure just means verifyPassword derives it itself
     try {
       await unlockOnLogin(password);
       if (!isUnlocked()) {
@@ -234,9 +286,10 @@ function renderUnlockFirst(screen, stored, opts, resolve) {
       btn.textContent = stored ? 'Unlock' : 'Sign In';
       const users = listActive('users');
       const user = stored ? users.find(u => u.id === stored.userId) : users.find(u => u.username === username);
-      const result = user ? await verifyPassword(password, user) : { ok: false };
+      const result = user ? await verifyPassword(password, user, pre) : { ok: false };
       if (!result.ok) { fail(stored ? 'Incorrect password' : 'Invalid username or password'); return; }
       applyPasswordUpgrade(user, result);
+      saveLoginHint(hintSourceAfter(user, result));
       if (stored && !(user.passwordChangedAt && user.passwordChangedAt > (stored.issuedAt || 0))) {
         state.session = { userId: user.id, username: user.username, role: user.role, name: user.name, issuedAt: stored.issuedAt || Date.now(), expiresAt: Date.now() + SESSION_IDLE_MS };
         localStorage.setItem(SESSION_KEY, JSON.stringify(state.session));
@@ -401,6 +454,7 @@ function renderUnlock(screen, user, done, onSwitchUser) {
       await unlocking;
       await adoptToken();
       applyPasswordUpgrade(user, result);
+      saveLoginHint(hintSourceAfter(user, result));
       // See the matching comment in doLogin below — a wrapped key existing on
       // this device under a different user's password fails to unwrap
       // silently otherwise, with nothing telling the user why every
@@ -496,6 +550,7 @@ function renderLogin(screen, resolve) {
       await unlocking;
       await adoptToken();
       setSession(user);
+      saveLoginHint(hintSourceAfter(user, result));
       recordSessionEvent('login').catch(() => {});
       screen.remove();
       // A wrapped key exists on this device (someone set encryption up here
@@ -572,6 +627,7 @@ function renderSetup(screen, resolve) {
       await unlockOnLogin(password);
       await adoptToken();
       setSession(user);
+      saveLoginHint(user);
       recordSessionEvent('login').catch(() => {});
       screen.remove();
       // This device already has a key wrapped under a different password
