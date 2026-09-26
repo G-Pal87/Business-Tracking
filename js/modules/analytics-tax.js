@@ -239,22 +239,55 @@ function getYearData(year, ownerFilter) {
   return _yearDataCache.map.get(key);
 }
 
+// Active payments / invoices / expenses bucketed by the year prefix of the
+// date computeYearData tests with inYear() — built once per cache
+// generation, so the YoY chart's per-year computeYearData() calls don't each
+// rescan all three collections. Buckets keep listActive() order, so the
+// filtered arrays (and every sum over them) come out exactly as before.
+function yearBuckets() {
+  if (_yearDataCache.byYear) return _yearDataCache.byYear;
+  const yearOf = d => { if (!d) return null; const k = d.indexOf('-'); return k < 0 ? null : d.slice(0, k); };
+  const bucket = (rows, dateOf) => {
+    const m = new Map();
+    for (const r of rows) {
+      const y = yearOf(dateOf(r));
+      if (y === null) continue;
+      const a = m.get(y);
+      if (a) a.push(r); else m.set(y, [r]);
+    }
+    return m;
+  };
+  _yearDataCache.byYear = {
+    pays: bucket(listActivePayments(), p => p.date),
+    invs: bucket(listActive('invoices'), i => i.issueDate || i.date),
+    exps: bucket(listActive('expenses'), e => e.date),
+  };
+  return _yearDataCache.byYear;
+}
+// Rows of `all` whose date passes inYear(date, year): the year's bucket when
+// `year` is a plain prefix (no '-'), else the original full scan.
+function rowsInYear(kind, all, dateOf, year) {
+  const ys = String(year);
+  if (ys.includes('-')) return all.filter(r => inYear(dateOf(r), year));
+  return yearBuckets()[kind].get(ys) || [];
+}
+
 function computeYearData(year, ownerFilter) {
   const coPropIds = companyPropIds();
   const isCoRec = gScope === 'all'
     ? () => true
     : r => isCompanyRecord(r, coPropIds);
-  const payments = applyOwnerWeight(listActivePayments().filter(p =>
-    p.status === 'paid' && inYear(p.date, year) && isCoRec(p)
+  const payments = applyOwnerWeight(rowsInYear('pays', listActivePayments(), p => p.date, year).filter(p =>
+    p.status === 'paid' && isCoRec(p)
   ), recordOwner, ['amount'], ownerFilter);
   // Invoices get the scope check too (an invoice linked to a personal-channel
   // property is outside Company scope), so the P&L tax estimate respects it.
   // Accrual basis, like corporation tax itself: every issued (non-draft,
   // non-cancelled) invoice counts on its issue date, paid or not.
-  const invoices = applyOwnerWeight(listActive('invoices').filter(i =>
-    isAccruedInvoice(i) && inYear(i.issueDate || i.date, year) && isCoRec(i)
+  const invoices = applyOwnerWeight(rowsInYear('invs', listActive('invoices'), i => i.issueDate || i.date, year).filter(i =>
+    isAccruedInvoice(i) && isCoRec(i)
   ), invoiceOwner, ['subtotal', 'total', 'amount'], ownerFilter);
-  const allExp      = applyOwnerWeight(listActive('expenses').filter(e => inYear(e.date, year) && isCoRec(e)), recordOwner, ['amount'], ownerFilter);
+  const allExp      = applyOwnerWeight(rowsInYear('exps', listActive('expenses'), e => e.date, year).filter(e => isCoRec(e)), recordOwner, ['amount'], ownerFilter);
   // Tax payments, VAT remittances and mortgage repayments are cash out but
   // not operating costs (isDeductibleExpense) — kept out of OpEx / Operating
   // Profit / the tax estimate, still counted in Net Cash Used.
@@ -1081,7 +1114,21 @@ function persist(patch) {
 const safeN = v => (isFinite(Number(v)) ? Math.max(0, Number(v)) : 0);
 const fmtE  = v => formatEUR(Math.max(0, v), { minFrac: 2 });
 
-const mkCurrencyInput = (val, style, onValue) => {
+// Per-keystroke handler, debounced: runs `fn` once typing pauses for `ms`,
+// and straight away when the field is left (blur/change) so the last value
+// is never lost or applied late (e.g. after switching the tax year). A timer
+// still pending when the view is torn down still fires — nothing is dropped.
+function debouncedInput(inputEl, fn, ms = 300) {
+  let t = null;
+  const run = () => { t = null; fn(); };
+  inputEl.addEventListener('input', () => { clearTimeout(t); t = setTimeout(run, ms); });
+  const flush = () => { if (t === null) return; clearTimeout(t); run(); };
+  inputEl.addEventListener('blur', flush);
+  inputEl.addEventListener('change', flush);
+}
+
+// { debounce: ms } — for handlers that persist + re-render: see debouncedInput.
+const mkCurrencyInput = (val, style, onValue, { debounce = 0 } = {}) => {
   const fmt   = v => v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
   const parse = s => { const n = parseFloat((s || '').replace(/[^0-9.]/g, '')); return isFinite(n) && n > 0 ? n : 0; };
   const i = el('input', { class: 'input', type: 'text', style: style || 'width:100%', inputmode: 'decimal', placeholder: '0.00', autocomplete: 'off' });
@@ -1089,7 +1136,8 @@ const mkCurrencyInput = (val, style, onValue) => {
   i.value = initVal > 0 ? fmt(initVal) : '';
   i.addEventListener('focus', () => { const n = parse(i.value); i.value = n > 0 ? String(n) : ''; i.select(); });
   i.addEventListener('blur',  () => { const n = parse(i.value); i.value = n > 0 ? fmt(n) : ''; });
-  i.addEventListener('input', () => onValue(parse(i.value)));
+  if (debounce > 0) debouncedInput(i, () => onValue(parse(i.value)), debounce);
+  else i.addEventListener('input', () => onValue(parse(i.value)));
   return i;
 };
 
@@ -1600,12 +1648,12 @@ function ptBuildSettingsCard(onChange) {
   yearSel.onchange = () => { persist({ year: yearSel.value }); onChange(); };
 
   const rateI = input({ type: 'number', value: s.corpTaxRate ?? 15, min: 0, max: 100, step: 0.1, style: 'width:110px' });
-  rateI.oninput = () => { persist({ corpTaxRate: safeN(rateI.value) }); onChange(); };
+  debouncedInput(rateI, () => { persist({ corpTaxRate: safeN(rateI.value) }); onChange(); });
 
   const bufChk = el('input', { type: 'checkbox' });
   bufChk.checked = !!s.bufferEnabled;
   const bufPctI = input({ type: 'number', value: s.bufferPct ?? 10, min: 0, max: 100, step: 0.1, style: 'width:80px' });
-  bufPctI.oninput = () => { persist({ bufferPct: safeN(bufPctI.value) }); onChange(); };
+  debouncedInput(bufPctI, () => { persist({ bufferPct: safeN(bufPctI.value) }); onChange(); });
   bufChk.onchange = () => { persist({ bufferEnabled: bufChk.checked }); onChange(); };
 
   body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px' },
@@ -1693,7 +1741,7 @@ function ptBuildEstimateCard(onChange) {
       persist(patch);
       onChange();
       renderBreakdown();
-    });
+    }, { debounce: 300 });
     return formRow(label, i, hint);
   };
 
@@ -1917,7 +1965,7 @@ function ptBuildSafetyCard(displayEl, renderDisplay, onChange) {
     el('div', {}, el('div', { class: 'card-title' }, '75% Safety Check'), el('div', { class: 'card-subtitle' }, 'Provisional tax must cover ≥ 75% of actual final tax to avoid the 10% penalty'))
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
-  const finalTaxI = mkCurrencyInput(s.estimatedFinalTax, 'width:220px', v => { persist({ estimatedFinalTax: v }); renderDisplay(); onChange(); });
+  const finalTaxI = mkCurrencyInput(s.estimatedFinalTax, 'width:220px', v => { persist({ estimatedFinalTax: v }); renderDisplay(); onChange(); }, { debounce: 300 });
   body.appendChild(formRow('Estimated final actual tax liability (€)', finalTaxI, 'Your best estimate of the audited year-end tax. Leave 0 if unknown.'));
   body.appendChild(displayEl);
   card.appendChild(body);
@@ -1935,10 +1983,10 @@ function ptBuildDecRevisionCard(displayEl, renderDisplay, onChange) {
   body.appendChild(el('p', { style: 'font-size:12px;color:var(--text-muted);margin:0 0 14px' }, 'Use revised full-year figures to check whether the second instalment needs increasing.'));
 
   const fi = (key, val, label) => {
-    const i = mkCurrencyInput(val, 'width:100%', v => { persist({ [key]: v }); renderDisplay(); });
+    const i = mkCurrencyInput(val, 'width:100%', v => { persist({ [key]: v }); renderDisplay(); }, { debounce: 300 });
     return formRow(label, i);
   };
-  const julI = mkCurrencyInput(s.julPayment, 'width:220px', v => { persist({ julPayment: v }); renderDisplay(); });
+  const julI = mkCurrencyInput(s.julPayment, 'width:220px', v => { persist({ julPayment: v }); renderDisplay(); }, { debounce: 300 });
 
   body.appendChild(el('div', { style: 'font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)' }, 'Revised Year-End Estimates'));
   body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },

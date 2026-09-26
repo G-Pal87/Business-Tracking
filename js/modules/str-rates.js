@@ -3,7 +3,7 @@
 // days can be overlaid from an Airbnb iCal feed.
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, toast, select, input, textarea, button, formRow, fmtDate, confirmDialog } from '../core/ui.js';
-import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney, isReservationNight } from '../core/data.js';
+import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney, isReservationNight, derivedCache, memoGet } from '../core/data.js';
 import { fetchICal, parseICal, mergeBlocksChecked, isOwnerBlockSummary } from '../core/ical.js';
 import { publishSnapshotBranch, fetchBranchFileText, dispatchRepoEvent } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
@@ -44,12 +44,33 @@ function addDays(s, n) { const d = parseYMD(s); d.setUTCDate(d.getUTCDate() + n)
 // view.
 const MAX_SPAN_NIGHTS = 1500;
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const _p2 = n => (n < 10 ? '0' : '') + n;
 function nightsOf(start, end) {
   const out = [];
   const s = typeof start === 'string' ? start.slice(0, 10) : '';
   const e = typeof end === 'string' ? end.slice(0, 10) : '';
   if (!YMD_RE.test(s) || !YMD_RE.test(e)) return out;
-  for (let cur = s; cur < e && out.length < MAX_SPAN_NIGHTS; cur = addDays(cur, 1)) out.push(cur);
+  if (!(s < e)) return out;
+  // Same keys as stepping with addDays() (the first night is `s` verbatim,
+  // every later one the normalized next calendar day), but with integer
+  // y/m/d arithmetic instead of a parse + Date + toISOString per night.
+  // Years outside 1000–9000 (Date.UTC maps 0–99 to 19xx; 4-digit padding;
+  // overflow past 9999) keep the original Date-based stepping.
+  const d0 = parseYMD(s);
+  let y = d0.getUTCFullYear();
+  if (y < 1000 || y > 9000) {
+    for (let cur = s; cur < e && out.length < MAX_SPAN_NIGHTS; cur = addDays(cur, 1)) out.push(cur);
+    return out;
+  }
+  let m = d0.getUTCMonth() + 1, d = d0.getUTCDate();
+  let dim = daysInMonth(y, m);
+  out.push(s);
+  while (out.length < MAX_SPAN_NIGHTS) {
+    if (++d > dim) { d = 1; if (++m > 12) { m = 1; y++; } dim = daysInMonth(y, m); }
+    const cur = `${y}-${_p2(m)}-${_p2(d)}`;
+    if (!(cur < e)) break;
+    out.push(cur);
+  }
   return out;
 }
 // Local calendar date — the UTC date is still "yesterday" for the first hours
@@ -105,7 +126,16 @@ function staysOverlap(ci1, co1, ci2, co2) {
 // than a merge. Keep the one with the larger amount: a spuriously-shrunk
 // duplicate can never outrank the real total by claiming to be bigger, so
 // this can't be gamed into hiding the true figure.
+// Memoized per property until any edit, sync or db swap (derivedCache) —
+// the STR Daily Rates view needs it several times per rerender (calendar,
+// analysis, gap banner) and the sidebar badge (countUnresolvedGapNights) on
+// every edit. Callers only read the returned Map and its values.
+const _histCache = derivedCache(['payments']);
 function historicNightMap(propertyId) {
+  return memoGet(_histCache(), propertyId, () => buildHistoricNightMap(propertyId));
+}
+
+function buildHistoricNightMap(propertyId) {
   const map = new Map();
   const rawBookings = listActivePayments().filter(p =>
     p.propertyId === propertyId &&
@@ -117,6 +147,7 @@ function historicNightMap(propertyId) {
 
   const bookings = [];
   const byCode = new Map(); // confirmationCode -> chosen booking so far
+  const slotOf = new Map(); // booking entry -> its index in `bookings`
   for (const p of rawBookings) {
     const code = p.confirmationCode;
     const ci = checkInOf(p), co = checkOutOf(p);
@@ -124,13 +155,16 @@ function historicNightMap(propertyId) {
     if (prior && staysOverlap(prior._ci, prior._co, ci, co)) {
       if ((p.amount ?? 0) > (prior.amount ?? 0)) {
         const entry = { ...p, _ci: ci, _co: co };
-        bookings[bookings.indexOf(prior)] = entry;
+        const slot = slotOf.get(prior);
+        bookings[slot] = entry;
+        slotOf.set(entry, slot);
         byCode.set(code, entry);
       }
       continue;
     }
     const entry = { ...p, _ci: ci, _co: co };
     if (code) byCode.set(code, entry);
+    slotOf.set(entry, bookings.length);
     bookings.push(entry);
   }
 
@@ -203,6 +237,71 @@ function buildSuggester(histMap) {
   // Format weight for display: "3×", "1.95×", "1.27×" …
   function fmtW(w) { return Number.isInteger(w) ? `${w}` : w.toFixed(2); }
 
+  // suggest() runs for every open night of a month/feed (365 per feed), but
+  // everything below depends only on (year, month) or (year, month-day) and
+  // the buckets above never change — so each piece is computed once and
+  // reused. Averages are memoized per entries array (same array → same
+  // float, identical to recomputing it).
+  const avgMemo = new WeakMap();
+  const poolAvg = arr => {
+    let a = avgMemo.get(arr);
+    if (!a) { a = { rate: avg(arr), adr: avgADR(arr) }; avgMemo.set(arr, a); }
+    return a;
+  };
+  const monthPoolMemo = new Map(); // `${yr}|${mo}` -> pools, newest first
+  const monthPools = (yr, yrNum, mo, moName) => {
+    const key = `${yr}|${mo}`;
+    let base = monthPoolMemo.get(key);
+    if (!base) {
+      base = [];
+      for (const [ym2, entries] of byYearMonth) {
+        if (ym2.slice(5, 7) !== mo) continue;
+        const yr2 = ym2.slice(0, 4);
+        const yearsAgo = yrNum - Number(yr2);
+        if (yearsAgo < 0) continue;
+        base.push({ yr2, yearsAgo, entries, weight: yrWeight(yearsAgo),
+          label: `${moName} ${yr2}` });
+      }
+      base.sort((a, b) => a.yearsAgo - b.yearsAgo);
+      monthPoolMemo.set(key, base);
+    }
+    return base.map(p => ({ ...p })); // fresh pool objects per call (the blend sets rate/adr on them)
+  };
+  const priorDayMemo = new Map(); // `${yr}|${MM-DD}` -> Map(prior year -> entries)
+  const priorDays = (yr, md) => {
+    const key = `${yr}|${md}`;
+    let m = priorDayMemo.get(key);
+    if (!m) {
+      m = new Map();
+      for (const e of (byMonthDay.get(md) || [])) {
+        const yr2 = e.date.slice(0, 4);
+        if (yr2 === yr) continue;
+        if (!m.has(yr2)) m.set(yr2, []);
+        m.get(yr2).push(e);
+      }
+      priorDayMemo.set(key, m);
+    }
+    return m;
+  };
+  const cyContextMemo = new Map(); // ym -> context | null
+  const cyContext = (yr, ym) => {
+    if (!cyContextMemo.has(ym)) {
+      let ctx = null;
+      const cyOther = [];
+      for (const [ym2, entries] of byYearMonth) {
+        if (ym2.slice(0, 4) === yr && ym2 !== ym) cyOther.push(...entries);
+      }
+      if (cyOther.length) {
+        const cyMonths = [...new Set(cyOther.map(e => MONTHS[Number(e.date.slice(5, 7)) - 1]))];
+        ctx = { nights: cyOther.length, avgRate: avg(cyOther),
+          avgADR: avgADR(cyOther), months: cyMonths.join(', ') };
+      }
+      cyContextMemo.set(ym, ctx);
+    }
+    const ctx = cyContextMemo.get(ym);
+    return ctx ? { ...ctx } : null;
+  };
+
   return function suggest(date) {
     const ym     = date.slice(0, 7);
     const dayStr = date.slice(8);
@@ -214,40 +313,14 @@ function buildSuggester(histMap) {
     const ymArr = byYearMonth.get(ym) || [];
 
     // All years that have data for this same month, sorted newest-first.
-    const monthByYear = [];
-    for (const [ym2, entries] of byYearMonth) {
-      if (ym2.slice(5, 7) !== mo) continue;
-      const yr2 = ym2.slice(0, 4);
-      const yearsAgo = yrNum - Number(yr2);
-      if (yearsAgo < 0) continue;
-      monthByYear.push({ yr2, yearsAgo, entries, weight: yrWeight(yearsAgo),
-        label: `${moName} ${yr2}` });
-    }
-    monthByYear.sort((a, b) => a.yearsAgo - b.yearsAgo);
+    const monthByYear = monthPools(yr, yrNum, mo, moName);
 
     // Same calendar-day data split by prior year.
-    const priorDayMap = new Map();
-    for (const e of (byMonthDay.get(date.slice(5)) || [])) {
-      const yr2 = e.date.slice(0, 4);
-      if (yr2 === yr) continue;
-      if (!priorDayMap.has(yr2)) priorDayMap.set(yr2, []);
-      priorDayMap.get(yr2).push(e);
-    }
+    const priorDayMap = priorDays(yr, date.slice(5));
     const priorDayYears = priorDayMap.size;
 
     // Current-year context from other months (reference only — not part of blend).
-    let currentYearContext = null;
-    if (!ymArr.length) {
-      const cyOther = [];
-      for (const [ym2, entries] of byYearMonth) {
-        if (ym2.slice(0, 4) === yr && ym2 !== ym) cyOther.push(...entries);
-      }
-      if (cyOther.length) {
-        const cyMonths = [...new Set(cyOther.map(e => MONTHS[Number(e.date.slice(5, 7)) - 1]))];
-        currentYearContext = { nights: cyOther.length, avgRate: avg(cyOther),
-          avgADR: avgADR(cyOther), months: cyMonths.join(', ') };
-      }
-    }
+    const currentYearContext = !ymArr.length ? cyContext(yr, ym) : null;
 
     // ── Decide which pools to use ──────────────────────────────────────────
     const pools = [];
@@ -283,8 +356,9 @@ function buildSuggester(histMap) {
     // ── Weighted blend ─────────────────────────────────────────────────────
     let totalW = 0, rateSum = 0, adrSum = 0;
     for (const pool of pools) {
-      pool.rate = avg(pool.entries);
-      pool.adr  = avgADR(pool.entries);
+      const pa  = poolAvg(pool.entries);
+      pool.rate = pa.rate;
+      pool.adr  = pa.adr;
       const w   = pool.entries.length * pool.weight;
       rateSum  += pool.rate * w; adrSum += pool.adr * w; totalW += w;
     }
@@ -564,8 +638,20 @@ const GAP_REASONS = [
 ];
 const GAP_REASON_LABEL = new Map(GAP_REASONS.map(r => [r.value, r.label]));
 
+// Indexed property → uid → FIRST matching annotation (same pick as a linear
+// .find), rebuilt whenever the data changes.
+const _annCache = derivedCache(['strBlockAnnotations']);
 function getBlockAnnotation(propertyId, uid) {
-  return listActive('strBlockAnnotations').find(a => a.propertyId === propertyId && a.uid === uid) || null;
+  const idx = memoGet(_annCache(), 'idx', () => {
+    const m = new Map();
+    for (const a of listActive('strBlockAnnotations')) {
+      let byUid = m.get(a.propertyId);
+      if (!byUid) { byUid = new Map(); m.set(a.propertyId, byUid); }
+      if (!byUid.has(a.uid)) byUid.set(a.uid, a);
+    }
+    return m;
+  });
+  return idx.get(propertyId)?.get(uid) || null;
 }
 
 // Per-date classification of every iCal block, for calendar rendering: 'owner'
@@ -617,15 +703,21 @@ function findCalendarPaymentGaps(propertyId) {
 
 // Total unmatched nights, across every short-term property, that haven't been
 // given a reason yet. Drives the sidebar nav badge.
+// Called by app.js on every edit to refresh the badge — memoized until the
+// data changes (it reads properties, calendars, payments and annotations; the
+// count doesn't depend on today's date).
+const _gapCountCache = derivedCache(['properties', 'strCalendars', 'payments', 'strBlockAnnotations']);
 export function countUnresolvedGapNights() {
-  const props = listActive('properties').filter(p => p.type === 'short_term');
-  let total = 0;
-  for (const p of props) {
-    for (const gap of findCalendarPaymentGaps(p.id)) {
-      if (!gap.annotation) total += gap.nights;
+  return memoGet(_gapCountCache(), 'count', () => {
+    const props = listActive('properties').filter(p => p.type === 'short_term');
+    let total = 0;
+    for (const p of props) {
+      for (const gap of findCalendarPaymentGaps(p.id)) {
+        if (!gap.annotation) total += gap.nights;
+      }
     }
-  }
-  return total;
+    return total;
+  });
 }
 
 // Warning banner listing "Reserved" blocks with no matching payment for the
@@ -808,6 +900,12 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
 
   const showPrices = sitePricesVisible(prop);
   const rates = [];
+  // One confirmed-target lookup per month, not two per night.
+  const targetByMonth = new Map();
+  const targetFor = mo => {
+    if (!targetByMonth.has(mo)) targetByMonth.set(mo, getConfirmedTarget(propertyId, mo));
+    return targetByMonth.get(mo);
+  };
   let date = todayStr();
   for (let i = 0; i < horizonDays; i++) {
     const hist = histMap.get(date);
@@ -815,7 +913,7 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
     const status = (hist || blocked.has(date)) ? 'unavailable' : 'open';
     if (status === 'open' && showPrices) {
       const mo = date.slice(0, 7);
-      const target = getConfirmedTarget(propertyId, mo);
+      const target = targetFor(mo);
       if (target) { amount = target.targetADR; basis = 'confirmed target'; }
       else { const s = suggest(date); if (s) { amount = s.rate; basis = 'suggested'; } }
     }
@@ -832,7 +930,7 @@ function buildRatesFeed(propertyId, horizonDays = FEED_HORIZON_DAYS) {
       // on every entry (even 0%) — omitting it when there's no discount left
       // a consumer with no reliable field to read "what's on offer right now"
       // from, since a missing field and an explicit 0% are indistinguishable.
-      const target = getConfirmedTarget(propertyId, date.slice(0, 7));
+      const target = targetFor(date.slice(0, 7));
       const discPct = target?.discountPct != null ? target.discountPct : globalDisc;
       entry.originalAmount = rawAmt;
       entry.discountPct    = discPct;
@@ -1092,9 +1190,13 @@ function build() {
     // Silently re-fetches and calls rerender() on success so blocks update automatically.
     autoRefreshICal(_propId, rerender);
 
-    const rates = [...histMap.values()].map(v => v.rate);
-    const minR = rates.length ? Math.min(...rates) : 0;
-    const maxR = rates.length ? Math.max(...rates) : 0;
+    // Plain loop — Math.min(...rates) spreads every historic night onto the
+    // call stack. Math.min/max per step keeps the exact same semantics.
+    let minR = 0, maxR = 0;
+    if (histMap.size) {
+      minR = Infinity; maxR = -Infinity;
+      for (const v of histMap.values()) { minR = Math.min(minR, v.rate); maxR = Math.max(maxR, v.rate); }
+    }
 
     renderGapBanner(gapBanner, _propId, rerender);
     renderKpis(kpiRow, { histMap, suggest, blocked, year, month1, ccy, propertyId: _propId });

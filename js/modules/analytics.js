@@ -11,7 +11,7 @@ import { todayYmd, daysInMonth } from '../core/dates.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine, resolveStream
-} from './analytics-filters.js?v=20260519';
+} from './analytics-filters.js';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid,
   safePct, fmtK, mkDrillValue, groupByMonthKey, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceDueDate, expStream
@@ -104,7 +104,10 @@ function getData(start, end) {
   // subtotal (VAT-exclusive) — VAT collected on invoices isn't the company's revenue, it's
   // money held for the tax authority. Cash-purpose figures (Cash Position, Collection Rate)
   // keep the VAT-inclusive total since VAT collected is real cash in hand until remitted.
-  const propRev      = payments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
+  // Each payment converted once, reused by the totals / contributors / stream
+  // breakdown below (same values, same summation order).
+  const payEURs      = payments.map(p => toEUR(p.amount, p.currency, p.date));
+  const propRev      = payEURs.reduce((s, v) => s + v, 0);
   const svcRev       = invBk.paidNet;
   const svcRevCash   = invBk.paidGross;
   const totalRev     = propRev + svcRev;
@@ -137,10 +140,10 @@ function getData(start, end) {
 
   // Top contributors
   const contribMap = new Map();
-  payments.forEach(p => {
+  payments.forEach((p, idx) => {
     const id   = p.propertyId;
     const name = byId('properties', id)?.name || 'Unknown Property';
-    const eur  = toEUR(p.amount, p.currency, p.date);
+    const eur  = payEURs[idx];
     const e    = contribMap.get('p:' + id) || { name, eur: 0, type: 'Property' };
     e.eur += eur;
     contribMap.set('p:' + id, e);
@@ -162,7 +165,7 @@ function getData(start, end) {
   // Revenue by stream — shared resolver (stream, else property type, else
   // 'other') so the buckets always sum to Total Revenue.
   const streamMap = new Map();
-  payments.forEach(p => { const s = resolveStream(p) || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + toEUR(p.amount, p.currency, p.date)); });
+  payments.forEach((p, idx) => { const s = resolveStream(p) || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + payEURs[idx]); });
   invoices.forEach(i => { const s = resolveStream(i) || 'other'; streamMap.set(s, (streamMap.get(s) || 0) + invoiceNetEUR(i)); });
 
   return {

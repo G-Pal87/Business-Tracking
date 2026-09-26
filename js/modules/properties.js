@@ -3,7 +3,7 @@ import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, buildMultiSelect } from '../core/ui.js';
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
-  propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI,
+  propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI, applyFilters, isCapEx,
   getPeopleOwners, getPersonName, getTenantDisplayStatus, restoreInventoryStock, removeReservationExpenses, buildReservationExpenseRefMap
 } from '../core/data.js';
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES } from '../core/config.js';
@@ -161,7 +161,8 @@ export default {
     c.innerHTML = '';
     c.appendChild(build());
   },
-  destroy() {}
+  // Drop a pending filter rebuild so it can't fire into a torn-down view.
+  destroy() { clearTimeout(_propRebuildTimer); _propRebuildTimer = null; }
 };
 
 function build() {
@@ -272,6 +273,38 @@ function rebuildPropFilters(filterBar, grid, titleEl) {
   renderPropGrid(grid, all, titleEl);
 }
 
+// Per-property card stats — identical to calling propertyRevenueEUR(id,
+// {year}), propertyExpensesEUR(id, {year}, {includeRenovation:false}) and
+// propertyROI(id) for each property (same applyFilters rules, incl. the
+// ambient stream/owner filter; same rows in the same order, so the same
+// sums), but with payments/expenses bucketed by property in ONE pass instead
+// of ~5 full-collection scans per property.
+function gridStats(props, year) {
+  const paidByProp = new Map(), expByProp = new Map();
+  const push = (m, k, r) => { const a = m.get(k); if (a) a.push(r); else m.set(k, [r]); };
+  for (const pay of listActivePayments()) if (pay.status === 'paid') push(paidByProp, pay.propertyId, pay);
+  for (const e of listActive('expenses')) push(expByProp, e.propertyId, e);
+  const statsMap = new Map();
+  for (const p of props) {
+    const pays = paidByProp.get(p.id) || [];
+    const exps = expByProp.get(p.id) || [];
+    const rev = applyFilters(pays, { year }).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0);
+    const exp = applyFilters(exps.filter(e => !isCapEx(e)), { year }).reduce((s, x) => s + toEUR(x.amount, x.currency, x.date), 0);
+    // propertyROI(): lifetime invested (purchase + all-years CapEx) vs this
+    // year's net. The current year is the same `year` used just above.
+    let roi = 0;
+    const prop = byId('properties', p.id);
+    if (prop) {
+      let renoEUR = 0;
+      for (const e of applyFilters(exps, { year: 'all' }).filter(e => isCapEx(e))) renoEUR += toEUR(e.amount, e.currency, e.date);
+      const totalInvested = toEUR(prop.purchasePrice, prop.currency, prop.purchaseDate) + renoEUR;
+      if (totalInvested) roi = ((rev - exp) / totalInvested) * 100;
+    }
+    statsMap.set(p.id, { rev, exp, roi });
+  }
+  return statsMap;
+}
+
 // Applies active filters + sort to the property grid, replacing its contents.
 function renderPropGrid(grid, preloaded, titleEl) {
   grid.innerHTML = '';
@@ -291,14 +324,7 @@ function renderPropGrid(grid, preloaded, titleEl) {
   }
 
   const year = new Date().getFullYear();
-  const statsMap = new Map();
-  for (const p of props) {
-    statsMap.set(p.id, {
-      rev: propertyRevenueEUR(p.id, { year }),
-      exp: propertyExpensesEUR(p.id, { year }, { includeRenovation: false }),
-      roi: propertyROI(p.id)
-    });
-  }
+  const statsMap = gridStats(props, year);
 
   props = [...props].sort((a, b) => {
     if (_pSortKey === 'revenue') return ((statsMap.get(a.id)?.rev ?? 0) - (statsMap.get(b.id)?.rev ?? 0)) * _pSortDir;

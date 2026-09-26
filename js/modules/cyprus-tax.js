@@ -115,7 +115,21 @@ function persist(patch) {
 const safeN = v => (isFinite(Number(v)) ? Math.max(0, Number(v)) : 0);
 const fmtE  = v => formatEUR(Math.max(0, v), { minFrac: 2 });
 
-const mkCurrencyInput = (val, style, onValue) => {
+// Per-keystroke handler, debounced: runs `fn` once typing pauses for `ms`,
+// and straight away when the field is left (blur/change) so the last value
+// is never lost or applied late (e.g. after switching the tax year). A timer
+// still pending when the view is torn down still fires — nothing is dropped.
+function debouncedInput(inputEl, fn, ms = 300) {
+  let t = null;
+  const run = () => { t = null; fn(); };
+  inputEl.addEventListener('input', () => { clearTimeout(t); t = setTimeout(run, ms); });
+  const flush = () => { if (t === null) return; clearTimeout(t); run(); };
+  inputEl.addEventListener('blur', flush);
+  inputEl.addEventListener('change', flush);
+}
+
+// { debounce: ms } — for handlers that persist + re-render: see debouncedInput.
+const mkCurrencyInput = (val, style, onValue, { debounce = 0 } = {}) => {
   const fmt   = v => v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
   const parse = s => { const n = parseFloat((s || '').replace(/[^0-9.]/g, '')); return isFinite(n) && n > 0 ? n : 0; };
   const i = el('input', { class: 'input', type: 'text', style: style || 'width:100%', inputmode: 'decimal', placeholder: '0.00', autocomplete: 'off' });
@@ -123,7 +137,8 @@ const mkCurrencyInput = (val, style, onValue) => {
   i.value = initVal > 0 ? fmt(initVal) : '';
   i.addEventListener('focus', () => { const n = parse(i.value); i.value = n > 0 ? String(n) : ''; i.select(); });
   i.addEventListener('blur',  () => { const n = parse(i.value); i.value = n > 0 ? fmt(n) : ''; });
-  i.addEventListener('input', () => onValue(parse(i.value)));
+  if (debounce > 0) debouncedInput(i, () => onValue(parse(i.value)), debounce);
+  else i.addEventListener('input', () => onValue(parse(i.value)));
   return i;
 };
 
@@ -1037,12 +1052,12 @@ function buildSettingsCard(onChange, onYearChange = onChange) {
   yearSel.onchange = () => { persist({ year: yearSel.value }); onYearChange(); };
 
   const rateI = input({ type: 'number', value: s.corpTaxRate ?? 15, min: 0, max: 100, step: 0.1, style: 'width:110px' });
-  rateI.oninput = () => { persist({ corpTaxRate: safeN(rateI.value) }); onChange(); };
+  debouncedInput(rateI, () => { persist({ corpTaxRate: safeN(rateI.value) }); onChange(); });
 
   const bufChk = el('input', { type: 'checkbox' });
   bufChk.checked = !!s.bufferEnabled;
   const bufPctI = input({ type: 'number', value: s.bufferPct ?? 10, min: 0, max: 100, step: 0.1, style: 'width:80px' });
-  bufPctI.oninput = () => { persist({ bufferPct: safeN(bufPctI.value) }); onChange(); };
+  debouncedInput(bufPctI, () => { persist({ bufferPct: safeN(bufPctI.value) }); onChange(); });
   bufChk.onchange = () => { persist({ bufferEnabled: bufChk.checked }); onChange(); };
 
   body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px' },
@@ -1150,7 +1165,7 @@ function buildEstimateCard(onChange) {
       persist(patch);
       onChange();
       renderBreakdown();
-    });
+    }, { debounce: 300 });
     return formRow(label, i, hint);
   };
 
@@ -1307,7 +1322,7 @@ function buildSafetyCard(displayEl, renderDisplay, onChange) {
   ));
   const body = el('div', { style: 'padding:0 16px 16px' });
 
-  const finalTaxI = mkCurrencyInput(s.estimatedFinalTax, 'width:220px', v => { persist({ estimatedFinalTax: v }); renderDisplay(); onChange(); });
+  const finalTaxI = mkCurrencyInput(s.estimatedFinalTax, 'width:220px', v => { persist({ estimatedFinalTax: v }); renderDisplay(); onChange(); }, { debounce: 300 });
 
   body.appendChild(formRow('Estimated final actual tax liability (€)', finalTaxI, 'Your best estimate of the audited year-end tax. Leave 0 if unknown.'));
   body.appendChild(displayEl);
@@ -1334,10 +1349,10 @@ function buildDecRevisionCard(displayEl, renderDisplay, onChange) {
   ));
 
   const fi = (key, val, label) => {
-    const i = mkCurrencyInput(val, 'width:100%', v => { persist({ [key]: v }); renderDisplay(); });
+    const i = mkCurrencyInput(val, 'width:100%', v => { persist({ [key]: v }); renderDisplay(); }, { debounce: 300 });
     return formRow(label, i);
   };
-  const julI = mkCurrencyInput(s.julPayment, 'width:220px', v => { persist({ julPayment: v }); renderDisplay(); });
+  const julI = mkCurrencyInput(s.julPayment, 'width:220px', v => { persist({ julPayment: v }); renderDisplay(); }, { debounce: 300 });
 
   body.appendChild(el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px' },
     fi('decRevRevenue',       s.decRevRevenue,       'Revised expected annual revenue (€)'),

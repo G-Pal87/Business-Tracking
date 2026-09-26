@@ -242,7 +242,11 @@ function getCorpTaxEst(year) {
   return taxableProfit * (rate / 100);
 }
 
-const mkCurrencyInput = (val, style, onValue) => {
+// onValue runs on every keystroke (keep it cheap — e.g. just store the
+// value, so a Save click always sees the latest amount); onSettled, when
+// given, runs once typing pauses for 300 ms and straight away on blur/change
+// — for the heavier GHS/SDC preview recomputation.
+const mkCurrencyInput = (val, style, onValue, onSettled = null) => {
   const fmt   = v => v > 0 ? new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v) : '';
   const parse = s => { const n = parseFloat((s || '').replace(/[^0-9.]/g, '')); return isFinite(n) && n > 0 ? n : 0; };
   const i = el('input', { class: 'input', type: 'text', style: style || 'width:100%', inputmode: 'decimal', placeholder: '0.00', autocomplete: 'off' });
@@ -251,6 +255,14 @@ const mkCurrencyInput = (val, style, onValue) => {
   i.addEventListener('focus', () => { const n = parse(i.value); i.value = n > 0 ? String(n) : ''; i.select(); });
   i.addEventListener('blur',  () => { const n = parse(i.value); i.value = n > 0 ? fmt(n) : ''; });
   i.addEventListener('input', () => onValue(parse(i.value)));
+  if (onSettled) {
+    let t = null;
+    const run = () => { t = null; onSettled(parse(i.value)); };
+    i.addEventListener('input', () => { clearTimeout(t); t = setTimeout(run, 300); });
+    const flush = () => { if (t === null) return; clearTimeout(t); run(); };
+    i.addEventListener('blur', flush);
+    i.addEventListener('change', flush);
+  }
   return i;
 };
 
@@ -777,7 +789,7 @@ function buildAddForm(year) {
   };
 
   const amountWrap = el('div');
-  const amountI    = mkCurrencyInput(0, 'width:160px', v => { formAmount = v; updateGhsPreview(v); });
+  const amountI    = mkCurrencyInput(0, 'width:160px', v => { formAmount = v; }, v => updateGhsPreview(v));
   amountWrap.appendChild(amountI);
   amountWrap.appendChild(ghsPreviewEl);
 
@@ -969,7 +981,7 @@ function openEditModal(d) {
     }
   };
   const amountWrap = el('div');
-  const amountI    = mkCurrencyInput(editAmount, 'width:160px', v => { editAmount = v; updateGhsPreview(v); });
+  const amountI    = mkCurrencyInput(editAmount, 'width:160px', v => { editAmount = v; }, v => updateGhsPreview(v));
   amountWrap.appendChild(amountI);
   amountWrap.appendChild(ghsPreviewEl);
   updateGhsPreview(editAmount);

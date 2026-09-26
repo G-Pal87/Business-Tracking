@@ -8,7 +8,7 @@ import {
   listActive, listActivePayments,
   isCapEx, drillRevRows, drillRevRowsPnL, drillExpRows,
   sumPaymentsEUR, sumInvoicesEUR, sumExpensesEUR,
-  softDelete, upsert, newId, companyPropIds, isCompanyRecord, generatePaymentSchedule,
+  softDelete, upsert, newId, companyPropIds, isCompanyRecord, generatePaymentSchedule, derivedCache,
   sumForecastEntries
 } from '../core/data.js';
 import { markDirty } from '../core/state.js';
@@ -16,7 +16,7 @@ import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
   getMonthKeysForRange, makeMatchers, resolveStream,
   buildFilterBar, buildComparisonLine
-} from './analytics-filters.js?v=20260519';
+} from './analytics-filters.js';
 import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid, safePct, mkTh, mkDrillValue, groupByMonthKey } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -141,12 +141,15 @@ function propMatchesForecastFilters(prop) {
 // Mirrors getForecastVsActual() in core/data.js: a long-term property with no
 // manual monthly forecast entry still projects revenue from its lease/rent
 // schedule, so Operations → Forecast and Analytics → Forecast agree. Cached
-// per (propertyId, year) since generatePaymentSchedule() rebuilds the full
-// lease schedule and is called repeatedly across the three functions below.
-let _ltRentCache = new Map();
+// per (propertyId, year) since it's called repeatedly across the three
+// functions below. derivedCache empties itself on any edit / sync / db swap /
+// date change (the schedule depends on today()), so it's safe to keep across
+// renders — it used to be wiped on every buildView().
+const _ltRentCache = derivedCache(['tenants', 'payments', 'properties'], todayYmd);
 function getLtRentByMonth(propertyId, year) {
   const cacheKey = propertyId + ':' + year;
-  if (_ltRentCache.has(cacheKey)) return _ltRentCache.get(cacheKey);
+  const cache = _ltRentCache();
+  if (cache.has(cacheKey)) return cache.get(cacheKey);
   const prop = byId('properties', propertyId);
   let map = null;
   if (prop?.type === 'long_term') {
@@ -158,7 +161,7 @@ function getLtRentByMonth(propertyId, year) {
       }
     }
   }
-  _ltRentCache.set(cacheKey, map);
+  cache.set(cacheKey, map);
   return map;
 }
 
@@ -2869,7 +2872,6 @@ function renderCharts(data) {
 
 // ── Main view builder ─────────────────────────────────────────────────────────
 function buildView() {
-  _ltRentCache = new Map(); // drop any stale lease-schedule projections from a prior render
   const wrap = el('div', { class: 'view active' });
 
   wrap.appendChild(el('div', { style: 'margin-bottom:16px' },
