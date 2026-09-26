@@ -14,7 +14,7 @@ import {
 } from './analytics-filters.js?v=20260519';
 import {
   mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkCmpGrid,
-  safePct, fmtK, mkDrillValue, groupByMonthKey, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceDueDate
+  safePct, fmtK, mkDrillValue, groupByMonthKey, invoiceNetEUR, invoiceGrossEUR, invoiceBuckets, invoiceDueDate, expStream
 } from './analytics-helpers.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -92,9 +92,13 @@ function getData(start, end) {
   const overdueInvoices = invBk.overdue;
 
   // Expenses: split OpEx / CapEx
+  // The stream filter applies to expenses too (by expStream(), which falls
+  // back to the property's type) — same as Cash-flow and Forecast. Without it
+  // a Short-term filter subtracted every company expense from STR revenue.
+  const mExpStream = e => !gF.streams.size || gF.streams.has(expStream(e));
   const allExp    = listActive('expenses');
-  const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mOwner(e) && mProperty(e) && isCoRec(e));
-  const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mOwner(e) && mProperty(e) && isCoRec(e));
+  const opExpenses  = allExp.filter(e => !isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
+  const capExpenses = allExp.filter(e =>  isCapEx(e) && inRange(e.date) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
 
   // Revenue totals. P&L figures (Total Revenue, Net Operating Profit, Expense Ratio) use
   // subtotal (VAT-exclusive) — VAT collected on invoices isn't the company's revenue, it's
