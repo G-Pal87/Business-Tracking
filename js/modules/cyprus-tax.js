@@ -1,7 +1,7 @@
 // Cyprus Provisional Corporation Tax Calculator
 import { state, markDirty } from '../core/state.js';
 import { el, input, select, button, formRow, toast, openModal, today } from '../core/ui.js';
-import { formatEUR, toEUR, listActivePayments, listActive, availableYears, isCapEx, byId, companyPropIds, isCompanyRecord, generatePaymentSchedule } from '../core/data.js';
+import { formatEUR, toEUR, listActivePayments, listActive, availableYears, isCapEx, byId, companyPropIds, isCompanyRecord, generatePaymentSchedule, isAccruedInvoice, isDeductibleExpense } from '../core/data.js';
 import { mkKpiCard, mkModalTable, mkSectionLabel, mkSummaryGrid } from './analytics-helpers.js';
 
 // Per-year figures only — `year` itself lives once at the root (see
@@ -208,13 +208,17 @@ export function isCoRec(r, coPropIds) {
 // today or year-end), for corporation-tax estimates. Mirrors what the
 // Forecast grid shows (data.js getForecastVsActual): one forecast per
 // entity, and a long-term property month with no forecast revenue entered
-// (revenue == null) falls back to its lease-schedule rent. The cutoff month
-// counts only its remaining fraction (monthRemainingFraction).
+// (revenue == null) falls back to its still-unpaid lease-schedule rent.
+// In the cutoff month only manual monthly totals are prorated
+// (monthRemainingFraction); pending bookings and unpaid rent count whole,
+// and materialized (already paid) bookings not at all.
 // scope 'company' (default): company-channel, non-deleted properties + all
 // service forecasts; 'all': any non-deleted property + services.
+// excludeSettled false keeps already-paid rent and materialized bookings in
+// (for a whole-year forecast rather than the remainder).
 // Returns { revenue, expenses, byEntity: { [entityId]: { rev, exp, months, type } },
 //           revIds: Set, expIds: Set, cutoff, curMonth }.
-export function forecastRemainingForYear(year, { cutoff = null, scope = 'company' } = {}) {
+export function forecastRemainingForYear(year, { cutoff = null, scope = 'company', excludeSettled = true } = {}) {
   const yr = Number(year);
   if (!cutoff) { const t = today(); cutoff = t < `${yr}-12-31` ? t : `${yr}-12-31`; }
   const curMonth = cutoff.slice(0, 7);
@@ -222,11 +226,15 @@ export function forecastRemainingForYear(year, { cutoff = null, scope = 'company
   const allowedProps = scope === 'all' ? new Set(listActive('properties').map(p => p.id)) : companyPropIds();
 
   const out = { revenue: 0, expenses: 0, byEntity: {}, revIds: new Set(), expIds: new Set(), cutoff, curMonth };
-  const add = (eid, type, mk, rawRev, rawExp) => {
+  // rawRev / rawExp are manual monthly totals — in the cutoff month only
+  // their not-yet-elapsed fraction counts. lumpRev is money that arrives
+  // whole (a still-pending booking, still-unpaid scheduled rent) and is
+  // never prorated: 5 Sep → September rent not yet paid counts in full, not
+  // as 26/30 of it.
+  const add = (eid, type, mk, rawRev, rawExp, lumpRev = 0) => {
     if (mk < curMonth || !mk.startsWith(String(yr))) return;
     const frac = mk === curMonth ? curMonthFrac : 1;
-    if (frac <= 0) return;
-    const rev = (Number(rawRev) || 0) * frac, exp = (Number(rawExp) || 0) * frac;
+    const rev = (Number(rawRev) || 0) * frac + (Number(lumpRev) || 0), exp = (Number(rawExp) || 0) * frac;
     if (!(rev > 0) && !(exp > 0)) return;
     const d = out.byEntity[eid] || (out.byEntity[eid] = { rev: 0, exp: 0, months: 0, type });
     d.months++;
@@ -245,28 +253,64 @@ export function forecastRemainingForYear(year, { cutoff = null, scope = 'company
     if (seen.has(key)) continue; // one forecast per entity, like getForecastVsActual
     seen.add(key);
     if (isProp) { propForecast.set(eid, fc); continue; }
-    for (const [mk, md] of Object.entries(fc.months || {})) add(eid, fc.type || 'service', mk, md?.revenue, md?.expenses);
+    for (const [mk, md] of Object.entries(fc.months || {})) {
+      const { manual, lump } = splitForecastMonthRevenue(md, excludeSettled);
+      add(eid, fc.type || 'service', mk, manual, md?.expenses, lump);
+    }
   }
 
   for (const pid of allowedProps) {
     const prop = byId('properties', pid);
     const fc = propForecast.get(pid);
     if (!prop || (!fc && prop.type !== 'long_term')) continue;
+    // Lease-schedule fallback. Already-paid rent is in the actuals, so only
+    // still-unpaid schedule entries are forecast — in full, never prorated.
     const ltRentByMonth = {};
     if (prop.type === 'long_term') {
       for (const entry of generatePaymentSchedule(prop)) {
-        if (entry.monthKey?.startsWith(String(yr))) ltRentByMonth[entry.monthKey] = toEUR(entry.amount, entry.currency, yr);
+        if (!entry.monthKey?.startsWith(String(yr)) || (excludeSettled && entry.paid)) continue;
+        ltRentByMonth[entry.monthKey] = (ltRentByMonth[entry.monthKey] || 0) + toEUR(entry.amount, entry.currency, yr);
       }
     }
     for (let m = 1; m <= 12; m++) {
       const mk = `${yr}-${String(m).padStart(2, '0')}`;
       const fd = fc?.months?.[mk] || {};
-      add(pid, 'property', mk, fd.revenue != null ? fd.revenue : (ltRentByMonth[mk] ?? 0), fd.expenses);
+      if (fd.revenue != null) {
+        const { manual, lump } = splitForecastMonthRevenue(fd, excludeSettled);
+        add(pid, 'property', mk, manual, fd.expenses, lump);
+      } else {
+        add(pid, 'property', mk, 0, fd.expenses, ltRentByMonth[mk] ?? 0);
+      }
     }
   }
   return out;
 }
 
+// Splits a forecast month's revenue for the rest-of-year estimate:
+//   lump   — booking-linked entries still pending (paid out whole, later);
+//   manual — plain manual entries, or the month's manual revenue total when
+//            it has no itemized entries (prorated in the cutoff month).
+// Materialized entries (bookings that already paid out, so already in the
+// actuals) and cancelled/removed tombstones are left out — unless
+// excludeSettled is false (a whole-year forecast, not "what's still to come"),
+// where materialized entries count like pending ones.
+export function splitForecastMonthRevenue(md, excludeSettled = true) {
+  const entries = Array.isArray(md?.entries) ? md.entries : [];
+  if (!entries.length) return { manual: Number(md?.revenue) || 0, lump: 0 };
+  let manual = 0, lump = 0;
+  for (const e of entries) {
+    if (!e.bookingStatus) manual += Number(e.amount) || 0;
+    else if (e.bookingStatus === 'pending' || (!excludeSettled && e.bookingStatus === 'materialized')) lump += Number(e.amount) || 0;
+  }
+  return { manual, lump };
+}
+
+// Year-to-date actuals for the corporation-tax estimate.
+// Invoices are on an accrual basis — every issued (non-draft, non-cancelled)
+// invoice counts on its issue date, paid or not, so a December invoice paid
+// in February stays in the year it was issued. Expenses count only when
+// deductible (isDeductibleExpense): tax payments, VAT remittances and
+// mortgage repayments are cash out, not deductible costs.
 export function getActualsForYear(year) {
   const todayStr = today();
   const cutoff = todayStr < `${year}-12-31` ? todayStr : `${year}-12-31`;
@@ -275,8 +319,8 @@ export function getActualsForYear(year) {
   const invDate = i => i.issueDate || i.date || '';
   return {
     pays:   listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff && isCoRec(p, coIds)),
-    invs:   listActive('invoices').filter(i => i.status === 'paid' && invDate(i) >= s1 && invDate(i) <= cutoff),
-    exps:   listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff && isCoRec(e, coIds)),
+    invs:   listActive('invoices').filter(i => isAccruedInvoice(i) && invDate(i) >= s1 && invDate(i) <= cutoff),
+    exps:   listActive('expenses').filter(e => !isCapEx(e) && isDeductibleExpense(e) && e.date >= s1 && e.date <= cutoff && isCoRec(e, coIds)),
     cutoff, year,
   };
 }
@@ -335,7 +379,7 @@ function modalRentalPayments() {
 function modalInvoiceRevenue() {
   const year   = cfg().year || String(new Date().getFullYear());
   const { invs } = getActualsForYear(year);
-  if (!invs.length) { emptyModal('Invoice Revenue', 'No paid invoices for this period.'); return; }
+  if (!invs.length) { emptyModal('Invoice Revenue', 'No issued invoices for this period.'); return; }
 
   const clientMap = Object.fromEntries((state.db.clients || []).map(c => [c.id, c]));
   const byClient  = {};
@@ -351,7 +395,7 @@ function modalInvoiceRevenue() {
   const body = el('div');
   body.appendChild(mkSummaryGrid([
     { label: 'Total Invoiced', value: fmtE(total),
-      explain: { title: 'Total Invoiced', formula: 'Sum of EUR-converted paid invoice totals for the year.',
+      explain: { title: 'Total Invoiced', formula: 'Sum of EUR-converted issued (non-draft) invoice subtotals for the year.',
         inputs: [{ label: 'Invoices counted', value: String(invs.length) }, { label: 'Total', value: fmtE(total) }],
         source: 'cyprus-tax.js:256 modalInvoiceRevenue()' } },
     { label: 'Invoices',       value: String(invs.length) },
@@ -363,7 +407,7 @@ function modalInvoiceRevenue() {
   ], 4));
   body.appendChild(mkSectionLabel('Revenue by Client'));
   body.appendChild(mkModalTable(
-    [{ label: 'Client', tip: 'Client this paid invoice is billed to (Unknown if none).' }, { label: 'Invoices', right: true, tip: 'Number of paid invoices for this client this year.' }, { label: 'Revenue', right: true, tip: 'Sum of EUR-converted paid invoice totals for this client.' }, { label: 'Share', right: true, muted: true, tip: 'This client’s revenue as a percentage of total invoice revenue.' }],
+    [{ label: 'Client', tip: 'Client this invoice is billed to (Unknown if none).' }, { label: 'Invoices', right: true, tip: 'Number of issued invoices for this client this year.' }, { label: 'Revenue', right: true, tip: 'Sum of EUR-converted issued (non-draft) invoice subtotals for this client.' }, { label: 'Share', right: true, muted: true, tip: 'This client’s revenue as a percentage of total invoice revenue.' }],
     clRows.map(([id, d]) => { const c = clientMap[id]; return [c?.name || c?.company || 'Unknown', String(d.n), fmtE(d.rev), pct(d.rev, total)]; })
   ));
   openModal({ title: `Invoice Revenue — ${year}`, body, large: true });
@@ -482,7 +526,7 @@ function modalRevenueDetail() {
   const body = el('div');
   body.appendChild(mkSummaryGrid([
     { label: 'Actual Collected',       value: fmtE(actTotal),
-      explain: { title: 'Actual Collected', formula: 'Sum of paid rental payments + paid invoices, dated up to today (or year-end).',
+      explain: { title: 'Actual Collected', formula: 'Sum of paid rental payments + issued invoices (accrual), dated up to today (or year-end).',
         inputs: [{ label: 'Rental payments', value: fmtE(paysTotal) }, { label: 'Invoices', value: fmtE(invsTotal) }, { label: 'Total', value: fmtE(actTotal) }],
         source: 'cyprus-tax.js:401 modalRevenueDetail()' } },
     { label: 'Forecast Remaining',     value: fmtE(safeN(s.forecastRevenue)) },
@@ -491,7 +535,7 @@ function modalRevenueDetail() {
         inputs: [{ label: 'Rental payments', value: fmtE(paysTotal) }, { label: 'Actual Collected', value: fmtE(actTotal) }],
         source: 'cyprus-tax.js:401 modalRevenueDetail()' } },
     { label: 'Invoice Share',          value: pct(invsTotal, actTotal),
-      explain: { title: 'Invoice Share', formula: 'Paid invoices ÷ Actual Collected × 100.',
+      explain: { title: 'Invoice Share', formula: 'Issued invoices ÷ Actual Collected × 100.',
         inputs: [{ label: 'Invoices', value: fmtE(invsTotal) }, { label: 'Actual Collected', value: fmtE(actTotal) }],
         source: 'cyprus-tax.js:401 modalRevenueDetail()' } },
   ], 4));
@@ -499,7 +543,7 @@ function modalRevenueDetail() {
     body.appendChild(mkSectionLabel('Month-by-Month Actual Collections'));
     let cum = 0;
     body.appendChild(mkModalTable(
-      [{ label: 'Month', tip: 'Calendar month the payment/invoice date falls in (YYYY-MM).' }, { label: 'Revenue', right: true, tip: 'Sum of EUR-converted paid rental payments and paid invoices dated that month.' }, { label: 'Cumulative', right: true, muted: true, tip: 'Running total of Actual Collected revenue from January through this month.' }],
+      [{ label: 'Month', tip: 'Calendar month the payment/invoice date falls in (YYYY-MM).' }, { label: 'Revenue', right: true, tip: 'Sum of EUR-converted paid rental payments and issued invoices dated that month.' }, { label: 'Cumulative', right: true, muted: true, tip: 'Running total of Actual Collected revenue from January through this month.' }],
       moRows.map(([mo, v]) => { cum += v; return [mo, fmtE(v), fmtE(cum)]; })
     ));
   }
@@ -1139,13 +1183,10 @@ function prefillFromActuals(onChange) {
   const todayStr = today();
   const cutoff   = todayStr < `${year}-12-31` ? todayStr : `${year}-12-31`;
   const curMonth = cutoff.slice(0, 7);
-  const s1       = `${year}-01-01`;
 
-  const coIds = companyPropIds();
-  const invDate = i => i.issueDate || i.date || '';
-  const pays = listActivePayments().filter(p => p.status === 'paid' && p.date >= s1 && p.date <= cutoff && isCoRec(p, coIds));
-  const invs = listActive('invoices').filter(i => i.status === 'paid' && invDate(i) >= s1 && invDate(i) <= cutoff);
-  const exps = listActive('expenses').filter(e => !isCapEx(e) && e.date >= s1 && e.date <= cutoff && isCoRec(e, coIds));
+  // Same definition as every breakdown modal (accrual invoices, deductible
+  // expenses only) — see getActualsForYear.
+  const { pays, invs, exps } = getActualsForYear(year);
 
   const rnd = v => Math.round(v * 100) / 100;
   const paysRevenue = pays.reduce((a, p) => a + toEUR(p.amount, p.currency, year), 0);

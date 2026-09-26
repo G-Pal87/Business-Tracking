@@ -5,26 +5,28 @@ import * as charts from '../core/charts.js';
 import {
   formatEUR, toEUR,
   listActive, listActivePayments,
-  resolveExpenseFields, isCapEx,
+  resolveExpenseFields, isCapEx, isAccruedInvoice, isDeductibleExpense,
   newId, upsert, softDelete, companyPropIds, isCompanyRecord,
   getPersonName, drillRevRows, drillExpRows, drillNetRows, drillRevRowsPnL, drillNetRowsPnL
 } from '../core/data.js';
-import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue } from './analytics-helpers.js';
+import {
+  mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue,
+  GHS_ANNUAL_CAP, ghsRateForDate, ghsDividendCap, ghsOtherIncome, ghsByDividend, ghsForDividendAmount,
+  isDividendRecipientDomiciled, sdcRateForDate, sdcForDividend
+} from './analytics-helpers.js';
 import { hasCyprusTaxYearConfig, getCyprusTaxYearConfig } from './cyprus-tax.js';
 import { todayYmd } from '../core/dates.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-// This 2.65% withholding is the General Healthcare System (GHS/GESY)
-// contribution, which applies to dividend income for ALL Cyprus tax
-// residents regardless of domicile status, capped at the first €180,000 of
-// a person's annual GHS-able income (~€4,770/year max). It is NOT the
-// Special Defence Contribution (SDC) — SDC is a separate charge (5% from
-// 2026) that applies only to Cyprus-domiciled residents; non-domiciled
-// residents are exempt from SDC on dividends entirely. This module only
-// tracks GHS; if a recipient is Cyprus-domiciled, SDC liability is not
-// modelled here and should be handled with a tax adviser.
-const GHS_RATE       = 0.0265;
-const GHS_ANNUAL_CAP = 180000; // EUR — GHS contributions stop accruing above this per recipient per year
+// GHS (General Healthcare System/GESY) is withheld on dividends for ALL
+// Cyprus tax residents, capped on a person's total annual GHS-able income
+// (so salary uses the cap up first). SDC (Special Defence Contribution)
+// applies only to Cyprus-domiciled recipients. Rates are dated and the
+// per-recipient inputs (other income, domicile) live in
+// settings.dividendTax — see analytics-helpers.js ghsRateForDate() and
+// sdcRateForDate(), the single source for both this module and Personal
+// Income analytics.
+const ghsPct = year => `${(ghsRateForDate(`${year}-12-31`) * 100).toFixed(2)}%`;
 const CHART_IDS = ['div-history-bar', 'div-recipient-donut'];
 const G_COLOR   = '#6366f1';
 const R_COLOR   = '#ec4899';
@@ -100,19 +102,10 @@ function inYear(date, year) {
 // year, not per-payment — so contributions must be computed cumulatively in
 // date order per recipient, not as a flat rate on each dividend in isolation.
 // Returns a Map of dividend.id -> actual GHS amount for that dividend.
+// The cap is reduced by the recipient's other GHS-able income for the year
+// and the rate is taken by payment date (analytics-helpers ghsByDividend).
 function ghsScheduleForYear(divsForYear) {
-  const cumByRecipient = {};
-  const sorted = [...divsForYear].sort((a, b) => (a.date || '').localeCompare(b.date || '') || String(a.id).localeCompare(String(b.id)));
-  const ghsById = new Map();
-  for (const d of sorted) {
-    const key = d.recipient || '_';
-    const priorCum = cumByRecipient[key] || 0;
-    const amt = d.grossAmount || 0;
-    const capacity = Math.max(0, GHS_ANNUAL_CAP - priorCum);
-    ghsById.set(d.id, Math.min(amt, capacity) * GHS_RATE);
-    cumByRecipient[key] = priorCum + amt;
-  }
-  return ghsById;
+  return ghsByDividend(divsForYear);
 }
 
 // Cumulative gross dividends already recorded for a recipient in a given
@@ -128,9 +121,8 @@ function priorCumForRecipientYear(year, recipient, excludeId, beforeDate) {
     .reduce((s, d) => s + (d.grossAmount || 0), 0);
 }
 
-function ghsForAmount(amount, priorCum) {
-  const capacity = Math.max(0, GHS_ANNUAL_CAP - priorCum);
-  return Math.min(amount, capacity) * GHS_RATE;
+function ghsForAmount(amount, priorCum, recipient, date) {
+  return ghsForDividendAmount(amount, priorCum, recipient, date);
 }
 
 function getOpProfit(year) {
@@ -140,11 +132,16 @@ function getOpProfit(year) {
   const payments = listActivePayments().filter(p =>
     p.status === 'paid' && inYear(p.date, year) && isCoRec(p)
   );
+  // Accrual basis (same as the tax estimate): every issued, non-draft,
+  // non-cancelled invoice counts on its issue date, paid or not.
   const invoices = listActive('invoices').filter(i =>
-    i.status === 'paid' && inYear(i.issueDate || i.date, year)
+    isAccruedInvoice(i) && inYear(i.issueDate || i.date, year)
   );
+  // Tax payments, VAT remittances and mortgage repayments aren't operating
+  // costs (isDeductibleExpense) — deducting them understated the profit
+  // available for dividends (and corporation tax is subtracted separately).
   const opExpenses = listActive('expenses').filter(e =>
-    inYear(e.date, year) && !isCapEx(e) && isCoRec(e)
+    inYear(e.date, year) && !isCapEx(e) && isDeductibleExpense(e) && isCoRec(e)
   );
   const capExpenses = listActive('expenses').filter(e =>
     inYear(e.date, year) && isCapEx(e) && isCoRec(e)
@@ -198,7 +195,7 @@ function toDivDrillRows(divs, ghsById) {
       recipient: d.recipient === 'giorgos' ? G_LABEL : R_LABEL,
       gross:     d.grossAmount || 0,
       ghs,
-      net:       (d.grossAmount || 0) - ghs,
+      net:       (d.grossAmount || 0) - ghs - sdcForDividend(d),
       notes:     d.notes || '—'
     };
   }).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -212,6 +209,19 @@ const DIV_DRILL_COLS = [
   { key: 'notes',     label: 'Notes' }
 ];
 
+// Corporation tax on the SAME period as Operating Profit — the year's
+// configured rate × this module's (year-to-date, for the current year)
+// operating profit. Subtracting the full-year estimate below from a
+// year-to-date profit (as this used to) understated after-tax profit for
+// most of the year; the full-year figure is still shown for reference.
+// null when the year has no Provisional Tax config (no rate to apply).
+function getCorpTaxOnProfit(year, opProfit) {
+  if (!hasCyprusTaxYearConfig(year)) return null;
+  const rate = safeN(getCyprusTaxYearConfig(year).corpTaxRate);
+  return Math.max(0, safeN(opProfit)) * (rate / 100);
+}
+
+// Full-year projection from the Provisional Tax tab (actuals + forecast).
 function getCorpTaxEst(year) {
   // Per-year config now persists independently of whichever year the
   // Provisional Tax tab's dropdown currently shows (see cyprus-tax.js) — so
@@ -283,13 +293,18 @@ function buildView() {
   const allDivs  = listActive('dividends');
   const yearDivs = allDivs.filter(d => inYear(d.date, gYear)).sort((a, b) => b.date.localeCompare(a.date));
   const pnlData  = getOpProfit(gYear);
-  const corpTaxEst = getCorpTaxEst(gYear);
+  // Tax on the same period as Operating Profit (see getCorpTaxOnProfit);
+  // the Provisional Tax tab's full-year projection is shown alongside.
+  const corpTaxEst = getCorpTaxOnProfit(gYear, pnlData.opProfit);
+  const fullYearTaxEst = getCorpTaxEst(gYear);
 
   const totalGross = yearDivs.reduce((s, d) => s + (d.grossAmount || 0), 0);
   const ghsById    = ghsScheduleForYear(yearDivs);
   const ghsAmount  = [...ghsById.values()].reduce((s, v) => s + v, 0);
-  const netTotal   = totalGross - ghsAmount;
-  const gTotal     = yearDivs.filter(d => d.recipient === 'giorgos').reduce((s, d) => s + (d.grossAmount || 0), 0);
+  // SDC only for recipients marked Cyprus-domiciled (0 otherwise).
+  const sdcAmount  = yearDivs.reduce((s, d) => s + sdcForDividend(d), 0);
+  const netTotal   = totalGross - ghsAmount - sdcAmount;
+  const gTotal    = yearDivs.filter(d => d.recipient === 'giorgos').reduce((s, d) => s + (d.grossAmount || 0), 0);
   const rTotal     = yearDivs.filter(d => d.recipient === 'rita').reduce((s, d) => s + (d.grossAmount || 0), 0);
   const afterTax   = corpTaxEst !== null ? pnlData.opProfit - corpTaxEst : pnlData.opProfit;
   const retained   = afterTax - totalGross;
@@ -303,7 +318,7 @@ function buildView() {
       subtitle: 'Revenue minus OpEx (company scope)',
       explain: {
         title: 'Operating Profit',
-        formula: 'Total Revenue − Total OpEx (company-channel properties only; CapEx excluded).',
+        formula: 'Total Revenue (issued invoices, accrual) − Total OpEx (company-channel properties only; CapEx and non-deductible payments — tax, VAT paid over, mortgage — excluded).',
         inputs: [
           { label: 'Total Revenue', value: fmtE(pnlData.totalRevenue) },
           { label: 'Total OpEx', value: fmtE(pnlData.totalOpEx) },
@@ -332,17 +347,19 @@ function buildView() {
     mkKpiCard({
       label: 'Est. Corporation Tax',
       value: corpTaxEst !== null ? fmtE(corpTaxEst) : '—',
-      subtitle: corpTaxEst !== null ? `Provisional Tax (${gYear})` : 'Set in Tax → Provisional tab',
+      subtitle: corpTaxEst !== null ? `On profit to date · full year ${fmtE(fullYearTaxEst ?? 0)}` : 'Set in Tax → Provisional tab',
       variant: corpTaxEst !== null && corpTaxEst > 0 ? 'warning' : '',
       explain: corpTaxEst !== null ? {
         title: 'Est. Corporation Tax',
-        formula: 'Pulled from the Provisional Tax estimate configured for this year (Tax → Analysis → Provisional tab), not recalculated here.',
+        formula: 'Operating Profit (same period) × the corporation tax rate set in the Provisional Tax tab for this year.',
         inputs: [
           { label: 'Operating Profit', value: fmtE(pnlData.opProfit) },
-          { label: 'Est. Corporation Tax', value: fmtE(corpTaxEst) }
+          { label: 'Tax rate', value: `${getCyprusTaxYearConfig(gYear).corpTaxRate}%` },
+          { label: 'Est. Corporation Tax', value: fmtE(corpTaxEst) },
+          { label: 'Full-year projection (Provisional Tax)', value: fmtE(fullYearTaxEst ?? 0) }
         ],
-        source: 'dividends.js:163 getCorpTaxEst()',
-        note: 'Change the estimate in the Provisional Tax tab, not here — this card only reads it.'
+        source: 'dividends.js getCorpTaxOnProfit() / getCorpTaxEst()',
+        note: 'Tax is taken on the same period as the profit it is subtracted from. The full-year projection (actuals + forecast) is for reference only.'
       } : null,
       onClick: () => {
         const body = el('div', { style: 'display:flex;flex-direction:column;gap:12px' });
@@ -353,6 +370,7 @@ function buildView() {
             { label: 'Est. Corporation Tax', value: fmtE(corpTaxEst) },
             { label: 'After-Tax Profit',   value: fmtE(Math.max(0, afterTax)) },
             { label: 'Tax Rate Applied',   value: `${getCyprusTaxYearConfig(gYear).corpTaxRate}%` },
+            { label: 'Full-year projection', value: fmtE(fullYearTaxEst ?? 0) },
           ], 2));
         } else {
           body.appendChild(el('p', { style: 'font-size:13px;color:var(--text-muted);line-height:1.6;margin:0' },
@@ -385,7 +403,7 @@ function buildView() {
           { label: R_LABEL, value: mkDrillValue(fmtE(rTotal), () =>
               drillDownModal(`${R_LABEL} — Dividends — ${gYear}`, toDivDrillRows(yearDivs.filter(d => d.recipient === 'rita'), ghsById), DIV_DRILL_COLS)),
             sub: `${yearDivs.filter(d => d.recipient === 'rita').length} payment(s)` },
-          { label: 'GHS (2.65%)', value: mkDrillValue(fmtE(ghsAmount), () =>
+          { label: `GHS (${ghsPct(gYear)})`, value: mkDrillValue(fmtE(ghsAmount), () =>
               drillDownModal(`GHS Withheld — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
           { label: 'Net Total',   value: mkDrillValue(fmtE(netTotal), () =>
               drillDownModal(`Net to Shareholders — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
@@ -394,16 +412,16 @@ function buildView() {
       } : null
     }),
     mkKpiCard({
-      label: 'GHS Contribution (2.65%)',
+      label: `GHS Contribution (${ghsPct(gYear)})`,
       value: fmtE(ghsAmount),
       subtitle: totalGross > 0 ? `On ${fmtE(totalGross)} gross` : 'No dividends declared',
       variant: ghsAmount > 0 ? 'warning' : '',
       explain: {
-        title: 'GHS Contribution (2.65%)',
-        formula: 'Sum per recipient of min(gross dividends, annual GHS cap − prior cumulative gross) × 2.65%.',
+        title: `GHS Contribution (${ghsPct(gYear)})`,
+        formula: 'Sum per recipient of min(gross dividends, annual GHS cap − prior cumulative gross) × GHS rate. The cap is reduced by the recipient\'s other GHS-able income (salary etc.) for the year.',
         inputs: [
           { label: 'Gross Dividends', value: fmtE(totalGross) },
-          { label: 'GHS Rate', value: '2.65%' },
+          { label: 'GHS Rate', value: ghsPct(gYear) },
           { label: 'GHS Amount', value: fmtE(ghsAmount) }
         ],
         source: 'dividends.js:102 ghsScheduleForYear()',
@@ -414,15 +432,17 @@ function buildView() {
         body.appendChild(mkSummaryGrid([
           { label: 'Gross Dividends', value: mkDrillValue(fmtE(totalGross), () =>
               drillDownModal(`Dividends — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
-          { label: 'GHS Rate',        value: '2.65%' },
+          { label: 'GHS Rate',        value: ghsPct(gYear) },
           { label: 'GHS Amount',      value: mkDrillValue(fmtE(ghsAmount), () =>
               drillDownModal(`GHS Withheld — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
+          ...(sdcAmount > 0 ? [{ label: `SDC (${(sdcRateForDate(`${gYear}-12-31`) * 100).toFixed(0)}%, domiciled)`, value: fmtE(sdcAmount) }] : []),
           { label: 'Net to Shareholders', value: mkDrillValue(fmtE(netTotal), () =>
               drillDownModal(`Net to Shareholders — ${gYear}`, toDivDrillRows(yearDivs, ghsById), DIV_DRILL_COLS)) },
         ], 2));
         body.appendChild(el('div', { style: 'font-size:12px;color:var(--text-muted);padding:10px 12px;background:rgba(251,191,36,0.07);border-left:2px solid var(--warning,#f59e0b);border-radius:4px;line-height:1.6' },
-          `General Healthcare System (GHS/GESY) contribution of 2.65% is withheld at source on dividends for ALL Cyprus tax residents, regardless of domicile status, on the first €${GHS_ANNUAL_CAP.toLocaleString('en-US')} of a recipient's annual GHS-able income (max ~${fmtE(GHS_ANNUAL_CAP * GHS_RATE)}/year). Non-domiciled residents are separately exempt from Special Defence Contribution (SDC) on dividends — this module does not model SDC for domiciled recipients.`
+          `General Healthcare System (GHS/GESY) contribution of ${ghsPct(gYear)} is withheld at source on dividends for ALL Cyprus tax residents, regardless of domicile status, up to €${GHS_ANNUAL_CAP.toLocaleString('en-US')} of a recipient's TOTAL annual GHS-able income — salary and other income use the cap up first (set it under Tax settings). Special Defence Contribution (SDC) applies only to Cyprus-domiciled recipients (17% before 2026, 5% from 2026); non-domiciled residents are exempt.`
         ));
+        body.appendChild(el('div', {}, button('Tax settings', { variant: 'sm ghost', onClick: () => openDividendTaxSettings(gYear) })));
         openModal({ title: `GHS Contribution — ${gYear}`, body });
       }
     }),
@@ -507,10 +527,11 @@ function buildView() {
 
   // ── Footnote ──────────────────────────────────────────────────────────────────
   wrap.appendChild(el('div', { style: 'margin-top:12px;font-size:11px;color:var(--text-muted);padding:10px 14px;background:var(--bg-elev-1);border:1px solid var(--border);border-radius:var(--radius-sm);line-height:1.7' },
-    `⚖️  GHS (GESY) at 2.65% is withheld at source on dividends for all Cyprus tax residents, capped at the first €${GHS_ANNUAL_CAP.toLocaleString('en-US')} of a recipient's annual GHS-able income per year. ` +
-    'Non-domiciled residents are separately exempt from Special Defence Contribution (SDC) on dividends (not modelled here); domiciled residents may owe SDC in addition to GHS — check with your adviser. ' +
-    'Gross amounts entered here are the declared distribution; net = gross − GHS. ' +
-    'This module does not constitute tax advice — consult your Cyprus-licensed tax adviser.'
+    `⚖️  GHS (GESY) at ${ghsPct(gYear)} is withheld at source on dividends for all Cyprus tax residents, up to €${GHS_ANNUAL_CAP.toLocaleString('en-US')} of a recipient's total annual GHS-able income (salary included). ` +
+    'Special Defence Contribution (SDC) is added only for recipients marked Cyprus-domiciled under Tax settings; non-domiciled residents are exempt. ' +
+    'Gross amounts entered here are the declared distribution; net = gross − GHS − SDC. ' +
+    'This module does not constitute tax advice — consult your Cyprus-licensed tax adviser.',
+    el('div', { style: 'margin-top:6px' }, button('Tax settings', { variant: 'sm ghost', onClick: () => openDividendTaxSettings(gYear) }))
   ));
 
   return wrap;
@@ -545,7 +566,7 @@ function buildInsights(year, yearDivs, pnlData, corpTaxEst, retained, payoutRati
   // Non-dom reminder — show in Q2/Q3
   const month = new Date().getMonth() + 1;
   if (month >= 4 && month <= 8) {
-    items.push({ type: 'info', text: `Reminder: non-domicile status must be declared annually by 31 July using the TD98 form to maintain SDC exemption on dividends (separate from the 2.65% GHS contribution, which applies regardless of domicile).` });
+    items.push({ type: 'info', text: `Reminder: non-domicile status must be declared annually by 31 July using the TD98 form to maintain SDC exemption on dividends (separate from the GHS contribution, which applies regardless of domicile).` });
   }
 
   if (!items.length) return null;
@@ -677,6 +698,49 @@ function renderRecipientDonut(allDivs) {
 }
 
 // ── Add dividend form ─────────────────────────────────────────────────────────
+// Per-recipient inputs for GHS/SDC (stored in settings.dividendTax):
+// other GHS-able income per year (reduces the €180k GHS cap) and whether the
+// recipient is Cyprus-domiciled (SDC applies).
+function openDividendTaxSettings(year) {
+  const cur = state.db.settings?.dividendTax || {};
+  const rows = [['giorgos', G_LABEL], ['rita', R_LABEL]].map(([key, label]) => {
+    const incomeI = input({ type: 'number', min: 0, step: 0.01, value: ghsOtherIncome(key, year) || '' , placeholder: '0' });
+    const domChk = el('input', { type: 'checkbox' });
+    domChk.checked = isDividendRecipientDomiciled(key);
+    domChk.id = `divDom_${key}`;
+    const wrap = el('div', { class: 'card', style: 'padding:10px 14px;margin-bottom:10px' },
+      el('div', { style: 'font-weight:600;margin-bottom:6px' }, label),
+      formRow(`Other GHS-able income in ${year} (salary etc., EUR)`, incomeI),
+      el('div', { style: 'display:flex;align-items:center;gap:8px' }, domChk,
+        el('label', { for: domChk.id, style: 'font-size:12px;cursor:pointer' }, 'Cyprus-domiciled (SDC applies to dividends)'))
+    );
+    return { key, incomeI, domChk, wrap };
+  });
+  const body = el('div', {},
+    el('p', { style: 'font-size:12px;color:var(--text-muted);margin:0 0 10px;line-height:1.6' },
+      `The €${GHS_ANNUAL_CAP.toLocaleString('en-US')} GHS cap covers all of a person's GHS-able income for the year, so salary uses it up first. SDC is only withheld for domiciled recipients.`),
+    ...rows.map(r => r.wrap)
+  );
+  const save = button('Save', { variant: 'primary', onClick: () => {
+    const otherIncome = { ...(cur.otherIncome || {}) };
+    const yearMap = { ...(otherIncome[String(year)] || {}) };
+    const domiciled = { ...(cur.domiciled || {}) };
+    for (const r of rows) {
+      const v = Math.max(0, Number(r.incomeI.value) || 0);
+      if (v > 0) yearMap[r.key] = v; else delete yearMap[r.key];
+      domiciled[r.key] = r.domChk.checked;
+    }
+    otherIncome[String(year)] = yearMap;
+    if (!state.db.settings) state.db.settings = {};
+    state.db.settings.dividendTax = { ...cur, otherIncome, domiciled };
+    markDirty();
+    closeModal();
+    toast('Dividend tax settings saved', 'success');
+    rebuildView();
+  }});
+  openModal({ title: `Dividend tax settings — ${year}`, body, footer: [button('Cancel', { onClick: closeModal }), save] });
+}
+
 function buildAddForm(year) {
   const formCard = el('div', { class: 'card mb-16' });
   formCard.appendChild(el('div', { class: 'card-header' },
@@ -701,9 +765,10 @@ function buildAddForm(year) {
   const ghsPreviewEl = el('div', { style: 'font-size:11px;color:var(--text-muted);margin-top:4px;min-height:16px;transition:opacity 120ms' });
   const updateGhsPreview = v => {
     if (v > 0) {
-      const prior = priorCumForRecipientYear(year, formRecipient, null, formDate);
-      const ghs   = ghsForAmount(v, prior);
-      ghsPreviewEl.textContent = `GHS ${fmtE(ghs)} · Net received ${fmtE(v - ghs)}`;
+      const prior = priorCumForRecipientYear((formDate || '').slice(0, 4) || year, formRecipient, null, formDate);
+      const ghs   = ghsForAmount(v, prior, formRecipient, formDate);
+      const sdc   = sdcForDividend({ grossAmount: v, recipient: formRecipient, date: formDate });
+      ghsPreviewEl.textContent = `GHS ${fmtE(ghs)}${sdc ? ` · SDC ${fmtE(sdc)}` : ''} · Net received ${fmtE(v - ghs - sdc)}`;
       ghsPreviewEl.style.opacity = '1';
     } else {
       ghsPreviewEl.textContent = '';
@@ -754,7 +819,7 @@ function buildAddForm(year) {
   ));
 
   formBody.appendChild(el('div', { style: 'margin-top:10px;font-size:12px;color:var(--text-muted);padding:8px 12px;background:rgba(99,102,241,0.06);border-left:2px solid var(--accent);border-radius:4px' },
-    `GHS (GESY) of 2.65% is withheld on the gross dividend, up to the recipient's €${GHS_ANNUAL_CAP.toLocaleString('en-US')} annual cap. Net received = gross − GHS.`
+    `GHS (GESY) of ${ghsPct(year)} is withheld on the gross dividend, up to the recipient's €${GHS_ANNUAL_CAP.toLocaleString('en-US')} annual cap. Net received = gross − GHS.`
   ));
 
   formCard.appendChild(formBody);
@@ -767,7 +832,7 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, ghsAmount, ne
   logCard.appendChild(el('div', { class: 'card-header' },
     el('div', { class: 'card-title' }, `Dividend Log — ${year}`),
     el('div', { style: 'font-size:12px;color:var(--text-muted)' },
-      `${yearDivs.length} payment${yearDivs.length !== 1 ? 's' : ''} · GHS rate 2.65% (capped)`)
+      `${yearDivs.length} payment${yearDivs.length !== 1 ? 's' : ''} · GHS rate ${ghsPct(year)} (capped)`)
   ));
 
   if (!yearDivs.length) {
@@ -783,7 +848,7 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, ghsAmount, ne
     ['Date', 'left', 'Date the dividend was declared/paid.'],
     ['Recipient', 'left', 'Which director received this dividend.'],
     ['Gross Amount', 'right', 'The declared dividend amount before GHS withholding.'],
-    ['GHS (2.65%)', 'right', 'GHS/GESY contribution withheld at 2.65%, capped at the recipient\'s annual GHS-able income cap.'],
+    [`GHS (${ghsPct(year)})`, 'right', 'GHS/GESY contribution withheld at the dated GHS rate, capped at the recipient\'s annual GHS-able income cap.'],
     ['Net Amount', 'right', 'Gross Amount minus GHS — what the recipient actually receives.'],
     ['Notes', 'left', ''],
     ['', 'right', '']
@@ -798,7 +863,7 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, ghsAmount, ne
   const tbody = el('tbody');
   yearDivs.forEach((d, ri) => {
     const ghs  = ghsById.get(d.id) || 0;
-    const net  = (d.grossAmount || 0) - ghs;
+    const net  = (d.grossAmount || 0) - ghs - sdcForDividend(d);
     const isG  = d.recipient === 'giorgos';
     const tr   = el('tr', { style: ri % 2 === 1 ? 'background:rgba(255,255,255,0.02)' : '' });
 
@@ -841,8 +906,8 @@ function buildLogTable(year, yearDivs, gTotal, rTotal, totalGross, ghsAmount, ne
 
   // Per-recipient split footer
   if (gTotal > 0 || rTotal > 0) {
-    const gGhs = yearDivs.filter(d => d.recipient === 'giorgos').reduce((s, d) => s + (ghsById.get(d.id) || 0), 0);
-    const rGhs = yearDivs.filter(d => d.recipient === 'rita').reduce((s, d) => s + (ghsById.get(d.id) || 0), 0);
+    const gGhs = yearDivs.filter(d => d.recipient === 'giorgos').reduce((s, d) => s + (ghsById.get(d.id) || 0) + sdcForDividend(d), 0);
+    const rGhs = yearDivs.filter(d => d.recipient === 'rita').reduce((s, d) => s + (ghsById.get(d.id) || 0) + sdcForDividend(d), 0);
     const parts = [];
     if (gTotal > 0) parts.push(el('span', {}, `${G_LABEL}: ${fmtE(gTotal)} gross · ${fmtE(gTotal - gGhs)} net`));
     if (rTotal > 0) parts.push(el('span', {}, `${R_LABEL}: ${fmtE(rTotal)} gross · ${fmtE(rTotal - rGhs)} net`));
@@ -875,23 +940,27 @@ function openEditModal(d) {
   const updateGhsPreview = v => {
     if (v > 0 && editDate) {
       const prior = priorCumForRecipientYear(editDate.slice(0, 4), editRecipient, d.id, editDate);
-      const ghs   = ghsForAmount(v, prior);
-      ghsPreviewText.textContent = `GHS ${fmtE(ghs)} · Net received ${fmtE(v - ghs)}`;
+      const ghs   = ghsForAmount(v, prior, editRecipient, editDate);
+      const sdc   = sdcForDividend({ grossAmount: v, recipient: editRecipient, date: editDate });
+      const cap   = ghsDividendCap(editRecipient, editDate.slice(0, 4));
+      ghsPreviewText.textContent = `GHS ${fmtE(ghs)}${sdc ? ` · SDC ${fmtE(sdc)}` : ''} · Net received ${fmtE(v - ghs - sdc)}`;
       ghsPreviewEl.style.opacity = '1';
       ghsExplainSlot.innerHTML = '';
       ghsExplainSlot.appendChild(mkExplainButton({
         title: 'GHS Withholding (this dividend)',
-        formula: 'min(Gross Amount, €180,000 − prior cumulative gross for this recipient this year) × 2.65%',
+        formula: `min(Gross Amount, (€${GHS_ANNUAL_CAP.toLocaleString('en-US')} − other GHS-able income) − prior cumulative gross this year) × GHS rate`,
         inputs: [
           { label: 'Gross Amount (this dividend)', value: fmtE(v) },
+          { label: `Other GHS-able income (salary etc.) in ${editDate.slice(0, 4)}`, value: fmtE(ghsOtherIncome(editRecipient, editDate.slice(0, 4))) },
           { label: `Prior cumulative gross for ${editRecipient === 'giorgos' ? G_LABEL : R_LABEL} in ${editDate.slice(0, 4)} (before this date)`, value: fmtE(prior) },
-          { label: 'GHS-able capacity remaining', value: fmtE(Math.max(0, GHS_ANNUAL_CAP - prior)) },
-          { label: 'GHS rate', value: `${(GHS_RATE * 100).toFixed(2)}%` },
+          { label: 'GHS-able capacity remaining', value: fmtE(Math.max(0, cap - prior)) },
+          { label: 'GHS rate', value: `${(ghsRateForDate(editDate) * 100).toFixed(2)}%` },
           { label: 'GHS amount', value: fmtE(ghs) },
-          { label: 'Net received', value: fmtE(v - ghs) },
+          ...(sdc ? [{ label: `SDC (${(sdcRateForDate(editDate) * 100).toFixed(0)}%, domiciled)`, value: fmtE(sdc) }] : []),
+          { label: 'Net received', value: fmtE(v - ghs - sdc) },
         ],
-        source: 'js/modules/dividends.js ghsForAmount() / priorCumForRecipientYear()',
-        note: `GHS is capped at the first €${GHS_ANNUAL_CAP.toLocaleString('en-US')} of a recipient's cumulative gross dividends per year, applied in chronological (date) order — see ghsScheduleForYear() for how the saved dividend log recomputes this across all of a recipient's dividends once this edit is saved.`
+        source: 'analytics-helpers.js ghsForDividendAmount() / sdcForDividend()',
+        note: 'GHS is capped on the recipient\'s total GHS-able income for the year, applied in chronological (date) order. Other income and domicile are set under "Tax settings" on this page.'
       }));
     } else {
       ghsPreviewText.textContent = '';

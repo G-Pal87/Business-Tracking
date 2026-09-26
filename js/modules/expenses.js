@@ -1,7 +1,7 @@
 // Expenses module
 import { state, runBatch } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod, getPeopleOwners, getPersonName } from '../core/data.js';
+import { upsert, softDelete, listActive, byId, newId, formatMoney, formatEUR, toEUR, resolveExpenseFields, totalRemaining, fifoDeduct, restoreInventoryStock, findVendorRateByPeriod, getPeopleOwners, getPersonName, isDeductibleExpense } from '../core/data.js';
 import * as charts from '../core/charts.js';
 import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYPES, COST_CATEGORIES, RECURRENCE_TYPES, STREAMS } from '../core/config.js';
 import { navigate } from '../core/router.js';
@@ -105,8 +105,11 @@ function occurrenceDate(start, period, i) {
   return null;
 }
 
+// Default "Repeat until" = one year of occurrences: start + 1 year − 1 day.
+// The loop includes the end date, so start + 1 year produced 13 monthly /
+// 53 weekly / 5 quarterly / 2 annual entries instead of 12 / 52 / 4 / 1.
 function addOneYear(dateStr) {
-  return addYearsYmd(dateStr, 1);
+  return addDaysYmd(addYearsYmd(dateStr, 1), -1);
 }
 
 
@@ -829,11 +832,24 @@ function openForm(existing, defaults = {}, onSave = null) {
     recurrenceS.value = recurChk.checked ? 'recurring' : 'one_off';
   };
 
+  // Tax-deductible — defaults from the category (tax payments, VAT paid over
+  // and mortgage repayments aren't); ticking it the other way stores a
+  // per-expense override (e.g. a mortgage line that is interest only).
+  const catDeductible = cat => isDeductibleExpense({ category: cat });
+  const deductChk = el('input', { type: 'checkbox' });
+  deductChk.checked = isDeductibleExpense(r);
+  deductChk.id = 'expDeductChk_' + r.id;
+  const deductRow = el('div', { style: 'display:flex;align-items:center;gap:8px;margin:2px 0 8px' },
+    deductChk,
+    el('label', { for: deductChk.id, style: 'font-size:12px;color:var(--text);cursor:pointer;user-select:none' },
+      'Tax-deductible (counts in the tax estimate and dividend profit)')
+  );
   const accountingTypeRow = el('div', { class: 'form-row horizontal' }, formRow('Expense Type', accountingTypeS));
 
   body.appendChild(formRow('Category', catS));
   body.appendChild(formRow('Allocated To', allocS));
   body.appendChild(accountingTypeRow);
+  body.appendChild(deductRow);
   body.appendChild(invRow);
   body.appendChild(assocToggle);
   body.appendChild(vendorRow);
@@ -921,14 +937,14 @@ function openForm(existing, defaults = {}, onSave = null) {
       if (matches.length === 1) {
         const { vendor, period } = matches[0];
         if (!vendorS.value) vendorS.value = vendor.id;
-        if (Number(amountI.value) === 0) amountI.value = period.fee;
+        if (Number(amountI.value) === 0) { amountI.value = period.fee; if (period.currency) currencyS.value = period.currency; }
         return;
       }
       // Multiple matches — require vendor selection
       if (vendorS.value) {
         const hit = matches.find(m => m.vendor.id === vendorS.value);
         if (hit) {
-          if (Number(amountI.value) === 0) amountI.value = hit.period.fee;
+          if (Number(amountI.value) === 0) { amountI.value = hit.period.fee; if (hit.period.currency) currencyS.value = hit.period.currency; }
           return;
         }
       }
@@ -990,6 +1006,7 @@ function openForm(existing, defaults = {}, onSave = null) {
     updateInvItemOpts();
   };
   catS.onchange = () => {
+    deductChk.checked = catDeductible(catS.value);
     if (catS.value === 'renovation') {
       accountingTypeS.value = 'capex';
       costCategoryS.value   = 'renovation';
@@ -1156,6 +1173,10 @@ function openForm(existing, defaults = {}, onSave = null) {
         stream:        autoStream,
         ...(appliedFee !== undefined ? { appliedCleaningFee: appliedFee } : {})
       });
+      // Store the flag only when it overrides the category default, so a
+      // later category change still carries its own default.
+      if (deductChk.checked !== catDeductible(catS.value)) r.deductible = deductChk.checked;
+      else delete r.deductible;
 
       if (!existing && recurChk.checked && !isInventory) {
         const period  = recurPeriodS.value;
@@ -1179,6 +1200,7 @@ function openForm(existing, defaults = {}, onSave = null) {
         const PER_INSTANCE = ['receipt', 'documents', 'inventoryItemId', 'inventoryQty', 'inventoryBatches', 'appliedCleaningFee'];
         for (const sib of siblings) {
           const next = { ...sib, ...sharedFields };
+          if (!('deductible' in r)) delete next.deductible; // back to the category default
           if (sib.id === r.id) {
             // The edited record itself still gets its own receipt/inventory changes.
             for (const k of PER_INSTANCE) { if (k in r) next[k] = r[k]; else delete next[k]; }

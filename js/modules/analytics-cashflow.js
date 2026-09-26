@@ -4,7 +4,7 @@ import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, COST_CATEGORIES } from '../core/config.js';
 import {
   formatEUR, toEUR, byId,
-  listActive, listActivePayments, isCapEx, resolveExpenseFields, companyPropIds, isCompanyRecord
+  listActive, listActivePayments, isCapEx, resolveExpenseFields, companyPropIds, isCompanyRecord, invoiceCashDate
 } from '../core/data.js';
 import {
   createFilterState, getCurrentPeriodRange, getComparisonRange,
@@ -22,6 +22,16 @@ const cashInStream = r => resolveStream(r, 'other');
 // (a Set) restricts to those months; omitted, every month with activity is
 // included. Shared by the cumulative line, the monthly net bar and the Net
 // Coverage Days KPI so the monthly net is defined in one place.
+// Cash view: a paid invoice's money lands on the date it was paid
+// (invoiceCashDate — paidDate, recorded when it's marked paid; legacy
+// invoices without one fall back to the issue date). This read-only copy
+// carries that date in `issueDate`, so every bucket, FX conversion and
+// drill-down row below uses it without each re-deriving the rule.
+function cashDated(i) {
+  const d = invoiceCashDate(i);
+  return d && d !== i.issueDate ? { ...i, issueDate: d } : i;
+}
+
 function monthlyNetMap({ payments, invoices, opExpenses, capExpenses }, onlyKeys = null) {
   const m = new Map();
   if (onlyKeys) onlyKeys.forEach(k => m.set(k, 0));
@@ -70,8 +80,8 @@ function getData(start, end) {
   const payments = listActivePayments().filter(p =>
     p.status === 'paid' && inRange(p.date) && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p)
   );
-  const invoices = listActive('invoices').filter(i =>
-    i.status === 'paid' && inRange(i.issueDate || i.date) && mStream(i) && mInvOwner(i) && mClient(i) && isCoRec(i)
+  const invoices = listActive('invoices').filter(i => i.status === 'paid').map(cashDated).filter(i =>
+    inRange(i.issueDate || i.date) && mStream(i) && mInvOwner(i) && mClient(i) && isCoRec(i)
   );
 
   const allExp    = listActive('expenses');
@@ -499,7 +509,7 @@ function buildCashSeasonalityHeatmap() {
 
   // For the heatmap we pull ALL data (no date filter) so all years are visible
   const allPays = listActivePayments().filter(p => p.status === 'paid' && mStream(p) && mOwner(p) && mProperty(p) && isCoRec(p));
-  const allInvs = listActive('invoices').filter(i => i.status === 'paid' && mStream(i) && mInvOwner(i) && mClient(i) && isCoRec(i));
+  const allInvs = listActive('invoices').filter(i => i.status === 'paid' && mStream(i) && mInvOwner(i) && mClient(i) && isCoRec(i)).map(cashDated);
   const allOpEx = listActive('expenses').filter(e => !isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
   const allCapEx = listActive('expenses').filter(e => isCapEx(e) && mExpStream(e) && mOwner(e) && mProperty(e) && isCoRec(e));
 
