@@ -1545,9 +1545,9 @@ async function extractPDFLines(arrayBuffer, onStatus) {
 async function extractPDFLinesOCR(pdf, onStatus) {
   const Tesseract = await loadLib('tesseract');
   const worker = await Tesseract.createWorker('eng', 1, {
-    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
     langPath: 'https://tessdata.projectnaptha.com/4.0.0',
-    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd-lstm.wasm.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/tesseract-core-simd-lstm.wasm.js',
     logger: m => {
       if (onStatus && m.status === 'recognizing text') {
         onStatus(`OCR: ${Math.round((m.progress || 0) * 100)}%`);

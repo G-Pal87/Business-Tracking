@@ -468,15 +468,9 @@ function renderLogin(screen, resolve) {
         errEl.textContent = 'Invalid username or password';
         passwordI.value = '';
         btn.disabled = false;
-        // Logged under the attempted username, not a real session — this can
-        // be someone mistyping their own password or an actual intrusion
-        // attempt, and admins have no other way to tell which without this.
-        // Only a username that matches a real account is logged — this file
-        // is stored unencrypted on the presence branch, and people often
-        // type their password into the username field by mistake.
-        recordSessionEvent('failed_login', user
-          ? { username, name: user.name || username }
-          : { username: '(unknown username)', name: '(unknown username)' }).catch(() => {});
+        // Only the fact and time of a failed attempt is recorded — never the
+        // typed username (people often type their password there by mistake).
+        recordSessionEvent('failed_login').catch(() => {});
         return;
       }
       applyPasswordUpgrade(user, result);
