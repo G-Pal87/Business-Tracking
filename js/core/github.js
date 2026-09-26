@@ -421,8 +421,11 @@ export async function fetchDb({ conditional = false } = {}) {
     // Same blob sha as the last successful fetch = byte-identical content:
     // skip the (possible) blob download + decrypt + parse below — every tab
     // used to repeat all of it every 60s even when nothing changed. Callers
-    // mutate what fetchDb returns, so they get their own copy.
-    parsed = structuredClone(_lastFetched.db);
+    // mutate what fetchDb returns, so they get their own copy — except the
+    // conditional poll, which gets the same shallow copy as its 304 path
+    // (see there). It lands here on the first poll after this tab's own push,
+    // whose PUT response carries no ETag to send.
+    parsed = conditional ? { ..._lastFetched.db } : structuredClone(_lastFetched.db);
   } else if (content) {
     parsed = safeParseDb(b64decode(content));
   } else if (sha) {
