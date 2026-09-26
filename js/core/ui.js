@@ -381,8 +381,27 @@ function dateFormatter(locale, opts) {
 const FMT_DATE_UTC   = { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' };
 const FMT_DATE_LOCAL = { year: 'numeric', month: 'short', day: 'numeric' };
 
+// fmtDate output per input string — tables format the same few hundred dates
+// over and over on every re-render. Bounded: dropped wholesale past 5000.
+const _fmtDateMemo = new Map();
+const FMT_DATE_MEMO_MAX = 5000;
+
 export function fmtDate(dateStr) {
   if (!dateStr) return '';
+  // Only strings are memoized (Date objects/numbers go straight through). A
+  // non-YYYY-MM-DD string is parsed in local time, so its output depends on
+  // the viewer's timezone — which doesn't change within a page load.
+  if (typeof dateStr !== 'string') return _fmtDate(dateStr);
+  let out = _fmtDateMemo.get(dateStr);
+  if (out === undefined) {
+    if (_fmtDateMemo.size >= FMT_DATE_MEMO_MAX) _fmtDateMemo.clear();
+    out = _fmtDate(dateStr);
+    _fmtDateMemo.set(dateStr, out);
+  }
+  return out;
+}
+
+function _fmtDate(dateStr) {
   try {
     // A bare YYYY-MM-DD is formatted as that calendar day (UTC midnight read
     // back in UTC), independent of the viewer's timezone.
@@ -405,6 +424,46 @@ export function monthLabel(yyyymm) {
 // ========== Table sort + filter ==========
 const SORT_TYPE_RANK = { n: 0, d: 1, s: 2 };
 const SORT_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+// Matches whole-string date-like text (anchored) so a month name only
+// counts as a date when it's actually shaped like one — e.g. "Aug 7, 2026"
+// (fmtDate's format) or "Aug 26" (monthLabel's format) — and NOT when a
+// month name merely appears inside ordinary text such as "May Street
+// Villa" or "March 2024 rent" (trailing/leading words break the anchor).
+const DATE_LIKE_RE = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{2,4}|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s*\d{2,4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{2,4})$/i;
+
+function parseCell(txt) {
+  // Placeholders ("—", "-", "N/A", blank) are their own type and always
+  // sort last, whichever the direction.
+  if (!txt || /^[—–-]+$/.test(txt) || /^n\/?a$/i.test(txt)) return { t: 'e', v: 0 };
+  if (/^\d{4}-\d{2}/.test(txt) || DATE_LIKE_RE.test(txt.trim())) {
+    const time = new Date(txt).getTime();
+    if (!isNaN(time)) return { t: 'd', v: time };
+  }
+  // Only treat as numeric when the cell is a plain number, currency amount,
+  // or percentage (e.g. "€1,500", "HUF 50,000", "7.0%", "-4.5%") — not when
+  // text merely contains digits (e.g. "Danko u. 38 -2" would otherwise sort
+  // as 38, not alphabetically). Stripping '%' matters: without it, "9.0%"
+  // sorted as a *string* lands after "10.0%"/"20.0%" (lexicographic '9' >
+  // '1'), so any percentage column (ROI, Cost %, Var % etc.) sorted in
+  // visibly wrong order instead of numerically.
+  const clean = txt.replace(/^[A-Z]{2,3}\s*/, '').replace(/[€£$¥₿%,\s]/g, '');
+  const n = parseFloat(clean);
+  if (!isNaN(n) && clean !== '' && /^-?[\d.]+$/.test(clean)) return { t: 'n', v: n };
+  return { t: 's', v: txt };
+}
+
+// Sort comparator over parseCell() keys: numbers, dates, text, placeholders
+// (placeholders always last, whichever the direction).
+function compareCellKeys(ak, bk, sortDir) {
+  if (ak.t !== bk.t) {
+    if (ak.t === 'e' || bk.t === 'e') return ak.t === 'e' ? 1 : -1;
+    return (SORT_TYPE_RANK[ak.t] - SORT_TYPE_RANK[bk.t]) * sortDir;
+  }
+  if (ak.t === 'e') return 0;
+  if (ak.t === 's') return SORT_COLLATOR.compare(ak.v, bk.v) * sortDir;
+  return (ak.v - bk.v) * sortDir;
+}
 
 // pageSize (optional): show at most this many matching rows, with a
 // "Show more" button for the rest. Paging is applied after sort + search, so
@@ -430,34 +489,6 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
     tableWrap.parentNode.insertBefore(moreWrap, tableWrap.nextSibling);
     moreBtn.addEventListener('click', () => { shown += pageSize; applyFilter(); });
   }
-
-  // Matches whole-string date-like text (anchored) so a month name only
-  // counts as a date when it's actually shaped like one — e.g. "Aug 7, 2026"
-  // (fmtDate's format) or "Aug 26" (monthLabel's format) — and NOT when a
-  // month name merely appears inside ordinary text such as "May Street
-  // Villa" or "March 2024 rent" (trailing/leading words break the anchor).
-  const DATE_LIKE_RE = /^(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?,?\s*\d{2,4}|\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?,?\s*\d{2,4}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{2,4})$/i;
-
-  const parseCell = txt => {
-    // Placeholders ("—", "-", "N/A", blank) are their own type and always
-    // sort last, whichever the direction.
-    if (!txt || /^[—–-]+$/.test(txt) || /^n\/?a$/i.test(txt)) return { t: 'e', v: 0 };
-    if (/^\d{4}-\d{2}/.test(txt) || DATE_LIKE_RE.test(txt.trim())) {
-      const time = new Date(txt).getTime();
-      if (!isNaN(time)) return { t: 'd', v: time };
-    }
-    // Only treat as numeric when the cell is a plain number, currency amount,
-    // or percentage (e.g. "€1,500", "HUF 50,000", "7.0%", "-4.5%") — not when
-    // text merely contains digits (e.g. "Danko u. 38 -2" would otherwise sort
-    // as 38, not alphabetically). Stripping '%' matters: without it, "9.0%"
-    // sorted as a *string* lands after "10.0%"/"20.0%" (lexicographic '9' >
-    // '1'), so any percentage column (ROI, Cost %, Var % etc.) sorted in
-    // visibly wrong order instead of numerically.
-    const clean = txt.replace(/^[A-Z]{2,3}\s*/, '').replace(/[€£$¥₿%,\s]/g, '');
-    const n = parseFloat(clean);
-    if (!isNaN(n) && clean !== '' && /^-?[\d.]+$/.test(clean)) return { t: 'n', v: n };
-    return { t: 's', v: txt };
-  };
 
   // Lower-cased text per row, computed once and reused by every keystroke's
   // filter pass. Any change to the rows' content (a re-render, an inline
@@ -489,16 +520,7 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
     // mixes them sorts the same way every time.
     const getText = cell => (cell?.dataset?.sort ?? cell?.textContent ?? '').trim();
     const keyed = [...tbody.querySelectorAll('tr')].map(r => ({ r, k: parseCell(getText(r.cells[sortCol])) }));
-    keyed.sort((a, b) => {
-      const ak = a.k, bk = b.k;
-      if (ak.t !== bk.t) {
-        if (ak.t === 'e' || bk.t === 'e') return ak.t === 'e' ? 1 : -1;
-        return (SORT_TYPE_RANK[ak.t] - SORT_TYPE_RANK[bk.t]) * sortDir;
-      }
-      if (ak.t === 'e') return 0;
-      if (ak.t === 's') return SORT_COLLATOR.compare(ak.v, bk.v) * sortDir;
-      return (ak.v - bk.v) * sortDir;
-    });
+    keyed.sort((a, b) => compareCellKeys(a.k, b.k, sortDir));
     // Content changes queued before this point still invalidate the cache;
     // the re-ordering's own records below are discarded.
     if (textObs.takeRecords().length) rowText = new WeakMap();
@@ -575,6 +597,128 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
   obs.observe(tableWrap, { childList: true });
   enhance();
   return { refresh: enhance };
+}
+
+// ========== Data-level table paging ==========
+// attachSortFilter's semantics for big read-only tables, without building a
+// <tr> per record: sort and search run on the row OBJECTS and only the
+// visible page (+ "Show more") is turned into DOM. Callers keep totals,
+// footers and exports computed from their full `rows` array.
+//
+//   tableWrap  a .table-wrap holding a <table> with its <thead> (the <tbody>
+//              is created/managed here).
+//   rows       the row objects, in their initial (pre-sort) order.
+//   cells(row) the text of each <td> exactly as rendered (td.textContent),
+//              in column order — sort keys come from cells(row)[col].trim()
+//              (parsed like attachSortFilter's cell text) and search matches
+//              cells(row).join('') lower-cased, i.e. the row's textContent.
+//   renderRow(row) builds the row's <tr> (cached per row object).
+//   onFilter(matched) optional: called after every sort/search pass with
+//              every matching row (all pages), in display order. The
+//              tableWrap also gets an 'sf:filter' event whose detail.rows is
+//              the same array.
+// Sorting re-orders the current order stably, like the DOM version (which
+// re-appends the rows it finds in the <tbody>), so ties keep the previous
+// sort's order. Returns { refresh }.
+export function attachDataTable(tableWrap, { rows, cells, renderRow, placeholder = 'Filter rows…', initialCol = -1, initialDir = 1, initialSearch = '', onSortChange = null, onSearchChange = null, onFilter = null, pageSize = 200 } = {}) {
+  let sortCol = initialCol, sortDir = initialDir, searchTerm = initialSearch.toLowerCase();
+  let shown = pageSize;
+  let order = rows.slice();
+  let matched = order;
+
+  const searchWrap = el('div', { style: 'display:flex;justify-content:flex-end;margin-bottom:8px' });
+  const searchInput = el('input', { type: 'search', class: 'input', placeholder, value: initialSearch, style: 'max-width:220px;font-size:13px' });
+  searchWrap.appendChild(searchInput);
+  tableWrap.parentNode.insertBefore(searchWrap, tableWrap);
+
+  const moreBtn = el('button', { class: 'btn sm ghost', type: 'button' });
+  const moreWrap = el('div', { class: 'sf-more', style: 'display:none' }, moreBtn);
+  tableWrap.parentNode.insertBefore(moreWrap, tableWrap.nextSibling);
+
+  const table = tableWrap.querySelector('table');
+  let tbody = table.querySelector('tbody');
+  if (!tbody) { tbody = el('tbody'); table.appendChild(tbody); }
+
+  const cellCache = new WeakMap();
+  const cellsOf = r => { let c = cellCache.get(r); if (!c) { c = cells(r).map(v => String(v ?? '')); cellCache.set(r, c); } return c; };
+  const textCache = new WeakMap();
+  const textOf = r => { let t = textCache.get(r); if (t === undefined) { t = cellsOf(r).join('').toLowerCase(); textCache.set(r, t); } return t; };
+  const keyCache = new Map(); // col → WeakMap(row → parsed key)
+  const keyOf = (r, col) => {
+    let m = keyCache.get(col);
+    if (!m) { m = new WeakMap(); keyCache.set(col, m); }
+    let k = m.get(r);
+    if (!k) { k = parseCell((cellsOf(r)[col] ?? '').trim()); m.set(r, k); }
+    return k;
+  };
+  const trCache = new WeakMap();
+  const trOf = r => { let tr = trCache.get(r); if (!tr) { tr = renderRow(r); trCache.set(r, tr); } return tr; };
+
+  let rendered = 0;
+  const renderUpTo = n => {
+    const frag = document.createDocumentFragment();
+    const end = Math.min(n, matched.length);
+    for (let i = rendered; i < end; i++) frag.appendChild(trOf(matched[i]));
+    tbody.appendChild(frag);
+    rendered = end;
+    const rest = matched.length - rendered;
+    moreWrap.style.display = rest > 0 ? '' : 'none';
+    if (rest > 0) moreBtn.textContent = `Show ${Math.min(rest, pageSize)} more (${rest} not shown)`;
+  };
+
+  const applySort = () => {
+    if (sortCol < 0) return;
+    const keyed = order.map(r => ({ r, k: keyOf(r, sortCol) }));
+    keyed.sort((a, b) => compareCellKeys(a.k, b.k, sortDir));
+    order = keyed.map(x => x.r);
+  };
+
+  const applyFilter = () => {
+    matched = searchTerm ? order.filter(r => textOf(r).includes(searchTerm)) : order;
+    tbody.textContent = '';
+    rendered = 0;
+    renderUpTo(shown);
+    onFilter?.(matched);
+    tableWrap.dispatchEvent(new CustomEvent('sf:filter', { detail: { rows: matched } }));
+  };
+
+  moreBtn.addEventListener('click', () => { shown += pageSize; renderUpTo(shown); });
+
+  const ths = [...table.querySelectorAll('thead th')];
+  const updateArrows = () => {
+    ths.forEach((th, i) => {
+      const arr = th.querySelector('.sf-arr');
+      if (!arr) return;
+      arr.textContent = sortCol === i ? (sortDir > 0 ? ' ▲' : ' ▼') : ' ⇅';
+      arr.style.opacity = sortCol === i ? '1' : '0.4';
+    });
+  };
+  ths.forEach((th, i) => {
+    if (!th.textContent.trim() || th.dataset.sfOk) return;
+    th.dataset.sfOk = '1';
+    th.style.cursor = 'pointer';
+    th.style.userSelect = 'none';
+    th.appendChild(el('span', { class: 'sf-arr', style: 'margin-left:4px;opacity:0.4;font-size:10px' }, ' ⇅'));
+    th.addEventListener('click', () => {
+      if (sortCol === i) sortDir *= -1; else { sortCol = i; sortDir = 1; }
+      onSortChange?.(sortCol, sortDir);
+      applySort();
+      applyFilter();
+      updateArrows();
+    });
+  });
+
+  let searchTimer;
+  searchInput.addEventListener('input', () => {
+    searchTerm = searchInput.value.toLowerCase();
+    onSearchChange?.(searchInput.value);
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { shown = pageSize; applyFilter(); }, 150);
+  });
+
+  const refresh = () => { applySort(); applyFilter(); updateArrows(); };
+  refresh();
+  return { refresh };
 }
 
 // ── Detach clean-up ───────────────────────────────────────────────────────────

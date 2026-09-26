@@ -1,5 +1,5 @@
 // On-demand loading of heavy third-party libraries that only a few actions
-// need (PDF generation and text extraction, OCR, ZIP downloads). They used to be loaded as
+// need (charts, PDF generation and text extraction, OCR, ZIP downloads). They used to be loaded as
 // render-blocking <script> tags on every page load. Every file is pinned to an
 // exact version. The CSP in index.html lists each of these URLs exactly —
 // changing a version here means updating script-src/worker-src there too.
@@ -11,6 +11,15 @@
 // (importScripts'ed inside its worker) and its language data (fetched by the
 // worker) can't be integrity-checked; both are pinned to exact versions.
 const LIBS = {
+  // Charts (core/charts.js starts this download at import and queues chart
+  // creation until it's in). chart.js has no pre-built .min.js in the npm
+  // package, so jsdelivr would minify it on the fly — bytes that can't be
+  // pinned with a reproducible SRI hash; the unminified UMD build ships as-is.
+  chart: {
+    global: 'Chart',
+    src: 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js',
+    integrity: 'sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG'
+  },
   pdfjs: {
     global: 'pdfjsLib',
     src: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',

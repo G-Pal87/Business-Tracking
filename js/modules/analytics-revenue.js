@@ -1,5 +1,5 @@
 // Revenue Analytics Dashboard — structure · growth · collections · contributors · dynamics
-import { el, fmtDate, drillDownModal, attachSortFilter, openModal } from '../core/ui.js';
+import { el, fmtDate, drillDownModal, attachDataTable, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS } from '../core/config.js';
 import {
@@ -1429,18 +1429,20 @@ function buildRevenueTable(container, { payments, invoices }) {
   TX_COLS.forEach(col => htr.appendChild(mkTh(col)));
   table.appendChild(el('thead', {}, htr));
 
-  const tbody = el('tbody');
-  rows.forEach(r => {
+  // Only the visible page becomes DOM (attachDataTable); the total below
+  // still covers every row.
+  const renderRow = r => {
     const tr = el('tr');
     TX_COLS.forEach(col => tr.appendChild(el('td', { class: col.right ? 'right num' : '' }, r[col.key] ?? '—')));
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
+    return tr;
+  };
+  const cells = r => TX_COLS.map(col => r[col.key] ?? '—');
+  table.appendChild(el('tbody'));
 
   const wrap = el('div', { class: 'table-wrap' });
   wrap.appendChild(table);
   container.appendChild(wrap);
-  attachSortFilter(wrap, { initialCol: _revSortCol, initialDir: _revSortDir, initialSearch: _revSearch, onSortChange: (c, d) => { _revSortCol = c; _revSortDir = d; }, onSearchChange: v => { _revSearch = v; }, pageSize: 200 });
+  attachDataTable(wrap, { rows, cells, renderRow, initialCol: _revSortCol, initialDir: _revSortDir, initialSearch: _revSearch, onSortChange: (c, d) => { _revSortCol = c; _revSortDir = d; }, onSearchChange: v => { _revSearch = v; }, pageSize: 200 });
   container.appendChild(el('div', { style: 'display:flex;justify-content:space-between;margin-top:8px;font-size:13px' },
     el('span', { style: 'color:var(--text-muted)' }, `${rows.length} record(s)`),
     el('strong', { class: 'num' }, `Total: ${formatEUR(rows.reduce((s, r) => s + (r._eur || 0), 0))}`)

@@ -9,6 +9,7 @@ import {
   listActive, listActivePayments,
   resolveExpenseFields, isCapEx, isAccruedInvoice, isDeductibleExpense,
   newId, upsert, softDelete, companyPropIds, isCompanyRecord,
+  derivedCache, memoGet,
   getPersonName, drillRevRows, drillExpRows, drillNetRows, drillRevRowsPnL, drillNetRowsPnL
 } from '../core/data.js';
 import { mkSectionLabel, mkSummaryBox, mkSummaryGrid, mkModalTable, mkVarianceBadge, mkEmptyState, mkKpiCard, mkExplainButton, mkDrillValue, recordOwner, invoiceOwner, ownerShare, groupByMonthKey } from './analytics-helpers.js';
@@ -221,22 +222,18 @@ function resolvedCatKey(e) {
   return fields.costCategory || e.costCategory || e.category || 'other';
 }
 
-// Memoized per (year, owner, scope) and invalidated by any edit (editSeq) or
-// a whole-db swap (identity) — renderCharts() needs every year's figures on
-// each render for the YoY chart, which used to rebuild them all every time.
-let _yearDataCache = { seq: -1, db: null, map: new Map() };
+// Memoized per (year, owner, scope) in a derivedCache — dropped on any edit,
+// db swap, settings swap, sync change to any collection computeYearData reads
+// (directly or through forecastRemainingForYear → generatePaymentSchedule,
+// the owner helpers, companyPropIds), or a new day (today() drives the
+// in-progress year's forecast cut-off). renderCharts() needs every year's
+// figures on each render for the YoY chart.
+const _yearDataCache = derivedCache(
+  ['payments', 'invoices', 'expenses', 'properties', 'forecasts', 'tenants', 'clients', 'people'],
+  () => today());
 function getYearData(year, ownerFilter) {
-  // The memoized listActive() arrays are also compared: sync can change
-  // records in place (e.g. adopting other users' edits after a push) without
-  // an editSeq bump, but it always invalidates those arrays.
-  const src = [listActive('payments'), listActive('invoices'), listActive('expenses')];
-  if (_yearDataCache.seq !== state.editSeq || _yearDataCache.db !== state.db ||
-      !_yearDataCache.src || _yearDataCache.src.some((a, i) => a !== src[i])) {
-    _yearDataCache = { seq: state.editSeq, db: state.db, src, map: new Map() };
-  }
   const key = `${year}|${ownerFilter || ''}|${gScope}`;
-  if (!_yearDataCache.map.has(key)) _yearDataCache.map.set(key, computeYearData(year, ownerFilter));
-  return _yearDataCache.map.get(key);
+  return memoGet(_yearDataCache(), key, () => computeYearData(year, ownerFilter));
 }
 
 // Active payments / invoices / expenses bucketed by the year prefix of the
@@ -245,24 +242,24 @@ function getYearData(year, ownerFilter) {
 // rescan all three collections. Buckets keep listActive() order, so the
 // filtered arrays (and every sum over them) come out exactly as before.
 function yearBuckets() {
-  if (_yearDataCache.byYear) return _yearDataCache.byYear;
-  const yearOf = d => { if (!d) return null; const k = d.indexOf('-'); return k < 0 ? null : d.slice(0, k); };
-  const bucket = (rows, dateOf) => {
-    const m = new Map();
-    for (const r of rows) {
-      const y = yearOf(dateOf(r));
-      if (y === null) continue;
-      const a = m.get(y);
-      if (a) a.push(r); else m.set(y, [r]);
-    }
-    return m;
-  };
-  _yearDataCache.byYear = {
-    pays: bucket(listActivePayments(), p => p.date),
-    invs: bucket(listActive('invoices'), i => i.issueDate || i.date),
-    exps: bucket(listActive('expenses'), e => e.date),
-  };
-  return _yearDataCache.byYear;
+  return memoGet(_yearDataCache(), 'byYear', () => {
+    const yearOf = d => { if (!d) return null; const k = d.indexOf('-'); return k < 0 ? null : d.slice(0, k); };
+    const bucket = (rows, dateOf) => {
+      const m = new Map();
+      for (const r of rows) {
+        const y = yearOf(dateOf(r));
+        if (y === null) continue;
+        const a = m.get(y);
+        if (a) a.push(r); else m.set(y, [r]);
+      }
+      return m;
+    };
+    return {
+      pays: bucket(listActivePayments(), p => p.date),
+      invs: bucket(listActive('invoices'), i => i.issueDate || i.date),
+      exps: bucket(listActive('expenses'), e => e.date),
+    };
+  });
 }
 // Rows of `all` whose date passes inYear(date, year): the year's bucket when
 // `year` is a plain prefix (no '-'), else the original full scan.
@@ -920,15 +917,10 @@ function buildKpiCards(data, year, taxRate) {
 }
 
 
-const CHART_FALLBACK_MSG = 'Chart unavailable — network connection required to load charting library';
-
+// A failed Chart.js load is shown by core/charts.js (its own fallback note).
 function mkChartWrap(id) {
   const w = el('div', { class: 'chart-wrap tall', style: 'position:relative' });
   w.appendChild(el('canvas', { id }));
-  w.appendChild(el('p', {
-    id: `${id}-fallback`,
-    style: 'display:none;text-align:center;color:var(--text-muted);font-size:13px;padding:40px 16px;margin:0;position:absolute;inset:0;display:none;align-items:center;justify-content:center'
-  }, CHART_FALLBACK_MSG));
   return w;
 }
 
@@ -942,16 +934,6 @@ function buildCharts(data, year) {
 }
 
 function renderCharts(data, year, ownerFilter) {
-  if (typeof window.Chart === 'undefined') {
-    CHART_IDS.forEach(id => {
-      const canvas   = document.getElementById(id);
-      const fallback = document.getElementById(`${id}-fallback`);
-      if (canvas)   canvas.style.display = 'none';
-      if (fallback) { fallback.style.display = 'flex'; }
-    });
-    return;
-  }
-
   const allYears   = getDataYears().reverse();
   const yoyCache   = new Map(allYears.map(yr => [yr, getYearData(yr, ownerFilter)]));
   const yoyRevenue = allYears.map(yr => Math.round(yoyCache.get(yr).totalRevenue));

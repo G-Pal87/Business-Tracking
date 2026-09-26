@@ -4,7 +4,7 @@ import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, PROPERTY_STREAMS, PROPERTY_STATUSES } from '../core/config.js';
 import {
   formatEUR, formatMoney, toEUR, byId, getPersonName, getTenantDisplayStatus,
-  listActive, listActivePayments, isCapEx, generatePaymentSchedule,
+  listActive, listActivePayments, paymentsOfProperty, isCapEx, generatePaymentSchedule,
   simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
 } from '../core/data.js';
 import { todayYmd, diffDaysYmd, addDaysYmd } from '../core/dates.js';
@@ -228,8 +228,8 @@ function computeExpectedBookedEUR(prop, start, end) {
   }
   // Materialized rows are frozen copies of bookings already paid — skip them
   // so a paid stay isn't counted twice.
-  return listActivePayments()
-    .filter(p => p.propertyId === prop.id && p.date >= start && p.date <= end && p.status !== 'materialized')
+  return paymentsOfProperty(prop.id)
+    .filter(p => p.date >= start && p.date <= end && p.status !== 'materialized')
     .reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);
 }
 
@@ -640,8 +640,8 @@ function buildCapExImpactSection({ propData, curRange }) {
       windowDays     = Math.min(CAPEX_WINDOW_MAX_DAYS, Math.max(1, periodDays(firstCapExDate, effEnd)));
       const preStart  = addDaysYmd(firstCapExDate, -windowDays);
       const postEnd   = addDaysYmd(firstCapExDate, windowDays - 1);
-      const propPaid  = listActivePayments().filter(p =>
-        p.status === 'paid' && p.propertyId === d.prop.id && (gScope === 'all' || !p.personal));
+      const propPaid  = paymentsOfProperty(d.prop.id).filter(p =>
+        p.status === 'paid' && (gScope === 'all' || !p.personal));
       prePayments  = propPaid.filter(p => p.date >= preStart && p.date < firstCapExDate);
       postPayments = propPaid.filter(p => p.date >= firstCapExDate && p.date <= postEnd);
       preRev  = prePayments.reduce((s, p) => s + toEUR(p.amount, p.currency, p.date), 0);

@@ -1,7 +1,7 @@
 // Shared filter infrastructure for Executive & Revenue dashboards
 import { el, buildMultiSelect, button } from '../core/ui.js';
 import { STREAMS, OWNERS } from '../core/config.js';
-import { listActive, listActivePayments, listActiveClients, byId, getPeopleOwners } from '../core/data.js';
+import { listActive, listActivePayments, listActiveClients, byId, getPeopleOwners, derivedCache, memoGet } from '../core/data.js';
 import { todayYmd, addDaysYmd, addMonthsYmd, addYearsYmd, daysInMonth, diffDaysYmd } from '../core/dates.js';
 import { streamOf, invoiceOwner } from './analytics-helpers.js';
 
@@ -310,6 +310,30 @@ export function makeMatchers(gF) {
   };
 }
 
+// Distinct (propertyId, resolved stream) pairs over all active payments, in
+// order of first occurrence — every filter bar used to resolve the stream of
+// every payment. The stream facet below only looks at a payment's propertyId
+// and stream, so walking the distinct pairs adds exactly the same streams in
+// the same order (a pair passes the filters iff each of its payments does).
+// Rebuilt when payments or properties (property type → stream) change.
+const _payStreamPairsCache = derivedCache(['payments', 'properties']);
+function paymentStreamPairs() {
+  return memoGet(_payStreamPairsCache(), 'pairs', () => {
+    const seen = new Map(); // propertyId → Set(stream)
+    const pairs = [];
+    for (const pay of listActivePayments()) {
+      const s = resolveStream(pay);
+      if (!s) continue;
+      let streams = seen.get(pay.propertyId);
+      if (!streams) { streams = new Set(); seen.set(pay.propertyId, streams); }
+      if (streams.has(s)) continue;
+      streams.add(s);
+      pairs.push({ propertyId: pay.propertyId, stream: s });
+    }
+    return pairs;
+  });
+}
+
 // ── Available filter options (leave-one-out faceting) ─────────────────────────
 // For each dimension, compute available options using ALL OTHER active filters
 // (not the dimension itself), then trim stale selections from gF.
@@ -317,7 +341,6 @@ function computeAvailableOptions(gF, channelScope) {
   const allProps   = channelScope
     ? listActive('properties').filter(p => (p.channel || 'company') === channelScope)
     : listActive('properties');
-  const allPays    = listActivePayments();
   const allInvs    = listActive('invoices').filter(i => i.status !== 'cancelled' && i.status !== 'void');
   const allClients = listActiveClients();
 
@@ -373,10 +396,9 @@ function computeAvailableOptions(gF, channelScope) {
     const s = propStreamKey(p);
     if (s) availStreams.add(s);
   });
-  // From payments
-  allPays.forEach(pay => {
-    const s = resolveStream(pay);
-    if (!s) return;
+  // From payments (distinct propertyId/stream pairs — see paymentStreamPairs)
+  paymentStreamPairs().forEach(pay => {
+    const s = pay.stream;
     if (gF.propertyIds.size > 0 && (!pay.propertyId || !gF.propertyIds.has(pay.propertyId))) return;
     if (gF.owners.size > 0 && pay.propertyId) {
       const ow = ownerOf(pay.propertyId);

@@ -1,5 +1,5 @@
 // Cash Flow Analytics Dashboard — track liquidity
-import { el, buildMultiSelect, button, fmtDate, attachSortFilter, openModal, drillDownModal } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, attachDataTable, openModal, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, OWNERS, COST_CATEGORIES } from '../core/config.js';
 import {
@@ -2199,8 +2199,9 @@ function buildCashFlowTable(container, { payments, invoices, opExpenses, capExpe
   TABLE_COLS.forEach(col => htr.appendChild(mkTh(col)));
   table.appendChild(el('thead', {}, htr));
 
-  const tbody = el('tbody');
-  for (const r of rows) {
+  // One record per payment/invoice/expense in range — only the visible page
+  // becomes DOM (attachDataTable); totals below still cover every row.
+  const renderRow = r => {
     const tr = el('tr', { style: `border-left:3px solid ${BORDER[r._type] || '#6366f1'}` });
     TABLE_COLS.forEach(col => {
       const td = el('td', { class: col.right ? 'right num' : '' });
@@ -2215,14 +2216,16 @@ function buildCashFlowTable(container, { payments, invoices, opExpenses, capExpe
       }
       tr.appendChild(td);
     });
-    tbody.appendChild(tr);
-  }
-  table.appendChild(tbody);
+    return tr;
+  };
+  // Each cell's text exactly as renderRow writes it (sort keys + search).
+  const cells = r => TABLE_COLS.map(col => col.badge ? r.type : col.key === 'date' ? fmtDate(r.date) : (r[col.key] ?? '—'));
+  table.appendChild(el('tbody'));
 
   const tableWrap = el('div', { class: 'table-wrap' });
   tableWrap.appendChild(table);
   container.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _cfSortCol, initialDir: _cfSortDir, initialSearch: _cfSearch, onSortChange: (c, d) => { _cfSortCol = c; _cfSortDir = d; }, onSearchChange: v => { _cfSearch = v; }, pageSize: 200 });
+  attachDataTable(tableWrap, { rows, cells, renderRow, initialCol: _cfSortCol, initialDir: _cfSortDir, initialSearch: _cfSearch, onSortChange: (c, d) => { _cfSortCol = c; _cfSortDir = d; }, onSearchChange: v => { _cfSearch = v; }, pageSize: 200 });
 
   const totalIn  = rows.filter(r => r._type === 'in')   .reduce((s, r) => s + r._eur, 0);
   const totalOp  = rows.filter(r => r._type === 'opex') .reduce((s, r) => s + r._eur, 0);

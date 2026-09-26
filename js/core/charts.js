@@ -1,4 +1,6 @@
 // Chart.js wrappers
+import { loadLib } from './libs.js';
+
 const defaultColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#8b93b0';
 
 const baseOpts = () => ({
@@ -23,6 +25,75 @@ const baseOpts = () => ({
 });
 
 const registry = new Map();
+
+// ── Loading + staggered creation ─────────────────────────────────────────────
+// Chart.js loads on demand (libs.js, pinned URL + SRI) instead of as a <script>
+// every page load has to download before the app boots. The download starts
+// as soon as this module is imported; line()/bar()/doughnut() stay synchronous
+// for their callers — each call queues its chart, and a pump creates queued
+// charts one per animation frame once Chart.js is in, so a view that draws
+// ten charts at once doesn't block the main thread for all ten in one task.
+// destroy()/destroyAll() cancel queued creations too. Only a failed load
+// shows the "Chart unavailable" fallback.
+let _chartLib = null;       // Promise<Chart|null> for the current load attempt
+function chartLib() {
+  if (typeof window.Chart !== 'undefined') return Promise.resolve(window.Chart);
+  if (!_chartLib) {
+    _chartLib = loadLib('chart').catch(err => {
+      console.warn('[BT] Chart.js unavailable:', err?.message || err);
+      _chartLib = null;     // the next chart request retries the download
+      return null;
+    });
+  }
+  return _chartLib;
+}
+try { if (document.head) chartLib(); } catch { /* no DOM (tests) */ }
+
+const pending = new Map();  // id → queued creation { canvas, config }
+const drawn = new Set();    // ids drawn at least once — re-renders skip the entry animation
+let pumping = false;
+
+function queueChart(id, canvas, config) {
+  pending.set(id, { canvas, config });
+  if (!pumping) pump();
+}
+
+async function pump() {
+  pumping = true;
+  try {
+    while (pending.size) {
+      const Chart = await chartLib();
+      if (!Chart) {
+        // Load failed: every chart still queued gets the fallback.
+        for (const { canvas } of pending.values()) if (canvas.isConnected) showChartFallback(canvas);
+        pending.clear();
+        break;
+      }
+      await new Promise(r => requestAnimationFrame(() => r()));
+      const next = pending.entries().next();
+      if (next.done) break;
+      const [id, job] = next.value;
+      pending.delete(id);
+      // The view moved on (navigated away / rebuilt its DOM) before our turn.
+      if (!job.canvas.isConnected) continue;
+      create(Chart, id, job);
+    }
+  } finally {
+    pumping = false;
+  }
+}
+
+function create(Chart, id, { canvas, config }) {
+  clearChartFallback(canvas);
+  if (drawn.has(id)) config.options.animation = false;
+  try {
+    const c = new Chart(canvas.getContext('2d'), config);
+    registry.set(id, c);
+    drawn.add(id);
+  } catch (e) {
+    console.error(e);
+  }
+}
 
 function showChartFallback(canvas) {
   canvas.style.display = 'none';
@@ -50,26 +121,35 @@ function pruneDetached() {
   for (const [id, c] of registry) {
     if (!c.canvas || !c.canvas.isConnected) { try { c.destroy(); } catch { /* already gone */ } registry.delete(id); }
   }
+  for (const [id, job] of pending) if (!job.canvas.isConnected) pending.delete(id);
 }
 
 export function destroy(id) {
+  pending.delete(id);
   const c = registry.get(id);
   if (c) { c.destroy(); registry.delete(id); }
 }
 
+// Called on every navigation (router) — the next view's first draw of each
+// chart animates again; re-renders within a view (destroy(id) + redraw) don't.
 export function destroyAll() {
+  pending.clear();
+  drawn.clear();
   for (const [id, c] of registry) c.destroy();
   registry.clear();
 }
+
+// Default value formatter for bar labels/totals — whole euros, de-DE grouping.
+// One shared formatter: toLocaleString() builds a new Intl.NumberFormat per
+// call, and these labels are formatted for every bar/slice on every frame.
+const DE_NUM = new Intl.NumberFormat('de-DE');
+const fmtEURLabel = v => '€' + DE_NUM.format(Math.round(v));
 
 export function line(id, { labels, datasets, onClickItem }) {
   destroy(id);
   pruneDetached();
   const canvas = document.getElementById(id);
   if (!canvas) return;
-  if (typeof window.Chart === 'undefined') { showChartFallback(canvas); return; }
-  clearChartFallback(canvas);
-  const ctx = canvas.getContext('2d');
   const opts = baseOpts();
   if (onClickItem) {
     opts.onClick = (_e, elements) => {
@@ -79,7 +159,7 @@ export function line(id, { labels, datasets, onClickItem }) {
     };
     canvas.style.cursor = 'pointer';
   }
-  const c = new Chart(ctx, {
+  queueChart(id, canvas, {
     type: 'line',
     data: {
       labels,
@@ -94,11 +174,7 @@ export function line(id, { labels, datasets, onClickItem }) {
     },
     options: opts
   });
-  registry.set(id, c);
 }
-
-// Default value formatter for bar labels/totals — whole euros, de-DE grouping.
-const fmtEURLabel = v => '€' + Math.round(v).toLocaleString('de-DE');
 
 // `formatValue` (optional) formats the drawn value labels and the showTotals
 // footer/labels — defaults to whole euros; pass e.g. v => v.toFixed(0) + '%'
@@ -108,9 +184,6 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
   pruneDetached();
   const canvas = document.getElementById(id);
   if (!canvas) return;
-  if (typeof window.Chart === 'undefined') { showChartFallback(canvas); return; }
-  clearChartFallback(canvas);
-  const ctx = canvas.getContext('2d');
   const opts = baseOpts();
   if (stacked) { opts.scales.x.stacked = true; opts.scales.y.stacked = true; }
   if (horizontal) {
@@ -187,7 +260,7 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
   // deliberately skipped for stacked charts.
   if (!stacked) localPlugins.push(valueLabelsPlugin(horizontal, formatValue));
 
-  const c = new Chart(ctx, {
+  queueChart(id, canvas, {
     type: 'bar',
     data: {
       labels,
@@ -196,7 +269,6 @@ export function bar(id, { labels, datasets, stacked = false, horizontal = false,
     options: opts,
     plugins: localPlugins
   });
-  registry.set(id, c);
 }
 
 // Slice amount labels — drawn directly on each big-enough doughnut/pie wedge
@@ -229,7 +301,7 @@ function sliceLabelsPlugin() {
         if (pct < 4) return; // too thin a wedge to label legibly
         const angle = (arc.startAngle + arc.endAngle) / 2;
         const radius = (arc.innerRadius + arc.outerRadius) / 2;
-        g.fillText('€' + Math.round(val).toLocaleString('de-DE'), arc.x + Math.cos(angle) * radius, arc.y + Math.sin(angle) * radius);
+        g.fillText(fmtEURLabel(val), arc.x + Math.cos(angle) * radius, arc.y + Math.sin(angle) * radius);
       });
       g.restore();
     }
@@ -297,9 +369,6 @@ export function doughnut(id, { labels, data, colors, onClickItem }) {
   pruneDetached();
   const canvas = document.getElementById(id);
   if (!canvas) return;
-  if (typeof window.Chart === 'undefined') { showChartFallback(canvas); return; }
-  clearChartFallback(canvas);
-  const ctx = canvas.getContext('2d');
   const opts = baseOpts();
   delete opts.scales;
   opts.cutout = '65%';
@@ -313,7 +382,7 @@ export function doughnut(id, { labels, data, colors, onClickItem }) {
     };
     canvas.style.cursor = 'pointer';
   }
-  const c = new Chart(ctx, {
+  queueChart(id, canvas, {
     type: 'doughnut',
     data: {
       labels,
@@ -327,5 +396,4 @@ export function doughnut(id, { labels, data, colors, onClickItem }) {
     options: opts,
     plugins: [sliceLabelsPlugin()]
   });
-  registry.set(id, c);
 }
