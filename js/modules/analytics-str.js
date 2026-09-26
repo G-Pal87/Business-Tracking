@@ -2,7 +2,7 @@
 import { el, openModal, fmtDate, drillDownModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { state } from '../core/state.js';
-import { formatEUR, toEUR, listActive, listActivePayments, byId, isReservationNight, companyPropIds, isCompanyRecord } from '../core/data.js';
+import { formatEUR, toEUR, listActive, listActivePayments, byId, isReservationNight, companyPropIds, isCompanyRecord, derivedCache, memoGet } from '../core/data.js';
 import { todayYmd, addDaysYmd, parseYmd, utcYmd, diffDaysYmd } from '../core/dates.js';
 import { isOwnerBlockSummary } from '../core/ical.js';
 import {
@@ -88,21 +88,39 @@ function getPaymentsInRange(start, end, propIds) {
 // ── Per-render caches ─────────────────────────────────────────────────────────
 // Paid STR payments grouped by property, plus lazily-built per-property
 // occupancy sets and ADR suggesters — rebuilt only when the data changes
-// (state.db identity / state.editSeq / the memoized payments array), instead
-// of rescanning every payment once per property per helper on every render.
-let _strCache = null;
+// (derivedCache: db swap / any edit / settings swap / the memoized payments
+// array), instead of rescanning every payment once per property per helper
+// on every render.
+const _strCacheD = derivedCache(['payments']);
 function strCache() {
-  const pays = listActivePayments();
-  if (_strCache && _strCache.db === state.db && _strCache.seq === state.editSeq && _strCache.pays === pays) return _strCache;
-  const paidByProp = new Map();
-  for (const p of pays) {
-    if (p.stream !== 'short_term_rental' || p.status !== 'paid' || !p.propertyId) continue;
-    let arr = paidByProp.get(p.propertyId);
-    if (!arr) { arr = []; paidByProp.set(p.propertyId, arr); }
-    arr.push(p);
+  return memoGet(_strCacheD(), 'c', () => {
+    const paidByProp = new Map();
+    for (const p of listActivePayments()) {
+      if (p.stream !== 'short_term_rental' || p.status !== 'paid' || !p.propertyId) continue;
+      let arr = paidByProp.get(p.propertyId);
+      if (!arr) { arr = []; paidByProp.set(p.propertyId, arr); }
+      arr.push(p);
+    }
+    return { paidByProp, occ: new Map(), adr: new Map() };
+  });
+}
+// `rows` grouped by propertyId, each group in `rows` order — so
+// groupByProp(rows).get(id) || [] equals rows.filter(r => r.propertyId === id).
+// Memoized per array (the modal/table builders below are handed the same
+// range-filtered arrays for every property row). Read-only.
+const _byPropMemo = new WeakMap();
+const NO_ROWS = Object.freeze([]);
+function rowsOfProp(rows, propId) {
+  let m = _byPropMemo.get(rows);
+  if (!m) {
+    m = new Map();
+    for (const r of rows) {
+      const a = m.get(r.propertyId);
+      if (a) a.push(r); else m.set(r.propertyId, [r]);
+    }
+    _byPropMemo.set(rows, m);
   }
-  _strCache = { db: state.db, seq: state.editSeq, pays, paidByProp, occ: new Map(), adr: new Map() };
-  return _strCache;
+  return m.get(propId) || NO_ROWS;
 }
 // All paid STR payments of one property (unscoped — physical stays).
 function paidStrPays(propId) {
@@ -928,8 +946,8 @@ function buildComparisonTable(data, curRange) {
   const rows = props.map((p, i) => {
     const rev   = revByProp.get(p.id) || 0;
     const occ   = occByProp.get(p.id) || { pct: 0 };
-    const pPays = payments.filter(pay => pay.propertyId === p.id);
-    const sPays = data.stayPays.filter(pay => pay.propertyId === p.id); // nights/ADR by stay date
+    const pPays = rowsOfProp(payments, p.id);
+    const sPays = rowsOfProp(data.stayPays, p.id); // nights/ADR by stay date
     const nights = sumNights(sPays, data.nightRange);
     const adr   = nights > 0 ? sumNightRevenue(sPays, data.nightRange) / nights : 0;
     const revPct = totalRev > 0 ? rev / totalRev * 100 : 0;
@@ -1363,7 +1381,7 @@ function openRevenueModal(data) {
     ],
     props.map(p => {
       const rev  = revByProp.get(p.id) || 0;
-      const pPays = payments.filter(pay => pay.propertyId === p.id);
+      const pPays = rowsOfProp(payments, p.id);
       return [
         shortName(p.name),
         pPays.length
@@ -1428,7 +1446,7 @@ function openNightsModal(data) {
   }
 
   const rows = props.map(p => {
-    const pPays = payments.filter(pay => pay.propertyId === p.id);
+    const pPays = rowsOfProp(payments, p.id);
     const nights = sumNights(pPays, range);
     return [
       shortName(p.name),
@@ -1489,7 +1507,7 @@ function openADRModal(data) {
       { label: 'Bookings', tip: 'Number of paid payment records for this property in the period.' }
     ],
     props.map(p => {
-      const pPays = data.stayPays.filter(pay => pay.propertyId === p.id); // by stay date
+      const pPays = rowsOfProp(data.stayPays, p.id); // by stay date
       const nights = sumNights(pPays, data.nightRange);
       const adr = nights > 0 ? sumNightRevenue(pPays, data.nightRange) / nights : 0;
       return [
@@ -1600,7 +1618,7 @@ function openTargetModal(data) {
       const rev = revByProp.get(p.id) || 0;
       const propTarget = targetRevByProp.get(p.id) || 0;
       const ach = propTarget > 0 ? (rev / propTarget * 100).toFixed(1) + '%' : '—';
-      const pPays = payments.filter(pay => pay.propertyId === p.id);
+      const pPays = rowsOfProp(payments, p.id);
       return [
         shortName(p.name),
         pPays.length

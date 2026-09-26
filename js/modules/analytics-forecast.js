@@ -269,6 +269,42 @@ function getServicesProjectedItems(range) {
   return items;
 }
 
+// ── Per-render property forecast values ───────────────────────────────────────
+// buildFcMaps and the stream / property breakdowns each need the forecast
+// revenue of every filtered property for every month. They used to resolve it
+// three times over (entries summed, lease fallback looked up, per call);
+// calculateDashboardData now creates one of these per render and hands it to
+// all three, so each (forecast record, property, month) value is resolved once.
+// Keyed by the forecast record object as well (the property breakdown looks
+// forecasts up among type:'property' records only, so it can pick a different
+// record than the others for the same entity/year). Each caller keeps its own
+// loops and summation order, so every total is unchanged.
+// Returns the value, or null for a short-term month with no forecast month
+// record (callers skip those).
+function makePropFcRevenue() {
+  const memo = new Map(); // fc record (or null) → Map("propId|mk" → value)
+  return (prop, fc, y, mk) => {
+    const fcKey = fc || null;
+    let m = memo.get(fcKey);
+    if (!m) { m = new Map(); memo.set(fcKey, m); }
+    const k = prop.id + '|' + mk;
+    if (m.has(k)) return m.get(k);
+    let val;
+    if (prop.type === 'long_term') {
+      val = resolvePropertyMonthRevenue(prop.id, y, mk, fc?.months?.[mk]);
+    } else {
+      const md = fc?.months?.[mk];
+      if (!md) val = null;
+      else {
+        const entries = Array.isArray(md.entries) ? md.entries : [];
+        val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
+      }
+    }
+    m.set(k, val);
+    return val;
+  };
+}
+
 // ── Forecast map builder (filtered, multi-year) ───────────────────────────────
 // Returns:
 //   fcMonthlyRev     Map<"YYYY-MM",        EUR>  — total portfolio forecast revenue per month (properties + services)
@@ -276,7 +312,7 @@ function getServicesProjectedItems(range) {
 //   fcMonthlyExp     Map<"YYYY-MM",        EUR>  — total forecast expenses per month (properties + services)
 //   fcMonthlyPropRev Map<"YYYY-MM",        EUR>  — forecast revenue per month, properties only (excl. services)
 //   fcMonthlyPropExp Map<"YYYY-MM",        EUR>  — forecast expenses per month, properties only (excl. services)
-function buildFcMaps(startY, endY) {
+function buildFcMaps(startY, endY, propFcRevenue = makePropFcRevenue()) {
   const fcMonthlyRev     = new Map();
   const fcPropMonthlyRev = new Map();
   const fcMonthlyExp     = new Map();
@@ -299,7 +335,7 @@ function buildFcMaps(startY, endY) {
         for (let m = 1; m <= 12; m++) {
           const mk = `${y}-${String(m).padStart(2, '0')}`;
           const md = fc?.months?.[mk];
-          const rev = resolvePropertyMonthRevenue(prop.id, y, mk, md);
+          const rev = propFcRevenue(prop, fc, y, mk);
           if (rev > 0) {
             fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
             fcMonthlyPropRev.set(mk, (fcMonthlyPropRev.get(mk) || 0) + rev);
@@ -314,8 +350,9 @@ function buildFcMaps(startY, endY) {
         }
       } else if (fc) {
         Object.entries(fc.months || {}).forEach(([mk, md]) => {
-          const entries = Array.isArray(md.entries) ? md.entries : [];
-          const rev = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
+          // md is fc.months[mk] — the shared value reads the same record.
+          // (A null month record throws on md.expenses below, as before.)
+          const rev = md ? propFcRevenue(prop, fc, y, mk) : 0;
           if (rev > 0) {
             fcMonthlyRev.set(mk, (fcMonthlyRev.get(mk) || 0) + rev);
             fcMonthlyPropRev.set(mk, (fcMonthlyPropRev.get(mk) || 0) + rev);
@@ -376,7 +413,8 @@ function calculateDashboardData(range) {
   const { keys: months } = getMonthKeysForRange(range.start, range.end);
   const startY = parseInt(range.start.slice(0, 4));
   const endY   = parseInt(range.end.slice(0, 4));
-  const { fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp, fcMonthlyPropRev, fcMonthlyPropExp } = buildFcMaps(startY, endY);
+  const propFcRevenue = makePropFcRevenue(); // shared with the breakdowns below
+  const { fcMonthlyRev, fcPropMonthlyRev, fcMonthlyExp, fcMonthlyPropRev, fcMonthlyPropExp } = buildFcMaps(startY, endY, propFcRevenue);
 
   const todayStr = todayYmd();
   months.forEach(m => { m.elapsedFrac = monthElapsedFrac(m.key, range, todayStr); });
@@ -499,8 +537,8 @@ function calculateDashboardData(range) {
     mape = (sumAbsPct / mapeValidMonths.length) * 100;
   }
 
-  const streamBreakdown   = computeStreamBreakdown(actPayments, actInvoices, months);
-  const propertyBreakdown = computePropertyBreakdown(actPayments, months, combinedPropPending);
+  const streamBreakdown   = computeStreamBreakdown(actPayments, actInvoices, months, propFcRevenue);
+  const propertyBreakdown = computePropertyBreakdown(actPayments, months, combinedPropPending, propFcRevenue);
   const blendedRoi        = computeBlendedRoi(monthlyBreakdown, actPayments, fcPropMonthlyRev);
 
   return {
@@ -613,7 +651,7 @@ function computeBlendedRoi(monthlyBreakdown, actPayments, fcPropMonthlyRev) {
   return { blendedRev, blendedExp, blendedNet, totalInvested, roi, monthSource, propBreakdown };
 }
 
-function computeStreamBreakdown(actPayments, actInvoices, months) {
+function computeStreamBreakdown(actPayments, actInvoices, months, propFcRevenue = makePropFcRevenue()) {
   const actByStream = new Map();
   actPayments.forEach(p => {
     const s = resolveStream(p) || 'other';
@@ -643,15 +681,8 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
       const mk = m.key;
       const y  = parseInt(mk.slice(0, 4));
       const fc = fcByEntityYear.get(prop.id + ':' + y);
-      let val;
-      if (prop.type === 'long_term') {
-        val = resolvePropertyMonthRevenue(prop.id, y, mk, fc?.months?.[mk]);
-      } else {
-        const md = fc?.months?.[mk];
-        if (!md) return;
-        const entries = Array.isArray(md.entries) ? md.entries : [];
-        val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
-      }
+      const val = propFcRevenue(prop, fc, y, mk);
+      if (val === null) return; // short-term month with no forecast record
       if (val > 0) addFc(stream, val, m);
     });
   });
@@ -679,7 +710,7 @@ function computeStreamBreakdown(actPayments, actInvoices, months) {
   }).sort((a, b) => b.actRev - a.actRev);
 }
 
-function computePropertyBreakdown(actPayments, months, pendingItems) {
+function computePropertyBreakdown(actPayments, months, pendingItems, propFcRevenue = makePropFcRevenue()) {
   const actByProp = new Map();
   actPayments.forEach(p => {
     if (!p.propertyId) return;
@@ -698,15 +729,8 @@ function computePropertyBreakdown(actPayments, months, pendingItems) {
       const mk = m.key;
       const y  = parseInt(mk.slice(0, 4));
       const fc = fcByEntityYear.get(prop.id + ':' + y);
-      let val;
-      if (prop.type === 'long_term') {
-        val = resolvePropertyMonthRevenue(prop.id, y, mk, fc?.months?.[mk]);
-      } else {
-        const md = fc?.months?.[mk];
-        if (!md) return;
-        const entries = Array.isArray(md.entries) ? md.entries : [];
-        val = entries.length > 0 ? sumForecastEntries(entries) : Number(md.revenue) || 0;
-      }
+      const val = propFcRevenue(prop, fc, y, mk);
+      if (val === null) return; // short-term month with no forecast record
       if (val > 0) {
         fcByProp.set(prop.id, (fcByProp.get(prop.id) || 0) + val);
         fcCmpByProp.set(prop.id, (fcCmpByProp.get(prop.id) || 0) + val * (m.elapsedFrac ?? 1));
@@ -3059,3 +3083,6 @@ function buildWhatIfCard(data) {
   card.appendChild(body);
   return card;
 }
+
+// For scripts/tests (synthetic equivalence checks) — not used by the app.
+export { calculateDashboardData as _calculateDashboardData };

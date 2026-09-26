@@ -3,7 +3,7 @@
 // days can be overlaid from an Airbnb iCal feed.
 import { state } from '../core/state.js';
 import { el, openModal, closeModal, toast, select, input, textarea, button, formRow, fmtDate, confirmDialog } from '../core/ui.js';
-import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney, isReservationNight, derivedCache, memoGet } from '../core/data.js';
+import { listActive, listActivePayments, byId, upsert, softDelete, newId, formatMoney, isReservationNight, derivedCache, memoGet, paymentsOfProperty } from '../core/data.js';
 import { fetchICal, parseICal, mergeBlocksChecked, isOwnerBlockSummary } from '../core/ical.js';
 import { publishSnapshotBranch, fetchBranchFileText, dispatchRepoEvent } from '../core/github.js';
 import { AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
@@ -137,8 +137,7 @@ function historicNightMap(propertyId) {
 
 function buildHistoricNightMap(propertyId) {
   const map = new Map();
-  const rawBookings = listActivePayments().filter(p =>
-    p.propertyId === propertyId &&
+  const rawBookings = paymentsOfProperty(propertyId).filter(p =>
     p.stream === 'short_term_rental' &&
     p.status !== 'materialized' &&          // materialized duplicates a paid record
     checkInOf(p) && checkOutOf(p) &&

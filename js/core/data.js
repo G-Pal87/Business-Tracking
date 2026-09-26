@@ -1,5 +1,5 @@
 // Data layer: CRUD + aggregations + currency conversion
-import { state, markDirty, runBatch } from './state.js';
+import { state, markDirty, runBatch, subscribe } from './state.js';
 import { MASTER_CURRENCY, EXPENSE_CATEGORIES } from './config.js';
 import { today, toast } from './ui.js';
 import { daysInMonth, diffDaysYmd, addMonthsYmd } from './dates.js';
@@ -20,9 +20,23 @@ const _numFmtCache = new Map();
 //
 // Usage: const cache = derivedCache(['payments']);  …  cache().get(key)
 // (call cache() each time — it returns a fresh Map after invalidation).
+//
+// Every instance is registered so a whole-db load can drop them all at once
+// (clearDerivedCaches): the stamp/map of a cache nobody reads again would
+// otherwise pin the previous db (and everything derived from it) in memory.
+const _derivedCaches = new Set();
+export function clearDerivedCaches() {
+  for (const reset of _derivedCaches) reset();
+}
+// setDb() announces a new db with 'data-loaded'. Correctness never depends on
+// this (the stamp already notices the new state.db identity) — it only frees
+// the old generation's memory right away instead of on each cache's next call.
+subscribe(evt => { if (evt === 'data-loaded') clearDerivedCaches(); });
+
 export function derivedCache(collections = [], extraKey = null) {
   let stamp = null;
   let map = new Map();
+  _derivedCaches.add(() => { stamp = null; map = new Map(); });
   return function current() {
     const next = [state.db, state.editSeq, state.db?.settings, extraKey ? extraKey() : null];
     for (const c of collections) next.push(listActive(c));
@@ -59,13 +73,11 @@ function _fxWarn(key, message) {
 export function getFxWarnings() { return [..._fxWarnings]; }
 
 // Sorted configured HUF years, for the nearest-year fallback — rebuilt only
-// when the rate table can have changed (its identity, any edit, a db swap).
-let _hufYears = { rates: null, seq: -1, db: null, sorted: [] };
+// when the rate table can have changed (its identity, any edit, a db swap,
+// a settings swap). Keyed by the yearRates object itself.
+const _hufYearsCache = derivedCache();
 function _sortedHufYears(yearRates) {
-  if (_hufYears.rates !== yearRates || _hufYears.seq !== state.editSeq || _hufYears.db !== state.db) {
-    _hufYears = { rates: yearRates, seq: state.editSeq, db: state.db, sorted: Object.keys(yearRates).map(Number).sort((a, b) => a - b) };
-  }
-  return _hufYears.sorted;
+  return memoGet(_hufYearsCache(), yearRates, () => Object.keys(yearRates).map(Number).sort((a, b) => a - b));
 }
 
 export function toEUR(amount, currency, dateOrYear) {
@@ -973,6 +985,29 @@ export function getTenantDisplayStatus(tenant) {
     return 'terminating';
   }
   return tenant?.status;
+}
+
+// Active payments grouped by propertyId (every payment, keyed by its
+// propertyId value as-is — Map keys compare like ===), each array in
+// listActivePayments() order. So `paymentsByProperty().get(id) || []` holds
+// exactly what `listActivePayments().filter(p => p.propertyId === id)` would,
+// in the same order, without a full scan per property. Shared, read-only:
+// callers must not mutate the Map or its arrays (filter/slice first).
+const _payByPropCache = derivedCache(['payments']);
+export function paymentsByProperty() {
+  return memoGet(_payByPropCache(), 'idx', () => {
+    const byProp = new Map();
+    for (const p of listActivePayments()) {
+      const arr = byProp.get(p.propertyId);
+      if (arr) arr.push(p); else byProp.set(p.propertyId, [p]);
+    }
+    return byProp;
+  });
+}
+const _NO_PAYMENTS = Object.freeze([]);
+// Active payments of one property (see paymentsByProperty) — read-only.
+export function paymentsOfProperty(propertyId) {
+  return paymentsByProperty().get(propertyId) || _NO_PAYMENTS;
 }
 
 // Rent payments (isRentPayment) of every property, by property id then by

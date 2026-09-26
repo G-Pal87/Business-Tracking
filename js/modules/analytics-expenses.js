@@ -1,5 +1,5 @@
 // Expense Analytics Dashboard — understand cost structure
-import { el, buildMultiSelect, button, fmtDate, monthLabel, drillDownModal, attachSortFilter, openModal } from '../core/ui.js';
+import { el, buildMultiSelect, button, fmtDate, monthLabel, drillDownModal, attachSortFilter, attachDataTable, openModal } from '../core/ui.js';
 import * as charts from '../core/charts.js';
 import { STREAMS, COST_CATEGORIES, ACCOUNTING_TYPES } from '../core/config.js';
 import {
@@ -1762,8 +1762,9 @@ function buildExpenseTable(container, { allExp }) {
   TABLE_COLS.forEach(col => htr.appendChild(mkTh(col)));
   table.appendChild(el('thead', {}, htr));
 
-  const tbody = el('tbody');
-  for (const r of rows) {
+  // Only the visible page becomes DOM (attachDataTable); the total below
+  // still covers every row.
+  const renderRow = r => {
     const borderColor = r._capex ? '#f59e0b' : '#ef4444';
     const tr = el('tr', { style: `border-left:3px solid ${borderColor}` });
     TABLE_COLS.forEach(col => {
@@ -1780,14 +1781,15 @@ function buildExpenseTable(container, { allExp }) {
       }
       tr.appendChild(td);
     });
-    tbody.appendChild(tr);
-  }
-  table.appendChild(tbody);
+    return tr;
+  };
+  const cells = r => TABLE_COLS.map(col => r[col.key] ?? '—');
+  table.appendChild(el('tbody'));
 
   const tableWrap = el('div', { class: 'table-wrap' });
   tableWrap.appendChild(table);
   container.appendChild(tableWrap);
-  attachSortFilter(tableWrap, { initialCol: _expTableSortCol, initialDir: _expTableSortDir, initialSearch: _expTableSearch, onSortChange: (c, d) => { _expTableSortCol = c; _expTableSortDir = d; }, onSearchChange: v => { _expTableSearch = v; }, pageSize: 200 });
+  attachDataTable(tableWrap, { rows, cells, renderRow, initialCol: _expTableSortCol, initialDir: _expTableSortDir, initialSearch: _expTableSearch, onSortChange: (c, d) => { _expTableSortCol = c; _expTableSortDir = d; }, onSearchChange: v => { _expTableSearch = v; }, pageSize: 200 });
 
   const totalEUR = rows.reduce((s, r) => s + (r._eur || 0), 0);
   container.appendChild(el('div', {
