@@ -428,15 +428,35 @@ function openEntryForm(eng, existing, defaultDate) {
     rangeHint.textContent = parts.join(' · ') + '.';
   };
   const dateRow = el('div', { class: 'form-row horizontal' });
+  // Read-only total, recalculated on every change: the days this entry (or
+  // period) will actually log — weekends and already-logged days excluded.
+  const daysI = input({ type: 'text', value: '' });
+  daysI.readOnly = true;
+  daysI.tabIndex = -1;
+  daysI.style.background = 'var(--bg-subtle, transparent)';
+  const updateDaysOff = () => {
+    const amount = Number(amountS.value) || 1;
+    let total = 0;
+    if (isRange()) {
+      const plan = planRange(amount);
+      total = plan.error ? 0 : plan.days.length * amount;
+    } else if (dateI.value) {
+      const keepsOwnDate = existing && existing.date === dateI.value;
+      const others = listActive('timeOff').filter(t => t.engagementId === eng.id && t.id !== en.id && t.date === dateI.value);
+      const fits = sumAmount(others) + amount <= 1 + 1e-9;
+      total = (keepsOwnDate || !isWeekend(dateI.value)) && fits ? amount : 0;
+    }
+    daysI.value = `${fmtDays(total)} day${total === 1 ? '' : 's'}`;
+  };
   const layoutDates = () => {
     dateRow.replaceChildren(...(isRange()
-      ? [formRow('From', dateI), formRow('To', toI), formRow('Amount (each day)', amountS)]
-      : [formRow('Date', dateI), formRow('Amount', amountS)]));
+      ? [formRow('From', dateI), formRow('To', toI), formRow('Amount (each day)', amountS), formRow('Days off', daysI)]
+      : [formRow('Date', dateI), formRow('Amount', amountS), formRow('Days off', daysI)]));
   };
-  const refreshHints = () => { updateInvoicedHint(); updateRangeHint(); };
+  const refreshHints = () => { updateInvoicedHint(); updateRangeHint(); updateDaysOff(); };
   dateI.onchange = () => { if (isRange() && (!toI.value || toI.value < dateI.value)) toI.value = dateI.value; refreshHints(); };
   toI.onchange = refreshHints;
-  amountS.onchange = updateRangeHint;
+  amountS.onchange = () => { updateRangeHint(); updateDaysOff(); };
   periodS.onchange = () => { layoutDates(); refreshHints(); };
   layoutDates();
   refreshHints();
