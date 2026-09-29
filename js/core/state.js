@@ -127,12 +127,47 @@ export function runBatch(fn) {
   return result;
 }
 
+// ── Per-collection data revisions ──────────────────────────────────────────
+// Derived-data caches (data.js derivedCache) stamp themselves with the
+// revision of each collection they read, so an edit to one collection only
+// invalidates the caches that read it. One global, monotonic sequence:
+// a scoped bump (markDirty('payments'), invalidateActiveCache('payments'))
+// records the new value for that collection only; an unscoped bump
+// (markDirty(), invalidateActiveCache(), setDb) records it in _revAll, which
+// every collection — and 'settings', which only ever moves with an unscoped
+// bump — inherits. So anything that doesn't name exactly one collection keeps
+// the old "every cache is dropped" behaviour.
+let _revSeq = 0;
+state._rev = new Map();   // collection → seq of its last scoped bump
+state._revAll = 0;        // seq of the last unscoped bump
+state._editSeqSeen = 0;   // editSeq as of the last markDirty/setDb (see dataRev)
+
+function bumpRev(collection) {
+  const seq = ++_revSeq;
+  if (typeof collection === 'string' && collection) state._rev.set(collection, seq);
+  else state._revAll = seq;
+}
+
+// Current revision of `collection` ('settings' for the settings object).
+// Changes whenever that collection may have changed. Safety net: editSeq
+// moved without going through markDirty (a direct state.editSeq bump
+// elsewhere) → treated as an unscoped edit.
+export function dataRev(collection) {
+  if ((state.editSeq || 0) !== state._editSeqSeen) {
+    state._editSeqSeen = state.editSeq || 0;
+    bumpRev();
+  }
+  const own = state._rev.get(collection) || 0;
+  return own > state._revAll ? own : state._revAll;
+}
+
 // Invalidate the cached active-record list(s). Pass a collection name to clear
 // just that one, or omit to clear all. Used by mutators that bypass markDirty
 // (e.g. github sync adopting remote records).
 export function invalidateActiveCache(collection) {
   if (collection) state._activeCache.delete(collection);
   else state._activeCache.clear();
+  bumpRev(collection);
 }
 
 export function setDb(db) {
@@ -158,6 +193,9 @@ export function setDb(db) {
   state._activeCache = new Map();
   state.dirty = false;
   state.editSeq = 0;
+  state._editSeqSeen = 0;
+  state._rev = new Map();
+  bumpRev();
   notify('data-loaded');
 }
 
@@ -168,14 +206,20 @@ export function setDb(db) {
 // if that push fails.
 //
 // `collection` (optional): the one collection this edit touched — only its
-// cached active list is dropped. Omit it (or pass anything but a string)
-// whenever the edit touched more than one collection, a plain field such as
-// settings, or you aren't sure: every cached list is dropped, as before.
+// cached active list and the derived caches that read it are dropped. Omit it
+// (or pass anything but a string) whenever the edit touched more than one
+// collection, a plain field such as settings, or you aren't sure: every cached
+// list and every derived cache is dropped, as before.
 export function markDirty(collection) {
   state.dirty = true;
+  // A direct editSeq bump nobody paired with markDirty (the safety net in
+  // dataRev) must not be swallowed by this call's _editSeqSeen update.
+  if ((state.editSeq || 0) !== state._editSeqSeen) bumpRev();
   state.editSeq = (state.editSeq || 0) + 1;
+  state._editSeqSeen = state.editSeq;
   if (typeof collection === 'string' && collection) state._activeCache.delete(collection);
   else state._activeCache.clear();
+  bumpRev(collection);
   notify('dirty');
 }
 

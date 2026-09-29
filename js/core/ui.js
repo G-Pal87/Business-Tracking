@@ -617,12 +617,17 @@ export function attachSortFilter(tableWrap, { placeholder = 'Filter rows…', in
 //              every matching row (all pages), in display order. The
 //              tableWrap also gets an 'sf:filter' event whose detail.rows is
 //              the same array.
+//   initialShown / onShownChange(n) optional: how many matching rows are
+//              rendered to start with (default pageSize) and a callback on
+//              every change ("Show more", reset to pageSize by a search), so
+//              a caller that rebuilds the table (e.g. after an inline edit)
+//              can keep the rows the user had already paged in.
 // Sorting re-orders the current order stably, like the DOM version (which
 // re-appends the rows it finds in the <tbody>), so ties keep the previous
 // sort's order. Returns { refresh }.
-export function attachDataTable(tableWrap, { rows, cells, renderRow, placeholder = 'Filter rows…', initialCol = -1, initialDir = 1, initialSearch = '', onSortChange = null, onSearchChange = null, onFilter = null, pageSize = 200 } = {}) {
+export function attachDataTable(tableWrap, { rows, cells, renderRow, placeholder = 'Filter rows…', initialCol = -1, initialDir = 1, initialSearch = '', onSortChange = null, onSearchChange = null, onFilter = null, pageSize = 200, initialShown = 0, onShownChange = null } = {}) {
   let sortCol = initialCol, sortDir = initialDir, searchTerm = initialSearch.toLowerCase();
-  let shown = pageSize;
+  let shown = initialShown > pageSize ? initialShown : pageSize;
   let order = rows.slice();
   let matched = order;
 
@@ -682,7 +687,7 @@ export function attachDataTable(tableWrap, { rows, cells, renderRow, placeholder
     tableWrap.dispatchEvent(new CustomEvent('sf:filter', { detail: { rows: matched } }));
   };
 
-  moreBtn.addEventListener('click', () => { shown += pageSize; renderUpTo(shown); });
+  moreBtn.addEventListener('click', () => { shown += pageSize; onShownChange?.(shown); renderUpTo(shown); });
 
   const ths = [...table.querySelectorAll('thead th')];
   const updateArrows = () => {
@@ -713,7 +718,7 @@ export function attachDataTable(tableWrap, { rows, cells, renderRow, placeholder
     searchTerm = searchInput.value.toLowerCase();
     onSearchChange?.(searchInput.value);
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { shown = pageSize; applyFilter(); }, 150);
+    searchTimer = setTimeout(() => { shown = pageSize; onShownChange?.(shown); applyFilter(); }, 150);
   });
 
   const refresh = () => { applySort(); applyFilter(); updateArrows(); };

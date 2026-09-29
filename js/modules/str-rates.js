@@ -126,7 +126,7 @@ function staysOverlap(ci1, co1, ci2, co2) {
 // than a merge. Keep the one with the larger amount: a spuriously-shrunk
 // duplicate can never outrank the real total by claiming to be bigger, so
 // this can't be gamed into hiding the true figure.
-// Memoized per property until any edit, sync or db swap (derivedCache) —
+// Memoized per property until a payments edit, sync or db swap (derivedCache) —
 // the STR Daily Rates view needs it several times per rerender (calendar,
 // analysis, gap banner) and the sidebar badge (countUnresolvedGapNights) on
 // every edit. Callers only read the returned Map and its values.

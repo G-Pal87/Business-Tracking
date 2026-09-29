@@ -222,8 +222,8 @@ function resolvedCatKey(e) {
   return fields.costCategory || e.costCategory || e.category || 'other';
 }
 
-// Memoized per (year, owner, scope) in a derivedCache — dropped on any edit,
-// db swap, settings swap, sync change to any collection computeYearData reads
+// Memoized per (year, owner, scope) in a derivedCache — dropped on an unscoped
+// edit, db swap, settings swap, edit/sync change to any collection computeYearData reads
 // (directly or through forecastRemainingForYear → generatePaymentSchedule,
 // the owner helpers, companyPropIds), or a new day (today() drives the
 // in-progress year's forecast cut-off). renderCharts() needs every year's
