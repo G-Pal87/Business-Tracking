@@ -84,6 +84,8 @@ Pages is deployed by `.github/workflows/pages.yml` (Settings → Pages → Sourc
 ## GitHub Storage
 
 Data lives in `data/db.json` inside a GitHub repo. The app reads/writes it via the GitHub Contents API using a Personal Access Token (PAT).
+It (and the encrypted attachments) can be moved from `main` to a separate `data` branch
+so app saves stop growing `main`'s history — see [docs/data-branch.md](docs/data-branch.md).
 
 ### Setup (first time)
 

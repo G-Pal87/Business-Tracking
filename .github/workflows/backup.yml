@@ -36,18 +36,48 @@ jobs:
             //    CDN (download_url) can lag behind a fresh push, so a backup
             //    read through it could silently capture a stale version.
             const { data: repoInfo } = await github.rest.repos.get({ owner, repo });
-            const branch = repoInfo.default_branch;
+            // The data (db.json AND backups/) lives on the branch named by the
+            // bootstrap config on the Pages/default branch - main itself until
+            // it is moved to its own branch (docs/data-branch.md). Both the
+            // read below and the backup write/trim use that branch. Same
+            // name rules as the app (js/core/github.js) and data-location.py.
+            const pagesBranch = repoInfo.default_branch;
+            let branch = pagesBranch;
+            let dbPath = 'data/db.json';
+            try {
+              const { data: cf } = await github.rest.repos.getContent({ owner, repo, path: 'data/github-config.json', ref: pagesBranch });
+              const cfg = JSON.parse(Buffer.from(cf.content, 'base64').toString('utf8'));
+              const BRANCH_RE = /^(?!\/)(?!.*\/\/)(?!.*\.\.)(?!.*\/$)(?!.*\.lock$)[A-Za-z0-9._\/-]{1,100}$/;
+              const PATH_RE = /^(?!\/)(?!.*\/\/)(?!.*\.\.)[A-Za-z0-9._\/-]{1,200}\.json$/;
+              const b = cfg.branch === undefined ? 'main' : cfg.branch;
+              const p = cfg.path === undefined ? 'data/db.json' : cfg.path;
+              if (`${cfg.owner}/${cfg.repo}`.toLowerCase() !== `${owner}/${repo}`.toLowerCase()) {
+                core.warning('data/github-config.json names another repository - backing up the default branch.');
+              } else if (typeof b === 'string' && BRANCH_RE.test(b) && typeof p === 'string' && PATH_RE.test(p)) {
+                branch = b;
+                dbPath = p;
+              } else {
+                core.setFailed('data/github-config.json has a malformed branch/path - not guessing where the data is.');
+                return;
+              }
+            } catch (e) {
+              if (e.status !== 404) {
+                core.setFailed(`Could not read data/github-config.json: ${e.message}`);
+                return;
+              }
+            }
+            core.info(`Data branch: ${branch} (${dbPath})`);
             const { data: br } = await github.rest.repos.getBranch({ owner, repo, branch });
             const commitSha = br.commit.sha;
             let meta;
             try {
-              ({ data: meta } = await github.rest.repos.getContent({ owner, repo, path: 'data/db.json', ref: commitSha }));
+              ({ data: meta } = await github.rest.repos.getContent({ owner, repo, path: dbPath, ref: commitSha }));
             } catch (e) {
-              core.setFailed(`Failed to read data/db.json: ${e.message}`);
+              core.setFailed(`Failed to read ${dbPath} on ${branch}: ${e.message}`);
               return;
             }
             if (Array.isArray(meta) || meta.type !== 'file' || !meta.sha) {
-              core.setFailed('data/db.json is not a file');
+              core.setFailed(`${dbPath} is not a file`);
               return;
             }
             const { data: blob } = await github.rest.git.getBlob({ owner, repo, file_sha: meta.sha });

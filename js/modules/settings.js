@@ -1,7 +1,7 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, attachSortFilter, fmtDate } from '../core/ui.js';
-import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile } from '../core/github.js';
+import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile, assertDataLocationPresent } from '../core/github.js';
 import { canDecryptWith, setRotationPending, isRotationPending, hasPreviousKeys, supportsCompression } from '../core/crypto.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64, generateDebugKey, installDebugKey, exportActiveDebugKeyBase64, hasDebugKeyConfigured, isDebugKeyUnlocked, encryptJsonWithDebugKey } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
@@ -118,10 +118,18 @@ function githubStatusBadge(g) {
   return el('span', { class: 'badge' }, 'Configured');
 }
 
+// The branch GitHub Pages builds the site from (.github/workflows/pages.yml
+// deploys `main`). The bootstrap config is read by every device from the
+// Pages site, so it must be written HERE — not to the data branch
+// (state.github.branch), which Pages never sees once the data lives on its
+// own branch (docs/data-branch.md). A constant, not a config field: the
+// privacy guard only allows owner/repo/branch/path in this file.
+const PAGES_BRANCH = 'main';
+
 async function pushBootstrapConfig({ owner, repo, branch, path }) {
   const content = JSON.stringify({ owner, repo, branch, path }, null, 2);
   const b64 = btoa(unescape(encodeURIComponent(content)));
-  await uploadGithubFile('data/github-config.json', b64, 'Update GitHub bootstrap config');
+  await uploadGithubFile('data/github-config.json', b64, 'Update GitHub bootstrap config', { branch: PAGES_BRANCH });
 }
 
 function buildGithubCard() {
@@ -209,14 +217,25 @@ function buildGithubCard() {
     saveBtn.textContent = 'Saving\u2026';
     try {
       const db = await fetchDb();
+      // fetchDb follows a data move announced by the bootstrap config (a 404
+      // on the branch typed here) — record where the data was actually read
+      // from, so neither db.appConfig nor the bootstrap config ever points at
+      // a branch without db.json.
+      const readBranch = state.github.branch || branch;
+      const readPath   = state.github.dbPath || dbPath;
+      if (readBranch !== branch || readPath !== dbPath) {
+        branchI.value = readBranch;
+        dbPathI.value = readPath;
+        toast(`The data now lives on branch "${readBranch}" (${readPath}) — using that instead.`, 'info', 6000);
+      }
       // Preserve the config we just set in the fetched db before calling setDb
       if (!db.appConfig) db.appConfig = {};
-      db.appConfig.github = { owner, repo, branch, path: dbPath };
+      db.appConfig.github = { owner, repo, branch: readBranch, path: readPath };
       setDb(db);
       saveLocalCache(state.db);
       markDirty(); // push db.appConfig.github to GitHub
       // Push bootstrap config (no token) so new devices can auto-configure
-      pushBootstrapConfig({ owner, repo, branch, path: dbPath }).catch(() => {});
+      pushBootstrapConfig({ owner, repo, branch: readBranch, path: readPath }).catch(() => {});
       toast('Connected! Data loaded from GitHub.', 'success');
       setTimeout(() => navigate('settings'), 250);
     } catch (e) {
@@ -2719,6 +2738,7 @@ async function listBackupFiles(backupPath) {
   const headers = { 'Accept': 'application/vnd.github+json' };
   if (token) headers['Authorization'] = `token ${token}`;
   const cleanPath = backupPath.replace(/^\/+|\/+$/g, '');
+  assertDataLocationPresent(owner, repo, branch, cleanPath); // see listGithubFolder
   const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
   let topItems;
   try {
