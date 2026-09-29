@@ -227,6 +227,9 @@ async function writeCfg() {
     branch: state.github.branch,
     path:   state.github.dbPath
   };
+  // Only a pin for the repo this device now uses is worth keeping.
+  if (_pin && pinRepoMatches(_pin.owner, _pin.repo)) cfg.pin = { ..._pin };
+  else _pin = null;
   const token = state.github.token || '';
   if (token && isUnlocked()) {
     try {
@@ -250,7 +253,142 @@ export function loadConfig() {
   state.github.branch = cfg.branch || 'main';
   state.github.dbPath = cfg.path   || 'data/db.json';
   state.github.token  = cfg.token  || '';
+  _pin = validPin(cfg.pin);
 }
+
+// ── Data location moves (docs/data-branch.md) ────────────────────────────────
+// The data (db.json + attachments) can be moved to another branch of the SAME
+// repository by updating the Pages-hosted bootstrap config
+// (data/github-config.json on the Pages branch) and deleting db.json from the
+// old branch. Devices follow on their own: a 404 for db.json makes fetchDb()
+// re-read the bootstrap config and, if it names another branch/path of this
+// same owner/repo, switch to it once and retry (followBootstrapMove).
+//
+// A location adopted that way is "pinned": db.appConfig.github inside the
+// encrypted db still names the old branch until the next push rewrites it, and
+// applyDbConfig() would otherwise switch the device straight back after every
+// load. While the pin matches this device's current location, applyDbConfig
+// leaves branch/path alone, and doPushDb writes the pinned branch/path into
+// the pushed appConfig.github. An explicit choice (Settings save, setup link,
+// Disconnect) clears the pin. Nothing is pinned while the data stays where it
+// is, so none of this changes behaviour until a move actually happens.
+const BOOTSTRAP_URL = 'data/github-config.json';
+const DEFAULT_DB_PATH = 'data/db.json';
+const BRANCH_NAME_RE = /^(?!\/)(?!.*\/\/)(?!.*\.\.)(?!.*\/$)(?!.*\.lock$)[A-Za-z0-9._\/-]{1,100}$/;
+const DB_PATH_RE     = /^(?!\/)(?!.*\/\/)(?!.*\.\.)[A-Za-z0-9._\/-]{1,200}\.json$/;
+const MAX_MOVES_PER_SESSION = 1; // never ping-pong between locations
+let _pin = null;                  // { owner, repo, branch, path } — see above
+let _movesThisSession = 0;
+// `${owner}/${repo}@${branch}:${path}` of a db.json the last read/push found
+// missing (404). Attachment uploads/deletes to that location are refused: a
+// tab that hasn't followed a move yet must not scatter files onto the old
+// branch. Cleared by the next successful read.
+let _dbMissingTarget = null;
+
+const sameName = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
+function pinRepoMatches(owner, repo) {
+  return sameName(owner, state.github.owner) && sameName(repo, state.github.repo);
+}
+function validPin(p) {
+  if (!p || typeof p !== 'object') return null;
+  const { owner, repo, branch, path } = p;
+  if (typeof owner !== 'string' || !owner || typeof repo !== 'string' || !repo) return null;
+  if (typeof branch !== 'string' || !BRANCH_NAME_RE.test(branch)) return null;
+  if (typeof path !== 'string' || !DB_PATH_RE.test(path)) return null;
+  return { owner, repo, branch, path };
+}
+// True while this device sits exactly at the location it adopted from the
+// bootstrap config.
+function pinIsCurrent() {
+  return !!_pin && pinRepoMatches(_pin.owner, _pin.repo) &&
+    _pin.branch === (state.github.branch || 'main') && _pin.path === (state.github.dbPath || DEFAULT_DB_PATH);
+}
+const locationKey = (owner, repo, branch, path) => `${owner}/${repo}@${branch || 'main'}:${path}`;
+
+function dbNotFoundError(moved) {
+  const err = new Error(moved
+    ? 'db.json not found on this branch — the data has moved; switched to the new location, will retry automatically. Your changes are kept locally.'
+    : 'db.json not found in repo. Create data/db.json first.');
+  err.code = 'DB_NOT_FOUND';
+  return err;
+}
+
+async function readBootstrapConfig() {
+  try {
+    // Same file app.js Phase 1.5 reads: served by GitHub Pages from the
+    // Pages branch, never from the data branch. no-store: a move must be seen.
+    const res = await ghFetch(BOOTSTRAP_URL, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const cfg = await res.json();
+    return cfg && typeof cfg === 'object' && !Array.isArray(cfg) ? cfg : null;
+  } catch { return null; }
+}
+
+/**
+ * Called after db.json came back 404 at `from` ({owner, repo, branch, dbPath}).
+ * Switches state.github to the bootstrap config's branch/path when — and only
+ * when — it names the SAME owner/repo but a different, well-formed location,
+ * this device still points at `from`, and no move happened yet this session.
+ * Returns true when state.github now points somewhere other than `from`.
+ */
+async function followBootstrapMove(from) {
+  const cfg = await readBootstrapConfig();
+  if (!cfg) return false;
+  const g = state.github;
+  // Never switch repositories: the bootstrap is trusted only for a branch/path
+  // inside the repo this device is already configured for.
+  if (!sameName(cfg.owner, from.owner) || !sameName(cfg.repo, from.repo)) return false;
+  if (!sameName(g.owner, from.owner) || !sameName(g.repo, from.repo)) return false;
+  const branch = cfg.branch === undefined ? 'main' : cfg.branch;
+  const path   = cfg.path   === undefined ? DEFAULT_DB_PATH : cfg.path;
+  if (typeof branch !== 'string' || !BRANCH_NAME_RE.test(branch)) return false;
+  if (typeof path !== 'string' || !DB_PATH_RE.test(path)) return false;
+  if (branch === from.branch && path === from.dbPath) return false; // bootstrap agrees: really missing
+  if ((g.branch || 'main') === branch && (g.dbPath || DEFAULT_DB_PATH) === path) return true; // a concurrent call moved already
+  if ((g.branch || 'main') !== from.branch || (g.dbPath || DEFAULT_DB_PATH) !== from.dbPath) return false; // changed meanwhile
+  if (_movesThisSession >= MAX_MOVES_PER_SESSION) return false;
+  _movesThisSession++;
+  console.warn(`[BT] db.json is gone from ${from.branch}:${from.dbPath}; the bootstrap config says the data now lives at ${branch}:${path} — switching.`);
+  g.branch = branch;
+  g.dbPath = path;
+  _pin = { owner: g.owner, repo: g.repo, branch, path };
+  await writeCfg();
+  return true;
+}
+
+/**
+ * app.js Phase 1.5 (a device with no GitHub settings yet): adopt the
+ * bootstrap config. A location other than the defaults is pinned, so the
+ * db.appConfig.github of a not-yet-rewritten db can't switch it back.
+ */
+export function adoptBootstrapConfig(cfg) {
+  if (!cfg || typeof cfg.owner !== 'string' || !cfg.owner) return;
+  const g = state.github;
+  g.owner  = cfg.owner;
+  g.repo   = typeof cfg.repo === 'string' ? cfg.repo : '';
+  const branch = typeof cfg.branch === 'string' && BRANCH_NAME_RE.test(cfg.branch) ? cfg.branch : 'main';
+  const path   = typeof cfg.path === 'string' && DB_PATH_RE.test(cfg.path) ? cfg.path : DEFAULT_DB_PATH;
+  g.branch = branch;
+  g.dbPath = path;
+  _pin = (branch !== 'main' || path !== DEFAULT_DB_PATH) && g.repo
+    ? { owner: g.owner, repo: g.repo, branch, path } : null;
+}
+
+// Copy-on-write: the appConfig to push, with the pinned branch/path written
+// into github when it still names the old location of this same repo.
+function withPinnedLocation(appConfig) {
+  const gh = appConfig?.github;
+  if (!gh || !pinIsCurrent()) return appConfig;
+  if (!sameName(gh.owner, _pin.owner) || !sameName(gh.repo, _pin.repo)) return appConfig;
+  if ((gh.branch || 'main') === _pin.branch && (gh.path || DEFAULT_DB_PATH) === _pin.path) return appConfig;
+  return { ...appConfig, github: { ...gh, branch: _pin.branch, path: _pin.path } };
+}
+
+/** Test-only: forget pins/moves (each test file is its own process anyway). */
+export function _resetLocationStateForTests() {
+  _pin = null; _movesThisSession = 0; _dbMissingTarget = null;
+}
+export function pinnedLocation() { return _pin ? { ..._pin } : null; }
 
 // Called once the data key is unlocked (after sign-in / key entry): decrypts
 // a stored `tokenEnc`, or encrypts a still-plain token in place.
@@ -280,15 +418,27 @@ export async function adoptStoredToken() {
 // it lives in localStorage only (set via setup link or Settings form).
 export function applyDbConfig(ghCfg) {
   if (!ghCfg) return;
+  // A location adopted from the bootstrap config after a data move wins over
+  // the db's (possibly not yet rewritten) branch/path for the same repo — see
+  // "Data location moves" above. Without a pin this is exactly the old logic.
+  const keepLocation = pinIsCurrent() &&
+    sameName(ghCfg.owner || state.github.owner, _pin.owner) &&
+    sameName(ghCfg.repo || state.github.repo, _pin.repo);
+  // The db now records the pinned location itself: the pin has done its job.
+  // Drop it, so a later deliberate move (made on another device and saved in
+  // the db) is followed again instead of being ignored forever.
+  if (keepLocation && (ghCfg.branch || 'main') === _pin.branch &&
+      (ghCfg.path || DEFAULT_DB_PATH) === _pin.path) _pin = null;
   if (ghCfg.owner)  state.github.owner  = ghCfg.owner;
   if (ghCfg.repo)   state.github.repo   = ghCfg.repo;
-  if (ghCfg.branch) state.github.branch = ghCfg.branch;
-  if (ghCfg.path)   state.github.dbPath = ghCfg.path;
+  if (ghCfg.branch && !keepLocation) state.github.branch = ghCfg.branch;
+  if (ghCfg.path && !keepLocation)   state.github.dbPath = ghCfg.path;
   // ghCfg.token is deliberately ignored — never read tokens from the DB
   writeCfg();
 }
 
 export function saveConfig({ owner, repo, branch, dbPath, token }) {
+  _pin = null; // an explicit choice (Settings, setup link) replaces any adopted location
   state.github.owner  = owner  || '';
   state.github.repo   = repo   || '';
   state.github.branch = branch || 'main';
@@ -314,6 +464,8 @@ export function clearConfig() {
   state.github.lastPushedAt  = null;
   state.github.syncNow       = null;
   _lastFetched = null;
+  _pin = null;
+  _dbMissingTarget = null;
   try { localStorage.removeItem(CFG_LS_KEY); } catch { /* ignore */ }
 }
 
@@ -373,7 +525,7 @@ function rateLimitWaitMs(res) {
 let _syncGen = 0;
 export const syncGeneration = () => _syncGen;
 
-export async function fetchDb({ conditional = false } = {}) {
+export async function fetchDb({ conditional = false, _afterMove = false } = {}) {
   _syncGen++;
   const { owner, repo, branch, dbPath, token } = state.github;
   if (!owner || !repo) throw new Error('GitHub not configured');
@@ -408,6 +560,7 @@ export async function fetchDb({ conditional = false } = {}) {
   state.github.lastFetchUnchanged = false;
   if (res.status === 304 && useEtag) {
     // Unchanged since the last read — same content, same sha.
+    _dbMissingTarget = null; // db.json demonstrably exists here
     state.github.lastFetchUnchanged = true;
     state.github.connected     = true;
     state.github.lastPullOk    = true;
@@ -426,7 +579,19 @@ export async function fetchDb({ conditional = false } = {}) {
   }
 
   if (!res.ok) {
-    if (res.status === 404) throw new Error('db.json not found in repo. Create data/db.json first.');
+    if (res.status === 404) {
+      // Only a 404 — never 401/403/5xx or a network error — can mean the data
+      // moved (docs/data-branch.md): re-read the bootstrap config and, if it
+      // names another branch/path of this same repo, switch and retry ONCE.
+      // The retry happens inside this call, so every caller (boot phases,
+      // background sync, sign-in retries) merges the result and applies any
+      // pending-edit journals exactly as it would any other read.
+      _dbMissingTarget = locationKey(owner, repo, branch, dbPath);
+      if (!_afterMove && await followBootstrapMove({ owner, repo, branch: branch || 'main', dbPath })) {
+        return fetchDb({ _afterMove: true });
+      }
+      throw dbNotFoundError(false);
+    }
     if (res.status === 401) throw new Error(token ? 'GitHub auth failed — token is invalid or expired' : 'GitHub token required — enter a Personal Access Token in Settings → GitHub Storage');
     if (res.status === 403) {
       throw new Error(rateLimitWaitMs(res) > 0 ? 'GitHub rate limit exceeded — try again shortly' : 'GitHub access denied — check token permissions');
@@ -437,6 +602,7 @@ export async function fetchDb({ conditional = false } = {}) {
   const data = await res.json();
   const { sha, content } = data;
   const etag = res.headers.get('etag');
+  _dbMissingTarget = null;
 
   // The Contents API inlines `content` for files up to 1MB; past that it is
   // empty and the file is read by sha through the git blobs API (see doPushDb
@@ -653,6 +819,18 @@ async function doPushDb(message = 'Update data') {
           throw new Error(waitMs > 0 ? 'GitHub rate limit exceeded — try again shortly' : 'GitHub auth failed — check your token');
         }
         if (getRes.status === 401) throw new Error('GitHub auth failed — check your token');
+        if (getRes.status === 404) {
+          // db.json is gone from this branch (e.g. the data moved — see
+          // docs/data-branch.md). Never recreate it here: that would split
+          // the data across two branches. Follow a move if the bootstrap
+          // config names one (doSave's automatic retry then pushes there,
+          // merging against what is actually on the new branch) and fail —
+          // the edits stay in state.db and the local journal.
+          _dbMissingTarget = locationKey(owner, repo, branch, dbPath);
+          _lastFetched = null; // its sha names a file that is gone — no push-first retries against it
+          const moved = await followBootstrapMove({ owner, repo, branch: branch || 'main', dbPath });
+          throw dbNotFoundError(moved);
+        }
         throw new Error(`GitHub fetch failed (${getRes.status})`);
       }
 
@@ -720,6 +898,12 @@ async function doPushDb(message = 'Update data') {
       const { token: _omit, ...ghCfg } = merged.appConfig.github;
       merged.appConfig = { ...merged.appConfig, github: ghCfg };
     }
+    // After a data move, record where the data now lives (no-op without a
+    // pin, i.e. unless this device followed a move — see withPinnedLocation).
+    {
+      const ac = withPinnedLocation(merged.appConfig);
+      if (ac !== merged.appConfig) merged.appConfig = ac;
+    }
 
     // PUT merged content — always encrypted (see the guard at the top).
     // Compressed only once an admin has switched it on (Settings →
@@ -780,7 +964,19 @@ async function doPushDb(message = 'Update data') {
       throw new Error(`Push failed (${putRes.status})`);
     }
 
-    const newSha = (await putRes.json()).content.sha;
+    const putData = await putRes.json();
+    const newSha = putData.content.sha;
+    // Every PUT above names the sha of an EXISTING db.json, so GitHub should
+    // only ever answer 200 (updated). 201 means it created the file — db.json
+    // had been removed from this branch (data moved) and this push brought it
+    // back. Undo that (only after proving the parent commit had no db.json)
+    // and fail like the GET path does.
+    if (putRes.status === 201 && await undoRecreatedDb(apiBase, ghHeaders, branch, dbPath, putData)) {
+      _dbMissingTarget = locationKey(owner, repo, branch, dbPath);
+      _lastFetched = null; // otherwise every doSave retry repeats the push-first PUT → re-create again
+      const moved = await followBootstrapMove({ owner, repo, branch: branch || 'main', dbPath });
+      throw dbNotFoundError(moved);
+    }
     if (merged._newConflicts?.length) {
       const n = merged._newConflicts.length;
       notify('sync-conflicts', merged._newConflicts);
@@ -790,6 +986,7 @@ async function doPushDb(message = 'Update data') {
     }
 
     state.github.sha          = newSha;
+    _dbMissingTarget = null;
     // `merged` becomes the shared read-only snapshot (merge base + sha cache)
     // as-is, with no copies: it is built only from `snapshot` (this push's
     // private clone) and the read-only remote snapshot, and nothing below
@@ -854,6 +1051,44 @@ async function doPushDb(message = 'Update data') {
   const err = new Error(`GitHub was busy (${lastError || 'write contention'}) — will retry automatically`);
   err.code = 'SHA_RETRY_EXHAUSTED';
   throw err;
+}
+
+// A db.json PUT answered 201 (created). True when the parent commit provably
+// had no db.json — then the file this push created is deleted again (by its
+// own blob sha, so nothing newer can be removed). Any doubt (no parent in the
+// response, the check failing) returns false and the push counts as normal:
+// deleting a real db.json would be far worse than a stray copy.
+async function undoRecreatedDb(apiBase, headers, branch, dbPath, putData) {
+  const parent = putData?.commit?.parents?.[0]?.sha;
+  const newSha = putData?.content?.sha;
+  if (!parent || !newSha) return false;
+  let existedBefore;
+  try {
+    const r = await ghFetch(`${apiBase}?ref=${encodeURIComponent(parent)}`, { headers, cache: 'no-store' });
+    if (r.status === 404) existedBefore = false;
+    else if (r.ok) existedBefore = true;
+    else return false;
+  } catch { return false; }
+  if (existedBefore) return false;
+  console.error(`[BT] A push re-created ${dbPath} on ${branch || 'main'}, where it had been removed — removing it again.`);
+  let removed = false;
+  try {
+    const d = await ghFetch(apiBase, {
+      method: 'DELETE', headers,
+      body: JSON.stringify({ message: 'Remove db.json re-created by a stale session', sha: newSha, branch: branch || 'main' })
+    });
+    removed = d.ok;
+  } catch { /* reported below */ }
+  if (!removed) {
+    // The stray copy is still there: devices on this branch would read it and
+    // never follow the move. Fail loudly instead of reporting a clean refusal.
+    console.error(`[BT] Could not remove the re-created ${dbPath} on ${branch || 'main'} — it must be deleted by hand (see docs/data-branch.md).`);
+    const err = new Error(`db.json was re-created on branch "${branch || 'main'}" by this session and could not be removed. Stop using the app on other devices and see docs/data-branch.md (remove that file) before continuing.`);
+    err.code = 'DB_RECREATED';
+    _lastFetched = null;
+    throw err;
+  }
+  return true;
 }
 
 // After a successful push, `merged` (now the remote AND the new merge base)
@@ -1724,15 +1959,23 @@ export function isEncryptedUpload(b64Content) {
  * @param {string} path       - repo-relative path, e.g. "invoices/inv_abc.pdf"
  * @param {string} b64Content - base64-encoded file content (no data-URL prefix)
  * @param {string} message    - commit message
- * @param {{assumeNew?: boolean}} [opts] - assumeNew: the path is freshly
+ * @param {{assumeNew?: boolean, branch?: string}} [opts] - assumeNew: the path is freshly
  *   generated and almost certainly doesn't exist yet, so the first attempt
  *   PUTs without looking up a sha; if the file does exist (409/422), the
  *   next attempt looks it up as usual. Leave unset for overwrites.
+ *   branch: write to this branch instead of the data branch
+ *   (state.github.branch) — only for files that belong to the code/Pages
+ *   branch, i.e. the bootstrap config (settings.js pushBootstrapConfig). The
+ *   encryption rule below is the same either way.
  * @returns {Promise<{sha: string}>}
  */
-export async function uploadGithubFile(path, b64Content, message = 'Upload file', { assumeNew = false } = {}) {
-  const { owner, repo, branch, token } = state.github;
+export async function uploadGithubFile(path, b64Content, message = 'Upload file', { assumeNew = false, branch: branchOverride } = {}) {
+  const { owner, repo, token } = state.github;
+  const branch = branchOverride || state.github.branch;
   if (!owner || !repo || !token) throw new Error('GitHub not configured — add owner/repo/token in Settings');
+  if (branchOverride !== undefined && (typeof branchOverride !== 'string' || !BRANCH_NAME_RE.test(branchOverride))) {
+    throw new Error(`Invalid branch name for upload: ${String(branchOverride)}`);
+  }
 
   // Normalise path: strip any accidental leading slash so files always land
   // inside their intended folder, not the repo root.
@@ -1747,6 +1990,7 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
     err.code = 'NO_ENC_KEY';
     throw err;
   }
+  if (branchOverride === undefined) assertDataLocationPresent(owner, repo, branch, cleanPath);
 
   const headers = {
     'Accept':        'application/vnd.github+json',
@@ -1832,6 +2076,20 @@ export async function uploadGithubFile(path, b64Content, message = 'Upload file'
   throw new Error(`File upload failed after ${ATTEMPTS} attempts (${lastErr}) for path "${cleanPath}"`);
 }
 
+// Attachments live next to db.json. When the last read/push found db.json
+// missing on this exact branch (the data moved and this tab hasn't followed
+// yet), refuse to write or delete attachments there — they would land on, or
+// vanish from, the wrong branch. Writes to another branch (the bootstrap
+// config's explicit override) are unaffected.
+export function assertDataLocationPresent(owner, repo, branch, cleanPath) {
+  if (!_dbMissingTarget) return;
+  if (_dbMissingTarget.startsWith(`${owner}/${repo}@${branch || 'main'}:`)) {
+    const err = new Error(`db.json is missing on branch "${branch || 'main'}" — not changing "${cleanPath}" there. Reload the app; nothing was changed.`);
+    err.code = 'DB_NOT_FOUND';
+    throw err;
+  }
+}
+
 // Chunked (0x8000-byte String.fromCharCode.apply) rather than one string
 // concatenation per byte — see crypto.js bytesToBase64.
 function rawBytesToBase64(bytes) {
@@ -1877,6 +2135,9 @@ export async function listGithubFolder(folderPath) {
   if (token) headers['Authorization'] = `token ${token}`;
 
   const cleanPath = folderPath.replace(/^\/+|\/+$/g, '');
+  // An empty listing from a branch the data has left would make the
+  // attachment checks report every file as missing.
+  assertDataLocationPresent(owner, repo, branch, cleanPath);
   const encodedPath = cleanPath.split('/').map(encodeURIComponent).join('/');
   const res = await ghFetch(
     `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch || 'main')}`,
@@ -1971,6 +2232,7 @@ export async function fetchGithubFileEncrypted(path) {
 export async function deleteGithubFile(path, sha = null, message = 'Delete file') {
   const { owner, repo, branch, token } = state.github;
   if (!owner || !repo || !token) throw new Error('GitHub not configured');
+  assertDataLocationPresent(owner, repo, branch, path.replace(/^\/+/, ''));
 
   const headers = {
     'Accept':        'application/vnd.github+json',

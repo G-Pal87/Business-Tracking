@@ -20,6 +20,9 @@ when it finds:
 Branches with their own rules (only relevant to --all and --branch):
   rates-feed  only exports/daily-rates/*.json, in the documented public schema
   presence    only the three presence/session JSON files, with no secrets
+  data        the app's data once it has its own branch (docs/data-branch.md):
+              the main-branch rules (every data file encrypted), and no app
+              code - only the privacy-guard files may sit next to the data
 
 It never prints file contents - only commit, path and reason - because Actions
 logs of a public repository are public too.
@@ -458,7 +461,21 @@ def check_presence(path, data):
     return json_key_problem(doc)
 
 
-POLICIES = {"rates-feed": check_rates_feed, "presence": check_presence}
+# The data branch holds data files plus the three files that keep its own
+# pushes checked (.github/workflows/privacy-guard.yml, this script and the
+# known-findings list). App code there would be a mistake (a merge of main):
+# it would never be deployed, and the data branch is never merged back.
+DATA_BRANCH_CODE = re.compile(r"^(js|css|assets|scripts|docs|\.githooks|\.claude)/"
+                              r"|^(index\.html|README\.md|CLAUDE\.md|\.gitignore|\.nojekyll)$")
+
+
+def check_data(path, data):
+    if DATA_BRANCH_CODE.search(path):
+        return "app code/docs belong on main, not on the data branch"
+    return check_main(path, data)
+
+
+POLICIES = {"rates-feed": check_rates_feed, "presence": check_presence, "data": check_data}
 
 
 def policy_for(branch):

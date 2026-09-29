@@ -1,5 +1,5 @@
 // Data layer: CRUD + aggregations + currency conversion
-import { state, markDirty, runBatch, subscribe } from './state.js';
+import { state, markDirty, runBatch, subscribe, dataRev } from './state.js';
 import { MASTER_CURRENCY, EXPENSE_CATEGORIES } from './config.js';
 import { today, toast } from './ui.js';
 import { daysInMonth, diffDaysYmd, addMonthsYmd } from './dates.js';
@@ -10,13 +10,19 @@ const _numFmtCache = new Map();
 // ============== Derived-data memo ==============
 // A Map of memoized results that empties itself whenever the data it was
 // derived from may have changed: a whole-db swap (setDb/sync load → new
-// state.db identity), any edit (markDirty → state.editSeq), a settings object
-// swap (sync replaces settings wholesale; FX rates live there), a change of
+// state.db identity), a settings object swap or any unscoped edit (settings
+// revision — FX rates and other settings live there, and every settings
+// write is followed by an unscoped markDirty()/patchSettings()), an edit to
+// any of `collections` (their per-collection revision — state.js dataRev:
+// markDirty(collection) bumps just that one, markDirty() /
+// invalidateActiveCache() with no argument bump them all), a change of
 // `extraKey()` (e.g. today(), for anything that depends on the current date),
-// or a new memoized listActive() array for any of `collections` — sync adopts
-// or replaces records in place WITHOUT an editSeq bump, but always
-// invalidates those arrays (invalidateActiveCache), so they're part of the
-// stamp. Pass every collection the derived value reads.
+// or a new memoized listActive() array for any of `collections`.
+// An edit to a collection NOT listed leaves the cache intact, so pass EVERY
+// collection the derived value reads, directly or through helpers
+// (generatePaymentSchedule → tenants/payments/properties, owner helpers →
+// properties/clients/people, …). toEUR() reads only settings, which every
+// cache already depends on.
 //
 // Usage: const cache = derivedCache(['payments']);  …  cache().get(key)
 // (call cache() each time — it returns a fresh Map after invalidation).
@@ -33,14 +39,28 @@ export function clearDerivedCaches() {
 // the old generation's memory right away instead of on each cache's next call.
 subscribe(evt => { if (evt === 'data-loaded') clearDerivedCaches(); });
 
+// The version stamp of `collections` (plus the db, settings and their
+// revisions) as an array — compare two with sameDataStamp(). For caches that
+// can't be module-level derivedCache instances (e.g. per-view closures).
+export function dataStamp(collections = []) {
+  const out = [state.db, state.db?.settings, dataRev('settings')];
+  for (const c of collections) out.push(dataRev(c), listActive(c));
+  return out;
+}
+export function sameDataStamp(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 export function derivedCache(collections = [], extraKey = null) {
   let stamp = null;
   let map = new Map();
   _derivedCaches.add(() => { stamp = null; map = new Map(); });
   return function current() {
-    const next = [state.db, state.editSeq, state.db?.settings, extraKey ? extraKey() : null];
-    for (const c of collections) next.push(listActive(c));
-    if (!stamp || stamp.length !== next.length || next.some((v, i) => v !== stamp[i])) {
+    const next = dataStamp(collections);
+    next.push(extraKey ? extraKey() : null);
+    if (!sameDataStamp(stamp, next)) {
       stamp = next;
       map = new Map();
     }
@@ -73,8 +93,11 @@ function _fxWarn(key, message) {
 export function getFxWarnings() { return [..._fxWarnings]; }
 
 // Sorted configured HUF years, for the nearest-year fallback — rebuilt only
-// when the rate table can have changed (its identity, any edit, a db swap,
-// a settings swap). Keyed by the yearRates object itself.
+// when the rate table can have changed (its identity, any unscoped edit —
+// every FX-rate write is followed by markDirty() — a db swap, a settings
+// swap). Keyed by the yearRates object itself (a shared frozen stand-in when
+// none is configured, so the key set can't grow per call).
+const _NO_RATES = Object.freeze({});
 const _hufYearsCache = derivedCache();
 function _sortedHufYears(yearRates) {
   return memoGet(_hufYearsCache(), yearRates, () => Object.keys(yearRates).map(Number).sort((a, b) => a - b));
@@ -84,7 +107,7 @@ export function toEUR(amount, currency, dateOrYear) {
   if (!amount) return 0;
   if (currency === 'EUR' || !currency) return Number(amount);
   if (currency === 'HUF') {
-    const yearRates = state.db.settings?.fxRates?.yearRates || {};
+    const yearRates = state.db.settings?.fxRates?.yearRates || _NO_RATES;
     const exactYear = String(dateOrYear || '').slice(0, 4);
     // Fast path: the record's own year has a rate (the table is then
     // necessarily non-empty) — no key listing/sorting per call.
@@ -167,6 +190,10 @@ export function newId(prefix) {
 }
 
 // ============== Generic CRUD ==============
+// Derived caches invalidate per collection (state.js dataRev): upsert/remove
+// bump only `collection`. So never edit a record of ANOTHER collection (or
+// state.db.settings) in place and then rely on this call — call markDirty()
+// with no argument (or upsert that collection too) instead.
 export function upsert(collection, item) {
   if (collection === 'users' && item.role === 'admin') {
     // Defense-in-depth against the trivial self-escalation path (calling
@@ -740,8 +767,8 @@ function _fvaIndex() {
   });
 }
 
-// Memoized per (type, entity, year) until any edit, sync, db swap or date
-// change (the long-term rent fallback reads the rent schedule, which depends
+// Memoized per (type, entity, year) until an edit to a collection it reads
+// (or settings), sync, db swap or date change (the long-term rent fallback reads the rent schedule, which depends
 // on today()). The Forecast views call this (2 × years + 1) × entities times
 // per render. The months array and its rows are frozen (shared between
 // callers, which only read them); each call gets its own outer object.
@@ -1032,8 +1059,8 @@ function _rentPaymentsByProperty() {
 }
 
 // generatePaymentSchedule() is called from many views per render (reconciliation,
-// forecasts, tax, payments, analytics) — memoized per property until any edit,
-// sync, db swap or date change (overdue status and open-ended leases depend
+// forecasts, tax, payments, analytics) — memoized per property until a
+// tenants/payments/properties/settings edit, sync, db swap or date change (overdue status and open-ended leases depend
 // on today()). Keyed on the property object's identity too, so a caller
 // passing an edited copy of a property never gets another object's schedule.
 // Entries are frozen and each call gets its own array, so no caller can
