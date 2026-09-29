@@ -35,6 +35,24 @@ jobs:
         with:
           node-version: "20"
 
+      # db.json lives on the branch named by data/github-config.json (main
+      # until the data is moved to its own branch - docs/data-branch.md).
+      # While that is main this step does nothing.
+      - name: Read db.json from the data branch
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          loc="$(python3 .github/scripts/data-location.py data/github-config.json --repo "$REPO")"
+          branch="$(printf '%s\n' "$loc" | sed -n 's/^branch=//p')"
+          db_path="$(printf '%s\n' "$loc" | sed -n 's/^path=//p')"
+          if [ "$branch" != "main" ] || [ "$db_path" != "data/db.json" ]; then
+            git fetch -q --no-tags --depth=1 origin "refs/heads/$branch"
+            mkdir -p data
+            git show "FETCH_HEAD:$db_path" > data/db.json
+            echo "Using $db_path from $branch"
+          fi
+
       - name: Generate daily-rate feeds
         run: node scripts/export-daily-rates.js
 

@@ -171,12 +171,12 @@ async function boot() {
       const res = await fetch('data/github-config.json', { cache: 'no-store' });
       if (res.ok) {
         const cfg = await res.json();
-        if (cfg.owner) {
-          if (!state.github.owner)  state.github.owner  = cfg.owner;
-          if (!state.github.repo)   state.github.repo   = cfg.repo   || '';
-          if (!state.github.branch) state.github.branch = cfg.branch || 'main';
-          if (!state.github.dbPath) state.github.dbPath = cfg.path   || 'data/db.json';
-        }
+        // owner/repo/branch/path all come from the bootstrap config (loadConfig
+        // had already defaulted branch/path, so they used to stay main /
+        // data/db.json whatever it said). A non-default location is pinned so
+        // an older db.appConfig.github can't switch it back after the first
+        // load — see github.js "Data location moves".
+        if (cfg && cfg.owner && !state.github.owner) github.adoptBootstrapConfig(cfg);
       }
     } catch { /* ignore */ }
   }
@@ -259,10 +259,24 @@ async function boot() {
       db => ({ db, target, gen, pulledAt: state.github.lastPulledAt, sha: state.github.sha }),
       () => null);
   };
+  // Phase 4 waits at most this long for a still-pending early read. A read
+  // that is slow to settle is usually sitting in fetchDb's rate-limit sleep
+  // or network backoff, and has likely failed anyway — waiting it out only
+  // delayed the first sync. An abandoned read's result is never MERGED: this
+  // function has already let go of it, and Phase 4's own fetchDb bumps the
+  // sync generation, so it could not pass the checks below anyway. When it
+  // settles it can still refresh fetchDb's sha cache (and, if fresher, the
+  // merge base) like any overlapping read — harmless: a stale sha only turns
+  // the next push-first PUT into a 409 and the normal GET + merge path.
+  const EARLY_FETCH_WAIT_MS = 3000;
   const takeEarlyFetch = async () => {
     const pending = earlyFetch;
     earlyFetch = null;
-    const early = pending ? await pending : null;
+    let timer = null;
+    const early = pending
+      ? await Promise.race([pending, new Promise(r => { timer = setTimeout(() => r(null), EARLY_FETCH_WAIT_MS); })])
+      : null;
+    clearTimeout(timer);
     // gen: no other read/push even STARTED after this one — a read sent
     // earlier but answered later would otherwise pass the pulledAt/sha check.
     if (early && early.gen === github.syncGeneration() && early.target === fetchTargetKey() &&

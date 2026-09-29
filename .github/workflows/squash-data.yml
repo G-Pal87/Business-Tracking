@@ -1,0 +1,132 @@
+name: Squash data branch
+
+# Once the app's data lives on its own `data` branch (docs/data-branch.md),
+# every save is a commit there (~160KB of new ciphertext each). Once a week
+# the branch is replaced by ONE parentless commit holding its current files,
+# so the history nobody reads (restores use backups/) stops piling up. The
+# files and their blob SHAs - which the app's Contents API writes use - are
+# unchanged, so open tabs keep saving without noticing.
+#
+# Safety:
+#  - Runs only when data/github-config.json on main says the data lives on
+#    the `data` branch and that branch exists and holds db.json. Anything
+#    unexpected (unreadable/malformed config, another branch name, no db.json)
+#    and it does nothing.
+#  - The replace is a force-push with a lease: if the app (or the backup job)
+#    wrote in between, the push is refused and nothing is lost (next week's
+#    run tries again).
+#  - The new tree is checked by the privacy guard before it is pushed.
+#  - The branch keeps the privacy-guard files (so its own pushes are checked):
+#    the guard script and known-findings list are refreshed from main here.
+#    The workflow file itself can't be: a GITHUB_TOKEN may not create or
+#    change files under .github/workflows. The branch's existing copy is kept
+#    and a warning is logged when main's differs - refresh it by hand (see
+#    docs/data-branch.md), or set the optional DATA_SQUASH_TOKEN secret (a
+#    fine-grained PAT for this repository only, Contents + Workflows: write).
+#    If GitHub still refuses the push because of the workflow file, the job
+#    logs a warning and exits without changing anything.
+on:
+  schedule:
+    - cron: '47 4 * * 0'   # Sundays 04:47 UTC (after squash-presence)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-squash
+  cancel-in-progress: false
+
+jobs:
+  squash:
+    runs-on: ubuntu-latest
+    steps:
+      # main: only the guard files and the bootstrap config are needed.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github
+            data/github-config.json
+          sparse-checkout-cone-mode: false
+
+      - name: Replace the data branch with a single commit
+        env:
+          PUSH_TOKEN: ${{ secrets.DATA_SQUASH_TOKEN || secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          main_dir="$PWD"
+          DATA_BRANCH="data"
+          GUARD_FILES=".github/scripts/privacy-guard.py .github/privacy-guard-known.txt"
+          GUARD_WORKFLOW=".github/workflows/privacy-guard.yml"
+
+          # 1. Does the config say the data lives on the data branch?
+          if [ ! -f data/github-config.json ]; then
+            echo "No data/github-config.json on main - nothing to do."; exit 0
+          fi
+          if ! loc="$(python3 .github/scripts/data-location.py data/github-config.json --repo "$REPO" --strict)"; then
+            echo "::warning::data/github-config.json is unreadable or malformed - not squashing."; exit 0
+          fi
+          branch="$(printf '%s\n' "$loc" | sed -n 's/^branch=//p')"
+          db_path="$(printf '%s\n' "$loc" | sed -n 's/^path=//p')"
+          if [ "$branch" != "$DATA_BRANCH" ]; then
+            echo "Data lives on '$branch', not '$DATA_BRANCH' - nothing to do."; exit 0
+          fi
+
+          # 2. Work in a separate, empty repository (main's checkout untouched).
+          work="$RUNNER_TEMP/data-squash"
+          git init -q "$work"
+          cd "$work"
+          git remote add origin "https://x-access-token:${PUSH_TOKEN}@github.com/${REPO}.git"
+          if ! git ls-remote --exit-code origin "refs/heads/$DATA_BRANCH" >/dev/null; then
+            echo "::warning::The config says '$DATA_BRANCH' but the branch doesn't exist - nothing to do."; exit 0
+          fi
+          git fetch -q --no-tags --depth=1 origin "refs/heads/$DATA_BRANCH"
+          tip="$(git rev-parse FETCH_HEAD)"
+          if ! git cat-file -e "${tip}:${db_path}" 2>/dev/null; then
+            echo "::warning::'$DATA_BRANCH' has no $db_path - not touching it."; exit 0
+          fi
+
+          # 3. New tree: the branch's tree without .github, plus main's guard
+          #    script + known list, plus the branch's OWN workflow blob.
+          export GIT_INDEX_FILE="$RUNNER_TEMP/data-squash.index"
+          git read-tree "$tip"
+          git rm -r -q --cached --ignore-unmatch -- .github
+          for f in $GUARD_FILES; do
+            mode="$(env -u GIT_INDEX_FILE git -C "$main_dir" ls-tree HEAD -- "$f" | cut -d' ' -f1)"
+            blob="$(git hash-object -w -- "$main_dir/$f")"
+            git update-index --add --cacheinfo "${mode:-100644},${blob},${f}"
+          done
+          old_wf="$(git rev-parse -q --verify "${tip}:${GUARD_WORKFLOW}" || true)"
+          new_wf="$(git hash-object -- "$main_dir/$GUARD_WORKFLOW")"
+          if [ -n "$old_wf" ]; then
+            git update-index --add --cacheinfo "100644,${old_wf},${GUARD_WORKFLOW}"
+            if [ "$old_wf" != "$new_wf" ]; then
+              echo "::warning::$GUARD_WORKFLOW on '$DATA_BRANCH' differs from main's; kept the branch's copy (a GITHUB_TOKEN can't change workflow files). Refresh it by hand - see docs/data-branch.md."
+            fi
+          else
+            echo "::warning::'$DATA_BRANCH' has no $GUARD_WORKFLOW, so its pushes are not checked (the daily scan still is). Add it by hand - see docs/data-branch.md."
+          fi
+          tree="$(git write-tree)"
+          unset GIT_INDEX_FILE
+
+          # (depth=1: the parent isn't fetched, but the raw commit still names it)
+          parents="$(git cat-file -p "$tip" | sed -n 's/^parent //p')"
+          if [ -z "$parents" ] && [ "$tree" = "$(git rev-parse "${tip}^{tree}")" ]; then
+            echo "'$DATA_BRANCH' is already a single commit with current guard files - nothing to do."; exit 0
+          fi
+
+          commit="$(git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit-tree "$tree" -m "Data")"
+
+          # 4. Same checks as a push to the branch, before anything is pushed.
+          python3 "$main_dir/.github/scripts/privacy-guard.py" --tree "$commit" --branch "$DATA_BRANCH"
+
+          # 5. Replace it - only if nobody wrote since we looked (the lease).
+          if git push --force-with-lease="refs/heads/${DATA_BRANCH}:${tip}" origin "${commit}:refs/heads/${DATA_BRANCH}"; then
+            echo "'$DATA_BRANCH' squashed to ${commit} (was ${tip})"
+          else
+            echo "::warning::Push refused (the branch moved on since it was read, or the token may not write workflow files) - nothing was changed; next week's run tries again."
+          fi

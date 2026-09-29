@@ -7,6 +7,11 @@ name: Privacy guard
 # files and commit messages. Prints only paths and reasons, never contents.
 # See .github/scripts/privacy-guard.py and docs/security.md.
 #
+# A copy of this file, the guard script and the known-findings list also live
+# on the `data` branch once the app's data is moved there (a push only runs
+# the workflows in the pushed branch's own tree) - squash-data.yml refreshes
+# the script and list weekly; this file is refreshed by hand (docs/data-branch.md).
+#
 # A push check can only report a leak after it is public. The pre-push hook
 # (.githooks/pre-push, `git config core.hooksPath .githooks`) stops it before.
 on:
@@ -101,7 +106,11 @@ jobs:
           restore-keys: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-
 
       # Branches without workflow files (presence, rates-feed) are never
-      # checked on push, so this scan is their only check.
+      # checked on push, so this scan is their only check. The `data` branch
+      # (docs/data-branch.md) carries a copy of this workflow, so its pushes
+      # are checked too (its own copy of the guard, policy "data"); this scan
+      # re-checks it with main's current guard, and covers the commits
+      # made with GITHUB_TOKEN (backups, squash), which trigger no workflows.
       - name: Fetch every branch
         run: git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
 
