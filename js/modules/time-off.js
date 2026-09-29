@@ -16,7 +16,7 @@
 //     days" when it may just be a year that predates this app / wasn't tracked at all.
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, fmtDate, today, addDays } from '../core/ui.js';
 import { upsert, softDelete, listActive, newId, byId, formatMoney, getPersonName, patchSettings } from '../core/data.js';
-import { state } from '../core/state.js';
+import { state, runBatch } from '../core/state.js';
 import { parseYmd } from '../core/dates.js';
 
 const TYPE_META = {
@@ -130,7 +130,7 @@ function isWeekend(ymd) {
 // entry added in its place, to compute the bank as it WOULD be after a save.
 function computeCarryBank(eng, excludeId = null, extra = null) {
   const all = listActive('timeOff').filter(t => t.engagementId === eng.id && t.id !== excludeId);
-  if (extra) all.push(extra);
+  if (extra) all.push(...[].concat(extra)); // one hypothetical entry, or several (a date range)
   const manualCarry = sumAmount(all, t => t.type === 'carry_out') - sumAmount(all, t => t.type === 'carry_in');
 
   const thisYear = new Date().getFullYear();
@@ -350,6 +350,14 @@ function openEntryForm(eng, existing, defaultDate) {
 
   const body = el('div', {});
   const dateI = input({ type: 'date', value: en.date });
+  // New entries can cover a period: one ordinary entry per weekday in
+  // [From, To] — the same shape as a single-day entry, so billing, invoices
+  // and balances treat each day exactly as if it had been logged on its own.
+  const periodS = select([
+    { value: 'single', label: 'Single day' },
+    { value: 'range', label: 'Date range' },
+  ], 'single');
+  const toI = input({ type: 'date', value: en.date });
   const amountS = select([
     { value: '1', label: 'Full day' },
     { value: '0.5', label: 'Half day' },
@@ -374,24 +382,115 @@ function openEntryForm(eng, existing, defaultDate) {
   // creation, so it won't retroactively change that invoice. Surface that
   // up front rather than let it look like a silent no-op later.
   const invoicedHint = el('div', { style: 'font-size:11px;color:var(--warning);padding:4px 0' });
+  const isRange = () => !existing && periodS.value === 'range';
+  // Every date in the chosen period that would actually be logged, plus what
+  // gets skipped and why. Same rules as a single entry: Mon–Fri only, and a
+  // day can't hold more than one full day in total.
+  const MAX_RANGE_DAYS = 366;
+  const planRange = (amount) => {
+    const from = dateI.value, to = toI.value;
+    const out = { days: [], weekends: 0, taken: [], error: '' };
+    if (!from || !to) { out.error = 'From and To dates are required'; return out; }
+    if (to < from) { out.error = 'The To date is before the From date'; return out; }
+    const taken = listActive('timeOff').filter(t => t.engagementId === eng.id);
+    for (let d = from, n = 0; d <= to; d = addDays(d, 1), n++) {
+      if (n >= MAX_RANGE_DAYS) { out.error = `A period can cover at most ${MAX_RANGE_DAYS} days`; return out; }
+      if (isWeekend(d)) { out.weekends++; continue; }
+      if (sumAmount(taken.filter(t => t.date === d)) + amount > 1 + 1e-9) { out.taken.push(d); continue; }
+      out.days.push(d);
+    }
+    return out;
+  };
+  // Months of the period (or the single date) that already have an invoice.
   const updateInvoicedHint = () => {
     if (!dateI.value) { invoicedHint.textContent = ''; return; }
-    const y = Number(dateI.value.slice(0, 4));
-    const mIdx = Number(dateI.value.slice(5, 7)) - 1;
-    invoicedHint.textContent = monthBilling(eng, y, mIdx).invoiceId
-      ? `${MONTHS[mIdx]} ${y} has already been invoiced — this entry won't change that invoice.`
-      : '';
+    const end = isRange() && toI.value >= dateI.value ? toI.value : dateI.value;
+    const done = [];
+    for (let ym = dateI.value.slice(0, 7); ym <= end.slice(0, 7); ) {
+      const y = Number(ym.slice(0, 4)), mIdx = Number(ym.slice(5, 7)) - 1;
+      if (monthBilling(eng, y, mIdx).invoiceId) done.push(`${MONTHS[mIdx]} ${y}`);
+      const nm = mIdx === 11 ? `${y + 1}-01` : `${y}-${String(mIdx + 2).padStart(2, '0')}`;
+      ym = nm;
+    }
+    invoicedHint.textContent = !done.length ? ''
+      : done.length === 1 && !isRange()
+        ? `${done[0]} has already been invoiced — this entry won't change that invoice.`
+        : `Already invoiced: ${done.join(', ')} — entries in ${done.length === 1 ? 'that month' : 'those months'} won't change ${done.length === 1 ? 'its invoice' : 'their invoices'}.`;
   };
-  dateI.onchange = updateInvoicedHint;
-  updateInvoicedHint();
+  const rangeHint = el('div', { style: 'font-size:11px;color:var(--text-muted);padding:4px 0' });
+  const updateRangeHint = () => {
+    if (!isRange()) { rangeHint.textContent = ''; return; }
+    const plan = planRange(Number(amountS.value) || 1);
+    if (plan.error) { rangeHint.textContent = plan.error; return; }
+    const parts = [`${plan.days.length} working day(s) will be logged`];
+    if (plan.weekends) parts.push(`${plan.weekends} weekend day(s) skipped`);
+    if (plan.taken.length) parts.push(`${plan.taken.length} already logged, skipped`);
+    rangeHint.textContent = parts.join(' · ') + '.';
+  };
+  const dateRow = el('div', { class: 'form-row horizontal' });
+  const layoutDates = () => {
+    dateRow.replaceChildren(...(isRange()
+      ? [formRow('From', dateI), formRow('To', toI), formRow('Amount (each day)', amountS)]
+      : [formRow('Date', dateI), formRow('Amount', amountS)]));
+  };
+  const refreshHints = () => { updateInvoicedHint(); updateRangeHint(); };
+  dateI.onchange = () => { if (isRange() && (!toI.value || toI.value < dateI.value)) toI.value = dateI.value; refreshHints(); };
+  toI.onchange = refreshHints;
+  amountS.onchange = updateRangeHint;
+  periodS.onchange = () => { layoutDates(); refreshHints(); };
+  layoutDates();
+  refreshHints();
 
-  body.appendChild(el('div', { class: 'form-row horizontal' }, formRow('Date', dateI), formRow('Amount', amountS)));
+  if (!existing) body.appendChild(formRow('Period', periodS));
+  body.appendChild(dateRow);
+  body.appendChild(rangeHint);
   body.appendChild(formRow('Type', typeS));
   body.appendChild(hint);
   body.appendChild(invoicedHint);
   body.appendChild(formRow('Notes', notesT));
 
+  const saveRange = () => {
+    const newType = typeS.value;
+    const newAmount = Number(amountS.value) || 1;
+    const plan = planRange(newAmount);
+    if (plan.error) { toast(plan.error, 'danger'); return; }
+    if (!plan.days.length) {
+      toast('No working days left to log in that period (weekends and already-logged days are skipped).', 'danger', 5000);
+      return;
+    }
+    const entries = plan.days.map(d => ({
+      id: newId('to'), engagementId: eng.id, personId: eng.personId,
+      date: d, amount: newAmount, type: newType, notes: notesT.value.trim(),
+    }));
+    // Same carry-bank rules as a single entry, applied to the whole period at
+    // once: carry-ins can't spend more than the bank holds, and nothing may
+    // leave the bank negative (e.g. standard days in a past year shrinking
+    // the rolled-over quota that carry-ins already spent).
+    const total = newAmount * entries.length;
+    if (newType === 'carry_in') {
+      const bankBefore = computeCarryBank(eng);
+      if (total > bankBefore + 1e-9) {
+        toast(`Carry bank only has ${fmtDays(Math.max(0, bankBefore))} day(s) available — can't carry in ${fmtDays(total)}.`, 'danger', 5000);
+        return;
+      }
+    }
+    const bankAfter = computeCarryBank(eng, null, entries);
+    if (bankAfter < -1e-9 && bankAfter < computeCarryBank(eng) - 1e-9) {
+      toast(`This period would leave the carry bank at ${fmtDays(bankAfter)} day(s). Adjust the carry-in days first.`, 'danger', 6000);
+      return;
+    }
+    runBatch(() => { for (const e of entries) upsert('timeOff', e); });
+    selectedYear = Number(entries[0].date.slice(0, 4));
+    const skipped = plan.weekends + plan.taken.length;
+    toast(`Logged ${fmtDays(total)} day(s) of time off across ${entries.length} working day(s)` +
+      (plan.taken.length ? ` — skipped ${plan.taken.length} already-logged day(s)` : '') +
+      (skipped && !plan.taken.length ? ' (weekends skipped)' : '') + '.', 'success', 5000);
+    closeModal();
+    setTimeout(rerender, 100);
+  };
+
   const save = button('Save', { variant: 'primary', onClick: () => {
+    if (isRange()) { saveRange(); return; }
     if (!dateI.value) { toast('Date required', 'danger'); return; }
     const newType = typeS.value;
     const newAmount = Number(amountS.value) || 1;
