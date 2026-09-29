@@ -1026,19 +1026,14 @@ export function openPreview(id) {
   previewInvoice(inv, inv.clientId);
 }
 
+// Cormorant Garamond + DM Sans for the luxury preview — self-hosted
+// (@font-face in css/invoice-fonts.css, files in assets/fonts), loaded the
+// first time a luxury preview opens. Nothing is fetched from a third party.
 function ensureLuxuryFonts() {
   if (document.querySelector('link[data-luxury-fonts]')) return;
-  const pc1 = document.createElement('link');
-  pc1.rel = 'preconnect'; pc1.href = 'https://fonts.googleapis.com';
-  pc1.dataset.luxuryFonts = '1';
-  document.head.appendChild(pc1);
-  const pc2 = document.createElement('link');
-  pc2.rel = 'preconnect'; pc2.href = 'https://fonts.gstatic.com';
-  pc2.crossOrigin = 'anonymous'; pc2.dataset.luxuryFonts = '1';
-  document.head.appendChild(pc2);
   const lnk = document.createElement('link');
   lnk.rel = 'stylesheet';
-  lnk.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400;1,600&family=DM+Sans:wght@300;400;500&display=swap';
+  lnk.href = `css/invoice-fonts.css${window._appV ? `?v=${window._appV}` : ''}`;
   lnk.dataset.luxuryFonts = '1';
   document.head.appendChild(lnk);
 }

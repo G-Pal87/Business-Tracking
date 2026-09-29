@@ -88,10 +88,11 @@ function getPaymentsInRange(start, end, propIds) {
 // ── Per-render caches ─────────────────────────────────────────────────────────
 // Paid STR payments grouped by property, plus lazily-built per-property
 // occupancy sets and ADR suggesters — rebuilt only when the data changes
-// (derivedCache: db swap / any edit / settings swap / the memoized payments
-// array), instead of rescanning every payment once per property per helper
-// on every render.
-const _strCacheD = derivedCache(['payments']);
+// (derivedCache: db swap / settings / an edit to payments, rate targets
+// (getTargetADR's index lives here and upsert() pushes into the same targets
+// array) or calendars (occupancy sets)), instead of rescanning every payment
+// once per property per helper on every render.
+const _strCacheD = derivedCache(['payments', 'strRateTargets', 'strCalendars']);
 function strCache() {
   return memoGet(_strCacheD(), 'c', () => {
     const paidByProp = new Map();
@@ -138,8 +139,8 @@ function eachNight(from, toExcl, fn) {
 
 // Called once per occupied night (makeRateForNight) — indexed property →
 // month → FIRST matching target (same pick as the linear .find it replaces),
-// rebuilt with strCache (any edit / db swap / sync) or when the targets
-// array itself is replaced.
+// rebuilt with strCache (a payments/targets/calendars edit, db swap, sync)
+// or when the targets array itself is replaced.
 function getTargetADR(propertyId, monthKey) {
   const targets = state.db.strRateTargets || [];
   const c = strCache();

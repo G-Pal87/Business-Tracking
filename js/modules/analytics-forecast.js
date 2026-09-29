@@ -142,8 +142,8 @@ function propMatchesForecastFilters(prop) {
 // manual monthly forecast entry still projects revenue from its lease/rent
 // schedule, so Operations → Forecast and Analytics → Forecast agree. Cached
 // per (propertyId, year) since it's called repeatedly across the three
-// functions below. derivedCache empties itself on any edit / sync / db swap /
-// date change (the schedule depends on today()), so it's safe to keep across
+// functions below. derivedCache empties itself on a tenants/payments/
+// properties/settings edit / sync / db swap / date change (the schedule depends on today()), so it's safe to keep across
 // renders — it used to be wiped on every buildView().
 const _ltRentCache = derivedCache(['tenants', 'payments', 'properties'], todayYmd);
 function getLtRentByMonth(propertyId, year) {

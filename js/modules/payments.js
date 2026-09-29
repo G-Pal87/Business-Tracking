@@ -1,7 +1,7 @@
 // Payments module: manual payments, LT rental schedule, Airbnb CSV import
 import { state, runBatch } from '../core/state.js';
-import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, buildMultiSelect } from '../core/ui.js';
-import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, getForecastEntries, upsertForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildGeneratedExpenseCategoryIndex, buildReservationExpenseRefMap, formatRuleConflictWarning, getPeopleOwners, getPersonName, getContractExpiryFlag } from '../core/data.js';
+import { el, openModal, closeModal, confirmDialog, toast, select, selVals, input, formRow, textarea, button, fmtDate, today, drillDownModal, attachSortFilter, attachDataTable, buildMultiSelect } from '../core/ui.js';
+import { upsert, softDelete, listActive, listActivePayments, byId, newId, formatMoney, formatEUR, toEUR, generatePaymentSchedule, getOrCreateForecast, getForecastEntries, upsertForecastEntry, applyReservationExpenseRules, removeReservationExpenses, deletePayment, buildGeneratedExpenseIndex, buildGeneratedExpenseCategoryIndex, buildReservationExpenseRefMap, formatRuleConflictWarning, getPeopleOwners, getPersonName, getContractExpiryFlag, dataStamp, sameDataStamp } from '../core/data.js';
 import { CURRENCIES, PAYMENT_STATUSES, STREAMS, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT } from '../core/config.js';
 import { mkTh, mkExplainButton } from './analytics-helpers.js';
 import { navigate } from '../core/router.js';
@@ -391,14 +391,15 @@ function buildAllPayments(wrap) {
 
   // derive() output per payment record, reused across renders (page change,
   // sort, search, facet filters) until something it reads can have changed:
-  // any edit (editSeq), a reload/resync (db identity), the active-payments
-  // list itself, or the guest fee/tax settings.
+  // an edit to payments / properties (name, owner) / people (owner name) or
+  // settings (FX), a reload/resync (db identity), the active-payments list
+  // itself, or the guest fee/tax settings.
   let _derivedCache = null;
   const derivedFor = (pays) => {
-    const seq = state.editSeq, db = state.db;
+    const stamp = dataStamp(['payments', 'properties', 'people']);
     const c = _derivedCache;
-    if (!c || c.seq !== seq || c.db !== db || c.pays !== pays || c.feePct !== feePct || c.taxPct !== taxPct) {
-      _derivedCache = { seq, db, pays, feePct, taxPct, map: new Map() };
+    if (!c || !sameDataStamp(c.stamp, stamp) || c.pays !== pays || c.feePct !== feePct || c.taxPct !== taxPct) {
+      _derivedCache = { stamp, pays, feePct, taxPct, map: new Map() };
     }
     const map = _derivedCache.map;
     return r => {
@@ -757,13 +758,18 @@ function buildScheduleSection(wrap) {
   const kpiRow = el('div', { class: 'grid grid-4 mb-16' });
   wrap.appendChild(kpiRow);
 
-  const tableWrap = el('div', { class: 'table-wrap' });
-  wrap.appendChild(tableWrap);
   // One row per property per month across the whole lease history, so this
-  // grows without bound — 200 rows at a time, "Show more" for the rest (sort
-  // + search still cover every row).
-  attachSortFilter(tableWrap, { initialCol: _schedSortCol, initialDir: _schedSortDir, initialSearch: _schedSearch, onSortChange: (c, d) => { _schedSortCol = c; _schedSortDir = d; }, onSearchChange: v => { _schedSearch = v; }, pageSize: 200 });
+  // grows without bound — data-level paging (attachDataTable): sort + search
+  // run on the row objects and only the visible 200 rows (+ "Show more")
+  // become DOM. Each render() rebuilds the search box + table inside this
+  // host; sort, search and how far the user has paged persist across renders.
+  const schedHost = el('div');
+  wrap.appendChild(schedHost);
+  let schedShown = 200;
 
+  // Selection lives here as payment ids (never read back from DOM
+  // checkboxes), so rows paged out or hidden by the search box stay selected
+  // and bulk delete acts on exactly this set.
   let selected = new Set();
 
   const syncDeleteBtn = () => {
@@ -908,11 +914,15 @@ function buildScheduleSection(wrap) {
         source: 'js/modules/payments.js:731-732 buildScheduleSection()'
       } : null));
 
-    tableWrap.innerHTML = '';
+    schedHost.innerHTML = '';
+    const tableWrap = el('div', { class: 'table-wrap' });
+    schedHost.appendChild(tableWrap);
     if (rows.length === 0) { tableWrap.appendChild(el('div', { class: 'empty' }, 'No entries match your filters')); return; }
 
     const t = el('table', { class: 'table' });
-    const hasSelectable = rows.some(s => !!s.linkedPaymentId);
+    // Rows that carry a payment record (selectable), in `rows` order.
+    const selRows = rows.filter(s => !!s.linkedPaymentId);
+    const hasSelectable = selRows.length > 0;
     const selectAllChk = el('input', { type: 'checkbox', style: 'cursor:pointer' });
     const htr = el('tr');
     const chkTh = el('th', { style: 'width:36px' });
@@ -932,20 +942,65 @@ function buildScheduleSection(wrap) {
     ];
     SCHED_HEADERS.forEach(col => htr.appendChild(mkTh(col)));
     const thead = el('thead'); thead.appendChild(htr); t.appendChild(thead);
-    const tb = el('tbody');
 
-    for (const s of rows) {
+    // Rows currently in inline-edit mode (rendered or not) — Edit on another
+    // row cancels them, wherever they are.
+    const editingRows = new Set();
+    const closeOtherEdits = () => {
+      for (const r of [...editingRows]) r.dispatchEvent(new CustomEvent('cancel-edit'));
+    };
+    // Every live row checkbox, by payment id — so select-all / a toggle can
+    // update rows already built (rendered or paged out) without a rebuild.
+    const chkEls = new Map();
+    // Rows select-all acts on: the filtered rows that also match the search
+    // box (kept current by attachDataTable's onFilter). Select-all used to
+    // pick rows the search hid too, so "search Flat A → select all → Delete"
+    // also deleted other properties' payments.
+    let selScope = selRows;
+    const syncSelectAll = () => {
+      let n = 0;
+      for (const s of selScope) if (selected.has(s.linkedPaymentId)) n++;
+      selectAllChk.indeterminate = n > 0 && n < selScope.length;
+      selectAllChk.checked = selScope.length > 0 && n === selScope.length;
+    };
+
+    const schedStatusLabel = (s, isThisMonth) => s.paid ? 'Paid' : s.overdue ? 'Overdue' : isThisMonth ? 'Due this month' : 'Upcoming';
+    const linkedNotes = s => (s.linkedPaymentId ? byId('payments', s.linkedPaymentId) : null)?.notes || '—';
+    // Each cell's text exactly as the view row renders it (td.textContent) —
+    // attachDataTable sorts on cells[col].trim() and searches their
+    // concatenation, the same text the DOM sorter/filter used to read.
+    const cells = s => {
+      const tenantObj = s.tenantId ? tenantById.get(s.tenantId) : null;
+      return [
+        '',
+        s.prop.name,
+        getPersonName(s.prop.owner),
+        tenantObj?.name || s.prop.tenantName || '—',
+        fmtDate(s.date),
+        s.monthKey,
+        formatMoney(s.amount, s.currency, { maxFrac: 0 }),
+        s.currency,
+        schedStatusLabel(s, s.monthKey === thisMonthKey),
+        linkedNotes(s),
+        (s.paid ? '' : 'Mark Paid') + 'Edit' + (s.linkedPaymentId ? 'Delete' : '')
+      ];
+    };
+
+    const renderRow = (s) => {
       const { prop } = s;
       const isThisMonth = s.monthKey === thisMonthKey;
       const tr = el('tr');
-
-      const closeOtherEdits = () => {
-        tb.querySelectorAll('tr.row-editing').forEach(r => r.dispatchEvent(new CustomEvent('cancel-edit')));
+      let rowChk = null;
+      const dropRowChk = () => {
+        if (rowChk) chkEls.get(s.linkedPaymentId)?.delete(rowChk);
+        rowChk = null;
       };
 
       const renderViewRow = () => {
         tr.innerHTML = '';
         tr.classList.remove('row-editing');
+        editingRows.delete(tr);
+        dropRowChk();
         tr.style.background = isThisMonth && !s.paid ? 'rgba(99,102,241,0.04)' : '';
 
         const chkTd = el('td', { style: 'width:36px' });
@@ -954,12 +1009,14 @@ function buildScheduleSection(wrap) {
           chk.checked = selected.has(s.linkedPaymentId);
           chk.onchange = () => {
             if (chk.checked) selected.add(s.linkedPaymentId); else selected.delete(s.linkedPaymentId);
-            const allChks = [...tb.querySelectorAll('input[type="checkbox"]')];
-            const n = allChks.filter(c => c.checked).length;
-            selectAllChk.indeterminate = n > 0 && n < allChks.length;
-            selectAllChk.checked = allChks.length > 0 && n === allChks.length;
+            for (const c of chkEls.get(s.linkedPaymentId) || []) c.checked = chk.checked;
+            syncSelectAll();
             syncDeleteBtn();
           };
+          rowChk = chk;
+          let set = chkEls.get(s.linkedPaymentId);
+          if (!set) { set = new Set(); chkEls.set(s.linkedPaymentId, set); }
+          set.add(chk);
           chkTd.appendChild(chk);
         }
         tr.appendChild(chkTd);
@@ -977,8 +1034,7 @@ function buildScheduleSection(wrap) {
           : isThisMonth ? el('span', { class: 'badge warning' }, 'Due this month')
           : el('span', { class: 'badge' }, 'Upcoming')
         ));
-        const linkedForNotes = s.linkedPaymentId ? byId('payments', s.linkedPaymentId) : null;
-        tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis' }, linkedForNotes?.notes || '—'));
+        tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px;max-width:180px;overflow:hidden;text-overflow:ellipsis' }, linkedNotes(s)));
         const td = el('td', { class: 'right', style: 'white-space:nowrap' });
         if (!s.paid) {
           td.appendChild(button('Mark Paid', { variant: 'sm primary', onClick: () => recordRentPayment(prop, s, render) }));
@@ -999,6 +1055,8 @@ function buildScheduleSection(wrap) {
       const renderEditRow = () => {
         tr.innerHTML = '';
         tr.classList.add('row-editing');
+        editingRows.add(tr);
+        dropRowChk();
         tr.style.background = '';
 
         tr.appendChild(el('td', {})); // checkbox placeholder
@@ -1076,22 +1134,22 @@ function buildScheduleSection(wrap) {
       };
 
       renderViewRow();
-      tb.appendChild(tr);
-    }
+      return tr;
+    };
 
-    t.appendChild(tb);
     tableWrap.appendChild(t);
 
     if (hasSelectable) {
+      // Select all = every row with a payment record that passes the filters
+      // AND the search box (all pages). Unticking clears the whole selection.
       selectAllChk.onchange = () => {
-        const allChks = [...tb.querySelectorAll('input[type="checkbox"]')];
-        allChks.forEach(c => { c.checked = selectAllChk.checked; });
         selectAllChk.indeterminate = false;
         if (selectAllChk.checked) {
-          for (const s of rows) { if (s.linkedPaymentId) selected.add(s.linkedPaymentId); }
+          for (const s of selScope) selected.add(s.linkedPaymentId);
         } else {
           selected.clear();
         }
+        for (const [id, set] of chkEls) for (const c of set) c.checked = selected.has(id);
         syncDeleteBtn();
       };
     }
@@ -1112,6 +1170,15 @@ function buildScheduleSection(wrap) {
       el('span', { class: 'muted' }, `${rows.length} month(s) shown`),
       schedTotalSpan
     ));
+
+    attachDataTable(tableWrap, {
+      rows, cells, renderRow, pageSize: 200,
+      initialCol: _schedSortCol, initialDir: _schedSortDir, initialSearch: _schedSearch,
+      onSortChange: (c, d) => { _schedSortCol = c; _schedSortDir = d; },
+      onSearchChange: v => { _schedSearch = v; },
+      onFilter: matched => { selScope = matched.filter(s => s.linkedPaymentId); syncSelectAll(); },
+      initialShown: schedShown, onShownChange: n => { schedShown = n; }
+    });
   };
 
   const deleteSelBtn = button('', { variant: 'danger', onClick: async () => {
