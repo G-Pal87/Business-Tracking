@@ -7,7 +7,8 @@
 //   - 'carry_in' days are physically off but fully billed (drawn from the carry bank)
 //
 // Balances (per engagement):
-//   - Annual quota remaining (calendar year) = quota − (standard + carry_out in that year)
+//   - Annual quota remaining (calendar year) = quota − (standard + carry_out in that year,
+//     both already taken and booked-upcoming; the UI shows those two parts separately)
 //   - Carry bank (running, all-time)          = Σ carry_out − Σ carry_in, PLUS any unused
 //     quota automatically rolled forward from every fully-completed year since
 //     eng.quotaStartYear (live/derived — see computeCarryBank; nothing is ever written for
@@ -145,10 +146,24 @@ function computeCarryBank(eng, excludeId = null, extra = null) {
 
 function yearBalances(eng, year) {
   const yearEntries = entriesFor(eng.id, year, null);
-  const consumed = sumAmount(yearEntries, t => TYPE_META[t.type]?.deducts);
+  const deducts = t => TYPE_META[t.type]?.deducts;
+  const consumed = sumAmount(yearEntries, deducts);
+  // Split the year's deducted days into already taken (today or earlier) vs.
+  // booked but still upcoming. Quota remaining counts both — a booked day is
+  // already spoken for.
+  const todayYmd = today();
+  const upcoming = sumAmount(yearEntries, t => deducts(t) && (t.date || '') > todayYmd);
   const quotaRemaining = (eng.annualQuota || 0) - consumed;
   const carryBank = computeCarryBank(eng);
-  return { consumed, quotaRemaining, carryBank };
+  return { consumed, taken: consumed - upcoming, upcoming, quotaRemaining, carryBank };
+}
+
+// All booked-but-not-yet-taken entries (any type, any year), soonest first.
+function upcomingEntries(engId) {
+  const todayYmd = today();
+  return listActive('timeOff')
+    .filter(t => t.engagementId === engId && (t.date || '') > todayYmd)
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 }
 
 // ── Module ──────────────────────────────────────────────────────────────────
@@ -194,7 +209,8 @@ function build() {
   const bal = yearBalances(eng, selectedYear);
   const widgets = el('div', { class: 'prop-card-stats', style: 'margin-bottom:16px' });
   widgets.appendChild(statWidget(`${selectedYear} quota remaining`, `${fmtDays(bal.quotaRemaining)} / ${eng.annualQuota}`, bal.quotaRemaining < 0 ? 'danger' : ''));
-  widgets.appendChild(statWidget(`${selectedYear} days consumed`, fmtDays(bal.consumed)));
+  widgets.appendChild(statWidget(`${selectedYear} days consumed`, fmtDays(bal.taken)));
+  widgets.appendChild(statWidget(`${selectedYear} days booked (upcoming)`, fmtDays(bal.upcoming)));
   widgets.appendChild(statWidget('Carry bank (all-time)', fmtDays(bal.carryBank)));
   widgets.appendChild(statWidget('Daily rate', formatMoney(eng.dailyRate, eng.currency, { maxFrac: 0 })));
   const widgetCard = el('div', { class: 'card mb-16' });
@@ -203,6 +219,32 @@ function build() {
   ));
   widgetCard.appendChild(widgets);
   wrap.appendChild(widgetCard);
+
+  // ── Upcoming booked days ──
+  const upcoming = upcomingEntries(eng.id);
+  if (upcoming.length > 0) {
+    const upCard = el('div', { class: 'card mb-16' });
+    upCard.appendChild(el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, `Upcoming Time Off (${fmtDays(sumAmount(upcoming))} day(s) booked)`)));
+    const ut = el('table', { class: 'table' });
+    ut.innerHTML = `<thead><tr><th>Date</th><th>Type</th><th class="right">Amount</th><th>Notes</th></tr></thead>`;
+    const utb = el('tbody');
+    for (const en of upcoming) {
+      const meta = TYPE_META[en.type] || { short: en.type, css: '' };
+      const tr = el('tr', { style: 'cursor:pointer' });
+      tr.appendChild(el('td', {}, fmtDate(en.date)));
+      tr.appendChild(el('td', {}, el('span', { class: `badge ${meta.css}` }, meta.short)));
+      tr.appendChild(el('td', { class: 'right num' }, fmtDays(Number(en.amount) || 0)));
+      tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, en.notes || ''));
+      tr.onclick = () => openEntryForm(eng, en);
+      utb.appendChild(tr);
+    }
+    ut.appendChild(utb);
+    const utWrap = el('div', { class: 'table-wrap' });
+    utWrap.appendChild(ut);
+    upCard.appendChild(utWrap);
+    wrap.appendChild(upCard);
+  }
 
   // ── Monthly breakdown ──
   const tableCard = el('div', { class: 'card' });
