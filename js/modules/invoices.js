@@ -968,7 +968,16 @@ export function openBuilder(existing, { onSaved, defaults = null } = {}) {
     // branch cause GitHub to cancel one of them).
     let pdfUploadStatus = null;
     if (inv.source !== 'pdf_import') {
-      const pdfPath = await invoicePdfPath(inv);
+      // Encrypted filenames use a random IV, so invoicePdfPath() returns a
+      // different path on every call. Reuse the stored path when it still
+      // decrypts to this invoice's canonical name — otherwise the unchanged-PDF
+      // check below never matches and every save re-uploads (and renames).
+      let pdfPath = null;
+      if (existing?.pdfPath) {
+        try { if (!(await invoiceNeedsPathUpdate({ ...inv, pdfPath: existing.pdfPath }))) pdfPath = existing.pdfPath; }
+        catch { /* can't decrypt the stored name here — fall back to a fresh path */ }
+      }
+      if (!pdfPath) pdfPath = await invoicePdfPath(inv);
       const origText = save.textContent;
       save.disabled = true;
       save.textContent = 'Checking PDF…';
