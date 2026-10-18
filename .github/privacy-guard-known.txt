@@ -1,0 +1,11 @@
+# Findings already in the public history that were reviewed and acknowledged.
+#
+# Only the scheduled/--all scan reads this file: a listed blob or commit is
+# reported as "acknowledged" instead of failing the run, so the daily scan stays
+# useful for NEW problems. Push and pull-request checks ignore it completely.
+#
+# One entry per line: <blob-or-commit-sha>  # why it is acceptable / what was done
+# Never list something here to silence a real leak - remove it from the history
+# first (see docs/security.md), and list it only if that is impossible.
+
+bb28ac8122a68201ba1e4758dab8243a137ee3b3  # .claude/settings.json. (stray copy of the Claude Code permissions file, no data) - policy hit only

@@ -1,0 +1,134 @@
+name: Privacy guard
+
+# This repository is public. Fails (and GitHub emails the pusher) if a push or
+# pull request adds anything that must not be public: unencrypted data files
+# (db.json, backups, invoices, documents), rate feeds outside the rates-feed
+# branch, file types that don't belong in source folders, or secrets in source
+# files and commit messages. Prints only paths and reasons, never contents.
+# See .github/scripts/privacy-guard.py and docs/security.md.
+#
+# A copy of this file, the guard script and the known-findings list also live
+# on the `data` branch once the app's data is moved there (a push only runs
+# the workflows in the pushed branch's own tree) - squash-data.yml refreshes
+# the script and list weekly; this file is refreshed by hand (docs/data-branch.md).
+#
+# A push check can only report a leak after it is public. The pre-push hook
+# (.githooks/pre-push, `git config core.hooksPath .githooks`) stops it before.
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '41 3 * * *'   # daily full scan of every branch (presence, rates-feed, ...)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      # Full history but no file contents up front (blob:none): only the files
+      # the pushed commits touched are downloaded, so the frequent app saves
+      # stay fast.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Check pushed commits for data that must not be public
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+        run: python3 .github/scripts/privacy-guard.py "$BEFORE" "$AFTER" --branch "$BRANCH"
+
+  pull-request:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      # The guard itself comes from the BASE branch, not from the pull request:
+      # a PR must not be able to weaken the check that judges it.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .base-guard
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Check the pull request's commits (guard from the base branch)
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        # Only the two-argument form, which every guard version understands.
+        run: python3 .base-guard/.github/scripts/privacy-guard.py "$BASE" "$HEAD"
+
+  all-branches:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      # The daily run only checks commits added since the last successful run
+      # (state kept in the Actions cache, keyed on the guard script's hash so a
+      # rule change forces a full rescan). Sundays and manual runs scan the
+      # full history. Incremental runs skip file contents up front
+      # (blob:none) - only the few new versions are downloaded.
+      - name: Choose full or incremental scan
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ] || [ "$(date -u +%u)" = "7" ]; then
+            echo "full=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "full=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          filter: ${{ steps.mode.outputs.full == 'true' && '' || 'blob:none' }}
+          persist-credentials: false
+
+      - name: Restore the last scan state
+        if: steps.mode.outputs.full != 'true'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/privacy-guard-state.json
+          key: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-${{ github.run_id }}
+          restore-keys: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-
+
+      # Branches without workflow files (presence, rates-feed) are never
+      # checked on push, so this scan is their only check. The `data` branch
+      # (docs/data-branch.md) carries a copy of this workflow, so its pushes
+      # are checked too (its own copy of the guard, policy "data"); this scan
+      # re-checks it with main's current guard, and covers the commits
+      # made with GITHUB_TOKEN (backups, squash), which trigger no workflows.
+      - name: Fetch every branch
+        run: git fetch --prune --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+
+      - name: Scan every branch
+        env:
+          STATE: ${{ runner.temp }}/privacy-guard-state.json
+        run: |
+          # No saved state (cache expired/evicted) on a blob:none day means a
+          # full scan; fetch every file version in bulk first instead of
+          # lazily one at a time.
+          if [ ! -s "$STATE" ] && [ -n "$(git config --get remote.origin.partialclonefilter || true)" ]; then
+            git config --unset remote.origin.partialclonefilter
+            git fetch --refetch --no-tags origin '+refs/heads/*:refs/remotes/origin/*'
+          fi
+          python3 .github/scripts/privacy-guard.py --all --state "$STATE"
+
+      - name: Save the scan state
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}/privacy-guard-state.json
+          key: privacy-guard-state-${{ hashFiles('.github/scripts/privacy-guard.py') }}-${{ github.run_id }}
