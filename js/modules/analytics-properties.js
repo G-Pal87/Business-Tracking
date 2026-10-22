@@ -16,6 +16,7 @@ import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBa
 let gF = createFilterState();
 let gScope = 'company'; // 'company' | 'all'
 let gStatusFilter = new Set(); // 'active' | 'renovation' | 'vacant' | 'sold'
+let gMvInterval = 'year'; // market value charts: 'year' (31 Dec) | 'half' (30 Jun + 31 Dec)
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-rev-donut', 'prop-value-hbar', 'prop-value-owner-donut', 'prop-value-stream-donut', 'prop-acq-bar', 'prop-growth-line', 'prop-capital-line', 'prop-single-trend', 'prop-mv-line', 'prop-mv-by-prop'];
@@ -2356,11 +2357,14 @@ function getMarketValueData(allProps) {
   const yearAgo = `${Number(now.slice(0, 4)) - 1}${now.slice(4)}`;
   const valueYearAgo = allProps.reduce((s, prop) => s + (propertyValueMetrics(prop, yearAgo, { excludePersonal })?.valueEUR || 0), 0);
 
-  // Year-end points from the first purchase year, plus today
+  // Year-end (or half-year-end) points from the first purchase year, plus today
   const years = allProps.map(p => p.purchaseDate?.slice(0, 4)).filter(Boolean).map(Number);
   const firstYear = years.length ? Math.min(...years) : Number(now.slice(0, 4));
   const points = [];
-  for (let y = firstYear; y < Number(now.slice(0, 4)); y++) points.push({ label: String(y), date: `${y}-12-31` });
+  for (let y = firstYear; y <= Number(now.slice(0, 4)); y++) {
+    if (gMvInterval === 'half' && `${y}-06-30` < now) points.push({ label: `Jun ${y}`, date: `${y}-06-30` });
+    if (`${y}-12-31` < now) points.push({ label: gMvInterval === 'half' ? `Dec ${y}` : String(y), date: `${y}-12-31` });
+  }
   points.push({ label: `Today (${now.slice(0, 4)})`, date: now });
   const timeline = points.map(pt => {
     const rows = allProps
@@ -2399,6 +2403,24 @@ function buildMarketValueSection({ current, totals, valueYearAgo }) {
       `${totals.valued} of ${current.length} held propert${current.length === 1 ? 'y has' : 'ies have'} a recorded valuation. ` +
       'Property / Stream / Owner / Status filters apply; period filters do not.')
   ));
+
+  // Chart interval toggle (same pill style as the Scope toggle)
+  const intervalBar = el('div', { style: 'display:flex;align-items:center;gap:8px;margin-bottom:12px' });
+  intervalBar.appendChild(el('span', { style: 'font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)' }, 'Chart points'));
+  for (const [val, label] of [['year', 'Yearly'], ['half', 'Half-yearly']]) {
+    const isActive = gMvInterval === val;
+    const btn = el('button', {
+      style: [
+        'padding:4px 14px;border-radius:14px;border:1px solid;font-size:12px;cursor:pointer;transition:all 120ms',
+        isActive
+          ? 'border-color:var(--accent);background:var(--accent);color:#fff;font-weight:600'
+          : 'border-color:var(--border);background:transparent;color:var(--text-muted)'
+      ].join(';')
+    }, label);
+    btn.onclick = () => { if (gMvInterval !== val) { gMvInterval = val; rebuildView(); } };
+    intervalBar.appendChild(btn);
+  }
+  section.appendChild(intervalBar);
 
   const pct = (a, b) => b > 0 ? (a / b) * 100 : null;
   const fmtPct = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
@@ -2442,14 +2464,14 @@ function buildMarketValueSection({ current, totals, valueYearAgo }) {
   chartRow.appendChild(el('div', { class: 'card' },
     el('div', { class: 'card-header' },
       el('div', { class: 'card-title' }, 'Portfolio Value vs Invested'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Year-end values · click a point for the breakdown')
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, `${gMvInterval === 'half' ? '30 Jun & 31 Dec values' : 'Year-end values'} · click a point for the breakdown`)
     ),
     el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-mv-line' }))
   ));
   chartRow.appendChild(el('div', { class: 'card' },
     el('div', { class: 'card-header' },
       el('div', { class: 'card-title' }, 'Market Value by Property'),
-      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Year-end values')
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, gMvInterval === 'half' ? '30 Jun & 31 Dec values' : 'Year-end values')
     ),
     el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-mv-by-prop' }))
   ));

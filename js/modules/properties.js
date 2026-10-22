@@ -5,14 +5,14 @@ import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI, applyFilters, isCapEx,
   getPeopleOwners, getPersonName, getTenantDisplayStatus, restoreInventoryStock, removeReservationExpenses, buildReservationExpenseRefMap,
-  propertyValuations, propertyValueMetrics
+  propertyValuations, propertyValueMetrics, propertyValueAt
 } from '../core/data.js';
 import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES, VALUATION_SOURCES } from '../core/config.js';
 import { openExpenseForm } from './expenses.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
 import { isUnlocked } from '../core/crypto.js';
-import { todayYmd, thisMonthYm, addMonthsYmd } from '../core/dates.js';
+import { todayYmd, thisMonthYm, addMonthsYmd, addDaysYmd } from '../core/dates.js';
 import { openFileSafely, base64ToBytes } from '../core/files.js';
 
 let selectedId = null;
@@ -21,6 +21,10 @@ let _propRebuildTimer = null;
 // id, so reopening it (e.g. after navigating elsewhere and back) doesn't
 // silently reset to the current year.
 const _propDetailYear = new Map();
+// Set when a valuation is added/edited/deleted from the detail view, so the
+// property grid behind it (whose cards show the latest value) is rebuilt
+// when the detail closes.
+let _valuationsChanged = false;
 
 // ── Filter + sort state (persists across navigation via localStorage) ─────────
 const _pf = { years: new Set(), channels: new Set(), owners: new Set(), types: new Set(), countries: new Set(), statuses: new Set() };
@@ -174,6 +178,7 @@ function build() {
   const header = el('div', { class: 'section-header' },
     titleEl,
     el('div', { class: 'actions' },
+      button('Update Values', { onClick: () => openBulkValuations() }),
       button('+ Add Property', { variant: 'primary', onClick: () => openForm() })
     )
   );
@@ -306,18 +311,24 @@ function gridStats(props, year) {
   return statsMap;
 }
 
-// Applies active filters + sort to the property grid, replacing its contents.
-function renderPropGrid(grid, preloaded, titleEl) {
-  grid.innerHTML = '';
-  const total = preloaded || listActive('properties');
-  let props = total;
-
+// The property list narrowed by the active filter bar selections.
+function applyPropFilters(props) {
   if (_pf.years.size)     props = props.filter(p => _pf.years.has(p.purchaseDate?.slice(0, 4) || ''));
   if (_pf.channels.size)  props = props.filter(p => _pf.channels.has(p.channel || 'company'));
   if (_pf.owners.size)    props = props.filter(p => _pf.owners.has(p.owner || ''));
   if (_pf.types.size)     props = props.filter(p => _pf.types.has(p.type || ''));
   if (_pf.countries.size) props = props.filter(p => _pf.countries.has(p.country || ''));
   if (_pf.statuses.size)  props = props.filter(p => _pf.statuses.has(p.status || ''));
+  return props;
+}
+
+// Applies active filters + sort to the property grid, replacing its contents.
+function renderPropGrid(grid, preloaded, titleEl) {
+  grid.innerHTML = '';
+  const total = preloaded || listActive('properties');
+  let props = total;
+
+  props = applyPropFilters(props);
 
   if (titleEl) {
     const hasFilter = _pf.years.size || _pf.channels.size || _pf.owners.size || _pf.types.size || _pf.countries.size || _pf.statuses.size;
@@ -643,14 +654,22 @@ export function openDetail(id, preStats) {
     setTimeout(() => navigate('properties'),250);
   }});
 
-  openModal({ title: 'Property Details', body, footer: [delBtn, editBtn], large: true });
+  // navigate() closes any open modal, so wait until none is: the delete
+  // confirm replaces this modal (firing onClose) and the detail then reopens.
+  openModal({ title: 'Property Details', body, footer: [delBtn, editBtn], large: true, onClose: () => setTimeout(() => {
+    if (!_valuationsChanged || document.getElementById('modal-overlay')?.classList.contains('open')) return;
+    _valuationsChanged = false;
+    if (location.hash === '#properties') navigate('properties');
+  }, 300) });
 }
 
 // Market value history for one property: summary stats, the dated
 // valuations (purchase as the first row) and an inline add/edit form.
 // Re-renders itself in place after every change.
 function buildValuationCard(propId) {
-  const card = el('div', { class: 'card mb-16' });
+  // Saves on Add/Update, so typing here isn't an unsaved edit of the detail
+  // modal — otherwise closing it after adding a value asked to discard.
+  const card = el('div', { class: 'card mb-16', 'data-no-dirty': '' });
   let editingId = null;
 
   const render = () => {
@@ -696,14 +715,17 @@ function buildValuationCard(propId) {
         if (!r.purchase) {
           actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => { editingId = r.id; render(); } }));
           actions.appendChild(button('Delete', { variant: 'sm danger', onClick: async () => {
+            // The confirm dialog replaces the property detail modal, so the
+            // detail is reopened afterwards either way.
             const ok = await confirmDialog(`Delete the ${fmtDate(r.date)} valuation?`, { danger: true, okLabel: 'Delete' });
-            if (!ok) return;
-            const cur = byId('properties', propId);
-            cur.valuations = (cur.valuations || []).filter(v => v.id !== r.id);
-            upsert('properties', cur);
-            if (editingId === r.id) editingId = null;
-            toast('Valuation deleted', 'success');
-            render();
+            if (ok) {
+              const cur = byId('properties', propId);
+              cur.valuations = (cur.valuations || []).filter(v => v.id !== r.id);
+              upsert('properties', cur);
+              _valuationsChanged = true;
+              toast('Valuation deleted', 'success');
+            }
+            setTimeout(() => openDetail(propId), 250);
           }}));
         }
         tr.appendChild(actions);
@@ -734,6 +756,7 @@ function buildValuationCard(propId) {
         ? (cur.valuations || []).map(v => v.id === editing.id ? entry : v)
         : [...(cur.valuations || []), entry];
       upsert('properties', cur);
+      _valuationsChanged = true;
       toast(editing ? 'Valuation updated' : 'Valuation added', 'success');
       editingId = null;
       render();
@@ -748,6 +771,134 @@ function buildValuationCard(propId) {
 
   render();
   return card;
+}
+
+// Change beyond this (either way) vs the previous value is flagged in the
+// bulk update before saving — usually a typo (an extra or missing zero).
+const BIG_VALUE_SWING_PCT = 30;
+
+// One-screen market value update for every held property in the current
+// filter: a shared date + source, one new-value box per property. Blank rows
+// are skipped; a property already valued on that date gets that entry
+// replaced. Problems (big swings, replacements) are listed in place and need
+// a second "Save anyway" click — a confirm dialog would replace this modal
+// and lose what was typed.
+function openBulkValuations() {
+  const props = applyPropFilters(listActive('properties'))
+    .filter(p => p.status !== 'sold')
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  if (!props.length) { toast('No held properties in the current filter', 'danger'); return; }
+
+  const dateI = input({ type: 'date', value: todayYmd(), max: todayYmd() });
+  const sourceS = select(Object.entries(VALUATION_SOURCES).map(([v, l]) => ({ value: v, label: l })), 'estimate');
+  const rows = props.map(p => ({
+    p,
+    valueI: input({ type: 'number', min: 0, step: 1000, placeholder: p.currency || 'EUR', style: 'max-width:150px' }),
+    notesI: input({ placeholder: 'Optional notes' }),
+    lastTd: el('td', { class: 'right num muted' }),
+    changeTd: el('td', { class: 'right num' }),
+    tr: el('tr')
+  }));
+  const warnBox = el('div', { style: 'display:none;margin-top:12px;padding:10px 12px;border:1px solid var(--danger);border-radius:6px;font-size:13px' });
+  let armed = false; // true once the warnings were shown for the current inputs
+
+  // Per-row state for the chosen date
+  const rowState = r => {
+    const date = dateI.value;
+    const value = Number(r.valueI.value);
+    const notOwned = !!(date && r.p.purchaseDate && date < r.p.purchaseDate);
+    const prev = date ? propertyValueAt(r.p, addDaysYmd(date, -1)) : null;
+    const sameDay = propertyValuations(r.p).find(v => v.date === date) || null;
+    const change = prev && value > 0 ? value - prev.value : null;
+    const changePct = change != null && prev.value > 0 ? (change / prev.value) * 100 : null;
+    return { date, value, notOwned, prev, sameDay, change, changePct };
+  };
+
+  const refreshRows = () => {
+    armed = false;
+    warnBox.style.display = 'none';
+    saveBtn.textContent = 'Save Values';
+    for (const r of rows) {
+      const st = rowState(r);
+      r.valueI.disabled = st.notOwned;
+      r.notesI.disabled = st.notOwned;
+      r.lastTd.textContent = st.notOwned ? 'Bought after this date'
+        : st.prev ? `${formatMoney(st.prev.value, r.p.currency, { maxFrac: 0 })} · ${st.prev.isPurchase ? 'purchase' : fmtDate(st.prev.date)}` : '—';
+      const big = st.changePct != null && Math.abs(st.changePct) > BIG_VALUE_SWING_PCT;
+      r.changeTd.textContent = st.change == null ? ''
+        : `${st.change >= 0 ? '+' : ''}${formatMoney(st.change, r.p.currency, { maxFrac: 0 })}${st.changePct != null ? ` (${st.changePct >= 0 ? '+' : ''}${st.changePct.toFixed(1)}%)` : ''}`;
+      r.changeTd.style.color = big ? 'var(--danger)' : '';
+      r.changeTd.style.fontWeight = big ? '700' : '';
+      if (st.sameDay && !st.notOwned) r.changeTd.appendChild(el('div', { class: 'fx-hint' }, `replaces the ${formatMoney(st.sameDay.value, r.p.currency, { maxFrac: 0 })} entry on this date`));
+    }
+  };
+
+  const t = el('table', { class: 'table' });
+  t.innerHTML = '<thead><tr><th>Property</th><th class="right">Last value</th><th>New value</th><th class="right">Change</th><th>Notes</th></tr></thead>';
+  const tb = el('tbody');
+  for (const r of rows) {
+    r.tr.appendChild(el('td', {}, el('div', {}, r.p.name), el('div', { class: 'muted', style: 'font-size:12px' }, [r.p.city, r.p.country].filter(Boolean).join(', '))));
+    r.tr.appendChild(r.lastTd);
+    r.tr.appendChild(el('td', {}, r.valueI));
+    r.tr.appendChild(r.changeTd);
+    r.tr.appendChild(el('td', {}, r.notesI));
+    r.valueI.oninput = refreshRows;
+    r.notesI.oninput = () => { armed = false; saveBtn.textContent = 'Save Values'; warnBox.style.display = 'none'; };
+    tb.appendChild(r.tr);
+  }
+  t.appendChild(tb);
+  const tw = el('div', { class: 'table-wrap' });
+  tw.appendChild(t);
+
+  const saveBtn = button('Save Values', { variant: 'primary', onClick: () => {
+    const date = dateI.value;
+    if (!date) { toast('Pick the valuation date', 'danger'); return; }
+    if (date > todayYmd()) { toast("A valuation can't be dated in the future", 'danger'); return; }
+    const filled = rows.map(r => ({ r, st: rowState(r) })).filter(x => !x.st.notOwned && x.r.valueI.value.trim() !== '');
+    const invalid = filled.filter(x => !(x.st.value > 0));
+    if (invalid.length) { toast(`Enter a value above zero for ${invalid.map(x => x.r.p.name).join(', ')}`, 'danger', 5000); return; }
+    if (!filled.length) { toast('Enter at least one new value', 'danger'); return; }
+
+    const swings = filled.filter(x => x.st.changePct != null && Math.abs(x.st.changePct) > BIG_VALUE_SWING_PCT);
+    const replacing = filled.filter(x => x.st.sameDay);
+    if ((swings.length || replacing.length) && !armed) {
+      warnBox.innerHTML = '';
+      if (swings.length) warnBox.appendChild(el('div', {}, `Changed by more than ${BIG_VALUE_SWING_PCT}%: ${swings.map(x => `${x.r.p.name} (${x.st.changePct >= 0 ? '+' : ''}${x.st.changePct.toFixed(0)}%)`).join(', ')}. Check for a typo.`));
+      if (replacing.length) warnBox.appendChild(el('div', { style: swings.length ? 'margin-top:6px' : '' }, `Already valued on ${fmtDate(date)} — will be replaced: ${replacing.map(x => x.r.p.name).join(', ')}.`));
+      warnBox.style.display = '';
+      saveBtn.textContent = 'Save anyway';
+      armed = true;
+      return;
+    }
+
+    runBatch(() => {
+      for (const { r, st } of filled) {
+        const cur = byId('properties', r.p.id);
+        const entry = { id: st.sameDay?.id || newId('val'), date, value: st.value, source: sourceS.value, notes: r.notesI.value.trim() };
+        cur.valuations = st.sameDay
+          ? (cur.valuations || []).map(v => v.id === st.sameDay.id ? entry : v)
+          : [...(cur.valuations || []), entry];
+        upsert('properties', cur);
+      }
+    });
+    toast(`Saved ${filled.length} valuation${filled.length === 1 ? '' : 's'} for ${fmtDate(date)}`, 'success');
+    closeModal();
+    setTimeout(() => navigate('properties'), 200);
+  }});
+
+  dateI.onchange = refreshRows;
+  sourceS.onchange = () => { armed = false; saveBtn.textContent = 'Save Values'; warnBox.style.display = 'none'; };
+
+  const body = el('div', {});
+  body.appendChild(el('div', { class: 'muted', style: 'font-size:13px;margin-bottom:12px' },
+    'Enter the new market value for each property you have a figure for — leave the rest blank. Each value is added to that property\'s Market Value History.'));
+  body.appendChild(el('div', { class: 'flex gap-8 mb-16', style: 'align-items:flex-end;flex-wrap:wrap' },
+    formRow('Valuation date', dateI), formRow('Source', sourceS)));
+  body.appendChild(tw);
+  body.appendChild(warnBox);
+  refreshRows();
+
+  openModal({ title: `Update Market Values (${props.length} propert${props.length === 1 ? 'y' : 'ies'})`, body, footer: [button('Cancel', { onClick: () => closeModal() }), saveBtn], large: true });
 }
 
 function smallStat(label, value, sub) {
