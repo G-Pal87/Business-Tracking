@@ -97,6 +97,14 @@ export const PROPERTY_STATUSES = {
   sold:       { label: 'Sold',       css: 'sold' }
 };
 
+// Who/what a recorded market valuation came from (property.valuations[].source).
+export const VALUATION_SOURCES = {
+  estimate:  'Own estimate',
+  agent:     'Agent estimate',
+  bank:      'Bank valuation',
+  appraisal: 'Official appraisal'
+};
+
 export const OWNERS = {
   you:  'Giorgos',
   rita: 'Rita',

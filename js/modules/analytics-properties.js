@@ -5,7 +5,7 @@ import { STREAMS, OWNERS, PROPERTY_STREAMS, PROPERTY_STATUSES } from '../core/co
 import {
   formatEUR, formatMoney, toEUR, byId, getPersonName, getTenantDisplayStatus,
   listActive, listActivePayments, paymentsOfProperty, isCapEx, generatePaymentSchedule,
-  simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI
+  simplePropertyROI, annualizedPropertyROI, cashOnCashPropertyROI, propertyValueMetrics, propertyValuations
 } from '../core/data.js';
 import { todayYmd, diffDaysYmd, addDaysYmd } from '../core/dates.js';
 import { openDetail as openPropertyDetail } from './properties.js';
@@ -18,7 +18,7 @@ let gScope = 'company'; // 'company' | 'all'
 let gStatusFilter = new Set(); // 'active' | 'renovation' | 'vacant' | 'sold'
 
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-rev-donut', 'prop-value-hbar', 'prop-value-owner-donut', 'prop-value-stream-donut', 'prop-acq-bar', 'prop-growth-line', 'prop-capital-line', 'prop-single-trend'];
+const CHART_IDS    = ['prop-profit-hbar', 'prop-month-bar', 'prop-rev-donut', 'prop-value-hbar', 'prop-value-owner-donut', 'prop-value-stream-donut', 'prop-acq-bar', 'prop-growth-line', 'prop-capital-line', 'prop-single-trend', 'prop-mv-line', 'prop-mv-by-prop'];
 
 let _finSortCol = -1, _finSortDir = 1, _finSearch = '';
 let _sumSortCol = -1, _sumSortDir = 1, _sumSearch = '';
@@ -1912,6 +1912,10 @@ function buildView() {
   ));
   wrap.appendChild(valueRow);
 
+  // ── Market value & appreciation ────────────────────────────────────────────
+  const mvData = getMarketValueData(allProps);
+  wrap.appendChild(buildMarketValueSection(mvData));
+
   // ── Property comparison ────────────────────────────────────────────────────
   const compSection = buildComparisonSection({ propData, avgROI, best, worst });
   if (compSection) wrap.appendChild(compSection);
@@ -1989,6 +1993,8 @@ function buildView() {
     renderAcqBar(acqData);
     renderGrowthLine(acqData);
     renderCapitalLine(acqData);
+    renderMarketValueLine(mvData);
+    renderMarketValueByProp(mvData);
   }, 0);
 
   return wrap;
@@ -2320,6 +2326,183 @@ function renderCapitalLine({ timeline }) {
         CAPITAL_DRILL_COLS
       );
     }
+  });
+}
+
+// ── Market value & appreciation ───────────────────────────────────────────────
+// Built on the recorded valuation history (property.valuations; see
+// propertyValueAt in core/data.js): the latest valuation on/before a date,
+// else the purchase price. Property / Stream / Owner / Status / Scope filters
+// apply; the period filters don't — values are point-in-time.
+function getMarketValueData(allProps) {
+  const now = todayYmd();
+  const excludePersonal = gScope !== 'all';
+  const current = allProps
+    .map(prop => ({ prop, m: propertyValueMetrics(prop, now, { excludePersonal }), valuations: propertyValuations(prop).length }))
+    .filter(r => r.m);
+  const sum = (rows, k) => rows.reduce((s, r) => s + (r.m[k] || 0), 0);
+  const totals = {
+    value:       sum(current, 'valueEUR'),
+    invested:    sum(current, 'investedEUR'),
+    gain:        sum(current, 'gainEUR'),
+    netIncome:   sum(current, 'netIncomeEUR'),
+    totalReturn: sum(current, 'totalReturnEUR'),
+    mortgage:    current.reduce((s, r) => s + computeMortgageEstimate(r.prop).remaining, 0),
+    valued:      current.filter(r => r.valuations > 0).length
+  };
+  totals.equity = totals.value - totals.mortgage;
+
+  // Same holdings one year ago, for the year-on-year change
+  const yearAgo = `${Number(now.slice(0, 4)) - 1}${now.slice(4)}`;
+  const valueYearAgo = allProps.reduce((s, prop) => s + (propertyValueMetrics(prop, yearAgo, { excludePersonal })?.valueEUR || 0), 0);
+
+  // Year-end points from the first purchase year, plus today
+  const years = allProps.map(p => p.purchaseDate?.slice(0, 4)).filter(Boolean).map(Number);
+  const firstYear = years.length ? Math.min(...years) : Number(now.slice(0, 4));
+  const points = [];
+  for (let y = firstYear; y < Number(now.slice(0, 4)); y++) points.push({ label: String(y), date: `${y}-12-31` });
+  points.push({ label: `Today (${now.slice(0, 4)})`, date: now });
+  const timeline = points.map(pt => {
+    const rows = allProps
+      .map(prop => ({ prop, m: propertyValueMetrics(prop, pt.date, { excludePersonal }) }))
+      .filter(r => r.m);
+    return { ...pt, rows, value: rows.reduce((s, r) => s + r.m.valueEUR, 0), invested: rows.reduce((s, r) => s + r.m.investedEUR, 0) };
+  });
+
+  return { current, totals, valueYearAgo, timeline };
+}
+
+const MV_COLS = [
+  { key: 'name',     label: 'Property' },
+  { key: 'purchase', label: 'Purchase',       right: true, format: v => formatEUR(v) },
+  { key: 'invested', label: 'Invested',       right: true, format: v => formatEUR(v), tip: 'Purchase + CapEx' },
+  { key: 'value',    label: 'Market Value',   right: true, format: v => formatEUR(v) },
+  { key: 'asOf',     label: 'Valued On',      format: v => v ? fmtDate(v) : '—' },
+  { key: 'gain',     label: 'Unrealised Gain', right: true, format: v => formatEUR(v), tip: 'Market value − purchase − CapEx' },
+  { key: 'gainPct',  label: 'Gain %',         right: true, format: v => v == null ? '—' : `${v.toFixed(1)}%` },
+  { key: 'cagr',     label: 'Avg Yearly Growth', right: true, format: v => v == null ? '—' : `${v.toFixed(1)}%`, tip: 'Market value vs purchase price, per year owned' },
+  { key: 'totalRet', label: 'Total Return %', right: true, format: v => v == null ? '—' : `${v.toFixed(1)}%`, tip: '(Unrealised gain + lifetime net rental income) / invested' }
+];
+function toMarketValueRows(rows) {
+  return rows.map(({ prop, m }) => ({
+    name: prop.name, purchase: m.purchaseEUR, invested: m.investedEUR, value: m.valueEUR,
+    asOf: m.isPurchaseValue ? '' : m.valueDate, gain: m.gainEUR, gainPct: m.gainPct, cagr: m.cagrPct, totalRet: m.totalReturnPct
+  })).sort((a, b) => b.value - a.value);
+}
+
+function buildMarketValueSection({ current, totals, valueYearAgo }) {
+  const section = el('div', {});
+  section.appendChild(el('div', { style: 'margin:28px 0 12px' },
+    el('h3', { style: 'margin:0 0 4px;font-size:16px;font-weight:700' }, 'Market Value & Appreciation'),
+    el('p',  { style: 'margin:0;font-size:12px;color:var(--text-muted)' },
+      `From the valuations recorded on each property (Properties → property → Market Value History); a property without one counts at its purchase price. ` +
+      `${totals.valued} of ${current.length} held propert${current.length === 1 ? 'y has' : 'ies have'} a recorded valuation. ` +
+      'Property / Stream / Owner / Status filters apply; period filters do not.')
+  ));
+
+  const pct = (a, b) => b > 0 ? (a / b) * 100 : null;
+  const fmtPct = v => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
+  const rows = toMarketValueRows(current);
+  const open = title => () => drillDownModal(title, rows, MV_COLS);
+
+  const kpis = el('div', { class: 'grid grid-4 mb-16' });
+  kpis.appendChild(mkKpiCard({
+    label: 'Portfolio Market Value',
+    value: formatEUR(totals.value),
+    delta: valueYearAgo > 0 ? safePct(totals.value, valueYearAgo) : null,
+    compLabel: '1 year ago',
+    compValue: valueYearAgo > 0 ? formatEUR(valueYearAgo) : undefined,
+    onClick: open('Portfolio Market Value'),
+    explain: { formula: 'Σ latest valuation on/before today (else purchase price)', note: 'Converted to EUR at today\'s rate. Sold properties drop out after their sale date.' }
+  }));
+  kpis.appendChild(mkKpiCard({
+    label: 'Unrealised Gain',
+    value: formatEUR(totals.gain),
+    subtitle: `${fmtPct(pct(totals.gain, totals.invested))} vs ${formatEUR(totals.invested)} invested`,
+    onClick: open('Unrealised Gain'),
+    explain: { formula: 'Market value − purchase price − all-time CapEx', note: 'CapEx is subtracted so renovation spending is not counted as appreciation.' }
+  }));
+  kpis.appendChild(mkKpiCard({
+    label: 'Total Return',
+    value: formatEUR(totals.totalReturn),
+    subtitle: `${fmtPct(pct(totals.totalReturn, totals.invested))} · gain ${formatEUR(totals.gain)} + income ${formatEUR(totals.netIncome)}`,
+    onClick: open('Total Return'),
+    explain: { formula: 'Unrealised gain + lifetime net rental income (paid revenue − operating expenses)', note: 'Shown separately — the existing ROI figures are unchanged and still exclude appreciation.' }
+  }));
+  kpis.appendChild(mkKpiCard({
+    label: 'Equity',
+    value: formatEUR(totals.equity),
+    subtitle: totals.mortgage > 0 ? `Value − ${formatEUR(totals.mortgage)} est. mortgage` : 'No mortgage balance',
+    onClick: open('Equity'),
+    explain: { formula: 'Market value − estimated remaining mortgage', note: 'Mortgage balance is estimated from the amount, monthly payment and rate on each property (same estimate as Financing & Payoff).' }
+  }));
+  section.appendChild(kpis);
+
+  const chartRow = el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px' });
+  chartRow.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Portfolio Value vs Invested'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Year-end values · click a point for the breakdown')
+    ),
+    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-mv-line' }))
+  ));
+  chartRow.appendChild(el('div', { class: 'card' },
+    el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, 'Market Value by Property'),
+      el('div', { style: 'font-size:12px;color:var(--text-muted)' }, 'Year-end values')
+    ),
+    el('div', { class: 'chart-wrap' }, el('canvas', { id: 'prop-mv-by-prop' }))
+  ));
+  section.appendChild(chartRow);
+
+  if (rows.length) {
+    const card = el('div', { class: 'card mb-16' });
+    card.appendChild(el('div', { class: 'card-header' }, el('div', { class: 'card-title' }, 'Value by Property')));
+    const tw = el('div', { class: 'table-wrap' });
+    tw.appendChild(mkModalTable(
+      MV_COLS.map(c => ({ label: c.label, right: !!c.right, tip: c.tip })),
+      rows.map(r => MV_COLS.map(c => c.format ? c.format(r[c.key]) : r[c.key]))
+    ));
+    card.appendChild(tw);
+    section.appendChild(card);
+  }
+  return section;
+}
+
+function renderMarketValueLine({ timeline }) {
+  if (!timeline.some(t => t.value > 0)) return;
+  charts.line('prop-mv-line', {
+    labels: timeline.map(t => t.label),
+    datasets: [
+      { label: 'Market Value (EUR)', data: timeline.map(t => Math.round(t.value)), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', tension: 0 },
+      { label: 'Invested (EUR)',     data: timeline.map(t => Math.round(t.invested)), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.05)', fill: false, tension: 0, borderDash: [5, 4] }
+    ],
+    onClickItem: (_label, idx) => {
+      const t = timeline[idx];
+      if (t?.rows.length) drillDownModal(`Portfolio Value — ${t.label}`, toMarketValueRows(t.rows), MV_COLS);
+    }
+  });
+}
+
+function renderMarketValueByProp({ timeline, current }) {
+  // Every property with history in range — held ones first, then any sold since
+  const seen = new Map();
+  for (const r of current) seen.set(r.prop.id, r.prop);
+  for (const t of timeline) for (const r of t.rows) if (!seen.has(r.prop.id)) seen.set(r.prop.id, r.prop);
+  const all = [...seen.values()];
+  if (!all.length) return;
+  const PALETTE = ['#6366f1','#8b5cf6','#14b8a6','#f59e0b','#ec4899','#3b82f6','#10b981','#ef4444','#06b6d4','#84cc16'];
+  charts.line('prop-mv-by-prop', {
+    labels: timeline.map(t => t.label),
+    datasets: all.map((prop, i) => ({
+      label: prop.name,
+      data: timeline.map(t => { const r = t.rows.find(x => x.prop.id === prop.id); return r ? Math.round(r.m.valueEUR) : null; }),
+      borderColor: PALETTE[i % PALETTE.length],
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: 0,
+      spanGaps: false
+    }))
   });
 }
 

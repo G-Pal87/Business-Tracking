@@ -4,9 +4,10 @@ import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow
 import {
   upsert, softDelete, listActive, listActivePayments, byId, newId, formatEUR, formatMoney, toEUR,
   propertyRevenueEUR, propertyExpensesEUR, renovationCapexEUR, propertyROI, applyFilters, isCapEx,
-  getPeopleOwners, getPersonName, getTenantDisplayStatus, restoreInventoryStock, removeReservationExpenses, buildReservationExpenseRefMap
+  getPeopleOwners, getPersonName, getTenantDisplayStatus, restoreInventoryStock, removeReservationExpenses, buildReservationExpenseRefMap,
+  propertyValuations, propertyValueMetrics
 } from '../core/data.js';
-import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES } from '../core/config.js';
+import { PROPERTY_TYPES, PROPERTY_STATUSES, CURRENCIES, OWNERS, VENDOR_ROLES, PROPERTY_CHANNELS, EXPENSE_CATEGORIES, VALUATION_SOURCES } from '../core/config.js';
 import { openExpenseForm } from './expenses.js';
 import { navigate } from '../core/router.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
@@ -365,8 +366,14 @@ function card(p, stats) {
     el('span', { class: `badge ${p.type === 'short_term' ? 'short' : 'long'}` }, p.type === 'short_term' ? 'Short-term' : 'Long-term'),
     el('span', { class: 'badge' }, getPersonName(p.owner || 'both'))
   ));
+  // Once a market valuation is recorded, the card shows the latest value
+  // (with its change vs purchase) in place of the purchase price.
+  const lastVal = propertyValuations(p).filter(v => v.date <= todayYmd()).pop();
+  const valueStat = lastVal
+    ? statBox('Value', `${formatMoney(lastVal.value, p.currency, { maxFrac: 0 })}${p.purchasePrice > 0 ? ` (${lastVal.value >= p.purchasePrice ? '+' : ''}${((lastVal.value / p.purchasePrice - 1) * 100).toFixed(0)}%)` : ''}`)
+    : statBox('Purchase', formatMoney(p.purchasePrice, p.currency, { maxFrac: 0 }));
   c.appendChild(el('div', { class: 'prop-card-stats' },
-    statBox('Purchase', formatMoney(p.purchasePrice, p.currency, { maxFrac: 0 })),
+    valueStat,
     statBox('Rev YTD', formatEUR(rev)),
     statBox('ROI', `${roi.toFixed(1)}%`)
   ));
@@ -450,6 +457,8 @@ export function openDetail(id, preStats) {
       smallStat('Sold Date', fmtDate(p.soldDate))
     ));
   }
+
+  body.appendChild(buildValuationCard(id));
 
   if (p.type === 'long_term') {
     const tlCard = buildTenantTimelineCard(id);
@@ -635,6 +644,110 @@ export function openDetail(id, preStats) {
   }});
 
   openModal({ title: 'Property Details', body, footer: [delBtn, editBtn], large: true });
+}
+
+// Market value history for one property: summary stats, the dated
+// valuations (purchase as the first row) and an inline add/edit form.
+// Re-renders itself in place after every change.
+function buildValuationCard(propId) {
+  const card = el('div', { class: 'card mb-16' });
+  let editingId = null;
+
+  const render = () => {
+    const p = byId('properties', propId);
+    if (!p) return;
+    card.innerHTML = '';
+    const vals = propertyValuations(p);
+    card.appendChild(el('div', { class: 'card-header' },
+      el('div', { class: 'card-title' }, `Market Value History (${vals.length})`)));
+
+    const m = propertyValueMetrics(p, todayYmd());
+    if (m && vals.length) {
+      const signed = v => `${v >= 0 ? '+' : ''}${formatEUR(v)}`;
+      const pct = v => v == null ? null : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
+      card.appendChild(el('div', { class: 'grid grid-4', style: 'padding:12px 16px' },
+        smallStat('Current Value', formatEUR(m.valueEUR), m.valueDate ? `as of ${fmtDate(m.valueDate)}` : null),
+        smallStat('Unrealised Gain', signed(m.gainEUR), `${pct(m.gainPct) || '—'} vs purchase + CapEx`),
+        smallStat('Avg Yearly Growth', m.cagrPct == null ? '—' : pct(m.cagrPct), 'value vs purchase price'),
+        smallStat('Total Return', signed(m.totalReturnEUR), `${pct(m.totalReturnPct) || '—'} · gain + net rental income`)
+      ));
+    }
+
+    const rows = [];
+    if (p.purchasePrice > 0) rows.push({ date: p.purchaseDate, value: Number(p.purchasePrice), source: 'Purchase price', notes: '', purchase: true });
+    for (const v of vals) rows.push({ ...v, value: Number(v.value), source: VALUATION_SOURCES[v.source] || v.source || '' });
+    if (rows.length) {
+      const t = el('table', { class: 'table' });
+      t.innerHTML = '<thead><tr><th>Date</th><th class="right">Value</th><th class="right">Change</th><th class="right">vs Purchase</th><th>Source</th><th>Notes</th><th></th></tr></thead>';
+      const tb = el('tbody');
+      rows.forEach((r, i) => {
+        const prev = rows[i - 1];
+        const ch = prev ? r.value - prev.value : null;
+        const tr = el('tr');
+        tr.appendChild(el('td', {}, r.date ? fmtDate(r.date) : '—'));
+        tr.appendChild(el('td', { class: 'right num' }, formatMoney(r.value, p.currency, { maxFrac: 0 })));
+        tr.appendChild(el('td', { class: 'right num muted' }, ch == null ? '—'
+          : `${ch >= 0 ? '+' : ''}${formatMoney(ch, p.currency, { maxFrac: 0 })}${prev.value > 0 ? ` (${ch >= 0 ? '+' : ''}${(ch / prev.value * 100).toFixed(1)}%)` : ''}`));
+        tr.appendChild(el('td', { class: 'right num muted' }, r.purchase || !(p.purchasePrice > 0) ? '—'
+          : `${r.value >= p.purchasePrice ? '+' : ''}${((r.value / p.purchasePrice - 1) * 100).toFixed(1)}%`));
+        tr.appendChild(el('td', {}, r.source));
+        tr.appendChild(el('td', { class: 'muted', style: 'font-size:12px' }, r.notes || ''));
+        const actions = el('td', { class: 'right', style: 'white-space:nowrap' });
+        if (!r.purchase) {
+          actions.appendChild(button('Edit', { variant: 'sm ghost', onClick: () => { editingId = r.id; render(); } }));
+          actions.appendChild(button('Delete', { variant: 'sm danger', onClick: async () => {
+            const ok = await confirmDialog(`Delete the ${fmtDate(r.date)} valuation?`, { danger: true, okLabel: 'Delete' });
+            if (!ok) return;
+            const cur = byId('properties', propId);
+            cur.valuations = (cur.valuations || []).filter(v => v.id !== r.id);
+            upsert('properties', cur);
+            if (editingId === r.id) editingId = null;
+            toast('Valuation deleted', 'success');
+            render();
+          }}));
+        }
+        tr.appendChild(actions);
+        tb.appendChild(tr);
+      });
+      t.appendChild(tb);
+      const tw = el('div', { class: 'table-wrap' });
+      tw.appendChild(t);
+      card.appendChild(tw);
+    }
+
+    // Add / edit form
+    const editing = editingId ? vals.find(v => v.id === editingId) : null;
+    const dateI  = input({ type: 'date', value: editing?.date || todayYmd(), max: todayYmd() });
+    const valueI = input({ type: 'number', value: editing ? editing.value : '', min: 0, step: 1000, placeholder: `Value (${p.currency || 'EUR'})` });
+    const sourceS = select(Object.entries(VALUATION_SOURCES).map(([v, l]) => ({ value: v, label: l })), editing?.source || 'estimate');
+    const notesI = input({ value: editing?.notes || '', placeholder: 'Optional notes' });
+    const saveBtn = button(editing ? 'Update' : '+ Add Valuation', { variant: 'sm primary', onClick: () => {
+      const date = dateI.value;
+      const value = Number(valueI.value);
+      if (!date) { toast('Pick the valuation date', 'danger'); return; }
+      if (!(value > 0)) { toast('Enter a value above zero', 'danger'); return; }
+      if (date > todayYmd()) { toast("A valuation can't be dated in the future", 'danger'); return; }
+      const cur = byId('properties', propId);
+      if (cur.purchaseDate && date < cur.purchaseDate) { toast(`The valuation date is before the purchase date (${fmtDate(cur.purchaseDate)})`, 'danger'); return; }
+      const entry = { id: editing?.id || newId('val'), date, value, source: sourceS.value, notes: notesI.value.trim() };
+      cur.valuations = editing
+        ? (cur.valuations || []).map(v => v.id === editing.id ? entry : v)
+        : [...(cur.valuations || []), entry];
+      upsert('properties', cur);
+      toast(editing ? 'Valuation updated' : 'Valuation added', 'success');
+      editingId = null;
+      render();
+    }});
+    const formRowEl = el('div', { class: 'flex gap-8', style: 'padding:12px 16px;align-items:flex-end;flex-wrap:wrap' },
+      formRow('Date', dateI), formRow(`Market value (${p.currency || 'EUR'})`, valueI), formRow('Source', sourceS), formRow('Notes', notesI),
+      saveBtn,
+      editing ? button('Cancel', { variant: 'sm ghost', onClick: () => { editingId = null; render(); } }) : null
+    );
+    card.appendChild(formRowEl);
+  };
+
+  render();
+  return card;
 }
 
 function smallStat(label, value, sub) {

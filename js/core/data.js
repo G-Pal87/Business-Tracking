@@ -604,6 +604,76 @@ export function cashOnCashPropertyROI(propertyId, { annualCashFlow } = {}) {
   return (cashFlow / cashInvested) * 100;
 }
 
+// ── Market value history ─────────────────────────────────────────────────────
+// prop.valuations = [{ id, date, value, source, notes }], in the property's
+// own currency. The purchase (purchasePrice on purchaseDate) is the implicit
+// first point, so a property with no recorded valuations is still worth its
+// purchase price. Between valuations the last known value carries forward —
+// nothing is interpolated.
+
+// Valid recorded valuations, oldest first (same-day entries keep entry order).
+export function propertyValuations(prop) {
+  return (prop?.valuations || [])
+    .filter(v => v && v.date && Number(v.value) > 0)
+    .map((v, i) => ({ v, i }))
+    .sort((a, b) => a.v.date.localeCompare(b.v.date) || a.i - b.i)
+    .map(x => x.v);
+}
+
+// The property's market value on `ymd` (own currency): the latest valuation
+// dated on/before it, else the purchase price. null when it wasn't owned
+// then (before purchase, or after a recorded sale).
+export function propertyValueAt(prop, ymd) {
+  if (!prop) return null;
+  if (prop.purchaseDate && ymd < prop.purchaseDate) return null;
+  if (prop.status === 'sold' && prop.soldDate && ymd > prop.soldDate) return null;
+  let found = null;
+  for (const v of propertyValuations(prop)) { if (v.date <= ymd) found = v; else break; }
+  if (found) return { value: Number(found.value), date: found.date, source: found.source || '', isPurchase: false };
+  if (!(prop.purchasePrice > 0)) return null;
+  return { value: Number(prop.purchasePrice), date: prop.purchaseDate || '', source: 'purchase', isPurchase: true };
+}
+
+// Value-based metrics for one property as of `asOf` (EUR). Gain is measured
+// against total invested (purchase + CapEx up to asOf), so renovation spend
+// isn't counted as appreciation. Total return adds the lifetime operating net
+// (paid rental revenue − non-CapEx expenses) up to asOf. `excludePersonal`
+// mirrors the dashboards' Company-only scope.
+export function propertyValueMetrics(prop, asOf = today(), { excludePersonal = false } = {}) {
+  const at = propertyValueAt(prop, asOf);
+  if (!at) return null;
+  const cur = prop.currency || 'EUR';
+  const valueEUR    = toEUR(at.value, cur, asOf);
+  const purchaseEUR = prop.purchasePrice ? toEUR(prop.purchasePrice, cur, prop.purchaseDate) : 0;
+  let capexEUR = 0, netIncomeEUR = 0;
+  for (const e of listActive('expenses')) {
+    if (e.propertyId !== prop.id || !e.date || e.date > asOf || (excludePersonal && e.personal)) continue;
+    const amt = toEUR(e.amount, e.currency, e.date);
+    if (isCapEx(e)) capexEUR += amt; else netIncomeEUR -= amt;
+  }
+  for (const p of listActivePayments()) {
+    if (p.propertyId !== prop.id || p.status !== 'paid' || !p.date || p.date > asOf || (excludePersonal && p.personal)) continue;
+    netIncomeEUR += toEUR(p.amount, p.currency, p.date);
+  }
+  const investedEUR = purchaseEUR + capexEUR;
+  const gainEUR = valueEUR - investedEUR;
+  const totalReturnEUR = gainEUR + netIncomeEUR;
+  const years = prop.purchaseDate
+    ? (new Date(asOf).getTime() - new Date(prop.purchaseDate).getTime()) / (365.25 * 24 * 3600 * 1000) : 0;
+  // Average yearly growth of the market value vs the purchase price. Under a
+  // year owned it would just be an extrapolated guess, so it's left out.
+  const cagrPct = years >= 1 && purchaseEUR > 0 && valueEUR > 0
+    ? (Math.pow(valueEUR / purchaseEUR, 1 / years) - 1) * 100 : null;
+  return {
+    valueEUR, valueDate: at.date, valueSource: at.source, isPurchaseValue: at.isPurchase,
+    purchaseEUR, capexEUR, investedEUR, gainEUR,
+    gainPct: investedEUR > 0 ? (gainEUR / investedEUR) * 100 : null,
+    netIncomeEUR, totalReturnEUR,
+    totalReturnPct: investedEUR > 0 ? (totalReturnEUR / investedEUR) * 100 : null,
+    cagrPct, years
+  };
+}
+
 export function groupByStream(rows, amountField = 'amount', currencyField = 'currency') {
   const map = new Map();
   for (const r of rows) {
