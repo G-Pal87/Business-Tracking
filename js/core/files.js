@@ -79,3 +79,69 @@ export function openFileSafely(bytes, name) {
   setTimeout(() => URL.revokeObjectURL(url), 120000);
   return 'preview';
 }
+
+// ── Preparing files for upload ───────────────────────────────────────────────
+// Uploads go through GitHub's Contents API, which rejects files over 100 MB
+// and needs the whole file base64-encoded in one request (held in browser
+// memory several times over), and stored files are encrypted, so GitHub can't
+// compress or delta them — every byte counts in full, forever in history.
+// So: a hard per-file limit, and phone photos are shrunk before upload.
+
+export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const RESIZE_MAX_PX = 2000;  // longest side; plenty for reading a document photo
+const JPEG_QUALITY = 0.85;
+// GIFs may be animated and SVGs aren't raster — both are uploaded as-is.
+const RESIZABLE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+
+export function fmtFileSize(bytes) {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+// Resolves to { file } ready to upload — a re-encoded JPEG (name ending .jpg)
+// when a photo could be made smaller, else the original — or { error } when
+// the file is over the limit. Never throws: if the browser can't decode the
+// image, the original is used unchanged.
+export async function prepareUploadFile(file) {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return { error: `${file.name} is ${fmtFileSize(file.size)} — the limit is ${fmtFileSize(MAX_UPLOAD_BYTES)} per file. Compress or split it first.` };
+  }
+  if (!RESIZABLE_TYPES.has(file.type) || typeof createImageBitmap !== 'function') return { file };
+  try {
+    const bmp = await createImageBitmap(file); // applies EXIF orientation
+    const scale = Math.min(1, RESIZE_MAX_PX / Math.max(bmp.width, bmp.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bmp.width * scale));
+    canvas.height = Math.max(1, Math.round(bmp.height * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff'; // JPEG has no transparency — PNG see-through areas become white, not black
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    bmp.close?.();
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', JPEG_QUALITY));
+    // Keep the original whenever re-encoding doesn't actually help (e.g. a
+    // small screenshot that PNG already stores compactly).
+    if (!blob || blob.size >= file.size) return { file };
+    const name = file.name.replace(/\.[^./]+$/, '') + '.jpg';
+    return { file: new File([blob], name, { type: 'image/jpeg', lastModified: file.lastModified }) };
+  } catch {
+    return { file };
+  }
+}
+
+// prepareUploadFile over several files, with one summary toast-ready message
+// for what was shrunk and one per rejected file. `notify(msg, kind)` shows them.
+export async function prepareUploadFiles(files, notify) {
+  const ready = [];
+  let before = 0, after = 0, shrunk = 0;
+  for (const f of files) {
+    const res = await prepareUploadFile(f);
+    if (res.error) { notify?.(res.error, 'danger'); continue; }
+    if (res.file !== f) { shrunk++; before += f.size; after += res.file.size; }
+    ready.push(res.file);
+  }
+  if (shrunk) notify?.(`Resized ${shrunk} photo${shrunk === 1 ? '' : 's'} for upload: ${fmtFileSize(before)} → ${fmtFileSize(after)}`, 'success');
+  return ready;
+}

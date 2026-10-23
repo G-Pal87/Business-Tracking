@@ -7,7 +7,7 @@ import { CURRENCIES, EXPENSE_CATEGORIES, EXPENSE_CATEGORY_GROUPS, ACCOUNTING_TYP
 import { navigate } from '../core/router.js';
 import { addDaysYmd, addMonthsYmd, addYearsYmd } from '../core/dates.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
-import { openFileSafely, base64ToBytes } from '../core/files.js';
+import { openFileSafely, base64ToBytes, prepareUploadFiles } from '../core/files.js';
 import { openAddYearForm } from './settings.js';
 
 function readFileAsBase64(file) {
@@ -903,8 +903,14 @@ function openForm(existing, defaults = {}, onSave = null) {
   };
 
   chooseBtn.onclick = () => fileInput.click();
-  fileInput.onchange = () => {
-    pendingReceiptFile = fileInput.files[0] || null;
+  fileInput.onchange = async () => {
+    const picked = fileInput.files[0];
+    fileInput.value = '';
+    if (!picked) return;
+    // Over-limit files are refused and photos shrunk (core/files.js)
+    const [ready] = await prepareUploadFiles([picked], (msg, kind) => toast(msg, kind, 6000));
+    if (!ready) return;
+    pendingReceiptFile = ready;
     removeExistingReceipt = false;
     syncReceiptUI();
   };
@@ -1114,7 +1120,7 @@ function openForm(existing, defaults = {}, onSave = null) {
         }
         try {
           await uploadGithubFileEncrypted(repoPath, b64, 'Update file');
-          r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, path: repoPath };
+          r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, size: pendingReceiptFile.size, path: repoPath };
         } catch (err) {
           console.error('Receipt upload failed:', err);
           r.receipt = { name: pendingReceiptFile.name, type: pendingReceiptFile.type, data: b64 };

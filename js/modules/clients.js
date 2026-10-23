@@ -7,7 +7,7 @@ import { navigate } from '../core/router.js';
 import { uploadGithubFileEncrypted, deleteGithubFile, fetchGithubFileEncrypted } from '../core/github.js';
 import { isUnlocked } from '../core/crypto.js';
 import { todayYmd } from '../core/dates.js';
-import { openFileSafely, base64ToBytes } from '../core/files.js';
+import { openFileSafely, base64ToBytes, prepareUploadFiles } from '../core/files.js';
 
 // ── Document helpers (same pattern as properties.js) ─────────────────────────
 
@@ -430,6 +430,14 @@ function openForm(existing) {
     }
   };
   renderDocList();
+  // Over-limit files are refused here and photos shrunk (core/files.js),
+  // before anything is listed for upload.
+  const addPendingFiles = async files => {
+    for (const file of await prepareUploadFiles(files, (msg, kind) => toast(msg, kind, 6000))) {
+      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), _file: file });
+    }
+    renderDocList();
+  };
   const dropZone = el('div', { class: 'doc-drop-zone' }, 'Drop files here or click to browse');
   dropZone.onclick = () => fileInput.click();
   dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('dragover'); };
@@ -437,16 +445,10 @@ function openForm(existing) {
   dropZone.ondrop = e => {
     e.preventDefault();
     dropZone.classList.remove('dragover');
-    for (const file of [...e.dataTransfer.files]) {
-      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), _file: file });
-    }
-    renderDocList();
+    addPendingFiles([...e.dataTransfer.files]);
   };
   fileInput.onchange = () => {
-    for (const file of [...fileInput.files]) {
-      pendingDocs.push({ id: newId('doc'), name: file.name, type: file.type, size: file.size, uploadedAt: new Date().toISOString(), _file: file });
-    }
-    renderDocList();
+    addPendingFiles([...fileInput.files]);
     fileInput.value = '';
   };
   const docsCard = el('div', { class: 'card mb-16' });

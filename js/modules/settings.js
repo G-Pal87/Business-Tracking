@@ -1,7 +1,7 @@
 // Settings module: GitHub config, FX rates, services catalog, business info, team
 import { state, markDirty } from '../core/state.js';
 import { el, openModal, closeModal, confirmDialog, toast, select, input, formRow, textarea, button, attachSortFilter, fmtDate } from '../core/ui.js';
-import { saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile, assertDataLocationPresent } from '../core/github.js';
+import { ghFetch, saveConfig, clearConfig, fetchDb, saveLocalCache, listGithubFolder, fetchGithubFile, uploadGithubFile, uploadGithubFileEncrypted, fetchGithubFileEncrypted, deleteGithubFile, assertDataLocationPresent } from '../core/github.js';
 import { canDecryptWith, setRotationPending, isRotationPending, hasPreviousKeys, supportsCompression } from '../core/crypto.js';
 import { generateDataKey, importDataKeyFromBase64, installDataKey, clearDataKey, isUnlocked, hasWrappedKeyConfigured, hasSessionWrapKey, unlockOnLogin, isEncryptedEnvelope, encryptJsonToEnvelope, decryptEnvelopeToJson, encryptFilename, decryptFilename, exportActiveDataKeyBase64, generateDebugKey, installDebugKey, exportActiveDebugKeyBase64, hasDebugKeyConfigured, isDebugKeyUnlocked, encryptJsonWithDebugKey } from '../core/crypto.js';
 import { verifyPassword } from '../core/auth.js';
@@ -9,7 +9,7 @@ import { requestDisconnectOtherSessions, listDevices, killDevice, removeDevice, 
 import { navigate } from '../core/router.js';
 import { loadLib } from '../core/libs.js';
 import { redactForDebug } from '../core/redact.js';
-import { downloadBytes } from '../core/files.js';
+import { downloadBytes, fmtFileSize, MAX_UPLOAD_BYTES } from '../core/files.js';
 import { patchSettings, upsert, softDelete, listActive, byId, newId, formatMoney, listDeletedRecords, restoreRecord, permanentlyDeleteRecord, restoreRecords, permanentlyDeleteRecords, purgeDeletedRecords, reapplyRuleToAllPayments, runAllReservationExpenseRules, formatRuleConflictWarning } from '../core/data.js';
 import { setDb } from '../core/state.js';
 import { CURRENCIES, SERVICE_UNITS, STREAMS, SERVICE_STREAMS, EXPENSE_CATEGORIES, AIRBNB_GUEST_FEE_PCT, AIRBNB_TAX_PCT, AIRBNB_CLEANING_FEE } from '../core/config.js';
@@ -3484,6 +3484,106 @@ function fillDocRepoBody(body, { rootFolder, collection, entityLabel, checkBtnLa
   }
 }
 
+// ── Storage usage ────────────────────────────────────────────────────────────
+// GitHub recommends keeping a repository under 1 GB (5 GB at most). Its size
+// counts all history — every saved version of every encrypted file — and
+// GitHub refreshes the figure with a delay, so it can trail recent changes.
+const REPO_SIZE_WARN_BYTES = 800 * 1024 * 1024;
+const REPO_SIZE_LIMIT_BYTES = 1024 * 1024 * 1024;
+const STORAGE_AREAS = [
+  { prefix: 'invoices/',          label: 'Invoice PDFs' },
+  { prefix: 'Properties/',        label: 'Property documents' },
+  { prefix: 'Clients/',           label: 'Client documents' },
+  { prefix: 'expenses/receipts/', label: 'Expense receipts' },
+  { prefix: 'backups/',           label: 'Backups' },
+  { prefix: 'data/',              label: 'Database' },
+];
+
+function fillStorageBody(body) {
+  const out = el('div', { style: 'margin-top:10px' });
+  const btn = button('Check Storage', { onClick: async () => {
+    const { owner, repo, branch, token } = state.github;
+    if (!owner || !repo) { toast('GitHub not configured', 'danger'); return; }
+    btn.disabled = true; btn.textContent = 'Checking…';
+    out.innerHTML = '';
+    try {
+      const headers = { 'Accept': 'application/vnd.github+json' };
+      if (token) headers['Authorization'] = `token ${token}`;
+      const api = `https://api.github.com/repos/${owner}/${repo}`;
+      const [repoRes, treeRes] = await Promise.all([
+        ghFetch(api, { headers, cache: 'no-store' }),
+        ghFetch(`${api}/git/trees/${encodeURIComponent(branch || 'main')}?recursive=1`, { headers, cache: 'no-store' })
+      ]);
+      if (!repoRes.ok) throw new Error(`Repository lookup failed (${repoRes.status})`);
+      if (!treeRes.ok) throw new Error(`File listing failed (${treeRes.status})`);
+      const repoSize = (await repoRes.json()).size * 1024; // API reports KB
+      const tree = await treeRes.json();
+      out.appendChild(renderStorageReport(repoSize, tree, branch || 'main'));
+    } catch (e) {
+      out.appendChild(el('div', { style: 'color:var(--danger);font-size:13px' }, `Could not check storage: ${e.message}`));
+    } finally {
+      btn.disabled = false; btn.textContent = 'Check Storage';
+    }
+  }});
+  body.appendChild(el('div', { class: 'muted', style: 'font-size:13px' },
+    `Uploads are limited to ${fmtFileSize(MAX_UPLOAD_BYTES)} per file, and JPG/PNG/WebP photos are resized to at most 2000 px before upload.`));
+  body.appendChild(el('div', { style: 'margin-top:8px' }, btn));
+  body.appendChild(out);
+}
+
+function renderStorageReport(repoSize, tree, branch) {
+  const wrap = el('div', {});
+  const files = (tree.tree || []).filter(f => f.type === 'blob');
+  const rows = STORAGE_AREAS.map(a => {
+    const fs = files.filter(f => f.path.startsWith(a.prefix));
+    return { label: a.label, count: fs.length, size: fs.reduce((s, f) => s + (f.size || 0), 0) };
+  });
+  const known = new Set(files.filter(f => STORAGE_AREAS.some(a => f.path.startsWith(a.prefix))).map(f => f.path));
+  const other = files.filter(f => !known.has(f.path));
+  rows.push({ label: 'Other (app code etc.)', count: other.length, size: other.reduce((s, f) => s + (f.size || 0), 0) });
+  const totalFiles = rows.reduce((s, r) => s + r.size, 0);
+
+  const pct = Math.min(100, (repoSize / REPO_SIZE_LIMIT_BYTES) * 100);
+  const level = repoSize >= REPO_SIZE_LIMIT_BYTES ? 'danger' : repoSize >= REPO_SIZE_WARN_BYTES ? 'warning' : 'success';
+  const color = `var(--${level})`;
+  wrap.appendChild(el('div', { style: 'font-size:13px;margin-bottom:4px' },
+    el('strong', {}, `Repository: ${fmtFileSize(repoSize)}`), ` of the 1 GB GitHub recommends (${pct.toFixed(0)}%)`));
+  const bar = el('div', { style: 'height:8px;border-radius:4px;background:var(--border);overflow:hidden;margin-bottom:6px' });
+  bar.appendChild(el('div', { style: `height:100%;width:${pct}%;background:${color}` }));
+  wrap.appendChild(bar);
+  wrap.appendChild(el('div', { style: `font-size:12px;margin-bottom:12px;color:${level === 'success' ? 'var(--text-muted)' : color}` },
+    level === 'danger' ? 'Over the recommended size. Uploads still work, but the repository should be cleaned up — old history makes up most of it.'
+    : level === 'warning' ? 'Approaching the recommended 1 GB. Consider cleaning up old history before adding many more files.'
+    : 'Within the recommended size. This includes all history, and GitHub updates it with a delay.'));
+
+  const t = el('table', { class: 'table' });
+  t.innerHTML = `<thead><tr><th>Stored now (${branch} branch)</th><th class="right">Files</th><th class="right">Size</th></tr></thead>`;
+  const tb = el('tbody');
+  for (const r of rows) {
+    if (!r.count) continue;
+    const tr = el('tr');
+    tr.appendChild(el('td', {}, r.label));
+    tr.appendChild(el('td', { class: 'right num' }, String(r.count)));
+    tr.appendChild(el('td', { class: 'right num' }, fmtFileSize(r.size)));
+    tb.appendChild(tr);
+  }
+  const tot = el('tr', { style: 'font-weight:700' });
+  tot.appendChild(el('td', {}, 'Total'));
+  tot.appendChild(el('td', { class: 'right num' }, String(files.length)));
+  tot.appendChild(el('td', { class: 'right num' }, fmtFileSize(totalFiles)));
+  tb.appendChild(tot);
+  t.appendChild(tb);
+  const tw = el('div', { class: 'table-wrap' });
+  tw.appendChild(t);
+  wrap.appendChild(tw);
+  if (tree.truncated) wrap.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:6px' }, 'GitHub truncated the file list, so the table is incomplete.'));
+  if (repoSize > totalFiles) {
+    wrap.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:6px' },
+      `The other ${fmtFileSize(repoSize - totalFiles)} of the repository is mostly history — earlier versions of encrypted files, which GitHub can't compress — plus the app code on other branches.`));
+  }
+  return wrap;
+}
+
 function makeSubSection(key, title, subtitle) {
   const chevron = el('span', { class: 'card-toggle-chevron' }, '▶');
   const header = el('div', { class: 'sub-section-header' },
@@ -3748,11 +3848,13 @@ function buildRepositoryMaintenanceCard() {
   card.appendChild(body);
   wireCollapsible('repository-maintenance', header, body, chevron);
 
+  const storSub = makeSubSection('repo-storage',   'Storage Usage',    'Size of stored files and of the repository');
   const invSub  = makeSubSection('repo-invoices',  'Invoices',         'PDF files stored in the invoice repository');
   const expSub  = makeSubSection('repo-expenses',  'Expense Receipts', 'Receipt files stored under expenses/receipts/');
   const propSub = makeSubSection('repo-properties', 'Properties',      'Document files stored under Properties/');
   const cliSub  = makeSubSection('repo-clients',   'Clients',          'Document files stored under Clients/');
 
+  fillStorageBody(storSub.body);
   fillInvoiceRepoBody(invSub.body);
   fillExpenseReceiptRepoBody(expSub.body);
   fillDocRepoBody(propSub.body, {
@@ -3774,6 +3876,7 @@ function buildRepositoryMaintenanceCard() {
     openRecord:           openClientDetail
   });
 
+  body.appendChild(storSub.wrap);
   body.appendChild(invSub.wrap);
   body.appendChild(expSub.wrap);
   body.appendChild(propSub.wrap);
