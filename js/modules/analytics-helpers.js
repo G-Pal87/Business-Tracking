@@ -823,3 +823,56 @@ export function ghsByDividend(divs) {
   }
   return out;
 }
+
+// ── Dashboard tabs ────────────────────────────────────────────────────────────
+
+/**
+ * Dashboards are split into tabs; only the active tab is built (switching
+ * rebuilds the view), so each chart canvas exists once. Each tab states which
+ * filters apply to it, since some tabs follow the period filter and others
+ * are all-time / as-of-today.
+ *
+ * tabs: [{ id, label, scope }] — `scope` is the one-line filter note.
+ * The chosen tab is remembered per browser under `storageKey`.
+ */
+export function loadDashboardTab(storageKey, tabs) {
+  try {
+    const t = localStorage.getItem(storageKey);
+    return tabs.some(x => x.id === t) ? t : tabs[0].id;
+  } catch {
+    return tabs[0].id;
+  }
+}
+
+/**
+ * mkDashboardTabs(tabs, activeId, onSelect, storageKey) — tab bar plus the
+ * active tab's scope note. onSelect(id) is called (after the choice is saved)
+ * when a different tab is clicked; it should rebuild the view.
+ */
+export function mkDashboardTabs(tabs, activeId, onSelect, storageKey) {
+  const wrap = el('div', {});
+  const bar = el('div', { class: 'flex gap-8', style: 'flex-wrap:wrap;border-bottom:1px solid var(--border);margin-bottom:12px' });
+  for (const t of tabs) {
+    const isActive = activeId === t.id;
+    const btn = el('button', {
+      type: 'button',
+      style: [
+        'padding:8px 14px;border:none;background:transparent;font-size:13px;cursor:pointer;margin-bottom:-1px',
+        isActive
+          ? 'border-bottom:2px solid var(--accent);color:var(--text);font-weight:600'
+          : 'border-bottom:2px solid transparent;color:var(--text-muted)'
+      ].join(';')
+    }, t.label);
+    btn.onclick = () => {
+      if (activeId === t.id) return;
+      try { localStorage.setItem(storageKey, t.id); } catch { /* storage unavailable */ }
+      onSelect(t.id);
+    };
+    bar.appendChild(btn);
+  }
+  wrap.appendChild(bar);
+  const meta = tabs.find(t => t.id === activeId);
+  if (meta?.scope) wrap.appendChild(el('p', { style: 'margin:0 0 16px;font-size:12px;color:var(--text-muted)' }, meta.scope));
+  return wrap;
+}
+

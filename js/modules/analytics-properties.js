@@ -10,7 +10,7 @@ import {
 import { todayYmd, diffDaysYmd, addDaysYmd } from '../core/dates.js';
 import { openDetail as openPropertyDetail } from './properties.js';
 import { createFilterState, getCurrentPeriodRange, getComparisonRange, getMonthKeysForRange, makeMatchers, buildFilterBar, buildComparisonLine } from './analytics-filters.js';
-import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, safePct, mkTh, mkExplainButton, mkDrillValue, periodDays, DAYS_PER_YEAR } from './analytics-helpers.js';
+import { mkSectionLabel, mkSummaryBox, mkModalTable, mkSummaryGrid, mkVarianceBadge, mkEmptyState, mkKpiCard, mkInsightsBanner, mkDashboardTabs, loadDashboardTab, safePct, mkTh, mkExplainButton, mkDrillValue, periodDays, DAYS_PER_YEAR } from './analytics-helpers.js';
 
 // ── Filter state ──────────────────────────────────────────────────────────────
 let gF = createFilterState();
@@ -29,10 +29,7 @@ const PROP_TABS = [
   { id: 'financing',   label: 'Financing',         scope: 'Mortgage figures estimated as of today. Property / Stream / Owner / Status filters apply; the period filters do not.' }
 ];
 const PROP_TAB_KEY = 'btf:prop_dash_tab';
-let gTab = (() => {
-  try { const t = localStorage.getItem(PROP_TAB_KEY); return PROP_TABS.some(x => x.id === t) ? t : 'overview'; }
-  catch { return 'overview'; }
-})();
+let gTab = loadDashboardTab(PROP_TAB_KEY, PROP_TABS);
 let gInvestedSplit = 'owner'; // invested-capital donut: 'owner' | 'stream'
 
 let _finSortCol = -1, _finSortDir = 1, _finSearch = '';
@@ -1774,24 +1771,7 @@ function buildView() {
   // ── Tabs ───────────────────────────────────────────────────────────────────
   // One tab is built per render (switching rebuilds the view), so each chart
   // canvas exists once and tiles built above can be placed on any tab.
-  const tabBar = el('div', { class: 'flex gap-8', style: 'flex-wrap:wrap;border-bottom:1px solid var(--border);margin-bottom:12px' });
-  for (const t of PROP_TABS) {
-    const isActive = gTab === t.id;
-    const btn = el('button', {
-      type: 'button',
-      style: [
-        'padding:8px 14px;border:none;background:transparent;font-size:13px;cursor:pointer;margin-bottom:-1px',
-        isActive
-          ? 'border-bottom:2px solid var(--accent);color:var(--text);font-weight:600'
-          : 'border-bottom:2px solid transparent;color:var(--text-muted)'
-      ].join(';')
-    }, t.label);
-    btn.onclick = () => { if (gTab !== t.id) { gTab = t.id; try { localStorage.setItem(PROP_TAB_KEY, gTab); } catch { /* storage unavailable */ } rebuildView(); } };
-    tabBar.appendChild(btn);
-  }
-  wrap.appendChild(tabBar);
-  const tabMeta = PROP_TABS.find(t => t.id === gTab);
-  wrap.appendChild(el('p', { style: 'margin:0 0 16px;font-size:12px;color:var(--text-muted)' }, tabMeta.scope));
+  wrap.appendChild(mkDashboardTabs(PROP_TABS, gTab, id => { gTab = id; rebuildView(); }, PROP_TAB_KEY));
 
   const { keys: monthKeys } = getMonthKeysForRange(start, end);
   const renders = [];
